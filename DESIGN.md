@@ -18,7 +18,7 @@ Multi-model chat, editable memory, and even Codex/Claude execution inside DSH ha
 
 - Keep Noema's primary conversation central and independent from worker lifecycle; do not turn each worker task into a new user-facing primary chat.
 - Show the Noema dialogue model separately from the already running worker's harness. Changing the former must not alter the latter.
-- The user can continue speaking with Noema while the background task runs, add a task-scoped instruction, or stop the task. The task's accepted context is inspectable but does not masquerade as a shared transcript.
+- When the user's instruction is clear, start the worker without an extra confirmation step. Keep the sent context inspectable; allow task-scoped follow-up or stop while it runs. If the destination fails, preserve the main dialogue and handoff record and offer retry/another target.
 - On completion, return a clearly sourced system event to the main conversation. Distinguish worker facts/tool output from Noema's interpretation; do not silently inject raw logs as if they were Noema's own thought.
 - If the destination fails, preserve the main dialogue and handoff record so the user can retry or change target.
 - Use the original-source/memory controls only as a subordinate supporting pattern when relevant; do not make them the hero.
