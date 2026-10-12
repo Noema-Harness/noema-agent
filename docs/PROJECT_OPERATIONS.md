@@ -39,10 +39,10 @@ Project：[`Noema 开发`](https://github.com/users/c3115644151/projects/6)（�
 | In Progress | 当前正在实施；个人项目默认同时只推进少量高优先级事项。 |
 | In Review | 实施已结束，正在核对验收、测试、数据影响或用户可见结果。 |
 | Blocked | 有明确外部依赖或待裁决事项；Issue 需链接 GitHub 原生 `blocked by` 依赖并写明解除条件。 |
-| Done | 所有验收条件均有证据，结果与必要文档已记录。将 Status 设为 Done 会自动关闭 Issue。 |
-| Canceled | 明确决定不再做；先将 Status 设为 Canceled，再以 `not planned` 原因关闭 Issue，不伪装成已交付。 |
+| Done | 所有验收条件均有证据，结果与必要文档已记录。设为 Done 会自动关闭 Issue；关闭 Issue 也会将 Status 设为 Done。 |
+| Canceled | 明确决定不再做；以 `not planned` 原因关闭 Issue 后，将 Project Status 改为 Canceled，覆盖关闭自动化的默认 Done。 |
 
-GitHub Project 自动化负责减少机械维护：自动纳入规则针对该仓库的开放 Issue/PR；新加入项进入 Inbox，重新打开的事项回到 Backlog，将 Status 设为 Done 会关闭 Issue。`Item closed → Done` 自动化保持关闭：Issue/PR 被关闭不代表验收已通过，Status 仍由明确的交付判断驱动。PR 合并只完成 PR 自身；关联 Issue 仍需独立验收。
+GitHub Project 自动化负责减少机械维护：自动纳入规则针对该仓库的开放 Issue/PR；新加入项进入 Inbox，重新打开的事项回到 Backlog。设为 Done 会关闭 Issue，关闭 Issue 也会自动设为 Done；因此“关闭”只能用于已验收交付，取消事项需在关闭后把状态改为 Canceled。PR 合并只完成 PR 自身；关联 Issue 仍需独立验收。
 
 不要假定 Auto-add 对 API/连接器创建的 Issue 一定及时生效：本次的 Issue #5 是通过 GitHub API 创建，未自动出现在 Project，随后已手动加入并设置字段。创建 Issue 后必须确认它确实在看板上；缺失时用 `gh project item-add` 手动添加，再核对状态、Priority 和 Workstream。
 
@@ -80,7 +80,7 @@ Issue 从候选工作进入 Todo 前，需要满足：
 - 重要的多文件/架构变更默认从分支提交 PR，以 CI 结果和 Issue 验收为合并依据；机械改动可直接提交。
 - `.github/workflows/desktop-checks.yml` 在 push 与 PR 上验证 Windows 环境：干净安装、lint、类型检查、安全测试、桌面启动 smoke、Electron 构建目录与 Squirrel 安装器。
 - 当前仓库是 GitHub Free 下的私有仓库。GitHub API 明确拒绝为此仓库启用 branch protection/rulesets；所以 CI 已自动运行，但平台目前不能强制阻止不合格的直接 push。若以后要求服务器端强制 PR/检查，需要升级 GitHub 方案或改变仓库可见性；现在不擅自公开代码或增加订阅。
-- 当前 CI 证明开发构建、桌面启动与未签名 Squirrel 安装器可生成。只有手动运行 Desktop checks 时才上传 7 天保留的私有测试安装器，避免每次 PR/push 占满 artifact 配额。它不代表已配置代码签名、自动更新或公开发行渠道；签名证书和发行渠道不是开始产品开发的前置条件，只有确定发行需求后再建立正式 release 流程。
+- 当前 CI 证明开发构建、桌面启动与未签名 Squirrel 安装器可生成。只有手动运行 Desktop checks 时才上传 7 天保留的私有测试安装器，避免每次 PR/push 占满 artifact 配额。本机 Squirrel maker 在 C/D 临时目录写 `.nupkg` 均遇到 Access Denied；不关闭安全防护，改从 CI artifact 试装。安装器也未配置代码签名、自动更新或公开发行渠道；这些不是开始产品开发的前置条件，只有确定发行需求后再建正式 release 流程。
 
 ## Codex 项目 harness
 

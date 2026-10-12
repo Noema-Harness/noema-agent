@@ -12,7 +12,7 @@
 1. Todo Issue 才满足开工条件：问题、用户结果、范围、依赖、风险与验收条件齐全。
 2. 有实质的多文件/架构工作优先使用分支和 PR；小型机械文档改动可直接提交。
 3. PR 要关联 Issue，并记录用户可见结果、实际运行的验证和未验证项。
-4. 只有验收通过后才能将 Issue 设为 Done；此动作会自动关闭 Issue。已取消工作先标为 Canceled，再以 `not planned` 关闭。
+4. 只有验收通过后才能将 Issue 设为 Done；此动作会自动关闭 Issue。GitHub 关闭 Issue 也会映射成 Done。取消工作用 `not planned` 关闭后，再将 Project Status 改为 Canceled。
 5. CI 在 Windows runner 上执行：`npm ci`、lint、typecheck、测试、桌面 smoke、Electron package 和 Windows Squirrel 安装器构建。
 
 本仓库为 GitHub Free 下的私有仓库，平台目前不允许 branch protection/rulesets。因此 PR 和检查策略目前由协作流程执行，而非服务端强制；不要把 CI 绿灯或直接 push 当成用户验收。

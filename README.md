@@ -37,6 +37,7 @@ GitHub Project 看板是工作状态的唯一来源；本地文档不重复维�
 - 首次克隆后运行 `npm ci`，然后 `npm run dev` 启动桌面壳。
 - 检查命令：`npm run lint`、`npm run typecheck`、`npm test`、`npm run smoke`；Windows 构建目录：`npm run package:desktop`；Windows 安装器：`npm run make:desktop`。
 - 在 GitHub Actions 手动运行 `Desktop checks` 时，会生成一个私有、未签名的 Windows 测试安装器 artifact，保留 7 天；常规 PR/push 只验证打包，不占用长期 artifact 配额。
+- 当前本机的 Squirrel `make:desktop` 在向 Windows 临时目录写 `.nupkg` 时返回 Access Denied；不要通过关闭安全防护来绕过。用 GitHub Actions 手动生成的私有 artifact 试装；`npm run dev`、smoke 与构建目录已在本机验证。
 - 代理环境下下载依赖可临时设置 `HTTPS_PROXY=http://127.0.0.1:7890`；不要把代理配置或凭据写入仓库。
 
 仓库级 Codex 约定见 [AGENTS.md](AGENTS.md)。
