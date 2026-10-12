@@ -39,9 +39,9 @@ Judge the rendered experience, not compliance with one Skill:
 
 ## Noema-specific hypothesis and scope
 
-Noema's candidate differentiator is not “chat plus a memory database.” The current design hypothesis is that users should be able to see when a past understanding changes this response, follow it to its origin, and correct or revoke it without leaving the conversation. For M1, test this as a “conversation with an evidence margin”: the exchange remains primary; only context that materially informs the current response appears beside it, with provenance and direct correction controls. This is a prototype hypothesis, not a confirmed permanent brand or data model.
+Memory provenance, editable personalization, persistent identity, model switching, and multi-provider chat already exist in mature products. They can inform quality, but are not Noema's differentiator by themselves. The current M1 hypothesis is narrower and still unproven: Noema owns the user-facing thread when a user must move from a chat model to a full coding harness; a model switch can continue with chat context, while a harness handoff must disclose which intent/decisions/references are carried and which native workspace/tool/session state stays behind. The prototype should make that boundary understandable and let the user inspect, edit, defer, cancel, and recover the handoff. This is a test of a product hypothesis, not a committed architecture or claim of transcript equivalence.
 
-Do not default to a session-dashboard, agent-control cockpit, memory-card gallery, mascot/avatar, decorative graph, or generic split-pane chat. Use any of these only if the actual scenario proves the structure useful. Do not force a visual metaphor that obscures a familiar action.
+Do not default to a memory dashboard, agent-control cockpit, memory-card gallery, mascot/avatar, decorative graph, or generic split-pane chat. Use any of these only if the actual scenario proves the structure useful. Do not force a visual metaphor that obscures a familiar action.
 
 ## Delivery
 

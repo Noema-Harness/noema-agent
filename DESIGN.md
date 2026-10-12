@@ -2,21 +2,26 @@
 
 Status: assistant-selected prototype direction under the user's delegated Noema design authority. It is not a user-approved brand system or permanent product specification.
 
-## Design thesis
+## Previous hypothesis — rejected as a differentiator
 
-Noema should not make the user leave a conversation to inspect a memory database. When an earlier understanding materially shapes the current reply, the interface should expose that connection at the point of use: the conversation stays primary, while a quiet evidence margin shows what carried forward, where it came from, and how to correct or revoke it.
+The first prototype centered on an evidence margin beside chat. Research found that ChatGPT already exposes personalization sources and correction/removal, while Open WebUI, LibreChat, and Letta cover overlapping memory, model-switching, persistent identity, and multi-provider workflows. This interaction can remain a useful component, but it cannot justify Noema's independent existence. Do not treat the old prototype's memory panel as a durable visual or product decision.
+
+## Current design thesis
+
+Test one concrete interruption: a user reaches a quota or capability limit in one coding agent and needs to continue the same task in another. Keep the Noema conversation as the user's continuous thread. Distinguish (a) switching the model for another chat turn, which can carry the visible conversation, from (b) handing work to a specialized coding harness, which has its own native session, workspace, tools and execution trace. Before the second action, show a reviewable transfer packet and state plainly what is and is not carried. On return, attach the external result to the Noema thread without claiming that the external native transcript became the same session.
 
 ## Why this direction
 
-Noema's candidate value is continuity of interaction, not merely stored facts. A conventional chat pane hides whether continuity affected a response; a memory dashboard makes the user manage internal data instead of continuing the conversation. The margin tests a different structure: understanding becomes visible as part of the exchange, but remains secondary until relevant.
+Multi-model chat and personal memory already have mature alternatives. The less-covered friction in the user's stated work is moving between a chat/model frontend and a full coding harness while preserving the task's human-facing thread. Codex app-server and DSH expose resumable native sessions, but those sessions own different runtime state. The prototype tests whether Noema's incremental value could be the honest, low-friction handoff between those native sessions—not an impossible promise to merge them.
 
 ## Composition and behavior
 
-- A stable desktop frame supports a narrow navigation rail, a readable conversation canvas, and a context margin. The margin is tied to the selected response, not a global stream of agent activity.
-- A cited prior understanding can be opened to inspect its source and status, edited in place, excluded from this response, or revoked. The language must distinguish a remembered quotation, a tentative interpretation, and a user-confirmed preference.
-- A portable export represents the user's editable understanding and its provenance, not hidden chain-of-thought or a claim that every provider can replay identical context.
-- Use restrained, high-contrast surfaces and one functional accent for provenance/selection. Avoid decorative charts, fake activity, glass gradients, mascot-led emotion, and generic card grids.
-- Motion may reveal a source link or confirm a state change; it must not imply a living mind or manufacture activity.
+- Keep the conversation itself central. A handoff appears inline at the point where the user is changing execution surfaces; do not build a separate global jobs dashboard.
+- Present model switching and harness handoff as distinct actions. For model switching, state that the visible thread context is continued but tool capabilities depend on the target model. For harness handoff, show a proposed task packet, the destination's new/resumed native session, and explicit non-transferable state.
+- Let the user inspect and edit the task/constraints, deselect optional context, proceed, defer, or cancel. If the destination cannot start, keep the Noema thread intact and offer retry/another destination without claiming work occurred.
+- When an external agent returns, label its origin and native session, distinguish raw result from Noema's response, and let the user continue in Noema.
+- Use the original-source/memory controls only as a subordinate supporting pattern when relevant; do not make them the hero.
+- Motion may show handoff state transitions; it must never imply that a session was resumed, a tool ran, or a living agent acted unless that actually happened.
 
 ## Quality floor
 
@@ -24,4 +29,4 @@ The task, source, and current state are immediately legible. Controls have direc
 
 ## What remains open
 
-This hypothesis does not settle Noema's final navigation, visual identity, memory architecture, autonomous behavior, or whether relational continuity is enough to justify a standalone application. Revisit it after a runnable interaction and direct review; do not generalize one screen into a full design system.
+This hypothesis does not settle Noema's final navigation, visual identity, memory architecture, autonomous behavior, or whether a central human-facing thread plus honest harness handoffs is enough to justify a standalone application. Open WebUI already switches models in one conversation; DSH's own plugin architecture can relay external sessions; Codex app-server supports native resume. Revisit whether Noema adds enough above those combinations after the runnable flow and direct comparison. Do not generalize one screen into a full design system.

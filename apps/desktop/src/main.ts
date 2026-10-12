@@ -19,7 +19,7 @@ const createWindow = () => {
     height: 780,
     minWidth: 760,
     minHeight: 560,
-    backgroundColor: '#f3f1eb',
+    backgroundColor: '#eef1f4',
     webPreferences: createWindowPreferences(
       path.join(__dirname, 'preload.cjs'),
     ),
