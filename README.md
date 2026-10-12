@@ -34,6 +34,7 @@ GitHub Project 看板是工作状态的唯一来源；本地文档不重复维�
 ### 本地桌面开发
 
 - Windows 开发环境使用 Node.js 24.21+（当前本机验证版本为 24.21.0，Active LTS）和 npm。
+- 本机通过 NVM-Windows 将 24.21.0 安装在 D 盘，未切换其他项目的默认 Node。开始 Noema 工作前，在终端运行 `nvm use 24.21.0`；这会切换 NVM 的共享激活版本，完成后按需切回之前版本。
 - 首次克隆后运行 `npm ci`，然后 `npm run dev` 启动桌面壳。
 - 检查命令：`npm run lint`、`npm run typecheck`、`npm test`、`npm run smoke`；Windows 构建目录：`npm run package:desktop`；Windows 安装器：`npm run make:desktop`。
 - 在 GitHub Actions 手动运行 `Desktop checks` 时，会生成一个私有、未签名的 Windows 测试安装器 artifact，保留 7 天；常规 PR/push 只验证打包，不占用长期 artifact 配额。
