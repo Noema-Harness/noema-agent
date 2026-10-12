@@ -1,5 +1,5 @@
 import type { NoemaBridge } from './noema-bridge.d.ts';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
 type Understanding = {
@@ -147,6 +147,62 @@ function App() {
   const [message, setMessage] = useState('');
   const [notice, setNotice] = useState('');
   const [input, setInput] = useState('');
+  const [isNarrow, setIsNarrow] = useState(
+    () => window.matchMedia('(max-width: 860px)').matches,
+  );
+  const contextRef = useRef<HTMLElement>(null);
+  const closeContextRef = useRef<HTMLButtonElement>(null);
+  const sourceTriggerRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    const query = window.matchMedia('(max-width: 860px)');
+    const update = () => setIsNarrow(query.matches);
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
+
+  useEffect(() => {
+    if (isNarrow && showSource) {
+      sourceTriggerRef.current =
+        document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null;
+      closeContextRef.current?.focus();
+
+      function containKeyboard(event: KeyboardEvent) {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          setShowSource(false);
+          return;
+        }
+        if (event.key !== 'Tab' || !contextRef.current) return;
+
+        const focusable = Array.from(
+          contextRef.current.querySelectorAll<HTMLElement>(
+            'button:not(:disabled), textarea:not(:disabled), input:not(:disabled), [tabindex]:not([tabindex="-1"])',
+          ),
+        ).filter((element) => element.offsetParent !== null);
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+
+      document.addEventListener('keydown', containKeyboard);
+      return () => document.removeEventListener('keydown', containKeyboard);
+    }
+
+    if (isNarrow && !showSource && sourceTriggerRef.current?.isConnected) {
+      sourceTriggerRef.current.focus();
+      sourceTriggerRef.current = null;
+    }
+  }, [isNarrow, showSource]);
 
   useEffect(() => {
     if (understanding)
@@ -363,6 +419,7 @@ function App() {
                       className="inline-citation"
                       onClick={() => setShowSource((value) => !value)}
                       aria-expanded={showSource}
+                      aria-controls="answer-context"
                     >
                       <span className="citation-mark">↳</span>
                       <span>这段回应延续了你关于“需求与用途”的原话</span>
@@ -411,9 +468,22 @@ function App() {
               </p>
             </main>
 
+            {isNarrow && showSource && (
+              <button
+                className="drawer-backdrop"
+                onClick={() => setShowSource(false)}
+                aria-label="关闭回答依据"
+              />
+            )}
             <aside
+              id="answer-context"
+              ref={contextRef}
               className={`context-pane ${showSource ? 'expanded' : ''}`}
+              role={isNarrow && showSource ? 'dialog' : 'complementary'}
               aria-label="回答依据"
+              aria-modal={isNarrow && showSource ? true : undefined}
+              aria-hidden={isNarrow && !showSource ? true : undefined}
+              inert={isNarrow && !showSource}
             >
               <div className="context-heading">
                 <div>
@@ -421,6 +491,7 @@ function App() {
                   <h2>这句话从哪里来</h2>
                 </div>
                 <button
+                  ref={closeContextRef}
                   className="icon-button close-context"
                   onClick={() => setShowSource(false)}
                   aria-label="收起回答依据"
