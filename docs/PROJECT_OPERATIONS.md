@@ -78,9 +78,9 @@ Issue 从候选工作进入 Todo 前，需要满足：
 ## Git、CI 与平台边界
 
 - 重要的多文件/架构变更默认从分支提交 PR，以 CI 结果和 Issue 验收为合并依据；机械改动可直接提交。
-- `.github/workflows/desktop-checks.yml` 在 push 与 PR 上验证 Windows 环境：干净安装、lint、类型检查、安全测试、启动 smoke、Electron 打包。
+- `.github/workflows/desktop-checks.yml` 在 push 与 PR 上验证 Windows 环境：干净安装、lint、类型检查、安全测试、桌面启动 smoke、Electron 构建目录与 Squirrel 安装器。
 - 当前仓库是 GitHub Free 下的私有仓库。GitHub API 明确拒绝为此仓库启用 branch protection/rulesets；所以 CI 已自动运行，但平台目前不能强制阻止不合格的直接 push。若以后要求服务器端强制 PR/检查，需要升级 GitHub 方案或改变仓库可见性；现在不擅自公开代码或增加订阅。
-- 当前 CI 只证明开发构建可运行、可打包，不代表已配置签名、自动更新或公开发行渠道；这些不是开始产品开发的前置条件，只有确定发行需求后再建 release 流程。
+- 当前 CI 证明开发构建、桌面启动与未签名 Squirrel 安装器可生成。只有手动运行 Desktop checks 时才上传 7 天保留的私有测试安装器，避免每次 PR/push 占满 artifact 配额。它不代表已配置代码签名、自动更新或公开发行渠道；签名证书和发行渠道不是开始产品开发的前置条件，只有确定发行需求后再建立正式 release 流程。
 
 ## Codex 项目 harness
 
