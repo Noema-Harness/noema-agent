@@ -17,6 +17,8 @@ Noema 是独立的个人 agent 应用。它的核心不是替用户完成某一�
 
 GitHub Project 看板是工作状态的唯一来源；本地文档不重复维护任务清单。当前看板：[Noema 开发](https://github.com/users/c3115644151/projects/6)。
 
+当前阶段门：工程底座 M0 已完成；M1 的目标是定义 Noema 第一条真实可重复的使用闭环。M1 完成前暂不实现聊天、记忆或外部集成等产品功能，见 [项目工作流](docs/PROJECT_OPERATIONS.md)。
+
 ## 核心原则
 
 - Noema 是用户拥有的 agent，不是 DSH 插件或某个 agent 应用的外壳。

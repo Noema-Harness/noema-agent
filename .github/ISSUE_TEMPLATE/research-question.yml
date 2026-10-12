@@ -1,0 +1,40 @@
+name: 证据与调研
+description: 对影响产品/架构选择的问题收集可追溯证据
+title: "[调研] "
+labels: ["type:research"]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: 要判断的具体问题
+      description: 这是一个可能改变哪项决策的问题？
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: 当前事实、假设和决策压力
+      description: 标记哪些是已知，哪些只是工作假设。
+    validations:
+      required: true
+  - type: textarea
+    id: sources
+    attributes:
+      label: 需要的证据与来源要求
+      description: 优先一手资料、实际代码/产品行为和用户原始反馈；记录来源日期。
+    validations:
+      required: true
+  - type: textarea
+    id: counterevidence
+    attributes:
+      label: 什么证据会削弱当前假设
+      description: 避免只收集支持预期的材料。
+    validations:
+      required: true
+  - type: textarea
+    id: deliverable
+    attributes:
+      label: 交付与验收
+      description: 说明产物如何影响后续决策；不以搜索数量作为完成标准。
+    validations:
+      required: true
