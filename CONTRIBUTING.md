@@ -5,7 +5,7 @@
 - 尚未形成行动项的方向、疑虑和开放问题放在 [GitHub Discussions](https://github.com/c3115644151/noema-agent/discussions)。
 - 已决定推进且有可验收结果的工作使用 [Issue / Project](https://github.com/users/c3115644151/projects/6)。
 - 自动纳入规则会将新开放 Issue/PR 放入 Inbox；经 API/连接器创建后仍需核对是否入板，缺失时手动添加。分诊后再放入 Backlog、Todo 或 Blocked。
-- M1 “核心使用闭环”完成前，不开始聊天、记忆或外部集成等产品功能实现。
+- 当前阶段门和实现许可见 [项目工作流](docs/PROJECT_OPERATIONS.md)；不要从本文件复制一份可能过期的状态。
 
 ## 开工和交付
 
