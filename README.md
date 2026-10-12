@@ -36,7 +36,7 @@ GitHub Project 看板是工作状态的唯一来源；本地文档不重复维�
 - Windows 开发环境使用 Node.js 24.21+（当前本机验证版本为 24.21.0，Active LTS）和 npm。
 - 首次克隆后运行 `npm ci`，然后 `npm run dev` 启动桌面壳。
 - 检查命令：`npm run lint`、`npm run typecheck`、`npm test`、`npm run smoke`；Windows 构建目录：`npm run package:desktop`；Windows 安装器：`npm run make:desktop`。
-- 每次 CI 成功会生成一个私有、未签名的 Windows 测试安装器 artifact，保留 7 天；它用于试装，不是公开发行包。
+- 在 GitHub Actions 手动运行 `Desktop checks` 时，会生成一个私有、未签名的 Windows 测试安装器 artifact，保留 7 天；常规 PR/push 只验证打包，不占用长期 artifact 配额。
 - 代理环境下下载依赖可临时设置 `HTTPS_PROXY=http://127.0.0.1:7890`；不要把代理配置或凭据写入仓库。
 
 仓库级 Codex 约定见 [AGENTS.md](AGENTS.md)。
