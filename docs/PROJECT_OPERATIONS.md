@@ -1,34 +1,89 @@
-# 项目协作与 GitHub Project
+# Noema 项目工作流
 
-## 工作真相来源
+## 真相来源
 
-- GitHub Issues：问题、目标、验收条件、执行记录。
-- GitHub Project：状态、优先级与工作流视图；不在 `ROADMAP.md` 复制当前 issue 状态。
-- `docs/decisions/`：长期产品/架构选择及其被替代历史。
-- 产品和架构文档：当前契约与边界，不用于记录日常进度。
+- GitHub Discussions：尚未形成可执行任务的开放问题与方向讨论。
+- GitHub Issues：已决定要推进的工作、验收条件、依赖和实际结果。
+- GitHub Project：Issue/PR 的流转、优先级与工作流视图；不在本地再维护一份易过时的状态表。
+- `docs/decisions/`：长期产品/架构决定及其被取代的历史。
+- 产品和架构文档：当前契约，不记录每天的进度。
 
-## 看板规则
+不要把想法直接变成开发任务。方向未清楚时留在 Discussion 或 Project Inbox；确定要做什么、如何判断完成之后才进入可开工状态。
 
-- 只有有实质交付、需要跨会话跟踪或改变长期方向的工作才需要 issue；小型机械修订不制造流程。
-- 使用 GitHub Project 内置 `Status`：`Todo`、`In Progress`、`Done`。阻塞时用 `status:blocked` 标签并在 issue 写明解除条件；代码审查以 PR 的 review 状态为准，不重复造状态字段。
-- 优先级只用来排序，不代表估时：P0 当前阻塞或基础关键，P1 下一阶段，P2 有价值但不挡路，P3 暂缓。
-- 大任务拆成可独立验收的 issue。Epic 只做分组和目标说明，实际工作必须落到可交付子项。
-- issue 完成后填入实际检查结果和文档/决策记录链接，再移动到 Done。
+## 看板入口
 
-## Codex 工作流程
+仓库：[`c3115644151/noema-agent`](https://github.com/c3115644151/noema-agent)（私有）
 
-对长期、多文件或架构工作：从看板选取/创建 issue → 读对应产品/架构/ADR → 实施 → 针对性验证 → 更新 issue 与 Project。涉及产品承诺或外部副作用时，在 issue 里记录用户可见结果和边界。
+Project：[`Noema 开发`](https://github.com/users/c3115644151/projects/6)（私有）
 
-Codex 项目指令放在根 `AGENTS.md`；特定 Codex 流程放在 `.codex/skills/`，长任务计划模板放在 `.agents/PLANS.md`，避免复制全局用户指令或把每项技术细节变成常驻 prompt。项目的 `.codex/config.toml` 只放这项仓库确实需要的设置，不覆盖用户模型、凭据或全局权限。
+- [执行看板](https://github.com/users/c3115644151/projects/6/views/9)：聚焦 Todo/In Progress/In Review/Blocked，按 Workstream 分组、按 Status 分列。
+- [收件箱](https://github.com/users/c3115644151/projects/6/views/5)：新建 Issue/PR 进入此处，尚未分诊。
+- [候选工作](https://github.com/users/c3115644151/projects/6/views/6)：已有问题与范围，但还不应投入当前执行。
+- [待启动](https://github.com/users/c3115644151/projects/6/views/3)：达到 Definition of Ready、可以开工的队列。
+- [已交付](https://github.com/users/c3115644151/projects/6/views/4)：已关闭的交付记录。
+- [工作总览](https://github.com/users/c3115644151/projects/6/views/1)：全量字段表，用于检查优先级、工作流、父子项与 PR 关联。
+- [已取消](https://github.com/users/c3115644151/projects/6/views/8)：已关闭但未交付的事项，保留取消原因。
+- [全流程看板](https://github.com/users/c3115644151/projects/6/views/7)：包含收件、候选、执行与终态的全状态视图。
 
-## 初始 GitHub Project
+## 状态流转
 
-仓库：`c3115644151/noema-agent`（私有）
+`Inbox → Backlog → Todo → In Progress → In Review → Done`
 
-Project：[#6 Noema 开发](https://github.com/users/c3115644151/projects/6)（私有）
+必要时转为 `Blocked` 或 `Canceled`。状态表达工作所处阶段，不表达工作类型、重要性或估时。
 
-项目 Node ID：`PVT_kwHODA9AvM4Bmsue`
+| 状态 | 含义与进入条件 |
+| --- | --- |
+| Inbox | 自动纳入的新 Issue/PR；还没有分诊。 |
+| Backlog | 问题和候选价值已整理，但范围、时机或依赖仍未满足开工条件。 |
+| Todo | 已达到 Definition of Ready，排入近期工作。 |
+| In Progress | 当前正在实施；个人项目默认同时只推进少量高优先级事项。 |
+| In Review | 实施已结束，正在核对验收、测试、数据影响或用户可见结果。 |
+| Blocked | 有明确外部依赖或待裁决事项；Issue 需链接 GitHub 原生 `blocked by` 依赖并写明解除条件。 |
+| Done | 所有验收条件均有证据，结果与必要文档已记录。将 Status 设为 Done 会自动关闭 Issue。 |
+| Canceled | 明确决定不再做；先将 Status 设为 Canceled，再以 `not planned` 原因关闭 Issue，不伪装成已交付。 |
 
-字段：GitHub 内置 `Status` + 自定义 `Priority`（P0–P3）和 `Workstream`（产品、Agent Core、记忆连续性、外部集成、桌面端、工程基础）。字段 ID 通过 `gh project field-list 6 --owner c3115644151 --format json` 实时查询，不复制到长期文档，避免字段删除重建后失效。
+GitHub Project 自动化负责减少机械维护：自动纳入规则针对该仓库的开放 Issue/PR；新加入项进入 Inbox，重新打开的事项回到 Backlog，将 Status 设为 Done 会关闭 Issue。`Item closed → Done` 自动化保持关闭：Issue/PR 被关闭不代表验收已通过，Status 仍由明确的交付判断驱动。PR 合并只完成 PR 自身；关联 Issue 仍需独立验收。
 
-看板是围绕 Issues 的视图，不另建本地任务库。用户明确批准的项目协作方式是先 issue 明确结果，再由 Project 跟踪状态；对小型机械变更不强制建卡。
+不要假定 Auto-add 对 API/连接器创建的 Issue 一定及时生效：本次的 Issue #5 是通过 GitHub API 创建，未自动出现在 Project，随后已手动加入并设置字段。创建 Issue 后必须确认它确实在看板上；缺失时用 `gh project item-add` 手动添加，再核对状态、Priority 和 Workstream。
+
+## Definition of Ready / Done
+
+Issue 从候选工作进入 Todo 前，需要满足：
+
+1. 问题或期望用户结果具体，不只有功能名或方案口号。
+2. 已知背景、外部证据与假设分开记录；重要未知已解决或说明为何可暂按假设推进。
+3. 范围、非目标、依赖和用户数据/权限影响明确。
+4. 验收条件能通过观察、测试或明确设计产物判断；优先级和 Workstream 已设置。
+
+工作进入 Done 前，需要：
+
+1. 逐项核对验收条件并记录实际证据；未做的验证明确列出，不能写成已完成。
+2. 运行与风险相称的检查；代码变更须通过 Windows CI 中的 lint、typecheck、tests、桌面 smoke 和 package。
+3. 更新受影响的产品/架构文档或 ADR；不为每次提交制造无用文档。
+4. Issue 记录交付结果并设为 Done（会自动关闭）。PR 模板记录关联 Issue、验证和未验证项；PR 合并本身不会代替关联 Issue 的验收。
+
+## 优先级、工作流与分解
+
+- `P0`：当前主线或阻塞性基础工作；`P1`：本阶段必要；`P2`：有价值但不挡路；`P3`：暂缓。它们不是点数、工期或紧急程度的伪精确估计。
+- Workstream 描述主要责任面：产品、Agent Core、记忆连续性、外部集成、桌面端、工程基础。一次工作只选一个主工作流；跨领域细节放在 Issue 内容和关联关系里。
+- Label 描述工作类型：`type:design`、`type:engineering`、`type:bug`、`type:research`。状态不再用 label 表达。
+- 只有存在可独立验收的交付物时才拆子 Issue；Parent/Sub-issue 表示包含关系，GitHub `blocked by` 表示先后依赖，不用一段文字代替真实依赖。
+- Milestone 表示一组有共同结果的 Issues，不代表日期承诺。没有依据就不填 due date、不建立周迭代、不估故事点。
+
+## 当前阶段门
+
+- `M0 — 工程化开发底座` 已完成：仓库、桌面壳、CI、测试、项目管理工作流均已建立。
+- `M1 — 核心使用闭环` 尚未完成。下一项是 Issue #2（Todo）；Issue #1 与 #4 已设置 GitHub 原生 `blocked by #2` 依赖，状态为 Blocked。M1 完成前不启动聊天、记忆或集成等产品功能实现。
+
+## Git、CI 与平台边界
+
+- 重要的多文件/架构变更默认从分支提交 PR，以 CI 结果和 Issue 验收为合并依据；机械改动可直接提交。
+- `.github/workflows/desktop-checks.yml` 在 push 与 PR 上验证 Windows 环境：干净安装、lint、类型检查、安全测试、启动 smoke、Electron 打包。
+- 当前仓库是 GitHub Free 下的私有仓库。GitHub API 明确拒绝为此仓库启用 branch protection/rulesets；所以 CI 已自动运行，但平台目前不能强制阻止不合格的直接 push。若以后要求服务器端强制 PR/检查，需要升级 GitHub 方案或改变仓库可见性；现在不擅自公开代码或增加订阅。
+- 当前 CI 只证明开发构建可运行、可打包，不代表已配置签名、自动更新或公开发行渠道；这些不是开始产品开发的前置条件，只有确定发行需求后再建 release 流程。
+
+## Codex 项目 harness
+
+- 根 `AGENTS.md` 只放产品边界、持续协作和质量门。
+- `.codex/skills/noema-project-work/` 管项目 Issue/Project 生命周期；`.codex/skills/noema-architecture-review/` 用于重大边界决策；`.agents/PLANS.md` 只在长任务需要跨会话延续时使用。
+- 项目 `.codex/config.toml` 暂无必要配置；不复制全局提示、不覆盖模型/凭据/权限。功能边界优先写在代码、数据契约和测试里，而不是继续堆提示词。
