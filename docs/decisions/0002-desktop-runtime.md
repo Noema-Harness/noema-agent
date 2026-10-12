@@ -11,7 +11,7 @@ Noema 需要 Windows 桌面交互、长期运行的本地状态、模型/外部 
 
 - 桌面壳：Electron Forge + Vite。
 - 应用代码：TypeScript；UI 使用 React。
-- 当前验证的 Node 开发运行线：Node 22.15+；优先跟随受支持的 LTS。升级到 Node 24 后需在 CI 和本机重新验证 Electron Forge/Vite 工具链。
+- Node 开发运行线：Node 24 Active LTS，最低 24.21；CI 与本机均以 Node 24.21.0 验证。跟随受支持的 LTS，升级大版本前在 CI 验证 Forge/Vite/Electron 工具链。
 - 应用运行时采用模块化单体；npm workspace 只用于统一根目录的安装与开发命令，不将业务拆成多个 package，也不引入微服务。
 - Electron main process 拥有 OS/文件/凭据/数据库访问；renderer 无 Node 集成。通过窄化、类型化的 preload API 暴露能力。
 - 主进程中的 agent 核心、个人状态和连接器以领域模块隔离。外部 harness 按需独立进程运行，避免将任意执行权限交给 renderer。

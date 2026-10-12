@@ -3,16 +3,22 @@
   "version": "0.1.0",
   "private": true,
   "description": "Noema personal agent",
-  "workspaces": ["apps/*"],
+  "workspaces": [
+    "apps/*"
+  ],
   "scripts": {
-    "dev": "npm run start --workspace @noema/desktop",
-    "lint": "npm run lint --workspace @noema/desktop",
-    "typecheck": "npm run typecheck --workspace @noema/desktop",
-    "test": "npm test --workspace @noema/desktop",
-    "smoke": "npm run smoke --workspace @noema/desktop",
-    "package:desktop": "npm run package --workspace @noema/desktop"
+    "dev": "npm run start --workspace noema-desktop",
+    "lint": "npm run lint --workspace noema-desktop",
+    "typecheck": "npm run typecheck --workspace noema-desktop",
+    "test": "npm test --workspace noema-desktop",
+    "smoke": "npm run smoke --workspace noema-desktop",
+    "package:desktop": "npm run package --workspace noema-desktop",
+    "make:desktop": "npm run make --workspace noema-desktop"
   },
   "engines": {
-    "node": ">=22.15 <23"
+    "node": ">=24.21 <25"
+  },
+  "allowScripts": {
+    "electron-winstaller": true
   }
 }

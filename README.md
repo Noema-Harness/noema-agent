@@ -33,9 +33,9 @@ GitHub Project 看板是工作状态的唯一来源；本地文档不重复维�
 
 ### 本地桌面开发
 
-- Windows 开发环境使用 Node.js 22.15+（当前本机验证版本为 22.15.0）和 npm。
+- Windows 开发环境使用 Node.js 24.21+（当前本机验证版本为 24.21.0，Active LTS）和 npm。
 - 首次克隆后运行 `npm ci`，然后 `npm run dev` 启动桌面壳。
-- 检查命令：`npm run lint`、`npm run typecheck`、`npm test`、`npm run smoke`；Windows 打包检查：`npm run package:desktop`。
+- 检查命令：`npm run lint`、`npm run typecheck`、`npm test`、`npm run smoke`；Windows 构建目录：`npm run package:desktop`；Windows 安装器：`npm run make:desktop`。
 - 代理环境下下载依赖可临时设置 `HTTPS_PROXY=http://127.0.0.1:7890`；不要把代理配置或凭据写入仓库。
 
 仓库级 Codex 约定见 [AGENTS.md](AGENTS.md)。

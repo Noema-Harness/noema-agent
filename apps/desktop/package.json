@@ -1,5 +1,5 @@
 {
-  "name": "@noema/desktop",
+  "name": "noema-desktop",
   "productName": "Noema",
   "version": "0.1.0",
   "private": true,
