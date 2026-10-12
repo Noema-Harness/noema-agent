@@ -9,6 +9,7 @@
     "lint": "npm run lint --workspace @noema/desktop",
     "typecheck": "npm run typecheck --workspace @noema/desktop",
     "test": "npm test --workspace @noema/desktop",
+    "smoke": "npm run smoke --workspace @noema/desktop",
     "package:desktop": "npm run package --workspace @noema/desktop"
   },
   "engines": {

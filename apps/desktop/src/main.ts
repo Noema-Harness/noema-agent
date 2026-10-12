@@ -43,6 +43,10 @@ const createWindow = () => {
       path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
     );
   }
+
+  if (process.env.NOEMA_SMOKE_TEST === '1') {
+    mainWindow.webContents.once('did-finish-load', () => app.quit());
+  }
 };
 
 // This method will be called when Electron has finished
