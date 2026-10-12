@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Product direction and unresolved assumptions
+    url: https://github.com/c3115644151/noema-agent/discussions
+    about: Use discussions for open product questions that are not yet actionable work.

@@ -1,0 +1,39 @@
+name: 产品 / 架构工作
+description: 有明确用户结果、需要设计或跨模块推进的工作
+title: "[设计] "
+labels: ["type:design"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 具体问题或用户结果
+      description: 写清现在发生什么，以及期望改变什么；不要只写方案名称。
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 依据与假设
+      description: 区分已知事实、用户确认、外部证据和暂定假设。
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: 范围与非目标
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 验收条件
+      description: 列出可观察的完成结果；设计工作可用明确产物和审查标准。
+    validations:
+      required: true
+  - type: textarea
+    id: risks
+    attributes:
+      label: 风险、数据与权限影响
+      description: 若无，写“暂无已知风险”。
+    validations:
+      required: true

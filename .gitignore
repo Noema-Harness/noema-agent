@@ -1,0 +1,29 @@
+# Dependencies and build outputs
+node_modules/
+out/
+dist/
+release/
+.vite/
+coverage/
+
+# Local configuration, credentials, and personal data
+.env
+.env.*
+!.env.example
+*.local
+/local-data/
+/.noema/
+*.sqlite-wal
+*.sqlite-shm
+
+# OS and editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/settings.json
+*.swp
+*.swo
+
+# Logs and temporary files
+*.log
+.tmp/
