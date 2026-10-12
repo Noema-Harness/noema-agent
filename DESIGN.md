@@ -8,18 +8,19 @@ The first prototype centered on an evidence margin beside chat. Research found t
 
 ## Current design thesis
 
-Test one concrete interruption: a user reaches a quota or capability limit in one coding agent and needs to continue the same task in another. Keep the Noema conversation as the user's continuous thread. Distinguish (a) switching the model for another chat turn, which can carry the visible conversation, from (b) handing work to a specialized coding harness, which has its own native session, workspace, tools and execution trace. Before the second action, show a reviewable transfer packet and state plainly what is and is not carried. On return, attach the external result to the Noema thread without claiming that the external native transcript became the same session.
+The user has already specified an important behavior: Noema's primary dialogue should not be occupied by a long-running coding task. Noema may start a specialist in the background, keep the user-facing conversation available, and receive the result as a system event; if Noema is busy, the event waits for a safe boundary, while the user can interrupt the worker at any time. The current prototype therefore tests a two-layer interaction: a persistent Noema conversation remains the human's place to think, while a small, inspectable background-task surface owns the external harness handoff. The worker has its own native session, workspace, tools, and execution trace. Noema can switch its own response model without changing the worker. On task completion, the event returns to the main conversation and Noema discusses what happened.
 
 ## Why this direction
 
-Multi-model chat and personal memory already have mature alternatives. The less-covered friction in the user's stated work is moving between a chat/model frontend and a full coding harness while preserving the task's human-facing thread. Codex app-server and DSH expose resumable native sessions, but those sessions own different runtime state. The prototype tests whether Noema's incremental value could be the honest, low-friction handoff between those native sessions—not an impossible promise to merge them.
+Multi-model chat, editable memory, and even Codex/Claude execution inside DSH have mature or emerging alternatives. Relay's DSH plugins show that a coding workbench can import and continue native Codex threads, and can host multiple execution backends. The possible Noema increment is not another unified coding workspace: it is a distinct, persistent root-agent conversation that stays available across those background executions and across non-coding dialogue. The prototype tests that distinction; it does not yet prove users need a separate app for it.
 
 ## Composition and behavior
 
-- Keep the conversation itself central. A handoff appears inline at the point where the user is changing execution surfaces; do not build a separate global jobs dashboard.
-- Present model switching and harness handoff as distinct actions. For model switching, state that the visible thread context is continued but tool capabilities depend on the target model. For harness handoff, show a proposed task packet, the destination's new/resumed native session, and explicit non-transferable state.
-- Let the user inspect and edit the task/constraints, deselect optional context, proceed, defer, or cancel. If the destination cannot start, keep the Noema thread intact and offer retry/another destination without claiming work occurred.
-- When an external agent returns, label its origin and native session, distinguish raw result from Noema's response, and let the user continue in Noema.
+- Keep Noema's primary conversation central and independent from worker lifecycle; do not turn each worker task into a new user-facing primary chat.
+- Show the Noema dialogue model separately from the already running worker's harness. Changing the former must not alter the latter.
+- The user can continue speaking with Noema while the background task runs, add a task-scoped instruction, or stop the task. The task's accepted context is inspectable but does not masquerade as a shared transcript.
+- On completion, return a clearly sourced system event to the main conversation. Distinguish worker facts/tool output from Noema's interpretation; do not silently inject raw logs as if they were Noema's own thought.
+- If the destination fails, preserve the main dialogue and handoff record so the user can retry or change target.
 - Use the original-source/memory controls only as a subordinate supporting pattern when relevant; do not make them the hero.
 - Motion may show handoff state transitions; it must never imply that a session was resumed, a tool ran, or a living agent acted unless that actually happened.
 
@@ -29,4 +30,4 @@ The task, source, and current state are immediately legible. Controls have direc
 
 ## What remains open
 
-This hypothesis does not settle Noema's final navigation, visual identity, memory architecture, autonomous behavior, or whether a central human-facing thread plus honest harness handoffs is enough to justify a standalone application. Open WebUI already switches models in one conversation; DSH's own plugin architecture can relay external sessions; Codex app-server supports native resume. Revisit whether Noema adds enough above those combinations after the runnable flow and direct comparison. Do not generalize one screen into a full design system.
+This hypothesis does not settle Noema's final navigation, visual identity, memory architecture, autonomous behavior, or whether a primary Noema dialogue plus background workers is enough to justify a standalone application. Open WebUI switches models in one conversation; DSH + Relay can host Codex/Claude backends and import Codex threads; Relay itself explores long-running tasks and event returns. Revisit whether the persistent root conversation across coding and non-coding life adds enough above those combinations after the runnable flow and direct comparison. Do not generalize one screen into a full design system.

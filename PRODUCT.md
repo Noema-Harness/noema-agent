@@ -18,7 +18,7 @@ Noema 是独立的个人 agent 应用。用户希望拥有一个真正“属于�
 
 ## Positioning
 
-仍在验证。多模型聊天、长期记忆及其来源查看/编辑，已被成熟产品覆盖，单独不能成为 Noema 的理由。当前候选方向改为：Noema 是否能拥有一条面向用户的持续主线，在用户更换模型或把工作交给完整 coding harness 时，把任务意图、已确认决定和结果连贯地带回，同时诚实地区分各 harness 的原生会话、工具轨迹与工作区状态。该假设仍未成为产品承诺，且“现有多模型前端 + harness 插件/适配器是否足够”是强反例，详见 [当前产品发现 Issue #2](https://github.com/c3115644151/noema-agent/issues/2)。关系连续性仍是更大的愿景，但不自动意味着独立产品价值。
+仍在验证。多模型聊天、长期记忆及其来源查看/编辑、以及在 DSH 内运行 Codex/Claude coding backend，已被成熟或新兴方案覆盖，单独不能成为 Noema 的理由。用户已明确要求 Noema 主对话不被执行任务占用：专业 agent 可后台运行，结果以系统事件回到 Noema；主 agent 空闲时接住该事件，用户也能随时介入。当前候选方向是：Noema 是否能成为跨生活/工作情境持续存在的顶层个人 agent，同时把长任务交给拥有各自原生 session、工作区和工具轨迹的专业 harness。Noema 主对话切换模型不等于后台执行环境被迁移。该候选假设尚未成为产品承诺；“Open WebUI/DSH + Relay/plugins 是否足够”是强反例，详见 [当前产品发现 Issue #2](https://github.com/c3115644151/noema-agent/issues/2)。关系连续性仍是更大的愿景，但不自动意味着独立产品价值。
 
 ## Operating Context
 

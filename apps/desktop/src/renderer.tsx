@@ -2,9 +2,18 @@ import type { NoemaBridge } from './noema-bridge.d.ts';
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
-type Route = 'model' | 'harness';
-type Phase = 'ready' | 'running' | 'returned' | 'failed' | 'paused';
+type Phase = 'running' | 'returned' | 'failed' | 'stopped';
 type Destination = 'DSH' | 'Claude Code';
+type TimelineItem = {
+  id: string;
+  kind: 'user' | 'noema' | 'event';
+  text: string;
+  tone?: Phase;
+  eventLabel?: string;
+};
+type WorkerEvent = Pick<TimelineItem, 'tone' | 'eventLabel' | 'text'> & {
+  reply?: string;
+};
 
 function Icon({
   name,
@@ -23,7 +32,8 @@ function Icon({
     | 'terminal'
     | 'swap'
     | 'refresh'
-    | 'send';
+    | 'send'
+    | 'pause';
   size?: number;
 }) {
   const props = {
@@ -127,31 +137,38 @@ function Icon({
           <path d="M10.4 13.6 15 9" />
         </svg>
       );
+    case 'pause':
+      return (
+        <svg {...props}>
+          <path d="M8 5v14M16 5v14" />
+        </svg>
+      );
   }
 }
 
 function App() {
   const bridge: NoemaBridge = window.noema ?? { appVersion: '0.1.0' };
-  const [route, setRoute] = useState<Route>('harness');
+  const [phase, setPhase] = useState<Phase>('running');
   const [destination, setDestination] = useState<Destination>('DSH');
-  const [model, setModel] = useState('DeepSeek Chat');
-  const [phase, setPhase] = useState<Phase>('ready');
-  const [includeDecisions, setIncludeDecisions] = useState(true);
-  const [includeWorkspace, setIncludeWorkspace] = useState(true);
-  const [goal, setGoal] = useState(
-    '继续定位村庄商品生产的性能开销；不要启动游戏，不改启动器设置。',
-  );
-  const [editing, setEditing] = useState(false);
-  const [input, setInput] = useState('');
-  const [lastMessage, setLastMessage] = useState('');
+  const [rootModel, setRootModel] = useState('DeepSeek Flash');
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const [showHandoff, setShowHandoff] = useState(false);
+  const [taskNote, setTaskNote] = useState('');
+  const [rootInput, setRootInput] = useState('');
+  const [timelineItems, setTimelineItems] = useState<TimelineItem[]>([]);
+  const [rootBusy, setRootBusy] = useState(false);
+  const [pendingTaskEvent, setPendingTaskEvent] = useState(false);
   const [notice, setNotice] = useState('');
-  const [narrowOpen, setNarrowOpen] = useState(false);
   const [isNarrow, setIsNarrow] = useState(
     () => window.matchMedia('(max-width: 880px)').matches,
   );
-  const handoffPaneRef = useRef<HTMLElement>(null);
+  const [tasksOpen, setTasksOpen] = useState(false);
+  const taskPaneRef = useRef<HTMLElement>(null);
   const closePaneRef = useRef<HTMLButtonElement>(null);
-  const paneTriggerRef = useRef<HTMLElement | null>(null);
+  const taskTriggerRef = useRef<HTMLElement | null>(null);
+  const rootBusyRef = useRef(false);
+  const pendingWorkerEventsRef = useRef<WorkerEvent[]>([]);
+  const rootBottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const query = window.matchMedia('(max-width: 880px)');
@@ -161,24 +178,24 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (isNarrow && narrowOpen) {
-      paneTriggerRef.current =
+    if (isNarrow && tasksOpen) {
+      taskTriggerRef.current =
         document.activeElement instanceof HTMLElement
           ? document.activeElement
           : null;
       closePaneRef.current?.focus();
-      function keepFocusInPane(event: KeyboardEvent) {
+      function keepFocus(event: KeyboardEvent) {
         if (event.key === 'Escape') {
           event.preventDefault();
-          setNarrowOpen(false);
+          setTasksOpen(false);
           return;
         }
-        if (event.key !== 'Tab' || !handoffPaneRef.current) return;
+        if (event.key !== 'Tab' || !taskPaneRef.current) return;
         const focusable = Array.from(
-          handoffPaneRef.current.querySelectorAll<HTMLElement>(
-            'button:not(:disabled), textarea:not(:disabled), input:not(:disabled), [tabindex]:not([tabindex="-1"])',
+          taskPaneRef.current.querySelectorAll<HTMLElement>(
+            'button:not(:disabled), textarea:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])',
           ),
-        ).filter((element) => element.offsetParent !== null);
+        ).filter((item) => item.offsetParent !== null);
         if (!focusable.length) return;
         const first = focusable[0];
         const last = focusable[focusable.length - 1];
@@ -190,54 +207,156 @@ function App() {
           first.focus();
         }
       }
-      document.addEventListener('keydown', keepFocusInPane);
-      return () => document.removeEventListener('keydown', keepFocusInPane);
+      document.addEventListener('keydown', keepFocus);
+      return () => document.removeEventListener('keydown', keepFocus);
     }
-    if (isNarrow && !narrowOpen && paneTriggerRef.current?.isConnected) {
-      paneTriggerRef.current.focus();
-      paneTriggerRef.current = null;
+    if (isNarrow && !tasksOpen && taskTriggerRef.current?.isConnected) {
+      taskTriggerRef.current.focus();
+      taskTriggerRef.current = null;
     }
-  }, [isNarrow, narrowOpen]);
+  }, [isNarrow, tasksOpen]);
 
-  function chooseRoute(next: Route) {
-    if (phase === 'running') return;
-    setRoute(next);
-    setPhase('ready');
-    if (next === 'model') setNarrowOpen(true);
+  function appendWorkerEvent(event: WorkerEvent) {
+    setTimelineItems((items) => [
+      ...items,
+      {
+        id: crypto.randomUUID(),
+        kind: 'event',
+        tone: event.tone,
+        eventLabel: event.eventLabel,
+        text: event.text,
+      },
+      ...(event.reply
+        ? [
+            {
+              id: crypto.randomUUID(),
+              kind: 'noema',
+              text: event.reply,
+            } as TimelineItem,
+          ]
+        : []),
+    ]);
+    setPendingTaskEvent(false);
+    pendingWorkerEventsRef.current = [];
+    setNotice(
+      event.tone === 'returned'
+        ? 'Noema 已接住后台结果事件。'
+        : '后台状态事件已回到 Noema 主对话。',
+    );
+    requestAnimationFrame(() =>
+      rootBottomRef.current?.scrollIntoView({
+        block: 'nearest',
+        behavior: 'smooth',
+      }),
+    );
   }
 
-  function beginHandoff() {
-    if (route === 'model') {
-      setPhase('returned');
-      setNotice(
-        '已切换对话模型。演示中保留当前可见对话；模型能力与工具权限会随目标端变化。',
-      );
+  function deliverWorkerEvent(event: WorkerEvent) {
+    if (rootBusyRef.current) {
+      pendingWorkerEventsRef.current.push(event);
+      setPendingTaskEvent(true);
+      setNotice('后台结果已到；Noema 会在当前回复结束后接住它。');
       return;
     }
-    setPhase('running');
-    setNotice(`已创建发往 ${destination} 的演示交接。尚未连接真实 harness。`);
+    appendWorkerEvent(event);
   }
 
-  function simulateReturn() {
+  function finishTask() {
     setPhase('returned');
-    setNotice(
-      `${destination} 的演示结果已回到 Noema 主线；原生执行日志仍归目标 harness。`,
-    );
+    deliverWorkerEvent({
+      tone: 'returned',
+      eventLabel: '后台任务结果',
+      text: 'DSH 返回：trace 显示商品生产落在 village tick 的子计时步骤中。游戏内效果仍未验证。',
+      reply:
+        '结果回来了。我们可以先把这个结论放回当前讨论，再决定要不要继续查；Codex 的工具轨迹仍留在它自己的 session。',
+    });
   }
 
-  function simulateFailure() {
+  function failTask() {
     setPhase('failed');
-    setNotice(
-      `无法连接 ${destination}（模拟失败）。交接内容仍保留，可重试或更换目标。`,
-    );
+    deliverWorkerEvent({
+      tone: 'failed',
+      eventLabel: '后台任务未能继续',
+      text: `${destination} 没有成功接起任务；交接内容还在，可以重试或换一个目标。`,
+      reply:
+        '刚才的执行端没接起来，任务没有开始。我还在这里，我们可以换一个 agent 再试，或者先不管它继续聊。',
+    });
   }
 
-  function sendMessage(event: React.FormEvent<HTMLFormElement>) {
+  function retryWith(target: Destination) {
+    setDestination(target);
+    setPhase('running');
+    setNotice(`已将任务改交给 ${target}（原型模拟，没有启动真实 agent）。`);
+    deliverWorkerEvent({
+      tone: 'running',
+      eventLabel: '任务已重新启动',
+      text: `已重新交给 ${target}；它会在独立 session 中继续。`,
+      reply: `换成 ${target} 继续了。你可以留在这条对话里，不用等它跑完。`,
+    });
+  }
+
+  function stopTask() {
+    setPhase('stopped');
+    setNotice('后台任务已停止（原型模拟）。Noema 主对话仍可继续。');
+    deliverWorkerEvent({
+      tone: 'stopped',
+      eventLabel: '后台任务已停止',
+      text: `你已停止 ${destination} 的后台任务；Noema 主对话和此前交接内容仍保留。`,
+      reply:
+        '停下来了。我们可以先看现有结论，或者稍后再把剩下的部分交给别的执行端。',
+    });
+  }
+
+  function sendRootMessage(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!input.trim()) return;
-    setLastMessage(input.trim());
-    setInput('');
-    setNotice('静态原型：消息未发送到模型。');
+    const text = rootInput.trim();
+    if (!text || rootBusyRef.current) return;
+    setRootInput('');
+    rootBusyRef.current = true;
+    setRootBusy(true);
+    setTimelineItems((items) => [
+      ...items,
+      { id: crypto.randomUUID(), kind: 'user', text },
+    ]);
+    setNotice('Noema 正在回复演示消息。');
+    const reply =
+      phase === 'running'
+        ? '听到了。后台的诊断会继续跑，我们可以先把这件事想清楚；结果回来时我再把它带进这条对话。'
+        : '收到。先不替你把它归纳成结论，我们可以从你最在意的那个部分接着聊。';
+    window.setTimeout(() => {
+      setTimelineItems((items) => [
+        ...items,
+        { id: crypto.randomUUID(), kind: 'noema', text: reply },
+      ]);
+      rootBusyRef.current = false;
+      setRootBusy(false);
+      const pendingEvents = pendingWorkerEventsRef.current;
+      if (pendingEvents.length) {
+        pendingWorkerEventsRef.current = [];
+        setPendingTaskEvent(false);
+        pendingEvents.forEach(appendWorkerEvent);
+      } else {
+        requestAnimationFrame(() =>
+          rootBottomRef.current?.scrollIntoView({
+            block: 'nearest',
+            behavior: 'smooth',
+          }),
+        );
+        setNotice('静态原型：消息没有发送给模型。');
+      }
+    }, 1400);
+  }
+
+  function submitTaskNote(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!taskNote.trim()) return;
+    setNotice(`补充说明已送入 ${destination} 的演示任务收件箱。`);
+    deliverWorkerEvent({
+      tone: 'running',
+      eventLabel: '补充说明已送达',
+      text: `给 ${destination} 追加了一条任务说明；它会保留在自己的 session 里。`,
+    });
+    setTaskNote('');
   }
 
   return (
@@ -252,31 +371,43 @@ function App() {
           </div>
           <span>Noema</span>
         </div>
-        <button className="new-thread">
-          <span>＋</span> 开始一条新主线
+        <div className="side-section-label">你和 Noema</div>
+        <button className="primary-nav active-nav">
+          <span className="nav-symbol">
+            <Icon name="chat" size={16} />
+          </span>
+          <span>
+            <b>主对话</b>
+            <small>持续在线</small>
+          </span>
         </button>
-        <div className="side-section-label">
-          最近主线 <button aria-label="更多主线">•••</button>
+        <div className="side-section-label task-label">
+          后台工作{' '}
+          <span className="count-badge">
+            {phase === 'running' || pendingTaskEvent ? '1' : '0'}
+          </span>
         </div>
-        <button className="thread-row active-thread">
-          <span className="thread-state active-state" />
+        <button
+          className="task-nav"
+          onClick={() => {
+            if (isNarrow) setTasksOpen(true);
+            else taskPaneRef.current?.scrollIntoView({ block: 'nearest' });
+          }}
+        >
+          <span className={`task-state-dot ${phase}`} />
           <span>
-            <b>骑砍整合包诊断</b>
-            <small>刚刚 · 执行端待切换</small>
-          </span>
-        </button>
-        <button className="thread-row">
-          <span className="thread-state done-state" />
-          <span>
-            <b>MC 模组碰撞箱</b>
-            <small>昨天 · 继续原模型方案</small>
-          </span>
-        </button>
-        <button className="thread-row">
-          <span className="thread-state idle-state" />
-          <span>
-            <b>Noema 的方向</b>
-            <small>10 月 11 日 · 设计讨论</small>
+            <b>村庄生产性能诊断</b>
+            <small>
+              {phase === 'running'
+                ? `正在由 ${destination} 处理`
+                : phase === 'returned'
+                  ? pendingTaskEvent
+                    ? '结果已到 · 等主对话空闲'
+                    : '结果已返回主对话'
+                  : phase === 'failed'
+                    ? '需要重试'
+                    : '已停止'}
+            </small>
           </span>
         </button>
         <div className="sidebar-spacer" />
@@ -284,23 +415,67 @@ function App() {
           <Icon name="settings" size={16} /> 设置与连接
         </button>
         <div className="local-state">
-          <span /> 本机 · 数据未同步
+          <span /> 本机 · 演示数据
         </div>
       </aside>
 
       <main className="workspace">
         <header className="appbar">
           <div className="breadcrumbs">
-            <span>主线</span>
+            <span>Noema</span>
             <i>/</i>
-            <strong>骑砍整合包诊断</strong>
+            <strong>主对话</strong>
           </div>
           <div className="appbar-right">
+            <span className="model-label">对话模型</span>
+            <div className="model-picker-wrap">
+              <button
+                className="model-picker"
+                aria-haspopup="listbox"
+                aria-expanded={modelMenuOpen}
+                onClick={() => setModelMenuOpen((open) => !open)}
+              >
+                <span className="model-indicator" />
+                {rootModel}
+                <span className="chevron">⌄</span>
+              </button>
+              {modelMenuOpen && (
+                <div
+                  className="model-menu"
+                  role="listbox"
+                  aria-label="Noema 对话模型"
+                >
+                  {['DeepSeek Flash', 'Qwen · 本地'].map((model) => (
+                    <button
+                      key={model}
+                      role="option"
+                      aria-selected={rootModel === model}
+                      className={
+                        rootModel === model
+                          ? 'model-choice selected-model'
+                          : 'model-choice'
+                      }
+                      onClick={() => {
+                        setRootModel(model);
+                        setModelMenuOpen(false);
+                        setNotice(
+                          `Noema 主对话已选择 ${model}（演示；没有发送模型请求）。后台任务不受影响。`,
+                        );
+                      }}
+                    >
+                      <span className="model-indicator" />
+                      {model}
+                      <small>演示 · 未连接</small>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <span className="demo-label">
               <i />
-              交互原型
+              原型
             </span>
-            <button className="thread-menu" aria-label="主线菜单">
+            <button className="thread-menu" aria-label="更多选项">
               •••
             </button>
           </div>
@@ -311,17 +486,22 @@ function App() {
             <div className="thread-heading">
               <div className="thread-overline">
                 <span className="live-mark" />
-                正在继续 <span>·</span> 10 月 13 日
+                Noema 持续对话 <span>·</span> 10 月 13 日
               </div>
-              <h1>骑砍整合包诊断</h1>
+              <h1>继续聊下去</h1>
               <div className="thread-facts">
                 <span>
-                  <Icon name="branch" size={14} /> ModpackDiagnostics
+                  <Icon name="chat" size={14} />
+                  这段对话不会被后台任务替换
                 </span>
                 <span className="fact-divider" />
                 <span>
-                  <i className="provider-dot codex-dot" />
-                  上一执行端：Codex
+                  <i className={`task-state-dot ${phase}`} />
+                  {phase === 'running'
+                    ? '有后台任务正在运行'
+                    : pendingTaskEvent
+                      ? '后台结果等主对话空闲'
+                      : '没有进行中的后台任务'}
                 </span>
               </div>
             </div>
@@ -334,8 +514,9 @@ function App() {
                   <time>15:42</time>
                 </div>
                 <p>
-                  我还在查村庄生产的性能开销，Codex 额度用完了。换个 agent
-                  接着查原来的代码，不要启动游戏，也别动启动器设置。
+                  Codex 额度用完了，村庄生产的诊断还没查完。你能让 DSH
+                  在后台继续吗？我想先留在这里，接着聊 Noema
+                  到底有没有独立存在的理由。
                 </p>
               </article>
 
@@ -344,463 +525,396 @@ function App() {
                   <span className="avatar noema-avatar">N</span>
                   <b>Noema</b>
                   <time>15:43</time>
-                  <span className="message-kind">主线回应</span>
+                  <span className="message-kind">主对话</span>
                 </div>
                 <p>
-                  可以继续，但不是把 Codex 的原生 session 假装搬进 DSH。Noema
-                  这条主线会保留你说的话、已经确认的边界和任务进度；DSH
-                  会有自己的 session、工具记录和运行环境。
+                  可以。我把诊断交给 DSH 的独立 session
+                  跑，我们这条对话保持原样，不会被切成 DSH 的工作窗口。
                 </p>
                 <p>
-                  我先把需要交接的内容列出来，你可以检查或修改。确认后才会启动目标
-                  agent。
+                  交接里带任务目标、不能启动游戏的限制和仓库引用；Codex
+                  的原生工具轨迹与待审批状态不会伪装成已经迁过去。任务有结果时，我会把它作为事件带回来。你可以继续说，我也可以随时停掉后台任务。
                 </p>
               </article>
 
               <section
-                className={`handoff-event ${phase}`}
-                aria-label="执行端切换"
+                className="system-event running"
+                aria-label="后台任务已启动"
               >
                 <div className="event-spine">
                   <span className="event-node">
-                    <Icon
-                      name={
-                        phase === 'returned'
-                          ? 'check'
-                          : phase === 'failed'
-                            ? 'close'
-                            : 'swap'
-                      }
-                      size={14}
-                    />
+                    <Icon name="terminal" size={14} />
                   </span>
                 </div>
                 <div className="event-content">
                   <div className="event-title-line">
-                    <strong>
-                      {phase === 'ready'
-                        ? 'Codex 额度用尽 · 等待继续方式'
-                        : phase === 'running'
-                          ? `已交接到 ${destination}`
-                          : phase === 'failed'
-                            ? `${destination} 暂时无法连接`
-                            : route === 'model'
-                              ? '已在同一主线切换对话模型'
-                              : `${destination} 的结果已返回 Noema`}
-                    </strong>
-                    <span>{phase === 'ready' ? '15:44' : '刚刚'}</span>
+                    <strong>后台任务已启动 · DSH</strong>
+                    <span>15:44</span>
                   </div>
                   <p className="event-description">
-                    {phase === 'ready'
-                      ? '尚未启动任何新执行端。选择只换对话模型，或将任务交给 coding agent。'
-                      : phase === 'running'
-                        ? 'Noema 主线保持不变；目标端拥有自己的原生会话和工具轨迹。'
-                        : phase === 'failed'
-                          ? '没有任务在目标端启动。交接包仍留在当前主线，可以重试或换一个目标。'
-                          : route === 'model'
-                            ? '可见对话被带入了新模型。仓库工具没有运行，执行端仍是 Codex。'
-                            : '执行结果附在主线中，原始工具调用和工作区状态仍保留在目标端。'}
+                    DSH 正在自己的 session 和工作区中执行；Noema
+                    主对话仍保持可用。
                   </p>
-                  {phase === 'running' && (
-                    <div className="execution-result">
-                      <div className="result-meta">
-                        <span
-                          className={`agent-mark ${destination === 'DSH' ? 'dsh-mark' : 'claude-mark'}`}
-                        >
-                          {destination === 'DSH' ? 'D' : 'C'}
-                        </span>
-                        <b>{destination}</b>
-                        <span>原生 session · 演示状态</span>
-                      </div>
-                      <p>
-                        已确认商品生产的父级计时包含 23
-                        个子步骤。下一步要对照现有 profiler trace 中的 village
-                        tick 区段；目前没有启动游戏。
-                      </p>
-                      <button
-                        className="return-result"
-                        onClick={simulateReturn}
-                      >
-                        模拟执行完成并返回 <Icon name="arrow" size={14} />
-                      </button>
-                      <button
-                        className="simulate-failure"
-                        onClick={simulateFailure}
-                      >
-                        或模拟连接失败
-                      </button>
-                    </div>
-                  )}
-                  {phase === 'failed' && (
-                    <div className="failure-actions">
-                      <button onClick={() => setPhase('ready')}>
-                        <Icon name="refresh" size={14} />
-                        重新选择目标
-                      </button>
-                      <button
-                        onClick={() => {
-                          setDestination('Claude Code');
-                          setPhase('ready');
-                        }}
-                      >
-                        改用 Claude Code
-                      </button>
-                    </div>
-                  )}
-                  {phase === 'returned' && route === 'harness' && (
-                    <div className="result-origin">
-                      <Icon name="terminal" size={14} />
-                      <span>结果来自 {destination} 原生 session</span>
-                      <button onClick={() => setPhase('ready')}>
-                        查看交接
-                      </button>
-                    </div>
-                  )}
                 </div>
               </section>
 
-              {phase === 'returned' && route === 'harness' && (
-                <article className="message noema-message returned-message">
-                  <div className="message-meta">
-                    <span className="avatar noema-avatar">N</span>
-                    <b>Noema</b>
-                    <time>15:51</time>
-                    <span className="message-kind">回到主线</span>
-                  </div>
-                  <p>
-                    结果回来了。现在确认到生产步骤落在 village tick
-                    的子计时里；下一步是核对
-                    trace，而不是改启动设置。你想先看这次交接的记录，还是直接接着讨论结果？
-                  </p>
-                </article>
+              <article className="message user-message followup-message">
+                <div className="message-meta">
+                  <span className="avatar user-avatar">你</span>
+                  <b>你</b>
+                  <time>15:45</time>
+                </div>
+                <p>
+                  我还是担心它最后会变成一个多工具面板，所谓的“属于我”其实没有真正落到和我的相处上。
+                </p>
+              </article>
+              <article className="message noema-message">
+                <div className="message-meta">
+                  <span className="avatar noema-avatar">N</span>
+                  <b>Noema</b>
+                  <time>15:46</time>
+                  <span className="message-kind">主对话</span>
+                </div>
+                <p>
+                  DSH + Relay 已经能把 Codex 和 Claude 放进一个 coding
+                  workbench。要是 Noema 只是再加一个入口，就没理由单独做。
+                </p>
+                <p>
+                  可能的差别是：你继续和我谈，我把任务交给后台的
+                  agent，结果再回来。这个还没证明比在 DSH
+                  里工作更值得，所以不能先按这个方向堆功能。
+                </p>
+              </article>
+              {timelineItems.map((item) =>
+                item.kind === 'event' ? (
+                  <section
+                    key={item.id}
+                    className={`system-event ${item.tone ?? 'running'}`}
+                    aria-label="后台任务状态事件"
+                  >
+                    <div className="event-spine">
+                      <span className="event-node">
+                        <Icon
+                          name={
+                            item.tone === 'returned'
+                              ? 'check'
+                              : item.tone === 'failed'
+                                ? 'close'
+                                : item.tone === 'stopped'
+                                  ? 'pause'
+                                  : 'terminal'
+                          }
+                          size={14}
+                        />
+                      </span>
+                    </div>
+                    <div className="event-content">
+                      <div className="event-title-line">
+                        <strong>
+                          {item.eventLabel ??
+                            (item.tone === 'returned'
+                              ? '后台任务结果'
+                              : item.tone === 'failed'
+                                ? '后台任务未能继续'
+                                : item.tone === 'stopped'
+                                  ? '后台任务已停止'
+                                  : '任务已重新启动')}
+                        </strong>
+                        <span>刚刚</span>
+                      </div>
+                      <p className="event-description">{item.text}</p>
+                    </div>
+                  </section>
+                ) : item.kind === 'user' ? (
+                  <article
+                    key={item.id}
+                    className="message user-message latest-message"
+                  >
+                    <div className="message-meta">
+                      <span className="avatar user-avatar">你</span>
+                      <b>你</b>
+                      <time>刚刚</time>
+                    </div>
+                    <p>{item.text}</p>
+                  </article>
+                ) : (
+                  <article
+                    key={item.id}
+                    className="message noema-message dynamic-reply"
+                  >
+                    <div className="message-meta">
+                      <span className="avatar noema-avatar">N</span>
+                      <b>Noema</b>
+                      <time>刚刚</time>
+                      <span className="message-kind">主对话</span>
+                    </div>
+                    <p>{item.text}</p>
+                  </article>
+                ),
               )}
-              {lastMessage && (
-                <article className="message user-message latest-message">
-                  <div className="message-meta">
-                    <span className="avatar user-avatar">你</span>
-                    <b>你</b>
-                    <time>刚刚</time>
-                  </div>
-                  <p>{lastMessage}</p>
-                </article>
+              {rootBusy && (
+                <div className="root-thinking" role="status">
+                  <span className="thinking-indicator">
+                    <i />
+                    <i />
+                    <i />
+                  </span>
+                  Noema 正在组织回应
+                </div>
               )}
+              {pendingTaskEvent && (
+                <div className="queued-task-event" role="status">
+                  <Icon name="clock" size={14} />
+                  后台结果已到，等当前回复结束后带回主对话
+                </div>
+              )}
+              <div ref={rootBottomRef} />
             </div>
 
-            <form className="composer" onSubmit={sendMessage}>
+            <form className="composer" onSubmit={sendRootMessage}>
               <textarea
-                value={input}
-                onChange={(event) => setInput(event.target.value)}
-                placeholder="继续和 Noema 讨论这条主线……"
+                value={rootInput}
+                onChange={(event) => setRootInput(event.target.value)}
+                placeholder="接着和 Noema 聊，不必等后台任务结束……"
                 rows={2}
-                aria-label="发送给 Noema"
+                aria-label="与 Noema 继续对话"
               />
               <div className="composer-foot">
                 <span>
                   <i />
-                  这条主线由 Noema 持续维护
+                  {rootBusy
+                    ? 'Noema 正在回复；后台事件会等这一轮结束'
+                    : '后台执行不会占用这条对话'}
                 </span>
                 <button
                   type="submit"
-                  disabled={!input.trim()}
-                  aria-label="发送消息"
+                  disabled={!rootInput.trim() || rootBusy}
+                  aria-label="发送给 Noema"
                 >
                   <Icon name="send" size={16} />
                 </button>
               </div>
             </form>
             <div className="prototype-disclaimer">
-              <span>原型数据</span> · 没有连接模型或启动外部 agent
+              <span>交互原型</span> · 模型、harness、事件均为模拟数据
             </div>
           </section>
 
           <aside
-            ref={handoffPaneRef}
-            id="handoff-panel"
-            className={`handoff-pane ${narrowOpen ? 'mobile-open' : ''}`}
-            role={isNarrow && narrowOpen ? 'dialog' : 'complementary'}
-            aria-label="切换方式与交接预览"
-            aria-modal={isNarrow && narrowOpen ? true : undefined}
-            aria-hidden={isNarrow && !narrowOpen ? true : undefined}
-            inert={isNarrow && !narrowOpen}
+            ref={taskPaneRef}
+            id="background-task-panel"
+            className={`task-pane ${tasksOpen ? 'mobile-open' : ''}`}
+            role={isNarrow && tasksOpen ? 'dialog' : 'complementary'}
+            aria-label="后台任务"
+            aria-modal={isNarrow && tasksOpen ? true : undefined}
+            aria-hidden={isNarrow && !tasksOpen ? true : undefined}
+            inert={isNarrow && !tasksOpen}
           >
             <div className="pane-head">
               <div>
-                <span className="pane-kicker">CONTINUE THIS THREAD</span>
-                <h2>怎么继续</h2>
+                <span className="pane-kicker">执行状态</span>
+                <h2>
+                  后台任务{' '}
+                  <span className="count-badge">
+                    {phase === 'running' || pendingTaskEvent ? '1' : '0'}
+                  </span>
+                </h2>
               </div>
               <button
                 ref={closePaneRef}
                 className="pane-close"
-                onClick={() => setNarrowOpen(false)}
-                aria-label="收起面板"
+                onClick={() => setTasksOpen(false)}
+                aria-label="收起后台任务"
               >
                 <Icon name="close" size={17} />
               </button>
             </div>
 
-            <div
-              className="route-switch"
-              role="tablist"
-              aria-label="选择继续方式"
-            >
-              <button
-                role="tab"
-                disabled={phase === 'running'}
-                aria-selected={route === 'model'}
-                className={
-                  route === 'model'
-                    ? 'route-option selected-route'
-                    : 'route-option'
-                }
-                onClick={() => chooseRoute('model')}
-              >
-                <span className="route-icon model-icon">
-                  <Icon name="chat" size={16} />
-                </span>
-                <span>
-                  <b>换对话模型</b>
-                  <small>留在此聊天线程</small>
-                </span>
-              </button>
-              <button
-                role="tab"
-                disabled={phase === 'running'}
-                aria-selected={route === 'harness'}
-                className={
-                  route === 'harness'
-                    ? 'route-option selected-route'
-                    : 'route-option'
-                }
-                onClick={() => chooseRoute('harness')}
-              >
-                <span className="route-icon harness-icon">
-                  <Icon name="terminal" size={16} />
-                </span>
-                <span>
-                  <b>换 coding agent</b>
-                  <small>交接任务与工作区</small>
-                </span>
-              </button>
-            </div>
-
-            {route === 'model' ? (
-              <div className="model-route-content">
-                <div className="section-caption">
-                  <span>选择模型</span>
-                  <span>只改变谁来回答</span>
-                </div>
-                <button
-                  className={
-                    model === 'DeepSeek Chat'
-                      ? 'destination-option selected-destination'
-                      : 'destination-option'
-                  }
-                  onClick={() => setModel('DeepSeek Chat')}
-                >
-                  <span className="model-symbol deepseek-symbol">D</span>
-                  <span>
-                    <b>DeepSeek Chat</b>
-                    <small>演示模型 · 尚未连接</small>
-                  </span>
-                  <span className="model-presence demo-presence" />
-                </button>
-                <button
-                  className={
-                    model === 'Qwen · 本地'
-                      ? 'destination-option selected-destination'
-                      : 'destination-option'
-                  }
-                  onClick={() => setModel('Qwen · 本地')}
-                >
-                  <span className="model-symbol qwen-symbol">Q</span>
-                  <span>
-                    <b>Qwen · 本地</b>
-                    <small>演示模型 · 尚未连接</small>
-                  </span>
-                  <span className="model-presence demo-presence" />
-                </button>
-                <div className="boundary-note model-boundary">
-                  <Icon name="check" size={15} />
-                  <p>
-                    <b>聊天上下文继续带入</b>
-                    <br />
-                    模型更换不等于 coding harness 更换。此路径不会启动或恢复
-                    Codex/DSH 的工具会话。
-                  </p>
-                </div>
-                <button className="primary-action" onClick={beginHandoff}>
-                  用 {model} 继续 <Icon name="arrow" size={15} />
+            <section className="active-task">
+              <div className="task-name-line">
+                <span className={`task-state-dot ${phase}`} />
+                <strong>村庄生产性能诊断</strong>
+                <button className="task-more" aria-label="任务选项">
+                  •••
                 </button>
               </div>
-            ) : (
-              <div className="agent-route-content">
-                <div className="section-caption">
-                  <span>执行目标</span>
-                  <span>将创建独立原生 session</span>
-                </div>
-                <div className="destination-picker">
-                  <button
-                    disabled={phase === 'running'}
-                    className={
-                      destination === 'DSH'
-                        ? 'destination-option selected-destination'
-                        : 'destination-option'
-                    }
-                    onClick={() => setDestination('DSH')}
-                  >
-                    <span className="agent-mark dsh-mark">D</span>
-                    <span>
-                      <b>DeepSeek Harness</b>
-                      <small>演示目标 · 尚未连接</small>
-                    </span>
-                    <span className="model-presence demo-presence" />
-                  </button>
-                  <button
-                    disabled={phase === 'running'}
-                    className={
-                      destination === 'Claude Code'
-                        ? 'destination-option selected-destination'
-                        : 'destination-option'
-                    }
-                    onClick={() => setDestination('Claude Code')}
-                  >
-                    <span className="agent-mark claude-mark">C</span>
-                    <span>
-                      <b>Claude Code</b>
-                      <small>演示目标 · 尚未连接</small>
-                    </span>
-                    <span className="model-presence demo-presence" />
-                  </button>
-                </div>
+              <div className="task-origin">
+                <span
+                  className={`agent-mark ${destination === 'DSH' ? 'dsh-mark' : 'claude-mark'}`}
+                >
+                  {destination === 'DSH' ? 'D' : 'C'}
+                </span>
+                <span>
+                  <b>{destination}</b>
+                  <small>
+                    {phase === 'running'
+                      ? '正在独立 session 中处理'
+                      : phase === 'returned'
+                        ? pendingTaskEvent
+                          ? '执行完成 · 等待主对话接手'
+                          : '执行完成 · 结果已回传'
+                        : phase === 'failed'
+                          ? '启动失败 · 可更换目标'
+                          : '已停止'}
+                  </small>
+                </span>
+              </div>
+              <div className="task-meter">
+                <span className={phase} />
+              </div>
+              <div className="task-phase-label">
+                <span>
+                  {phase === 'running'
+                    ? '正在检查代码调用记录'
+                    : phase === 'returned'
+                      ? pendingTaskEvent
+                        ? '等待 Noema 当前回复结束'
+                        : '已返回 Noema'
+                      : phase === 'failed'
+                        ? '等待恢复'
+                        : '任务结束'}
+                </span>
+                <time>{phase === 'running' ? '刚刚更新' : '刚刚'}</time>
+              </div>
 
-                <div className="packet-heading">
+              <button
+                className="handoff-disclosure"
+                aria-expanded={showHandoff}
+                onClick={() => setShowHandoff((open) => !open)}
+              >
+                <span>
+                  <Icon name="file" size={14} />
+                  查看已交接的内容
+                </span>
+                <span>{showHandoff ? '收起 −' : '展开 +'}</span>
+              </button>
+              {showHandoff && (
+                <div className="handoff-record">
                   <div>
-                    <span className="pane-kicker">HANDOFF PACKET</span>
-                    <h3>交接前检查</h3>
+                    <small>任务与限制</small>
+                    <p>
+                      继续定位村庄商品生产的性能开销；不要启动游戏，不改启动器设置。
+                    </p>
                   </div>
-                  <button
-                    className="edit-packet"
-                    onClick={() => setEditing((value) => !value)}
-                  >
-                    <Icon name="edit" size={14} />
-                    {editing ? '完成' : '修改'}
+                  <div>
+                    <small>带入 Noema 已确认的信息</small>
+                    <p>
+                      已定位到 village tick
+                      的商品生产子步骤；游戏内验证尚未进行。
+                    </p>
+                  </div>
+                  <div>
+                    <small>保留在 Codex</small>
+                    <p>
+                      Codex 原生 session、工具轨迹和待审批请求仍由 Codex
+                      管理，未写入 DSH transcript。
+                    </p>
+                  </div>
+                  <div>
+                    <small>来源</small>
+                    <p>Noema 主对话与对应工作区引用 · 原型示例</p>
+                  </div>
+                </div>
+              )}
+
+              {phase === 'running' && (
+                <form className="task-steer" onSubmit={submitTaskNote}>
+                  <label htmlFor="task-note">补充给后台执行者</label>
+                  <div>
+                    <input
+                      id="task-note"
+                      value={taskNote}
+                      onChange={(event) => setTaskNote(event.target.value)}
+                      placeholder="只补充这项任务需要的信息"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!taskNote.trim()}
+                      aria-label="发送补充说明"
+                    >
+                      <Icon name="send" size={14} />
+                    </button>
+                  </div>
+                  <small>
+                    会作为新指令追加到 DSH session，不会修改已发送的交接记录。
+                  </small>
+                </form>
+              )}
+
+              {phase === 'running' && (
+                <div className="task-actions">
+                  <button className="complete-demo" onClick={finishTask}>
+                    模拟任务完成并返回 <Icon name="arrow" size={14} />
+                  </button>
+                  <button className="fail-demo" onClick={failTask}>
+                    模拟目标连接失败
+                  </button>
+                  <button className="stop-task" onClick={stopTask}>
+                    <Icon name="pause" size={13} />
+                    停止后台任务
                   </button>
                 </div>
-                <label className="field-label" htmlFor="handoff-goal">
-                  任务与限制
-                </label>
-                {editing ? (
-                  <textarea
-                    id="handoff-goal"
-                    className="goal-editor"
-                    rows={3}
-                    value={goal}
-                    onChange={(event) => setGoal(event.target.value)}
-                  />
-                ) : (
-                  <p className="goal-summary">{goal}</p>
-                )}
-                <label className="packet-toggle">
-                  <input
-                    type="checkbox"
-                    checked={includeDecisions}
-                    onChange={(event) =>
-                      setIncludeDecisions(event.target.checked)
+              )}
+              {phase === 'failed' && (
+                <div className="task-actions">
+                  <button
+                    className="complete-demo"
+                    onClick={() => retryWith('DSH')}
+                  >
+                    <Icon name="refresh" size={14} />
+                    重试 DSH
+                  </button>
+                  <button
+                    className="fail-demo"
+                    onClick={() =>
+                      retryWith(destination === 'DSH' ? 'Claude Code' : 'DSH')
                     }
-                  />
-                  <span className="toggle-check">
-                    <Icon name="check" size={12} />
-                  </span>
-                  <span>
-                    <b>已确认结论</b>
-                    <small>
-                      生产步骤在 village tick 子计时内；尚未验证游戏内效果
-                    </small>
-                  </span>
-                </label>
-                <label className="packet-toggle">
-                  <input
-                    type="checkbox"
-                    checked={includeWorkspace}
-                    onChange={(event) =>
-                      setIncludeWorkspace(event.target.checked)
-                    }
-                  />
-                  <span className="toggle-check">
-                    <Icon name="check" size={12} />
-                  </span>
-                  <span>
-                    <b>仓库引用</b>
-                    <small>ModpackDiagnostics · 演示引用，未读取真实路径</small>
-                  </span>
-                </label>
-
-                <div className="boundary-block">
-                  <div className="boundary-title">
-                    <span className="boundary-glyph">!</span>
-                    <b>不会伪装成同一个 session</b>
-                  </div>
-                  <ul>
-                    <li>Codex 的工具调用、审批状态与隐藏上下文不会迁移。</li>
-                    <li>目标 agent 会在自己的 harness 和工作区里运行。</li>
-                    <li>
-                      Noema 主线会记录交接包与回传结果；不是完整 transcript
-                      镜像。
-                    </li>
-                  </ul>
+                  >
+                    切换到 {destination === 'DSH' ? 'Claude Code' : 'DSH'}
+                  </button>
                 </div>
-
-                {phase === 'ready' ||
-                phase === 'paused' ||
-                phase === 'failed' ? (
-                  <button className="primary-action" onClick={beginHandoff}>
-                    交接给 {destination} <Icon name="arrow" size={15} />
-                  </button>
-                ) : phase === 'running' ? (
-                  <button
-                    className="primary-action waiting-action"
-                    onClick={simulateReturn}
-                  >
-                    <Icon name="clock" size={15} />
-                    模拟 {destination} 返回结果
-                  </button>
-                ) : (
-                  <button
-                    className="primary-action"
-                    onClick={() => setPhase('ready')}
-                  >
-                    <Icon name="refresh" size={15} />
-                    查看另一种继续方式
-                  </button>
-                )}
+              )}
+              {phase === 'returned' && (
                 <button
-                  className="cancel-handoff"
-                  onClick={() => {
-                    setPhase('paused');
-                    setNotice(
-                      '没有启动外部 agent。你可以直接在 Noema 里继续讨论。',
-                    );
-                  }}
+                  className="task-history"
+                  onClick={() =>
+                    setNotice('这条任务的演示记录仍挂在当前 Noema 主线。')
+                  }
                 >
-                  暂不交接，留在 Noema
+                  <Icon name="branch" size={14} />
+                  在主对话中查看结果
                 </button>
-              </div>
-            )}
+              )}
+              {phase === 'stopped' && (
+                <button
+                  className="task-history"
+                  onClick={() => retryWith(destination)}
+                >
+                  <Icon name="refresh" size={14} />
+                  重新启动这项任务
+                </button>
+              )}
+            </section>
 
+            <div className="event-rule">
+              <span />
+              任务完成会以系统事件回到主对话
+              <span />
+            </div>
             <div className="ownership-footer">
               <span className="ownership-dot" />
               <p>
-                <b>主线归 Noema</b>
+                <b>Noema 主对话持续可用</b>
                 <br />
-                外部 agent 的执行记录仍归各自 harness。
+                外部 session 和执行记录仍归对应 harness。
               </p>
             </div>
           </aside>
-          {narrowOpen && (
+          {tasksOpen && (
             <button
               className="mobile-scrim"
-              aria-label="关闭交接面板"
-              onClick={() => setNarrowOpen(false)}
+              aria-label="关闭后台任务面板"
+              onClick={() => setTasksOpen(false)}
             />
           )}
         </div>
@@ -810,19 +924,26 @@ function App() {
             <i />
             本地原型
           </span>
-          <span>未连接模型 · 交接行为为模拟</span>
+          <span>未连接模型 · 后台任务与事件均为模拟</span>
           <span>v{bridge.appVersion}</span>
           <button
             className="mobile-switch"
-            aria-controls="handoff-panel"
-            aria-expanded={narrowOpen}
-            onClick={() => setNarrowOpen((value) => !value)}
+            aria-controls="background-task-panel"
+            aria-expanded={tasksOpen}
+            onClick={() => setTasksOpen((open) => !open)}
           >
-            <Icon name="swap" size={14} />
-            切换方式
+            <Icon name="branch" size={14} />
+            后台任务
           </button>
         </footer>
       </main>
+      {modelMenuOpen && (
+        <button
+          className="dismiss-model-menu"
+          aria-label="关闭模型菜单"
+          onClick={() => setModelMenuOpen(false)}
+        />
+      )}
       {notice && (
         <div className="toast" role="status">
           <Icon name="check" size={16} />
