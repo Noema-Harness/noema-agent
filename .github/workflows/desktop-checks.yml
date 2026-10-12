@@ -21,4 +21,3 @@ jobs:
       - run: npm run smoke
       - run: npm run package:desktop
       - run: npm run make:desktop
-      - run: npm run make:desktop
