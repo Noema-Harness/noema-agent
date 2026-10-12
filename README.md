@@ -8,14 +8,14 @@ Noema 是独立的个人 agent 应用。它的核心不是替用户完成某一�
 
 ## 当前状态
 
-当前仓库用于长期产品与工程开发的基础建设。应用运行时尚未开始实现。当前已确定的产品边界与架构取舍记录在：
+当前仓库已建立桌面运行壳与项目协作基础；agent、记忆、模型连接等产品运行能力尚未实现。当前已确定的产品边界与架构取舍记录在：
 
 - [产品章程](docs/PRODUCT_CHARTER.md)
 - [架构边界](docs/ARCHITECTURE.md)
 - [决策记录](docs/decisions/README.md)
 - [项目协作方式](docs/PROJECT_OPERATIONS.md)
 
-GitHub Project 看板是工作状态的唯一来源；本地文档不重复维护任务清单。
+GitHub Project 看板是工作状态的唯一来源；本地文档不重复维护任务清单。当前看板：[Noema 开发](https://github.com/users/c3115644151/projects/6)。
 
 ## 核心原则
 
@@ -27,6 +27,13 @@ GitHub Project 看板是工作状态的唯一来源；本地文档不重复维�
 
 ## 开发与协作
 
-从 GitHub Project 的 Ready 项开始；复杂工作有对应 issue、验收条件和必要的决策记录。完成后更新 issue / Project 状态，并提交实际运行过的验证结果。
+从 GitHub Project 中状态为 Todo 的 issue 开始；复杂工作有对应验收条件和必要的决策记录。完成后更新 issue / Project 状态，并提交实际运行过的验证结果。
+
+### 本地桌面开发
+
+- Windows 开发环境使用 Node.js 22.15+（当前本机验证版本为 22.15.0）和 npm。
+- 首次克隆后运行 `npm ci`，然后 `npm run dev` 启动桌面壳。
+- 检查命令：`npm run lint`、`npm run typecheck`、`npm test`；Windows 打包检查：`npm run package:desktop`。
+- 代理环境下下载依赖可临时设置 `HTTPS_PROXY=http://127.0.0.1:7890`；不要把代理配置或凭据写入仓库。
 
 仓库级 Codex 约定见 [AGENTS.md](AGENTS.md)。

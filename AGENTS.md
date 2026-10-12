@@ -17,11 +17,11 @@ Noema 是独立的个人 agent 应用，由用户拥有其身份、连续性和�
 
 ## 项目推进
 
-- GitHub Issues 记录工作及验收条件；关联的 GitHub Project 管理状态。看板是进度唯一来源，不复制一份易过时的本地 TODO/路线图。
+- GitHub Issues 记录工作及验收条件；[GitHub Project](https://github.com/users/c3115644151/projects/6) 管理状态。看板内置状态为 Todo、In Progress、Done；阻塞用 `status:blocked` 标签。看板是进度唯一来源，不复制一份易过时的本地 TODO/路线图。
 - 有实质设计或多文件实现时，先定位关联 issue 与适用文档；小修订不要求创建流程性 issue。
 - 完成标准是用户结果达到验收条件，并做了与风险相称的验证。汇报只说实际完成和实际运行的检查。
 - 新增产品行为应有针对该行为的验证；只修改文档时验证链接/格式即可，不跑无关的全量测试。
 
 ## Codex 与 Skills
 
-本文件保持为短的项目契约。具体可复用流程放在 `.agents/skills/`，详细背景放在所链接文档中。Skill 描述要短且有明确触发条件；不要靠叠加 prompt、skill 或 hook 替代明确的代码边界和持久状态设计。
+本文件保持为短的项目契约。Codex 专用的可复用流程放在 `.codex/skills/`，长任务计划规范放在 `.agents/PLANS.md`，详细背景放在所链接文档中。Skill 描述要短且有明确触发条件；不要靠叠加 prompt、skill 或 hook 替代明确的代码边界和持久状态设计。
