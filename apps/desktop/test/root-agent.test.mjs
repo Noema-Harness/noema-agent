@@ -118,6 +118,77 @@ test('sends an imported Codex snapshot as quoted context before the current root
   store.close();
 });
 
+test('records a direct interaction correction and carries it across root turns', async () => {
+  const store = new RootStore(':memory:');
+  store.setSelectedModel('auto:noema-free');
+  const modelInputs = [];
+  const events = [];
+  const provider = {
+    baseUrl: 'http://127.0.0.1:31415/v1',
+    listModels: async () => [
+      { name: 'auto:noema-free', label: 'Noema 免费模型链' },
+    ],
+    async *streamChat(input) {
+      modelInputs.push(input);
+      if (input.messages.at(-1).content.includes('不要先做心理分析')) {
+        input.onToolCalls([
+          {
+            id: 'call-adjustment',
+            type: 'function',
+            function: {
+              name: 'record_interaction_adjustment',
+              arguments: JSON.stringify({
+                sourceQuote: '不要先做心理分析。',
+                scope: 'conversation',
+                situation: '用户分享不愉快经历但没有请求分析或建议',
+                behavior: '先自然回应，并询问用户当时最在意的部分。',
+              }),
+            },
+          },
+        ]);
+        return;
+      }
+      yield '我先听你说。';
+    },
+  };
+  const agent = new RootAgent({
+    store,
+    provider,
+    secretStore: createSecretStore(),
+    emit: (event) => events.push(event),
+  });
+
+  const correction = agent.sendMessage({
+    text: '当我分享不愉快的经历时，不要先做心理分析。',
+  });
+  await agent.active.done;
+  const adjustment = store.getSnapshot().interactionAdjustments[0];
+  assert.equal(adjustment.sourceTurnId, correction.turnId);
+  assert.equal(adjustment.scope, 'conversation');
+  assert.equal(adjustment.status, 'active');
+  assert.ok(
+    events.some((event) => event.type === 'interaction-adjustments-updated'),
+  );
+
+  agent.sendMessage({
+    text: '朋友临时取消了约定，我有点失落。',
+  });
+  await agent.active.done;
+  const adjustmentContext = modelInputs[1].messages.find((message) =>
+    message.content.includes('interaction_adjustments'),
+  );
+  assert.ok(adjustmentContext);
+  assert.match(
+    adjustmentContext.content,
+    /先自然回应，并询问用户当时最在意的部分/,
+  );
+  assert.equal(
+    modelInputs[1].messages.at(-1).content,
+    '朋友临时取消了约定，我有点失落。',
+  );
+  store.close();
+});
+
 test('preserves a failed user message and retries it without duplicating the user turn', async () => {
   const store = new RootStore(':memory:');
   store.setSelectedModel('retired-model');
@@ -275,7 +346,25 @@ test('dispatches one DSH worker on the explicit free chain and returns its resul
     async *streamChat(input) {
       modelCalls.push(input);
       if (input.tools?.length) {
+        assert.ok(
+          input.tools.some(
+            (tool) => tool.function.name === 'record_interaction_adjustment',
+          ),
+        );
         input.onToolCalls([
+          {
+            id: 'call-adjustment',
+            type: 'function',
+            function: {
+              name: 'record_interaction_adjustment',
+              arguments: JSON.stringify({
+                sourceQuote: '编码任务中，除非必须由我决定，否则请继续到交付。',
+                scope: 'coding',
+                situation: '长期编码任务的阶段性进度汇报',
+                behavior: '若没有用户决策或真实阻塞，就继续推进到验收完成。',
+              }),
+            },
+          },
           {
             id: 'call-delegate',
             type: 'function',
@@ -324,7 +413,7 @@ test('dispatches one DSH worker on the explicit free chain and returns its resul
   });
   try {
     const { turnId } = agent.sendMessage({
-      text: '请在当前工作区修改 README 的安装说明。',
+      text: '编码任务中，除非必须由我决定，否则请继续到交付。请在当前工作区修改 README 的安装说明。',
     });
     await agent.active.done;
     const dispatched = store.getBackgroundTasks()[0];
@@ -332,7 +421,9 @@ test('dispatches one DSH worker on the explicit free chain and returns its resul
     assert.equal(dispatched.model, 'auto:noema-free');
     assert.equal(workerInput.workspacePath, workspace);
     assert.equal(workerInput.model, 'auto:noema-free');
-    assert.equal(workerInput.task, '读取 README 并修正其中的安装说明。');
+    assert.match(workerInput.task, /长期编码任务的阶段性进度汇报/);
+    assert.match(workerInput.task, /继续推进到验收完成/);
+    assert.match(workerInput.task, /读取 README 并修正其中的安装说明/);
     assert.equal(modelCalls.length, 1);
     assert.match(
       store.getSnapshot().messages.at(-1).content,

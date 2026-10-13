@@ -634,6 +634,92 @@ select:disabled {
   color: var(--faint);
 }
 
+.adjustment-turn .turn-spine span {
+  background: #5f7a66;
+}
+
+.adjustment-event {
+  margin: 7px 0 12px;
+  padding: 10px 13px 9px;
+  border-left: 2px solid #6f8974;
+  background: #f6f8f4;
+}
+
+.adjustment-event.is-withdrawn {
+  border-left-color: #b6beb7;
+  background: #f2f3f0;
+}
+
+.adjustment-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.adjustment-heading strong {
+  color: var(--ink-soft);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.adjustment-heading button {
+  flex: 0 0 auto;
+  padding: 3px 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 10px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.adjustment-heading button:hover {
+  color: var(--danger);
+}
+
+.adjustment-change {
+  display: grid;
+  gap: 3px;
+  margin: 7px 0 0;
+  color: var(--ink-soft);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.adjustment-change span:first-child {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.adjustment-source {
+  margin-top: 6px;
+  color: var(--faint);
+  font-size: 10px;
+}
+
+.adjustment-source summary {
+  width: fit-content;
+  cursor: pointer;
+}
+
+.adjustment-source blockquote {
+  margin: 7px 0 0;
+  padding-left: 10px;
+  border-left: 1px solid var(--line-strong);
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.adjustment-source p {
+  margin: 6px 0 0;
+  line-height: 1.5;
+}
+
 .worker-title-group > span {
   overflow: hidden;
   text-overflow: ellipsis;

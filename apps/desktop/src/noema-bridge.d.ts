@@ -58,6 +58,7 @@ export interface NoemaRootState {
   messages: NoemaRootMessage[];
   workerTasks: NoemaBackgroundTask[];
   contextImports: NoemaContextImport[];
+  interactionAdjustments: NoemaInteractionAdjustment[];
   activeTurnId: string | null;
   selectedModel: string | null;
   connected: boolean;
@@ -72,6 +73,18 @@ export interface NoemaRootState {
   dshWorkerAvailable: boolean;
   dshWorkerError: string | null;
   codexImportAvailable: boolean;
+}
+
+export interface NoemaInteractionAdjustment {
+  id: string;
+  sourceTurnId: string;
+  scope: 'conversation' | 'coding' | 'both';
+  situation: string;
+  behavior: string;
+  sourceQuote: string;
+  status: 'active' | 'withdrawn';
+  createdAt: string;
+  withdrawnAt: string | null;
 }
 
 export interface NoemaContextImport {
@@ -170,7 +183,8 @@ export type NoemaWorkerEvent =
       type: 'worker-event-response-failed';
       taskId: string;
       message: string;
-    };
+    }
+  | { type: 'interaction-adjustments-updated' };
 
 export type NoemaRootEvent = NoemaTurnEvent | NoemaWorkerEvent;
 
@@ -216,6 +230,7 @@ export interface NoemaBridge {
     expectedSourceUpdatedAt: string | number | null;
   }): Promise<NoemaContextImport>;
   removeContextImport(): Promise<boolean>;
+  withdrawInteractionAdjustment(id: string): Promise<boolean>;
   onRootEvent(listener: (event: NoemaRootEvent) => void): () => void;
 }
 

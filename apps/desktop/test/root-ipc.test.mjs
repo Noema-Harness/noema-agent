@@ -35,6 +35,7 @@ test('registers only named root-agent actions and rejects non-window senders', a
     previewCodexThread: async (threadId) => ({ threadId }),
     importCodexThread: async (input) => input,
     removeContextImport: () => true,
+    withdrawInteractionAdjustment: (id) => id === 'adjustment-1',
   };
   const trustedSender = {};
   const unregister = registerRootIpc({
@@ -62,6 +63,7 @@ test('registers only named root-agent actions and rejects non-window senders', a
       CHANNELS.previewCodexThread,
       CHANNELS.importCodexThread,
       CHANNELS.removeContextImport,
+      CHANNELS.withdrawInteractionAdjustment,
     ].sort(),
   );
   assert.deepEqual(
@@ -84,6 +86,13 @@ test('registers only named root-agent actions and rejects non-window senders', a
       sender: trustedSender,
     }),
     null,
+  );
+  assert.equal(
+    await harness.handlers.get(CHANNELS.withdrawInteractionAdjustment)(
+      { sender: trustedSender },
+      'adjustment-1',
+    ),
+    true,
   );
   assert.deepEqual(
     await harness.handlers.get(CHANNELS.resumeWorker)(

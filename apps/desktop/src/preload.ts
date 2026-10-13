@@ -29,6 +29,8 @@ const bridge = {
     expectedSourceUpdatedAt: string | number | null;
   }) => ipcRenderer.invoke('noema:import-codex-thread', input),
   removeContextImport: () => ipcRenderer.invoke('noema:remove-context-import'),
+  withdrawInteractionAdjustment: (id: string) =>
+    ipcRenderer.invoke('noema:withdraw-interaction-adjustment', id),
   onRootEvent: (listener: (event: NoemaRootEvent) => void) => {
     const handler = (
       _event: Electron.IpcRendererEvent,

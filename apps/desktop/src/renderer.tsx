@@ -14,6 +14,7 @@ import type {
   NoemaCodexPreview,
   NoemaCodexThread,
   NoemaContextImport,
+  NoemaInteractionAdjustment,
   NoemaRootMessage,
   NoemaRootState,
 } from './noema-bridge.d.ts';
@@ -27,7 +28,13 @@ type ConversationTurn = {
 type TimelineEntry =
   | { kind: 'turn'; key: string; time: string; turn: ConversationTurn }
   | { kind: 'task'; key: string; time: string; task: NoemaBackgroundTask }
-  | { kind: 'context'; key: string; time: string; context: NoemaContextImport };
+  | { kind: 'context'; key: string; time: string; context: NoemaContextImport }
+  | {
+      kind: 'adjustment';
+      key: string;
+      time: string;
+      adjustment: NoemaInteractionAdjustment;
+    };
 
 const markdownComponents: Components = {
   a: ({ href, children }) => (
@@ -190,6 +197,7 @@ function App() {
     ['starting', 'running'].includes(task.status),
   );
   const contextImports = root?.contextImports ?? [];
+  const interactionAdjustments = root?.interactionAdjustments ?? [];
   const timeline = useMemo<TimelineEntry[]>(() => {
     const turnEntries: TimelineEntry[] = turns.flatMap((turn) => {
       const userMessage = turn.messages.find(
@@ -222,17 +230,28 @@ function App() {
         context,
       }),
     );
-    return [...turnEntries, ...taskEntries, ...contextEntries].sort(
-      (left, right) => left.time.localeCompare(right.time),
-    );
-  }, [turns, workerTasks, root?.contextImports]);
+    const adjustmentEntries: TimelineEntry[] = (
+      root?.interactionAdjustments ?? []
+    ).map((adjustment) => ({
+      kind: 'adjustment',
+      key: `adjustment:${adjustment.id}`,
+      time: adjustment.createdAt,
+      adjustment,
+    }));
+    return [
+      ...turnEntries,
+      ...taskEntries,
+      ...contextEntries,
+      ...adjustmentEntries,
+    ].sort((left, right) => left.time.localeCompare(right.time));
+  }, [turns, workerTasks, root?.contextImports, interactionAdjustments]);
   const busy = Boolean(root?.activeTurnId);
 
   useLayoutEffect(() => {
     const node = conversationRef.current;
     if (node && followConversationRef.current)
       node.scrollTop = node.scrollHeight;
-  }, [root?.messages, root?.contextImports]);
+  }, [root?.messages, root?.contextImports, interactionAdjustments]);
 
   useEffect(() => {
     const node = conversationRef.current;
@@ -401,6 +420,19 @@ function App() {
     } catch (error) {
       setNotice(
         error instanceof Error ? error.message : '无法移除 Codex 快照。',
+      );
+    }
+  };
+
+  const withdrawInteractionAdjustment = async (id: string) => {
+    try {
+      if (await window.noema.withdrawInteractionAdjustment(id)) {
+        await refreshRoot();
+        setNotice('已撤回这条互动调整；之后的请求不再带入。');
+      }
+    } catch (error) {
+      setNotice(
+        error instanceof Error ? error.message : '无法撤回这条互动调整。',
       );
     }
   };
@@ -833,6 +865,68 @@ function App() {
                             这是只读文字快照，不是完整 Codex 会话副本；Codex
                             中的工具状态与执行记录仍留在原应用，源会话后续变化也不会自动同步。
                           </div>
+                        </section>
+                      </div>
+                    </article>
+                  );
+                }
+                if (entry.kind === 'adjustment') {
+                  const adjustment = entry.adjustment;
+                  const scopeLabel =
+                    adjustment.scope === 'conversation'
+                      ? 'Noema 对话'
+                      : adjustment.scope === 'coding'
+                        ? '后台编码任务'
+                        : 'Noema 对话与后台编码任务';
+                  return (
+                    <article className="turn adjustment-turn" key={entry.key}>
+                      <div className="turn-gutter">
+                        <time dateTime={adjustment.createdAt}>
+                          {formatTime(entry.time)}
+                        </time>
+                        <span className="turn-spine" aria-hidden="true">
+                          <span />
+                        </span>
+                      </div>
+                      <div className="turn-body">
+                        <section
+                          className={`adjustment-event${adjustment.status === 'withdrawn' ? ' is-withdrawn' : ''}`}
+                          aria-label="Noema 互动调整"
+                        >
+                          <div className="adjustment-heading">
+                            <strong>
+                              {adjustment.status === 'active'
+                                ? '互动调整已记录'
+                                : '互动调整已撤回'}
+                            </strong>
+                            {adjustment.status === 'active' && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void withdrawInteractionAdjustment(
+                                    adjustment.id,
+                                  )
+                                }
+                                aria-label={`撤回互动调整：${adjustment.situation}`}
+                              >
+                                撤回后续使用
+                              </button>
+                            )}
+                          </div>
+                          <p className="adjustment-change">
+                            <span>适用：{scopeLabel}</span>
+                            <span>{adjustment.situation}</span>
+                            <span>期望做法：{adjustment.behavior}</span>
+                          </p>
+                          <details className="adjustment-source">
+                            <summary>查看来源与数据范围</summary>
+                            <blockquote>{adjustment.sourceQuote}</blockquote>
+                            <p>
+                              {adjustment.status === 'active'
+                                ? '后续匹配情境时，这条记录会作为参考随请求发送到当前免费模型路由；这不保证模型每次都遵循。撤回只影响之后的请求，不能撤回已发送内容或 DSH 原生任务记录。'
+                                : '撤回后，这条记录不会进入新的模型请求；原始对话仍保存在本机。'}
+                            </p>
+                          </details>
                         </section>
                       </div>
                     </article>
