@@ -5,9 +5,50 @@ description: Design or materially change user-visible Noema screens, flows, or c
 
 # Noema Interface Quality
 
-1. Read the current Issue, product direction, relevant architecture decisions, and existing UI before choosing a pattern. Treat issue mockups and old screenshots as evidence, not permanent style instructions.
-2. Before building a substantial screen/flow, inspect a small number of mature, relevant products or primary-source implementations. Extract the specific interaction/layout ideas and tradeoffs that fit this user task; do not copy their branding or turn a reference into a feature checklist. State a design hypothesis, not a claimed universal best practice.
-3. Design for the actual task, information hierarchy, and real content. Avoid generic dashboard/chat layouts, decorative cards, placeholder metrics, and vague AI-sounding labels unless the product need justifies them. Keep visual direction open until repeated usage supports a system.
-4. Implement a coherent usable screen, including empty, loading, error, disabled, and populated states that apply. Do not stop at a wireframe or a polished static mockup when the requested flow should work.
-5. Run the app and inspect the actual interface at its intended size; exercise primary interactions and keyboard/focus behavior. Revise visible defects in hierarchy, spacing, typography, contrast, overflow, or state feedback. A successful build is not visual verification.
-6. Capture only durable decisions in ADRs; preserve useful references/screenshots with source and date when they materially inform later work. Do not create a permanent design system from a single screen.
+# Noema Interface Quality
+
+Use this before material changes to a user-visible Noema surface and again for visual verification. It is a product-specific design process, not a style preset.
+
+## Design authority
+
+1. Read the active Issue, `PRODUCT.md`, relevant architecture decisions, and existing UI. Keep user-confirmed facts, evidence, and the current design hypothesis distinct. Existing placeholder screens are anti-reference unless explicitly adopted.
+2. Derive composition from the actual user task and Noema's current product mechanism. A color palette, type pairing, animation, icon set, or “anti-slop” checklist cannot by itself make a screen distinctive. Ask what the screen must let the user understand or do that a generic agent app would not.
+3. Inspect a small number of mature, relevant product implementations and more than one design method when the visual direction is open. Extract interaction and hierarchy ideas with their tradeoffs; do not copy a competitor's brand or turn references into a feature checklist.
+
+## Use Skills critically
+
+Different design Skills do different jobs; do not merge their prescriptions into one mega-prompt.
+
+- Creative-direction Skills (for example, Anthropic Frontend Design or Impeccable new-work) can force a brief-specific point of view and useful self-critique. Their aesthetic prohibitions and direction-selection rituals are not objective laws; repeated use can create a new recognizable template.
+- Catalog/search Skills (for example, UI/UX Pro Max) are useful for locating patterns, tokens, and implementation guidance. Search results are candidates, not product decisions; choosing a ready-made palette/style can replace design reasoning with classification.
+- Generation workflows (for example, Stitch) can speed up variants and preserve an explicitly chosen design system. They optimize prompt translation and production, not whether the product's underlying interaction is right.
+- Audit Skills (for example, Vercel Web Interface Guidelines) are quality gates for semantics, accessibility, responsive behavior, and code-level implementation. Passing them does not establish a visual identity or product fit.
+- Marketing/portfolio-focused Skills must not be applied wholesale to Noema's desktop product UI. Check a Skill's intended surface and reject prescriptions outside that scope.
+
+When the direction is open, compare methods by their failure model, not by how many rules they contain. For each method, identify its intended surface, what it can reliably improve, and what recognizable output it may cause when applied mechanically. Creative-direction prompts can replace one default with a fashionable counter-default; numbered variance/motion/density dials are output controls, not objective aesthetic measurements; catalog-generated palettes and layouts are candidate retrieval, not taste. Never combine anti-pattern lists into a larger list of bans. Keep their shared, observable quality floor and make the remaining choices from Noema's actual interaction structure. Record one or two plausible alternatives that were rejected and why, rather than repeating the winning Skill's vocabulary.
+
+## Stable quality floor
+
+Judge the rendered experience, not compliance with one Skill:
+
+- The primary task and current state are apparent without decoding decorative language.
+- Hierarchy follows importance; density is intentional; repeated elements behave consistently.
+- Every action has a clear affordance, visible feedback, keyboard path, focus state, and recoverable failure where applicable.
+- Text is concrete, concise, and truthful; examples are labeled when synthetic. Empty, loading, disabled, and populated states are designed when relevant.
+- Contrast, zoom, reduced motion, small-window layout, and overflow are checked in the running app.
+- Motion communicates a state transition or relationship; decoration does not compete with reading or control.
+- The visual signature is generated by a product-specific structure or behavior, not by piling on effects or choosing a rare palette.
+
+## Noema-specific hypothesis and scope
+
+Memory provenance, editable personalization, persistent identity, model switching, and multi-provider chat already exist in mature products. They can inform quality, but are not Noema's differentiator by themselves. The user has specified that Noema's primary dialogue should stay available while specialist agents work in the background; completed work returns as a system event only when the primary agent is idle, and the user can intervene at any time. The current product hypothesis is whether a persistent personal root agent that owns this human-facing conversation, while background coding harnesses keep their native sessions/workspaces, offers enough beyond a DSH + relay/plugin stack to justify a standalone app. A model switch changes only the root dialogue's respondent; a harness handoff creates/continues a separate execution session and must disclose what is carried versus what remains native. When the user's instruction is clear, the app should start the worker without redundant confirmation; it should make the sent context inspectable afterward and provide in-flight steering/stop controls. This is a product hypothesis, not a confirmed architecture or a claim of transcript equivalence.
+
+Current visual hypothesis: make the app read as one continuing human conversation with parallel work happening beside it, not a chat window embedded in an agent operations dashboard. Keep the conversation as the stable visual center; make active work inspectable and steerable without letting its control surface dominate idle states; return results to the same chronology with source and timing. This is a compositional hypothesis derived from the user's confirmed interaction model, not a named aesthetic, palette, or final brand system.
+
+Do not default to a memory dashboard, agent-control cockpit, memory-card gallery, mascot/avatar, decorative graph, or task-centered chat that displaces the persistent Noema dialogue. The UI should distinguish the primary human conversation from background task state, and show completion as an event returning to that conversation. Use side panels or activity surfaces only if this actual relationship proves them useful. Do not force a visual metaphor that obscures a familiar action.
+
+For the current root-dialogue slice, chronology is real product structure: one user turn, its Noema response, and later turns belong to the same persistent thread. Use a single visual time spine to show that order; do not add competing decorative rails, repeated timestamps, or message-card chrome that says nothing about ownership or state. Keep local-model controls legible but subordinate to the exchange. A treatment is not a Noema signature merely because it is uncommon; it must make persistence, turn order, source, or a real state transition easier to perceive.
+
+## Delivery
+
+Build a real interaction rather than a static mockup when the Issue asks for a prototype. Include the path to inspect, correct, ignore, and export relevant understanding if these are in scope; label mock behavior honestly and do not imply model/runtime functionality that does not exist. Run the app, inspect at its intended desktop size and a narrow size, exercise primary actions and keyboard/focus behavior, and fix visible hierarchy, spacing, typography, contrast, overflow, and feedback defects. Record only durable design decisions; preserve prototypes as hypotheses until reviewed against actual use.
