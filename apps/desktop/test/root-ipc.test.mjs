@@ -18,6 +18,7 @@ test('registers only named root-agent actions and rejects non-window senders', a
   const rootAgent = {
     getUiState: async () => ({ messages: [] }),
     refreshModels: async () => ({ models: [] }),
+    configureProvider: async (configuration) => configuration,
     setModel: async (model) => model,
     sendMessage: ({ text }) => ({ turnId: text }),
     retryTurn: ({ turnId }) => ({ turnId }),
@@ -34,6 +35,7 @@ test('registers only named root-agent actions and rejects non-window senders', a
     [...harness.handlers.keys()].sort(),
     [
       CHANNELS.models,
+      CHANNELS.configureProvider,
       CHANNELS.retry,
       CHANNELS.selectModel,
       CHANNELS.send,

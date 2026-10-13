@@ -6,6 +6,8 @@ const bridge = {
   getRootState: (): Promise<NoemaRootState> =>
     ipcRenderer.invoke('noema:root-state'),
   refreshModels: () => ipcRenderer.invoke('noema:refresh-models'),
+  configureProvider: (configuration: { baseUrl: string; apiKey: string }) =>
+    ipcRenderer.invoke('noema:configure-provider', configuration),
   selectModel: (model: string) =>
     ipcRenderer.invoke('noema:select-model', model),
   sendMessage: (text: string) => ipcRenderer.invoke('noema:send-message', text),

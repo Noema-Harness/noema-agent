@@ -4,6 +4,8 @@
 - 日期：2026-10-13
 - 决策依据：用户明确要求主对话不被后台任务占用、任务结果作为系统事件在主对话空闲时返回；其余责任划分由助手在用户委托的 Noema 生命周期范围内决定
 
+> 当前有效性：本记录的对话/任务所有权边界仍有效；决策 7（本机 Ollama）及决策 10 中的 Ollama 专属参数已由 [ADR 0005](0005-free-model-routing-through-freellmapi.md) 取代。后续实现不得将本文历史模型选择当作当前要求。
+
 ## 背景
 
 多模型聊天、跨对话记忆和可编辑记忆来源已有成熟产品；DSH + Relay 插件还可以把 Codex、Claude Code 作为 DSH conversation backend，并回传事件。因此 Noema 不能把“统一 provider picker”“memory UI”或“集成 coding agents”本身当成独立产品理由。

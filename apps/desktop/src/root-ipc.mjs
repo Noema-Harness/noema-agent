@@ -1,6 +1,7 @@
 const CHANNELS = Object.freeze({
   state: 'noema:root-state',
   models: 'noema:refresh-models',
+  configureProvider: 'noema:configure-provider',
   selectModel: 'noema:select-model',
   send: 'noema:send-message',
   retry: 'noema:retry-turn',
@@ -23,6 +24,9 @@ export function registerRootIpc({ ipcMain, rootAgent, isTrustedSender }) {
 
   register(CHANNELS.state, () => rootAgent.getUiState());
   register(CHANNELS.models, () => rootAgent.refreshModels());
+  register(CHANNELS.configureProvider, (configuration) =>
+    rootAgent.configureProvider(configuration),
+  );
   register(CHANNELS.selectModel, (model) => rootAgent.setModel(model));
   register(CHANNELS.send, (text) => rootAgent.sendMessage({ text }));
   register(CHANNELS.retry, (turnId, model) =>

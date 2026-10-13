@@ -1,7 +1,15 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  safeStorage,
+  shell,
+} from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
-import { OllamaClient } from './ollama-client.mjs';
+import { EncryptedSecretStore } from './encrypted-secret-store.mjs';
+import { DEFAULT_BASE_URL, FreeLLMAPIClient } from './freellmapi-client.mjs';
 import { registerRootIpc, CHANNELS } from './root-ipc.mjs';
 import { RootAgent } from './root-agent.mjs';
 import { RootStore } from './root-store.mjs';
@@ -49,6 +57,7 @@ if (
 
 let mainWindow: BrowserWindow | null = null;
 let rootStore: RootStore | null = null;
+let providerSecretStore: EncryptedSecretStore | null = null;
 let unregisterRootIpc: (() => void) | null = null;
 
 const createWindow = () => {
@@ -114,6 +123,23 @@ const createWindow = () => {
   }
 };
 
+function discoverFreeLLMAPIBaseUrl(appDataPath: string) {
+  try {
+    const configPath = path.join(appDataPath, 'FreeLLMAPI', 'config.json');
+    const configuration = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    if (
+      Number.isInteger(configuration.port) &&
+      configuration.port > 0 &&
+      configuration.port <= 65_535
+    ) {
+      return `http://127.0.0.1:${configuration.port}/v1`;
+    }
+  } catch {
+    // Use FreeLLMAPI's documented default when the desktop configuration is absent.
+  }
+  return DEFAULT_BASE_URL;
+}
+
 async function startNoema() {
   if (app.isPackaged && process.platform === 'win32') {
     try {
@@ -135,9 +161,30 @@ async function startNoema() {
       path.join(app.getPath('userData'), 'noema.sqlite3'),
     );
     writeSmokeLog('store-opened');
+    providerSecretStore = new EncryptedSecretStore({
+      safeStorage,
+      filePath: path.join(
+        app.getPath('userData'),
+        'credentials',
+        'freellmapi.key',
+      ),
+    });
+    if (process.env.NOEMA_FREELLMAPI_API_KEY) {
+      providerSecretStore.set(process.env.NOEMA_FREELLMAPI_API_KEY);
+      delete process.env.NOEMA_FREELLMAPI_API_KEY;
+    }
+    const configuredBaseUrl =
+      providerSecretStore.getBaseUrl() ??
+      process.env.NOEMA_FREELLMAPI_BASE_URL ??
+      discoverFreeLLMAPIBaseUrl(app.getPath('appData'));
+    const provider = new FreeLLMAPIClient({
+      baseUrl: configuredBaseUrl,
+      getApiKey: () => providerSecretStore?.get() ?? null,
+    });
     const rootAgent = new RootAgent({
       store: rootStore,
-      ollama: new OllamaClient(),
+      provider,
+      secretStore: providerSecretStore,
       emit: (payload) => {
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send(CHANNELS.event, payload);

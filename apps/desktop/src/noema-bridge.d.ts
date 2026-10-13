@@ -1,7 +1,6 @@
 export interface NoemaModel {
   name: string;
-  size: number | null;
-  modifiedAt: string | null;
+  label: string;
 }
 
 export interface NoemaRootMessage {
@@ -31,10 +30,13 @@ export interface NoemaRootState {
   checking: boolean;
   models: NoemaModel[];
   error: string | null;
+  providerConfigured: boolean;
+  providerBaseUrl: string;
+  providerName: 'FreeLLMAPI';
 }
 
 export type NoemaRootEvent =
-  | { type: 'models-updated' }
+  | { type: 'models-updated' | 'provider-configured' }
   | { type: 'model-selected'; model: string }
   | {
       type: 'turn-started';
@@ -68,8 +70,20 @@ export interface NoemaBridge {
   appVersion: string;
   getRootState(): Promise<NoemaRootState>;
   refreshModels(): Promise<
-    Pick<NoemaRootState, 'connected' | 'models' | 'selectedModel' | 'error'>
+    Pick<
+      NoemaRootState,
+      | 'connected'
+      | 'models'
+      | 'selectedModel'
+      | 'error'
+      | 'providerConfigured'
+      | 'providerBaseUrl'
+    >
   >;
+  configureProvider(configuration: {
+    baseUrl: string;
+    apiKey: string;
+  }): Promise<Partial<NoemaRootState>>;
   selectModel(model: string): Promise<string>;
   sendMessage(text: string): Promise<{ turnId: string }>;
   retryTurn(
