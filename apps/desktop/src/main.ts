@@ -14,6 +14,10 @@ import { registerRootIpc, CHANNELS } from './root-ipc.mjs';
 import { RootAgent } from './root-agent.mjs';
 import { RootStore } from './root-store.mjs';
 import {
+  DshHeadlessAdapter,
+  resolveDshHeadlessRuntime,
+} from './dsh-headless-adapter.mjs';
+import {
   createWindowPreferences,
   isInternalNavigation,
   shouldOpenExternally,
@@ -59,6 +63,9 @@ let mainWindow: BrowserWindow | null = null;
 let rootStore: RootStore | null = null;
 let providerSecretStore: EncryptedSecretStore | null = null;
 let unregisterRootIpc: (() => void) | null = null;
+let rootAgent: RootAgent | null = null;
+let shutdownStarted = false;
+let shutdownComplete = false;
 
 const createWindow = () => {
   mainWindow = new BrowserWindow({
@@ -181,24 +188,64 @@ async function startNoema() {
       baseUrl: configuredBaseUrl,
       getApiKey: () => providerSecretStore?.get() ?? null,
     });
-    const rootAgent = new RootAgent({
+    let dshAdapter: DshHeadlessAdapter | null = null;
+    let dshRuntimeError: string | null = null;
+    try {
+      const runtime = await resolveDshHeadlessRuntime();
+      dshAdapter = new DshHeadlessAdapter({
+        runtime,
+        userDataPath: app.getPath('userData'),
+        providerBaseUrl: provider.baseUrl,
+        getApiKey: () => providerSecretStore?.get() ?? null,
+      });
+    } catch (error) {
+      dshRuntimeError =
+        error instanceof Error
+          ? error.message
+          : '没有找到可用的 DSH 后台运行环境。';
+    }
+    const agent = new RootAgent({
       store: rootStore,
       provider,
       secretStore: providerSecretStore,
+      dshAdapter,
+      dshRuntimeError,
       emit: (payload) => {
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send(CHANNELS.event, payload);
         }
       },
     });
+    rootAgent = agent;
     unregisterRootIpc = registerRootIpc({
       ipcMain,
-      rootAgent,
+      rootAgent: agent,
       isTrustedSender: (sender) =>
         Boolean(mainWindow && sender === mainWindow.webContents),
+      chooseWorkspace: async () => {
+        if (!mainWindow || mainWindow.isDestroyed()) return null;
+        const disclosure = await dialog.showMessageBox(mainWindow, {
+          type: 'info',
+          title: '后台任务的数据范围',
+          message: '选择工作区会允许后台 DSH agent 读取和修改其中的文件。',
+          detail:
+            '任务指令以及 agent 实际读取的文件内容会通过本机 FreeLLMAPI 发往当前免费链中的第三方服务（目前包括 BlockRun、Kilo 和 OVH，并可能按可用性切换）。不同服务的数据处理条款不同；例如 Kilo 声明会记录请求/响应用于训练。免费不代表私密。不要选择包含不应发送给第三方的密钥或敏感资料的目录。你仍可在任务运行时停止它，但停止前的文件改动不会自动回滚。',
+          buttons: ['取消', '继续选择工作区'],
+          defaultId: 1,
+          cancelId: 0,
+          noLink: true,
+        });
+        if (disclosure.response !== 1) return null;
+        const selection = await dialog.showOpenDialog(mainWindow, {
+          title: '选择后台 agent 可访问的工作区',
+          properties: ['openDirectory'],
+          buttonLabel: '允许此文件夹',
+        });
+        return selection.canceled ? null : (selection.filePaths[0] ?? null);
+      },
     });
     if (process.env.NOEMA_SMOKE_TEST !== '1') {
-      void rootAgent.refreshModels();
+      void agent.refreshModels();
     }
     createWindow();
     writeSmokeLog('window-created');
@@ -224,7 +271,19 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
-app.on('before-quit', () => {
-  unregisterRootIpc?.();
-  rootStore?.close();
+app.on('before-quit', (event) => {
+  if (!rootAgent || shutdownComplete) {
+    unregisterRootIpc?.();
+    rootStore?.close();
+    return;
+  }
+  event.preventDefault();
+  if (shutdownStarted) return;
+  shutdownStarted = true;
+  void rootAgent.shutdown().finally(() => {
+    shutdownComplete = true;
+    unregisterRootIpc?.();
+    rootStore?.close();
+    app.quit();
+  });
 });

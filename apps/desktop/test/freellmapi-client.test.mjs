@@ -16,6 +16,7 @@ test('lists only the explicitly verified free routes from available models', asy
       assert.equal(init.headers.authorization, 'Bearer test-key');
       return Response.json({
         data: [
+          { id: 'auto:noema-free', available: true },
           { id: 'free-router', available: true },
           { id: 'nemotron-3-super-120b', available: true },
           { id: 'gemini-2.5-flash', available: true },
@@ -26,10 +27,63 @@ test('lists only the explicitly verified free routes from available models', asy
   });
 
   assert.deepEqual(await client.listModels(), [
+    {
+      name: 'auto:noema-free',
+      label: 'Noema 免费模型链',
+    },
     { name: 'free-router', label: 'FreeLLMAPI 免费路由' },
     {
       name: 'nvidia/nemotron-3-super-120b-a12b:free',
       label: 'Nemotron 3 Super 120B · 免费',
+    },
+  ]);
+});
+
+test('assembles streamed FreeLLMAPI tool-call deltas without exposing arguments as chat text', async () => {
+  const encoder = new TextEncoder();
+  const chunks = [
+    'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"delegate_task","arguments":"{\\"task\\":"}}]}}]}\n\n',
+    'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\\"Read this project\\"}"}}]}}]}\n\n',
+    'data: [DONE]\n',
+  ];
+  const stream = new ReadableStream({
+    start(controller) {
+      for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
+      controller.close();
+    },
+  });
+  let requestBody;
+  let receivedCalls;
+  const client = new FreeLLMAPIClient({
+    getApiKey: () => 'test-key',
+    fetchImpl: async (_url, init) => {
+      requestBody = JSON.parse(init.body);
+      return new Response(stream, { status: 200 });
+    },
+  });
+  const text = [];
+  for await (const delta of client.streamChat({
+    model: 'auto:noema-free',
+    messages: [{ role: 'user', content: 'Read this project' }],
+    signal: new AbortController().signal,
+    tools: [{ type: 'function', function: { name: 'delegate_task' } }],
+    onToolCalls: (calls) => {
+      receivedCalls = calls;
+    },
+  }))
+    text.push(delta);
+
+  assert.equal(requestBody.model, 'auto:noema-free');
+  assert.equal(requestBody.tool_choice, 'auto');
+  assert.deepEqual(text, []);
+  assert.deepEqual(receivedCalls, [
+    {
+      id: 'call_1',
+      type: 'function',
+      function: {
+        name: 'delegate_task',
+        arguments: '{"task":"Read this project"}',
+      },
     },
   ]);
 });

@@ -9,13 +9,21 @@ import React, {
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { createRoot } from 'react-dom/client';
-import type { NoemaRootMessage, NoemaRootState } from './noema-bridge.d.ts';
+import type {
+  NoemaBackgroundTask,
+  NoemaRootMessage,
+  NoemaRootState,
+} from './noema-bridge.d.ts';
 
 type ConversationTurn = {
   id: string;
   messages: NoemaRootMessage[];
   latestAttempt: number;
 };
+
+type TimelineEntry =
+  | { kind: 'turn'; key: string; time: string; turn: ConversationTurn }
+  | { kind: 'task'; key: string; time: string; task: NoemaBackgroundTask };
 
 const markdownComponents: Components = {
   a: ({ href, children }) => (
@@ -58,6 +66,33 @@ function formatTime(value: string) {
     hour: '2-digit',
     minute: '2-digit',
   }).format(date);
+}
+
+function taskStatusLabel(task: NoemaBackgroundTask) {
+  if (task.status === 'starting') return '正在启动';
+  if (task.status === 'running') return '后台执行中';
+  if (task.status === 'completed') return '执行完成';
+  if (task.status === 'interrupted') return '已停止';
+  return '执行未完成';
+}
+
+function taskPhaseLabel(phase: string) {
+  const labels: Record<string, string> = {
+    starting: '正在启动 DSH',
+    running: '正在处理任务',
+    turn_start: '开始处理',
+    step_start: '正在检查工作区',
+    tool_call: '正在操作工作区文件',
+    tool_result: '已收到文件操作结果',
+    completed: '等待 Noema 接回结果',
+    failed: '需要检查这次执行',
+    interrupted: '进程已停止',
+  };
+  return labels[phase] ?? '后台处理中';
+}
+
+function shortSessionId(sessionId: string | null) {
+  return sessionId ? sessionId.replace(/^session-/, '').slice(0, 8) : '';
 }
 
 function App() {
@@ -121,6 +156,38 @@ function App() {
     () => groupTurns(root?.messages ?? []),
     [root?.messages],
   );
+  const workerTasks = root?.workerTasks ?? [];
+  const activeWorkerTasks = workerTasks.filter((task) =>
+    ['starting', 'running'].includes(task.status),
+  );
+  const timeline = useMemo<TimelineEntry[]>(() => {
+    const turnEntries: TimelineEntry[] = turns.flatMap((turn) => {
+      const userMessage = turn.messages.find(
+        (message) => message.role === 'user',
+      );
+      return userMessage
+        ? [
+            {
+              kind: 'turn',
+              key: `turn:${turn.id}`,
+              time: userMessage.createdAt,
+              turn,
+            },
+          ]
+        : [];
+    });
+    const taskEntries: TimelineEntry[] = workerTasks
+      .filter((task) => !['starting', 'running'].includes(task.status))
+      .map((task) => ({
+        kind: 'task',
+        key: `task:${task.id}`,
+        time: task.eventCreatedAt ?? task.createdAt,
+        task,
+      }));
+    return [...turnEntries, ...taskEntries].sort((left, right) =>
+      left.time.localeCompare(right.time),
+    );
+  }, [turns, workerTasks]);
   const busy = Boolean(root?.activeTurnId);
 
   useLayoutEffect(() => {
@@ -248,6 +315,60 @@ function App() {
     }
   };
 
+  const chooseWorkspace = async () => {
+    if (!root?.dshAvailable) {
+      setNotice(root?.dshWorkerError ?? '当前没有可用的 DSH 后台运行环境。');
+      return;
+    }
+    try {
+      const directory = await window.noema.chooseWorkspace();
+      if (!directory) return;
+      await refreshRoot();
+      setNotice('工作区已选定；后台任务只会使用此文件夹。');
+    } catch (error) {
+      setNotice(
+        error instanceof Error ? error.message : '工作区没有设置成功。',
+      );
+    }
+  };
+
+  const clearWorkspace = async () => {
+    try {
+      await window.noema.clearWorkspace();
+      await refreshRoot();
+      setNotice('已撤销后台工作区；Noema 不再向 DSH 开放该文件夹。');
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : '工作区没有移除。');
+    }
+  };
+
+  const stopBackgroundTask = async (taskId: string) => {
+    try {
+      const stopped = await window.noema.stopBackgroundTask(taskId);
+      if (!stopped) {
+        setNotice('后台任务已结束或无法停止；请检查任务状态。');
+      }
+      await refreshRoot();
+    } catch {
+      setNotice('停止请求没有完成；后台任务可能已产生部分文件改动。');
+    }
+  };
+
+  const resumeBackgroundTask = async (taskId: string) => {
+    try {
+      const result = await window.noema.resumeBackgroundTask(taskId);
+      if (!result.accepted) {
+        setNotice(result.errorMessage ?? '后台任务暂时无法续接。');
+      } else {
+        setNotice('已在原 DSH 会话中继续；已发生的文件改动不会回滚。');
+      }
+      await refreshRoot();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : '后台任务续接失败。');
+      await refreshRoot();
+    }
+  };
+
   const onComposerKeyDown = (
     event: React.KeyboardEvent<HTMLTextAreaElement>,
   ) => {
@@ -335,6 +456,44 @@ function App() {
               对话保存在这台设备；发送时由本机 FreeLLMAPI 转发到所选免费模型。
             </p>
           </div>
+          <div className="workspace-control">
+            <div
+              className="workspace-label"
+              title={root?.workspaceDirectory ?? ''}
+            >
+              <span className="workspace-mark" aria-hidden="true" />
+              <span>
+                {root?.workspaceDirectory
+                  ? root.workspaceDirectory
+                  : root?.dshWorkerError
+                    ? 'DSH 后台运行环境不可用'
+                    : '未选择后台工作区'}
+              </span>
+            </div>
+            <button
+              className="workspace-button"
+              type="button"
+              onClick={() => void chooseWorkspace()}
+              disabled={!root?.dshAvailable || activeWorkerTasks.length > 0}
+              title={root?.dshWorkerError ?? undefined}
+            >
+              {activeWorkerTasks.length > 0
+                ? '任务运行中'
+                : root?.workspaceDirectory
+                  ? '更换工作区'
+                  : '选择工作区'}
+            </button>
+            {root?.workspaceDirectory && (
+              <button
+                className="workspace-clear-button"
+                type="button"
+                onClick={() => void clearWorkspace()}
+                disabled={activeWorkerTasks.length > 0}
+              >
+                移除
+              </button>
+            )}
+          </div>
         </div>
 
         {root && !root.connected && !root.checking && (
@@ -411,7 +570,106 @@ function App() {
             </div>
           ) : (
             <div className="turn-list">
-              {turns.map((turn) => {
+              {timeline.map((entry) => {
+                if (entry.kind === 'task') {
+                  const task = entry.task;
+                  return (
+                    <article className="turn worker-turn" key={entry.key}>
+                      <div className="turn-gutter">
+                        <time>{formatTime(entry.time)}</time>
+                        <span className="turn-spine" aria-hidden="true">
+                          <span />
+                        </span>
+                      </div>
+                      <div className="turn-body">
+                        <section
+                          className={`worker-card worker-${task.status}`}
+                          aria-label="后台任务返回事件"
+                        >
+                          <div className="worker-card-heading">
+                            <div className="worker-title-group">
+                              <strong>后台任务</strong>
+                              <span>DSH · {task.model}</span>
+                            </div>
+                            <span
+                              className={`worker-status status-${task.status}`}
+                            >
+                              {taskStatusLabel(task)}
+                            </span>
+                          </div>
+                          <p className="worker-task-prompt">{task.prompt}</p>
+                          <div className="worker-metadata">
+                            <span title={task.workspacePath}>
+                              工作区 · {task.workspacePath}
+                            </span>
+                            {task.sessionId && (
+                              <span>
+                                会话 · {shortSessionId(task.sessionId)}
+                              </span>
+                            )}
+                            <span>文件操作 · {task.toolCallCount}</span>
+                          </div>
+                          {(task.resultText || task.errorMessage) && (
+                            <details className="worker-output-details">
+                              <summary>
+                                {task.errorMessage
+                                  ? '执行信息'
+                                  : '查看执行结果'}
+                              </summary>
+                              <div className="worker-output">
+                                {task.resultText || task.errorMessage}
+                              </div>
+                            </details>
+                          )}
+                          {task.status !== 'completed' &&
+                            (task.status === 'interrupted' ||
+                              task.toolCallCount > 0) && (
+                              <p className="worker-side-effect-note">
+                                任务未完整结束；停止前已发生的文件改动不会自动回滚。
+                              </p>
+                            )}
+                          {task.noemaResponseStatus === 'streaming' && (
+                            <p
+                              className="worker-response-pending"
+                              role="status"
+                            >
+                              Noema 正在接回这条系统事件…
+                            </p>
+                          )}
+                          {task.noemaResponse && (
+                            <div className="worker-noema-response">
+                              <span>Noema 接回结果</span>
+                              <p>{task.noemaResponse}</p>
+                            </div>
+                          )}
+                          {task.noemaResponseError && (
+                            <p className="worker-response-error" role="status">
+                              {task.noemaResponseError}
+                            </p>
+                          )}
+                          {['failed', 'interrupted'].includes(task.status) &&
+                            task.sessionId && (
+                              <button
+                                className="worker-resume-button"
+                                type="button"
+                                onClick={() =>
+                                  void resumeBackgroundTask(task.id)
+                                }
+                                disabled={busy || activeWorkerTasks.length > 0}
+                              >
+                                在原 DSH 会话中继续
+                              </button>
+                            )}
+                          <div className="worker-return-caption">
+                            结果作为后台系统事件返回；不是用户消息，也不是 DSH
+                            完整会话副本。
+                          </div>
+                        </section>
+                      </div>
+                    </article>
+                  );
+                }
+                const turn = entry.turn;
                 const userMessage = turn.messages.find(
                   (message) => message.role === 'user',
                 );
@@ -423,7 +681,7 @@ function App() {
                 );
                 if (!userMessage) return null;
                 return (
-                  <article className="turn" key={turn.id}>
+                  <article className="turn" key={entry.key}>
                     <div className="turn-gutter">
                       <time dateTime={userMessage.createdAt}>
                         {formatTime(userMessage.createdAt)}
@@ -552,6 +810,31 @@ function App() {
           )}
         </div>
 
+        {activeWorkerTasks.length > 0 && (
+          <section className="worker-dock" aria-label="正在进行的后台任务">
+            {activeWorkerTasks.map((task) => (
+              <div className="worker-active-row" key={task.id}>
+                <span className="worker-activity-pulse" aria-hidden="true" />
+                <div className="worker-active-copy">
+                  <div className="worker-active-heading">
+                    <strong>{taskPhaseLabel(task.phase)}</strong>
+                    <span>DSH · {task.toolCallCount} 次文件操作</span>
+                  </div>
+                  <p>{task.prompt}</p>
+                  <small title={task.workspacePath}>{task.workspacePath}</small>
+                </div>
+                <button
+                  className="worker-stop-button"
+                  type="button"
+                  onClick={() => void stopBackgroundTask(task.id)}
+                >
+                  停止任务
+                </button>
+              </div>
+            ))}
+          </section>
+        )}
+
         <div className="composer-dock">
           <form
             className={`composer${busy ? ' composer-busy' : ''}`}
@@ -604,9 +887,16 @@ function App() {
             <span>本地保存</span>
             <span aria-hidden="true">·</span>
             <span>
-              当前对话会经 FreeLLMAPI 发送给所选免费模型；每轮最多带入最近 8
-              轮对话
+              对话经 FreeLLMAPI 发送给所选免费模型；每轮最多带入最近 8 轮
             </span>
+            {root?.workspaceDirectory && (
+              <>
+                <span aria-hidden="true">·</span>
+                <span>
+                  后台任务及读取文件会发送到第三方免费模型链；免费不代表私密
+                </span>
+              </>
+            )}
           </div>
         </div>
       </main>

@@ -14,6 +14,12 @@ const bridge = {
   retryTurn: (turnId: string, model?: string | null) =>
     ipcRenderer.invoke('noema:retry-turn', turnId, model ?? null),
   stopTurn: (turnId: string) => ipcRenderer.invoke('noema:stop-turn', turnId),
+  chooseWorkspace: () => ipcRenderer.invoke('noema:choose-workspace'),
+  clearWorkspace: () => ipcRenderer.invoke('noema:clear-workspace'),
+  stopBackgroundTask: (taskId: string) =>
+    ipcRenderer.invoke('noema:stop-background-task', taskId),
+  resumeBackgroundTask: (taskId: string) =>
+    ipcRenderer.invoke('noema:resume-background-task', taskId),
   onRootEvent: (listener: (event: NoemaRootEvent) => void) => {
     const handler = (
       _event: Electron.IpcRendererEvent,

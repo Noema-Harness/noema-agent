@@ -23,12 +23,17 @@ test('registers only named root-agent actions and rejects non-window senders', a
     sendMessage: ({ text }) => ({ turnId: text }),
     retryTurn: ({ turnId }) => ({ turnId }),
     stopTurn: async () => true,
+    setWorkspaceDirectory: (directory) => directory,
+    clearWorkspaceDirectory: () => null,
+    stopBackgroundTask: async () => true,
+    resumeBackgroundTask: async (taskId) => ({ accepted: true, taskId }),
   };
   const trustedSender = {};
   const unregister = registerRootIpc({
     ipcMain: harness.ipcMain,
     rootAgent,
     isTrustedSender: (sender) => sender === trustedSender,
+    chooseWorkspace: async () => 'D:\\Scratch',
   });
 
   assert.deepEqual(
@@ -41,6 +46,10 @@ test('registers only named root-agent actions and rejects non-window senders', a
       CHANNELS.send,
       CHANNELS.state,
       CHANNELS.stop,
+      CHANNELS.chooseWorkspace,
+      CHANNELS.clearWorkspace,
+      CHANNELS.stopWorker,
+      CHANNELS.resumeWorker,
     ].sort(),
   );
   assert.deepEqual(
@@ -49,6 +58,25 @@ test('registers only named root-agent actions and rejects non-window senders', a
       'hello',
     ),
     { turnId: 'hello' },
+  );
+  assert.equal(
+    await harness.handlers.get(CHANNELS.chooseWorkspace)({
+      sender: trustedSender,
+    }),
+    'D:\\Scratch',
+  );
+  assert.equal(
+    await harness.handlers.get(CHANNELS.clearWorkspace)({
+      sender: trustedSender,
+    }),
+    null,
+  );
+  assert.deepEqual(
+    await harness.handlers.get(CHANNELS.resumeWorker)(
+      { sender: trustedSender },
+      'task-1',
+    ),
+    { accepted: true, taskId: 'task-1' },
   );
   await assert.rejects(
     harness.handlers.get(CHANNELS.state)({ sender: {} }),

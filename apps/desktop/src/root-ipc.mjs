@@ -6,14 +6,23 @@ const CHANNELS = Object.freeze({
   send: 'noema:send-message',
   retry: 'noema:retry-turn',
   stop: 'noema:stop-turn',
+  chooseWorkspace: 'noema:choose-workspace',
+  clearWorkspace: 'noema:clear-workspace',
+  stopWorker: 'noema:stop-background-task',
+  resumeWorker: 'noema:resume-background-task',
   event: 'noema:root-event',
 });
 
 /**
  * Registers only the narrow root-conversation operations that the renderer needs.
- * @param {{ipcMain: {handle: Function, removeHandler: Function}, rootAgent: object, isTrustedSender: (sender: object) => boolean}} options
+ * @param {{ipcMain: {handle: Function, removeHandler: Function}, rootAgent: object, isTrustedSender: (sender: object) => boolean,chooseWorkspace?:()=>Promise<string|null>}} options
  */
-export function registerRootIpc({ ipcMain, rootAgent, isTrustedSender }) {
+export function registerRootIpc({
+  ipcMain,
+  rootAgent,
+  isTrustedSender,
+  chooseWorkspace = async () => null,
+}) {
   const register = (channel, handler) => {
     ipcMain.handle(channel, async (event, ...args) => {
       if (!isTrustedSender(event.sender))
@@ -33,6 +42,17 @@ export function registerRootIpc({ ipcMain, rootAgent, isTrustedSender }) {
     rootAgent.retryTurn({ turnId, model }),
   );
   register(CHANNELS.stop, (turnId) => rootAgent.stopTurn(turnId));
+  register(CHANNELS.chooseWorkspace, async () => {
+    const directory = await chooseWorkspace();
+    return directory ? rootAgent.setWorkspaceDirectory(directory) : null;
+  });
+  register(CHANNELS.stopWorker, (taskId) =>
+    rootAgent.stopBackgroundTask(taskId),
+  );
+  register(CHANNELS.resumeWorker, (taskId) =>
+    rootAgent.resumeBackgroundTask(taskId),
+  );
+  register(CHANNELS.clearWorkspace, () => rootAgent.clearWorkspaceDirectory());
 
   return () => {
     for (const channel of Object.values(CHANNELS)) {
