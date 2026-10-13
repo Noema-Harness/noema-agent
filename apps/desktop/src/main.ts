@@ -262,8 +262,7 @@ async function startNoema() {
           type: 'info',
           title: '后台任务的数据范围',
           message: '选择工作区会允许后台 DSH agent 读取和修改其中的文件。',
-          detail:
-            '任务指令以及 agent 实际读取的文件内容会通过本机 FreeLLMAPI 发往当前免费链中的第三方服务（目前包括 BlockRun、Kilo 和 OVH，并可能按可用性切换）。不同服务的数据处理条款不同；例如 Kilo 声明会记录请求/响应用于训练。免费不代表私密。不要选择包含不应发送给第三方的密钥或敏感资料的目录。你仍可在任务运行时停止它，但停止前的文件改动不会自动回滚。',
+          detail: `任务指令${agent.store.getInteractionAdjustmentsForSurface('coding').length ? '及你保存的编码协作调整' : ''}，以及 agent 实际读取的文件内容，会通过本机 FreeLLMAPI 发往当前免费链中的第三方服务（目前包括 BlockRun、Kilo 和 OVH，并可能按可用性切换）。不同服务的数据处理条款不同；例如 Kilo 声明会记录请求/响应用于训练。免费不代表私密。不要选择包含不应发送给第三方的密钥或敏感资料的目录。你仍可在任务运行时停止它，但停止前的文件改动不会自动回滚。`,
           buttons: ['取消', '继续选择工作区'],
           defaultId: 1,
           cancelId: 0,

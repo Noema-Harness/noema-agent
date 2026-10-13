@@ -16,10 +16,41 @@ test('root store migrates idempotently and persists the selected model', () => {
     store.db
       .prepare('SELECT MAX(version) AS version FROM schema_migrations')
       .get().version,
-    4,
+    5,
   );
   store.setSelectedModel('free-router');
   assert.equal(store.getSelectedModel(), 'free-router');
+  store.close();
+});
+
+test('a schema-v4 database upgrades to interaction adjustment storage', () => {
+  const store = memoryStore();
+  store.db.exec(`
+    DROP TABLE interaction_adjustments;
+    DELETE FROM schema_migrations WHERE version = 5;
+  `);
+  assert.equal(
+    store.db
+      .prepare('SELECT MAX(version) AS version FROM schema_migrations')
+      .get().version,
+    4,
+  );
+
+  assert.doesNotThrow(() => store.migrate());
+  assert.equal(
+    store.db
+      .prepare('SELECT MAX(version) AS version FROM schema_migrations')
+      .get().version,
+    5,
+  );
+  assert.equal(
+    store.db
+      .prepare(
+        "SELECT count(*) AS count FROM sqlite_master WHERE type = 'table' AND name = 'interaction_adjustments'",
+      )
+      .get().count,
+    1,
+  );
   store.close();
 });
 
@@ -105,6 +136,172 @@ test('an unconsented Codex snapshot is excluded from every model context', () =>
   );
   assert.equal(store.getContextImports().length, 1);
   assert.equal(store.getContextImports()[0].consentedAt, null);
+  store.close();
+});
+
+test('interaction adjustments require a quoted user correction and stay scoped', () => {
+  const store = memoryStore();
+  const correction = store.beginTurn({
+    text: '你刚才又把阶段进展当成终点了。编码任务中，除非必须由我决定，否则请继续到交付。',
+    model: 'auto:noema-free',
+  });
+  const adjustment = store.addInteractionAdjustment({
+    id: 'adjustment-coding-1',
+    sourceTurnId: correction.id,
+    scope: 'coding',
+    situation: '长期编码任务的阶段性进度汇报',
+    behavior: '若没有用户决策或真实阻塞，就继续推进到验收完成。',
+    sourceQuote: '除非必须由我决定，否则请继续到交付。',
+  });
+
+  assert.equal(adjustment.status, 'active');
+  assert.equal(adjustment.scope, 'coding');
+  assert.match(adjustment.sourceQuote, /除非必须由我决定/);
+  assert.deepEqual(
+    store.getInteractionAdjustmentsForSurface('coding').map((item) => item.id),
+    ['adjustment-coding-1'],
+  );
+  assert.deepEqual(
+    store.getInteractionAdjustmentsForSurface('conversation'),
+    [],
+  );
+  assert.throws(
+    () =>
+      store.addInteractionAdjustment({
+        id: 'adjustment-unquoted',
+        sourceTurnId: correction.id,
+        scope: 'coding',
+        situation: '任何情境',
+        behavior: '不要停止。',
+        sourceQuote: '用户没说过的句子',
+      }),
+    /没有引用本轮用户原话/,
+  );
+
+  store.appendAssistant({ id: correction.id, attempt: 1, content: '收到。' });
+  store.completeTurn(correction.id, 1);
+  const next = store.beginTurn({
+    text: '继续处理代码任务。',
+    model: 'auto:noema-free',
+  });
+  const context = store.getPromptContext(next.id);
+  assert.equal(
+    context.messages.some((message) =>
+      message.content.includes('长期编码任务的阶段性进度汇报'),
+    ),
+    false,
+  );
+  assert.equal(context.messages.at(-1).content, '继续处理代码任务。');
+  assert.equal(context.interactionAdjustmentCount, 0);
+  assert.equal(store.withdrawInteractionAdjustment(adjustment.id), true);
+  assert.equal(
+    store.getInteractionAdjustment(adjustment.id).status,
+    'withdrawn',
+  );
+  assert.deepEqual(store.getInteractionAdjustmentsForSurface('coding'), []);
+  store.close();
+});
+
+test('conversation-scoped adjustments survive the recent-turn window until withdrawn', () => {
+  const store = memoryStore();
+  const correction = store.beginTurn({
+    text: '当我分享一段不愉快的经历时，先问我当时最在意什么，不要直接给心理分析。',
+    model: 'auto:noema-free',
+  });
+  store.addInteractionAdjustment({
+    id: 'adjustment-conversation-1',
+    sourceTurnId: correction.id,
+    scope: 'conversation',
+    situation: '用户分享一段不愉快的经历但没有请求分析或建议',
+    behavior:
+      '先自然回应并询问用户当时最在意的部分；不要先做心理诊断或给解决方案。',
+    sourceQuote: '不要直接给心理分析。',
+  });
+  store.appendAssistant({
+    id: correction.id,
+    attempt: 1,
+    content: '我听到了。',
+  });
+  store.completeTurn(correction.id, 1);
+
+  const next = store.beginTurn({
+    text: '朋友临时取消了约定，我有点不是滋味。',
+    model: 'auto:noema-free',
+  });
+  const context = store.getPromptContext(next.id);
+  const adjustment = context.messages.find((message) =>
+    message.content.includes('interaction_adjustments'),
+  );
+  assert.ok(adjustment);
+  assert.match(adjustment.content, /先自然回应并询问用户当时最在意的部分/);
+  assert.equal(
+    context.messages.at(-1).content,
+    '朋友临时取消了约定，我有点不是滋味。',
+  );
+  assert.equal(context.interactionAdjustmentCount, 1);
+
+  store.appendAssistant({ id: next.id, attempt: 1, content: '明白。' });
+  store.completeTurn(next.id, 1);
+  assert.equal(
+    store.withdrawInteractionAdjustment('adjustment-conversation-1'),
+    true,
+  );
+
+  const later = store.beginTurn({
+    text: '再说一件让我不舒服的事。',
+    model: 'auto:noema-free',
+  });
+  assert.equal(
+    store
+      .getPromptContext(later.id)
+      .messages.some((message) =>
+        message.content.includes('interaction_adjustments'),
+      ),
+    false,
+  );
+  assert.equal(
+    store.getInteractionAdjustment('adjustment-conversation-1').status,
+    'withdrawn',
+  );
+  store.close();
+});
+
+test('interaction adjustment storage refuses to grow beyond the active cap', () => {
+  const store = memoryStore();
+  for (let index = 1; index <= 12; index++) {
+    const quote = `明确纠正 ${index}`;
+    const turn = store.beginTurn({ text: quote, model: 'auto:noema-free' });
+    store.addInteractionAdjustment({
+      id: `adjustment-${index}`,
+      sourceTurnId: turn.id,
+      scope: 'conversation',
+      situation: `情境 ${index}`,
+      behavior: `行为 ${index}`,
+      sourceQuote: quote,
+    });
+    store.appendAssistant({ id: turn.id, attempt: 1, content: '记下了。' });
+    store.completeTurn(turn.id, 1);
+  }
+  const finalTurn = store.beginTurn({
+    text: '再增加一条明确纠正。',
+    model: 'auto:noema-free',
+  });
+  assert.throws(
+    () =>
+      store.addInteractionAdjustment({
+        id: 'adjustment-overflow',
+        sourceTurnId: finalTurn.id,
+        scope: 'conversation',
+        situation: '新的情境',
+        behavior: '新的行为',
+        sourceQuote: '再增加一条明确纠正。',
+      }),
+    /原型上限 12 条/,
+  );
+  assert.equal(
+    store.getInteractionAdjustmentsForSurface('conversation').length,
+    12,
+  );
   store.close();
 });
 

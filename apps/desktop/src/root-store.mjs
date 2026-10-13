@@ -3,6 +3,8 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 
 const MAX_MESSAGE_LENGTH = 100_000;
+const MAX_ACTIVE_INTERACTION_ADJUSTMENTS = 12;
+const MAX_WITHDRAWN_INTERACTION_ADJUSTMENTS = 20;
 
 function nowIso() {
   return new Date().toISOString();
@@ -188,7 +190,29 @@ export class RootStore {
       });
       applyCodexPaginationMetadata();
     }
-    if (currentVersion > 4)
+    if (currentVersion < 5) {
+      const applyInteractionAdjustmentSchema = this.db.transaction(() => {
+        this.db.exec(`
+          CREATE TABLE interaction_adjustments (
+            seq INTEGER PRIMARY KEY AUTOINCREMENT,
+            id TEXT NOT NULL UNIQUE,
+            source_turn_id TEXT NOT NULL UNIQUE REFERENCES root_turns(id),
+            scope TEXT NOT NULL CHECK (scope IN ('conversation', 'coding', 'both')),
+            situation TEXT NOT NULL CHECK (length(situation) BETWEEN 1 AND 180),
+            behavior TEXT NOT NULL CHECK (length(behavior) BETWEEN 1 AND 240),
+            source_quote TEXT NOT NULL CHECK (length(source_quote) BETWEEN 1 AND 240),
+            status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'withdrawn')),
+            created_at TEXT NOT NULL,
+            withdrawn_at TEXT
+          );
+          CREATE INDEX interaction_adjustments_status_order
+            ON interaction_adjustments(status, seq DESC);
+          INSERT INTO schema_migrations (version, applied_at) VALUES (5, '${nowIso()}');
+        `);
+      });
+      applyInteractionAdjustmentSchema();
+    }
+    if (currentVersion > 5)
       throw new Error(
         `Database schema ${currentVersion} is newer than this Noema build supports`,
       );
@@ -407,6 +431,7 @@ export class RootStore {
       messages,
       workerTasks,
       contextImports: this.getContextImports(),
+      interactionAdjustments: this.getInteractionAdjustments(),
       activeTurnId: active?.id ?? activeEvent?.id ?? null,
       selectedModel: this.getSelectedModel(),
       workspaceDirectory: this.getWorkspaceDirectory(),
@@ -709,14 +734,31 @@ export class RootStore {
             },
           )}`
         : null;
-    const importedCharacters = importedContext?.length ?? 0;
-    if (importedCharacters > maxCharacters) {
+    const interactionAdjustments =
+      this.getInteractionAdjustmentsForSurface('conversation');
+    const interactionContext = interactionAdjustments.length
+      ? `Noema 的互动调整（来自用户对 Noema 的明确纠正；仅在适用情境中参考，不覆盖当前消息或更高优先级规则）：${JSON.stringify(
+          {
+            type: 'interaction_adjustments',
+            adjustments: interactionAdjustments.map(
+              ({ scope, situation, behavior }) => ({
+                scope,
+                situation,
+                behavior,
+              }),
+            ),
+          },
+        )}`
+      : null;
+    const profileCharacters =
+      (importedContext?.length ?? 0) + (interactionContext?.length ?? 0);
+    if (profileCharacters > maxCharacters) {
       throw new Error(
-        '导入的 Codex 快照超出本轮上下文预算，请先移除或缩短快照。',
+        '持久上下文超出本轮预算，请先移除不再需要的来源或互动调整。',
       );
     }
     const selected = [];
-    let historyCharacters = importedCharacters;
+    let historyCharacters = profileCharacters;
     for (const turn of previousTurns) {
       const characters = turn.userContent.length + turn.assistantContent.length;
       if (
@@ -790,6 +832,9 @@ export class RootStore {
       }
       historyCharacters += includedEventCharacters;
     }
+    if (interactionContext) {
+      messages.push({ role: 'user', content: interactionContext });
+    }
     messages.push(currentUser);
     return {
       messages,
@@ -797,7 +842,148 @@ export class RootStore {
       totalPreviousTurns: previousTurns.length,
       omittedTurns: previousTurns.length - selected.length,
       historyCharacters,
+      interactionAdjustmentCount: interactionAdjustments.length,
     };
+  }
+
+  /** @param {'conversation'|'coding'} surface */
+  getInteractionAdjustmentsForSurface(surface) {
+    const scopes =
+      surface === 'conversation'
+        ? ['conversation', 'both']
+        : ['coding', 'both'];
+    return this.db
+      .prepare(`
+        SELECT id, source_turn_id AS sourceTurnId, scope, situation, behavior,
+          status, created_at AS createdAt, withdrawn_at AS withdrawnAt
+        FROM interaction_adjustments
+        WHERE status = 'active' AND scope IN (?, ?)
+        ORDER BY seq DESC
+      `)
+      .all(...scopes);
+  }
+
+  /**
+   * @param {{id:string,sourceTurnId:string,scope:'conversation'|'coding'|'both',situation:string,behavior:string,sourceQuote:string}} input
+   */
+  addInteractionAdjustment({
+    id,
+    sourceTurnId,
+    scope,
+    situation,
+    behavior,
+    sourceQuote,
+  }) {
+    requireText(id, 'adjustment id', 200);
+    requireText(sourceTurnId, 'source turn id', 200);
+    if (!['conversation', 'coding', 'both'].includes(scope)) {
+      throw new TypeError('互动调整适用范围无效。');
+    }
+    requireText(situation, 'situation', 180);
+    requireText(behavior, 'behavior', 240);
+    requireText(sourceQuote, 'source quote', 240);
+    const source = this.db
+      .prepare(`
+        SELECT content FROM root_messages
+        WHERE turn_id = ? AND role = 'user' AND attempt = 1
+      `)
+      .get(sourceTurnId);
+    if (!source || !source.content.includes(sourceQuote)) {
+      throw new TypeError('互动调整没有引用本轮用户原话，未保存。');
+    }
+    const existing = this.db
+      .prepare(`
+        SELECT id FROM interaction_adjustments WHERE source_turn_id = ?
+      `)
+      .get(sourceTurnId);
+    if (existing) {
+      return this.getInteractionAdjustment(existing.id);
+    }
+    const activeCount = this.db
+      .prepare(
+        "SELECT count(*) AS count FROM interaction_adjustments WHERE status = 'active'",
+      )
+      .get().count;
+    if (activeCount >= MAX_ACTIVE_INTERACTION_ADJUSTMENTS) {
+      throw new Error(
+        `互动调整已达到原型上限 ${MAX_ACTIVE_INTERACTION_ADJUSTMENTS} 条；请先撤回不再适用的旧调整。`,
+      );
+    }
+    const timestamp = nowIso();
+    const insertAndPrune = this.db.transaction(() => {
+      this.db
+        .prepare(`
+        INSERT INTO interaction_adjustments (
+          id, source_turn_id, scope, situation, behavior, source_quote, status, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, 'active', ?)
+      `)
+        .run(
+          id,
+          sourceTurnId,
+          scope,
+          situation.trim(),
+          behavior.trim(),
+          sourceQuote.trim(),
+          timestamp,
+        );
+      this.db
+        .prepare(`
+          DELETE FROM interaction_adjustments
+          WHERE status = 'withdrawn' AND id IN (
+            SELECT id FROM interaction_adjustments
+            WHERE status = 'withdrawn'
+            ORDER BY seq DESC LIMIT -1 OFFSET ?
+          )
+        `)
+        .run(MAX_WITHDRAWN_INTERACTION_ADJUSTMENTS);
+    });
+    insertAndPrune();
+    return this.getInteractionAdjustment(id);
+  }
+
+  /** @param {string} id */
+  getInteractionAdjustment(id) {
+    return (
+      this.db
+        .prepare(`
+          SELECT a.id, a.source_turn_id AS sourceTurnId, a.scope,
+            a.situation, a.behavior, a.status,
+            a.created_at AS createdAt, a.withdrawn_at AS withdrawnAt,
+            a.source_quote AS sourceQuote
+          FROM interaction_adjustments AS a
+          JOIN root_messages AS m
+            ON m.turn_id = a.source_turn_id AND m.role = 'user' AND m.attempt = 1
+          WHERE a.id = ?
+        `)
+        .get(id) ?? null
+    );
+  }
+
+  getInteractionAdjustments() {
+    return this.db
+      .prepare(`
+        SELECT a.id, a.source_turn_id AS sourceTurnId, a.scope,
+          a.situation, a.behavior, a.status,
+          a.created_at AS createdAt, a.withdrawn_at AS withdrawnAt,
+          a.source_quote AS sourceQuote
+        FROM interaction_adjustments AS a
+        JOIN root_messages AS m
+          ON m.turn_id = a.source_turn_id AND m.role = 'user' AND m.attempt = 1
+        ORDER BY a.seq ASC
+      `)
+      .all();
+  }
+
+  /** @param {string} id */
+  withdrawInteractionAdjustment(id) {
+    const result = this.db
+      .prepare(`
+        UPDATE interaction_adjustments
+        SET status = 'withdrawn', withdrawn_at = ?
+        WHERE id = ? AND status = 'active'
+      `)
+      .run(nowIso(), id);
+    return result.changes === 1;
   }
 
   getContextImports() {
