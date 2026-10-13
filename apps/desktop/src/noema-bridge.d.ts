@@ -57,6 +57,7 @@ export interface NoemaBackgroundTask {
 export interface NoemaRootState {
   messages: NoemaRootMessage[];
   workerTasks: NoemaBackgroundTask[];
+  contextImports: NoemaContextImport[];
   activeTurnId: string | null;
   selectedModel: string | null;
   connected: boolean;
@@ -70,10 +71,62 @@ export interface NoemaRootState {
   dshAvailable: boolean;
   dshWorkerAvailable: boolean;
   dshWorkerError: string | null;
+  codexImportAvailable: boolean;
+}
+
+export interface NoemaContextImport {
+  id: 'active';
+  source: 'codex';
+  sourceThreadId: string;
+  title: string;
+  workingDirectory: string | null;
+  sourceUpdatedAt: string | number | null;
+  capturedAt: string;
+  messages: Array<{ role: 'user' | 'assistant'; content: string }>;
+  messageCount: number;
+  characterCount: number;
+  omittedItems: number;
+  omittedTurns: number;
+  omittedMessages: number;
+  hasMoreTurns: boolean;
+  consentedAt: string | null;
+}
+
+export interface NoemaCodexThread {
+  id: string;
+  title: string;
+  preview: string;
+  cwd: string | null;
+  updatedAt: string | number | null;
+  modelProvider: string | null;
+  status: string;
+}
+
+export interface NoemaCodexThreadPage {
+  threads: NoemaCodexThread[];
+  nextCursor: string | null;
+}
+
+export interface NoemaCodexPreview {
+  source: 'codex';
+  threadId: string;
+  title: string;
+  cwd: string | null;
+  sourceUpdatedAt: string | number | null;
+  capturedAt: string;
+  messages: Array<{ role: 'user' | 'assistant'; content: string }>;
+  omittedItems: number;
+  omittedTurns: number;
+  omittedMessages: number;
+  totalVisibleMessages: number;
+  characterCount: number;
+  hasMoreTurns: boolean;
+  sourceStatus: string;
 }
 
 export type NoemaTurnEvent =
   | { type: 'models-updated' | 'provider-configured' }
+  | { type: 'context-import-updated' }
   | { type: 'model-selected'; model: string }
   | {
       type: 'turn-started';
@@ -140,7 +193,7 @@ export interface NoemaBridge {
     apiKey: string;
   }): Promise<Partial<NoemaRootState>>;
   selectModel(model: string): Promise<string>;
-  sendMessage(text: string): Promise<{ turnId: string }>;
+  sendMessage(text: string): Promise<{ turnId?: string; canceled?: boolean }>;
   retryTurn(
     turnId: string,
     model?: string | null,
@@ -156,6 +209,13 @@ export interface NoemaBridge {
     workspacePath?: string;
     errorMessage?: string;
   }>;
+  listCodexThreads(cursor?: string | null): Promise<NoemaCodexThreadPage>;
+  previewCodexThread(threadId: string): Promise<NoemaCodexPreview>;
+  importCodexThread(input: {
+    threadId: string;
+    expectedSourceUpdatedAt: string | number | null;
+  }): Promise<NoemaContextImport>;
+  removeContextImport(): Promise<boolean>;
   onRootEvent(listener: (event: NoemaRootEvent) => void): () => void;
 }
 

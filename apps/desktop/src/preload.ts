@@ -20,6 +20,15 @@ const bridge = {
     ipcRenderer.invoke('noema:stop-background-task', taskId),
   resumeBackgroundTask: (taskId: string) =>
     ipcRenderer.invoke('noema:resume-background-task', taskId),
+  listCodexThreads: (cursor?: string | null) =>
+    ipcRenderer.invoke('noema:list-codex-threads', cursor ?? null),
+  previewCodexThread: (threadId: string) =>
+    ipcRenderer.invoke('noema:preview-codex-thread', threadId),
+  importCodexThread: (input: {
+    threadId: string;
+    expectedSourceUpdatedAt: string | number | null;
+  }) => ipcRenderer.invoke('noema:import-codex-thread', input),
+  removeContextImport: () => ipcRenderer.invoke('noema:remove-context-import'),
   onRootEvent: (listener: (event: NoemaRootEvent) => void) => {
     const handler = (
       _event: Electron.IpcRendererEvent,

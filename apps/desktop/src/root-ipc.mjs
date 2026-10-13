@@ -10,18 +10,23 @@ const CHANNELS = Object.freeze({
   clearWorkspace: 'noema:clear-workspace',
   stopWorker: 'noema:stop-background-task',
   resumeWorker: 'noema:resume-background-task',
+  listCodexThreads: 'noema:list-codex-threads',
+  previewCodexThread: 'noema:preview-codex-thread',
+  importCodexThread: 'noema:import-codex-thread',
+  removeContextImport: 'noema:remove-context-import',
   event: 'noema:root-event',
 });
 
 /**
  * Registers only the narrow root-conversation operations that the renderer needs.
- * @param {{ipcMain: {handle: Function, removeHandler: Function}, rootAgent: object, isTrustedSender: (sender: object) => boolean,chooseWorkspace?:()=>Promise<string|null>}} options
+ * @param {{ipcMain: {handle: Function, removeHandler: Function}, rootAgent: object, isTrustedSender: (sender: object) => boolean,chooseWorkspace?:()=>Promise<string|null>,sendMessage?:(text:string)=>Promise<object>|object}} options
  */
 export function registerRootIpc({
   ipcMain,
   rootAgent,
   isTrustedSender,
   chooseWorkspace = async () => null,
+  sendMessage = (text) => rootAgent.sendMessage({ text }),
 }) {
   const register = (channel, handler) => {
     ipcMain.handle(channel, async (event, ...args) => {
@@ -37,7 +42,7 @@ export function registerRootIpc({
     rootAgent.configureProvider(configuration),
   );
   register(CHANNELS.selectModel, (model) => rootAgent.setModel(model));
-  register(CHANNELS.send, (text) => rootAgent.sendMessage({ text }));
+  register(CHANNELS.send, (text) => sendMessage(text));
   register(CHANNELS.retry, (turnId, model) =>
     rootAgent.retryTurn({ turnId, model }),
   );
@@ -53,11 +58,38 @@ export function registerRootIpc({
     rootAgent.resumeBackgroundTask(taskId),
   );
   register(CHANNELS.clearWorkspace, () => rootAgent.clearWorkspaceDirectory());
+  register(CHANNELS.listCodexThreads, (cursor) =>
+    rootAgent.listCodexThreads(cursor ?? null),
+  );
+  register(CHANNELS.previewCodexThread, (threadId) =>
+    rootAgent.previewCodexThread(threadId),
+  );
+  register(CHANNELS.importCodexThread, (input) =>
+    rootAgent.importCodexThread(input),
+  );
+  register(CHANNELS.removeContextImport, () => rootAgent.removeContextImport());
 
   return () => {
     for (const channel of Object.values(CHANNELS)) {
       if (channel !== CHANNELS.event) ipcMain.removeHandler(channel);
     }
+  };
+}
+
+/**
+ * Requires explicit transmission consent before a selected external snapshot
+ * can enter any FreeLLMAPI-backed root turn.
+ * @param {object} rootAgent
+ * @param {(snapshot:{title:string})=>Promise<boolean>} confirmTransmission
+ */
+export function createImportAwareSendMessage(rootAgent, confirmTransmission) {
+  return async (text) => {
+    const imported = rootAgent.getUnconsentedContextImport();
+    if (imported) {
+      if (!(await confirmTransmission(imported))) return { canceled: true };
+      rootAgent.consentToContextImportTransmission();
+    }
+    return rootAgent.sendMessage({ text });
   };
 }
 

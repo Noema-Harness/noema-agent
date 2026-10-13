@@ -11,6 +11,9 @@ import remarkGfm from 'remark-gfm';
 import { createRoot } from 'react-dom/client';
 import type {
   NoemaBackgroundTask,
+  NoemaCodexPreview,
+  NoemaCodexThread,
+  NoemaContextImport,
   NoemaRootMessage,
   NoemaRootState,
 } from './noema-bridge.d.ts';
@@ -23,7 +26,8 @@ type ConversationTurn = {
 
 type TimelineEntry =
   | { kind: 'turn'; key: string; time: string; turn: ConversationTurn }
-  | { kind: 'task'; key: string; time: string; task: NoemaBackgroundTask };
+  | { kind: 'task'; key: string; time: string; task: NoemaBackgroundTask }
+  | { kind: 'context'; key: string; time: string; context: NoemaContextImport };
 
 const markdownComponents: Components = {
   a: ({ href, children }) => (
@@ -68,6 +72,20 @@ function formatTime(value: string) {
   }).format(date);
 }
 
+function formatCodexTime(value: string | number | null) {
+  if (value === null) return '时间未知';
+  const milliseconds = typeof value === 'number' ? value * 1_000 : value;
+  const date = new Date(milliseconds);
+  return Number.isNaN(date.valueOf())
+    ? '时间未知'
+    : new Intl.DateTimeFormat('zh-CN', {
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      }).format(date);
+}
+
 function taskStatusLabel(task: NoemaBackgroundTask) {
   if (task.status === 'starting') return '正在启动';
   if (task.status === 'running') return '后台执行中';
@@ -107,8 +125,19 @@ function App() {
   const [providerApiKey, setProviderApiKey] = useState('');
   const [savingProvider, setSavingProvider] = useState(false);
   const [retryingTurn, setRetryingTurn] = useState<string | null>(null);
+  const [codexImportOpen, setCodexImportOpen] = useState(false);
+  const [codexThreads, setCodexThreads] = useState<NoemaCodexThread[]>([]);
+  const [codexPreview, setCodexPreview] = useState<NoemaCodexPreview | null>(
+    null,
+  );
+  const [codexNextCursor, setCodexNextCursor] = useState<string | null>(null);
+  const [loadingCodex, setLoadingCodex] = useState(false);
+  const [importingCodex, setImportingCodex] = useState(false);
+  const [codexError, setCodexError] = useState('');
   const conversationRef = useRef<HTMLDivElement>(null);
   const followConversationRef = useRef(true);
+  const codexImportTriggerRef = useRef<HTMLButtonElement>(null);
+  const codexImportCloseRef = useRef<HTMLButtonElement>(null);
 
   const refreshRoot = useCallback(async () => {
     try {
@@ -160,6 +189,7 @@ function App() {
   const activeWorkerTasks = workerTasks.filter((task) =>
     ['starting', 'running'].includes(task.status),
   );
+  const contextImports = root?.contextImports ?? [];
   const timeline = useMemo<TimelineEntry[]>(() => {
     const turnEntries: TimelineEntry[] = turns.flatMap((turn) => {
       const userMessage = turn.messages.find(
@@ -184,17 +214,25 @@ function App() {
         time: task.eventCreatedAt ?? task.createdAt,
         task,
       }));
-    return [...turnEntries, ...taskEntries].sort((left, right) =>
-      left.time.localeCompare(right.time),
+    const contextEntries: TimelineEntry[] = (root?.contextImports ?? []).map(
+      (context) => ({
+        kind: 'context',
+        key: `context:${context.id}`,
+        time: context.capturedAt,
+        context,
+      }),
     );
-  }, [turns, workerTasks]);
+    return [...turnEntries, ...taskEntries, ...contextEntries].sort(
+      (left, right) => left.time.localeCompare(right.time),
+    );
+  }, [turns, workerTasks, root?.contextImports]);
   const busy = Boolean(root?.activeTurnId);
 
   useLayoutEffect(() => {
     const node = conversationRef.current;
     if (node && followConversationRef.current)
       node.scrollTop = node.scrollHeight;
-  }, [root?.messages]);
+  }, [root?.messages, root?.contextImports]);
 
   useEffect(() => {
     const node = conversationRef.current;
@@ -205,6 +243,10 @@ function App() {
     window.addEventListener('resize', preserveLatestTurn);
     return () => window.removeEventListener('resize', preserveLatestTurn);
   }, []);
+
+  useEffect(() => {
+    if (codexImportOpen) codexImportCloseRef.current?.focus();
+  }, [codexImportOpen]);
 
   const refreshModels = async () => {
     setRefreshing(true);
@@ -266,6 +308,103 @@ function App() {
     }
   };
 
+  const openCodexImport = async () => {
+    setCodexImportOpen(true);
+    setCodexPreview(null);
+    setCodexError('');
+    setLoadingCodex(true);
+    try {
+      const page = await window.noema.listCodexThreads();
+      setCodexThreads(page.threads);
+      setCodexNextCursor(page.nextCursor);
+    } catch (error) {
+      setCodexError(
+        error instanceof Error ? error.message : '无法读取 Codex 会话列表。',
+      );
+    } finally {
+      setLoadingCodex(false);
+    }
+  };
+
+  const loadMoreCodexThreads = async () => {
+    if (!codexNextCursor || loadingCodex) return;
+    setCodexError('');
+    setLoadingCodex(true);
+    try {
+      const page = await window.noema.listCodexThreads(codexNextCursor);
+      setCodexThreads((current) => {
+        const known = new Set(current.map((thread) => thread.id));
+        return [
+          ...current,
+          ...page.threads.filter((thread) => !known.has(thread.id)),
+        ];
+      });
+      setCodexNextCursor(page.nextCursor);
+    } catch (error) {
+      setCodexError(
+        error instanceof Error ? error.message : '无法读取更早的 Codex 会话。',
+      );
+    } finally {
+      setLoadingCodex(false);
+    }
+  };
+
+  const closeCodexImport = () => {
+    setCodexImportOpen(false);
+    requestAnimationFrame(() => codexImportTriggerRef.current?.focus());
+  };
+
+  const previewCodexThread = async (threadId: string) => {
+    setCodexPreview(null);
+    setCodexError('');
+    setLoadingCodex(true);
+    try {
+      setCodexPreview(await window.noema.previewCodexThread(threadId));
+    } catch (error) {
+      setCodexError(
+        error instanceof Error ? error.message : '无法预览所选 Codex 会话。',
+      );
+    } finally {
+      setLoadingCodex(false);
+    }
+  };
+
+  const importCodexThread = async () => {
+    if (!codexPreview || importingCodex || contextImports.length > 0) return;
+    setImportingCodex(true);
+    setCodexError('');
+    try {
+      await window.noema.importCodexThread({
+        threadId: codexPreview.threadId,
+        expectedSourceUpdatedAt: codexPreview.sourceUpdatedAt,
+      });
+      setCodexImportOpen(false);
+      setCodexPreview(null);
+      await refreshRoot();
+      setNotice('Codex 可见对话已保存在本机；发送给模型前会再次征求同意。');
+    } catch (error) {
+      setCodexError(
+        error instanceof Error ? error.message : 'Codex 快照没有导入。',
+      );
+      await refreshRoot();
+    } finally {
+      setImportingCodex(false);
+    }
+  };
+
+  const removeContextImport = async () => {
+    try {
+      if (await window.noema.removeContextImport()) {
+        await refreshRoot();
+        setNotice('已从 Noema 移除 Codex 快照；不会影响 Codex 原会话。');
+      }
+    } catch (error) {
+      setNotice(
+        error instanceof Error ? error.message : '无法移除 Codex 快照。',
+      );
+    }
+  };
+
   const sendMessage = async () => {
     const text = draft;
     if (!text.trim() || busy || sending) return;
@@ -273,7 +412,11 @@ function App() {
     setSending(true);
     setNotice('');
     try {
-      await window.noema.sendMessage(text);
+      const result = await window.noema.sendMessage(text);
+      if (result.canceled) {
+        setNotice('本次发送已取消；导入内容没有发送给模型。');
+        return;
+      }
       setDraft('');
       await refreshRoot();
     } catch (error) {
@@ -457,6 +600,26 @@ function App() {
             </p>
           </div>
           <div className="workspace-control">
+            <button
+              ref={codexImportTriggerRef}
+              className="workspace-button context-import-button"
+              type="button"
+              onClick={() => void openCodexImport()}
+              disabled={
+                !root?.codexImportAvailable || contextImports.length > 0
+              }
+              title={
+                contextImports.length > 0
+                  ? '先移除当前导入快照，再选择其他 Codex 会话。'
+                  : root?.codexImportAvailable
+                    ? '只读列出本机 Codex 会话'
+                    : '没有找到本机 Codex 桌面程序。'
+              }
+            >
+              {contextImports.length > 0
+                ? '已带入 Codex 上下文'
+                : '从 Codex 续接'}
+            </button>
             <div
               className="workspace-label"
               title={root?.workspaceDirectory ?? ''}
@@ -555,7 +718,7 @@ function App() {
           }}
           aria-label="对话记录"
         >
-          {turns.length === 0 ? (
+          {timeline.length === 0 ? (
             <div className="empty-conversation">
               <div className="empty-thread" aria-hidden="true">
                 <span />
@@ -571,6 +734,94 @@ function App() {
           ) : (
             <div className="turn-list">
               {timeline.map((entry) => {
+                if (entry.kind === 'context') {
+                  const context = entry.context;
+                  return (
+                    <article className="turn context-turn" key={entry.key}>
+                      <div className="turn-gutter">
+                        <time dateTime={context.capturedAt}>
+                          {formatTime(entry.time)}
+                        </time>
+                        <span className="turn-spine" aria-hidden="true">
+                          <span />
+                        </span>
+                      </div>
+                      <div className="turn-body">
+                        <section
+                          className="context-card"
+                          aria-label="导入的 Codex 会话上下文"
+                        >
+                          <div className="context-card-heading">
+                            <div>
+                              <strong>Codex 会话快照</strong>
+                              <span>{context.title}</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => void removeContextImport()}
+                            >
+                              从 Noema 移除
+                            </button>
+                          </div>
+                          <p
+                            className="context-card-origin"
+                            title={context.workingDirectory ?? ''}
+                          >
+                            {context.workingDirectory ?? '未记录工作目录'} ·{' '}
+                            {context.messageCount} 条可见消息 ·{' '}
+                            {context.characterCount.toLocaleString()} 字
+                          </p>
+                          {(context.omittedItems > 0 ||
+                            context.omittedTurns > 0 ||
+                            context.omittedMessages > 0 ||
+                            context.hasMoreTurns) && (
+                            <p className="context-card-omissions">
+                              {context.hasMoreTurns &&
+                                '只导入最近 40 个轮次，更早轮次未带入。 '}
+                              有内容未带入：{context.omittedItems}{' '}
+                              项工具/非文字记录、
+                              {context.omittedTurns} 个进行中轮次、 较早历史中的{' '}
+                              {context.omittedMessages} 条可见消息。
+                            </p>
+                          )}
+                          <details className="context-preview-details">
+                            <summary>查看实际导入的可见文字</summary>
+                            <div className="context-preview-messages">
+                              {context.messages.map((message, index) => (
+                                <div
+                                  className="context-preview-message"
+                                  key={`${context.sourceThreadId}:${index}`}
+                                >
+                                  <span>
+                                    {message.role === 'user'
+                                      ? 'Codex 用户消息'
+                                      : 'Codex 回复'}
+                                  </span>
+                                  <p>{message.content}</p>
+                                </div>
+                              ))}
+                            </div>
+                          </details>
+                          <p
+                            className={
+                              context.consentedAt
+                                ? 'context-transmission is-active'
+                                : 'context-transmission'
+                            }
+                          >
+                            {context.consentedAt
+                              ? '已授权：这份快照会随 Noema 后续对话发送到 FreeLLMAPI，直到移除。'
+                              : '仅保存在本机；下次发送时会先说明数据去向并征求同意。'}
+                          </p>
+                          <div className="context-card-footnote">
+                            这是只读文字快照，不是完整 Codex 会话副本；Codex
+                            中的工具状态与执行记录仍留在原应用，源会话后续变化也不会自动同步。
+                          </div>
+                        </section>
+                      </div>
+                    </article>
+                  );
+                }
                 if (entry.kind === 'task') {
                   const task = entry.task;
                   return (
@@ -911,6 +1162,185 @@ function App() {
           >
             关闭
           </button>
+        </div>
+      )}
+
+      {codexImportOpen && (
+        <div className="modal-scrim codex-import-scrim" role="presentation">
+          <section
+            className="codex-import-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="codex-import-title"
+            aria-describedby="codex-import-description"
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') {
+                closeCodexImport();
+                return;
+              }
+              if (event.key !== 'Tab') return;
+              const focusable = Array.from(
+                event.currentTarget.querySelectorAll<HTMLButtonElement>(
+                  'button:not(:disabled)',
+                ),
+              );
+              if (focusable.length === 0) return;
+              const first = focusable[0];
+              const last = focusable.at(-1);
+              if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last?.focus();
+              } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first?.focus();
+              }
+            }}
+          >
+            <div className="settings-heading">
+              <div>
+                <p className="settings-eyebrow">只读 · 本机 Codex</p>
+                <h2 id="codex-import-title">把已有工作带到 Noema</h2>
+              </div>
+              <button
+                ref={codexImportCloseRef}
+                className="modal-close"
+                type="button"
+                onClick={closeCodexImport}
+                aria-label="关闭 Codex 会话导入"
+              >
+                ×
+              </button>
+            </div>
+            <p className="settings-description" id="codex-import-description">
+              选择一条 Codex
+              会话后先检查快照，再决定是否导入。按最近活动时间列出本机未归档会话；读取与预览只访问本机数据，不会调用模型。
+            </p>
+            {contextImports.length > 0 && (
+              <div className="codex-import-warning" role="status">
+                当前已有一份快照。移除它后才能导入新的 Codex 会话。
+              </div>
+            )}
+            {codexError && (
+              <div className="codex-import-error" role="alert">
+                {codexError}
+              </div>
+            )}
+            <div className="codex-import-columns">
+              <div
+                className="codex-thread-list"
+                aria-label="本机 Codex 会话列表"
+              >
+                {loadingCodex && (
+                  <p className="codex-empty-state">正在只读读取会话…</p>
+                )}
+                {!loadingCodex && codexThreads.length === 0 && !codexError && (
+                  <p className="codex-empty-state">
+                    没有找到可导入的 Codex 会话。
+                  </p>
+                )}
+                {codexThreads.map((thread) => (
+                  <button
+                    className={`codex-thread-option${codexPreview?.threadId === thread.id ? ' is-selected' : ''}`}
+                    key={thread.id}
+                    type="button"
+                    aria-pressed={codexPreview?.threadId === thread.id}
+                    onClick={() => void previewCodexThread(thread.id)}
+                    disabled={loadingCodex}
+                  >
+                    <strong>{thread.title}</strong>
+                    <span>{thread.cwd ?? '未记录工作目录'}</span>
+                    <small>{formatCodexTime(thread.updatedAt)}</small>
+                  </button>
+                ))}
+                {codexNextCursor && (
+                  <button
+                    className="codex-load-more"
+                    type="button"
+                    onClick={() => void loadMoreCodexThreads()}
+                    disabled={loadingCodex}
+                  >
+                    {loadingCodex ? '正在读取…' : '加载更早的会话'}
+                  </button>
+                )}
+              </div>
+              <div className="codex-thread-preview">
+                {!codexPreview && (
+                  <p className="codex-empty-state">
+                    选中左侧会话，查看将会带入的内容。
+                  </p>
+                )}
+                {loadingCodex && codexPreview && (
+                  <p className="codex-empty-state">正在重新读取预览…</p>
+                )}
+                {codexPreview && !loadingCodex && (
+                  <>
+                    <div className="codex-preview-heading">
+                      <strong>{codexPreview.title}</strong>
+                      <span>
+                        {codexPreview.messages.length} 条消息 ·{' '}
+                        {codexPreview.characterCount.toLocaleString()} 字
+                      </span>
+                    </div>
+                    {codexPreview.hasMoreTurns && (
+                      <p className="codex-preview-truncation">
+                        只显示最近 40 个轮次；更早历史不会导入。
+                      </p>
+                    )}
+                    {(codexPreview.omittedItems > 0 ||
+                      codexPreview.omittedTurns > 0 ||
+                      codexPreview.omittedMessages > 0) && (
+                      <p className="codex-preview-truncation">
+                        未导入 {codexPreview.omittedItems} 项工具/非文字记录、
+                        {codexPreview.omittedTurns} 个进行中轮次、 较早历史中的{' '}
+                        {codexPreview.omittedMessages} 条可见消息。
+                      </p>
+                    )}
+                    <div className="codex-preview-scroll">
+                      {codexPreview.messages.map((message, index) => (
+                        <article
+                          className="codex-preview-message"
+                          key={`${codexPreview.threadId}:${index}`}
+                        >
+                          <span>
+                            {message.role === 'user' ? '用户' : 'Codex'}
+                          </span>
+                          <p>{message.content}</p>
+                        </article>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+            <div className="codex-import-disclosure">
+              导入只保存本机快照；不复制 reasoning、工具调用、文件内容或 Codex
+              session
+              状态，不会自动同步源会话后续变化，也不修改源会话。今后发送给 Noema
+              时会先征求同意，再经 FreeLLMAPI 当前免费路由发送所选文字。
+            </div>
+            <div className="settings-actions">
+              <button
+                className="settings-cancel"
+                type="button"
+                onClick={closeCodexImport}
+              >
+                取消
+              </button>
+              <button
+                className="settings-save"
+                type="button"
+                onClick={() => void importCodexThread()}
+                disabled={
+                  !codexPreview ||
+                  loadingCodex ||
+                  importingCodex ||
+                  contextImports.length > 0
+                }
+              >
+                {importingCodex ? '正在校验并保存…' : '导入这份快照'}
+              </button>
+            </div>
+          </section>
         </div>
       )}
 

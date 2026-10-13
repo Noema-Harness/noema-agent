@@ -10,9 +10,18 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { EncryptedSecretStore } from './encrypted-secret-store.mjs';
 import { DEFAULT_BASE_URL, FreeLLMAPIClient } from './freellmapi-client.mjs';
-import { registerRootIpc, CHANNELS } from './root-ipc.mjs';
+import {
+  createImportAwareSendMessage,
+  registerRootIpc,
+  CHANNELS,
+} from './root-ipc.mjs';
 import { RootAgent } from './root-agent.mjs';
 import { RootStore } from './root-store.mjs';
+import { resolveNoemaDatabasePath } from './runtime-paths.mjs';
+import {
+  CodexAppServerAdapter,
+  resolveCodexExecutable,
+} from './codex-app-server-adapter.mjs';
 import {
   DshHeadlessAdapter,
   resolveDshHeadlessRuntime,
@@ -66,6 +75,8 @@ let unregisterRootIpc: (() => void) | null = null;
 let rootAgent: RootAgent | null = null;
 let shutdownStarted = false;
 let shutdownComplete = false;
+const testDatabasePath = process.env.NOEMA_E2E_DATABASE_PATH ?? null;
+delete process.env.NOEMA_E2E_DATABASE_PATH;
 
 const createWindow = () => {
   mainWindow = new BrowserWindow({
@@ -165,7 +176,11 @@ async function startNoema() {
   writeSmokeLog('app-ready', { userData: app.getPath('userData') });
   try {
     rootStore = new RootStore(
-      path.join(app.getPath('userData'), 'noema.sqlite3'),
+      resolveNoemaDatabasePath({
+        userDataPath: app.getPath('userData'),
+        isPackaged: app.isPackaged,
+        testDatabasePath,
+      }),
     );
     writeSmokeLog('store-opened');
     providerSecretStore = new EncryptedSecretStore({
@@ -187,6 +202,9 @@ async function startNoema() {
     const provider = new FreeLLMAPIClient({
       baseUrl: configuredBaseUrl,
       getApiKey: () => providerSecretStore?.get() ?? null,
+    });
+    const codexAdapter = new CodexAppServerAdapter({
+      executable: resolveCodexExecutable(),
     });
     let dshAdapter: DshHeadlessAdapter | null = null;
     let dshRuntimeError: string | null = null;
@@ -210,6 +228,7 @@ async function startNoema() {
       secretStore: providerSecretStore,
       dshAdapter,
       dshRuntimeError,
+      codexAdapter: codexAdapter.available ? codexAdapter : null,
       emit: (payload) => {
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send(CHANNELS.event, payload);
@@ -222,6 +241,21 @@ async function startNoema() {
       rootAgent: agent,
       isTrustedSender: (sender) =>
         Boolean(mainWindow && sender === mainWindow.webContents),
+      sendMessage: createImportAwareSendMessage(agent, async (imported) => {
+        if (!mainWindow || mainWindow.isDestroyed()) return false;
+        const consent = await dialog.showMessageBox(mainWindow, {
+          type: 'warning',
+          title: '发送导入的 Codex 上下文',
+          message: `“${imported.title}”的可见对话将随 Noema 本轮及后续对话发送。`,
+          detail:
+            '这份快照保存在本机。确认后，快照和你在 Noema 的近期对话会通过 FreeLLMAPI 发往当前选定的免费模型路由；上游服务的数据处理政策各不相同。该授权持续有效，直到你在 Noema 移除此快照。移除无法撤回此前已发送的数据；Codex 原会话不会被修改。',
+          buttons: ['取消本次发送', '发送并继续使用此快照'],
+          defaultId: 0,
+          cancelId: 0,
+          noLink: true,
+        });
+        return consent.response === 1;
+      }),
       chooseWorkspace: async () => {
         if (!mainWindow || mainWindow.isDestroyed()) return null;
         const disclosure = await dialog.showMessageBox(mainWindow, {

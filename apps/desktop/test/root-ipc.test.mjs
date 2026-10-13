@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { CHANNELS, registerRootIpc } from '../src/root-ipc.mjs';
+import {
+  CHANNELS,
+  createImportAwareSendMessage,
+  registerRootIpc,
+} from '../src/root-ipc.mjs';
 
 function createIpcHarness() {
   const handlers = new Map();
@@ -27,6 +31,10 @@ test('registers only named root-agent actions and rejects non-window senders', a
     clearWorkspaceDirectory: () => null,
     stopBackgroundTask: async () => true,
     resumeBackgroundTask: async (taskId) => ({ accepted: true, taskId }),
+    listCodexThreads: async () => [],
+    previewCodexThread: async (threadId) => ({ threadId }),
+    importCodexThread: async (input) => input,
+    removeContextImport: () => true,
   };
   const trustedSender = {};
   const unregister = registerRootIpc({
@@ -50,6 +58,10 @@ test('registers only named root-agent actions and rejects non-window senders', a
       CHANNELS.clearWorkspace,
       CHANNELS.stopWorker,
       CHANNELS.resumeWorker,
+      CHANNELS.listCodexThreads,
+      CHANNELS.previewCodexThread,
+      CHANNELS.importCodexThread,
+      CHANNELS.removeContextImport,
     ].sort(),
   );
   assert.deepEqual(
@@ -57,7 +69,9 @@ test('registers only named root-agent actions and rejects non-window senders', a
       { sender: trustedSender },
       'hello',
     ),
-    { turnId: 'hello' },
+    {
+      turnId: 'hello',
+    },
   );
   assert.equal(
     await harness.handlers.get(CHANNELS.chooseWorkspace)({
@@ -84,4 +98,41 @@ test('registers only named root-agent actions and rejects non-window senders', a
   );
   unregister();
   assert.equal(harness.handlers.size, 0);
+});
+
+test('Codex import sends nothing until transmission consent and remains revocable', async () => {
+  let consented = false;
+  let sends = 0;
+  let prompts = 0;
+  const rootAgent = {
+    getUnconsentedContextImport: () =>
+      consented ? null : { title: '测试会话' },
+    consentToContextImportTransmission: () => {
+      consented = true;
+    },
+    sendMessage: ({ text }) => {
+      sends += 1;
+      return { turnId: text };
+    },
+  };
+  const cancel = createImportAwareSendMessage(rootAgent, async () => {
+    prompts += 1;
+    return false;
+  });
+  assert.deepEqual(await cancel('不应发送'), { canceled: true });
+  assert.equal(sends, 0);
+  assert.equal(consented, false);
+
+  const approve = createImportAwareSendMessage(rootAgent, async (snapshot) => {
+    prompts += 1;
+    assert.equal(snapshot.title, '测试会话');
+    return true;
+  });
+  assert.deepEqual(await approve('允许发送'), { turnId: '允许发送' });
+  assert.equal(consented, true);
+  assert.equal(sends, 1);
+
+  assert.deepEqual(await approve('之后继续'), { turnId: '之后继续' });
+  assert.equal(prompts, 2);
+  assert.equal(sends, 2);
 });
