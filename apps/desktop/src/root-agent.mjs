@@ -604,7 +604,9 @@ export class RootAgent {
           if (adjustment.status === 'active') {
             this.emit({ type: 'interaction-adjustments-updated' });
             if (!assistantHasSpoken) {
-              responseMessages.push('知道了，我会在适用的情境里按这个方式尝试。');
+              responseMessages.push(
+                '知道了，我会在适用的情境里按这个方式尝试。',
+              );
             }
           } else {
             responseMessages.push('这条调整已撤回，我没有重新启用它。');
