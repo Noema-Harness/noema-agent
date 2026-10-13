@@ -8,7 +8,7 @@ Noema 是独立的个人 agent 应用。它的核心不是替用户完成某一�
 
 ## 当前状态
 
-当前仓库已建立桌面运行壳与项目协作基础；agent、记忆、模型连接等产品运行能力尚未实现。当前已确定的产品边界与架构取舍记录在：
+当前可运行版本包含一条由 Noema 自己持有的根对话：使用本机 Ollama 发现/选择模型，流式回复，并将对话保存在本机 SQLite。后台专业 agent、长期记忆提取、外部应用连接和云同步尚未实现。当前产品边界与架构取舍记录在：
 
 - [产品章程](docs/PRODUCT_CHARTER.md)
 - [架构边界](docs/ARCHITECTURE.md)
@@ -33,12 +33,21 @@ GitHub Project 看板是工作状态的唯一来源；本地文档不重复维�
 
 ### 本地桌面开发
 
-- Windows 开发环境使用 Node.js 24.21+（当前本机验证版本为 24.21.0，Active LTS）和 npm。
-- 本机通过 NVM-Windows 将 24.21.0 安装在 D 盘，未切换其他项目的默认 Node。开始 Noema 工作前，在终端运行 `nvm use 24.21.0`；这会切换 NVM 的共享激活版本，完成后按需切回之前版本。
-- 首次克隆后运行 `npm ci`，然后 `npm run dev` 启动桌面壳。
+- Windows 开发环境使用 Node.js 24.21+ 和 npm。当前本机固定运行时在 `D:\NoemaTools\node-v24.21.0-win-x64`；PowerShell 会话中可这样启用，不影响其他项目的默认 Node：
+
+  ```powershell
+  $noemaNode = 'D:\NoemaTools\node-v24.21.0-win-x64'
+  $env:Path = "$noemaNode;$env:Path"
+  ```
+
+- Noema 连接 `http://127.0.0.1:11434` 上的本机 Ollama。先确认 Ollama 正在运行且 `ollama list` 至少列出一个已安装模型；应用不会下载模型或回退到云端。连接不可用时，Noema 保留用户消息并显示恢复入口。
+- 首次克隆后运行 `npm ci`，再运行 `npm run dev` 启动桌面应用。应用 SQLite 数据位于 Electron 的本机 user-data 目录，不写进仓库。
+- 每轮最多将最近 8 个已完成对话轮次、且不超过 12,000 个历史字符发送给本机模型；更早历史仍保存在本机，但不会自动注入。
 - 检查命令：`npm run lint`、`npm run typecheck`、`npm test`、`npm run smoke`；Windows 构建目录：`npm run package:desktop`；Windows 安装器：`npm run make:desktop`。
-- 在 GitHub Actions 手动运行 `Desktop checks` 时，会生成一个私有、未签名的 Windows 测试安装器 artifact，保留 7 天；常规 PR/push 只验证打包，不占用长期 artifact 配额。
-- 当前本机的 Squirrel `make:desktop` 在向 Windows 临时目录写 `.nupkg` 时返回 Access Denied；不要通过关闭安全防护来绕过。用 GitHub Actions 手动生成的私有 artifact 试装；`npm run dev`、smoke 与构建目录已在本机验证。
+- GitHub Actions 的 `Desktop checks` 已通过 Windows 安装器 maker 验证。手动运行该 workflow 时会生成私有、未签名的测试安装器 artifact，保留 7 天；常规 PR/push 只验证打包，不占用长期 artifact 配额。
+- 当前本机 Squirrel maker 向 Windows 临时目录写 `.nupkg` 时返回 Access Denied；不要通过关闭安全防护来绕过。以 Windows CI maker 结果验证安装器。
+- 本机 Noema 开发启动会优先选择 D 盘已校验 SHA-256 的 Electron 运行时，以绕过此主机从工作区路径启动 Electron 时的 `EXCEPTION_BREAKPOINT`；其他环境仍使用锁定依赖中的 Electron。
 - 代理环境下下载依赖可临时设置 `HTTPS_PROXY=http://127.0.0.1:7890`；不要把代理配置或凭据写入仓库。
 
 仓库级 Codex 约定见 [AGENTS.md](AGENTS.md)。
+
