@@ -17,6 +17,7 @@ import {
 } from './root-ipc.mjs';
 import { RootAgent } from './root-agent.mjs';
 import { RootStore } from './root-store.mjs';
+import { resolveNoemaDatabasePath } from './runtime-paths.mjs';
 import {
   CodexAppServerAdapter,
   resolveCodexExecutable,
@@ -74,6 +75,8 @@ let unregisterRootIpc: (() => void) | null = null;
 let rootAgent: RootAgent | null = null;
 let shutdownStarted = false;
 let shutdownComplete = false;
+const testDatabasePath = process.env.NOEMA_E2E_DATABASE_PATH ?? null;
+delete process.env.NOEMA_E2E_DATABASE_PATH;
 
 const createWindow = () => {
   mainWindow = new BrowserWindow({
@@ -173,7 +176,11 @@ async function startNoema() {
   writeSmokeLog('app-ready', { userData: app.getPath('userData') });
   try {
     rootStore = new RootStore(
-      path.join(app.getPath('userData'), 'noema.sqlite3'),
+      resolveNoemaDatabasePath({
+        userDataPath: app.getPath('userData'),
+        isPackaged: app.isPackaged,
+        testDatabasePath,
+      }),
     );
     writeSmokeLog('store-opened');
     providerSecretStore = new EncryptedSecretStore({

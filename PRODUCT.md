@@ -47,7 +47,7 @@ Noema 是独立的个人 agent 应用。用户希望拥有一个真正“属于�
 - 用户明确描述了跨 AI 使用时身份/互动连续性和工作陪伴不足的个人动机，详见当前工作流与 M1 Issue。
 - 公开案例、实现与反例持续记录在 [Issue #2 的研究与续接评论](https://github.com/c3115644151/noema-agent/issues/2)；这些证据支持或削弱假设，但不自动成为用户批准的产品要求。
 - PR #18 验证的是一条从 Noema 发起的新 DSH 文件任务，不是从现有 Codex thread 迁移；它不代表用户的 Codex 额度耗尽痛点已被解决。
-- 当前 Codex 快照路径已在隔离 Noema 数据目录中用真实本机 Codex App Server 列表、预览、导入、移除验证；未发起模型请求。唯一根的 FreeLLMAPI 调用仍需用户在发送时确认快照外传，这轮未验证跨模型生成质量。
+- Codex 快照路径已在隔离数据目录中用真实本机 App Server 完成列表、预览、导入、时间线回显和移除；真实用户会话内容未外传。另在临时根数据库中通过真实 FreeLLMAPI 路由测试了合成快照续接：`free-router` 与直连 Nemotron 返回 `provider_unavailable`，`auto:noema-free` 成功准确复述合成代号与验收标准。该结果证明数据路径可工作，但不能证明真实会话的继续质量、长期稳定性或 Noema 独立产品价值；真实用户快照仍需每个用户在应用内明确授权后才可发送。
 - 目前没有来自 Noema 原型用户测试的证据；不得虚构已验证的体验或结果。
 
 ## Product Principles
