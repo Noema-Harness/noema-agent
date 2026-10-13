@@ -600,62 +600,78 @@ function App() {
             </p>
           </div>
           <div className="workspace-control">
-            <button
-              ref={codexImportTriggerRef}
-              className="workspace-button context-import-button"
-              type="button"
-              onClick={() => void openCodexImport()}
-              disabled={
-                !root?.codexImportAvailable || contextImports.length > 0
-              }
-              title={
-                contextImports.length > 0
-                  ? '先移除当前导入快照，再选择其他 Codex 会话。'
-                  : root?.codexImportAvailable
-                    ? '只读列出本机 Codex 会话'
-                    : '没有找到本机 Codex 桌面程序。'
-              }
-            >
-              {contextImports.length > 0
-                ? '已带入 Codex 上下文'
-                : '从 Codex 续接'}
-            </button>
-            <div
-              className="workspace-label"
-              title={root?.workspaceDirectory ?? ''}
-            >
-              <span className="workspace-mark" aria-hidden="true" />
-              <span>
-                {root?.workspaceDirectory
-                  ? root.workspaceDirectory
-                  : root?.dshWorkerError
-                    ? 'DSH 后台运行环境不可用'
-                    : '未选择后台工作区'}
-              </span>
-            </div>
-            <button
-              className="workspace-button"
-              type="button"
-              onClick={() => void chooseWorkspace()}
-              disabled={!root?.dshAvailable || activeWorkerTasks.length > 0}
-              title={root?.dshWorkerError ?? undefined}
-            >
-              {activeWorkerTasks.length > 0
-                ? '任务运行中'
-                : root?.workspaceDirectory
-                  ? '更换工作区'
-                  : '选择工作区'}
-            </button>
-            {root?.workspaceDirectory && (
+            <section className="scope-control" aria-label="历史对话导入">
+              <span className="scope-control-heading">历史对话</span>
               <button
-                className="workspace-clear-button"
+                ref={codexImportTriggerRef}
+                className="workspace-button context-import-button"
                 type="button"
-                onClick={() => void clearWorkspace()}
-                disabled={activeWorkerTasks.length > 0}
+                onClick={() => void openCodexImport()}
+                disabled={
+                  !root?.codexImportAvailable || contextImports.length > 0
+                }
+                title={
+                  contextImports.length > 0
+                    ? '先移除当前快照，再选择其他 Codex 会话。'
+                    : root?.codexImportAvailable
+                      ? '只读读取本机 Codex 的可见文字；不会在 Codex 中续聊。'
+                      : '没有找到本机 Codex 桌面程序。'
+                }
               >
-                移除
+                {contextImports.length > 0
+                  ? '已导入 Codex 快照'
+                  : '导入 Codex 对话'}
               </button>
-            )}
+              <span className="scope-control-note">
+                只带入可见文字，不会在 Codex 中续聊
+              </span>
+            </section>
+            <section className="scope-control" aria-label="代码任务目录">
+              <span className="scope-control-heading">
+                代码任务目录（可选）
+              </span>
+              <div
+                className="workspace-label"
+                title={root?.workspaceDirectory ?? ''}
+              >
+                <span className="workspace-mark" aria-hidden="true" />
+                <span>
+                  {root?.workspaceDirectory
+                    ? root.workspaceDirectory
+                    : root?.dshWorkerError
+                      ? 'DSH 运行环境不可用'
+                      : '尚未选择文件夹'}
+                </span>
+              </div>
+              <div className="scope-control-actions">
+                <button
+                  className="workspace-button"
+                  type="button"
+                  onClick={() => void chooseWorkspace()}
+                  disabled={!root?.dshAvailable || activeWorkerTasks.length > 0}
+                  title={root?.dshWorkerError ?? undefined}
+                >
+                  {activeWorkerTasks.length > 0
+                    ? '代码任务运行中'
+                    : root?.workspaceDirectory
+                      ? '更换文件夹'
+                      : '选择文件夹'}
+                </button>
+                {root?.workspaceDirectory && (
+                  <button
+                    className="workspace-clear-button"
+                    type="button"
+                    onClick={() => void clearWorkspace()}
+                    disabled={activeWorkerTasks.length > 0}
+                  >
+                    移除
+                  </button>
+                )}
+              </div>
+              <span className="scope-control-note">
+                仅供后台 DSH 代码任务读写；普通聊天不需要
+              </span>
+            </section>
           </div>
         </div>
 
@@ -1199,7 +1215,7 @@ function App() {
             <div className="settings-heading">
               <div>
                 <p className="settings-eyebrow">只读 · 本机 Codex</p>
-                <h2 id="codex-import-title">把已有工作带到 Noema</h2>
+                <h2 id="codex-import-title">导入 Codex 对话快照</h2>
               </div>
               <button
                 ref={codexImportCloseRef}
@@ -1212,8 +1228,9 @@ function App() {
               </button>
             </div>
             <p className="settings-description" id="codex-import-description">
-              选择一条 Codex
-              会话后先检查快照，再决定是否导入。按最近活动时间列出本机未归档会话；读取与预览只访问本机数据，不会调用模型。
+              选择一条 Codex 会话，先检查将要带入的文字，再决定是否导入。
+              这不会在 Codex
+              中继续对话，也不会同步之后的变化。列表、读取和预览只访问本机数据，不会调用模型。
             </p>
             {contextImports.length > 0 && (
               <div className="codex-import-warning" role="status">
