@@ -67,6 +67,10 @@ function App() {
   const [sending, setSending] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [modelSettingsOpen, setModelSettingsOpen] = useState(false);
+  const [providerBaseUrl, setProviderBaseUrl] = useState('');
+  const [providerApiKey, setProviderApiKey] = useState('');
+  const [savingProvider, setSavingProvider] = useState(false);
   const [retryingTurn, setRetryingTurn] = useState<string | null>(null);
   const conversationRef = useRef<HTMLDivElement>(null);
   const followConversationRef = useRef(true);
@@ -142,7 +146,7 @@ function App() {
       await window.noema.refreshModels();
       await refreshRoot();
     } catch {
-      setNotice('刷新失败。请检查 Ollama 是否在本机运行。');
+      setNotice('刷新失败。请检查 FreeLLMAPI 是否正在本机运行。');
     } finally {
       setRefreshing(false);
     }
@@ -156,9 +160,42 @@ function App() {
       await refreshRoot();
     } catch (error) {
       setNotice(
-        error instanceof Error ? error.message : '无法选择这个本机模型。',
+        error instanceof Error ? error.message : '无法选择这个免费模型。',
       );
       await refreshRoot();
+    }
+  };
+
+  const openModelSettings = () => {
+    setProviderBaseUrl(root?.providerBaseUrl ?? 'http://127.0.0.1:3001/v1');
+    setProviderApiKey('');
+    setModelSettingsOpen(true);
+  };
+
+  const closeModelSettings = () => {
+    setProviderApiKey('');
+    setModelSettingsOpen(false);
+  };
+
+  const saveProviderSettings = async () => {
+    if (!providerApiKey.trim() || savingProvider) return;
+    setSavingProvider(true);
+    setNotice('');
+    try {
+      await window.noema.configureProvider({
+        baseUrl: providerBaseUrl,
+        apiKey: providerApiKey,
+      });
+      await refreshRoot();
+      closeModelSettings();
+      setNotice('FreeLLMAPI 设置已加密保存。');
+    } catch (error) {
+      setNotice(
+        error instanceof Error ? error.message : 'FreeLLMAPI 设置没有保存。',
+      );
+    } finally {
+      setProviderApiKey('');
+      setSavingProvider(false);
     }
   };
 
@@ -236,7 +273,7 @@ function App() {
           <label className="model-control">
             <span>回复模型</span>
             <select
-              aria-label="选择本机回复模型"
+              aria-label="选择免费回复模型"
               value={
                 selectedModelMissing
                   ? '__missing__'
@@ -247,13 +284,13 @@ function App() {
             >
               {selectedModelMissing && (
                 <option value="__missing__">
-                  {root?.selectedModel}（本机未找到）
+                  {root?.selectedModel}（当前不可用）
                 </option>
               )}
-              {!root?.selectedModel && <option value="">选择已安装模型</option>}
+              {!root?.selectedModel && <option value="">选择免费模型</option>}
               {root?.models.map((model) => (
                 <option key={model.name} value={model.name}>
-                  {model.name}
+                  {model.label}
                 </option>
               ))}
             </select>
@@ -264,12 +301,12 @@ function App() {
             <span className="connection-symbol" aria-hidden="true" />
             <span>
               {!root || root.checking
-                ? '正在检查本机服务'
+                ? '正在检查 FreeLLMAPI'
                 : root.connected
                   ? root.models.length
-                    ? 'Ollama 已连接'
-                    : 'Ollama 暂无模型'
-                  : 'Ollama 未连接'}
+                    ? 'FreeLLMAPI 已连接'
+                    : '暂无可用免费模型'
+                  : 'FreeLLMAPI 未连接'}
             </span>
           </div>
           <button
@@ -280,6 +317,13 @@ function App() {
           >
             {refreshing ? '正在检查' : '刷新'}
           </button>
+          <button
+            className="refresh-button provider-settings-button"
+            type="button"
+            onClick={openModelSettings}
+          >
+            {root?.providerConfigured ? '模型设置' : '连接模型'}
+          </button>
         </div>
       </header>
 
@@ -287,33 +331,50 @@ function App() {
         <div className="page-heading">
           <div className="heading-copy">
             <h1>主对话</h1>
-            <p>消息保存在这台设备。回复由所选本机模型生成。</p>
+            <p>
+              对话保存在这台设备；发送时由本机 FreeLLMAPI 转发到所选免费模型。
+            </p>
           </div>
         </div>
 
         {root && !root.connected && !root.checking && (
           <section className="connection-notice" role="status">
             <div>
-              <strong>本机模型服务暂不可用</strong>
+              <strong>
+                {root.providerConfigured
+                  ? 'FreeLLMAPI 暂不可用'
+                  : '还没有连接 FreeLLMAPI'}
+              </strong>
               <p>
                 {root.error ??
-                  '请启动 Ollama 后刷新模型列表。已发送的消息会保留，可恢复后重试。'}
+                  '连接本机 FreeLLMAPI 后，已发送的消息会保留，可恢复后重试。'}
               </p>
             </div>
             <button
               type="button"
-              onClick={() => void refreshModels()}
+              onClick={
+                root.providerConfigured
+                  ? () => void refreshModels()
+                  : openModelSettings
+              }
               disabled={refreshing}
             >
-              {refreshing ? '检查中…' : '重新连接'}
+              {refreshing
+                ? '检查中…'
+                : root.providerConfigured
+                  ? '重新连接'
+                  : '连接设置'}
             </button>
           </section>
         )}
         {root?.connected && !root.checking && root.models.length === 0 && (
           <section className="connection-notice" role="status">
             <div>
-              <strong>Ollama 正在运行，但没有发现模型</strong>
-              <p>安装一个本机模型后刷新列表。Noema 不会自动改用云端服务。</p>
+              <strong>FreeLLMAPI 暂无可用免费模型</strong>
+              <p>
+                检查网关中的免费供应商与模型状态后刷新。Noema
+                不会回退到本机模型。
+              </p>
             </div>
             <button
               type="button"
@@ -343,7 +404,8 @@ function App() {
               <div className="empty-copy">
                 <p className="empty-lead">这条对话还没有消息。</p>
                 <p>
-                  选择一个本机模型开始。关闭并重开 Noema 后，这条对话会保留。
+                  连接 FreeLLMAPI 并选择免费模型开始。关闭并重开 Noema
+                  后，这条对话会保留。
                 </p>
               </div>
             </div>
@@ -425,7 +487,7 @@ function App() {
                               </div>
                             ) : isStreaming ? (
                               <p className="reply-waiting">
-                                正在等待本机模型的第一段回复…
+                                正在等待免费模型的第一段回复…
                               </p>
                             ) : null}
                             {message.status === 'interrupted' && (
@@ -466,7 +528,7 @@ function App() {
                                   >
                                     {retryingTurn === turn.id
                                       ? '正在重试…'
-                                      : '重试本机模型'}
+                                      : '重新尝试免费模型'}
                                   </button>
                                 )}
                               </div>
@@ -478,7 +540,7 @@ function App() {
                         root?.activeTurnId === turn.id &&
                         !currentAssistant && (
                           <p className="reply-waiting" role="status">
-                            正在等待本机模型…
+                            正在等待免费模型…
                           </p>
                         )}
                     </div>
@@ -539,10 +601,11 @@ function App() {
             </div>
           </form>
           <div className="composer-disclosure">
-            <span>本机运行</span>
+            <span>本地保存</span>
             <span aria-hidden="true">·</span>
             <span>
-              请求仅发送到已选择的 Ollama 模型；每轮最多带入最近 8 轮对话
+              当前对话会经 FreeLLMAPI 发送给所选免费模型；每轮最多带入最近 8
+              轮对话
             </span>
           </div>
         </div>
@@ -558,6 +621,87 @@ function App() {
           >
             关闭
           </button>
+        </div>
+      )}
+
+      {modelSettingsOpen && (
+        <div className="modal-scrim" role="presentation">
+          <section
+            className="model-settings"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="model-settings-title"
+            aria-describedby="model-settings-description"
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') closeModelSettings();
+            }}
+          >
+            <div className="settings-heading">
+              <div>
+                <p className="settings-eyebrow">模型连接</p>
+                <h2 id="model-settings-title">连接 FreeLLMAPI</h2>
+              </div>
+              <button
+                className="modal-close"
+                type="button"
+                onClick={closeModelSettings}
+                aria-label="关闭模型设置"
+              >
+                ×
+              </button>
+            </div>
+            <p className="settings-description" id="model-settings-description">
+              Noema 通过本机 FreeLLMAPI 使用免费模型。API Key
+              只保存在这台设备，并由系统安全存储加密；不会发送到所选模型。
+            </p>
+            <label className="settings-field">
+              <span>FreeLLMAPI 地址</span>
+              <input
+                type="url"
+                value={providerBaseUrl}
+                onChange={(event) => setProviderBaseUrl(event.target.value)}
+                autoComplete="url"
+                spellCheck={false}
+                placeholder="http://127.0.0.1:3001/v1"
+              />
+            </label>
+            <label className="settings-field">
+              <span>统一 API Key</span>
+              <input
+                type="password"
+                autoFocus
+                value={providerApiKey}
+                onChange={(event) => setProviderApiKey(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') void saveProviderSettings();
+                }}
+                autoComplete="off"
+                spellCheck={false}
+                placeholder="从 FreeLLMAPI 的 Keys 页面或托盘菜单复制"
+              />
+            </label>
+            <p className="settings-footnote">
+              仅接受本机地址。当前只列出 Noema
+              已确认的免费路由，不会自动切换到本地模型或付费模型。
+            </p>
+            <div className="settings-actions">
+              <button
+                className="settings-cancel"
+                type="button"
+                onClick={closeModelSettings}
+              >
+                取消
+              </button>
+              <button
+                className="settings-save"
+                type="button"
+                onClick={() => void saveProviderSettings()}
+                disabled={!providerApiKey.trim() || savingProvider}
+              >
+                {savingProvider ? '连接中…' : '加密保存并连接'}
+              </button>
+            </div>
+          </section>
         </div>
       )}
     </div>
