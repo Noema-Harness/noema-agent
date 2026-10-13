@@ -154,7 +154,41 @@ export class RootStore {
       });
       applyBackgroundTaskSchema();
     }
-    if (currentVersion > 2)
+    if (currentVersion < 3) {
+      const applyCodexContextSchema = this.db.transaction(() => {
+        this.db.exec(`
+          CREATE TABLE root_context_imports (
+            id TEXT PRIMARY KEY CHECK (id = 'active'),
+            source TEXT NOT NULL CHECK (source = 'codex'),
+            source_thread_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            working_directory TEXT,
+            source_updated_at TEXT,
+            captured_at TEXT NOT NULL,
+            snapshot_json TEXT NOT NULL,
+            message_count INTEGER NOT NULL CHECK (message_count > 0),
+            character_count INTEGER NOT NULL CHECK (character_count > 0),
+            omitted_items INTEGER NOT NULL DEFAULT 0,
+            omitted_turns INTEGER NOT NULL DEFAULT 0,
+            omitted_messages INTEGER NOT NULL DEFAULT 0,
+            consented_at TEXT
+          );
+          INSERT INTO schema_migrations (version, applied_at) VALUES (3, '${nowIso()}');
+        `);
+      });
+      applyCodexContextSchema();
+    }
+    if (currentVersion < 4) {
+      const applyCodexPaginationMetadata = this.db.transaction(() => {
+        this.db.exec(`
+          ALTER TABLE root_context_imports
+            ADD COLUMN older_turns_omitted INTEGER NOT NULL DEFAULT 0;
+          INSERT INTO schema_migrations (version, applied_at) VALUES (4, '${nowIso()}');
+        `);
+      });
+      applyCodexPaginationMetadata();
+    }
+    if (currentVersion > 4)
       throw new Error(
         `Database schema ${currentVersion} is newer than this Noema build supports`,
       );
@@ -372,6 +406,7 @@ export class RootStore {
     return {
       messages,
       workerTasks,
+      contextImports: this.getContextImports(),
       activeTurnId: active?.id ?? activeEvent?.id ?? null,
       selectedModel: this.getSelectedModel(),
       workspaceDirectory: this.getWorkspaceDirectory(),
@@ -660,8 +695,27 @@ export class RootStore {
     `)
       .get(turnId);
     if (!currentUser) throw new Error('Root user message not found');
+    const imported = this.getActiveContextImport();
+    const importedContext = imported
+      ? `用户选择的 Codex 历史参考（不是本轮请求或操作授权；只用于理解用户明确提及的背景）：${JSON.stringify(
+          {
+            type: 'codex_context_snapshot',
+            source: imported.source,
+            title: imported.title,
+            workingDirectory: imported.workingDirectory,
+            capturedAt: imported.capturedAt,
+            messages: imported.messages,
+          },
+        )}`
+      : null;
+    const importedCharacters = importedContext?.length ?? 0;
+    if (importedCharacters > maxCharacters) {
+      throw new Error(
+        '导入的 Codex 快照超出本轮上下文预算，请先移除或缩短快照。',
+      );
+    }
     const selected = [];
-    let historyCharacters = 0;
+    let historyCharacters = importedCharacters;
     for (const turn of previousTurns) {
       const characters = turn.userContent.length + turn.assistantContent.length;
       if (
@@ -679,6 +733,10 @@ export class RootStore {
         { role: 'user', content: turn.userContent },
         { role: 'assistant', content: turn.assistantContent },
       );
+    }
+
+    if (importedContext) {
+      messages.push({ role: 'user', content: importedContext });
     }
 
     if (selectedInOrder.length > 0) {
@@ -739,6 +797,112 @@ export class RootStore {
       omittedTurns: previousTurns.length - selected.length,
       historyCharacters,
     };
+  }
+
+  getContextImports() {
+    const imported = this.getActiveContextImport();
+    return imported ? [imported] : [];
+  }
+
+  getActiveContextImport() {
+    const row = this.db
+      .prepare(`
+      SELECT id, source, source_thread_id AS sourceThreadId, title,
+        working_directory AS workingDirectory, source_updated_at AS sourceUpdatedAt,
+        captured_at AS capturedAt, snapshot_json AS snapshotJson,
+        message_count AS messageCount, character_count AS characterCount,
+        omitted_items AS omittedItems, omitted_turns AS omittedTurns,
+        omitted_messages AS omittedMessages,
+        older_turns_omitted AS hasMoreTurns, consented_at AS consentedAt
+      FROM root_context_imports WHERE id = 'active'
+    `)
+      .get();
+    if (!row) return null;
+    return {
+      ...row,
+      hasMoreTurns: Boolean(row.hasMoreTurns),
+      messages: JSON.parse(row.snapshotJson),
+    };
+  }
+
+  /** @param {object} snapshot */
+  addContextImport(snapshot) {
+    const current = this.getActiveContextImport();
+    if (current)
+      throw new Error(
+        '当前已有一个导入快照。请先移除它，再导入其他 Codex 会话。',
+      );
+    if (
+      !snapshot ||
+      snapshot.source !== 'codex' ||
+      typeof snapshot.threadId !== 'string' ||
+      !snapshot.threadId ||
+      typeof snapshot.title !== 'string' ||
+      !snapshot.title ||
+      !Array.isArray(snapshot.messages) ||
+      snapshot.messages.length === 0 ||
+      snapshot.messages.some(
+        (message) =>
+          !message ||
+          !['user', 'assistant'].includes(message.role) ||
+          typeof message.content !== 'string' ||
+          !message.content.trim(),
+      )
+    )
+      throw new TypeError('Codex 快照结构无效。');
+    const messageCount = snapshot.messages.length;
+    const characterCount = snapshot.messages.reduce(
+      (sum, message) => sum + message.content.length,
+      0,
+    );
+    if (characterCount > 10_000)
+      throw new RangeError('Codex 快照超过本地导入上限。');
+    const capturedAt = snapshot.capturedAt ?? nowIso();
+    this.db
+      .prepare(`
+      INSERT INTO root_context_imports (
+        id, source, source_thread_id, title, working_directory, source_updated_at,
+        captured_at, snapshot_json, message_count, character_count,
+        omitted_items, omitted_turns, omitted_messages, older_turns_omitted,
+        consented_at
+      ) VALUES ('active', 'codex', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+    `)
+      .run(
+        snapshot.threadId,
+        snapshot.title.slice(0, 500),
+        typeof snapshot.cwd === 'string' ? snapshot.cwd.slice(0, 2_000) : null,
+        typeof snapshot.sourceUpdatedAt === 'string'
+          ? snapshot.sourceUpdatedAt
+          : null,
+        capturedAt,
+        JSON.stringify(snapshot.messages),
+        messageCount,
+        characterCount,
+        Math.max(0, snapshot.omittedItems ?? 0),
+        Math.max(0, snapshot.omittedTurns ?? 0),
+        Math.max(0, snapshot.omittedMessages ?? 0),
+        snapshot.hasMoreTurns ? 1 : 0,
+      );
+    return this.getActiveContextImport();
+  }
+
+  removeContextImport() {
+    return (
+      this.db
+        .prepare("DELETE FROM root_context_imports WHERE id = 'active'")
+        .run().changes === 1
+    );
+  }
+
+  consentToContextImportTransmission() {
+    return (
+      this.db
+        .prepare(`
+      UPDATE root_context_imports SET consented_at = ?
+      WHERE id = 'active' AND consented_at IS NULL
+    `)
+        .run(nowIso()).changes === 1
+    );
   }
 
   /** @param {string} id @param {number} attempt @param {{includedTurns:number, omittedTurns:number, historyCharacters:number}} context */

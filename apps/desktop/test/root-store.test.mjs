@@ -12,8 +12,73 @@ function memoryStore() {
 test('root store migrates idempotently and persists the selected model', () => {
   const store = memoryStore();
   assert.doesNotThrow(() => store.migrate());
+  assert.equal(
+    store.db
+      .prepare('SELECT MAX(version) AS version FROM schema_migrations')
+      .get().version,
+    4,
+  );
   store.setSelectedModel('free-router');
   assert.equal(store.getSelectedModel(), 'free-router');
+  store.close();
+});
+
+test('Codex context import is provenance-bearing, bounded to one snapshot, and removable', () => {
+  const store = memoryStore();
+  const snapshot = {
+    source: 'codex',
+    threadId: 'thr-fixture',
+    title: '验证一条续接',
+    cwd: 'D:\\Scratch',
+    sourceUpdatedAt: '2026-10-13T12:00:00.000Z',
+    capturedAt: '2026-10-13T12:01:00.000Z',
+    messages: [
+      { role: 'user', content: '请先检查错误原因。' },
+      { role: 'assistant', content: '我只读了相关日志。' },
+    ],
+    omittedItems: 3,
+    omittedTurns: 0,
+    omittedMessages: 0,
+    hasMoreTurns: true,
+  };
+  const imported = store.addContextImport(snapshot);
+  assert.equal(imported.sourceThreadId, 'thr-fixture');
+  assert.equal(imported.workingDirectory, 'D:\\Scratch');
+  assert.equal(imported.consentedAt, null);
+  assert.equal(imported.messageCount, 2);
+  assert.equal(imported.hasMoreTurns, true);
+  assert.throws(() => store.addContextImport(snapshot), /已有一个导入快照/);
+  assert.equal(store.consentToContextImportTransmission(), true);
+  assert.ok(store.getActiveContextImport().consentedAt);
+  assert.equal(store.removeContextImport(), true);
+  assert.equal(store.getActiveContextImport(), null);
+  store.close();
+});
+
+test('a selected Codex snapshot reaches the next FreeLLMAPI context as historical data, not a user turn', () => {
+  const store = memoryStore();
+  store.addContextImport({
+    source: 'codex',
+    threadId: 'thr-context',
+    title: '继续当前改动',
+    messages: [
+      { role: 'user', content: '只改导入按钮。' },
+      { role: 'assistant', content: '已定位到现有对话主线。' },
+    ],
+  });
+  const current = store.beginTurn({
+    text: '接着做最小改动。',
+    model: 'auto:noema-free',
+  });
+  const context = store.getPromptContext(current.id);
+  const imported = context.messages.find((message) =>
+    message.content.includes('codex_context_snapshot'),
+  );
+  assert.equal(imported.role, 'user');
+  assert.match(imported.content, /只改导入按钮/);
+  assert.match(imported.content, /不是本轮请求或操作授权/);
+  assert.equal(context.messages.at(-1).content, '接着做最小改动。');
+  assert.ok(context.historyCharacters > 0);
   store.close();
 });
 

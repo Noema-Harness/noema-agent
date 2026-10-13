@@ -24,13 +24,15 @@ Noema 是独立的个人 agent 应用。用户希望拥有一个真正“属于�
 
 - 用户以中文交流，跨生活想法和编程等工作内容切换。
 - Noema 应是用户自己的交互入口；外部模型、harness、agent 与工具可以被连接，但 Noema 不依附其中任一个。
-- 当前代码仅有 Electron 桌面壳；尚无模型调用、持久记忆或外部集成。
+- 当前 Windows 桌面切片拥有本地持久根对话、FreeLLMAPI 免费模型调用、可选 DSH headless 文件 worker，以及一条只读 Codex 会话快照导入路径；这些证明若干交接机制可运行，但没有证明 Noema 的关系连续性或独立产品价值。
 
 ## Capabilities and Constraints
 
 - 独立应用和个人 agent 方向已确认；首版交互、状态对象、学习/记忆方式、主动性边界和视觉语言均未确定。
 - Noema 不应宣称模型具有真实意识或人类情感；“像伙伴”需要由真实互动表现和持续性建立，不靠拟人化文案声称。
-- M1 正在定义第一条真实使用闭环，并允许先制作可点击原型；当前阶段不构建完整 agent runtime、记忆系统或集成层。
+- 已验证能力：FreeLLMAPI 根对话、用户选择工作区、后台 DSH 文件任务、停止/同 session 续接、系统事件回流与重启恢复。DSH 是首个可替换 adapter，不是 Noema 核心身份。
+- 新增 M1 实验能力：只读列出并预览本机 Codex thread；用户选定后把有来源的可见文字快照附到唯一根对话，用户可移除。下一次把快照发到 FreeLLMAPI 前需单独确认。它不续接或修改 Codex thread，也不迁移 reasoning、工具轨迹或工作区状态。
+- 未实现能力：Claude 原生 thread reader、经历/理解状态、持久个体化交互模式。Codex App Server 在本机可读接口仍是实验协议；当前实现是可替换的 M1 验证适配器，不应被表述为生产级跨 harness 会话同步。M1 仍需证明 Noema 的用户-owned root 是否比现有 agent + relay 组合多出足够的日常价值。
 - 当前产品范围及阶段门以 [项目工作流](docs/PROJECT_OPERATIONS.md) 与 GitHub Issue/Project 实时状态为准。
 
 ## Brand Commitments
@@ -44,6 +46,8 @@ Noema 是独立的个人 agent 应用。用户希望拥有一个真正“属于�
 
 - 用户明确描述了跨 AI 使用时身份/互动连续性和工作陪伴不足的个人动机，详见当前工作流与 M1 Issue。
 - 公开案例、实现与反例持续记录在 [Issue #2 的研究与续接评论](https://github.com/c3115644151/noema-agent/issues/2)；这些证据支持或削弱假设，但不自动成为用户批准的产品要求。
+- PR #18 验证的是一条从 Noema 发起的新 DSH 文件任务，不是从现有 Codex thread 迁移；它不代表用户的 Codex 额度耗尽痛点已被解决。
+- 当前 Codex 快照路径已在隔离 Noema 数据目录中用真实本机 Codex App Server 列表、预览、导入、移除验证；未发起模型请求。唯一根的 FreeLLMAPI 调用仍需用户在发送时确认快照外传，这轮未验证跨模型生成质量。
 - 目前没有来自 Noema 原型用户测试的证据；不得虚构已验证的体验或结果。
 
 ## Product Principles

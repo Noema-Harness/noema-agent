@@ -22,14 +22,14 @@
 6. **根历史采用本地 SQLite 持久化。** Electron main process 是数据 owner；renderer 只能通过窄化 typed preload API 读写。根消息与后台任务/待投递 worker event 属于不同领域记录，不能把 worker session 直接扁平化为根 transcript。数据库放在 Electron `userData`，迁移有版本记录，数据可在任务/会话范围内导出和删除。
 7. **首个根模型通过本机 Ollama 接入。** 本机已实际确认 Ollama 服务可用且 `qwen3.5:4b-q4_K_M` 能成功返回；以本地 provider 作为首个真实运行路径，不要求创建云端 key。远端 provider 后续逐个接入，并明确当前轮的 context 将发往何处。
 8. **首个 SQLite driver 采用 `better-sqlite3`。** Node 24 内置 `node:sqlite` 在 Electron 使用的 Node 24.18.1 仍为 Release Candidate；`better-sqlite3` 提供稳定的 SQLite API 并要求 Electron ABI 重建。项目已使用 Electron Forge native rebuild、auto-unpack 和 Windows package/make CI；将通过该真实 CI 验证 driver，而不是引入第二种存储。若 Windows/Electron 构建不能稳定通过，再比较替代 driver。
-9. **核心不依赖 DSH。** DSH、Codex、Claude 等以可选 adapter/subprocess 接入。M1 原型中的 DSH 调度是假数据；首个实际 worker adapter 单独以任务验收，不能把依赖某一 harness 写成 Noema 启动前提。
+9. **核心不依赖 DSH。** DSH、Codex、Claude 等以可选 adapter/subprocess 接入。PR #18 已把首个 DSH headless worker 从原型变成真实、文件权限受限的可选 adapter；它验证了一个执行闭环，不代表 DSH 成为 Noema 运行时或以后只有 DSH 可接。
 10. **历史记录与模型上下文分开。** Noema 将完整根对话保存在本机，但每轮只带入最近最多 8 个已完成 turn、且历史内容最多 12,000 字符，并附上当前用户消息；不把完整会话无限堆入 prompt。Ollama 请求首版固定 `num_ctx: 16384`。当更早内容未带入时，界面说明完整记录仍在本机、但本轮模型看不到它；不静默摘要，也不伪称模型记得未发送的历史。当前用户消息不因历史预算被截断；若它本身超过模型可用上下文，请求失败并保留该消息供用户调整/重试。该预算是助手为首个本机纵向切片选择的可逆起点，后续依实际使用和 Ollama 的 `prompt_eval_count` 重审，不作为最终记忆架构。
 
 ## 为什么值得做首个纵向切片
 
 DSH + Relay 是最强近邻，能够在 DSH workbench 内处理 Codex/Claude 原生 session 和返回事件；它证明后台执行和事件派发不是 Noema 独有。用户已明确要求 Noema 自己作为主对话 agent，而不是 DSH 插件或 coding workbench，因此本 ADR 只确认其**个人使用要求与系统所有权边界**，不声称具有市场级独特性。
 
-首个纵向切片将实际验证：本地模型驱动的 Noema 根对话能否在 worker 运行期间持续可用，以及原生执行结果以事件回到根对话能否形成日常闭环。若该机制只是把事件显示在另一个工作台，或没有比 DSH + Relay / Open WebUI + agent adapters 更省事，必须重审独立产品理由。
+首个纵向切片现已由 FreeLLMAPI 免费路由 + 实际 DSH headless worker 构成：它验证了根对话可以派发隔离任务、保持可用并接回有来源的结果。它没有验证现有 Codex thread 的连续导入，也没有证明“持续存在的 Noema root”足以超出 DSH + Relay / Open WebUI + agent adapters 的增量；独立产品理由仍开放。
 
 ## 代价与风险
 
@@ -37,7 +37,7 @@ DSH + Relay 是最强近邻，能够在 DSH workbench 内处理 Codex/Claude 原
 - 最近 8 轮 / 12,000 字符的上下文预算只是初期工程边界，可能过于保守或不足；完整记录留本机，系统暂不自动总结或宣称理解被省略的旧内容。
 - 同步 SQLite 只执行短事务；网络请求、模型流和 harness 子进程不得占住主进程的长事务。
 - `better-sqlite3` 增加 native dependency / Electron rebuild 成本，Windows CI 是硬验收门。
-- Ollama 服务关闭、模型缺失或流断开时，根对话仍保存用户消息并给出恢复操作；不得丢消息或伪报 assistant turn 已完成。
+- 历史本机 Ollama 选择不再是当前 provider 契约；当前 FreeLLMAPI 免费路由耗尽时，根对话保留用户消息与失败状态，worker 事件可按原 session 显式续接，不得回退到本地或付费模型。
 - worker context 可能含项目路径或私密内容；每次派发需可检查目标与 payload；没有获得对应能力/审批不能执行工作区写入。
 
 ## 重审触发条件
