@@ -34,6 +34,18 @@ This can test the user's quota/context handoff with minimal authority, but canno
 
 Keep this capability only if a real handoff demonstrates fewer re-explanations and a useful continuing Noema root beyond the existing DSH + Relay combination. Reconsider if official API support is withdrawn, if the preview materially omits the work needed to continue, or if Noema adds only another manual transfer step.
 
+### Counterevidence added 2026-10-14
+
+The alternative is broader than DSH + Relay's native Codex backend:
+
+- [`relay-dsh-plugin-codex`](https://github.com/yangbobo2021/relay-dsh-plugin-codex) binds a DSH Session to one Codex App Server Thread and continues that same Thread. This preserves Codex's model route and quota; it does not itself satisfy a switch to a FreeLLMAPI model. Its current peer metadata includes DSH up to `0.1.6-alpha.1`, while the previous local M1 probe recorded `0.1.7-rc.2`; compatibility with the local version is not declared.
+- [`dsh-session-import`](https://github.com/devmom/dsh-session-import) declares 15+ source formats and maps imported history, including reasoning/tool events, to native DSH session events that can continue under DSH. Its README reports 89 tests and real-DSH integration checks, but the repository currently has low public adoption; those are maintainer-reported capabilities, not independently reproduced here.
+- [`dsh-session-import-codex`](https://github.com/xing01l/session-import-codex) uses Codex App Server history methods, converts supported turns into DSH sessions, and creates/reuses workspaces. It skips active conversations. Its companion `dsh-llm-codex` preserves the Codex subscription path and therefore preserves that quota boundary rather than routing the continuation to a free model.
+
+Together these projects demonstrate that importing Codex history into another harness and continuing it is not a Noema-specific capability. They do **not** prove that their setup works with this user's DSH profile or that their import is equivalent in every edge case. A read-only inspection on this machine found no Relay/session-import bundle in the current DSH Web profile; the local profile is on a newer DSH line than the published Relay plugin's declared compatibility range, so no installation or profile mutation was attempted.
+
+Product consequence: do not expand the Noema importer into a generic mirror/synchronization system, and do not count it as evidence that Noema deserves to be a standalone app. Keep the current adapter as a reversible experiment only. The unresolved test is whether a Noema-owned, non-task-centric root conversation changes the user's experience across a coding handoff and a later non-coding interaction enough to matter beyond the existing DSH import path. If it does not, retire this feature rather than adding another transfer surface.
+
 ## Evidence
 
 - Official Codex App Server documentation: [`thread/read` does not resume or load a thread](https://developers.openai.com/codex/app-server); `thread/list` can limit results and `useStateDbOnly` avoids scanning/repairing JSONL metadata. `thread/turns/list` and item pagination are explicitly experimental, and App Server/CLI websocket modes are documented as unsupported for production workloads.
