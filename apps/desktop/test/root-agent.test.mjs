@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
 import { FreeLLMAPIError } from '../src/freellmapi-client.mjs';
 import { RootAgent } from '../src/root-agent.mjs';
@@ -201,5 +204,222 @@ test('stores FreeLLMAPI connection status without exposing the API key', async (
     JSON.stringify(await agent.getUiState()).includes('sensitive-test-key'),
     false,
   );
+  store.close();
+});
+
+test('dispatches one DSH worker on the explicit free chain and returns its result as a system event', async () => {
+  const store = new RootStore(':memory:');
+  const workspace = mkdtempSync(path.join(tmpdir(), 'noema-worker-root-'));
+  store.setSelectedModel('auto:noema-free');
+  store.setWorkspaceDirectory(workspace);
+  let finishWorker;
+  const workerDone = new Promise((resolve) => {
+    finishWorker = resolve;
+  });
+  const workerInput = {};
+  const modelCalls = [];
+  const provider = {
+    baseUrl: 'http://127.0.0.1:31415/v1',
+    listModels: async () => [
+      { name: 'auto:noema-free', label: 'Noema 免费模型链' },
+    ],
+    async *streamChat(input) {
+      modelCalls.push(input);
+      if (input.tools?.length) {
+        input.onToolCalls([
+          {
+            id: 'call-delegate',
+            type: 'function',
+            function: {
+              name: 'delegate_task',
+              arguments: JSON.stringify({
+                task: '读取 README 并修正其中的安装说明。',
+              }),
+            },
+          },
+        ]);
+        return;
+      }
+      assert.ok(
+        input.messages.some(
+          (message) =>
+            message.role === 'system' &&
+            message.content.includes('background_task_result'),
+        ),
+      );
+      assert.equal(
+        input.messages.some(
+          (message) =>
+            message.role === 'user' && message.content.includes('后台任务事件'),
+        ),
+        false,
+      );
+      yield '后台任务结果已接回。';
+    },
+  };
+  const dshAdapter = {
+    async startTask(input) {
+      Object.assign(workerInput, input);
+      return {
+        started: Promise.resolve({ sessionId: 'session-worker-test' }),
+        done: workerDone,
+        stop: () => true,
+      };
+    },
+  };
+  const agent = new RootAgent({
+    store,
+    provider,
+    secretStore: createSecretStore(),
+    dshAdapter,
+  });
+  try {
+    const { turnId } = agent.sendMessage({
+      text: '请在当前工作区修改 README 的安装说明。',
+    });
+    await agent.active.done;
+    const dispatched = store.getBackgroundTasks()[0];
+    assert.equal(dispatched.status, 'running', JSON.stringify(dispatched));
+    assert.equal(dispatched.model, 'auto:noema-free');
+    assert.equal(workerInput.workspacePath, workspace);
+    assert.equal(workerInput.model, 'auto:noema-free');
+    assert.equal(workerInput.task, '读取 README 并修正其中的安装说明。');
+    assert.equal(modelCalls.length, 1);
+    assert.match(
+      store.getSnapshot().messages.at(-1).content,
+      /交给后台 DSH agent/,
+    );
+
+    finishWorker({
+      status: 'completed',
+      sessionId: 'session-worker-test',
+      result: 'README 安装说明已修正。',
+      errorCode: null,
+      errorMessage: null,
+      toolCallCount: 2,
+    });
+    for (let attempt = 0; attempt < 200; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      if (store.getBackgroundTask(dispatched.id).eventStatus === 'delivered')
+        break;
+    }
+
+    const returned = store.getBackgroundTask(dispatched.id);
+    assert.equal(returned.status, 'completed');
+    assert.equal(returned.eventStatus, 'delivered');
+    assert.equal(returned.resultText, 'README 安装说明已修正。');
+    assert.equal(returned.noemaResponse, '后台任务结果已接回。');
+    assert.equal(modelCalls.length, 2);
+    assert.equal(
+      store.getSnapshot().messages.filter((message) => message.role === 'user')
+        .length,
+      1,
+    );
+    assert.equal(store.getTurn(turnId).status, 'completed');
+    assert.equal(agent.clearWorkspaceDirectory(), null);
+    assert.equal(store.getWorkspaceDirectory(), null);
+  } finally {
+    store.close();
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('continues an interrupted worker in the same DSH session and original workspace', async () => {
+  const store = new RootStore(':memory:');
+  const workspace = mkdtempSync(path.join(tmpdir(), 'noema-worker-resume-'));
+  store.setSelectedModel('auto:noema-free');
+  const turn = store.beginTurn({
+    text: '请修正 README。',
+    model: 'auto:noema-free',
+  });
+  store.appendAssistant({
+    id: turn.id,
+    attempt: turn.attempt,
+    content: '已创建一个后台任务。',
+  });
+  store.completeTurn(turn.id, turn.attempt);
+  const previous = store.createBackgroundTask({
+    id: 'task-original',
+    sourceTurnId: turn.id,
+    workspacePath: workspace,
+    model: 'auto:noema-free',
+    prompt: '修正 README 的安装说明。',
+  });
+  store.setBackgroundTaskSession(previous.id, 'session-resume-test');
+  store.finishBackgroundTask(previous.id, {
+    status: 'interrupted',
+    resultText: '已读取 README。',
+    sessionId: 'session-resume-test',
+    toolCallCount: 1,
+  });
+
+  let resumeInput;
+  const agent = new RootAgent({
+    store,
+    provider: {
+      listModels: async () => [],
+      async *streamChat() {},
+    },
+    secretStore: createSecretStore(),
+    dshAdapter: {
+      async startTask(input) {
+        resumeInput = input;
+        return {
+          started: Promise.resolve({ sessionId: input.sessionId }),
+          done: Promise.resolve({
+            status: 'interrupted',
+            sessionId: input.sessionId,
+            result: '',
+            errorCode: 'test_end',
+            errorMessage: '测试结束',
+            toolCallCount: 1,
+          }),
+          stop: () => true,
+        };
+      },
+    },
+  });
+
+  try {
+    const result = await agent.resumeBackgroundTask(previous.id);
+    assert.equal(result.accepted, true, JSON.stringify(result));
+    assert.equal(resumeInput.sessionId, 'session-resume-test');
+    assert.equal(resumeInput.workspacePath, workspace);
+    assert.match(resumeInput.task, /不要重放已成功的文件改动/);
+    assert.match(resumeInput.task, /修正 README 的安装说明/);
+    assert.notEqual(result.taskId, previous.id);
+    assert.equal(store.getBackgroundTask(result.taskId).sourceTurnId, turn.id);
+  } finally {
+    store.close();
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('shutdown stops tracked DSH processes before finishing', async () => {
+  const store = new RootStore(':memory:');
+  let finishRun;
+  const done = new Promise((resolve) => {
+    finishRun = resolve;
+  });
+  let stopped = false;
+  const agent = new RootAgent({
+    store,
+    provider: { listModels: async () => [], async *streamChat() {} },
+    secretStore: createSecretStore(),
+  });
+  agent.workerRuns.set('task-shutdown', {
+    stop() {
+      stopped = true;
+      finishRun({ status: 'interrupted' });
+      return true;
+    },
+    done,
+  });
+
+  await agent.shutdown();
+  assert.equal(stopped, true);
+  assert.equal(agent.shuttingDown, true);
+  assert.throws(() => agent.sendMessage({ text: '关闭后不能再启动任务' }));
+  assert.equal(store.db.open, true);
   store.close();
 });

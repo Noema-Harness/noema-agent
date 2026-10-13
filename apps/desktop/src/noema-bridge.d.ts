@@ -22,8 +22,41 @@ export interface NoemaRootMessage {
   errorMessage: string | null;
 }
 
+export interface NoemaBackgroundTask {
+  id: string;
+  sourceTurnId: string;
+  harness: 'dsh-headless';
+  workspacePath: string;
+  model: string;
+  prompt: string;
+  sessionId: string | null;
+  status: 'starting' | 'running' | 'completed' | 'failed' | 'interrupted';
+  phase: string;
+  toolCallCount: number;
+  resultText: string;
+  errorCode: string | null;
+  errorMessage: string | null;
+  eventStatus: 'none' | 'pending' | 'responding' | 'delivered';
+  eventCreatedAt: string | null;
+  eventDeliveredAt: string | null;
+  noemaResponse: string;
+  noemaResponseStatus:
+    | 'none'
+    | 'streaming'
+    | 'complete'
+    | 'interrupted'
+    | 'failed';
+  noemaResponseError: string | null;
+  noemaResponseModel: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  updatedAt: string;
+  completedAt: string | null;
+}
+
 export interface NoemaRootState {
   messages: NoemaRootMessage[];
+  workerTasks: NoemaBackgroundTask[];
   activeTurnId: string | null;
   selectedModel: string | null;
   connected: boolean;
@@ -33,9 +66,13 @@ export interface NoemaRootState {
   providerConfigured: boolean;
   providerBaseUrl: string;
   providerName: 'FreeLLMAPI';
+  workspaceDirectory: string | null;
+  dshAvailable: boolean;
+  dshWorkerAvailable: boolean;
+  dshWorkerError: string | null;
 }
 
-export type NoemaRootEvent =
+export type NoemaTurnEvent =
   | { type: 'models-updated' | 'provider-configured' }
   | { type: 'model-selected'; model: string }
   | {
@@ -66,6 +103,24 @@ export type NoemaRootEvent =
     }
   | { type: 'turn-idle'; turnId: string; attempt: number };
 
+export type NoemaWorkerEvent =
+  | { type: 'workspace-selected'; directory: string }
+  | { type: 'workspace-cleared' }
+  | { type: 'worker-task-updated'; taskId: string }
+  | { type: 'worker-event-started' | 'worker-event-idle'; taskId: string }
+  | {
+      type: 'worker-event-response-delta';
+      taskId: string;
+      delta: string;
+    }
+  | {
+      type: 'worker-event-response-failed';
+      taskId: string;
+      message: string;
+    };
+
+export type NoemaRootEvent = NoemaTurnEvent | NoemaWorkerEvent;
+
 export interface NoemaBridge {
   appVersion: string;
   getRootState(): Promise<NoemaRootState>;
@@ -91,6 +146,16 @@ export interface NoemaBridge {
     model?: string | null,
   ): Promise<{ turnId: string; attempt: number }>;
   stopTurn(turnId: string): Promise<boolean>;
+  chooseWorkspace(): Promise<string | null>;
+  clearWorkspace(): Promise<null>;
+  stopBackgroundTask(taskId: string): Promise<boolean>;
+  resumeBackgroundTask(taskId: string): Promise<{
+    accepted: boolean;
+    taskId?: string;
+    sessionId?: string;
+    workspacePath?: string;
+    errorMessage?: string;
+  }>;
   onRootEvent(listener: (event: NoemaRootEvent) => void): () => void;
 }
 

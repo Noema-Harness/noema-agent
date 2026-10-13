@@ -2,6 +2,13 @@ const DEFAULT_BASE_URL = 'http://127.0.0.1:3001/v1';
 
 const VERIFIED_FREE_MODELS = new Map([
   [
+    'auto:noema-free',
+    {
+      name: 'auto:noema-free',
+      label: 'Noema 免费模型链',
+    },
+  ],
+  [
     'free-router',
     {
       name: 'free-router',
@@ -129,10 +136,17 @@ export class FreeLLMAPIClient {
 
   /**
    * Streams text deltas from FreeLLMAPI's OpenAI-compatible chat endpoint.
-   * @param {{model:string,messages:Array<{role:'system'|'user'|'assistant',content:string}>,signal:AbortSignal,maxTokens?:number}} input
+   * @param {{model:string,messages:Array<object>,signal:AbortSignal,maxTokens?:number,tools?:Array<object>,onToolCalls?:(calls:Array<object>)=>void}} input
    * @returns {AsyncGenerator<string,void,void>}
    */
-  async *streamChat({ model, messages, signal, maxTokens = 4096 }) {
+  async *streamChat({
+    model,
+    messages,
+    signal,
+    maxTokens = 4096,
+    tools,
+    onToolCalls = () => {},
+  }) {
     const key = this.requireApiKey();
     let response;
     try {
@@ -148,6 +162,7 @@ export class FreeLLMAPIClient {
           messages,
           stream: true,
           max_tokens: maxTokens,
+          ...(tools?.length ? { tools, tool_choice: 'auto' } : {}),
         }),
         signal,
       });
@@ -175,6 +190,7 @@ export class FreeLLMAPIClient {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let pending = '';
+    const toolCalls = new Map();
     try {
       while (true) {
         const { value, done } = await reader.read();
@@ -182,16 +198,24 @@ export class FreeLLMAPIClient {
         const lines = pending.split('\n');
         pending = lines.pop() ?? '';
         for (const line of lines) {
-          const text = parseSseDataLine(line);
-          if (text !== null) yield text;
+          const payload = parseSseDataLine(line);
+          if (!payload) continue;
+          const text = extractTextDelta(payload);
+          if (text) yield text;
+          collectToolCallDeltas(payload, toolCalls);
         }
         if (done) break;
       }
       const finalLine = pending.trim();
       if (finalLine) {
-        const text = parseSseDataLine(finalLine);
-        if (text !== null) yield text;
+        const payload = parseSseDataLine(finalLine);
+        if (payload) {
+          const text = extractTextDelta(payload);
+          if (text) yield text;
+          collectToolCallDeltas(payload, toolCalls);
+        }
       }
+      if (toolCalls.size) onToolCalls(finalizeToolCalls(toolCalls));
     } catch (error) {
       if (signal.aborted || error?.name === 'AbortError') throw error;
       throw error;
@@ -238,15 +262,65 @@ function parseSseDataLine(line) {
       'FreeLLMAPI 当前免费模型路由未能完成请求。可以稍后重试或切换免费模型。',
     );
   }
+  return payload;
+}
+
+function extractTextDelta(payload) {
   const content = payload?.choices?.[0]?.delta?.content;
-  if (typeof content === 'string') return content || null;
+  if (typeof content === 'string') return content;
   if (Array.isArray(content)) {
     return content
       .filter((part) => part?.type === 'text' && typeof part.text === 'string')
       .map((part) => part.text)
       .join('');
   }
-  return null;
+  return '';
+}
+
+function collectToolCallDeltas(payload, toolCalls) {
+  const deltas = payload?.choices?.[0]?.delta?.tool_calls;
+  if (!Array.isArray(deltas)) return;
+  for (const delta of deltas) {
+    const index = Number.isInteger(delta?.index) ? delta.index : 0;
+    let call = toolCalls.get(index);
+    if (!call) {
+      call = {
+        id: '',
+        type: 'function',
+        function: { name: '', arguments: '' },
+      };
+      toolCalls.set(index, call);
+    }
+    if (typeof delta.id === 'string') call.id += delta.id;
+    if (typeof delta.function?.name === 'string') {
+      call.function.name += delta.function.name;
+    }
+    if (typeof delta.function?.arguments === 'string') {
+      call.function.arguments += delta.function.arguments;
+    }
+  }
+}
+
+function finalizeToolCalls(toolCalls) {
+  return [...toolCalls.entries()]
+    .sort(([left], [right]) => left - right)
+    .map(([, call]) => {
+      if (!call.id || !call.function.name) {
+        throw new FreeLLMAPIError(
+          'invalid_tool_call',
+          '免费模型返回了不完整的工具调用。消息已保留，可以重试。',
+        );
+      }
+      try {
+        JSON.parse(call.function.arguments);
+      } catch {
+        throw new FreeLLMAPIError(
+          'invalid_tool_call',
+          '免费模型返回了无法解析的工具参数。消息已保留，可以重试。',
+        );
+      }
+      return call;
+    });
 }
 
 /** @param {Response} response */
