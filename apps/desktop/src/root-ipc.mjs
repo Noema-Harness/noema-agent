@@ -19,7 +19,7 @@ const CHANNELS = Object.freeze({
 
 /**
  * Registers only the narrow root-conversation operations that the renderer needs.
- * @param {{ipcMain: {handle: Function, removeHandler: Function}, rootAgent: object, isTrustedSender: (sender: object) => boolean,chooseWorkspace?:()=>Promise<string|null>,sendMessage?:(text:string)=>Promise<object>|object}} options
+ * @param {{ipcMain: {handle: Function, removeHandler: Function}, rootAgent: object, isTrustedSender: (sender: object) => boolean,chooseWorkspace?:()=>Promise<string|null>,sendMessage?:(text:string)=>Promise<object>|object,retryTurn?:(turnId:string,model:string|null)=>Promise<object>|object}} options
  */
 export function registerRootIpc({
   ipcMain,
@@ -27,6 +27,7 @@ export function registerRootIpc({
   isTrustedSender,
   chooseWorkspace = async () => null,
   sendMessage = (text) => rootAgent.sendMessage({ text }),
+  retryTurn = (turnId, model) => rootAgent.retryTurn({ turnId, model }),
 }) {
   const register = (channel, handler) => {
     ipcMain.handle(channel, async (event, ...args) => {
@@ -43,9 +44,7 @@ export function registerRootIpc({
   );
   register(CHANNELS.selectModel, (model) => rootAgent.setModel(model));
   register(CHANNELS.send, (text) => sendMessage(text));
-  register(CHANNELS.retry, (turnId, model) =>
-    rootAgent.retryTurn({ turnId, model }),
-  );
+  register(CHANNELS.retry, (turnId, model) => retryTurn(turnId, model));
   register(CHANNELS.stop, (turnId) => rootAgent.stopTurn(turnId));
   register(CHANNELS.chooseWorkspace, async () => {
     const directory = await chooseWorkspace();
@@ -82,15 +81,28 @@ export function registerRootIpc({
  * @param {object} rootAgent
  * @param {(snapshot:{title:string})=>Promise<boolean>} confirmTransmission
  */
-export function createImportAwareSendMessage(rootAgent, confirmTransmission) {
-  return async (text) => {
+export function createImportAwareAction(rootAgent, confirmTransmission) {
+  return async (action) => {
     const imported = rootAgent.getUnconsentedContextImport();
     if (imported) {
       if (!(await confirmTransmission(imported))) return { canceled: true };
       rootAgent.consentToContextImportTransmission();
     }
-    return rootAgent.sendMessage({ text });
+    return action();
   };
+}
+
+/**
+ * @param {object} rootAgent
+ * @param {(snapshot:{title:string})=>Promise<boolean>} confirmTransmission
+ * @returns {(text:string)=>Promise<object>|object}
+ */
+export function createImportAwareSendMessage(rootAgent, confirmTransmission) {
+  const runWithConsent = createImportAwareAction(
+    rootAgent,
+    confirmTransmission,
+  );
+  return (text) => runWithConsent(() => rootAgent.sendMessage({ text }));
 }
 
 export { CHANNELS };

@@ -84,6 +84,7 @@ test('sends an imported Codex snapshot as quoted context before the current root
       },
     ],
   });
+  store.consentToContextImportTransmission();
   let sent;
   const provider = {
     baseUrl: 'http://127.0.0.1:31415/v1',

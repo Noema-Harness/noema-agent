@@ -245,12 +245,41 @@ select:disabled {
 
 .workspace-control {
   min-width: 0;
-  max-width: 58%;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
+  max-width: 66%;
+  display: grid;
+  grid-template-columns: minmax(155px, 0.8fr) minmax(230px, 1.2fr);
+  align-items: start;
+  gap: 8px 18px;
   padding-bottom: 2px;
+}
+
+.scope-control {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 5px 9px;
+}
+
+.scope-control-heading {
+  grid-column: 1 / -1;
+  color: var(--ink-soft);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+
+.scope-control-note {
+  grid-column: 1 / -1;
+  color: var(--faint);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.scope-control-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
 }
 
 .workspace-label {
@@ -1656,20 +1685,17 @@ select:disabled {
   .workspace-control {
     width: 100%;
     max-width: none;
-    justify-content: flex-start;
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+    gap: 12px;
   }
   .workspace-label {
-    flex: 1 1 100%;
-    order: 0;
+    grid-column: 1 / -1;
   }
-  .context-import-button {
-    order: 1;
+  .scope-control {
+    align-content: start;
   }
-  .workspace-control > .workspace-button:not(.context-import-button) {
-    order: 2;
-  }
-  .workspace-clear-button {
-    order: 3;
+  .scope-control-actions {
+    grid-column: 1 / -1;
   }
   .heading-copy h1 {
     font-size: 23px;

@@ -66,6 +66,7 @@ test('a selected Codex snapshot reaches the next FreeLLMAPI context as historica
       { role: 'assistant', content: '已定位到现有对话主线。' },
     ],
   });
+  store.consentToContextImportTransmission();
   const current = store.beginTurn({
     text: '接着做最小改动。',
     model: 'auto:noema-free',
@@ -79,6 +80,31 @@ test('a selected Codex snapshot reaches the next FreeLLMAPI context as historica
   assert.match(imported.content, /不是本轮请求或操作授权/);
   assert.equal(context.messages.at(-1).content, '接着做最小改动。');
   assert.ok(context.historyCharacters > 0);
+  store.close();
+});
+
+test('an unconsented Codex snapshot is excluded from every model context', () => {
+  const store = memoryStore();
+  store.addContextImport({
+    source: 'codex',
+    threadId: 'thr-unconsented',
+    title: 'local-only preview',
+    messages: [{ role: 'user', content: 'Synthetic data must remain local.' }],
+  });
+  const current = store.beginTurn({
+    text: '普通问题，不应自动带入快照。',
+    model: 'auto:noema-free',
+  });
+
+  const context = store.getPromptContext(current.id);
+  assert.equal(
+    context.messages.some((message) =>
+      message.content.includes('codex_context_snapshot'),
+    ),
+    false,
+  );
+  assert.equal(store.getContextImports().length, 1);
+  assert.equal(store.getContextImports()[0].consentedAt, null);
   store.close();
 });
 
