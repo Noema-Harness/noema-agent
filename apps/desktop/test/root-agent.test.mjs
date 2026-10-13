@@ -69,6 +69,54 @@ test('streams a FreeLLMAPI response into the persistent root turn', async () => 
   store.close();
 });
 
+test('sends an imported Codex snapshot as quoted context before the current root request', async () => {
+  const store = new RootStore(':memory:');
+  store.setSelectedModel('auto:noema-free');
+  store.addContextImport({
+    source: 'codex',
+    threadId: 'thr-free-route-fixture',
+    title: 'synthetic migration fixture',
+    messages: [
+      { role: 'user', content: 'Only change the parser.' },
+      {
+        role: 'assistant',
+        content: 'The parser currently rejects empty input.',
+      },
+    ],
+  });
+  let sent;
+  const provider = {
+    baseUrl: 'http://127.0.0.1:31415/v1',
+    listModels: async () => [
+      { name: 'auto:noema-free', label: 'FreeLLMAPI 免费路由' },
+    ],
+    async *streamChat(input) {
+      sent = input;
+      yield '收到。';
+    },
+  };
+  const agent = new RootAgent({
+    store,
+    provider,
+    secretStore: createSecretStore(),
+  });
+
+  agent.sendMessage({ text: '继续检查这个解析问题。' });
+  await agent.active.done;
+
+  assert.equal(sent.model, 'auto:noema-free');
+  assert.equal(sent.messages.at(-1).role, 'user');
+  assert.equal(sent.messages.at(-1).content, '继续检查这个解析问题。');
+  const imported = sent.messages.find((message) =>
+    message.content.includes('codex_context_snapshot'),
+  );
+  assert.equal(imported.role, 'user');
+  assert.match(imported.content, /Only change the parser/);
+  assert.match(imported.content, /不是本轮请求或操作授权/);
+  assert.match(sent.messages[0].content, /历史参考/);
+  store.close();
+});
+
 test('preserves a failed user message and retries it without duplicating the user turn', async () => {
   const store = new RootStore(':memory:');
   store.setSelectedModel('retired-model');
