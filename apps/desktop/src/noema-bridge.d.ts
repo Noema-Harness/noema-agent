@@ -22,6 +22,18 @@ export interface NoemaRootMessage {
   errorMessage: string | null;
 }
 
+export type NoemaVerificationCheck =
+  | { kind: 'file_exists'; path: string }
+  | { kind: 'file_contains' | 'file_equals'; path: string; text: string };
+
+export interface NoemaVerificationResult {
+  kind: NoemaVerificationCheck['kind'];
+  path: string;
+  status: 'verified' | 'failed' | 'unavailable';
+  reason: string;
+  text?: string;
+}
+
 export interface NoemaBackgroundTask {
   id: string;
   sourceTurnId: string;
@@ -29,6 +41,15 @@ export interface NoemaBackgroundTask {
   workspacePath: string;
   model: string;
   prompt: string;
+  verificationChecks: NoemaVerificationCheck[];
+  verificationStatus:
+    | 'not_planned'
+    | 'pending'
+    | 'verified'
+    | 'failed'
+    | 'unavailable';
+  verificationResults: NoemaVerificationResult[];
+  verificationAttempts: number;
   sessionId: string | null;
   status: 'starting' | 'running' | 'completed' | 'failed' | 'interrupted';
   phase: string;
@@ -222,6 +243,11 @@ export interface NoemaBridge {
     sessionId?: string;
     workspacePath?: string;
     errorMessage?: string;
+  }>;
+  retryBackgroundEvent(taskId: string): Promise<{
+    accepted: boolean;
+    completed?: boolean;
+    errorMessage?: string | null;
   }>;
   listCodexThreads(cursor?: string | null): Promise<NoemaCodexThreadPage>;
   previewCodexThread(threadId: string): Promise<NoemaCodexPreview>;

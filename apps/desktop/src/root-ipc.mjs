@@ -10,6 +10,7 @@ const CHANNELS = Object.freeze({
   clearWorkspace: 'noema:clear-workspace',
   stopWorker: 'noema:stop-background-task',
   resumeWorker: 'noema:resume-background-task',
+  retryWorkerEvent: 'noema:retry-worker-event',
   listCodexThreads: 'noema:list-codex-threads',
   previewCodexThread: 'noema:preview-codex-thread',
   importCodexThread: 'noema:import-codex-thread',
@@ -56,6 +57,9 @@ export function registerRootIpc({
   );
   register(CHANNELS.resumeWorker, (taskId) =>
     rootAgent.resumeBackgroundTask(taskId),
+  );
+  register(CHANNELS.retryWorkerEvent, (taskId) =>
+    rootAgent.retryBackgroundEvent(taskId),
   );
   register(CHANNELS.clearWorkspace, () => rootAgent.clearWorkspaceDirectory());
   register(CHANNELS.listCodexThreads, (cursor) =>

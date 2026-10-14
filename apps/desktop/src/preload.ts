@@ -20,6 +20,8 @@ const bridge = {
     ipcRenderer.invoke('noema:stop-background-task', taskId),
   resumeBackgroundTask: (taskId: string) =>
     ipcRenderer.invoke('noema:resume-background-task', taskId),
+  retryBackgroundEvent: (taskId: string) =>
+    ipcRenderer.invoke('noema:retry-worker-event', taskId),
   listCodexThreads: (cursor?: string | null) =>
     ipcRenderer.invoke('noema:list-codex-threads', cursor ?? null),
   previewCodexThread: (threadId: string) =>

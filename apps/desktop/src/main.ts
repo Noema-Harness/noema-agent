@@ -17,7 +17,10 @@ import {
 } from './root-ipc.mjs';
 import { RootAgent } from './root-agent.mjs';
 import { RootStore } from './root-store.mjs';
-import { resolveNoemaDatabasePath } from './runtime-paths.mjs';
+import {
+  resolveNoemaDatabasePath,
+  resolveNoemaDshUserDataPath,
+} from './runtime-paths.mjs';
 import {
   CodexAppServerAdapter,
   resolveCodexExecutable,
@@ -76,7 +79,9 @@ let rootAgent: RootAgent | null = null;
 let shutdownStarted = false;
 let shutdownComplete = false;
 const testDatabasePath = process.env.NOEMA_E2E_DATABASE_PATH ?? null;
+const testDshUserDataPath = process.env.NOEMA_E2E_DSH_USER_DATA_PATH ?? null;
 delete process.env.NOEMA_E2E_DATABASE_PATH;
+delete process.env.NOEMA_E2E_DSH_USER_DATA_PATH;
 
 const createWindow = () => {
   mainWindow = new BrowserWindow({
@@ -212,7 +217,12 @@ async function startNoema() {
       const runtime = await resolveDshHeadlessRuntime();
       dshAdapter = new DshHeadlessAdapter({
         runtime,
-        userDataPath: app.getPath('userData'),
+        userDataPath: resolveNoemaDshUserDataPath({
+          userDataPath: app.getPath('userData'),
+          isPackaged: app.isPackaged,
+          testDatabasePath,
+          testDshUserDataPath,
+        }),
         providerBaseUrl: provider.baseUrl,
         getApiKey: () => providerSecretStore?.get() ?? null,
       });

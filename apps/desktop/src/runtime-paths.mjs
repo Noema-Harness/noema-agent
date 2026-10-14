@@ -15,3 +15,26 @@ export function resolveNoemaDatabasePath({
   }
   return path.join(userDataPath, 'noema.sqlite3');
 }
+
+/**
+ * Allows isolated DSH worker state for unpackaged end-to-end tests while keeping
+ * OS-encrypted provider credentials in Electron's normal userData directory.
+ * @param {{userDataPath:string,isPackaged:boolean,testDatabasePath?:string|null,testDshUserDataPath?:string|null}} input
+ */
+export function resolveNoemaDshUserDataPath({
+  userDataPath,
+  isPackaged,
+  testDatabasePath = null,
+  testDshUserDataPath = null,
+}) {
+  if (
+    !isPackaged &&
+    typeof testDatabasePath === 'string' &&
+    testDatabasePath.trim() &&
+    typeof testDshUserDataPath === 'string' &&
+    path.isAbsolute(testDshUserDataPath)
+  ) {
+    return path.resolve(testDshUserDataPath);
+  }
+  return userDataPath;
+}

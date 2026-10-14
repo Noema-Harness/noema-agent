@@ -31,6 +31,11 @@ test('registers only named root-agent actions and rejects non-window senders', a
     clearWorkspaceDirectory: () => null,
     stopBackgroundTask: async () => true,
     resumeBackgroundTask: async (taskId) => ({ accepted: true, taskId }),
+    retryBackgroundEvent: async (taskId) => ({
+      accepted: true,
+      completed: true,
+      taskId,
+    }),
     listCodexThreads: async () => [],
     previewCodexThread: async (threadId) => ({ threadId }),
     importCodexThread: async (input) => input,
@@ -59,6 +64,7 @@ test('registers only named root-agent actions and rejects non-window senders', a
       CHANNELS.clearWorkspace,
       CHANNELS.stopWorker,
       CHANNELS.resumeWorker,
+      CHANNELS.retryWorkerEvent,
       CHANNELS.listCodexThreads,
       CHANNELS.previewCodexThread,
       CHANNELS.importCodexThread,
@@ -100,6 +106,13 @@ test('registers only named root-agent actions and rejects non-window senders', a
       'task-1',
     ),
     { accepted: true, taskId: 'task-1' },
+  );
+  assert.deepEqual(
+    await harness.handlers.get(CHANNELS.retryWorkerEvent)(
+      { sender: trustedSender },
+      'task-1',
+    ),
+    { accepted: true, completed: true, taskId: 'task-1' },
   );
   await assert.rejects(
     harness.handlers.get(CHANNELS.state)({ sender: {} }),
