@@ -54,11 +54,15 @@ test('assembles streamed FreeLLMAPI tool-call deltas without exposing arguments 
   });
   let requestBody;
   let receivedCalls;
+  let receivedRoute;
   const client = new FreeLLMAPIClient({
     getApiKey: () => 'test-key',
     fetchImpl: async (_url, init) => {
       requestBody = JSON.parse(init.body);
-      return new Response(stream, { status: 200 });
+      return new Response(stream, {
+        status: 200,
+        headers: { 'X-Routed-Via': 'blockrun/model%2Fname' },
+      });
     },
   });
   const text = [];
@@ -69,6 +73,9 @@ test('assembles streamed FreeLLMAPI tool-call deltas without exposing arguments 
     tools: [{ type: 'function', function: { name: 'delegate_task' } }],
     onToolCalls: (calls) => {
       receivedCalls = calls;
+    },
+    onRouteMetadata: (route) => {
+      receivedRoute = route;
     },
   }))
     text.push(delta);
@@ -86,6 +93,7 @@ test('assembles streamed FreeLLMAPI tool-call deltas without exposing arguments 
       },
     },
   ]);
+  assert.equal(receivedRoute, 'blockrun/model/name');
 });
 
 test('streams OpenAI-compatible SSE across arbitrary network chunk boundaries', async () => {
@@ -114,14 +122,19 @@ test('streams OpenAI-compatible SSE across arbitrary network chunk boundaries', 
     },
   });
   const deltas = [];
+  let routedVia = 'unexpected';
   for await (const delta of client.streamChat({
     model: 'free-router',
     messages: [{ role: 'user', content: '你好' }],
     signal: new AbortController().signal,
+    onRouteMetadata: (route) => {
+      routedVia = route;
+    },
   })) {
     deltas.push(delta);
   }
   assert.deepEqual(deltas, ['你好', '，Noema。']);
+  assert.equal(routedVia, null);
 });
 
 test('rejects non-local endpoints before attaching the API key', async () => {

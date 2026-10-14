@@ -17,7 +17,7 @@ test('root store migrates idempotently and persists the selected model', () => {
     store.db
       .prepare('SELECT MAX(version) AS version FROM schema_migrations')
       .get().version,
-    7,
+    8,
   );
   store.setSelectedModel('free-router');
   assert.equal(store.getSelectedModel(), 'free-router');
@@ -31,6 +31,10 @@ test('a schema-v4 database upgrades through interaction and verification state',
     INSERT INTO schema_migrations (version, applied_at) VALUES
       (1, 'fixture'), (2, 'fixture'), (3, 'fixture'), (4, 'fixture');
     CREATE TABLE root_turns (id TEXT PRIMARY KEY);
+    CREATE TABLE root_messages (
+      id TEXT PRIMARY KEY, turn_id TEXT, role TEXT, content TEXT, status TEXT,
+      attempt INTEGER, model TEXT, created_at TEXT, updated_at TEXT
+    );
     CREATE TABLE root_context_imports (id TEXT PRIMARY KEY);
     CREATE TABLE background_tasks (id TEXT PRIMARY KEY);
   `);
@@ -40,7 +44,7 @@ test('a schema-v4 database upgrades through interaction and verification state',
     store.db
       .prepare('SELECT MAX(version) AS version FROM schema_migrations')
       .get().version,
-    7,
+    8,
   );
   assert.equal(
     store.db
@@ -75,6 +79,104 @@ test('a schema-v4 database upgrades through interaction and verification state',
       .all()
       .some((column) => column.name === 'interaction_adjustment_ids_json'),
   );
+  store.db
+    .prepare(`
+      INSERT INTO root_messages (
+        id, turn_id, role, content, status, attempt, model, created_at, updated_at
+      ) VALUES ('legacy-response', 'legacy-turn', 'assistant', '旧回复', 'complete', 1, 'free-router', 'fixture', 'fixture')
+    `)
+    .run();
+  assert.deepEqual(
+    store.db
+      .prepare(`
+        SELECT routed_via_json AS routedVia, route_metadata_status AS status
+        FROM root_messages WHERE id = 'legacy-response'
+      `)
+      .get(),
+    { routedVia: '[]', status: 'unknown' },
+  );
+  store.close();
+});
+
+test('stores gateway route provenance on the matching assistant attempt only', () => {
+  const store = memoryStore();
+  const first = store.beginTurn({
+    text: '记录本轮路由',
+    model: 'auto:noema-free',
+  });
+  let assistant = store
+    .getSnapshot()
+    .messages.find((message) => message.role === 'assistant');
+  assert.equal(assistant.routeMetadataStatus, 'pending');
+  assert.deepEqual(assistant.routedVia, []);
+
+  store.recordAssistantRouteMetadata({
+    id: first.id,
+    attempt: first.attempt,
+    routedVia: 'blockrun/model-a',
+  });
+  store.appendAssistant({
+    id: first.id,
+    attempt: first.attempt,
+    content: '已记录。',
+  });
+  store.completeTurn(first.id, first.attempt);
+  assistant = store
+    .getSnapshot()
+    .messages.find((message) => message.role === 'assistant');
+  assert.equal(assistant.routeMetadataStatus, 'reported');
+  assert.deepEqual(assistant.routedVia, ['blockrun/model-a']);
+
+  const failed = store.beginTurn({
+    text: '发生错误后重试',
+    model: 'auto:noema-free',
+  });
+  store.recordAssistantRouteMetadata({
+    id: failed.id,
+    attempt: failed.attempt,
+    routedVia: 'kilo/model-b',
+  });
+  store.failTurn(
+    failed.id,
+    failed.attempt,
+    'provider_error',
+    'synthetic failure',
+  );
+  const retry = store.retryTurn(failed.id, 'free-router');
+  store.recordAssistantRouteMetadata({
+    id: retry.id,
+    attempt: retry.attempt,
+    routedVia: null,
+  });
+  store.completeTurn(retry.id, retry.attempt);
+
+  const attempts = store
+    .getSnapshot()
+    .messages.filter(
+      (message) => message.role === 'assistant' && message.turnId === failed.id,
+    );
+  assert.equal(attempts[0].routeMetadataStatus, 'reported');
+  assert.deepEqual(attempts[0].routedVia, ['kilo/model-b']);
+  assert.equal(attempts[1].routeMetadataStatus, 'not_reported');
+  assert.deepEqual(attempts[1].routedVia, []);
+
+  const unavailable = store.beginTurn({
+    text: '没有获得网关响应',
+    model: 'auto:noema-free',
+  });
+  store.failTurn(
+    unavailable.id,
+    unavailable.attempt,
+    'gateway_unavailable',
+    'synthetic failure',
+  );
+  const unavailableAssistant = store
+    .getSnapshot()
+    .messages.find(
+      (message) =>
+        message.turnId === unavailable.id && message.role === 'assistant',
+    );
+  assert.equal(unavailableAssistant.routeMetadataStatus, 'unknown');
   store.close();
 });
 

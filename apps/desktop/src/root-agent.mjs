@@ -578,6 +578,20 @@ export class RootAgent {
         onToolCalls: (calls) => {
           toolCalls = calls;
         },
+        onRouteMetadata: (routedVia) => {
+          try {
+            this.store.recordAssistantRouteMetadata({
+              id: turn.id,
+              attempt: turn.attempt,
+              routedVia,
+            });
+          } catch (error) {
+            console.warn(
+              'Noema could not save the FreeLLMAPI route metadata:',
+              error?.message ?? 'unknown persistence error',
+            );
+          }
+        },
       })) {
         this.appendTurnText(turn, delta);
       }

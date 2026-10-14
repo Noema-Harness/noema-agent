@@ -1283,7 +1283,45 @@ function App() {
                               <strong>Noema</strong>
                               {message.model && (
                                 <span className="message-model">
-                                  {message.model}
+                                  {root?.models.find(
+                                    (model) => model.name === message.model,
+                                  )?.label ?? message.model}
+                                </span>
+                              )}
+                              {message.routeMetadataStatus === 'reported' &&
+                                message.routedVia.length > 0 &&
+                                (message.routedVia.length === 1 ? (
+                                  <span
+                                    className="route-provenance-label"
+                                    title="FreeLLMAPI 响应头报告的实际提供方和模型。"
+                                  >
+                                    实际：{message.routedVia[0]}
+                                  </span>
+                                ) : (
+                                  <details className="route-provenance">
+                                    <summary>
+                                      实际路由 {message.routedVia.length} 次
+                                    </summary>
+                                    <ul>
+                                      {message.routedVia.map((route, index) => (
+                                        <li key={`${route}-${index}`}>
+                                          {route}
+                                        </li>
+                                      ))}
+                                    </ul>
+                                    <p>
+                                      来源：FreeLLMAPI
+                                      响应头；所选路由与实际服务模型可能不同。
+                                    </p>
+                                  </details>
+                                ))}
+                              {message.routeMetadataStatus ===
+                                'not_reported' && (
+                                <span
+                                  className="route-unreported"
+                                  title="FreeLLMAPI 本轮没有报告实际提供方和模型。"
+                                >
+                                  实际路由未报告
                                 </span>
                               )}
                               {message.attempt > 1 && (

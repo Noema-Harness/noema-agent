@@ -8,5 +8,6 @@
 - `0002-desktop-runtime.md`：桌面技术基线。
 - `0003-root-dialogue-and-background-workers.md`：根对话与外部执行状态所有权；其中本地模型选择已被 ADR 0005 取代。
 - `0005-free-model-routing-through-freellmapi.md`：当前唯一模型网关、免费路由白名单与凭据边界。
+- `0009-gateway-route-provenance.md`：将 FreeLLMAPI 报告的实际模型路由绑定到对应根对话回复，不把所选别名当作实际模型。
 
 不要把未决问题伪装成已接受架构；新决定替代旧决定时保留历史并互相链接。

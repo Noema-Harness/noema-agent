@@ -6,6 +6,7 @@ import { normalizeWorkspaceVerificationChecks } from './workspace-verifier.mjs';
 const MAX_MESSAGE_LENGTH = 100_000;
 const MAX_ACTIVE_INTERACTION_ADJUSTMENTS = 12;
 const MAX_WITHDRAWN_INTERACTION_ADJUSTMENTS = 20;
+const MAX_RECORDED_ROUTES_PER_MESSAGE = 16;
 
 function hydrateBackgroundTask(row) {
   if (!row) return null;
@@ -286,7 +287,20 @@ export class RootStore {
       );
       applyInteractionAdjustmentExposureSchema();
     }
-    if (currentVersion > 7)
+    if (currentVersion < 8) {
+      const applyRootRouteProvenanceSchema = this.db.transaction(() => {
+        this.db.exec(`
+          ALTER TABLE root_messages
+            ADD COLUMN routed_via_json TEXT NOT NULL DEFAULT '[]';
+          ALTER TABLE root_messages
+            ADD COLUMN route_metadata_status TEXT NOT NULL DEFAULT 'unknown'
+              CHECK (route_metadata_status IN ('unknown', 'pending', 'reported', 'not_reported'));
+          INSERT INTO schema_migrations (version, applied_at) VALUES (8, '${nowIso()}');
+        `);
+      });
+      applyRootRouteProvenanceSchema();
+    }
+    if (currentVersion > 8)
       throw new Error(
         `Database schema ${currentVersion} is newer than this Noema build supports`,
       );
@@ -318,8 +332,8 @@ export class RootStore {
         .run(userMessageId, id, text, model, timestamp, timestamp);
       this.db
         .prepare(`
-        INSERT INTO root_messages (id, turn_id, role, content, status, attempt, model, created_at, updated_at)
-        VALUES (?, ?, 'assistant', '', 'streaming', 1, ?, ?, ?)
+        INSERT INTO root_messages (id, turn_id, role, content, status, attempt, model, route_metadata_status, created_at, updated_at)
+        VALUES (?, ?, 'assistant', '', 'streaming', 1, ?, 'pending', ?, ?)
       `)
         .run(assistantMessageId, id, model, timestamp, timestamp);
     });
@@ -357,8 +371,8 @@ export class RootStore {
       const assistantMessageId = randomUUID();
       this.db
         .prepare(`
-        INSERT INTO root_messages (id, turn_id, role, content, status, attempt, model, created_at, updated_at)
-        VALUES (?, ?, 'assistant', '', 'streaming', ?, ?, ?, ?)
+        INSERT INTO root_messages (id, turn_id, role, content, status, attempt, model, route_metadata_status, created_at, updated_at)
+        VALUES (?, ?, 'assistant', '', 'streaming', ?, ?, 'pending', ?, ?)
       `)
         .run(assistantMessageId, turnId, attempt, model, timestamp, timestamp);
       return {
@@ -390,6 +404,56 @@ export class RootStore {
         'UPDATE root_turns SET updated_at = ? WHERE id = ? AND attempt = ? AND status = ?',
       )
       .run(timestamp, id, attempt, 'streaming');
+  }
+
+  /** @param {{id:string,attempt:number,routedVia:string|null}} input */
+  recordAssistantRouteMetadata({ id, attempt, routedVia }) {
+    requireText(id, 'turn id', 200);
+    if (!Number.isInteger(attempt) || attempt < 1) {
+      throw new TypeError('assistant attempt is invalid');
+    }
+    if (routedVia !== null) requireText(routedVia, 'routed via', 500);
+    const message = this.db
+      .prepare(`
+        SELECT routed_via_json AS routedViaJson
+        FROM root_messages
+        WHERE turn_id = ? AND role = 'assistant' AND attempt = ? AND status = 'streaming'
+      `)
+      .get(id, attempt);
+    if (!message) throw new Error('The assistant response is no longer active');
+
+    let routes = [];
+    try {
+      const parsed = JSON.parse(message.routedViaJson ?? '[]');
+      if (Array.isArray(parsed)) {
+        routes = parsed.filter(
+          (route) => typeof route === 'string' && route.trim().length > 0,
+        );
+      }
+    } catch {
+      routes = [];
+    }
+    const normalizedRoute = routedVia?.trim() || null;
+    if (normalizedRoute) {
+      routes.push(normalizedRoute);
+      routes = routes.slice(-MAX_RECORDED_ROUTES_PER_MESSAGE);
+    }
+
+    const result = this.db
+      .prepare(`
+        UPDATE root_messages
+        SET routed_via_json = ?, route_metadata_status = ?, updated_at = ?
+        WHERE turn_id = ? AND role = 'assistant' AND attempt = ? AND status = 'streaming'
+      `)
+      .run(
+        JSON.stringify(routes),
+        routes.length > 0 ? 'reported' : 'not_reported',
+        nowIso(),
+        id,
+        attempt,
+      );
+    if (result.changes !== 1)
+      throw new Error('The assistant response is no longer active');
   }
 
   /** @param {string} id @param {number} attempt */
@@ -433,7 +497,13 @@ export class RootStore {
     const transaction = this.db.transaction(() => {
       const message = this.db
         .prepare(`
-        UPDATE root_messages SET status = ?, updated_at = ?
+        UPDATE root_messages
+        SET status = ?,
+            route_metadata_status = CASE
+              WHEN route_metadata_status = 'pending' THEN 'unknown'
+              ELSE route_metadata_status
+            END,
+            updated_at = ?
         WHERE turn_id = ? AND role = 'assistant' AND attempt = ? AND status = 'streaming'
       `)
         .run(status, timestamp, id, attempt);
@@ -484,6 +554,8 @@ export class RootStore {
       .prepare(`
       SELECT m.id, m.turn_id AS turnId, m.role, m.content, m.status,
              m.attempt, m.model, m.created_at AS createdAt, m.updated_at AS updatedAt,
+             m.routed_via_json AS routedViaJson,
+             m.route_metadata_status AS routeMetadataStatus,
              t.status AS turnStatus, t.attempt AS currentAttempt,
              t.context_turns AS contextTurns, t.context_omitted_turns AS contextOmittedTurns,
              t.context_characters AS contextCharacters,
@@ -495,16 +567,36 @@ export class RootStore {
     `)
       .all()
       .map((message) => {
-        const { interactionAdjustmentIdsJson, ...hydratedMessage } = message;
+        const {
+          interactionAdjustmentIdsJson,
+          routedViaJson,
+          ...hydratedMessage
+        } = message;
+        let routedVia = [];
+        try {
+          const parsed = JSON.parse(routedViaJson ?? '[]');
+          if (Array.isArray(parsed)) {
+            routedVia = parsed.filter(
+              (route) => typeof route === 'string' && route.trim().length > 0,
+            );
+          }
+        } catch {
+          routedVia = [];
+        }
         try {
           return {
             ...hydratedMessage,
+            routedVia,
             interactionAdjustmentIds: normalizeInteractionAdjustmentIds(
               JSON.parse(interactionAdjustmentIdsJson ?? '[]'),
             ),
           };
         } catch {
-          return { ...hydratedMessage, interactionAdjustmentIds: [] };
+          return {
+            ...hydratedMessage,
+            routedVia,
+            interactionAdjustmentIds: [],
+          };
         }
       });
     const active = this.db

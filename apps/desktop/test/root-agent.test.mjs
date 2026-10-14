@@ -41,6 +41,7 @@ test('streams a FreeLLMAPI response into the persistent root turn', async () => 
     ],
     async *streamChat(input) {
       sent = input;
+      input.onRouteMetadata('blockrun/model-name');
       yield '你好';
       yield '，这里是 Noema。';
     },
@@ -58,6 +59,8 @@ test('streams a FreeLLMAPI response into the persistent root turn', async () => 
   assert.equal(snapshot.messages.length, 2);
   assert.equal(snapshot.messages[1].content, '你好，这里是 Noema。');
   assert.equal(snapshot.messages[1].turnStatus, 'completed');
+  assert.equal(snapshot.messages[1].routeMetadataStatus, 'reported');
+  assert.deepEqual(snapshot.messages[1].routedVia, ['blockrun/model-name']);
   assert.equal(sent.model, 'free-router');
   assert.equal(sent.messages.at(-1).content, '你好');
   assert.ok(!('numCtx' in sent));

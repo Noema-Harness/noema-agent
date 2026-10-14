@@ -61,7 +61,8 @@ button {
 button:focus-visible,
 select:focus-visible,
 textarea:focus-visible,
-a:focus-visible {
+a:focus-visible,
+summary:focus-visible {
   outline: 3px solid color-mix(in srgb, var(--focus) 70%, white);
   outline-offset: 3px;
 }
@@ -1149,6 +1150,54 @@ select:disabled {
 .message-model,
 .attempt-label {
   max-width: 45%;
+  overflow: hidden;
+  color: var(--faint);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.route-provenance,
+.route-provenance-label {
+  min-width: 0;
+  max-width: 38%;
+  flex: 0 1 260px;
+  color: var(--faint);
+  font-size: 10px;
+}
+
+.route-provenance-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.route-provenance summary {
+  overflow: hidden;
+  cursor: pointer;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.route-provenance ul {
+  display: grid;
+  gap: 3px;
+  margin: 6px 0 0;
+  padding-left: 16px;
+  color: var(--ink-soft);
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.route-provenance p {
+  margin: 5px 0 0;
+  color: var(--faint);
+  line-height: 1.45;
+  white-space: normal;
+}
+
+.route-unreported {
+  max-width: 38%;
   overflow: hidden;
   color: var(--faint);
   font-size: 10px;

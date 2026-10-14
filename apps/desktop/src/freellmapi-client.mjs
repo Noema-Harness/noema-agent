@@ -136,7 +136,7 @@ export class FreeLLMAPIClient {
 
   /**
    * Streams text deltas from FreeLLMAPI's OpenAI-compatible chat endpoint.
-   * @param {{model:string,messages:Array<object>,signal:AbortSignal,maxTokens?:number,tools?:Array<object>,onToolCalls?:(calls:Array<object>)=>void}} input
+   * @param {{model:string,messages:Array<object>,signal:AbortSignal,maxTokens?:number,tools?:Array<object>,onToolCalls?:(calls:Array<object>)=>void,onRouteMetadata?:(route:string|null)=>void}} input
    * @returns {AsyncGenerator<string,void,void>}
    */
   async *streamChat({
@@ -146,6 +146,7 @@ export class FreeLLMAPIClient {
     maxTokens = 4096,
     tools,
     onToolCalls = () => {},
+    onRouteMetadata = () => {},
   }) {
     const key = this.requireApiKey();
     let response;
@@ -186,6 +187,17 @@ export class FreeLLMAPIClient {
         'FreeLLMAPI 没有返回可读取的回复流。',
       );
     }
+
+    const routeHeader = response.headers.get('x-routed-via')?.trim();
+    let routedVia = routeHeader || null;
+    if (routedVia) {
+      try {
+        routedVia = decodeURIComponent(routedVia);
+      } catch {
+        // Keep the gateway's literal value if its percent-encoding is malformed.
+      }
+    }
+    onRouteMetadata(routedVia);
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
