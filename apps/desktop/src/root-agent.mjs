@@ -444,6 +444,7 @@ export class RootAgent {
       workspacePath: previous.workspacePath,
       sessionId: previous.sessionId,
       verificationChecks: previous.verificationChecks,
+      inheritedAdjustmentIds: previous.interactionAdjustmentIds,
     });
   }
 
@@ -748,6 +749,7 @@ export class RootAgent {
     workspacePath: specifiedWorkspacePath = null,
     sessionId = null,
     verificationChecks = [],
+    inheritedAdjustmentIds = [],
   }) {
     let checks;
     try {
@@ -779,6 +781,9 @@ export class RootAgent {
     const interactionAdjustments = sessionId
       ? []
       : this.store.getInteractionAdjustmentsForSurface('coding');
+    const interactionAdjustmentIds = sessionId
+      ? inheritedAdjustmentIds
+      : interactionAdjustments.map((item) => item.id);
     const taskContext = [];
     if (!sessionId && interactionAdjustments.length) {
       taskContext.push(
@@ -818,6 +823,7 @@ export class RootAgent {
       model: DSH_FREE_MODEL,
       prompt: taskPrompt,
       verificationChecks: checks,
+      interactionAdjustmentIds,
     });
     this.emit({ type: 'worker-task-updated', taskId });
     let resolveStarted;

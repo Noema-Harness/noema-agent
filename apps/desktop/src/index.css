@@ -720,6 +720,71 @@ select:disabled {
   line-height: 1.5;
 }
 
+.adjustment-application-trace {
+  margin: 8px 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.adjustment-application-trace summary {
+  width: fit-content;
+  cursor: pointer;
+}
+
+.adjustment-application-trace > ul {
+  display: grid;
+  gap: 8px;
+  margin: 7px 0 0;
+  padding-left: 17px;
+}
+
+.adjustment-application-trace li > strong,
+.adjustment-application-trace li > span {
+  display: block;
+}
+
+.adjustment-application-trace li > strong {
+  color: var(--ink-soft);
+  font-weight: 620;
+}
+
+.adjustment-application-trace blockquote {
+  margin: 4px 0 0;
+  padding-left: 8px;
+  border-left: 1px solid var(--line-strong);
+  overflow-wrap: anywhere;
+}
+
+.adjustment-application-caveat {
+  margin: 6px 0 0;
+  color: var(--faint);
+}
+
+.root-adjustment-trace {
+  min-width: 0;
+  color: var(--faint);
+}
+
+.root-adjustment-trace summary {
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.root-adjustment-trace[open] {
+  position: absolute;
+  z-index: 2;
+  top: 24px;
+  left: 17px;
+  width: min(380px, calc(100vw - 56px));
+  padding: 9px 11px;
+  border: 1px solid var(--line-strong);
+  background: var(--paper);
+  box-shadow: 0 8px 22px rgb(24 35 29 / 9%);
+}
+
 .worker-title-group > span {
   overflow: hidden;
   text-overflow: ellipsis;
