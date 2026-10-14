@@ -48,6 +48,8 @@ test('isolated worker runner records only a task inside its scratch workspace', 
           turnId: 'turn-fixture',
           role: 'assistant',
           content: 'Synthetic worker response.',
+          routedVia: ['blockrun/model-fixture'],
+          routeMetadataStatus: 'reported',
         },
       ],
     }),
@@ -76,6 +78,10 @@ test('isolated worker runner records only a task inside its scratch workspace', 
     assert.equal(receivedPrompt.text, '[合成测试] 创建 README。');
     assert.equal(result.outcome, 'worker_finished');
     assert.equal(result.task.verificationStatus, 'verified');
+    assert.deepEqual(result.rootRouteMetadata, {
+      status: 'reported',
+      routedVia: ['blockrun/model-fixture'],
+    });
     assert.deepEqual(result.task.interactionAdjustmentIds, [
       'adjustment-fixture',
     ]);

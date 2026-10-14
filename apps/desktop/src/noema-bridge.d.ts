@@ -11,6 +11,8 @@ export interface NoemaRootMessage {
   status: 'complete' | 'streaming' | 'interrupted' | 'failed';
   attempt: number;
   model: string | null;
+  routedVia: string[];
+  routeMetadataStatus: 'unknown' | 'pending' | 'reported' | 'not_reported';
   createdAt: string;
   updatedAt: string;
   turnStatus: 'streaming' | 'completed' | 'interrupted' | 'failed';

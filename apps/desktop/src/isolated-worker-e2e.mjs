@@ -30,6 +30,32 @@ function getAssistantText(store, turnId) {
   );
 }
 
+function getAssistantRouteMetadata(store, turnId) {
+  const message = store
+    .getSnapshot()
+    .messages.filter(
+      (item) => item.turnId === turnId && item.role === 'assistant',
+    )
+    .at(-1);
+  const allowedStatuses = new Set([
+    'unknown',
+    'pending',
+    'reported',
+    'not_reported',
+  ]);
+  const routedVia = Array.isArray(message?.routedVia)
+    ? message.routedVia
+        .filter((route) => typeof route === 'string' && route.trim())
+        .slice(-16)
+    : [];
+  return {
+    status: allowedStatuses.has(message?.routeMetadataStatus)
+      ? message.routeMetadataStatus
+      : 'unknown',
+    routedVia,
+  };
+}
+
 function summarizeTask(task) {
   if (!task) return null;
   return {
@@ -149,6 +175,7 @@ export async function runIsolatedWorkerE2E({
     dshAvailable: Boolean(agent.dshAdapter),
     task: summarizeTask(task),
     assistantText: getAssistantText(store, turnId),
+    rootRouteMetadata: getAssistantRouteMetadata(store, turnId),
   };
   writeResult(resultPath, result, e2eDirectory);
   return result;
