@@ -182,6 +182,13 @@ test('records a direct interaction correction and carries it across root turns',
     adjustmentContext.content,
     /先自然回应，并询问用户当时最在意的部分/,
   );
+  const latestRootMessage = store
+    .getSnapshot()
+    .messages.find(
+      (message) =>
+        message.turnId !== correction.turnId && message.role === 'assistant',
+    );
+  assert.deepEqual(latestRootMessage.interactionAdjustmentIds, [adjustment.id]);
   assert.equal(
     modelInputs[1].messages.at(-1).content,
     '朋友临时取消了约定，我有点失落。',
@@ -417,7 +424,9 @@ test('dispatches one DSH worker on the explicit free chain and returns its resul
     });
     await agent.active.done;
     const dispatched = store.getBackgroundTasks()[0];
+    const codingAdjustmentId = store.getInteractionAdjustments()[0].id;
     assert.equal(dispatched.status, 'running', JSON.stringify(dispatched));
+    assert.deepEqual(dispatched.interactionAdjustmentIds, [codingAdjustmentId]);
     assert.equal(dispatched.model, 'auto:noema-free');
     assert.equal(workerInput.workspacePath, workspace);
     assert.equal(workerInput.model, 'auto:noema-free');

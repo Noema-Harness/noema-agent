@@ -9,21 +9,43 @@ const MAX_WITHDRAWN_INTERACTION_ADJUSTMENTS = 20;
 
 function hydrateBackgroundTask(row) {
   if (!row) return null;
-  const { verificationChecksJson, verificationResultsJson, ...task } = row;
+  const {
+    verificationChecksJson,
+    verificationResultsJson,
+    interactionAdjustmentIdsJson,
+    ...task
+  } = row;
   try {
     return {
       ...task,
       verificationChecks: JSON.parse(verificationChecksJson ?? '[]'),
       verificationResults: JSON.parse(verificationResultsJson ?? '[]'),
+      interactionAdjustmentIds: JSON.parse(
+        interactionAdjustmentIdsJson ?? '[]',
+      ),
     };
   } catch {
     return {
       ...task,
       verificationChecks: [],
       verificationResults: [],
+      interactionAdjustmentIds: [],
       verificationStatus: 'unavailable',
     };
   }
+}
+
+/** @param {unknown} ids */
+function normalizeInteractionAdjustmentIds(ids) {
+  if (ids === undefined || ids === null) return [];
+  if (
+    !Array.isArray(ids) ||
+    ids.length > MAX_ACTIVE_INTERACTION_ADJUSTMENTS ||
+    ids.some((id) => typeof id !== 'string' || !id.trim() || id.length > 200)
+  ) {
+    throw new TypeError('互动纠正来源列表无效。');
+  }
+  return [...new Set(ids)];
 }
 
 function nowIso() {
@@ -250,7 +272,21 @@ export class RootStore {
       });
       applyBackgroundVerificationSchema();
     }
-    if (currentVersion > 6)
+    if (currentVersion < 7) {
+      const applyInteractionAdjustmentExposureSchema = this.db.transaction(
+        () => {
+          this.db.exec(`
+          ALTER TABLE root_turns
+            ADD COLUMN interaction_adjustment_ids_json TEXT NOT NULL DEFAULT '[]';
+          ALTER TABLE background_tasks
+            ADD COLUMN interaction_adjustment_ids_json TEXT NOT NULL DEFAULT '[]';
+          INSERT INTO schema_migrations (version, applied_at) VALUES (7, '${nowIso()}');
+        `);
+        },
+      );
+      applyInteractionAdjustmentExposureSchema();
+    }
+    if (currentVersion > 7)
       throw new Error(
         `Database schema ${currentVersion} is newer than this Noema build supports`,
       );
@@ -313,6 +349,7 @@ export class RootStore {
         UPDATE root_turns
         SET model = ?, status = 'streaming', attempt = ?, error_code = NULL, error_message = NULL,
             context_turns = 0, context_omitted_turns = 0, context_characters = 0,
+            interaction_adjustment_ids_json = '[]',
             updated_at = ?, completed_at = NULL
         WHERE id = ?
       `)
@@ -450,12 +487,26 @@ export class RootStore {
              t.status AS turnStatus, t.attempt AS currentAttempt,
              t.context_turns AS contextTurns, t.context_omitted_turns AS contextOmittedTurns,
              t.context_characters AS contextCharacters,
+          t.interaction_adjustment_ids_json AS interactionAdjustmentIdsJson,
              t.error_code AS errorCode, t.error_message AS errorMessage
       FROM root_messages AS m
       JOIN root_turns AS t ON t.id = m.turn_id
       ORDER BY m.seq ASC
     `)
-      .all();
+      .all()
+      .map((message) => {
+        const { interactionAdjustmentIdsJson, ...hydratedMessage } = message;
+        try {
+          return {
+            ...hydratedMessage,
+            interactionAdjustmentIds: normalizeInteractionAdjustmentIds(
+              JSON.parse(interactionAdjustmentIdsJson ?? '[]'),
+            ),
+          };
+        } catch {
+          return { ...hydratedMessage, interactionAdjustmentIds: [] };
+        }
+      });
     const active = this.db
       .prepare("SELECT id FROM root_turns WHERE status = 'streaming' LIMIT 1")
       .get();
@@ -476,7 +527,7 @@ export class RootStore {
     };
   }
 
-  /** @param {{id:string,sourceTurnId:string,workspacePath:string,model:string,prompt:string,verificationChecks?:unknown}} input */
+  /** @param {{id:string,sourceTurnId:string,workspacePath:string,model:string,prompt:string,verificationChecks?:unknown,interactionAdjustmentIds?:unknown}} input */
   createBackgroundTask({
     id,
     sourceTurnId,
@@ -484,6 +535,7 @@ export class RootStore {
     model,
     prompt,
     verificationChecks = [],
+    interactionAdjustmentIds = [],
   }) {
     requireText(id, 'task id', 200);
     requireText(sourceTurnId, 'source turn id', 200);
@@ -491,6 +543,9 @@ export class RootStore {
     requireText(model, 'model', 200);
     requireText(prompt, 'delegated task', 40_000);
     const checks = normalizeWorkspaceVerificationChecks(verificationChecks);
+    const adjustmentIds = normalizeInteractionAdjustmentIds(
+      interactionAdjustmentIds,
+    );
     const active = this.db
       .prepare(
         "SELECT id FROM background_tasks WHERE status IN ('starting', 'running') LIMIT 1",
@@ -503,8 +558,8 @@ export class RootStore {
         INSERT INTO background_tasks (
           id, source_turn_id, harness, workspace_path, model, prompt,
           status, phase, verification_checks_json, verification_status,
-          created_at, updated_at
-        ) VALUES (?, ?, 'dsh-headless', ?, ?, ?, 'starting', 'starting', ?, ?, ?, ?)
+          interaction_adjustment_ids_json, created_at, updated_at
+        ) VALUES (?, ?, 'dsh-headless', ?, ?, ?, 'starting', 'starting', ?, ?, ?, ?, ?)
       `)
       .run(
         id,
@@ -514,6 +569,7 @@ export class RootStore {
         prompt,
         JSON.stringify(checks),
         checks.length ? 'pending' : 'not_planned',
+        JSON.stringify(adjustmentIds),
         timestamp,
         timestamp,
       );
@@ -649,6 +705,7 @@ export class RootStore {
           verification_status AS verificationStatus,
           verification_results_json AS verificationResultsJson,
           verification_attempts AS verificationAttempts,
+          interaction_adjustment_ids_json AS interactionAdjustmentIdsJson,
           created_at AS createdAt, started_at AS startedAt, updated_at AS updatedAt,
           completed_at AS completedAt
         FROM background_tasks WHERE id = ?
@@ -673,6 +730,7 @@ export class RootStore {
           verification_status AS verificationStatus,
           verification_results_json AS verificationResultsJson,
           verification_attempts AS verificationAttempts,
+          interaction_adjustment_ids_json AS interactionAdjustmentIdsJson,
           created_at AS createdAt, started_at AS startedAt, updated_at AS updatedAt,
           completed_at AS completedAt
         FROM background_tasks ORDER BY seq DESC LIMIT ?
@@ -698,6 +756,7 @@ export class RootStore {
           verification_status AS verificationStatus,
           verification_results_json AS verificationResultsJson,
           verification_attempts AS verificationAttempts,
+          interaction_adjustment_ids_json AS interactionAdjustmentIdsJson,
           created_at AS createdAt, started_at AS startedAt, updated_at AS updatedAt,
           completed_at AS completedAt
         FROM background_tasks WHERE event_status = 'pending'
@@ -888,7 +947,11 @@ export class RootStore {
         SELECT id, source_turn_id AS sourceTurnId, harness, status, prompt,
           workspace_path AS workspacePath, tool_call_count AS toolCallCount,
           result_text AS resultText, error_message AS errorMessage,
-          noema_response AS noemaResponse
+          noema_response AS noemaResponse,
+          verification_status AS verificationStatus,
+          verification_results_json AS verificationResultsJson,
+          verification_attempts AS verificationAttempts,
+          interaction_adjustment_ids_json AS interactionAdjustmentIdsJson
         FROM background_tasks
         WHERE event_status = 'delivered' AND noema_response_status = 'complete'
           AND source_turn_id IN (${selectedInOrder.map(() => '?').join(',')})
@@ -896,6 +959,34 @@ export class RootStore {
         LIMIT 2
       `)
         .all(...selectedInOrder.map((turn) => turn.id))
+        .map((event) => {
+          let verificationResults = [];
+          let interactionAdjustmentIds = [];
+          try {
+            verificationResults = JSON.parse(
+              event.verificationResultsJson ?? '[]',
+            );
+          } catch {
+            verificationResults = [];
+          }
+          try {
+            interactionAdjustmentIds = normalizeInteractionAdjustmentIds(
+              JSON.parse(event.interactionAdjustmentIdsJson ?? '[]'),
+            );
+          } catch {
+            interactionAdjustmentIds = [];
+          }
+          const {
+            verificationResultsJson: _verificationResultsJson,
+            interactionAdjustmentIdsJson: _interactionAdjustmentIdsJson,
+            ...safeEvent
+          } = event;
+          return {
+            ...safeEvent,
+            verificationResults,
+            interactionAdjustmentIds,
+          };
+        })
         .reverse();
       const eventsByTurn = new Map();
       for (const event of eventRows) {
@@ -916,6 +1007,23 @@ export class RootStore {
           result: event.resultText.slice(0, 1_200),
           error: event.errorMessage?.slice(0, 500) ?? null,
           noemaSummary: event.noemaResponse.slice(0, 1_200),
+          verification: {
+            status: event.verificationStatus,
+            attempts: event.verificationAttempts,
+            checks: (Array.isArray(event.verificationResults)
+              ? event.verificationResults
+              : []
+            )
+              .filter((result) => result && typeof result === 'object')
+              .slice(0, 8)
+              .map((result) => ({
+                kind: result.kind,
+                path: result.path,
+                status: result.status,
+                reason: result.reason,
+              })),
+          },
+          interactionAdjustmentIds: event.interactionAdjustmentIds,
         })}`;
       for (const turn of selectedInOrder) {
         for (const event of eventsByTurn.get(turn.id) ?? []) {
@@ -943,6 +1051,7 @@ export class RootStore {
       omittedTurns: previousTurns.length - selected.length,
       historyCharacters,
       interactionAdjustmentCount: interactionAdjustments.length,
+      interactionAdjustmentIds: interactionAdjustments.map((item) => item.id),
     };
   }
 
@@ -1192,19 +1301,24 @@ export class RootStore {
     );
   }
 
-  /** @param {string} id @param {number} attempt @param {{includedTurns:number, omittedTurns:number, historyCharacters:number}} context */
+  /** @param {string} id @param {number} attempt @param {{includedTurns:number, omittedTurns:number, historyCharacters:number, interactionAdjustmentIds?:unknown}} context */
   setTurnContext(id, attempt, context) {
+    const interactionAdjustmentIds = normalizeInteractionAdjustmentIds(
+      context.interactionAdjustmentIds,
+    );
     const timestamp = nowIso();
     const result = this.db
       .prepare(`
       UPDATE root_turns
-      SET context_turns = ?, context_omitted_turns = ?, context_characters = ?, updated_at = ?
+      SET context_turns = ?, context_omitted_turns = ?, context_characters = ?,
+          interaction_adjustment_ids_json = ?, updated_at = ?
       WHERE id = ? AND attempt = ? AND status = 'streaming'
     `)
       .run(
         context.includedTurns,
         context.omittedTurns,
         context.historyCharacters,
+        JSON.stringify(interactionAdjustmentIds),
         timestamp,
         id,
         attempt,

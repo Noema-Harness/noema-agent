@@ -999,6 +999,13 @@ function App() {
                 }
                 if (entry.kind === 'task') {
                   const task = entry.task;
+                  const taskAdjustments = task.interactionAdjustmentIds
+                    .map((id) =>
+                      root?.interactionAdjustments.find(
+                        (adjustment) => adjustment.id === id,
+                      ),
+                    )
+                    .filter((item) => item !== undefined);
                   return (
                     <article className="turn worker-turn" key={entry.key}>
                       <div className="turn-gutter">
@@ -1076,6 +1083,38 @@ function App() {
                               </details>
                             )}
                           </section>
+                          {task.interactionAdjustmentIds.length > 0 && (
+                            <details className="adjustment-application-trace">
+                              <summary>
+                                本任务关联了{' '}
+                                {task.interactionAdjustmentIds.length}{' '}
+                                条互动纠正
+                              </summary>
+                              {taskAdjustments.length > 0 ? (
+                                <ul>
+                                  {taskAdjustments.map((adjustment) => (
+                                    <li key={adjustment.id}>
+                                      <strong>{adjustment.situation}</strong>
+                                      <span>
+                                        期望做法：{adjustment.behavior}
+                                      </span>
+                                      <blockquote>
+                                        {adjustment.sourceQuote}
+                                      </blockquote>
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <p>
+                                  纠正记录已撤回或清理，当前无法显示其原文。
+                                </p>
+                              )}
+                              <p className="adjustment-application-caveat">
+                                这是 Noema
+                                记录的会话关联，不证明模型成功接收或遵循。下方核验仅检查列出的任务条件；通过或失败都不能单独证明纠正造成了结果。
+                              </p>
+                            </details>
+                          )}
                           <div className="worker-metadata">
                             <span title={task.workspacePath}>
                               工作区 · {task.workspacePath}
@@ -1182,6 +1221,15 @@ function App() {
                 const currentAssistant = assistantMessages.find(
                   (message) => message.attempt === turn.latestAttempt,
                 );
+                const contextAdjustments = (
+                  currentAssistant?.interactionAdjustmentIds ?? []
+                )
+                  .map((id) =>
+                    root?.interactionAdjustments.find(
+                      (adjustment) => adjustment.id === id,
+                    ),
+                  )
+                  .filter((item) => item !== undefined);
                 if (!userMessage) return null;
                 return (
                   <article className="turn" key={entry.key}>
@@ -1229,6 +1277,43 @@ function App() {
                                   重试 {message.attempt}
                                 </span>
                               )}
+                              {isLatestAttempt &&
+                                message.interactionAdjustmentIds.length > 0 && (
+                                  <details className="adjustment-application-trace root-adjustment-trace">
+                                    <summary>
+                                      本轮上下文列出{' '}
+                                      {message.interactionAdjustmentIds.length}{' '}
+                                      条互动纠正
+                                    </summary>
+                                    {contextAdjustments.length > 0 ? (
+                                      <ul>
+                                        {contextAdjustments.map(
+                                          (adjustment) => (
+                                            <li key={adjustment.id}>
+                                              <strong>
+                                                {adjustment.situation}
+                                              </strong>
+                                              <span>
+                                                期望做法：{adjustment.behavior}
+                                              </span>
+                                              <blockquote>
+                                                {adjustment.sourceQuote}
+                                              </blockquote>
+                                            </li>
+                                          ),
+                                        )}
+                                      </ul>
+                                    ) : (
+                                      <p>
+                                        纠正记录已撤回或清理，当前无法显示其原文。
+                                      </p>
+                                    )}
+                                    <p className="adjustment-application-caveat">
+                                      这只证明 Noema
+                                      组装的请求包含这些纠正；不证明上游成功接收或模型遵循。
+                                    </p>
+                                  </details>
+                                )}
                               <time>{formatTime(message.createdAt)}</time>
                             </div>
                             {message.content ? (

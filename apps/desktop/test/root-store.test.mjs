@@ -17,7 +17,7 @@ test('root store migrates idempotently and persists the selected model', () => {
     store.db
       .prepare('SELECT MAX(version) AS version FROM schema_migrations')
       .get().version,
-    6,
+    7,
   );
   store.setSelectedModel('free-router');
   assert.equal(store.getSelectedModel(), 'free-router');
@@ -40,7 +40,7 @@ test('a schema-v4 database upgrades through interaction and verification state',
     store.db
       .prepare('SELECT MAX(version) AS version FROM schema_migrations')
       .get().version,
-    6,
+    7,
   );
   assert.equal(
     store.db
@@ -62,6 +62,18 @@ test('a schema-v4 database upgrades through interaction and verification state',
       'verification_results_json',
       'verification_attempts',
     ],
+  );
+  assert.ok(
+    store.db
+      .prepare('PRAGMA table_info(root_turns)')
+      .all()
+      .some((column) => column.name === 'interaction_adjustment_ids_json'),
+  );
+  assert.ok(
+    store.db
+      .prepare('PRAGMA table_info(background_tasks)')
+      .all()
+      .some((column) => column.name === 'interaction_adjustment_ids_json'),
   );
   store.close();
 });
@@ -385,12 +397,24 @@ test('future root context retains a delivered worker event as system data, not a
     workspacePath: 'D:\\Scratch',
     model: 'auto:noema-free',
     prompt: '只修改 README 安装说明。',
+    verificationChecks: [{ kind: 'file_exists', path: 'README.md' }],
+    interactionAdjustmentIds: ['adjustment-verification-test'],
   });
   store.finishBackgroundTask(task.id, {
     status: 'completed',
     resultText: 'README 第 1 行已更新。',
     sessionId: 'session-context',
     toolCallCount: 1,
+    verificationStatus: 'verified',
+    verificationResults: [
+      {
+        kind: 'file_exists',
+        path: 'README.md',
+        status: 'verified',
+        reason: 'file_exists',
+      },
+    ],
+    verificationAttempts: 0,
   });
   store.beginBackgroundEventResponse(task.id, 'auto:noema-free');
   store.appendBackgroundEventResponse(task.id, '安装说明已更新。');
@@ -407,6 +431,9 @@ test('future root context retains a delivered worker event as system data, not a
   );
   assert.match(context.messages[2].content, /background_task_result/);
   assert.match(context.messages[2].content, /安装说明已更新/);
+  assert.match(context.messages[2].content, /"verification"/);
+  assert.match(context.messages[2].content, /"status":"verified"/);
+  assert.match(context.messages[2].content, /adjustment-verification-test/);
   assert.equal(context.messages[2].content.includes('D:\\Scratch'), false);
   assert.equal(context.messages[2].role, 'system');
   assert.ok(context.historyCharacters > 0);

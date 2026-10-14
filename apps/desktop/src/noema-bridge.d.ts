@@ -18,6 +18,7 @@ export interface NoemaRootMessage {
   contextTurns: number;
   contextOmittedTurns: number;
   contextCharacters: number;
+  interactionAdjustmentIds: string[];
   errorCode: string | null;
   errorMessage: string | null;
 }
@@ -50,6 +51,7 @@ export interface NoemaBackgroundTask {
     | 'unavailable';
   verificationResults: NoemaVerificationResult[];
   verificationAttempts: number;
+  interactionAdjustmentIds: string[];
   sessionId: string | null;
   status: 'starting' | 'running' | 'completed' | 'failed' | 'interrupted';
   phase: string;
