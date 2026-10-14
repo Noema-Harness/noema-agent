@@ -620,6 +620,84 @@ test('does not let a worker self-report override a failed Noema file check', asy
   }
 });
 
+test('independently checks existing artifacts after a DSH process fails', async () => {
+  const store = new RootStore(':memory:');
+  const workspace = mkdtempSync(path.join(tmpdir(), 'noema-worker-partial-'));
+  const turn = store.beginTurn({ text: '创建 README。', model: 'free-router' });
+  store.setSelectedModel('free-router');
+  let summaryModelCalls = 0;
+  const provider = {
+    baseUrl: 'http://127.0.0.1:31415/v1',
+    listModels: async () => [
+      { name: 'free-router', label: 'FreeLLMAPI 免费路由' },
+    ],
+    async *streamChat() {
+      summaryModelCalls += 1;
+      yield 'Noema 总结不能参与不完整任务的验收。';
+    },
+  };
+  const agent = new RootAgent({
+    store,
+    provider,
+    secretStore: createSecretStore(),
+    dshAdapter: {
+      async startTask() {
+        return {
+          started: Promise.resolve({ sessionId: 'session-partial-test' }),
+          done: Promise.resolve({
+            status: 'failed',
+            sessionId: 'session-partial-test',
+            result: '',
+            errorCode: 'dsh_process_failed',
+            errorMessage: 'DSH 上游在写完文件后用完本次额度。',
+            toolCallCount: 2,
+          }).then((outcome) => {
+            writeFileSync(
+              path.join(workspace, 'README.md'),
+              'NOEMA-PARTIAL-MARKER\n',
+            );
+            return outcome;
+          }),
+          stop: () => true,
+        };
+      },
+    },
+  });
+
+  try {
+    const started = await agent.startBackgroundTask({
+      sourceTurnId: turn.id,
+      prompt: '在工作区创建 README.md。',
+      workspacePath: workspace,
+      verificationChecks: [
+        {
+          kind: 'file_contains',
+          path: 'README.md',
+          text: 'NOEMA-PARTIAL-MARKER',
+        },
+      ],
+    });
+    assert.equal(started.accepted, true);
+    await started.completion;
+
+    const task = store.getBackgroundTask(started.taskId);
+    assert.equal(task.status, 'failed');
+    assert.equal(task.errorCode, 'dsh_process_failed');
+    assert.equal(task.verificationStatus, 'verified');
+    assert.equal(task.verificationResults[0].status, 'verified');
+    assert.equal(task.eventStatus, 'delivered');
+    assert.equal(task.noemaResponseStatus, 'complete');
+    assert.match(task.noemaResponse, /DSH agent 没有完整结束/);
+    assert.match(task.noemaResponse, /文件条件目前都满足/);
+    assert.equal(task.noemaResponse.includes('任务已经完整完成'), false);
+    assert.equal(summaryModelCalls, 0);
+  } finally {
+    await agent.shutdown();
+    store.close();
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
 test('retries a failed Noema event summary without restarting the completed DSH worker', async () => {
   const store = new RootStore(':memory:');
   store.setSelectedModel('free-router');

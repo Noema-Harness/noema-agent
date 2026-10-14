@@ -101,7 +101,14 @@ function taskStatusLabel(task: NoemaBackgroundTask) {
     if (task.verificationStatus === 'unavailable') return '无法独立核验';
     return 'Agent 已结束';
   }
-  if (task.errorCode === 'verification_failed') return '验收未通过';
+  if (task.verificationStatus === 'verified') {
+    return task.status === 'interrupted'
+      ? '已停止 · 文件条件通过'
+      : 'DSH 异常 · 文件条件通过';
+  }
+  if (task.errorCode === 'verification_failed') {
+    return '执行未完成 · 验收未通过';
+  }
   if (task.status === 'interrupted') return '已停止';
   return '执行未完成';
 }
@@ -124,9 +131,16 @@ function taskPhaseLabel(phase: string) {
 }
 
 function verificationStatusLabel(task: NoemaBackgroundTask) {
-  if (task.verificationStatus === 'verified') return 'Noema 本地核验通过';
-  if (task.verificationStatus === 'failed')
-    return 'Noema 核验未通过；任务未验收';
+  if (task.verificationStatus === 'verified') {
+    return task.status === 'completed'
+      ? 'Noema 本地核验通过'
+      : 'DSH 未完整结束；列出的文件条件目前通过';
+  }
+  if (task.verificationStatus === 'failed') {
+    return task.status === 'completed'
+      ? 'Noema 核验未通过；任务未验收'
+      : 'DSH 未完整结束；Noema 文件核验未通过';
+  }
   if (task.verificationStatus === 'unavailable')
     return 'Noema 无法安全完成核验；不按已验收处理';
   if (task.verificationStatus === 'pending') return '等待 Noema 独立核验';
@@ -1277,45 +1291,43 @@ function App() {
                                   重试 {message.attempt}
                                 </span>
                               )}
-                              {isLatestAttempt &&
-                                message.interactionAdjustmentIds.length > 0 && (
-                                  <details className="adjustment-application-trace root-adjustment-trace">
-                                    <summary>
-                                      本轮上下文列出{' '}
-                                      {message.interactionAdjustmentIds.length}{' '}
-                                      条互动纠正
-                                    </summary>
-                                    {contextAdjustments.length > 0 ? (
-                                      <ul>
-                                        {contextAdjustments.map(
-                                          (adjustment) => (
-                                            <li key={adjustment.id}>
-                                              <strong>
-                                                {adjustment.situation}
-                                              </strong>
-                                              <span>
-                                                期望做法：{adjustment.behavior}
-                                              </span>
-                                              <blockquote>
-                                                {adjustment.sourceQuote}
-                                              </blockquote>
-                                            </li>
-                                          ),
-                                        )}
-                                      </ul>
-                                    ) : (
-                                      <p>
-                                        纠正记录已撤回或清理，当前无法显示其原文。
-                                      </p>
-                                    )}
-                                    <p className="adjustment-application-caveat">
-                                      这只证明 Noema
-                                      组装的请求包含这些纠正；不证明上游成功接收或模型遵循。
-                                    </p>
-                                  </details>
-                                )}
                               <time>{formatTime(message.createdAt)}</time>
                             </div>
+                            {isLatestAttempt &&
+                              message.interactionAdjustmentIds.length > 0 && (
+                                <details className="adjustment-application-trace root-adjustment-trace">
+                                  <summary>
+                                    本轮上下文列出{' '}
+                                    {message.interactionAdjustmentIds.length}{' '}
+                                    条互动纠正
+                                  </summary>
+                                  {contextAdjustments.length > 0 ? (
+                                    <ul>
+                                      {contextAdjustments.map((adjustment) => (
+                                        <li key={adjustment.id}>
+                                          <strong>
+                                            {adjustment.situation}
+                                          </strong>
+                                          <span>
+                                            期望做法：{adjustment.behavior}
+                                          </span>
+                                          <blockquote>
+                                            {adjustment.sourceQuote}
+                                          </blockquote>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  ) : (
+                                    <p>
+                                      纠正记录已撤回或清理，当前无法显示其原文。
+                                    </p>
+                                  )}
+                                  <p className="adjustment-application-caveat">
+                                    这只证明 Noema
+                                    组装的请求包含这些纠正；不证明上游成功接收或模型遵循。
+                                  </p>
+                                </details>
+                              )}
                             {message.content ? (
                               <div className="markdown-body">
                                 <ReactMarkdown

@@ -154,6 +154,33 @@ function verificationFailureResponse(event) {
   ].join('\n');
 }
 
+function incompleteWorkerResponse(event) {
+  const lines = [
+    '后台 DSH agent 没有完整结束；下面是 Noema 对当前文件状态的独立检查，不把它等同于整项任务完成。',
+  ];
+  if (event.verificationStatus === 'verified') {
+    lines.push(
+      '列出的文件条件目前都满足。这只确认文件状态，不证明 DSH 完成了其它操作，也不证明互动纠正确实造成了结果。',
+    );
+  } else if (event.verificationStatus === 'failed') {
+    lines.push('列出的文件条件仍有未通过项：');
+    lines.push(
+      ...(event.verificationResults ?? [])
+        .filter((result) => result.status !== 'verified')
+        .map((result) => `- ${verificationResultLabel(result)}`),
+    );
+  } else if (event.verificationStatus === 'unavailable') {
+    lines.push(
+      'Noema 无法安全确认列出的文件条件；不能据 DSH 的最终报告宣称目标已达到。',
+    );
+  } else {
+    lines.push('此任务没有独立验收项，结果只能视为 DSH 执行报告。');
+  }
+  if (event.errorMessage) lines.push(`执行状态：${event.errorMessage}`);
+  lines.push('DSH 的执行报告与原会话仍保留在下方。');
+  return lines.join('\n');
+}
+
 export class RootAgent {
   /** @param {{store:import('./root-store.mjs').RootStore,provider:import('./freellmapi-client.mjs').FreeLLMAPIClient,secretStore:{get:()=>string|null,getBaseUrl:()=>string|null,isConfigured:()=>boolean,set:(value:string)=>void,setConfiguration:(input:{apiKey:string,baseUrl:string})=>void,clear:()=>void},dshAdapter?:import('./dsh-headless-adapter.mjs').DshHeadlessAdapter|null,dshRuntimeError?:string|null,codexAdapter?:import('./codex-app-server-adapter.mjs').CodexAppServerAdapter|null,emit?:(event:object)=>void}} options */
   constructor({
@@ -965,35 +992,29 @@ export class RootAgent {
         if (outcome.result) resultParts.push(outcome.result);
         currentSessionId = outcome.sessionId ?? currentSessionId;
 
-        if (runControl.stopRequested || this.shuttingDown) {
-          return finish({
-            status: 'interrupted',
-            resultText: resultParts.join('\n\n'),
-            errorCode: 'worker_interrupted',
-            errorMessage:
-              '后台任务在验收前中断；已产生的文件改动不会自动回滚。',
-            sessionId: currentSessionId,
-            toolCallCount: totalToolCallCount,
-            verificationStatus: verificationChecks.length
-              ? 'unavailable'
-              : 'not_planned',
-            verificationResults: unverifiedResults('worker_interrupted'),
-            verificationAttempts,
+        const interrupted = runControl.stopRequested || this.shuttingDown;
+        if (interrupted || outcome.status !== 'completed') {
+          lastVerification = verifyWorkspaceChecks(
+            workspacePath,
+            verificationChecks,
+          );
+          this.store.setBackgroundTaskVerification(taskId, {
+            status: lastVerification.status,
+            results: lastVerification.checks,
+            attempts: verificationAttempts,
           });
-        }
-
-        if (outcome.status !== 'completed') {
+          this.emit({ type: 'worker-task-updated', taskId });
           return finish({
-            status: outcome.status,
+            status: interrupted ? 'interrupted' : outcome.status,
             resultText: resultParts.join('\n\n'),
-            errorCode: outcome.errorCode,
-            errorMessage: outcome.errorMessage,
+            errorCode: interrupted ? 'worker_interrupted' : outcome.errorCode,
+            errorMessage: interrupted
+              ? '后台任务被停止或应用正在关闭；已产生的文件改动不会自动回滚。'
+              : safeErrorMessage(outcome.errorMessage),
             sessionId: currentSessionId,
             toolCallCount: totalToolCallCount,
-            verificationStatus: verificationChecks.length
-              ? 'unavailable'
-              : 'not_planned',
-            verificationResults: unverifiedResults('worker_not_completed'),
+            verificationStatus: lastVerification.status,
+            verificationResults: lastVerification.checks,
             verificationAttempts,
           });
         }
@@ -1142,7 +1163,16 @@ export class RootAgent {
         errorMessage: '前面还有一条待接回结果，请先处理它。',
       };
     }
-    if (['failed', 'unavailable'].includes(event.verificationStatus)) {
+    const verifierRejected =
+      ['verification_failed', 'verification_unavailable'].includes(
+        event.errorCode,
+      ) ||
+      (event.status === 'completed' &&
+        ['failed', 'unavailable'].includes(event.verificationStatus));
+    if (
+      event.status !== 'completed' ||
+      ['failed', 'unavailable'].includes(event.verificationStatus)
+    ) {
       if (!this.store.beginBackgroundEventResponse(event.id, null)) {
         return {
           accepted: false,
@@ -1151,7 +1181,9 @@ export class RootAgent {
       }
       this.store.appendBackgroundEventResponse(
         event.id,
-        verificationFailureResponse(event),
+        verifierRejected
+          ? verificationFailureResponse(event)
+          : incompleteWorkerResponse(event),
       );
       this.store.completeBackgroundEventResponse(event.id);
       this.emit({ type: 'worker-task-updated', taskId: event.id });

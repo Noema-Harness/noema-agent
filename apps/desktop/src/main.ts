@@ -9,6 +9,7 @@ import {
 import fs from 'node:fs';
 import path from 'node:path';
 import { EncryptedSecretStore } from './encrypted-secret-store.mjs';
+import { runIsolatedWorkerE2E } from './isolated-worker-e2e.mjs';
 import { DEFAULT_BASE_URL, FreeLLMAPIClient } from './freellmapi-client.mjs';
 import {
   createImportAwareSendMessage,
@@ -80,8 +81,10 @@ let shutdownStarted = false;
 let shutdownComplete = false;
 const testDatabasePath = process.env.NOEMA_E2E_DATABASE_PATH ?? null;
 const testDshUserDataPath = process.env.NOEMA_E2E_DSH_USER_DATA_PATH ?? null;
+const testWorkerPrompt = process.env.NOEMA_E2E_WORKER_PROMPT ?? null;
 delete process.env.NOEMA_E2E_DATABASE_PATH;
 delete process.env.NOEMA_E2E_DSH_USER_DATA_PATH;
+delete process.env.NOEMA_E2E_WORKER_PROMPT;
 
 const createWindow = () => {
   mainWindow = new BrowserWindow({
@@ -161,6 +164,32 @@ function discoverFreeLLMAPIBaseUrl(appDataPath: string) {
     // Use FreeLLMAPI's documented default when the desktop configuration is absent.
   }
   return DEFAULT_BASE_URL;
+}
+
+function isPathWithin(directory: string, candidate: string) {
+  const relative = path.relative(
+    path.resolve(directory),
+    path.resolve(candidate),
+  );
+  return (
+    relative === '' ||
+    (relative !== '..' &&
+      !relative.startsWith(`..${path.sep}`) &&
+      !path.isAbsolute(relative))
+  );
+}
+
+function isIsolatedE2eDirectory(directory: string, userDataDirectory: string) {
+  try {
+    const e2eRealPath = fs.realpathSync(directory);
+    const userDataRealPath = fs.realpathSync(userDataDirectory);
+    return (
+      !isPathWithin(e2eRealPath, userDataRealPath) &&
+      !isPathWithin(userDataRealPath, e2eRealPath)
+    );
+  } catch {
+    return false;
+  }
 }
 
 async function startNoema() {
@@ -287,6 +316,60 @@ async function startNoema() {
         return selection.canceled ? null : (selection.filePaths[0] ?? null);
       },
     });
+    if (
+      !app.isPackaged &&
+      testDatabasePath &&
+      path.isAbsolute(testDatabasePath) &&
+      testDshUserDataPath &&
+      path.isAbsolute(testDshUserDataPath) &&
+      testWorkerPrompt?.startsWith('[NOEMA E2E]') &&
+      path.resolve(testDatabasePath) !==
+        path.join(app.getPath('userData'), 'noema.sqlite3') &&
+      isIsolatedE2eDirectory(
+        path.dirname(path.resolve(testDatabasePath)),
+        app.getPath('userData'),
+      ) &&
+      path.resolve(testDshUserDataPath) !==
+        path.resolve(app.getPath('userData')) &&
+      path.resolve(testDshUserDataPath) !==
+        path.dirname(path.resolve(testDatabasePath)) &&
+      isPathWithin(
+        path.dirname(path.resolve(testDatabasePath)),
+        testDshUserDataPath,
+      )
+    ) {
+      const e2eDirectory = path.dirname(path.resolve(testDatabasePath));
+      const resultPath = path.join(
+        e2eDirectory,
+        `worker-e2e-result-${Date.now()}.json`,
+      );
+      void runIsolatedWorkerE2E({
+        agent,
+        store: rootStore,
+        databasePath: testDatabasePath,
+        prompt: testWorkerPrompt,
+        resultPath,
+      })
+        .catch((error) => {
+          const result = {
+            outcome: 'setup_failed',
+            errorCode:
+              typeof error?.code === 'string'
+                ? error.code
+                : 'e2e_scenario_failed',
+          };
+          fs.writeFileSync(resultPath, JSON.stringify(result, null, 2), {
+            encoding: 'utf8',
+            flag: 'wx',
+          });
+          console.error(
+            'Isolated Noema E2E scenario failed:',
+            result.errorCode,
+          );
+        })
+        .finally(() => app.quit());
+      return;
+    }
     if (process.env.NOEMA_SMOKE_TEST !== '1') {
       void agent.refreshModels();
     }
