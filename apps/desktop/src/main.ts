@@ -131,6 +131,21 @@ const createWindow = () => {
           url: mainWindow?.webContents.getURL() ?? null,
           title: mainWindow?.getTitle() ?? null,
           rootStateLoaded: true,
+          providerConfigured: Boolean(bridgeState.providerConfigured),
+          providerBaseUrl: bridgeState.providerBaseUrl ?? null,
+          connected: Boolean(bridgeState.connected),
+          providerError: bridgeState.error ?? null,
+          models: Array.isArray(bridgeState.models)
+            ? bridgeState.models.map(
+                (model: { name: string; label: string }) => ({
+                  name: model.name,
+                  label: model.label,
+                }),
+              )
+            : [],
+          dshAvailable: Boolean(bridgeState.dshAvailable),
+          dshWorkerAvailable: Boolean(bridgeState.dshWorkerAvailable),
+          dshWorkerError: bridgeState.dshWorkerError ?? null,
         };
         writeSmokeLog('renderer-loaded', result);
         if (process.env.NOEMA_SMOKE_TEST_FILE) {
@@ -370,7 +385,12 @@ async function startNoema() {
         .finally(() => app.quit());
       return;
     }
-    if (process.env.NOEMA_SMOKE_TEST !== '1') {
+    if (
+      process.env.NOEMA_SMOKE_TEST === '1' &&
+      process.env.NOEMA_SMOKE_REFRESH_MODELS === '1'
+    ) {
+      await agent.refreshModels();
+    } else if (process.env.NOEMA_SMOKE_TEST !== '1') {
       void agent.refreshModels();
     }
     createWindow();

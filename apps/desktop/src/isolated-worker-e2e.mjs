@@ -134,6 +134,28 @@ export async function runIsolatedWorkerE2E({
   }
   if (!model) throw new Error('An isolated E2E model must be selected.');
 
+  const dshAvailable = Boolean(agent.dshAdapter);
+  const canDispatch =
+    dshAvailable &&
+    (typeof agent.canDelegateToDsh !== 'function' || agent.canDelegateToDsh());
+  if (!canDispatch) {
+    const result = {
+      outcome: 'preflight_failed',
+      turnStatus: 'not_started',
+      turnErrorCode: 'dsh_unavailable',
+      model,
+      dshAvailable,
+      dshWorkerError:
+        agent.dshRuntimeError ??
+        'Noema 尚未满足后台执行条件；没有发送模型请求。',
+      task: null,
+      assistantText: '',
+      rootRouteMetadata: { status: 'unknown', routedVia: [] },
+    };
+    writeResult(resultPath, result, e2eDirectory);
+    return result;
+  }
+
   const { turnId } = agent.sendMessage({ text: prompt, model });
   const activeTurn = agent.active;
   if (activeTurn?.turn.id === turnId) await activeTurn.done;
@@ -172,7 +194,8 @@ export async function runIsolatedWorkerE2E({
     turnStatus: turn?.status ?? 'missing',
     turnErrorCode: turn?.errorCode ?? null,
     model,
-    dshAvailable: Boolean(agent.dshAdapter),
+    dshAvailable,
+    dshWorkerError: agent.dshRuntimeError ?? null,
     task: summarizeTask(task),
     assistantText: getAssistantText(store, turnId),
     rootRouteMetadata: getAssistantRouteMetadata(store, turnId),

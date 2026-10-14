@@ -19,6 +19,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test",
     "smoke": "node scripts/smoke.mjs",
+    "smoke:freellmapi": "node scripts/smoke-freellmapi.mjs",
     "e2e:live-worker": "node scripts/live-worker-e2e.mjs"
   },
   "dependencies": {
