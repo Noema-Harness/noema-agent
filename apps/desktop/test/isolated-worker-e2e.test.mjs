@@ -57,6 +57,9 @@ test('isolated worker runner records only a task inside its scratch workspace', 
   let receivedPrompt;
   const agent = {
     active: null,
+    dshAdapter: {},
+    dshRuntimeError: null,
+    canDelegateToDsh: () => true,
     sendMessage({ text, model }) {
       receivedPrompt = { text, model };
       this.active = { turn: { id: 'turn-fixture' }, done: Promise.resolve() };
@@ -85,6 +88,49 @@ test('isolated worker runner records only a task inside its scratch workspace', 
     assert.deepEqual(result.task.interactionAdjustmentIds, [
       'adjustment-fixture',
     ]);
+    assert.deepEqual(JSON.parse(readFileSync(resultPath, 'utf8')), result);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('isolated worker runner records DSH preflight failure without spending a model call', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'noema-e2e-preflight-'));
+  const workspace = path.join(directory, 'workspace');
+  const resultPath = path.join(directory, 'result.json');
+  const databasePath = path.join(directory, 'root.sqlite3');
+  mkdirSync(workspace);
+  writeFileSync(databasePath, 'synthetic isolated database placeholder');
+  let sent = false;
+  const agent = {
+    dshAdapter: null,
+    dshRuntimeError: '没有找到 DSH CLI。',
+    canDelegateToDsh: () => false,
+    sendMessage() {
+      sent = true;
+      throw new Error('Preflight must happen before the model request.');
+    },
+  };
+  const store = {
+    getWorkspaceDirectory: () => workspace,
+    getSelectedModel: () => 'auto:noema-free',
+  };
+
+  try {
+    const result = await runIsolatedWorkerE2E({
+      agent,
+      store,
+      databasePath,
+      resultPath,
+      prompt: '[NOEMA E2E] 创建 README。',
+      timeoutMs: 1_000,
+    });
+
+    assert.equal(result.outcome, 'preflight_failed');
+    assert.equal(result.turnStatus, 'not_started');
+    assert.equal(result.dshAvailable, false);
+    assert.equal(result.dshWorkerError, '没有找到 DSH CLI。');
+    assert.equal(sent, false);
     assert.deepEqual(JSON.parse(readFileSync(resultPath, 'utf8')), result);
   } finally {
     rmSync(directory, { recursive: true, force: true });

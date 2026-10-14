@@ -50,6 +50,17 @@ if (withCorrection && withoutCorrection) {
   throw new Error('Choose either --with-correction or --without-correction.');
 }
 const includeCorrection = withCorrection || !withoutCorrection;
+const requestedModel = process.env.NOEMA_E2E_MODEL ?? 'auto:noema-free';
+const allowedModels = new Set([
+  'auto:noema-free',
+  'free-router',
+  'nvidia/nemotron-3-super-120b-a12b:free',
+]);
+if (!allowedModels.has(requestedModel)) {
+  throw new Error(
+    'Choose an E2E route already exposed by Noema: auto:noema-free, free-router, or nvidia/nemotron-3-super-120b-a12b:free.',
+  );
+}
 const correction =
   '当任务要求创建指定文件时，先创建，再读取确认内容；不要把搜索未找到当作完成。';
 const prompt = [
@@ -59,12 +70,12 @@ const prompt = [
 ].join('\n');
 
 const store = new RootStore(databasePath);
-store.setSelectedModel('auto:noema-free');
+store.setSelectedModel(requestedModel);
 store.setWorkspaceDirectory(workspacePath);
 if (includeCorrection) {
   const turn = store.beginTurn({
     text: correction,
-    model: 'auto:noema-free',
+    model: requestedModel,
   });
   store.appendAssistant({
     id: turn.id,
@@ -128,12 +139,17 @@ const fileMatches =
   fileExists && readFileSync(readmePath, 'utf8').trim() === marker;
 const summary = {
   correctionInjected: includeCorrection,
-  requestedModel: 'auto:noema-free',
+  requestedModel,
   outcome: rootResult.outcome,
   turnStatus: rootResult.turnStatus,
   turnErrorCode: rootResult.turnErrorCode,
   assistantText: rootResult.assistantText,
   dshAvailable: rootResult.dshAvailable,
+  dshWorkerError: rootResult.dshWorkerError ?? null,
+  rootRouteMetadata: rootResult.rootRouteMetadata ?? {
+    status: 'unknown',
+    routedVia: [],
+  },
   taskStatus: rootResult.task?.status ?? null,
   verificationStatus: rootResult.task?.verificationStatus ?? null,
   task: rootResult.task,
