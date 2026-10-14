@@ -134,6 +134,8 @@ const summary = {
   turnErrorCode: rootResult.turnErrorCode,
   assistantText: rootResult.assistantText,
   dshAvailable: rootResult.dshAvailable,
+  taskStatus: rootResult.task?.status ?? null,
+  verificationStatus: rootResult.task?.verificationStatus ?? null,
   task: rootResult.task,
   readmeExists: fileExists,
   readmeMatchesMarker: fileMatches,
@@ -145,6 +147,8 @@ const summary = {
 console.log(JSON.stringify(summary, null, 2));
 if (
   rootResult.outcome !== 'worker_finished' ||
+  rootResult.task?.status !== 'completed' ||
+  rootResult.task?.verificationStatus !== 'verified' ||
   !fileMatches ||
   exit.code !== 0
 ) {

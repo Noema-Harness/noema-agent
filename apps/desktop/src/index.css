@@ -763,26 +763,21 @@ select:disabled {
 
 .root-adjustment-trace {
   min-width: 0;
+  margin-top: 5px;
   color: var(--faint);
 }
 
 .root-adjustment-trace summary {
-  max-width: 190px;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .root-adjustment-trace[open] {
-  position: absolute;
-  z-index: 2;
-  top: 24px;
-  left: 17px;
-  width: min(380px, calc(100vw - 56px));
   padding: 9px 11px;
   border: 1px solid var(--line-strong);
-  background: var(--paper);
-  box-shadow: 0 8px 22px rgb(24 35 29 / 9%);
+  background: #f7f8f6;
 }
 
 .worker-title-group > span {
