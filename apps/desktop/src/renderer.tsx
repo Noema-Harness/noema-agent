@@ -96,7 +96,12 @@ function formatCodexTime(value: string | number | null) {
 function taskStatusLabel(task: NoemaBackgroundTask) {
   if (task.status === 'starting') return '正在启动';
   if (task.status === 'running') return '后台执行中';
-  if (task.status === 'completed') return '执行完成';
+  if (task.status === 'completed') {
+    if (task.verificationStatus === 'verified') return 'Noema 核验通过';
+    if (task.verificationStatus === 'unavailable') return '无法独立核验';
+    return 'Agent 已结束';
+  }
+  if (task.errorCode === 'verification_failed') return '验收未通过';
   if (task.status === 'interrupted') return '已停止';
   return '执行未完成';
 }
@@ -105,6 +110,8 @@ function taskPhaseLabel(phase: string) {
   const labels: Record<string, string> = {
     starting: '正在启动 DSH',
     running: '正在处理任务',
+    verifying: 'Noema 正在核验文件',
+    verification_repairing: 'Noema 正在修复未通过项',
     turn_start: '开始处理',
     step_start: '正在检查工作区',
     tool_call: '正在操作工作区文件',
@@ -114,6 +121,34 @@ function taskPhaseLabel(phase: string) {
     interrupted: '进程已停止',
   };
   return labels[phase] ?? '后台处理中';
+}
+
+function verificationStatusLabel(task: NoemaBackgroundTask) {
+  if (task.verificationStatus === 'verified') return 'Noema 本地核验通过';
+  if (task.verificationStatus === 'failed')
+    return 'Noema 核验未通过；任务未验收';
+  if (task.verificationStatus === 'unavailable')
+    return 'Noema 无法安全完成核验；不按已验收处理';
+  if (task.verificationStatus === 'pending') return '等待 Noema 独立核验';
+  return '未设置独立核验；下方为 DSH Agent 自述';
+}
+
+function verificationReasonLabel(reason: string) {
+  const labels: Record<string, string> = {
+    file_exists: '文件存在',
+    text_matches: '目标文本匹配',
+    file_missing: '文件不存在',
+    text_mismatch: '目标文本不匹配',
+    not_a_file: '路径不是普通文件',
+    parent_not_directory: '父路径不是目录',
+    path_outside_workspace: '路径超出工作区',
+    symlink_not_checked: '包含符号链接，未检查',
+    file_too_large: '文件超过核验大小上限',
+    file_unreadable: '文件无法读取',
+    workspace_unavailable: '工作区不可用',
+    path_unreadable: '路径无法读取',
+  };
+  return labels[reason] ?? reason;
 }
 
 function shortSessionId(sessionId: string | null) {
@@ -132,6 +167,9 @@ function App() {
   const [providerApiKey, setProviderApiKey] = useState('');
   const [savingProvider, setSavingProvider] = useState(false);
   const [retryingTurn, setRetryingTurn] = useState<string | null>(null);
+  const [retryingWorkerEvent, setRetryingWorkerEvent] = useState<string | null>(
+    null,
+  );
   const [codexImportOpen, setCodexImportOpen] = useState(false);
   const [codexThreads, setCodexThreads] = useState<NoemaCodexThread[]>([]);
   const [codexPreview, setCodexPreview] = useState<NoemaCodexPreview | null>(
@@ -541,6 +579,33 @@ function App() {
     } catch (error) {
       setNotice(error instanceof Error ? error.message : '后台任务续接失败。');
       await refreshRoot();
+    }
+  };
+
+  const retryBackgroundEvent = async (taskId: string) => {
+    setRetryingWorkerEvent(taskId);
+    try {
+      const result = await window.noema.retryBackgroundEvent(taskId);
+      if (!result.accepted) {
+        setNotice(result.errorMessage ?? '暂时无法重新接回这条结果。');
+      } else if (result.completed) {
+        setNotice('Noema 已接回这条后台结果。');
+      } else {
+        setNotice(
+          result.errorMessage ??
+            '结果仍已保留，但 Noema 暂时没有完成整理；可以稍后重试。',
+        );
+      }
+      await refreshRoot();
+    } catch (error) {
+      setNotice(
+        error instanceof Error
+          ? error.message
+          : '结果仍已保留，但重新接回失败。',
+      );
+      await refreshRoot();
+    } finally {
+      setRetryingWorkerEvent(null);
     }
   };
 
@@ -959,6 +1024,58 @@ function App() {
                             </span>
                           </div>
                           <p className="worker-task-prompt">{task.prompt}</p>
+                          <section
+                            className={`worker-verification worker-verification-${task.verificationStatus}`}
+                            aria-label="Noema 任务验收状态"
+                            role={
+                              ['failed', 'unavailable'].includes(
+                                task.verificationStatus,
+                              )
+                                ? 'status'
+                                : undefined
+                            }
+                          >
+                            <strong>{verificationStatusLabel(task)}</strong>
+                            {task.verificationChecks.length > 0 && (
+                              <details>
+                                <summary>
+                                  查看 Noema 核验标准与结果（
+                                  {task.verificationChecks.length} 项）
+                                </summary>
+                                <ul>
+                                  {task.verificationChecks.map(
+                                    (check, index) => {
+                                      const result =
+                                        task.verificationResults[index];
+                                      const expected =
+                                        check.kind === 'file_exists'
+                                          ? '文件存在'
+                                          : check.kind === 'file_equals'
+                                            ? `文件内容等于「${check.text}」`
+                                            : `文件包含「${check.text}」`;
+                                      return (
+                                        <li
+                                          key={`${check.path}:${index}`}
+                                          className={`verification-result verification-${result?.status ?? 'pending'}`}
+                                        >
+                                          <code>{check.path}</code> · {expected}
+                                          {result && (
+                                            <span>
+                                              {' '}
+                                              —{' '}
+                                              {verificationReasonLabel(
+                                                result.reason,
+                                              )}
+                                            </span>
+                                          )}
+                                        </li>
+                                      );
+                                    },
+                                  )}
+                                </ul>
+                              </details>
+                            )}
+                          </section>
                           <div className="worker-metadata">
                             <span title={task.workspacePath}>
                               工作区 · {task.workspacePath}
@@ -975,7 +1092,7 @@ function App() {
                               <summary>
                                 {task.errorMessage
                                   ? '执行信息'
-                                  : '查看执行结果'}
+                                  : '查看 DSH Agent 报告'}
                               </summary>
                               <div className="worker-output">
                                 {task.resultText || task.errorMessage}
@@ -1004,9 +1121,34 @@ function App() {
                             </div>
                           )}
                           {task.noemaResponseError && (
-                            <p className="worker-response-error" role="status">
-                              {task.noemaResponseError}
-                            </p>
+                            <div className="worker-response-recovery">
+                              <p
+                                className="worker-response-error"
+                                role="status"
+                              >
+                                {task.noemaResponseError}
+                              </p>
+                              {task.eventStatus === 'pending' &&
+                                ['failed', 'interrupted'].includes(
+                                  task.noemaResponseStatus,
+                                ) && (
+                                  <button
+                                    className="worker-event-retry-button"
+                                    type="button"
+                                    onClick={() =>
+                                      void retryBackgroundEvent(task.id)
+                                    }
+                                    disabled={
+                                      busy || retryingWorkerEvent === task.id
+                                    }
+                                    title="只重新整理已保存的结果，不会重启 DSH 或重复文件操作。"
+                                  >
+                                    {retryingWorkerEvent === task.id
+                                      ? '正在重试结果…'
+                                      : '重试结果接回'}
+                                  </button>
+                                )}
+                            </div>
                           )}
                           {['failed', 'interrupted'].includes(task.status) &&
                             task.sessionId && (

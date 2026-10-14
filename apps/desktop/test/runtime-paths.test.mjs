@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { resolveNoemaDatabasePath } from '../src/runtime-paths.mjs';
+import {
+  resolveNoemaDatabasePath,
+  resolveNoemaDshUserDataPath,
+} from '../src/runtime-paths.mjs';
 
 test('only unpackaged E2E runs can redirect the root database', () => {
   assert.equal(
@@ -25,5 +28,34 @@ test('only unpackaged E2E runs can redirect the root database', () => {
       isPackaged: false,
     }),
     'C:\\Users\\test\\AppData\\Roaming\\Noema\\noema.sqlite3',
+  );
+});
+
+test('only an unpackaged isolated database can redirect DSH worker state', () => {
+  assert.equal(
+    resolveNoemaDshUserDataPath({
+      userDataPath: 'C:\\Users\\test\\AppData\\Roaming\\Noema',
+      isPackaged: false,
+      testDatabasePath: 'D:/scratch/root.sqlite3',
+      testDshUserDataPath: 'D:/scratch/dsh-user-data',
+    }),
+    'D:\\scratch\\dsh-user-data',
+  );
+  assert.equal(
+    resolveNoemaDshUserDataPath({
+      userDataPath: 'C:\\Users\\test\\AppData\\Roaming\\Noema',
+      isPackaged: false,
+      testDshUserDataPath: 'D:/scratch/dsh-user-data',
+    }),
+    'C:\\Users\\test\\AppData\\Roaming\\Noema',
+  );
+  assert.equal(
+    resolveNoemaDshUserDataPath({
+      userDataPath: 'C:\\Users\\test\\AppData\\Roaming\\Noema',
+      isPackaged: true,
+      testDatabasePath: 'D:/scratch/root.sqlite3',
+      testDshUserDataPath: 'D:/scratch/dsh-user-data',
+    }),
+    'C:\\Users\\test\\AppData\\Roaming\\Noema',
   );
 });

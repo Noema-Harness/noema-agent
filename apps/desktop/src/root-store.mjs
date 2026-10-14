@@ -1,10 +1,30 @@
 import Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
+import { normalizeWorkspaceVerificationChecks } from './workspace-verifier.mjs';
 
 const MAX_MESSAGE_LENGTH = 100_000;
 const MAX_ACTIVE_INTERACTION_ADJUSTMENTS = 12;
 const MAX_WITHDRAWN_INTERACTION_ADJUSTMENTS = 20;
+
+function hydrateBackgroundTask(row) {
+  if (!row) return null;
+  const { verificationChecksJson, verificationResultsJson, ...task } = row;
+  try {
+    return {
+      ...task,
+      verificationChecks: JSON.parse(verificationChecksJson ?? '[]'),
+      verificationResults: JSON.parse(verificationResultsJson ?? '[]'),
+    };
+  } catch {
+    return {
+      ...task,
+      verificationChecks: [],
+      verificationResults: [],
+      verificationStatus: 'unavailable',
+    };
+  }
+}
 
 function nowIso() {
   return new Date().toISOString();
@@ -212,7 +232,25 @@ export class RootStore {
       });
       applyInteractionAdjustmentSchema();
     }
-    if (currentVersion > 5)
+    if (currentVersion < 6) {
+      const applyBackgroundVerificationSchema = this.db.transaction(() => {
+        this.db.exec(`
+          ALTER TABLE background_tasks
+            ADD COLUMN verification_checks_json TEXT NOT NULL DEFAULT '[]';
+          ALTER TABLE background_tasks
+            ADD COLUMN verification_status TEXT NOT NULL DEFAULT 'not_planned'
+              CHECK (verification_status IN ('not_planned', 'pending', 'verified', 'failed', 'unavailable'));
+          ALTER TABLE background_tasks
+            ADD COLUMN verification_results_json TEXT NOT NULL DEFAULT '[]';
+          ALTER TABLE background_tasks
+            ADD COLUMN verification_attempts INTEGER NOT NULL DEFAULT 0
+              CHECK (verification_attempts >= 0);
+          INSERT INTO schema_migrations (version, applied_at) VALUES (6, '${nowIso()}');
+        `);
+      });
+      applyBackgroundVerificationSchema();
+    }
+    if (currentVersion > 6)
       throw new Error(
         `Database schema ${currentVersion} is newer than this Noema build supports`,
       );
@@ -438,13 +476,21 @@ export class RootStore {
     };
   }
 
-  /** @param {{id:string,sourceTurnId:string,workspacePath:string,model:string,prompt:string}} input */
-  createBackgroundTask({ id, sourceTurnId, workspacePath, model, prompt }) {
+  /** @param {{id:string,sourceTurnId:string,workspacePath:string,model:string,prompt:string,verificationChecks?:unknown}} input */
+  createBackgroundTask({
+    id,
+    sourceTurnId,
+    workspacePath,
+    model,
+    prompt,
+    verificationChecks = [],
+  }) {
     requireText(id, 'task id', 200);
     requireText(sourceTurnId, 'source turn id', 200);
     requireText(workspacePath, 'workspace path', 2_000);
     requireText(model, 'model', 200);
     requireText(prompt, 'delegated task', 40_000);
+    const checks = normalizeWorkspaceVerificationChecks(verificationChecks);
     const active = this.db
       .prepare(
         "SELECT id FROM background_tasks WHERE status IN ('starting', 'running') LIMIT 1",
@@ -456,8 +502,9 @@ export class RootStore {
       .prepare(`
         INSERT INTO background_tasks (
           id, source_turn_id, harness, workspace_path, model, prompt,
-          status, phase, created_at, updated_at
-        ) VALUES (?, ?, 'dsh-headless', ?, ?, ?, 'starting', 'starting', ?, ?)
+          status, phase, verification_checks_json, verification_status,
+          created_at, updated_at
+        ) VALUES (?, ?, 'dsh-headless', ?, ?, ?, 'starting', 'starting', ?, ?, ?, ?)
       `)
       .run(
         id,
@@ -465,6 +512,8 @@ export class RootStore {
         workspacePath,
         model,
         prompt,
+        JSON.stringify(checks),
+        checks.length ? 'pending' : 'not_planned',
         timestamp,
         timestamp,
       );
@@ -508,7 +557,37 @@ export class RootStore {
     return this.getBackgroundTask(id);
   }
 
-  /** @param {string} id @param {{status:'completed'|'failed'|'interrupted',resultText?:string,errorCode?:string|null,errorMessage?:string|null,toolCallCount?:number,sessionId?:string|null}} outcome */
+  /**
+   * @param {string} id
+   * @param {{status:'not_planned'|'pending'|'verified'|'failed'|'unavailable',results:unknown,attempts:number}} verification
+   */
+  setBackgroundTaskVerification(id, { status, results, attempts }) {
+    if (
+      !['not_planned', 'pending', 'verified', 'failed', 'unavailable'].includes(
+        status,
+      )
+    ) {
+      throw new TypeError('Invalid background task verification status');
+    }
+    if (
+      !Array.isArray(results) ||
+      !Number.isInteger(attempts) ||
+      attempts < 0
+    ) {
+      throw new TypeError('Invalid background task verification result');
+    }
+    this.db
+      .prepare(`
+        UPDATE background_tasks SET
+          verification_status = ?, verification_results_json = ?,
+          verification_attempts = ?, updated_at = ?
+        WHERE id = ? AND status IN ('starting', 'running')
+      `)
+      .run(status, JSON.stringify(results), attempts, nowIso(), id);
+    return this.getBackgroundTask(id);
+  }
+
+  /** @param {string} id @param {{status:'completed'|'failed'|'interrupted',resultText?:string,errorCode?:string|null,errorMessage?:string|null,toolCallCount?:number,sessionId?:string|null,verificationStatus?:'not_planned'|'pending'|'verified'|'failed'|'unavailable',verificationResults?:unknown,verificationAttempts?:number}} outcome */
   finishBackgroundTask(id, outcome) {
     const {
       status,
@@ -525,6 +604,9 @@ export class RootStore {
         UPDATE background_tasks SET
           status = ?, phase = ?, result_text = ?, error_code = ?, error_message = ?,
           session_id = COALESCE(?, session_id), tool_call_count = COALESCE(?, tool_call_count),
+          verification_status = COALESCE(?, verification_status),
+          verification_results_json = COALESCE(?, verification_results_json),
+          verification_attempts = COALESCE(?, verification_attempts),
           event_status = 'pending', event_created_at = ?, updated_at = ?, completed_at = ?
         WHERE id = ? AND status IN ('starting', 'running')
       `)
@@ -536,6 +618,13 @@ export class RootStore {
         errorMessage?.slice(0, 2_000) ?? null,
         outcome.sessionId ?? null,
         Number.isInteger(outcome.toolCallCount) ? outcome.toolCallCount : null,
+        outcome.verificationStatus ?? null,
+        Array.isArray(outcome.verificationResults)
+          ? JSON.stringify(outcome.verificationResults)
+          : null,
+        Number.isInteger(outcome.verificationAttempts)
+          ? outcome.verificationAttempts
+          : null,
         timestamp,
         timestamp,
         timestamp,
@@ -545,9 +634,8 @@ export class RootStore {
   }
 
   getBackgroundTask(id) {
-    return (
-      this.db
-        .prepare(`
+    const row = this.db
+      .prepare(`
         SELECT id, source_turn_id AS sourceTurnId, harness, workspace_path AS workspacePath,
           model, prompt, session_id AS sessionId, status, phase,
           tool_call_count AS toolCallCount, result_text AS resultText,
@@ -557,12 +645,16 @@ export class RootStore {
           noema_response_status AS noemaResponseStatus,
           noema_response_error AS noemaResponseError,
           noema_response_model AS noemaResponseModel,
+          verification_checks_json AS verificationChecksJson,
+          verification_status AS verificationStatus,
+          verification_results_json AS verificationResultsJson,
+          verification_attempts AS verificationAttempts,
           created_at AS createdAt, started_at AS startedAt, updated_at AS updatedAt,
           completed_at AS completedAt
         FROM background_tasks WHERE id = ?
       `)
-        .get(id) ?? null
-    );
+      .get(id);
+    return hydrateBackgroundTask(row);
   }
 
   getBackgroundTasks(limit = 50) {
@@ -577,18 +669,22 @@ export class RootStore {
           noema_response_status AS noemaResponseStatus,
           noema_response_error AS noemaResponseError,
           noema_response_model AS noemaResponseModel,
+          verification_checks_json AS verificationChecksJson,
+          verification_status AS verificationStatus,
+          verification_results_json AS verificationResultsJson,
+          verification_attempts AS verificationAttempts,
           created_at AS createdAt, started_at AS startedAt, updated_at AS updatedAt,
           completed_at AS completedAt
         FROM background_tasks ORDER BY seq DESC LIMIT ?
       `)
       .all(limit)
+      .map(hydrateBackgroundTask)
       .reverse();
   }
 
   getNextPendingBackgroundEvent() {
-    return (
-      this.db
-        .prepare(`
+    const row = this.db
+      .prepare(`
         SELECT id, source_turn_id AS sourceTurnId, harness, workspace_path AS workspacePath,
           model, prompt, session_id AS sessionId, status, phase,
           tool_call_count AS toolCallCount, result_text AS resultText,
@@ -598,13 +694,17 @@ export class RootStore {
           noema_response_status AS noemaResponseStatus,
           noema_response_error AS noemaResponseError,
           noema_response_model AS noemaResponseModel,
+          verification_checks_json AS verificationChecksJson,
+          verification_status AS verificationStatus,
+          verification_results_json AS verificationResultsJson,
+          verification_attempts AS verificationAttempts,
           created_at AS createdAt, started_at AS startedAt, updated_at AS updatedAt,
           completed_at AS completedAt
         FROM background_tasks WHERE event_status = 'pending'
         ORDER BY event_created_at ASC, seq ASC LIMIT 1
       `)
-        .get() ?? null
-    );
+      .get();
+    return hydrateBackgroundTask(row);
   }
 
   /** @param {string} id @param {string|null} model */

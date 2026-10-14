@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import Database from 'better-sqlite3';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -16,32 +17,30 @@ test('root store migrates idempotently and persists the selected model', () => {
     store.db
       .prepare('SELECT MAX(version) AS version FROM schema_migrations')
       .get().version,
-    5,
+    6,
   );
   store.setSelectedModel('free-router');
   assert.equal(store.getSelectedModel(), 'free-router');
   store.close();
 });
 
-test('a schema-v4 database upgrades to interaction adjustment storage', () => {
-  const store = memoryStore();
-  store.db.exec(`
-    DROP TABLE interaction_adjustments;
-    DELETE FROM schema_migrations WHERE version = 5;
+test('a schema-v4 database upgrades through interaction and verification state', () => {
+  const db = new Database(':memory:');
+  db.exec(`
+    CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);
+    INSERT INTO schema_migrations (version, applied_at) VALUES
+      (1, 'fixture'), (2, 'fixture'), (3, 'fixture'), (4, 'fixture');
+    CREATE TABLE root_turns (id TEXT PRIMARY KEY);
+    CREATE TABLE root_context_imports (id TEXT PRIMARY KEY);
+    CREATE TABLE background_tasks (id TEXT PRIMARY KEY);
   `);
-  assert.equal(
-    store.db
-      .prepare('SELECT MAX(version) AS version FROM schema_migrations')
-      .get().version,
-    4,
-  );
+  const store = new RootStore(db);
 
-  assert.doesNotThrow(() => store.migrate());
   assert.equal(
     store.db
       .prepare('SELECT MAX(version) AS version FROM schema_migrations')
       .get().version,
-    5,
+    6,
   );
   assert.equal(
     store.db
@@ -50,6 +49,19 @@ test('a schema-v4 database upgrades to interaction adjustment storage', () => {
       )
       .get().count,
     1,
+  );
+  assert.deepEqual(
+    store.db
+      .prepare('PRAGMA table_info(background_tasks)')
+      .all()
+      .map((column) => column.name)
+      .filter((name) => name.startsWith('verification_')),
+    [
+      'verification_checks_json',
+      'verification_status',
+      'verification_results_json',
+      'verification_attempts',
+    ],
   );
   store.close();
 });

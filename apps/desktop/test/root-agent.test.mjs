@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -459,6 +459,240 @@ test('dispatches one DSH worker on the explicit free chain and returns its resul
     assert.equal(agent.clearWorkspaceDirectory(), null);
     assert.equal(store.getWorkspaceDirectory(), null);
   } finally {
+    store.close();
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('independently verifies worker files and gives one bounded repair before acceptance', async () => {
+  const store = new RootStore(':memory:');
+  const workspace = mkdtempSync(path.join(tmpdir(), 'noema-worker-verify-'));
+  const turn = store.beginTurn({ text: '创建 README。', model: 'free-router' });
+  store.appendAssistant({
+    id: turn.id,
+    attempt: turn.attempt,
+    content: '正在处理。',
+  });
+  store.completeTurn(turn.id, turn.attempt);
+  store.setSelectedModel('free-router');
+
+  const dshInputs = [];
+  const modelMessages = [];
+  const provider = {
+    baseUrl: 'http://127.0.0.1:31415/v1',
+    listModels: async () => [{ name: 'free-router', label: '免费路由' }],
+    async *streamChat(input) {
+      modelMessages.push(input.messages);
+      yield 'Noema 已核验文件并接回结果。';
+    },
+  };
+  const dshAdapter = {
+    async startTask(input) {
+      dshInputs.push(input);
+      return {
+        started: Promise.resolve({ sessionId: 'session-verify-test' }),
+        done: Promise.resolve().then(() => {
+          if (dshInputs.length === 2) {
+            writeFileSync(path.join(workspace, 'README.md'), 'expected body');
+          }
+          return {
+            status: 'completed',
+            sessionId: 'session-verify-test',
+            result:
+              dshInputs.length === 1 ? 'README 已创建。' : '缺失内容已补齐。',
+            toolCallCount: 1,
+          };
+        }),
+        stop: () => true,
+      };
+    },
+  };
+  const agent = new RootAgent({
+    store,
+    provider,
+    secretStore: createSecretStore(),
+    dshAdapter,
+  });
+
+  try {
+    const started = await agent.startBackgroundTask({
+      sourceTurnId: turn.id,
+      prompt: '在工作区创建 README.md。',
+      workspacePath: workspace,
+      verificationChecks: [
+        { kind: 'file_contains', path: 'README.md', text: 'expected body' },
+      ],
+    });
+    assert.equal(started.accepted, true);
+    await started.completion;
+    for (let attempt = 0; attempt < 200; attempt++) {
+      if (store.getBackgroundTask(started.taskId).eventStatus === 'delivered')
+        break;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+
+    const task = store.getBackgroundTask(started.taskId);
+    assert.equal(task.status, 'completed');
+    assert.equal(task.verificationStatus, 'verified');
+    assert.equal(task.verificationAttempts, 1);
+    assert.equal(task.verificationResults[0].status, 'verified');
+    assert.equal(dshInputs.length, 2);
+    assert.equal(dshInputs[1].sessionId, 'session-verify-test');
+    assert.match(dshInputs[1].task, /工作区内做了独立文件核验/);
+    assert.equal(task.toolCallCount, 2);
+    assert.equal(task.eventStatus, 'delivered');
+    assert.equal(modelMessages.length, 1);
+    assert.match(task.noemaResponse, /Noema 已核验文件/);
+  } finally {
+    await agent.shutdown();
+    store.close();
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('does not let a worker self-report override a failed Noema file check', async () => {
+  const store = new RootStore(':memory:');
+  const workspace = mkdtempSync(path.join(tmpdir(), 'noema-worker-reject-'));
+  const turn = store.beginTurn({ text: '创建 README。', model: 'free-router' });
+  store.setSelectedModel('free-router');
+  let modelCalls = 0;
+  const provider = {
+    baseUrl: 'http://127.0.0.1:31415/v1',
+    listModels: async () => [{ name: 'free-router', label: '免费路由' }],
+    async *streamChat() {
+      modelCalls += 1;
+      yield '这条内容不应由模型生成。';
+    },
+  };
+  const agent = new RootAgent({
+    store,
+    provider,
+    secretStore: createSecretStore(),
+    dshAdapter: {
+      async startTask() {
+        return {
+          started: Promise.resolve({ sessionId: 'session-reject-test' }),
+          done: Promise.resolve({
+            status: 'completed',
+            sessionId: 'session-reject-test',
+            result: 'README 已创建，全部完成。',
+            toolCallCount: 1,
+          }),
+          stop: () => true,
+        };
+      },
+    },
+  });
+
+  try {
+    const started = await agent.startBackgroundTask({
+      sourceTurnId: turn.id,
+      prompt: '创建 README。',
+      workspacePath: workspace,
+      verificationChecks: [{ kind: 'file_exists', path: 'README.md' }],
+    });
+    assert.equal(started.accepted, true);
+    await started.completion;
+
+    const task = store.getBackgroundTask(started.taskId);
+    assert.equal(task.status, 'failed');
+    assert.equal(task.errorCode, 'verification_failed');
+    assert.equal(task.verificationStatus, 'failed');
+    assert.equal(task.verificationResults[0].reason, 'file_missing');
+    assert.equal(task.noemaResponseStatus, 'complete');
+    assert.match(task.noemaResponse, /本地验收没有通过/);
+    assert.match(task.noemaResponse, /README\.md：文件不存在/);
+    assert.equal(task.noemaResponse.includes('全部完成'), false);
+    assert.equal(modelCalls, 0);
+  } finally {
+    await agent.shutdown();
+    store.close();
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('retries a failed Noema event summary without restarting the completed DSH worker', async () => {
+  const store = new RootStore(':memory:');
+  store.setSelectedModel('free-router');
+  const sourceTurn = store.beginTurn({
+    text: '合成编码任务已完成。',
+    model: 'free-router',
+  });
+  store.appendAssistant({
+    id: sourceTurn.id,
+    attempt: 1,
+    content: '任务已交给后台。',
+  });
+  store.completeTurn(sourceTurn.id, 1);
+  const workspace = mkdtempSync(path.join(tmpdir(), 'noema-event-retry-'));
+  const task = store.createBackgroundTask({
+    id: 'completed-task-needs-summary',
+    sourceTurnId: sourceTurn.id,
+    workspacePath: workspace,
+    model: 'auto:noema-free',
+    prompt: '合成文件任务',
+  });
+  store.setBackgroundTaskSession(task.id, 'session-completed-test');
+  store.finishBackgroundTask(task.id, {
+    status: 'completed',
+    resultText: '合成任务已完成。',
+    sessionId: 'session-completed-test',
+    toolCallCount: 2,
+  });
+
+  let modelCalls = 0;
+  let dshStarts = 0;
+  const provider = {
+    baseUrl: 'http://127.0.0.1:31415/v1',
+    listModels: async () => [
+      { name: 'free-router', label: 'FreeLLMAPI 免费路由' },
+    ],
+    async *streamChat() {
+      modelCalls += 1;
+      if (modelCalls === 1) {
+        throw new FreeLLMAPIError(
+          'provider_unavailable',
+          '合成测试：上游没有返回结果。',
+        );
+      }
+      yield '我已检查保存的结果，任务完成。';
+    },
+  };
+  const agent = new RootAgent({
+    store,
+    provider,
+    secretStore: createSecretStore(),
+    dshAdapter: {
+      async startTask() {
+        dshStarts += 1;
+        throw new Error('retrying the event must not restart DSH');
+      },
+    },
+  });
+
+  try {
+    const initial = await agent.processPendingWorkerEvent();
+    assert.equal(initial.accepted, true);
+    assert.equal(initial.completed, false);
+    assert.equal(store.getBackgroundTask(task.id).status, 'completed');
+    assert.equal(store.getBackgroundTask(task.id).eventStatus, 'pending');
+    assert.equal(
+      store.getBackgroundTask(task.id).noemaResponseStatus,
+      'failed',
+    );
+
+    const retried = await agent.retryBackgroundEvent(task.id);
+    assert.equal(retried.accepted, true);
+    assert.equal(retried.completed, true);
+    assert.equal(store.getBackgroundTask(task.id).eventStatus, 'delivered');
+    assert.equal(
+      store.getBackgroundTask(task.id).noemaResponse,
+      '我已检查保存的结果，任务完成。',
+    );
+    assert.equal(modelCalls, 2);
+    assert.equal(dshStarts, 0);
+  } finally {
+    await agent.shutdown();
     store.close();
     rmSync(workspace, { recursive: true, force: true });
   }
