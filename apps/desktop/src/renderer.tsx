@@ -707,7 +707,8 @@ function App() {
           <div className="heading-copy">
             <h1>主对话</h1>
             <p>
-              对话保存在这台设备；发送时由本机 FreeLLMAPI 转发到所选免费模型。
+              对话保存在本机；发送时由 FreeLLMAPI
+              转给第三方免费模型。供应商政策各异，部分会将请求用于训练。
             </p>
           </div>
           <div className="workspace-control">
@@ -1524,9 +1525,7 @@ function App() {
           <div className="composer-disclosure">
             <span>本地保存</span>
             <span aria-hidden="true">·</span>
-            <span>
-              对话经 FreeLLMAPI 发送给所选免费模型；每轮最多带入最近 8 轮
-            </span>
+            <span>每轮最多带入最近 8 轮</span>
             {root?.workspaceDirectory && (
               <>
                 <span aria-hidden="true">·</span>
