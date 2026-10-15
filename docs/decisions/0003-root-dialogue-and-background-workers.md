@@ -17,7 +17,7 @@
 1. **Noema 拥有一条持续的根对话。** Noema 保存用户与根 agent 的对话、根 agent 的 turn 状态及消息模型元数据。切换根对话模型只改变 Noema 下一轮的 respondent，不改变后台 worker 的 harness/session。
 2. **外部 harness 拥有 native execution session。** Codex、DSH、Claude Code 等各自拥有工具轨迹、审批、工作区、上下文压缩和原生 session；Noema 不宣称重写或镜像这些内部状态。
 3. **Noema 拥有后台任务记录及其事件队列。** 记录用户目标、限制、被发送的最小 context snapshot、目标 harness 与 native session 引用、状态、来源以及返回结果。worker 的工具日志不作为 Noema 原生思维内容写入根对话。
-4. **worker 结果必须在根 turn 边界交付。** 任务事件先持久进入 `pending` 队列。根 agent 正在生成时，不开并行的根 turn、不抢占当前回答；当前 turn 正常结束或被用户中断后，再按顺序把待处理事件交给 Noema。事件 ID 幂等去重，应用崩溃或重启后可恢复。Noema 接到结果后才生成对用户的回应。
+4. **worker 结果必须在根 turn 边界交付。** 任务事件先持久进入 `pending` 队列。根 agent 正在生成时，不开并行的根 turn、不抢占当前回答；当前 turn 正常结束或被用户中断后，再按顺序把待处理事件交给 Noema。事件 ID 幂等去重，应用崩溃或重启后可恢复。Noema 接到结果后才生成对用户的回应。若该回应因模型服务失败或用户中断，原事件继续可见；下一条根对话仍带入结构化的原始任务结果和失败状态，但不会把未完成的模型总结当成 Noema 已确认的内容。失败回应不自动在后续每轮重试，只有用户显式重试才重新入队，避免在免费模型不可用时反复消耗请求。
 5. **用户仍可跨越任务执行进行对话。** 后台执行不是另一个主界面；用户可以继续与 Noema 聊天、给运行中的任务追加一条 task-scoped 指令或停止它。每项控制显示是模拟还是实际生效，未验证的功能不得宣称可用。
 6. **根历史采用本地 SQLite 持久化。** Electron main process 是数据 owner；renderer 只能通过窄化 typed preload API 读写。根消息与后台任务/待投递 worker event 属于不同领域记录，不能把 worker session 直接扁平化为根 transcript。数据库放在 Electron `userData`，迁移有版本记录，数据可在任务/会话范围内导出和删除。
 7. **首个根模型通过本机 Ollama 接入。** 本机已实际确认 Ollama 服务可用且 `qwen3.5:4b-q4_K_M` 能成功返回；以本地 provider 作为首个真实运行路径，不要求创建云端 key。远端 provider 后续逐个接入，并明确当前轮的 context 将发往何处。

@@ -486,6 +486,12 @@ export class RootAgent {
     ) {
       return { accepted: false, errorMessage: '这条结果当前不需要重试。' };
     }
+    if (!this.store.resetBackgroundEventResponseForRetry(taskId)) {
+      return {
+        accepted: false,
+        errorMessage: '这条结果状态已变化，请刷新后重试。',
+      };
+    }
     return this.processPendingWorkerEvent(taskId);
   }
 
