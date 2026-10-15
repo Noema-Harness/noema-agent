@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { execFile, spawn } from 'node:child_process';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
@@ -30,6 +30,7 @@ export async function resolveDshHeadlessRuntime({
   env = process.env,
   platform = process.platform,
   execFileImpl = execFileAsync,
+  readFileImpl = readFile,
 } = {}) {
   if (platform !== 'win32') {
     throw new DshHeadlessError(
@@ -78,7 +79,7 @@ export async function resolveDshHeadlessRuntime({
   let packageVersion;
   try {
     packageVersion = JSON.parse(
-      await (await import('node:fs/promises')).readFile(packagePath, 'utf8'),
+      await readFileImpl(packagePath, 'utf8'),
     ).version;
   } catch {
     throw new DshHeadlessError(
@@ -108,6 +109,9 @@ export async function resolveDshHeadlessRuntime({
   }
 
   const seen = new Set();
+  let compatibleNodeFound = false;
+  let headlessProbeCode = null;
+  let headlessProtocolUnsupported = false;
   for (const candidate of nodeCandidates) {
     if (!candidate || seen.has(candidate.toLowerCase())) continue;
     seen.add(candidate.toLowerCase());
@@ -118,12 +122,27 @@ export async function resolveDshHeadlessRuntime({
         windowsHide: true,
       });
       if (supportsDshNodeVersion(stdout)) {
-        const { stdout: help } = await execFileImpl(
-          candidate,
-          [dshBin, '--profile', 'headless', '--help'],
-          { encoding: 'utf8', timeout: 10_000, windowsHide: true },
-        );
+        compatibleNodeFound = true;
+        let help;
+        try {
+          ({ stdout: help } = await execFileImpl(
+            candidate,
+            [dshBin, '--profile', 'headless', '--help'],
+            { encoding: 'utf8', timeout: 10_000, windowsHide: true },
+          ));
+        } catch (error) {
+          const code =
+            error && typeof error === 'object' && 'code' in error
+              ? error.code
+              : null;
+          headlessProbeCode =
+            typeof code === 'string' && /^[A-Z0-9_-]{1,40}$/.test(code)
+              ? code
+              : 'unknown_error';
+          continue;
+        }
         if (!help.includes('--json') || !help.includes('--session-id')) {
+          headlessProtocolUnsupported = true;
           continue;
         }
         return {
@@ -138,6 +157,18 @@ export async function resolveDshHeadlessRuntime({
     }
   }
 
+  if (compatibleNodeFound && headlessProbeCode) {
+    throw new DshHeadlessError(
+      'dsh_headless_probe_failed',
+      `已找到 Node.js 24.21+，但 DSH headless 启动检查失败（${headlessProbeCode}）。`,
+    );
+  }
+  if (compatibleNodeFound && headlessProtocolUnsupported) {
+    throw new DshHeadlessError(
+      'dsh_headless_protocol_unsupported',
+      '已找到 Node.js 24.21+，但当前 DSH headless CLI 缺少 Noema 所需的 --json 或 --session-id 参数。',
+    );
+  }
   throw new DshHeadlessError(
     'dsh_node_unavailable',
     'Noema 找到了 DSH，但没有找到可运行它的 Node.js 24.21+。',
