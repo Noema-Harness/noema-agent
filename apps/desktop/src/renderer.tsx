@@ -120,8 +120,8 @@ function taskPhaseLabel(phase: string) {
     verifying: 'Noema 正在核验文件',
     verification_repairing: 'Noema 正在修复未通过项',
     turn_start: '开始处理',
-    step_start: '正在检查工作区',
-    tool_call: '正在操作工作区文件',
+    step_start: '正在检查项目文件',
+    tool_call: '正在操作项目文件',
     tool_result: '已收到文件操作结果',
     completed: '等待 Noema 接回结果',
     failed: '需要检查这次执行',
@@ -155,11 +155,11 @@ function verificationReasonLabel(reason: string) {
     text_mismatch: '目标文本不匹配',
     not_a_file: '路径不是普通文件',
     parent_not_directory: '父路径不是目录',
-    path_outside_workspace: '路径超出工作区',
+    path_outside_workspace: '路径超出所选项目文件夹',
     symlink_not_checked: '包含符号链接，未检查',
     file_too_large: '文件超过核验大小上限',
     file_unreadable: '文件无法读取',
-    workspace_unavailable: '工作区不可用',
+    workspace_unavailable: '所选项目文件夹不可用',
     path_unreadable: '路径无法读取',
   };
   return labels[reason] ?? reason;
@@ -452,10 +452,10 @@ function App() {
       setCodexImportOpen(false);
       setCodexPreview(null);
       await refreshRoot();
-      setNotice('Codex 可见对话已保存在本机；发送给模型前会再次征求同意。');
+      setNotice('已把 Codex 的可见消息带入 Noema；原会话不会改变。');
     } catch (error) {
       setCodexError(
-        error instanceof Error ? error.message : 'Codex 快照没有导入。',
+        error instanceof Error ? error.message : 'Codex 对话文字没有导入。',
       );
       await refreshRoot();
     } finally {
@@ -467,11 +467,11 @@ function App() {
     try {
       if (await window.noema.removeContextImport()) {
         await refreshRoot();
-        setNotice('已从 Noema 移除 Codex 快照；不会影响 Codex 原会话。');
+        setNotice('已从 Noema 移除这段 Codex 对话文字；原会话未改变。');
       }
     } catch (error) {
       setNotice(
-        error instanceof Error ? error.message : '无法移除 Codex 快照。',
+        error instanceof Error ? error.message : '无法移除已带入的文字。',
       );
     }
   };
@@ -551,10 +551,10 @@ function App() {
       const directory = await window.noema.chooseWorkspace();
       if (!directory) return;
       await refreshRoot();
-      setNotice('工作区已选定；后台任务只会使用此文件夹。');
+      setNotice('代码项目文件夹已选定；编码任务只会访问这个文件夹。');
     } catch (error) {
       setNotice(
-        error instanceof Error ? error.message : '工作区没有设置成功。',
+        error instanceof Error ? error.message : '代码项目文件夹没有设置成功。',
       );
     }
   };
@@ -563,9 +563,11 @@ function App() {
     try {
       await window.noema.clearWorkspace();
       await refreshRoot();
-      setNotice('已撤销后台工作区；Noema 不再向 DSH 开放该文件夹。');
+      setNotice('已移除代码项目文件夹；后续编码任务不会访问它。');
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : '工作区没有移除。');
+      setNotice(
+        error instanceof Error ? error.message : '代码项目文件夹没有移除。',
+      );
     }
   };
 
@@ -712,8 +714,8 @@ function App() {
             </p>
           </div>
           <div className="workspace-control">
-            <section className="scope-control" aria-label="历史对话导入">
-              <span className="scope-control-heading">历史对话</span>
+            <section className="scope-control" aria-label="导入 Codex 对话文字">
+              <span className="scope-control-heading">把旧对话带到这里</span>
               <button
                 ref={codexImportTriggerRef}
                 className="workspace-button context-import-button"
@@ -724,23 +726,23 @@ function App() {
                 }
                 title={
                   contextImports.length > 0
-                    ? '先移除当前快照，再选择其他 Codex 会话。'
+                    ? '移除当前导入内容后，才能换另一段 Codex 对话。'
                     : root?.codexImportAvailable
-                      ? '只读读取本机 Codex 的可见文字；不会在 Codex 中续聊。'
+                      ? '只复制可见消息到 Noema；不会接着原 Codex 会话聊天。'
                       : '没有找到本机 Codex 桌面程序。'
                 }
               >
                 {contextImports.length > 0
-                  ? '已导入 Codex 快照'
-                  : '导入 Codex 对话'}
+                  ? '已导入 Codex 对话文字'
+                  : '选择 Codex 对话'}
               </button>
               <span className="scope-control-note">
-                只带入可见文字，不会在 Codex 中续聊
+                只导入可见消息，不会恢复或同步原会话
               </span>
             </section>
-            <section className="scope-control" aria-label="代码任务目录">
+            <section className="scope-control" aria-label="代码项目文件夹">
               <span className="scope-control-heading">
-                代码任务目录（可选）
+                代码项目文件夹（可选）
               </span>
               <div
                 className="workspace-label"
@@ -781,7 +783,7 @@ function App() {
                 )}
               </div>
               <span className="scope-control-note">
-                仅供后台 DSH 代码任务读写；普通聊天不需要
+                只在你委托改代码时读写；普通聊天不会读取
               </span>
             </section>
           </div>
@@ -886,11 +888,11 @@ function App() {
                       <div className="turn-body">
                         <section
                           className="context-card"
-                          aria-label="导入的 Codex 会话上下文"
+                          aria-label="带入的 Codex 对话文字"
                         >
                           <div className="context-card-heading">
                             <div>
-                              <strong>Codex 会话快照</strong>
+                              <strong>Codex 可见对话文字</strong>
                               <span>{context.title}</span>
                             </div>
                             <button
@@ -951,8 +953,9 @@ function App() {
                               : '仅保存在本机；下次发送时会先说明数据去向并征求同意。'}
                           </p>
                           <div className="context-card-footnote">
-                            这是只读文字快照，不是完整 Codex 会话副本；Codex
-                            中的工具状态与执行记录仍留在原应用，源会话后续变化也不会自动同步。
+                            这不是可继续运行的 Codex
+                            会话副本。只读的文字不会在两边保持同步；Codex
+                            内部运行状态仍留在原应用。
                           </div>
                         </section>
                       </div>
@@ -1141,7 +1144,7 @@ function App() {
                           )}
                           <div className="worker-metadata">
                             <span title={task.workspacePath}>
-                              工作区 · {task.workspacePath}
+                              项目文件夹 · {task.workspacePath}
                             </span>
                             {task.sessionId && (
                               <span>
@@ -1594,7 +1597,7 @@ function App() {
             <div className="settings-heading">
               <div>
                 <p className="settings-eyebrow">只读 · 本机 Codex</p>
-                <h2 id="codex-import-title">导入 Codex 对话快照</h2>
+                <h2 id="codex-import-title">选择要带入的 Codex 对话</h2>
               </div>
               <button
                 ref={codexImportCloseRef}
@@ -1607,13 +1610,14 @@ function App() {
               </button>
             </div>
             <p className="settings-description" id="codex-import-description">
-              选择一条 Codex 会话，先检查将要带入的文字，再决定是否导入。
-              这不会在 Codex
-              中继续对话，也不会同步之后的变化。列表、读取和预览只访问本机数据，不会调用模型。
+              选择本机 Codex
+              的一段对话，先预览可带入的消息。导入后，它会作为文字出现在
+              Noema；不会恢复 Codex
+              会话，也不会把之后的消息同步过来。读取和预览只访问本机数据，不会调用模型。
             </p>
             {contextImports.length > 0 && (
               <div className="codex-import-warning" role="status">
-                当前已有一份快照。移除它后才能导入新的 Codex 会话。
+                当前已有一段 Codex 对话文字。移除后才能换另一段。
               </div>
             )}
             {codexError && (
@@ -1709,10 +1713,9 @@ function App() {
               </div>
             </div>
             <div className="codex-import-disclosure">
-              导入只保存本机快照；不复制 reasoning、工具调用、文件内容或 Codex
-              session
-              状态，不会自动同步源会话后续变化，也不修改源会话。今后发送给 Noema
-              时会先征求同意，再经 FreeLLMAPI 当前免费路由发送所选文字。
+              这里只复制可见消息，不复制内部推理、工具记录、文件内容或运行状态，也不修改
+              Codex 原会话。内容保存在本机；首次发送给模型前，Noema
+              会再次征求同意。
             </div>
             <div className="settings-actions">
               <button
@@ -1733,7 +1736,7 @@ function App() {
                   contextImports.length > 0
                 }
               >
-                {importingCodex ? '正在校验并保存…' : '导入这份快照'}
+                {importingCodex ? '正在校验并保存…' : '导入这段对话文字'}
               </button>
             </div>
           </section>
