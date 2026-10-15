@@ -99,6 +99,107 @@ test('isolated worker runner records only a task inside its scratch workspace', 
   }
 });
 
+test('isolated worker E2E captures an interaction correction before dispatching its task', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'noema-e2e-preface-'));
+  const workspace = path.join(directory, 'workspace');
+  const resultPath = path.join(directory, 'result.json');
+  const databasePath = path.join(directory, 'root.sqlite3');
+  mkdirSync(workspace);
+  writeFileSync(databasePath, 'synthetic isolated database placeholder');
+  let prefaceCompleted = false;
+  const task = {
+    id: 'task-after-preface',
+    sourceTurnId: 'turn-task',
+    status: 'completed',
+    errorCode: null,
+    verificationStatus: 'verified',
+    verificationResults: [],
+    verificationAttempts: 0,
+    interactionAdjustmentIds: ['adjustment-from-preface'],
+    toolActionCategories: ['write'],
+    toolActionsTruncated: false,
+    toolCallCount: 1,
+    eventStatus: 'delivered',
+    noemaResponseStatus: 'complete',
+    noemaResponseError: null,
+  };
+  const store = {
+    getWorkspaceDirectory: () => workspace,
+    getSelectedModel: () => 'free-router',
+    getTurn: (id) =>
+      id === 'turn-preface'
+        ? {
+            status: prefaceCompleted ? 'completed' : 'streaming',
+            errorCode: null,
+          }
+        : { status: 'completed', errorCode: null },
+    getBackgroundTasks: () => [task],
+    getSnapshot: () => ({
+      messages: [
+        {
+          turnId: 'turn-task',
+          role: 'assistant',
+          content: 'Synthetic worker response.',
+          routedVia: [],
+          routeMetadataStatus: 'unknown',
+        },
+      ],
+    }),
+  };
+  const receivedPrompts = [];
+  const agent = {
+    active: null,
+    dshAdapter: {},
+    dshRuntimeError: null,
+    canDelegateToDsh: () => true,
+    sendMessage({ text, model }) {
+      receivedPrompts.push({ text, model });
+      const preface = receivedPrompts.length === 1;
+      assert.equal(preface || prefaceCompleted, true);
+      const turnId = preface ? 'turn-preface' : 'turn-task';
+      this.active = {
+        turn: { id: turnId },
+        done: preface
+          ? Promise.resolve().then(() => {
+              prefaceCompleted = true;
+            })
+          : Promise.resolve(),
+      };
+      return { turnId };
+    },
+  };
+
+  try {
+    const prefacePrompt = '[NOEMA E2E PREFACE] 记录一个互动纠正。';
+    const taskPrompt = '[NOEMA E2E] 在临时工作区创建 README。';
+    const result = await runIsolatedWorkerE2E({
+      agent,
+      store,
+      databasePath,
+      prefacePrompt,
+      prompt: taskPrompt,
+      resultPath,
+      timeoutMs: 1_000,
+    });
+
+    assert.deepEqual(receivedPrompts, [
+      { text: prefacePrompt, model: 'free-router' },
+      { text: taskPrompt, model: 'free-router' },
+    ]);
+    assert.deepEqual(result.preface, {
+      status: 'completed',
+      errorCode: null,
+    });
+    assert.equal(result.outcome, 'worker_finished');
+    assert.deepEqual(result.task.interactionAdjustmentIds, [
+      'adjustment-from-preface',
+    ]);
+    assert.deepEqual(JSON.parse(readFileSync(resultPath, 'utf8')), result);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('isolated worker runner records DSH preflight failure without spending a model call', async () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'noema-e2e-preflight-'));
   const workspace = path.join(directory, 'workspace');

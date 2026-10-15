@@ -48,10 +48,23 @@ mkdirSync(workspacePath);
 const rootOnly = process.argv.includes('--root-only');
 const withCorrection = process.argv.includes('--with-correction');
 const withoutCorrection = process.argv.includes('--without-correction');
-if (withCorrection && withoutCorrection) {
-  throw new Error('Choose either --with-correction or --without-correction.');
+const captureOwnerCorrection = process.argv.includes(
+  '--capture-owner-correction',
+);
+if (
+  Number(withCorrection) +
+    Number(withoutCorrection) +
+    Number(captureOwnerCorrection) >
+  1
+) {
+  throw new Error(
+    'Choose only one of --with-correction, --without-correction, or --capture-owner-correction.',
+  );
 }
 const includeCorrection = withCorrection || (!withoutCorrection && !rootOnly);
+if (captureOwnerCorrection && rootOnly) {
+  throw new Error('--capture-owner-correction requires worker mode.');
+}
 const requestedModel = process.env.NOEMA_E2E_MODEL ?? 'auto:noema-free';
 const allowedModels = new Set([
   'auto:noema-free',
@@ -68,6 +81,13 @@ if (!allowedModels.has(requestedModel)) {
 }
 const correction =
   '当任务要求创建指定文件时，先创建，再读取确认内容；不要把搜索未找到当作完成。';
+const ownerCorrectionQuote = '做完再停下汇报啊';
+const ownerCorrectionText = [
+  '[NOEMA E2E PREFACE] 仅在隔离测试数据库中记录此互动纠正。',
+  '它适用于未来多阶段编码任务：除非真实阻塞或必须由用户决策，否则不要以中间进度汇报结束，应继续完成已明确的验收项。',
+  `我的原话是：“${ownerCorrectionQuote}”。`,
+  '请将它记录为适用于 coding 的互动调整。',
+].join('\n');
 const prompt = rootOnly
   ? [
       '[NOEMA E2E] This is a synthetic root-chat transport check only.',
@@ -83,7 +103,7 @@ const prompt = rootOnly
 const store = new RootStore(databasePath);
 store.setSelectedModel(requestedModel);
 store.setWorkspaceDirectory(workspacePath);
-if (includeCorrection) {
+if (includeCorrection && !captureOwnerCorrection) {
   const turn = store.beginTurn({
     text: correction,
     model: requestedModel,
@@ -111,6 +131,9 @@ const child = spawn(process.execPath, ['scripts/start.mjs'], {
     ...process.env,
     NOEMA_E2E_DATABASE_PATH: databasePath,
     NOEMA_E2E_DSH_USER_DATA_PATH: dshUserDataPath,
+    ...(captureOwnerCorrection
+      ? { NOEMA_E2E_WORKER_PREFACE: ownerCorrectionText }
+      : {}),
     NOEMA_E2E_WORKER_PROMPT: prompt,
     NOEMA_E2E_ROOT_ONLY: rootOnly ? '1' : '0',
   },
@@ -145,13 +168,45 @@ if (!resultFile) {
   );
 }
 const rootResult = JSON.parse(readFileSync(resultFile, 'utf8'));
+const verificationStore = new RootStore(databasePath);
+const capturedOwnerAdjustment = verificationStore
+  .getInteractionAdjustments()
+  .find(
+    (adjustment) =>
+      adjustment.status === 'active' &&
+      adjustment.scope === 'coding' &&
+      adjustment.sourceQuote === ownerCorrectionQuote,
+  );
+const persistedTask = rootResult.task
+  ? verificationStore
+      .getBackgroundTasks(50)
+      .find((task) => task.id === rootResult.task.id)
+  : null;
+const ownerCorrectionUsedByTask = Boolean(
+  persistedTask?.interactionAdjustmentSnapshots?.some(
+    (snapshot) =>
+      snapshot.scope === 'coding' &&
+      snapshot.id === capturedOwnerAdjustment?.id &&
+      snapshot.sourceQuote === ownerCorrectionQuote,
+  ),
+);
+verificationStore.close();
 const readmePath = path.join(workspacePath, 'README.md');
 const fileExists = existsSync(readmePath);
 const fileMatches =
   fileExists && readFileSync(readmePath, 'utf8').trim() === marker;
 const summary = {
   mode: rootOnly ? 'root-only' : 'worker',
-  correctionInjected: includeCorrection,
+  correctionInjected: includeCorrection && !captureOwnerCorrection,
+  adjustmentMode: rootOnly
+    ? 'none'
+    : captureOwnerCorrection
+      ? 'live-owner-correction'
+      : includeCorrection
+        ? 'preseeded-synthetic-correction'
+        : 'none',
+  ownerCorrectionCaptured: Boolean(capturedOwnerAdjustment),
+  ownerCorrectionUsedByTask,
   requestedModel,
   outcome: rootResult.outcome,
   turnStatus: rootResult.turnStatus,
@@ -194,6 +249,7 @@ if (
       rootResult.task?.eventStatus !== 'delivered' ||
       rootResult.task?.noemaResponseStatus !== 'complete' ||
       rootResult.task?.verificationStatus !== 'verified' ||
+      (captureOwnerCorrection && !ownerCorrectionUsedByTask) ||
       !fileMatches ||
       exit.code !== 0
 ) {
