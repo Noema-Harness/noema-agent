@@ -699,6 +699,118 @@ select:disabled {
   line-height: 1.55;
 }
 
+.capture-turn .turn-spine span {
+  background: #b56b4c;
+}
+
+.capture-card {
+  margin: 7px 0 12px;
+  padding: 13px 15px 11px;
+  border: 1px solid #e2c9ba;
+  border-left: 2px solid #b56b4c;
+  background: #fbf7f3;
+}
+
+.capture-card-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.capture-card-heading > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 9px;
+}
+
+.capture-card-heading strong {
+  font-size: 12px;
+  font-weight: 680;
+}
+
+.capture-card-heading span,
+.capture-discussion-note {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.capture-content {
+  margin: 10px 0 12px;
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.capture-edit textarea {
+  width: 100%;
+  min-height: 88px;
+  margin: 10px 0 8px;
+  padding: 9px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+.capture-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+}
+
+.capture-actions button,
+.capture-save-button {
+  min-height: 31px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  background: var(--paper);
+  color: var(--ink-soft);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.capture-actions button:hover:not(:disabled),
+.capture-save-button:hover:not(:disabled) {
+  border-color: #b56b4c;
+  color: var(--accent-dark);
+}
+
+.capture-actions .capture-primary-action,
+.capture-save-button {
+  border-color: #b56b4c;
+  background: #f5e8df;
+  color: #783e2c;
+}
+
+.capture-actions .capture-delete-action {
+  margin-left: auto;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+}
+
+.capture-discussion-note {
+  margin: 9px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid #eadbd1;
+}
+
+.capture-actions button:disabled,
+.capture-save-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .context-card-heading > div > span {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1816,7 +1928,8 @@ select:disabled {
 }
 
 .send-button,
-.stop-button {
+.stop-button,
+.capture-save-button {
   min-width: 78px;
   min-height: 34px;
   padding: 0 13px;
@@ -1846,6 +1959,12 @@ select:disabled {
   background: #c9cfcb;
   color: #eef0ed;
   cursor: not-allowed;
+}
+.composer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
 }
 .stop-button {
   border-color: #d8c5bf;
@@ -2505,6 +2624,27 @@ select:disabled {
   .send-button,
   .stop-button {
     min-width: 72px;
+  }
+}
+
+@media (max-height: 640px) {
+  .page-heading {
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+  .heading-copy > p {
+    display: none;
+  }
+  .composer-dock {
+    padding-top: 7px;
+    padding-bottom: 6px;
+  }
+  .composer textarea {
+    min-height: 50px;
+    padding-top: 8px;
+  }
+  .composer-disclosure span:not(:first-child) {
+    display: none;
   }
 }
 

@@ -312,6 +312,40 @@ export class RootAgent {
     return removed;
   }
 
+  saveCapture(content) {
+    if (this.shuttingDown) throw new Error('Noema 正在关闭，暂不能保存速记。');
+    const capture = this.store.createCapture(content);
+    this.emit({ type: 'captures-updated' });
+    return capture;
+  }
+
+  updateCapture(id, content) {
+    const capture = this.store.updateCapture(id, content);
+    this.emit({ type: 'captures-updated' });
+    return capture;
+  }
+
+  deleteCapture(id) {
+    const deleted = this.store.deleteCapture(id);
+    if (deleted) this.emit({ type: 'captures-updated' });
+    return deleted;
+  }
+
+  discussCapture(id) {
+    if (this.shuttingDown) throw new Error('Noema 正在关闭，暂不能开始讨论。');
+    const capture = this.store.getCapture(id);
+    if (!capture) throw new Error('这条速记已不存在。');
+    if (capture.discussionTurnId) throw new Error('这条速记已经开始讨论。');
+    const turn = this.store.beginTurn({
+      id: randomUUID(),
+      captureId: id,
+      model: this.store.getSelectedModel(),
+    });
+    this.emit({ type: 'captures-updated' });
+    this.launch(turn);
+    return { turnId: turn.id };
+  }
+
   /** @param {string} id */
   withdrawInteractionAdjustment(id) {
     const withdrawn = this.store.withdrawInteractionAdjustment(id);

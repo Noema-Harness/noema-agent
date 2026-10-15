@@ -25,6 +25,10 @@ test('registers only named root-agent actions and rejects non-window senders', a
     configureProvider: async (configuration) => configuration,
     setModel: async (model) => model,
     sendMessage: ({ text }) => ({ turnId: text }),
+    saveCapture: (text) => ({ id: text }),
+    updateCapture: (id, text) => ({ id, content: text }),
+    deleteCapture: (id) => id === 'capture-1',
+    discussCapture: (id) => ({ turnId: id }),
     retryTurn: ({ turnId }) => ({ turnId }),
     stopTurn: async () => true,
     setWorkspaceDirectory: (directory) => directory,
@@ -59,6 +63,10 @@ test('registers only named root-agent actions and rejects non-window senders', a
       CHANNELS.retry,
       CHANNELS.selectModel,
       CHANNELS.send,
+      CHANNELS.saveCapture,
+      CHANNELS.updateCapture,
+      CHANNELS.deleteCapture,
+      CHANNELS.discussCapture,
       CHANNELS.state,
       CHANNELS.stop,
       CHANNELS.chooseWorkspace,
@@ -82,6 +90,35 @@ test('registers only named root-agent actions and rejects non-window senders', a
     {
       turnId: 'hello',
     },
+  );
+  assert.deepEqual(
+    await harness.handlers.get(CHANNELS.saveCapture)(
+      { sender: trustedSender },
+      'note',
+    ),
+    { id: 'note' },
+  );
+  assert.deepEqual(
+    await harness.handlers.get(CHANNELS.updateCapture)(
+      { sender: trustedSender },
+      'capture-1',
+      'edited',
+    ),
+    { id: 'capture-1', content: 'edited' },
+  );
+  assert.equal(
+    await harness.handlers.get(CHANNELS.deleteCapture)(
+      { sender: trustedSender },
+      'capture-1',
+    ),
+    true,
+  );
+  assert.deepEqual(
+    await harness.handlers.get(CHANNELS.discussCapture)(
+      { sender: trustedSender },
+      'capture-1',
+    ),
+    { turnId: 'capture-1' },
   );
   assert.equal(
     await harness.handlers.get(CHANNELS.chooseWorkspace)({

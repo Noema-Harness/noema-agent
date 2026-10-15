@@ -530,20 +530,109 @@ export class RootStore {
       );
       applyInteractionAdjustmentEditingSchema();
     }
-    if (currentVersion > 10)
+    if (currentVersion < 11) {
+      const applyCapturedMomentsSchema = this.db.transaction(() => {
+        this.db.exec(`
+          CREATE TABLE captured_moments (
+            seq INTEGER PRIMARY KEY AUTOINCREMENT,
+            id TEXT NOT NULL UNIQUE,
+            content TEXT NOT NULL CHECK (length(content) BETWEEN 1 AND 100000),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            discussion_turn_id TEXT UNIQUE REFERENCES root_turns(id) ON DELETE SET NULL
+          );
+          CREATE INDEX captured_moments_order ON captured_moments(seq DESC);
+          INSERT INTO schema_migrations (version, applied_at) VALUES (11, '${nowIso()}');
+        `);
+      });
+      applyCapturedMomentsSchema();
+    }
+    if (currentVersion > 11)
       throw new Error(
         `Database schema ${currentVersion} is newer than this Noema build supports`,
       );
   }
 
-  /** @param {{id?: string, text: string, model?: string | null}} input */
-  beginTurn({ id = randomUUID(), text, model = null }) {
-    requireText(text, 'message');
+  createCapture(content) {
+    const normalized = requireText(
+      content,
+      'capture',
+      MAX_MESSAGE_LENGTH,
+    ).trim();
+    if (!normalized) throw new TypeError('速记不能为空。');
+    const id = randomUUID();
+    const timestamp = nowIso();
+    this.db
+      .prepare(`
+        INSERT INTO captured_moments (id, content, created_at, updated_at)
+        VALUES (?, ?, ?, ?)
+      `)
+      .run(id, normalized, timestamp, timestamp);
+    return this.getCapture(id);
+  }
+
+  getCapture(id) {
+    const row = this.db
+      .prepare(`
+        SELECT id, content, created_at AS createdAt, updated_at AS updatedAt,
+               discussion_turn_id AS discussionTurnId
+        FROM captured_moments WHERE id = ?
+      `)
+      .get(id);
+    return row ?? null;
+  }
+
+  getCaptures() {
+    return this.db
+      .prepare(`
+        SELECT id, content, created_at AS createdAt, updated_at AS updatedAt,
+               discussion_turn_id AS discussionTurnId
+        FROM captured_moments ORDER BY seq ASC
+      `)
+      .all();
+  }
+
+  updateCapture(id, content) {
+    requireText(id, 'capture id', 200);
+    const normalized = requireText(
+      content,
+      'capture',
+      MAX_MESSAGE_LENGTH,
+    ).trim();
+    if (!normalized) throw new TypeError('速记不能为空。');
+    const result = this.db
+      .prepare(`
+        UPDATE captured_moments SET content = ?, updated_at = ?
+        WHERE id = ? AND discussion_turn_id IS NULL
+      `)
+      .run(normalized, nowIso(), id);
+    if (!result.changes) {
+      if (!this.getCapture(id)) throw new Error('这条速记已不存在。');
+      throw new Error('已开始讨论的速记不能修改。');
+    }
+    return this.getCapture(id);
+  }
+
+  deleteCapture(id) {
+    requireText(id, 'capture id', 200);
+    return (
+      this.db.prepare('DELETE FROM captured_moments WHERE id = ?').run(id)
+        .changes === 1
+    );
+  }
+
+  /** @param {{id?: string, text?: string, captureId?: string, model?: string | null}} input */
+  beginTurn({ id = randomUUID(), text, captureId = null, model = null }) {
+    if (!captureId) requireText(text, 'message');
     if (model !== null) requireText(model, 'model', 200);
     const timestamp = nowIso();
     const userMessageId = randomUUID();
     const assistantMessageId = randomUUID();
     const transaction = this.db.transaction(() => {
+      const capture = captureId ? this.getCapture(captureId) : null;
+      if (captureId && !capture) throw new Error('这条速记已不存在。');
+      if (capture?.discussionTurnId) throw new Error('这条速记已经开始讨论。');
+      const messageText = capture ? capture.content : text;
       const active = this.db
         .prepare("SELECT id FROM root_turns WHERE status = 'streaming' LIMIT 1")
         .get();
@@ -559,13 +648,22 @@ export class RootStore {
         INSERT INTO root_messages (id, turn_id, role, content, status, attempt, model, created_at, updated_at)
         VALUES (?, ?, 'user', ?, 'complete', 1, ?, ?, ?)
       `)
-        .run(userMessageId, id, text, model, timestamp, timestamp);
+        .run(userMessageId, id, messageText, model, timestamp, timestamp);
       this.db
         .prepare(`
         INSERT INTO root_messages (id, turn_id, role, content, status, attempt, model, route_metadata_status, created_at, updated_at)
         VALUES (?, ?, 'assistant', '', 'streaming', 1, ?, 'pending', ?, ?)
       `)
         .run(assistantMessageId, id, model, timestamp, timestamp);
+      if (capture) {
+        const linked = this.db
+          .prepare(`
+            UPDATE captured_moments SET discussion_turn_id = ?, updated_at = ?
+            WHERE id = ? AND discussion_turn_id IS NULL
+          `)
+          .run(id, timestamp, capture.id);
+        if (linked.changes !== 1) throw new Error('这条速记已被其他讨论接管。');
+      }
     });
     transaction();
     return { id, userMessageId, assistantMessageId, attempt: 1, model };
@@ -848,6 +946,7 @@ export class RootStore {
       .get();
     return {
       messages,
+      captures: this.getCaptures(),
       workerTasks,
       contextImports: this.getContextImports(),
       interactionAdjustments: this.getInteractionAdjustments(),
