@@ -164,7 +164,12 @@ const summary = {
     routedVia: [],
   },
   taskStatus: rootResult.task?.status ?? null,
+  eventStatus: rootResult.task?.eventStatus ?? null,
+  noemaResponseStatus: rootResult.task?.noemaResponseStatus ?? null,
+  noemaResponseError: rootResult.task?.noemaResponseError ?? null,
   verificationStatus: rootResult.task?.verificationStatus ?? null,
+  toolActionCategories: rootResult.task?.toolActionCategories ?? [],
+  toolActionsTruncated: rootResult.task?.toolActionsTruncated ?? false,
   task: rootResult.task,
   readmeExists: fileExists,
   readmeMatchesMarker: fileMatches,
@@ -186,6 +191,8 @@ if (
     ? !rootChatPassed
     : rootResult.outcome !== 'worker_finished' ||
       rootResult.task?.status !== 'completed' ||
+      rootResult.task?.eventStatus !== 'delivered' ||
+      rootResult.task?.noemaResponseStatus !== 'complete' ||
       rootResult.task?.verificationStatus !== 'verified' ||
       !fileMatches ||
       exit.code !== 0

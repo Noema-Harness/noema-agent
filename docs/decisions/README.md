@@ -9,5 +9,6 @@
 - `0003-root-dialogue-and-background-workers.md`：根对话与外部执行状态所有权；其中本地模型选择已被 ADR 0005 取代。
 - `0005-free-model-routing-through-freellmapi.md`：当前唯一模型网关、免费路由白名单与凭据边界。
 - `0009-gateway-route-provenance.md`：将 FreeLLMAPI 报告的实际模型路由绑定到对应根对话回复，不把所选别名当作实际模型。
+- `0010-evidence-backed-personal-methods.md`：提议将“用户的个人方法”作为区别于互动约定的能力候选；要求以同任务、同目标执行器的行动与结果验证，当前不增加任何持久技能系统。
 
 不要把未决问题伪装成已接受架构；新决定替代旧决定时保留历史并互相链接。

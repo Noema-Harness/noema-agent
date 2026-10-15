@@ -54,6 +54,10 @@ export interface NoemaBackgroundTask {
   verificationResults: NoemaVerificationResult[];
   verificationAttempts: number;
   interactionAdjustmentIds: string[];
+  toolActionCategories: Array<
+    'read' | 'write' | 'edit' | 'search' | 'list' | 'other'
+  >;
+  toolActionsTruncated: boolean;
   sessionId: string | null;
   status: 'starting' | 'running' | 'completed' | 'failed' | 'interrupted';
   phase: string;

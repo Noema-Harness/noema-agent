@@ -7,6 +7,15 @@ const MAX_MESSAGE_LENGTH = 100_000;
 const MAX_ACTIVE_INTERACTION_ADJUSTMENTS = 12;
 const MAX_WITHDRAWN_INTERACTION_ADJUSTMENTS = 20;
 const MAX_RECORDED_ROUTES_PER_MESSAGE = 16;
+const MAX_RECORDED_TOOL_ACTIONS_PER_TASK = 32;
+const TOOL_ACTION_CATEGORIES = new Set([
+  'read',
+  'write',
+  'edit',
+  'search',
+  'list',
+  'other',
+]);
 
 function hydrateBackgroundTask(row) {
   if (!row) return null;
@@ -14,8 +23,30 @@ function hydrateBackgroundTask(row) {
     verificationChecksJson,
     verificationResultsJson,
     interactionAdjustmentIdsJson,
+    toolActionCategoriesJson,
+    toolActionsTruncated,
     ...task
   } = row;
+  let toolActionCategories = [];
+  let traceTruncated = Boolean(toolActionsTruncated);
+  try {
+    const parsed = JSON.parse(toolActionCategoriesJson ?? '[]');
+    if (Array.isArray(parsed)) {
+      toolActionCategories = parsed
+        .slice(0, MAX_RECORDED_TOOL_ACTIONS_PER_TASK)
+        .filter((category) => TOOL_ACTION_CATEGORIES.has(category));
+      if (toolActionCategories.length !== parsed.length) {
+        traceTruncated = true;
+      }
+      if (parsed.length > MAX_RECORDED_TOOL_ACTIONS_PER_TASK) {
+        traceTruncated = true;
+      }
+    } else {
+      traceTruncated = true;
+    }
+  } catch {
+    traceTruncated = true;
+  }
   try {
     return {
       ...task,
@@ -24,6 +55,8 @@ function hydrateBackgroundTask(row) {
       interactionAdjustmentIds: JSON.parse(
         interactionAdjustmentIdsJson ?? '[]',
       ),
+      toolActionCategories,
+      toolActionsTruncated: traceTruncated,
     };
   } catch {
     return {
@@ -31,6 +64,8 @@ function hydrateBackgroundTask(row) {
       verificationChecks: [],
       verificationResults: [],
       interactionAdjustmentIds: [],
+      toolActionCategories,
+      toolActionsTruncated: traceTruncated,
       verificationStatus: 'unavailable',
     };
   }
@@ -300,7 +335,20 @@ export class RootStore {
       });
       applyRootRouteProvenanceSchema();
     }
-    if (currentVersion > 8)
+    if (currentVersion < 9) {
+      const applyBackgroundToolActionTraceSchema = this.db.transaction(() => {
+        this.db.exec(`
+          ALTER TABLE background_tasks
+            ADD COLUMN tool_action_categories_json TEXT NOT NULL DEFAULT '[]';
+          ALTER TABLE background_tasks
+            ADD COLUMN tool_actions_truncated INTEGER NOT NULL DEFAULT 0
+              CHECK (tool_actions_truncated IN (0, 1));
+          INSERT INTO schema_migrations (version, applied_at) VALUES (9, '${nowIso()}');
+        `);
+      });
+      applyBackgroundToolActionTraceSchema();
+    }
+    if (currentVersion > 9)
       throw new Error(
         `Database schema ${currentVersion} is newer than this Noema build supports`,
       );
@@ -705,6 +753,68 @@ export class RootStore {
     return this.getBackgroundTask(id);
   }
 
+  /** @param {string} id @param {'read'|'write'|'edit'|'search'|'list'|'other'} category */
+  recordBackgroundTaskToolAction(id, category) {
+    if (!TOOL_ACTION_CATEGORIES.has(category)) {
+      throw new TypeError('后台工具操作类别无效。');
+    }
+    const row = this.db
+      .prepare(`
+        SELECT tool_action_categories_json AS toolActionCategoriesJson,
+          tool_actions_truncated AS toolActionsTruncated
+        FROM background_tasks WHERE id = ?
+      `)
+      .get(id);
+    if (!row) return null;
+    let categories = [];
+    let traceIncomplete = Boolean(row.toolActionsTruncated);
+    try {
+      const parsed = JSON.parse(row.toolActionCategoriesJson ?? '[]');
+      if (Array.isArray(parsed)) {
+        categories = parsed
+          .filter((value) => TOOL_ACTION_CATEGORIES.has(value))
+          .slice(0, MAX_RECORDED_TOOL_ACTIONS_PER_TASK);
+        traceIncomplete ||= categories.length !== parsed.length;
+      } else {
+        traceIncomplete = true;
+      }
+    } catch {
+      categories = [];
+      traceIncomplete = true;
+    }
+    if (categories.length >= MAX_RECORDED_TOOL_ACTIONS_PER_TASK) {
+      this.db
+        .prepare(`
+          UPDATE background_tasks SET tool_actions_truncated = 1, updated_at = ?
+          WHERE id = ?
+        `)
+        .run(nowIso(), id);
+      return this.getBackgroundTask(id);
+    }
+    categories.push(category);
+    this.db
+      .prepare(`
+        UPDATE background_tasks
+        SET tool_action_categories_json = ?,
+          tool_actions_truncated = CASE WHEN ? THEN 1 ELSE tool_actions_truncated END,
+          updated_at = ?
+        WHERE id = ?
+      `)
+      .run(JSON.stringify(categories), traceIncomplete ? 1 : 0, nowIso(), id);
+    return this.getBackgroundTask(id);
+  }
+
+  /** @param {string} id */
+  markBackgroundTaskToolActionsIncomplete(id) {
+    this.db
+      .prepare(`
+        UPDATE background_tasks SET tool_actions_truncated = 1, updated_at = ?
+        WHERE id = ?
+      `)
+      .run(nowIso(), id);
+    return this.getBackgroundTask(id);
+  }
+
   /**
    * @param {string} id
    * @param {{status:'not_planned'|'pending'|'verified'|'failed'|'unavailable',results:unknown,attempts:number}} verification
@@ -798,6 +908,8 @@ export class RootStore {
           verification_results_json AS verificationResultsJson,
           verification_attempts AS verificationAttempts,
           interaction_adjustment_ids_json AS interactionAdjustmentIdsJson,
+          tool_action_categories_json AS toolActionCategoriesJson,
+          tool_actions_truncated AS toolActionsTruncated,
           created_at AS createdAt, started_at AS startedAt, updated_at AS updatedAt,
           completed_at AS completedAt
         FROM background_tasks WHERE id = ?
@@ -823,6 +935,8 @@ export class RootStore {
           verification_results_json AS verificationResultsJson,
           verification_attempts AS verificationAttempts,
           interaction_adjustment_ids_json AS interactionAdjustmentIdsJson,
+          tool_action_categories_json AS toolActionCategoriesJson,
+          tool_actions_truncated AS toolActionsTruncated,
           created_at AS createdAt, started_at AS startedAt, updated_at AS updatedAt,
           completed_at AS completedAt
         FROM background_tasks ORDER BY seq DESC LIMIT ?
@@ -849,6 +963,8 @@ export class RootStore {
           verification_results_json AS verificationResultsJson,
           verification_attempts AS verificationAttempts,
           interaction_adjustment_ids_json AS interactionAdjustmentIdsJson,
+          tool_action_categories_json AS toolActionCategoriesJson,
+          tool_actions_truncated AS toolActionsTruncated,
           created_at AS createdAt, started_at AS startedAt, updated_at AS updatedAt,
           completed_at AS completedAt
         FROM background_tasks WHERE event_status = 'pending'
@@ -1043,7 +1159,9 @@ export class RootStore {
           verification_status AS verificationStatus,
           verification_results_json AS verificationResultsJson,
           verification_attempts AS verificationAttempts,
-          interaction_adjustment_ids_json AS interactionAdjustmentIdsJson
+          interaction_adjustment_ids_json AS interactionAdjustmentIdsJson,
+          tool_action_categories_json AS toolActionCategoriesJson,
+          tool_actions_truncated AS toolActionsTruncated
         FROM background_tasks
         WHERE event_status = 'delivered' AND noema_response_status = 'complete'
           AND source_turn_id IN (${selectedInOrder.map(() => '?').join(',')})
@@ -1068,15 +1186,29 @@ export class RootStore {
           } catch {
             interactionAdjustmentIds = [];
           }
+          let toolActionCategories = [];
+          try {
+            const parsed = JSON.parse(event.toolActionCategoriesJson ?? '[]');
+            if (Array.isArray(parsed)) {
+              toolActionCategories = parsed
+                .slice(0, MAX_RECORDED_TOOL_ACTIONS_PER_TASK)
+                .filter((category) => TOOL_ACTION_CATEGORIES.has(category));
+            }
+          } catch {
+            toolActionCategories = [];
+          }
           const {
             verificationResultsJson: _verificationResultsJson,
             interactionAdjustmentIdsJson: _interactionAdjustmentIdsJson,
+            toolActionCategoriesJson: _toolActionCategoriesJson,
             ...safeEvent
           } = event;
           return {
             ...safeEvent,
             verificationResults,
             interactionAdjustmentIds,
+            toolActionCategories,
+            toolActionsTruncated: Boolean(event.toolActionsTruncated),
           };
         })
         .reverse();
@@ -1098,6 +1230,8 @@ export class RootStore {
           toolCallCount: event.toolCallCount,
           result: event.resultText.slice(0, 1_200),
           error: event.errorMessage?.slice(0, 500) ?? null,
+          toolActionCategories: event.toolActionCategories,
+          toolActionsTruncated: event.toolActionsTruncated,
           noemaSummary: event.noemaResponse.slice(0, 1_200),
           verification: {
             status: event.verificationStatus,

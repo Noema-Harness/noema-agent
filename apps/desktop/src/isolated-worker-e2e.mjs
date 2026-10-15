@@ -66,9 +66,12 @@ function summarizeTask(task) {
     verificationResults: task.verificationResults,
     verificationAttempts: task.verificationAttempts,
     interactionAdjustmentIds: task.interactionAdjustmentIds,
+    toolActionCategories: task.toolActionCategories,
+    toolActionsTruncated: task.toolActionsTruncated,
     toolCallCount: task.toolCallCount,
     eventStatus: task.eventStatus,
     noemaResponseStatus: task.noemaResponseStatus,
+    noemaResponseError: task.noemaResponseError ?? null,
   };
 }
 
@@ -192,7 +195,11 @@ export async function runIsolatedWorkerE2E({
       Date.now() >= deadline
         ? 'timeout'
         : task
-          ? 'worker_finished'
+          ? DELIVERED_EVENT_STATUSES.has(task.eventStatus)
+            ? 'worker_finished'
+            : FAILED_EVENT_STATUSES.has(task.noemaResponseStatus)
+              ? 'worker_event_response_failed'
+              : 'worker_event_pending'
           : turn?.status === 'completed'
             ? 'no_worker_dispatched'
             : 'root_turn_failed',

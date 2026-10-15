@@ -165,6 +165,23 @@ function verificationReasonLabel(reason: string) {
   return labels[reason] ?? reason;
 }
 
+function toolActionLabel(
+  category: NoemaBackgroundTask['toolActionCategories'][number],
+) {
+  const labels: Record<
+    NoemaBackgroundTask['toolActionCategories'][number],
+    string
+  > = {
+    read: '读取文件',
+    write: '写入文件',
+    edit: '修改文件',
+    search: '搜索内容',
+    list: '查找文件',
+    other: '其他工具操作',
+  };
+  return labels[category];
+}
+
 function shortSessionId(sessionId: string | null) {
   return sessionId ? sessionId.replace(/^session-/, '').slice(0, 8) : '';
 }
@@ -1026,6 +1043,9 @@ function App() {
                 }
                 if (entry.kind === 'task') {
                   const task = entry.task;
+                  const toolActionSummary = task.toolActionsTruncated
+                    ? `工具调用记录不完整（已记录 ${task.toolActionCategories.length} 次）`
+                    : `查看 ${task.toolActionCategories.length} 次工具调用`;
                   const taskAdjustments = task.interactionAdjustmentIds
                     .map((id) =>
                       root?.interactionAdjustments.find(
@@ -1142,6 +1162,31 @@ function App() {
                               </p>
                             </details>
                           )}
+                          {(task.toolActionCategories.length > 0 ||
+                            task.toolActionsTruncated) && (
+                            <details className="worker-output-details worker-action-trace">
+                              <summary>{toolActionSummary}</summary>
+                              {task.toolActionCategories.length > 0 ? (
+                                <ol className="worker-action-sequence">
+                                  {task.toolActionCategories.map(
+                                    (category, index) => (
+                                      <li key={`${category}:${index}`}>
+                                        {toolActionLabel(category)}
+                                      </li>
+                                    ),
+                                  )}
+                                </ol>
+                              ) : (
+                                <p className="worker-action-disclosure">
+                                  操作记录不完整，当前无法显示调用顺序。
+                                </p>
+                              )}
+                              <p className="worker-action-disclosure">
+                                只保留类别与顺序，不含参数、文件内容或返回值。调用记录不代表成功；文件条件以
+                                Noema 核验为准。
+                              </p>
+                            </details>
+                          )}
                           <div className="worker-metadata">
                             <span title={task.workspacePath}>
                               项目文件夹 · {task.workspacePath}
@@ -1151,7 +1196,7 @@ function App() {
                                 会话 · {shortSessionId(task.sessionId)}
                               </span>
                             )}
-                            <span>文件操作 · {task.toolCallCount}</span>
+                            <span>工具调用 · {task.toolCallCount}</span>
                           </div>
                           {(task.resultText || task.errorMessage) && (
                             <details className="worker-output-details">
@@ -1469,7 +1514,7 @@ function App() {
                 <div className="worker-active-copy">
                   <div className="worker-active-heading">
                     <strong>{taskPhaseLabel(task.phase)}</strong>
-                    <span>DSH · {task.toolCallCount} 次文件操作</span>
+                    <span>DSH · {task.toolCallCount} 次工具调用</span>
                   </div>
                   <p>{task.prompt}</p>
                   <small title={task.workspacePath}>{task.workspacePath}</small>

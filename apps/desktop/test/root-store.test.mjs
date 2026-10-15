@@ -17,7 +17,7 @@ test('root store migrates idempotently and persists the selected model', () => {
     store.db
       .prepare('SELECT MAX(version) AS version FROM schema_migrations')
       .get().version,
-    8,
+    9,
   );
   store.setSelectedModel('free-router');
   assert.equal(store.getSelectedModel(), 'free-router');
@@ -44,7 +44,7 @@ test('a schema-v4 database upgrades through interaction and verification state',
     store.db
       .prepare('SELECT MAX(version) AS version FROM schema_migrations')
       .get().version,
-    8,
+    9,
   );
   assert.equal(
     store.db
@@ -78,6 +78,14 @@ test('a schema-v4 database upgrades through interaction and verification state',
       .prepare('PRAGMA table_info(background_tasks)')
       .all()
       .some((column) => column.name === 'interaction_adjustment_ids_json'),
+  );
+  assert.deepEqual(
+    store.db
+      .prepare('PRAGMA table_info(background_tasks)')
+      .all()
+      .filter((column) => column.name.startsWith('tool_action'))
+      .map((column) => column.name),
+    ['tool_action_categories_json', 'tool_actions_truncated'],
   );
   store.db
     .prepare(`
@@ -456,6 +464,8 @@ test('background task records DSH ownership and a separate root event response',
   assert.equal(running.sessionId, 'session-1');
   assert.equal(running.status, 'running');
   assert.equal(running.toolCallCount, 1);
+  assert.deepEqual(running.toolActionCategories, []);
+  assert.equal(running.toolActionsTruncated, false);
 
   store.finishBackgroundTask(task.id, {
     status: 'completed',
@@ -481,6 +491,42 @@ test('background task records DSH ownership and a separate root event response',
   store.close();
 });
 
+test('worker action trace stores only bounded, allowlisted categories', () => {
+  const store = memoryStore();
+  const turn = store.beginTurn({
+    text: '把这个文件修改交给后台',
+    model: 'auto:noema-free',
+  });
+  const task = store.createBackgroundTask({
+    id: 'task-action-trace',
+    sourceTurnId: turn.id,
+    workspacePath: 'D:\\Scratch',
+    model: 'auto:noema-free',
+    prompt: 'Inspect and update one file.',
+  });
+
+  store.recordBackgroundTaskToolAction(task.id, 'list');
+  store.recordBackgroundTaskToolAction(task.id, 'read');
+  store.recordBackgroundTaskToolAction(task.id, 'write');
+  const recorded = store.getBackgroundTask(task.id);
+  assert.deepEqual(recorded.toolActionCategories, ['list', 'read', 'write']);
+  assert.equal(recorded.toolActionsTruncated, false);
+  assert.throws(
+    () =>
+      store.recordBackgroundTaskToolAction(task.id, 'D:\\Sensitive\\file.md'),
+    /后台工具操作类别无效/,
+  );
+
+  for (let index = 3; index < 32; index++) {
+    store.recordBackgroundTaskToolAction(task.id, 'read');
+  }
+  store.recordBackgroundTaskToolAction(task.id, 'edit');
+  const capped = store.getBackgroundTask(task.id);
+  assert.equal(capped.toolActionCategories.length, 32);
+  assert.equal(capped.toolActionsTruncated, true);
+  store.close();
+});
+
 test('future root context retains a delivered worker event as system data, not a user turn', () => {
   const store = memoryStore();
   const dispatchedTurn = store.beginTurn({
@@ -502,6 +548,8 @@ test('future root context retains a delivered worker event as system data, not a
     verificationChecks: [{ kind: 'file_exists', path: 'README.md' }],
     interactionAdjustmentIds: ['adjustment-verification-test'],
   });
+  store.recordBackgroundTaskToolAction(task.id, 'list');
+  store.recordBackgroundTaskToolAction(task.id, 'write');
   store.finishBackgroundTask(task.id, {
     status: 'completed',
     resultText: 'README 第 1 行已更新。',
@@ -536,6 +584,10 @@ test('future root context retains a delivered worker event as system data, not a
   assert.match(context.messages[2].content, /"verification"/);
   assert.match(context.messages[2].content, /"status":"verified"/);
   assert.match(context.messages[2].content, /adjustment-verification-test/);
+  assert.match(
+    context.messages[2].content,
+    /"toolActionCategories":\["list","write"\]/,
+  );
   assert.equal(context.messages[2].content.includes('D:\\Scratch'), false);
   assert.equal(context.messages[2].role, 'system');
   assert.ok(context.historyCharacters > 0);
