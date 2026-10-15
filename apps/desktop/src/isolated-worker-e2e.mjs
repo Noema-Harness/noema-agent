@@ -138,6 +138,11 @@ export async function runIsolatedWorkerE2E({
   }
   if (!model) throw new Error('An isolated E2E model must be selected.');
 
+  if (rootOnly) {
+    agent.allowRootActions = false;
+    agent.dshAdapter = null;
+  }
+
   const dshAvailable = Boolean(agent.dshAdapter);
   const canDispatch =
     rootOnly ||

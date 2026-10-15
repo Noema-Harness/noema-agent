@@ -152,7 +152,10 @@ test('root-only E2E checks a real chat without requiring DSH availability', asyn
   const expected = 'NOEMA-ROOT-ONLY-SYNTHETIC';
   let receivedPrompt;
   const agent = {
-    dshAdapter: null,
+    allowRootActions: true,
+    dshAdapter: {
+      startTask: () => assert.fail('root-only must not start DSH'),
+    },
     dshRuntimeError: 'DSH is intentionally not part of this check.',
     sendMessage({ text, model }) {
       receivedPrompt = { text, model };
@@ -194,6 +197,8 @@ test('root-only E2E checks a real chat without requiring DSH availability', asyn
       model: 'free-router',
     });
     assert.equal(result.rootOnly, true);
+    assert.equal(agent.allowRootActions, false);
+    assert.equal(agent.dshAdapter, null);
     assert.equal(result.dshAvailable, false);
     assert.equal(result.outcome, 'no_worker_dispatched');
     assert.equal(result.turnStatus, 'completed');
