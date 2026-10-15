@@ -55,10 +55,11 @@ const allowedModels = new Set([
   'auto:noema-free',
   'free-router',
   'nvidia/nemotron-3-super-120b-a12b:free',
+  'nvidia/nemotron-3.5-lightning',
 ]);
 if (!allowedModels.has(requestedModel)) {
   throw new Error(
-    'Choose an E2E route already exposed by Noema: auto:noema-free, free-router, or nvidia/nemotron-3-super-120b-a12b:free.',
+    'Choose an E2E route already exposed by Noema: auto:noema-free, free-router, nvidia/nemotron-3-super-120b-a12b:free, or nvidia/nemotron-3.5-lightning.',
   );
 }
 const correction =
