@@ -21,6 +21,7 @@ export interface NoemaRootMessage {
   contextOmittedTurns: number;
   contextCharacters: number;
   interactionAdjustmentIds: string[];
+  interactionAdjustmentSnapshots: NoemaInteractionAdjustmentSnapshot[];
   errorCode: string | null;
   errorMessage: string | null;
 }
@@ -54,6 +55,7 @@ export interface NoemaBackgroundTask {
   verificationResults: NoemaVerificationResult[];
   verificationAttempts: number;
   interactionAdjustmentIds: string[];
+  interactionAdjustmentSnapshots: NoemaInteractionAdjustmentSnapshot[];
   toolActionCategories: Array<
     'read' | 'write' | 'edit' | 'search' | 'list' | 'other'
   >;
@@ -111,9 +113,24 @@ export interface NoemaInteractionAdjustment {
   situation: string;
   behavior: string;
   sourceQuote: string;
+  originalScope: 'conversation' | 'coding' | 'both' | null;
+  originalSituation: string | null;
+  originalBehavior: string | null;
+  userEdited: boolean;
+  editedAt: string | null;
   status: 'active' | 'withdrawn';
   createdAt: string;
   withdrawnAt: string | null;
+}
+
+export interface NoemaInteractionAdjustmentSnapshot {
+  id: string;
+  scope: 'conversation' | 'coding' | 'both';
+  situation: string;
+  behavior: string;
+  sourceQuote: string;
+  userEdited: boolean;
+  editedAt: string | null;
 }
 
 export interface NoemaContextImport {
@@ -264,6 +281,12 @@ export interface NoemaBridge {
     expectedSourceUpdatedAt: string | number | null;
   }): Promise<NoemaContextImport>;
   removeContextImport(): Promise<boolean>;
+  updateInteractionAdjustment(input: {
+    id: string;
+    scope: 'conversation' | 'coding' | 'both';
+    situation: string;
+    behavior: string;
+  }): Promise<NoemaInteractionAdjustment | null>;
   withdrawInteractionAdjustment(id: string): Promise<boolean>;
   onRootEvent(listener: (event: NoemaRootEvent) => void): () => void;
 }

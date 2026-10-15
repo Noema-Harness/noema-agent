@@ -17,7 +17,7 @@ test('root store migrates idempotently and persists the selected model', () => {
     store.db
       .prepare('SELECT MAX(version) AS version FROM schema_migrations')
       .get().version,
-    9,
+    10,
   );
   store.setSelectedModel('free-router');
   assert.equal(store.getSelectedModel(), 'free-router');
@@ -30,7 +30,7 @@ test('a schema-v4 database upgrades through interaction and verification state',
     CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);
     INSERT INTO schema_migrations (version, applied_at) VALUES
       (1, 'fixture'), (2, 'fixture'), (3, 'fixture'), (4, 'fixture');
-    CREATE TABLE root_turns (id TEXT PRIMARY KEY);
+    CREATE TABLE root_turns (id TEXT PRIMARY KEY, attempt INTEGER NOT NULL DEFAULT 1);
     CREATE TABLE root_messages (
       id TEXT PRIMARY KEY, turn_id TEXT, role TEXT, content TEXT, status TEXT,
       attempt INTEGER, model TEXT, created_at TEXT, updated_at TEXT
@@ -44,7 +44,7 @@ test('a schema-v4 database upgrades through interaction and verification state',
     store.db
       .prepare('SELECT MAX(version) AS version FROM schema_migrations')
       .get().version,
-    9,
+    10,
   );
   assert.equal(
     store.db
@@ -103,6 +103,152 @@ test('a schema-v4 database upgrades through interaction and verification state',
       .get(),
     { routedVia: '[]', status: 'unknown' },
   );
+  store.close();
+});
+
+test('schema-v9 migration snapshots existing adjustments without guessing older attempts', () => {
+  const db = new Database(':memory:');
+  db.exec(`
+    CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);
+    INSERT INTO schema_migrations (version, applied_at) VALUES (9, 'fixture');
+    CREATE TABLE root_turns (
+      id TEXT PRIMARY KEY, attempt INTEGER NOT NULL DEFAULT 1,
+      interaction_adjustment_ids_json TEXT NOT NULL DEFAULT '[]'
+    );
+    CREATE TABLE root_messages (
+      id TEXT PRIMARY KEY, turn_id TEXT, role TEXT, content TEXT, status TEXT,
+      attempt INTEGER, model TEXT, created_at TEXT, updated_at TEXT,
+      routed_via_json TEXT NOT NULL DEFAULT '[]',
+      route_metadata_status TEXT NOT NULL DEFAULT 'unknown'
+    );
+    CREATE TABLE background_tasks (
+      id TEXT PRIMARY KEY,
+      interaction_adjustment_ids_json TEXT NOT NULL DEFAULT '[]'
+    );
+    CREATE TABLE interaction_adjustments (
+      seq INTEGER PRIMARY KEY, id TEXT UNIQUE, source_turn_id TEXT UNIQUE,
+      scope TEXT, situation TEXT, behavior TEXT, source_quote TEXT,
+      status TEXT, created_at TEXT, withdrawn_at TEXT
+    );
+    INSERT INTO root_turns VALUES ('turn-1', 2, '["adjustment-1"]');
+    INSERT INTO root_messages VALUES
+      ('assistant-1', 'turn-1', 'assistant', 'first attempt', 'failed', 1, NULL, '2026-10-15', '2026-10-15', '[]', 'unknown'),
+      ('assistant-2', 'turn-1', 'assistant', 'second attempt', 'complete', 2, NULL, '2026-10-15', '2026-10-15', '[]', 'unknown');
+    INSERT INTO background_tasks VALUES ('task-1', '["adjustment-1"]');
+    INSERT INTO interaction_adjustments VALUES
+      (1, 'adjustment-1', 'turn-source', 'coding', 'Original situation', 'Original behavior', 'original quote', 'active', '2026-10-15', NULL);
+  `);
+
+  const store = new RootStore(db);
+  const readSnapshots = (table, id) =>
+    JSON.parse(
+      db
+        .prepare(
+          `SELECT interaction_adjustment_snapshots_json AS value FROM ${table} WHERE id = ?`,
+        )
+        .get(id).value,
+    );
+  const expected = [
+    {
+      id: 'adjustment-1',
+      scope: 'coding',
+      situation: 'Original situation',
+      behavior: 'Original behavior',
+      sourceQuote: 'original quote',
+      userEdited: false,
+      editedAt: null,
+    },
+  ];
+
+  assert.equal(
+    db.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()
+      .version,
+    10,
+  );
+  assert.deepEqual(readSnapshots('root_messages', 'assistant-2'), expected);
+  assert.deepEqual(readSnapshots('root_messages', 'assistant-1'), []);
+  assert.deepEqual(readSnapshots('background_tasks', 'task-1'), expected);
+  store.close();
+});
+
+test('schema-v9 migration backfills only the latest root attempt and task snapshots', () => {
+  const db = new Database(':memory:');
+  db.exec(`
+    CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);
+    INSERT INTO schema_migrations (version, applied_at) VALUES (9, 'fixture');
+    CREATE TABLE root_turns (
+      id TEXT PRIMARY KEY, attempt INTEGER NOT NULL DEFAULT 1,
+      interaction_adjustment_ids_json TEXT NOT NULL DEFAULT '[]'
+    );
+    CREATE TABLE root_messages (
+      id TEXT PRIMARY KEY, turn_id TEXT, role TEXT, content TEXT, status TEXT,
+      attempt INTEGER, model TEXT, created_at TEXT, updated_at TEXT,
+      routed_via_json TEXT NOT NULL DEFAULT '[]',
+      route_metadata_status TEXT NOT NULL DEFAULT 'unknown'
+    );
+    CREATE TABLE background_tasks (
+      id TEXT PRIMARY KEY,
+      interaction_adjustment_ids_json TEXT NOT NULL DEFAULT '[]'
+    );
+    CREATE TABLE interaction_adjustments (
+      seq INTEGER PRIMARY KEY, id TEXT UNIQUE, source_turn_id TEXT UNIQUE,
+      scope TEXT, situation TEXT, behavior TEXT, source_quote TEXT,
+      status TEXT, created_at TEXT, withdrawn_at TEXT
+    );
+    INSERT INTO root_turns VALUES ('turn-1', 2, '["adjustment-1"]');
+    INSERT INTO root_messages VALUES
+      ('assistant-1', 'turn-1', 'assistant', 'first attempt', 'failed', 1, NULL, '2026-10-15', '2026-10-15', '[]', 'unknown'),
+      ('assistant-2', 'turn-1', 'assistant', 'second attempt', 'complete', 2, NULL, '2026-10-15', '2026-10-15', '[]', 'unknown');
+    INSERT INTO background_tasks VALUES ('task-1', '["adjustment-1"]');
+    INSERT INTO interaction_adjustments VALUES
+      (1, 'adjustment-1', 'turn-source', 'coding', 'Original situation', 'Original behavior', 'original quote', 'active', '2026-10-15', NULL);
+  `);
+
+  const store = new RootStore(db);
+  const latestAttempt = db
+    .prepare(
+      'SELECT interaction_adjustment_snapshots_json AS snapshots FROM root_messages WHERE id = ?',
+    )
+    .get('assistant-2');
+  const earlierAttempt = db
+    .prepare(
+      'SELECT interaction_adjustment_snapshots_json AS snapshots FROM root_messages WHERE id = ?',
+    )
+    .get('assistant-1');
+  const taskSnapshot = db
+    .prepare(
+      'SELECT interaction_adjustment_snapshots_json AS snapshots FROM background_tasks WHERE id = ?',
+    )
+    .get('task-1');
+
+  assert.equal(
+    db.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()
+      .version,
+    10,
+  );
+  assert.deepEqual(JSON.parse(latestAttempt.snapshots), [
+    {
+      id: 'adjustment-1',
+      scope: 'coding',
+      situation: 'Original situation',
+      behavior: 'Original behavior',
+      sourceQuote: 'original quote',
+      userEdited: false,
+      editedAt: null,
+    },
+  ]);
+  assert.deepEqual(JSON.parse(earlierAttempt.snapshots), []);
+  assert.deepEqual(JSON.parse(taskSnapshot.snapshots), [
+    {
+      id: 'adjustment-1',
+      scope: 'coding',
+      situation: 'Original situation',
+      behavior: 'Original behavior',
+      sourceQuote: 'original quote',
+      userEdited: false,
+      editedAt: null,
+    },
+  ]);
   store.close();
 });
 
@@ -400,6 +546,128 @@ test('conversation-scoped adjustments survive the recent-turn window until withd
   store.close();
 });
 
+test('users can revise active interaction adjustments without rewriting older attempts', () => {
+  const store = memoryStore();
+  const sourceTurn = store.beginTurn({
+    text: '请先确认问题背景，再提出修改方案。',
+    model: 'auto:noema-free',
+  });
+  const original = store.addInteractionAdjustment({
+    id: 'adjustment-edit-1',
+    sourceTurnId: sourceTurn.id,
+    scope: 'both',
+    situation: '开始修改代码前',
+    behavior: '先补充解释再动手。',
+    sourceQuote: '先确认问题背景',
+  });
+  store.appendAssistant({
+    id: sourceTurn.id,
+    attempt: 1,
+    content: '我会先确认背景。',
+  });
+  store.completeTurn(sourceTurn.id, 1);
+
+  const firstAppliedTurn = store.beginTurn({
+    text: '继续实现这个改动。',
+    model: 'auto:noema-free',
+  });
+  const firstContext = store.getPromptContext(firstAppliedTurn.id);
+  store.setTurnContext(
+    firstAppliedTurn.id,
+    firstAppliedTurn.attempt,
+    firstContext,
+  );
+  store.appendAssistant({
+    id: firstAppliedTurn.id,
+    attempt: 1,
+    content: '先确认实现范围。',
+  });
+  store.completeTurn(firstAppliedTurn.id, 1);
+
+  const firstAppliedSnapshot = store
+    .getSnapshot()
+    .messages.find(
+      (message) => message.id === firstAppliedTurn.assistantMessageId,
+    ).interactionAdjustmentSnapshots[0];
+  assert.equal(firstAppliedSnapshot.behavior, '先补充解释再动手。');
+  assert.equal(firstAppliedSnapshot.userEdited, false);
+
+  const edited = store.updateInteractionAdjustment({
+    id: original.id,
+    scope: 'both',
+    situation: '涉及范围或风险较大的修改前',
+    behavior: '说明关键依据与风险；小改动直接做完。',
+  });
+  assert.equal(edited.userEdited, true);
+  assert.equal(edited.scope, 'both');
+  assert.equal(edited.originalScope, 'both');
+  assert.equal(edited.originalSituation, '开始修改代码前');
+  assert.equal(edited.originalBehavior, '先补充解释再动手。');
+  assert.equal(edited.sourceQuote, '先确认问题背景');
+  assert.equal(edited.createdAt, original.createdAt);
+  assert.ok(edited.editedAt);
+
+  const secondAppliedTurn = store.beginTurn({
+    text: '还有一个小的文案要改。',
+    model: 'auto:noema-free',
+  });
+  const secondContext = store.getPromptContext(secondAppliedTurn.id);
+  const appliedContext = secondContext.messages.find((message) =>
+    message.content.includes('interaction_adjustments'),
+  );
+  assert.match(appliedContext.content, /小改动直接做完/);
+  assert.match(appliedContext.content, /"userEdited":true/);
+  store.setTurnContext(
+    secondAppliedTurn.id,
+    secondAppliedTurn.attempt,
+    secondContext,
+  );
+
+  const editedAgain = store.updateInteractionAdjustment({
+    id: original.id,
+    scope: 'conversation',
+    situation: 'Noema 正准备做重大改变时',
+    behavior: '先说明依据；日常交流保持自然简短。',
+  });
+  assert.equal(editedAgain.originalBehavior, '先补充解释再动手。');
+  assert.equal(editedAgain.scope, 'conversation');
+
+  const messages = store.getSnapshot();
+  assert.deepEqual(
+    messages.messages.find(
+      (message) => message.id === firstAppliedTurn.assistantMessageId,
+    ).interactionAdjustmentSnapshots,
+    [firstAppliedSnapshot],
+  );
+  assert.deepEqual(
+    messages.messages.find(
+      (message) => message.id === secondAppliedTurn.assistantMessageId,
+    ).interactionAdjustmentSnapshots[0],
+    secondContext.interactionAdjustmentSnapshots[0],
+  );
+  assert.equal(store.withdrawInteractionAdjustment(original.id), true);
+  assert.equal(
+    store.updateInteractionAdjustment({
+      id: original.id,
+      scope: 'both',
+      situation: '不能再修改',
+      behavior: '已撤回',
+    }),
+    null,
+  );
+  assert.throws(
+    () =>
+      store.updateInteractionAdjustment({
+        id: original.id,
+        scope: 'both',
+        situation: '   ',
+        behavior: '有内容',
+      }),
+    /不能为空/,
+  );
+  store.close();
+});
+
 test('interaction adjustment storage refuses to grow beyond the active cap', () => {
   const store = memoryStore();
   for (let index = 1; index <= 12; index++) {
@@ -547,6 +815,17 @@ test('future root context retains a delivered worker event as system data, not a
     prompt: '只修改 README 安装说明。',
     verificationChecks: [{ kind: 'file_exists', path: 'README.md' }],
     interactionAdjustmentIds: ['adjustment-verification-test'],
+    interactionAdjustmentSnapshots: [
+      {
+        id: 'adjustment-verification-test',
+        scope: 'coding',
+        situation: '文件验收失败',
+        behavior: '先检查文件状态',
+        sourceQuote: '先检查文件状态',
+        userEdited: false,
+        editedAt: null,
+      },
+    ],
   });
   store.recordBackgroundTaskToolAction(task.id, 'list');
   store.recordBackgroundTaskToolAction(task.id, 'write');
