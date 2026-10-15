@@ -24,7 +24,7 @@ Noema 是独立的个人 agent 应用。用户希望拥有一个真正“属于�
 
 - 用户以中文交流，跨生活想法和编程等工作内容切换。
 - Noema 应是用户自己的交互入口；外部模型、harness、agent 与工具可以被连接，但 Noema 不依附其中任一个。
-- 当前 Windows 桌面切片拥有本地持久根对话、FreeLLMAPI 免费模型调用、可选 DSH headless 文件 worker，以及一条只读 Codex 会话快照导入路径；这些证明若干交接机制可运行，但没有证明 Noema 的关系连续性或独立产品价值。
+- 当前 Windows 桌面切片拥有本地持久根对话、FreeLLMAPI 免费模型调用、可选 DSH headless 文件 worker，以及一条只读 Codex 会话快照导入路径；用户可在单条根对话中本地查找已保存的用户/Noema消息并跳回原文。搜索不调用模型或扩展后续请求上下文。这些证明若干交接机制可运行，但没有证明 Noema 的关系连续性或独立产品价值。
 
 ## Capabilities and Constraints
 
