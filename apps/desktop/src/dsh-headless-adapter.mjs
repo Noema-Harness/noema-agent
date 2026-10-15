@@ -109,9 +109,6 @@ export async function resolveDshHeadlessRuntime({
   }
 
   const seen = new Set();
-  let compatibleNodeFound = false;
-  let headlessProbeCode = null;
-  let headlessProtocolUnsupported = false;
   for (const candidate of nodeCandidates) {
     if (!candidate || seen.has(candidate.toLowerCase())) continue;
     seen.add(candidate.toLowerCase());
@@ -122,29 +119,6 @@ export async function resolveDshHeadlessRuntime({
         windowsHide: true,
       });
       if (supportsDshNodeVersion(stdout)) {
-        compatibleNodeFound = true;
-        let help;
-        try {
-          ({ stdout: help } = await execFileImpl(
-            candidate,
-            [dshBin, '--profile', 'headless', '--help'],
-            { encoding: 'utf8', timeout: 10_000, windowsHide: true },
-          ));
-        } catch (error) {
-          const code =
-            error && typeof error === 'object' && 'code' in error
-              ? error.code
-              : null;
-          headlessProbeCode =
-            typeof code === 'string' && /^[A-Z0-9_-]{1,40}$/.test(code)
-              ? code
-              : 'unknown_error';
-          continue;
-        }
-        if (!help.includes('--json') || !help.includes('--session-id')) {
-          headlessProtocolUnsupported = true;
-          continue;
-        }
         return {
           nodeExecutable: candidate,
           dshBin,
@@ -155,19 +129,6 @@ export async function resolveDshHeadlessRuntime({
     } catch {
       // Skip stale, incompatible, or inaccessible Node installations.
     }
-  }
-
-  if (compatibleNodeFound && headlessProbeCode) {
-    throw new DshHeadlessError(
-      'dsh_headless_probe_failed',
-      `已找到 Node.js 24.21+，但 DSH headless 启动检查失败（${headlessProbeCode}）。`,
-    );
-  }
-  if (compatibleNodeFound && headlessProtocolUnsupported) {
-    throw new DshHeadlessError(
-      'dsh_headless_protocol_unsupported',
-      '已找到 Node.js 24.21+，但当前 DSH headless CLI 缺少 Noema 所需的 --json 或 --session-id 参数。',
-    );
   }
   throw new DshHeadlessError(
     'dsh_node_unavailable',
@@ -185,6 +146,18 @@ function supportsDshNodeVersion(output) {
   return (
     major > 24 || (major === 24 && (minor > 21 || (minor === 21 && patch >= 0)))
   );
+}
+
+export function parseDshRateLimitRetryAfterSeconds(stderr) {
+  if (typeof stderr !== 'string' || !/\bRATE_LIMIT\b/i.test(stderr)) {
+    return null;
+  }
+  const match = /Soonest reset\s*~\s*(\d{1,3})s\b/i.exec(stderr);
+  if (!match) return null;
+  const seconds = Number(match[1]);
+  return Number.isInteger(seconds) && seconds >= 1 && seconds <= 120
+    ? seconds
+    : null;
 }
 
 /**
@@ -643,6 +616,9 @@ function createRunHandle({
       : code === 0 && finalText
         ? 'completed'
         : 'failed';
+    const safeStderr = safeStderrTail().trim();
+    const rateLimited = /\bRATE_LIMIT\b/i.test(safeStderr);
+    const retryAfterSeconds = parseDshRateLimitRetryAfterSeconds(safeStderr);
     resolveDone({
       status,
       sessionId,
@@ -650,15 +626,25 @@ function createRunHandle({
       exitCode: code,
       signal,
       errorCode:
-        lineError?.code ?? (status === 'failed' ? 'dsh_process_failed' : null),
+        lineError?.code ??
+        (rateLimited
+          ? 'dsh_rate_limited'
+          : status === 'failed'
+            ? 'dsh_process_failed'
+            : null),
       errorMessage:
         lineError?.message ??
-        (status === 'failed'
-          ? safeStderrTail().trim().slice(-1_000) ||
-            `DSH 任务未完成（退出码 ${code ?? 'unknown'}）。`
-          : null),
+        (rateLimited
+          ? retryAfterSeconds
+            ? `DSH 免费模型池限流；最早约 ${retryAfterSeconds} 秒后可续做。`
+            : 'DSH 免费模型池仍在限流，但没有可安全采用的短时冷却窗口。'
+          : status === 'failed'
+            ? safeStderr.slice(-1_000) ||
+              `DSH 任务未完成（退出码 ${code ?? 'unknown'}）。`
+            : null),
+      retryAfterSeconds,
       toolCallCount,
-      stderrTail: safeStderrTail(),
+      stderrTail: safeStderr,
       task,
     });
     void import('node:fs/promises').then(({ rm }) =>

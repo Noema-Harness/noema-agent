@@ -46,6 +46,7 @@ const marker = `NOEMA-E2E-${Date.now()}-${Math.random().toString(36).slice(2, 7)
 const rootReplyMarker = `NOEMA-ROOT-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 mkdirSync(workspacePath);
 const rootOnly = process.argv.includes('--root-only');
+const directWorker = process.argv.includes('--direct-worker');
 const withCorrection = process.argv.includes('--with-correction');
 const withoutCorrection = process.argv.includes('--without-correction');
 const captureOwnerCorrection = process.argv.includes(
@@ -64,6 +65,11 @@ if (
 const includeCorrection = withCorrection || (!withoutCorrection && !rootOnly);
 if (captureOwnerCorrection && rootOnly) {
   throw new Error('--capture-owner-correction requires worker mode.');
+}
+if (directWorker && (rootOnly || captureOwnerCorrection)) {
+  throw new Error(
+    '--direct-worker cannot be combined with --root-only or --capture-owner-correction.',
+  );
 }
 const requestedModel = process.env.NOEMA_E2E_MODEL ?? 'auto:noema-free';
 const allowedModels = new Set([
@@ -94,18 +100,31 @@ const prompt = rootOnly
       `Reply with exactly this text and nothing else: ${rootReplyMarker}`,
       'Do not call tools, delegate work, or modify files.',
     ].join('\n')
-  : [
-      '[NOEMA E2E] 仅在当前已选的合成测试工作区内执行此任务。',
-      `创建 README.md，文件只需包含这一行：${marker}`,
-      '请将这项明确的文件创建任务交给后台 DSH agent；Noema 会独立核验文件和内容。不要修改其它文件。',
-    ].join('\n');
+  : directWorker
+    ? [
+        '[NOEMA E2E] 仅在当前隔离工作区完成这组双文件交付。',
+        '请为 Noema 的“本机速记 → 用户选择后再讨论”切片写两份彼此匹配的文档：',
+        '- DESIGN.md：简要说明本机保存、显式讨论和删除边界。',
+        '- README.md：写给用户的实际操作说明。',
+        `两个文件都必须包含同一个验收标记：${marker}`,
+        '这是两个都必须完成的交付项；不要在第一个文件后停止或报告完成。仅使用可用的文件工具，不要尝试 shell/网络操作。',
+      ].join('\n')
+    : [
+        '[NOEMA E2E] 仅在当前隔离工作区内完成这个小型 Node 功能；不要改工作区外的内容。',
+        '实现一个 `toSlug` 文本规范化函数，并交付完整的小功能，而不只是先写一个文件：',
+        '- `src/slug.mjs`：导出 `toSlug`，将输入首尾空白去除、转小写、连续空白变成连字符、去掉 ASCII 标点，并保留中文字符。',
+        '- `test/slug.test.mjs`：使用 Node 内置测试 API，覆盖 ASCII 标点/空格和中英混合文本两个案例。不要声称已运行测试，因为后台只开放文件工具。',
+        '- `README.md`：说明导入路径、函数行为和两个示例。',
+        `三个文件都必须包含这个验收标记：${marker}`,
+        '请把实现、测试和说明全部交给后台 DSH agent；让 Noema 为三个文件分别设置“包含验收标记”的本地核验条件。不要只完成一个阶段后汇报。',
+      ].join('\n');
 
 const store = new RootStore(databasePath);
 store.setSelectedModel(requestedModel);
 store.setWorkspaceDirectory(workspacePath);
 if (includeCorrection && !captureOwnerCorrection) {
   const turn = store.beginTurn({
-    text: correction,
+    text: directWorker ? ownerCorrectionQuote : correction,
     model: requestedModel,
   });
   store.appendAssistant({
@@ -118,9 +137,13 @@ if (includeCorrection && !captureOwnerCorrection) {
     id: `e2e-adjustment-${Date.now()}`,
     sourceTurnId: turn.id,
     scope: 'coding',
-    situation: '后台任务要求创建指定文件或写入指定内容',
-    behavior: '提交任务后独立检查目标文件和内容，不能凭 agent 自述确认完成',
-    sourceQuote: correction,
+    situation: directWorker
+      ? '多阶段编码任务的中间进度汇报'
+      : '后台任务要求创建指定文件或写入指定内容',
+    behavior: directWorker
+      ? '不要把阶段进度当作完成；除非真实阻塞或必须由用户决策，否则继续直到所有明确验收项通过后再汇报。'
+      : '提交任务后独立检查目标文件和内容，不能凭 agent 自述确认完成',
+    sourceQuote: directWorker ? ownerCorrectionQuote : correction,
   });
 }
 store.close();
@@ -136,6 +159,15 @@ const child = spawn(process.execPath, ['scripts/start.mjs'], {
       : {}),
     NOEMA_E2E_WORKER_PROMPT: prompt,
     NOEMA_E2E_ROOT_ONLY: rootOnly ? '1' : '0',
+    NOEMA_E2E_DIRECT_WORKER: directWorker ? '1' : '0',
+    ...(directWorker
+      ? {
+          NOEMA_E2E_VERIFICATION_CHECKS: JSON.stringify([
+            { kind: 'file_contains', path: 'DESIGN.md', text: marker },
+            { kind: 'file_contains', path: 'README.md', text: marker },
+          ]),
+        }
+      : {}),
   },
   stdio: 'inherit',
 });
@@ -191,19 +223,36 @@ const ownerCorrectionUsedByTask = Boolean(
   ),
 );
 verificationStore.close();
-const readmePath = path.join(workspacePath, 'README.md');
-const fileExists = existsSync(readmePath);
-const fileMatches =
-  fileExists && readFileSync(readmePath, 'utf8').trim() === marker;
+const requiredArtifacts = directWorker
+  ? ['DESIGN.md', 'README.md']
+  : ['src/slug.mjs', 'test/slug.test.mjs', 'README.md'];
+const artifacts = requiredArtifacts.map((relativePath) => {
+  const absolutePath = path.join(workspacePath, relativePath);
+  const exists = existsSync(absolutePath);
+  return {
+    path: relativePath,
+    exists,
+    containsMarker:
+      exists && readFileSync(absolutePath, 'utf8').includes(marker),
+  };
+});
+const readme = artifacts.find((artifact) => artifact.path === 'README.md');
+const fileExists = Boolean(readme?.exists);
+const fileMatches = Boolean(readme?.containsMarker);
+const allArtifactsMatchMarker = artifacts.every(
+  (artifact) => artifact.exists && artifact.containsMarker,
+);
 const summary = {
-  mode: rootOnly ? 'root-only' : 'worker',
+  mode: rootOnly ? 'root-only' : directWorker ? 'direct-worker' : 'worker',
   correctionInjected: includeCorrection && !captureOwnerCorrection,
   adjustmentMode: rootOnly
     ? 'none'
     : captureOwnerCorrection
       ? 'live-owner-correction'
       : includeCorrection
-        ? 'preseeded-synthetic-correction'
+        ? directWorker
+          ? 'preseeded-owner-correction'
+          : 'preseeded-synthetic-correction'
         : 'none',
   ownerCorrectionCaptured: Boolean(capturedOwnerAdjustment),
   ownerCorrectionUsedByTask,
@@ -228,6 +277,8 @@ const summary = {
   task: rootResult.task,
   readmeExists: fileExists,
   readmeMatchesMarker: fileMatches,
+  artifacts,
+  allArtifactsMatchMarker,
   scratchWorkspace: workspacePath,
   resultFile,
   childExitCode: exit.code,
@@ -241,17 +292,27 @@ const rootChatPassed =
   rootResult.assistantText?.trim() === rootReplyMarker &&
   rootResult.rootRouteMetadata?.status === 'reported' &&
   exit.code === 0;
+const directWorkerPassed =
+  directWorker &&
+  rootResult.outcome === 'worker_direct_finished' &&
+  rootResult.task?.status === 'completed' &&
+  rootResult.task?.verificationStatus === 'verified' &&
+  (!includeCorrection || ownerCorrectionUsedByTask) &&
+  allArtifactsMatchMarker &&
+  exit.code === 0;
 if (
   rootOnly
     ? !rootChatPassed
-    : rootResult.outcome !== 'worker_finished' ||
-      rootResult.task?.status !== 'completed' ||
-      rootResult.task?.eventStatus !== 'delivered' ||
-      rootResult.task?.noemaResponseStatus !== 'complete' ||
-      rootResult.task?.verificationStatus !== 'verified' ||
-      (captureOwnerCorrection && !ownerCorrectionUsedByTask) ||
-      !fileMatches ||
-      exit.code !== 0
+    : directWorker
+      ? !directWorkerPassed
+      : rootResult.outcome !== 'worker_finished' ||
+        rootResult.task?.status !== 'completed' ||
+        rootResult.task?.eventStatus !== 'delivered' ||
+        rootResult.task?.noemaResponseStatus !== 'complete' ||
+        rootResult.task?.verificationStatus !== 'verified' ||
+        (captureOwnerCorrection && !ownerCorrectionUsedByTask) ||
+        !allArtifactsMatchMarker ||
+        exit.code !== 0
 ) {
   process.exitCode = 1;
 }

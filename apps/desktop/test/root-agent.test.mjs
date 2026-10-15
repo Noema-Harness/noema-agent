@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -915,6 +915,467 @@ test('independently verifies worker files and gives one bounded repair before ac
     assert.equal(task.eventStatus, 'delivered');
     assert.equal(modelMessages.length, 1);
     assert.match(task.noemaResponse, /Noema 已核验文件/);
+  } finally {
+    await agent.shutdown();
+    store.close();
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('continues through bounded provider cooldowns in the same DSH session until verification passes', async () => {
+  const store = new RootStore(':memory:');
+  const workspace = mkdtempSync(
+    path.join(tmpdir(), 'noema-rate-limit-resume-'),
+  );
+  const turn = store.beginTurn({
+    text: '完成这个小型多文件功能。',
+    model: 'free-router',
+  });
+  store.appendAssistant({
+    id: turn.id,
+    attempt: turn.attempt,
+    content: '已派发。',
+  });
+  store.completeTurn(turn.id, turn.attempt);
+  store.setSelectedModel('free-router');
+
+  const dshInputs = [];
+  const delays = [];
+  const dshAdapter = {
+    async startTask(input) {
+      dshInputs.push(input);
+      if (dshInputs.length === 1) {
+        mkdirSync(path.join(workspace, 'src'), { recursive: true });
+        writeFileSync(path.join(workspace, 'src', 'slug.mjs'), '// partial');
+        return {
+          started: Promise.resolve({ sessionId: 'session-rate-limit' }),
+          done: Promise.resolve({
+            status: 'failed',
+            sessionId: 'session-rate-limit',
+            result: '',
+            errorCode: 'dsh_rate_limited',
+            errorMessage: 'DSH 免费模型池限流；最早约 2 秒后可续做。',
+            retryAfterSeconds: 2,
+            toolCallCount: 2,
+          }),
+          stop: () => true,
+        };
+      }
+
+      assert.equal(input.sessionId, 'session-rate-limit');
+      assert.match(input.task, /Noema.*核验/);
+      if (dshInputs.length === 2) {
+        return {
+          started: Promise.resolve({ sessionId: 'session-rate-limit' }),
+          done: Promise.resolve({
+            status: 'failed',
+            sessionId: 'session-rate-limit',
+            result: '',
+            errorCode: 'dsh_rate_limited',
+            errorMessage: 'DSH 免费模型池限流；最早约 2 秒后可续做。',
+            retryAfterSeconds: 2,
+            toolCallCount: 1,
+          }),
+          stop: () => true,
+        };
+      }
+      mkdirSync(path.join(workspace, 'test'), { recursive: true });
+      writeFileSync(
+        path.join(workspace, 'src', 'slug.mjs'),
+        '// NOEMA-E2E-MARKER',
+      );
+      writeFileSync(
+        path.join(workspace, 'test', 'slug.test.mjs'),
+        '// NOEMA-E2E-MARKER',
+      );
+      writeFileSync(path.join(workspace, 'README.md'), '// NOEMA-E2E-MARKER');
+      return {
+        started: Promise.resolve({ sessionId: 'session-rate-limit' }),
+        done: Promise.resolve({
+          status: 'completed',
+          sessionId: 'session-rate-limit',
+          result: '缺失文件已补齐。',
+          errorCode: null,
+          errorMessage: null,
+          toolCallCount: 3,
+        }),
+        stop: () => true,
+      };
+    },
+  };
+  const agent = new RootAgent({
+    store,
+    provider: {
+      baseUrl: 'http://127.0.0.1:31415/v1',
+      listModels: async () => [{ name: 'free-router', label: '免费路由' }],
+      async *streamChat() {
+        yield '任务已续做并完成文件验收。';
+      },
+    },
+    secretStore: createSecretStore(),
+    dshAdapter,
+    delayImpl: async (milliseconds, signal) => {
+      delays.push(milliseconds);
+      return !signal.aborted;
+    },
+  });
+
+  try {
+    const started = await agent.startBackgroundTask({
+      sourceTurnId: turn.id,
+      prompt: '创建 src/slug.mjs、test/slug.test.mjs 和 README.md。',
+      workspacePath: workspace,
+      verificationChecks: [
+        {
+          kind: 'file_contains',
+          path: 'src/slug.mjs',
+          text: 'NOEMA-E2E-MARKER',
+        },
+        {
+          kind: 'file_contains',
+          path: 'test/slug.test.mjs',
+          text: 'NOEMA-E2E-MARKER',
+        },
+        { kind: 'file_contains', path: 'README.md', text: 'NOEMA-E2E-MARKER' },
+      ],
+    });
+    assert.equal(started.accepted, true);
+    await started.completion;
+    for (let attempt = 0; attempt < 200; attempt++) {
+      if (store.getBackgroundTask(started.taskId).eventStatus === 'delivered')
+        break;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+
+    const task = store.getBackgroundTask(started.taskId);
+    assert.deepEqual(delays, [3_000, 3_000]);
+    assert.equal(dshInputs.length, 3);
+    assert.equal(dshInputs[0].sessionId, null);
+    assert.equal(dshInputs[1].sessionId, 'session-rate-limit');
+    assert.equal(dshInputs[2].sessionId, 'session-rate-limit');
+    assert.equal(task.status, 'completed');
+    assert.equal(task.verificationStatus, 'verified');
+    assert.equal(task.verificationAttempts, 2);
+    assert.equal(task.toolCallCount, 6);
+    assert.equal(task.eventStatus, 'delivered');
+  } finally {
+    await agent.shutdown();
+    store.close();
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('continues a failed DSH session when file checks pass but the worker lacks a final result', async () => {
+  const store = new RootStore(':memory:');
+  const workspace = mkdtempSync(
+    path.join(tmpdir(), 'noema-rate-limit-finalize-'),
+  );
+  const turn = store.beginTurn({
+    text: '完成 README 并报告最终结果。',
+    model: 'free-router',
+  });
+  store.appendAssistant({
+    id: turn.id,
+    attempt: turn.attempt,
+    content: '已派发。',
+  });
+  store.completeTurn(turn.id, turn.attempt);
+  store.setSelectedModel('free-router');
+  const dshInputs = [];
+  const agent = new RootAgent({
+    store,
+    provider: {
+      baseUrl: 'http://127.0.0.1:31415/v1',
+      listModels: async () => [{ name: 'free-router', label: '免费路由' }],
+      async *streamChat() {
+        yield '后台任务最终状态已接回。';
+      },
+    },
+    secretStore: createSecretStore(),
+    dshAdapter: {
+      async startTask(input) {
+        dshInputs.push(input);
+        if (dshInputs.length === 1) {
+          writeFileSync(path.join(workspace, 'README.md'), 'expected marker');
+          return {
+            started: Promise.resolve({ sessionId: 'session-finalize' }),
+            done: Promise.resolve({
+              status: 'failed',
+              sessionId: 'session-finalize',
+              result: '',
+              errorCode: 'dsh_process_failed',
+              errorMessage: 'DSH 进程异常结束。',
+              toolCallCount: 1,
+            }),
+            stop: () => true,
+          };
+        }
+        return {
+          started: Promise.resolve({ sessionId: 'session-finalize' }),
+          done: Promise.resolve({
+            status: 'completed',
+            sessionId: 'session-finalize',
+            result: 'README 已核对，任务完成。',
+            errorCode: null,
+            errorMessage: null,
+            toolCallCount: 1,
+          }),
+          stop: () => true,
+        };
+      },
+    },
+    delayImpl: async () => true,
+  });
+
+  try {
+    const started = await agent.startBackgroundTask({
+      sourceTurnId: turn.id,
+      prompt: '在工作区创建 README.md，内容包含 expected marker。',
+      workspacePath: workspace,
+      verificationChecks: [
+        { kind: 'file_contains', path: 'README.md', text: 'expected marker' },
+      ],
+    });
+    await started.completion;
+
+    const task = store.getBackgroundTask(started.taskId);
+    assert.equal(dshInputs.length, 2);
+    assert.equal(dshInputs[1].sessionId, 'session-finalize');
+    assert.match(dshInputs[1].task, /文件验收条件目前全部通过/);
+    assert.match(dshInputs[1].task, /不要重放已完成的操作/);
+    assert.equal(task.status, 'completed');
+    assert.equal(task.verificationStatus, 'verified');
+    assert.equal(task.verificationAttempts, 1);
+  } finally {
+    await agent.shutdown();
+    store.close();
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('does not automatically restart a DSH tool loop that Noema intentionally stopped', async () => {
+  const store = new RootStore(':memory:');
+  const workspace = mkdtempSync(path.join(tmpdir(), 'noema-tool-loop-stop-'));
+  const turn = store.beginTurn({ text: '创建 README。', model: 'free-router' });
+  store.appendAssistant({
+    id: turn.id,
+    attempt: turn.attempt,
+    content: '已派发。',
+  });
+  store.completeTurn(turn.id, turn.attempt);
+  store.setSelectedModel('free-router');
+  let startCalls = 0;
+  const agent = new RootAgent({
+    store,
+    provider: {
+      baseUrl: 'http://127.0.0.1:31415/v1',
+      listModels: async () => [{ name: 'free-router', label: '免费路由' }],
+      async *streamChat() {
+        yield '循环任务已停止。';
+      },
+    },
+    secretStore: createSecretStore(),
+    dshAdapter: {
+      async startTask() {
+        startCalls += 1;
+        return {
+          started: Promise.resolve({ sessionId: 'session-tool-loop' }),
+          done: Promise.resolve({
+            status: 'failed',
+            sessionId: 'session-tool-loop',
+            result: '',
+            errorCode: 'dsh_tool_loop',
+            errorMessage:
+              '后台 agent 重复执行相同工具操作，Noema 已停止该任务。',
+            toolCallCount: 3,
+          }),
+          stop: () => true,
+        };
+      },
+    },
+    delayImpl: async () => {
+      throw new Error('A stopped tool loop must not be retried.');
+    },
+  });
+
+  try {
+    const started = await agent.startBackgroundTask({
+      sourceTurnId: turn.id,
+      prompt: '在工作区创建 README.md。',
+      workspacePath: workspace,
+      verificationChecks: [{ kind: 'file_exists', path: 'README.md' }],
+    });
+    await started.completion;
+    const task = store.getBackgroundTask(started.taskId);
+    assert.equal(startCalls, 1);
+    assert.equal(task.status, 'failed');
+    assert.equal(task.errorCode, 'dsh_tool_loop');
+    assert.equal(task.verificationAttempts, 0);
+  } finally {
+    await agent.shutdown();
+    store.close();
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('a user stop cancels the cooldown wait without starting the automatic continuation', async () => {
+  const store = new RootStore(':memory:');
+  const workspace = mkdtempSync(path.join(tmpdir(), 'noema-rate-limit-stop-'));
+  const turn = store.beginTurn({
+    text: '完成指定文件。',
+    model: 'free-router',
+  });
+  store.appendAssistant({
+    id: turn.id,
+    attempt: turn.attempt,
+    content: '已派发。',
+  });
+  store.completeTurn(turn.id, turn.attempt);
+  store.setSelectedModel('free-router');
+
+  let startCalls = 0;
+  let signalRetryWait;
+  let notifyRetryWait;
+  const retryWaitEntered = new Promise((resolve) => {
+    notifyRetryWait = resolve;
+  });
+  const agent = new RootAgent({
+    store,
+    provider: {
+      baseUrl: 'http://127.0.0.1:31415/v1',
+      listModels: async () => [{ name: 'free-router', label: '免费路由' }],
+      async *streamChat() {
+        yield '任务已停止。';
+      },
+    },
+    secretStore: createSecretStore(),
+    dshAdapter: {
+      async startTask() {
+        startCalls += 1;
+        return {
+          started: Promise.resolve({ sessionId: 'session-stop-test' }),
+          done: Promise.resolve({
+            status: 'failed',
+            sessionId: 'session-stop-test',
+            result: '',
+            errorCode: 'dsh_rate_limited',
+            errorMessage: 'DSH 免费模型池限流；最早约 2 秒后可续做。',
+            retryAfterSeconds: 2,
+            toolCallCount: 1,
+          }),
+          stop: () => true,
+        };
+      },
+    },
+    delayImpl: (_milliseconds, signal) => {
+      signalRetryWait = signal;
+      notifyRetryWait();
+      return new Promise((resolve) => {
+        if (signal.aborted) resolve(false);
+        else
+          signal.addEventListener('abort', () => resolve(false), {
+            once: true,
+          });
+      });
+    },
+  });
+
+  try {
+    const started = await agent.startBackgroundTask({
+      sourceTurnId: turn.id,
+      prompt: '创建 README.md。',
+      workspacePath: workspace,
+      verificationChecks: [
+        { kind: 'file_contains', path: 'README.md', text: 'expected marker' },
+      ],
+    });
+    await retryWaitEntered;
+    assert.equal(signalRetryWait.aborted, false);
+    assert.equal(agent.stopBackgroundTask(started.taskId), true);
+    await started.completion;
+
+    const task = store.getBackgroundTask(started.taskId);
+    assert.equal(startCalls, 1);
+    assert.equal(task.status, 'interrupted');
+    assert.equal(task.verificationStatus, 'failed');
+    assert.equal(signalRetryWait.aborted, true);
+  } finally {
+    await agent.shutdown();
+    store.close();
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('stops after three automatic follow-ups when every same-session run is still rate-limited', async () => {
+  const store = new RootStore(':memory:');
+  const workspace = mkdtempSync(
+    path.join(tmpdir(), 'noema-rate-limit-budget-'),
+  );
+  const turn = store.beginTurn({
+    text: '创建一个 README。',
+    model: 'free-router',
+  });
+  store.appendAssistant({
+    id: turn.id,
+    attempt: turn.attempt,
+    content: '已派发。',
+  });
+  store.completeTurn(turn.id, turn.attempt);
+  store.setSelectedModel('free-router');
+
+  let startCalls = 0;
+  const delays = [];
+  const agent = new RootAgent({
+    store,
+    provider: {
+      baseUrl: 'http://127.0.0.1:31415/v1',
+      listModels: async () => [{ name: 'free-router', label: '免费路由' }],
+      async *streamChat() {
+        yield '本次续做次数已耗尽，任务仍未验收。';
+      },
+    },
+    secretStore: createSecretStore(),
+    dshAdapter: {
+      async startTask({ sessionId }) {
+        startCalls += 1;
+        return {
+          started: Promise.resolve({
+            sessionId: sessionId ?? 'session-budget',
+          }),
+          done: Promise.resolve({
+            status: 'failed',
+            sessionId: sessionId ?? 'session-budget',
+            result: '',
+            errorCode: 'dsh_rate_limited',
+            errorMessage: 'DSH 免费模型池限流；最早约 1 秒后可续做。',
+            retryAfterSeconds: 1,
+            toolCallCount: 0,
+          }),
+          stop: () => true,
+        };
+      },
+    },
+    delayImpl: async (milliseconds, signal) => {
+      delays.push(milliseconds);
+      return !signal.aborted;
+    },
+  });
+
+  try {
+    const started = await agent.startBackgroundTask({
+      sourceTurnId: turn.id,
+      prompt: '创建 README.md。',
+      workspacePath: workspace,
+      verificationChecks: [{ kind: 'file_exists', path: 'README.md' }],
+    });
+    await started.completion;
+
+    const task = store.getBackgroundTask(started.taskId);
+    assert.equal(startCalls, 4);
+    assert.deepEqual(delays, [2_000, 2_000, 2_000]);
+    assert.equal(task.status, 'failed');
+    assert.equal(task.verificationAttempts, 3);
+    assert.match(task.errorMessage, /自动续做 3 次/);
   } finally {
     await agent.shutdown();
     store.close();

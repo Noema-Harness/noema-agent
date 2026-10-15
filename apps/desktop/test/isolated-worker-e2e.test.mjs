@@ -99,6 +99,87 @@ test('isolated worker runner records only a task inside its scratch workspace', 
   }
 });
 
+test('isolated direct-worker mode bypasses root model calls but retains task verification', async () => {
+  const directory = mkdtempSync(
+    path.join(tmpdir(), 'noema-e2e-direct-worker-'),
+  );
+  const workspace = path.join(directory, 'workspace');
+  const resultPath = path.join(directory, 'result.json');
+  const databasePath = path.join(directory, 'root.sqlite3');
+  mkdirSync(workspace);
+  writeFileSync(databasePath, 'synthetic isolated database placeholder');
+  const task = {
+    id: 'direct-worker-fixture',
+    sourceTurnId: 'direct-source-turn',
+    status: 'completed',
+    errorCode: null,
+    verificationStatus: 'verified',
+    verificationResults: [],
+    verificationAttempts: 1,
+    interactionAdjustmentIds: ['adjustment-owner'],
+    toolActionCategories: ['write', 'read'],
+    toolActionsTruncated: false,
+    toolCallCount: 2,
+    eventStatus: 'pending',
+    noemaResponseStatus: 'none',
+    noemaResponseError: null,
+  };
+  const store = {
+    getWorkspaceDirectory: () => workspace,
+    getSelectedModel: () => 'auto:noema-free',
+    getTurn: () => ({ status: 'completed', errorCode: null }),
+    getBackgroundTask: () => task,
+    getSnapshot: () => ({ messages: [] }),
+    beginTurn: () => ({ id: 'direct-source-turn', attempt: 1 }),
+    appendAssistant() {},
+    completeTurn() {},
+  };
+  let dispatched;
+  let modelCalls = 0;
+  const agent = {
+    active: null,
+    dshAdapter: {},
+    dshRuntimeError: null,
+    canDelegateToDsh: () => true,
+    processPendingWorkerEvent() {
+      modelCalls += 1;
+    },
+    async startBackgroundTask(input) {
+      dispatched = input;
+      return { accepted: true, taskId: task.id, completion: Promise.resolve() };
+    },
+  };
+
+  try {
+    const verificationChecks = [
+      { kind: 'file_exists', path: 'src/slug.mjs' },
+      { kind: 'file_exists', path: 'test/slug.test.mjs' },
+      { kind: 'file_exists', path: 'README.md' },
+    ];
+    const result = await runIsolatedWorkerE2E({
+      agent,
+      store,
+      databasePath,
+      resultPath,
+      prompt: '[NOEMA E2E] create three files',
+      directWorker: true,
+      verificationChecks,
+      timeoutMs: 1_000,
+    });
+
+    assert.equal(result.outcome, 'worker_direct_finished');
+    assert.equal(result.task.verificationStatus, 'verified');
+    assert.equal(result.task.eventStatus, 'pending');
+    assert.equal(dispatched.sourceTurnId, 'direct-source-turn');
+    assert.deepEqual(dispatched.verificationChecks, verificationChecks);
+    assert.equal(modelCalls, 0);
+    assert.equal(agent.processPendingWorkerEvent !== undefined, true);
+    assert.deepEqual(JSON.parse(readFileSync(resultPath, 'utf8')), result);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('isolated worker E2E captures an interaction correction before dispatching its task', async () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'noema-e2e-preface-'));
   const workspace = path.join(directory, 'workspace');
