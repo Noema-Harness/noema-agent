@@ -15,7 +15,7 @@ Noema 要解决的候选日常问题是：用户在连续生活和工作中已�
 - Letta 将始终进入上下文的 memory blocks 与其余持久状态分开，并允许查看、更新、附加或移除 block；这证明“长期状态”可以是受管理的 agent state，但始终注入会占用固定上下文预算。[Letta memory blocks](https://docs.letta.com/v1-sdk/memory/memory-blocks) · [stateful agents](https://docs.letta.com/v1-sdk/concepts/stateful-agents)
 - Hermes 对 `MEMORY.md` 与 `USER.md` 设置明确字符上限；空间不足时拒绝写入，让 agent 显式整理，而不是静默丢弃内容。[Hermes persistent memory](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/features/memory.md)
 - OpenClaw 区分精简的用户模型、长期摘要、按日记录和按需检索，并记录来源；但它仍依赖文件整理与 dreaming 流程，文件存在或被压缩都不等于未来行为改变。[OpenClaw memory](https://github.com/openclaw/openclaw/blob/main/docs/concepts/memory.md)
-- LongMemEval 检验信息提取、多会话推理、时间推理、知识更新与拒答，主要回答“能否回忆/推理过去的信息”；MIB 则明确把行动轨迹与环境结果纳入评价。Noema 若要声称经历塑造了 agent，不能只用记忆命中率或 prompt 中出现了某条记录作为证据。[LongMemEval paper](https://openreview.net/pdf?id=pZiyCaVuti) · [MIB benchmark](https://github.com/ldclabs/mib)
+- LongMemEval 检验信息提取、多会话推理、时间推理、知识更新与拒答，主要回答“能否回忆/推理过去的信息”；MIB 的公开开发版进一步把行动轨迹与环境结果纳入评价。但 MIB 仓库说明正式论文与校准后的基准包尚未完成，因此这里只借鉴其测量区分，不把它当成已证实的优越方法。Noema 若要声称经历塑造了 agent，不能只用记忆命中率或 prompt 中出现了某条记录作为证据。[LongMemEval paper](https://openreview.net/pdf?id=pZiyCaVuti) · [MIB benchmark status and protocol](https://github.com/ldclabs/mib)
 - 自传体记忆研究区分具体情节细节与较概括的 gist，但对不同 gist 类型是否比细节更持久并无一个普遍、简单的时间规律。因此 Noema 不按“几天后自动遗忘”模拟人脑；“旧经历变得模糊”只能作为产品启发，不能写成已证实的生物学算法。[Autobiographical event memory review](https://pmc.ncbi.nlm.nih.gov/articles/PMC9669242/) · [Memory decay distinguishes subtypes of gist](https://www.sciencedirect.com/science/article/pii/S1074742721001416)
 
 上述实现可作为工程参照，不代表 Noema 已有差异化。当前的产品假设仍是：Noema 的潜在独立责任，是持有“经历来源 → 当前理解 → 实际带入 → 可观察结果”的完整生命周期，并让用户可以纠正这条链；是否值得独立使用仍由 Issue #2 的真实场景决定。
