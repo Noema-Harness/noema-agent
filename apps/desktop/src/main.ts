@@ -84,11 +84,16 @@ const testDshUserDataPath = process.env.NOEMA_E2E_DSH_USER_DATA_PATH ?? null;
 const testWorkerPreface = process.env.NOEMA_E2E_WORKER_PREFACE ?? null;
 const testWorkerPrompt = process.env.NOEMA_E2E_WORKER_PROMPT ?? null;
 const testRootOnly = process.env.NOEMA_E2E_ROOT_ONLY === '1';
+const testDirectWorker = process.env.NOEMA_E2E_DIRECT_WORKER === '1';
+const testVerificationChecksJson =
+  process.env.NOEMA_E2E_VERIFICATION_CHECKS ?? null;
 delete process.env.NOEMA_E2E_DATABASE_PATH;
 delete process.env.NOEMA_E2E_DSH_USER_DATA_PATH;
 delete process.env.NOEMA_E2E_WORKER_PREFACE;
 delete process.env.NOEMA_E2E_WORKER_PROMPT;
 delete process.env.NOEMA_E2E_ROOT_ONLY;
+delete process.env.NOEMA_E2E_DIRECT_WORKER;
+delete process.env.NOEMA_E2E_VERIFICATION_CHECKS;
 
 const createWindow = () => {
   mainWindow = new BrowserWindow({
@@ -372,6 +377,11 @@ async function startNoema() {
         prompt: testWorkerPrompt,
         resultPath,
         rootOnly: testRootOnly,
+        directWorker: testDirectWorker,
+        verificationChecks:
+          testDirectWorker && testVerificationChecksJson
+            ? JSON.parse(testVerificationChecksJson)
+            : [],
       })
         .catch((error) => {
           const result = {

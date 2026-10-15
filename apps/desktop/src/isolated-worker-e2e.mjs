@@ -88,11 +88,13 @@ function writeResult(resultPath, result, e2eDirectory) {
 }
 
 /**
- * Run a real Noema root-model -> DSH -> verifier scenario only against an
- * isolated database, DSH profile, and workspace. No API credentials are
- * copied or emitted; the caller supplies the app's normal encrypted store.
+ * Run a real Noema -> DSH -> verifier scenario only against an isolated
+ * database, DSH profile, and workspace. The default path includes root-model
+ * dispatch; directWorker isolates DSH recovery from root-model availability.
+ * No API credentials are copied or emitted; the caller supplies the app's
+ * normal encrypted store.
  *
- * @param {{agent:import('./root-agent.mjs').RootAgent,store:import('./root-store.mjs').RootStore,databasePath:string,prefacePrompt?:string|null,prompt:string,resultPath:string,rootOnly?:boolean,timeoutMs?:number}} input
+ * @param {{agent:import('./root-agent.mjs').RootAgent,store:import('./root-store.mjs').RootStore,databasePath:string,prefacePrompt?:string|null,prompt:string,resultPath:string,rootOnly?:boolean,directWorker?:boolean,verificationChecks?:unknown,timeoutMs?:number}} input
  */
 export async function runIsolatedWorkerE2E({
   agent,
@@ -102,6 +104,8 @@ export async function runIsolatedWorkerE2E({
   prompt,
   resultPath,
   rootOnly = false,
+  directWorker = false,
+  verificationChecks = [],
   timeoutMs = 20 * 60 * 1_000,
 }) {
   if (
@@ -113,6 +117,8 @@ export async function runIsolatedWorkerE2E({
       (typeof prefacePrompt !== 'string' ||
         !prefacePrompt.startsWith('[NOEMA E2E PREFACE]') ||
         prefacePrompt.length > 4_000)) ||
+    (rootOnly && directWorker) ||
+    (directWorker && prefacePrompt !== null) ||
     typeof prompt !== 'string' ||
     !prompt.trim() ||
     prompt.length > 4_000 ||
@@ -174,6 +180,71 @@ export async function runIsolatedWorkerE2E({
     };
     writeResult(resultPath, result, e2eDirectory);
     return result;
+  }
+
+  if (directWorker) {
+    // This test-only path isolates DSH lifecycle behavior from a second root
+    // model call; the normal product path still processes returned events.
+    const originalEventProcessor = agent.processPendingWorkerEvent;
+    agent.processPendingWorkerEvent = () => {};
+    try {
+      const sourceTurn = store.beginTurn({
+        text: '[NOEMA E2E] 仅在隔离工作区执行下方后台文件任务。',
+        model,
+      });
+      store.appendAssistant({
+        id: sourceTurn.id,
+        attempt: sourceTurn.attempt,
+        content: '隔离测试直接验证 DSH 后台续做，不调用根模型派发。',
+      });
+      store.completeTurn(sourceTurn.id, sourceTurn.attempt);
+      const dispatch = await agent.startBackgroundTask({
+        sourceTurnId: sourceTurn.id,
+        prompt,
+        workspacePath,
+        verificationChecks,
+      });
+      if (!dispatch.accepted) {
+        const result = {
+          rootOnly: false,
+          directWorker: true,
+          outcome: 'worker_rejected',
+          turnStatus: store.getTurn(sourceTurn.id)?.status ?? 'missing',
+          turnErrorCode: null,
+          model,
+          dshAvailable,
+          dshWorkerError: agent.dshRuntimeError ?? null,
+          task: null,
+          assistantText: dispatch.errorMessage ?? '',
+          rootRouteMetadata: { status: 'unknown', routedVia: [] },
+        };
+        writeResult(resultPath, result, e2eDirectory);
+        return result;
+      }
+
+      await dispatch.completion;
+      const task = store.getBackgroundTask(dispatch.taskId);
+      const result = {
+        rootOnly: false,
+        directWorker: true,
+        outcome:
+          task?.status === 'completed'
+            ? 'worker_direct_finished'
+            : 'worker_direct_failed',
+        turnStatus: store.getTurn(sourceTurn.id)?.status ?? 'missing',
+        turnErrorCode: null,
+        model,
+        dshAvailable,
+        dshWorkerError: agent.dshRuntimeError ?? null,
+        task: summarizeTask(task),
+        assistantText: '',
+        rootRouteMetadata: { status: 'unknown', routedVia: [] },
+      };
+      writeResult(resultPath, result, e2eDirectory);
+      return result;
+    } finally {
+      agent.processPendingWorkerEvent = originalEventProcessor;
+    }
   }
 
   let prefaceTurn = null;

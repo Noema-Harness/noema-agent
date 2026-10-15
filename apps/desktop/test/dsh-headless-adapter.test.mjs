@@ -11,6 +11,7 @@ import {
   DSH_FREE_MODEL,
   makeNoemaDshWorkerPatch,
   parseDshHeadlessEvent,
+  parseDshRateLimitRetryAfterSeconds,
   resolveDshHeadlessRuntime,
 } from '../src/dsh-headless-adapter.mjs';
 
@@ -53,36 +54,35 @@ test('headless event parser rejects invalid protocol data', () => {
   );
 });
 
-test('distinguishes a failed DSH headless probe from a missing Node runtime', async () => {
-  const execFileImpl = async (executable, args) => {
-    if (executable === 'where.exe' && args[0] === 'dsh.cmd') {
-      return { stdout: 'C:\\fake-npm\\dsh.cmd\r\n' };
-    }
-    if (executable === 'where.exe' && args[0] === 'node.exe') {
-      throw Object.assign(new Error('node not on PATH'), { code: 'ENOENT' });
-    }
-    if (args[0] === '--version') return { stdout: 'v24.21.0' };
-    if (args[1] === '--profile' && args[2] === 'headless') {
-      throw Object.assign(new Error('access denied'), { code: 'EACCES' });
-    }
-    assert.fail(`Unexpected probe: ${executable} ${args.join(' ')}`);
-  };
-
-  await assert.rejects(
-    resolveDshHeadlessRuntime({
-      env: {},
-      execFileImpl,
-      readFileImpl: async () => '{"version":"0.1.0"}',
-    }),
-    (error) =>
-      error.code === 'dsh_headless_probe_failed' &&
-      error.message.includes('EACCES') &&
-      !error.message.includes('access denied'),
+test('only retries explicit DSH rate limits with short cooldowns', () => {
+  assert.equal(
+    parseDshRateLimitRetryAfterSeconds(
+      'RATE_LIMIT: all routes exhausted. Soonest reset ~31s.',
+    ),
+    31,
+  );
+  assert.equal(
+    parseDshRateLimitRetryAfterSeconds(
+      'RATE_LIMIT: all routes exhausted. Soonest reset ~120s.',
+    ),
+    120,
+  );
+  assert.equal(
+    parseDshRateLimitRetryAfterSeconds(
+      'RATE_LIMIT: all routes exhausted. Soonest reset ~121s.',
+    ),
+    null,
+  );
+  assert.equal(
+    parseDshRateLimitRetryAfterSeconds('dsh process exited unexpectedly'),
+    null,
   );
 });
 
-test('reports an incompatible DSH headless protocol when Node is available', async () => {
+test('discovers DSH without launching its profile as a preflight side effect', async () => {
+  const calls = [];
   const execFileImpl = async (executable, args) => {
+    calls.push({ executable, args });
     if (executable === 'where.exe' && args[0] === 'dsh.cmd') {
       return { stdout: 'C:\\fake-npm\\dsh.cmd\r\n' };
     }
@@ -90,19 +90,23 @@ test('reports an incompatible DSH headless protocol when Node is available', asy
       throw Object.assign(new Error('node not on PATH'), { code: 'ENOENT' });
     }
     if (args[0] === '--version') return { stdout: 'v24.21.0' };
-    if (args[1] === '--profile' && args[2] === 'headless') {
-      return { stdout: 'Usage: dsh --profile headless [task...]\n' };
-    }
     assert.fail(`Unexpected probe: ${executable} ${args.join(' ')}`);
   };
 
-  await assert.rejects(
-    resolveDshHeadlessRuntime({
-      env: {},
-      execFileImpl,
-      readFileImpl: async () => '{"version":"0.1.0"}',
-    }),
-    (error) => error.code === 'dsh_headless_protocol_unsupported',
+  const runtime = await resolveDshHeadlessRuntime({
+    env: {},
+    execFileImpl,
+    readFileImpl: async () => '{"version":"0.1.0"}',
+  });
+  assert.deepEqual(runtime, {
+    nodeExecutable: 'D:\\NoemaTools\\node-v24.21.0-win-x64\\node.exe',
+    dshBin: 'C:\\fake-npm\\node_modules\\@deepseek-ai\\dsh\\lib\\bin.js',
+    npmPrefix: 'C:\\fake-npm',
+    version: '0.1.0',
+  });
+  assert.equal(
+    calls.some((call) => call.args.includes('--profile')),
+    false,
   );
 });
 
@@ -202,6 +206,75 @@ test('redacts the FreeLLMAPI key from DSH diagnostics', async () => {
     assert.doesNotMatch(result.errorMessage, /test-free-key/);
     assert.doesNotMatch(result.stderrTail, /test-free-key/);
     assert.match(result.stderrTail, /已隐藏凭据/);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('classifies only bounded explicit DSH cooldown hints as retryable', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'noema-dsh-rate-limit-'));
+  const child = new FakeChild();
+  try {
+    const adapter = new DshHeadlessAdapter({
+      runtime: { nodeExecutable: 'node.exe', dshBin: 'dsh/lib/bin.js' },
+      userDataPath: directory,
+      providerBaseUrl: 'http://127.0.0.1:31415/v1',
+      getApiKey: () => 'test-free-key',
+      spawnImpl: () => child,
+    });
+    const handle = await adapter.startTask({
+      taskId: 'task-rate-limit',
+      workspacePath: path.join(directory, 'workspace'),
+      task: 'Finish the missing files.',
+      model: DSH_FREE_MODEL,
+    });
+    child.stdout.write('{"type":"session","sessionId":"session-rate-limit"}\n');
+    await handle.started;
+    child.stderr.write(
+      'dsh: RATE_LIMIT: All models exhausted. Soonest reset ~31s.\n',
+    );
+    child.emit('close', 1, null);
+    const result = await handle.done;
+    assert.equal(result.errorCode, 'dsh_rate_limited');
+    assert.equal(result.retryAfterSeconds, 31);
+    assert.equal(result.sessionId, 'session-rate-limit');
+    assert.doesNotMatch(result.errorMessage, /test-free-key/);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('does not retry a DSH rate limit whose cooldown exceeds the safe wait window', async () => {
+  const directory = mkdtempSync(
+    path.join(tmpdir(), 'noema-dsh-long-cooldown-'),
+  );
+  const child = new FakeChild();
+  try {
+    const adapter = new DshHeadlessAdapter({
+      runtime: { nodeExecutable: 'node.exe', dshBin: 'dsh/lib/bin.js' },
+      userDataPath: directory,
+      providerBaseUrl: 'http://127.0.0.1:31415/v1',
+      getApiKey: () => 'test-free-key',
+      spawnImpl: () => child,
+    });
+    const handle = await adapter.startTask({
+      taskId: 'task-long-cooldown',
+      workspacePath: path.join(directory, 'workspace'),
+      task: 'Finish the missing files.',
+      model: DSH_FREE_MODEL,
+    });
+    child.stdout.write(
+      '{"type":"session","sessionId":"session-long-cooldown"}\n',
+    );
+    await handle.started;
+    child.stderr.write(
+      'RATE_LIMIT: all routes exhausted. Soonest reset ~121s.\n',
+    );
+    child.emit('close', 1, null);
+    const result = await handle.done;
+    assert.equal(result.errorCode, 'dsh_rate_limited');
+    assert.equal(result.retryAfterSeconds, null);
+    assert.match(result.errorMessage, /没有可安全采用的短时冷却窗口/);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

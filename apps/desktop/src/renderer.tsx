@@ -127,6 +127,8 @@ function taskPhaseLabel(phase: string) {
     running: '正在处理任务',
     verifying: 'Noema 正在核验文件',
     verification_repairing: 'Noema 正在修复未通过项',
+    retry_waiting_rate_limit: '免费模型冷却中，Noema 将自动续做',
+    retrying_partial_task: 'DSH 未正常结束，Noema 正在续接任务',
     turn_start: '开始处理',
     step_start: '正在检查项目文件',
     tool_call: '正在操作项目文件',
