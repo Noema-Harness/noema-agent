@@ -29,6 +29,20 @@ const VERIFIED_FREE_MODELS = new Map([
       label: 'Nemotron 3.5 Lightning · 免费',
     },
   ],
+  [
+    'cohere/north-mini-code',
+    {
+      name: 'cohere/north-mini-code',
+      label: 'Cohere North Mini Code · 免费',
+    },
+  ],
+  [
+    'nvidia/llama-3.2-11b-vision',
+    {
+      name: 'nvidia/llama-3.2-11b-vision',
+      label: 'NVIDIA Llama 3.2 11B · 免费',
+    },
+  ],
 ]);
 
 export class FreeLLMAPIError extends Error {

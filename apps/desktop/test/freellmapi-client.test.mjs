@@ -20,6 +20,8 @@ test('lists only the explicitly verified free routes from available models', asy
           { id: 'free-router', available: true },
           { id: 'nemotron-3-super-120b', available: true },
           { id: 'nvidia/nemotron-3.5-lightning', available: true },
+          { id: 'cohere/north-mini-code', available: true },
+          { id: 'nvidia/llama-3.2-11b-vision', available: true },
           { id: 'gemini-2.5-flash', available: true },
           { id: 'nvidia/nemotron-3-super-120b-a12b:free', available: false },
         ],
@@ -41,16 +43,28 @@ test('lists only the explicitly verified free routes from available models', asy
       name: 'nvidia/nemotron-3.5-lightning',
       label: 'Nemotron 3.5 Lightning · 免费',
     },
+    {
+      name: 'cohere/north-mini-code',
+      label: 'Cohere North Mini Code · 免费',
+    },
+    {
+      name: 'nvidia/llama-3.2-11b-vision',
+      label: 'NVIDIA Llama 3.2 11B · 免费',
+    },
   ]);
 });
 
-test('keeps the optional BlockRun route hidden while FreeLLMAPI marks it unavailable', async () => {
+test('keeps optional free routes hidden while FreeLLMAPI marks them unavailable', async () => {
   const client = new FreeLLMAPIClient({
     baseUrl: 'http://127.0.0.1:31415',
     getApiKey: () => 'test-key',
     fetchImpl: async () =>
       Response.json({
-        data: [{ id: 'nvidia/nemotron-3.5-lightning', available: false }],
+        data: [
+          { id: 'nvidia/nemotron-3.5-lightning', available: false },
+          { id: 'cohere/north-mini-code', available: false },
+          { id: 'nvidia/llama-3.2-11b-vision', available: false },
+        ],
       }),
   });
 
