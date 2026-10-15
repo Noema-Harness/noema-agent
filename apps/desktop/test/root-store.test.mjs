@@ -594,6 +594,75 @@ test('future root context retains a delivered worker event as system data, not a
   store.close();
 });
 
+test('a failed event response remains in future root context without partial summary text', () => {
+  const store = memoryStore();
+  const originalTurn = store.beginTurn({
+    text: '把 README 安装说明交给后台。',
+    model: 'auto:noema-free',
+  });
+  store.appendAssistant({
+    id: originalTurn.id,
+    attempt: originalTurn.attempt,
+    content: '已启动后台任务。',
+  });
+  store.completeTurn(originalTurn.id, originalTurn.attempt);
+  const task = store.createBackgroundTask({
+    id: 'task-summary-failed',
+    sourceTurnId: originalTurn.id,
+    workspacePath: 'D:\\Scratch',
+    model: 'auto:noema-free',
+    prompt: '更新 README 安装说明。',
+    verificationChecks: [{ kind: 'file_exists', path: 'README.md' }],
+  });
+  store.recordBackgroundTaskToolAction(task.id, 'write');
+  store.finishBackgroundTask(task.id, {
+    status: 'completed',
+    resultText: 'README 更新完成。',
+    verificationStatus: 'verified',
+    verificationResults: [
+      {
+        kind: 'file_exists',
+        path: 'README.md',
+        status: 'verified',
+        reason: 'file_exists',
+      },
+    ],
+  });
+  store.beginBackgroundEventResponse(task.id, 'auto:noema-free');
+  store.appendBackgroundEventResponse(task.id, '不完整的临时总结');
+  store.interruptBackgroundEventResponse(
+    task.id,
+    'failed',
+    'Provider failure details stay out of model context.',
+  );
+  assert.equal(store.getNextPendingBackgroundEvent(), null);
+
+  const nextTurn = store.beginTurn({
+    text: '刚才的任务结果是什么？',
+    model: 'auto:noema-free',
+  });
+  const eventMessage = store
+    .getPromptContext(nextTurn.id)
+    .messages.find((message) =>
+      message.content.includes('background_task_result'),
+    );
+
+  assert.ok(eventMessage);
+  assert.equal(eventMessage.role, 'system');
+  assert.match(eventMessage.content, /"eventStatus":"pending"/);
+  assert.match(eventMessage.content, /"noemaResponseStatus":"failed"/);
+  assert.match(eventMessage.content, /"noemaSummary":null/);
+  assert.match(eventMessage.content, /"toolActionCategories":\["write"\]/);
+  assert.equal(eventMessage.content.includes('不完整的临时总结'), false);
+  assert.equal(
+    eventMessage.content.includes('Provider failure details stay out'),
+    false,
+  );
+  assert.equal(store.resetBackgroundEventResponseForRetry(task.id), true);
+  assert.equal(store.getNextPendingBackgroundEvent()?.id, task.id);
+  store.close();
+});
+
 test('model context includes only the newest completed turns and reports what was omitted', () => {
   const store = memoryStore();
   for (const [text, reply] of [
