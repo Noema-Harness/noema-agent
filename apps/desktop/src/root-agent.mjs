@@ -223,7 +223,7 @@ function incompleteWorkerResponse(event) {
 }
 
 export class RootAgent {
-  /** @param {{store:import('./root-store.mjs').RootStore,provider:import('./freellmapi-client.mjs').FreeLLMAPIClient,secretStore:{get:()=>string|null,getBaseUrl:()=>string|null,isConfigured:()=>boolean,set:(value:string)=>void,setConfiguration:(input:{apiKey:string,baseUrl:string})=>void,clear:()=>void},dshAdapter?:import('./dsh-headless-adapter.mjs').DshHeadlessAdapter|null,dshRuntimeError?:string|null,codexAdapter?:import('./codex-app-server-adapter.mjs').CodexAppServerAdapter|null,emit?:(event:object)=>void}} options */
+  /** @param {{store:import('./root-store.mjs').RootStore,provider:import('./freellmapi-client.mjs').FreeLLMAPIClient,secretStore:{get:()=>string|null,getBaseUrl:()=>string|null,isConfigured:()=>boolean,set:(value:string)=>void,setConfiguration:(input:{apiKey:string,baseUrl:string})=>void,clear:()=>void},dshAdapter?:import('./dsh-headless-adapter.mjs').DshHeadlessAdapter|null,dshRuntimeError?:string|null,codexAdapter?:import('./codex-app-server-adapter.mjs').CodexAppServerAdapter|null,allowRootActions?:boolean,emit?:(event:object)=>void}} options */
   constructor({
     store,
     provider,
@@ -231,6 +231,7 @@ export class RootAgent {
     dshAdapter = null,
     dshRuntimeError = null,
     codexAdapter = null,
+    allowRootActions = true,
     emit = () => {},
   }) {
     this.store = store;
@@ -239,6 +240,7 @@ export class RootAgent {
     this.dshAdapter = dshAdapter;
     this.dshRuntimeError = dshRuntimeError;
     this.codexAdapter = codexAdapter;
+    this.allowRootActions = allowRootActions;
     this.emit = emit;
     this.active = null;
     this.eventActive = null;
@@ -618,8 +620,11 @@ export class RootAgent {
         omittedTurns: context.omittedTurns,
         historyCharacters: context.historyCharacters,
       });
-      const tools = [RECORD_INTERACTION_ADJUSTMENT_TOOL];
-      if (this.canDelegateToDsh()) tools.push(DELEGATE_TASK_TOOL);
+      const tools = this.allowRootActions
+        ? [RECORD_INTERACTION_ADJUSTMENT_TOOL]
+        : [];
+      if (this.allowRootActions && this.canDelegateToDsh())
+        tools.push(DELEGATE_TASK_TOOL);
       const messages = [
         { role: 'system', content: ROOT_SYSTEM_PROMPT },
         ...context.messages,
@@ -652,10 +657,10 @@ export class RootAgent {
       }
 
       if (toolCalls.length) {
-        if (!tools) {
+        if (tools.length === 0) {
           throw new FreeLLMAPIError(
-            'worker_unavailable',
-            '后台 agent 当前不可用，因此没有执行这项任务。',
+            'root_tool_call_invalid',
+            '这轮没有开放工具；模型请求的操作没有执行。',
           );
         }
         const result = await this.handleRootToolCall(turn, toolCalls);

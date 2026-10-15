@@ -348,6 +348,60 @@ test('RootAgent emits a state refresh when the user revises an interaction adjus
   }
 });
 
+test('RootAgent rejects unsolicited tool calls when its action tools are disabled', async () => {
+  const store = new RootStore(':memory:');
+  store.setSelectedModel('free-router');
+  let advertisedTools;
+  let workerStarts = 0;
+  const agent = new RootAgent({
+    store,
+    provider: {
+      listModels: async () => [
+        { name: 'free-router', label: 'FreeLLMAPI 免费路由' },
+      ],
+      async *streamChat(input) {
+        advertisedTools = input.tools;
+        input.onToolCalls([
+          {
+            id: 'unadvertised-delegate',
+            type: 'function',
+            function: {
+              name: 'delegate_task',
+              arguments: JSON.stringify({
+                task: 'This must not start.',
+                verificationChecks: [],
+              }),
+            },
+          },
+        ]);
+        yield '这条测试回复不应被验收。';
+      },
+    },
+    secretStore: createSecretStore(),
+    dshAdapter: {
+      async startTask() {
+        workerStarts += 1;
+        throw new Error('Unadvertised tools must not run.');
+      },
+    },
+    allowRootActions: false,
+  });
+
+  try {
+    const { turnId } = agent.sendMessage({ text: 'Root-only smoke input.' });
+    await agent.active.done;
+    assert.deepEqual(advertisedTools, []);
+    assert.equal(store.getTurn(turnId).status, 'failed');
+    assert.equal(store.getTurn(turnId).errorCode, 'root_tool_call_invalid');
+    assert.equal(store.getBackgroundTasks().length, 0);
+    assert.equal(store.getInteractionAdjustments().length, 0);
+    assert.equal(workerStarts, 0);
+  } finally {
+    await agent.shutdown();
+    store.close();
+  }
+});
+
 test('preserves a failed user message and retries it without duplicating the user turn', async () => {
   const store = new RootStore(':memory:');
   store.setSelectedModel('retired-model');
