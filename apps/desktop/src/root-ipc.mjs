@@ -4,6 +4,10 @@ const CHANNELS = Object.freeze({
   configureProvider: 'noema:configure-provider',
   selectModel: 'noema:select-model',
   send: 'noema:send-message',
+  saveCapture: 'noema:save-capture',
+  updateCapture: 'noema:update-capture',
+  deleteCapture: 'noema:delete-capture',
+  discussCapture: 'noema:discuss-capture',
   retry: 'noema:retry-turn',
   stop: 'noema:stop-turn',
   chooseWorkspace: 'noema:choose-workspace',
@@ -47,6 +51,12 @@ export function registerRootIpc({
   );
   register(CHANNELS.selectModel, (model) => rootAgent.setModel(model));
   register(CHANNELS.send, (text) => sendMessage(text));
+  register(CHANNELS.saveCapture, (text) => rootAgent.saveCapture(text));
+  register(CHANNELS.updateCapture, (id, text) =>
+    rootAgent.updateCapture(id, text),
+  );
+  register(CHANNELS.deleteCapture, (id) => rootAgent.deleteCapture(id));
+  register(CHANNELS.discussCapture, (id) => rootAgent.discussCapture(id));
   register(CHANNELS.retry, (turnId, model) => retryTurn(turnId, model));
   register(CHANNELS.stop, (turnId) => rootAgent.stopTurn(turnId));
   register(CHANNELS.chooseWorkspace, async () => {

@@ -17,11 +17,83 @@ test('root store migrates idempotently and persists the selected model', () => {
     store.db
       .prepare('SELECT MAX(version) AS version FROM schema_migrations')
       .get().version,
-    10,
+    11,
   );
   store.setSelectedModel('free-router');
   assert.equal(store.getSelectedModel(), 'free-router');
   store.close();
+});
+
+test('captures remain local-only until an atomic discussion turn is created', () => {
+  const store = memoryStore();
+  const saved = store.createCapture('刚才发现了一个值得以后讨论的点');
+  assert.equal(store.getSnapshot().captures[0].content, saved.content);
+
+  const turn = store.beginTurn({
+    id: 'capture-turn',
+    captureId: saved.id,
+    model: 'free-router',
+  });
+  const linked = store.getCapture(saved.id);
+  assert.equal(linked.discussionTurnId, turn.id);
+  assert.equal(
+    store.db
+      .prepare(
+        "SELECT content FROM root_messages WHERE turn_id = ? AND role = 'user'",
+      )
+      .get(turn.id).content,
+    saved.content,
+  );
+  assert.throws(
+    () => store.updateCapture(saved.id, '改写后的内容'),
+    /不能修改/,
+  );
+  assert.throws(
+    () => store.beginTurn({ id: 'second-capture-turn', captureId: saved.id }),
+    /已经开始讨论/,
+  );
+
+  store.deleteCapture(saved.id);
+  assert.equal(store.getCapture(saved.id), null);
+  assert.equal(
+    store.db
+      .prepare(
+        "SELECT content FROM root_messages WHERE turn_id = ? AND role = 'user'",
+      )
+      .get(turn.id).content,
+    '刚才发现了一个值得以后讨论的点',
+  );
+  store.close();
+});
+
+test('unmentioned captures never enter ordinary model context', () => {
+  const store = memoryStore();
+  store.createCapture('这段私密速记不应自动进入请求上下文');
+  const turn = store.beginTurn({ id: 'ordinary-turn', text: '普通聊天内容' });
+  const messages = store.getPromptMessages(turn.id);
+  assert.equal(messages.at(-1).content, '普通聊天内容');
+  assert.equal(
+    messages.some((message) => message.content.includes('私密速记')),
+    false,
+  );
+  store.close();
+});
+
+test('captures persist across a database reopen', () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'noema-capture-store-'));
+  const databasePath = path.join(directory, 'root.sqlite3');
+  try {
+    const first = new RootStore(databasePath);
+    const capture = first.createCapture('离线重启后仍然能找到这条记录。');
+    first.close();
+
+    const reopened = new RootStore(databasePath);
+    assert.equal(reopened.getCapture(capture.id).content, capture.content);
+    assert.equal(reopened.getSnapshot().captures.length, 1);
+    reopened.close();
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test('a schema-v4 database upgrades through interaction and verification state', () => {
@@ -44,7 +116,7 @@ test('a schema-v4 database upgrades through interaction and verification state',
     store.db
       .prepare('SELECT MAX(version) AS version FROM schema_migrations')
       .get().version,
-    10,
+    11,
   );
   assert.equal(
     store.db
@@ -163,7 +235,7 @@ test('schema-v9 migration snapshots existing adjustments without guessing older 
   assert.equal(
     db.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()
       .version,
-    10,
+    11,
   );
   assert.deepEqual(readSnapshots('root_messages', 'assistant-2'), expected);
   assert.deepEqual(readSnapshots('root_messages', 'assistant-1'), []);
@@ -224,7 +296,7 @@ test('schema-v9 migration backfills only the latest root attempt and task snapsh
   assert.equal(
     db.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()
       .version,
-    10,
+    11,
   );
   assert.deepEqual(JSON.parse(latestAttempt.snapshots), [
     {

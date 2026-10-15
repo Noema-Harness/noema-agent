@@ -87,6 +87,7 @@ export interface NoemaBackgroundTask {
 
 export interface NoemaRootState {
   messages: NoemaRootMessage[];
+  captures: NoemaCapture[];
   workerTasks: NoemaBackgroundTask[];
   contextImports: NoemaContextImport[];
   interactionAdjustments: NoemaInteractionAdjustment[];
@@ -104,6 +105,14 @@ export interface NoemaRootState {
   dshWorkerAvailable: boolean;
   dshWorkerError: string | null;
   codexImportAvailable: boolean;
+}
+
+export interface NoemaCapture {
+  id: string;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+  discussionTurnId: string | null;
 }
 
 export interface NoemaInteractionAdjustment {
@@ -186,6 +195,7 @@ export interface NoemaCodexPreview {
 export type NoemaTurnEvent =
   | { type: 'models-updated' | 'provider-configured' }
   | { type: 'context-import-updated' }
+  | { type: 'captures-updated' }
   | { type: 'model-selected'; model: string }
   | {
       type: 'turn-started';
@@ -254,6 +264,10 @@ export interface NoemaBridge {
   }): Promise<Partial<NoemaRootState>>;
   selectModel(model: string): Promise<string>;
   sendMessage(text: string): Promise<{ turnId?: string; canceled?: boolean }>;
+  saveCapture(text: string): Promise<NoemaCapture>;
+  updateCapture(id: string, text: string): Promise<NoemaCapture>;
+  deleteCapture(id: string): Promise<boolean>;
+  discussCapture(id: string): Promise<{ turnId: string }>;
   retryTurn(
     turnId: string,
     model?: string | null,

@@ -12,6 +12,7 @@ import { createRoot } from 'react-dom/client';
 import { findTranscriptMatches } from './transcript-search.mjs';
 import type {
   NoemaBackgroundTask,
+  NoemaCapture,
   NoemaCodexPreview,
   NoemaCodexThread,
   NoemaContextImport,
@@ -30,6 +31,7 @@ type TimelineEntry =
   | { kind: 'turn'; key: string; time: string; turn: ConversationTurn }
   | { kind: 'task'; key: string; time: string; task: NoemaBackgroundTask }
   | { kind: 'context'; key: string; time: string; context: NoemaContextImport }
+  | { kind: 'capture'; key: string; time: string; capture: NoemaCapture }
   | {
       kind: 'adjustment';
       key: string;
@@ -216,6 +218,11 @@ function App() {
 function DesktopApp() {
   const [root, setRoot] = useState<NoemaRootState | null>(null);
   const [draft, setDraft] = useState('');
+  const [captureEdit, setCaptureEdit] = useState<{
+    id: string;
+    content: string;
+  } | null>(null);
+  const [captureBusy, setCaptureBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
   const [sending, setSending] = useState(false);
   const [stopping, setStopping] = useState(false);
@@ -354,6 +361,14 @@ function DesktopApp() {
         context,
       }),
     );
+    const captureEntries: TimelineEntry[] = (root?.captures ?? []).map(
+      (capture) => ({
+        kind: 'capture',
+        key: `capture:${capture.id}`,
+        time: capture.createdAt,
+        capture,
+      }),
+    );
     const adjustmentEntries: TimelineEntry[] = (
       root?.interactionAdjustments ?? []
     ).map((adjustment) => ({
@@ -366,16 +381,28 @@ function DesktopApp() {
       ...turnEntries,
       ...taskEntries,
       ...contextEntries,
+      ...captureEntries,
       ...adjustmentEntries,
     ].sort((left, right) => left.time.localeCompare(right.time));
-  }, [turns, workerTasks, root?.contextImports, interactionAdjustments]);
+  }, [
+    turns,
+    workerTasks,
+    root?.contextImports,
+    root?.captures,
+    interactionAdjustments,
+  ]);
   const busy = Boolean(root?.activeTurnId);
 
   useLayoutEffect(() => {
     const node = conversationRef.current;
     if (node && followConversationRef.current)
       node.scrollTop = node.scrollHeight;
-  }, [root?.messages, root?.contextImports, interactionAdjustments]);
+  }, [
+    root?.messages,
+    root?.contextImports,
+    root?.captures,
+    interactionAdjustments,
+  ]);
 
   useEffect(() => {
     const node = conversationRef.current;
@@ -709,6 +736,94 @@ function DesktopApp() {
     } finally {
       setSending(false);
     }
+  };
+
+  const saveCapture = async () => {
+    const text = draft;
+    if (!text.trim() || captureBusy) return;
+    setCaptureBusy('new');
+    setNotice('');
+    try {
+      await window.noema.saveCapture(text);
+      setDraft((current) => (current === text ? '' : current));
+      await refreshRoot();
+      setNotice('已只保存在这台设备，没有发送给模型。');
+    } catch (error) {
+      setNotice(
+        error instanceof Error
+          ? error.message
+          : '速记没有保存；原文仍在输入框中。',
+      );
+    } finally {
+      setCaptureBusy(null);
+    }
+  };
+
+  const saveCaptureEdit = async () => {
+    if (!captureEdit) return;
+    setCaptureBusy(captureEdit.id);
+    try {
+      await window.noema.updateCapture(captureEdit.id, captureEdit.content);
+      setCaptureEdit(null);
+      await refreshRoot();
+      setNotice('速记已在本机更新，未发送给模型。');
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : '速记没有更新。');
+    } finally {
+      setCaptureBusy(null);
+    }
+  };
+
+  const discussCapture = async (capture: NoemaCapture) => {
+    if (busy || captureBusy) return;
+    setCaptureBusy(capture.id);
+    followConversationRef.current = true;
+    try {
+      const result = await window.noema.discussCapture(capture.id);
+      await refreshRoot();
+      setNotice('已把这条速记作为新消息发送给当前模型；原速记仍保留在本机。');
+      return result;
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : '暂时无法开始讨论。');
+    } finally {
+      setCaptureBusy(null);
+    }
+    return undefined;
+  };
+
+  const deleteCapture = async (capture: NoemaCapture) => {
+    const confirmed = window.confirm(
+      capture.discussionTurnId
+        ? '删除本机速记？已写入 Noema 对话的原文不会被删除；如果请求已经发出，也无法撤回。'
+        : '删除这条本机速记？此操作无法撤销。',
+    );
+    if (!confirmed) return;
+    setCaptureBusy(capture.id);
+    try {
+      await window.noema.deleteCapture(capture.id);
+      await refreshRoot();
+      setNotice('已删除本机速记。');
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : '速记没有删除。');
+    } finally {
+      setCaptureBusy(null);
+    }
+  };
+
+  const jumpToTurn = (turnId: string) => {
+    const turn = turns.find((candidate) => candidate.id === turnId);
+    const message = turn?.messages.find(
+      (candidate) => candidate.role === 'user',
+    );
+    if (!message) return;
+    document
+      .getElementById(`transcript-message-${message.id}`)
+      ?.scrollIntoView({
+        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches
+          ? 'auto'
+          : 'smooth',
+        block: 'center',
+      });
   };
 
   const stopReply = async () => {
@@ -1254,6 +1369,129 @@ function DesktopApp() {
                             会话副本。只读的文字不会在两边保持同步；Codex
                             内部运行状态仍留在原应用。
                           </div>
+                        </section>
+                      </div>
+                    </article>
+                  );
+                }
+                if (entry.kind === 'capture') {
+                  const capture = entry.capture;
+                  const editing = captureEdit?.id === capture.id;
+                  return (
+                    <article className="turn capture-turn" key={entry.key}>
+                      <div className="turn-gutter">
+                        <time dateTime={capture.createdAt}>
+                          {formatTime(entry.time)}
+                        </time>
+                        <span className="turn-spine" aria-hidden="true">
+                          <span />
+                        </span>
+                      </div>
+                      <div className="turn-body">
+                        <section className="capture-card" aria-label="本机速记">
+                          <div className="capture-card-heading">
+                            <div>
+                              <strong>留给自己的速记</strong>
+                              <span>
+                                {capture.discussionTurnId
+                                  ? '本机保存 · 已带入一轮对话'
+                                  : '本机保存 · 未发送给模型'}
+                              </span>
+                            </div>
+                            {capture.updatedAt !== capture.createdAt && (
+                              <span>已修改</span>
+                            )}
+                          </div>
+                          {editing ? (
+                            <div className="capture-edit">
+                              <textarea
+                                aria-label="编辑速记内容"
+                                value={captureEdit.content}
+                                maxLength={100_000}
+                                onChange={(event) =>
+                                  setCaptureEdit({
+                                    id: capture.id,
+                                    content: event.target.value,
+                                  })
+                                }
+                              />
+                              <div className="capture-actions">
+                                <button
+                                  type="button"
+                                  onClick={() => setCaptureEdit(null)}
+                                  disabled={captureBusy === capture.id}
+                                >
+                                  取消
+                                </button>
+                                <button
+                                  className="capture-primary-action"
+                                  type="button"
+                                  onClick={() => void saveCaptureEdit()}
+                                  disabled={
+                                    !captureEdit.content.trim() ||
+                                    captureBusy === capture.id
+                                  }
+                                >
+                                  {captureBusy === capture.id
+                                    ? '正在保存…'
+                                    : '保存修改'}
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="capture-content">{capture.content}</p>
+                          )}
+                          <div className="capture-actions">
+                            {capture.discussionTurnId ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  jumpToTurn(capture.discussionTurnId!)
+                                }
+                              >
+                                查看讨论
+                              </button>
+                            ) : !editing ? (
+                              <>
+                                <button
+                                  className="capture-primary-action"
+                                  type="button"
+                                  onClick={() => void discussCapture(capture)}
+                                  disabled={busy || captureBusy === capture.id}
+                                >
+                                  {captureBusy === capture.id
+                                    ? '正在发送…'
+                                    : '与 Noema 讨论'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setCaptureEdit({
+                                      id: capture.id,
+                                      content: capture.content,
+                                    })
+                                  }
+                                  disabled={Boolean(captureBusy)}
+                                >
+                                  编辑
+                                </button>
+                              </>
+                            ) : null}
+                            <button
+                              className="capture-delete-action"
+                              type="button"
+                              onClick={() => void deleteCapture(capture)}
+                              disabled={Boolean(captureBusy)}
+                            >
+                              删除
+                            </button>
+                          </div>
+                          {capture.discussionTurnId && (
+                            <p className="capture-discussion-note">
+                              已另行写入 Noema
+                              对话；是否抵达模型以该轮状态为准。删除速记不会删除对话副本，也无法撤回已发出的请求。
+                            </p>
+                          )}
                         </section>
                       </div>
                     </article>
@@ -2050,26 +2288,48 @@ function DesktopApp() {
             <div className="composer-footer">
               <span className="composer-hint">
                 {busy
-                  ? 'Noema 正在回复。可以停止后继续输入。'
-                  : 'Ctrl + Enter 发送 · Enter 换行'}
+                  ? 'Noema 正在回复。可以先保存速记，或停止后再发送。'
+                  : 'Ctrl + Enter 发送 · Enter 换行 · 只记下来不会调用模型'}
               </span>
               {busy ? (
-                <button
-                  className="stop-button"
-                  type="button"
-                  onClick={() => void stopReply()}
-                  disabled={stopping}
-                >
-                  {stopping ? '正在停止…' : '停止回复'}
-                </button>
+                <div className="composer-actions">
+                  <button
+                    className="capture-save-button"
+                    type="button"
+                    onClick={() => void saveCapture()}
+                    disabled={!draft.trim() || Boolean(captureBusy)}
+                    title="只保存在本机，不调用模型"
+                  >
+                    {captureBusy === 'new' ? '正在保存…' : '只记下来'}
+                  </button>
+                  <button
+                    className="stop-button"
+                    type="button"
+                    onClick={() => void stopReply()}
+                    disabled={stopping}
+                  >
+                    {stopping ? '正在停止…' : '停止回复'}
+                  </button>
+                </div>
               ) : (
-                <button
-                  className="send-button"
-                  type="submit"
-                  disabled={!draft.trim() || sending}
-                >
-                  {sending ? '发送中…' : '发送'}
-                </button>
+                <div className="composer-actions">
+                  <button
+                    className="capture-save-button"
+                    type="button"
+                    onClick={() => void saveCapture()}
+                    disabled={!draft.trim() || sending || Boolean(captureBusy)}
+                    title="只保存在本机，不调用模型"
+                  >
+                    {captureBusy === 'new' ? '正在保存…' : '只记下来'}
+                  </button>
+                  <button
+                    className="send-button"
+                    type="submit"
+                    disabled={!draft.trim() || sending || Boolean(captureBusy)}
+                  >
+                    {sending ? '发送中…' : '发送给 Noema'}
+                  </button>
+                </div>
               )}
             </div>
           </form>

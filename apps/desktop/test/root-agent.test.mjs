@@ -29,6 +29,66 @@ function createSecretStore(configured = true) {
   };
 }
 
+test('saving a capture is local and does not request model output', () => {
+  const store = new RootStore(':memory:');
+  let modelCalls = 0;
+  const agent = new RootAgent({
+    store,
+    provider: {
+      baseUrl: 'http://127.0.0.1:31415/v1',
+      async *streamChat() {
+        modelCalls += 1;
+        yield 'unexpected';
+      },
+    },
+    secretStore: createSecretStore(),
+  });
+  const capture = agent.saveCapture('只记录，不开始对话');
+  assert.equal(capture.content, '只记录，不开始对话');
+  assert.equal(modelCalls, 0);
+  assert.equal(store.getSnapshot().messages.length, 0);
+  assert.equal(store.getSnapshot().captures.length, 1);
+  store.close();
+});
+
+test('discussing a capture sends its exact text as one root turn and preserves provenance', async () => {
+  const store = new RootStore(':memory:');
+  store.setSelectedModel('free-router');
+  const capture = store.createCapture('这个念头原文不能被重新概括。');
+  let request;
+  const agent = new RootAgent({
+    store,
+    provider: {
+      baseUrl: 'http://127.0.0.1:31415/v1',
+      async listModels() {
+        return [{ name: 'free-router', label: '测试路由' }];
+      },
+      async *streamChat(input) {
+        request = input;
+        yield '我们可以从这里聊起。';
+      },
+    },
+    secretStore: createSecretStore(),
+  });
+
+  const { turnId } = agent.discussCapture(capture.id);
+  await agent.active.done;
+
+  assert.equal(request.messages.at(-1).content, capture.content);
+  assert.equal(store.getCapture(capture.id).discussionTurnId, turnId);
+  assert.equal(
+    store.getSnapshot().messages.filter((message) => message.role === 'user')
+      .length,
+    1,
+  );
+  assert.equal(
+    store.getSnapshot().messages.find((message) => message.role === 'user')
+      .content,
+    capture.content,
+  );
+  store.close();
+});
+
 test('first connection defaults to the reviewed Noema free chain when available', async () => {
   const store = new RootStore(':memory:');
   const provider = {

@@ -11,6 +11,12 @@ const bridge = {
   selectModel: (model: string) =>
     ipcRenderer.invoke('noema:select-model', model),
   sendMessage: (text: string) => ipcRenderer.invoke('noema:send-message', text),
+  saveCapture: (text: string) => ipcRenderer.invoke('noema:save-capture', text),
+  updateCapture: (id: string, text: string) =>
+    ipcRenderer.invoke('noema:update-capture', id, text),
+  deleteCapture: (id: string) => ipcRenderer.invoke('noema:delete-capture', id),
+  discussCapture: (id: string) =>
+    ipcRenderer.invoke('noema:discuss-capture', id),
   retryTurn: (turnId: string, model?: string | null) =>
     ipcRenderer.invoke('noema:retry-turn', turnId, model ?? null),
   stopTurn: (turnId: string) => ipcRenderer.invoke('noema:stop-turn', turnId),
