@@ -29,6 +29,70 @@ function createSecretStore(configured = true) {
   };
 }
 
+test('first connection defaults to the reviewed Noema free chain when available', async () => {
+  const store = new RootStore(':memory:');
+  const provider = {
+    baseUrl: 'http://127.0.0.1:31415/v1',
+    listModels: async () => [
+      { name: 'free-router', label: 'FreeLLMAPI 免费路由' },
+      { name: 'auto:noema-free', label: 'Noema 免费模型链' },
+    ],
+  };
+  const agent = new RootAgent({
+    store,
+    provider,
+    secretStore: createSecretStore(),
+  });
+
+  const state = await agent.refreshModels();
+
+  assert.equal(state.selectedModel, 'auto:noema-free');
+  assert.equal(store.getSelectedModel(), 'auto:noema-free');
+  store.close();
+});
+
+test('first connection falls back to the first verified free route if no named chain exists', async () => {
+  const store = new RootStore(':memory:');
+  const provider = {
+    baseUrl: 'http://127.0.0.1:31415/v1',
+    listModels: async () => [
+      { name: 'free-router', label: 'FreeLLMAPI 免费路由' },
+    ],
+  };
+  const agent = new RootAgent({
+    store,
+    provider,
+    secretStore: createSecretStore(),
+  });
+
+  const state = await agent.refreshModels();
+
+  assert.equal(state.selectedModel, 'free-router');
+  store.close();
+});
+
+test('refreshing preserves an explicit model choice when that route is unavailable', async () => {
+  const store = new RootStore(':memory:');
+  store.setSelectedModel('free-router');
+  const provider = {
+    baseUrl: 'http://127.0.0.1:31415/v1',
+    listModels: async () => [
+      { name: 'auto:noema-free', label: 'Noema 免费模型链' },
+    ],
+  };
+  const agent = new RootAgent({
+    store,
+    provider,
+    secretStore: createSecretStore(),
+  });
+
+  const state = await agent.refreshModels();
+
+  assert.equal(state.selectedModel, 'free-router');
+  assert.equal(store.getSelectedModel(), 'free-router');
+  store.close();
+});
+
 test('streams a FreeLLMAPI response into the persistent root turn', async () => {
   const store = new RootStore(':memory:');
   store.setSelectedModel('free-router');

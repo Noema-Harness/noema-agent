@@ -298,10 +298,11 @@ export class RootAgent {
             : null,
         checking: false,
       };
-      if (
-        !models.some((model) => model.name === this.store.getSelectedModel())
-      ) {
-        this.store.setSelectedModel(models[0]?.name ?? null);
+      const selectedModel = this.store.getSelectedModel();
+      if (!selectedModel && models.length > 0) {
+        const defaultModel =
+          models.find((model) => model.name === 'auto:noema-free') ?? models[0];
+        this.store.setSelectedModel(defaultModel.name);
       }
     } catch (error) {
       this.modelState = {
