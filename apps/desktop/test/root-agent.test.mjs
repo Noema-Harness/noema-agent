@@ -472,6 +472,18 @@ test('dispatches one DSH worker on the explicit free chain and returns its resul
   const dshAdapter = {
     async startTask(input) {
       Object.assign(workerInput, input);
+      input.onEvent({ type: 'tool-call', count: 1, tool: 'glob' });
+      input.onEvent({
+        type: 'tool-call',
+        count: 2,
+        tool: 'write',
+        input: { path: 'D:\\Private\\secret.md', content: 'not retained' },
+      });
+      input.onEvent({
+        type: 'tool-call',
+        count: 3,
+        tool: 'custom/secret/path',
+      });
       return {
         started: Promise.resolve({ sessionId: 'session-worker-test' }),
         done: workerDone,
@@ -512,7 +524,7 @@ test('dispatches one DSH worker on the explicit free chain and returns its resul
       result: 'README 安装说明已修正。',
       errorCode: null,
       errorMessage: null,
-      toolCallCount: 2,
+      toolCallCount: 3,
     });
     for (let attempt = 0; attempt < 200; attempt++) {
       await new Promise((resolve) => setTimeout(resolve, 5));
@@ -525,6 +537,12 @@ test('dispatches one DSH worker on the explicit free chain and returns its resul
     assert.equal(returned.eventStatus, 'delivered');
     assert.equal(returned.resultText, 'README 安装说明已修正。');
     assert.equal(returned.noemaResponse, '后台任务结果已接回。');
+    assert.deepEqual(returned.toolActionCategories, ['list', 'write', 'other']);
+    assert.equal(returned.toolActionsTruncated, false);
+    assert.equal(
+      JSON.stringify(returned).includes('D:\\Private\\secret.md'),
+      false,
+    );
     assert.equal(modelCalls.length, 2);
     assert.equal(
       store.getSnapshot().messages.filter((message) => message.role === 'user')

@@ -10,6 +10,7 @@ const MAX_EVENT_LINE_BYTES = 512_000;
 const MAX_FINAL_TEXT_LENGTH = 100_000;
 const MAX_TOOL_CALLS = 12;
 const MAX_REPEAT_TOOL_CALLS = 3;
+const DSH_WORKER_MAX_TOKENS = 8_192;
 export const DSH_FREE_MODEL = 'auto:noema-free';
 
 export class DshHeadlessError extends Error {
@@ -176,6 +177,11 @@ export function makeNoemaDshWorkerPatch(model) {
     '  config:',
     '    provider: deepseek-official',
     `    model: ${modelScalar}`,
+    '- id: llm-deepseek',
+    '  config:',
+    // DSH's provider default is 256k output tokens; cap worker calls so a
+    // gateway model with a smaller context window can still receive the task.
+    `    maxTokens: ${DSH_WORKER_MAX_TOKENS}`,
     '- id: tool-pwsh',
     '  disabled: true',
     '- id: web',

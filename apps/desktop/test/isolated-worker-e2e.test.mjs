@@ -33,9 +33,12 @@ test('isolated worker runner records only a task inside its scratch workspace', 
     ],
     verificationAttempts: 0,
     interactionAdjustmentIds: ['adjustment-fixture'],
+    toolActionCategories: ['list', 'write'],
+    toolActionsTruncated: false,
     toolCallCount: 1,
     eventStatus: 'delivered',
     noemaResponseStatus: 'complete',
+    noemaResponseError: null,
   };
   const store = {
     getWorkspaceDirectory: () => workspace,
@@ -88,6 +91,8 @@ test('isolated worker runner records only a task inside its scratch workspace', 
     assert.deepEqual(result.task.interactionAdjustmentIds, [
       'adjustment-fixture',
     ]);
+    assert.deepEqual(result.task.toolActionCategories, ['list', 'write']);
+    assert.equal(result.task.toolActionsTruncated, false);
     assert.deepEqual(JSON.parse(readFileSync(resultPath, 'utf8')), result);
   } finally {
     rmSync(directory, { recursive: true, force: true });
@@ -197,6 +202,75 @@ test('root-only E2E checks a real chat without requiring DSH availability', asyn
       status: 'reported',
       routedVia: ['kilo/openrouter/free'],
     });
+    assert.deepEqual(JSON.parse(readFileSync(resultPath, 'utf8')), result);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('isolated worker E2E distinguishes a completed task from failed Noema event response', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'noema-e2e-event-failed-'));
+  const workspace = path.join(directory, 'workspace');
+  const resultPath = path.join(directory, 'result.json');
+  const databasePath = path.join(directory, 'root.sqlite3');
+  mkdirSync(workspace);
+  writeFileSync(databasePath, 'synthetic isolated database placeholder');
+  const task = {
+    id: 'task-event-failed',
+    sourceTurnId: 'turn-event-failed',
+    status: 'completed',
+    errorCode: null,
+    verificationStatus: 'verified',
+    verificationResults: [],
+    verificationAttempts: 0,
+    interactionAdjustmentIds: [],
+    toolActionCategories: ['write', 'read'],
+    toolActionsTruncated: false,
+    toolCallCount: 2,
+    eventStatus: 'pending',
+    noemaResponseStatus: 'failed',
+    noemaResponseError: 'Synthetic provider failure.',
+  };
+  const store = {
+    getWorkspaceDirectory: () => workspace,
+    getSelectedModel: () => 'auto:noema-free',
+    getTurn: () => ({ status: 'completed', errorCode: null }),
+    getBackgroundTasks: () => [task],
+    getSnapshot: () => ({
+      messages: [
+        {
+          turnId: 'turn-event-failed',
+          role: 'assistant',
+          content: '已发起后台任务。',
+          routedVia: [],
+          routeMetadataStatus: 'unknown',
+        },
+      ],
+    }),
+  };
+  const agent = {
+    dshAdapter: {},
+    dshRuntimeError: null,
+    sendMessage: () => ({ turnId: 'turn-event-failed' }),
+  };
+
+  try {
+    const result = await runIsolatedWorkerE2E({
+      agent,
+      store,
+      databasePath,
+      resultPath,
+      prompt: '[合成测试] 已核验文件，但结果事件接回失败。',
+      timeoutMs: 1_000,
+    });
+
+    assert.equal(result.outcome, 'worker_event_response_failed');
+    assert.equal(result.task.status, 'completed');
+    assert.equal(result.task.verificationStatus, 'verified');
+    assert.equal(result.task.eventStatus, 'pending');
+    assert.equal(result.task.noemaResponseStatus, 'failed');
+    assert.equal(result.task.noemaResponseError, 'Synthetic provider failure.');
+    assert.deepEqual(result.task.toolActionCategories, ['write', 'read']);
     assert.deepEqual(JSON.parse(readFileSync(resultPath, 'utf8')), result);
   } finally {
     rmSync(directory, { recursive: true, force: true });

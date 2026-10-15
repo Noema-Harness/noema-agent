@@ -92,7 +92,9 @@ test('worker process streams safe status events and reports the final result', a
     );
     assert.equal(launch.args.includes('--json'), true);
     const patchArg = launch.args[launch.args.indexOf('--patch') + 1];
-    assert.match(readFileSync(patchArg, 'utf8'), /tool-pwsh/);
+    const patch = readFileSync(patchArg, 'utf8');
+    assert.match(patch, /- id: llm-deepseek[\s\S]*maxTokens: 8192/);
+    assert.match(patch, /tool-pwsh/);
 
     child.stdout.write(
       '{"type":"session","sessionId":"session-test"}\n' +
