@@ -9,6 +9,7 @@ import React, {
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { createRoot } from 'react-dom/client';
+import { findTranscriptMatches } from './transcript-search.mjs';
 import type {
   NoemaBackgroundTask,
   NoemaCodexPreview,
@@ -231,8 +232,14 @@ function DesktopApp() {
   const [loadingCodex, setLoadingCodex] = useState(false);
   const [importingCodex, setImportingCodex] = useState(false);
   const [codexError, setCodexError] = useState('');
+  const [conversationSearchOpen, setConversationSearchOpen] = useState(false);
+  const [conversationSearchQuery, setConversationSearchQuery] = useState('');
+  const [conversationSearchIndex, setConversationSearchIndex] = useState(0);
   const conversationRef = useRef<HTMLDivElement>(null);
   const followConversationRef = useRef(true);
+  const conversationSearchInputRef = useRef<HTMLInputElement>(null);
+  const conversationSearchTriggerRef = useRef<HTMLButtonElement>(null);
+  const conversationSearchWasOpenRef = useRef(false);
   const codexImportTriggerRef = useRef<HTMLButtonElement>(null);
   const codexImportCloseRef = useRef<HTMLButtonElement>(null);
 
@@ -288,6 +295,17 @@ function DesktopApp() {
   );
   const contextImports = root?.contextImports ?? [];
   const interactionAdjustments = root?.interactionAdjustments ?? [];
+  const conversationSearchMatches = useMemo(
+    () => findTranscriptMatches(root?.messages ?? [], conversationSearchQuery),
+    [root?.messages, conversationSearchQuery],
+  );
+  const activeConversationSearchIndex = conversationSearchMatches.length
+    ? ((conversationSearchIndex % conversationSearchMatches.length) +
+        conversationSearchMatches.length) %
+      conversationSearchMatches.length
+    : 0;
+  const activeConversationSearchMatch =
+    conversationSearchMatches[activeConversationSearchIndex] ?? null;
   const timeline = useMemo<TimelineEntry[]>(() => {
     const turnEntries: TimelineEntry[] = turns.flatMap((turn) => {
       const userMessage = turn.messages.find(
@@ -356,6 +374,65 @@ function DesktopApp() {
   useEffect(() => {
     if (codexImportOpen) codexImportCloseRef.current?.focus();
   }, [codexImportOpen]);
+
+  useEffect(() => {
+    if (conversationSearchOpen) {
+      conversationSearchInputRef.current?.focus();
+    } else if (conversationSearchWasOpenRef.current) {
+      conversationSearchTriggerRef.current?.focus();
+    }
+    conversationSearchWasOpenRef.current = conversationSearchOpen;
+  }, [conversationSearchOpen]);
+
+  useEffect(() => {
+    if (!conversationSearchOpen || !activeConversationSearchMatch) return;
+    const target = document.getElementById(
+      `transcript-message-${activeConversationSearchMatch.id}`,
+    );
+    if (!target) return;
+    target.scrollIntoView({
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        ? 'auto'
+        : 'smooth',
+      block: 'center',
+    });
+  }, [conversationSearchOpen, activeConversationSearchMatch?.id]);
+
+  useEffect(() => {
+    const handleSearchShortcut = (event: KeyboardEvent) => {
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        event.key.toLowerCase() === 'f' &&
+        !modelSettingsOpen &&
+        !codexImportOpen &&
+        (root?.messages.length ?? 0) > 0
+      ) {
+        event.preventDefault();
+        setConversationSearchOpen(true);
+        return;
+      }
+      if (event.key === 'Escape' && conversationSearchOpen) {
+        event.preventDefault();
+        setConversationSearchOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleSearchShortcut);
+    return () => window.removeEventListener('keydown', handleSearchShortcut);
+  }, [
+    conversationSearchOpen,
+    codexImportOpen,
+    modelSettingsOpen,
+    root?.messages.length,
+  ]);
+
+  const moveConversationSearch = (direction: number) => {
+    if (conversationSearchMatches.length === 0) return;
+    setConversationSearchIndex(
+      (current) =>
+        (current + direction + conversationSearchMatches.length) %
+        conversationSearchMatches.length,
+    );
+  };
 
   const refreshModels = async () => {
     setRefreshing(true);
@@ -743,9 +820,25 @@ function DesktopApp() {
       </header>
 
       <main className="conversation-page">
-        <div className="page-heading">
+        <div
+          className={`page-heading${conversationSearchOpen ? ' is-searching' : ''}`}
+        >
           <div className="heading-copy">
-            <h1>主对话</h1>
+            <div className="heading-title-row">
+              <h1>主对话</h1>
+              {(root?.messages.length ?? 0) > 0 && (
+                <button
+                  ref={conversationSearchTriggerRef}
+                  className="conversation-search-trigger"
+                  type="button"
+                  onClick={() => setConversationSearchOpen(true)}
+                  aria-keyshortcuts="Control+F Meta+F"
+                  title="查找这条对话（Ctrl+F）"
+                >
+                  查找
+                </button>
+              )}
+            </div>
             <p>
               对话保存在本机；发送时由 FreeLLMAPI
               转给第三方免费模型。供应商政策各异，部分会将请求用于训练。
@@ -873,6 +966,89 @@ function DesktopApp() {
             >
               {refreshing ? '检查中…' : '刷新列表'}
             </button>
+          </section>
+        )}
+
+        {conversationSearchOpen && (
+          <section
+            className="conversation-search"
+            role="search"
+            aria-label="在这条对话中查找"
+          >
+            <div className="conversation-search-controls">
+              <label className="sr-only" htmlFor="conversation-search-input">
+                查找本机保存的对话消息
+              </label>
+              <input
+                id="conversation-search-input"
+                ref={conversationSearchInputRef}
+                type="search"
+                value={conversationSearchQuery}
+                onChange={(event) => {
+                  setConversationSearchQuery(event.target.value);
+                  setConversationSearchIndex(0);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    moveConversationSearch(event.shiftKey ? -1 : 1);
+                  }
+                }}
+                placeholder="查找这条对话"
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <div className="conversation-search-actions">
+                <button
+                  type="button"
+                  onClick={() => moveConversationSearch(-1)}
+                  disabled={conversationSearchMatches.length === 0}
+                  aria-label="上一条匹配"
+                  title="上一条匹配（Shift+Enter）"
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  onClick={() => moveConversationSearch(1)}
+                  disabled={conversationSearchMatches.length === 0}
+                  aria-label="下一条匹配"
+                  title="下一条匹配（Enter）"
+                >
+                  ↓
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConversationSearchOpen(false)}
+                  aria-label="关闭查找"
+                  title="关闭查找（Escape）"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+            <p
+              className="conversation-search-status"
+              role="status"
+              aria-live="polite"
+            >
+              {!conversationSearchQuery.trim() ? (
+                '只查找本机保存的用户与 Noema 消息；不会调用模型。'
+              ) : conversationSearchMatches.length === 0 ? (
+                <>没有找到“{conversationSearchQuery.trim()}”</>
+              ) : (
+                <>
+                  {activeConversationSearchIndex + 1} /{' '}
+                  {conversationSearchMatches.length} ·{' '}
+                  {activeConversationSearchMatch?.role === 'user'
+                    ? '你'
+                    : 'Noema'}{' '}
+                  · {formatTime(activeConversationSearchMatch?.createdAt ?? '')}
+                  {' · '}
+                  {activeConversationSearchMatch?.snippet}
+                </>
+              )}
+            </p>
           </section>
         )}
 
@@ -1335,7 +1511,10 @@ function DesktopApp() {
                       </span>
                     </div>
                     <div className="turn-body">
-                      <div className="user-entry">
+                      <div
+                        id={`transcript-message-${userMessage.id}`}
+                        className={`user-entry${activeConversationSearchMatch?.id === userMessage.id ? ' is-search-current' : ''}`}
+                      >
                         <div className="entry-byline">
                           <span>你</span>
                         </div>
@@ -1354,7 +1533,8 @@ function DesktopApp() {
                         const isStreaming = message.status === 'streaming';
                         return (
                           <section
-                            className={`assistant-entry${isStreaming ? ' is-streaming' : ''}`}
+                            id={`transcript-message-${message.id}`}
+                            className={`assistant-entry${isStreaming ? ' is-streaming' : ''}${activeConversationSearchMatch?.id === message.id ? ' is-search-current' : ''}`}
                             key={message.id}
                             aria-busy={isStreaming}
                           >
