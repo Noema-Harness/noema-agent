@@ -40,6 +40,7 @@ test('registers only named root-agent actions and rejects non-window senders', a
     previewCodexThread: async (threadId) => ({ threadId }),
     importCodexThread: async (input) => input,
     removeContextImport: () => true,
+    updateInteractionAdjustment: async (input) => input,
     withdrawInteractionAdjustment: (id) => id === 'adjustment-1',
   };
   const trustedSender = {};
@@ -69,6 +70,7 @@ test('registers only named root-agent actions and rejects non-window senders', a
       CHANNELS.previewCodexThread,
       CHANNELS.importCodexThread,
       CHANNELS.removeContextImport,
+      CHANNELS.updateInteractionAdjustment,
       CHANNELS.withdrawInteractionAdjustment,
     ].sort(),
   );
@@ -101,6 +103,23 @@ test('registers only named root-agent actions and rejects non-window senders', a
     true,
   );
   assert.deepEqual(
+    await harness.handlers.get(CHANNELS.updateInteractionAdjustment)(
+      { sender: trustedSender },
+      {
+        id: 'adjustment-1',
+        scope: 'both',
+        situation: 'test situation',
+        behavior: 'test behavior',
+      },
+    ),
+    {
+      id: 'adjustment-1',
+      scope: 'both',
+      situation: 'test situation',
+      behavior: 'test behavior',
+    },
+  );
+  assert.deepEqual(
     await harness.handlers.get(CHANNELS.resumeWorker)(
       { sender: trustedSender },
       'task-1',
@@ -116,6 +135,18 @@ test('registers only named root-agent actions and rejects non-window senders', a
   );
   await assert.rejects(
     harness.handlers.get(CHANNELS.state)({ sender: {} }),
+    /未授权/,
+  );
+  await assert.rejects(
+    harness.handlers.get(CHANNELS.updateInteractionAdjustment)(
+      { sender: {} },
+      {
+        id: 'adjustment-1',
+        scope: 'both',
+        situation: 'unauthorized edit',
+        behavior: 'must not be saved',
+      },
+    ),
     /未授权/,
   );
   unregister();

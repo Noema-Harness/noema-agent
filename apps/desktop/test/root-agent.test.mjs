@@ -236,6 +236,17 @@ test('records a direct interaction correction and carries it across root turns',
   assert.ok(
     events.some((event) => event.type === 'interaction-adjustments-updated'),
   );
+  const editedAdjustment = agent.updateInteractionAdjustment({
+    id: adjustment.id,
+    scope: 'conversation',
+    situation: '用户分享不愉快经历但没有请求分析或建议',
+    behavior: '先回应当下感受，再问一个贴近原话的问题；不要先分析或给建议。',
+  });
+  assert.equal(editedAdjustment.userEdited, true);
+  assert.equal(
+    editedAdjustment.originalBehavior,
+    '先自然回应，并询问用户当时最在意的部分。',
+  );
 
   agent.sendMessage({
     text: '朋友临时取消了约定，我有点失落。',
@@ -247,8 +258,9 @@ test('records a direct interaction correction and carries it across root turns',
   assert.ok(adjustmentContext);
   assert.match(
     adjustmentContext.content,
-    /先自然回应，并询问用户当时最在意的部分/,
+    /先回应当下感受，再问一个贴近原话的问题/,
   );
+  assert.match(adjustmentContext.content, /"userEdited":true/);
   const latestRootMessage = store
     .getSnapshot()
     .messages.find(
@@ -256,11 +268,84 @@ test('records a direct interaction correction and carries it across root turns',
         message.turnId !== correction.turnId && message.role === 'assistant',
     );
   assert.deepEqual(latestRootMessage.interactionAdjustmentIds, [adjustment.id]);
+  assert.deepEqual(
+    latestRootMessage.interactionAdjustmentSnapshots[0],
+    store.getInteractionAdjustment(adjustment.id) && {
+      id: adjustment.id,
+      scope: 'conversation',
+      situation: '用户分享不愉快经历但没有请求分析或建议',
+      behavior: '先回应当下感受，再问一个贴近原话的问题；不要先分析或给建议。',
+      sourceQuote: '不要先做心理分析。',
+      userEdited: true,
+      editedAt: store.getInteractionAdjustment(adjustment.id).editedAt,
+    },
+  );
   assert.equal(
     modelInputs[1].messages.at(-1).content,
     '朋友临时取消了约定，我有点失落。',
   );
   store.close();
+});
+
+test('RootAgent emits a state refresh when the user revises an interaction adjustment', async () => {
+  const store = new RootStore(':memory:');
+  const turn = store.beginTurn({
+    text: '这条长期纠正应保持可修订。',
+    model: 'auto:noema-free',
+  });
+  const adjustment = store.addInteractionAdjustment({
+    id: 'adjustment-root-agent-edit',
+    sourceTurnId: turn.id,
+    scope: 'conversation',
+    situation: '保存纠正',
+    behavior: '保留初始解释。',
+    sourceQuote: '保持可修订',
+  });
+  const events = [];
+  let modelCalls = 0;
+  const agent = new RootAgent({
+    store,
+    provider: {
+      async listModels() {
+        modelCalls += 1;
+        return [];
+      },
+      async *streamChat() {
+        modelCalls += 1;
+        yield 'unexpected model call';
+      },
+    },
+    secretStore: createSecretStore(),
+    emit: (event) => events.push(event),
+  });
+
+  try {
+    const updated = agent.updateInteractionAdjustment({
+      id: adjustment.id,
+      scope: 'both',
+      situation: '用户直接修订后',
+      behavior: '以后使用用户当前版本。',
+    });
+    assert.equal(updated.userEdited, true);
+    assert.equal(updated.behavior, '以后使用用户当前版本。');
+    assert.deepEqual(events, [{ type: 'interaction-adjustments-updated' }]);
+    assert.equal(modelCalls, 0);
+    assert.equal(store.withdrawInteractionAdjustment(adjustment.id), true);
+    assert.equal(
+      agent.updateInteractionAdjustment({
+        id: adjustment.id,
+        scope: 'conversation',
+        situation: '已撤回',
+        behavior: '不可再编辑',
+      }),
+      null,
+    );
+    assert.equal(events.length, 1);
+    assert.equal(modelCalls, 0);
+  } finally {
+    await agent.shutdown();
+    store.close();
+  }
 });
 
 test('preserves a failed user message and retries it without duplicating the user turn', async () => {
@@ -553,6 +638,85 @@ test('dispatches one DSH worker on the explicit free chain and returns its resul
     assert.equal(agent.clearWorkspaceDirectory(), null);
     assert.equal(store.getWorkspaceDirectory(), null);
   } finally {
+    store.close();
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('new DSH tasks carry the user-edited adjustment snapshot as the active version', async () => {
+  const store = new RootStore(':memory:');
+  const workspace = mkdtempSync(
+    path.join(tmpdir(), 'noema-edited-adjustment-'),
+  );
+  const correction = store.beginTurn({
+    text: '这类任务里，先确认依赖，再开始修改。',
+    model: 'auto:noema-free',
+  });
+  const adjustment = store.addInteractionAdjustment({
+    id: 'adjustment-user-edited',
+    sourceTurnId: correction.id,
+    scope: 'coding',
+    situation: '开始代码任务前',
+    behavior: '先解释完整计划，然后等待确认。',
+    sourceQuote: '先确认依赖',
+  });
+  store.updateInteractionAdjustment({
+    id: adjustment.id,
+    scope: 'coding',
+    situation: '重大或不可逆的代码任务开始前',
+    behavior: '说明关键依赖；普通改动直接执行并自行验证。',
+  });
+  const sourceTurn = store.getTurn(correction.id);
+  store.appendAssistant({
+    id: correction.id,
+    attempt: 1,
+    content: '明白，我会区分重大决策和普通改动。',
+  });
+  store.completeTurn(correction.id, 1);
+
+  let workerInput;
+  const agent = new RootAgent({
+    store,
+    provider: { listModels: async () => [], async *streamChat() {} },
+    secretStore: createSecretStore(),
+    dshAdapter: {
+      async startTask(input) {
+        workerInput = input;
+        return {
+          started: Promise.resolve({ sessionId: 'session-edited-adjustment' }),
+          done: Promise.resolve({
+            status: 'completed',
+            sessionId: 'session-edited-adjustment',
+            result: '合成任务结束。',
+            errorCode: null,
+            errorMessage: null,
+            toolCallCount: 0,
+          }),
+          stop: () => true,
+        };
+      },
+    },
+  });
+
+  try {
+    const dispatch = await agent.startBackgroundTask({
+      sourceTurnId: sourceTurn.id,
+      prompt: '请检查这个合成代码任务。',
+      workspacePath: workspace,
+    });
+    assert.equal(dispatch.accepted, true);
+    await dispatch.completion;
+    const task = store.getBackgroundTask(dispatch.taskId);
+    assert.equal(task.interactionAdjustmentSnapshots.length, 1);
+    assert.equal(task.interactionAdjustmentSnapshots[0].userEdited, true);
+    assert.equal(
+      task.interactionAdjustmentSnapshots[0].behavior,
+      '说明关键依赖；普通改动直接执行并自行验证。',
+    );
+    assert.match(workerInput.task, /用户已直接修订/);
+    assert.match(workerInput.task, /普通改动直接执行并自行验证/);
+  } finally {
+    await agent.shutdown();
     store.close();
     rmSync(workspace, { recursive: true, force: true });
   }

@@ -272,15 +272,12 @@ select:disabled {
   border-bottom: 1px solid var(--line-strong);
 }
 
-.page-heading.is-searching {
+.page-heading.is-focus-mode {
   padding-bottom: 12px;
 }
 
-.page-heading.is-searching .heading-copy > p {
-  display: none;
-}
-
-.page-heading.is-searching .workspace-control {
+.page-heading.is-focus-mode .heading-copy > p,
+.page-heading.is-focus-mode .workspace-control {
   display: none;
 }
 
@@ -808,7 +805,16 @@ select:disabled {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
+}
+
+.adjustment-heading-copy,
+.adjustment-heading-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 9px;
 }
 
 .adjustment-heading strong {
@@ -817,7 +823,13 @@ select:disabled {
   font-weight: 650;
 }
 
-.adjustment-heading button {
+.adjustment-edited-badge {
+  color: var(--accent-dark);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.adjustment-heading-actions button {
   flex: 0 0 auto;
   padding: 3px 0;
   border: 0;
@@ -830,8 +842,115 @@ select:disabled {
   cursor: pointer;
 }
 
-.adjustment-heading button:hover {
+.adjustment-heading-actions .adjustment-edit-button:hover {
+  color: var(--focus);
+}
+
+.adjustment-heading-actions .adjustment-withdraw-button:hover {
   color: var(--danger);
+}
+
+.adjustment-edit-form {
+  display: grid;
+  gap: 7px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.adjustment-edit-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(175px, 0.55fr);
+  gap: 8px;
+}
+
+.adjustment-edit-form label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.adjustment-edit-form input,
+.adjustment-edit-form textarea,
+.adjustment-edit-form select {
+  width: 100%;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.adjustment-edit-form textarea {
+  resize: vertical;
+}
+
+.adjustment-edit-note,
+.adjustment-edit-error {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.adjustment-edit-original {
+  padding: 7px 9px;
+  border-left: 2px solid var(--line-strong);
+  background: var(--paper-muted);
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.adjustment-edit-original summary {
+  width: fit-content;
+  cursor: pointer;
+}
+
+.adjustment-edit-original p {
+  margin: 5px 0 0;
+}
+
+.adjustment-edit-note {
+  color: var(--faint);
+}
+
+.adjustment-edit-error {
+  color: var(--danger);
+}
+
+.adjustment-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.adjustment-edit-actions button {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  background: var(--paper);
+  color: var(--ink-soft);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.adjustment-edit-actions .adjustment-edit-save {
+  border-color: var(--focus);
+  background: var(--focus);
+  color: white;
+}
+
+.adjustment-edit-actions .adjustment-edit-save:hover:not(:disabled) {
+  background: #294f48;
+}
+
+.adjustment-edit-actions button:disabled {
+  opacity: 0.55;
 }
 
 .adjustment-change {
@@ -867,6 +986,23 @@ select:disabled {
   font-size: 10px;
   line-height: 1.55;
   overflow-wrap: anywhere;
+}
+
+.adjustment-original-proposal {
+  display: grid;
+  gap: 3px;
+  margin-top: 8px;
+  padding: 7px 9px;
+  border-left: 2px solid var(--line-strong);
+  background: var(--paper-muted);
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.adjustment-original-proposal strong {
+  color: var(--ink-soft);
+  font-weight: 650;
 }
 
 .adjustment-source p {
@@ -2176,6 +2312,9 @@ select:disabled {
   .conversation-search {
     margin-left: 0;
   }
+  .adjustment-edit-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(165px, 0.55fr);
+  }
   .turn-list {
     width: 100%;
   }
@@ -2296,6 +2435,9 @@ select:disabled {
   }
   .conversation-page {
     padding: 0 13px;
+  }
+  .adjustment-edit-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
   .worker-dock {
     margin-left: 42px;

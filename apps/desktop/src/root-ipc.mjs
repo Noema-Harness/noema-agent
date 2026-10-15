@@ -15,6 +15,7 @@ const CHANNELS = Object.freeze({
   previewCodexThread: 'noema:preview-codex-thread',
   importCodexThread: 'noema:import-codex-thread',
   removeContextImport: 'noema:remove-context-import',
+  updateInteractionAdjustment: 'noema:update-interaction-adjustment',
   withdrawInteractionAdjustment: 'noema:withdraw-interaction-adjustment',
   event: 'noema:root-event',
 });
@@ -72,6 +73,9 @@ export function registerRootIpc({
     rootAgent.importCodexThread(input),
   );
   register(CHANNELS.removeContextImport, () => rootAgent.removeContextImport());
+  register(CHANNELS.updateInteractionAdjustment, (input) =>
+    rootAgent.updateInteractionAdjustment(input),
+  );
   register(CHANNELS.withdrawInteractionAdjustment, (id) =>
     rootAgent.withdrawInteractionAdjustment(id),
   );

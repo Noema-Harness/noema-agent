@@ -23,6 +23,7 @@ function hydrateBackgroundTask(row) {
     verificationChecksJson,
     verificationResultsJson,
     interactionAdjustmentIdsJson,
+    interactionAdjustmentSnapshotsJson,
     toolActionCategoriesJson,
     toolActionsTruncated,
     ...task
@@ -55,6 +56,9 @@ function hydrateBackgroundTask(row) {
       interactionAdjustmentIds: JSON.parse(
         interactionAdjustmentIdsJson ?? '[]',
       ),
+      interactionAdjustmentSnapshots: parseInteractionAdjustmentSnapshots(
+        interactionAdjustmentSnapshotsJson,
+      ),
       toolActionCategories,
       toolActionsTruncated: traceTruncated,
     };
@@ -64,6 +68,7 @@ function hydrateBackgroundTask(row) {
       verificationChecks: [],
       verificationResults: [],
       interactionAdjustmentIds: [],
+      interactionAdjustmentSnapshots: [],
       toolActionCategories,
       toolActionsTruncated: traceTruncated,
       verificationStatus: 'unavailable',
@@ -82,6 +87,71 @@ function normalizeInteractionAdjustmentIds(ids) {
     throw new TypeError('互动纠正来源列表无效。');
   }
   return [...new Set(ids)];
+}
+
+/** @param {unknown} snapshots */
+function normalizeInteractionAdjustmentSnapshots(snapshots) {
+  if (snapshots === undefined || snapshots === null) return [];
+  if (
+    !Array.isArray(snapshots) ||
+    snapshots.length > MAX_ACTIVE_INTERACTION_ADJUSTMENTS
+  ) {
+    throw new TypeError('互动纠正快照列表无效。');
+  }
+  return snapshots.map((snapshot) => {
+    if (!snapshot || typeof snapshot !== 'object') {
+      throw new TypeError('互动纠正快照无效。');
+    }
+    const {
+      id,
+      scope,
+      situation,
+      behavior,
+      sourceQuote,
+      userEdited,
+      editedAt,
+    } = snapshot;
+    requireText(id, 'adjustment id', 200);
+    if (!['conversation', 'coding', 'both'].includes(scope)) {
+      throw new TypeError('互动调整适用范围无效。');
+    }
+    const normalizedSituation = requireText(situation, 'situation', 180).trim();
+    const normalizedBehavior = requireText(behavior, 'behavior', 240).trim();
+    const normalizedSourceQuote = requireText(
+      sourceQuote,
+      'source quote',
+      240,
+    ).trim();
+    if (
+      !normalizedSituation ||
+      !normalizedBehavior ||
+      !normalizedSourceQuote ||
+      typeof userEdited !== 'boolean' ||
+      (editedAt !== null && typeof editedAt !== 'string')
+    ) {
+      throw new TypeError('互动纠正快照内容无效。');
+    }
+    return {
+      id,
+      scope,
+      situation: normalizedSituation,
+      behavior: normalizedBehavior,
+      sourceQuote: normalizedSourceQuote,
+      userEdited,
+      editedAt,
+    };
+  });
+}
+
+/** @param {string | null | undefined} snapshotsJson */
+function parseInteractionAdjustmentSnapshots(snapshotsJson) {
+  try {
+    return normalizeInteractionAdjustmentSnapshots(
+      JSON.parse(snapshotsJson ?? '[]'),
+    );
+  } catch {
+    return [];
+  }
 }
 
 function nowIso() {
@@ -348,7 +418,119 @@ export class RootStore {
       });
       applyBackgroundToolActionTraceSchema();
     }
-    if (currentVersion > 9)
+    if (currentVersion < 10) {
+      const applyInteractionAdjustmentEditingSchema = this.db.transaction(
+        () => {
+          this.db.exec(`
+            ALTER TABLE interaction_adjustments
+              ADD COLUMN original_scope TEXT
+                CHECK (original_scope IS NULL OR original_scope IN ('conversation', 'coding', 'both'));
+            ALTER TABLE interaction_adjustments
+              ADD COLUMN original_situation TEXT;
+            ALTER TABLE interaction_adjustments
+              ADD COLUMN original_behavior TEXT;
+            ALTER TABLE interaction_adjustments
+              ADD COLUMN user_edited INTEGER NOT NULL DEFAULT 0
+                CHECK (user_edited IN (0, 1));
+            ALTER TABLE interaction_adjustments
+              ADD COLUMN edited_at TEXT;
+            ALTER TABLE root_messages
+              ADD COLUMN interaction_adjustment_ids_json TEXT NOT NULL DEFAULT '[]';
+            ALTER TABLE root_messages
+              ADD COLUMN interaction_adjustment_snapshots_json TEXT NOT NULL DEFAULT '[]';
+            ALTER TABLE background_tasks
+              ADD COLUMN interaction_adjustment_snapshots_json TEXT NOT NULL DEFAULT '[]';
+          `);
+
+          const adjustments = new Map(
+            this.db
+              .prepare(`
+                SELECT id, scope, situation, behavior,
+                  source_quote AS sourceQuote, user_edited AS userEdited,
+                  edited_at AS editedAt
+                FROM interaction_adjustments
+              `)
+              .all()
+              .map((adjustment) => [
+                adjustment.id,
+                { ...adjustment, userEdited: Boolean(adjustment.userEdited) },
+              ]),
+          );
+          const makeSnapshots = (idsJson) => {
+            let ids = [];
+            try {
+              ids = normalizeInteractionAdjustmentIds(
+                JSON.parse(idsJson ?? '[]'),
+              );
+            } catch {
+              return [];
+            }
+            return normalizeInteractionAdjustmentSnapshots(
+              ids.flatMap((id) => {
+                const adjustment = adjustments.get(id);
+                return adjustment ? [adjustment] : [];
+              }),
+            );
+          };
+          const backfillSnapshots = (table) => {
+            const rows = this.db
+              .prepare(`
+                SELECT id, interaction_adjustment_ids_json AS idsJson
+                FROM ${table}
+                WHERE interaction_adjustment_ids_json != '[]'
+              `)
+              .all();
+            const update = this.db.prepare(`
+              UPDATE ${table}
+              SET interaction_adjustment_snapshots_json = ?
+              WHERE id = ?
+            `);
+            for (const row of rows) {
+              update.run(JSON.stringify(makeSnapshots(row.idsJson)), row.id);
+            }
+          };
+          const latestAttempts = this.db
+            .prepare(`
+              SELECT m.id, t.interaction_adjustment_ids_json AS idsJson
+              FROM root_messages AS m
+              JOIN root_turns AS t ON t.id = m.turn_id
+              WHERE m.role = 'assistant' AND m.attempt = t.attempt
+                AND t.interaction_adjustment_ids_json != '[]'
+            `)
+            .all();
+          const backfillLatestAttempt = this.db.prepare(`
+            UPDATE root_messages
+            SET interaction_adjustment_ids_json = ?,
+                interaction_adjustment_snapshots_json = ?
+            WHERE id = ?
+          `);
+          for (const row of latestAttempts) {
+            let adjustmentIds = [];
+            try {
+              adjustmentIds = normalizeInteractionAdjustmentIds(
+                JSON.parse(row.idsJson ?? '[]'),
+              );
+            } catch {
+              adjustmentIds = [];
+            }
+            const snapshots = makeSnapshots(row.idsJson);
+            backfillLatestAttempt.run(
+              JSON.stringify(adjustmentIds),
+              JSON.stringify(snapshots),
+              row.id,
+            );
+          }
+          backfillSnapshots('background_tasks');
+          this.db
+            .prepare(
+              'INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)',
+            )
+            .run(10, nowIso());
+        },
+      );
+      applyInteractionAdjustmentEditingSchema();
+    }
+    if (currentVersion > 10)
       throw new Error(
         `Database schema ${currentVersion} is newer than this Noema build supports`,
       );
@@ -607,7 +789,8 @@ export class RootStore {
              t.status AS turnStatus, t.attempt AS currentAttempt,
              t.context_turns AS contextTurns, t.context_omitted_turns AS contextOmittedTurns,
              t.context_characters AS contextCharacters,
-          t.interaction_adjustment_ids_json AS interactionAdjustmentIdsJson,
+             m.interaction_adjustment_ids_json AS interactionAdjustmentIdsJson,
+             m.interaction_adjustment_snapshots_json AS interactionAdjustmentSnapshotsJson,
              t.error_code AS errorCode, t.error_message AS errorMessage
       FROM root_messages AS m
       JOIN root_turns AS t ON t.id = m.turn_id
@@ -617,6 +800,7 @@ export class RootStore {
       .map((message) => {
         const {
           interactionAdjustmentIdsJson,
+          interactionAdjustmentSnapshotsJson,
           routedViaJson,
           ...hydratedMessage
         } = message;
@@ -638,12 +822,18 @@ export class RootStore {
             interactionAdjustmentIds: normalizeInteractionAdjustmentIds(
               JSON.parse(interactionAdjustmentIdsJson ?? '[]'),
             ),
+            interactionAdjustmentSnapshots: parseInteractionAdjustmentSnapshots(
+              interactionAdjustmentSnapshotsJson,
+            ),
           };
         } catch {
           return {
             ...hydratedMessage,
             routedVia,
             interactionAdjustmentIds: [],
+            interactionAdjustmentSnapshots: parseInteractionAdjustmentSnapshots(
+              interactionAdjustmentSnapshotsJson,
+            ),
           };
         }
       });
@@ -667,7 +857,7 @@ export class RootStore {
     };
   }
 
-  /** @param {{id:string,sourceTurnId:string,workspacePath:string,model:string,prompt:string,verificationChecks?:unknown,interactionAdjustmentIds?:unknown}} input */
+  /** @param {{id:string,sourceTurnId:string,workspacePath:string,model:string,prompt:string,verificationChecks?:unknown,interactionAdjustmentIds?:unknown,interactionAdjustmentSnapshots?:unknown}} input */
   createBackgroundTask({
     id,
     sourceTurnId,
@@ -676,6 +866,7 @@ export class RootStore {
     prompt,
     verificationChecks = [],
     interactionAdjustmentIds = [],
+    interactionAdjustmentSnapshots = [],
   }) {
     requireText(id, 'task id', 200);
     requireText(sourceTurnId, 'source turn id', 200);
@@ -686,6 +877,19 @@ export class RootStore {
     const adjustmentIds = normalizeInteractionAdjustmentIds(
       interactionAdjustmentIds,
     );
+    const adjustmentSnapshots = normalizeInteractionAdjustmentSnapshots(
+      interactionAdjustmentSnapshots,
+    );
+    if (
+      adjustmentSnapshots.some(
+        (snapshot, index) =>
+          !adjustmentIds.includes(snapshot.id) ||
+          adjustmentSnapshots.findIndex((item) => item.id === snapshot.id) !==
+            index,
+      )
+    ) {
+      throw new TypeError('互动纠正 ID 与后台任务快照不一致。');
+    }
     const active = this.db
       .prepare(
         "SELECT id FROM background_tasks WHERE status IN ('starting', 'running') LIMIT 1",
@@ -698,8 +902,9 @@ export class RootStore {
         INSERT INTO background_tasks (
           id, source_turn_id, harness, workspace_path, model, prompt,
           status, phase, verification_checks_json, verification_status,
-          interaction_adjustment_ids_json, created_at, updated_at
-        ) VALUES (?, ?, 'dsh-headless', ?, ?, ?, 'starting', 'starting', ?, ?, ?, ?, ?)
+          interaction_adjustment_ids_json, interaction_adjustment_snapshots_json,
+          created_at, updated_at
+        ) VALUES (?, ?, 'dsh-headless', ?, ?, ?, 'starting', 'starting', ?, ?, ?, ?, ?, ?)
       `)
       .run(
         id,
@@ -710,6 +915,7 @@ export class RootStore {
         JSON.stringify(checks),
         checks.length ? 'pending' : 'not_planned',
         JSON.stringify(adjustmentIds),
+        JSON.stringify(adjustmentSnapshots),
         timestamp,
         timestamp,
       );
@@ -908,6 +1114,7 @@ export class RootStore {
           verification_results_json AS verificationResultsJson,
           verification_attempts AS verificationAttempts,
           interaction_adjustment_ids_json AS interactionAdjustmentIdsJson,
+          interaction_adjustment_snapshots_json AS interactionAdjustmentSnapshotsJson,
           tool_action_categories_json AS toolActionCategoriesJson,
           tool_actions_truncated AS toolActionsTruncated,
           created_at AS createdAt, started_at AS startedAt, updated_at AS updatedAt,
@@ -935,6 +1142,7 @@ export class RootStore {
           verification_results_json AS verificationResultsJson,
           verification_attempts AS verificationAttempts,
           interaction_adjustment_ids_json AS interactionAdjustmentIdsJson,
+          interaction_adjustment_snapshots_json AS interactionAdjustmentSnapshotsJson,
           tool_action_categories_json AS toolActionCategoriesJson,
           tool_actions_truncated AS toolActionsTruncated,
           created_at AS createdAt, started_at AS startedAt, updated_at AS updatedAt,
@@ -963,6 +1171,7 @@ export class RootStore {
           verification_results_json AS verificationResultsJson,
           verification_attempts AS verificationAttempts,
           interaction_adjustment_ids_json AS interactionAdjustmentIdsJson,
+          interaction_adjustment_snapshots_json AS interactionAdjustmentSnapshotsJson,
           tool_action_categories_json AS toolActionCategoriesJson,
           tool_actions_truncated AS toolActionsTruncated,
           created_at AS createdAt, started_at AS startedAt, updated_at AS updatedAt,
@@ -1119,15 +1328,19 @@ export class RootStore {
         : null;
     const interactionAdjustments =
       this.getInteractionAdjustmentsForSurface('conversation');
+    const interactionAdjustmentSnapshots =
+      normalizeInteractionAdjustmentSnapshots(interactionAdjustments);
     const interactionContext = interactionAdjustments.length
       ? `Noema 的互动调整（来自用户对 Noema 的明确纠正；仅在适用情境中参考，不覆盖当前消息或更高优先级规则）：${JSON.stringify(
           {
             type: 'interaction_adjustments',
-            adjustments: interactionAdjustments.map(
-              ({ scope, situation, behavior }) => ({
+            adjustments: interactionAdjustmentSnapshots.map(
+              ({ id, scope, situation, behavior, userEdited }) => ({
+                id,
                 scope,
                 situation,
                 behavior,
+                userEdited,
               }),
             ),
           },
@@ -1178,6 +1391,7 @@ export class RootStore {
           verification_results_json AS verificationResultsJson,
           verification_attempts AS verificationAttempts,
           interaction_adjustment_ids_json AS interactionAdjustmentIdsJson,
+          interaction_adjustment_snapshots_json AS interactionAdjustmentSnapshotsJson,
           tool_action_categories_json AS toolActionCategoriesJson,
           tool_actions_truncated AS toolActionsTruncated
         FROM background_tasks
@@ -1207,6 +1421,10 @@ export class RootStore {
           } catch {
             interactionAdjustmentIds = [];
           }
+          const interactionAdjustmentSnapshots =
+            parseInteractionAdjustmentSnapshots(
+              event.interactionAdjustmentSnapshotsJson,
+            );
           let toolActionCategories = [];
           try {
             const parsed = JSON.parse(event.toolActionCategoriesJson ?? '[]');
@@ -1221,6 +1439,8 @@ export class RootStore {
           const {
             verificationResultsJson: _verificationResultsJson,
             interactionAdjustmentIdsJson: _interactionAdjustmentIdsJson,
+            interactionAdjustmentSnapshotsJson:
+              _interactionAdjustmentSnapshotsJson,
             toolActionCategoriesJson: _toolActionCategoriesJson,
             ...safeEvent
           } = event;
@@ -1228,6 +1448,7 @@ export class RootStore {
             ...safeEvent,
             verificationResults,
             interactionAdjustmentIds,
+            interactionAdjustmentSnapshots,
             toolActionCategories,
             toolActionsTruncated: Boolean(event.toolActionsTruncated),
           };
@@ -1304,6 +1525,7 @@ export class RootStore {
       historyCharacters,
       interactionAdjustmentCount: interactionAdjustments.length,
       interactionAdjustmentIds: interactionAdjustments.map((item) => item.id),
+      interactionAdjustmentSnapshots,
     };
   }
 
@@ -1316,12 +1538,21 @@ export class RootStore {
     return this.db
       .prepare(`
         SELECT id, source_turn_id AS sourceTurnId, scope, situation, behavior,
-          status, created_at AS createdAt, withdrawn_at AS withdrawnAt
+          source_quote AS sourceQuote, status,
+          original_scope AS originalScope,
+          original_situation AS originalSituation,
+          original_behavior AS originalBehavior,
+          user_edited AS userEdited, edited_at AS editedAt,
+          created_at AS createdAt, withdrawn_at AS withdrawnAt
         FROM interaction_adjustments
         WHERE status = 'active' AND scope IN (?, ?)
         ORDER BY seq DESC
       `)
-      .all(...scopes);
+      .all(...scopes)
+      .map((adjustment) => ({
+        ...adjustment,
+        userEdited: Boolean(adjustment.userEdited),
+      }));
   }
 
   /**
@@ -1404,20 +1635,25 @@ export class RootStore {
 
   /** @param {string} id */
   getInteractionAdjustment(id) {
-    return (
-      this.db
-        .prepare(`
+    const adjustment = this.db
+      .prepare(`
           SELECT a.id, a.source_turn_id AS sourceTurnId, a.scope,
             a.situation, a.behavior, a.status,
             a.created_at AS createdAt, a.withdrawn_at AS withdrawnAt,
-            a.source_quote AS sourceQuote
+            a.source_quote AS sourceQuote,
+            a.original_scope AS originalScope,
+            a.original_situation AS originalSituation,
+            a.original_behavior AS originalBehavior,
+            a.user_edited AS userEdited, a.edited_at AS editedAt
           FROM interaction_adjustments AS a
           JOIN root_messages AS m
             ON m.turn_id = a.source_turn_id AND m.role = 'user' AND m.attempt = 1
           WHERE a.id = ?
         `)
-        .get(id) ?? null
-    );
+      .get(id);
+    return adjustment
+      ? { ...adjustment, userEdited: Boolean(adjustment.userEdited) }
+      : null;
   }
 
   getInteractionAdjustments() {
@@ -1426,13 +1662,49 @@ export class RootStore {
         SELECT a.id, a.source_turn_id AS sourceTurnId, a.scope,
           a.situation, a.behavior, a.status,
           a.created_at AS createdAt, a.withdrawn_at AS withdrawnAt,
-          a.source_quote AS sourceQuote
+          a.source_quote AS sourceQuote,
+          a.original_scope AS originalScope,
+          a.original_situation AS originalSituation,
+          a.original_behavior AS originalBehavior,
+          a.user_edited AS userEdited, a.edited_at AS editedAt
         FROM interaction_adjustments AS a
         JOIN root_messages AS m
           ON m.turn_id = a.source_turn_id AND m.role = 'user' AND m.attempt = 1
         ORDER BY a.seq ASC
       `)
-      .all();
+      .all()
+      .map((adjustment) => ({
+        ...adjustment,
+        userEdited: Boolean(adjustment.userEdited),
+      }));
+  }
+
+  /**
+   * @param {{id:string,scope:'conversation'|'coding'|'both',situation:string,behavior:string}} input
+   */
+  updateInteractionAdjustment({ id, scope, situation, behavior }) {
+    requireText(id, 'adjustment id', 200);
+    if (!['conversation', 'coding', 'both'].includes(scope)) {
+      throw new TypeError('互动调整适用范围无效。');
+    }
+    const normalizedSituation = requireText(situation, 'situation', 180).trim();
+    const normalizedBehavior = requireText(behavior, 'behavior', 240).trim();
+    if (!normalizedSituation || !normalizedBehavior) {
+      throw new TypeError('适用情境和期望做法不能为空。');
+    }
+    const timestamp = nowIso();
+    const result = this.db
+      .prepare(`
+        UPDATE interaction_adjustments
+        SET original_scope = COALESCE(original_scope, scope),
+            original_situation = COALESCE(original_situation, situation),
+            original_behavior = COALESCE(original_behavior, behavior),
+            scope = ?, situation = ?, behavior = ?,
+            user_edited = 1, edited_at = ?
+        WHERE id = ? AND status = 'active'
+      `)
+      .run(scope, normalizedSituation, normalizedBehavior, timestamp, id);
+    return result.changes === 1 ? this.getInteractionAdjustment(id) : null;
   }
 
   /** @param {string} id */
@@ -1553,30 +1825,64 @@ export class RootStore {
     );
   }
 
-  /** @param {string} id @param {number} attempt @param {{includedTurns:number, omittedTurns:number, historyCharacters:number, interactionAdjustmentIds?:unknown}} context */
+  /** @param {string} id @param {number} attempt @param {{includedTurns:number, omittedTurns:number, historyCharacters:number, interactionAdjustmentIds?:unknown, interactionAdjustmentSnapshots?:unknown}} context */
   setTurnContext(id, attempt, context) {
     const interactionAdjustmentIds = normalizeInteractionAdjustmentIds(
       context.interactionAdjustmentIds,
     );
-    const timestamp = nowIso();
-    const result = this.db
-      .prepare(`
-      UPDATE root_turns
-      SET context_turns = ?, context_omitted_turns = ?, context_characters = ?,
-          interaction_adjustment_ids_json = ?, updated_at = ?
-      WHERE id = ? AND attempt = ? AND status = 'streaming'
-    `)
-      .run(
-        context.includedTurns,
-        context.omittedTurns,
-        context.historyCharacters,
-        JSON.stringify(interactionAdjustmentIds),
-        timestamp,
-        id,
-        attempt,
+    const interactionAdjustmentSnapshots =
+      normalizeInteractionAdjustmentSnapshots(
+        context.interactionAdjustmentSnapshots,
       );
-    if (result.changes !== 1)
-      throw new Error('The root turn is no longer active');
+    if (
+      interactionAdjustmentIds.length !==
+        interactionAdjustmentSnapshots.length ||
+      interactionAdjustmentIds.some(
+        (adjustmentId, index) =>
+          adjustmentId !== interactionAdjustmentSnapshots[index]?.id,
+      )
+    ) {
+      throw new TypeError('互动纠正 ID 与本轮快照不一致。');
+    }
+    const timestamp = nowIso();
+    const updateContext = this.db.transaction(() => {
+      const turnResult = this.db
+        .prepare(`
+          UPDATE root_turns
+          SET context_turns = ?, context_omitted_turns = ?, context_characters = ?,
+              interaction_adjustment_ids_json = ?, updated_at = ?
+          WHERE id = ? AND attempt = ? AND status = 'streaming'
+        `)
+        .run(
+          context.includedTurns,
+          context.omittedTurns,
+          context.historyCharacters,
+          JSON.stringify(interactionAdjustmentIds),
+          timestamp,
+          id,
+          attempt,
+        );
+      if (turnResult.changes !== 1)
+        throw new Error('The root turn is no longer active');
+      const messageResult = this.db
+        .prepare(`
+          UPDATE root_messages
+          SET interaction_adjustment_ids_json = ?,
+              interaction_adjustment_snapshots_json = ?, updated_at = ?
+          WHERE turn_id = ? AND role = 'assistant' AND attempt = ?
+            AND status = 'streaming'
+        `)
+        .run(
+          JSON.stringify(interactionAdjustmentIds),
+          JSON.stringify(interactionAdjustmentSnapshots),
+          timestamp,
+          id,
+          attempt,
+        );
+      if (messageResult.changes !== 1)
+        throw new Error('The active assistant attempt was not found');
+    });
+    updateContext();
   }
 
   /** @param {string} id */

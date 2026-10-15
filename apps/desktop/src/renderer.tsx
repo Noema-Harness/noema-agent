@@ -37,6 +37,11 @@ type TimelineEntry =
       adjustment: NoemaInteractionAdjustment;
     };
 
+type InteractionAdjustmentDraft = Pick<
+  NoemaInteractionAdjustment,
+  'id' | 'scope' | 'situation' | 'behavior'
+>;
+
 const markdownComponents: Components = {
   a: ({ href, children }) => (
     <a href={href} target="_blank" rel="noreferrer noopener">
@@ -232,6 +237,13 @@ function DesktopApp() {
   const [loadingCodex, setLoadingCodex] = useState(false);
   const [importingCodex, setImportingCodex] = useState(false);
   const [codexError, setCodexError] = useState('');
+  const [editingAdjustmentId, setEditingAdjustmentId] = useState<string | null>(
+    null,
+  );
+  const [adjustmentDraft, setAdjustmentDraft] =
+    useState<InteractionAdjustmentDraft | null>(null);
+  const [savingAdjustment, setSavingAdjustment] = useState(false);
+  const [adjustmentEditError, setAdjustmentEditError] = useState('');
   const [conversationSearchOpen, setConversationSearchOpen] = useState(false);
   const [conversationSearchQuery, setConversationSearchQuery] = useState('');
   const [conversationSearchIndex, setConversationSearchIndex] = useState(0);
@@ -240,6 +252,10 @@ function DesktopApp() {
   const conversationSearchInputRef = useRef<HTMLInputElement>(null);
   const conversationSearchTriggerRef = useRef<HTMLButtonElement>(null);
   const conversationSearchWasOpenRef = useRef(false);
+  const adjustmentEditSituationRef = useRef<HTMLInputElement>(null);
+  const adjustmentEditPanelRef = useRef<HTMLElement>(null);
+  const adjustmentEditButtonsRef = useRef(new Map<string, HTMLButtonElement>());
+  const previousEditingAdjustmentIdRef = useRef<string | null>(null);
   const codexImportTriggerRef = useRef<HTMLButtonElement>(null);
   const codexImportCloseRef = useRef<HTMLButtonElement>(null);
 
@@ -374,6 +390,23 @@ function DesktopApp() {
   useEffect(() => {
     if (codexImportOpen) codexImportCloseRef.current?.focus();
   }, [codexImportOpen]);
+
+  useEffect(() => {
+    if (editingAdjustmentId) {
+      adjustmentEditSituationRef.current?.focus();
+      adjustmentEditPanelRef.current?.scrollIntoView({
+        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches
+          ? 'auto'
+          : 'smooth',
+        block: 'nearest',
+      });
+    } else if (previousEditingAdjustmentIdRef.current) {
+      adjustmentEditButtonsRef.current
+        .get(previousEditingAdjustmentIdRef.current)
+        ?.focus();
+    }
+    previousEditingAdjustmentIdRef.current = editingAdjustmentId;
+  }, [editingAdjustmentId]);
 
   useEffect(() => {
     if (conversationSearchOpen) {
@@ -604,6 +637,56 @@ function DesktopApp() {
     }
   };
 
+  const beginEditingInteractionAdjustment = (
+    adjustment: NoemaInteractionAdjustment,
+  ) => {
+    setAdjustmentDraft({
+      id: adjustment.id,
+      scope: adjustment.scope,
+      situation: adjustment.situation,
+      behavior: adjustment.behavior,
+    });
+    setAdjustmentEditError('');
+    setEditingAdjustmentId(adjustment.id);
+  };
+
+  const cancelEditingInteractionAdjustment = () => {
+    if (savingAdjustment) return;
+    setAdjustmentEditError('');
+    setAdjustmentDraft(null);
+    setEditingAdjustmentId(null);
+  };
+
+  const saveInteractionAdjustment = async (
+    event: React.FormEvent<HTMLFormElement>,
+  ) => {
+    event.preventDefault();
+    if (!adjustmentDraft || savingAdjustment) return;
+    setSavingAdjustment(true);
+    setAdjustmentEditError('');
+    try {
+      const saved =
+        await window.noema.updateInteractionAdjustment(adjustmentDraft);
+      if (!saved) {
+        setAdjustmentEditError(
+          '这条调整已撤回或发生变化；刷新后确认当前状态。',
+        );
+        await refreshRoot();
+        return;
+      }
+      await refreshRoot();
+      setAdjustmentDraft(null);
+      setEditingAdjustmentId(null);
+      setNotice('已修订；后续新请求会使用当前版本，旧对话和运行中的任务不变。');
+    } catch (error) {
+      setAdjustmentEditError(
+        error instanceof Error ? error.message : '修订没有保存，请重试。',
+      );
+    } finally {
+      setSavingAdjustment(false);
+    }
+  };
+
   const sendMessage = async () => {
     const text = draft;
     if (!text.trim() || busy || sending) return;
@@ -821,7 +904,7 @@ function DesktopApp() {
 
       <main className="conversation-page">
         <div
-          className={`page-heading${conversationSearchOpen ? ' is-searching' : ''}`}
+          className={`page-heading${conversationSearchOpen || editingAdjustmentId ? ' is-focus-mode' : ''}`}
         >
           <div className="heading-copy">
             <div className="heading-title-row">
@@ -1184,6 +1267,16 @@ function DesktopApp() {
                       : adjustment.scope === 'coding'
                         ? '后台编码任务'
                         : 'Noema 对话与后台编码任务';
+                  const originalScopeLabel =
+                    adjustment.originalScope === 'conversation'
+                      ? 'Noema 对话'
+                      : adjustment.originalScope === 'coding'
+                        ? '后台编码任务'
+                        : adjustment.originalScope === 'both'
+                          ? 'Noema 对话与后台编码任务'
+                          : null;
+                  const isEditingAdjustment =
+                    editingAdjustmentId === adjustment.id && adjustmentDraft;
                   return (
                     <article className="turn adjustment-turn" key={entry.key}>
                       <div className="turn-gutter">
@@ -1196,43 +1289,236 @@ function DesktopApp() {
                       </div>
                       <div className="turn-body">
                         <section
+                          ref={
+                            isEditingAdjustment
+                              ? adjustmentEditPanelRef
+                              : undefined
+                          }
                           className={`adjustment-event${adjustment.status === 'withdrawn' ? ' is-withdrawn' : ''}`}
                           aria-label="Noema 互动调整"
                         >
                           <div className="adjustment-heading">
-                            <strong>
-                              {adjustment.status === 'active'
-                                ? '互动调整已记录'
-                                : '互动调整已撤回'}
-                            </strong>
-                            {adjustment.status === 'active' && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  void withdrawInteractionAdjustment(
-                                    adjustment.id,
-                                  )
-                                }
-                                aria-label={`撤回互动调整：${adjustment.situation}`}
-                              >
-                                撤回后续使用
-                              </button>
-                            )}
+                            <div className="adjustment-heading-copy">
+                              <strong>
+                                {isEditingAdjustment
+                                  ? '正在修改互动调整'
+                                  : adjustment.status === 'active'
+                                    ? '互动调整已记录'
+                                    : '互动调整已撤回'}
+                              </strong>
+                              {adjustment.userEdited && (
+                                <span
+                                  className="adjustment-edited-badge"
+                                  title={
+                                    adjustment.editedAt
+                                      ? `修订于 ${formatCodexTime(adjustment.editedAt)}`
+                                      : '此条调整由用户修订'
+                                  }
+                                >
+                                  你已修订
+                                </span>
+                              )}
+                            </div>
+                            {adjustment.status === 'active' &&
+                              !isEditingAdjustment && (
+                                <div className="adjustment-heading-actions">
+                                  <button
+                                    ref={(element) => {
+                                      if (element) {
+                                        adjustmentEditButtonsRef.current.set(
+                                          adjustment.id,
+                                          element,
+                                        );
+                                      } else {
+                                        adjustmentEditButtonsRef.current.delete(
+                                          adjustment.id,
+                                        );
+                                      }
+                                    }}
+                                    className="adjustment-edit-button"
+                                    type="button"
+                                    onClick={() =>
+                                      beginEditingInteractionAdjustment(
+                                        adjustment,
+                                      )
+                                    }
+                                    aria-label={`修改互动调整：${adjustment.situation}`}
+                                  >
+                                    修改
+                                  </button>
+                                  <button
+                                    className="adjustment-withdraw-button"
+                                    type="button"
+                                    onClick={() =>
+                                      void withdrawInteractionAdjustment(
+                                        adjustment.id,
+                                      )
+                                    }
+                                    aria-label={`撤回互动调整：${adjustment.situation}`}
+                                  >
+                                    撤回后续使用
+                                  </button>
+                                </div>
+                              )}
                           </div>
-                          <p className="adjustment-change">
-                            <span>适用：{scopeLabel}</span>
-                            <span>{adjustment.situation}</span>
-                            <span>期望做法：{adjustment.behavior}</span>
-                          </p>
-                          <details className="adjustment-source">
-                            <summary>查看来源与数据范围</summary>
-                            <blockquote>{adjustment.sourceQuote}</blockquote>
-                            <p>
-                              {adjustment.status === 'active'
-                                ? '后续匹配情境时，这条记录会作为参考随请求发送到当前免费模型路由；这不保证模型每次都遵循。撤回只影响之后的请求，不能撤回已发送内容或 DSH 原生任务记录。'
-                                : '撤回后，这条记录不会进入新的模型请求；原始对话仍保存在本机。'}
+                          {isEditingAdjustment ? (
+                            <form
+                              className="adjustment-edit-form"
+                              onSubmit={(event) =>
+                                void saveInteractionAdjustment(event)
+                              }
+                              onKeyDown={(event) => {
+                                if (event.key === 'Escape') {
+                                  event.preventDefault();
+                                  cancelEditingInteractionAdjustment();
+                                }
+                              }}
+                            >
+                              <div className="adjustment-edit-grid">
+                                <label>
+                                  <span>适用情境</span>
+                                  <input
+                                    id="interaction-adjustment-situation"
+                                    ref={adjustmentEditSituationRef}
+                                    value={adjustmentDraft.situation}
+                                    maxLength={180}
+                                    required
+                                    disabled={savingAdjustment}
+                                    onChange={(event) =>
+                                      setAdjustmentDraft((current) =>
+                                        current
+                                          ? {
+                                              ...current,
+                                              situation: event.target.value,
+                                            }
+                                          : current,
+                                      )
+                                    }
+                                  />
+                                </label>
+                                <label>
+                                  <span>适用范围</span>
+                                  <select
+                                    value={adjustmentDraft.scope}
+                                    disabled={savingAdjustment}
+                                    onChange={(event) =>
+                                      setAdjustmentDraft((current) =>
+                                        current
+                                          ? {
+                                              ...current,
+                                              scope: event.target
+                                                .value as NoemaInteractionAdjustment['scope'],
+                                            }
+                                          : current,
+                                      )
+                                    }
+                                  >
+                                    <option value="conversation">
+                                      Noema 对话
+                                    </option>
+                                    <option value="coding">后台编码任务</option>
+                                    <option value="both">
+                                      对话与后台编码任务
+                                    </option>
+                                  </select>
+                                </label>
+                              </div>
+                              <label>
+                                <span>期望做法</span>
+                                <textarea
+                                  value={adjustmentDraft.behavior}
+                                  maxLength={240}
+                                  rows={2}
+                                  required
+                                  disabled={savingAdjustment}
+                                  onChange={(event) =>
+                                    setAdjustmentDraft((current) =>
+                                      current
+                                        ? {
+                                            ...current,
+                                            behavior: event.target.value,
+                                          }
+                                        : current,
+                                    )
+                                  }
+                                />
+                              </label>
+                              <p className="adjustment-edit-note">
+                                原始引文：{adjustment.sourceQuote}
+                                。来源时间保持不变；修订只影响之后新建的请求，不回写旧对话或运行中的任务。
+                              </p>
+                              {adjustment.userEdited && (
+                                <details className="adjustment-edit-original">
+                                  <summary>查看模型初始归纳</summary>
+                                  <p>
+                                    适用：{originalScopeLabel} ·{' '}
+                                    {adjustment.originalSituation}
+                                  </p>
+                                  <p>期望做法：{adjustment.originalBehavior}</p>
+                                </details>
+                              )}
+                              {adjustmentEditError && (
+                                <p
+                                  className="adjustment-edit-error"
+                                  role="alert"
+                                >
+                                  {adjustmentEditError}
+                                </p>
+                              )}
+                              <div className="adjustment-edit-actions">
+                                <button
+                                  type="button"
+                                  onClick={cancelEditingInteractionAdjustment}
+                                  disabled={savingAdjustment}
+                                >
+                                  取消
+                                </button>
+                                <button
+                                  className="adjustment-edit-save"
+                                  type="submit"
+                                  disabled={
+                                    savingAdjustment ||
+                                    !adjustmentDraft.situation.trim() ||
+                                    !adjustmentDraft.behavior.trim()
+                                  }
+                                >
+                                  {savingAdjustment ? '保存中…' : '保存修订'}
+                                </button>
+                              </div>
+                            </form>
+                          ) : (
+                            <p className="adjustment-change">
+                              <span>适用：{scopeLabel}</span>
+                              <span>{adjustment.situation}</span>
+                              <span>期望做法：{adjustment.behavior}</span>
                             </p>
-                          </details>
+                          )}
+                          {!isEditingAdjustment && (
+                            <details className="adjustment-source">
+                              <summary>
+                                {adjustment.userEdited
+                                  ? '查看原始归纳与来源'
+                                  : '查看来源与数据范围'}
+                              </summary>
+                              {adjustment.userEdited &&
+                                adjustment.originalScope && (
+                                  <div className="adjustment-original-proposal">
+                                    <strong>模型初始归纳</strong>
+                                    <span>适用：{originalScopeLabel}</span>
+                                    <span>{adjustment.originalSituation}</span>
+                                    <span>
+                                      期望做法：{adjustment.originalBehavior}
+                                    </span>
+                                  </div>
+                                )}
+                              <blockquote>{adjustment.sourceQuote}</blockquote>
+                              <p>
+                                {adjustment.status === 'active'
+                                  ? '后续匹配情境时，当前版本会作为参考随请求发送到当前免费模型路由；这不保证模型每次都遵循。编辑或撤回不会改变已发送内容或 DSH 原生任务记录。'
+                                  : '撤回后，这条记录不会进入新的模型请求；原始对话仍保存在本机。'}
+                              </p>
+                            </details>
+                          )}
                         </section>
                       </div>
                     </article>
@@ -1243,13 +1529,7 @@ function DesktopApp() {
                   const toolActionSummary = task.toolActionsTruncated
                     ? `工具调用记录不完整（已记录 ${task.toolActionCategories.length} 次）`
                     : `查看 ${task.toolActionCategories.length} 次工具调用`;
-                  const taskAdjustments = task.interactionAdjustmentIds
-                    .map((id) =>
-                      root?.interactionAdjustments.find(
-                        (adjustment) => adjustment.id === id,
-                      ),
-                    )
-                    .filter((item) => item !== undefined);
+                  const taskAdjustments = task.interactionAdjustmentSnapshots;
                   return (
                     <article className="turn worker-turn" key={entry.key}>
                       <div className="turn-gutter">
@@ -1338,7 +1618,11 @@ function DesktopApp() {
                                 <ul>
                                   {taskAdjustments.map((adjustment) => (
                                     <li key={adjustment.id}>
-                                      <strong>{adjustment.situation}</strong>
+                                      <strong>
+                                        {adjustment.situation}
+                                        {adjustment.userEdited &&
+                                          ' · 用户已修订'}
+                                      </strong>
                                       <span>
                                         期望做法：{adjustment.behavior}
                                       </span>
@@ -1350,7 +1634,13 @@ function DesktopApp() {
                                 </ul>
                               ) : (
                                 <p>
-                                  纠正记录已撤回或清理，当前无法显示其原文。
+                                  没有保存当时的互动调整快照，无法检查具体内容。
+                                </p>
+                              )}
+                              {task.interactionAdjustmentIds.length >
+                                taskAdjustments.length && (
+                                <p>
+                                  这项历史任务只保存了部分调整快照；没有用当前版本推测当时上下文。
                                 </p>
                               )}
                               <p className="adjustment-application-caveat">
@@ -1490,15 +1780,8 @@ function DesktopApp() {
                 const currentAssistant = assistantMessages.find(
                   (message) => message.attempt === turn.latestAttempt,
                 );
-                const contextAdjustments = (
-                  currentAssistant?.interactionAdjustmentIds ?? []
-                )
-                  .map((id) =>
-                    root?.interactionAdjustments.find(
-                      (adjustment) => adjustment.id === id,
-                    ),
-                  )
-                  .filter((item) => item !== undefined);
+                const contextAdjustments =
+                  currentAssistant?.interactionAdjustmentSnapshots ?? [];
                 if (!userMessage) return null;
                 return (
                   <article className="turn" key={entry.key}>
@@ -1604,6 +1887,8 @@ function DesktopApp() {
                                         <li key={adjustment.id}>
                                           <strong>
                                             {adjustment.situation}
+                                            {adjustment.userEdited &&
+                                              ' · 用户已修订'}
                                           </strong>
                                           <span>
                                             期望做法：{adjustment.behavior}
@@ -1616,7 +1901,15 @@ function DesktopApp() {
                                     </ul>
                                   ) : (
                                     <p>
-                                      纠正记录已撤回或清理，当前无法显示其原文。
+                                      没有保存当时的互动调整快照，无法检查具体内容。
+                                    </p>
+                                  )}
+                                  {contextAdjustments.length <
+                                    (currentAssistant?.interactionAdjustmentIds
+                                      .length ?? 0) && (
+                                    <p>
+                                      旧 attempt
+                                      未保存全部文字快照；没有用当前版本推测当时上下文。
                                     </p>
                                   )}
                                   <p className="adjustment-application-caveat">
