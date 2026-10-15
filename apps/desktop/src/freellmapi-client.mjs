@@ -22,6 +22,13 @@ const VERIFIED_FREE_MODELS = new Map([
       label: 'Nemotron 3 Super 120B · 免费',
     },
   ],
+  [
+    'nvidia/nemotron-3.5-lightning',
+    {
+      name: 'nvidia/nemotron-3.5-lightning',
+      label: 'Nemotron 3.5 Lightning · 免费',
+    },
+  ],
 ]);
 
 export class FreeLLMAPIError extends Error {
