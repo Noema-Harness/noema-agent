@@ -89,6 +89,50 @@ select:disabled {
     var(--ground);
 }
 
+.desktop-runtime-needed {
+  width: 100%;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--ground);
+}
+
+.desktop-runtime-card {
+  width: min(100%, 520px);
+  padding: 32px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  box-shadow: var(--shadow);
+}
+
+.desktop-runtime-brand {
+  margin: 0 0 24px;
+  color: var(--ink-soft);
+  font-size: 14px;
+  font-weight: 680;
+  letter-spacing: -0.035em;
+}
+
+.desktop-runtime-card h1 {
+  margin: 0 0 14px;
+  font-size: clamp(20px, 4vw, 26px);
+  font-weight: 630;
+  letter-spacing: -0.035em;
+  line-height: 1.25;
+}
+
+.desktop-runtime-card p:not(.desktop-runtime-brand) {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.desktop-runtime-card p:last-child {
+  margin-bottom: 0;
+}
+
 .topbar {
   z-index: 4;
   min-height: 66px;
