@@ -89,7 +89,7 @@ function writeResult(resultPath, result, e2eDirectory) {
  * isolated database, DSH profile, and workspace. No API credentials are
  * copied or emitted; the caller supplies the app's normal encrypted store.
  *
- * @param {{agent:import('./root-agent.mjs').RootAgent,store:import('./root-store.mjs').RootStore,databasePath:string,prompt:string,resultPath:string,timeoutMs?:number}} input
+ * @param {{agent:import('./root-agent.mjs').RootAgent,store:import('./root-store.mjs').RootStore,databasePath:string,prompt:string,resultPath:string,rootOnly?:boolean,timeoutMs?:number}} input
  */
 export async function runIsolatedWorkerE2E({
   agent,
@@ -97,6 +97,7 @@ export async function runIsolatedWorkerE2E({
   databasePath,
   prompt,
   resultPath,
+  rootOnly = false,
   timeoutMs = 20 * 60 * 1_000,
 }) {
   if (
@@ -136,10 +137,13 @@ export async function runIsolatedWorkerE2E({
 
   const dshAvailable = Boolean(agent.dshAdapter);
   const canDispatch =
-    dshAvailable &&
-    (typeof agent.canDelegateToDsh !== 'function' || agent.canDelegateToDsh());
+    rootOnly ||
+    (dshAvailable &&
+      (typeof agent.canDelegateToDsh !== 'function' ||
+        agent.canDelegateToDsh()));
   if (!canDispatch) {
     const result = {
+      rootOnly,
       outcome: 'preflight_failed',
       turnStatus: 'not_started',
       turnErrorCode: 'dsh_unavailable',
@@ -183,6 +187,7 @@ export async function runIsolatedWorkerE2E({
   }
 
   const result = {
+    rootOnly,
     outcome:
       Date.now() >= deadline
         ? 'timeout'

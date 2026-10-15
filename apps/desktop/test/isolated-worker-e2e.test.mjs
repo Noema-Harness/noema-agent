@@ -137,6 +137,72 @@ test('isolated worker runner records DSH preflight failure without spending a mo
   }
 });
 
+test('root-only E2E checks a real chat without requiring DSH availability', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'noema-e2e-root-only-'));
+  const workspace = path.join(directory, 'workspace');
+  const resultPath = path.join(directory, 'result.json');
+  const databasePath = path.join(directory, 'root.sqlite3');
+  mkdirSync(workspace);
+  writeFileSync(databasePath, 'synthetic isolated database placeholder');
+  const expected = 'NOEMA-ROOT-ONLY-SYNTHETIC';
+  let receivedPrompt;
+  const agent = {
+    dshAdapter: null,
+    dshRuntimeError: 'DSH is intentionally not part of this check.',
+    sendMessage({ text, model }) {
+      receivedPrompt = { text, model };
+      this.active = { turn: { id: 'turn-root-only' }, done: Promise.resolve() };
+      return { turnId: 'turn-root-only' };
+    },
+  };
+  const store = {
+    getWorkspaceDirectory: () => workspace,
+    getSelectedModel: () => 'free-router',
+    getTurn: () => ({ status: 'completed', errorCode: null }),
+    getBackgroundTasks: () => [],
+    getSnapshot: () => ({
+      messages: [
+        {
+          turnId: 'turn-root-only',
+          role: 'assistant',
+          content: expected,
+          routedVia: ['kilo/openrouter/free'],
+          routeMetadataStatus: 'reported',
+        },
+      ],
+    }),
+  };
+
+  try {
+    const result = await runIsolatedWorkerE2E({
+      agent,
+      store,
+      databasePath,
+      resultPath,
+      prompt: '[NOEMA E2E] Reply with the synthetic marker.',
+      rootOnly: true,
+      timeoutMs: 1_000,
+    });
+
+    assert.deepEqual(receivedPrompt, {
+      text: '[NOEMA E2E] Reply with the synthetic marker.',
+      model: 'free-router',
+    });
+    assert.equal(result.rootOnly, true);
+    assert.equal(result.dshAvailable, false);
+    assert.equal(result.outcome, 'no_worker_dispatched');
+    assert.equal(result.turnStatus, 'completed');
+    assert.equal(result.assistantText, expected);
+    assert.deepEqual(result.rootRouteMetadata, {
+      status: 'reported',
+      routedVia: ['kilo/openrouter/free'],
+    });
+    assert.deepEqual(JSON.parse(readFileSync(resultPath, 'utf8')), result);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('isolated worker runner rejects a workspace outside the E2E directory before sending', async () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'noema-e2e-boundary-'));
   const databasePath = path.join(directory, 'root.sqlite3');

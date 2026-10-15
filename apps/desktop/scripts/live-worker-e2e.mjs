@@ -43,32 +43,42 @@ const e2eDirectory = path.dirname(workspacePath);
 const databasePath = path.join(e2eDirectory, 'root.sqlite3');
 const dshUserDataPath = path.join(e2eDirectory, 'dsh-user-data');
 const marker = `NOEMA-E2E-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+const rootReplyMarker = `NOEMA-ROOT-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 mkdirSync(workspacePath);
+const rootOnly = process.argv.includes('--root-only');
 const withCorrection = process.argv.includes('--with-correction');
 const withoutCorrection = process.argv.includes('--without-correction');
 if (withCorrection && withoutCorrection) {
   throw new Error('Choose either --with-correction or --without-correction.');
 }
-const includeCorrection = withCorrection || !withoutCorrection;
+const includeCorrection = withCorrection || (!withoutCorrection && !rootOnly);
 const requestedModel = process.env.NOEMA_E2E_MODEL ?? 'auto:noema-free';
 const allowedModels = new Set([
   'auto:noema-free',
   'free-router',
   'nvidia/nemotron-3-super-120b-a12b:free',
   'nvidia/nemotron-3.5-lightning',
+  'cohere/north-mini-code',
+  'nvidia/llama-3.2-11b-vision',
 ]);
 if (!allowedModels.has(requestedModel)) {
   throw new Error(
-    'Choose an E2E route already exposed by Noema: auto:noema-free, free-router, nvidia/nemotron-3-super-120b-a12b:free, or nvidia/nemotron-3.5-lightning.',
+    'Choose an E2E route already exposed by Noema: auto:noema-free, free-router, nvidia/nemotron-3-super-120b-a12b:free, nvidia/nemotron-3.5-lightning, cohere/north-mini-code, or nvidia/llama-3.2-11b-vision.',
   );
 }
 const correction =
   '当任务要求创建指定文件时，先创建，再读取确认内容；不要把搜索未找到当作完成。';
-const prompt = [
-  '[NOEMA E2E] 仅在当前已选的合成测试工作区内执行此任务。',
-  `创建 README.md，文件只需包含这一行：${marker}`,
-  '请将这项明确的文件创建任务交给后台 DSH agent；Noema 会独立核验文件和内容。不要修改其它文件。',
-].join('\n');
+const prompt = rootOnly
+  ? [
+      '[NOEMA E2E] This is a synthetic root-chat transport check only.',
+      `Reply with exactly this text and nothing else: ${rootReplyMarker}`,
+      'Do not call tools, delegate work, or modify files.',
+    ].join('\n')
+  : [
+      '[NOEMA E2E] 仅在当前已选的合成测试工作区内执行此任务。',
+      `创建 README.md，文件只需包含这一行：${marker}`,
+      '请将这项明确的文件创建任务交给后台 DSH agent；Noema 会独立核验文件和内容。不要修改其它文件。',
+    ].join('\n');
 
 const store = new RootStore(databasePath);
 store.setSelectedModel(requestedModel);
@@ -102,6 +112,7 @@ const child = spawn(process.execPath, ['scripts/start.mjs'], {
     NOEMA_E2E_DATABASE_PATH: databasePath,
     NOEMA_E2E_DSH_USER_DATA_PATH: dshUserDataPath,
     NOEMA_E2E_WORKER_PROMPT: prompt,
+    NOEMA_E2E_ROOT_ONLY: rootOnly ? '1' : '0',
   },
   stdio: 'inherit',
 });
@@ -139,6 +150,7 @@ const fileExists = existsSync(readmePath);
 const fileMatches =
   fileExists && readFileSync(readmePath, 'utf8').trim() === marker;
 const summary = {
+  mode: rootOnly ? 'root-only' : 'worker',
   correctionInjected: includeCorrection,
   requestedModel,
   outcome: rootResult.outcome,
@@ -162,12 +174,21 @@ const summary = {
   childSignal: exit.signal,
 };
 console.log(JSON.stringify(summary, null, 2));
+const rootChatPassed =
+  rootResult.rootOnly === true &&
+  rootResult.outcome === 'no_worker_dispatched' &&
+  rootResult.turnStatus === 'completed' &&
+  rootResult.assistantText?.trim() === rootReplyMarker &&
+  rootResult.rootRouteMetadata?.status === 'reported' &&
+  exit.code === 0;
 if (
-  rootResult.outcome !== 'worker_finished' ||
-  rootResult.task?.status !== 'completed' ||
-  rootResult.task?.verificationStatus !== 'verified' ||
-  !fileMatches ||
-  exit.code !== 0
+  rootOnly
+    ? !rootChatPassed
+    : rootResult.outcome !== 'worker_finished' ||
+      rootResult.task?.status !== 'completed' ||
+      rootResult.task?.verificationStatus !== 'verified' ||
+      !fileMatches ||
+      exit.code !== 0
 ) {
   process.exitCode = 1;
 }
