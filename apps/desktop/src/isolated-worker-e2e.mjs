@@ -92,12 +92,13 @@ function writeResult(resultPath, result, e2eDirectory) {
  * isolated database, DSH profile, and workspace. No API credentials are
  * copied or emitted; the caller supplies the app's normal encrypted store.
  *
- * @param {{agent:import('./root-agent.mjs').RootAgent,store:import('./root-store.mjs').RootStore,databasePath:string,prompt:string,resultPath:string,rootOnly?:boolean,timeoutMs?:number}} input
+ * @param {{agent:import('./root-agent.mjs').RootAgent,store:import('./root-store.mjs').RootStore,databasePath:string,prefacePrompt?:string|null,prompt:string,resultPath:string,rootOnly?:boolean,timeoutMs?:number}} input
  */
 export async function runIsolatedWorkerE2E({
   agent,
   store,
   databasePath,
+  prefacePrompt = null,
   prompt,
   resultPath,
   rootOnly = false,
@@ -108,6 +109,10 @@ export async function runIsolatedWorkerE2E({
     !path.isAbsolute(databasePath) ||
     typeof resultPath !== 'string' ||
     !path.isAbsolute(resultPath) ||
+    (prefacePrompt !== null &&
+      (typeof prefacePrompt !== 'string' ||
+        !prefacePrompt.startsWith('[NOEMA E2E PREFACE]') ||
+        prefacePrompt.length > 4_000)) ||
     typeof prompt !== 'string' ||
     !prompt.trim() ||
     prompt.length > 4_000 ||
@@ -137,6 +142,9 @@ export async function runIsolatedWorkerE2E({
     );
   }
   if (!model) throw new Error('An isolated E2E model must be selected.');
+  if (rootOnly && prefacePrompt) {
+    throw new TypeError('Root-only E2E does not accept a worker preface.');
+  }
 
   if (rootOnly) {
     agent.allowRootActions = false;
@@ -166,6 +174,38 @@ export async function runIsolatedWorkerE2E({
     };
     writeResult(resultPath, result, e2eDirectory);
     return result;
+  }
+
+  let prefaceTurn = null;
+  if (prefacePrompt) {
+    const { turnId: prefaceTurnId } = agent.sendMessage({
+      text: prefacePrompt,
+      model,
+    });
+    const activePreface = agent.active;
+    if (activePreface?.turn.id === prefaceTurnId) await activePreface.done;
+    prefaceTurn = store.getTurn(prefaceTurnId);
+    if (!prefaceTurn || prefaceTurn.status !== 'completed') {
+      const result = {
+        rootOnly,
+        outcome: 'preface_failed',
+        turnStatus: prefaceTurn?.status ?? 'missing',
+        turnErrorCode: prefaceTurn?.errorCode ?? null,
+        model,
+        dshAvailable,
+        dshWorkerError: agent.dshRuntimeError ?? null,
+        preface: {
+          turnId: prefaceTurnId,
+          status: prefaceTurn?.status ?? 'missing',
+          errorCode: prefaceTurn?.errorCode ?? null,
+        },
+        task: null,
+        assistantText: getAssistantText(store, prefaceTurnId),
+        rootRouteMetadata: getAssistantRouteMetadata(store, prefaceTurnId),
+      };
+      writeResult(resultPath, result, e2eDirectory);
+      return result;
+    }
   }
 
   const { turnId } = agent.sendMessage({ text: prompt, model });
@@ -213,6 +253,9 @@ export async function runIsolatedWorkerE2E({
     model,
     dshAvailable,
     dshWorkerError: agent.dshRuntimeError ?? null,
+    preface: prefaceTurn
+      ? { status: prefaceTurn.status, errorCode: prefaceTurn.errorCode ?? null }
+      : null,
     task: summarizeTask(task),
     assistantText: getAssistantText(store, turnId),
     rootRouteMetadata: getAssistantRouteMetadata(store, turnId),

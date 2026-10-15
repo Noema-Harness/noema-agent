@@ -81,10 +81,12 @@ let shutdownStarted = false;
 let shutdownComplete = false;
 const testDatabasePath = process.env.NOEMA_E2E_DATABASE_PATH ?? null;
 const testDshUserDataPath = process.env.NOEMA_E2E_DSH_USER_DATA_PATH ?? null;
+const testWorkerPreface = process.env.NOEMA_E2E_WORKER_PREFACE ?? null;
 const testWorkerPrompt = process.env.NOEMA_E2E_WORKER_PROMPT ?? null;
 const testRootOnly = process.env.NOEMA_E2E_ROOT_ONLY === '1';
 delete process.env.NOEMA_E2E_DATABASE_PATH;
 delete process.env.NOEMA_E2E_DSH_USER_DATA_PATH;
+delete process.env.NOEMA_E2E_WORKER_PREFACE;
 delete process.env.NOEMA_E2E_WORKER_PROMPT;
 delete process.env.NOEMA_E2E_ROOT_ONLY;
 
@@ -339,6 +341,8 @@ async function startNoema() {
       path.isAbsolute(testDatabasePath) &&
       testDshUserDataPath &&
       path.isAbsolute(testDshUserDataPath) &&
+      (!testWorkerPreface ||
+        testWorkerPreface.startsWith('[NOEMA E2E PREFACE]')) &&
       testWorkerPrompt?.startsWith('[NOEMA E2E]') &&
       path.resolve(testDatabasePath) !==
         path.join(app.getPath('userData'), 'noema.sqlite3') &&
@@ -364,6 +368,7 @@ async function startNoema() {
         agent,
         store: rootStore,
         databasePath: testDatabasePath,
+        prefacePrompt: testWorkerPreface,
         prompt: testWorkerPrompt,
         resultPath,
         rootOnly: testRootOnly,
