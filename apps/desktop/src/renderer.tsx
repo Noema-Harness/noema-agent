@@ -854,8 +854,17 @@ function App() {
               <div className="empty-copy">
                 <p className="empty-lead">这条对话还没有消息。</p>
                 <p>
-                  连接 FreeLLMAPI 并选择免费模型开始。关闭并重开 Noema
-                  后，这条对话会保留。
+                  {!root || root.checking
+                    ? '正在检查本机模型连接。'
+                    : !root.connected
+                      ? '连接本机 FreeLLMAPI 后即可开始；对话会保存在本机。'
+                      : root.models.length === 0
+                        ? 'FreeLLMAPI 已连接，但当前没有可用免费模型。检查供应商状态后刷新。'
+                        : selectedModelMissing
+                          ? '当前选中的模型暂不可用；可在顶部切换其他免费路由。'
+                          : !root.selectedModel
+                            ? '先在顶部选择免费模型，再从这里开始。'
+                            : '直接从这里开始；之后的消息会留在同一条本机对话里。'}
                 </p>
               </div>
             </div>
