@@ -11,6 +11,7 @@ import {
   DSH_FREE_MODEL,
   makeNoemaDshWorkerPatch,
   parseDshHeadlessEvent,
+  resolveDshHeadlessRuntime,
 } from '../src/dsh-headless-adapter.mjs';
 
 class FakeChild extends EventEmitter {
@@ -49,6 +50,59 @@ test('headless event parser rejects invalid protocol data', () => {
   assert.throws(
     () => parseDshHeadlessEvent('{"message":"missing type"}'),
     DshHeadlessError,
+  );
+});
+
+test('distinguishes a failed DSH headless probe from a missing Node runtime', async () => {
+  const execFileImpl = async (executable, args) => {
+    if (executable === 'where.exe' && args[0] === 'dsh.cmd') {
+      return { stdout: 'C:\\fake-npm\\dsh.cmd\r\n' };
+    }
+    if (executable === 'where.exe' && args[0] === 'node.exe') {
+      throw Object.assign(new Error('node not on PATH'), { code: 'ENOENT' });
+    }
+    if (args[0] === '--version') return { stdout: 'v24.21.0' };
+    if (args[1] === '--profile' && args[2] === 'headless') {
+      throw Object.assign(new Error('access denied'), { code: 'EACCES' });
+    }
+    assert.fail(`Unexpected probe: ${executable} ${args.join(' ')}`);
+  };
+
+  await assert.rejects(
+    resolveDshHeadlessRuntime({
+      env: {},
+      execFileImpl,
+      readFileImpl: async () => '{"version":"0.1.0"}',
+    }),
+    (error) =>
+      error.code === 'dsh_headless_probe_failed' &&
+      error.message.includes('EACCES') &&
+      !error.message.includes('access denied'),
+  );
+});
+
+test('reports an incompatible DSH headless protocol when Node is available', async () => {
+  const execFileImpl = async (executable, args) => {
+    if (executable === 'where.exe' && args[0] === 'dsh.cmd') {
+      return { stdout: 'C:\\fake-npm\\dsh.cmd\r\n' };
+    }
+    if (executable === 'where.exe' && args[0] === 'node.exe') {
+      throw Object.assign(new Error('node not on PATH'), { code: 'ENOENT' });
+    }
+    if (args[0] === '--version') return { stdout: 'v24.21.0' };
+    if (args[1] === '--profile' && args[2] === 'headless') {
+      return { stdout: 'Usage: dsh --profile headless [task...]\n' };
+    }
+    assert.fail(`Unexpected probe: ${executable} ${args.join(' ')}`);
+  };
+
+  await assert.rejects(
+    resolveDshHeadlessRuntime({
+      env: {},
+      execFileImpl,
+      readFileImpl: async () => '{"version":"0.1.0"}',
+    }),
+    (error) => error.code === 'dsh_headless_protocol_unsupported',
   );
 });
 
