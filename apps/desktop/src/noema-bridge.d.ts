@@ -244,6 +244,15 @@ export type NoemaWorkerEvent =
 
 export type NoemaRootEvent = NoemaTurnEvent | NoemaWorkerEvent;
 
+export interface NoemaQuickCaptureRequest {
+  returnToPrevious: boolean;
+}
+
+export interface NoemaQuickCaptureShortcutStatus {
+  accelerator: string;
+  registered: boolean;
+}
+
 export interface NoemaBridge {
   appVersion: string;
   getRootState(): Promise<NoemaRootState>;
@@ -303,6 +312,12 @@ export interface NoemaBridge {
   }): Promise<NoemaInteractionAdjustment | null>;
   withdrawInteractionAdjustment(id: string): Promise<boolean>;
   onRootEvent(listener: (event: NoemaRootEvent) => void): () => void;
+  onQuickCaptureRequested(
+    listener: (request: NoemaQuickCaptureRequest) => void,
+  ): () => void;
+  getQuickCaptureShortcutStatus(): Promise<NoemaQuickCaptureShortcutStatus | null>;
+  markQuickCaptureReady(): Promise<boolean>;
+  finishQuickCapture(): Promise<boolean>;
 }
 
 declare global {

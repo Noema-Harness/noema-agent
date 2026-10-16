@@ -1,5 +1,10 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { NoemaRootEvent, NoemaRootState } from './noema-bridge.d.ts';
+import type {
+  NoemaQuickCaptureRequest,
+  NoemaQuickCaptureShortcutStatus,
+  NoemaRootEvent,
+  NoemaRootState,
+} from './noema-bridge.d.ts';
 
 const bridge = {
   appVersion: process.env.npm_package_version ?? '0.1.0',
@@ -53,6 +58,23 @@ const bridge = {
     ipcRenderer.on('noema:root-event', handler);
     return () => ipcRenderer.removeListener('noema:root-event', handler);
   },
+  onQuickCaptureRequested: (
+    listener: (request: NoemaQuickCaptureRequest) => void,
+  ) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      request: NoemaQuickCaptureRequest,
+    ) => listener(request);
+    ipcRenderer.on('noema:quick-capture-request', handler);
+    return () =>
+      ipcRenderer.removeListener('noema:quick-capture-request', handler);
+  },
+  getQuickCaptureShortcutStatus:
+    (): Promise<NoemaQuickCaptureShortcutStatus | null> =>
+      ipcRenderer.invoke('noema:quick-capture-shortcut-status'),
+  markQuickCaptureReady: () =>
+    ipcRenderer.invoke('noema:mark-quick-capture-ready'),
+  finishQuickCapture: () => ipcRenderer.invoke('noema:finish-quick-capture'),
 };
 
 contextBridge.exposeInMainWorld('noema', bridge);

@@ -10,6 +10,7 @@ import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { createRoot } from 'react-dom/client';
 import { findTranscriptMatches } from './transcript-search.mjs';
+import { QuickCaptureDialog } from './quick-capture-dialog';
 import type {
   NoemaBackgroundTask,
   NoemaCapture,
@@ -17,6 +18,8 @@ import type {
   NoemaCodexThread,
   NoemaContextImport,
   NoemaInteractionAdjustment,
+  NoemaQuickCaptureRequest,
+  NoemaQuickCaptureShortcutStatus,
   NoemaRootMessage,
   NoemaRootState,
 } from './noema-bridge.d.ts';
@@ -225,6 +228,13 @@ function DesktopApp() {
     content: string;
   } | null>(null);
   const [captureBusy, setCaptureBusy] = useState<string | null>(null);
+  const [quickCaptureOpen, setQuickCaptureOpen] = useState(false);
+  const [quickCaptureText, setQuickCaptureText] = useState('');
+  const [quickCaptureError, setQuickCaptureError] = useState('');
+  const [quickCaptureSaving, setQuickCaptureSaving] = useState(false);
+  const [quickCaptureSaved, setQuickCaptureSaved] = useState(false);
+  const [quickCaptureShortcutStatus, setQuickCaptureShortcutStatus] =
+    useState<NoemaQuickCaptureShortcutStatus | null>(null);
   const [notice, setNotice] = useState('');
   const [sending, setSending] = useState(false);
   const [stopping, setStopping] = useState(false);
@@ -267,6 +277,10 @@ function DesktopApp() {
   const previousEditingAdjustmentIdRef = useRef<string | null>(null);
   const codexImportTriggerRef = useRef<HTMLButtonElement>(null);
   const codexImportCloseRef = useRef<HTMLButtonElement>(null);
+  const quickCaptureOpenRef = useRef(false);
+  const quickCaptureReturnToPreviousRef = useRef(false);
+  const quickCaptureSaveInFlightRef = useRef(false);
+  const quickCaptureFinishTimerRef = useRef<number | null>(null);
 
   const refreshRoot = useCallback(async () => {
     try {
@@ -309,6 +323,34 @@ function DesktopApp() {
     void refreshRoot();
     return unsubscribe;
   }, [refreshRoot]);
+
+  useEffect(() => {
+    const unsubscribeQuickCapture = window.noema.onQuickCaptureRequested(
+      (request: NoemaQuickCaptureRequest) => {
+        quickCaptureReturnToPreviousRef.current = request.returnToPrevious;
+        if (!quickCaptureOpenRef.current) {
+          setQuickCaptureText('');
+          setQuickCaptureError('');
+          setQuickCaptureSaved(false);
+          quickCaptureSaveInFlightRef.current = false;
+        }
+        quickCaptureOpenRef.current = true;
+        setQuickCaptureOpen(true);
+      },
+    );
+    void window.noema
+      .getQuickCaptureShortcutStatus()
+      .then((status) => setQuickCaptureShortcutStatus(status))
+      .catch(() => {
+        setNotice('无法读取快捷速记状态；仍可使用输入框里的“只记下来”。');
+      });
+    void window.noema.markQuickCaptureReady().catch(() => {
+      setNotice('快捷速记没有就绪；仍可使用输入框里的“只记下来”。');
+    });
+    return () => {
+      unsubscribeQuickCapture();
+    };
+  }, []);
 
   const turns = useMemo(
     () => groupTurns(root?.messages ?? []),
@@ -394,6 +436,10 @@ function DesktopApp() {
     interactionAdjustments,
   ]);
   const busy = Boolean(root?.activeTurnId);
+  const quickCaptureShortcutLabel =
+    quickCaptureShortcutStatus?.accelerator
+      .replace('Control', 'Ctrl')
+      .replace('Command', '⌘') ?? null;
 
   useLayoutEffect(() => {
     const node = conversationRef.current;
@@ -758,6 +804,68 @@ function DesktopApp() {
       );
     } finally {
       setCaptureBusy(null);
+    }
+  };
+
+  const dismissQuickCapture = async () => {
+    if (quickCaptureSaveInFlightRef.current) return;
+    if (quickCaptureFinishTimerRef.current !== null) {
+      window.clearTimeout(quickCaptureFinishTimerRef.current);
+      quickCaptureFinishTimerRef.current = null;
+    }
+    quickCaptureOpenRef.current = false;
+    quickCaptureReturnToPreviousRef.current = false;
+    setQuickCaptureOpen(false);
+    setQuickCaptureText('');
+    setQuickCaptureError('');
+    setQuickCaptureSaved(false);
+    try {
+      await window.noema.finishQuickCapture();
+    } catch (error) {
+      setNotice(
+        error instanceof Error
+          ? error.message
+          : '速记窗口没有正常关闭；可以再次按 Esc。',
+      );
+    }
+  };
+
+  const saveQuickCapture = async () => {
+    const text = quickCaptureText;
+    if (
+      !text.trim() ||
+      quickCaptureSaving ||
+      quickCaptureSaved ||
+      quickCaptureSaveInFlightRef.current
+    ) {
+      return;
+    }
+    quickCaptureSaveInFlightRef.current = true;
+    setQuickCaptureSaving(true);
+    setQuickCaptureError('');
+    try {
+      await window.noema.saveCapture(text);
+      await refreshRoot();
+      quickCaptureSaveInFlightRef.current = false;
+      setQuickCaptureSaving(false);
+      if (quickCaptureReturnToPreviousRef.current) {
+        setQuickCaptureSaved(true);
+        quickCaptureFinishTimerRef.current = window.setTimeout(() => {
+          quickCaptureFinishTimerRef.current = null;
+          void dismissQuickCapture();
+        }, 520);
+      } else {
+        await dismissQuickCapture();
+        setNotice('速记已保存在 Noema 本机，没有发送给模型。');
+      }
+    } catch (error) {
+      quickCaptureSaveInFlightRef.current = false;
+      setQuickCaptureError(
+        error instanceof Error
+          ? error.message
+          : '速记没有保存；原文仍在输入框中。',
+      );
+      setQuickCaptureSaving(false);
     }
   };
 
@@ -2289,9 +2397,15 @@ function DesktopApp() {
             />
             <div className="composer-footer">
               <span className="composer-hint">
-                {busy
-                  ? 'Noema 正在回复。可以先保存速记，或停止后再发送。'
-                  : 'Ctrl + Enter 发送 · Enter 换行 · 只记下来不会调用模型'}
+                {quickCaptureOpen
+                  ? '本机速记已打开 · Esc 取消 · Ctrl+Enter 保存'
+                  : busy
+                    ? 'Noema 正在回复。可以先保存速记，或停止后再发送。'
+                    : quickCaptureShortcutStatus?.registered
+                      ? `${quickCaptureShortcutLabel} 快速速记 · Ctrl + Enter 发送 · 只记下来不会调用模型`
+                      : quickCaptureShortcutStatus
+                        ? `${quickCaptureShortcutLabel} 快捷速记不可用（可能被占用）；仍可使用“只记下来”`
+                        : 'Ctrl + Enter 发送 · Enter 换行 · 只记下来不会调用模型'}
               </span>
               {busy ? (
                 <div className="composer-actions">
@@ -2350,6 +2464,21 @@ function DesktopApp() {
           </div>
         </div>
       </main>
+
+      <QuickCaptureDialog
+        open={quickCaptureOpen}
+        value={quickCaptureText}
+        shortcutLabel={quickCaptureShortcutLabel}
+        saving={quickCaptureSaving}
+        saved={quickCaptureSaved}
+        error={quickCaptureError}
+        onChange={(value) => {
+          setQuickCaptureText(value);
+          if (quickCaptureError) setQuickCaptureError('');
+        }}
+        onSave={() => void saveQuickCapture()}
+        onCancel={() => void dismissQuickCapture()}
+      />
 
       {notice && (
         <div className="toast" role="status">

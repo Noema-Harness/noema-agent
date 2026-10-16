@@ -62,3 +62,11 @@
 - 速记可能只是重复系统笔记功能；先观察真实使用，不预设自动学习，也不把使用条数当作 agent 成长。
 - 若用户很少使用、捕获记录很快变成另一堆待整理文档，或独立笔记工具以更少步骤满足同一需求，则移除或收敛此切片。
 - 若用户频繁选中速记与 Noema 讨论，并且后续出现可追溯的理解变化，再把这一来源纳入 ADR 0011 的经历—理解生命周期；在此之前不自动总结或注入。
+
+## Amendment（2026-10-16）：跨应用快捷速记入口
+
+**依据：**用户把 Noema 描述为日常生活与工作的个人 agent，并明确希望能随手放入零散的痛点、感悟与发现；PR #46 已提供应用内的本机速记，但仍要求用户先切换到 Noema。Apple Quick Note、OneNote Quick Note 与 Windows Sticky Notes 都提供低摩擦快速记录入口；OneNote 的 Windows 版在运行时支持系统级快捷键，Sticky Notes 也提供从任务栏快速创建。它们证明“快速入口”是成熟交互模式，不证明 Noema 速记本身不可替代。 [Apple Quick Note](https://support.apple.com/guide/notes/create-a-quick-note-apdf028f7034/mac) · [OneNote Quick Notes](https://support.microsoft.com/en-us/onenote/onenote-help-and-learning/create-quick-notes?ad=us&rs=en-us&ui=en-us) · [Windows Sticky Notes](https://support.microsoft.com/en-us/windows/apps/stickynotes/get-started-with-sticky-notes)
+
+**决定：**在 Noema 已运行时用 Electron `globalShortcut` 注册 `Ctrl+Alt+N`（macOS 为 `⌘⌥N`），在现有主窗口打开一个键盘优先的本机速记对话框。它复用已有的 `saveCapture` 和 `captured_moments`，不新增数据表、不读取剪贴板/当前应用、不调用 FreeLLMAPI/DSH。用户取消或 Escape 不写入；保存成功后沿用 ADR 0012 的主时间线。快捷键被占用时明确说明不可用，仍可使用 composer 的“只记下来”。快捷键只在 Noema 进程运行时有效；本 amendment 不增加登录自启、系统托盘或后台服务。生产版使用 Electron 单实例锁，重复启动时聚焦现有 Noema，避免重复数据库 owner 和相互竞争的快捷键；隔离 smoke 使用独立数据目录。若 Noema 原先未聚焦，保存/取消后最小化窗口以归还前台应用；若原先已聚焦，则保持 Noema 可见。该功能不意味着速记已被理解或纳入长期状态。
+
+**后果与重审：**这减少了从 Codex/浏览器等应用切换回来、只为保存一个念头的启动成本，同时新增一个可能冲突的系统快捷键。Electron 文档明确说明全局快捷键若已被其他应用占用会注册失败，因此失败必须在界面中可见，不得假装已启用。[Electron globalShortcut](https://www.electronjs.org/docs/latest/api/global-shortcut) Electron 的单实例锁会把第二次启动转交给第一实例，避免第二实例无法注册全局快捷键后仍让用户误以为快捷入口正常。[Electron single-instance lock](https://www.electronjs.org/docs/latest/api/app#apprequestsingleinstancelockadditionaldata) 这是助手在用户委托范围内作出的可逆产品决定；不设置自启动可避免未经选择的常驻行为。若用户很少使用、快捷键经常冲突，或切回 Noema 仍打断当前工作，则撤销全局入口，保留原有应用内速记。

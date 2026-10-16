@@ -2027,6 +2027,164 @@ select:disabled {
   backdrop-filter: blur(5px);
 }
 
+.quick-capture-dialog {
+  width: min(580px, calc(100vw - 28px));
+  max-height: calc(100dvh - 28px);
+  margin: auto;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: 0 24px 70px rgb(15 25 21 / 22%);
+}
+
+.quick-capture-dialog::backdrop {
+  background: rgb(24 34 30 / 36%);
+  backdrop-filter: blur(3px);
+}
+
+.quick-capture-form {
+  display: grid;
+  gap: 17px;
+  padding: 22px 24px 18px;
+}
+
+.quick-capture-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.quick-capture-heading h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 17px;
+  font-weight: 660;
+  letter-spacing: -0.02em;
+}
+
+.quick-capture-heading p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.quick-capture-heading kbd {
+  flex: 0 0 auto;
+  padding: 4px 7px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--paper-muted);
+  color: var(--ink-soft);
+  font-family: inherit;
+  font-size: 10px;
+  line-height: 1.3;
+}
+
+.quick-capture-form textarea {
+  width: 100%;
+  min-height: 136px;
+  max-height: min(38dvh, 320px);
+  padding: 12px 13px;
+  resize: vertical;
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  outline: 0;
+  background: #fff;
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.quick-capture-form textarea::placeholder {
+  color: var(--faint);
+  opacity: 1;
+}
+
+.quick-capture-form textarea:focus-visible {
+  border-color: var(--focus);
+  outline: 3px solid rgb(53 103 93 / 20%);
+  outline-offset: 1px;
+}
+
+.quick-capture-status {
+  min-height: 18px;
+  margin: -8px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.quick-capture-status.is-error {
+  color: var(--danger);
+}
+
+.quick-capture-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.quick-capture-actions > span {
+  color: var(--faint);
+  font-size: 10px;
+}
+
+.quick-capture-actions > div {
+  display: flex;
+  gap: 8px;
+}
+
+.quick-capture-actions button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.quick-capture-actions button:hover:not(:disabled) {
+  background: var(--paper-muted);
+  color: var(--ink);
+}
+
+.quick-capture-actions .quick-capture-save {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.quick-capture-actions .quick-capture-save:hover:not(:disabled) {
+  border-color: var(--accent-dark);
+  background: var(--accent-dark);
+  color: #fff;
+}
+
+.quick-capture-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.quick-capture-actions .quick-capture-save:disabled {
+  border-color: #eed9d1;
+  background: #eed9d1;
+  color: var(--accent-dark);
+  opacity: 1;
+}
+
+.quick-capture-actions button:focus-visible {
+  outline: 3px solid rgb(53 103 93 / 28%);
+  outline-offset: 2px;
+}
+
 .model-settings {
   width: min(100%, 480px);
   padding: 26px;

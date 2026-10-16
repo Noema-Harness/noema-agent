@@ -48,11 +48,25 @@ test('registers only named root-agent actions and rejects non-window senders', a
     withdrawInteractionAdjustment: (id) => id === 'adjustment-1',
   };
   const trustedSender = {};
+  let quickCaptureFinished = 0;
+  let quickCaptureReady = 0;
   const unregister = registerRootIpc({
     ipcMain: harness.ipcMain,
     rootAgent,
     isTrustedSender: (sender) => sender === trustedSender,
     chooseWorkspace: async () => 'D:\\Scratch',
+    finishQuickCapture: () => {
+      quickCaptureFinished += 1;
+      return true;
+    },
+    getQuickCaptureShortcutStatus: () => ({
+      accelerator: 'Control+Alt+N',
+      registered: true,
+    }),
+    markQuickCaptureReady: () => {
+      quickCaptureReady += 1;
+      return true;
+    },
   });
 
   assert.deepEqual(
@@ -80,6 +94,9 @@ test('registers only named root-agent actions and rejects non-window senders', a
       CHANNELS.removeContextImport,
       CHANNELS.updateInteractionAdjustment,
       CHANNELS.withdrawInteractionAdjustment,
+      CHANNELS.quickCaptureShortcutStatus,
+      CHANNELS.markQuickCaptureReady,
+      CHANNELS.finishQuickCapture,
     ].sort(),
   );
   assert.deepEqual(
@@ -139,6 +156,26 @@ test('registers only named root-agent actions and rejects non-window senders', a
     ),
     true,
   );
+  assert.equal(
+    await harness.handlers.get(CHANNELS.finishQuickCapture)({
+      sender: trustedSender,
+    }),
+    true,
+  );
+  assert.equal(quickCaptureFinished, 1);
+  assert.deepEqual(
+    await harness.handlers.get(CHANNELS.quickCaptureShortcutStatus)({
+      sender: trustedSender,
+    }),
+    { accelerator: 'Control+Alt+N', registered: true },
+  );
+  assert.equal(
+    await harness.handlers.get(CHANNELS.markQuickCaptureReady)({
+      sender: trustedSender,
+    }),
+    true,
+  );
+  assert.equal(quickCaptureReady, 1);
   assert.deepEqual(
     await harness.handlers.get(CHANNELS.updateInteractionAdjustment)(
       { sender: trustedSender },
@@ -172,6 +209,18 @@ test('registers only named root-agent actions and rejects non-window senders', a
   );
   await assert.rejects(
     harness.handlers.get(CHANNELS.state)({ sender: {} }),
+    /未授权/,
+  );
+  await assert.rejects(
+    harness.handlers.get(CHANNELS.finishQuickCapture)({ sender: {} }),
+    /未授权/,
+  );
+  await assert.rejects(
+    harness.handlers.get(CHANNELS.quickCaptureShortcutStatus)({ sender: {} }),
+    /未授权/,
+  );
+  await assert.rejects(
+    harness.handlers.get(CHANNELS.markQuickCaptureReady)({ sender: {} }),
     /未授权/,
   );
   await assert.rejects(
