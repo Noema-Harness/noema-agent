@@ -6,6 +6,7 @@ import {
   ipcMain,
   safeStorage,
   shell,
+  screen,
 } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -36,6 +37,10 @@ import {
   isInternalNavigation,
   shouldOpenExternally,
 } from './window-security.mjs';
+import {
+  fitsWithinWorkArea,
+  resolveInitialWindowSize,
+} from './window-geometry.mjs';
 import {
   activateQuickCaptureWindow,
   focusPrimaryWindow,
@@ -80,6 +85,7 @@ if (
 }
 
 let mainWindow: BrowserWindow | null = null;
+let initialWindowFitsWorkArea = false;
 let rootStore: RootStore | null = null;
 let providerSecretStore: EncryptedSecretStore | null = null;
 let unregisterRootIpc: (() => void) | null = null;
@@ -142,16 +148,19 @@ const hasSingleInstanceLock =
 
 const createWindow = () => {
   quickCaptureRendererReady = false;
+  const display = screen.getPrimaryDisplay();
+  const windowSize = resolveInitialWindowSize(display.workAreaSize);
   mainWindow = new BrowserWindow({
-    width: 1240,
-    height: 860,
-    minWidth: 680,
-    minHeight: 560,
+    ...windowSize,
     backgroundColor: '#f1f3f0',
     webPreferences: createWindowPreferences(
       path.join(__dirname, 'preload.cjs'),
     ),
   });
+  initialWindowFitsWorkArea = fitsWithinWorkArea(
+    mainWindow.getBounds(),
+    display.workArea,
+  );
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (shouldOpenExternally(url)) void shell.openExternal(url);
@@ -195,6 +204,7 @@ const createWindow = () => {
           url: mainWindow?.webContents.getURL() ?? null,
           title: mainWindow?.getTitle() ?? null,
           packaged: app.isPackaged,
+          windowFitsWorkArea: initialWindowFitsWorkArea,
           rootStateLoaded: true,
           providerConfigured: Boolean(bridgeState.providerConfigured),
           providerBaseUrl: bridgeState.providerBaseUrl ?? null,
