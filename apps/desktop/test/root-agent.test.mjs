@@ -814,6 +814,104 @@ test('retries one committed FreeLLMAPI provider error without losing the user tu
   store.close();
 });
 
+test('retries one pre-response FreeLLMAPI provider_unavailable on the same selected chain', async () => {
+  const store = new RootStore(':memory:');
+  store.setSelectedModel('auto:noema-free');
+  const requestedModels = [];
+  let calls = 0;
+  const agent = new RootAgent({
+    store,
+    provider: {
+      listModels: async () => [
+        { name: 'auto:noema-free', label: 'Noema 免费模型链' },
+      ],
+      async *streamChat(input) {
+        calls += 1;
+        requestedModels.push(input.model);
+        if (calls === 1) {
+          throw new FreeLLMAPIError(
+            'provider_unavailable',
+            'FreeLLMAPI 上游暂时不可用。',
+            503,
+          );
+        }
+        yield '第二次请求完成。';
+      },
+    },
+    secretStore: createSecretStore(),
+  });
+
+  const { turnId } = agent.sendMessage({ text: '测试无输出的上游故障恢复。' });
+  await agent.active.done;
+
+  const assistantMessages = store
+    .getSnapshot()
+    .messages.filter(
+      (message) => message.turnId === turnId && message.role === 'assistant',
+    );
+  assert.equal(calls, 2);
+  assert.deepEqual(requestedModels, ['auto:noema-free', 'auto:noema-free']);
+  assert.deepEqual(
+    assistantMessages.map((message) => [
+      message.attempt,
+      message.status,
+      message.content,
+    ]),
+    [
+      [1, 'failed', ''],
+      [2, 'complete', '第二次请求完成。'],
+    ],
+  );
+  assert.equal(
+    store
+      .getSnapshot()
+      .messages.filter(
+        (message) => message.turnId === turnId && message.role === 'user',
+      ).length,
+    1,
+  );
+  assert.equal(store.getTurn(turnId).attempt, 2);
+  store.close();
+});
+
+test('does not retry provider_unavailable after text was already streamed', async () => {
+  const store = new RootStore(':memory:');
+  store.setSelectedModel('auto:noema-free');
+  let calls = 0;
+  const agent = new RootAgent({
+    store,
+    provider: {
+      listModels: async () => [
+        { name: 'auto:noema-free', label: 'Noema 免费模型链' },
+      ],
+      async *streamChat() {
+        calls += 1;
+        yield '已提交的部分文本。';
+        throw new FreeLLMAPIError(
+          'provider_unavailable',
+          '此状态不应重放已发出的文本。',
+          503,
+        );
+      },
+    },
+    secretStore: createSecretStore(),
+  });
+
+  const { turnId } = agent.sendMessage({ text: '不要重复已经输出的内容。' });
+  await agent.active.done;
+
+  const assistant = store
+    .getSnapshot()
+    .messages.find(
+      (message) => message.turnId === turnId && message.role === 'assistant',
+    );
+  assert.equal(calls, 1);
+  assert.equal(assistant.content, '已提交的部分文本。');
+  assert.equal(store.getTurn(turnId).attempt, 1);
+  assert.equal(store.getTurn(turnId).status, 'failed');
+  store.close();
+});
+
 test('stops after one automatic root retry when the stream fails twice', async () => {
   const store = new RootStore(':memory:');
   store.setSelectedModel('auto:noema-free');

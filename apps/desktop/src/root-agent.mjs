@@ -15,7 +15,7 @@ import { searchTranscriptHistory } from './transcript-search.mjs';
 
 const MAX_AUTOMATIC_TASK_RETRIES = 3;
 const MAX_AUTOMATIC_RETRY_DELAY_MS = 120_000;
-const MAX_ROOT_STREAM_PROVIDER_RETRIES = 1;
+const MAX_ROOT_PROVIDER_RETRIES = 1;
 const PAST_CONTEXT_REFERENCE =
   /(?:之前|以前|过去|曾经|先前|上次|上回|刚才|前面|回想|回忆|记得|聊过|讨论过|提过|说过|提到过|上周|前几天|last\s+time|earlier|previously|before|remember\s+when|did\s+we\s+discuss)/iu;
 
@@ -674,6 +674,7 @@ export class RootAgent {
     let automaticProviderRetries = 0;
     while (true) {
       let providerStreamActive = false;
+      let providerStreamEmittedText = false;
       try {
         if (!turn.model) {
           throw new FreeLLMAPIError(
@@ -787,6 +788,7 @@ export class RootAgent {
             }
           },
         })) {
+          if (delta) providerStreamEmittedText = true;
           this.appendTurnText(turn, delta);
         }
         providerStreamActive = false;
@@ -813,10 +815,14 @@ export class RootAgent {
           });
           return;
         }
+        const retryableProviderFailure =
+          error?.code === 'provider_error' ||
+          (error?.code === 'provider_unavailable' &&
+            !providerStreamEmittedText);
         if (
           providerStreamActive &&
-          error?.code === 'provider_error' &&
-          automaticProviderRetries < MAX_ROOT_STREAM_PROVIDER_RETRIES
+          retryableProviderFailure &&
+          automaticProviderRetries < MAX_ROOT_PROVIDER_RETRIES
         ) {
           this.store.failTurn(turn.id, turn.attempt, error.code, error.message);
           turn = this.store.retryTurn(turn.id, turn.model);
