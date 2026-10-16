@@ -276,8 +276,7 @@ select:disabled {
   padding-bottom: 12px;
 }
 
-.page-heading.is-focus-mode .heading-copy > p,
-.page-heading.is-focus-mode .workspace-control {
+.page-heading.is-focus-mode .heading-copy > p {
   display: none;
 }
 
@@ -318,114 +317,6 @@ select:disabled {
   color: var(--muted);
   font-size: 13px;
   line-height: 1.6;
-}
-
-.workspace-control {
-  min-width: 0;
-  max-width: 66%;
-  display: grid;
-  grid-template-columns: minmax(155px, 0.8fr) minmax(230px, 1.2fr);
-  align-items: start;
-  gap: 8px 18px;
-  padding-bottom: 2px;
-}
-
-.scope-control {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 5px 9px;
-}
-
-.scope-control-heading {
-  grid-column: 1 / -1;
-  color: var(--ink-soft);
-  font-size: 10px;
-  font-weight: 650;
-  letter-spacing: 0.02em;
-}
-
-.scope-control-note {
-  grid-column: 1 / -1;
-  color: var(--faint);
-  font-size: 10px;
-  line-height: 1.45;
-}
-
-.scope-control-actions {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.workspace-label {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.workspace-label > span:last-child {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.workspace-mark {
-  width: 8px;
-  height: 8px;
-  flex: 0 0 8px;
-  border: 1px solid #80928a;
-  border-radius: 2px;
-  background: #e5ece7;
-}
-
-.workspace-button {
-  min-height: 31px;
-  flex: 0 0 auto;
-  padding: 0 10px;
-  border: 1px solid var(--line-strong);
-  border-radius: 4px;
-  background: var(--paper);
-  color: var(--ink-soft);
-  font-size: 10px;
-  cursor: pointer;
-  transition:
-    background-color 140ms ease,
-    border-color 140ms ease;
-}
-
-.workspace-button:hover:not(:disabled) {
-  border-color: #9daea3;
-  background: #f9fbf8;
-}
-
-.workspace-clear-button {
-  min-height: 30px;
-  flex: 0 0 auto;
-  padding: 0 7px;
-  border: 0;
-  background: transparent;
-  color: var(--faint);
-  font-size: 10px;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  cursor: pointer;
-}
-
-.workspace-clear-button:hover:not(:disabled) {
-  color: var(--danger);
-}
-
-.workspace-clear-button:disabled {
-  cursor: not-allowed;
-}
-
-.workspace-button:disabled {
-  color: var(--faint);
 }
 
 .connection-notice {
@@ -1973,6 +1864,66 @@ select:disabled {
   line-height: 1.7;
 }
 
+.composer-context-tools {
+  min-height: 40px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 14px 0;
+}
+
+.context-tool-button {
+  min-height: 29px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 10px;
+  cursor: pointer;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
+}
+
+.context-tool-button:hover:not(:disabled) {
+  border-color: var(--line-strong);
+  background: var(--paper-muted);
+  color: var(--ink);
+}
+
+.context-tool-button-active {
+  border-color: #bdcec3;
+  background: var(--success-soft);
+  color: #285e46;
+}
+
+.context-tool-button:disabled {
+  color: var(--faint);
+}
+
+.context-tool-clear {
+  min-height: 29px;
+  padding: 0 5px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 10px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.context-tool-clear:hover:not(:disabled) {
+  color: var(--danger);
+}
+
+.context-tool-clear:disabled {
+  color: var(--faint);
+}
+
 .composer textarea::placeholder {
   color: #65726c;
   opacity: 1;
@@ -2622,21 +2573,6 @@ select:disabled {
     gap: 8px;
     padding: 14px 0 11px;
   }
-  .workspace-control {
-    width: 100%;
-    max-width: none;
-    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
-    gap: 12px;
-  }
-  .workspace-label {
-    grid-column: 1 / -1;
-  }
-  .scope-control {
-    align-content: start;
-  }
-  .scope-control-actions {
-    grid-column: 1 / -1;
-  }
   .heading-copy h1 {
     font-size: 23px;
   }
@@ -2691,6 +2627,14 @@ select:disabled {
   .composer textarea {
     min-height: 68px;
     font-size: 16px;
+  }
+  .composer-context-tools {
+    gap: 5px;
+    padding: 8px 10px 0;
+  }
+  .context-tool-button {
+    min-height: 32px;
+    font-size: 11px;
   }
   .composer-disclosure {
     font-size: 9px;
@@ -2854,9 +2798,6 @@ select:disabled {
   .page-heading {
     padding-top: 8px;
     padding-bottom: 8px;
-  }
-  .heading-copy > p {
-    display: none;
   }
   .composer-dock {
     padding-top: 7px;

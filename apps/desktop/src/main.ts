@@ -380,6 +380,10 @@ async function captureHistoryTraceSmokeScreenshots() {
       );
       includedTrace?.scrollIntoView({ block: 'center' });
       return {
+        heading: document.querySelector('.page-heading h1')?.textContent?.trim() ?? null,
+        contextActions: [...document.querySelectorAll('.composer-context-tools button')]
+          .map((button) => button.textContent?.trim() ?? '')
+          .filter(Boolean),
         found: traces.some((trace) =>
           trace.textContent?.includes('本机找到') ||
           trace.textContent?.includes('本轮请求已包含'),

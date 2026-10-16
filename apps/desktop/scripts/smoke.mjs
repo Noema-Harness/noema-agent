@@ -230,6 +230,9 @@ child.on('exit', (code, signal) => {
         !loaded.historyTraceSmoke?.found ||
         !loaded.historyTraceSmoke.included ||
         loaded.historyTraceSmoke.sourceCount < 1 ||
+        loaded.historyTraceSmoke.heading !== '对话' ||
+        !Array.isArray(loaded.historyTraceSmoke.contextActions) ||
+        loaded.historyTraceSmoke.contextActions.length < 2 ||
         !loaded.historyTraceSmoke.noMatch ||
         !loaded.historyTraceSmoke.jumpWorked
       ) {
