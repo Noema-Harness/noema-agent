@@ -682,7 +682,9 @@ test('stopping a response records an interruption and preserves partial text', a
         signal.addEventListener(
           'abort',
           () => reject(new DOMException('Aborted', 'AbortError')),
-          { once: true },
+          {
+            once: true,
+          },
         );
       });
     },
@@ -742,6 +744,117 @@ test('preserves a user turn on free-provider rate limits without changing routes
   assert.equal(
     snapshot.messages.at(-1).errorMessage,
     'FreeLLMAPI 免费模型额度暂时受限。稍后重试。',
+  );
+  store.close();
+});
+
+test('retries one committed FreeLLMAPI provider error without losing the user turn', async () => {
+  const store = new RootStore(':memory:');
+  store.setSelectedModel('auto:noema-free');
+  const requestedModels = [];
+  const routedVia = [];
+  const events = [];
+  let calls = 0;
+  const agent = new RootAgent({
+    store,
+    provider: {
+      listModels: async () => [
+        { name: 'auto:noema-free', label: 'Noema 免费模型链' },
+      ],
+      async *streamChat(input) {
+        calls += 1;
+        requestedModels.push(input.model);
+        const route = `custom/test-route-${calls}`;
+        routedVia.push(route);
+        input.onRouteMetadata(route);
+        if (calls === 1) {
+          yield '上一次只返回了部分内容。';
+          throw new FreeLLMAPIError(
+            'provider_error',
+            'FreeLLMAPI 流式响应中途失败。',
+          );
+        }
+        yield '重试后完整返回。';
+      },
+    },
+    secretStore: createSecretStore(),
+    emit: (event) => events.push(event),
+  });
+
+  const { turnId } = agent.sendMessage({ text: '继续回答这个问题。' });
+  await agent.active.done;
+
+  const assistantMessages = store
+    .getSnapshot()
+    .messages.filter(
+      (message) => message.turnId === turnId && message.role === 'assistant',
+    );
+  assert.equal(calls, 2);
+  assert.deepEqual(requestedModels, ['auto:noema-free', 'auto:noema-free']);
+  assert.deepEqual(routedVia, ['custom/test-route-1', 'custom/test-route-2']);
+  assert.deepEqual(
+    assistantMessages.map((message) => [
+      message.attempt,
+      message.status,
+      message.content,
+    ]),
+    [
+      [1, 'failed', '上一次只返回了部分内容。'],
+      [2, 'complete', '重试后完整返回。'],
+    ],
+  );
+  assert.equal(store.getTurn(turnId).status, 'completed');
+  assert.equal(store.getTurn(turnId).attempt, 2);
+  assert.deepEqual(
+    events
+      .filter((event) => event.type === 'turn-started')
+      .map((event) => event.attempt),
+    [1, 2],
+  );
+  store.close();
+});
+
+test('stops after one automatic root retry when the stream fails twice', async () => {
+  const store = new RootStore(':memory:');
+  store.setSelectedModel('auto:noema-free');
+  let calls = 0;
+  const agent = new RootAgent({
+    store,
+    provider: {
+      listModels: async () => [
+        { name: 'auto:noema-free', label: 'Noema 免费模型链' },
+      ],
+      async *streamChat() {
+        calls += 1;
+        yield `第 ${calls} 次的未完成片段。`;
+        throw new FreeLLMAPIError(
+          'provider_error',
+          'FreeLLMAPI 流式响应中途失败。',
+        );
+      },
+    },
+    secretStore: createSecretStore(),
+  });
+
+  const { turnId } = agent.sendMessage({
+    text: '回答一次即可，不要无限重试。',
+  });
+  await agent.active.done;
+
+  const attempts = store
+    .getSnapshot()
+    .messages.filter(
+      (message) => message.turnId === turnId && message.role === 'assistant',
+    );
+  assert.equal(calls, 2);
+  assert.equal(store.getTurn(turnId).status, 'failed');
+  assert.equal(store.getTurn(turnId).attempt, 2);
+  assert.deepEqual(
+    attempts.map((message) => [message.attempt, message.status]),
+    [
+      [1, 'failed'],
+      [2, 'failed'],
+    ],
   );
   store.close();
 });
