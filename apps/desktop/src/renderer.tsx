@@ -2269,6 +2269,8 @@ function DesktopApp() {
                                                 : 'Noema'}
                                               {' · '}
                                               {formatTime(source.createdAt)}
+                                              {source.redacted &&
+                                                ' · 部分内容已隐藏'}
                                             </span>
                                             <button
                                               type="button"

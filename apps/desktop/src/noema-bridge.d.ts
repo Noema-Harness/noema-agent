@@ -8,6 +8,7 @@ export interface NoemaHistorySource {
   role: 'user' | 'assistant';
   createdAt: string;
   snippet: string;
+  redacted: boolean;
 }
 
 export interface NoemaRootMessage {

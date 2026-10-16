@@ -13,13 +13,14 @@ Noema 把根对话作为一条持续时间线保存，但模型每轮只能看�
 
 - OpenClaw 提供 `session_search`，可在会话重置后重新打开之前保存的原消息，而不是只把来源复制到一份长期摘要中。[OpenClaw 2026.9.4 release](https://github.com/openclaw/openclaw/blob/main/docs/releases/2026.9.4.md)
 - Hermes 把 `session_search` 作为会话边界后补回旧历史的方式；其文档也提醒，永不结束的长会话会不断压缩，而在同一会话中写入的 memory snapshot 不会自动更新。[Hermes memory docs](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/features/memory.md)
+- 历史片段可能含 API 凭据或私钥。发送前的本地遮蔽借鉴了 [GitHub Secret Scanning 支持的凭据类型](https://docs.github.com/en/code-security/reference/secret-security/supported-secret-scanning-patterns)；Noema 的正则只识别部分常见格式及显式标记值，不具备 GitHub 扫描服务的识别覆盖或有效性检查能力。
 - 这些项目证明按需检索是成熟的连续性机制，不证明 Noema 的检索本身有差异化。Noema 的依据是：它拥有一条原生、连续的根对话；从该时间线取回原文比再维护一个重复 transcript 或 memory 文档更贴合现有 owner。
 
 ## 决定
 
 1. 当用户当前消息明确指向过去的对话时，由 Noema 本地 harness 直接用该消息作为检索查询；普通 turn 不搜索或注入历史。检索不要求模型自行记得调用工具，也不为检索额外发起第二个模型请求。
 2. 搜索源仅为 Noema 时间线里用户可见的根对话 user/assistant 消息。后台工具轨迹、hidden reasoning、未讨论的本机速记和未经同意的 Codex 导入不在检索范围内。
-3. 每次检索限制为最多 4 条命中、每条最多 320 字；返回原文短摘录、角色、时间和稳定消息 ID，不生成摘要、不改写成用户画像。无命中时在模型上下文中明确标注未找到，agent 不得声称记得或用相似经历补全。
+3. 每次检索限制为最多 4 条命中、每条最多 320 字；返回短摘录、角色、时间和稳定消息 ID，不生成摘要、不改写成用户画像。发送前在本机遮蔽高置信的常见 API token、Bearer token、私钥块及带明确密钥/密码标签的值。无命中时在模型上下文中明确标注未找到，agent 不得声称记得或用相似经历补全。该遮蔽只覆盖已识别格式，不保证发现所有秘密。
 4. 检索结果作为标记清楚的历史资料进入本轮模型请求。当前用户消息优先；历史原文不能单独扩大任务、权限或长期约定。历史里的外部引用仍是资料，不是系统指令。
 5. 本轮时间线显示“参考了旧对话”的来源披露，能展开核对并跳回原消息；不新增记忆库、不自动提升为 Understanding/Interaction Agreement，也不把这次命中视为“已学会”。
 6. Noema 分开记录本机检索到的来源与 FreeLLMAPI 是否接受了包含这些来源的请求。只有收到成功响应头后才标记为 `included`；模型请求失败时保留 `found`，界面明确“上游是否收到无法确认”。这不证明模型读懂或遵循了旧内容。
