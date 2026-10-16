@@ -936,6 +936,19 @@ function DesktopApp() {
       });
   };
 
+  const jumpToMessage = (messageId: string) => {
+    const target = document.getElementById(`transcript-message-${messageId}`);
+    if (!target) return;
+    target.tabIndex = -1;
+    target.focus({ preventScroll: true });
+    target.scrollIntoView({
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        ? 'auto'
+        : 'smooth',
+      block: 'center',
+    });
+  };
+
   const stopReply = async () => {
     if (!root?.activeTurnId || stopping) return;
     setStopping(true);
@@ -2221,6 +2234,63 @@ function DesktopApp() {
                               )}
                               <time>{formatTime(message.createdAt)}</time>
                             </div>
+                            {message.historySearchStatus !== 'not_searched' && (
+                              <details className="history-recall-trace">
+                                <summary>
+                                  {message.historySearchStatus === 'found'
+                                    ? `本轮参考了 ${message.historySources.length} 条旧对话`
+                                    : '本轮查过旧对话，没有找到相关原文'}
+                                </summary>
+                                {message.historySources.length > 0 ? (
+                                  <ul>
+                                    {message.historySources.map((source) => {
+                                      const sourceStillAvailable =
+                                        root?.messages.some(
+                                          (candidate) =>
+                                            candidate.id === source.id,
+                                        ) ?? false;
+                                      return (
+                                        <li key={source.id}>
+                                          <div className="history-source-heading">
+                                            <span>
+                                              {source.role === 'user'
+                                                ? '你'
+                                                : 'Noema'}
+                                              {' · '}
+                                              {formatTime(source.createdAt)}
+                                            </span>
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                jumpToMessage(source.id)
+                                              }
+                                              disabled={!sourceStillAvailable}
+                                            >
+                                              {sourceStillAvailable
+                                                ? '跳到原对话'
+                                                : '原消息已移除'}
+                                            </button>
+                                          </div>
+                                          <blockquote>
+                                            {source.snippet}
+                                          </blockquote>
+                                        </li>
+                                      );
+                                    })}
+                                  </ul>
+                                ) : (
+                                  <p>
+                                    检索没有匹配到已完成的旧对话；本轮未加入旧消息内容。
+                                  </p>
+                                )}
+                                {message.historySources.length > 0 && (
+                                  <p className="history-recall-caveat">
+                                    这些原文已随本轮请求发送给当前选定的免费模型；
+                                    Noema 不会将它们自动转为长期记忆。
+                                  </p>
+                                )}
+                              </details>
+                            )}
                             {isLatestAttempt &&
                               message.interactionAdjustmentIds.length > 0 && (
                                 <details className="adjustment-application-trace root-adjustment-trace">

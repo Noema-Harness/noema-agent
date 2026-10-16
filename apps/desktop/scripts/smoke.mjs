@@ -9,6 +9,7 @@ import {
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { RootStore } from '../src/root-store.mjs';
 import { configureElectronRuntime } from './electron-runtime.mjs';
 
 configureElectronRuntime();
@@ -30,11 +31,77 @@ const loadedMarker = path.join(smokeDir, 'renderer-loaded.json');
 const startupLog = path.join(smokeDir, 'main-started.json');
 const probeFreeLLMAPI = process.env.NOEMA_SMOKE_PROBE_FREELLMAPI === '1';
 const probeQuickCapture = process.env.NOEMA_SMOKE_CAPTURE_QUICK_CAPTURE === '1';
+const probeHistoryTrace = process.env.NOEMA_SMOKE_CAPTURE_HISTORY_TRACE === '1';
 const quickCaptureScreenshotPaths = [
   process.env.NOEMA_SMOKE_QUICK_CAPTURE_DESKTOP_PATH,
   process.env.NOEMA_SMOKE_QUICK_CAPTURE_NARROW_PATH,
 ].filter((candidate) => typeof candidate === 'string' && candidate.length > 0);
+const historyTraceScreenshotPaths = [
+  process.env.NOEMA_SMOKE_HISTORY_TRACE_DESKTOP_PATH,
+  process.env.NOEMA_SMOKE_HISTORY_TRACE_NARROW_PATH,
+].filter((candidate) => typeof candidate === 'string' && candidate.length > 0);
 if (probeFreeLLMAPI) mkdirSync(probeDirectory, { recursive: true });
+let historyTraceDatabasePath;
+let historyTraceDshUserDataPath;
+if (probeHistoryTrace) {
+  const historyTraceDirectory = path.join(smokeDir, 'history-trace-probe');
+  mkdirSync(historyTraceDirectory, { recursive: true });
+  historyTraceDatabasePath = path.join(historyTraceDirectory, 'root.sqlite3');
+  historyTraceDshUserDataPath = path.join(
+    historyTraceDirectory,
+    'dsh-user-data',
+  );
+  const fixture = new RootStore(historyTraceDatabasePath);
+  fixture.setSelectedModel('auto:noema-free');
+  const sourceTurn = fixture.beginTurn({
+    id: 'smoke-history-source',
+    text: '我希望 Noema 能在一条持续对话中找回以前讨论过的具体经历。',
+    model: 'auto:noema-free',
+  });
+  const sourceMessage = fixture
+    .getSnapshot()
+    .messages.find(
+      (message) => message.turnId === sourceTurn.id && message.role === 'user',
+    );
+  fixture.appendAssistant({
+    id: sourceTurn.id,
+    attempt: sourceTurn.attempt,
+    content: '旧对话原文仍然是权威来源。',
+  });
+  fixture.completeTurn(sourceTurn.id, sourceTurn.attempt);
+  const replyTurn = fixture.beginTurn({
+    id: 'smoke-history-recall',
+    text: '你还记得我之前对持续对话的要求吗？',
+    model: 'auto:noema-free',
+  });
+  fixture.setTurnHistorySources(replyTurn.id, replyTurn.attempt, [
+    {
+      id: sourceMessage.id,
+      role: sourceMessage.role,
+      createdAt: sourceMessage.createdAt,
+      snippet: sourceMessage.content,
+    },
+  ]);
+  fixture.appendAssistant({
+    id: replyTurn.id,
+    attempt: replyTurn.attempt,
+    content: '我找到了你先前的原话，并会按上下文理解它。',
+  });
+  fixture.completeTurn(replyTurn.id, replyTurn.attempt);
+  const noMatchTurn = fixture.beginTurn({
+    id: 'smoke-history-no-match',
+    text: '之前有没有聊过一个不存在的测试主题？',
+    model: 'auto:noema-free',
+  });
+  fixture.setTurnHistorySources(noMatchTurn.id, noMatchTurn.attempt, []);
+  fixture.appendAssistant({
+    id: noMatchTurn.id,
+    attempt: noMatchTurn.attempt,
+    content: '我没有在之前的对话中找到匹配的原文。',
+  });
+  fixture.completeTurn(noMatchTurn.id, noMatchTurn.attempt);
+  fixture.close();
+}
 const childEnvironment = {
   ...process.env,
   NOEMA_SMOKE_TEST: '1',
@@ -50,6 +117,13 @@ const childEnvironment = {
         NOEMA_SMOKE_REFRESH_MODELS: '1',
       }
     : { NOEMA_SMOKE_USER_DATA_DIR: userDataDir }),
+  ...(probeHistoryTrace
+    ? {
+        NOEMA_E2E_DATABASE_PATH: historyTraceDatabasePath,
+        NOEMA_E2E_DSH_USER_DATA_PATH: historyTraceDshUserDataPath,
+        NOEMA_SMOKE_CAPTURE_HISTORY_TRACE: '1',
+      }
+    : {}),
 };
 if (probeFreeLLMAPI) delete childEnvironment.NOEMA_SMOKE_USER_DATA_DIR;
 if (probeFreeLLMAPI) {
@@ -148,6 +222,33 @@ child.on('exit', (code, signal) => {
       }
       console.log(
         `Quick capture UI: dialog opened and input focused; screenshots: ${loaded.quickCaptureSmoke.screenshots?.join(', ') || 'not requested'}`,
+      );
+    }
+    if (probeHistoryTrace) {
+      if (
+        !loaded.historyTraceSmoke?.found ||
+        loaded.historyTraceSmoke.sourceCount < 1 ||
+        !loaded.historyTraceSmoke.noMatch ||
+        !loaded.historyTraceSmoke.jumpWorked
+      ) {
+        console.error(
+          'History trace smoke test did not render a source or jump to its original message.',
+        );
+        process.exitCode = 1;
+        return;
+      }
+      const missingScreenshots = historyTraceScreenshotPaths.filter(
+        (screenshotPath) => !existsSync(screenshotPath),
+      );
+      if (missingScreenshots.length > 0) {
+        console.error(
+          `History trace screenshots missing: ${missingScreenshots.join(', ')}`,
+        );
+        process.exitCode = 1;
+        return;
+      }
+      console.log(
+        `History trace UI: ${loaded.historyTraceSmoke.sourceCount} source(s), jump verified; screenshots: ${loaded.historyTraceSmoke.screenshots?.join(', ')}`,
       );
     }
     if (probeFreeLLMAPI) {

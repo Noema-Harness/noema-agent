@@ -7,6 +7,8 @@ const MAX_MESSAGE_LENGTH = 100_000;
 const MAX_ACTIVE_INTERACTION_ADJUSTMENTS = 12;
 const MAX_WITHDRAWN_INTERACTION_ADJUSTMENTS = 20;
 const MAX_RECORDED_ROUTES_PER_MESSAGE = 16;
+const MAX_HISTORY_SOURCES_PER_MESSAGE = 4;
+const MAX_HISTORY_SOURCE_EXCERPT_LENGTH = 320;
 const MAX_RECORDED_TOOL_ACTIONS_PER_TASK = 32;
 const TOOL_ACTION_CATEGORIES = new Set([
   'read',
@@ -149,6 +151,49 @@ function parseInteractionAdjustmentSnapshots(snapshotsJson) {
     return normalizeInteractionAdjustmentSnapshots(
       JSON.parse(snapshotsJson ?? '[]'),
     );
+  } catch {
+    return [];
+  }
+}
+
+/** @param {unknown} sources */
+function normalizeHistorySourceSnapshots(sources) {
+  if (sources === undefined || sources === null) return [];
+  if (
+    !Array.isArray(sources) ||
+    sources.length > MAX_HISTORY_SOURCES_PER_MESSAGE
+  ) {
+    throw new TypeError('历史来源快照列表无效。');
+  }
+  const seen = new Set();
+  return sources.map((source) => {
+    if (!source || typeof source !== 'object') {
+      throw new TypeError('历史来源快照无效。');
+    }
+    const { id, role, createdAt, snippet } = source;
+    requireText(id, 'history source id', 200);
+    requireText(createdAt, 'history source date', 100);
+    requireText(
+      snippet,
+      'history source excerpt',
+      MAX_HISTORY_SOURCE_EXCERPT_LENGTH + 2,
+    );
+    if (
+      !['user', 'assistant'].includes(role) ||
+      !snippet.trim() ||
+      seen.has(id)
+    ) {
+      throw new TypeError('历史来源快照内容无效。');
+    }
+    seen.add(id);
+    return { id, role, createdAt, snippet };
+  });
+}
+
+/** @param {string | null | undefined} sourcesJson */
+function parseHistorySourceSnapshots(sourcesJson) {
+  try {
+    return normalizeHistorySourceSnapshots(JSON.parse(sourcesJson ?? '[]'));
   } catch {
     return [];
   }
@@ -547,7 +592,20 @@ export class RootStore {
       });
       applyCapturedMomentsSchema();
     }
-    if (currentVersion > 11)
+    if (currentVersion < 12) {
+      const applyHistoryRecallTraceSchema = this.db.transaction(() => {
+        this.db.exec(`
+          ALTER TABLE root_messages
+            ADD COLUMN history_sources_json TEXT NOT NULL DEFAULT '[]';
+          ALTER TABLE root_messages
+            ADD COLUMN history_search_status TEXT NOT NULL DEFAULT 'not_searched'
+              CHECK (history_search_status IN ('not_searched', 'found', 'no_match'));
+          INSERT INTO schema_migrations (version, applied_at) VALUES (12, '${nowIso()}');
+        `);
+      });
+      applyHistoryRecallTraceSchema();
+    }
+    if (currentVersion > 12)
       throw new Error(
         `Database schema ${currentVersion} is newer than this Noema build supports`,
       );
@@ -889,6 +947,8 @@ export class RootStore {
              t.context_characters AS contextCharacters,
              m.interaction_adjustment_ids_json AS interactionAdjustmentIdsJson,
              m.interaction_adjustment_snapshots_json AS interactionAdjustmentSnapshotsJson,
+             m.history_sources_json AS historySourcesJson,
+             m.history_search_status AS historySearchStatus,
              t.error_code AS errorCode, t.error_message AS errorMessage
       FROM root_messages AS m
       JOIN root_turns AS t ON t.id = m.turn_id
@@ -899,6 +959,7 @@ export class RootStore {
         const {
           interactionAdjustmentIdsJson,
           interactionAdjustmentSnapshotsJson,
+          historySourcesJson,
           routedViaJson,
           ...hydratedMessage
         } = message;
@@ -923,6 +984,12 @@ export class RootStore {
             interactionAdjustmentSnapshots: parseInteractionAdjustmentSnapshots(
               interactionAdjustmentSnapshotsJson,
             ),
+            historySources: parseHistorySourceSnapshots(historySourcesJson),
+            historySearchStatus: ['not_searched', 'found', 'no_match'].includes(
+              message.historySearchStatus,
+            )
+              ? message.historySearchStatus
+              : 'not_searched',
           };
         } catch {
           return {
@@ -932,6 +999,8 @@ export class RootStore {
             interactionAdjustmentSnapshots: parseInteractionAdjustmentSnapshots(
               interactionAdjustmentSnapshotsJson,
             ),
+            historySources: [],
+            historySearchStatus: 'not_searched',
           };
         }
       });
@@ -1982,6 +2051,52 @@ export class RootStore {
         throw new Error('The active assistant attempt was not found');
     });
     updateContext();
+  }
+
+  /** @param {string} turnId @param {number} attempt @param {unknown} sources */
+  setTurnHistorySources(turnId, attempt, sources) {
+    const snapshots = normalizeHistorySourceSnapshots(sources);
+    const sourceMessage = this.db.prepare(`
+      SELECT m.id, m.role, m.created_at AS createdAt, m.content,
+             m.status, m.attempt, t.id AS turnId, t.status AS turnStatus,
+             t.attempt AS currentAttempt
+      FROM root_messages AS m
+      JOIN root_turns AS t ON t.id = m.turn_id
+      WHERE m.id = ?
+    `);
+    for (const source of snapshots) {
+      const message = sourceMessage.get(source.id);
+      if (
+        !message ||
+        message.turnId === turnId ||
+        message.role !== source.role ||
+        message.createdAt !== source.createdAt ||
+        message.status !== 'complete' ||
+        message.turnStatus !== 'completed' ||
+        (message.role === 'user'
+          ? message.attempt !== 1
+          : message.attempt !== message.currentAttempt)
+      ) {
+        throw new TypeError('历史来源不属于已完成的可见对话消息。');
+      }
+    }
+    const result = this.db
+      .prepare(`
+        UPDATE root_messages
+        SET history_sources_json = ?, history_search_status = ?, updated_at = ?
+        WHERE turn_id = ? AND role = 'assistant' AND attempt = ?
+          AND status = 'streaming'
+      `)
+      .run(
+        JSON.stringify(snapshots),
+        snapshots.length ? 'found' : 'no_match',
+        nowIso(),
+        turnId,
+        attempt,
+      );
+    if (result.changes !== 1)
+      throw new Error('The active assistant attempt was not found');
+    return snapshots;
   }
 
   /** @param {string} id */

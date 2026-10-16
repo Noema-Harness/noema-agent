@@ -17,7 +17,7 @@ test('root store migrates idempotently and persists the selected model', () => {
     store.db
       .prepare('SELECT MAX(version) AS version FROM schema_migrations')
       .get().version,
-    11,
+    12,
   );
   store.setSelectedModel('free-router');
   assert.equal(store.getSelectedModel(), 'free-router');
@@ -96,6 +96,87 @@ test('captures persist across a database reopen', () => {
   }
 });
 
+test('history recall provenance is bounded and only attaches completed visible messages', () => {
+  const store = memoryStore();
+  const sourceTurn = store.beginTurn({
+    id: 'history-source-turn',
+    text: '我以前提到过 Noema 对话里的长期连续性。',
+    model: 'auto:noema-free',
+  });
+  store.appendAssistant({
+    id: sourceTurn.id,
+    attempt: sourceTurn.attempt,
+    content: '原始对话应保持可检索。',
+  });
+  store.completeTurn(sourceTurn.id, sourceTurn.attempt);
+  const source = store
+    .getSnapshot()
+    .messages.find(
+      (message) => message.turnId === sourceTurn.id && message.role === 'user',
+    );
+  const currentTurn = store.beginTurn({
+    id: 'history-current-turn',
+    text: '你还记得吗？',
+    model: 'auto:noema-free',
+  });
+  const snapshot = {
+    id: source.id,
+    role: source.role,
+    createdAt: source.createdAt,
+    snippet: source.content,
+  };
+
+  store.setTurnHistorySources(currentTurn.id, currentTurn.attempt, [snapshot]);
+  const assistant = store
+    .getSnapshot()
+    .messages.find(
+      (message) =>
+        message.turnId === currentTurn.id && message.role === 'assistant',
+    );
+  assert.deepEqual(assistant.historySources, [snapshot]);
+  assert.equal(assistant.historySearchStatus, 'found');
+  assert.throws(
+    () =>
+      store.setTurnHistorySources(currentTurn.id, currentTurn.attempt, [
+        { ...snapshot, id: 'missing-source' },
+      ]),
+    /历史来源不属于已完成的可见对话消息/,
+  );
+  assert.throws(
+    () =>
+      store.setTurnHistorySources(
+        currentTurn.id,
+        currentTurn.attempt,
+        Array.from({ length: 5 }, (_, index) => ({
+          ...snapshot,
+          id: `source-${index}`,
+        })),
+      ),
+    /历史来源快照列表无效/,
+  );
+  store.appendAssistant({
+    id: currentTurn.id,
+    attempt: currentTurn.attempt,
+    content: '我在当前对话里回答。',
+  });
+  store.completeTurn(currentTurn.id, currentTurn.attempt);
+  const noMatchTurn = store.beginTurn({
+    id: 'history-no-match-turn',
+    text: '之前有没有聊过找不到的词？',
+    model: 'auto:noema-free',
+  });
+  store.setTurnHistorySources(noMatchTurn.id, noMatchTurn.attempt, []);
+  const noMatchAssistant = store
+    .getSnapshot()
+    .messages.find(
+      (message) =>
+        message.turnId === noMatchTurn.id && message.role === 'assistant',
+    );
+  assert.equal(noMatchAssistant.historySearchStatus, 'no_match');
+  assert.deepEqual(noMatchAssistant.historySources, []);
+  store.close();
+});
+
 test('a schema-v4 database upgrades through interaction and verification state', () => {
   const db = new Database(':memory:');
   db.exec(`
@@ -116,7 +197,7 @@ test('a schema-v4 database upgrades through interaction and verification state',
     store.db
       .prepare('SELECT MAX(version) AS version FROM schema_migrations')
       .get().version,
-    11,
+    12,
   );
   assert.equal(
     store.db
@@ -235,7 +316,7 @@ test('schema-v9 migration snapshots existing adjustments without guessing older 
   assert.equal(
     db.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()
       .version,
-    11,
+    12,
   );
   assert.deepEqual(readSnapshots('root_messages', 'assistant-2'), expected);
   assert.deepEqual(readSnapshots('root_messages', 'assistant-1'), []);
@@ -296,7 +377,7 @@ test('schema-v9 migration backfills only the latest root attempt and task snapsh
   assert.equal(
     db.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()
       .version,
-    11,
+    12,
   );
   assert.deepEqual(JSON.parse(latestAttempt.snapshots), [
     {

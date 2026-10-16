@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { findTranscriptMatches } from '../src/transcript-search.mjs';
+import {
+  findTranscriptMatches,
+  searchTranscriptHistory,
+} from '../src/transcript-search.mjs';
 
 const messages = [
   {
@@ -45,4 +48,88 @@ test('search supports direct Chinese substring matches and returns a bounded exc
 test('empty or unmatched queries do not produce results', () => {
   assert.deepEqual(findTranscriptMatches(messages, '  '), []);
   assert.deepEqual(findTranscriptMatches(messages, '不存在的词'), []);
+});
+
+test('agent history search finds a bounded source outside the recent context', () => {
+  const transcript = [
+    {
+      ...messages[0],
+      id: 'old-user-message',
+      turnId: 'old-turn',
+      status: 'complete',
+      turnStatus: 'completed',
+      content:
+        '我后来让模型用体素化工具生成 Minecraft 模组模型的碰撞箱，这次才稳定。',
+    },
+    ...Array.from({ length: 12 }, (_, index) => ({
+      ...messages[1],
+      id: `recent-${index}`,
+      turnId: `recent-turn-${index}`,
+      status: 'complete',
+      turnStatus: 'completed',
+      content: `最近讨论了普通事项 ${index}。`,
+    })),
+    {
+      ...messages[1],
+      id: 'current-user-message',
+      turnId: 'current-turn',
+      role: 'user',
+      status: 'complete',
+      turnStatus: 'streaming',
+      content: '我们上次聊的 Minecraft 碰撞箱是什么办法？',
+    },
+  ];
+
+  const [match] = searchTranscriptHistory(transcript, 'Minecraft 碰撞箱', {
+    currentTurnId: 'current-turn',
+  });
+
+  assert.equal(match.id, 'old-user-message');
+  assert.equal(match.role, 'user');
+  assert.match(match.snippet, /体素化工具/);
+  assert.ok(match.snippet.length <= 322);
+});
+
+test('agent history search excludes the current turn and incomplete history', () => {
+  const transcript = [
+    {
+      ...messages[0],
+      id: 'unfinished',
+      turnId: 'unfinished-turn',
+      status: 'failed',
+      turnStatus: 'failed',
+      content: 'Noema 历史记忆检索设计草案',
+    },
+    {
+      ...messages[0],
+      id: 'current',
+      turnId: 'current-turn',
+      status: 'complete',
+      turnStatus: 'streaming',
+      content: 'Noema 历史记忆检索设计草案',
+    },
+  ];
+
+  assert.deepEqual(
+    searchTranscriptHistory(transcript, 'Noema 历史记忆检索', {
+      currentTurnId: 'current-turn',
+    }),
+    [],
+  );
+});
+
+test('agent history search returns no broad match for generic reference words', () => {
+  const transcript = messages.map((message, index) => ({
+    ...message,
+    turnId: `turn-${index}`,
+    status: 'complete',
+    turnStatus: 'completed',
+  }));
+
+  assert.deepEqual(
+    searchTranscriptHistory(transcript, '之前我们讨论什么', {
+      currentTurnId: 'current-turn',
+    }),
+    [],
+  );
 });

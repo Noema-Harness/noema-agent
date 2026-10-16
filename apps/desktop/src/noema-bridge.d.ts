@@ -3,6 +3,13 @@ export interface NoemaModel {
   label: string;
 }
 
+export interface NoemaHistorySource {
+  id: string;
+  role: 'user' | 'assistant';
+  createdAt: string;
+  snippet: string;
+}
+
 export interface NoemaRootMessage {
   id: string;
   turnId: string;
@@ -22,6 +29,8 @@ export interface NoemaRootMessage {
   contextCharacters: number;
   interactionAdjustmentIds: string[];
   interactionAdjustmentSnapshots: NoemaInteractionAdjustmentSnapshot[];
+  historySources: NoemaHistorySource[];
+  historySearchStatus: 'not_searched' | 'found' | 'no_match';
   errorCode: string | null;
   errorMessage: string | null;
 }
