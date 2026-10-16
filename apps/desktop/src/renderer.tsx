@@ -2532,6 +2532,7 @@ function DesktopApp() {
         open={quickCaptureOpen}
         value={quickCaptureText}
         shortcutLabel={quickCaptureShortcutLabel}
+        shortcutRegistered={quickCaptureShortcutStatus?.registered ?? null}
         saving={quickCaptureSaving}
         saved={quickCaptureSaved}
         error={quickCaptureError}

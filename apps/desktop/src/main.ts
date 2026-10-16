@@ -340,10 +340,7 @@ async function waitForQuickCaptureRender() {
   if (!shortcutStatusVisible) {
     throw new Error('快捷速记快捷键状态没有显示在主输入区。');
   }
-  await mainWindow?.webContents.executeJavaScript(
-    'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
-  );
-  await new Promise((resolve) => setTimeout(resolve, 80));
+  await new Promise((resolve) => setTimeout(resolve, 100));
   return shortcutStatusVisible;
 }
 
@@ -352,6 +349,15 @@ async function captureQuickCaptureSmokeScreenshots() {
   const shortcutStatusVisible = await waitForQuickCaptureRender();
   openQuickCapture();
   const opened = await waitForQuickCaptureDialog();
+  const shortcutBadgeVisible = await mainWindow?.webContents.executeJavaScript(
+    `Boolean(document.querySelector('.quick-capture-heading kbd'))`,
+  );
+  if (
+    shortcutBadgeVisible !==
+    Boolean(quickCaptureShortcutRegistration?.registered)
+  ) {
+    throw new Error('速记窗口显示的快捷键与系统注册状态不一致。');
+  }
   const screenshots = [];
   if (quickCaptureDesktopScreenshotPath) {
     const image = await mainWindow?.capturePage();
@@ -361,9 +367,7 @@ async function captureQuickCaptureSmokeScreenshots() {
   }
   if (quickCaptureNarrowScreenshotPath) {
     mainWindow?.setSize(680, 560);
-    await mainWindow?.webContents.executeJavaScript(
-      'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
-    );
+    await new Promise((resolve) => setTimeout(resolve, 100));
     const state = await waitForQuickCaptureDialog();
     if (!state.open || !state.focused) {
       throw new Error('窄窗口下快捷速记未保持可见与键盘焦点。');
