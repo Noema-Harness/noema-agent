@@ -56,7 +56,7 @@ export async function resolveDshHeadlessRuntime({
   if (!shimPath) {
     throw new DshHeadlessError(
       'dsh_not_found',
-      '没有找到 DSH CLI。安装 DSH 后重启 Noema，或继续只用主对话。',
+      '没有找到 DSH CLI。安装 DSH 后重启 Noema，或继续只用对话功能。',
     );
   }
 

@@ -987,10 +987,10 @@ function DesktopApp() {
       const directory = await window.noema.chooseWorkspace();
       if (!directory) return;
       await refreshRoot();
-      setNotice('代码项目文件夹已选定；编码任务只会访问这个文件夹。');
+      setNotice('项目目录已选定；代码任务只会访问这个目录。');
     } catch (error) {
       setNotice(
-        error instanceof Error ? error.message : '代码项目文件夹没有设置成功。',
+        error instanceof Error ? error.message : '项目目录没有设置成功。',
       );
     }
   };
@@ -999,11 +999,9 @@ function DesktopApp() {
     try {
       await window.noema.clearWorkspace();
       await refreshRoot();
-      setNotice('已移除代码项目文件夹；后续编码任务不会访问它。');
+      setNotice('已移除项目目录；后续代码任务不会访问它。');
     } catch (error) {
-      setNotice(
-        error instanceof Error ? error.message : '代码项目文件夹没有移除。',
-      );
+      setNotice(error instanceof Error ? error.message : '项目目录没有移除。');
     }
   };
 
@@ -1074,6 +1072,10 @@ function DesktopApp() {
     root?.selectedModel &&
     !root.models.some((model) => model.name === root.selectedModel),
   );
+  const workspaceName = root?.workspaceDirectory
+    ?.split(/[\\/]/u)
+    .filter(Boolean)
+    .at(-1);
 
   return (
     <div className="noema-app">
@@ -1146,7 +1148,7 @@ function DesktopApp() {
         >
           <div className="heading-copy">
             <div className="heading-title-row">
-              <h1>主对话</h1>
+              <h1>对话</h1>
               {(root?.messages.length ?? 0) > 0 && (
                 <button
                   ref={conversationSearchTriggerRef}
@@ -1161,83 +1163,9 @@ function DesktopApp() {
               )}
             </div>
             <p>
-              对话保存在本机；发送时由 FreeLLMAPI
-              转给第三方免费模型。供应商政策各异，部分会将请求用于训练。
+              对话保存在本机；回复会经 FreeLLMAPI
+              发送给第三方免费模型，部分供应商可能将请求用于训练。
             </p>
-          </div>
-          <div className="workspace-control">
-            <section className="scope-control" aria-label="导入 Codex 对话文字">
-              <span className="scope-control-heading">把旧对话带到这里</span>
-              <button
-                ref={codexImportTriggerRef}
-                className="workspace-button context-import-button"
-                type="button"
-                onClick={() => void openCodexImport()}
-                disabled={
-                  !root?.codexImportAvailable || contextImports.length > 0
-                }
-                title={
-                  contextImports.length > 0
-                    ? '移除当前导入内容后，才能换另一段 Codex 对话。'
-                    : root?.codexImportAvailable
-                      ? '只复制可见消息到 Noema；不会接着原 Codex 会话聊天。'
-                      : '没有找到本机 Codex 桌面程序。'
-                }
-              >
-                {contextImports.length > 0
-                  ? '已导入 Codex 对话文字'
-                  : '选择 Codex 对话'}
-              </button>
-              <span className="scope-control-note">
-                只导入可见消息，不会恢复或同步原会话
-              </span>
-            </section>
-            <section className="scope-control" aria-label="代码项目文件夹">
-              <span className="scope-control-heading">
-                代码项目文件夹（可选）
-              </span>
-              <div
-                className="workspace-label"
-                title={root?.workspaceDirectory ?? ''}
-              >
-                <span className="workspace-mark" aria-hidden="true" />
-                <span>
-                  {root?.workspaceDirectory
-                    ? root.workspaceDirectory
-                    : root?.dshWorkerError
-                      ? 'DSH 运行环境不可用'
-                      : '尚未选择文件夹'}
-                </span>
-              </div>
-              <div className="scope-control-actions">
-                <button
-                  className="workspace-button"
-                  type="button"
-                  onClick={() => void chooseWorkspace()}
-                  disabled={!root?.dshAvailable || activeWorkerTasks.length > 0}
-                  title={root?.dshWorkerError ?? undefined}
-                >
-                  {activeWorkerTasks.length > 0
-                    ? '代码任务运行中'
-                    : root?.workspaceDirectory
-                      ? '更换文件夹'
-                      : '选择文件夹'}
-                </button>
-                {root?.workspaceDirectory && (
-                  <button
-                    className="workspace-clear-button"
-                    type="button"
-                    onClick={() => void clearWorkspace()}
-                    disabled={activeWorkerTasks.length > 0}
-                  >
-                    移除
-                  </button>
-                )}
-              </div>
-              <span className="scope-control-note">
-                只在你委托改代码时读写；普通聊天不会读取
-              </span>
-            </section>
           </div>
         </div>
 
@@ -2480,6 +2408,56 @@ function DesktopApp() {
               autoComplete="off"
               spellCheck
             />
+            <div className="composer-context-tools" aria-label="可选上下文">
+              <button
+                ref={codexImportTriggerRef}
+                className={`context-tool-button${contextImports.length > 0 ? ' context-tool-button-active' : ''}`}
+                type="button"
+                onClick={() => void openCodexImport()}
+                disabled={
+                  !root?.codexImportAvailable || contextImports.length > 0
+                }
+                title={
+                  contextImports.length > 0
+                    ? '先移除时间线中的这段快照，才能换另一段。'
+                    : root?.codexImportAvailable
+                      ? '只复制可见消息；不会续接或同步原会话。'
+                      : '没有找到本机 Codex 桌面程序。'
+                }
+              >
+                {contextImports.length > 0
+                  ? 'Codex 对话已带入'
+                  : '导入 Codex 对话'}
+              </button>
+              <button
+                className={`context-tool-button${root?.workspaceDirectory ? ' context-tool-button-active' : ''}`}
+                type="button"
+                onClick={() => void chooseWorkspace()}
+                disabled={!root?.dshAvailable || activeWorkerTasks.length > 0}
+                title={
+                  root?.dshWorkerError ??
+                  root?.workspaceDirectory ??
+                  '仅在你委托代码任务时使用；普通聊天不会读取。'
+                }
+              >
+                {activeWorkerTasks.length > 0
+                  ? '代码任务运行中'
+                  : workspaceName
+                    ? `项目目录：${workspaceName}`
+                    : '选择项目目录'}
+              </button>
+              {root?.workspaceDirectory && (
+                <button
+                  className="context-tool-clear"
+                  type="button"
+                  onClick={() => void clearWorkspace()}
+                  disabled={activeWorkerTasks.length > 0}
+                  title="移除已选项目目录"
+                >
+                  移除
+                </button>
+              )}
+            </div>
             <div className="composer-footer">
               <span className="composer-hint">
                 {quickCaptureOpen
