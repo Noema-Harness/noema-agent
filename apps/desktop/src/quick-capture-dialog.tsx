@@ -4,6 +4,7 @@ export interface QuickCaptureDialogProps {
   open: boolean;
   value: string;
   shortcutLabel: string | null;
+  shortcutRegistered: boolean | null;
   saving: boolean;
   saved: boolean;
   error: string;
@@ -16,6 +17,7 @@ export function QuickCaptureDialog({
   open,
   value,
   shortcutLabel,
+  shortcutRegistered,
   saving,
   saved,
   error,
@@ -62,7 +64,7 @@ export function QuickCaptureDialog({
               只保存在 Noema；不会发送给模型。
             </p>
           </div>
-          {shortcutLabel && <kbd>{shortcutLabel}</kbd>}
+          {shortcutRegistered && shortcutLabel && <kbd>{shortcutLabel}</kbd>}
         </div>
         <label className="sr-only" htmlFor="quick-capture-input">
           记录一个想法
