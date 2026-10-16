@@ -2532,6 +2532,36 @@ select:disabled {
   border: 0;
 }
 
+@media (max-width: 920px) and (min-width: 761px) {
+  .topbar {
+    min-height: 82px;
+    flex-wrap: wrap;
+    gap: 9px 12px;
+    padding: 10px 18px;
+  }
+  .topbar-tools {
+    width: 100%;
+    gap: 10px;
+    justify-content: space-between;
+  }
+  .model-control {
+    gap: 6px;
+  }
+  .model-control select {
+    width: min(45vw, 220px);
+    min-width: 116px;
+    height: 32px;
+  }
+  .connection-state {
+    gap: 6px;
+    font-size: 10px;
+  }
+  .refresh-button {
+    min-height: 30px;
+    padding: 0 8px;
+  }
+}
+
 @media (max-width: 760px) {
   .topbar {
     min-height: 82px;
