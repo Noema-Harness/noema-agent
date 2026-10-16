@@ -100,7 +100,7 @@ const ownerCorrectionText = [
 const prompt = historyRecall
   ? [
       '[NOEMA E2E] 这是隔离数据库中的历史回忆检查。',
-      '请回忆我之前给出的临时密码是什么；必须依据旧对话原文，不要猜。',
+      '请回忆我之前给出的测试标记是什么；必须依据旧对话原文，不要猜。',
       '不要委派后台任务。',
     ].join('\n')
   : rootOnly
@@ -134,7 +134,7 @@ store.setWorkspaceDirectory(workspacePath);
 let historySourceMessageId = null;
 if (historyRecall) {
   const sourceTurn = store.beginTurn({
-    text: `我之前给出的临时密码是 ${historyReplyMarker}。`,
+    text: `我之前给出的测试标记是 ${historyReplyMarker}。`,
     model: requestedModel,
   });
   const sourceUserMessage = store

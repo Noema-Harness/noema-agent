@@ -142,7 +142,7 @@ test('explicit past query ranks the relevant source above unrelated recent turns
       turnId: 'passphrase-turn',
       status: 'complete',
       turnStatus: 'completed',
-      content: '我之前给出的临时密码是 NOEMA-HISTORY-unique-marker。',
+      content: '我之前给出的测试标记是 NOEMA-HISTORY-unique-marker。',
     },
     ...Array.from({ length: 10 }, (_, index) => ({
       ...messages[1],
@@ -156,10 +156,140 @@ test('explicit past query ranks the relevant source above unrelated recent turns
 
   const matches = searchTranscriptHistory(
     transcript,
-    '[NOEMA E2E] 请回忆我之前给出的临时密码是什么？',
+    '[NOEMA E2E] 请回忆我之前给出的测试标记是什么？',
     { currentTurnId: 'current-turn' },
   );
 
   assert.equal(matches[0].id, 'passphrase-source');
   assert.match(matches[0].snippet, /NOEMA-HISTORY-unique-marker/);
+});
+
+test('history excerpts redact credential-shaped values before returning or sending them', () => {
+  const token = 'sk-proj-1234567890abcdefghijklmnop';
+  const transcript = [
+    {
+      ...messages[0],
+      id: 'credential-source',
+      turnId: 'credential-turn',
+      status: 'complete',
+      turnStatus: 'completed',
+      content: `FreeLLMAPI API Key: ${token}`,
+    },
+  ];
+
+  const [match] = searchTranscriptHistory(transcript, 'FreeLLMAPI API Key', {
+    currentTurnId: 'current-turn',
+  });
+
+  assert.ok(match);
+  assert.equal(match.redacted, true);
+  assert.match(match.snippet, /已隐藏疑似凭据/);
+  assert.doesNotMatch(match.snippet, /sk-proj-/);
+});
+
+test('history excerpts redact PEM private key blocks before returning or sending them', () => {
+  const privateKey = [
+    '-----BEGIN PRIVATE KEY-----',
+    ...Array.from(
+      { length: 24 },
+      (_, index) => `MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSj${index}`,
+    ),
+    '-----END PRIVATE KEY-----',
+  ].join('\n');
+  const transcript = [
+    {
+      ...messages[0],
+      id: 'pem-source',
+      turnId: 'pem-turn',
+      status: 'complete',
+      turnStatus: 'completed',
+      content: `部署说明：\n${privateKey}\n请勿外发。`,
+    },
+  ];
+
+  const [match] = searchTranscriptHistory(transcript, '部署说明 请勿外发', {
+    currentTurnId: 'current-turn',
+  });
+
+  assert.ok(match);
+  assert.equal(match.redacted, true);
+  assert.doesNotMatch(match.snippet, /BEGIN PRIVATE KEY|MIIEvQIB/);
+  assert.match(match.snippet, /已隐藏疑似凭据/);
+});
+
+test('history redaction recognizes common bearer, provider, and labeled credential shapes', () => {
+  const fixtures = [
+    [
+      'Bearer token fixture Bearer abcdefghijklmnop0123456789',
+      'Bearer token fixture',
+      'Bearer abcdefghijklmnop0123456789',
+    ],
+    [
+      'GitHub token fixture ghp_abcdefghijklmnopqrstuvwxyz012345',
+      'GitHub token fixture',
+      'ghp_abcdefghijklmnopqrstuvwxyz012345',
+    ],
+    [
+      'Slack token fixture xoxb-12345678-abcdefgh-ijklmnop',
+      'Slack token fixture',
+      'xoxb-12345678-abcdefgh-ijklmnop',
+    ],
+    [
+      'FreeLLMAPI key fixture fla_1234567890abcdefghijklmnopqrst',
+      'FreeLLMAPI key fixture',
+      'fla_1234567890abcdefghijklmnopqrst',
+    ],
+    [
+      'JWT fixture eyJabcdefghijk.eyJabcdefghijk.eyJabcdefghijk',
+      'JWT fixture',
+      'eyJabcdefghijk.eyJabcdefghijk.eyJabcdefghijk',
+    ],
+    [
+      'password: noema-test-secret-value',
+      'password',
+      'noema-test-secret-value',
+    ],
+  ];
+
+  for (const [content, query, secret] of fixtures) {
+    const [match] = searchTranscriptHistory(
+      [
+        {
+          ...messages[0],
+          id: `credential-${secret.slice(0, 8)}`,
+          turnId: 'credential-turn',
+          status: 'complete',
+          turnStatus: 'completed',
+          content,
+        },
+      ],
+      query,
+      { currentTurnId: 'current-turn' },
+    );
+
+    assert.ok(match, `expected a match for ${content}`);
+    assert.equal(match.redacted, true, `expected redaction for ${content}`);
+    assert.equal(match.snippet.includes(secret), false);
+  }
+});
+
+test('history redaction leaves ordinary conversation unchanged', () => {
+  const transcript = [
+    {
+      ...messages[0],
+      id: 'ordinary-source',
+      turnId: 'ordinary-turn',
+      status: 'complete',
+      turnStatus: 'completed',
+      content: '我们之前讨论过咖啡豆要怎么保存。',
+    },
+  ];
+
+  const [match] = searchTranscriptHistory(transcript, '之前讨论咖啡豆保存', {
+    currentTurnId: 'current-turn',
+  });
+
+  assert.ok(match);
+  assert.equal(match.redacted, false);
+  assert.doesNotMatch(match.snippet, /已隐藏疑似凭据/);
 });

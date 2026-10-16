@@ -170,7 +170,7 @@ function normalizeHistorySourceSnapshots(sources) {
     if (!source || typeof source !== 'object') {
       throw new TypeError('历史来源快照无效。');
     }
-    const { id, role, createdAt, snippet } = source;
+    const { id, role, createdAt, snippet, redacted = false } = source;
     requireText(id, 'history source id', 200);
     requireText(createdAt, 'history source date', 100);
     requireText(
@@ -181,12 +181,13 @@ function normalizeHistorySourceSnapshots(sources) {
     if (
       !['user', 'assistant'].includes(role) ||
       !snippet.trim() ||
+      typeof redacted !== 'boolean' ||
       seen.has(id)
     ) {
       throw new TypeError('历史来源快照内容无效。');
     }
     seen.add(id);
-    return { id, role, createdAt, snippet };
+    return { id, role, createdAt, snippet, redacted };
   });
 }
 

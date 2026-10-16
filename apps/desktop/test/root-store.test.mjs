@@ -124,6 +124,7 @@ test('history recall provenance is bounded and only attaches completed visible m
     role: source.role,
     createdAt: source.createdAt,
     snippet: source.content,
+    redacted: false,
   };
 
   store.setTurnHistorySources(currentTurn.id, currentTurn.attempt, [snapshot]);

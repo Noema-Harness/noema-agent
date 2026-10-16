@@ -26,6 +26,18 @@ const HISTORY_SEARCH_STOPWORDS = new Set([
   '为什么',
   '一下',
 ]);
+const HISTORY_CREDENTIAL_PATTERNS = [
+  /-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----[\s\S]*?(?:-----END (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----|$)/giu,
+  /\bsk-(?:ant-)?[a-z0-9_-]{16,}\b/giu,
+  /\bAIza[a-z0-9_-]{30,}\b/giu,
+  /\bgh[pousr]_[a-z0-9_]{20,}\b/giu,
+  /\bgithub_pat_[a-z0-9_]{20,}\b/giu,
+  /\bxox[baprs]-[a-z0-9-]{16,}\b/giu,
+  /\bfla_[a-z0-9]{16,}\b/giu,
+  /\bBearer\s+[a-z0-9._~+/-]{16,}=*/giu,
+  /\beyJ[a-z0-9_-]{10,}\.[a-z0-9_-]{10,}\.[a-z0-9_-]{10,}\b/giu,
+  /((?:api[\s_-]?key|access[\s_-]?token|secret|password|passwd|密钥|密码|口令)\s*(?::|：|=|\bis\b|为|是)\s*["'`]?)[^\s,，。;；"'`]{6,}/giu,
+];
 
 /**
  * @param {NoemaRootMessage[]} messages
@@ -86,6 +98,23 @@ function historyExcerpt(content, matchAt) {
   return `${start > 0 ? '…' : ''}${content.slice(start, end)}${end < content.length ? '…' : ''}`;
 }
 
+function redactHistoryExcerpt(excerpt) {
+  let redacted = false;
+  const sanitized = HISTORY_CREDENTIAL_PATTERNS.reduce(
+    (content, pattern) =>
+      content.replace(pattern, (...args) => {
+        if (args[0].includes('[已隐藏疑似凭据]')) return args[0];
+        redacted = true;
+        if (typeof args[1] === 'string') {
+          return `${args[1]}[已隐藏疑似凭据]`;
+        }
+        return '[已隐藏疑似凭据]';
+      }),
+    excerpt,
+  );
+  return { snippet: sanitized, redacted };
+}
+
 /**
  * Search only completed, visible root-dialogue messages. This is agent recall,
  * not transcript archival: callers decide when to invoke it and how to expose
@@ -94,7 +123,7 @@ function historyExcerpt(content, matchAt) {
  * @param {NoemaRootMessage[]} messages
  * @param {string} query
  * @param {{currentTurnId:string, limit?:number}} options
- * @returns {Array<{id:string,role:NoemaRootMessage['role'],createdAt:string,snippet:string}>}
+ * @returns {Array<{id:string,role:NoemaRootMessage['role'],createdAt:string,snippet:string,redacted:boolean}>}
  */
 export function searchTranscriptHistory(
   messages,
@@ -139,7 +168,8 @@ export function searchTranscriptHistory(
       id: message.id,
       role: message.role,
       createdAt: message.createdAt,
-      snippet: historyExcerpt(message.content, firstMatch),
+      content: message.content,
+      firstMatch,
       score:
         (exact ? 100 : 0) +
         (matchedTerms.length / terms.length) * 10 +
@@ -154,10 +184,18 @@ export function searchTranscriptHistory(
         right.score - left.score || right.position - left.position,
     )
     .slice(0, boundedLimit)
-    .map(({ id, role, createdAt, snippet }) => ({
-      id,
-      role,
-      createdAt,
-      snippet,
-    }));
+    .map(({ id, role, createdAt, content, firstMatch }) => {
+      const { snippet: sanitizedContent, redacted } =
+        redactHistoryExcerpt(content);
+      const sanitizedPrefix = redactHistoryExcerpt(
+        content.slice(0, firstMatch),
+      ).snippet;
+      return {
+        id,
+        role,
+        createdAt,
+        snippet: historyExcerpt(sanitizedContent, sanitizedPrefix.length),
+        redacted,
+      };
+    });
 }
