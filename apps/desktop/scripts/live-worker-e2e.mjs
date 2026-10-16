@@ -35,15 +35,16 @@ const e2eRoot = path.resolve(configuredE2eRoot);
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const appDirectory = path.resolve(scriptDirectory, '..');
-const workspacePath = path.join(
-  mkdtempSync(path.join(e2eRoot, 'Noema-live-worker-e2e-')),
-  'workspace',
+const e2eRootDirectory = mkdtempSync(
+  path.join(e2eRoot, 'Noema-live-worker-e2e-'),
 );
-const e2eDirectory = path.dirname(workspacePath);
+const e2eDirectory = path.join(e2eRootDirectory, 'database');
+const workspacePath = path.join(e2eDirectory, 'workspace');
 const databasePath = path.join(e2eDirectory, 'root.sqlite3');
 const dshUserDataPath = path.join(e2eDirectory, 'dsh-user-data');
 const marker = `NOEMA-E2E-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 const rootReplyMarker = `NOEMA-ROOT-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+mkdirSync(e2eDirectory);
 mkdirSync(workspacePath);
 const rootOnly = process.argv.includes('--root-only');
 const directWorker = process.argv.includes('--direct-worker');
@@ -152,6 +153,7 @@ const child = spawn(process.execPath, ['scripts/start.mjs'], {
   cwd: appDirectory,
   env: {
     ...process.env,
+    NOEMA_SMOKE_TEST: '1',
     NOEMA_E2E_DATABASE_PATH: databasePath,
     NOEMA_E2E_DSH_USER_DATA_PATH: dshUserDataPath,
     ...(captureOwnerCorrection
