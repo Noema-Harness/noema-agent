@@ -21,12 +21,16 @@ const CHANNELS = Object.freeze({
   removeContextImport: 'noema:remove-context-import',
   updateInteractionAdjustment: 'noema:update-interaction-adjustment',
   withdrawInteractionAdjustment: 'noema:withdraw-interaction-adjustment',
+  quickCaptureRequest: 'noema:quick-capture-request',
+  quickCaptureShortcutStatus: 'noema:quick-capture-shortcut-status',
+  markQuickCaptureReady: 'noema:mark-quick-capture-ready',
+  finishQuickCapture: 'noema:finish-quick-capture',
   event: 'noema:root-event',
 });
 
 /**
  * Registers only the narrow root-conversation operations that the renderer needs.
- * @param {{ipcMain: {handle: Function, removeHandler: Function}, rootAgent: object, isTrustedSender: (sender: object) => boolean,chooseWorkspace?:()=>Promise<string|null>,sendMessage?:(text:string)=>Promise<object>|object,retryTurn?:(turnId:string,model:string|null)=>Promise<object>|object}} options
+ * @param {{ipcMain: {handle: Function, removeHandler: Function}, rootAgent: object, isTrustedSender: (sender: object) => boolean,chooseWorkspace?:()=>Promise<string|null>,sendMessage?:(text:string)=>Promise<object>|object,retryTurn?:(turnId:string,model:string|null)=>Promise<object>|object,finishQuickCapture?:()=>boolean,getQuickCaptureShortcutStatus?:()=>object|null,markQuickCaptureReady?:()=>boolean}} options
  */
 export function registerRootIpc({
   ipcMain,
@@ -35,6 +39,9 @@ export function registerRootIpc({
   chooseWorkspace = async () => null,
   sendMessage = (text) => rootAgent.sendMessage({ text }),
   retryTurn = (turnId, model) => rootAgent.retryTurn({ turnId, model }),
+  finishQuickCapture = () => false,
+  getQuickCaptureShortcutStatus = () => null,
+  markQuickCaptureReady = () => false,
 }) {
   const register = (channel, handler) => {
     ipcMain.handle(channel, async (event, ...args) => {
@@ -89,10 +96,20 @@ export function registerRootIpc({
   register(CHANNELS.withdrawInteractionAdjustment, (id) =>
     rootAgent.withdrawInteractionAdjustment(id),
   );
+  register(CHANNELS.finishQuickCapture, () => finishQuickCapture());
+  register(CHANNELS.quickCaptureShortcutStatus, () =>
+    getQuickCaptureShortcutStatus(),
+  );
+  register(CHANNELS.markQuickCaptureReady, () => markQuickCaptureReady());
 
   return () => {
     for (const channel of Object.values(CHANNELS)) {
-      if (channel !== CHANNELS.event) ipcMain.removeHandler(channel);
+      if (
+        channel !== CHANNELS.event &&
+        channel !== CHANNELS.quickCaptureRequest
+      ) {
+        ipcMain.removeHandler(channel);
+      }
     }
   };
 }

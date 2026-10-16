@@ -2,6 +2,7 @@ import {
   app,
   BrowserWindow,
   dialog,
+  globalShortcut,
   ipcMain,
   safeStorage,
   shell,
@@ -35,6 +36,12 @@ import {
   isInternalNavigation,
   shouldOpenExternally,
 } from './window-security.mjs';
+import {
+  activateQuickCaptureWindow,
+  focusPrimaryWindow,
+  finishQuickCaptureWindow,
+  registerQuickCaptureShortcut,
+} from './quick-capture-shortcut.mjs';
 
 function writeSmokeLog(step: string, details: Record<string, unknown> = {}) {
   const logFile = process.env.NOEMA_SMOKE_LOG_FILE;
@@ -77,6 +84,13 @@ let rootStore: RootStore | null = null;
 let providerSecretStore: EncryptedSecretStore | null = null;
 let unregisterRootIpc: (() => void) | null = null;
 let rootAgent: RootAgent | null = null;
+let quickCaptureShortcutRegistration: ReturnType<
+  typeof registerQuickCaptureShortcut
+> | null = null;
+let quickCaptureReturnToPrevious = false;
+let quickCaptureActive = false;
+let quickCaptureRendererReady = false;
+let pendingQuickCaptureRequest = false;
 let shutdownStarted = false;
 let shutdownComplete = false;
 const testDatabasePath = process.env.NOEMA_E2E_DATABASE_PATH ?? null;
@@ -87,6 +101,12 @@ const testRootOnly = process.env.NOEMA_E2E_ROOT_ONLY === '1';
 const testDirectWorker = process.env.NOEMA_E2E_DIRECT_WORKER === '1';
 const testVerificationChecksJson =
   process.env.NOEMA_E2E_VERIFICATION_CHECKS ?? null;
+const testCaptureQuickCapture =
+  process.env.NOEMA_SMOKE_CAPTURE_QUICK_CAPTURE === '1';
+const quickCaptureDesktopScreenshotPath =
+  process.env.NOEMA_SMOKE_QUICK_CAPTURE_DESKTOP_PATH ?? null;
+const quickCaptureNarrowScreenshotPath =
+  process.env.NOEMA_SMOKE_QUICK_CAPTURE_NARROW_PATH ?? null;
 delete process.env.NOEMA_E2E_DATABASE_PATH;
 delete process.env.NOEMA_E2E_DSH_USER_DATA_PATH;
 delete process.env.NOEMA_E2E_WORKER_PREFACE;
@@ -94,8 +114,20 @@ delete process.env.NOEMA_E2E_WORKER_PROMPT;
 delete process.env.NOEMA_E2E_ROOT_ONLY;
 delete process.env.NOEMA_E2E_DIRECT_WORKER;
 delete process.env.NOEMA_E2E_VERIFICATION_CHECKS;
+delete process.env.NOEMA_SMOKE_CAPTURE_QUICK_CAPTURE;
+delete process.env.NOEMA_SMOKE_QUICK_CAPTURE_DESKTOP_PATH;
+delete process.env.NOEMA_SMOKE_QUICK_CAPTURE_NARROW_PATH;
+
+const isSquirrelLifecycleEvent = process.argv.some((argument) =>
+  /^--squirrel-(install|updated|uninstall|obsolete)$/.test(argument),
+);
+const hasSingleInstanceLock =
+  process.env.NOEMA_SMOKE_TEST === '1' ||
+  isSquirrelLifecycleEvent ||
+  app.requestSingleInstanceLock();
 
 const createWindow = () => {
+  quickCaptureRendererReady = false;
   mainWindow = new BrowserWindow({
     width: 1240,
     height: 860,
@@ -117,6 +149,13 @@ const createWindow = () => {
   });
   mainWindow.on('closed', () => {
     mainWindow = null;
+    quickCaptureActive = false;
+    quickCaptureRendererReady = false;
+    pendingQuickCaptureRequest = false;
+  });
+
+  mainWindow.webContents.once('did-finish-load', () => {
+    if (pendingQuickCaptureRequest) dispatchQuickCaptureRequest();
   });
 
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
@@ -136,6 +175,7 @@ const createWindow = () => {
         if (!bridgeState || !Array.isArray(bridgeState.messages)) {
           throw new Error('Root conversation bridge did not return its state');
         }
+        const quickCaptureSmoke = await captureQuickCaptureSmokeScreenshots();
         const result = {
           url: mainWindow?.webContents.getURL() ?? null,
           title: mainWindow?.getTitle() ?? null,
@@ -155,6 +195,13 @@ const createWindow = () => {
           dshAvailable: Boolean(bridgeState.dshAvailable),
           dshWorkerAvailable: Boolean(bridgeState.dshWorkerAvailable),
           dshWorkerError: bridgeState.dshWorkerError ?? null,
+          quickCaptureShortcut: quickCaptureShortcutRegistration
+            ? {
+                accelerator: quickCaptureShortcutRegistration.accelerator,
+                registered: quickCaptureShortcutRegistration.registered,
+              }
+            : null,
+          quickCaptureSmoke,
         };
         writeSmokeLog('renderer-loaded', result);
         if (process.env.NOEMA_SMOKE_TEST_FILE) {
@@ -172,6 +219,143 @@ const createWindow = () => {
     });
   }
 };
+
+function dispatchQuickCaptureRequest() {
+  if (!mainWindow || mainWindow.isDestroyed() || !quickCaptureRendererReady) {
+    return;
+  }
+  pendingQuickCaptureRequest = false;
+  mainWindow.webContents.send(CHANNELS.quickCaptureRequest, {
+    returnToPrevious: quickCaptureReturnToPrevious,
+  });
+}
+
+function markQuickCaptureReady() {
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  quickCaptureRendererReady = true;
+  if (pendingQuickCaptureRequest) dispatchQuickCaptureRequest();
+  return true;
+}
+
+function openQuickCapture() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    quickCaptureReturnToPrevious = true;
+    quickCaptureActive = true;
+    pendingQuickCaptureRequest = true;
+    createWindow();
+    return;
+  }
+  const returnToPrevious = activateQuickCaptureWindow(mainWindow);
+  if (!quickCaptureActive) {
+    quickCaptureReturnToPrevious = returnToPrevious;
+    quickCaptureActive = true;
+  }
+
+  if (mainWindow.webContents.isLoading() || !quickCaptureRendererReady) {
+    pendingQuickCaptureRequest = true;
+    return;
+  }
+  dispatchQuickCaptureRequest();
+}
+
+function finishQuickCapture() {
+  if (!quickCaptureActive) return false;
+  const finished = finishQuickCaptureWindow(
+    mainWindow,
+    quickCaptureReturnToPrevious,
+  );
+  quickCaptureActive = false;
+  quickCaptureReturnToPrevious = false;
+  return finished;
+}
+
+function writeQuickCaptureSmokeScreenshot(
+  targetPath: string,
+  image: Electron.NativeImage,
+) {
+  if (
+    app.isPackaged ||
+    process.env.NOEMA_SMOKE_TEST !== '1' ||
+    !path.isAbsolute(targetPath)
+  ) {
+    throw new Error('快捷速记截图只允许由未打包的 smoke 测试写入绝对路径。');
+  }
+  fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+  fs.writeFileSync(targetPath, image.toPNG(), { flag: 'wx' });
+}
+
+async function waitForQuickCaptureDialog() {
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
+    if (!mainWindow || mainWindow.isDestroyed()) break;
+    const state = await mainWindow.webContents.executeJavaScript(
+      `(() => ({
+        open: Boolean(document.querySelector('.quick-capture-dialog')?.open),
+        focused: document.activeElement?.id === 'quick-capture-input',
+      }))()`,
+    );
+    if (state.open && state.focused) return state;
+    await new Promise((resolve) => setTimeout(resolve, 30));
+  }
+  throw new Error('快捷速记窗口未打开或输入框未获得焦点。');
+}
+
+async function waitForQuickCaptureRender() {
+  const deadline = Date.now() + 10_000;
+  let shortcutStatusVisible = false;
+  while (Date.now() < deadline && mainWindow && !mainWindow.isDestroyed()) {
+    const text = await mainWindow.webContents.executeJavaScript(
+      "document.querySelector('.composer-hint')?.textContent ?? ''",
+    );
+    if (text.includes('快速速记') || text.includes('快捷速记不可用')) {
+      shortcutStatusVisible = true;
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 30));
+  }
+  if (!shortcutStatusVisible) {
+    throw new Error('快捷速记快捷键状态没有显示在主输入区。');
+  }
+  await mainWindow?.webContents.executeJavaScript(
+    'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+  );
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  return shortcutStatusVisible;
+}
+
+async function captureQuickCaptureSmokeScreenshots() {
+  if (!testCaptureQuickCapture) return null;
+  const shortcutStatusVisible = await waitForQuickCaptureRender();
+  openQuickCapture();
+  const opened = await waitForQuickCaptureDialog();
+  const screenshots = [];
+  if (quickCaptureDesktopScreenshotPath) {
+    const image = await mainWindow?.capturePage();
+    if (!image) throw new Error('无法捕获快捷速记桌面预览。');
+    writeQuickCaptureSmokeScreenshot(quickCaptureDesktopScreenshotPath, image);
+    screenshots.push(quickCaptureDesktopScreenshotPath);
+  }
+  if (quickCaptureNarrowScreenshotPath) {
+    mainWindow?.setSize(680, 560);
+    await mainWindow?.webContents.executeJavaScript(
+      'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+    );
+    const state = await waitForQuickCaptureDialog();
+    if (!state.open || !state.focused) {
+      throw new Error('窄窗口下快捷速记未保持可见与键盘焦点。');
+    }
+    const image = await mainWindow?.capturePage();
+    if (!image) throw new Error('无法捕获快捷速记窄窗口预览。');
+    writeQuickCaptureSmokeScreenshot(quickCaptureNarrowScreenshotPath, image);
+    screenshots.push(quickCaptureNarrowScreenshotPath);
+  }
+  return {
+    dialogOpen: opened.open,
+    inputFocused: opened.focused,
+    shortcutStatusVisible,
+    screenshots,
+  };
+}
 
 function discoverFreeLLMAPIBaseUrl(appDataPath: string) {
   try {
@@ -339,6 +523,15 @@ async function startNoema() {
         });
         return selection.canceled ? null : (selection.filePaths[0] ?? null);
       },
+      finishQuickCapture,
+      markQuickCaptureReady,
+      getQuickCaptureShortcutStatus: () =>
+        quickCaptureShortcutRegistration
+          ? {
+              accelerator: quickCaptureShortcutRegistration.accelerator,
+              registered: quickCaptureShortcutRegistration.registered,
+            }
+          : null,
     });
     if (
       !app.isPackaged &&
@@ -411,7 +604,12 @@ async function startNoema() {
     } else if (process.env.NOEMA_SMOKE_TEST !== '1') {
       void agent.refreshModels();
     }
-    createWindow();
+    quickCaptureShortcutRegistration = registerQuickCaptureShortcut({
+      shortcutApi: globalShortcut,
+      platform: process.platform,
+      onQuickCapture: openQuickCapture,
+    });
+    if (!mainWindow || mainWindow.isDestroyed()) createWindow();
     writeSmokeLog('window-created');
   } catch (error) {
     writeSmokeLog('startup-error', {
@@ -425,7 +623,14 @@ async function startNoema() {
   }
 }
 
-void startNoema();
+if (hasSingleInstanceLock) {
+  app.on('second-instance', () => {
+    focusPrimaryWindow(mainWindow);
+  });
+  void startNoema();
+} else {
+  app.quit();
+}
 
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -450,4 +655,9 @@ app.on('before-quit', (event) => {
     rootStore?.close();
     app.quit();
   });
+});
+
+app.on('will-quit', () => {
+  quickCaptureShortcutRegistration?.unregister();
+  quickCaptureShortcutRegistration = null;
 });

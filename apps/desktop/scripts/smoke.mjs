@@ -29,6 +29,11 @@ const probeDirectory = path.join(smokeDir, 'catalog-probe');
 const loadedMarker = path.join(smokeDir, 'renderer-loaded.json');
 const startupLog = path.join(smokeDir, 'main-started.json');
 const probeFreeLLMAPI = process.env.NOEMA_SMOKE_PROBE_FREELLMAPI === '1';
+const probeQuickCapture = process.env.NOEMA_SMOKE_CAPTURE_QUICK_CAPTURE === '1';
+const quickCaptureScreenshotPaths = [
+  process.env.NOEMA_SMOKE_QUICK_CAPTURE_DESKTOP_PATH,
+  process.env.NOEMA_SMOKE_QUICK_CAPTURE_NARROW_PATH,
+].filter((candidate) => typeof candidate === 'string' && candidate.length > 0);
 if (probeFreeLLMAPI) mkdirSync(probeDirectory, { recursive: true });
 const childEnvironment = {
   ...process.env,
@@ -116,6 +121,35 @@ child.on('exit', (code, signal) => {
     console.log(
       `DSH adapter discovery: ${loaded.dshAvailable ? 'available' : 'unavailable'}${loaded.dshWorkerError ? ` — ${loaded.dshWorkerError}` : ''}`,
     );
+    console.log(
+      `Quick capture shortcut: ${loaded.quickCaptureShortcut?.accelerator ?? 'unknown'} — ${loaded.quickCaptureShortcut?.registered ? 'registered' : 'unavailable'}`,
+    );
+    if (probeQuickCapture) {
+      if (
+        !loaded.quickCaptureSmoke?.dialogOpen ||
+        !loaded.quickCaptureSmoke?.inputFocused ||
+        !loaded.quickCaptureSmoke?.shortcutStatusVisible
+      ) {
+        console.error(
+          'Quick capture smoke test did not render its status, open the dialog, and focus its input.',
+        );
+        process.exitCode = 1;
+        return;
+      }
+      const missingScreenshots = quickCaptureScreenshotPaths.filter(
+        (screenshotPath) => !existsSync(screenshotPath),
+      );
+      if (missingScreenshots.length > 0) {
+        console.error(
+          `Quick capture screenshots missing: ${missingScreenshots.join(', ')}`,
+        );
+        process.exitCode = 1;
+        return;
+      }
+      console.log(
+        `Quick capture UI: dialog opened and input focused; screenshots: ${loaded.quickCaptureSmoke.screenshots?.join(', ') || 'not requested'}`,
+      );
+    }
     if (probeFreeLLMAPI) {
       console.log(
         `FreeLLMAPI credential: ${loaded.providerConfigured ? 'configured' : 'missing'}; endpoint: ${loaded.providerBaseUrl ?? 'unknown'}; gateway: ${loaded.connected ? 'connected' : 'unavailable'}${loaded.providerError ? ` — ${loaded.providerError}` : ''}; free routes: ${(loaded.models ?? []).map((model) => model.name).join(', ') || 'none'}`,
