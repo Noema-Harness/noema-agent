@@ -1,4 +1,7 @@
 import type { ForgeConfig } from '@electron-forge/shared-types';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { MakerSquirrel } from '@electron-forge/maker-squirrel';
 import { MakerZIP } from '@electron-forge/maker-zip';
 import { MakerDeb } from '@electron-forge/maker-deb';
@@ -7,9 +10,25 @@ import { VitePlugin } from '@electron-forge/plugin-vite';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
 
+const appRoot = path.dirname(fileURLToPath(import.meta.url));
+
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
+    afterCopy: [
+      async ({ buildPath }) => {
+        const source = path.join(appRoot, 'node_modules', 'better-sqlite3');
+        const target = path.join(buildPath, 'node_modules', 'better-sqlite3');
+        try {
+          await fs.access(path.join(source, 'package.json'));
+        } catch {
+          throw new Error(
+            'better-sqlite3 is not installed in the desktop workspace. Run npm ci with the repository .npmrc before packaging.',
+          );
+        }
+        await fs.cp(source, target, { recursive: true, force: true });
+      },
+    ],
   },
   rebuildConfig: {},
   makers: [

@@ -9,13 +9,43 @@ import {
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { listPackage } from '@electron/asar';
 
 const appDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const packagedApp = path.join(appDir, 'out', 'Noema-win32-x64', 'Noema.exe');
+const packageDirectory = path.join(appDir, 'out', 'Noema-win32-x64');
+const packagedApp = path.join(packageDirectory, 'Noema.exe');
+const resourcesDirectory = path.join(packageDirectory, 'resources');
+const archivePath = path.join(resourcesDirectory, 'app.asar');
 const timeoutMs = 60_000;
 
 if (!existsSync(packagedApp)) {
   throw new Error(`Packaged Noema executable not found: ${packagedApp}`);
+}
+if (!existsSync(archivePath)) {
+  throw new Error(`Packaged app archive not found: ${archivePath}`);
+}
+
+const archiveEntries = new Set(
+  listPackage(archivePath).map((entry) =>
+    entry.replaceAll('\\', '/').replace(/^\/+/, ''),
+  ),
+);
+const runtimeDependencies = ['better-sqlite3'];
+const missingDependencies = runtimeDependencies.filter((dependency) => {
+  const archiveEntry = `node_modules/${dependency}/package.json`;
+  const unpackedEntry = path.join(
+    resourcesDirectory,
+    'app.asar.unpacked',
+    'node_modules',
+    dependency,
+    'package.json',
+  );
+  return !archiveEntries.has(archiveEntry) && !existsSync(unpackedEntry);
+});
+if (missingDependencies.length > 0) {
+  throw new Error(
+    `Packaged app is missing runtime dependencies: ${missingDependencies.join(', ')}.`,
+  );
 }
 
 const smokeDirectory = mkdtempSync(path.join(tmpdir(), 'noema-package-smoke-'));
