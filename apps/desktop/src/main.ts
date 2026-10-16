@@ -191,6 +191,7 @@ const createWindow = () => {
         const result = {
           url: mainWindow?.webContents.getURL() ?? null,
           title: mainWindow?.getTitle() ?? null,
+          packaged: app.isPackaged,
           rootStateLoaded: true,
           providerConfigured: Boolean(bridgeState.providerConfigured),
           providerBaseUrl: bridgeState.providerBaseUrl ?? null,
@@ -696,13 +697,15 @@ async function startNoema() {
     if (!mainWindow || mainWindow.isDestroyed()) createWindow();
     writeSmokeLog('window-created');
   } catch (error) {
+    const message = `本机对话数据无法打开。请检查应用数据目录权限后重试。\n\n${error instanceof Error ? error.message : '未知错误'}`;
     writeSmokeLog('startup-error', {
       error: error instanceof Error ? error.message : String(error),
     });
-    dialog.showErrorBox(
-      'Noema 无法启动',
-      `本机对话数据无法打开。请检查应用数据目录权限后重试。\n\n${error instanceof Error ? error.message : '未知错误'}`,
-    );
+    if (process.env.NOEMA_SMOKE_TEST === '1') {
+      console.error('Noema startup smoke failed:', message);
+    } else {
+      dialog.showErrorBox('Noema 无法启动', message);
+    }
     app.quit();
   }
 }
