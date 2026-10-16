@@ -311,6 +311,14 @@ export async function runIsolatedWorkerE2E({
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
 
+  const assistantMessage = store
+    .getSnapshot()
+    .messages.find(
+      (message) =>
+        message.turnId === turnId &&
+        message.role === 'assistant' &&
+        message.attempt === store.getTurn(turnId)?.attempt,
+    );
   const result = {
     rootOnly,
     historyRecall,
@@ -336,15 +344,10 @@ export async function runIsolatedWorkerE2E({
       : null,
     task: summarizeTask(task),
     assistantText: getAssistantText(store, turnId),
-    historySources:
-      store
-        .getSnapshot()
-        .messages.find(
-          (message) =>
-            message.turnId === turnId &&
-            message.role === 'assistant' &&
-            message.attempt === store.getTurn(turnId)?.attempt,
-        )?.historySources ?? [],
+    historySources: assistantMessage?.historySources ?? [],
+    historySearchStatus:
+      assistantMessage?.historySearchStatus ?? 'not_searched',
+    historySourcesIncluded: Boolean(assistantMessage?.historySourcesIncluded),
     rootRouteMetadata: getAssistantRouteMetadata(store, turnId),
   };
   writeResult(resultPath, result, e2eDirectory);

@@ -100,8 +100,8 @@ const ownerCorrectionText = [
 const prompt = historyRecall
   ? [
       '[NOEMA E2E] 这是隔离数据库中的历史回忆检查。',
-      '请用 search_noema_history 查找我以前给你的唯一标记。只回复从旧对话原文中找到的标记，不要猜，也不要重复当前提示中的内容。',
-      '不要调用后台任务或其他操作工具。',
+      '请回忆我之前给出的临时密码是什么；必须依据旧对话原文，不要猜。',
+      '不要委派后台任务。',
     ].join('\n')
   : rootOnly
     ? [
@@ -134,7 +134,7 @@ store.setWorkspaceDirectory(workspacePath);
 let historySourceMessageId = null;
 if (historyRecall) {
   const sourceTurn = store.beginTurn({
-    text: `[NOEMA E2E HISTORY] 用户在更早的对话中给出的唯一标记是 ${historyReplyMarker}。`,
+    text: `我之前给出的临时密码是 ${historyReplyMarker}。`,
     model: requestedModel,
   });
   const sourceUserMessage = store
@@ -151,13 +151,13 @@ if (historyRecall) {
   store.completeTurn(sourceTurn.id, sourceTurn.attempt);
   for (let index = 0; index < 10; index += 1) {
     const filler = store.beginTurn({
-      text: `[NOEMA E2E HISTORY FILLER] 普通隔离话题 ${index}。`,
+      text: `植物养护与地铁路线话题 ${index}。`,
       model: requestedModel,
     });
     store.appendAssistant({
       id: filler.id,
       attempt: filler.attempt,
-      content: `普通隔离回复 ${index}。`,
+      content: `日常回复 ${index}。`,
     });
     store.completeTurn(filler.id, filler.attempt);
   }
@@ -315,6 +315,8 @@ const summary = {
   turnErrorCode: rootResult.turnErrorCode,
   assistantText: rootResult.assistantText,
   historySources: rootResult.historySources ?? [],
+  historySearchStatus: rootResult.historySearchStatus ?? 'not_searched',
+  historySourcesIncluded: Boolean(rootResult.historySourcesIncluded),
   dshAvailable: rootResult.dshAvailable,
   dshWorkerError: rootResult.dshWorkerError ?? null,
   rootRouteMetadata: rootResult.rootRouteMetadata ?? {
@@ -352,10 +354,11 @@ const historyRecallPassed =
   rootResult.historyRecall === true &&
   rootResult.outcome === 'no_worker_dispatched' &&
   rootResult.turnStatus === 'completed' &&
-  rootResult.assistantText?.trim() === historyReplyMarker &&
+  rootResult.assistantText?.includes(historyReplyMarker) &&
   rootResult.historySources?.some(
     (source) => source.id === historySourceMessageId,
   ) &&
+  rootResult.historySourcesIncluded === true &&
   rootResult.rootRouteMetadata?.status === 'reported' &&
   exit.code === 0;
 const directWorkerPassed =

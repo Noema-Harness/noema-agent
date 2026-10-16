@@ -17,7 +17,7 @@ test('root store migrates idempotently and persists the selected model', () => {
     store.db
       .prepare('SELECT MAX(version) AS version FROM schema_migrations')
       .get().version,
-    12,
+    13,
   );
   store.setSelectedModel('free-router');
   assert.equal(store.getSelectedModel(), 'free-router');
@@ -135,6 +135,18 @@ test('history recall provenance is bounded and only attaches completed visible m
     );
   assert.deepEqual(assistant.historySources, [snapshot]);
   assert.equal(assistant.historySearchStatus, 'found');
+  assert.equal(assistant.historySourcesIncluded, false);
+  assert.equal(
+    store.markTurnHistorySourcesIncluded(currentTurn.id, currentTurn.attempt),
+    true,
+  );
+  const includedAssistant = store
+    .getSnapshot()
+    .messages.find(
+      (message) =>
+        message.turnId === currentTurn.id && message.role === 'assistant',
+    );
+  assert.equal(includedAssistant.historySourcesIncluded, true);
   assert.throws(
     () =>
       store.setTurnHistorySources(currentTurn.id, currentTurn.attempt, [
@@ -173,7 +185,56 @@ test('history recall provenance is bounded and only attaches completed visible m
         message.turnId === noMatchTurn.id && message.role === 'assistant',
     );
   assert.equal(noMatchAssistant.historySearchStatus, 'no_match');
+  assert.equal(noMatchAssistant.historySourcesIncluded, false);
   assert.deepEqual(noMatchAssistant.historySources, []);
+  store.close();
+});
+
+test('schema-v12 databases add history delivery status without rewriting prior sources', () => {
+  const db = new Database(':memory:');
+  db.exec(`
+    CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);
+    INSERT INTO schema_migrations (version, applied_at) VALUES (12, 'fixture');
+    CREATE TABLE root_messages (
+      id TEXT PRIMARY KEY,
+      history_sources_json TEXT NOT NULL DEFAULT '[]',
+      history_search_status TEXT NOT NULL DEFAULT 'not_searched'
+        CHECK (history_search_status IN ('not_searched', 'found', 'included', 'no_match'))
+    );
+    INSERT INTO root_messages (id, history_sources_json, history_search_status)
+    VALUES ('assistant-existing', '[{"id":"old-source"}]', 'found');
+  `);
+  const store = new RootStore(db);
+
+  assert.equal(
+    db.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()
+      .version,
+    13,
+  );
+  assert.equal(
+    db
+      .prepare(
+        'SELECT history_sources_included AS included FROM root_messages WHERE id = ?',
+      )
+      .get('assistant-existing').included,
+    0,
+  );
+  assert.equal(
+    db
+      .prepare(
+        'SELECT history_search_status AS status FROM root_messages WHERE id = ?',
+      )
+      .get('assistant-existing').status,
+    'found',
+  );
+  assert.equal(
+    db
+      .prepare(
+        'SELECT history_sources_json AS sources FROM root_messages WHERE id = ?',
+      )
+      .get('assistant-existing').sources,
+    '[{"id":"old-source"}]',
+  );
   store.close();
 });
 
@@ -197,7 +258,7 @@ test('a schema-v4 database upgrades through interaction and verification state',
     store.db
       .prepare('SELECT MAX(version) AS version FROM schema_migrations')
       .get().version,
-    12,
+    13,
   );
   assert.equal(
     store.db
@@ -316,7 +377,7 @@ test('schema-v9 migration snapshots existing adjustments without guessing older 
   assert.equal(
     db.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()
       .version,
-    12,
+    13,
   );
   assert.deepEqual(readSnapshots('root_messages', 'assistant-2'), expected);
   assert.deepEqual(readSnapshots('root_messages', 'assistant-1'), []);
@@ -377,7 +438,7 @@ test('schema-v9 migration backfills only the latest root attempt and task snapsh
   assert.equal(
     db.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()
       .version,
-    12,
+    13,
   );
   assert.deepEqual(JSON.parse(latestAttempt.snapshots), [
     {

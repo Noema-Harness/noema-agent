@@ -605,7 +605,18 @@ export class RootStore {
       });
       applyHistoryRecallTraceSchema();
     }
-    if (currentVersion > 12)
+    if (currentVersion < 13) {
+      const applyHistorySourceDeliverySchema = this.db.transaction(() => {
+        this.db.exec(`
+          ALTER TABLE root_messages
+            ADD COLUMN history_sources_included INTEGER NOT NULL DEFAULT 0
+              CHECK (history_sources_included IN (0, 1));
+          INSERT INTO schema_migrations (version, applied_at) VALUES (13, '${nowIso()}');
+        `);
+      });
+      applyHistorySourceDeliverySchema();
+    }
+    if (currentVersion > 13)
       throw new Error(
         `Database schema ${currentVersion} is newer than this Noema build supports`,
       );
@@ -949,6 +960,7 @@ export class RootStore {
              m.interaction_adjustment_snapshots_json AS interactionAdjustmentSnapshotsJson,
              m.history_sources_json AS historySourcesJson,
              m.history_search_status AS historySearchStatus,
+             m.history_sources_included AS historySourcesIncluded,
              t.error_code AS errorCode, t.error_message AS errorMessage
       FROM root_messages AS m
       JOIN root_turns AS t ON t.id = m.turn_id
@@ -975,6 +987,8 @@ export class RootStore {
           routedVia = [];
         }
         try {
+          const legacyHistoryIncluded =
+            message.historySearchStatus === 'included';
           return {
             ...hydratedMessage,
             routedVia,
@@ -989,7 +1003,11 @@ export class RootStore {
               message.historySearchStatus,
             )
               ? message.historySearchStatus
-              : 'not_searched',
+              : legacyHistoryIncluded
+                ? 'found'
+                : 'not_searched',
+            historySourcesIncluded:
+              Boolean(message.historySourcesIncluded) || legacyHistoryIncluded,
           };
         } catch {
           return {
@@ -1001,6 +1019,7 @@ export class RootStore {
             ),
             historySources: [],
             historySearchStatus: 'not_searched',
+            historySourcesIncluded: false,
           };
         }
       });
@@ -2083,7 +2102,8 @@ export class RootStore {
     const result = this.db
       .prepare(`
         UPDATE root_messages
-        SET history_sources_json = ?, history_search_status = ?, updated_at = ?
+        SET history_sources_json = ?, history_search_status = ?,
+            history_sources_included = 0, updated_at = ?
         WHERE turn_id = ? AND role = 'assistant' AND attempt = ?
           AND status = 'streaming'
       `)
@@ -2097,6 +2117,20 @@ export class RootStore {
     if (result.changes !== 1)
       throw new Error('The active assistant attempt was not found');
     return snapshots;
+  }
+
+  /** @param {string} turnId @param {number} attempt */
+  markTurnHistorySourcesIncluded(turnId, attempt) {
+    const result = this.db
+      .prepare(`
+        UPDATE root_messages
+        SET history_sources_included = 1, updated_at = ?
+        WHERE turn_id = ? AND role = 'assistant' AND attempt = ?
+          AND status = 'streaming' AND history_search_status = 'found'
+          AND history_sources_json != '[]'
+      `)
+      .run(nowIso(), turnId, attempt);
+    return result.changes === 1;
   }
 
   /** @param {string} id */

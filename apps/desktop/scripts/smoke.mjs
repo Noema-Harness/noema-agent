@@ -82,6 +82,7 @@ if (probeHistoryTrace) {
       snippet: sourceMessage.content,
     },
   ]);
+  fixture.markTurnHistorySourcesIncluded(replyTurn.id, replyTurn.attempt);
   fixture.appendAssistant({
     id: replyTurn.id,
     attempt: replyTurn.attempt,
@@ -227,6 +228,7 @@ child.on('exit', (code, signal) => {
     if (probeHistoryTrace) {
       if (
         !loaded.historyTraceSmoke?.found ||
+        !loaded.historyTraceSmoke.included ||
         loaded.historyTraceSmoke.sourceCount < 1 ||
         !loaded.historyTraceSmoke.noMatch ||
         !loaded.historyTraceSmoke.jumpWorked

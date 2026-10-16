@@ -375,8 +375,16 @@ async function captureHistoryTraceSmokeScreenshots() {
     traceState = await mainWindow.webContents.executeJavaScript(`(() => {
       const traces = [...document.querySelectorAll('details.history-recall-trace')];
       traces.forEach((trace) => { trace.open = true; });
+      const includedTrace = traces.find((trace) =>
+        trace.textContent?.includes('本轮请求已包含'),
+      );
+      includedTrace?.scrollIntoView({ block: 'center' });
       return {
-        found: traces.some((trace) => trace.textContent?.includes('参考了')),
+        found: traces.some((trace) =>
+          trace.textContent?.includes('本机找到') ||
+          trace.textContent?.includes('本轮请求已包含'),
+        ),
+        included: Boolean(includedTrace),
         sourceCount: document.querySelectorAll('.history-recall-trace li').length,
         jumpButtonCount: document.querySelectorAll('.history-source-heading button:not(:disabled)').length,
         noMatch: traces.some((trace) => trace.textContent?.includes('没有找到相关原文')),
