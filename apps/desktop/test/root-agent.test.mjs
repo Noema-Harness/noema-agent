@@ -89,10 +89,10 @@ test('discussing a capture sends its exact text as one root turn and preserves p
   store.close();
 });
 
-test('ordinary root turns do not expose the history search tool', async () => {
+test('ordinary root turns do not retrieve older conversation context', async () => {
   const store = new RootStore(':memory:');
   store.setSelectedModel('auto:noema-free');
-  let tools = [];
+  let messages = [];
   const agent = new RootAgent({
     store,
     provider: {
@@ -101,7 +101,7 @@ test('ordinary root turns do not expose the history search tool', async () => {
         { name: 'auto:noema-free', label: 'Noema 免费模型链' },
       ],
       async *streamChat(input) {
-        tools = input.tools;
+        messages = input.messages;
         yield '我可以和你继续讨论这个新想法。';
       },
     },
@@ -112,7 +112,9 @@ test('ordinary root turns do not expose the history search tool', async () => {
   await agent.active.done;
 
   assert.equal(
-    tools.some((tool) => tool.function.name === 'search_noema_history'),
+    messages.some((message) =>
+      message.content?.includes('noema_history_recall'),
+    ),
     false,
   );
   store.close();
@@ -315,39 +317,22 @@ test('searches old root dialogue on request and discloses the exact source', asy
     ],
     async *streamChat(input) {
       requests.push(input);
-      if (requests.length === 1) {
-        assert.deepEqual(
-          input.tools.map((tool) => tool.function.name),
-          ['search_noema_history'],
-        );
-        assert.ok(
-          !input.messages.some((message) =>
-            message.content?.includes('体素化工具'),
-          ),
-        );
-        input.onToolCalls([
-          {
-            id: 'history-search-1',
-            type: 'function',
-            function: {
-              name: 'search_noema_history',
-              arguments: JSON.stringify({ query: 'Minecraft 碰撞箱' }),
-            },
-          },
-        ]);
-        return;
-      }
-
-      const toolMessage = input.messages.at(-1);
-      assert.equal(toolMessage.role, 'tool');
-      const result = JSON.parse(toolMessage.content);
-      assert.equal(result.results[0].id, sourceMessageId);
-      assert.match(result.results[0].snippet, /体素化工具/);
+      assert.deepEqual(input.tools, []);
+      const recall = input.messages.find((message) =>
+        message.content.includes('"type":"noema_history_recall"'),
+      );
+      assert.ok(recall);
+      const payload = JSON.parse(recall.content.split('\n').at(-1));
+      assert.equal(payload.status, 'found');
+      assert.equal(payload.sources[0].id, sourceMessageId);
+      assert.match(payload.sources[0].snippet, /体素化工具/);
       assert.ok(
-        !input.tools.some(
-          (tool) => tool.function.name === 'search_noema_history',
+        !input.messages.some(
+          (message) =>
+            message !== recall && message.content?.includes('体素化工具'),
         ),
       );
+      input.onRouteMetadata('fixture/free-model');
       yield '你当时提到体素化工具，后来它确实让碰撞箱更稳定。';
     },
   };
@@ -364,7 +349,7 @@ test('searches old root dialogue on request and discloses the exact source', asy
   });
   await agent.active.done;
 
-  assert.equal(requests.length, 2);
+  assert.equal(requests.length, 1);
   assert.equal(store.getTurn(sent.turnId).status, 'completed');
   const assistant = store
     .getSnapshot()
@@ -380,6 +365,8 @@ test('searches old root dialogue on request and discloses the exact source', asy
   assert.ok(
     assistant.historySources.every((source) => source.snippet.length <= 322),
   );
+  assert.equal(assistant.historySearchStatus, 'found');
+  assert.equal(assistant.historySourcesIncluded, true);
   assert.equal(
     store.getSnapshot().captures[0].content,
     '未讨论速记：Minecraft 碰撞箱的私人草稿',
@@ -387,7 +374,7 @@ test('searches old root dialogue on request and discloses the exact source', asy
   store.close();
 });
 
-test('history search with no match is returned to the model without fabricated sources', async () => {
+test('history search with no match is supplied once and cannot fabricate sources', async () => {
   const store = new RootStore(':memory:');
   store.setSelectedModel('auto:noema-free');
   const requests = [];
@@ -398,21 +385,13 @@ test('history search with no match is returned to the model without fabricated s
     ],
     async *streamChat(input) {
       requests.push(input);
-      if (requests.length === 1) {
-        input.onToolCalls([
-          {
-            id: 'history-search-empty',
-            type: 'function',
-            function: {
-              name: 'search_noema_history',
-              arguments: JSON.stringify({ query: '从未出现过的主题词' }),
-            },
-          },
-        ]);
-        return;
-      }
-      const result = JSON.parse(input.messages.at(-1).content);
-      assert.deepEqual(result.results, []);
+      const recall = input.messages.find((message) =>
+        message.content.includes('"type":"noema_history_recall"'),
+      );
+      assert.ok(recall);
+      const result = JSON.parse(recall.content.split('\n').at(-1));
+      assert.equal(result.status, 'no_match');
+      assert.deepEqual(result.sources, []);
       yield '我没有在之前的对话里找到这个主题。';
     },
   };
@@ -427,7 +406,7 @@ test('history search with no match is returned to the model without fabricated s
   });
   await agent.active.done;
 
-  assert.equal(requests.length, 2);
+  assert.equal(requests.length, 1);
   const assistant = store
     .getSnapshot()
     .messages.find(
@@ -435,6 +414,7 @@ test('history search with no match is returned to the model without fabricated s
         message.turnId === sent.turnId && message.role === 'assistant',
     );
   assert.equal(assistant.historySources.length, 0);
+  assert.equal(assistant.historySearchStatus, 'no_match');
   assert.match(assistant.content, /没有在之前的对话里找到/);
   store.close();
 });

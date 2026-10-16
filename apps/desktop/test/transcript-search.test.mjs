@@ -133,3 +133,33 @@ test('agent history search returns no broad match for generic reference words', 
     [],
   );
 });
+
+test('explicit past query ranks the relevant source above unrelated recent turns', () => {
+  const transcript = [
+    {
+      ...messages[0],
+      id: 'passphrase-source',
+      turnId: 'passphrase-turn',
+      status: 'complete',
+      turnStatus: 'completed',
+      content: '我之前给出的临时密码是 NOEMA-HISTORY-unique-marker。',
+    },
+    ...Array.from({ length: 10 }, (_, index) => ({
+      ...messages[1],
+      id: `unrelated-${index}`,
+      turnId: `unrelated-turn-${index}`,
+      status: 'complete',
+      turnStatus: 'completed',
+      content: `植物养护与地铁路线话题 ${index}。`,
+    })),
+  ];
+
+  const matches = searchTranscriptHistory(
+    transcript,
+    '[NOEMA E2E] 请回忆我之前给出的临时密码是什么？',
+    { currentTurnId: 'current-turn' },
+  );
+
+  assert.equal(matches[0].id, 'passphrase-source');
+  assert.match(matches[0].snippet, /NOEMA-HISTORY-unique-marker/);
+});

@@ -31,6 +31,7 @@ export interface NoemaRootMessage {
   interactionAdjustmentSnapshots: NoemaInteractionAdjustmentSnapshot[];
   historySources: NoemaHistorySource[];
   historySearchStatus: 'not_searched' | 'found' | 'no_match';
+  historySourcesIncluded: boolean;
   errorCode: string | null;
   errorMessage: string | null;
 }

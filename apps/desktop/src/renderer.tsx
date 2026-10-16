@@ -2166,9 +2166,18 @@ function DesktopApp() {
                       </div>
                       {userMessage.contextOmittedTurns > 0 && (
                         <div className="context-coverage" role="note">
-                          本轮带入最近 {userMessage.contextTurns} 轮；更早的{' '}
-                          {userMessage.contextOmittedTurns}{' '}
-                          轮仍保存在本机，但没有发送给模型。
+                          本轮常规上下文带入最近 {userMessage.contextTurns}{' '}
+                          轮；更早的 {userMessage.contextOmittedTurns}{' '}
+                          轮未自动发送。
+                          {currentAssistant?.historySearchStatus === 'found' &&
+                            currentAssistant.historySources.length > 0 && (
+                              <>
+                                {' '}
+                                {currentAssistant.historySourcesIncluded
+                                  ? `按本轮提及，另向 FreeLLMAPI 请求发送了 ${currentAssistant.historySources.length} 条旧消息；来源见下方。`
+                                  : `本机另找到 ${currentAssistant.historySources.length} 条旧消息，但上游是否收到无法确认；来源见下方。`}
+                              </>
+                            )}
                         </div>
                       )}
                       {assistantMessages.map((message) => {
@@ -2237,9 +2246,11 @@ function DesktopApp() {
                             {message.historySearchStatus !== 'not_searched' && (
                               <details className="history-recall-trace">
                                 <summary>
-                                  {message.historySearchStatus === 'found'
-                                    ? `本轮参考了 ${message.historySources.length} 条旧对话`
-                                    : '本轮查过旧对话，没有找到相关原文'}
+                                  {message.historySearchStatus === 'no_match'
+                                    ? '本轮查过旧对话，没有找到相关原文'
+                                    : message.historySourcesIncluded
+                                      ? `本轮请求已包含 ${message.historySources.length} 条旧对话`
+                                      : `本机找到 ${message.historySources.length} 条旧对话；上游是否收到无法确认`}
                                 </summary>
                                 {message.historySources.length > 0 ? (
                                   <ul>
@@ -2285,8 +2296,10 @@ function DesktopApp() {
                                 )}
                                 {message.historySources.length > 0 && (
                                   <p className="history-recall-caveat">
-                                    这些原文已随本轮请求发送给当前选定的免费模型；
-                                    Noema 不会将它们自动转为长期记忆。
+                                    {message.historySourcesIncluded
+                                      ? 'FreeLLMAPI 已接受包含这些摘录的请求；这不证明模型实际使用或理解了它们。'
+                                      : 'Noema 已在本机找到这些摘录，但 FreeLLMAPI 未返回接受响应；无法确认是否送达上游。'}{' '}
+                                    Noema 不会将检索命中自动转为长期记忆。
                                   </p>
                                 )}
                               </details>
