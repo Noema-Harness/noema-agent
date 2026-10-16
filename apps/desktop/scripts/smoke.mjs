@@ -190,6 +190,13 @@ child.on('exit', (code, signal) => {
       process.exitCode = 1;
       return;
     }
+    if (!loaded.windowFitsWorkArea) {
+      console.error(
+        'Desktop smoke window did not fit inside the display work area.',
+      );
+      process.exitCode = 1;
+      return;
+    }
     cleanSmokeDirectory();
     console.log(
       `Desktop startup smoke test passed: renderer loaded at ${loaded.url}.`,
