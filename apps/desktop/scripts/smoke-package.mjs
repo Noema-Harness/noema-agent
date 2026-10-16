@@ -134,6 +134,7 @@ child.on('exit', (code, signal) => {
 
   if (
     !loaded.packaged ||
+    !loaded.windowFitsWorkArea ||
     !loaded.rootStateLoaded ||
     typeof loaded.url !== 'string' ||
     !loaded.url.startsWith('file:')

@@ -192,7 +192,7 @@ child.on('exit', (code, signal) => {
     }
     if (!loaded.windowFitsWorkArea) {
       console.error(
-        'Desktop smoke window did not fit inside the display work area.',
+        'Desktop startup window was larger than the display work area.',
       );
       process.exitCode = 1;
       return;

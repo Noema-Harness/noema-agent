@@ -14,14 +14,17 @@ test('initial Noema window respects a high-DPI display work area', () => {
   });
 });
 
-test('initial Noema window keeps its preferred size when the display is large', () => {
-  assert.deepEqual(resolveInitialWindowSize({ width: 1920, height: 1080 }), {
-    width: 1240,
-    height: 860,
-    minWidth: 680,
-    minHeight: 560,
-  });
-});
+test(
+  'initial Noema window keeps its preferred size when the display is large',
+  () => {
+    assert.deepEqual(resolveInitialWindowSize({ width: 1920, height: 1080 }), {
+      width: 1240,
+      height: 860,
+      minWidth: 680,
+      minHeight: 560,
+    });
+  },
+);
 
 test('initial Noema window remains renderable on a compact display', () => {
   assert.deepEqual(resolveInitialWindowSize({ width: 640, height: 500 }), {
