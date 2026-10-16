@@ -89,7 +89,7 @@ Issue 从候选工作进入 Todo 前，需要满足：
 - `.github/workflows/desktop-checks.yml` 在 push 与 PR 上验证 Windows 环境：干净安装、lint、类型检查、安全测试、开发态桌面 smoke、生产打包后的真实 Electron 启动 smoke、Electron 构建目录与 Squirrel 安装器。Forge/Vite 的打包过滤仅保留 `.vite` 构建；`better-sqlite3` 是主进程外置的 native runtime，必须经 `packagerConfig.afterCopy` 显式放入 app 包。该 hook 兼容 npm workspace 的 hoisted 根目录布局和 workspace-local 布局，生产启动 smoke 检查包内模块并实际打开 renderer。
 - `npm run smoke:freellmapi --workspace noema-desktop` 使用隔离的根 SQLite / DSH_HOME 和本机已加密凭据，只读取 loopback FreeLLMAPI 的可用模型目录，不发送聊天或生成请求；它用于区分“网关目录可读”和“上游模型生成成功”，后者必须另做合成生成验证。
 - 当前仓库是 GitHub Free 下的私有仓库。GitHub API 明确拒绝为此仓库启用 branch protection/rulesets；所以 CI 已自动运行，但平台目前不能强制阻止不合格的直接 push。若以后要求服务器端强制 PR/检查，需要升级 GitHub 方案或改变仓库可见性；现在不擅自公开代码或增加订阅。
-- 当前 CI 证明开发构建、桌面启动与未签名 Squirrel 安装器可生成。只有手动运行 Desktop checks 时才上传 7 天保留的私有测试安装器，避免每次 PR/push 占满 artifact 配额。本机 Squirrel maker 在 C/D 临时目录写 `.nupkg` 均遇到 Access Denied；不关闭安全防护，改从 CI artifact 试装。安装器也未配置代码签名、自动更新或公开发行渠道；这些不是开始产品开发的前置条件，只有确定发行需求后再建正式 release 流程。
+- 当前 CI 证明开发构建、生产打包后的真实启动、桌面 smoke 与未签名 Squirrel 安装器可生成。手动运行 Desktop checks 时只上传 7 天保留的私有 Windows 便携预览目录，方便在 D 盘直接运行；PR/push 不上传，避免占满 artifact 配额。Squirrel 安装器仍参与 CI 验证，但本机 maker 在 C/D 临时目录写 `.nupkg` 均遇到 Access Denied；不关闭安全防护，也不把未签名安装器当日常入口。便携预览和安装器均未配置代码签名或自动更新；只有确定正式发行需求后再建 release 流程。
 
 ## Codex 项目 harness
 
