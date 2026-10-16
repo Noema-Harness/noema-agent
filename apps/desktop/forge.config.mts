@@ -17,13 +17,24 @@ const config: ForgeConfig = {
     asar: true,
     afterCopy: [
       async ({ buildPath }) => {
-        const source = path.join(appRoot, 'node_modules', 'better-sqlite3');
+        const sourceCandidates = [
+          path.join(appRoot, 'node_modules', 'better-sqlite3'),
+          path.resolve(appRoot, '..', '..', 'node_modules', 'better-sqlite3'),
+        ];
+        let source: string | undefined;
+        for (const candidate of sourceCandidates) {
+          try {
+            await fs.access(path.join(candidate, 'package.json'));
+            source = candidate;
+            break;
+          } catch {
+            // Try the next workspace installation location.
+          }
+        }
         const target = path.join(buildPath, 'node_modules', 'better-sqlite3');
-        try {
-          await fs.access(path.join(source, 'package.json'));
-        } catch {
+        if (!source) {
           throw new Error(
-            'better-sqlite3 is not installed in the desktop workspace. Run npm ci with the repository .npmrc before packaging.',
+            'better-sqlite3 is not installed in either the desktop workspace or repository root. Run npm ci before packaging.',
           );
         }
         await fs.cp(source, target, { recursive: true, force: true });
