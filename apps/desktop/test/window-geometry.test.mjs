@@ -14,17 +14,14 @@ test('initial Noema window respects a high-DPI display work area', () => {
   });
 });
 
-test(
-  'initial Noema window keeps its preferred size when the display is large',
-  () => {
-    assert.deepEqual(resolveInitialWindowSize({ width: 1920, height: 1080 }), {
-      width: 1240,
-      height: 860,
-      minWidth: 680,
-      minHeight: 560,
-    });
-  },
-);
+test('initial Noema window keeps its preferred size when the display is large', () => {
+  assert.deepEqual(resolveInitialWindowSize({ width: 1920, height: 1080 }), {
+    width: 1240,
+    height: 860,
+    minWidth: 680,
+    minHeight: 560,
+  });
+});
 
 test('initial Noema window remains renderable on a compact display', () => {
   assert.deepEqual(resolveInitialWindowSize({ width: 640, height: 500 }), {
@@ -39,17 +36,11 @@ test('work-area check rejects an out-of-bounds window', () => {
   const workArea = { x: 0, y: 0, width: 827, height: 573 };
 
   assert.equal(
-    fitsWithinWorkArea(
-      { x: 12, y: 12, width: 803, height: 549 },
-      workArea,
-    ),
+    fitsWithinWorkArea({ x: 12, y: 12, width: 803, height: 549 }, workArea),
     true,
   );
   assert.equal(
-    fitsWithinWorkArea(
-      { x: 12, y: 12, width: 1240, height: 860 },
-      workArea,
-    ),
+    fitsWithinWorkArea({ x: 12, y: 12, width: 1240, height: 860 }, workArea),
     false,
   );
 });
