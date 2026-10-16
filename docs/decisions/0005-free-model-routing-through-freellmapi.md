@@ -51,3 +51,11 @@ Noema's only root model route was Ollama. The user has now explicitly directed t
 - FreeLLMAPI exposes a reliable authenticated cost-classification contract that can replace the app's small allowlist.
 - A second provider class is explicitly authorized and its cost boundary can be enforced without silent fallback.
 - A supported desktop credential storage mechanism is unavailable; in that case, do not downgrade to plaintext persistence.
+
+## Amendment（2026-10-16）：有限恢复已提交后的流中错误
+
+**证据：**在同一 Windows 主机、同一 `auto:noema-free` 选择下，5 次隔离根请求中 4 次完整返回，1 次在已有部分文本后以 `provider_error` 结束；成功响应头报告的实际模型都是 `custom/nvidia/llama-3.2-11b-vision`。这是小样本的运行时信号，不代表长期可用率。FreeLLMAPI 的官方流式管线文档说明：首个有效响应头发送前的上游故障会在网关内 failover；发送响应头后，错误会作为已提交的流错误返回，网关不再切换上游。[FreeLLMAPI streaming pipeline](https://github.com/tashfeenahmed/freellmapi/blob/main/docs/en/architecture/03-streaming-pipeline.md)
+
+**决定：**Noema 仅对根对话的流式请求中明确归类为 `provider_error` 的故障自动重试一次，保持相同的用户所选模型 ID/免费链；FreeLLMAPI 自己负责链内的上游路由。`rate_limited`、鉴权失败、模型不可用、请求/网关超时、无效响应、用户中断、工具处理失败以及后台 DSH 事件均不触发这项自动重试。重新发送发生在另一个有序 attempt 中：已输出的部分文本保留并标为未完成，下一 attempt 的实际路由仍照常记录；第二次仍失败就停止并保留现有手动重试路径。模型工具调用只有完整流结束后才执行，因而中途失败不会重放已提交的外部操作。
+
+**代价与重审：**客户端重试会把同一轮内容再次发给用户选择的 FreeLLMAPI 路由，可能被上游再次记录；Noema 不改选付费模型，也不改变用户选择的数据去向。若真实运行表明重试大多再次失败、造成明显重复内容/等待，或用户不接受重复外发，则移除此自动恢复，保留失败片段和手动重试。一次失败最多增加一次请求，不存在无限循环。
