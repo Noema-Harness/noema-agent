@@ -59,3 +59,11 @@ Noema's only root model route was Ollama. The user has now explicitly directed t
 **决定：**Noema 仅对根对话的流式请求中明确归类为 `provider_error` 的故障自动重试一次，保持相同的用户所选模型 ID/免费链；FreeLLMAPI 自己负责链内的上游路由。`rate_limited`、鉴权失败、模型不可用、请求/网关超时、无效响应、用户中断、工具处理失败以及后台 DSH 事件均不触发这项自动重试。重新发送发生在另一个有序 attempt 中：已输出的部分文本保留并标为未完成，下一 attempt 的实际路由仍照常记录；第二次仍失败就停止并保留现有手动重试路径。模型工具调用只有完整流结束后才执行，因而中途失败不会重放已提交的外部操作。
 
 **代价与重审：**客户端重试会把同一轮内容再次发给用户选择的 FreeLLMAPI 路由，可能被上游再次记录；Noema 不改选付费模型，也不改变用户选择的数据去向。若真实运行表明重试大多再次失败、造成明显重复内容/等待，或用户不接受重复外发，则移除此自动恢复，保留失败片段和手动重试。一次失败最多增加一次请求，不存在无限循环。
+
+## Amendment（2026-10-17）：恢复首个响应前的上游不可用
+
+**证据：**PR #65 的完整 Noema → root → DSH 隔离运行在根模型请求阶段收到 `provider_unavailable`，没有产生任何文本或任务。FreeLLMAPI 的本地适配器把 HTTP 502/503 映射为此错误，而把 429 单独映射为 `rate_limited`；FreeLLMAPI 官方项目中的“all models exhausted”记录也是 HTTP 429，不应把额度耗尽误当成可重试的上游暂时不可用。[FreeLLMAPI exhaustion issue](https://github.com/tashfeenahmed/freellmapi/issues/470)
+
+**决定：**根对话对 `provider_unavailable` 仅在本 attempt 尚未输出任何可见文本时，最多自动重试一次，保持同一用户所选模型 ID/免费链。已输出文本后的 `provider_error` 仍按前一 amendment 重试一次并保留未完成 attempt。`rate_limited`、`gateway_unavailable`、超时、鉴权、模型不可用、用户中断和工具处理错误不重试；不切换模型、计费等级或服务商设置。若 `provider_unavailable` 在首段文本之后出现，保留失败片段而不重放。
+
+**代价与重审：**重试会把相同的用户上下文再次发送给同一 FreeLLMAPI 路由，增加一次免费额度消耗和一次第三方传输；必须在隔离测试中验证“空失败可重试、部分文本不重放、429 不重试、最多一次”。若真实运行显示 502/503 通常代表整条链已耗尽、重试不带来恢复，则撤销此分支。

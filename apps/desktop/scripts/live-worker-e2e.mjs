@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { RootStore } from '../src/root-store.mjs';
+import { verifyWorkspaceChecks } from '../src/workspace-verifier.mjs';
 import { configureElectronRuntime } from './electron-runtime.mjs';
 
 configureElectronRuntime();
@@ -97,6 +98,39 @@ const ownerCorrectionText = [
   `我的原话是：“${ownerCorrectionQuote}”。`,
   '请将它记录为适用于 coding 的互动调整。',
 ].join('\n');
+const expectedVerifierChecks = directWorker
+  ? [
+      { kind: 'file_contains', path: 'DESIGN.md', text: '本机保存' },
+      { kind: 'file_contains', path: 'DESIGN.md', text: '显式讨论' },
+      { kind: 'file_contains', path: 'DESIGN.md', text: '删除' },
+      { kind: 'file_contains', path: 'DESIGN.md', text: marker },
+      { kind: 'file_contains', path: 'README.md', text: '本机速记' },
+      { kind: 'file_contains', path: 'README.md', text: '显式讨论' },
+      { kind: 'file_contains', path: 'README.md', text: '删除' },
+      { kind: 'file_contains', path: 'README.md', text: marker },
+    ]
+  : [
+      {
+        kind: 'file_contains',
+        path: 'src/slug.mjs',
+        text: 'export function toSlug',
+      },
+      { kind: 'file_contains', path: 'src/slug.mjs', text: marker },
+      {
+        kind: 'file_contains',
+        path: 'test/slug.test.mjs',
+        text: "from 'node:test'",
+      },
+      {
+        kind: 'file_contains',
+        path: 'test/slug.test.mjs',
+        text: 'assert.equal',
+      },
+      { kind: 'file_contains', path: 'test/slug.test.mjs', text: 'hello-世界' },
+      { kind: 'file_contains', path: 'test/slug.test.mjs', text: marker },
+      { kind: 'file_contains', path: 'README.md', text: 'toSlug' },
+      { kind: 'file_contains', path: 'README.md', text: marker },
+    ];
 const prompt = historyRecall
   ? [
       '[NOEMA E2E] 这是隔离数据库中的历史回忆检查。',
@@ -113,19 +147,20 @@ const prompt = historyRecall
       ? [
           '[NOEMA E2E] 仅在当前隔离工作区完成这组双文件交付。',
           '请为 Noema 的“本机速记 → 用户选择后再讨论”切片写两份彼此匹配的文档：',
-          '- DESIGN.md：简要说明本机保存、显式讨论和删除边界。',
-          '- README.md：写给用户的实际操作说明。',
+          '- DESIGN.md：明确说明本机保存、显式讨论和删除边界。',
+          '- README.md：写清本机速记、显式讨论和删除的实际操作。',
           `两个文件都必须包含同一个验收标记：${marker}`,
+          `Noema 独立核验条件：${JSON.stringify(expectedVerifierChecks)}`,
           '这是两个都必须完成的交付项；不要在第一个文件后停止或报告完成。仅使用可用的文件工具，不要尝试 shell/网络操作。',
         ].join('\n')
       : [
           '[NOEMA E2E] 仅在当前隔离工作区内完成这个小型 Node 功能；不要改工作区外的内容。',
           '实现一个 `toSlug` 文本规范化函数，并交付完整的小功能，而不只是先写一个文件：',
-          '- `src/slug.mjs`：导出 `toSlug`，将输入首尾空白去除、转小写、连续空白变成连字符、去掉 ASCII 标点，并保留中文字符。',
-          '- `test/slug.test.mjs`：使用 Node 内置测试 API，覆盖 ASCII 标点/空格和中英混合文本两个案例。不要声称已运行测试，因为后台只开放文件工具。',
-          '- `README.md`：说明导入路径、函数行为和两个示例。',
+          '- `src/slug.mjs`：导出 `toSlug`，将输入首尾空白去除、转小写、连续空白变成连字符、去掉 ASCII 标点，并保留中文字符；源码要实际实现行为，不要只写验收标记。',
+          '- `test/slug.test.mjs`：使用 `node:test` 和 `assert.equal`，至少覆盖 `Hello, 世界!` 转换为 `hello-世界`。不要声称已运行测试，因为后台只开放文件工具。',
+          '- `README.md`：说明 `toSlug` 的导入路径和 `hello-世界` 示例，不要只放标记。',
           `三个文件都必须包含这个验收标记：${marker}`,
-          '请把实现、测试和说明全部交给后台 DSH agent；让 Noema 为三个文件分别设置“包含验收标记”的本地核验条件。不要只完成一个阶段后汇报。',
+          `请把实现、测试和说明全部交给后台 DSH agent。Noema 的独立验收条件必须完整包含：${JSON.stringify(expectedVerifierChecks)}。不要只设置“文件存在”或“包含标记”检查。不要只完成一个阶段后汇报。`,
         ].join('\n');
 
 const store = new RootStore(databasePath);
@@ -207,10 +242,7 @@ const child = spawn(process.execPath, ['scripts/start.mjs'], {
     NOEMA_E2E_DIRECT_WORKER: directWorker ? '1' : '0',
     ...(directWorker
       ? {
-          NOEMA_E2E_VERIFICATION_CHECKS: JSON.stringify([
-            { kind: 'file_contains', path: 'DESIGN.md', text: marker },
-            { kind: 'file_contains', path: 'README.md', text: marker },
-          ]),
+          NOEMA_E2E_VERIFICATION_CHECKS: JSON.stringify(expectedVerifierChecks),
         }
       : {}),
   },
@@ -268,24 +300,31 @@ const ownerCorrectionUsedByTask = Boolean(
   ),
 );
 verificationStore.close();
-const requiredArtifacts = directWorker
-  ? ['DESIGN.md', 'README.md']
-  : ['src/slug.mjs', 'test/slug.test.mjs', 'README.md'];
-const artifacts = requiredArtifacts.map((relativePath) => {
-  const absolutePath = path.join(workspacePath, relativePath);
-  const exists = existsSync(absolutePath);
-  return {
-    path: relativePath,
-    exists,
-    containsMarker:
-      exists && readFileSync(absolutePath, 'utf8').includes(marker),
-  };
-});
-const readme = artifacts.find((artifact) => artifact.path === 'README.md');
-const fileExists = Boolean(readme?.exists);
-const fileMatches = Boolean(readme?.containsMarker);
-const allArtifactsMatchMarker = artifacts.every(
-  (artifact) => artifact.exists && artifact.containsMarker,
+const artifactContentVerification = verifyWorkspaceChecks(
+  workspacePath,
+  expectedVerifierChecks,
+);
+const artifacts = artifactContentVerification.checks;
+const fileExists = artifacts.some(
+  (check) => check.path === 'README.md' && check.status === 'verified',
+);
+const fileMatches = artifacts.some(
+  (check) =>
+    check.path === 'README.md' &&
+    check.text === marker &&
+    check.status === 'verified',
+);
+const allArtifactsMatchContentContract =
+  artifactContentVerification.status === 'verified';
+const verifierCoveredContentContract = expectedVerifierChecks.every(
+  (expected) =>
+    rootResult.task?.verificationResults?.some(
+      (actual) =>
+        actual.kind === 'file_contains' &&
+        actual.path.replaceAll('\\', '/') === expected.path &&
+        actual.text === expected.text &&
+        actual.status === 'verified',
+    ),
 );
 const summary = {
   mode: historyRecall
@@ -334,7 +373,8 @@ const summary = {
   readmeExists: fileExists,
   readmeMatchesMarker: fileMatches,
   artifacts,
-  allArtifactsMatchMarker,
+  allArtifactsMatchContentContract,
+  verifierCoveredContentContract,
   scratchWorkspace: workspacePath,
   resultFile,
   childExitCode: exit.code,
@@ -367,7 +407,8 @@ const directWorkerPassed =
   rootResult.task?.status === 'completed' &&
   rootResult.task?.verificationStatus === 'verified' &&
   (!includeCorrection || ownerCorrectionUsedByTask) &&
-  allArtifactsMatchMarker &&
+  allArtifactsMatchContentContract &&
+  verifierCoveredContentContract &&
   exit.code === 0;
 if (
   historyRecall
@@ -382,7 +423,8 @@ if (
           rootResult.task?.noemaResponseStatus !== 'complete' ||
           rootResult.task?.verificationStatus !== 'verified' ||
           (captureOwnerCorrection && !ownerCorrectionUsedByTask) ||
-          !allArtifactsMatchMarker ||
+          !allArtifactsMatchContentContract ||
+          !verifierCoveredContentContract ||
           exit.code !== 0
 ) {
   process.exitCode = 1;
