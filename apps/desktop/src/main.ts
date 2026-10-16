@@ -112,6 +112,8 @@ const quickCaptureNarrowScreenshotPath =
   process.env.NOEMA_SMOKE_QUICK_CAPTURE_NARROW_PATH ?? null;
 const historyTraceDesktopScreenshotPath =
   process.env.NOEMA_SMOKE_HISTORY_TRACE_DESKTOP_PATH ?? null;
+const historyTraceIntermediateScreenshotPath =
+  process.env.NOEMA_SMOKE_HISTORY_TRACE_INTERMEDIATE_PATH ?? null;
 const historyTraceNarrowScreenshotPath =
   process.env.NOEMA_SMOKE_HISTORY_TRACE_NARROW_PATH ?? null;
 delete process.env.NOEMA_E2E_DATABASE_PATH;
@@ -127,6 +129,7 @@ delete process.env.NOEMA_SMOKE_CAPTURE_HISTORY_TRACE;
 delete process.env.NOEMA_SMOKE_QUICK_CAPTURE_DESKTOP_PATH;
 delete process.env.NOEMA_SMOKE_QUICK_CAPTURE_NARROW_PATH;
 delete process.env.NOEMA_SMOKE_HISTORY_TRACE_DESKTOP_PATH;
+delete process.env.NOEMA_SMOKE_HISTORY_TRACE_INTERMEDIATE_PATH;
 delete process.env.NOEMA_SMOKE_HISTORY_TRACE_NARROW_PATH;
 
 const isSquirrelLifecycleEvent = process.argv.some((argument) =>
@@ -415,6 +418,43 @@ async function captureHistoryTraceSmokeScreenshots() {
     writeSmokeScreenshot(historyTraceDesktopScreenshotPath, image);
     screenshots.push(historyTraceDesktopScreenshotPath);
   }
+  mainWindow?.setSize(827, 573);
+  await mainWindow?.webContents.executeJavaScript(
+    'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+  );
+  const intermediateTopbarFits = await mainWindow?.webContents
+    .executeJavaScript(`(() => {
+    const header = document.querySelector('.topbar');
+    if (!header) return false;
+    const bounds = header.getBoundingClientRect();
+    const controls = [...header.querySelectorAll('.topbar-tools > *')];
+    return (
+      header.scrollWidth <= header.clientWidth &&
+      controls.length >= 4 &&
+      controls.every((control) => {
+        const rect = control.getBoundingClientRect();
+        return (
+          rect.width > 0 &&
+          rect.left >= bounds.left - 1 &&
+          rect.right <= bounds.right + 1
+        );
+      })
+    );
+  })()`);
+  if (!intermediateTopbarFits) {
+    throw new Error(
+      'Model controls overflow the app header at 827 × 573 CSS pixels.',
+    );
+  }
+  if (historyTraceIntermediateScreenshotPath) {
+    await mainWindow?.webContents.executeJavaScript(
+      'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+    );
+    const image = await mainWindow?.capturePage();
+    if (!image) throw new Error('无法捕获历史来源披露中间视口预览。');
+    writeSmokeScreenshot(historyTraceIntermediateScreenshotPath, image);
+    screenshots.push(historyTraceIntermediateScreenshotPath);
+  }
   if (historyTraceNarrowScreenshotPath) {
     mainWindow?.setSize(680, 560);
     await mainWindow?.webContents.executeJavaScript(`new Promise((resolve) => {
@@ -438,7 +478,7 @@ async function captureHistoryTraceSmokeScreenshots() {
     )));
   })`);
   if (!jumpWorked) throw new Error('历史来源按钮没有跳回原时间线消息。');
-  return { ...traceState, jumpWorked, screenshots };
+  return { ...traceState, jumpWorked, intermediateTopbarFits, screenshots };
 }
 
 function discoverFreeLLMAPIBaseUrl(appDataPath: string) {

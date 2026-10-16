@@ -38,6 +38,7 @@ const quickCaptureScreenshotPaths = [
 ].filter((candidate) => typeof candidate === 'string' && candidate.length > 0);
 const historyTraceScreenshotPaths = [
   process.env.NOEMA_SMOKE_HISTORY_TRACE_DESKTOP_PATH,
+  process.env.NOEMA_SMOKE_HISTORY_TRACE_INTERMEDIATE_PATH,
   process.env.NOEMA_SMOKE_HISTORY_TRACE_NARROW_PATH,
 ].filter((candidate) => typeof candidate === 'string' && candidate.length > 0);
 if (probeFreeLLMAPI) mkdirSync(probeDirectory, { recursive: true });
@@ -233,6 +234,7 @@ child.on('exit', (code, signal) => {
         loaded.historyTraceSmoke.heading !== '对话' ||
         !Array.isArray(loaded.historyTraceSmoke.contextActions) ||
         loaded.historyTraceSmoke.contextActions.length < 2 ||
+        !loaded.historyTraceSmoke.intermediateTopbarFits ||
         !loaded.historyTraceSmoke.noMatch ||
         !loaded.historyTraceSmoke.jumpWorked
       ) {
