@@ -94,7 +94,7 @@ function writeResult(resultPath, result, e2eDirectory) {
  * No API credentials are copied or emitted; the caller supplies the app's
  * normal encrypted store.
  *
- * @param {{agent:import('./root-agent.mjs').RootAgent,store:import('./root-store.mjs').RootStore,databasePath:string,prefacePrompt?:string|null,prompt:string,resultPath:string,rootOnly?:boolean,directWorker?:boolean,verificationChecks?:unknown,timeoutMs?:number}} input
+ * @param {{agent:import('./root-agent.mjs').RootAgent,store:import('./root-store.mjs').RootStore,databasePath:string,prefacePrompt?:string|null,prompt:string,resultPath:string,rootOnly?:boolean,historyRecall?:boolean,directWorker?:boolean,verificationChecks?:unknown,timeoutMs?:number}} input
  */
 export async function runIsolatedWorkerE2E({
   agent,
@@ -104,6 +104,7 @@ export async function runIsolatedWorkerE2E({
   prompt,
   resultPath,
   rootOnly = false,
+  historyRecall = false,
   directWorker = false,
   verificationChecks = [],
   timeoutMs = 20 * 60 * 1_000,
@@ -118,6 +119,7 @@ export async function runIsolatedWorkerE2E({
         !prefacePrompt.startsWith('[NOEMA E2E PREFACE]') ||
         prefacePrompt.length > 4_000)) ||
     (rootOnly && directWorker) ||
+    (historyRecall && !rootOnly) ||
     (directWorker && prefacePrompt !== null) ||
     typeof prompt !== 'string' ||
     !prompt.trim() ||
@@ -154,6 +156,7 @@ export async function runIsolatedWorkerE2E({
 
   if (rootOnly) {
     agent.allowRootActions = false;
+    agent.allowHistorySearch = historyRecall;
     agent.dshAdapter = null;
   }
 
@@ -166,6 +169,7 @@ export async function runIsolatedWorkerE2E({
   if (!canDispatch) {
     const result = {
       rootOnly,
+      historyRecall,
       outcome: 'preflight_failed',
       turnStatus: 'not_started',
       turnErrorCode: 'dsh_unavailable',
@@ -207,6 +211,7 @@ export async function runIsolatedWorkerE2E({
       if (!dispatch.accepted) {
         const result = {
           rootOnly: false,
+          historyRecall: false,
           directWorker: true,
           outcome: 'worker_rejected',
           turnStatus: store.getTurn(sourceTurn.id)?.status ?? 'missing',
@@ -226,6 +231,7 @@ export async function runIsolatedWorkerE2E({
       const task = store.getBackgroundTask(dispatch.taskId);
       const result = {
         rootOnly: false,
+        historyRecall: false,
         directWorker: true,
         outcome:
           task?.status === 'completed'
@@ -307,6 +313,7 @@ export async function runIsolatedWorkerE2E({
 
   const result = {
     rootOnly,
+    historyRecall,
     outcome:
       Date.now() >= deadline
         ? 'timeout'
@@ -329,6 +336,15 @@ export async function runIsolatedWorkerE2E({
       : null,
     task: summarizeTask(task),
     assistantText: getAssistantText(store, turnId),
+    historySources:
+      store
+        .getSnapshot()
+        .messages.find(
+          (message) =>
+            message.turnId === turnId &&
+            message.role === 'assistant' &&
+            message.attempt === store.getTurn(turnId)?.attempt,
+        )?.historySources ?? [],
     rootRouteMetadata: getAssistantRouteMetadata(store, turnId),
   };
   writeResult(resultPath, result, e2eDirectory);

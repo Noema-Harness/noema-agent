@@ -98,25 +98,36 @@ const testDshUserDataPath = process.env.NOEMA_E2E_DSH_USER_DATA_PATH ?? null;
 const testWorkerPreface = process.env.NOEMA_E2E_WORKER_PREFACE ?? null;
 const testWorkerPrompt = process.env.NOEMA_E2E_WORKER_PROMPT ?? null;
 const testRootOnly = process.env.NOEMA_E2E_ROOT_ONLY === '1';
+const testHistoryRecall = process.env.NOEMA_E2E_HISTORY_RECALL === '1';
 const testDirectWorker = process.env.NOEMA_E2E_DIRECT_WORKER === '1';
 const testVerificationChecksJson =
   process.env.NOEMA_E2E_VERIFICATION_CHECKS ?? null;
 const testCaptureQuickCapture =
   process.env.NOEMA_SMOKE_CAPTURE_QUICK_CAPTURE === '1';
+const testCaptureHistoryTrace =
+  process.env.NOEMA_SMOKE_CAPTURE_HISTORY_TRACE === '1';
 const quickCaptureDesktopScreenshotPath =
   process.env.NOEMA_SMOKE_QUICK_CAPTURE_DESKTOP_PATH ?? null;
 const quickCaptureNarrowScreenshotPath =
   process.env.NOEMA_SMOKE_QUICK_CAPTURE_NARROW_PATH ?? null;
+const historyTraceDesktopScreenshotPath =
+  process.env.NOEMA_SMOKE_HISTORY_TRACE_DESKTOP_PATH ?? null;
+const historyTraceNarrowScreenshotPath =
+  process.env.NOEMA_SMOKE_HISTORY_TRACE_NARROW_PATH ?? null;
 delete process.env.NOEMA_E2E_DATABASE_PATH;
 delete process.env.NOEMA_E2E_DSH_USER_DATA_PATH;
 delete process.env.NOEMA_E2E_WORKER_PREFACE;
 delete process.env.NOEMA_E2E_WORKER_PROMPT;
 delete process.env.NOEMA_E2E_ROOT_ONLY;
+delete process.env.NOEMA_E2E_HISTORY_RECALL;
 delete process.env.NOEMA_E2E_DIRECT_WORKER;
 delete process.env.NOEMA_E2E_VERIFICATION_CHECKS;
 delete process.env.NOEMA_SMOKE_CAPTURE_QUICK_CAPTURE;
+delete process.env.NOEMA_SMOKE_CAPTURE_HISTORY_TRACE;
 delete process.env.NOEMA_SMOKE_QUICK_CAPTURE_DESKTOP_PATH;
 delete process.env.NOEMA_SMOKE_QUICK_CAPTURE_NARROW_PATH;
+delete process.env.NOEMA_SMOKE_HISTORY_TRACE_DESKTOP_PATH;
+delete process.env.NOEMA_SMOKE_HISTORY_TRACE_NARROW_PATH;
 
 const isSquirrelLifecycleEvent = process.argv.some((argument) =>
   /^--squirrel-(install|updated|uninstall|obsolete)$/.test(argument),
@@ -176,6 +187,7 @@ const createWindow = () => {
           throw new Error('Root conversation bridge did not return its state');
         }
         const quickCaptureSmoke = await captureQuickCaptureSmokeScreenshots();
+        const historyTraceSmoke = await captureHistoryTraceSmokeScreenshots();
         const result = {
           url: mainWindow?.webContents.getURL() ?? null,
           title: mainWindow?.getTitle() ?? null,
@@ -202,6 +214,7 @@ const createWindow = () => {
               }
             : null,
           quickCaptureSmoke,
+          historyTraceSmoke,
         };
         writeSmokeLog('renderer-loaded', result);
         if (process.env.NOEMA_SMOKE_TEST_FILE) {
@@ -269,16 +282,13 @@ function finishQuickCapture() {
   return finished;
 }
 
-function writeQuickCaptureSmokeScreenshot(
-  targetPath: string,
-  image: Electron.NativeImage,
-) {
+function writeSmokeScreenshot(targetPath: string, image: Electron.NativeImage) {
   if (
     app.isPackaged ||
     process.env.NOEMA_SMOKE_TEST !== '1' ||
     !path.isAbsolute(targetPath)
   ) {
-    throw new Error('快捷速记截图只允许由未打包的 smoke 测试写入绝对路径。');
+    throw new Error('截图只允许由未打包的 smoke 测试写入绝对路径。');
   }
   fs.mkdirSync(path.dirname(targetPath), { recursive: true });
   fs.writeFileSync(targetPath, image.toPNG(), { flag: 'wx' });
@@ -332,7 +342,7 @@ async function captureQuickCaptureSmokeScreenshots() {
   if (quickCaptureDesktopScreenshotPath) {
     const image = await mainWindow?.capturePage();
     if (!image) throw new Error('无法捕获快捷速记桌面预览。');
-    writeQuickCaptureSmokeScreenshot(quickCaptureDesktopScreenshotPath, image);
+    writeSmokeScreenshot(quickCaptureDesktopScreenshotPath, image);
     screenshots.push(quickCaptureDesktopScreenshotPath);
   }
   if (quickCaptureNarrowScreenshotPath) {
@@ -346,7 +356,7 @@ async function captureQuickCaptureSmokeScreenshots() {
     }
     const image = await mainWindow?.capturePage();
     if (!image) throw new Error('无法捕获快捷速记窄窗口预览。');
-    writeQuickCaptureSmokeScreenshot(quickCaptureNarrowScreenshotPath, image);
+    writeSmokeScreenshot(quickCaptureNarrowScreenshotPath, image);
     screenshots.push(quickCaptureNarrowScreenshotPath);
   }
   return {
@@ -355,6 +365,67 @@ async function captureQuickCaptureSmokeScreenshots() {
     shortcutStatusVisible,
     screenshots,
   };
+}
+
+async function captureHistoryTraceSmokeScreenshots() {
+  if (!testCaptureHistoryTrace) return null;
+  const deadline = Date.now() + 10_000;
+  let traceState = null;
+  while (Date.now() < deadline && mainWindow && !mainWindow.isDestroyed()) {
+    traceState = await mainWindow.webContents.executeJavaScript(`(() => {
+      const traces = [...document.querySelectorAll('details.history-recall-trace')];
+      traces.forEach((trace) => { trace.open = true; });
+      return {
+        found: traces.some((trace) => trace.textContent?.includes('参考了')),
+        sourceCount: document.querySelectorAll('.history-recall-trace li').length,
+        jumpButtonCount: document.querySelectorAll('.history-source-heading button:not(:disabled)').length,
+        noMatch: traces.some((trace) => trace.textContent?.includes('没有找到相关原文')),
+      };
+    })()`);
+    if (traceState?.found && traceState.sourceCount > 0) break;
+    await new Promise((resolve) => setTimeout(resolve, 30));
+  }
+  if (
+    !traceState?.found ||
+    traceState.sourceCount < 1 ||
+    traceState.jumpButtonCount < 1
+  ) {
+    throw new Error('历史来源披露没有显示可检查的原文来源。');
+  }
+  await mainWindow?.webContents.executeJavaScript(
+    'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+  );
+  const screenshots = [];
+  if (historyTraceDesktopScreenshotPath) {
+    const image = await mainWindow?.capturePage();
+    if (!image) throw new Error('无法捕获历史来源披露桌面预览。');
+    writeSmokeScreenshot(historyTraceDesktopScreenshotPath, image);
+    screenshots.push(historyTraceDesktopScreenshotPath);
+  }
+  if (historyTraceNarrowScreenshotPath) {
+    mainWindow?.setSize(680, 560);
+    await mainWindow?.webContents.executeJavaScript(`new Promise((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        document.querySelector('details.history-recall-trace')?.scrollIntoView({ block: 'center' });
+        requestAnimationFrame(resolve);
+      }));
+    })`);
+    const image = await mainWindow?.capturePage();
+    if (!image) throw new Error('无法捕获历史来源披露窄窗口预览。');
+    writeSmokeScreenshot(historyTraceNarrowScreenshotPath, image);
+    screenshots.push(historyTraceNarrowScreenshotPath);
+  }
+  await mainWindow?.webContents.executeJavaScript(`(() => {
+    document.querySelector('.history-source-heading button:not(:disabled)')?.click();
+  })()`);
+  const jumpWorked = await mainWindow?.webContents
+    .executeJavaScript(`new Promise((resolve) => {
+    requestAnimationFrame(() => resolve(Boolean(
+      document.activeElement?.id?.startsWith('transcript-message-')
+    )));
+  })`);
+  if (!jumpWorked) throw new Error('历史来源按钮没有跳回原时间线消息。');
+  return { ...traceState, jumpWorked, screenshots };
 }
 
 function discoverFreeLLMAPIBaseUrl(appDataPath: string) {
@@ -570,6 +641,7 @@ async function startNoema() {
         prompt: testWorkerPrompt,
         resultPath,
         rootOnly: testRootOnly,
+        historyRecall: testHistoryRecall,
         directWorker: testDirectWorker,
         verificationChecks:
           testDirectWorker && testVerificationChecksJson

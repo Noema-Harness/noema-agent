@@ -44,9 +44,11 @@ const databasePath = path.join(e2eDirectory, 'root.sqlite3');
 const dshUserDataPath = path.join(e2eDirectory, 'dsh-user-data');
 const marker = `NOEMA-E2E-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 const rootReplyMarker = `NOEMA-ROOT-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+const historyReplyMarker = `NOEMA-HISTORY-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 mkdirSync(e2eDirectory);
 mkdirSync(workspacePath);
-const rootOnly = process.argv.includes('--root-only');
+const historyRecall = process.argv.includes('--history-recall');
+const rootOnly = process.argv.includes('--root-only') || historyRecall;
 const directWorker = process.argv.includes('--direct-worker');
 const withCorrection = process.argv.includes('--with-correction');
 const withoutCorrection = process.argv.includes('--without-correction');
@@ -95,34 +97,74 @@ const ownerCorrectionText = [
   `我的原话是：“${ownerCorrectionQuote}”。`,
   '请将它记录为适用于 coding 的互动调整。',
 ].join('\n');
-const prompt = rootOnly
+const prompt = historyRecall
   ? [
-      '[NOEMA E2E] This is a synthetic root-chat transport check only.',
-      `Reply with exactly this text and nothing else: ${rootReplyMarker}`,
-      'Do not call tools, delegate work, or modify files.',
+      '[NOEMA E2E] 这是隔离数据库中的历史回忆检查。',
+      '请用 search_noema_history 查找我以前给你的唯一标记。只回复从旧对话原文中找到的标记，不要猜，也不要重复当前提示中的内容。',
+      '不要调用后台任务或其他操作工具。',
     ].join('\n')
-  : directWorker
+  : rootOnly
     ? [
-        '[NOEMA E2E] 仅在当前隔离工作区完成这组双文件交付。',
-        '请为 Noema 的“本机速记 → 用户选择后再讨论”切片写两份彼此匹配的文档：',
-        '- DESIGN.md：简要说明本机保存、显式讨论和删除边界。',
-        '- README.md：写给用户的实际操作说明。',
-        `两个文件都必须包含同一个验收标记：${marker}`,
-        '这是两个都必须完成的交付项；不要在第一个文件后停止或报告完成。仅使用可用的文件工具，不要尝试 shell/网络操作。',
+        '[NOEMA E2E] This is a synthetic root-chat transport check only.',
+        `Reply with exactly this text and nothing else: ${rootReplyMarker}`,
+        'Do not call tools, delegate work, or modify files.',
       ].join('\n')
-    : [
-        '[NOEMA E2E] 仅在当前隔离工作区内完成这个小型 Node 功能；不要改工作区外的内容。',
-        '实现一个 `toSlug` 文本规范化函数，并交付完整的小功能，而不只是先写一个文件：',
-        '- `src/slug.mjs`：导出 `toSlug`，将输入首尾空白去除、转小写、连续空白变成连字符、去掉 ASCII 标点，并保留中文字符。',
-        '- `test/slug.test.mjs`：使用 Node 内置测试 API，覆盖 ASCII 标点/空格和中英混合文本两个案例。不要声称已运行测试，因为后台只开放文件工具。',
-        '- `README.md`：说明导入路径、函数行为和两个示例。',
-        `三个文件都必须包含这个验收标记：${marker}`,
-        '请把实现、测试和说明全部交给后台 DSH agent；让 Noema 为三个文件分别设置“包含验收标记”的本地核验条件。不要只完成一个阶段后汇报。',
-      ].join('\n');
+    : directWorker
+      ? [
+          '[NOEMA E2E] 仅在当前隔离工作区完成这组双文件交付。',
+          '请为 Noema 的“本机速记 → 用户选择后再讨论”切片写两份彼此匹配的文档：',
+          '- DESIGN.md：简要说明本机保存、显式讨论和删除边界。',
+          '- README.md：写给用户的实际操作说明。',
+          `两个文件都必须包含同一个验收标记：${marker}`,
+          '这是两个都必须完成的交付项；不要在第一个文件后停止或报告完成。仅使用可用的文件工具，不要尝试 shell/网络操作。',
+        ].join('\n')
+      : [
+          '[NOEMA E2E] 仅在当前隔离工作区内完成这个小型 Node 功能；不要改工作区外的内容。',
+          '实现一个 `toSlug` 文本规范化函数，并交付完整的小功能，而不只是先写一个文件：',
+          '- `src/slug.mjs`：导出 `toSlug`，将输入首尾空白去除、转小写、连续空白变成连字符、去掉 ASCII 标点，并保留中文字符。',
+          '- `test/slug.test.mjs`：使用 Node 内置测试 API，覆盖 ASCII 标点/空格和中英混合文本两个案例。不要声称已运行测试，因为后台只开放文件工具。',
+          '- `README.md`：说明导入路径、函数行为和两个示例。',
+          `三个文件都必须包含这个验收标记：${marker}`,
+          '请把实现、测试和说明全部交给后台 DSH agent；让 Noema 为三个文件分别设置“包含验收标记”的本地核验条件。不要只完成一个阶段后汇报。',
+        ].join('\n');
 
 const store = new RootStore(databasePath);
 store.setSelectedModel(requestedModel);
 store.setWorkspaceDirectory(workspacePath);
+let historySourceMessageId = null;
+if (historyRecall) {
+  const sourceTurn = store.beginTurn({
+    text: `[NOEMA E2E HISTORY] 用户在更早的对话中给出的唯一标记是 ${historyReplyMarker}。`,
+    model: requestedModel,
+  });
+  const sourceUserMessage = store
+    .getSnapshot()
+    .messages.find(
+      (message) => message.turnId === sourceTurn.id && message.role === 'user',
+    );
+  historySourceMessageId = sourceUserMessage?.id ?? null;
+  store.appendAssistant({
+    id: sourceTurn.id,
+    attempt: sourceTurn.attempt,
+    content: '我会保留这段隔离测试用的上下文。',
+  });
+  store.completeTurn(sourceTurn.id, sourceTurn.attempt);
+  for (let index = 0; index < 10; index += 1) {
+    const filler = store.beginTurn({
+      text: `[NOEMA E2E HISTORY FILLER] 普通隔离话题 ${index}。`,
+      model: requestedModel,
+    });
+    store.appendAssistant({
+      id: filler.id,
+      attempt: filler.attempt,
+      content: `普通隔离回复 ${index}。`,
+    });
+    store.completeTurn(filler.id, filler.attempt);
+  }
+  if (!historySourceMessageId) {
+    throw new Error('The synthetic history source was not saved.');
+  }
+}
 if (includeCorrection && !captureOwnerCorrection) {
   const turn = store.beginTurn({
     text: directWorker ? ownerCorrectionQuote : correction,
@@ -161,6 +203,7 @@ const child = spawn(process.execPath, ['scripts/start.mjs'], {
       : {}),
     NOEMA_E2E_WORKER_PROMPT: prompt,
     NOEMA_E2E_ROOT_ONLY: rootOnly ? '1' : '0',
+    NOEMA_E2E_HISTORY_RECALL: historyRecall ? '1' : '0',
     NOEMA_E2E_DIRECT_WORKER: directWorker ? '1' : '0',
     ...(directWorker
       ? {
@@ -245,7 +288,15 @@ const allArtifactsMatchMarker = artifacts.every(
   (artifact) => artifact.exists && artifact.containsMarker,
 );
 const summary = {
-  mode: rootOnly ? 'root-only' : directWorker ? 'direct-worker' : 'worker',
+  mode: historyRecall
+    ? 'history-recall'
+    : rootOnly
+      ? 'root-only'
+      : directWorker
+        ? 'direct-worker'
+        : 'worker',
+  historyRecall,
+  syntheticHistorySourceId: historySourceMessageId,
   correctionInjected: includeCorrection && !captureOwnerCorrection,
   adjustmentMode: rootOnly
     ? 'none'
@@ -263,6 +314,7 @@ const summary = {
   turnStatus: rootResult.turnStatus,
   turnErrorCode: rootResult.turnErrorCode,
   assistantText: rootResult.assistantText,
+  historySources: rootResult.historySources ?? [],
   dshAvailable: rootResult.dshAvailable,
   dshWorkerError: rootResult.dshWorkerError ?? null,
   rootRouteMetadata: rootResult.rootRouteMetadata ?? {
@@ -294,6 +346,18 @@ const rootChatPassed =
   rootResult.assistantText?.trim() === rootReplyMarker &&
   rootResult.rootRouteMetadata?.status === 'reported' &&
   exit.code === 0;
+const historyRecallPassed =
+  historyRecall &&
+  rootResult.rootOnly === true &&
+  rootResult.historyRecall === true &&
+  rootResult.outcome === 'no_worker_dispatched' &&
+  rootResult.turnStatus === 'completed' &&
+  rootResult.assistantText?.trim() === historyReplyMarker &&
+  rootResult.historySources?.some(
+    (source) => source.id === historySourceMessageId,
+  ) &&
+  rootResult.rootRouteMetadata?.status === 'reported' &&
+  exit.code === 0;
 const directWorkerPassed =
   directWorker &&
   rootResult.outcome === 'worker_direct_finished' &&
@@ -303,18 +367,20 @@ const directWorkerPassed =
   allArtifactsMatchMarker &&
   exit.code === 0;
 if (
-  rootOnly
-    ? !rootChatPassed
-    : directWorker
-      ? !directWorkerPassed
-      : rootResult.outcome !== 'worker_finished' ||
-        rootResult.task?.status !== 'completed' ||
-        rootResult.task?.eventStatus !== 'delivered' ||
-        rootResult.task?.noemaResponseStatus !== 'complete' ||
-        rootResult.task?.verificationStatus !== 'verified' ||
-        (captureOwnerCorrection && !ownerCorrectionUsedByTask) ||
-        !allArtifactsMatchMarker ||
-        exit.code !== 0
+  historyRecall
+    ? !historyRecallPassed
+    : rootOnly
+      ? !rootChatPassed
+      : directWorker
+        ? !directWorkerPassed
+        : rootResult.outcome !== 'worker_finished' ||
+          rootResult.task?.status !== 'completed' ||
+          rootResult.task?.eventStatus !== 'delivered' ||
+          rootResult.task?.noemaResponseStatus !== 'complete' ||
+          rootResult.task?.verificationStatus !== 'verified' ||
+          (captureOwnerCorrection && !ownerCorrectionUsedByTask) ||
+          !allArtifactsMatchMarker ||
+          exit.code !== 0
 ) {
   process.exitCode = 1;
 }

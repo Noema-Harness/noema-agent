@@ -89,6 +89,35 @@ test('discussing a capture sends its exact text as one root turn and preserves p
   store.close();
 });
 
+test('ordinary root turns do not expose the history search tool', async () => {
+  const store = new RootStore(':memory:');
+  store.setSelectedModel('auto:noema-free');
+  let tools = [];
+  const agent = new RootAgent({
+    store,
+    provider: {
+      baseUrl: 'http://127.0.0.1:31415/v1',
+      listModels: async () => [
+        { name: 'auto:noema-free', label: 'Noema 免费模型链' },
+      ],
+      async *streamChat(input) {
+        tools = input.tools;
+        yield '我可以和你继续讨论这个新想法。';
+      },
+    },
+    secretStore: createSecretStore(),
+  });
+
+  agent.sendMessage({ text: '我有一个新想法，想先和你讨论。' });
+  await agent.active.done;
+
+  assert.equal(
+    tools.some((tool) => tool.function.name === 'search_noema_history'),
+    false,
+  );
+  store.close();
+});
+
 test('first connection defaults to the reviewed Noema free chain when available', async () => {
   const store = new RootStore(':memory:');
   const provider = {
@@ -242,6 +271,171 @@ test('sends an imported Codex snapshot as quoted context before the current root
   assert.match(imported.content, /Only change the parser/);
   assert.match(imported.content, /不是本轮请求或操作授权/);
   assert.match(sent.messages[0].content, /历史参考/);
+  store.close();
+});
+
+test('searches old root dialogue on request and discloses the exact source', async () => {
+  const store = new RootStore(':memory:');
+  store.setSelectedModel('auto:noema-free');
+  let sourceMessageId = null;
+  const firstTurn = store.beginTurn({
+    text: '我后来让模型用体素化工具生成 Minecraft 模组模型的碰撞箱，这次才稳定。',
+    model: 'auto:noema-free',
+  });
+  sourceMessageId = store
+    .getSnapshot()
+    .messages.find(
+      (message) => message.turnId === firstTurn.id && message.role === 'user',
+    ).id;
+  store.appendAssistant({
+    id: firstTurn.id,
+    attempt: 1,
+    content: '体素化工具让碰撞箱更接近模型本身。',
+  });
+  store.completeTurn(firstTurn.id, 1);
+  for (let index = 0; index < 10; index += 1) {
+    const turn = store.beginTurn({
+      text: `后续讨论的普通话题 ${index}。`,
+      model: 'auto:noema-free',
+    });
+    store.appendAssistant({
+      id: turn.id,
+      attempt: 1,
+      content: `普通回复 ${index}。`,
+    });
+    store.completeTurn(turn.id, 1);
+  }
+  store.createCapture('未讨论速记：Minecraft 碰撞箱的私人草稿');
+
+  const requests = [];
+  const provider = {
+    baseUrl: 'http://127.0.0.1:31415/v1',
+    listModels: async () => [
+      { name: 'auto:noema-free', label: 'Noema 免费模型链' },
+    ],
+    async *streamChat(input) {
+      requests.push(input);
+      if (requests.length === 1) {
+        assert.deepEqual(
+          input.tools.map((tool) => tool.function.name),
+          ['search_noema_history'],
+        );
+        assert.ok(
+          !input.messages.some((message) =>
+            message.content?.includes('体素化工具'),
+          ),
+        );
+        input.onToolCalls([
+          {
+            id: 'history-search-1',
+            type: 'function',
+            function: {
+              name: 'search_noema_history',
+              arguments: JSON.stringify({ query: 'Minecraft 碰撞箱' }),
+            },
+          },
+        ]);
+        return;
+      }
+
+      const toolMessage = input.messages.at(-1);
+      assert.equal(toolMessage.role, 'tool');
+      const result = JSON.parse(toolMessage.content);
+      assert.equal(result.results[0].id, sourceMessageId);
+      assert.match(result.results[0].snippet, /体素化工具/);
+      assert.ok(
+        !input.tools.some(
+          (tool) => tool.function.name === 'search_noema_history',
+        ),
+      );
+      yield '你当时提到体素化工具，后来它确实让碰撞箱更稳定。';
+    },
+  };
+  const agent = new RootAgent({
+    store,
+    provider,
+    secretStore: createSecretStore(),
+    allowRootActions: false,
+    allowHistorySearch: true,
+  });
+
+  const sent = agent.sendMessage({
+    text: '你还记得我们聊 Minecraft 碰撞箱的解决办法吗？',
+  });
+  await agent.active.done;
+
+  assert.equal(requests.length, 2);
+  assert.equal(store.getTurn(sent.turnId).status, 'completed');
+  const assistant = store
+    .getSnapshot()
+    .messages.find(
+      (message) =>
+        message.turnId === sent.turnId && message.role === 'assistant',
+    );
+  assert.match(assistant.content, /体素化工具/);
+  assert.ok(assistant.historySources.length >= 1);
+  assert.ok(
+    assistant.historySources.some((source) => source.id === sourceMessageId),
+  );
+  assert.ok(
+    assistant.historySources.every((source) => source.snippet.length <= 322),
+  );
+  assert.equal(
+    store.getSnapshot().captures[0].content,
+    '未讨论速记：Minecraft 碰撞箱的私人草稿',
+  );
+  store.close();
+});
+
+test('history search with no match is returned to the model without fabricated sources', async () => {
+  const store = new RootStore(':memory:');
+  store.setSelectedModel('auto:noema-free');
+  const requests = [];
+  const provider = {
+    baseUrl: 'http://127.0.0.1:31415/v1',
+    listModels: async () => [
+      { name: 'auto:noema-free', label: 'Noema 免费模型链' },
+    ],
+    async *streamChat(input) {
+      requests.push(input);
+      if (requests.length === 1) {
+        input.onToolCalls([
+          {
+            id: 'history-search-empty',
+            type: 'function',
+            function: {
+              name: 'search_noema_history',
+              arguments: JSON.stringify({ query: '从未出现过的主题词' }),
+            },
+          },
+        ]);
+        return;
+      }
+      const result = JSON.parse(input.messages.at(-1).content);
+      assert.deepEqual(result.results, []);
+      yield '我没有在之前的对话里找到这个主题。';
+    },
+  };
+  const agent = new RootAgent({
+    store,
+    provider,
+    secretStore: createSecretStore(),
+  });
+
+  const sent = agent.sendMessage({
+    text: '你记得我们聊过从未出现过的主题词吗？',
+  });
+  await agent.active.done;
+
+  assert.equal(requests.length, 2);
+  const assistant = store
+    .getSnapshot()
+    .messages.find(
+      (message) =>
+        message.turnId === sent.turnId && message.role === 'assistant',
+    );
+  assert.equal(assistant.historySources.length, 0);
+  assert.match(assistant.content, /没有在之前的对话里找到/);
   store.close();
 });
 
@@ -445,6 +639,7 @@ test('RootAgent rejects unsolicited tool calls when its action tools are disable
       },
     },
     allowRootActions: false,
+    allowHistorySearch: false,
   });
 
   try {
