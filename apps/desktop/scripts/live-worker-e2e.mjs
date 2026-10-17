@@ -230,6 +230,9 @@ const child = spawn(process.execPath, ['scripts/start.mjs'], {
   cwd: appDirectory,
   env: {
     ...process.env,
+    PATH: [path.dirname(process.execPath), process.env.PATH]
+      .filter(Boolean)
+      .join(path.delimiter),
     NOEMA_SMOKE_TEST: '1',
     NOEMA_E2E_DATABASE_PATH: databasePath,
     NOEMA_E2E_DSH_USER_DATA_PATH: dshUserDataPath,
