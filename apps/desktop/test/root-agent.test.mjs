@@ -1539,7 +1539,7 @@ test('continues a failed DSH session when file checks pass but the worker lacks 
   }
 });
 
-test('does not automatically restart a DSH tool loop that Noema intentionally stopped', async () => {
+test('does not automatically restart a DSH tool loop without rejected write-argument evidence', async () => {
   const store = new RootStore(':memory:');
   const workspace = mkdtempSync(path.join(tmpdir(), 'noema-tool-loop-stop-'));
   const turn = store.beginTurn({ text: '创建 README。', model: 'free-router' });
@@ -1574,6 +1574,7 @@ test('does not automatically restart a DSH tool loop that Noema intentionally st
             errorMessage:
               '后台 agent 重复执行相同工具操作，Noema 已停止该任务。',
             toolCallCount: 3,
+            workspaceMutationStatus: 'unknown',
           }),
           stop: () => true,
         };
@@ -1588,6 +1589,162 @@ test('does not automatically restart a DSH tool loop that Noema intentionally st
     const started = await agent.startBackgroundTask({
       sourceTurnId: turn.id,
       prompt: '在工作区创建 README.md。',
+      workspacePath: workspace,
+      verificationChecks: [{ kind: 'file_exists', path: 'README.md' }],
+    });
+    await started.completion;
+    const task = store.getBackgroundTask(started.taskId);
+    assert.equal(startCalls, 1);
+    assert.equal(task.status, 'failed');
+    assert.equal(task.errorCode, 'dsh_tool_loop');
+    assert.equal(task.verificationAttempts, 0);
+  } finally {
+    await agent.shutdown();
+    store.close();
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('continues once after a DSH write loop is proven to contain only rejected arguments', async () => {
+  const store = new RootStore(':memory:');
+  const workspace = mkdtempSync(
+    path.join(tmpdir(), 'noema-invalid-args-repair-'),
+  );
+  const turn = store.beginTurn({ text: '创建 README。', model: 'free-router' });
+  store.appendAssistant({
+    id: turn.id,
+    attempt: turn.attempt,
+    content: '已派发。',
+  });
+  store.completeTurn(turn.id, turn.attempt);
+  store.setSelectedModel('free-router');
+  let startCalls = 0;
+  const sessionId = 'session-invalid-args-repair';
+  const marker = 'requested-readme-content';
+  const agent = new RootAgent({
+    store,
+    provider: {
+      baseUrl: 'http://127.0.0.1:31415/v1',
+      listModels: async () => [{ name: 'free-router', label: '测试路由' }],
+      async *streamChat() {
+        yield '验收通过。';
+      },
+    },
+    secretStore: createSecretStore(),
+    dshAdapter: {
+      async startTask(input) {
+        startCalls += 1;
+        if (startCalls === 1) {
+          return {
+            started: Promise.resolve({ sessionId }),
+            done: Promise.resolve({
+              status: 'failed',
+              sessionId,
+              result: '',
+              errorCode: 'dsh_tool_loop',
+              errorMessage:
+                '后台 agent 重复执行相同工具操作，Noema 已停止该任务。',
+              toolCallCount: 3,
+              workspaceMutationStatus: 'invalid_args_only',
+            }),
+            stop: () => true,
+          };
+        }
+        assert.equal(input.sessionId, sessionId);
+        assert.match(input.task, /参数类型/);
+        assert.match(input.task, /JSON true\/false/);
+        writeFileSync(path.join(workspace, 'README.md'), marker, 'utf8');
+        return {
+          started: Promise.resolve({ sessionId }),
+          done: Promise.resolve({
+            status: 'completed',
+            sessionId,
+            result: 'README 已创建并读取核对。',
+            toolCallCount: 2,
+          }),
+          stop: () => true,
+        };
+      },
+    },
+    delayImpl: async () => true,
+  });
+
+  try {
+    const started = await agent.startBackgroundTask({
+      sourceTurnId: turn.id,
+      prompt: '创建 README.md，写入指定内容。',
+      workspacePath: workspace,
+      verificationChecks: [
+        { kind: 'file_contains', path: 'README.md', text: marker },
+      ],
+    });
+    await started.completion;
+
+    const task = store.getBackgroundTask(started.taskId);
+    assert.equal(startCalls, 2);
+    assert.equal(task.status, 'completed');
+    assert.equal(task.verificationStatus, 'verified');
+    assert.equal(task.verificationAttempts, 1);
+    assert.equal(task.sessionId, sessionId);
+    assert.equal(task.toolCallCount, 5);
+  } finally {
+    await agent.shutdown();
+    store.close();
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('does not automatically retry a tool loop after any file mutation succeeded', async () => {
+  const store = new RootStore(':memory:');
+  const workspace = mkdtempSync(
+    path.join(tmpdir(), 'noema-mutated-tool-loop-'),
+  );
+  const turn = store.beginTurn({ text: '检查 README。', model: 'free-router' });
+  store.appendAssistant({
+    id: turn.id,
+    attempt: turn.attempt,
+    content: '已派发。',
+  });
+  store.completeTurn(turn.id, turn.attempt);
+  store.setSelectedModel('free-router');
+  let startCalls = 0;
+  const agent = new RootAgent({
+    store,
+    provider: {
+      baseUrl: 'http://127.0.0.1:31415/v1',
+      listModels: async () => [{ name: 'free-router', label: '测试路由' }],
+      async *streamChat() {
+        yield '未完成。';
+      },
+    },
+    secretStore: createSecretStore(),
+    dshAdapter: {
+      async startTask() {
+        startCalls += 1;
+        return {
+          started: Promise.resolve({ sessionId: 'session-mutated-loop' }),
+          done: Promise.resolve({
+            status: 'failed',
+            sessionId: 'session-mutated-loop',
+            result: '',
+            errorCode: 'dsh_tool_loop',
+            errorMessage: 'DSH stopped a repeated file operation.',
+            toolCallCount: 3,
+            workspaceMutationStatus: 'mutation_succeeded',
+          }),
+          stop: () => true,
+        };
+      },
+    },
+    delayImpl: async () => {
+      throw new Error('A successful file mutation must not be replayed.');
+    },
+  });
+
+  try {
+    const started = await agent.startBackgroundTask({
+      sourceTurnId: turn.id,
+      prompt: '修改 README。',
       workspacePath: workspace,
       verificationChecks: [{ kind: 'file_exists', path: 'README.md' }],
     });

@@ -337,6 +337,63 @@ test('repeated identical tool calls stop a looping DSH run', async () => {
     assert.equal(child.killed, true);
     assert.equal(result.status, 'failed');
     assert.equal(result.errorCode, 'dsh_tool_loop');
+    assert.equal(result.workspaceMutationStatus, 'none');
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('identifies a repeated file edit loop rejected before workspace mutation', async () => {
+  const directory = mkdtempSync(
+    path.join(tmpdir(), 'noema-dsh-invalid-args-loop-'),
+  );
+  const child = new FakeChild();
+  try {
+    const adapter = new DshHeadlessAdapter({
+      runtime: { nodeExecutable: 'node.exe', dshBin: 'dsh/lib/bin.js' },
+      userDataPath: directory,
+      providerBaseUrl: 'http://127.0.0.1:31415/v1',
+      getApiKey: () => 'test-free-key',
+      spawnImpl: () => child,
+    });
+    const handle = await adapter.startTask({
+      taskId: 'task-invalid-args-loop',
+      workspacePath: path.join(directory, 'workspace'),
+      task: 'Create README.md.',
+      model: DSH_FREE_MODEL,
+    });
+    child.stdout.write(
+      '{"type":"session","sessionId":"session-invalid-args-loop"}\n',
+    );
+    await handle.started;
+    const call = (callId) =>
+      JSON.stringify({
+        type: 'tool_call',
+        callId,
+        tool: 'edit',
+        input: {
+          file_path: 'README.md',
+          old_string: 'start',
+          new_string: 'finish',
+          replace_all: 'true',
+        },
+      });
+    const rejected = (callId) =>
+      JSON.stringify({
+        type: 'tool_result',
+        callId,
+        status: 'error',
+        result: 'Error: invalid arguments: "replace_all" must be a boolean',
+      });
+    child.stdout.write(
+      `${call('edit-1')}\n${rejected('edit-1')}\n` +
+        `${call('edit-2')}\n${rejected('edit-2')}\n` +
+        `${call('edit-3')}\n`,
+    );
+
+    const result = await handle.done;
+    assert.equal(result.errorCode, 'dsh_tool_loop');
+    assert.equal(result.workspaceMutationStatus, 'invalid_args_only');
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

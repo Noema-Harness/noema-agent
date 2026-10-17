@@ -206,6 +206,18 @@ function verificationRepairPrompt(results) {
   ].join('\n');
 }
 
+function verificationToolLoopRepairPrompt(results) {
+  const failures = results.filter((result) => result.status === 'failed');
+  return [
+    failures.length
+      ? 'Noema 的本地文件核验未通过，当前任务不能报告为完成。'
+      : 'Noema 的本地文件核验已通过；请确认原任务没有其他未完成要求。',
+    ...failures.map((result) => `- ${verificationCheckPrompt(result)}`),
+    '',
+    '上一轮重复的文件写入/编辑调用因参数类型不符合工具 schema，在文件操作执行前被拒绝。不要重复同一参数；先检查工作区，只修复未通过的条件。创建新文件使用 write，只有文件已存在时才用 edit；布尔值必须使用 JSON true/false，不能写成字符串。完成后读取并核对文件；无法继续时说明具体阻塞。',
+  ].join('\n');
+}
+
 function verificationContinuationPrompt() {
   return [
     'DSH 上一次因上游免费模型限流而结束。Noema 已独立核验：原任务列出的文件验收条件目前全部通过。',
@@ -1175,6 +1187,9 @@ export class RootAgent {
     let currentSessionId = initialSessionId;
     let totalToolCallCount = 0;
     let verificationAttempts = 0;
+    let workspaceMutationMayHaveOccurred = false;
+    let invalidArgumentsLoopRecoveryUsed = false;
+    let nextRepairIsInvalidArgumentsLoop = false;
     const resultParts = [];
     let lastVerification = null;
     const settleReady = (error, value = null) => {
@@ -1223,9 +1238,12 @@ export class RootAgent {
         const repairPrompt =
           verificationAttempts === 0 || !lastVerification
             ? taskPrompt
-            : lastVerification.status === 'verified'
-              ? verificationContinuationPrompt()
-              : verificationRepairPrompt(lastVerification.checks);
+            : nextRepairIsInvalidArgumentsLoop
+              ? verificationToolLoopRepairPrompt(lastVerification.checks)
+              : lastVerification.status === 'verified'
+                ? verificationContinuationPrompt()
+                : verificationRepairPrompt(lastVerification.checks);
+        nextRepairIsInvalidArgumentsLoop = false;
         currentHandle = await this.dshAdapter.startTask({
           taskId: runId,
           workspacePath,
@@ -1254,6 +1272,13 @@ export class RootAgent {
         totalToolCallCount += outcome.toolCallCount ?? 0;
         if (outcome.result) resultParts.push(outcome.result);
         currentSessionId = outcome.sessionId ?? currentSessionId;
+        if (
+          outcome.workspaceMutationStatus === 'mutation_succeeded' ||
+          outcome.workspaceMutationStatus === 'unknown' ||
+          outcome.workspaceMutationStatus === undefined
+        ) {
+          workspaceMutationMayHaveOccurred = true;
+        }
 
         const interrupted = runControl.stopRequested || this.shuttingDown;
         if (interrupted || outcome.status !== 'completed') {
@@ -1268,13 +1293,18 @@ export class RootAgent {
           });
           this.emit({ type: 'worker-task-updated', taskId });
           const retrySeconds = outcome.retryAfterSeconds;
+          const isRecoverableInvalidArgumentsLoop =
+            outcome.errorCode === 'dsh_tool_loop' &&
+            outcome.workspaceMutationStatus === 'invalid_args_only' &&
+            !workspaceMutationMayHaveOccurred &&
+            !invalidArgumentsLoopRecoveryUsed;
           const isTransientWorkerFailure =
             outcome.errorCode === 'dsh_process_failed' ||
             outcome.errorCode === 'dsh_rate_limited';
           const canContinueWorker =
             !interrupted &&
             outcome.status === 'failed' &&
-            isTransientWorkerFailure &&
+            (isTransientWorkerFailure || isRecoverableInvalidArgumentsLoop) &&
             (outcome.errorCode !== 'dsh_rate_limited' ||
               Number.isInteger(retrySeconds)) &&
             (lastVerification.status === 'verified' ||
@@ -1284,6 +1314,10 @@ export class RootAgent {
             currentSessionId &&
             verificationAttempts < MAX_AUTOMATIC_TASK_RETRIES;
           if (canContinueWorker) {
+            if (isRecoverableInvalidArgumentsLoop) {
+              invalidArgumentsLoopRecoveryUsed = true;
+              nextRepairIsInvalidArgumentsLoop = true;
+            }
             verificationAttempts += 1;
             this.store.setBackgroundTaskVerification(taskId, {
               status: 'pending',

@@ -10,6 +10,7 @@ const MAX_EVENT_LINE_BYTES = 512_000;
 const MAX_FINAL_TEXT_LENGTH = 100_000;
 const MAX_TOOL_CALLS = 12;
 const MAX_REPEAT_TOOL_CALLS = 3;
+const INVALID_ARGUMENT_REPAIR_THRESHOLD = MAX_REPEAT_TOOL_CALLS - 1;
 const DSH_WORKER_MAX_TOKENS = 8_192;
 export const DSH_FREE_MODEL = 'auto:noema-free';
 
@@ -146,6 +147,37 @@ function supportsDshNodeVersion(output) {
   return (
     major > 24 || (major === 24 && (minor > 21 || (minor === 21 && patch >= 0)))
   );
+}
+
+function isDshInvalidArgumentsResult(result) {
+  return (
+    typeof result === 'string' &&
+    result.length <= 2_000 &&
+    /^Error: invalid arguments:/iu.test(result.trimStart())
+  );
+}
+
+function normalizeDshToolCategory(tool) {
+  const name =
+    typeof tool === 'string'
+      ? tool
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9_]/g, '')
+      : '';
+  if (
+    ['write', 'write_file', 'file_write', 'writefile', 'create_file'].includes(
+      name,
+    )
+  ) {
+    return 'write';
+  }
+  if (
+    ['edit', 'edit_file', 'file_edit', 'patch', 'apply_patch'].includes(name)
+  ) {
+    return 'edit';
+  }
+  return 'other';
 }
 
 export function parseDshRateLimitRetryAfterSeconds(stderr) {
@@ -397,6 +429,18 @@ function createRunHandle({
   let startedResolved = false;
   let doneResolved = false;
   const toolCallRepeats = new Map();
+  const pendingWorkspaceMutations = new Map();
+  const invalidArgumentWritesByRepeatKey = new Map();
+  let workspaceMutationSucceeded = false;
+  let workspaceMutationUnknown = false;
+  let invalidArgumentsLoopDetected = false;
+  const getWorkspaceMutationStatus = () => {
+    if (workspaceMutationSucceeded) return 'mutation_succeeded';
+    if (workspaceMutationUnknown) return 'unknown';
+    if (invalidArgumentsLoopDetected) return 'invalid_args_only';
+    if (pendingWorkspaceMutations.size > 0) return 'unknown';
+    return 'none';
+  };
   const safeStderrTail = () =>
     secret ? stderrTail.replaceAll(secret, '[已隐藏凭据]') : stderrTail;
   const started = new Promise((resolve, reject) => {
@@ -473,12 +517,20 @@ function createRunHandle({
       case 'tool_call': {
         toolCallCount += 1;
         const tool = typeof event.tool === 'string' ? event.tool : 'unknown';
+        const callId = typeof event.callId === 'string' ? event.callId : null;
         const inputSignature = createHash('sha256')
           .update(JSON.stringify(event.input ?? null))
           .digest('hex');
         const repeatKey = `${tool}:${inputSignature}`;
         const repeatCount = (toolCallRepeats.get(repeatKey) ?? 0) + 1;
         toolCallRepeats.set(repeatKey, repeatCount);
+        const isWorkspaceMutation = ['write', 'edit'].includes(
+          normalizeDshToolCategory(tool),
+        );
+        if (isWorkspaceMutation) {
+          if (callId) pendingWorkspaceMutations.set(callId, repeatKey);
+          else workspaceMutationUnknown = true;
+        }
         emit({
           type: 'tool-call',
           count: toolCallCount,
@@ -488,6 +540,20 @@ function createRunHandle({
           toolCallCount > MAX_TOOL_CALLS ||
           repeatCount >= MAX_REPEAT_TOOL_CALLS
         ) {
+          const matchingInvalidResults =
+            invalidArgumentWritesByRepeatKey.get(repeatKey) ?? 0;
+          if (
+            repeatCount >= MAX_REPEAT_TOOL_CALLS &&
+            isWorkspaceMutation &&
+            callId &&
+            pendingWorkspaceMutations.get(callId) === repeatKey &&
+            matchingInvalidResults >= INVALID_ARGUMENT_REPAIR_THRESHOLD &&
+            !workspaceMutationSucceeded &&
+            !workspaceMutationUnknown &&
+            pendingWorkspaceMutations.size === 1
+          ) {
+            invalidArgumentsLoopDetected = true;
+          }
           stopForError(
             new DshHeadlessError(
               'dsh_tool_loop',
@@ -497,12 +563,31 @@ function createRunHandle({
         }
         break;
       }
-      case 'tool_result':
+      case 'tool_result': {
+        const callId = typeof event.callId === 'string' ? event.callId : null;
+        const repeatKey = callId ? pendingWorkspaceMutations.get(callId) : null;
+        if (callId && repeatKey) {
+          pendingWorkspaceMutations.delete(callId);
+          if (event.status === 'completed') {
+            workspaceMutationSucceeded = true;
+          } else if (
+            event.status === 'error' &&
+            isDshInvalidArgumentsResult(event.result)
+          ) {
+            invalidArgumentWritesByRepeatKey.set(
+              repeatKey,
+              (invalidArgumentWritesByRepeatKey.get(repeatKey) ?? 0) + 1,
+            );
+          } else {
+            workspaceMutationUnknown = true;
+          }
+        }
         emit({
           type: 'tool-result',
           status: typeof event.status === 'string' ? event.status : 'unknown',
         });
         break;
+      }
       case 'error':
         errorMessage =
           typeof event.message === 'string'
@@ -590,6 +675,7 @@ function createRunHandle({
         errorCode: lineError.code,
         errorMessage: lineError.message,
         toolCallCount,
+        workspaceMutationStatus: getWorkspaceMutationStatus(),
         stderrTail: safeStderrTail(),
         task,
       });
@@ -644,6 +730,7 @@ function createRunHandle({
             : null),
       retryAfterSeconds,
       toolCallCount,
+      workspaceMutationStatus: getWorkspaceMutationStatus(),
       stderrTail: safeStderr,
       task,
     });
