@@ -68,9 +68,9 @@ MemSkill 把 memory skill 与 memory content 分开：controller 选择如何抽
 
 ### Case-based reasoning：保留个案并适配，可能比立刻抽象成通则更合适
 
-近期 CASCADE 将部署期学习形式化为 case-based contextual bandit：在新任务里选择过去案例，复用并修订，再根据任务反馈决定保留；它把“怎样取用经验”也当成一个可由结果调整的策略。另一篇 real-world case-based learning 预印本把具体案例转为可跨任务重用的分析材料。它们都说明“成功案例的类比、适配、结果修订”不是 Noema 独创，但为“先留下带来源的个案，后归纳通用手艺”提供了成熟认知框架。
+近期 CASCADE 将部署期学习形式化为 case-based contextual bandit：在新任务里选择过去案例，复用并修订，再根据任务反馈决定保留；它把“怎样取用经验”也当成一个可由结果调整的策略，并只保留成功的新案例。论文覆盖 16 类任务，包含多轮环境/工具任务，但反馈被简化成标量成功/失败。另一篇 real-world case-based learning 预印本把具体案例转为可跨任务重用的知识资产。它们都说明“成功案例的类比、适配、结果修订”不是 Noema 独创，但为“先留下带来源的个案，后归纳通用手艺”提供了成熟认知框架。
 
-这条路径的关键风险仍是检索与适配：模型可能把表面相似误认成专业相关；医疗/代码等有相对清楚的任务完成条件，新闻价值判断、用户偏好和聊天节奏却没有同等统一的 verifier。这两篇目前均为 arXiv 预印本，报告的 benchmark 增益不证明个人长期 agent 已解决主观价值判断。[CASCADE](https://arxiv.org/abs/2605.06702) · [Transferable Expertise via Case-Based Learning](https://arxiv.org/abs/2604.12717)
+这条路径的关键风险仍是检索与适配：模型可能把表面相似误认成专业相关；只保留成功案例也可能使失败边界消失，且从零失败的场景很难靠在线反馈建立经验。医疗/代码等有相对清楚的任务完成条件，新闻价值判断、用户偏好和聊天节奏却没有同等统一的 verifier。两篇目前均为 arXiv 预印本，报告的 benchmark 增益不证明个人长期 agent 已解决主观价值判断。[CASCADE](https://arxiv.org/abs/2605.06702) · [Transferable Expertise via Case-Based Learning](https://arxiv.org/abs/2604.12717)
 
 ### PAST-Bench：分数上升不够，还要证明是经历造成的
 
@@ -93,6 +93,8 @@ EvoMemBench 以“同一 episode 内/跨 episode”和“知识/执行”两个�
 3. **学习要学边界，而不仅是动作。** 具体失败机理、步骤级补救和高风险反例，通常比泛化口号更能指导行为；但跨环境/跨目标的负迁移又说明“适用范围”本身必须是经验的一部分。专业手艺的一部分，是知道何时旧方法不适用。
 4. **行为变化比档案增长更重要，归因又比变化更难。** OpenClaw 用未来召回/多日复现作为晋升信号，适合筛掉一次性信息；程序经验还须看它是否改变动作、目标结果是否变好及是否带来负迁移。PAST-Bench 的分解有价值：经历已保存、被取回、影响了动作、结果变好，是不同证据状态。哪怕四者同时出现，也不能单凭一次结果证明因果。
 5. **现有项目证明了一些局部闭环，不证明个人 agent 的成长已经解决。** Voyager 有环境 verifier，Hermes 有 agent 写 skill 的生命周期，MUSE 与 SkillLens/PAST-Bench 有任务结果或机制评估；OpenClaw/Hermes 已证明同一身份与多会话/隐私隔离可并存。在本轮查阅的来源里，尚没有一个完整解法同时覆盖：专业好友跨私聊/Noema/群聊连续存在、按授权调取别的房间经历而不合并 transcript、经验跨房间转成有边界的专业实践、负迁移可被发现并撤回、用户能理解成长来自何处。
+
+因此，社交聊天界面、agent roster、私聊/群聊、多个 profile/agentId 本身都不能作为 Noema 的差异化论据；OpenClaw 已有 agent roster/聊天入口、各 agent 独立 session 与可选择的会话范围。若现成 stack 能低成本组合出用户要的好友体验，Noema 单独成为 app 的理由仍可能不成立。未来方案必须把重心放在能否把专业实践成长与用户可感知的连续关系整合好，而不是重新实现这些已有组件。
 
 ## 当前候选观点：让“实践修订”成为成长单位
 
