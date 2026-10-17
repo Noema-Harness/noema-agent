@@ -14,28 +14,30 @@ web
 
 ## Product Purpose
 
-Noema 是独立的个人 agent 应用。用户希望拥有一个真正“属于自己”、能跨任务与模型持续存在并逐渐个体化的 agent；它不只是等待命令、交付工作的工具，也不能只是另一个通用 agent 的壳。
+Noema 是独立的个人 agent 应用。当前第一轮产品假设是：它为用户提供一个可持续交流的 Noema 核心伙伴，以及一组围绕专业实践形成、能跨聊天空间保持身份的 agent 好友。外部模型、harness 和工具服务这些个体，而不决定用户拥有的身份。
 
 ## Positioning
 
-仍在验证。多模型聊天、长期记忆及其来源查看/编辑、以及在 DSH 内运行 Codex/Claude coding backend，已被成熟或新兴方案覆盖，单独不能成为 Noema 的理由。用户已明确要求 Noema 主对话不被执行任务占用：专业 agent 可后台运行，结果以系统事件回到 Noema；主 agent 空闲时接住该事件，用户也能随时介入。当前候选方向是：Noema 是否能成为跨生活/工作情境持续存在的顶层个人 agent，同时把长任务交给拥有各自原生 session、工作区和工具轨迹的专业 harness。Noema 主对话切换模型不等于后台执行环境被迁移。该候选假设尚未成为产品承诺；“Open WebUI/DSH + Relay/plugins 是否足够”是强反例，详见 [当前产品发现 Issue #2](https://github.com/c3115644151/noema-agent/issues/2)。关系连续性仍是更大的愿景，但不自动意味着独立产品价值。
+“Personal agent”已成为真实的产品类别，但 OpenAI Dots、Gemini Spark、Meta Muse 与开放 runtime 都在提供个人记忆、跨应用行动、长任务或多 agent 能力。Noema 不能仅定位为“更完整的个人助手”“多模型入口”或“连接更多 tools”。当前候选差异是：用户拥有一组持续的专业 agent 个体，能在私聊、Noema 协作和群聊中重复相处；Noema 管理身份与房间连续性，execution runtime 可以替换。这个候选定位由助手在用户委托范围内采用，尚未证明其独立价值；第一条真实产品切片和现有产品组合反证见 [ADR 0015](docs/decisions/0015-agent-friends-and-conversation-rooms.md) 与 [个人 Agent 产品版图](docs/research/personal-agent-landscape.md)。
 
 ## Operating Context
 
 - 用户以中文交流，跨生活想法和编程等工作内容切换。
 - Noema 应是用户自己的交互入口；外部模型、harness、agent 与工具可以被连接，但 Noema 不依附其中任一个。
-- 当前 Windows 桌面切片拥有本地持久根对话、FreeLLMAPI 免费模型调用、可选 DSH headless 文件 worker，以及一条只读 Codex 会话快照导入路径；用户可在单条根对话中本地查找已保存的用户/Noema消息并跳回原文。搜索不调用模型或扩展后续请求上下文。这些证明若干交接机制可运行，但没有证明 Noema 的关系连续性或独立产品价值。
+- 当前 Windows 桌面代码仍是历史根对话/后台 worker 原型，具备 FreeLLMAPI、DSH headless worker 和只读 Codex 快照导入。它证明若干模型/执行交接机制可运行，但不是 ADR 0015 的好友/房间目标架构，也未证明 Noema 的独立产品价值。
 
 ## Capabilities and Constraints
 
-- 独立应用和个人 agent 方向已确认；首版交互、状态对象、学习/记忆方式、主动性边界和视觉语言均未确定。
+- 独立应用和个人 agent 方向已确认。第一轮好友/房间切片按 ADR 0015 推进；好友创建、专业实践演化、主动性和最终视觉语言仍开放，并允许按真实使用继续调整。
+- 用户已授权助手自主决定产品与技术细节、根据外部证据调整定位并从设计推进到真实实现；无需反复等待用户批准可逆决策，用户将主要参与最终核验。
+- 首条正式开发切片已由 ADR 0015 定为：一个主 Noema 和至少一位专业好友；能私聊与进入同一群聊；身份跨房间连续、各房间 transcript 默认隔离；通过实际模型/runtime 回复而非静态 mock。详细验收仍以 Issue #2 的最新内容为准。
 - Noema 不应宣称模型具有真实意识或人类情感；“像伙伴”需要由真实互动表现和持续性建立，不靠拟人化文案声称。
 - 已验证能力：FreeLLMAPI 根对话、用户选择工作区、后台 DSH 文件任务、停止/同 session 续接、系统事件回流与重启恢复。DSH 是首个可替换 adapter，不是 Noema 核心身份。
 - M1 可撤回实验：Noema 可保存有用户原话来源的互动纠正；用户现在可以直接修订其情境/做法/范围，也可以撤回。初始模型归纳、用户当前版本和每次根回复 attempt / 后台任务当时带入的快照彼此区分；这只证明状态可被用户修正并追溯，不证明模型遵循或长期行为已改变。
 - 后台 DSH 任务会在时间线保留最多 32 条工具操作类别及顺序；不记录工具参数、文件内容或返回值。它说明 agent 发起了什么类别的操作，不代表操作成功；成功与否仍以独立核验结果为准。
 - 新增 M1 实验能力：只读列出并预览本机 Codex thread；用户选定后把有来源的可见文字快照附到唯一根对话，用户可移除。下一次把快照发到 FreeLLMAPI 前需单独确认。它不续接或修改 Codex thread，也不迁移 reasoning、工具轨迹或工作区状态。
 - 新增 M1 互动纠正实验：用户可直接修订或撤回由明确纠正形成的互动状态。Noema 保留首次模型归纳、用户当前版本，以及每个根回复 attempt / 后台任务当时带入的值快照；这证明本地状态可纠正且历史不被重写，不证明模型收到、遵循或因其而改变。
-- 未实现能力：Claude 原生 thread reader、经历/理解状态、持久个体化交互模式。Codex App Server 在本机可读接口仍是实验协议；当前实现是可替换的 M1 验证适配器，不应被表述为生产级跨 harness 会话同步。M1 仍需证明 Noema 的用户-owned root 是否比现有 agent + relay 组合多出足够的日常价值。
+- 未实现能力：持续好友/多房间领域模型、同一好友在多个房间继续交流、可验证的专业实践演化。Codex App Server 在本机可读接口仍是实验协议；当前实现是可替换的 M1 验证适配器，不应被表述为生产级跨 harness 会话同步。M1 必须证明社交好友模型是否真实降低多 agent 使用的对齐成本，并是否足以支持 Noema 独立存在。
 - 当前产品范围及阶段门以 [项目工作流](docs/PROJECT_OPERATIONS.md) 与 GitHub Issue/Project 实时状态为准。
 
 ## Brand Commitments
@@ -48,7 +50,8 @@ Noema 是独立的个人 agent 应用。用户希望拥有一个真正“属于�
 ## Evidence on Hand
 
 - 用户明确描述了跨 AI 使用时身份/互动连续性和工作陪伴不足的个人动机，详见当前工作流与 M1 Issue。
-- 公开案例、实现与反例持续记录在 [Issue #2 的研究与续接评论](https://github.com/c3115644151/noema-agent/issues/2)；这些证据支持或削弱假设，但不自动成为用户批准的产品要求。
+- 公开案例、实现与反例持续记录在 [Issue #2](https://github.com/c3115644151/noema-agent/issues/2)、[经验成长研究](docs/research/experience-to-practice.md)和[personal-agent 产品版图](docs/research/personal-agent-landscape.md)；这些证据支持或削弱假设，但不自动成为用户逐项确认的规格。
+- “同一好友，多房间上下文，三类连续性（事件、用户互动偏好、专业实践）”目前是 Noema 第一轮产品架构，不代表已验证这是完整或长期正确的定位；持续比较个人 agent 产品和实际产品使用效果。
 - PR #18 验证的是一条从 Noema 发起的新 DSH 文件任务，不是从现有 Codex thread 迁移；它不代表用户的 Codex 额度耗尽痛点已被解决。
 - Codex 快照路径已在隔离数据目录中用真实本机 App Server 完成列表、预览、导入、时间线回显和移除；真实用户会话内容未外传。另在临时根数据库中通过真实 FreeLLMAPI 路由测试了合成快照续接：`free-router` 与直连 Nemotron 返回 `provider_unavailable`，`auto:noema-free` 成功准确复述合成代号与验收标准。该结果证明数据路径可工作，但不能证明真实会话的继续质量、长期稳定性或 Noema 独立产品价值；真实用户快照仍需每个用户在应用内明确授权后才可发送。
 - 目前没有来自 Noema 原型用户测试的证据；不得虚构已验证的体验或结果。

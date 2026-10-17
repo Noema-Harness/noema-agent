@@ -1,12 +1,12 @@
 # Noema 架构边界
 
-状态：这是历史责任边界与当前讨论方向的过渡文档，不是完整系统设计或预先批准的模块/API清单。近期用户已确认以社交聊天和持续专业好友作为产品交互方向；现有根对话/后台 worker 架构仅是已实现纵向切片，不再预设为目标架构。好友身份、跨空间连续性与经验成长的研究结论形成前，不新增依赖这些旧边界的产品功能。讨论基线见 [`persistent-agent-social-model.md`](design/persistent-agent-social-model.md)。
+状态：第一轮社交 Agent 架构边界，实施依据见 [ADR 0015](decisions/0015-agent-friends-and-conversation-rooms.md)。用户已授权助手自行选择产品与技术方案，并在真实开发/使用中调整定位。旧根对话/后台 worker 是可复用的执行原型，不是目标产品结构。
 
 ## 系统职责
 
-Noema 运行在用户设备上，是用户侧个人 agent 状态与体验的 owner。外部模型和 agent 为可替换的执行能力；它们不能成为 Noema 的唯一记忆来源。
+Noema 运行在用户设备上，是用户侧 agent 身份、聊天空间和跨运行时连续性的 owner。外部模型、harness 和工具为可替换的执行能力；它们不定义 Noema 好友身份，也不独占用户状态。
 
-当前产品模型候选：Noema 与长期专业好友各自有持续身份；用户私聊、Noema 与好友的沟通、群聊或工作空间是不同上下文，不自动等于不同 agent，也不应被无差别压进同一模型窗口。身份连续性、上下文隔离及跨空间经验传播属于待研究的系统边界，不能从当前单根对话实现直接推导。
+第一轮产品模型：Noema 与专业好友各自有持续身份；用户私聊、Noema 与好友的协作、群聊是不同 room/context，不自动等于不同 agent，也不应被无差别压进同一模型窗口。同一好友可作为同一身份参加多个房间；每次模型调用默认只得到当前房间 transcript 与必要 profile/practice，不会因为身份相同而收到所有其他房间原文。
 
 近期外部评测进一步表明，跨空间“能取回”与“有权披露”不能合并为一次模型判断：即使回答模型拿到正确记忆证据，也可能在不应披露时泄漏。Noema 的未来方案必须显式区分房间来源/访问范围、当前上下文使用范围与最终答复的披露；不能仅靠相同 agent 身份、同一用户账户或提示词来授权共享。此为研究证据支持的待设计约束，具体权限模型仍未定。来源见[经验到专业实践研究记录](research/experience-to-practice.md)。
 
@@ -16,15 +16,19 @@ Noema 运行在用户设备上，是用户侧个人 agent 状态与体验的 own
 
 ### 交互层
 
-持续对话、分享入口、经历查看、理解变更记录、能力/连接管理。界面不得要求用户先理解 harness、agent loop 或 memory backend 才能完成常见操作。
+联系人/agent roster、私聊、群聊、房间成员、消息时间线和可见的运行/交付状态。界面让用户像聊天一样选择交流对象，不要求先理解 harness、agent loop 或 memory backend；不得把根对话藏进通用任务控制台。
 
-### Noema Agent Core
+### Agent Identity 与 Room Context
 
-管理 Noema 自身身份与回合状态，选择当前上下文，使用模型进行交流和推理，并按显式能力协议调用工具。不得将所有外部 agent 的隐藏系统提示词或内部状态假设为可控。
+Noema 持有 agent 的稳定 identity、专业范围、用户关系偏好和当前有效 practice；room 持有自己的参与者、transcript 与协作上下文。Agent id 不等于 runtime session id。Room transcript 不因同一 agent 身份自动合并。
 
-### Personal State
+### Agent Runtime
 
-保留有来源的经历、当前用户/世界理解、明确承诺与偏好、可修订的程序性经验。每一类都有各自的存储/更新规则；历史档案默认按需检索，不全量注入 prompt。
+在当前房间将消息交给直接模型或外部 harness，接收真实回复和运行事件，并记录 runtime 来源/失败状态。Adapter 可替换；执行进度属于房间交互，不应被伪装成后台已经完成。
+
+### Experience 与 Practice
+
+房间事件、用户明确的互动偏好和好友专业实践变化是不同状态。事件保存来源/room；偏好服务于这位用户如何与 agent 配合；专业实践须以相关工作证据支持。首轮不自动把模型总结提升成永久方法，历史材料按需检索，不全量注入 prompt。
 
 ### Sources 与 Capabilities
 
