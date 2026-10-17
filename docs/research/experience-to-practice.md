@@ -32,6 +32,10 @@ MUSE 把状态分成 procedural、strategic、tool memory；每个子任务后�
 
 这提供了“经验提炼需绑定行动轨迹与可检查结果”的正面证据。适用边界也由作者自己说明：框架仍难处理某些高层规划/多跳搜索问题；TAC 有含糊描述及对有效替代路径较僵硬的确定性评分。它证明的是受控生产力任务中的性能提升，不是跨私聊/群聊的个人关系连续性，也不证明摘要本身产生了人类意义上的专业判断。[ACL 2026 Findings 论文](https://aclanthology.org/2026.findings-acl.1522/) · [MUSE 源码](https://github.com/KnowledgeXLab/MUSE)
 
+源码核对进一步说明它不是只在论文里写了“反思”：`MemoryManager` 实际读写 `tool_memory.json`、`procedural_memory.json`、`strategic_memory.json`，并把这些状态组装进 system prompt；Reflect prompt 要求对 Task Agent 轨迹做逐条来源引用，并能调用工具主动核查。经检查成功后才更新平台 SOP；失败时生成障碍分析；SOP 明确要求 step-level 操作、前置条件与已核实结果。工具/应用指南还会按实际使用结果给 `1 / 0 / -1` 反馈，允许后续纠正。这比“任务后让模型自由写总结”严谨得多。
+
+但它的核心单元仍是企业软件操作任务中的指南/SOP，验证主轴是完成目标和工作流；研究实验是有限的顺序重复任务及 TAC。它没有给出同一专家好友横跨多种聊天关系时的上下文权限模型，也未解决不容易被机器验证的专业判断/用户口味如何学习。故它是 Noema 可能复用的成熟局部实现，不是 Noema 的整体架构或产品理由。
+
 ### OpenClaw 与 Hermes：同一 agent 身份可以有多房间，不必把 transcript 合并
 
 OpenClaw 的 session 文档把 direct messages 默认路由到 agent 的 main session，而群聊/频道各有隔离 session；可选的跨会话 recall 默认只读取同一 agent 的私聊来源，排除群组/频道。这个边界允许“记得一个人的其他私聊”而不默认把群聊内容泄漏进私人回答。OpenClaw 也明确把每个 `agentId` 当成一条独立 persona/state 边界：工作区、session store、基础 memory 分开，跨 agent transcript 默认不互搜。不同会话是上下文/隐私边界，不自动意味着不同身份；不同 agentId 才是不同身份。
