@@ -73,3 +73,9 @@ Noema's only root model route was Ollama. The user has now explicitly directed t
 一次无用户数据的 FreeLLMAPI `/v1/messages` 探针中，`nvidia/nemotron-3.5-lightning`（BlockRun 公开目录标记 free、工具能力本机标记为支持）成功返回结构化工具调用；但完整隔离 DSH 任务经该直连模型发起的三次请求均以 `socket hang up` 结束，工具调用数为 0，文件验收未启动。因此不把单次小请求能力外推为 worker 适配成功，已恢复 DSH 的 `auto:noema-free` 默认。直连路由只有在完整 DSH → verifier → event 闭环通过后才可重新考虑。BlockRun 的零价和模型信息见[实时目录](https://blockrun.ai/api/v1/models)；FreeLLMAPI 的命名链与直接模型路由边界见[官方说明](https://github.com/tashfeenahmed/freellmapi/blob/main/docs/en/fallback/01-named-chains.md)。
 
 同一排查中，Google `gemini-2.5-flash` 与 `gemini-2.5-flash-lite` 的真实 `/v1/messages` 请求均返回 `model_not_found`；FreeLLMAPI Dashboard 中的 “healthy” 仅代表 key 健康，不证明具体模型可用。`noema-free` profile 中曾临时启用 `gemini-2.5-flash` 进行验证，之后已恢复其原来的 disabled 状态，且未改动 Default profile。其它 Gemini 3.x 条目仍在 provider daily cooldown；本次不将它们加入链中。
+
+## Amendment（2026-10-17）：加入当前 Google 工具模型候选
+
+FreeLLMAPI 本机 `noema-free` named profile 原先有 9 个启用的工具模型；路由日志在 DSH 任务期间显示这 9 个候选全处于 cooldown，因而没有向任何上游发起请求。Google API key 当前健康，但 2.5 Flash 系列已对上游返回 `model_not_found`。因此仅在 Noema 专用 `noema-free` 链中将当前模型目录的 `gemini-3.8-flash` 启用为第 9 位候选，并把失效的 2.5 Flash 保持禁用；没有切换活跃 Default profile、没有新增凭据或付费服务。FreeLLMAPI 目录标记其为免费层、支持工具；Google 官方模型页确认该稳定模型支持 function calling。[Google Gemini 3.8 Flash](https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash) · [FreeLLMAPI named chains](https://github.com/tashfeenahmed/freellmapi/blob/main/docs/en/fallback/01-named-chains.md)
+
+该 Google 模型目前仍处于 provider tier cooldown，尚未完成 live generation 验证；配置变更只让它在冷却解除后成为候选，不声称它现已可用。若复测返回 `model_not_found`、工具调用失败、超出免费额度或出现不兼容行为，立即在 `noema-free` 中禁用此行并保持 Default 不变。该 Profile 开启了 `auto_include_new_models=0`，后续目录同步不会自行加入其它模型。
