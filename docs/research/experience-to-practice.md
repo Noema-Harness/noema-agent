@@ -50,6 +50,12 @@ Hermes 也能让桌面、TUI、终端、消息平台窗口附着同一 gateway s
 
 对 Noema 的直接含义：**“联系人 roster + 同一个 agent 出现在多个会话空间”本身不是新颖点，已有开源 gateway/agent 应用提供了相当接近的身份和 session 基础。**真正还未解决的是，Noema 的专业好友能否不只是一个被多房间调用的配置身份，而能将有证据的经历转成跨空间但有边界的实践变化，并让用户理解它为什么这样变化。OpenClaw 的不同 agentId 是彼此隔离的 persona/state；它还允许跨 agent session 工具，但其文档默认配置可给 Gateway agent 很宽的 session 可见性，必须显式考虑安全边界。不能只抄“共享上下文”而忽略不同聊天的隐私、权限和状态所有权。[OpenClaw session tools](https://github.com/openclaw/openclaw/blob/main/docs/concepts/session-tool.md) · [OpenClaw trust model](https://github.com/openclaw/openclaw/blob/main/docs/gateway/security/trust-model.md)
 
+### MemArena：同一身份跨房间连续，不等于有权跨房间披露
+
+MemArena（NeurIPS 2026 Datasets & Benchmarks）在由 50 个模拟 agent 组成的 15 天社交世界中，分开评估跨会话回忆、推理、校准拒答和 permission-aware access。访问权限题有 ALLOW 与 DENY 两类事实；必须同时做到该说时正确说、禁止时不泄漏才得分。其最尖锐的结果是：被测 backend/reader 组合没有稳定形成“证据取回且按权限闸控”的象限。Oracle 把证据直接给到模型时，较强模型仍会在 75–99% 的 DENY 请求上泄漏；其他检索方法的低泄漏很多只是没找回事实，并非真正守住了规则。
+
+这使跨房间权限从“便利功能”升级为核心架构边界：好友身份应能连续，原始经历仍须保留房间、参与方和允许用途；事件检索的授权与模型是否遵从披露政策必须分开验证。该评测使用合成英语世界、15 天单世界和单轮权限问题，不能直接证明真实社交长期行为，但足以反驳“让模型自己看上下文决定这段话能否跨房间”作为安全方案。[MemArena 论文](https://arxiv.org/pdf/2608.02613) · [NeurIPS 2026 论文列表](https://neurips.cc/Downloads/2026)
+
 ### OpenClaw Dreaming：长期记忆不是“复盘时写入”，而是经后续使用获得资格
 
 OpenClaw 当前的 Memory Core 提供一个已进入真实项目代码的多阶段路径：原始对话/每日记录先作为有来源的 episode 存放；Light 负责去重和暂存，REM 做主题反思，但都不写入 curated `MEMORY.md`；Deep 才按检索相关度、重复使用次数、不同查询覆盖、时间新鲜度、多日反复及概念信息等信号评分，并要求分数、召回次数、查询多样性同时过门。未信任或系统来源在进入模型整合之前就被结构性排除。然后模型只给“新增/合并/取代”等操作判断，代码写入器使用带来源的原文片段执行；还会限制旧条目的丢失比例、保留来源引用与预算，并在写入前备份。`DREAMS.md` 供人查看，不是长期记忆的晋升来源。
