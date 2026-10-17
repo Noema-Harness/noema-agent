@@ -96,7 +96,7 @@ RPEval（后被列入 NeurIPS 2026 论文目录）补上了一个不同的问题
 
 三者共同揭示一个根源：一次任务通过，不足以证明某个经验或规则造成了成功；任务失败也不说明全部过程无效。若模型在结尾自行总结“下次要这样做”，而没有定位导致结果的动作和适用情境，它可能把偶然相关当成原因并将错就错。该“credit assignment”是当前最可能统一解释“写了经验却不改变行为、抽象规则跨场景误用、agent 声称学会但无法复现”的工程研究切口。它不是 Noema 自己发现的新问题；Noema 的潜在贡献只能在把 attribution 机制嵌入持续专业身份和跨房间经验治理时成立。
 
-适用范围需区分：AttriMem 是 2026 预印本，实验集中于长对话 QA 的 memory construction；TreeMem 是多 agent memory pipeline 的预印本；TRUCE 已发表于 ICML 2026，但优化目标是角色/协作结构固定的多 agent prompt rules。它们解决的是不同层级的归因，不等于已经解决用户感受、agent 个性或长期专业成长。[AttriMem](https://arxiv.org/abs/2607.21106) · [TreeMem](https://arxiv.org/abs/2605.04811) · [TRUCE, ICML 2026](https://proceedings.mlr.press/v306/wu26bp.html)
+适用范围需区分：AttriMem 是 2026 预印本，实验集中于长对话 QA 的 memory construction，论文通过最多 32 个批量消融变体估计 token-level attribution，并用 RL 更新 memory policy；MemCalib 的 13,500 个训练例和 RL 方案也属于 offline training，而非每次聊天可直接调用的小模型 gate。TreeMem 是 multi-agent memory pipeline 的预印本；TRUCE 已发表于 ICML 2026，但优化目标是角色/协作结构固定的 multi-agent prompt rules。它们解决的是不同层级的 attribution，不等于已经解决用户感受、agent 个性或长期专业成长；其主要方法不能直接作为每个用户实时对话的 runtime loop。[AttriMem](https://arxiv.org/abs/2607.21106) · [TreeMem](https://arxiv.org/abs/2605.04811) · [TRUCE, ICML 2026](https://proceedings.mlr.press/v306/wu26bp.html) · [MemCalib](https://arxiv.org/abs/2609.24259)
 
 ### Case-based reasoning：保留个案并适配，可能比立刻抽象成通则更合适
 
