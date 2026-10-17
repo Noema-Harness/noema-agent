@@ -79,3 +79,29 @@ Noema's only root model route was Ollama. The user has now explicitly directed t
 FreeLLMAPI 本机 `noema-free` named profile 原先有 9 个启用的工具模型；路由日志在 DSH 任务期间显示这 9 个候选全处于 cooldown，因而没有向任何上游发起请求。Google API key 当前健康，但 2.5 Flash 系列已对上游返回 `model_not_found`。因此仅在 Noema 专用 `noema-free` 链中将当前模型目录的 `gemini-3.8-flash` 启用为第 9 位候选，并把失效的 2.5 Flash 保持禁用；没有切换活跃 Default profile、没有新增凭据或付费服务。FreeLLMAPI 目录标记其为免费层、支持工具；Google 官方模型页确认该稳定模型支持 function calling。[Google Gemini 3.8 Flash](https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash) · [FreeLLMAPI named chains](https://github.com/tashfeenahmed/freellmapi/blob/main/docs/en/fallback/01-named-chains.md)
 
 该 Google 模型目前仍处于 provider tier cooldown，尚未完成 live generation 验证；配置变更只让它在冷却解除后成为候选，不声称它现已可用。若复测返回 `model_not_found`、工具调用失败、超出免费额度或出现不兼容行为，立即在 `noema-free` 中禁用此行并保持 Default 不变。该 Profile 开启了 `auto_include_new_models=0`，后续目录同步不会自行加入其它模型。
+
+## Amendment（2026-10-18）：呈现模型级实时状态，不把目录可见当成可发送
+
+**证据：**FreeLLMAPI 当前 REST API 在模型条目提供 `execution_status`（`ready`、`needsKey`、`exhausted`）；`available` 仍是是否启用且有匹配 key，不足以说明是否在冷却。[FreeLLMAPI 官方 Model listing 文档](https://github.com/tashfeenahmed/freellmapi/blob/main/docs/en/api/01-rest-api.md#model-listing) 本机 v0.15.0 的真实 `smoke:freellmapi` 已返回直连 Nemotron Super 的 `exhausted` 状态，而 `free-router` 曾为 `ready`；隔离 DSH worker 运行仍在限流/45 秒无首字节后失败，其中 `free-router` 实际只完成了一个文件。因而 `ready` 是目录检查时的候选状态，不是下一次请求或多步任务的保证。`auto:noema-free` 作为 `auto:<profile>` 路由项没有逐链状态；不能从 `available=true` 推断整个链健康。
+
+**决定：**FreeLLMAPIClient 继续只暴露 Noema 已审查的免费路由，同时把受支持的 `execution_status` 附加到模型状态。直连模型报告 `exhausted` / `needsKey` 时，在选择器中显示状态并禁用新选择；若它已经是用户当前选择，则保留名称、显示恢复说明并阻止发送，直到用户刷新或切换。报告 `ready` 时，在选择器旁标“可用”，但说明这是最近一次检查而非保证。缺少状态字段的旧版本回退为既有 `available` 语义。自动链仍可选择，但明确标为自动路由；不能从模型目录推导 `auto:noema-free` 整体可执行性。Noema 不发送额外健康生成请求，也不自动改切其它路由。
+
+**后果与重审：**这避免用户把一把明确冷却的直连模型当成可用，但不会预判自动链耗尽，也不能消除状态检查后突发的限流、超时或多步 worker 用量耗尽。若 FreeLLMAPI 改变字段语义或旧版本不返回此字段，客户端保留兼容回退；只有上游提供可信的 named-chain 成员与整体就绪状态时，才重审 worker 派发前置检查。
+
+## Amendment（2026-10-18）：呈现模型级实时状态，不把目录可见当成可发送
+
+**证据：**FreeLLMAPI 当前 REST API 在模型条目提供 `execution_status`（`ready`、`needsKey`、`exhausted`）；`available` 仍是是否启用且有匹配 key，不足以说明是否在冷却。[官方 Model listing 文档](https://github.com/tashfeenahmed/freellmapi/blob/main/docs/en/api/01-rest-api.md#model-listing) 本机 v0.15.0 的真实 `smoke:freellmapi` 已返回直连 Nemotron Super 的 `exhausted` 状态，而 `free-router` 当时为 `ready`；先前一次 DSH direct-worker 仍在限流窗口内只完成了一个文件，随后超时。因此 `ready` 是本次目录检查的状态，不是下一次请求或多步任务的保证。`auto:noema-free` 作为 `auto:<profile>` 路由项没有逐链状态；不能从 `available=true` 推断整个链健康。
+
+**决定：**FreeLLMAPIClient 继续只暴露 Noema 已审查的免费路由，同时把受支持的 `execution_status` 附加到模型状态。直连模型报告 `exhausted` / `needsKey` 时，在选择器中显示原因、禁用新选择；若该模型已经是用户当前选择，则保留其名称并明确显示不可用，同时禁止发送直到用户刷新或切换。报告 `ready` 时标为“当前可用”，但 tooltip 说明这是最近一次检查而非保证。路由别名仍按 API 返回状态处理；缺少状态字段的旧版本回退为既有 `available` 行为。自动链没有链级状态时仍可选择，但 tooltip 说明实际提供方只会在回复/失败后可知。Noema 不发起额外健康生成请求，也不自动改切其它路由。
+
+**后果与重审：**这避免用户把本地网关连通或一把已冷却的直连模型误认成可用；它不能预判自动链成员的实时状态，也不能消除 `ready` 之后突发的限流、超时或多步 worker 用量耗尽。若 FreeLLMAPI 改变字段语义/版本缺失，则保留兼容回退；只有接口提供可信的 named-chain 成员和整体就绪状态时，才重审 worker 派发前置检查。
+
+## Amendment（2026-10-18）：区分网关连通与直连模型的实时状态
+
+**问题与证据：**Noema 把 FreeLLMAPI 的 `/v1/models?available=true` 当作模型选择依据，但 `available` 只表示已启用且有匹配密钥，不代表密钥没有限流/冷却。FreeLLMAPI 当前 REST API 另提供逐模型 `execution_status`：`ready`、`needsKey`、`exhausted`；其官方说明同时明确 `auto`、`fusion` 与 `auto:<profile>` 是路由项，没有逐模型状态且始终列出。[FreeLLMAPI REST API：Model listing](https://github.com/tashfeenahmed/freellmapi/blob/main/docs/en/api/01-rest-api.md#model-listing)
+
+本机 FreeLLMAPI 0.15.0 的实际 `smoke:freellmapi` 响应报告：`free-router` 与 `nvidia/nemotron-3-super-120b-a12b:free` 当前为 `ready`，`auto:noema-free` 的状态未报告。隔离 root-only 请求随后确实成功，但实际路由到 OVH Mistral；两个 DSH worker 合成运行则仍在多步操作期间遭遇冷却/超时，其中 `free-router` 一次只完成了一个文件。此差异说明 `ready` 是检查时的候选状态，不是后续多步任务保证，也不能证明 named chain 有成员可用。
+
+**决定：**Noema 仅在已有的已审查免费路由清单上读取和显示 `execution_status`，不把上游完整模型目录直接暴露给用户。对于明确报告 `exhausted` / `needsKey` 的直连模型，模型选择器标注状态；当前选中该路由时阻止新发送并提供刷新/切换操作。缺字段时兼容旧网关：回退到既有 `available` 语义，不宣称掌握实时状态。自动链路保留可选，但明确这是路由别名；不能从模型目录推导 `auto:noema-free` 的整体可执行性。Noema 不额外发送健康探测请求，以免把预检本身变成新的免费额度消耗；每条成功回复仍以响应头记录实际提供方。
+
+**后果与重审：**直连模型池已知耗尽时，用户不再被引导向一个当前会立即失败的模型；但自动链路在请求前仍可能耗尽，发送后仍可能遇到限流、超时或供应商故障。界面把“FreeLLMAPI 网关已连接”限定为网关连通状态，不代表任何模型或完整任务保证可用。若 FreeLLMAPI 移除/改变 `execution_status`，客户端会退回兼容路径；若未来提供可信的 named-chain 就绪查询，可再考虑是否在 worker 派发前阻止任务。

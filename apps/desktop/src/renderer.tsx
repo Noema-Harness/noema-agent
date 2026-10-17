@@ -784,6 +784,10 @@ function DesktopApp() {
   const sendMessage = async () => {
     const text = draft;
     if (!text.trim() || busy || sending) return;
+    if (selectedModelUnavailable) {
+      setNotice('当前选择的直连模型不可用；刷新状态或切换路由后再发送。');
+      return;
+    }
     followConversationRef.current = true;
     setSending(true);
     setNotice('');
@@ -1091,6 +1095,29 @@ function DesktopApp() {
     root?.selectedModel &&
     !root.models.some((model) => model.name === root.selectedModel),
   );
+  const selectedModelState = root?.models.find(
+    (model) => model.name === root.selectedModel,
+  );
+  const selectedModelUnavailable = Boolean(
+    root?.selectedModel &&
+    (selectedModelMissing ||
+      selectedModelState?.executionStatus === 'exhausted' ||
+      selectedModelState?.executionStatus === 'needsKey'),
+  );
+  const selectedModelReadinessLabel = selectedModelMissing
+    ? '不可用'
+    : selectedModelState?.executionStatus === 'exhausted'
+      ? '冷却中'
+      : selectedModelState?.executionStatus === 'needsKey'
+        ? '需密钥'
+        : selectedModelState?.executionStatus === 'ready'
+          ? '可用'
+          : root?.selectedModel
+            ? '状态未知'
+            : null;
+  const selectedModelReadinessKind =
+    selectedModelState?.executionStatus ??
+    (selectedModelMissing ? 'exhausted' : 'unknown');
   const workspaceName = root?.workspaceDirectory
     ?.split(/[\\/]/u)
     .filter(Boolean)
@@ -1108,6 +1135,13 @@ function DesktopApp() {
             <span>回复模型</span>
             <select
               aria-label="选择免费回复模型"
+              title={
+                selectedModelState?.routeKind === 'router'
+                  ? selectedModelState.executionStatus
+                    ? 'FreeLLMAPI 最近一次检查报告路由可用；自动选择的上游仍可能变化，每条回复会记录实际提供方。'
+                    : '自动链路的实时上游状态无法从模型目录项判断；每条回复会记录实际提供方。'
+                  : undefined
+              }
               value={
                 selectedModelMissing
                   ? '__missing__'
@@ -1123,11 +1157,43 @@ function DesktopApp() {
               )}
               {!root?.selectedModel && <option value="">选择免费模型</option>}
               {root?.models.map((model) => (
-                <option key={model.name} value={model.name}>
+                <option
+                  key={model.name}
+                  value={model.name}
+                  disabled={
+                    model.executionStatus === 'exhausted' ||
+                    model.executionStatus === 'needsKey'
+                  }
+                  title={
+                    model.executionStatus === 'exhausted'
+                      ? 'FreeLLMAPI 当前报告该模型不可服务；刷新后状态可能变化。'
+                      : model.executionStatus === 'ready'
+                        ? 'FreeLLMAPI 最近一次检查报告该模型可用；发送时仍可能遇到限流或超时。'
+                        : undefined
+                  }
+                >
                   {model.label}
                 </option>
               ))}
             </select>
+            {selectedModelReadinessLabel && (
+              <span
+                className="model-readiness-badge"
+                data-status={selectedModelReadinessKind}
+                title={
+                  selectedModelState?.routeKind === 'router' &&
+                  selectedModelState.executionStatus === null
+                    ? '自动链路没有逐模型就绪状态；真实提供方以回复来源或请求错误为准。'
+                    : selectedModelState?.executionStatus === 'ready'
+                      ? 'FreeLLMAPI 最近一次检查报告可用；发送时仍可能遇到限流或超时。'
+                      : selectedModelState?.executionStatus === 'exhausted'
+                        ? 'FreeLLMAPI 当前报告该直连模型的密钥暂时无法服务。刷新后状态可能变化。'
+                        : undefined
+                }
+              >
+                {selectedModelReadinessLabel}
+              </span>
+            )}
           </label>
           <div
             className={`connection-state ${root?.connected ? (root.models.length ? 'connected' : 'empty-models') : 'disconnected'}`}
@@ -1138,7 +1204,7 @@ function DesktopApp() {
                 ? '正在检查 FreeLLMAPI'
                 : root.connected
                   ? root.models.length
-                    ? 'FreeLLMAPI 已连接'
+                    ? 'FreeLLMAPI 网关已连接'
                     : '暂无可用免费模型'
                   : 'FreeLLMAPI 未连接'}
             </span>
@@ -1216,6 +1282,25 @@ function DesktopApp() {
                 : root.providerConfigured
                   ? '重新连接'
                   : '连接设置'}
+            </button>
+          </section>
+        )}
+        {root?.connected && selectedModelUnavailable && (
+          <section className="connection-notice" role="status">
+            <div>
+              <strong>所选模型当前不可用</strong>
+              <p>
+                {selectedModelState?.executionStatus === 'exhausted'
+                  ? 'FreeLLMAPI 报告该直连模型的密钥暂时无法服务（例如处于限流冷却）。可切换到自动路由，或稍后刷新。'
+                  : 'FreeLLMAPI 当前的模型列表中没有这个直连模型。刷新状态，或选择其他免费路由。'}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void refreshModels()}
+              disabled={refreshing}
+            >
+              {refreshing ? '检查中…' : '刷新模型状态'}
             </button>
           </section>
         )}
@@ -2530,7 +2615,12 @@ function DesktopApp() {
                   <button
                     className="send-button"
                     type="submit"
-                    disabled={!draft.trim() || sending || Boolean(captureBusy)}
+                    disabled={
+                      !draft.trim() ||
+                      sending ||
+                      Boolean(captureBusy) ||
+                      selectedModelUnavailable
+                    }
                   >
                     {sending ? '发送中…' : '发送给 Noema'}
                   </button>

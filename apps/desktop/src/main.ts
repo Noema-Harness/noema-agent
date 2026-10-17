@@ -114,6 +114,8 @@ const testCaptureHistoryTrace =
   process.env.NOEMA_SMOKE_CAPTURE_HISTORY_TRACE === '1';
 const testCaptureTimelineSearch =
   process.env.NOEMA_SMOKE_CAPTURE_TIMELINE_SEARCH === '1';
+const testCaptureModelAvailability =
+  process.env.NOEMA_SMOKE_CAPTURE_MODEL_AVAILABILITY === '1';
 const quickCaptureDesktopScreenshotPath =
   process.env.NOEMA_SMOKE_QUICK_CAPTURE_DESKTOP_PATH ?? null;
 const quickCaptureNarrowScreenshotPath =
@@ -128,6 +130,10 @@ const timelineSearchDesktopScreenshotPath =
   process.env.NOEMA_SMOKE_TIMELINE_SEARCH_DESKTOP_PATH ?? null;
 const timelineSearchNarrowScreenshotPath =
   process.env.NOEMA_SMOKE_TIMELINE_SEARCH_NARROW_PATH ?? null;
+const modelAvailabilityScreenshotPath =
+  process.env.NOEMA_SMOKE_MODEL_AVAILABILITY_SCREENSHOT_PATH ?? null;
+const modelAvailabilityNarrowScreenshotPath =
+  process.env.NOEMA_SMOKE_MODEL_AVAILABILITY_NARROW_SCREENSHOT_PATH ?? null;
 delete process.env.NOEMA_E2E_DATABASE_PATH;
 delete process.env.NOEMA_E2E_DSH_USER_DATA_PATH;
 delete process.env.NOEMA_E2E_WORKER_PREFACE;
@@ -139,6 +145,7 @@ delete process.env.NOEMA_E2E_VERIFICATION_CHECKS;
 delete process.env.NOEMA_SMOKE_CAPTURE_QUICK_CAPTURE;
 delete process.env.NOEMA_SMOKE_CAPTURE_HISTORY_TRACE;
 delete process.env.NOEMA_SMOKE_CAPTURE_TIMELINE_SEARCH;
+delete process.env.NOEMA_SMOKE_CAPTURE_MODEL_AVAILABILITY;
 delete process.env.NOEMA_SMOKE_QUICK_CAPTURE_DESKTOP_PATH;
 delete process.env.NOEMA_SMOKE_QUICK_CAPTURE_NARROW_PATH;
 delete process.env.NOEMA_SMOKE_HISTORY_TRACE_DESKTOP_PATH;
@@ -146,6 +153,8 @@ delete process.env.NOEMA_SMOKE_HISTORY_TRACE_INTERMEDIATE_PATH;
 delete process.env.NOEMA_SMOKE_HISTORY_TRACE_NARROW_PATH;
 delete process.env.NOEMA_SMOKE_TIMELINE_SEARCH_DESKTOP_PATH;
 delete process.env.NOEMA_SMOKE_TIMELINE_SEARCH_NARROW_PATH;
+delete process.env.NOEMA_SMOKE_MODEL_AVAILABILITY_SCREENSHOT_PATH;
+delete process.env.NOEMA_SMOKE_MODEL_AVAILABILITY_NARROW_SCREENSHOT_PATH;
 
 const isSquirrelLifecycleEvent = process.argv.some((argument) =>
   /^--squirrel-(install|updated|uninstall|obsolete)$/.test(argument),
@@ -211,6 +220,10 @@ const createWindow = () => {
         const historyTraceSmoke = await captureHistoryTraceSmokeScreenshots();
         const timelineSearchSmoke =
           await captureTimelineSearchSmokeScreenshots();
+        const modelAvailabilitySmoke = await inspectModelAvailabilitySmoke(
+          bridgeState.models ?? [],
+          bridgeState.selectedModel ?? null,
+        );
         const result = {
           url: mainWindow?.webContents.getURL() ?? null,
           title: mainWindow?.getTitle() ?? null,
@@ -223,9 +236,16 @@ const createWindow = () => {
           providerError: bridgeState.error ?? null,
           models: Array.isArray(bridgeState.models)
             ? bridgeState.models.map(
-                (model: { name: string; label: string }) => ({
+                (model: {
+                  name: string;
+                  label: string;
+                  routeKind: 'router' | 'direct';
+                  executionStatus: 'ready' | 'needsKey' | 'exhausted' | null;
+                }) => ({
                   name: model.name,
                   label: model.label,
+                  routeKind: model.routeKind,
+                  executionStatus: model.executionStatus,
                 }),
               )
             : [],
@@ -241,6 +261,7 @@ const createWindow = () => {
           quickCaptureSmoke,
           historyTraceSmoke,
           timelineSearchSmoke,
+          modelAvailabilitySmoke,
         };
         writeSmokeLog('renderer-loaded', result);
         if (process.env.NOEMA_SMOKE_TEST_FILE) {
@@ -630,6 +651,159 @@ async function captureTimelineSearchSmokeScreenshots() {
     narrowNoOverflow: narrowState.noHorizontalOverflow,
     focusReturned,
     screenshots,
+  };
+}
+
+async function inspectModelAvailabilitySmoke(
+  models: Array<{
+    name: string;
+    routeKind: 'router' | 'direct';
+    executionStatus: 'ready' | 'needsKey' | 'exhausted' | null;
+  }>,
+  selectedModel: string | null,
+) {
+  if (!testCaptureModelAvailability && models.length === 0) return null;
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    throw new Error('模型状态 smoke 没有可用窗口。');
+  }
+  if (
+    modelAvailabilityScreenshotPath ||
+    modelAvailabilityNarrowScreenshotPath
+  ) {
+    mainWindow.setSize(1280, 720);
+  }
+  const state: {
+    options: Array<{ value: string; label: string; disabled: boolean }>;
+    selectedModel: string;
+    readinessLabel: string;
+    readinessStatus: string;
+    sendDisabled: boolean;
+    unavailableNoticeVisible: boolean;
+  } = await mainWindow.webContents.executeJavaScript(`new Promise((resolve) => {
+    const draft = document.querySelector('#message-input');
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+    setter?.call(draft, '[NOEMA model-status smoke]');
+    draft?.dispatchEvent(new Event('input', { bubbles: true }));
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve({
+      options: [...(document.querySelector('select[aria-label="选择免费回复模型"]')?.options ?? [])]
+        .map((option) => ({ value: option.value, label: option.textContent?.trim() ?? '', disabled: option.disabled })),
+      selectedModel: document.querySelector('select[aria-label="选择免费回复模型"]')?.value ?? '',
+      readinessLabel: document.querySelector('.model-readiness-badge')?.textContent?.trim() ?? '',
+      readinessStatus: document.querySelector('.model-readiness-badge')?.getAttribute('data-status') ?? '',
+      sendDisabled: Boolean(document.querySelector('.send-button')?.disabled),
+      unavailableNoticeVisible: [...document.querySelectorAll('.connection-notice strong')]
+        .some((node) => node.textContent?.includes('所选模型当前不可用')),
+    })));
+  })`);
+  const mismatches = models.flatMap((model) => {
+    const option = state.options.find(
+      (candidate) => candidate.value === model.name,
+    );
+    if (!option) return [`missing option: ${model.name}`];
+    if (model.routeKind === 'router' && !option.label.includes('自动')) {
+      return [`router is not labeled automatic: ${model.name}`];
+    }
+    if (model.executionStatus === 'ready' && option.disabled) {
+      return [`ready route is disabled: ${model.name}`];
+    }
+    if (model.executionStatus === 'exhausted' && !option.disabled) {
+      return [`exhausted route is not disabled: ${model.name}`];
+    }
+    if (model.executionStatus === 'needsKey' && !option.disabled) {
+      return [`unkeyed route is not disabled: ${model.name}`];
+    }
+    return [];
+  });
+  if (mismatches.length) {
+    throw new Error(
+      `模型状态显示不符合 FreeLLMAPI 报告：${mismatches.join('; ')}`,
+    );
+  }
+  const selectedStatus = models.find(
+    (model) => model.name === selectedModel,
+  )?.executionStatus;
+  const selectedUnavailable = Boolean(
+    selectedModel &&
+    (!models.some((model) => model.name === selectedModel) ||
+      selectedStatus === 'exhausted' ||
+      selectedStatus === 'needsKey'),
+  );
+  const expectedReadinessLabel = selectedUnavailable
+    ? selectedStatus === 'exhausted'
+      ? '冷却中'
+      : selectedStatus === 'needsKey'
+        ? '需密钥'
+        : '不可用'
+    : selectedStatus === 'ready'
+      ? '可用'
+      : '状态未知';
+  const expectedReadinessStatus =
+    selectedStatus ?? (selectedUnavailable ? 'exhausted' : 'unknown');
+  if (
+    state.readinessLabel !== expectedReadinessLabel ||
+    state.readinessStatus !== expectedReadinessStatus
+  ) {
+    throw new Error('所选模型的实时状态没有显示在模型控件旁。');
+  }
+  if (
+    selectedUnavailable &&
+    (!state.sendDisabled || !state.unavailableNoticeVisible)
+  ) {
+    throw new Error('不可用的所选模型仍可发送，或没有显示恢复说明。');
+  }
+  if (!selectedUnavailable && state.sendDisabled) {
+    throw new Error('可用的所选模型被错误地阻止发送。');
+  }
+  const screenshot = modelAvailabilityScreenshotPath
+    ? (() => {
+        mainWindow.setSize(1280, 720);
+        return mainWindow.capturePage();
+      })()
+    : null;
+  if (screenshot && modelAvailabilityScreenshotPath) {
+    writeSmokeScreenshot(modelAvailabilityScreenshotPath, await screenshot);
+  }
+  let narrowLayoutValid: boolean | null = null;
+  if (modelAvailabilityNarrowScreenshotPath) {
+    mainWindow.setSize(680, 560);
+    narrowLayoutValid = await mainWindow.webContents
+      .executeJavaScript(`new Promise((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        const header = document.querySelector('.topbar');
+        const bounds = header?.getBoundingClientRect();
+        const controls = [...(header?.querySelectorAll('.topbar-tools > *') ?? [])];
+        resolve(Boolean(
+          document.documentElement.scrollWidth <= window.innerWidth &&
+          header && bounds && header.scrollWidth <= header.clientWidth &&
+          controls.every((control) => {
+            const rect = control.getBoundingClientRect();
+            return rect.left >= bounds.left - 1 && rect.right <= bounds.right + 1;
+          })
+        ));
+      }));
+    })`);
+    if (!narrowLayoutValid) {
+      throw new Error('窄窗口下模型状态标签挤出了顶部控件或页面。');
+    }
+    writeSmokeScreenshot(
+      modelAvailabilityNarrowScreenshotPath,
+      await mainWindow.capturePage(),
+    );
+  }
+  return {
+    verified: true,
+    routeCount: models.length,
+    selectedUnavailable,
+    narrowLayoutValid,
+    routes: models.map((model) => ({
+      name: model.name,
+      routeKind: model.routeKind,
+      executionStatus: model.executionStatus,
+    })),
+    screenshots: [
+      modelAvailabilityScreenshotPath,
+      modelAvailabilityNarrowScreenshotPath,
+    ].filter(Boolean),
   };
 }
 
