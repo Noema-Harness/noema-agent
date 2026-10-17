@@ -80,6 +80,16 @@ OpenClaw 和 Hermes 已有多 agent、多 session、聊天渠道、skills/memory
 3. **Noema 可能的不同点仍在“好友”而非“管家”。** 这些产品大多把单一主 agent 当作跨生活的代理人；开放运行时能有多个 agent，但身份、工作空间与 session 常是工程配置。Noema 可能更聚焦同一个用户与多位持续专业好友之间的关系连续、不同聊天空间的证据边界，以及专业实践如何从工作经历变化。这值得继续检验，但不等于现在已证明是独特需求，也不排除 Dots 等后续推出多 agent。
 4. **Noema 的独立价值要过组合反证。** 现有大公司产品已能做单 agent + 后台任务 + apps + memory；开源 runtime 能做 multi-agent/session/skills。Noema 若只包装成一个跨模型/跨 app 的统一入口，很可能被平台功能吸收。更可能的架构责任，是“谁是用户的这个好友、它如何在多 room/多 runtime 中保有可审计且可撤回的实践连续性”，但研究和最低成本组合测试尚未完成。
 
+## 值得借鉴的机制，而不是照抄产品外壳
+
+1. **一位主 agent 与专门执行 runtime 分开。** Dots 把持续个人代理与 Codex 任务组合起来；主 agent 承接用户目标、保持注意力连续，编码仍由 Codex 承担。这是 Noema“核心伙伴不亲自做所有长任务”的具体产业参照，也意味着该模式本身已不是 Noema 独占。
+2. **后台能力必须和可见状态/权限一起出现。** Dots 的 in-progress/scheduled/completed 任务、Pause、审批规则；Muse 的 VM、Sentinel、动作审计和逐 app 权限；Microsoft Autopilot 的 agent identity 和 Entra policy，都是为了让“替用户做事”可控制、可归责。实现离线和自动任务却没有清楚的暂停/审计/撤回边界，不是成熟的个人 agent。
+3. **固定的日常入口来自具体循环，而不是 24 小时不停聊天。** Gemini Spark 的 Daily Brief、主题监控和 Schedules，以及 Jo 的晨间简报/待回消息/家庭群约定，将 agent 放入早晨检查、计划更新、约定查找等现成时间点。这里的价值来自重复生活情境与低摩擦，不是因为 agent 一直在线本身。
+4. **跨房间事实检索有明确的消费者场景。** Jo 展示家庭群聊约定回忆，OpenAI apps/Dots 也可连接多个账户源。这个能力可能值得作为“个人 agent 的日常检索入口”研究，但任何结果都必须显示来源并遵循原房间授权；它仍不等于把事件晋升为专业实践。
+5. **从一开始给用户数据和偏好生命周期控制。** 记忆来源展示、逐个纠正/删除、断开来源、历史和当前状态冲突处理，属于 personal-agent 产品核心。Dots 当前断开应用不会删除已读到的信息，只能删除整个 dot；这反例说明“有连接开关”不代表用户已掌握记忆生命周期。[Dots memory/reset controls](https://help.openai.com/en/articles/20001530-getting-started-with-your-dot)
+
+这些机制和 Noema 的好友/实践研究可以相交，但还没有共同构成 Noema 的差异化结论；本节不批准 UI、通知策略或权限 schema。
+
 ## 当前结论（候选，不是产品决策）
 
 2026 年的 personal agent 已是正在实现的产品类别，不只是宣传词；但产品定义仍分裂，市场实际采用也远未证明用户愿意交出广泛的个人权限。Codex 足以承担高强度编码执行，不能单凭它代表整个 personal-agent 需求；同时，Dots/Work 与 Gemini/Muse 已表明“统一主 agent 跨 apps 持续工作”不是 Noema 独占的方向。
