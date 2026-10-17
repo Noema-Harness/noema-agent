@@ -47,7 +47,12 @@ const timelineSearchScreenshotPaths = [
   process.env.NOEMA_SMOKE_TIMELINE_SEARCH_DESKTOP_PATH,
   process.env.NOEMA_SMOKE_TIMELINE_SEARCH_NARROW_PATH,
 ].filter((candidate) => typeof candidate === 'string' && candidate.length > 0);
-if (probeFreeLLMAPI) mkdirSync(probeDirectory, { recursive: true });
+if (probeFreeLLMAPI) {
+  mkdirSync(probeDirectory, { recursive: true });
+  const fixture = new RootStore(path.join(probeDirectory, 'root.sqlite3'));
+  fixture.setSelectedModel('nvidia/nemotron-3-super-120b-a12b:free');
+  fixture.close();
+}
 let historyTraceDatabasePath;
 let historyTraceDshUserDataPath;
 let timelineSearchDatabasePath;
@@ -142,6 +147,13 @@ const childEnvironment = {
           'dsh-user-data',
         ),
         NOEMA_SMOKE_REFRESH_MODELS: '1',
+        NOEMA_SMOKE_CAPTURE_MODEL_AVAILABILITY: '1',
+        ...(process.env.NOEMA_SMOKE_MODEL_AVAILABILITY_SCREENSHOT_PATH
+          ? {
+              NOEMA_SMOKE_MODEL_AVAILABILITY_SCREENSHOT_PATH:
+                process.env.NOEMA_SMOKE_MODEL_AVAILABILITY_SCREENSHOT_PATH,
+            }
+          : {}),
       }
     : { NOEMA_SMOKE_USER_DATA_DIR: userDataDir }),
   ...(probeHistoryTrace
@@ -340,7 +352,7 @@ child.on('exit', (code, signal) => {
     }
     if (probeFreeLLMAPI) {
       console.log(
-        `FreeLLMAPI credential: ${loaded.providerConfigured ? 'configured' : 'missing'}; endpoint: ${loaded.providerBaseUrl ?? 'unknown'}; gateway: ${loaded.connected ? 'connected' : 'unavailable'}${loaded.providerError ? ` — ${loaded.providerError}` : ''}; free routes: ${(loaded.models ?? []).map((model) => model.name).join(', ') || 'none'}`,
+        `FreeLLMAPI credential: ${loaded.providerConfigured ? 'configured' : 'missing'}; endpoint: ${loaded.providerBaseUrl ?? 'unknown'}; gateway: ${loaded.connected ? 'connected' : 'unavailable'}${loaded.providerError ? ` — ${loaded.providerError}` : ''}; free routes: ${(loaded.models ?? []).map((model) => `${model.name} [${model.executionStatus ?? (model.routeKind === 'router' ? 'router status unknown' : 'status unavailable')}]`).join(', ') || 'none'}`,
       );
       if (
         !loaded.providerConfigured ||
@@ -349,6 +361,31 @@ child.on('exit', (code, signal) => {
       ) {
         process.exitCode = 1;
       }
+      if (!loaded.modelAvailabilitySmoke?.verified) {
+        console.error(
+          'Noema did not render the FreeLLMAPI model readiness states it received.',
+        );
+        process.exitCode = 1;
+      }
+      if (
+        process.env.NOEMA_SMOKE_MODEL_AVAILABILITY_SCREENSHOT_PATH &&
+        !existsSync(process.env.NOEMA_SMOKE_MODEL_AVAILABILITY_SCREENSHOT_PATH)
+      ) {
+        console.error('Model availability screenshot was not created.');
+        process.exitCode = 1;
+      }
+      if (
+        process.env.NOEMA_SMOKE_MODEL_AVAILABILITY_NARROW_SCREENSHOT_PATH &&
+        !existsSync(
+          process.env.NOEMA_SMOKE_MODEL_AVAILABILITY_NARROW_SCREENSHOT_PATH,
+        )
+      ) {
+        console.error('Narrow model availability screenshot was not created.');
+        process.exitCode = 1;
+      }
+      console.log(
+        `FreeLLMAPI model readiness rendered: ${(loaded.modelAvailabilitySmoke?.routes ?? []).map((model) => `${model.name}=${model.executionStatus ?? 'unknown'}`).join(', ')}; narrow layout: ${loaded.modelAvailabilitySmoke?.narrowLayoutValid ? 'fits' : 'not checked'}`,
+      );
     }
     return;
   }

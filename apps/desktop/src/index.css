@@ -191,6 +191,38 @@ select:disabled {
   color: var(--faint);
 }
 
+.model-readiness-badge {
+  flex: 0 0 auto;
+  padding: 3px 6px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--paper-muted);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.model-readiness-badge[data-status='ready'] {
+  border-color: #c8d8ce;
+  background: var(--success-soft);
+  color: #285e46;
+}
+
+.model-readiness-badge[data-status='exhausted'],
+.model-readiness-badge[data-status='needsKey'] {
+  border-color: #e2c5bd;
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.model-readiness-badge[data-status='unknown'] {
+  border-color: #d9d0bd;
+  background: var(--warning-soft);
+  color: #755b2c;
+}
+
 .connection-state {
   display: inline-flex;
   align-items: center;

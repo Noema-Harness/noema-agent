@@ -1,6 +1,8 @@
 export interface NoemaModel {
   name: string;
   label: string;
+  routeKind: 'router' | 'direct';
+  executionStatus: 'ready' | 'needsKey' | 'exhausted' | null;
 }
 
 export interface NoemaHistorySource {

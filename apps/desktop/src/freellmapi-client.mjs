@@ -5,14 +5,16 @@ const VERIFIED_FREE_MODELS = new Map([
     'auto:noema-free',
     {
       name: 'auto:noema-free',
-      label: 'Noema 免费模型链',
+      label: 'Noema 免费模型链 · 自动路由',
+      routeKind: 'router',
     },
   ],
   [
     'free-router',
     {
       name: 'free-router',
-      label: 'FreeLLMAPI 免费路由',
+      label: 'FreeLLMAPI 免费路由 · 自动',
+      routeKind: 'router',
     },
   ],
   [
@@ -20,6 +22,7 @@ const VERIFIED_FREE_MODELS = new Map([
     {
       name: 'nvidia/nemotron-3-super-120b-a12b:free',
       label: 'Nemotron 3 Super 120B · 免费',
+      routeKind: 'direct',
     },
   ],
   [
@@ -27,6 +30,7 @@ const VERIFIED_FREE_MODELS = new Map([
     {
       name: 'nvidia/nemotron-3.5-lightning',
       label: 'Nemotron 3.5 Lightning · 免费',
+      routeKind: 'direct',
     },
   ],
   [
@@ -34,6 +38,7 @@ const VERIFIED_FREE_MODELS = new Map([
     {
       name: 'cohere/north-mini-code',
       label: 'Cohere North Mini Code · 免费',
+      routeKind: 'direct',
     },
   ],
   [
@@ -41,6 +46,7 @@ const VERIFIED_FREE_MODELS = new Map([
     {
       name: 'nvidia/llama-3.2-11b-vision',
       label: 'NVIDIA Llama 3.2 11B · 免费',
+      routeKind: 'direct',
     },
   ],
 ]);
@@ -101,7 +107,14 @@ export class FreeLLMAPIClient {
     return this.baseUrl;
   }
 
-  /** @returns {Promise<Array<{name:string,label:string}>>} */
+  /**
+   * @returns {Promise<Array<{
+   *   name:string,
+   *   label:string,
+   *   routeKind:'router'|'direct',
+   *   executionStatus:'ready'|'needsKey'|'exhausted'|null
+   * }>>}
+   */
   async listModels() {
     const key = this.requireApiKey();
     let response;
@@ -144,15 +157,24 @@ export class FreeLLMAPIClient {
       );
     }
 
-    const available = new Set(
+    const available = new Map(
       body.data
-        .filter((model) => model?.available !== false)
-        .map((model) => model?.id)
-        .filter((id) => typeof id === 'string'),
+        .filter(
+          (model) => typeof model?.id === 'string' && model.available !== false,
+        )
+        .map((model) => [model.id, model]),
     );
     return [...VERIFIED_FREE_MODELS.entries()]
       .filter(([catalogId]) => available.has(catalogId))
-      .map(([, model]) => ({ ...model }));
+      .map(([catalogId, model]) => {
+        const status = available.get(catalogId)?.execution_status;
+        const executionStatus = ['ready', 'needsKey', 'exhausted'].includes(
+          status,
+        )
+          ? status
+          : null;
+        return { ...model, executionStatus };
+      });
   }
 
   /**

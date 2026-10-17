@@ -18,8 +18,16 @@ test('lists only the explicitly verified free routes from available models', asy
         data: [
           { id: 'auto:noema-free', available: true },
           { id: 'free-router', available: true },
-          { id: 'nemotron-3-super-120b', available: true },
-          { id: 'nvidia/nemotron-3.5-lightning', available: true },
+          {
+            id: 'nemotron-3-super-120b',
+            available: true,
+            execution_status: 'ready',
+          },
+          {
+            id: 'nvidia/nemotron-3.5-lightning',
+            available: true,
+            execution_status: 'exhausted',
+          },
           { id: 'cohere/north-mini-code', available: true },
           { id: 'nvidia/llama-3.2-11b-vision', available: true },
           { id: 'gemini-2.5-flash', available: true },
@@ -32,24 +40,39 @@ test('lists only the explicitly verified free routes from available models', asy
   assert.deepEqual(await client.listModels(), [
     {
       name: 'auto:noema-free',
-      label: 'Noema 免费模型链',
+      label: 'Noema 免费模型链 · 自动路由',
+      routeKind: 'router',
+      executionStatus: null,
     },
-    { name: 'free-router', label: 'FreeLLMAPI 免费路由' },
+    {
+      name: 'free-router',
+      label: 'FreeLLMAPI 免费路由 · 自动',
+      routeKind: 'router',
+      executionStatus: null,
+    },
     {
       name: 'nvidia/nemotron-3-super-120b-a12b:free',
       label: 'Nemotron 3 Super 120B · 免费',
+      routeKind: 'direct',
+      executionStatus: 'ready',
     },
     {
       name: 'nvidia/nemotron-3.5-lightning',
       label: 'Nemotron 3.5 Lightning · 免费',
+      routeKind: 'direct',
+      executionStatus: 'exhausted',
     },
     {
       name: 'cohere/north-mini-code',
       label: 'Cohere North Mini Code · 免费',
+      routeKind: 'direct',
+      executionStatus: null,
     },
     {
       name: 'nvidia/llama-3.2-11b-vision',
       label: 'NVIDIA Llama 3.2 11B · 免费',
+      routeKind: 'direct',
+      executionStatus: null,
     },
   ]);
 });
