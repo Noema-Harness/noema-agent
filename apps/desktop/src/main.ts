@@ -20,6 +20,9 @@ import {
 } from './root-ipc.mjs';
 import { RootAgent } from './root-agent.mjs';
 import { RootStore } from './root-store.mjs';
+import { SocialChatStore } from './social-chat-store.mjs';
+import { SocialChatService } from './social-chat-service.mjs';
+import { backupBeforeSocialChatMigration } from './social-chat-migration-backup.mjs';
 import {
   resolveNoemaDatabasePath,
   resolveNoemaDshUserDataPath,
@@ -90,6 +93,8 @@ let rootStore: RootStore | null = null;
 let providerSecretStore: EncryptedSecretStore | null = null;
 let unregisterRootIpc: (() => void) | null = null;
 let rootAgent: RootAgent | null = null;
+let socialChatStore: SocialChatStore | null = null;
+let socialChatService: SocialChatService | null = null;
 let quickCaptureShortcutRegistration: ReturnType<
   typeof registerQuickCaptureShortcut
 > | null = null;
@@ -134,6 +139,17 @@ const modelAvailabilityScreenshotPath =
   process.env.NOEMA_SMOKE_MODEL_AVAILABILITY_SCREENSHOT_PATH ?? null;
 const modelAvailabilityNarrowScreenshotPath =
   process.env.NOEMA_SMOKE_MODEL_AVAILABILITY_NARROW_SCREENSHOT_PATH ?? null;
+const captureSocialChatSmoke =
+  process.env.NOEMA_SMOKE_CAPTURE_SOCIAL_CHAT === '1';
+const runSocialChatLiveSmoke = process.env.NOEMA_SMOKE_SOCIAL_CHAT_LIVE === '1';
+const socialChatDesktopScreenshotPath =
+  process.env.NOEMA_SMOKE_SOCIAL_CHAT_DESKTOP_PATH ?? null;
+const socialChatNarrowScreenshotPath =
+  process.env.NOEMA_SMOKE_SOCIAL_CHAT_NARROW_PATH ?? null;
+const socialGroupDialogScreenshotPath =
+  process.env.NOEMA_SMOKE_SOCIAL_GROUP_DIALOG_PATH ?? null;
+const socialSettingsNarrowScreenshotPath =
+  process.env.NOEMA_SMOKE_SOCIAL_SETTINGS_NARROW_PATH ?? null;
 delete process.env.NOEMA_E2E_DATABASE_PATH;
 delete process.env.NOEMA_E2E_DSH_USER_DATA_PATH;
 delete process.env.NOEMA_E2E_WORKER_PREFACE;
@@ -216,6 +232,27 @@ const createWindow = () => {
         if (!bridgeState || !Array.isArray(bridgeState.messages)) {
           throw new Error('Root conversation bridge did not return its state');
         }
+        const socialState = await mainWindow?.webContents.executeJavaScript(
+          'window.noema.getSocialState()',
+        );
+        if (
+          !socialState ||
+          !Array.isArray(socialState.agents) ||
+          !Array.isArray(socialState.rooms)
+        ) {
+          throw new Error(
+            'Social chat bridge did not return contacts and rooms',
+          );
+        }
+        const firstRoom = socialState.rooms[0];
+        const socialRoom = firstRoom
+          ? await mainWindow?.webContents.executeJavaScript(
+              `window.noema.getSocialRoom(${JSON.stringify(firstRoom.id)})`,
+            )
+          : null;
+        if (!socialRoom?.room || !Array.isArray(socialRoom.members)) {
+          throw new Error('Social chat room could not be opened through IPC');
+        }
         const quickCaptureSmoke = await captureQuickCaptureSmokeScreenshots();
         const historyTraceSmoke = await captureHistoryTraceSmokeScreenshots();
         const timelineSearchSmoke =
@@ -224,12 +261,19 @@ const createWindow = () => {
           bridgeState.models ?? [],
           bridgeState.selectedModel ?? null,
         );
+        const socialChatSmoke = await captureSocialChatSmokeScreenshots();
+        const socialLiveChatSmoke = await verifyLiveSocialChatSmoke();
         const result = {
           url: mainWindow?.webContents.getURL() ?? null,
           title: mainWindow?.getTitle() ?? null,
           packaged: app.isPackaged,
           windowFitsWorkArea: initialWindowFitsWorkArea,
           rootStateLoaded: true,
+          socialChat: {
+            agentCount: socialState.agents.length,
+            roomCount: socialState.rooms.length,
+            firstRoomOpened: true,
+          },
           providerConfigured: Boolean(bridgeState.providerConfigured),
           providerBaseUrl: bridgeState.providerBaseUrl ?? null,
           connected: Boolean(bridgeState.connected),
@@ -262,6 +306,8 @@ const createWindow = () => {
           historyTraceSmoke,
           timelineSearchSmoke,
           modelAvailabilitySmoke,
+          socialChatSmoke,
+          socialLiveChatSmoke,
         };
         writeSmokeLog('renderer-loaded', result);
         if (process.env.NOEMA_SMOKE_TEST_FILE) {
@@ -666,6 +712,112 @@ async function inspectModelAvailabilitySmoke(
   if (!mainWindow || mainWindow.isDestroyed()) {
     throw new Error('模型状态 smoke 没有可用窗口。');
   }
+  const socialSurface = await mainWindow.webContents.executeJavaScript(
+    'Boolean(document.querySelector(".social-shell"))',
+  );
+  if (socialSurface) {
+    mainWindow.setSize(1280, 720);
+    const socialState = await mainWindow.webContents.executeJavaScript(`(() => {
+      const select = document.querySelector('select[aria-label="选择对话模型"]');
+      const warning = document.querySelector('.provider-warning')?.textContent?.trim() ?? '';
+      return {
+        options: [...(select?.options ?? [])].map((option) => ({
+          value: option.value,
+          label: option.textContent?.trim() ?? '',
+          disabled: option.disabled,
+        })),
+        selectedModel: select?.value ?? '',
+        connectionLabel: document.querySelector('.model-connection')?.textContent?.trim() ?? '',
+        composerDisabled: Boolean(document.querySelector('#social-message-input')?.disabled),
+        warning,
+      };
+    })()`);
+    const mismatches = models.flatMap((model) => {
+      const option = socialState.options.find(
+        (candidate: { value: string; label: string; disabled: boolean }) =>
+          candidate.value === model.name,
+      );
+      if (!option) return [`missing social model option: ${model.name}`];
+      if (model.routeKind === 'router' && !option.label.includes('自动')) {
+        return [`router is not labeled automatic: ${model.name}`];
+      }
+      if (
+        ['exhausted', 'needsKey'].includes(model.executionStatus ?? '') &&
+        !option.disabled
+      ) {
+        return [`unavailable route is not disabled: ${model.name}`];
+      }
+      if (model.executionStatus === 'ready' && option.disabled) {
+        return [`ready route is disabled: ${model.name}`];
+      }
+      return [];
+    });
+    if (mismatches.length) {
+      throw new Error(
+        `Noema 聊天模型列表与 FreeLLMAPI 状态不一致：${mismatches.join('; ')}`,
+      );
+    }
+    const selectedStatus = models.find(
+      (model) => model.name === socialState.selectedModel,
+    )?.executionStatus;
+    const selectedUnavailable =
+      selectedStatus === 'exhausted' || selectedStatus === 'needsKey';
+    const expectedLabel = selectedUnavailable
+      ? selectedStatus === 'needsKey'
+        ? '所选模型需要密钥'
+        : '所选模型暂不可用'
+      : selectedStatus === 'ready'
+        ? '对话已就绪'
+        : '模型链状态未知';
+    if (!socialState.connectionLabel.includes(expectedLabel)) {
+      throw new Error('聊天顶部没有显示所选路由的真实就绪状态。');
+    }
+    if (selectedUnavailable !== socialState.composerDisabled) {
+      throw new Error('所选模型状态与聊天输入框的可用状态不一致。');
+    }
+    if (selectedUnavailable && !socialState.warning) {
+      throw new Error('所选模型不可用时没有给出切换或恢复说明。');
+    }
+
+    const screenshots: string[] = [];
+    if (modelAvailabilityScreenshotPath) {
+      writeSmokeScreenshot(
+        modelAvailabilityScreenshotPath,
+        await mainWindow.capturePage(),
+      );
+      screenshots.push(modelAvailabilityScreenshotPath);
+    }
+    let narrowLayoutValid: boolean | null = null;
+    if (modelAvailabilityNarrowScreenshotPath) {
+      mainWindow.setSize(680, 560);
+      narrowLayoutValid = await mainWindow.webContents
+        .executeJavaScript(`(() => {
+        const topbar = document.querySelector('.social-topbar');
+        return Boolean(
+          document.documentElement.scrollWidth <= window.innerWidth &&
+          topbar && topbar.scrollWidth <= topbar.clientWidth
+        );
+      })()`);
+      if (!narrowLayoutValid) {
+        throw new Error('窄窗口下模型状态标签挤出了聊天界面。');
+      }
+      writeSmokeScreenshot(
+        modelAvailabilityNarrowScreenshotPath,
+        await mainWindow.capturePage(),
+      );
+      screenshots.push(modelAvailabilityNarrowScreenshotPath);
+    }
+    return {
+      verified: true,
+      routes: models,
+      options: socialState.options,
+      selectedModel: socialState.selectedModel,
+      connectionLabel: socialState.connectionLabel,
+      selectedUnavailable,
+      narrowLayoutValid,
+      screenshots,
+    };
+  }
   if (
     modelAvailabilityScreenshotPath ||
     modelAvailabilityNarrowScreenshotPath
@@ -807,6 +959,259 @@ async function inspectModelAvailabilitySmoke(
   };
 }
 
+async function captureSocialChatSmokeScreenshots() {
+  if (!captureSocialChatSmoke) return null;
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    throw new Error('社交聊天 smoke 没有可用窗口。');
+  }
+  const originalSize = mainWindow.getSize();
+  const screenshots: string[] = [];
+  try {
+    const inspectAt = async (width: number, height: number) => {
+      mainWindow?.setSize(width, height);
+      await mainWindow?.webContents.executeJavaScript(
+        'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+      );
+      return mainWindow?.webContents.executeJavaScript(`(() => {
+        const shell = document.querySelector('.social-shell');
+        const panel = document.querySelector('.conversation-panel');
+        const header = document.querySelector('.social-topbar');
+        const composer = document.querySelector('.message-composer');
+        const routing = document.querySelector('.reply-routing');
+        const rect = composer?.getBoundingClientRect();
+        return {
+          loaded: Boolean(shell),
+          roomTitle: document.querySelector('.room-header h2')?.textContent?.trim() ?? '',
+          participantCount: document.querySelectorAll('.room-header-copy p').length,
+          routingChoices: routing?.querySelectorAll('button').length ?? 0,
+          composerVisible: Boolean(rect && rect.width > 0 && rect.height > 0 && rect.bottom <= window.innerHeight),
+          shellNoOverflow: Boolean(shell && shell.scrollWidth <= shell.clientWidth),
+          panelNoOverflow: Boolean(panel && panel.scrollWidth <= panel.clientWidth),
+          headerNoOverflow: Boolean(header && header.scrollWidth <= header.clientWidth),
+          documentNoOverflow: document.documentElement.scrollWidth <= window.innerWidth,
+        };
+      })()`);
+    };
+
+    await mainWindow.webContents.executeJavaScript(`(() => {
+      const group = [...document.querySelectorAll('.room-list-item')]
+        .find((item) => item.textContent?.includes('工程协作'));
+      group?.click();
+    })()`);
+    await mainWindow.webContents.executeJavaScript(
+      'new Promise((resolve) => setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(resolve)), 80))',
+    );
+
+    mainWindow.setSize(1280, 800);
+    const desktop = await inspectAt(1280, 800);
+    if (
+      !desktop?.loaded ||
+      desktop.roomTitle !== '工程协作' ||
+      desktop.routingChoices !== 2 ||
+      !desktop.composerVisible ||
+      !desktop.shellNoOverflow ||
+      !desktop.panelNoOverflow ||
+      !desktop.headerNoOverflow ||
+      !desktop.documentNoOverflow
+    ) {
+      throw new Error(`桌面聊天状态不符合预期：${JSON.stringify(desktop)}`);
+    }
+    if (socialChatDesktopScreenshotPath) {
+      const image = await mainWindow.capturePage();
+      writeSmokeScreenshot(socialChatDesktopScreenshotPath, image);
+      screenshots.push(socialChatDesktopScreenshotPath);
+    }
+
+    const target = await mainWindow.webContents.executeJavaScript(`(() => {
+      const buttons = [...document.querySelectorAll('.reply-routing button')];
+      buttons[1]?.click();
+      return buttons.map((button) => button.getAttribute('aria-pressed'));
+    })()`);
+    if (target.length !== 2 || target[0] !== 'false' || target[1] !== 'true') {
+      throw new Error(`群聊回应对象切换没有生效：${JSON.stringify(target)}`);
+    }
+
+    const groupDialog = await mainWindow.webContents
+      .executeJavaScript(`(async () => {
+      const trigger = document.querySelector('.new-group-button');
+      trigger?.focus();
+      trigger?.click();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const dialog = document.querySelector('.social-dialog[aria-labelledby="create-group-title"]');
+      const focusable = () => [...(dialog?.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled])') ?? [])];
+      const first = dialog?.querySelector('#social-group-title');
+      const initiallyFocused = document.activeElement === first;
+      const items = focusable();
+      items.at(-1)?.focus();
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
+      const tabWrapped = document.activeElement === items[0];
+      return {
+        opened: Boolean(dialog),
+        initiallyFocused,
+        focusEntered: Boolean(dialog?.contains(document.activeElement)),
+        activeElement: document.activeElement instanceof HTMLElement ? document.activeElement.outerHTML.slice(0, 180) : '',
+        firstInput: first instanceof HTMLElement ? first.outerHTML.slice(0, 180) : '',
+        tabWrapped,
+      };
+    })()`);
+    if (
+      !groupDialog.opened ||
+      !groupDialog.initiallyFocused ||
+      !groupDialog.tabWrapped
+    ) {
+      throw new Error(
+        `新建群聊对话框的焦点管理不完整：${JSON.stringify(groupDialog)}`,
+      );
+    }
+    if (socialGroupDialogScreenshotPath) {
+      await new Promise((resolve) => setTimeout(resolve, 240));
+      const image = await mainWindow.capturePage();
+      writeSmokeScreenshot(socialGroupDialogScreenshotPath, image);
+      screenshots.push(socialGroupDialogScreenshotPath);
+    }
+    const groupDialogClosed = await mainWindow.webContents
+      .executeJavaScript(`new Promise((resolve) => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve({
+        closed: !document.querySelector('.social-dialog[aria-labelledby="create-group-title"]'),
+        focusRestored: document.activeElement === document.querySelector('.new-group-button'),
+      })));
+    })`);
+    if (!groupDialogClosed.closed || !groupDialogClosed.focusRestored) {
+      throw new Error('关闭新建群聊后没有恢复焦点。');
+    }
+
+    const narrow = await inspectAt(680, 560);
+    if (
+      !narrow?.loaded ||
+      narrow.roomTitle !== '工程协作' ||
+      narrow.routingChoices !== 2 ||
+      !narrow.composerVisible ||
+      !narrow.shellNoOverflow ||
+      !narrow.panelNoOverflow ||
+      !narrow.documentNoOverflow
+    ) {
+      throw new Error(`窄窗口聊天状态不符合预期：${JSON.stringify(narrow)}`);
+    }
+    if (socialChatNarrowScreenshotPath) {
+      const image = await mainWindow.capturePage();
+      writeSmokeScreenshot(socialChatNarrowScreenshotPath, image);
+      screenshots.push(socialChatNarrowScreenshotPath);
+    }
+    const settingsDialog = await mainWindow.webContents
+      .executeJavaScript(`(async () => {
+      const trigger = document.querySelector('.settings-button');
+      trigger?.focus();
+      trigger?.click();
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const dialog = document.querySelector('.social-dialog[aria-labelledby="connection-settings-title"]');
+      const first = dialog?.querySelector('[data-dialog-initial-focus]');
+      const modelPicker = dialog?.querySelector('select[aria-label="在设置中选择对话模型"]');
+      const initialFocus = document.activeElement === first;
+      const items = [...(dialog?.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled])') ?? [])];
+      items.at(-1)?.focus();
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
+      return { opened: Boolean(dialog), initialFocus, tabWrapped: document.activeElement === items[0], modelPickerVisible: Boolean(modelPicker) };
+    })()`);
+    if (
+      !settingsDialog.opened ||
+      !settingsDialog.initialFocus ||
+      !settingsDialog.tabWrapped ||
+      !settingsDialog.modelPickerVisible
+    ) {
+      throw new Error(
+        `模型设置对话框缺少键盘边界或窄屏模型入口：${JSON.stringify(settingsDialog)}`,
+      );
+    }
+    if (socialSettingsNarrowScreenshotPath) {
+      await new Promise((resolve) => setTimeout(resolve, 240));
+      const image = await mainWindow.capturePage();
+      writeSmokeScreenshot(socialSettingsNarrowScreenshotPath, image);
+      screenshots.push(socialSettingsNarrowScreenshotPath);
+    }
+    const settingsDialogClosed = await mainWindow.webContents
+      .executeJavaScript(`new Promise((resolve) => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve({
+        closed: !document.querySelector('.social-dialog[aria-labelledby="connection-settings-title"]'),
+        focusRestored: document.activeElement === document.querySelector('.settings-button'),
+      })));
+    })`);
+    if (!settingsDialogClosed.closed || !settingsDialogClosed.focusRestored) {
+      throw new Error('关闭模型设置后没有恢复焦点。');
+    }
+    return {
+      desktop,
+      narrow,
+      targetSwitchWorked: true,
+      groupDialog,
+      groupDialogClosed,
+      settingsDialog,
+      settingsDialogClosed,
+      screenshots,
+    };
+  } finally {
+    mainWindow?.setSize(originalSize[0], originalSize[1]);
+  }
+}
+
+async function verifyLiveSocialChatSmoke() {
+  if (!runSocialChatLiveSmoke) return null;
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    throw new Error('真实模型聊天 smoke 没有可用窗口。');
+  }
+  const result = await mainWindow.webContents.executeJavaScript(`(async () => {
+    const expected = 'NOEMA_CHAT_OK_59D2';
+    const roomDeadline = Date.now() + 5000;
+    while (Date.now() < roomDeadline) {
+      const noemaRoom = [...document.querySelectorAll('.room-list-item')]
+        .find((item) => item.querySelector('.room-list-title')?.textContent?.trim() === 'Noema');
+      noemaRoom?.click();
+      if (document.querySelector('.room-header h2')?.textContent?.trim() === 'Noema') break;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    const input = document.querySelector('#social-message-input');
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+    if (!input || input.disabled || !setter) return { verified: false, status: 'composer_unavailable' };
+    setter.call(input, '[NOEMA synthetic chat smoke] 请只回复这个标记，不要添加其它内容：' + expected);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    input.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'Enter', bubbles: true, cancelable: true,
+    }));
+    const deadline = Date.now() + 65000;
+    while (Date.now() < deadline) {
+      const room = await window.noema.getSocialRoom('room-noema');
+      const userTurn = [...room.messages].reverse().find((message) =>
+        message.role === 'user' && message.content.includes('NOEMA synthetic chat smoke'),
+      );
+      const reply = userTurn
+        ? room.messages.find((message) => message.turnId === userTurn.turnId && message.role === 'assistant')
+        : null;
+      if (reply?.status === 'complete') {
+        return {
+          verified: reply.content.includes(expected),
+          status: reply.status,
+          responseLength: reply.content.length,
+          model: reply.model,
+          via: 'composer-enter',
+        };
+      }
+      if (reply?.status === 'failed' || reply?.status === 'interrupted') {
+        return { verified: false, status: reply.status, error: reply.errorMessage ?? '' };
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    return { verified: false, status: 'timeout' };
+  })()`);
+  if (!result?.verified) {
+    throw new Error(
+      `真实 FreeLLMAPI 聊天没有通过合成标记检查：${JSON.stringify(result)}`,
+    );
+  }
+  return result;
+}
+
 function discoverFreeLLMAPIBaseUrl(appDataPath: string) {
   try {
     const configPath = path.join(appDataPath, 'FreeLLMAPI', 'config.json');
@@ -867,13 +1272,12 @@ async function startNoema() {
   await app.whenReady();
   writeSmokeLog('app-ready', { userData: app.getPath('userData') });
   try {
-    rootStore = new RootStore(
-      resolveNoemaDatabasePath({
-        userDataPath: app.getPath('userData'),
-        isPackaged: app.isPackaged,
-        testDatabasePath,
-      }),
-    );
+    const databasePath = resolveNoemaDatabasePath({
+      userDataPath: app.getPath('userData'),
+      isPackaged: app.isPackaged,
+      testDatabasePath,
+    });
+    rootStore = new RootStore(databasePath);
     writeSmokeLog('store-opened');
     providerSecretStore = new EncryptedSecretStore({
       safeStorage,
@@ -933,9 +1337,32 @@ async function startNoema() {
       },
     });
     rootAgent = agent;
+    const migrationBackupPath = await backupBeforeSocialChatMigration({
+      db: rootStore.db,
+      databasePath,
+    });
+    if (migrationBackupPath) {
+      writeSmokeLog('social-chat-migration-backup', {
+        backupPath: migrationBackupPath,
+      });
+    }
+    socialChatStore = new SocialChatStore(rootStore.db);
+    socialChatService = new SocialChatService({
+      store: socialChatStore,
+      provider,
+      secretStore: providerSecretStore,
+      getSelectedModel: () => rootStore?.getSelectedModel() ?? null,
+      getRootState: () => agent.getUiState(),
+      emit: (payload) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send(CHANNELS.socialEvent, payload);
+        }
+      },
+    });
     unregisterRootIpc = registerRootIpc({
       ipcMain,
       rootAgent: agent,
+      socialChatService,
       isTrustedSender: (sender) =>
         Boolean(mainWindow && sender === mainWindow.webContents),
       sendMessage: createImportAwareSendMessage(agent, async (imported) => {
@@ -1102,7 +1529,10 @@ app.on('before-quit', (event) => {
   event.preventDefault();
   if (shutdownStarted) return;
   shutdownStarted = true;
-  void rootAgent.shutdown().finally(() => {
+  void Promise.allSettled([
+    rootAgent.shutdown(),
+    socialChatService?.shutdown(),
+  ]).finally(() => {
     shutdownComplete = true;
     unregisterRootIpc?.();
     rootStore?.close();

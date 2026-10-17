@@ -4,12 +4,30 @@ import type {
   NoemaQuickCaptureShortcutStatus,
   NoemaRootEvent,
   NoemaRootState,
+  NoemaSocialEvent,
+  NoemaSocialRoomState,
+  NoemaSocialState,
 } from './noema-bridge.d.ts';
 
 const bridge = {
   appVersion: process.env.npm_package_version ?? '0.1.0',
   getRootState: (): Promise<NoemaRootState> =>
     ipcRenderer.invoke('noema:root-state'),
+  getSocialState: (): Promise<NoemaSocialState> =>
+    ipcRenderer.invoke('noema:social-state'),
+  getSocialRoom: (roomId: string): Promise<NoemaSocialRoomState> =>
+    ipcRenderer.invoke('noema:social-room', roomId),
+  createSocialGroup: (input: { title: string; agentIds: string[] }) =>
+    ipcRenderer.invoke('noema:social-create-group', input),
+  sendSocialMessage: (input: {
+    roomId: string;
+    agentId: string;
+    text: string;
+  }) => ipcRenderer.invoke('noema:social-send', input),
+  stopSocialReply: (messageId: string) =>
+    ipcRenderer.invoke('noema:social-stop', messageId),
+  retrySocialReply: (messageId: string) =>
+    ipcRenderer.invoke('noema:social-retry', messageId),
   refreshModels: () => ipcRenderer.invoke('noema:refresh-models'),
   configureProvider: (configuration: { baseUrl: string; apiKey: string }) =>
     ipcRenderer.invoke('noema:configure-provider', configuration),
@@ -57,6 +75,14 @@ const bridge = {
     ) => listener(payload);
     ipcRenderer.on('noema:root-event', handler);
     return () => ipcRenderer.removeListener('noema:root-event', handler);
+  },
+  onSocialEvent: (listener: (event: NoemaSocialEvent) => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      payload: NoemaSocialEvent,
+    ) => listener(payload);
+    ipcRenderer.on('noema:social-event', handler);
+    return () => ipcRenderer.removeListener('noema:social-event', handler);
   },
   onQuickCaptureRequested: (
     listener: (request: NoemaQuickCaptureRequest) => void,

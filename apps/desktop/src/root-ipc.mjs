@@ -26,15 +26,23 @@ const CHANNELS = Object.freeze({
   markQuickCaptureReady: 'noema:mark-quick-capture-ready',
   finishQuickCapture: 'noema:finish-quick-capture',
   event: 'noema:root-event',
+  socialEvent: 'noema:social-event',
+  socialState: 'noema:social-state',
+  socialRoom: 'noema:social-room',
+  socialCreateGroup: 'noema:social-create-group',
+  socialSend: 'noema:social-send',
+  socialStop: 'noema:social-stop',
+  socialRetry: 'noema:social-retry',
 });
 
 /**
  * Registers only the narrow root-conversation operations that the renderer needs.
- * @param {{ipcMain: {handle: Function, removeHandler: Function}, rootAgent: object, isTrustedSender: (sender: object) => boolean,chooseWorkspace?:()=>Promise<string|null>,sendMessage?:(text:string)=>Promise<object>|object,retryTurn?:(turnId:string,model:string|null)=>Promise<object>|object,finishQuickCapture?:()=>boolean,getQuickCaptureShortcutStatus?:()=>object|null,markQuickCaptureReady?:()=>boolean}} options
+ * @param {{ipcMain: {handle: Function, removeHandler: Function}, rootAgent: object, socialChatService?:object, isTrustedSender: (sender: object) => boolean,chooseWorkspace?:()=>Promise<string|null>,sendMessage?:(text:string)=>Promise<object>|object,retryTurn?:(turnId:string,model:string|null)=>Promise<object>|object,finishQuickCapture?:()=>boolean,getQuickCaptureShortcutStatus?:()=>object|null,markQuickCaptureReady?:()=>boolean}} options
  */
 export function registerRootIpc({
   ipcMain,
   rootAgent,
+  socialChatService = null,
   isTrustedSender,
   chooseWorkspace = async () => null,
   sendMessage = (text) => rootAgent.sendMessage({ text }),
@@ -52,6 +60,29 @@ export function registerRootIpc({
   };
 
   register(CHANNELS.state, () => rootAgent.getUiState());
+  if (socialChatService) {
+    register(CHANNELS.socialState, () => socialChatService.getUiState());
+    register(CHANNELS.socialRoom, (roomId) =>
+      socialChatService.store.getRoomSnapshot(roomId),
+    );
+    register(CHANNELS.socialCreateGroup, (input) => {
+      const room = socialChatService.store.createGroup(input);
+      socialChatService.emit({
+        type: 'chat-room-created',
+        roomId: room.room.id,
+      });
+      return room;
+    });
+    register(CHANNELS.socialSend, (input) =>
+      socialChatService.sendMessage(input),
+    );
+    register(CHANNELS.socialStop, (messageId) =>
+      socialChatService.stopReply(messageId),
+    );
+    register(CHANNELS.socialRetry, (messageId) =>
+      socialChatService.retryReply(messageId),
+    );
+  }
   register(CHANNELS.models, () => rootAgent.refreshModels());
   register(CHANNELS.configureProvider, (configuration) =>
     rootAgent.configureProvider(configuration),
