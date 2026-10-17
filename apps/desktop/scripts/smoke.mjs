@@ -32,6 +32,8 @@ const startupLog = path.join(smokeDir, 'main-started.json');
 const probeFreeLLMAPI = process.env.NOEMA_SMOKE_PROBE_FREELLMAPI === '1';
 const probeQuickCapture = process.env.NOEMA_SMOKE_CAPTURE_QUICK_CAPTURE === '1';
 const probeHistoryTrace = process.env.NOEMA_SMOKE_CAPTURE_HISTORY_TRACE === '1';
+const probeTimelineSearch =
+  process.env.NOEMA_SMOKE_CAPTURE_TIMELINE_SEARCH === '1';
 const quickCaptureScreenshotPaths = [
   process.env.NOEMA_SMOKE_QUICK_CAPTURE_DESKTOP_PATH,
   process.env.NOEMA_SMOKE_QUICK_CAPTURE_NARROW_PATH,
@@ -41,9 +43,15 @@ const historyTraceScreenshotPaths = [
   process.env.NOEMA_SMOKE_HISTORY_TRACE_INTERMEDIATE_PATH,
   process.env.NOEMA_SMOKE_HISTORY_TRACE_NARROW_PATH,
 ].filter((candidate) => typeof candidate === 'string' && candidate.length > 0);
+const timelineSearchScreenshotPaths = [
+  process.env.NOEMA_SMOKE_TIMELINE_SEARCH_DESKTOP_PATH,
+  process.env.NOEMA_SMOKE_TIMELINE_SEARCH_NARROW_PATH,
+].filter((candidate) => typeof candidate === 'string' && candidate.length > 0);
 if (probeFreeLLMAPI) mkdirSync(probeDirectory, { recursive: true });
 let historyTraceDatabasePath;
 let historyTraceDshUserDataPath;
+let timelineSearchDatabasePath;
+let timelineSearchDshUserDataPath;
 if (probeHistoryTrace) {
   const historyTraceDirectory = path.join(smokeDir, 'history-trace-probe');
   mkdirSync(historyTraceDirectory, { recursive: true });
@@ -104,6 +112,23 @@ if (probeHistoryTrace) {
   fixture.completeTurn(noMatchTurn.id, noMatchTurn.attempt);
   fixture.close();
 }
+if (probeTimelineSearch) {
+  const timelineSearchDirectory = path.join(smokeDir, 'timeline-search-probe');
+  mkdirSync(timelineSearchDirectory, { recursive: true });
+  timelineSearchDatabasePath = path.join(
+    timelineSearchDirectory,
+    'root.sqlite3',
+  );
+  timelineSearchDshUserDataPath = path.join(
+    timelineSearchDirectory,
+    'dsh-user-data',
+  );
+  const fixture = new RootStore(timelineSearchDatabasePath);
+  fixture.createCapture(
+    '这是 NOEMA-LOCAL-CAPTURE-SEARCH 速记内容，用于验证本机搜索。',
+  );
+  fixture.close();
+}
 const childEnvironment = {
   ...process.env,
   NOEMA_SMOKE_TEST: '1',
@@ -124,6 +149,25 @@ const childEnvironment = {
         NOEMA_E2E_DATABASE_PATH: historyTraceDatabasePath,
         NOEMA_E2E_DSH_USER_DATA_PATH: historyTraceDshUserDataPath,
         NOEMA_SMOKE_CAPTURE_HISTORY_TRACE: '1',
+      }
+    : {}),
+  ...(probeTimelineSearch
+    ? {
+        NOEMA_E2E_DATABASE_PATH: timelineSearchDatabasePath,
+        NOEMA_E2E_DSH_USER_DATA_PATH: timelineSearchDshUserDataPath,
+        NOEMA_SMOKE_CAPTURE_TIMELINE_SEARCH: '1',
+      }
+    : {}),
+  ...(timelineSearchScreenshotPaths[0]
+    ? {
+        NOEMA_SMOKE_TIMELINE_SEARCH_DESKTOP_PATH:
+          timelineSearchScreenshotPaths[0],
+      }
+    : {}),
+  ...(timelineSearchScreenshotPaths[1]
+    ? {
+        NOEMA_SMOKE_TIMELINE_SEARCH_NARROW_PATH:
+          timelineSearchScreenshotPaths[1],
       }
     : {}),
 };
@@ -263,6 +307,35 @@ child.on('exit', (code, signal) => {
       }
       console.log(
         `History trace UI: ${loaded.historyTraceSmoke.sourceCount} source(s), jump verified; screenshots: ${loaded.historyTraceSmoke.screenshots?.join(', ')}`,
+      );
+    }
+    if (probeTimelineSearch) {
+      if (
+        !loaded.timelineSearchSmoke?.opened ||
+        !loaded.timelineSearchSmoke.inputFocused ||
+        !loaded.timelineSearchSmoke.matchedCapture ||
+        !loaded.timelineSearchSmoke.desktopNoOverflow ||
+        !loaded.timelineSearchSmoke.narrowNoOverflow ||
+        !loaded.timelineSearchSmoke.focusReturned
+      ) {
+        console.error(
+          'Local timeline search did not find the capture and preserve keyboard focus/layout.',
+        );
+        process.exitCode = 1;
+        return;
+      }
+      const missingScreenshots = timelineSearchScreenshotPaths.filter(
+        (screenshotPath) => !existsSync(screenshotPath),
+      );
+      if (missingScreenshots.length > 0) {
+        console.error(
+          `Timeline search screenshots missing: ${missingScreenshots.join(', ')}`,
+        );
+        process.exitCode = 1;
+        return;
+      }
+      console.log(
+        `Local timeline search: captured note found and highlighted at desktop/narrow widths; focus returned after close; screenshots: ${loaded.timelineSearchSmoke.screenshots?.join(', ') || 'not requested'}`,
       );
     }
     if (probeFreeLLMAPI) {

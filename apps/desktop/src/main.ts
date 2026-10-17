@@ -112,6 +112,8 @@ const testCaptureQuickCapture =
   process.env.NOEMA_SMOKE_CAPTURE_QUICK_CAPTURE === '1';
 const testCaptureHistoryTrace =
   process.env.NOEMA_SMOKE_CAPTURE_HISTORY_TRACE === '1';
+const testCaptureTimelineSearch =
+  process.env.NOEMA_SMOKE_CAPTURE_TIMELINE_SEARCH === '1';
 const quickCaptureDesktopScreenshotPath =
   process.env.NOEMA_SMOKE_QUICK_CAPTURE_DESKTOP_PATH ?? null;
 const quickCaptureNarrowScreenshotPath =
@@ -122,6 +124,10 @@ const historyTraceIntermediateScreenshotPath =
   process.env.NOEMA_SMOKE_HISTORY_TRACE_INTERMEDIATE_PATH ?? null;
 const historyTraceNarrowScreenshotPath =
   process.env.NOEMA_SMOKE_HISTORY_TRACE_NARROW_PATH ?? null;
+const timelineSearchDesktopScreenshotPath =
+  process.env.NOEMA_SMOKE_TIMELINE_SEARCH_DESKTOP_PATH ?? null;
+const timelineSearchNarrowScreenshotPath =
+  process.env.NOEMA_SMOKE_TIMELINE_SEARCH_NARROW_PATH ?? null;
 delete process.env.NOEMA_E2E_DATABASE_PATH;
 delete process.env.NOEMA_E2E_DSH_USER_DATA_PATH;
 delete process.env.NOEMA_E2E_WORKER_PREFACE;
@@ -132,11 +138,14 @@ delete process.env.NOEMA_E2E_DIRECT_WORKER;
 delete process.env.NOEMA_E2E_VERIFICATION_CHECKS;
 delete process.env.NOEMA_SMOKE_CAPTURE_QUICK_CAPTURE;
 delete process.env.NOEMA_SMOKE_CAPTURE_HISTORY_TRACE;
+delete process.env.NOEMA_SMOKE_CAPTURE_TIMELINE_SEARCH;
 delete process.env.NOEMA_SMOKE_QUICK_CAPTURE_DESKTOP_PATH;
 delete process.env.NOEMA_SMOKE_QUICK_CAPTURE_NARROW_PATH;
 delete process.env.NOEMA_SMOKE_HISTORY_TRACE_DESKTOP_PATH;
 delete process.env.NOEMA_SMOKE_HISTORY_TRACE_INTERMEDIATE_PATH;
 delete process.env.NOEMA_SMOKE_HISTORY_TRACE_NARROW_PATH;
+delete process.env.NOEMA_SMOKE_TIMELINE_SEARCH_DESKTOP_PATH;
+delete process.env.NOEMA_SMOKE_TIMELINE_SEARCH_NARROW_PATH;
 
 const isSquirrelLifecycleEvent = process.argv.some((argument) =>
   /^--squirrel-(install|updated|uninstall|obsolete)$/.test(argument),
@@ -200,6 +209,8 @@ const createWindow = () => {
         }
         const quickCaptureSmoke = await captureQuickCaptureSmokeScreenshots();
         const historyTraceSmoke = await captureHistoryTraceSmokeScreenshots();
+        const timelineSearchSmoke =
+          await captureTimelineSearchSmokeScreenshots();
         const result = {
           url: mainWindow?.webContents.getURL() ?? null,
           title: mainWindow?.getTitle() ?? null,
@@ -229,6 +240,7 @@ const createWindow = () => {
             : null,
           quickCaptureSmoke,
           historyTraceSmoke,
+          timelineSearchSmoke,
         };
         writeSmokeLog('renderer-loaded', result);
         if (process.env.NOEMA_SMOKE_TEST_FILE) {
@@ -493,6 +505,132 @@ async function captureHistoryTraceSmokeScreenshots() {
   })`);
   if (!jumpWorked) throw new Error('历史来源按钮没有跳回原时间线消息。');
   return { ...traceState, jumpWorked, intermediateTopbarFits, screenshots };
+}
+
+async function captureTimelineSearchSmokeScreenshots() {
+  if (!testCaptureTimelineSearch) return null;
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    throw new Error('本地时间线搜索 smoke 没有可用窗口。');
+  }
+  mainWindow.setSize(1280, 720);
+  const opened = await mainWindow.webContents
+    .executeJavaScript(`new Promise((resolve) => {
+    const trigger = document.querySelector('.conversation-search-trigger');
+    if (!trigger) return resolve({ triggerFound: false, inputFocused: false });
+    window.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'f', ctrlKey: true, bubbles: true, cancelable: true,
+    }));
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve({
+      triggerFound: true,
+      inputFocused: document.activeElement?.id === 'conversation-search-input',
+    })));
+  })`);
+  if (!opened.triggerFound || !opened.inputFocused) {
+    throw new Error('搜索按钮没有打开面板并将焦点移入搜索框。');
+  }
+
+  const desktopState = await mainWindow.webContents
+    .executeJavaScript(`new Promise((resolve) => {
+    const input = document.querySelector('#conversation-search-input');
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    setter?.call(input, 'NOEMA-LOCAL-CAPTURE-SEARCH');
+    input?.dispatchEvent(new Event('input', { bubbles: true }));
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const status = document.querySelector('.conversation-search-status');
+      const card = document.querySelector('.capture-card.is-search-current');
+      const bounds = card?.getBoundingClientRect();
+      const scrollBounds = document.querySelector('.conversation-scroll')?.getBoundingClientRect();
+      const contentBounds = card?.querySelector('.capture-content')?.getBoundingClientRect();
+      resolve({
+        status: status?.textContent?.trim() ?? '',
+        highlighted: Boolean(card),
+        cardVisible: Boolean(bounds && bounds.width > 0 && bounds.height > 0),
+        contentVisible: Boolean(
+          scrollBounds && contentBounds &&
+          contentBounds.top >= scrollBounds.top - 1 &&
+          contentBounds.bottom <= scrollBounds.bottom + 1,
+        ),
+        noHorizontalOverflow: document.documentElement.scrollWidth <= window.innerWidth,
+      });
+    }));
+  })`);
+  if (
+    !desktopState.status.includes('1 / 1 · 速记') ||
+    !desktopState.highlighted ||
+    !desktopState.cardVisible ||
+    !desktopState.contentVisible ||
+    !desktopState.noHorizontalOverflow
+  ) {
+    throw new Error('桌面视口没有定位到本机速记搜索结果。');
+  }
+
+  const screenshots = [];
+  if (timelineSearchDesktopScreenshotPath) {
+    writeSmokeScreenshot(
+      timelineSearchDesktopScreenshotPath,
+      await mainWindow.capturePage(),
+    );
+    screenshots.push(timelineSearchDesktopScreenshotPath);
+  }
+
+  mainWindow.setSize(680, 560);
+  const narrowState = await mainWindow.webContents
+    .executeJavaScript(`new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const status = document.querySelector('.conversation-search-status');
+      const card = document.querySelector('.capture-card.is-search-current');
+      const bounds = card?.getBoundingClientRect();
+      const scrollBounds = document.querySelector('.conversation-scroll')?.getBoundingClientRect();
+        const contentBounds = card?.querySelector('.capture-content')?.getBoundingClientRect();
+      resolve({
+        status: status?.textContent?.trim() ?? '',
+        highlighted: Boolean(card),
+        cardVisible: Boolean(bounds && bounds.width > 0 && bounds.height > 0),
+          contentVisible: Boolean(
+            scrollBounds && contentBounds &&
+            contentBounds.top >= scrollBounds.top - 1 &&
+            contentBounds.bottom <= scrollBounds.bottom + 1,
+        ),
+        noHorizontalOverflow: document.documentElement.scrollWidth <= window.innerWidth,
+      });
+    }));
+  })`);
+  if (
+    !narrowState.status.includes('1 / 1 · 速记') ||
+    !narrowState.highlighted ||
+    !narrowState.cardVisible ||
+    !narrowState.contentVisible ||
+    !narrowState.noHorizontalOverflow
+  ) {
+    throw new Error(
+      `窄窗口中速记搜索结果不可见或出现横向溢出：${JSON.stringify(narrowState)}`,
+    );
+  }
+  if (timelineSearchNarrowScreenshotPath) {
+    writeSmokeScreenshot(
+      timelineSearchNarrowScreenshotPath,
+      await mainWindow.capturePage(),
+    );
+    screenshots.push(timelineSearchNarrowScreenshotPath);
+  }
+
+  const focusReturned = await mainWindow.webContents
+    .executeJavaScript(`new Promise((resolve) => {
+    document.querySelector('.conversation-search-actions button[aria-label="关闭查找"]')?.click();
+    requestAnimationFrame(() => resolve(
+      document.activeElement?.classList.contains('conversation-search-trigger') ?? false,
+    ));
+  })`);
+  if (!focusReturned) throw new Error('关闭搜索后焦点没有回到打开搜索的按钮。');
+  return {
+    opened: true,
+    inputFocused: opened.inputFocused,
+    matchedCapture: desktopState.highlighted && narrowState.highlighted,
+    desktopNoOverflow: desktopState.noHorizontalOverflow,
+    narrowNoOverflow: narrowState.noHorizontalOverflow,
+    focusReturned,
+    screenshots,
+  };
 }
 
 function discoverFreeLLMAPIBaseUrl(appDataPath: string) {

@@ -363,8 +363,13 @@ function DesktopApp() {
   const contextImports = root?.contextImports ?? [];
   const interactionAdjustments = root?.interactionAdjustments ?? [];
   const conversationSearchMatches = useMemo(
-    () => findTranscriptMatches(root?.messages ?? [], conversationSearchQuery),
-    [root?.messages, conversationSearchQuery],
+    () =>
+      findTranscriptMatches(
+        root?.messages ?? [],
+        conversationSearchQuery,
+        root?.captures ?? [],
+      ),
+    [root?.messages, root?.captures, conversationSearchQuery],
   );
   const activeConversationSearchIndex = conversationSearchMatches.length
     ? ((conversationSearchIndex % conversationSearchMatches.length) +
@@ -494,17 +499,30 @@ function DesktopApp() {
 
   useEffect(() => {
     if (!conversationSearchOpen || !activeConversationSearchMatch) return;
-    const target = document.getElementById(
-      `transcript-message-${activeConversationSearchMatch.id}`,
-    );
-    if (!target) return;
-    target.scrollIntoView({
-      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    const revealMatch = (behavior: ScrollBehavior) => {
+      const target = document.getElementById(
+        `transcript-${activeConversationSearchMatch.source}-${activeConversationSearchMatch.id}`,
+      );
+      const visibleMatch =
+        activeConversationSearchMatch.source === 'capture'
+          ? target?.querySelector('.capture-content')
+          : target;
+      visibleMatch?.scrollIntoView({ behavior, block: 'nearest' });
+    };
+    revealMatch(
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
         ? 'auto'
         : 'smooth',
-      block: 'center',
-    });
-  }, [conversationSearchOpen, activeConversationSearchMatch?.id]);
+    );
+    const keepMatchVisibleAfterResize = () => revealMatch('auto');
+    window.addEventListener('resize', keepMatchVisibleAfterResize);
+    return () =>
+      window.removeEventListener('resize', keepMatchVisibleAfterResize);
+  }, [
+    conversationSearchOpen,
+    activeConversationSearchMatch?.id,
+    activeConversationSearchMatch?.source,
+  ]);
 
   useEffect(() => {
     const handleSearchShortcut = (event: KeyboardEvent) => {
@@ -513,7 +531,7 @@ function DesktopApp() {
         event.key.toLowerCase() === 'f' &&
         !modelSettingsOpen &&
         !codexImportOpen &&
-        (root?.messages.length ?? 0) > 0
+        ((root?.messages.length ?? 0) > 0 || (root?.captures.length ?? 0) > 0)
       ) {
         event.preventDefault();
         setConversationSearchOpen(true);
@@ -531,6 +549,7 @@ function DesktopApp() {
     codexImportOpen,
     modelSettingsOpen,
     root?.messages.length,
+    root?.captures.length,
   ]);
 
   const moveConversationSearch = (direction: number) => {
@@ -1149,7 +1168,8 @@ function DesktopApp() {
           <div className="heading-copy">
             <div className="heading-title-row">
               <h1>对话</h1>
-              {(root?.messages.length ?? 0) > 0 && (
+              {((root?.messages.length ?? 0) > 0 ||
+                (root?.captures.length ?? 0) > 0) && (
                 <button
                   ref={conversationSearchTriggerRef}
                   className="conversation-search-trigger"
@@ -1243,7 +1263,7 @@ function DesktopApp() {
                     moveConversationSearch(event.shiftKey ? -1 : 1);
                   }
                 }}
-                placeholder="查找这条对话"
+                placeholder="查找消息或速记"
                 autoComplete="off"
                 spellCheck={false}
               />
@@ -1282,16 +1302,18 @@ function DesktopApp() {
               aria-live="polite"
             >
               {!conversationSearchQuery.trim() ? (
-                '只查找本机保存的用户与 Noema 消息；不会调用模型。'
+                '只查找本机保存的消息与速记；不会调用模型。'
               ) : conversationSearchMatches.length === 0 ? (
                 <>没有找到“{conversationSearchQuery.trim()}”</>
               ) : (
                 <>
                   {activeConversationSearchIndex + 1} /{' '}
                   {conversationSearchMatches.length} ·{' '}
-                  {activeConversationSearchMatch?.role === 'user'
-                    ? '你'
-                    : 'Noema'}{' '}
+                  {activeConversationSearchMatch?.source === 'capture'
+                    ? '速记'
+                    : activeConversationSearchMatch?.role === 'user'
+                      ? '你'
+                      : 'Noema'}{' '}
                   · {formatTime(activeConversationSearchMatch?.createdAt ?? '')}
                   {' · '}
                   {activeConversationSearchMatch?.snippet}
@@ -1439,7 +1461,11 @@ function DesktopApp() {
                         </span>
                       </div>
                       <div className="turn-body">
-                        <section className="capture-card" aria-label="本机速记">
+                        <section
+                          id={`transcript-capture-${capture.id}`}
+                          className={`capture-card${activeConversationSearchMatch?.source === 'capture' && activeConversationSearchMatch.id === capture.id ? ' is-search-current' : ''}`}
+                          aria-label="本机速记"
+                        >
                           <div className="capture-card-heading">
                             <div>
                               <strong>留给自己的速记</strong>
@@ -2085,7 +2111,7 @@ function DesktopApp() {
                     <div className="turn-body">
                       <div
                         id={`transcript-message-${userMessage.id}`}
-                        className={`user-entry${activeConversationSearchMatch?.id === userMessage.id ? ' is-search-current' : ''}`}
+                        className={`user-entry${activeConversationSearchMatch?.source === 'message' && activeConversationSearchMatch.id === userMessage.id ? ' is-search-current' : ''}`}
                       >
                         <div className="entry-byline">
                           <span>你</span>
@@ -2115,7 +2141,7 @@ function DesktopApp() {
                         return (
                           <section
                             id={`transcript-message-${message.id}`}
-                            className={`assistant-entry${isStreaming ? ' is-streaming' : ''}${activeConversationSearchMatch?.id === message.id ? ' is-search-current' : ''}`}
+                            className={`assistant-entry${isStreaming ? ' is-streaming' : ''}${activeConversationSearchMatch?.source === 'message' && activeConversationSearchMatch.id === message.id ? ' is-search-current' : ''}`}
                             key={message.id}
                             aria-busy={isStreaming}
                           >

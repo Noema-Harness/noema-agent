@@ -1,4 +1,5 @@
 /** @typedef {import('./noema-bridge.d.ts').NoemaRootMessage} NoemaRootMessage */
+/** @typedef {import('./noema-bridge.d.ts').NoemaCapture} NoemaCapture */
 
 const MAX_HISTORY_SEARCH_RESULTS = 4;
 const MAX_HISTORY_EXCERPT_LENGTH = 320;
@@ -40,31 +41,58 @@ const HISTORY_CREDENTIAL_PATTERNS = [
 ];
 
 /**
+ * Search all locally-owned items on the primary timeline. This is a local
+ * lookup only; callers must not send its results to a model implicitly.
  * @param {NoemaRootMessage[]} messages
  * @param {string} query
- * @returns {Array<{id: string, role: NoemaRootMessage['role'], createdAt: string, snippet: string}>}
+ * @param {NoemaCapture[]} [captures]
+ * @returns {Array<{id:string,source:'message'|'capture',role?:NoemaRootMessage['role'],createdAt:string,snippet:string}>}
  */
-export function findTranscriptMatches(messages, query) {
+export function findTranscriptMatches(messages, query, captures = []) {
   const needle = query.trim().toLocaleLowerCase();
   if (!needle) return [];
 
-  return messages.flatMap((message) => {
-    const index = message.content.toLocaleLowerCase().indexOf(needle);
-    if (index < 0) return [];
+  const matches = [
+    ...messages.flatMap((message) => {
+      const index = message.content.toLocaleLowerCase().indexOf(needle);
+      if (index < 0) return [];
 
-    const start = Math.max(0, index - 28);
-    const end = Math.min(message.content.length, index + needle.length + 48);
-    const snippet = `${start > 0 ? '…' : ''}${message.content.slice(start, end)}${end < message.content.length ? '…' : ''}`;
+      const start = Math.max(0, index - 28);
+      const end = Math.min(message.content.length, index + needle.length + 48);
+      const snippet = `${start > 0 ? '…' : ''}${message.content.slice(start, end)}${end < message.content.length ? '…' : ''}`;
 
-    return [
-      {
-        id: message.id,
-        role: message.role,
-        createdAt: message.createdAt,
-        snippet,
-      },
-    ];
-  });
+      return [
+        {
+          id: message.id,
+          source: 'message',
+          role: message.role,
+          createdAt: message.createdAt,
+          snippet,
+        },
+      ];
+    }),
+    ...captures.flatMap((capture) => {
+      const index = capture.content.toLocaleLowerCase().indexOf(needle);
+      if (index < 0) return [];
+
+      const start = Math.max(0, index - 28);
+      const end = Math.min(capture.content.length, index + needle.length + 48);
+      const snippet = `${start > 0 ? '…' : ''}${capture.content.slice(start, end)}${end < capture.content.length ? '…' : ''}`;
+
+      return [
+        {
+          id: capture.id,
+          source: 'capture',
+          createdAt: capture.createdAt,
+          snippet,
+        },
+      ];
+    }),
+  ];
+
+  return matches.sort((left, right) =>
+    left.createdAt.localeCompare(right.createdAt),
+  );
 }
 
 function historySearchTerms(query) {
