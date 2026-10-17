@@ -24,6 +24,7 @@ test('search is case-insensitive, trims whitespace, and preserves timeline order
   assert.deepEqual(findTranscriptMatches(messages, '  NOEMA '), [
     {
       id: 'user-1',
+      source: 'message',
       role: 'user',
       createdAt: '2026-10-15T08:00:00.000Z',
       snippet: '我们之后要验证 Noema 的长期对话是否好找。',
@@ -48,6 +49,36 @@ test('search supports direct Chinese substring matches and returns a bounded exc
 test('empty or unmatched queries do not produce results', () => {
   assert.deepEqual(findTranscriptMatches(messages, '  '), []);
   assert.deepEqual(findTranscriptMatches(messages, '不存在的词'), []);
+});
+
+test('local timeline search includes captures and keeps message/capture chronology', () => {
+  const captures = [
+    {
+      id: 'capture-later',
+      content: '记录：Noema 速记应能离线搜索。',
+      createdAt: '2026-10-15T09:00:00.000Z',
+      updatedAt: '2026-10-15T09:00:00.000Z',
+      discussionTurnId: null,
+    },
+    {
+      id: 'capture-earlier',
+      content: '先记下 Noema 的搜索体验。',
+      createdAt: '2026-10-15T07:00:00.000Z',
+      updatedAt: '2026-10-15T07:00:00.000Z',
+      discussionTurnId: null,
+    },
+  ];
+
+  assert.deepEqual(
+    findTranscriptMatches(messages, 'Noema', captures).map(
+      ({ id, source }) => ({ id, source }),
+    ),
+    [
+      { id: 'capture-earlier', source: 'capture' },
+      { id: 'user-1', source: 'message' },
+      { id: 'capture-later', source: 'capture' },
+    ],
+  );
 });
 
 test('agent history search finds a bounded source outside the recent context', () => {
