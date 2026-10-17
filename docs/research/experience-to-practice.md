@@ -90,7 +90,7 @@ RPEval（后被列入 NeurIPS 2026 论文目录）补上了一个不同的问题
 
 2026-10 最新预印本 MemCalib 将影响强度进一步拆成 `Ignore / Bound / Control`：无关记忆不应留下答案痕迹；相关记忆可有限支持；只有确实决定任务结果的事实才应主导结论。作者在 15,000 个合成/重组样本上发现，多种前沿模型普遍过度使用或不足使用 memory；常见训练改善一个方向时可能恶化另一个方向。它用 memory atom ablation 估计答案 token 对具体记忆的依赖度，再分别给过用/少用信号分配 credit。这为 Noema 提供了一个关键而未解决的中间层：即使读取权限没问题、记忆也确实相关，模型仍可能用得过头。
 
-限制：MemCalib 是新预印本，指标由 atom-level rubric/LLM judge 构造，覆盖健康、一般助理和编码任务；它训练模型学会校准，不是桌面 agent 的零样本方案，也未验证长期关系或真实聊天中的用户感受。[MemCalib 论文](https://arxiv.org/abs/2609.24259)
+限制：MemCalib 是新预印本，指标由 atom-level rubric/LLM judge 构造，覆盖健康、一般助理和编码任务；自然分布的 150 项人工核对一致率为 96.7%，但刻意分层抽样的边界压力样本一致率降到 74.0%（κ=0.610），说明“有限支持”与“主导”的目标等级仍有主观边界。AttriMem 也承认 token-level attribution 不总是准确，并使用 sequence-level fallback。两者训练/实验都不等于桌面 agent 的零样本方案，也未验证长期关系或真实聊天中的用户感受；这些标签和分数可作为失败分析口径，不应被 Noema 当成普适、无争议的真理。[MemCalib 论文](https://arxiv.org/abs/2609.24259) · [AttriMem limitations](https://arxiv.org/abs/2607.21106)
 
 ### Credit assignment：最终成败不能告诉 agent 究竟该改哪一步
 
