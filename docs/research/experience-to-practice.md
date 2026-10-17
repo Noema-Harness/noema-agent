@@ -82,6 +82,10 @@ MemSkill 把 memory skill 与 memory content 分开：controller 选择如何抽
 
 这与“跨房间能否检索出资料”不同，重点是 retrieved memory 对当前回答到底增加了多少证据。然而该方法训练依赖已知参考答案和 SFT 控制器，评测主要是多项选择题，且只处理 user-side histories，不包括 assistant turns；它不是无需训练的通用 agent 功能，也没有测试专业实践/群聊权限。本轮只取其问题定义：**memory 的选取应按当前意图下的证据效用，而非主题相似性。**[论文](https://arxiv.org/abs/2606.02976)
 
+RPEval（后被列入 NeurIPS 2026 论文目录）补上了一个不同的问题：用户偏好在当前任务里应该被 Ignore、Support，还是 Dominate。其数据构建覆盖约 100 个日常场景、约 800 个简短 query，再扩为约 15,000 条 preference/query/intent 组合；研究报告偏好无关时模型经常仍强行个性化，也明确承认主观 preference use 不存在完美客观 ground truth。作者声称在某个商业个性化助手的已知失败案例中解决约 80%，但完整业务数据和评测细节不公开，不能把这个数字泛化成真实用户的普遍改善。
+
+这对“同一好友跨房间成长”有直接提醒：保存了一条用户偏好或 agent 经验，不代表每个相关话题都要用它；检索正确和应用合适仍是两个判断。它也不能解决专业成长——RPEval 刻意不测长上下文回忆、事实正确性或程序迁移——所以应作为一项必要的负例/门控视角，而不能充当 Noema 的学习框架。[论文与局限](https://arxiv.org/abs/2601.16621) · [官方论文目录](https://neurips.cc/Downloads/2026)
+
 ### Case-based reasoning：保留个案并适配，可能比立刻抽象成通则更合适
 
 近期 CASCADE 将部署期学习形式化为 case-based contextual bandit：在新任务里选择过去案例，复用并修订，再根据任务反馈决定保留；它把“怎样取用经验”也当成一个可由结果调整的策略，并只保留成功的新案例。论文覆盖 16 类任务，包含多轮环境/工具任务，但反馈被简化成标量成功/失败。另一篇 real-world case-based learning 预印本把具体案例转为可跨任务重用的知识资产。它们都说明“成功案例的类比、适配、结果修订”不是 Noema 独创，但为“先留下带来源的个案，后归纳通用手艺”提供了成熟认知框架。
