@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const MAX_CHECKS = 8;
+const MAX_CHECKS = 16;
 const MAX_RELATIVE_PATH_LENGTH = 500;
 const MAX_EXPECTED_TEXT_LENGTH = 2_000;
 const MAX_VERIFICATION_FILE_BYTES = 2_000_000;
