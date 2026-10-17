@@ -69,3 +69,19 @@ test('verification plans reject absolute and traversal paths before filesystem a
     /relative path|相对路径/,
   );
 });
+
+test('accepts a bounded 16-check plan and rejects plans above that limit', () => {
+  const checks = Array.from({ length: 16 }, (_, index) => ({
+    kind: 'file_exists',
+    path: `artifact-${index}.txt`,
+  }));
+  assert.equal(normalizeWorkspaceVerificationChecks(checks).length, 16);
+  assert.throws(
+    () =>
+      normalizeWorkspaceVerificationChecks([
+        ...checks,
+        { kind: 'file_exists', path: 'artifact-extra.txt' },
+      ]),
+    /最多允许 16 项/,
+  );
+});

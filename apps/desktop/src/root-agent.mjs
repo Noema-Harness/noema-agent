@@ -42,9 +42,9 @@ const DELEGATE_TASK_TOOL = {
         },
         verificationChecks: {
           type: 'array',
-          maxItems: 8,
+          maxItems: 16,
           description:
-            'Noema 在 DSH 结束后本地执行的文件验收检查。没有可确定检查时传 []。path 必须是相对工作区路径。',
+            'Noema 在 DSH 结束后本地执行的文件验收检查，最多 16 项；优先覆盖用户明确要求。没有可确定检查时传 []。path 必须是相对工作区路径。',
           items: {
             type: 'object',
             properties: {
@@ -53,7 +53,12 @@ const DELEGATE_TASK_TOOL = {
                 enum: ['file_exists', 'file_contains', 'file_equals'],
               },
               path: { type: 'string', minLength: 1, maxLength: 500 },
-              text: { type: 'string', maxLength: 2000 },
+              text: {
+                type: 'string',
+                maxLength: 2_000,
+                description:
+                  'file_contains 和 file_equals 必填；file_exists 不需要。',
+              },
             },
             required: ['kind', 'path'],
             additionalProperties: false,
