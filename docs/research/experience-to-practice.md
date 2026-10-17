@@ -72,6 +72,8 @@ Microsoft Research 的 SkillLens 研究把流程拆为经历生成 → skill 提
 
 这直接反驳“每次工作后自动总结一条更好的指令”这种默认路线。该研究为受控比较刻意把单一 skill 直接注入系统提示词，隔离 retrieval 和 harness 因素；它没有验证丰富的长期个人 agent、多房间上下文或自然对话。arXiv 当前标为预印本，不能把其指标当作已确立的通用规律。[论文](https://arxiv.org/abs/2605.23899) · [SkillLens 代码与实验协议](https://github.com/microsoft/SkillLens)
 
+SkillEvolBench 还给“好友的专业边界”一个可操作的研究视角：它按共享的潜在程序能力划分 task family，而不是按主题命名；学习后冻结 skill，再用 context-shift、adversarial 和 composition 任务检验迁移。它支持一个候选设计判断：**同一位好友可以承担不同任务名的工作，只要这些工作复用同一套专业判断/操作方法；好友边界不应只是任务清单。**但该 2026 arXiv 预印本发现当前 agent 往往只会局部适配，抽象 skill 的迁移并不稳，原始轨迹有时更有用。因此它提供的是如何挑战“某好友的专业能力可迁移”的评测设计，不是“把潜在过程 skill 化就能成长”的证明。[SkillEvolBench paper](https://arxiv.org/abs/2605.24117) · [benchmark protocol](https://skillevolbench.github.io/)
+
 ### MemSkill：还可以学习“如何记忆”，不只学习被记住的内容
 
 MemSkill 把 memory skill 与 memory content 分开：controller 选择如何抽取/整合/修剪，executor 根据被选策略生成记忆，designer 从困难案例中提出策略修订。它显示“提取机制本身”也可以是学习对象，而不是把所有问题都归因于记忆库大小。论文在 LoCoMo、LongMemEval、HotpotQA、ALFWorld 上评估；NeurIPS 2026 官方论文目录列出了该论文。
