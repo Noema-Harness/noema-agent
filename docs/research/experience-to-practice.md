@@ -76,6 +76,12 @@ MemSkill 把 memory skill 与 memory content 分开：controller 选择如何抽
 
 这对 Noema 的启发是：一个新闻观察者或开发好友的专业成长，未必等于它记得更多内容；它也可能逐渐形成更好的判断方式——何时记录、何时忽略、如何检查来源、何时复用过去方法。不过 MemSkill 研究的是基准上的记忆管理策略，不等价于具有持续身份的专业 agent。[MemSkill 论文](https://arxiv.org/abs/2602.02474) · [NeurIPS 2026 论文目录](https://neurips.cc/Downloads/2026)
 
+### Changing Preferences：记忆是否相关，应问“它能否改变当前判断”
+
+2026 年另一篇偏好检索预印本批评仅凭 embedding 相似度取记忆：一段与“音乐”主题相似的旧偏好可能被取回，却已经被用户最近的选择更新。它用目标答案 likelihood 改变量化候选 memory 的证据价值，并将其用于 memory-on/off gating 与 turn selection；报告在偏好变化较多的 benchmark 上优于常见 embedding baselines。
+
+这与“跨房间能否检索出资料”不同，重点是 retrieved memory 对当前回答到底增加了多少证据。然而该方法训练依赖已知参考答案和 SFT 控制器，评测主要是多项选择题，且只处理 user-side histories，不包括 assistant turns；它不是无需训练的通用 agent 功能，也没有测试专业实践/群聊权限。本轮只取其问题定义：**memory 的选取应按当前意图下的证据效用，而非主题相似性。**[论文](https://arxiv.org/abs/2606.02976)
+
 ### Case-based reasoning：保留个案并适配，可能比立刻抽象成通则更合适
 
 近期 CASCADE 将部署期学习形式化为 case-based contextual bandit：在新任务里选择过去案例，复用并修订，再根据任务反馈决定保留；它把“怎样取用经验”也当成一个可由结果调整的策略，并只保留成功的新案例。论文覆盖 16 类任务，包含多轮环境/工具任务，但反馈被简化成标量成功/失败。另一篇 real-world case-based learning 预印本把具体案例转为可跨任务重用的知识资产。它们都说明“成功案例的类比、适配、结果修订”不是 Noema 独创，但为“先留下带来源的个案，后归纳通用手艺”提供了成熟认知框架。
