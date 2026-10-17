@@ -38,7 +38,7 @@ MUSE 把状态分成 procedural、strategic、tool memory；每个子任务后�
 
 ### OpenClaw 与 Hermes：同一 agent 身份可以有多房间，不必把 transcript 合并
 
-OpenClaw 的 session 文档把 direct messages 默认路由到 agent 的 main session，而群聊/频道各有隔离 session；可选的跨会话 recall 默认只读取同一 agent 的私聊来源，排除群组/频道。这个边界允许“记得一个人的其他私聊”而不默认把群聊内容泄漏进私人回答。OpenClaw 也明确把每个 `agentId` 当成一条独立 persona/state 边界：工作区、session store、基础 memory 分开，跨 agent transcript 默认不互搜。不同会话是上下文/隐私边界，不自动意味着不同身份；不同 agentId 才是不同身份。
+OpenClaw 的 session 文档把 direct messages 默认路由到 agent 的 main session，而群聊/频道各有隔离 session；可选的跨会话 memory recall 默认只读取同一 agent 的私聊来源，排除群组/频道。因此“在私聊里问工作群里发生了什么”不会从这条 memory pathway 得到群聊历史；更宽的 session tools 默认 visibility 可跨 agent 读取，需要主动收窄权限。这个取舍一边避免群内容静默泄漏，一边造成无法回忆的“隐私式遗忘”。OpenClaw 也明确把每个 `agentId` 当成一条独立 persona/state 边界：工作区、session store、基础 memory 分开，跨 agent transcript 默认不互搜。不同会话是上下文/隐私边界，不自动意味着不同身份；不同 agentId 才是不同身份。
 
 当前 OpenClaw 的 **Dreaming** 更进一步：聊天和 daily notes 先进入 episodic/short-term 区，长期 `MEMORY.md` 由定时 deep consolidation 晋升；阈值包含分数、召回次数、不同查询数量，排序还计入 relevance、recency 和多日复现。Light/REM 反思不直接写 curated memory；晋升时保留来源、限制旧条目丢失、先保存旧文件，失败时退回 append-only 写入，结果以 `DREAMS.md` 的可审查摘要呈现。底层源码也能看到实际 rank/apply 调用链与日志，而非只有概念文档。[Dreaming implementation](https://github.com/openclaw/openclaw/blob/main/extensions/memory-core/src/dreaming.ts)
 
