@@ -120,6 +120,8 @@ const testDirectWorker = process.env.NOEMA_E2E_DIRECT_WORKER === '1';
 const testVerificationChecksJson =
   process.env.NOEMA_E2E_VERIFICATION_CHECKS ?? null;
 const testSocialWorkPrompt = process.env.NOEMA_E2E_SOCIAL_WORK_PROMPT ?? null;
+const testSocialWorkSourcePrompt =
+  process.env.NOEMA_E2E_SOCIAL_WORK_SOURCE_PROMPT ?? null;
 const testSocialWorkWorkspace =
   process.env.NOEMA_E2E_SOCIAL_WORK_WORKSPACE ?? null;
 const testSocialWorkResultPath =
@@ -128,6 +130,8 @@ const testSocialWorkChecksJson =
   process.env.NOEMA_E2E_SOCIAL_WORK_CHECKS ?? null;
 const testSocialWorkSynthetic =
   process.env.NOEMA_E2E_SOCIAL_WORK_SYNTHETIC === '1';
+const testSocialWorkProposalSourceId =
+  process.env.NOEMA_E2E_SOCIAL_WORK_PROPOSAL_SOURCE_ID ?? null;
 const testSocialAgentWorkflow =
   process.env.NOEMA_E2E_SOCIAL_AGENT_WORKFLOW === '1';
 const testSocialAgentLiveE2e = process.env.NOEMA_E2E_SOCIAL_AGENT_LIVE === '1';
@@ -205,10 +209,12 @@ delete process.env.NOEMA_E2E_HISTORY_RECALL;
 delete process.env.NOEMA_E2E_DIRECT_WORKER;
 delete process.env.NOEMA_E2E_VERIFICATION_CHECKS;
 delete process.env.NOEMA_E2E_SOCIAL_WORK_PROMPT;
+delete process.env.NOEMA_E2E_SOCIAL_WORK_SOURCE_PROMPT;
 delete process.env.NOEMA_E2E_SOCIAL_WORK_WORKSPACE;
 delete process.env.NOEMA_E2E_SOCIAL_WORK_RESULT_PATH;
 delete process.env.NOEMA_E2E_SOCIAL_WORK_CHECKS;
 delete process.env.NOEMA_E2E_SOCIAL_WORK_SYNTHETIC;
+delete process.env.NOEMA_E2E_SOCIAL_WORK_PROPOSAL_SOURCE_ID;
 delete process.env.NOEMA_E2E_SOCIAL_WORK_CAPTURE_UI;
 delete process.env.NOEMA_E2E_SOCIAL_AGENT_WORKFLOW;
 delete process.env.NOEMA_E2E_SOCIAL_AGENT_LIVE;
@@ -1981,7 +1987,7 @@ async function captureSocialProjectWorkSmokeScreenshots() {
     !desktop.caseControlVisible ||
     !desktop.experienceReferenceVisible ||
     !desktop.experienceReferenceExpanded ||
-    !desktop.experienceReferenceText.includes('room A fixture') ||
+    !desktop.experienceReferenceText.includes('素材导入说明') ||
     !desktop.composerVisible ||
     !desktop.shellNoOverflow ||
     !desktop.panelNoOverflow ||
@@ -2003,7 +2009,7 @@ async function captureSocialProjectWorkSmokeScreenshots() {
     !narrow.caseControlVisible ||
     !narrow.experienceReferenceVisible ||
     !narrow.experienceReferenceExpanded ||
-    !narrow.experienceReferenceText.includes('room A fixture') ||
+    !narrow.experienceReferenceText.includes('素材导入说明') ||
     !narrow.composerVisible ||
     !narrow.shellNoOverflow ||
     !narrow.panelNoOverflow ||
@@ -2020,7 +2026,7 @@ async function captureSocialProjectWorkSmokeScreenshots() {
   const candidateReview = await mainWindow.webContents
     .executeJavaScript(`(async () => {
     const deadline = Date.now() + 5_000;
-    const sourcePrompt = 'room B fixture：依据已核验案例完成同项目中的相似文件检查。';
+    const sourcePrompt = ${JSON.stringify(testSocialWorkSourcePrompt)};
     const roomItem = [...document.querySelectorAll('.room-list-item')]
       .find((item) => item.querySelector('.room-list-title')?.textContent?.trim() === '工程搭档');
     roomItem?.click();
@@ -2273,6 +2279,9 @@ async function startNoema() {
       typeof testSocialWorkPrompt === 'string' &&
       testSocialWorkPrompt.startsWith('[NOEMA E2E]') &&
       testSocialWorkPrompt.length <= 4_000 &&
+      (!testSocialWorkSourcePrompt ||
+        (testSocialWorkSourcePrompt.length <= 2_000 &&
+          !testSocialWorkSourcePrompt.includes('\n'))) &&
       typeof testDatabasePath === 'string' &&
       typeof testSocialWorkWorkspace === 'string' &&
       path.isAbsolute(testSocialWorkWorkspace) &&
@@ -2280,6 +2289,9 @@ async function startNoema() {
       path.isAbsolute(testSocialWorkResultPath) &&
       typeof testDshUserDataPath === 'string' &&
       path.isAbsolute(testDshUserDataPath) &&
+      (!testSocialWorkProposalSourceId ||
+        (testSocialWorkProposalSourceId.startsWith('e2e-') &&
+          typeof testSocialWorkSourcePrompt === 'string')) &&
       socialWorkE2eDirectory &&
       isIsolatedE2eDirectory(socialWorkE2eDirectory, app.getPath('userData')) &&
       path.resolve(testDatabasePath) !==
@@ -2404,10 +2416,17 @@ async function startNoema() {
                   toolCallCount: 0,
                 };
               }
+              const groupedChecks = new Map<string, string[]>();
               for (const check of checks) {
-                const filePath = path.resolve(workspacePath, check.path);
+                groupedChecks.set(check.path, [
+                  ...(groupedChecks.get(check.path) ?? []),
+                  check.text,
+                ]);
+              }
+              for (const [relativePath, texts] of groupedChecks) {
+                const filePath = path.resolve(workspacePath, relativePath);
                 fs.mkdirSync(path.dirname(filePath), { recursive: true });
-                fs.writeFileSync(filePath, check.text, 'utf8');
+                fs.writeFileSync(filePath, texts.join('\n'), 'utf8');
               }
               onEvent({
                 type: 'tool-call',
@@ -2683,6 +2702,7 @@ async function startNoema() {
       }
       void (async () => {
         let socialWorkUiPreflight: unknown = null;
+        let livePracticeProposal: unknown = null;
         try {
           if (testSocialWorkCaptureUi && mainWindow) {
             socialWorkUiPreflight = await mainWindow.webContents
@@ -2711,7 +2731,74 @@ async function startNoema() {
               );
             }
           }
+          if (testSocialWorkProposalSourceId) {
+            const started = socialWorkService!.startPracticeProposal(
+              testSocialWorkProposalSourceId,
+            );
+            if (!started) {
+              throw new Error('隔离的候选来源不符合实践提炼条件。');
+            }
+            const proposalDeadline = Date.now() + 55_000;
+            let source = socialChatStore!.getSocialWorkTask(
+              testSocialWorkProposalSourceId,
+            );
+            while (
+              Date.now() < proposalDeadline &&
+              source.practiceCandidateStatus === 'pending'
+            ) {
+              await new Promise((resolve) => setTimeout(resolve, 100));
+              source = socialChatStore!.getSocialWorkTask(
+                testSocialWorkProposalSourceId,
+              );
+            }
+            livePracticeProposal = {
+              status: source.practiceCandidateStatus,
+              candidate: source.practiceCandidate,
+              basisTaskId: source.practiceBasisTaskId,
+            };
+            if (source.practiceCandidateStatus === 'failed') {
+              throw new Error(
+                'FreeLLMAPI 候选提炼调用失败；请查看本机网关请求日志。',
+              );
+            }
+            if (source.practiceCandidateStatus === 'pending') {
+              throw new Error('FreeLLMAPI 候选提炼超过 55 秒仍未结束。');
+            }
+            if (source.practiceCandidateStatus === 'available') {
+              const candidate = source.practiceCandidate;
+              if (
+                !candidate ||
+                candidate.basisTaskId !== source.caseSnapshot?.taskId ||
+                candidate.trigger.length < 5 ||
+                candidate.action.length < 5 ||
+                candidate.limits.length < 5
+              ) {
+                throw new Error('真实模型生成的候选字段或来源校验未通过。');
+              }
+            }
+          }
           let taskId: string | null = null;
+          if (
+            testSocialWorkProposalSourceId &&
+            (livePracticeProposal as { status?: string } | null)?.status ===
+              'none'
+          ) {
+            fs.writeFileSync(
+              resultPath,
+              JSON.stringify(
+                {
+                  outcome: 'practice_proposal_none',
+                  livePracticeProposal,
+                  workspacePath,
+                  socialWorkUiPreflight,
+                },
+                null,
+                2,
+              ),
+              { encoding: 'utf8', flag: 'wx' },
+            );
+            return;
+          }
           if (testSocialWorkCaptureUi) {
             taskId = await mainWindow!.webContents
               .executeJavaScript(`(async () => {
@@ -2796,6 +2883,7 @@ async function startNoema() {
                 task,
                 workspacePath,
                 socialWorkUiSmoke,
+                livePracticeProposal,
               },
               null,
               2,
@@ -2818,6 +2906,7 @@ async function startNoema() {
                 errorMessage:
                   error instanceof Error ? error.message.slice(0, 1_000) : null,
                 socialWorkUiPreflight,
+                livePracticeProposal,
               },
               null,
               2,
