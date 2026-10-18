@@ -128,6 +128,9 @@ const testSocialWorkChecksJson =
   process.env.NOEMA_E2E_SOCIAL_WORK_CHECKS ?? null;
 const testSocialAgentWorkflow =
   process.env.NOEMA_E2E_SOCIAL_AGENT_WORKFLOW === '1';
+const testSocialAgentLiveE2e = process.env.NOEMA_E2E_SOCIAL_AGENT_LIVE === '1';
+const testSocialAgentLiveModel =
+  process.env.NOEMA_E2E_SOCIAL_AGENT_LIVE_MODEL ?? null;
 const socialAgentE2eResultPath =
   process.env.NOEMA_E2E_SOCIAL_AGENT_RESULT_PATH ?? null;
 const socialAgentForwardDesktopScreenshotPath =
@@ -205,6 +208,8 @@ delete process.env.NOEMA_E2E_SOCIAL_WORK_RESULT_PATH;
 delete process.env.NOEMA_E2E_SOCIAL_WORK_CHECKS;
 delete process.env.NOEMA_E2E_SOCIAL_WORK_CAPTURE_UI;
 delete process.env.NOEMA_E2E_SOCIAL_AGENT_WORKFLOW;
+delete process.env.NOEMA_E2E_SOCIAL_AGENT_LIVE;
+delete process.env.NOEMA_E2E_SOCIAL_AGENT_LIVE_MODEL;
 delete process.env.NOEMA_E2E_SOCIAL_AGENT_RESULT_PATH;
 delete process.env.NOEMA_SMOKE_CAPTURE_QUICK_CAPTURE;
 delete process.env.NOEMA_SMOKE_CAPTURE_HISTORY_TRACE;
@@ -1392,8 +1397,9 @@ async function captureSocialAgentCreationE2e() {
   );
   const forwardingSent = await mainWindow.webContents
     .executeJavaScript(`(async () => {
-    const waitFor = async (predicate, label) => {
-      const deadline = Date.now() + 7000;
+    const liveResponseTimeout = ${testSocialAgentLiveE2e ? 65_000 : 7_000};
+    const waitFor = async (predicate, label, timeoutMs = 7000) => {
+      const deadline = Date.now() + timeoutMs;
       while (Date.now() < deadline) {
         const value = await predicate();
         if (value) return value;
@@ -1438,8 +1444,9 @@ async function captureSocialAgentCreationE2e() {
     socialAgentE2eModelRequests.length === 0;
   const forwardingReply = await mainWindow.webContents
     .executeJavaScript(`(async () => {
-    const waitFor = async (predicate, label) => {
-      const deadline = Date.now() + 7000;
+    const liveResponseTimeout = ${testSocialAgentLiveE2e ? 65_000 : 7000};
+    const waitFor = async (predicate, label, timeoutMs = 7000) => {
+      const deadline = Date.now() + timeoutMs;
       while (Date.now() < deadline) {
         const value = await predicate();
         if (value) return value;
@@ -1449,12 +1456,15 @@ async function captureSocialAgentCreationE2e() {
     };
     const userArticle = [...document.querySelectorAll('.chat-message.user-message')]
       .find((article) => article.querySelector('.forwarded-message-card')?.textContent?.includes('OpenAI 官方发布说明'));
-    const replyButton = [...(userArticle?.querySelectorAll('.message-actions button') ?? [])]
-      .find((button) => button.textContent?.trim() === '回复');
-    if (!replyButton) throw new Error('转发消息没有当前房间回复入口');
-    replyButton.click();
-    await waitFor(() => document.querySelector('.reply-composer-preview'), '当前房间回复预览');
-    const replyExcerptVisible = document.querySelector('.reply-composer-preview')?.textContent?.includes('OpenAI 官方发布说明') ?? false;
+    let replyExcerptVisible = false;
+    if (!${testSocialAgentLiveE2e}) {
+      const replyButton = [...(userArticle?.querySelectorAll('.message-actions button') ?? [])]
+        .find((button) => button.textContent?.trim() === '回复');
+      if (!replyButton) throw new Error('转发消息没有当前房间回复入口');
+      replyButton.click();
+      await waitFor(() => document.querySelector('.reply-composer-preview'), '当前房间回复预览');
+      replyExcerptVisible = document.querySelector('.reply-composer-preview')?.textContent?.includes('OpenAI 官方发布说明') ?? false;
+    }
     const textarea = document.querySelector('#social-message-input');
     Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set?.call(textarea, '请说说这两条消息的重点。');
     textarea?.dispatchEvent(new Event('input', { bubbles: true }));
@@ -1463,12 +1473,21 @@ async function captureSocialAgentCreationE2e() {
       const room = await window.noema.getSocialRoom('room-engineering-collaboration');
       const user = [...room.messages].reverse().find((message) => message.role === 'user' && message.content.includes('请说说这两条消息的重点。'));
       const assistant = user ? room.messages.find((message) => message.turnId === user.turnId && message.role === 'assistant') : null;
+      if (assistant?.status === 'failed' || assistant?.status === 'interrupted') {
+        throw new Error(
+          '转发后的后续请求未完成：' +
+            (assistant.errorCode ?? assistant.status),
+        );
+      }
       return user && assistant?.status === 'complete' ? { room, user, assistant } : null;
-    }, '当前聊天回复及本机模型回应');
+    }, '转发后的单独消息及模型回应', liveResponseTimeout);
     return {
       replyExcerptVisible,
       currentRoomReplyAttached: replied.user.replyTo?.roomId === 'room-engineering-collaboration',
       replyText: replied.user.content,
+      realReplyStatus: replied.assistant.status,
+      realReplyLength: replied.assistant.content.length,
+      realReplyText: replied.assistant.content.slice(0, 800),
     };
   })()`);
   Object.assign(forwardingSent, forwardingReply);
@@ -1476,15 +1495,22 @@ async function captureSocialAgentCreationE2e() {
   const modelInput =
     modelRequest?.messages.map((message) => message.content).join('\n') ?? '';
   forwardingSent.modelInputVerified = Boolean(
-    modelRequest?.model === 'e2e-local-spy' &&
+    modelRequest?.model ===
+      (testSocialAgentLiveE2e ? testSocialAgentLiveModel : 'e2e-local-spy') &&
     modelInput.includes('用户转发的聊天消息') &&
     modelInput.includes('来自「工程搭档」') &&
     modelInput.includes('OpenAI 官方发布说明') &&
     !modelInput.includes('紫水晶') &&
     modelInput.endsWith('请说说这两条消息的重点。'),
   );
+  forwardingSent.liveProviderUsed =
+    testSocialAgentLiveE2e && socialAgentE2eModelRequests.length === 1;
+  forwardingSent.liveProviderReplyComplete =
+    testSocialAgentLiveE2e &&
+    forwardingSent.realReplyStatus === 'complete' &&
+    forwardingSent.realReplyLength > 0;
   forwardingSent.followUpTriggeredOneResponse =
-    socialAgentE2eModelRequests.length === 1;
+    !testSocialAgentLiveE2e && socialAgentE2eModelRequests.length === 1;
   if (
     forwardingSelection.selectedCount !== 2 ||
     forwardingSelection.selectedBeforeCancel !== 2 ||
@@ -1495,10 +1521,13 @@ async function captureSocialAgentCreationE2e() {
     !forwardingSent.bundlePersisted ||
     !forwardingSent.forwardingDidNotTriggerResponse ||
     !forwardingSent.forwardCardVisible ||
-    !forwardingSent.replyExcerptVisible ||
-    !forwardingSent.currentRoomReplyAttached ||
+    (!testSocialAgentLiveE2e && !forwardingSent.replyExcerptVisible) ||
+    (!testSocialAgentLiveE2e && !forwardingSent.currentRoomReplyAttached) ||
     !forwardingSent.modelInputVerified ||
-    !forwardingSent.followUpTriggeredOneResponse
+    (!testSocialAgentLiveE2e && !forwardingSent.followUpTriggeredOneResponse) ||
+    (testSocialAgentLiveE2e &&
+      (!forwardingSent.liveProviderUsed ||
+        !forwardingSent.liveProviderReplyComplete))
   ) {
     throw new Error(
       `消息转发/回复流程与模型输入不符合预期：${JSON.stringify({ forwardingSelection, forwardingSent, modelRequest })}`,
@@ -2290,20 +2319,32 @@ async function startNoema() {
     });
     socialAgentE2eModelRequests = [];
     const socialAgentE2eModel = 'e2e-local-spy';
-    const socialChatProvider = socialAgentE2eValid
-      ? {
-          async *streamChat(input: {
-            model: string;
-            messages: Array<{ role: string; content: string }>;
-          }) {
-            socialAgentE2eModelRequests.push(input);
-            yield '我看到了这组转发消息。';
-          },
-        }
-      : provider;
+    const socialChatProvider =
+      socialAgentE2eValid && !testSocialAgentLiveE2e
+        ? {
+            async *streamChat(input: {
+              model: string;
+              messages: Array<{ role: string; content: string }>;
+            }) {
+              socialAgentE2eModelRequests.push(input);
+              yield '我看到了这组转发消息。';
+            },
+          }
+        : testSocialAgentLiveE2e
+          ? {
+              async *streamChat(input: {
+                model: string;
+                messages: Array<{ role: string; content: string }>;
+                signal: AbortSignal;
+              }) {
+                socialAgentE2eModelRequests.push(input);
+                yield* provider.streamChat(input);
+              },
+            }
+          : provider;
     const getSocialRootState = async () => {
       const state = await agent.getUiState();
-      if (!socialAgentE2eValid) return state;
+      if (!socialAgentE2eValid || testSocialAgentLiveE2e) return state;
       return {
         ...state,
         connected: true,
@@ -2324,11 +2365,12 @@ async function startNoema() {
     socialChatService = new SocialChatService({
       store: socialChatStore,
       provider: socialChatProvider as FreeLLMAPIClient,
-      secretStore: socialAgentE2eValid
-        ? { isConfigured: () => true }
-        : providerSecretStore,
+      secretStore:
+        socialAgentE2eValid && !testSocialAgentLiveE2e
+          ? { isConfigured: () => true }
+          : providerSecretStore,
       getSelectedModel: () =>
-        socialAgentE2eValid
+        socialAgentE2eValid && !testSocialAgentLiveE2e
           ? socialAgentE2eModel
           : (rootStore?.getSelectedModel() ?? null),
       getRootState: getSocialRootState,
@@ -2397,6 +2439,47 @@ async function startNoema() {
     });
     if (socialAgentE2eValid && socialAgentE2eDirectory) {
       const resultPath = path.resolve(socialAgentE2eResultPath!);
+      if (testSocialAgentLiveE2e) {
+        await agent.refreshModels();
+        const providerState = await agent.getUiState();
+        const availableModels = providerState.models as Array<{
+          name: string;
+          routeKind: 'router' | 'direct';
+          executionStatus: 'ready' | 'needsKey' | 'exhausted' | null;
+        }>;
+        const selectedRoute = availableModels.find(
+          (model) => model.name === providerState.selectedModel,
+        );
+        const selectedRouteAvailable = Boolean(
+          selectedRoute?.routeKind === 'router' ||
+          selectedRoute?.executionStatus === 'ready',
+        );
+        if (
+          !providerState.providerConfigured ||
+          !providerState.connected ||
+          !providerState.selectedModel ||
+          providerState.selectedModel !== testSocialAgentLiveModel ||
+          !selectedRouteAvailable
+        ) {
+          fs.writeFileSync(
+            resultPath,
+            JSON.stringify(
+              {
+                outcome: 'preflight_failed',
+                providerConfigured: Boolean(providerState.providerConfigured),
+                connected: Boolean(providerState.connected),
+                modelSelected: Boolean(providerState.selectedModel),
+                selectedRouteReady: selectedRouteAvailable,
+              },
+              null,
+              2,
+            ),
+            { encoding: 'utf8', flag: 'wx' },
+          );
+          app.quit();
+          return;
+        }
+      }
       void (async () => {
         try {
           await new Promise<void>((resolve) => {

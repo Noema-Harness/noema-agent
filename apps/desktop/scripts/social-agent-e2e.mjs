@@ -29,6 +29,8 @@ if (
 }
 
 const configuredE2eRoot = process.env.NOEMA_E2E_ROOT_DIR ?? tmpdir();
+const liveProviderE2e = process.argv.includes('--live');
+const liveModel = 'auto:noema-free';
 if (!path.isAbsolute(configuredE2eRoot) || !existsSync(configuredE2eRoot)) {
   throw new Error('The isolated E2E root directory must already exist.');
 }
@@ -65,7 +67,8 @@ const forwardNarrowScreenshotPath = path.join(
 );
 mkdirSync(dshUserDataPath, { recursive: true });
 const seedDatabase = new Database(databasePath);
-new RootStore(seedDatabase);
+const seedRoot = new RootStore(seedDatabase);
+if (liveProviderE2e) seedRoot.setSelectedModel(liveModel);
 const seedSocial = new SocialChatStore(seedDatabase);
 const sourceTurn = seedSocial.beginTurn({
   roomId: 'room-engineering-partner',
@@ -104,6 +107,9 @@ const child = spawn(process.execPath, ['scripts/start.mjs'], {
     NOEMA_E2E_DATABASE_PATH: databasePath,
     NOEMA_E2E_DSH_USER_DATA_PATH: dshUserDataPath,
     NOEMA_E2E_SOCIAL_AGENT_WORKFLOW: '1',
+    NOEMA_E2E_SOCIAL_AGENT_LIVE: liveProviderE2e ? '1' : '0',
+    NOEMA_E2E_SOCIAL_AGENT_LIVE_MODEL: liveProviderE2e ? liveModel : '',
+    NOEMA_SMOKE_REFRESH_MODELS: liveProviderE2e ? '1' : '0',
     NOEMA_E2E_SOCIAL_AGENT_RESULT_PATH: resultPath,
     NOEMA_SMOKE_LOG_FILE: smokeLogPath,
     NOEMA_SMOKE_SOCIAL_AGENT_CREATE_PATH: desktopScreenshotPath,
@@ -142,6 +148,7 @@ if (!existsSync(resultPath)) {
 const result = JSON.parse(readFileSync(resultPath, 'utf8'));
 const summary = {
   ...result,
+  liveProviderE2e,
   childExitCode: exit.code,
   childSignal: exit.signal,
   scratchDirectory: e2eDirectory,
@@ -174,12 +181,17 @@ if (
   !result.workflow?.forwarding?.forwardCardVisible ||
   !result.workflow?.forwarding?.modelInputVerified ||
   !result.workflow?.forwarding?.forwardingDidNotTriggerResponse ||
-  !result.workflow?.forwarding?.followUpTriggeredOneResponse ||
+  (!liveProviderE2e &&
+    !result.workflow?.forwarding?.followUpTriggeredOneResponse) ||
+  (liveProviderE2e &&
+    !result.workflow?.forwarding?.liveProviderReplyComplete) ||
   !result.workflow?.forwarding?.cancelHadNoSend ||
-  !result.workflow?.forwarding?.currentRoomReplyAttached ||
+  (!liveProviderE2e &&
+    !result.workflow?.forwarding?.currentRoomReplyAttached) ||
   result.workflow?.forwarding?.narrow?.width > 700 ||
   !result.workflow?.forwarding?.narrow?.documentNoOverflow ||
   !result.workflow?.forwarding?.narrow?.dialogNoOverflow ||
+  (liveProviderE2e && !result.workflow?.forwarding?.liveProviderUsed) ||
   !existsSync(forwardDesktopScreenshotPath) ||
   !existsSync(forwardNarrowScreenshotPath) ||
   !existsSync(desktopScreenshotPath) ||
