@@ -126,6 +126,8 @@ const testSocialWorkResultPath =
   process.env.NOEMA_E2E_SOCIAL_WORK_RESULT_PATH ?? null;
 const testSocialWorkChecksJson =
   process.env.NOEMA_E2E_SOCIAL_WORK_CHECKS ?? null;
+const testSocialWorkSynthetic =
+  process.env.NOEMA_E2E_SOCIAL_WORK_SYNTHETIC === '1';
 const testSocialAgentWorkflow =
   process.env.NOEMA_E2E_SOCIAL_AGENT_WORKFLOW === '1';
 const testSocialAgentLiveE2e = process.env.NOEMA_E2E_SOCIAL_AGENT_LIVE === '1';
@@ -206,6 +208,7 @@ delete process.env.NOEMA_E2E_SOCIAL_WORK_PROMPT;
 delete process.env.NOEMA_E2E_SOCIAL_WORK_WORKSPACE;
 delete process.env.NOEMA_E2E_SOCIAL_WORK_RESULT_PATH;
 delete process.env.NOEMA_E2E_SOCIAL_WORK_CHECKS;
+delete process.env.NOEMA_E2E_SOCIAL_WORK_SYNTHETIC;
 delete process.env.NOEMA_E2E_SOCIAL_WORK_CAPTURE_UI;
 delete process.env.NOEMA_E2E_SOCIAL_AGENT_WORKFLOW;
 delete process.env.NOEMA_E2E_SOCIAL_AGENT_LIVE;
@@ -1924,7 +1927,16 @@ async function captureSocialProjectWorkSmokeScreenshots() {
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     document.querySelectorAll('.composer-mode-switch button')[1]?.click();
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    document.querySelector('.project-work-case summary')?.click();
+    const targetPrompt = ${JSON.stringify(testSocialWorkPrompt)};
+    const findTargetTask = () => [...document.querySelectorAll('.project-work-card')]
+      .find((card) => card.querySelector('.project-work-request')?.textContent?.trim() === targetPrompt);
+    const taskDeadline = Date.now() + 5_000;
+    while (Date.now() < taskDeadline && !findTargetTask()?.querySelector('.project-work-practice')) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    const targetTask = findTargetTask();
+    const experience = targetTask?.querySelector('.project-work-practice');
+    experience?.querySelector('summary')?.click();
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   })()`);
   const inspect = async (width: number, height: number) => {
@@ -1937,9 +1949,11 @@ async function captureSocialProjectWorkSmokeScreenshots() {
       const panel = document.querySelector('.conversation-panel');
       const composer = document.querySelector('.message-composer');
       const rect = composer?.getBoundingClientRect();
-      const task = document.querySelector('.project-work-card');
-      const caseReference = document.querySelector('.project-work-case');
-      if (caseReference instanceof HTMLDetailsElement) caseReference.open = true;
+      const targetPrompt = ${JSON.stringify(testSocialWorkPrompt)};
+      const task = [...document.querySelectorAll('.project-work-card')]
+        .find((card) => card.querySelector('.project-work-request')?.textContent?.trim() === targetPrompt);
+      const experienceReference = task?.querySelector('.project-work-practice');
+        if (experienceReference instanceof HTMLDetailsElement) experienceReference.open = true;
       const caseControl = document.querySelector('.case-reuse-control');
       const mode = document.querySelector('.composer-mode-switch button[aria-pressed="true"]');
       return {
@@ -1948,9 +1962,9 @@ async function captureSocialProjectWorkSmokeScreenshots() {
         taskText: task?.textContent?.trim() ?? '',
         projectModeSelected: mode?.textContent?.trim() === '项目工作',
         caseControlVisible: Boolean(caseControl && caseControl.getClientRects().length),
-        caseReferenceVisible: Boolean(caseReference && caseReference.getClientRects().length),
-        caseReferenceExpanded: caseReference instanceof HTMLDetailsElement && caseReference.open,
-        caseReferenceText: caseReference?.textContent?.trim() ?? '',
+          experienceReferenceVisible: Boolean(experienceReference && experienceReference.getClientRects().length),
+          experienceReferenceExpanded: experienceReference instanceof HTMLDetailsElement && experienceReference.open,
+          experienceReferenceText: experienceReference?.textContent?.trim() ?? '',
         composerVisible: Boolean(rect && rect.width > 0 && rect.height > 0 && rect.bottom <= window.innerHeight),
         shellNoOverflow: Boolean(shell && shell.scrollWidth <= shell.clientWidth),
         panelNoOverflow: Boolean(panel && panel.scrollWidth <= panel.clientWidth),
@@ -1965,9 +1979,9 @@ async function captureSocialProjectWorkSmokeScreenshots() {
     desktop.roomTitle !== '工程协作' ||
     !desktop.projectModeSelected ||
     !desktop.caseControlVisible ||
-    !desktop.caseReferenceVisible ||
-    !desktop.caseReferenceExpanded ||
-    !desktop.caseReferenceText.includes('room A fixture') ||
+    !desktop.experienceReferenceVisible ||
+    !desktop.experienceReferenceExpanded ||
+    !desktop.experienceReferenceText.includes('room A fixture') ||
     !desktop.composerVisible ||
     !desktop.shellNoOverflow ||
     !desktop.panelNoOverflow ||
@@ -1987,9 +2001,9 @@ async function captureSocialProjectWorkSmokeScreenshots() {
     narrow.roomTitle !== '工程协作' ||
     !narrow.projectModeSelected ||
     !narrow.caseControlVisible ||
-    !narrow.caseReferenceVisible ||
-    !narrow.caseReferenceExpanded ||
-    !narrow.caseReferenceText.includes('room A fixture') ||
+    !narrow.experienceReferenceVisible ||
+    !narrow.experienceReferenceExpanded ||
+    !narrow.experienceReferenceText.includes('room A fixture') ||
     !narrow.composerVisible ||
     !narrow.shellNoOverflow ||
     !narrow.panelNoOverflow ||
@@ -2003,7 +2017,58 @@ async function captureSocialProjectWorkSmokeScreenshots() {
     screenshots.push(socialProjectWorkNarrowScreenshotPath);
   }
 
-  return { desktop, narrow, screenshots };
+  const candidateReview = await mainWindow.webContents
+    .executeJavaScript(`(async () => {
+    const deadline = Date.now() + 5_000;
+    const sourcePrompt = 'room B fixture：依据已核验案例完成同项目中的相似文件检查。';
+    const roomItem = [...document.querySelectorAll('.room-list-item')]
+      .find((item) => item.querySelector('.room-list-title')?.textContent?.trim() === '工程搭档');
+    roomItem?.click();
+    while (Date.now() < deadline && document.querySelector('.room-header h2')?.textContent?.trim() !== '工程搭档') {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    const findSourceTask = () => [...document.querySelectorAll('.project-work-card')]
+      .find((card) => card.querySelector('.project-work-request')?.textContent?.trim() === sourcePrompt);
+    while (Date.now() < deadline && !findSourceTask()?.querySelector('.project-work-practice')) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    const sourceTask = findSourceTask();
+    const details = sourceTask?.querySelector('.project-work-practice');
+    if (details instanceof HTMLDetailsElement) details.open = true;
+    const before = details?.textContent?.trim() ?? '';
+    const withdraw = [...(details?.querySelectorAll('button') ?? [])]
+      .find((button) => button.textContent?.trim() === '撤回候选');
+    withdraw?.click();
+    while (Date.now() < deadline) {
+      const room = await window.noema.getSocialRoom('room-engineering-partner');
+      const task = room.workTasks.find((candidate) => candidate.taskPrompt === sourcePrompt);
+      if (task?.practiceCandidateStatus === 'revoked') {
+        return {
+          sourceTaskVisible: Boolean(sourceTask),
+          candidateBefore: before,
+          withdrawn: true,
+          status: task.practiceCandidateStatus,
+          trialStatus: task.practiceTrialTaskStatus,
+          trialVerification: task.practiceTrialVerificationStatus,
+        };
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    return { sourceTaskVisible: Boolean(sourceTask), candidateBefore: before, withdrawn: false };
+  })()`);
+  if (
+    !candidateReview?.sourceTaskVisible ||
+    !candidateReview.withdrawn ||
+    candidateReview.status !== 'revoked' ||
+    candidateReview.trialStatus !== 'completed' ||
+    candidateReview.trialVerification !== 'verified'
+  ) {
+    throw new Error(
+      `候选来源与撤回状态不符合预期：${JSON.stringify(candidateReview)}`,
+    );
+  }
+
+  return { desktop, narrow, candidateReview, screenshots };
 }
 
 async function verifyLiveSocialChatSmoke() {
@@ -2287,10 +2352,93 @@ async function startNoema() {
       app.quit();
       return;
     }
+    const useSyntheticSocialWork =
+      socialWorkE2eValid && testSocialWorkSynthetic;
+    const syntheticSocialWorkAdapter = (useSyntheticSocialWork
+      ? {
+          async startTask({
+            workspacePath,
+            taskId,
+            onEvent,
+          }: {
+            workspacePath: string;
+            taskId: string;
+            onEvent: (event: Record<string, unknown>) => void;
+          }) {
+            const sessionId = `noema-social-work-fixture-${taskId}`;
+            let stopped = false;
+            const started = Promise.resolve({ sessionId });
+            const done = (async () => {
+              onEvent({ type: 'session', sessionId });
+              onEvent({ type: 'status', phase: 'working' });
+              await new Promise((resolve) => setTimeout(resolve, 250));
+              if (stopped) {
+                return {
+                  status: 'interrupted' as const,
+                  errorCode: 'worker_interrupted',
+                  sessionId,
+                  toolCallCount: 0,
+                };
+              }
+              const checks = JSON.parse(testSocialWorkChecksJson ?? '[]');
+              if (
+                !Array.isArray(checks) ||
+                checks.length === 0 ||
+                checks.some(
+                  (check) =>
+                    check?.kind !== 'file_contains' ||
+                    typeof check.path !== 'string' ||
+                    typeof check.text !== 'string' ||
+                    path.isAbsolute(check.path) ||
+                    !isPathWithin(
+                      workspacePath,
+                      path.resolve(workspacePath, check.path),
+                    ),
+                )
+              ) {
+                return {
+                  status: 'failed' as const,
+                  errorCode: 'invalid_synthetic_fixture',
+                  errorMessage: '合成工作任务只接受工作区内的文件标记检查。',
+                  sessionId,
+                  toolCallCount: 0,
+                };
+              }
+              for (const check of checks) {
+                const filePath = path.resolve(workspacePath, check.path);
+                fs.mkdirSync(path.dirname(filePath), { recursive: true });
+                fs.writeFileSync(filePath, check.text, 'utf8');
+              }
+              onEvent({
+                type: 'tool-call',
+                tool: 'synthetic_fixture_write',
+                count: 1,
+              });
+              return {
+                status: 'completed' as const,
+                result: '合成 E2E 执行器写入了验收标记。',
+                sessionId,
+                toolCallCount: 1,
+              };
+            })();
+            return {
+              started,
+              done,
+              stop() {
+                stopped = true;
+                return true;
+              },
+            };
+          },
+        }
+      : null) as unknown as DshHeadlessAdapter | null;
     socialWorkService = new SocialWorkService({
       store: socialChatStore,
-      adapter: dshAdapter,
-      secretStore: providerSecretStore,
+      adapter: syntheticSocialWorkAdapter ?? dshAdapter,
+      secretStore: useSyntheticSocialWork
+        ? { isConfigured: () => true }
+        : providerSecretStore,
+      practiceProvider: useSyntheticSocialWork ? null : provider,
       defaultVerificationChecks:
         socialWorkE2eValid && testSocialWorkChecksJson
           ? JSON.parse(testSocialWorkChecksJson)
@@ -2303,7 +2451,7 @@ async function startNoema() {
           message: [
             '工程搭档会使用自己的专业资料、读取/修改项目文件，并可运行前台项目命令。Windows 文件沙箱主要限制写入，不能限制网络或进程可见性，也不能保证目录外读取隔离。项目内容可能通过 FreeLLMAPI 发往当前第三方免费模型路由。不要选择含不应发送的密钥或隐私资料的目录。停止任务不会自动撤销已经发生的改动。',
             reuseCase
-              ? '本轮还会检查同一位工程搭档在同一项目的其他聊天中，是否有一项通过 Noema 文件条件核验的工作；若找到，会把一份过滤常见凭据样式的限长摘要随本任务发送给模型，不会发送原聊天记录。过滤无法保证识别所有敏感信息。'
+              ? '本轮还会检查同一位工程搭档在同一项目的其他聊天中，是否有一项通过 Noema 文件条件核验的工作；若找到，会把一份过滤常见凭据样式的限长摘要随本任务发送给模型，不会发送原聊天记录。若本任务也通过 Noema 核验，Noema 还可能用同一免费路由对两项任务的摘要和核验结果做一次额外分析，提出一条候选做法；候选不会自动升级为技能，可在任务卡撤回。过滤无法保证识别所有敏感信息。'
               : '本轮不会从其他聊天带入项目案例。',
           ].join('\n\n'),
           properties: ['openDirectory'],

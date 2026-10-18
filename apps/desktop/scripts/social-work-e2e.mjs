@@ -55,6 +55,7 @@ const narrowScreenshotPath = path.join(
   `Noema-social-work-narrow-${screenshotTag}.png`,
 );
 const marker = `NOEMA-SOCIAL-WORK-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+const syntheticAdapter = process.argv.includes('--synthetic');
 const relativePath = 'NOEMA-E2E-RESULT.txt';
 const verificationChecks = [
   { kind: 'file_contains', path: relativePath, text: marker },
@@ -68,17 +69,37 @@ const prompt = [
 mkdirSync(e2eDirectory, { recursive: true });
 mkdirSync(workspacePath, { recursive: true });
 
-// Seed one independently checked room-A task so the real renderer-to-service
-// run in room B exercises cross-room case selection without another model
-// generation. Service tests separately cover producing a verified source.
+// Seed two independently checked tasks so the real renderer-to-service run in
+// room C exercises a candidate practice derived from a verified case transfer.
+// Service tests separately cover model-proposed candidate generation.
 const sourceCaseTaskId = 'e2e-room-a-verified-case';
+const practiceSourceTaskId = 'e2e-room-b-practice-source';
 const sourceCasePath = 'NOEMA-E2E-ROOM-A-CASE.txt';
+const practiceSourcePath = 'NOEMA-E2E-ROOM-B-RESULT.txt';
 writeFileSync(path.join(workspacePath, sourceCasePath), 'fixture-verified');
+writeFileSync(
+  path.join(workspacePath, practiceSourcePath),
+  'practice-source-verified',
+);
 const sourceChecks = [
   { kind: 'file_contains', path: sourceCasePath, text: 'fixture-verified' },
 ];
+const practiceSourceChecks = [
+  {
+    kind: 'file_contains',
+    path: practiceSourcePath,
+    text: 'practice-source-verified',
+  },
+];
 const sourceVerification = verifyWorkspaceChecks(workspacePath, sourceChecks);
-if (sourceVerification.status !== 'verified') {
+const practiceSourceVerification = verifyWorkspaceChecks(
+  workspacePath,
+  practiceSourceChecks,
+);
+if (
+  sourceVerification.status !== 'verified' ||
+  practiceSourceVerification.status !== 'verified'
+) {
   throw new Error('Could not independently verify the room-A case fixture.');
 }
 const seedDatabase = new Database(databasePath);
@@ -86,7 +107,7 @@ new RootStore(seedDatabase);
 const seedSocialStore = new SocialChatStore(seedDatabase);
 seedSocialStore.createSocialWorkTask({
   id: sourceCaseTaskId,
-  roomId: 'room-engineering-partner',
+  roomId: 'room-engineering-collaboration',
   agentId: 'engineering-partner',
   workspacePath,
   workspaceKey: path
@@ -103,6 +124,56 @@ seedSocialStore.finishSocialWorkTask(sourceCaseTaskId, {
   verificationStatus: 'verified',
   verificationResults: sourceVerification.checks,
   verificationAttempts: 0,
+});
+const basisCase = seedSocialStore.findReusableCase({
+  agentId: 'engineering-partner',
+  workspaceKey: path
+    .normalize(workspacePath)
+    .replaceAll('/', '\\')
+    .toLocaleLowerCase('en-US'),
+  excludeRoomId: 'room-engineering-partner',
+});
+if (!basisCase || basisCase.taskId !== sourceCaseTaskId) {
+  throw new Error('Could not load the verified room-A case fixture.');
+}
+seedSocialStore.createSocialWorkTask({
+  id: practiceSourceTaskId,
+  roomId: 'room-engineering-partner',
+  agentId: 'engineering-partner',
+  workspacePath,
+  workspaceKey: path
+    .normalize(workspacePath)
+    .replaceAll('/', '\\')
+    .toLocaleLowerCase('en-US'),
+  taskPrompt: 'room B fixture：依据已核验案例完成同项目中的相似文件检查。',
+  model: 'e2e-fixture',
+  verificationChecks: practiceSourceChecks,
+  caseReuseRequested: true,
+  caseSnapshot: basisCase,
+});
+seedSocialStore.finishSocialWorkTask(practiceSourceTaskId, {
+  status: 'completed',
+  resultText: 'room B fixture：按给定文件标记完成检查并通过 Noema 核验。',
+  toolCallCount: 1,
+  verificationStatus: 'verified',
+  verificationResults: practiceSourceVerification.checks,
+  verificationAttempts: 0,
+});
+if (!seedSocialStore.beginPracticeProposal(practiceSourceTaskId)) {
+  throw new Error(
+    'Could not put the room-B practice fixture into proposal state.',
+  );
+}
+seedSocialStore.savePracticeCandidate(practiceSourceTaskId, {
+  trigger:
+    '当前任务要求在同一项目中新增一个指定路径的文件，并给出精确内容条件。',
+  action: '先按相对路径写入文件，再通过读取或 Noema 文件核验确认指定标记存在。',
+  limits:
+    '仅适用于用户明确给出文件路径和内容条件的小型文件任务；不要据此扩大到其他目录或代码修改。',
+  basisTaskId: sourceCaseTaskId,
+  basisRoomId: basisCase.roomId,
+  basisRoomTitle: basisCase.roomTitle,
+  basisTaskPrompt: basisCase.taskPrompt,
 });
 seedDatabase.close();
 
@@ -121,6 +192,7 @@ const child = spawn(process.execPath, ['scripts/start.mjs'], {
     NOEMA_E2E_SOCIAL_WORK_RESULT_PATH: resultPath,
     NOEMA_E2E_SOCIAL_WORK_CHECKS: JSON.stringify(verificationChecks),
     NOEMA_E2E_SOCIAL_WORK_CAPTURE_UI: '1',
+    ...(syntheticAdapter ? { NOEMA_E2E_SOCIAL_WORK_SYNTHETIC: '1' } : {}),
     NOEMA_SMOKE_CAPTURE_SOCIAL_CHAT: '1',
     NOEMA_SMOKE_SOCIAL_PROJECT_WORK_PATH: desktopScreenshotPath,
     NOEMA_SMOKE_SOCIAL_PROJECT_WORK_NARROW_PATH: narrowScreenshotPath,
@@ -162,9 +234,12 @@ const summary = {
   errorMessage: result.task?.errorMessage ?? result.errorMessage ?? null,
   toolCallCount: result.task?.toolCallCount ?? 0,
   caseSnapshot: result.task?.caseSnapshot ?? null,
+  practiceSnapshot: result.task?.practiceSnapshot ?? null,
+  practiceCandidateStatus: result.task?.practiceCandidateStatus ?? null,
   expectedSourceCaseTaskId: sourceCaseTaskId,
   workspacePath,
   childExitCode: exit.code,
+  executionMode: syntheticAdapter ? 'synthetic-adapter' : 'live-dsh',
   childSignal: exit.signal,
   scratchDirectory: e2eRootDirectory,
   uiSmoke: result.socialWorkUiSmoke,
@@ -177,14 +252,18 @@ if (
   result.outcome !== 'finished' ||
   result.task?.status !== 'completed' ||
   result.task?.verificationStatus !== 'verified' ||
-  result.task?.caseSnapshot?.taskId !== sourceCaseTaskId ||
-  result.task?.caseSnapshot?.roomId !== 'room-engineering-partner' ||
+  result.task?.caseSnapshot !== null ||
+  result.task?.practiceSnapshot?.sourceTaskId !== practiceSourceTaskId ||
+  result.task?.practiceSnapshot?.basisTaskId !== sourceCaseTaskId ||
+  result.task?.practiceSnapshot?.roomId !== 'room-engineering-partner' ||
+  result.task?.practiceSnapshot?.basisTaskPrompt?.includes('room A fixture') !==
+    true ||
   independentVerification.status !== 'verified' ||
   !result.socialWorkUiSmoke?.desktop?.taskVisible ||
   !result.socialWorkUiSmoke?.desktop?.projectModeSelected ||
   !result.socialWorkUiSmoke?.desktop?.caseControlVisible ||
-  !result.socialWorkUiSmoke?.desktop?.caseReferenceVisible ||
-  !result.socialWorkUiSmoke?.desktop?.caseReferenceText?.includes(
+  !result.socialWorkUiSmoke?.desktop?.experienceReferenceVisible ||
+  !result.socialWorkUiSmoke?.desktop?.experienceReferenceText?.includes(
     'room A fixture',
   ) ||
   !result.socialWorkUiSmoke?.desktop?.composerVisible ||
@@ -192,12 +271,14 @@ if (
   !result.socialWorkUiSmoke?.narrow?.taskVisible ||
   !result.socialWorkUiSmoke?.narrow?.projectModeSelected ||
   !result.socialWorkUiSmoke?.narrow?.caseControlVisible ||
-  !result.socialWorkUiSmoke?.narrow?.caseReferenceVisible ||
-  !result.socialWorkUiSmoke?.narrow?.caseReferenceText?.includes(
+  !result.socialWorkUiSmoke?.narrow?.experienceReferenceVisible ||
+  !result.socialWorkUiSmoke?.narrow?.experienceReferenceText?.includes(
     'room A fixture',
   ) ||
   !result.socialWorkUiSmoke?.narrow?.composerVisible ||
   !result.socialWorkUiSmoke?.narrow?.documentNoOverflow ||
+  !result.socialWorkUiSmoke?.candidateReview?.withdrawn ||
+  result.socialWorkUiSmoke?.candidateReview?.trialVerification !== 'verified' ||
   exit.code !== 0
 ) {
   process.exitCode = 1;

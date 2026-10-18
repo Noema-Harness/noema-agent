@@ -674,6 +674,16 @@ function SocialChatApp() {
     }
   };
 
+  const handleWithdrawPracticeCandidate = async (task: NoemaSocialWorkTask) => {
+    try {
+      await window.noema.withdrawSocialPracticeCandidate(task.id);
+      await loadRoom(task.roomId);
+      setNotice('候选做法已撤回；历史任务快照保持不变。');
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : '候选做法没有撤回。');
+    }
+  };
+
   const handleComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (
       event.key === 'Enter' &&
@@ -1300,6 +1310,9 @@ function SocialChatApp() {
                           onDisableCase={() =>
                             void handleDisableCaseReuse(item.task)
                           }
+                          onWithdrawPractice={() =>
+                            void handleWithdrawPracticeCandidate(item.task)
+                          }
                           onRepeat={() => {
                             setSelectedAgentId(item.task.agentId);
                             setComposerMode('project');
@@ -1448,9 +1461,10 @@ function SocialChatApp() {
                     disabled={workBusy}
                   />
                   <span>
-                    <strong>参考同项目的已核验案例</strong>
+                    <strong>参考同项目的已核验经验</strong>
                     <small>
-                      最多带入另一聊天中的一项限长摘要，并过滤常见凭据样式；不会复制原聊天。勾选后，摘要会随任务发送给当前模型，仍可能含项目敏感信息。
+                      有候选做法时优先试用一次；否则带入另一聊天的一项限长案例。不会复制原聊天。核验通过后，Noema
+                      可能再用当前免费路由整理一条可撤回的候选做法。
                     </small>
                   </span>
                 </label>
@@ -2223,12 +2237,14 @@ function ProjectWorkCard({
   onStop,
   onRepeat,
   onDisableCase,
+  onWithdrawPractice,
 }: {
   task: NoemaSocialWorkTask;
   agent: NoemaSocialAgent | null;
   onStop: () => void;
   onRepeat: () => void;
   onDisableCase: () => void;
+  onWithdrawPractice: () => void;
 }) {
   const active = ['starting', 'running', 'verifying'].includes(task.status);
   const title =
@@ -2283,7 +2299,29 @@ function ProjectWorkCard({
         <time dateTime={task.updatedAt}>{timeLabel(task.updatedAt)}</time>
       </header>
       <p className="project-work-request">{task.taskPrompt}</p>
-      {task.caseSnapshot ? (
+      {task.practiceSnapshot ? (
+        <details className="project-work-case project-work-practice">
+          <summary>本轮试用了一条跨房间候选做法</summary>
+          <p>
+            候选来自「{task.practiceSnapshot.roomTitle}」中的已核验工作；
+            基础案例：
+            {task.practiceSnapshot.basisTaskPrompt ||
+              task.practiceSnapshot.basisTaskId}
+          </p>
+          <p>
+            <strong>做法：</strong>
+            {task.practiceSnapshot.action}
+          </p>
+          <p>
+            <strong>边界：</strong>
+            {task.practiceSnapshot.limits}
+          </p>
+          <p className="project-work-case-empty">
+            这是一次候选试用；下方 Noema
+            核验只检查当前文件条件，不证明做法导致了结果。
+          </p>
+        </details>
+      ) : task.caseSnapshot ? (
         <details className="project-work-case">
           <summary>
             本轮引用了「{task.caseSnapshot.roomTitle}」中的已核验案例
@@ -2299,7 +2337,79 @@ function ProjectWorkCard({
         </details>
       ) : task.caseReuseRequested ? (
         <p className="project-work-case-empty">
-          本轮没有找到同一项目、来自其他聊天且通过核验的案例。
+          本轮没有找到同一项目、来自其他聊天且通过核验的案例或候选做法。
+        </p>
+      ) : null}
+      {task.practiceCandidateStatus === 'pending' ? (
+        <p className="project-work-case-empty" role="status">
+          Noema 正在整理一条候选做法；项目验收状态不受影响。
+        </p>
+      ) : null}
+      {task.practiceCandidate ? (
+        <details className="project-work-case project-work-practice">
+          <summary>
+            {task.practiceCandidateStatus === 'available'
+              ? 'Noema 提出一条可试用的候选做法'
+              : task.practiceCandidateStatus === 'trialing'
+                ? '候选做法已交给另一房间的任务试用'
+                : task.practiceCandidateStatus === 'trialed'
+                  ? '候选做法已试用一次'
+                  : '候选做法已撤回'}
+          </summary>
+          <p>
+            <strong>触发条件：</strong>
+            {task.practiceCandidate.trigger}
+          </p>
+          <p>
+            <strong>候选做法：</strong>
+            {task.practiceCandidate.action}
+          </p>
+          <p>
+            <strong>适用边界：</strong>
+            {task.practiceCandidate.limits}
+          </p>
+          <p className="project-work-case-empty">
+            来源案例：
+            {task.practiceBasisTaskId ?? task.practiceCandidate.basisTaskId}
+            。候选不是永久技能；试用通过也不能单独证明方法导致了结果。
+          </p>
+          {task.practiceTrialTaskId ? (
+            <p className="project-work-case-empty">
+              试用结果：
+              {task.practiceTrialVerificationStatus === 'verified'
+                ? '列出的文件条件通过'
+                : task.practiceTrialVerificationStatus === 'failed'
+                  ? '文件条件未通过'
+                  : task.practiceTrialVerificationStatus === 'unavailable'
+                    ? '无法独立核验'
+                    : '未设置核验条件'}
+              （任务 {task.practiceTrialTaskStatus ?? '进行中'}
+              ）。这只记录本次结果，不证明候选做法造成了结果。
+            </p>
+          ) : null}
+          {['available', 'trialing', 'trialed'].includes(
+            task.practiceCandidateStatus,
+          ) ? (
+            <div className="project-work-case-footer">
+              <span>仅在同一好友、同一项目的另一个聊天中试用一次</span>
+              <button type="button" onClick={onWithdrawPractice}>
+                撤回候选
+              </button>
+            </div>
+          ) : null}
+        </details>
+      ) : null}
+      {task.practiceCandidateStatus === 'failed' ? (
+        <p className="project-work-case-empty" role="status">
+          Noema 没有生成候选做法；项目工作结果不受影响。
+        </p>
+      ) : null}
+      {task.caseReuseRequested &&
+      task.caseSnapshot &&
+      task.verificationStatus === 'verified' &&
+      task.practiceCandidateStatus === 'none' ? (
+        <p className="project-work-case-empty" role="status">
+          Noema 没有找到适合迁移的做法；已核验案例仍可单独引用。
         </p>
       ) : null}
       {active ? (
