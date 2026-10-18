@@ -54,6 +54,8 @@ const bridge = {
     ipcRenderer.invoke('noema:social-work-stop', taskId),
   setSocialWorkCaseEligible: (taskId: string, eligible: boolean) =>
     ipcRenderer.invoke('noema:social-work-case-eligible', taskId, eligible),
+  withdrawSocialPracticeCandidate: (taskId: string) =>
+    ipcRenderer.invoke('noema:social-practice-withdraw', taskId),
   refreshModels: () => ipcRenderer.invoke('noema:refresh-models'),
   configureProvider: (configuration: { baseUrl: string; apiKey: string }) =>
     ipcRenderer.invoke('noema:configure-provider', configuration),

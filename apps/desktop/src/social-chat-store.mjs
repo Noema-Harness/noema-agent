@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 const MAX_CONTEXT_MESSAGES = 40;
 const MAX_FORWARDED_MESSAGES = 20;
 const MAX_FORWARDED_CONTENT_LENGTH = 40_000;
@@ -88,6 +88,14 @@ function hydrateSocialWorkTask(row) {
     caseEligible: Boolean(row.caseEligible),
     caseSnapshot: JSON.parse(row.caseSnapshotJson ?? 'null'),
     caseReuseRequested: Boolean(row.caseReuseRequested),
+    practiceCandidateStatus: row.practiceCandidateStatus ?? 'not_requested',
+    practiceCandidate: JSON.parse(row.practiceCandidateJson ?? 'null'),
+    practiceBasisTaskId: row.practiceBasisTaskId ?? null,
+    practiceTrialTaskId: row.practiceTrialTaskId ?? null,
+    practiceTrialTaskStatus: row.practiceTrialTaskStatus ?? null,
+    practiceTrialVerificationStatus:
+      row.practiceTrialVerificationStatus ?? null,
+    practiceSnapshot: JSON.parse(row.practiceSnapshotJson ?? 'null'),
   };
 }
 
@@ -273,6 +281,34 @@ export class SocialChatStore {
 
           INSERT INTO social_schema_migrations (version, applied_at)
           VALUES (5, '${isoNow()}');
+        `);
+      })();
+    }
+    if (current < 6) {
+      this.db.transaction(() => {
+        this.db.exec(`
+          ALTER TABLE social_work_tasks
+            ADD COLUMN practice_candidate_status TEXT NOT NULL DEFAULT 'not_requested'
+              CHECK (practice_candidate_status IN (
+                'not_requested', 'none', 'pending', 'available', 'trialing', 'trialed', 'revoked', 'failed'
+              ));
+          ALTER TABLE social_work_tasks
+            ADD COLUMN practice_candidate_json TEXT NOT NULL DEFAULT 'null';
+          ALTER TABLE social_work_tasks
+            ADD COLUMN practice_basis_task_id TEXT;
+          ALTER TABLE social_work_tasks
+            ADD COLUMN practice_trial_task_id TEXT;
+          ALTER TABLE social_work_tasks
+            ADD COLUMN practice_trial_task_status TEXT;
+          ALTER TABLE social_work_tasks
+            ADD COLUMN practice_trial_verification_status TEXT;
+          ALTER TABLE social_work_tasks
+            ADD COLUMN practice_snapshot_json TEXT NOT NULL DEFAULT 'null';
+          CREATE INDEX social_work_practice_candidates
+            ON social_work_tasks(agent_id, workspace_key, practice_candidate_status, completed_at);
+
+          INSERT INTO social_schema_migrations (version, applied_at)
+          VALUES (6, '${isoNow()}');
         `);
       })();
     }
@@ -823,6 +859,13 @@ export class SocialChatStore {
         caseEligible: task.caseEligible,
         caseSnapshot: task.caseSnapshot,
         caseReuseRequested: task.caseReuseRequested,
+        practiceCandidateStatus: task.practiceCandidateStatus,
+        practiceCandidate: task.practiceCandidate,
+        practiceBasisTaskId: task.practiceBasisTaskId,
+        practiceTrialTaskId: task.practiceTrialTaskId,
+        practiceTrialTaskStatus: task.practiceTrialTaskStatus,
+        practiceTrialVerificationStatus: task.practiceTrialVerificationStatus,
+        practiceSnapshot: task.practiceSnapshot,
         createdAt: task.createdAt,
         updatedAt: task.updatedAt,
         completedAt: task.completedAt,
@@ -996,6 +1039,7 @@ export class SocialChatStore {
     verificationChecks = [],
     caseReuseRequested = false,
     caseSnapshot = null,
+    practiceSnapshot = null,
   }) {
     requireText(id, '任务 ID', 200);
     requireText(roomId, '房间 ID', 200);
@@ -1016,6 +1060,9 @@ export class SocialChatStore {
     const normalizedPrompt = requireText(taskPrompt, '项目任务', 40_000);
     const normalizedModel = requireText(model, '模型路由', 200);
     const now = isoNow();
+    if (practiceSnapshot && caseSnapshot) {
+      throw new Error('同一任务不能同时复制案例摘要和实践候选。');
+    }
     const active = this.db
       .prepare(`
         SELECT 1 FROM social_work_tasks
@@ -1028,33 +1075,62 @@ export class SocialChatStore {
         '这个项目已有一项工作在运行；为避免同时改动，请先等待或停止它。',
       );
     }
-    this.db
-      .prepare(`
-        INSERT INTO social_work_tasks
-          (id, room_id, agent_id, workspace_path, workspace_key, task_prompt,
-           model, runtime, status, verification_status,
-           verification_checks_json, case_snapshot_json, case_reuse_requested,
-           created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'dsh', 'starting', ?, ?, ?, ?, ?, ?)
-      `)
-      .run(
-        id,
-        roomId,
-        agentId,
-        workspacePath,
-        workspaceKey,
-        normalizedPrompt,
-        normalizedModel,
-        verificationChecks.length ? 'pending' : 'not_planned',
-        JSON.stringify(verificationChecks),
-        JSON.stringify(caseSnapshot),
-        caseReuseRequested ? 1 : 0,
-        now,
-        now,
-      );
-    this.db
-      .prepare('UPDATE social_rooms SET updated_at = ? WHERE id = ?')
-      .run(now, roomId);
+    const createTask = this.db.transaction(() => {
+      this.db
+        .prepare(`
+          INSERT INTO social_work_tasks
+            (id, room_id, agent_id, workspace_path, workspace_key, task_prompt,
+             model, runtime, status, verification_status,
+             verification_checks_json, case_snapshot_json, case_reuse_requested,
+             practice_snapshot_json, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, 'dsh', 'starting', ?, ?, ?, ?, ?, ?, ?)
+        `)
+        .run(
+          id,
+          roomId,
+          agentId,
+          workspacePath,
+          workspaceKey,
+          normalizedPrompt,
+          normalizedModel,
+          verificationChecks.length ? 'pending' : 'not_planned',
+          JSON.stringify(verificationChecks),
+          JSON.stringify(caseSnapshot),
+          caseReuseRequested ? 1 : 0,
+          JSON.stringify(practiceSnapshot),
+          now,
+          now,
+        );
+      if (practiceSnapshot) {
+        const claimed = this.db
+          .prepare(`
+            UPDATE social_work_tasks
+            SET practice_candidate_status = 'trialing',
+                practice_trial_task_id = ?,
+                practice_trial_task_status = NULL,
+                practice_trial_verification_status = NULL,
+                updated_at = ?
+            WHERE id = ? AND agent_id = ? AND workspace_key = ? AND room_id <> ?
+              AND status = 'completed' AND verification_status = 'verified'
+              AND case_eligible = 1 AND practice_candidate_status = 'available'
+          `)
+          .run(
+            id,
+            now,
+            practiceSnapshot.sourceTaskId,
+            agentId,
+            workspaceKey,
+            roomId,
+          );
+        if (claimed.changes !== 1) {
+          throw new Error('这条候选做法已撤回或不再适用于所选项目。');
+        }
+      }
+      this.db
+        .prepare('UPDATE social_rooms SET updated_at = ? WHERE id = ?')
+        .run(now, roomId);
+    });
+    createTask();
     return this.getSocialWorkTask(id);
   }
 
@@ -1076,6 +1152,13 @@ export class SocialChatStore {
                case_eligible AS caseEligible,
                case_snapshot_json AS caseSnapshotJson,
                case_reuse_requested AS caseReuseRequested,
+               practice_candidate_status AS practiceCandidateStatus,
+               practice_candidate_json AS practiceCandidateJson,
+               practice_basis_task_id AS practiceBasisTaskId,
+               practice_trial_task_id AS practiceTrialTaskId,
+               practice_trial_task_status AS practiceTrialTaskStatus,
+               practice_trial_verification_status AS practiceTrialVerificationStatus,
+               practice_snapshot_json AS practiceSnapshotJson,
                created_at AS createdAt, updated_at AS updatedAt,
                completed_at AS completedAt
         FROM social_work_tasks WHERE id = ?
@@ -1103,6 +1186,13 @@ export class SocialChatStore {
                case_eligible AS caseEligible,
                case_snapshot_json AS caseSnapshotJson,
                case_reuse_requested AS caseReuseRequested,
+               practice_candidate_status AS practiceCandidateStatus,
+               practice_candidate_json AS practiceCandidateJson,
+               practice_basis_task_id AS practiceBasisTaskId,
+               practice_trial_task_id AS practiceTrialTaskId,
+               practice_trial_task_status AS practiceTrialTaskStatus,
+               practice_trial_verification_status AS practiceTrialVerificationStatus,
+               practice_snapshot_json AS practiceSnapshotJson,
                created_at AS createdAt, updated_at AS updatedAt,
                completed_at AS completedAt
         FROM social_work_tasks WHERE room_id = ? ORDER BY created_at ASC
@@ -1129,6 +1219,7 @@ export class SocialChatStore {
         SELECT t.id, t.room_id AS roomId, r.title AS roomTitle,
                t.agent_id AS agentId, t.task_prompt AS taskPrompt,
                t.result_text AS resultText,
+               t.tool_action_categories_json AS toolActionCategoriesJson,
                t.verification_checks_json AS verificationChecksJson,
                t.verification_results_json AS verificationResultsJson,
                t.completed_at AS completedAt
@@ -1149,10 +1240,200 @@ export class SocialChatStore {
       agentId: row.agentId,
       taskPrompt: row.taskPrompt,
       resultText: row.resultText,
+      toolActionCategories: JSON.parse(row.toolActionCategoriesJson ?? '[]'),
       verificationChecks: JSON.parse(row.verificationChecksJson ?? '[]'),
       verificationResults: JSON.parse(row.verificationResultsJson ?? '[]'),
       completedAt: row.completedAt,
     };
+  }
+
+  findReusablePractice({ agentId, workspaceKey, excludeRoomId }) {
+    const row = this.db
+      .prepare(`
+        SELECT t.id AS sourceTaskId, t.room_id AS roomId,
+               r.title AS roomTitle, t.completed_at AS completedAt,
+               t.practice_candidate_json AS candidateJson
+        FROM social_work_tasks AS t
+        JOIN social_rooms AS r ON r.id = t.room_id
+        WHERE t.agent_id = ? AND t.workspace_key = ? AND t.room_id <> ?
+          AND t.status = 'completed' AND t.verification_status = 'verified'
+          AND t.case_eligible = 1 AND t.practice_candidate_status = 'available'
+          AND t.completed_at IS NOT NULL
+          AND EXISTS (
+            SELECT 1 FROM social_work_tasks AS basis
+            WHERE basis.id = t.practice_basis_task_id
+              AND basis.status = 'completed'
+              AND basis.verification_status = 'verified'
+              AND basis.case_eligible = 1
+              AND basis.agent_id = t.agent_id
+              AND basis.workspace_key = t.workspace_key
+          )
+        ORDER BY t.completed_at DESC, t.created_at DESC
+        LIMIT 1
+      `)
+      .get(agentId, workspaceKey, excludeRoomId);
+    if (!row) return null;
+    return {
+      sourceTaskId: row.sourceTaskId,
+      roomId: row.roomId,
+      roomTitle: row.roomTitle,
+      completedAt: row.completedAt,
+      ...JSON.parse(row.candidateJson ?? 'null'),
+    };
+  }
+
+  beginPracticeProposal(taskId) {
+    const task = this.getSocialWorkTask(taskId);
+    if (
+      task.status !== 'completed' ||
+      task.verificationStatus !== 'verified' ||
+      !task.caseReuseRequested ||
+      !task.caseSnapshot ||
+      task.practiceSnapshot ||
+      task.toolCallCount === 0
+    ) {
+      return false;
+    }
+    let basis;
+    try {
+      basis = this.getSocialWorkTask(task.caseSnapshot.taskId);
+    } catch {
+      return false;
+    }
+    if (
+      basis.status !== 'completed' ||
+      basis.verificationStatus !== 'verified' ||
+      !basis.caseEligible ||
+      basis.agentId !== task.agentId ||
+      basis.workspaceKey !== task.workspaceKey ||
+      basis.roomId === task.roomId
+    ) {
+      return false;
+    }
+    const occupied = this.db
+      .prepare(`
+        SELECT 1 FROM social_work_tasks
+        WHERE agent_id = ? AND workspace_key = ?
+          AND practice_candidate_status IN ('pending', 'available', 'trialing')
+          AND id <> ?
+        LIMIT 1
+      `)
+      .get(task.agentId, task.workspaceKey, task.id);
+    if (occupied) return false;
+    const changed = this.db
+      .prepare(`
+        UPDATE social_work_tasks
+        SET practice_candidate_status = 'pending', updated_at = ?
+        WHERE id = ? AND practice_candidate_status IN ('not_requested', 'failed')
+      `)
+      .run(isoNow(), taskId);
+    return changed.changes === 1;
+  }
+
+  savePracticeCandidate(taskId, candidate) {
+    const task = this.getSocialWorkTask(taskId);
+    if (
+      task.status !== 'completed' ||
+      task.verificationStatus !== 'verified' ||
+      !task.caseReuseRequested ||
+      !task.caseSnapshot ||
+      task.practiceSnapshot
+    ) {
+      throw new Error(
+        '只有复用了已核验案例且自身核验通过的任务才能提出实践候选。',
+      );
+    }
+    if (
+      !candidate ||
+      candidate.basisTaskId !== task.caseSnapshot.taskId ||
+      typeof candidate.trigger !== 'string' ||
+      typeof candidate.action !== 'string' ||
+      typeof candidate.limits !== 'string' ||
+      candidate.trigger.length < 5 ||
+      candidate.trigger.length > 500 ||
+      candidate.action.length < 5 ||
+      candidate.action.length > 800 ||
+      candidate.limits.length < 5 ||
+      candidate.limits.length > 500
+    ) {
+      throw new TypeError('实践候选缺少有效的来源、触发条件、做法或边界。');
+    }
+    const basis = this.getSocialWorkTask(candidate.basisTaskId);
+    if (
+      basis.status !== 'completed' ||
+      basis.verificationStatus !== 'verified' ||
+      !basis.caseEligible ||
+      basis.agentId !== task.agentId ||
+      basis.workspaceKey !== task.workspaceKey ||
+      basis.roomId === task.roomId
+    ) {
+      throw new Error('实践候选的基础案例已撤回或不符合来源范围。');
+    }
+    const active = this.db
+      .prepare(`
+        SELECT 1 FROM social_work_tasks
+        WHERE agent_id = ? AND workspace_key = ?
+          AND practice_candidate_status IN ('pending', 'available', 'trialing')
+          AND id <> ?
+        LIMIT 1
+      `)
+      .get(task.agentId, task.workspaceKey, task.id);
+    if (active) throw new Error('同一好友和项目已有一条待试用做法。');
+    const normalizedCandidate = {
+      trigger: candidate.trigger,
+      action: candidate.action,
+      limits: candidate.limits,
+      basisTaskId: basis.id,
+      basisRoomId: task.caseSnapshot.roomId,
+      basisRoomTitle: task.caseSnapshot.roomTitle,
+      basisTaskPrompt: task.caseSnapshot.taskPrompt,
+      proposedAt: isoNow(),
+    };
+    const changed = this.db
+      .prepare(`
+        UPDATE social_work_tasks
+        SET practice_candidate_json = ?, practice_basis_task_id = ?,
+            practice_candidate_status = 'available',
+            updated_at = ?
+        WHERE id = ? AND practice_candidate_status = 'pending'
+      `)
+      .run(JSON.stringify(normalizedCandidate), basis.id, isoNow(), taskId);
+    if (changed.changes !== 1) {
+      throw new Error('候选做法状态已变化，未保存。');
+    }
+    return this.getSocialWorkTask(taskId);
+  }
+
+  finishPracticeProposal(taskId, outcome) {
+    if (!['none', 'failed'].includes(outcome)) {
+      throw new TypeError('实践候选提炼结果无效。');
+    }
+    this.db
+      .prepare(`
+        UPDATE social_work_tasks SET practice_candidate_status = ?, updated_at = ?
+        WHERE id = ? AND practice_candidate_status = 'pending'
+      `)
+      .run(outcome, isoNow(), taskId);
+    return this.getSocialWorkTask(taskId);
+  }
+
+  revokePracticeCandidate(taskId) {
+    const task = this.getSocialWorkTask(taskId);
+    if (
+      !['pending', 'available', 'trialing', 'trialed'].includes(
+        task.practiceCandidateStatus,
+      )
+    ) {
+      throw new Error('这项任务没有可撤回的实践候选。');
+    }
+    this.db
+      .prepare(`
+        UPDATE social_work_tasks
+        SET practice_candidate_status = 'revoked', updated_at = ?
+        WHERE id = ?
+      `)
+      .run(isoNow(), taskId);
+    return this.getSocialWorkTask(taskId);
   }
 
   setSocialWorkTaskCaseEligible(taskId, eligible) {
@@ -1165,10 +1446,27 @@ export class SocialChatStore {
     }
     this.db
       .prepare(`
-        UPDATE social_work_tasks SET case_eligible = ?, updated_at = ?
+        UPDATE social_work_tasks
+        SET case_eligible = ?,
+            practice_candidate_status = CASE
+              WHEN ? = 0 AND practice_candidate_status IN ('pending', 'available', 'trialing', 'trialed')
+                THEN 'revoked'
+              ELSE practice_candidate_status
+            END,
+            updated_at = ?
         WHERE id = ?
       `)
-      .run(eligible ? 1 : 0, isoNow(), taskId);
+      .run(eligible ? 1 : 0, eligible ? 1 : 0, isoNow(), taskId);
+    if (!eligible) {
+      this.db
+        .prepare(`
+          UPDATE social_work_tasks
+          SET practice_candidate_status = 'revoked', updated_at = ?
+          WHERE practice_basis_task_id = ?
+            AND practice_candidate_status IN ('pending', 'available', 'trialing', 'trialed')
+        `)
+        .run(isoNow(), taskId);
+    }
     return this.getSocialWorkTask(taskId);
   }
 
@@ -1284,12 +1582,33 @@ export class SocialChatStore {
     this.db
       .prepare('UPDATE social_rooms SET updated_at = ? WHERE id = ?')
       .run(now, this.getSocialWorkTask(taskId).roomId);
-    return this.getSocialWorkTask(taskId);
+    const finished = this.getSocialWorkTask(taskId);
+    const practiceSourceTaskId = finished.practiceSnapshot?.sourceTaskId;
+    if (practiceSourceTaskId) {
+      this.db
+        .prepare(`
+          UPDATE social_work_tasks
+          SET practice_candidate_status = 'trialed',
+              practice_trial_task_status = ?,
+              practice_trial_verification_status = ?,
+              updated_at = ?
+          WHERE id = ? AND practice_candidate_status = 'trialing'
+            AND practice_trial_task_id = ?
+        `)
+        .run(
+          finished.status,
+          finished.verificationStatus,
+          now,
+          practiceSourceTaskId,
+          taskId,
+        );
+    }
+    return finished;
   }
 
   recoverInterruptedSocialWorkTasks() {
     const now = isoNow();
-    return this.db
+    const recovered = this.db
       .prepare(`
         UPDATE social_work_tasks SET status = 'interrupted',
           phase = 'interrupted', error_code = 'app_restarted',
@@ -1298,6 +1617,48 @@ export class SocialChatStore {
         WHERE status IN ('starting', 'running', 'verifying')
       `)
       .run(now, now).changes;
+    const interruptedTrials = this.db
+      .prepare(`
+        SELECT id, runtime_session_id AS runtimeSessionId,
+               tool_call_count AS toolCallCount,
+               practice_snapshot_json AS practiceSnapshotJson
+        FROM social_work_tasks
+        WHERE status = 'interrupted' AND error_code = 'app_restarted'
+          AND practice_snapshot_json != 'null'
+      `)
+      .all();
+    for (const trial of interruptedTrials) {
+      const snapshot = JSON.parse(trial.practiceSnapshotJson ?? 'null');
+      if (!snapshot?.sourceTaskId) continue;
+      const attempted =
+        Boolean(trial.runtimeSessionId) || trial.toolCallCount > 0;
+      this.db
+        .prepare(`
+          UPDATE social_work_tasks
+          SET practice_candidate_status = ?,
+              practice_trial_task_id = ?,
+              practice_trial_task_status = ?,
+              practice_trial_verification_status = 'unavailable',
+              updated_at = ?
+          WHERE id = ? AND practice_candidate_status = 'trialing'
+            AND practice_trial_task_id = ?
+        `)
+        .run(
+          attempted ? 'trialed' : 'available',
+          attempted ? trial.id : null,
+          attempted ? 'interrupted' : null,
+          now,
+          snapshot.sourceTaskId,
+          trial.id,
+        );
+    }
+    this.db
+      .prepare(`
+        UPDATE social_work_tasks SET practice_candidate_status = 'failed', updated_at = ?
+        WHERE practice_candidate_status = 'pending'
+      `)
+      .run(now);
+    return recovered;
   }
 
   isMember(roomId, agentId) {

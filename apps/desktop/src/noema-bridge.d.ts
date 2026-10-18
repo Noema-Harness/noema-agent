@@ -236,6 +236,7 @@ export interface NoemaSocialWorkTask {
     completedAt: string;
     taskPrompt: string;
     resultText: string;
+    toolActionCategories: string[];
     verificationChecks: Array<{
       kind: string;
       path: string;
@@ -243,6 +244,45 @@ export interface NoemaSocialWorkTask {
     }>;
   } | null;
   caseReuseRequested: boolean;
+  practiceCandidateStatus:
+    | 'not_requested'
+    | 'none'
+    | 'pending'
+    | 'available'
+    | 'trialing'
+    | 'trialed'
+    | 'revoked'
+    | 'failed';
+  practiceCandidate: {
+    trigger: string;
+    action: string;
+    limits: string;
+    basisTaskId: string;
+    basisRoomId: string;
+    basisRoomTitle: string;
+    basisTaskPrompt: string;
+    proposedAt: string;
+  } | null;
+  practiceBasisTaskId: string | null;
+  practiceTrialTaskId: string | null;
+  practiceTrialTaskStatus: NoemaSocialWorkTask['status'] | null;
+  practiceTrialVerificationStatus:
+    | NoemaSocialWorkTask['verificationStatus']
+    | null;
+  practiceSnapshot: {
+    sourceTaskId: string;
+    basisTaskId: string;
+    basisRoomId: string;
+    basisRoomTitle: string;
+    basisTaskPrompt: string;
+    roomId: string;
+    roomTitle: string;
+    completedAt: string;
+    trigger: string;
+    action: string;
+    limits: string;
+    proposedAt: string;
+  } | null;
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
@@ -494,6 +534,7 @@ export interface NoemaBridge {
     taskId: string,
     eligible: boolean,
   ): Promise<NoemaSocialWorkTask>;
+  withdrawSocialPracticeCandidate(taskId: string): Promise<NoemaSocialWorkTask>;
   refreshModels(): Promise<
     Pick<
       NoemaRootState,

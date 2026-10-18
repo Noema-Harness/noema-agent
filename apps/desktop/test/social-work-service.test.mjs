@@ -218,6 +218,149 @@ test('a cross-room task receives only one bounded, redacted, verified case when 
   }
 });
 
+test('a verified case transfer can propose, trial, and revoke one bounded practice', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'noema-social-practice-'));
+  const workspace = path.join(directory, 'workspace');
+  mkdirSync(workspace);
+  const { db, store } = makeStore();
+  const seen = [];
+  const proposalRequests = [];
+  let launchCount = 0;
+  const service = new SocialWorkService({
+    store,
+    adapter: makeAdapter({
+      onStart(input) {
+        launchCount += 1;
+        seen.push(input);
+        const resultName = `result-${launchCount}.txt`;
+        writeFileSync(
+          path.join(input.workspacePath, resultName),
+          'practice-proof',
+        );
+      },
+    }),
+    secretStore: { isConfigured: () => true },
+    practiceProvider: {
+      async *streamChat(input) {
+        proposalRequests.push(input);
+        input.onToolCalls([
+          {
+            id: 'practice-proposal-1',
+            type: 'function',
+            function: {
+              name: 'propose_practice',
+              arguments: JSON.stringify({
+                trigger: '新增文件且用户给出精确内容验收条件。',
+                action: '按相对路径写入后，再独立读取并核对指定标记。',
+                limits: '仅适用于明确路径和文本条件的单文件任务。',
+              }),
+            },
+          },
+        ]);
+        yield '';
+      },
+    },
+    chooseWorkspace: async () => workspace,
+  });
+  const checksFor = (name) => [
+    { kind: 'file_contains', path: name, text: 'practice-proof' },
+  ];
+  const waitForPracticeStatus = async (taskId, expected) => {
+    for (let index = 0; index < 50; index += 1) {
+      const task = store.getSocialWorkTask(taskId);
+      if (task.practiceCandidateStatus === expected) return task;
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    throw new Error(`practice candidate did not reach ${expected}`);
+  };
+
+  try {
+    const first = await service.startTask({
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      prompt: 'room A：新增第一份验收文件。',
+      verificationChecks: checksFor('result-1.txt'),
+    });
+    await service.waitForTask(first.taskId);
+    assert.equal(
+      store.getSocialWorkTask(first.taskId).verificationStatus,
+      'verified',
+    );
+
+    const second = await service.startTask({
+      roomId: 'room-engineering-collaboration',
+      agentId: 'engineering-partner',
+      prompt: 'room B：参考同项目经验，新增第二份验收文件。',
+      verificationChecks: checksFor('result-2.txt'),
+      reuseCase: true,
+    });
+    await service.waitForTask(second.taskId);
+    const candidateSource = await waitForPracticeStatus(
+      second.taskId,
+      'available',
+    );
+    assert.equal(candidateSource.caseSnapshot?.taskId, first.taskId);
+    assert.equal(candidateSource.practiceCandidate?.basisTaskId, first.taskId);
+    assert.equal(
+      candidateSource.practiceCandidate?.trigger,
+      '新增文件且用户给出精确内容验收条件。',
+    );
+    assert.equal(proposalRequests.length, 1);
+    assert.equal(proposalRequests[0].model, 'auto:noema-free');
+    assert.equal(proposalRequests[0].maxTokens, 512);
+    const proposalInput = proposalRequests[0].messages
+      .map((message) => message.content)
+      .join('\n');
+    assert.match(proposalInput, /room A：新增第一份验收文件/u);
+    assert.match(proposalInput, /room B：参考同项目经验/u);
+
+    const thirdRoom = store.createGroup({
+      title: '实践试用群',
+      agentIds: ['noema', 'engineering-partner'],
+    });
+    const third = await service.startTask({
+      roomId: thirdRoom.room.id,
+      agentId: 'engineering-partner',
+      prompt: 'room C：在同一项目中新增第三份验收文件。',
+      verificationChecks: checksFor('result-3.txt'),
+      reuseCase: true,
+    });
+    const trialStart = store.getSocialWorkTask(third.taskId);
+    assert.equal(trialStart.practiceSnapshot?.sourceTaskId, second.taskId);
+    assert.equal(trialStart.practiceSnapshot?.basisTaskId, first.taskId);
+    assert.equal(trialStart.caseSnapshot, null);
+    const projectedTrial = store
+      .getRoomSnapshot(thirdRoom.room.id)
+      .workTasks.find((task) => task.id === third.taskId);
+    assert.equal(projectedTrial?.practiceSnapshot?.sourceTaskId, second.taskId);
+    assert.equal(projectedTrial?.practiceSnapshot?.basisTaskId, first.taskId);
+    assert.match(seen[2].task, /候选做法（一次试用）/u);
+    assert.match(seen[2].task, /新增文件且用户给出精确内容验收条件/u);
+    await service.waitForTask(third.taskId);
+    const trialed = store.getSocialWorkTask(second.taskId);
+    assert.equal(trialed.practiceCandidateStatus, 'trialed');
+    assert.equal(trialed.practiceTrialTaskId, third.taskId);
+    assert.equal(trialed.practiceTrialVerificationStatus, 'verified');
+
+    const revoked = service.revokePracticeCandidate(second.taskId);
+    assert.equal(revoked.practiceCandidateStatus, 'revoked');
+    const fourth = await service.startTask({
+      roomId: 'room-engineering-collaboration',
+      agentId: 'engineering-partner',
+      prompt: 'room B：候选撤回后，再新增一份验收文件。',
+      verificationChecks: checksFor('result-4.txt'),
+      reuseCase: true,
+    });
+    assert.equal(store.getSocialWorkTask(fourth.taskId).practiceSnapshot, null);
+    assert.doesNotMatch(seen[3].task, /候选做法（一次试用）/u);
+    await service.waitForTask(fourth.taskId);
+  } finally {
+    await service.shutdown();
+    db.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('canceling the workspace picker starts no DSH task and writes no task record', async () => {
   const { db, store } = makeStore();
   let launches = 0;

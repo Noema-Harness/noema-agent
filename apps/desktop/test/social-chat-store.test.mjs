@@ -50,7 +50,7 @@ test('social schema seeds stable identities and keeps one agent across independe
       db
         .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
         .get().version,
-      5,
+      6,
     );
   } finally {
     db.close();
@@ -100,6 +100,7 @@ test('social chat schema v1 upgrades additively to project-work state', () => {
       DELETE FROM social_schema_migrations WHERE version = 3;
       DELETE FROM social_schema_migrations WHERE version = 4;
       DELETE FROM social_schema_migrations WHERE version = 5;
+      DELETE FROM social_schema_migrations WHERE version = 6;
       ALTER TABLE social_agents DROP COLUMN capabilities_json;
       ALTER TABLE social_agents DROP COLUMN archived_at;
       ALTER TABLE social_messages DROP COLUMN forwarded_sources_json;
@@ -120,7 +121,7 @@ test('social chat schema v1 upgrades additively to project-work state', () => {
       db
         .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
         .get().version,
-      5,
+      6,
     );
     assert.equal(
       db

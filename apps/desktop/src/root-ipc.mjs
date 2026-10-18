@@ -40,6 +40,7 @@ const CHANNELS = Object.freeze({
   socialWorkStart: 'noema:social-work-start',
   socialWorkStop: 'noema:social-work-stop',
   socialWorkCaseEligible: 'noema:social-work-case-eligible',
+  socialPracticeWithdraw: 'noema:social-practice-withdraw',
 });
 
 /**
@@ -112,6 +113,9 @@ export function registerRootIpc({
     );
     register(CHANNELS.socialWorkCaseEligible, (taskId, eligible) =>
       socialWorkService.setCaseEligible(taskId, eligible),
+    );
+    register(CHANNELS.socialPracticeWithdraw, (taskId) =>
+      socialWorkService.revokePracticeCandidate(taskId),
     );
   }
   register(CHANNELS.models, () => rootAgent.refreshModels());
