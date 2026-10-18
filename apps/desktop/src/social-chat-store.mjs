@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 const MAX_CONTEXT_MESSAGES = 40;
 
 const SEEDED_AGENTS = [
@@ -68,6 +68,9 @@ function hydrateSocialWorkTask(row) {
     toolActionCategories: JSON.parse(row.toolActionCategoriesJson ?? '[]'),
     verificationChecks: JSON.parse(row.verificationChecksJson ?? '[]'),
     verificationResults: JSON.parse(row.verificationResultsJson ?? '[]'),
+    caseEligible: Boolean(row.caseEligible),
+    caseSnapshot: JSON.parse(row.caseSnapshotJson ?? 'null'),
+    caseReuseRequested: Boolean(row.caseReuseRequested),
   };
 }
 
@@ -212,6 +215,23 @@ export class SocialChatStore {
           JSON.stringify(['project-work']),
           'engineering-partner',
         );
+      })();
+    }
+    if (current < 3) {
+      this.db.transaction(() => {
+        this.db.exec(`
+          ALTER TABLE social_work_tasks
+            ADD COLUMN case_eligible INTEGER NOT NULL DEFAULT 1
+              CHECK (case_eligible IN (0, 1));
+          ALTER TABLE social_work_tasks
+            ADD COLUMN case_snapshot_json TEXT NOT NULL DEFAULT 'null';
+          ALTER TABLE social_work_tasks
+            ADD COLUMN case_reuse_requested INTEGER NOT NULL DEFAULT 0
+              CHECK (case_reuse_requested IN (0, 1));
+
+          INSERT INTO social_schema_migrations (version, applied_at)
+          VALUES (3, '${isoNow()}');
+        `);
       })();
     }
   }
@@ -551,6 +571,9 @@ export class SocialChatStore {
         verificationStatus: task.verificationStatus,
         verificationResults: task.verificationResults,
         verificationAttempts: task.verificationAttempts,
+        caseEligible: task.caseEligible,
+        caseSnapshot: task.caseSnapshot,
+        caseReuseRequested: task.caseReuseRequested,
         createdAt: task.createdAt,
         updatedAt: task.updatedAt,
         completedAt: task.completedAt,
@@ -580,6 +603,8 @@ export class SocialChatStore {
     taskPrompt,
     model,
     verificationChecks = [],
+    caseReuseRequested = false,
+    caseSnapshot = null,
   }) {
     requireText(id, '任务 ID', 200);
     requireText(roomId, '房间 ID', 200);
@@ -614,8 +639,9 @@ export class SocialChatStore {
         INSERT INTO social_work_tasks
           (id, room_id, agent_id, workspace_path, workspace_key, task_prompt,
            model, runtime, status, verification_status,
-           verification_checks_json, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'dsh', 'starting', ?, ?, ?, ?)
+           verification_checks_json, case_snapshot_json, case_reuse_requested,
+           created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'dsh', 'starting', ?, ?, ?, ?, ?, ?)
       `)
       .run(
         id,
@@ -627,6 +653,8 @@ export class SocialChatStore {
         normalizedModel,
         verificationChecks.length ? 'pending' : 'not_planned',
         JSON.stringify(verificationChecks),
+        JSON.stringify(caseSnapshot),
+        caseReuseRequested ? 1 : 0,
         now,
         now,
       );
@@ -651,6 +679,9 @@ export class SocialChatStore {
                verification_checks_json AS verificationChecksJson,
                verification_results_json AS verificationResultsJson,
                verification_attempts AS verificationAttempts,
+               case_eligible AS caseEligible,
+               case_snapshot_json AS caseSnapshotJson,
+               case_reuse_requested AS caseReuseRequested,
                created_at AS createdAt, updated_at AS updatedAt,
                completed_at AS completedAt
         FROM social_work_tasks WHERE id = ?
@@ -675,6 +706,9 @@ export class SocialChatStore {
                verification_checks_json AS verificationChecksJson,
                verification_results_json AS verificationResultsJson,
                verification_attempts AS verificationAttempts,
+               case_eligible AS caseEligible,
+               case_snapshot_json AS caseSnapshotJson,
+               case_reuse_requested AS caseReuseRequested,
                created_at AS createdAt, updated_at AS updatedAt,
                completed_at AS completedAt
         FROM social_work_tasks WHERE room_id = ? ORDER BY created_at ASC
@@ -692,6 +726,55 @@ export class SocialChatStore {
         WHERE id = ? AND status IN ('starting', 'running')
       `)
       .run(runtimeSessionId, now, taskId);
+    return this.getSocialWorkTask(taskId);
+  }
+
+  findReusableCase({ agentId, workspaceKey, excludeRoomId }) {
+    const row = this.db
+      .prepare(`
+        SELECT t.id, t.room_id AS roomId, r.title AS roomTitle,
+               t.agent_id AS agentId, t.task_prompt AS taskPrompt,
+               t.result_text AS resultText,
+               t.verification_checks_json AS verificationChecksJson,
+               t.verification_results_json AS verificationResultsJson,
+               t.completed_at AS completedAt
+        FROM social_work_tasks AS t
+        JOIN social_rooms AS r ON r.id = t.room_id
+        WHERE t.agent_id = ? AND t.workspace_key = ? AND t.room_id <> ?
+          AND t.status = 'completed' AND t.verification_status = 'verified'
+          AND t.case_eligible = 1 AND t.completed_at IS NOT NULL
+        ORDER BY t.completed_at DESC, t.created_at DESC
+        LIMIT 1
+      `)
+      .get(agentId, workspaceKey, excludeRoomId);
+    if (!row) return null;
+    return {
+      taskId: row.id,
+      roomId: row.roomId,
+      roomTitle: row.roomTitle,
+      agentId: row.agentId,
+      taskPrompt: row.taskPrompt,
+      resultText: row.resultText,
+      verificationChecks: JSON.parse(row.verificationChecksJson ?? '[]'),
+      verificationResults: JSON.parse(row.verificationResultsJson ?? '[]'),
+      completedAt: row.completedAt,
+    };
+  }
+
+  setSocialWorkTaskCaseEligible(taskId, eligible) {
+    if (typeof eligible !== 'boolean') {
+      throw new TypeError('案例复用状态必须是布尔值。');
+    }
+    const task = this.getSocialWorkTask(taskId);
+    if (task.status !== 'completed' || task.verificationStatus !== 'verified') {
+      throw new Error('只有已完成且通过独立核验的任务才能作为案例。');
+    }
+    this.db
+      .prepare(`
+        UPDATE social_work_tasks SET case_eligible = ?, updated_at = ?
+        WHERE id = ?
+      `)
+      .run(eligible ? 1 : 0, isoNow(), taskId);
     return this.getSocialWorkTask(taskId);
   }
 
@@ -775,7 +858,12 @@ export class SocialChatStore {
           result_text = ?, error_code = ?, error_message = ?,
           tool_call_count = MAX(tool_call_count, ?),
           verification_status = ?, verification_results_json = ?,
-          verification_attempts = ?, updated_at = ?, completed_at = ?
+          verification_attempts = ?,
+          case_eligible = CASE
+            WHEN ? = 'completed' AND ? = 'verified' THEN case_eligible
+            ELSE 0
+          END,
+          updated_at = ?, completed_at = ?
         WHERE id = ?
       `)
       .run(
@@ -793,6 +881,8 @@ export class SocialChatStore {
         Number.isInteger(outcome.verificationAttempts)
           ? outcome.verificationAttempts
           : 0,
+        status,
+        outcome.verificationStatus ?? 'not_planned',
         now,
         now,
         taskId,

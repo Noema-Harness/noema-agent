@@ -37,6 +37,16 @@ Hermes 的内置持久状态仍是有字符上限的 `MEMORY.md` / `USER.md`，�
 
 这是一套现实可用的工作流复用机制：经历、稳定事实和程序文件被分开，长程序按需加载，变更可审批。但“每轮 review”生成/写入 memory 或 skill，不等于在同一当前会话里即时改变模型状态；写入成功也不证明它在新情境中有用、不会错误触发或已让 agent 形成稳定个体性。内置身份状态与 profile/session 绑定，也不是跨多个渠道共享的一位专业好友。[Hermes skills 文档](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/features/skills.md) · [Hermes memory 文档](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/features/memory.md) · [后台 review 实现](https://github.com/NousResearch/hermes-agent/blob/main/agent/background_review.py) · [skill evolution 独立仓库](https://github.com/NousResearch/hermes-agent-self-evolution)
 
+### HugAgentOS：把纠错链视为强程序信号，但“成功”仍是文本启发式
+
+HugAgentOS 是一套仍在活跃维护的自托管 AgentOS（当前仓库约 615 stars、411 commits；社区规模不代表产品机制已被独立验证）。它把 user profile、procedural memories、可选知识图谱与 session working set 分层；每轮回答结束后，把提取任务写入 SQLite/Postgres Outbox，由后台 worker 异步处理，支持租约、重试、隔离失败和幂等 effect receipt。记忆写入受 user/project 的 memory-write 开关约束，不阻塞 SSE 回复路径。[仓库](https://github.com/ZJU-REAL/HugAgentOS) · [记忆模块文档](https://github.com/ZJU-REAL/HugAgentOS/blob/main/document/en/modules/memory.md) · [持久 Outbox 实现](https://github.com/ZJU-REAL/HugAgentOS/blob/main/src/backend/core/memory/outbox/jobs.py)
+
+本轮直接核对了轨迹检测、procedural extractor、write gate 和单测。它读取同一 chat 最近最多 8 条消息；当文本 cue 显示“助手先失败/误判 → 用户改方法 → 后续助手回复出现成功 cue”，就把 procedural 加入候选，并允许它绕过 LLM write-gate。Extractor 还把一次性指令、稳定偏好、通用常识和可复用做法分开；单测确认：在理想轨迹中，即使 judge 不可用，也保留 procedural 候选。[trajectory detector](https://github.com/ZJU-REAL/HugAgentOS/blob/main/src/backend/core/memory/trajectory.py) · [procedural extractor](https://github.com/ZJU-REAL/HugAgentOS/blob/main/src/backend/core/memory/extractors/procedural.py) · [deterministic-gate test](https://github.com/ZJU-REAL/HugAgentOS/blob/main/src/backend/tests/memory/test_write_gate.py)
+
+重要反例是：“verified correction”并非由独立环境 verifier 判定。代码通过 assistant 文本中的“成功/已完成/verified”正则来确认后续成功；这比助手单次复盘强，因为有用户改变方法且有后续轮次，但仍可能把自报成功、否定句或不完整结果当成验证。它也只读取当前 chat 的近期轨迹，不拥有跨 room 的同一专业好友身份。其完整 memory platform（mem0/Milvus/可选 Neo4j、企业版审计、Project scopes）不适合照搬到 Noema 桌面模块化单体。
+
+**对 Noema 的可用结论：**用户直接给出的未来协作约定和模型推断出的专业方法必须分开。前者可按用户明确范围生效；后者只能成为有来源的候选。对于工程任务，可用 Noema 已有的独立文件 verifier 代替“assistant 文本听起来成功”作为一项客观结果证据；它仍不证明某条方法造成了成功。若将经历转成 practice，必须记录来源 room、适用条件、候选/试用/当前版本、每次实际带入及 verifier 结果；跨 room 只带小型实践，不带原 transcript。Outbox 的异步、幂等与失败隔离可借鉴，但当前桌面端没有证据需要复制其多后端与后台 worker 复杂度。
+
 ### Voyager：由环境反馈和 verifier 把游戏行为沉淀为可执行技能
 
 Voyager 用 GPT-4 生成 Minecraft 控制代码，把运行环境观察、解释器错误和另一轮 GPT-4 自我核验重新带入迭代；任务经 verifier 判定完成后才把代码加入可检索的 skill library。技能可以被带到新世界，解决新任务。论文也记录自身边界：API 成本高、agent 会卡住、模型会虚构物品或调用不存在的函数，verifier 也会漏判（例如未识别正确的击杀信号）。

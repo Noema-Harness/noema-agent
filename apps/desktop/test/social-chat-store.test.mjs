@@ -50,7 +50,7 @@ test('social schema seeds stable identities and keeps one agent across independe
       db
         .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
         .get().version,
-      2,
+      3,
     );
   } finally {
     db.close();
@@ -97,6 +97,7 @@ test('social chat schema v1 upgrades additively to project-work state', () => {
     db.exec(`
       DROP TABLE social_work_tasks;
       DELETE FROM social_schema_migrations WHERE version = 2;
+      DELETE FROM social_schema_migrations WHERE version = 3;
       ALTER TABLE social_agents DROP COLUMN capabilities_json;
     `);
 
@@ -113,7 +114,7 @@ test('social chat schema v1 upgrades additively to project-work state', () => {
       db
         .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
         .get().version,
-      2,
+      3,
     );
     assert.equal(
       db
@@ -190,6 +191,82 @@ test('model context is room-scoped and preserves whitespace in streamed deltas',
     assert.equal(
       social.getAgent('engineering-partner').systemPrompt.includes('工程搭档'),
       true,
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test('only completed independently verified cases are available across rooms', () => {
+  const { db, social } = makeStores();
+  const workspaceKey = 'c:\\scratch\\same-project';
+  db.prepare('UPDATE social_agents SET capabilities_json = ? WHERE id = ?').run(
+    JSON.stringify(['project-work']),
+    'noema',
+  );
+  const createTask = ({
+    id,
+    roomId = 'room-engineering-partner',
+    agentId = 'engineering-partner',
+    key = workspaceKey,
+    status = 'completed',
+    verificationStatus = 'verified',
+  }) => {
+    social.createSocialWorkTask({
+      id,
+      roomId,
+      agentId,
+      workspacePath: key,
+      workspaceKey: key,
+      taskPrompt: `任务 ${id}`,
+      model: 'test-model',
+      verificationChecks: [{ kind: 'file_exists', path: 'README.md' }],
+    });
+    social.finishSocialWorkTask(id, {
+      status,
+      resultText: `结果 ${id}`,
+      verificationStatus,
+      verificationResults: [
+        {
+          kind: 'file_exists',
+          path: 'README.md',
+          status: verificationStatus,
+          reason: 'test',
+        },
+      ],
+    });
+  };
+
+  try {
+    createTask({ id: 'older-verified' });
+    createTask({ id: 'newer-failed', status: 'failed' });
+    createTask({ id: 'not-verified', verificationStatus: 'unavailable' });
+    createTask({ id: 'other-room', roomId: 'room-engineering-collaboration' });
+    createTask({
+      id: 'other-agent',
+      agentId: 'noema',
+      roomId: 'room-engineering-collaboration',
+    });
+    createTask({ id: 'other-workspace', key: 'c:\\scratch\\other-project' });
+
+    let candidate = social.findReusableCase({
+      agentId: 'engineering-partner',
+      workspaceKey,
+      excludeRoomId: 'room-engineering-collaboration',
+    });
+    assert.equal(candidate?.taskId, 'older-verified');
+    assert.equal(candidate?.roomId, 'room-engineering-partner');
+
+    social.setSocialWorkTaskCaseEligible('older-verified', false);
+    candidate = social.findReusableCase({
+      agentId: 'engineering-partner',
+      workspaceKey,
+      excludeRoomId: 'room-engineering-collaboration',
+    });
+    assert.equal(candidate, null);
+    assert.equal(
+      social.getSocialWorkTask('older-verified').caseEligible,
+      false,
     );
   } finally {
     db.close();

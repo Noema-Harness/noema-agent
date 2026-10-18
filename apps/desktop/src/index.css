@@ -3761,6 +3761,46 @@ select:disabled {
   text-underline-offset: 2px;
   cursor: pointer;
 }
+.case-reuse-control {
+  width: min(calc(100% - clamp(32px, 5vw, 112px)), 860px);
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin: 3px auto 0;
+  padding: 8px 10px;
+  border: 1px solid var(--chat-line);
+  border-radius: 7px;
+  background: var(--chat-paper-alt);
+  color: var(--chat-ink);
+  cursor: pointer;
+}
+.case-reuse-control input {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  margin: 1px 0 0;
+  accent-color: var(--chat-forest);
+}
+.case-reuse-control span {
+  display: grid;
+  gap: 2px;
+}
+.case-reuse-control strong {
+  font-size: 10px;
+  font-weight: 650;
+}
+.case-reuse-control small {
+  color: var(--chat-muted);
+  font-size: 9px;
+  line-height: 1.4;
+}
+.case-reuse-control:focus-within {
+  outline: 2px solid var(--chat-forest);
+  outline-offset: 2px;
+}
+.case-reuse-control input:disabled {
+  cursor: not-allowed;
+}
 .message-composer {
   width: min(calc(100% - clamp(32px, 5vw, 112px)), 860px);
   min-height: 106px;
@@ -3899,6 +3939,59 @@ select:disabled {
   line-height: 1.55;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+.project-work-case {
+  margin: 8px 0 10px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  background: var(--chat-paper-alt);
+  color: var(--chat-ink);
+  font-size: 10px;
+  line-height: 1.5;
+}
+.project-work-case summary,
+.project-work-case-empty {
+  color: var(--chat-forest-deep);
+  font-size: 10px;
+  font-weight: 650;
+}
+.project-work-case summary {
+  cursor: pointer;
+}
+.project-work-case p {
+  margin: 7px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.project-work-case-empty,
+.project-work-case-retired {
+  margin: 7px 0;
+  color: var(--chat-muted);
+  font-size: 9px;
+}
+.project-work-case-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--chat-line);
+  color: var(--chat-muted);
+  font-size: 9px;
+}
+.project-work-case-footer button {
+  min-height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--chat-line);
+  border-radius: 7px;
+  background: var(--chat-paper);
+  color: var(--chat-forest-deep);
+  font-size: 9px;
+  cursor: pointer;
+}
+.project-work-case-footer button:hover {
+  background: var(--chat-paper-alt);
 }
 .project-work-progress,
 .project-work-verification {

@@ -1,15 +1,19 @@
 import { spawn } from 'node:child_process';
+import Database from 'better-sqlite3';
 import {
   existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
+  writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { verifyWorkspaceChecks } from '../src/workspace-verifier.mjs';
+import { RootStore } from '../src/root-store.mjs';
+import { SocialChatStore } from '../src/social-chat-store.mjs';
 import { configureElectronRuntime } from './electron-runtime.mjs';
 
 configureElectronRuntime();
@@ -63,6 +67,44 @@ const prompt = [
 ].join('\n');
 mkdirSync(e2eDirectory, { recursive: true });
 mkdirSync(workspacePath, { recursive: true });
+
+// Seed one independently checked room-A task so the real renderer-to-service
+// run in room B exercises cross-room case selection without another model
+// generation. Service tests separately cover producing a verified source.
+const sourceCaseTaskId = 'e2e-room-a-verified-case';
+const sourceCasePath = 'NOEMA-E2E-ROOM-A-CASE.txt';
+writeFileSync(path.join(workspacePath, sourceCasePath), 'fixture-verified');
+const sourceChecks = [
+  { kind: 'file_contains', path: sourceCasePath, text: 'fixture-verified' },
+];
+const sourceVerification = verifyWorkspaceChecks(workspacePath, sourceChecks);
+if (sourceVerification.status !== 'verified') {
+  throw new Error('Could not independently verify the room-A case fixture.');
+}
+const seedDatabase = new Database(databasePath);
+new RootStore(seedDatabase);
+const seedSocialStore = new SocialChatStore(seedDatabase);
+seedSocialStore.createSocialWorkTask({
+  id: sourceCaseTaskId,
+  roomId: 'room-engineering-partner',
+  agentId: 'engineering-partner',
+  workspacePath,
+  workspaceKey: path
+    .normalize(workspacePath)
+    .replaceAll('/', '\\')
+    .toLocaleLowerCase('en-US'),
+  taskPrompt: 'room A fixture：读取并按约定核对项目文档。',
+  model: 'e2e-fixture',
+  verificationChecks: sourceChecks,
+});
+seedSocialStore.finishSocialWorkTask(sourceCaseTaskId, {
+  status: 'completed',
+  resultText: 'room A fixture：结果记录已经写入并通过文件条件核验。',
+  verificationStatus: 'verified',
+  verificationResults: sourceVerification.checks,
+  verificationAttempts: 0,
+});
+seedDatabase.close();
 
 const child = spawn(process.execPath, ['scripts/start.mjs'], {
   cwd: appDirectory,
@@ -119,6 +161,8 @@ const summary = {
   errorCode: result.task?.errorCode ?? null,
   errorMessage: result.task?.errorMessage ?? result.errorMessage ?? null,
   toolCallCount: result.task?.toolCallCount ?? 0,
+  caseSnapshot: result.task?.caseSnapshot ?? null,
+  expectedSourceCaseTaskId: sourceCaseTaskId,
   workspacePath,
   childExitCode: exit.code,
   childSignal: exit.signal,
@@ -133,13 +177,25 @@ if (
   result.outcome !== 'finished' ||
   result.task?.status !== 'completed' ||
   result.task?.verificationStatus !== 'verified' ||
+  result.task?.caseSnapshot?.taskId !== sourceCaseTaskId ||
+  result.task?.caseSnapshot?.roomId !== 'room-engineering-partner' ||
   independentVerification.status !== 'verified' ||
   !result.socialWorkUiSmoke?.desktop?.taskVisible ||
   !result.socialWorkUiSmoke?.desktop?.projectModeSelected ||
+  !result.socialWorkUiSmoke?.desktop?.caseControlVisible ||
+  !result.socialWorkUiSmoke?.desktop?.caseReferenceVisible ||
+  !result.socialWorkUiSmoke?.desktop?.caseReferenceText?.includes(
+    'room A fixture',
+  ) ||
   !result.socialWorkUiSmoke?.desktop?.composerVisible ||
   !result.socialWorkUiSmoke?.desktop?.documentNoOverflow ||
   !result.socialWorkUiSmoke?.narrow?.taskVisible ||
   !result.socialWorkUiSmoke?.narrow?.projectModeSelected ||
+  !result.socialWorkUiSmoke?.narrow?.caseControlVisible ||
+  !result.socialWorkUiSmoke?.narrow?.caseReferenceVisible ||
+  !result.socialWorkUiSmoke?.narrow?.caseReferenceText?.includes(
+    'room A fixture',
+  ) ||
   !result.socialWorkUiSmoke?.narrow?.composerVisible ||
   !result.socialWorkUiSmoke?.narrow?.documentNoOverflow ||
   exit.code !== 0

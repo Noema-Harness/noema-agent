@@ -127,6 +127,7 @@ function SocialChatApp() {
   const [selectedAgentId, setSelectedAgentId] = useState('noema');
   const [draft, setDraft] = useState('');
   const [composerMode, setComposerMode] = useState<'chat' | 'project'>('chat');
+  const [reuseCase, setReuseCase] = useState(false);
   const [search, setSearch] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
@@ -362,6 +363,7 @@ function SocialChatApp() {
     setActiveRoomId(room.id);
     setSelectedAgentId(room.memberIds[0] ?? 'noema');
     setComposerMode('chat');
+    setReuseCase(false);
     setShowRoomList(false);
     setNotice('');
   };
@@ -410,9 +412,11 @@ function SocialChatApp() {
         roomId: currentRoom.id,
         agentId: currentRecipient.id,
         prompt: draft.trim(),
+        reuseCase,
       });
       if (result.accepted) {
         setDraft('');
+        setReuseCase(false);
         if (draftRef.current) draftRef.current.style.height = 'auto';
         setNotice('工程搭档已开始处理；你可以继续在这个聊天里说话。');
         await Promise.all([refreshState(), loadRoom(currentRoom.id)]);
@@ -431,6 +435,16 @@ function SocialChatApp() {
       await loadRoom(task.roomId);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : '任务没有停止。');
+    }
+  };
+
+  const handleDisableCaseReuse = async (task: NoemaSocialWorkTask) => {
+    try {
+      await window.noema.setSocialWorkCaseEligible(task.id, false);
+      await loadRoom(task.roomId);
+      setNotice('这项案例不会再被后续项目任务引用；历史任务快照保持不变。');
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : '案例状态没有更新。');
     }
   };
 
@@ -892,6 +906,9 @@ function SocialChatApp() {
                           task={item.task}
                           agent={messageAgent.get(item.task.agentId) ?? null}
                           onStop={() => void handleStopProjectWork(item.task)}
+                          onDisableCase={() =>
+                            void handleDisableCaseReuse(item.task)
+                          }
                           onRepeat={() => {
                             setSelectedAgentId(item.task.agentId);
                             setComposerMode('project');
@@ -991,6 +1008,23 @@ function SocialChatApp() {
                     </span>
                   ) : null}
                 </div>
+              ) : null}
+
+              {composerMode === 'project' ? (
+                <label className="case-reuse-control">
+                  <input
+                    type="checkbox"
+                    checked={reuseCase}
+                    onChange={(event) => setReuseCase(event.target.checked)}
+                    disabled={workBusy}
+                  />
+                  <span>
+                    <strong>参考同项目的已核验案例</strong>
+                    <small>
+                      最多带入另一聊天中的一项限长摘要，并过滤常见凭据样式；不会复制原聊天。勾选后，摘要会随任务发送给当前模型，仍可能含项目敏感信息。
+                    </small>
+                  </span>
+                </label>
               ) : null}
 
               <form
@@ -1430,11 +1464,13 @@ function ProjectWorkCard({
   agent,
   onStop,
   onRepeat,
+  onDisableCase,
 }: {
   task: NoemaSocialWorkTask;
   agent: NoemaSocialAgent | null;
   onStop: () => void;
   onRepeat: () => void;
+  onDisableCase: () => void;
 }) {
   const active = ['starting', 'running', 'verifying'].includes(task.status);
   const title =
@@ -1489,6 +1525,25 @@ function ProjectWorkCard({
         <time dateTime={task.updatedAt}>{timeLabel(task.updatedAt)}</time>
       </header>
       <p className="project-work-request">{task.taskPrompt}</p>
+      {task.caseSnapshot ? (
+        <details className="project-work-case">
+          <summary>
+            本轮引用了「{task.caseSnapshot.roomTitle}」中的已核验案例
+          </summary>
+          <p>来源任务：{task.caseSnapshot.taskPrompt || '（任务摘要为空）'}</p>
+          {task.caseSnapshot.resultText ? (
+            <p>当时结果：{task.caseSnapshot.resultText}</p>
+          ) : null}
+          <p>
+            来源任务的文件条件曾通过 Noema
+            核验；这只说明当时条件通过，不代表本轮应照搬或已因此成功。
+          </p>
+        </details>
+      ) : task.caseReuseRequested ? (
+        <p className="project-work-case-empty">
+          本轮没有找到同一项目、来自其他聊天且通过核验的案例。
+        </p>
+      ) : null}
       {active ? (
         <div className="project-work-progress">
           <span>
@@ -1535,6 +1590,22 @@ function ProjectWorkCard({
             再次编辑并执行
           </button>
         </footer>
+      ) : null}
+      {!active &&
+      task.status === 'completed' &&
+      task.verificationStatus === 'verified' &&
+      task.caseEligible ? (
+        <footer className="project-work-case-footer">
+          <span>这项工作可作为同项目后续任务的案例</span>
+          <button type="button" onClick={onDisableCase}>
+            不再引用此案例
+          </button>
+        </footer>
+      ) : null}
+      {!task.caseEligible &&
+      task.status === 'completed' &&
+      task.verificationStatus === 'verified' ? (
+        <p className="project-work-case-retired">已从后续案例中撤回</p>
       ) : null}
       {active ? (
         <footer className="project-work-footer">
