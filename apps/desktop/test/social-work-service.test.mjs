@@ -503,3 +503,66 @@ test('archived specialists cannot start project work or open the workspace picke
     db.close();
   }
 });
+
+test('a user-created specialist with explicit project-work capability uses the existing room-scoped verifier path', async () => {
+  const directory = mkdtempSync(
+    path.join(tmpdir(), 'noema-social-custom-work-'),
+  );
+  const workspace = path.join(directory, 'workspace');
+  mkdirSync(workspace);
+  const { db, store } = makeStore();
+  const created = store.createAgent({
+    name: '游戏工程观察员',
+    headline: '长期研究游戏项目结构与迭代验证',
+    description: '先厘清目标，再用小步验证。',
+    projectWork: true,
+  });
+  const starts = [];
+  const service = new SocialWorkService({
+    store,
+    adapter: {
+      async startTask(input) {
+        starts.push(input);
+        writeFileSync(
+          path.join(input.workspacePath, 'custom-proof.txt'),
+          'passed',
+        );
+        return {
+          started: Promise.resolve({
+            sessionId: 'custom-agent-project-session',
+          }),
+          done: Promise.resolve({
+            status: 'completed',
+            sessionId: 'custom-agent-project-session',
+            result: '按用户指定的文件条件完成。',
+            toolCallCount: 1,
+          }),
+          stop: () => true,
+        };
+      },
+    },
+    secretStore: { isConfigured: () => true },
+    chooseWorkspace: async () => workspace,
+  });
+  try {
+    const started = await service.startTask({
+      roomId: created.room.id,
+      agentId: created.members[0].id,
+      prompt: '在项目里创建验收文件。',
+      verificationChecks: [
+        { kind: 'file_contains', path: 'custom-proof.txt', text: 'passed' },
+      ],
+    });
+    const task = await service.waitForTask(started.taskId);
+    assert.equal(task.status, 'completed');
+    assert.equal(task.verificationStatus, 'verified');
+    assert.equal(task.agentId, created.members[0].id);
+    assert.equal(starts.length, 1);
+    assert.match(starts[0].task, /长期研究游戏项目结构与迭代验证/u);
+    assert.match(starts[0].task, /只有当用户明确切换到项目工作/u);
+  } finally {
+    await service.shutdown();
+    db.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

@@ -318,6 +318,16 @@ test('a user-created specialist keeps one identity across a fresh DM, group, and
       /不证明你已经具备对应领域的专家水平/u,
     );
     assert.equal(created.messages[0].content.includes('已成为联系人'), true);
+    assert.match(social.getAgent(agentId).systemPrompt, /当前只有聊天能力/u);
+    const projectWorkEnabled = social.setAgentProjectWork(agentId, true);
+    assert.deepEqual(projectWorkEnabled.capabilities, ['project-work']);
+    assert.match(
+      projectWorkEnabled.systemPrompt,
+      /只有当用户明确切换到项目工作/u,
+    );
+    const projectWorkDisabled = social.setAgentProjectWork(agentId, false);
+    assert.deepEqual(projectWorkDisabled.capabilities, []);
+    assert.match(projectWorkDisabled.systemPrompt, /当前只有聊天能力/u);
 
     const dmTurn = social.beginTurn({
       roomId: directRoomId,
@@ -372,7 +382,7 @@ test('a user-created specialist keeps one identity across a fresh DM, group, and
 
     const restored = social.setAgentArchived(agentId, false);
     assert.equal(restored.archivedAt, null);
-    assert.equal(social.getRoomSnapshot(directRoomId).messages.length, 5);
+    assert.equal(social.getRoomSnapshot(directRoomId).messages.length, 7);
     assert.equal(
       social.createGroup({ title: '恢复后可邀请', agentIds: [agentId] })
         .members[0].id,

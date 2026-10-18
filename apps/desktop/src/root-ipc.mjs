@@ -31,6 +31,7 @@ const CHANNELS = Object.freeze({
   socialRoom: 'noema:social-room',
   socialCreateGroup: 'noema:social-create-group',
   socialCreateAgent: 'noema:social-create-agent',
+  socialAgentProjectWork: 'noema:social-agent-project-work',
   socialAgentArchive: 'noema:social-agent-archive',
   socialSend: 'noema:social-send',
   socialStop: 'noema:social-stop',
@@ -81,6 +82,9 @@ export function registerRootIpc({
     });
     register(CHANNELS.socialCreateAgent, (input) =>
       socialChatService.createAgent(input),
+    );
+    register(CHANNELS.socialAgentProjectWork, (agentId, enabled) =>
+      socialChatService.setAgentProjectWork(agentId, enabled),
     );
     register(CHANNELS.socialAgentArchive, (agentId, archived) =>
       socialChatService.setAgentArchived(agentId, archived),

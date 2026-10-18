@@ -167,6 +167,7 @@ function SocialChatApp() {
   const [agentName, setAgentName] = useState('');
   const [agentHeadline, setAgentHeadline] = useState('');
   const [agentDescription, setAgentDescription] = useState('');
+  const [agentProjectWork, setAgentProjectWork] = useState(false);
   const [creatingAgent, setCreatingAgent] = useState(false);
   const [updatingAgentId, setUpdatingAgentId] = useState<string | null>(null);
   const [providerBaseUrl, setProviderBaseUrl] = useState('');
@@ -206,6 +207,7 @@ function SocialChatApp() {
     setAgentName('');
     setAgentHeadline('');
     setAgentDescription('');
+    setAgentProjectWork(false);
     requestAnimationFrame(() => agentTriggerRef.current?.focus());
   }, []);
 
@@ -590,11 +592,13 @@ function SocialChatApp() {
         name: agentName.trim(),
         headline: agentHeadline.trim(),
         description: agentDescription.trim(),
+        projectWork: agentProjectWork,
       });
       setCreateAgentOpen(false);
       setAgentName('');
       setAgentHeadline('');
       setAgentDescription('');
+      setAgentProjectWork(false);
       setActiveRoomId(room.room.id);
       setShowRoomList(false);
       await Promise.all([refreshState(), loadRoom(room.room.id)]);
@@ -604,6 +608,29 @@ function SocialChatApp() {
       );
     } finally {
       setCreatingAgent(false);
+    }
+  };
+
+  const handleToggleAgentProjectWork = async (agent: NoemaSocialAgent) => {
+    const nextEnabled = !agent.capabilities.includes('project-work');
+    setUpdatingAgentId(agent.id);
+    setNotice('');
+    try {
+      await window.noema.setSocialAgentProjectWork(agent.id, nextEnabled);
+      if (activeRoomId)
+        await Promise.all([refreshState(), loadRoom(activeRoomId)]);
+      if (!nextEnabled) setComposerMode('chat');
+      setNotice(
+        nextEnabled
+          ? `${agent.name}可以承接项目文件任务；每次仍需切换项目工作并选择目录。`
+          : `${agent.name}的项目文件能力已关闭；此前聊天与已启动任务不受影响。`,
+      );
+    } catch (error) {
+      setNotice(
+        error instanceof Error ? error.message : '项目工作能力没有更新。',
+      );
+    } finally {
+      setUpdatingAgentId(null);
     }
   };
 
@@ -986,18 +1013,41 @@ function SocialChatApp() {
                       {members.length + 1} 位参与者
                     </span>
                   ) : members[0]?.kind === 'specialist' ? (
-                    <button
-                      className="agent-archive-button"
-                      type="button"
-                      onClick={() => void handleToggleAgentArchive(members[0])}
-                      disabled={updatingAgentId === members[0].id}
-                    >
-                      {updatingAgentId === members[0].id
-                        ? '正在更新…'
-                        : members[0].archivedAt
-                          ? '恢复联系人'
-                          : '归档联系人'}
-                    </button>
+                    <div className="agent-header-actions">
+                      <label
+                        className="agent-project-capability"
+                        title="此联系人是否可在你明确选择项目目录后承接文件任务"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={members[0].capabilities.includes(
+                            'project-work',
+                          )}
+                          disabled={
+                            Boolean(members[0].archivedAt) ||
+                            updatingAgentId === members[0].id
+                          }
+                          onChange={() =>
+                            void handleToggleAgentProjectWork(members[0])
+                          }
+                        />
+                        项目工作
+                      </label>
+                      <button
+                        className="agent-archive-button"
+                        type="button"
+                        onClick={() =>
+                          void handleToggleAgentArchive(members[0])
+                        }
+                        disabled={updatingAgentId === members[0].id}
+                      >
+                        {updatingAgentId === members[0].id
+                          ? '更新中…'
+                          : members[0].archivedAt
+                            ? '恢复'
+                            : '归档'}
+                      </button>
+                    </div>
                   ) : (
                     <span className="room-presence">
                       <i /> 持续联系人
@@ -1360,8 +1410,23 @@ function SocialChatApp() {
                 disabled={creatingAgent}
               />
             </label>
+            <label className="agent-capability-choice">
+              <input
+                type="checkbox"
+                checked={agentProjectWork}
+                onChange={(event) => setAgentProjectWork(event.target.checked)}
+                disabled={creatingAgent}
+              />
+              <span>
+                <strong>允许它承接项目文件任务</strong>
+                <small>
+                  默认关闭。开启后，它可在你明确切到项目工作并选择目录后，通过现有
+                  DSH 流程操作项目文件；不会因为普通聊天自动执行。
+                </small>
+              </span>
+            </label>
             <p className="dialog-footnote">
-              创建时资料只保存在本机，不调用模型。以后在这里聊天时，专业范围与合作方式会随消息发送给当前模型。新联系人目前只有聊天能力；这些资料不代表其能力已经验证。
+              创建时资料只保存在本机，不调用模型。以后在这里聊天时，专业范围与合作方式会随消息发送给当前模型。专业范围是你的设定，不代表其能力已经验证。
             </p>
             <div className="dialog-actions">
               <button

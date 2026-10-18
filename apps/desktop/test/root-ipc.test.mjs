@@ -291,6 +291,10 @@ test('room-scoped project work requires the trusted app window and does not use 
       id: agentId,
       archivedAt: archived ? 'now' : null,
     }),
+    setAgentProjectWork: (agentId, enabled) => ({
+      id: agentId,
+      capabilities: enabled ? ['project-work'] : [],
+    }),
     sendMessage: (input) => input,
     stopReply: () => true,
     retryReply: () => ({ accepted: true }),
@@ -320,6 +324,7 @@ test('room-scoped project work requires the trusted app window and does not use 
   assert.equal(harness.handlers.has(CHANNELS.socialWorkStop), true);
   assert.equal(harness.handlers.has(CHANNELS.socialWorkCaseEligible), true);
   assert.equal(harness.handlers.has(CHANNELS.socialCreateAgent), true);
+  assert.equal(harness.handlers.has(CHANNELS.socialAgentProjectWork), true);
   assert.equal(harness.handlers.has(CHANNELS.socialAgentArchive), true);
   const input = {
     roomId: 'room-engineering-collaboration',
@@ -367,6 +372,14 @@ test('room-scoped project work requires the trusted app window and does not use 
       true,
     ),
     { id: 'agent-created', archivedAt: 'now' },
+  );
+  assert.deepEqual(
+    await harness.handlers.get(CHANNELS.socialAgentProjectWork)(
+      { sender: trustedSender },
+      'agent-created',
+      true,
+    ),
+    { id: 'agent-created', capabilities: ['project-work'] },
   );
   assert.deepEqual(calls, [
     ['start', input],
