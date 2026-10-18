@@ -66,10 +66,32 @@ function Icon({
   name,
   ...props
 }: SVGProps<SVGSVGElement> & {
-  name: 'plus' | 'search' | 'send' | 'settings' | 'back' | 'close' | 'stop';
+  name:
+    | 'plus'
+    | 'users'
+    | 'user-add'
+    | 'search'
+    | 'send'
+    | 'settings'
+    | 'back'
+    | 'close'
+    | 'stop';
 }) {
   const paths: Record<typeof name, React.ReactNode> = {
     plus: <path d="M12 5v14M5 12h14" />,
+    users: (
+      <>
+        <path d="M16 20v-1.3a3.7 3.7 0 0 0-3.7-3.7H6.7A3.7 3.7 0 0 0 3 18.7V20" />
+        <circle cx="9.5" cy="7.5" r="3.5" />
+        <path d="M17 11a3.5 3.5 0 1 0-1-6.8M17 15h4m-2-2v4" />
+      </>
+    ),
+    'user-add': (
+      <>
+        <circle cx="9" cy="7.5" r="3.5" />
+        <path d="M2.5 20v-1.3A3.7 3.7 0 0 1 6.2 15h5.6a3.7 3.7 0 0 1 3.7 3.7V20M19 7v6m-3-3h6" />
+      </>
+    ),
     search: (
       <>
         <circle cx="10.8" cy="10.8" r="6.3" />
@@ -134,6 +156,7 @@ function SocialChatApp() {
   const [workBusy, setWorkBusy] = useState(false);
   const [showRoomList, setShowRoomList] = useState(true);
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
+  const [createAgentOpen, setCreateAgentOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [editProviderConfig, setEditProviderConfig] = useState(false);
   const [groupTitle, setGroupTitle] = useState('');
@@ -141,6 +164,11 @@ function SocialChatApp() {
     'noema',
     'engineering-partner',
   ]);
+  const [agentName, setAgentName] = useState('');
+  const [agentHeadline, setAgentHeadline] = useState('');
+  const [agentDescription, setAgentDescription] = useState('');
+  const [creatingAgent, setCreatingAgent] = useState(false);
+  const [updatingAgentId, setUpdatingAgentId] = useState<string | null>(null);
   const [providerBaseUrl, setProviderBaseUrl] = useState('');
   const [providerApiKey, setProviderApiKey] = useState('');
   const [savingProvider, setSavingProvider] = useState(false);
@@ -151,6 +179,7 @@ function SocialChatApp() {
   const dialogRef = useRef<HTMLFormElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const groupTriggerRef = useRef<HTMLButtonElement>(null);
+  const agentTriggerRef = useRef<HTMLButtonElement>(null);
   const settingsTriggerRef = useRef<HTMLButtonElement>(null);
   const shouldFollowRef = useRef(true);
   const loadSequenceRef = useRef(0);
@@ -172,6 +201,14 @@ function SocialChatApp() {
     requestAnimationFrame(() => groupTriggerRef.current?.focus());
   }, []);
 
+  const closeAgentDialog = useCallback(() => {
+    setCreateAgentOpen(false);
+    setAgentName('');
+    setAgentHeadline('');
+    setAgentDescription('');
+    requestAnimationFrame(() => agentTriggerRef.current?.focus());
+  }, []);
+
   const closeSettingsDialog = useCallback(() => {
     setSettingsOpen(false);
     setEditProviderConfig(false);
@@ -182,7 +219,18 @@ function SocialChatApp() {
     const sequence = ++loadSequenceRef.current;
     try {
       const next = await window.noema.getSocialRoom(roomId);
-      if (sequence === loadSequenceRef.current) setRoomState(next);
+      if (sequence === loadSequenceRef.current) {
+        setRoomState(next);
+        setSelectedAgentId((current) =>
+          next.members.some(
+            (member) => member.id === current && !member.archivedAt,
+          )
+            ? current
+            : (next.members.find((member) => !member.archivedAt)?.id ??
+              next.members[0]?.id ??
+              'noema'),
+        );
+      }
     } catch (error) {
       setNotice(error instanceof Error ? error.message : '无法打开这个聊天。');
     }
@@ -221,6 +269,9 @@ function SocialChatApp() {
         if ('roomId' in event && event.roomId === activeRoomId) {
           void loadRoom(event.roomId);
         }
+        if (event.type === 'agent-state-updated' && activeRoomId) {
+          void loadRoom(activeRoomId);
+        }
         if (event.type === 'chat-room-created') {
           setActiveRoomId(event.roomId);
           setShowRoomList(false);
@@ -255,7 +306,7 @@ function SocialChatApp() {
   }, []);
 
   useEffect(() => {
-    if (!createGroupOpen && !settingsOpen) return;
+    if (!createGroupOpen && !createAgentOpen && !settingsOpen) return;
     const dialog = dialogRef.current;
     if (!dialog) return;
     const previousFocus =
@@ -279,6 +330,7 @@ function SocialChatApp() {
       if (event.key === 'Escape') {
         event.preventDefault();
         if (createGroupOpen) closeGroupDialog();
+        else if (createAgentOpen) closeAgentDialog();
         else closeSettingsDialog();
         return;
       }
@@ -309,7 +361,14 @@ function SocialChatApp() {
       document.removeEventListener('keydown', onDialogKeyDown);
       requestAnimationFrame(() => returnFocusRef.current?.focus());
     };
-  }, [createGroupOpen, settingsOpen, closeGroupDialog, closeSettingsDialog]);
+  }, [
+    createGroupOpen,
+    createAgentOpen,
+    settingsOpen,
+    closeGroupDialog,
+    closeAgentDialog,
+    closeSettingsDialog,
+  ]);
 
   useLayoutEffect(() => {
     if (!shouldFollowRef.current) return;
@@ -323,6 +382,7 @@ function SocialChatApp() {
   }, [roomState?.messages, roomState?.workTasks]);
 
   const agents = state?.agents ?? [];
+  const activeAgents = agents.filter((agent) => !agent.archivedAt);
   const rooms = state?.rooms ?? [];
   const currentRoom = rooms.find((room) => room.id === activeRoomId) ?? null;
   const members = roomState?.room.id === activeRoomId ? roomState.members : [];
@@ -339,11 +399,13 @@ function SocialChatApp() {
   );
   const currentRecipient =
     members.find((agent) => agent.id === selectedAgentId) ?? members[0] ?? null;
+  const currentRecipientArchived = Boolean(currentRecipient?.archivedAt);
   const currentRecipientCanWork = Boolean(
-    currentRecipient?.capabilities.includes('project-work'),
+    currentRecipient?.capabilities.includes('project-work') &&
+    !currentRecipientArchived,
   );
-  const roomCanWork = members.some((agent) =>
-    agent.capabilities.includes('project-work'),
+  const roomCanWork = members.some(
+    (agent) => !agent.archivedAt && agent.capabilities.includes('project-work'),
   );
   const filteredRooms = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
@@ -371,6 +433,10 @@ function SocialChatApp() {
   const handleSend = async (event?: FormEvent) => {
     event?.preventDefault();
     if (!currentRoom || !currentRecipient || !draft.trim() || busy) return;
+    if (currentRecipientArchived) {
+      setNotice('这位联系人已归档；恢复后才能继续聊天。');
+      return;
+    }
     const text = draft;
     setBusy(true);
     setNotice('');
@@ -397,6 +463,10 @@ function SocialChatApp() {
   const handleStartProjectWork = async (event?: FormEvent) => {
     event?.preventDefault();
     if (!currentRoom || !currentRecipient || !draft.trim() || workBusy) return;
+    if (currentRecipientArchived) {
+      setNotice('这位联系人已归档；恢复后才能承接项目工作。');
+      return;
+    }
     if (!state?.projectWork.available) {
       setNotice(state?.projectWork.reason ?? '项目工作当前不可用。');
       return;
@@ -484,12 +554,19 @@ function SocialChatApp() {
 
   const handleCreateGroup = async (event: FormEvent) => {
     event.preventDefault();
+    const eligibleAgentIds = groupAgentIds.filter((agentId) =>
+      activeAgents.some((agent) => agent.id === agentId),
+    );
+    if (!eligibleAgentIds.length) {
+      setNotice('请至少邀请一位未归档联系人。');
+      return;
+    }
     setBusy(true);
     setNotice('');
     try {
       const group = await window.noema.createSocialGroup({
         title: groupTitle.trim(),
-        agentIds: groupAgentIds,
+        agentIds: eligibleAgentIds,
       });
       setCreateGroupOpen(false);
       setGroupTitle('');
@@ -501,6 +578,53 @@ function SocialChatApp() {
       setNotice(error instanceof Error ? error.message : '群聊没有创建成功。');
     } finally {
       setBusy(false);
+    }
+  };
+
+  const handleCreateAgent = async (event: FormEvent) => {
+    event.preventDefault();
+    setCreatingAgent(true);
+    setNotice('');
+    try {
+      const room = await window.noema.createSocialAgent({
+        name: agentName.trim(),
+        headline: agentHeadline.trim(),
+        description: agentDescription.trim(),
+      });
+      setCreateAgentOpen(false);
+      setAgentName('');
+      setAgentHeadline('');
+      setAgentDescription('');
+      setActiveRoomId(room.room.id);
+      setShowRoomList(false);
+      await Promise.all([refreshState(), loadRoom(room.room.id)]);
+    } catch (error) {
+      setNotice(
+        error instanceof Error ? error.message : '联系人没有创建成功。',
+      );
+    } finally {
+      setCreatingAgent(false);
+    }
+  };
+
+  const handleToggleAgentArchive = async (agent: NoemaSocialAgent) => {
+    setUpdatingAgentId(agent.id);
+    setNotice('');
+    try {
+      await window.noema.setSocialAgentArchived(agent.id, !agent.archivedAt);
+      if (activeRoomId)
+        await Promise.all([refreshState(), loadRoom(activeRoomId)]);
+      setNotice(
+        agent.archivedAt
+          ? `${agent.name}已恢复。`
+          : `${agent.name}已归档；现有聊天记录保留。`,
+      );
+    } catch (error) {
+      setNotice(
+        error instanceof Error ? error.message : '联系人状态没有更新。',
+      );
+    } finally {
+      setUpdatingAgentId(null);
     }
   };
 
@@ -682,16 +806,28 @@ function SocialChatApp() {
               <h1>聊天</h1>
               <p>和你的 agent 接着聊</p>
             </div>
-            <button
-              className="icon-button new-group-button"
-              ref={groupTriggerRef}
-              type="button"
-              aria-label="新建群聊"
-              title="新建群聊"
-              onClick={() => setCreateGroupOpen(true)}
-            >
-              <Icon name="plus" />
-            </button>
+            <div className="sidebar-create-actions">
+              <button
+                className="icon-button new-agent-button"
+                ref={agentTriggerRef}
+                type="button"
+                aria-label="创建专业联系人"
+                title="创建专业联系人"
+                onClick={() => setCreateAgentOpen(true)}
+              >
+                <Icon name="user-add" />
+              </button>
+              <button
+                className="icon-button new-group-button"
+                ref={groupTriggerRef}
+                type="button"
+                aria-label="新建群聊"
+                title="新建群聊"
+                onClick={() => setCreateGroupOpen(true)}
+              >
+                <Icon name="users" />
+              </button>
+            </div>
           </div>
 
           <label className="chat-search">
@@ -751,6 +887,11 @@ function SocialChatApp() {
                   <span className="room-list-copy">
                     <span className="room-list-title-line">
                       <span className="room-list-title">{room.title}</span>
+                      {room.memberIds.some(
+                        (agentId) => messageAgent.get(agentId)?.archivedAt,
+                      ) ? (
+                        <span className="room-archived-mark">已归档联系人</span>
+                      ) : null}
                       {preview ? (
                         <time dateTime={preview.createdAt}>
                           {timeLabel(preview.createdAt)}
@@ -844,6 +985,19 @@ function SocialChatApp() {
                     <span className="member-count">
                       {members.length + 1} 位参与者
                     </span>
+                  ) : members[0]?.kind === 'specialist' ? (
+                    <button
+                      className="agent-archive-button"
+                      type="button"
+                      onClick={() => void handleToggleAgentArchive(members[0])}
+                      disabled={updatingAgentId === members[0].id}
+                    >
+                      {updatingAgentId === members[0].id
+                        ? '正在更新…'
+                        : members[0].archivedAt
+                          ? '恢复联系人'
+                          : '归档联系人'}
+                    </button>
                   ) : (
                     <span className="room-presence">
                       <i /> 持续联系人
@@ -937,6 +1091,15 @@ function SocialChatApp() {
                 </div>
               ) : null}
 
+              {currentRoom.kind === 'direct' && members[0]?.archivedAt ? (
+                <div className="archived-agent-notice" role="status">
+                  <span>
+                    {members[0].name}
+                    已归档。历史记录仍可查看；恢复后才能继续聊天。
+                  </span>
+                </div>
+              ) : null}
+
               {composerMode === 'chat' && !providerReady ? (
                 <div className="provider-warning" role="status">
                   <span>{providerWarning}</span>
@@ -963,10 +1126,13 @@ function SocialChatApp() {
                         member.id === currentRecipient?.id ? 'is-chosen' : ''
                       }
                       aria-pressed={member.id === currentRecipient?.id}
+                      disabled={Boolean(member.archivedAt)}
+                      title={member.archivedAt ? '联系人已归档' : undefined}
                       onClick={() => setSelectedAgentId(member.id)}
                     >
                       <AgentMark agent={member} small />
                       {member.name}
+                      {member.archivedAt ? ' · 已归档' : ''}
                     </button>
                   ))}
                   <span>{composerMode === 'project' ? '执行' : '回应'}</span>
@@ -1062,6 +1228,7 @@ function SocialChatApp() {
                   disabled={
                     !composerReady ||
                     !currentRecipient ||
+                    currentRecipientArchived ||
                     Boolean(activeReply) ||
                     workBusy ||
                     (composerMode === 'project' && !currentRecipientCanWork)
@@ -1092,6 +1259,7 @@ function SocialChatApp() {
                         !composerReady ||
                         !draft.trim() ||
                         !currentRecipient ||
+                        currentRecipientArchived ||
                         busy ||
                         workBusy ||
                         (composerMode === 'project' &&
@@ -1110,8 +1278,8 @@ function SocialChatApp() {
               </form>
               <p className="data-flow-note">
                 {composerMode === 'project'
-                  ? '项目工作会留在当前聊天。启动前会选择文件夹并显示数据范围；Noema 会区分 DSH 结束与独立核验结果。'
-                  : '聊天记录保存在本机；发送后，消息会经 FreeLLMAPI 发给当前选择的模型。'}
+                  ? '项目工作会留在当前聊天，并带入当前联系人的专业资料。启动前会选择文件夹并显示数据范围；Noema 会区分 DSH 结束与独立核验结果。'
+                  : '聊天记录保存在本机；发送后，本轮消息及当前联系人的专业范围与合作方式会经 FreeLLMAPI 发给当前模型。'}
               </p>
             </>
           ) : (
@@ -1122,6 +1290,104 @@ function SocialChatApp() {
           )}
         </section>
       </div>
+
+      {createAgentOpen ? (
+        <div
+          className="dialog-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closeAgentDialog();
+          }}
+        >
+          <form
+            ref={dialogRef}
+            className="social-dialog agent-create-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="create-agent-title"
+            onSubmit={(event) => void handleCreateAgent(event)}
+          >
+            <div className="dialog-heading">
+              <div>
+                <h2 id="create-agent-title">创建专业联系人</h2>
+                <p>给它一个可以长期实践的领域，而不是一次任务。</p>
+              </div>
+              <button
+                className="icon-button"
+                type="button"
+                aria-label="关闭"
+                onClick={closeAgentDialog}
+              >
+                <Icon name="close" />
+              </button>
+            </div>
+            <label className="dialog-field">
+              <span>联系人名称</span>
+              <input
+                autoFocus
+                data-dialog-initial-focus
+                id="social-agent-name"
+                value={agentName}
+                maxLength={60}
+                placeholder="例如：林间观察员"
+                onChange={(event) => setAgentName(event.target.value)}
+                required
+                disabled={creatingAgent}
+              />
+            </label>
+            <label className="dialog-field">
+              <span>长期专业范围</span>
+              <input
+                id="social-agent-headline"
+                value={agentHeadline}
+                maxLength={140}
+                placeholder="例如：长期研究 Godot 游戏开发与项目迭代"
+                onChange={(event) => setAgentHeadline(event.target.value)}
+                required
+                disabled={creatingAgent}
+              />
+              <small>尽量写一类可持续积累的实践，不写单次待办。</small>
+            </label>
+            <label className="dialog-field">
+              <span>你希望它如何与你合作</span>
+              <textarea
+                id="social-agent-description"
+                value={agentDescription}
+                maxLength={800}
+                rows={3}
+                placeholder="例如：先和我厘清目标，再拆成可以验证的小步；发现方案有风险时直接指出。"
+                onChange={(event) => setAgentDescription(event.target.value)}
+                required
+                disabled={creatingAgent}
+              />
+            </label>
+            <p className="dialog-footnote">
+              创建时资料只保存在本机，不调用模型。以后在这里聊天时，专业范围与合作方式会随消息发送给当前模型。新联系人目前只有聊天能力；这些资料不代表其能力已经验证。
+            </p>
+            <div className="dialog-actions">
+              <button
+                className="secondary-action"
+                type="button"
+                onClick={closeAgentDialog}
+                disabled={creatingAgent}
+              >
+                取消
+              </button>
+              <button
+                className="primary-action"
+                type="submit"
+                disabled={
+                  creatingAgent ||
+                  !agentName.trim() ||
+                  !agentHeadline.trim() ||
+                  !agentDescription.trim()
+                }
+              >
+                {creatingAgent ? '正在创建…' : '创建联系人并开始私聊'}
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
 
       {createGroupOpen ? (
         <div
@@ -1167,7 +1433,7 @@ function SocialChatApp() {
             </label>
             <fieldset className="group-agent-picker">
               <legend>邀请联系人</legend>
-              {agents.map((agent) => (
+              {activeAgents.map((agent) => (
                 <label key={agent.id} className="group-agent-option">
                   <input
                     type="checkbox"
@@ -1182,6 +1448,11 @@ function SocialChatApp() {
                 </label>
               ))}
             </fieldset>
+            {activeAgents.length < agents.length ? (
+              <p className="dialog-footnote">
+                已归档联系人保留在原有聊天记录中；恢复后才能加入新的群聊。
+              </p>
+            ) : null}
             <p className="dialog-footnote">
               群聊会有独立记录；不会把各自私聊的历史带进来。
             </p>
@@ -1197,7 +1468,11 @@ function SocialChatApp() {
                 className="primary-action"
                 type="submit"
                 disabled={
-                  !groupTitle.trim() || groupAgentIds.length === 0 || busy
+                  !groupTitle.trim() ||
+                  !groupAgentIds.some((agentId) =>
+                    activeAgents.some((agent) => agent.id === agentId),
+                  ) ||
+                  busy
                 }
               >
                 {busy ? '正在创建…' : '创建群聊'}

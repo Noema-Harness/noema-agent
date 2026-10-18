@@ -19,6 +19,13 @@ const bridge = {
     ipcRenderer.invoke('noema:social-room', roomId),
   createSocialGroup: (input: { title: string; agentIds: string[] }) =>
     ipcRenderer.invoke('noema:social-create-group', input),
+  createSocialAgent: (input: {
+    name: string;
+    headline: string;
+    description: string;
+  }) => ipcRenderer.invoke('noema:social-create-agent', input),
+  setSocialAgentArchived: (agentId: string, archived: boolean) =>
+    ipcRenderer.invoke('noema:social-agent-archive', agentId, archived),
   sendSocialMessage: (input: {
     roomId: string;
     agentId: string;

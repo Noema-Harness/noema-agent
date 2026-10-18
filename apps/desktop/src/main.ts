@@ -122,6 +122,10 @@ const testSocialWorkResultPath =
   process.env.NOEMA_E2E_SOCIAL_WORK_RESULT_PATH ?? null;
 const testSocialWorkChecksJson =
   process.env.NOEMA_E2E_SOCIAL_WORK_CHECKS ?? null;
+const testSocialAgentWorkflow =
+  process.env.NOEMA_E2E_SOCIAL_AGENT_WORKFLOW === '1';
+const socialAgentE2eResultPath =
+  process.env.NOEMA_E2E_SOCIAL_AGENT_RESULT_PATH ?? null;
 const testCaptureQuickCapture =
   process.env.NOEMA_SMOKE_CAPTURE_QUICK_CAPTURE === '1';
 const testCaptureHistoryTrace =
@@ -163,6 +167,12 @@ const socialProjectWorkDesktopScreenshotPath =
   process.env.NOEMA_SMOKE_SOCIAL_PROJECT_WORK_PATH ?? null;
 const socialProjectWorkNarrowScreenshotPath =
   process.env.NOEMA_SMOKE_SOCIAL_PROJECT_WORK_NARROW_PATH ?? null;
+const socialAgentCreateDesktopScreenshotPath =
+  process.env.NOEMA_SMOKE_SOCIAL_AGENT_CREATE_PATH ?? null;
+const socialAgentCreateNarrowScreenshotPath =
+  process.env.NOEMA_SMOKE_SOCIAL_AGENT_CREATE_NARROW_PATH ?? null;
+delete process.env.NOEMA_SMOKE_SOCIAL_AGENT_CREATE_PATH;
+delete process.env.NOEMA_SMOKE_SOCIAL_AGENT_CREATE_NARROW_PATH;
 const testSocialWorkCaptureUi =
   process.env.NOEMA_E2E_SOCIAL_WORK_CAPTURE_UI === '1';
 delete process.env.NOEMA_E2E_DATABASE_PATH;
@@ -178,6 +188,8 @@ delete process.env.NOEMA_E2E_SOCIAL_WORK_WORKSPACE;
 delete process.env.NOEMA_E2E_SOCIAL_WORK_RESULT_PATH;
 delete process.env.NOEMA_E2E_SOCIAL_WORK_CHECKS;
 delete process.env.NOEMA_E2E_SOCIAL_WORK_CAPTURE_UI;
+delete process.env.NOEMA_E2E_SOCIAL_AGENT_WORKFLOW;
+delete process.env.NOEMA_E2E_SOCIAL_AGENT_RESULT_PATH;
 delete process.env.NOEMA_SMOKE_CAPTURE_QUICK_CAPTURE;
 delete process.env.NOEMA_SMOKE_CAPTURE_HISTORY_TRACE;
 delete process.env.NOEMA_SMOKE_CAPTURE_TIMELINE_SEARCH;
@@ -243,7 +255,11 @@ const createWindow = () => {
     );
   }
 
-  if (process.env.NOEMA_SMOKE_TEST === '1' && !testSocialWorkCaptureUi) {
+  if (
+    process.env.NOEMA_SMOKE_TEST === '1' &&
+    !testSocialWorkCaptureUi &&
+    !testSocialAgentWorkflow
+  ) {
     mainWindow.webContents.once('did-finish-load', async () => {
       let bridgeProbeStage = 'root-state';
       try {
@@ -1241,6 +1257,212 @@ async function captureSocialChatSmokeScreenshots() {
   }
 }
 
+async function captureSocialAgentCreationE2e() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    throw new Error('联系人创建测试没有可用窗口。');
+  }
+  await mainWindow.webContents.executeJavaScript(`(async () => {
+    const deadline = Date.now() + 5000;
+    document.querySelector('.new-agent-button')?.click();
+    while (Date.now() < deadline && !document.querySelector('#social-agent-name')) {
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    }
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    await new Promise((resolve) => setTimeout(resolve, 220));
+  })()`);
+  const inspectCreateDialog = async (width: number, height: number) => {
+    mainWindow?.setSize(width, height);
+    await mainWindow?.webContents.executeJavaScript(
+      'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+    );
+    return mainWindow?.webContents.executeJavaScript(`(() => {
+      const shell = document.querySelector('.social-shell');
+      const dialog = document.querySelector('.agent-create-dialog');
+      const rect = dialog?.getBoundingClientRect();
+      const submit = dialog?.querySelector('button[type="submit"]');
+      const submitRect = submit?.getBoundingClientRect();
+      return {
+        dialogVisible: Boolean(rect && rect.width > 0 && rect.height > 0),
+        dialogInViewport: Boolean(rect && rect.top >= 0 && rect.bottom <= window.innerHeight),
+        fields: dialog?.querySelectorAll('.dialog-field').length ?? 0,
+        submitVisible: Boolean(
+          submitRect &&
+            rect &&
+            submitRect.top >= rect.top &&
+            submitRect.bottom <= rect.bottom &&
+            submitRect.bottom <= window.innerHeight,
+        ),
+        shellNoOverflow: Boolean(shell && shell.scrollWidth <= shell.clientWidth),
+        documentNoOverflow: document.documentElement.scrollWidth <= window.innerWidth,
+      };
+    })()`);
+  };
+  const dialogDesktop = await inspectCreateDialog(1280, 800);
+  if (
+    !dialogDesktop?.dialogVisible ||
+    !dialogDesktop.dialogInViewport ||
+    dialogDesktop.fields !== 3 ||
+    !dialogDesktop.submitVisible ||
+    !dialogDesktop.shellNoOverflow ||
+    !dialogDesktop.documentNoOverflow
+  ) {
+    throw new Error(
+      `桌面创建联系人表单布局不符合预期：${JSON.stringify(dialogDesktop)}`,
+    );
+  }
+  if (socialAgentCreateDesktopScreenshotPath) {
+    const image = await mainWindow.capturePage();
+    writeSmokeScreenshot(socialAgentCreateDesktopScreenshotPath, image);
+  }
+  const dialogNarrow = await inspectCreateDialog(680, 560);
+  if (
+    !dialogNarrow?.dialogVisible ||
+    !dialogNarrow.dialogInViewport ||
+    dialogNarrow.fields !== 3 ||
+    !dialogNarrow.submitVisible ||
+    !dialogNarrow.shellNoOverflow ||
+    !dialogNarrow.documentNoOverflow
+  ) {
+    throw new Error(
+      `窄窗口创建联系人表单布局不符合预期：${JSON.stringify(dialogNarrow)}`,
+    );
+  }
+  if (socialAgentCreateNarrowScreenshotPath) {
+    const image = await mainWindow.capturePage();
+    writeSmokeScreenshot(socialAgentCreateNarrowScreenshotPath, image);
+  }
+  mainWindow.setSize(1280, 800);
+  await mainWindow.webContents.executeJavaScript(
+    'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+  );
+  const result = await mainWindow.webContents.executeJavaScript(`(async () => {
+    const waitFrames = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const waitFor = async (predicate, label) => {
+      const deadline = Date.now() + 5000;
+      while (Date.now() < deadline) {
+        const value = await predicate();
+        if (value) return value;
+        await new Promise((resolve) => setTimeout(resolve, 40));
+      }
+      throw new Error('等待超时：' + label);
+    };
+    const setValue = (element, value) => {
+      if (!element) throw new Error('找不到表单字段');
+      const prototype = element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+      Object.getOwnPropertyDescriptor(prototype, 'value')?.set?.call(element, value);
+      element.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    const initial = await window.noema.getSocialState();
+    const initialDialog = {
+      focusedName: document.activeElement?.id === 'social-agent-name',
+      fieldCount: document.querySelectorAll('.agent-create-dialog .dialog-field').length,
+    };
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await waitFor(() => !document.querySelector('.agent-create-dialog'), 'Escape 关闭创建联系人表单');
+    const cancelReturnedFocus = document.activeElement?.classList?.contains('new-agent-button') ?? false;
+
+    document.querySelector('.new-agent-button')?.click();
+    await waitFor(() => document.querySelector('#social-agent-name'), '重新打开联系人表单');
+    const name = 'E2E 图形观察员';
+    setValue(document.querySelector('#social-agent-name'), name);
+    setValue(document.querySelector('#social-agent-headline'), '长期观察游戏视觉与交互');
+    setValue(document.querySelector('#social-agent-description'), '先和我厘清体验，再讨论如何验证。');
+    await waitFrames();
+    document.querySelector('.agent-create-dialog button[type="submit"]')?.click();
+    const createdState = await waitFor(async () => {
+      const state = await window.noema.getSocialState();
+      const agent = state.agents.find((candidate) => candidate.name === name);
+      return agent ? { state, agent } : null;
+    }, '本机联系人记录');
+    await waitFor(() => document.querySelector('.room-header h2')?.textContent?.trim() === name, '新联系人私聊');
+    const directRoom = await window.noema.getSocialRoom(
+      createdState.state.rooms.find((room) => room.kind === 'direct' && room.memberIds.includes(createdState.agent.id)).id,
+    );
+    const initialDirectIsEmpty = directRoom.messages.length === 1 && directRoom.messages[0].role === 'system';
+    const capabilitiesAreEmpty = createdState.agent.capabilities.length === 0;
+
+    document.querySelector('.agent-archive-button')?.click();
+    const archivedState = await waitFor(async () => {
+      const state = await window.noema.getSocialState();
+      return state.agents.find((candidate) => candidate.id === createdState.agent.id)?.archivedAt
+        ? state : null;
+    }, '联系人归档状态');
+    await waitFor(() => document.querySelector('.agent-archive-button')?.textContent?.includes('恢复'), '联系人恢复入口');
+    const archivedUi = Boolean(document.querySelector('.archived-agent-notice'));
+    document.querySelector('.new-group-button')?.click();
+    await waitFor(() => document.querySelector('#social-group-title'), '归档状态下新群聊表单');
+    const archivedInviteExcluded = ![...document.querySelectorAll('.group-agent-option')]
+      .some((option) => option.querySelector('strong')?.textContent?.trim() === name);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await waitFor(() => !document.querySelector('#social-group-title'), '关闭归档状态群聊表单');
+
+    document.querySelector('.agent-archive-button')?.click();
+    const restoredState = await waitFor(async () => {
+      const state = await window.noema.getSocialState();
+      const agent = state.agents.find((candidate) => candidate.id === createdState.agent.id);
+      return agent && !agent.archivedAt ? state : null;
+    }, '联系人恢复状态');
+    await waitFor(() => document.querySelector('.agent-archive-button')?.textContent?.includes('归档'), '联系人归档入口');
+
+    document.querySelector('.new-group-button')?.click();
+    await waitFor(() => document.querySelector('#social-group-title'), '新群聊表单');
+    const inviteOption = [...document.querySelectorAll('.group-agent-option')]
+      .find((option) => option.querySelector('strong')?.textContent?.trim() === name);
+    const inviteVisible = Boolean(inviteOption);
+    if (!inviteVisible) throw new Error('新联系人没有出现在群聊邀请列表中');
+    inviteOption.querySelector('input')?.click();
+    setValue(document.querySelector('#social-group-title'), 'E2E 专业协作');
+    await waitFrames();
+    document.querySelector('.social-dialog[aria-labelledby="create-group-title"] button[type="submit"]')?.click();
+    await waitFor(() => document.querySelector('.room-header h2')?.textContent?.trim() === 'E2E 专业协作', '包含新联系人的群聊');
+    const groupState = await window.noema.getSocialState();
+    const groupRoom = groupState.rooms.find((room) => room.title === 'E2E 专业协作');
+    const groupSnapshot = await window.noema.getSocialRoom(groupRoom.id);
+    const sameIdentityJoined = groupSnapshot.members.some((member) => member.id === createdState.agent.id);
+    const groupDidNotImportDm = !groupSnapshot.messages.some((message) => message.content.includes('长期观察游戏视觉与交互'));
+    return {
+      initial,
+      initialDialog,
+      dialogDesktop: ${JSON.stringify(dialogDesktop)},
+      dialogNarrow: ${JSON.stringify(dialogNarrow)},
+      cancelReturnedFocus,
+      agentId: createdState.agent.id,
+      createdRoomId: directRoom.room.id,
+      initialDirectIsEmpty,
+      capabilitiesAreEmpty,
+      archived: Boolean(archivedState.agents.find((agent) => agent.id === createdState.agent.id)?.archivedAt),
+      archivedUi,
+      archivedInviteExcluded,
+      restored: !restoredState.agents.find((agent) => agent.id === createdState.agent.id)?.archivedAt,
+      inviteVisible,
+      sameIdentityJoined,
+      groupDidNotImportDm,
+      totalAgents: groupState.agents.length,
+      totalRooms: groupState.rooms.length,
+    };
+  })()`);
+
+  if (
+    !result?.initialDialog?.focusedName ||
+    result.initialDialog.fieldCount !== 3 ||
+    !result.cancelReturnedFocus ||
+    !result.initialDirectIsEmpty ||
+    !result.capabilitiesAreEmpty ||
+    !result.archived ||
+    !result.archivedUi ||
+    !result.archivedInviteExcluded ||
+    !result.restored ||
+    !result.inviteVisible ||
+    !result.sameIdentityJoined ||
+    !result.groupDidNotImportDm
+  ) {
+    throw new Error(
+      `用户专业联系人创建流程不符合预期：${JSON.stringify(result)}`,
+    );
+  }
+  return result;
+}
+
 async function captureSocialProjectWorkSmokeScreenshots() {
   if (!mainWindow || mainWindow.isDestroyed()) {
     throw new Error('项目工作截图没有可用窗口。');
@@ -1572,6 +1794,80 @@ async function startNoema() {
       fs.existsSync(testSocialWorkWorkspace) &&
       fs.statSync(testSocialWorkWorkspace).isDirectory(),
     );
+    const socialAgentE2eDirectory =
+      testDatabasePath && path.isAbsolute(testDatabasePath)
+        ? path.dirname(path.resolve(testDatabasePath))
+        : null;
+    const socialAgentE2eValid = Boolean(
+      !app.isPackaged &&
+      testSocialAgentWorkflow &&
+      !testWorkerPrompt &&
+      !testSocialWorkPrompt &&
+      typeof testDatabasePath === 'string' &&
+      path.isAbsolute(testDatabasePath) &&
+      typeof testDshUserDataPath === 'string' &&
+      path.isAbsolute(testDshUserDataPath) &&
+      typeof socialAgentE2eResultPath === 'string' &&
+      path.isAbsolute(socialAgentE2eResultPath) &&
+      socialAgentE2eDirectory &&
+      isIsolatedE2eDirectory(
+        socialAgentE2eDirectory,
+        app.getPath('userData'),
+      ) &&
+      path.resolve(testDatabasePath) !==
+        path.join(app.getPath('userData'), 'noema.sqlite3') &&
+      path.resolve(testDshUserDataPath) !== socialAgentE2eDirectory &&
+      isPathWithin(socialAgentE2eDirectory, testDshUserDataPath) &&
+      isPathWithin(socialAgentE2eDirectory, socialAgentE2eResultPath),
+    );
+    if (
+      testSocialAgentWorkflow &&
+      !socialAgentE2eValid &&
+      socialAgentE2eDirectory &&
+      typeof socialAgentE2eResultPath === 'string' &&
+      path.isAbsolute(socialAgentE2eResultPath) &&
+      isIsolatedE2eDirectory(
+        socialAgentE2eDirectory,
+        app.getPath('userData'),
+      ) &&
+      isPathWithin(socialAgentE2eDirectory, socialAgentE2eResultPath)
+    ) {
+      fs.writeFileSync(
+        path.resolve(socialAgentE2eResultPath),
+        JSON.stringify(
+          {
+            outcome: 'preflight_failed',
+            packaged: app.isPackaged,
+            testFlag: testSocialAgentWorkflow,
+            workerPromptConfigured: Boolean(testWorkerPrompt),
+            socialWorkPromptConfigured: Boolean(testSocialWorkPrompt),
+            databasePath: testDatabasePath,
+            dshUserDataPath: testDshUserDataPath,
+            resultPath: socialAgentE2eResultPath,
+            isolatedDirectory: socialAgentE2eDirectory,
+          },
+          null,
+          2,
+        ),
+        { encoding: 'utf8', flag: 'wx' },
+      );
+      app.quit();
+      return;
+    }
+    writeSmokeLog('social-agent-e2e-preflight', {
+      enabled: testSocialAgentWorkflow,
+      valid: socialAgentE2eValid,
+      packaged: app.isPackaged,
+      hasDatabase: Boolean(testDatabasePath),
+      hasDshDirectory: Boolean(testDshUserDataPath),
+      hasResultPath: Boolean(socialAgentE2eResultPath),
+      isolatedDirectory: socialAgentE2eDirectory
+        ? isIsolatedE2eDirectory(
+            socialAgentE2eDirectory,
+            app.getPath('userData'),
+          )
+        : false,
+    });
     socialWorkService = new SocialWorkService({
       store: socialChatStore,
       adapter: dshAdapter,
@@ -1586,7 +1882,7 @@ async function startNoema() {
         const selection = await dialog.showOpenDialog(mainWindow, {
           title: '选择工程搭档可以操作的项目文件夹',
           message: [
-            '工程搭档会读取/修改项目文件，并可运行前台项目命令。Windows 文件沙箱主要限制写入，不能限制网络或进程可见性，也不能保证目录外读取隔离。项目内容可能通过 FreeLLMAPI 发往当前第三方免费模型路由。不要选择含不应发送的密钥或隐私资料的目录。停止任务不会自动撤销已经发生的改动。',
+            '工程搭档会使用自己的专业资料、读取/修改项目文件，并可运行前台项目命令。Windows 文件沙箱主要限制写入，不能限制网络或进程可见性，也不能保证目录外读取隔离。项目内容可能通过 FreeLLMAPI 发往当前第三方免费模型路由。不要选择含不应发送的密钥或隐私资料的目录。停止任务不会自动撤销已经发生的改动。',
             reuseCase
               ? '本轮还会检查同一位工程搭档在同一项目的其他聊天中，是否有一项通过 Noema 文件条件核验的工作；若找到，会把一份过滤常见凭据样式的限长摘要随本任务发送给模型，不会发送原聊天记录。过滤无法保证识别所有敏感信息。'
               : '本轮不会从其他聊天带入项目案例。',
@@ -1671,6 +1967,47 @@ async function startNoema() {
             }
           : null,
     });
+    if (socialAgentE2eValid && socialAgentE2eDirectory) {
+      const resultPath = path.resolve(socialAgentE2eResultPath!);
+      void (async () => {
+        try {
+          await new Promise<void>((resolve) => {
+            createWindow();
+            if (!mainWindow || mainWindow.isDestroyed()) {
+              resolve();
+              return;
+            }
+            mainWindow.webContents.once('did-finish-load', () => resolve());
+          });
+          const workflow = await captureSocialAgentCreationE2e();
+          fs.writeFileSync(
+            resultPath,
+            JSON.stringify({ outcome: 'passed', workflow }, null, 2),
+            {
+              encoding: 'utf8',
+              flag: 'wx',
+            },
+          );
+        } catch (error) {
+          fs.writeFileSync(
+            resultPath,
+            JSON.stringify(
+              {
+                outcome: 'failed',
+                errorMessage:
+                  error instanceof Error ? error.message.slice(0, 1_500) : null,
+              },
+              null,
+              2,
+            ),
+            { encoding: 'utf8', flag: 'wx' },
+          );
+        } finally {
+          app.quit();
+        }
+      })();
+      return;
+    }
     if (socialWorkE2eValid && socialWorkE2eDirectory) {
       const resultPath = path.resolve(testSocialWorkResultPath!);
       const workspacePath = path.resolve(testSocialWorkWorkspace!);

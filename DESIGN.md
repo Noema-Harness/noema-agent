@@ -204,6 +204,8 @@ The observed corner vocabulary includes 2, 4, 5, 7, 8, 9, 10, 11, 12, and 13px r
 ### Navigation
 - **Conversation list:** Each row shows a room title, recent message preview, time, and one or more stable agent marks. Use a pale green surface and border to identify the selected room.
 - **Narrow layout:** Replace the desktop two-column layout with one view at a time. Keep the back affordance in the room header and hide the desktop model selector while preserving access to model settings.
+- **Creating contacts:** Keep “创建专业联系人”和“新建群聊” as distinct, clearly named actions beside the chat heading. The contact form asks for a name, long-term professional scope, and collaboration approach; it never asks users to write a system prompt. Creation is local and opens that contact's new direct room with a system welcome event.
+- **Archived contacts:** Existing rooms and messages remain visible as history, with an explicit archived marker. Archived agents cannot receive new replies or tasks and are excluded from new group invitations; their direct room exposes a restore action. In group rooms, archived members are visibly disabled while active members remain selectable.
 
 ### Cards / Containers
 - Use the two large paper panels as the page's main containers. The active room itself is the content surface; do not wrap every message in a separate raised card.
@@ -226,7 +228,7 @@ The observed corner vocabulary includes 2, 4, 5, 7, 8, 9, 10, 11, 12, and 13px r
 
 ### Status and Data Boundary
 - The top bar may show that the local FreeLLMAPI service is connected and the selected model's reported availability. Treat this as current status information, not a guarantee that the next generation will succeed.
-- Keep the visible data statement accurate: chat records are stored locally and sent to the currently selected model via FreeLLMAPI after sending. Do not imply local-only inference or external provider state beyond the observed app state.
+- Keep the visible data statement accurate: chat records are stored locally; after sending, the turn and selected contact's professional scope/collaboration profile go through FreeLLMAPI to the currently selected model. Do not imply local-only inference or external provider state beyond the observed app state.
 
 ## Do's and Don'ts
 

@@ -50,7 +50,7 @@ test('social schema seeds stable identities and keeps one agent across independe
       db
         .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
         .get().version,
-      3,
+      4,
     );
   } finally {
     db.close();
@@ -98,7 +98,9 @@ test('social chat schema v1 upgrades additively to project-work state', () => {
       DROP TABLE social_work_tasks;
       DELETE FROM social_schema_migrations WHERE version = 2;
       DELETE FROM social_schema_migrations WHERE version = 3;
+      DELETE FROM social_schema_migrations WHERE version = 4;
       ALTER TABLE social_agents DROP COLUMN capabilities_json;
+      ALTER TABLE social_agents DROP COLUMN archived_at;
     `);
 
     const upgraded = new SocialChatStore(db);
@@ -114,7 +116,7 @@ test('social chat schema v1 upgrades additively to project-work state', () => {
       db
         .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
         .get().version,
-      3,
+      4,
     );
     assert.equal(
       db
@@ -288,6 +290,93 @@ test('group creation requires a valid participant and adds isolated room members
     assert.throws(
       () => social.createGroup({ title: '空群', agentIds: [] }),
       /至少选择一位联系人/u,
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test('a user-created specialist keeps one identity across a fresh DM, group, and reversible archive', () => {
+  const { db, social } = makeStores();
+  try {
+    const created = social.createAgent({
+      name: '图形观察员',
+      headline: '长期观察游戏视觉与交互',
+      description: '先和我厘清体验，再讨论如何验证。',
+    });
+    const agent = created.members[0];
+    const agentId = agent.id;
+    const directRoomId = created.room.id;
+    assert.match(agentId, /^agent-/u);
+    assert.equal(created.room.kind, 'direct');
+    assert.deepEqual(agent.capabilities, []);
+    assert.equal(agent.archivedAt, null);
+    assert.equal(created.messages.length, 1);
+    assert.equal(created.messages[0].role, 'system');
+    assert.match(
+      agent.systemPrompt ?? social.getAgent(agentId).systemPrompt,
+      /不证明你已经具备对应领域的专家水平/u,
+    );
+    assert.equal(created.messages[0].content.includes('已成为联系人'), true);
+
+    const dmTurn = social.beginTurn({
+      roomId: directRoomId,
+      agentId,
+      text: '只在新联系人私聊中的标记：琥珀',
+      model: 'test-model',
+    });
+    social.appendAssistantDelta(
+      dmTurn.assistantMessageId,
+      '我会在当前私聊里继续。',
+    );
+    social.completeReply(dmTurn.assistantMessageId);
+    const group = social.createGroup({
+      title: '图形研究',
+      agentIds: ['noema', agentId],
+    });
+    assert.equal(
+      group.members.some((member) => member.id === agentId),
+      true,
+    );
+    assert.equal(
+      group.messages.some((message) => message.content.includes('琥珀')),
+      false,
+    );
+
+    const archived = social.setAgentArchived(agentId, true);
+    assert.equal(typeof archived.archivedAt, 'string');
+    assert.equal(
+      social
+        .getRoomSnapshot(directRoomId)
+        .messages.some((message) => message.content.includes('琥珀')),
+      true,
+    );
+    assert.throws(
+      () =>
+        social.beginTurn({
+          roomId: directRoomId,
+          agentId,
+          text: '归档期间不能回复',
+          model: 'test-model',
+        }),
+      /已归档/u,
+    );
+    assert.throws(
+      () =>
+        social.createGroup({
+          title: '不应邀请归档联系人',
+          agentIds: [agentId],
+        }),
+      /已归档/u,
+    );
+
+    const restored = social.setAgentArchived(agentId, false);
+    assert.equal(restored.archivedAt, null);
+    assert.equal(social.getRoomSnapshot(directRoomId).messages.length, 5);
+    assert.equal(
+      social.createGroup({ title: '恢复后可邀请', agentIds: [agentId] })
+        .members[0].id,
+      agentId,
     );
   } finally {
     db.close();

@@ -473,3 +473,33 @@ test('project work is unavailable without DSH or FreeLLMAPI and does not open a 
     db.close();
   }
 });
+
+test('archived specialists cannot start project work or open the workspace picker', async () => {
+  const { db, store } = makeStore();
+  store.setAgentArchived('engineering-partner', true);
+  let pickedWorkspace = false;
+  const service = new SocialWorkService({
+    store,
+    adapter: makeAdapter(),
+    secretStore: { isConfigured: () => true },
+    chooseWorkspace: async () => {
+      pickedWorkspace = true;
+      return null;
+    },
+  });
+  try {
+    await assert.rejects(
+      service.startTask({
+        roomId: 'room-engineering-partner',
+        agentId: 'engineering-partner',
+        prompt: '归档联系人不应收到新工作。',
+      }),
+      /已归档/u,
+    );
+    assert.equal(pickedWorkspace, false);
+    assert.equal(store.listRoomWorkTasks('room-engineering-partner').length, 0);
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});
