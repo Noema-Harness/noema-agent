@@ -110,7 +110,10 @@ test('a user-created specialist supplies its profile in each room without mergin
     provider,
     secretStore: { isConfigured: () => true },
     getSelectedModel: () => 'test-model',
-    getRootState: async () => ({ connected: true, selectedModel: 'test-model' }),
+    getRootState: async () => ({
+      connected: true,
+      selectedModel: 'test-model',
+    }),
   });
 
   try {
@@ -134,14 +137,22 @@ test('a user-created specialist supplies its profile in each room without mergin
     for (const request of seenRequests) {
       assert.equal(request.messages[0].role, 'system');
       assert.match(request.messages[0].content, /游戏工程观察员/u);
-      assert.match(request.messages[0].content, /长期研究游戏项目结构与迭代验证/u);
+      assert.match(
+        request.messages[0].content,
+        /长期研究游戏项目结构与迭代验证/u,
+      );
       assert.match(request.messages[0].content, /先厘清目标，再用小步验证/u);
     }
     assert.equal(
-      seenRequests[1].messages.some((message) => message.content.includes('月桂')),
+      seenRequests[1].messages.some((message) =>
+        message.content.includes('月桂'),
+      ),
       false,
     );
-    assert.equal(group.members.find((member) => member.id === agentId)?.id, agentId);
+    assert.equal(
+      group.members.find((member) => member.id === agentId)?.id,
+      agentId,
+    );
   } finally {
     await service.shutdown();
     db.close();
