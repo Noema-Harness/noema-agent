@@ -132,6 +132,14 @@ const testSocialWorkSynthetic =
   process.env.NOEMA_E2E_SOCIAL_WORK_SYNTHETIC === '1';
 const testSocialWorkProposalSourceId =
   process.env.NOEMA_E2E_SOCIAL_WORK_PROPOSAL_SOURCE_ID ?? null;
+const testSocialWorkLiveEpisodes =
+  process.env.NOEMA_E2E_SOCIAL_WORK_LIVE_EPISODES === '1';
+const testSocialWorkEpisodeAPrompt =
+  process.env.NOEMA_E2E_SOCIAL_WORK_EPISODE_A_PROMPT ?? null;
+const testSocialWorkEpisodeAChecks =
+  process.env.NOEMA_E2E_SOCIAL_WORK_EPISODE_A_CHECKS ?? null;
+const testSocialWorkEpisodeBChecks =
+  process.env.NOEMA_E2E_SOCIAL_WORK_EPISODE_B_CHECKS ?? null;
 const testSocialAgentWorkflow =
   process.env.NOEMA_E2E_SOCIAL_AGENT_WORKFLOW === '1';
 const testSocialAgentLiveE2e = process.env.NOEMA_E2E_SOCIAL_AGENT_LIVE === '1';
@@ -215,6 +223,10 @@ delete process.env.NOEMA_E2E_SOCIAL_WORK_RESULT_PATH;
 delete process.env.NOEMA_E2E_SOCIAL_WORK_CHECKS;
 delete process.env.NOEMA_E2E_SOCIAL_WORK_SYNTHETIC;
 delete process.env.NOEMA_E2E_SOCIAL_WORK_PROPOSAL_SOURCE_ID;
+delete process.env.NOEMA_E2E_SOCIAL_WORK_LIVE_EPISODES;
+delete process.env.NOEMA_E2E_SOCIAL_WORK_EPISODE_A_PROMPT;
+delete process.env.NOEMA_E2E_SOCIAL_WORK_EPISODE_A_CHECKS;
+delete process.env.NOEMA_E2E_SOCIAL_WORK_EPISODE_B_CHECKS;
 delete process.env.NOEMA_E2E_SOCIAL_WORK_CAPTURE_UI;
 delete process.env.NOEMA_E2E_SOCIAL_AGENT_WORKFLOW;
 delete process.env.NOEMA_E2E_SOCIAL_AGENT_LIVE;
@@ -2034,8 +2046,11 @@ async function captureSocialProjectWorkSmokeScreenshots() {
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
     const findSourceTask = () => [...document.querySelectorAll('.project-work-card')]
-      .find((card) => card.querySelector('.project-work-request')?.textContent?.trim() === sourcePrompt);
-    while (Date.now() < deadline && !findSourceTask()?.querySelector('.project-work-practice')) {
+      .find((card) =>
+        card.querySelector('.project-work-request')?.textContent?.trim() === sourcePrompt &&
+        [...(card.querySelector('.project-work-practice')?.querySelectorAll('button') ?? [])]
+          .some((button) => button.textContent?.trim() === '撤回候选'));
+    while (Date.now() < deadline && !findSourceTask()) {
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
     const sourceTask = findSourceTask();
@@ -2047,7 +2062,9 @@ async function captureSocialProjectWorkSmokeScreenshots() {
     withdraw?.click();
     while (Date.now() < deadline) {
       const room = await window.noema.getSocialRoom('room-engineering-partner');
-      const task = room.workTasks.find((candidate) => candidate.taskPrompt === sourcePrompt);
+      const task = room.workTasks.find((candidate) =>
+        candidate.taskPrompt === sourcePrompt && candidate.practiceBasisTaskId,
+      );
       if (task?.practiceCandidateStatus === 'revoked') {
         return {
           sourceTaskVisible: Boolean(sourceTask),
@@ -2292,6 +2309,11 @@ async function startNoema() {
       (!testSocialWorkProposalSourceId ||
         (testSocialWorkProposalSourceId.startsWith('e2e-') &&
           typeof testSocialWorkSourcePrompt === 'string')) &&
+      (!testSocialWorkLiveEpisodes ||
+        (typeof testSocialWorkEpisodeAPrompt === 'string' &&
+          testSocialWorkEpisodeAPrompt.startsWith('[NOEMA E2E]') &&
+          typeof testSocialWorkEpisodeAChecks === 'string' &&
+          typeof testSocialWorkEpisodeBChecks === 'string')) &&
       socialWorkE2eDirectory &&
       isIsolatedE2eDirectory(socialWorkE2eDirectory, app.getPath('userData')) &&
       path.resolve(testDatabasePath) !==
@@ -2366,6 +2388,28 @@ async function startNoema() {
     }
     const useSyntheticSocialWork =
       socialWorkE2eValid && testSocialWorkSynthetic;
+    const practiceRouteMetadata: string[] = [];
+    const practiceProvider =
+      !useSyntheticSocialWork &&
+      (testSocialWorkProposalSourceId || testSocialWorkLiveEpisodes)
+        ? ({
+            async *streamChat(input: {
+              model: string;
+              messages: Array<{ role: string; content: string }>;
+              signal: AbortSignal;
+              maxTokens?: number;
+              tools?: Array<object>;
+              onToolCalls?: (calls: Array<object>) => void;
+            }) {
+              yield* provider.streamChat({
+                ...input,
+                onRouteMetadata: (route) => {
+                  if (route) practiceRouteMetadata.push(route);
+                },
+              });
+            },
+          } as unknown as FreeLLMAPIClient)
+        : provider;
     const syntheticSocialWorkAdapter = (useSyntheticSocialWork
       ? {
           async startTask({
@@ -2457,7 +2501,7 @@ async function startNoema() {
       secretStore: useSyntheticSocialWork
         ? { isConfigured: () => true }
         : providerSecretStore,
-      practiceProvider: useSyntheticSocialWork ? null : provider,
+      practiceProvider: useSyntheticSocialWork ? null : practiceProvider,
       defaultVerificationChecks:
         socialWorkE2eValid && testSocialWorkChecksJson
           ? JSON.parse(testSocialWorkChecksJson)
@@ -2703,6 +2747,7 @@ async function startNoema() {
       void (async () => {
         let socialWorkUiPreflight: unknown = null;
         let livePracticeProposal: unknown = null;
+        const liveEpisodeTasks: Array<Record<string, unknown>> = [];
         try {
           if (testSocialWorkCaptureUi && mainWindow) {
             socialWorkUiPreflight = await mainWindow.webContents
@@ -2731,6 +2776,161 @@ async function startNoema() {
               );
             }
           }
+          if (testSocialWorkLiveEpisodes) {
+            const episodeA = await socialWorkService!.startTask({
+              roomId: 'room-engineering-collaboration',
+              agentId: 'engineering-partner',
+              prompt: testSocialWorkEpisodeAPrompt!,
+              verificationChecks: JSON.parse(testSocialWorkEpisodeAChecks!),
+            });
+            if (!episodeA.accepted || !episodeA.taskId) {
+              throw new Error('真实经历 A 未能启动。');
+            }
+            const completedA = await socialWorkService!.waitForTask(
+              episodeA.taskId,
+            );
+            liveEpisodeTasks.push({
+              id: completedA.id,
+              roomId: completedA.roomId,
+              taskPrompt: completedA.taskPrompt,
+              status: completedA.status,
+              verificationStatus: completedA.verificationStatus,
+              toolCallCount: completedA.toolCallCount,
+              toolActionCategories: completedA.toolActionCategories,
+              caseSnapshot: completedA.caseSnapshot,
+              verificationResults: completedA.verificationResults,
+              errorCode: completedA.errorCode,
+              errorMessage: completedA.errorMessage,
+            });
+            if (
+              completedA.status !== 'completed' ||
+              completedA.verificationStatus !== 'verified' ||
+              completedA.toolActionCategories.length === 0
+            ) {
+              throw new Error('真实经历 A 未通过独立核验或没有记录工具类别。');
+            }
+            socialWorkService!.setCaseEligible(completedA.id, true);
+
+            const startEpisodeB = () =>
+              socialWorkService!.startTask({
+                roomId: 'room-engineering-partner',
+                agentId: 'engineering-partner',
+                prompt: testSocialWorkSourcePrompt!,
+                verificationChecks: JSON.parse(testSocialWorkEpisodeBChecks!),
+                reuseCase: true,
+              });
+            const recordEpisode = (task: {
+              id: string;
+              roomId: string;
+              taskPrompt: string;
+              status: string;
+              verificationStatus: string;
+              toolActionCategories: string[];
+              caseSnapshot: { taskId: string } | null;
+              toolCallCount: number;
+              verificationResults: Array<{ status: string }>;
+              errorCode: string | null;
+              errorMessage: string | null;
+            }) =>
+              liveEpisodeTasks.push({
+                id: task.id,
+                roomId: task.roomId,
+                taskPrompt: task.taskPrompt,
+                status: task.status,
+                verificationStatus: task.verificationStatus,
+                toolCallCount: task.toolCallCount,
+                toolActionCategories: task.toolActionCategories,
+                caseSnapshot: task.caseSnapshot,
+                verificationResults: task.verificationResults,
+                errorCode: task.errorCode,
+                errorMessage: task.errorMessage,
+              });
+            const firstB = await startEpisodeB();
+            if (!firstB.accepted || !firstB.taskId) {
+              throw new Error('真实经历 B 未能启动。');
+            }
+            let completedB = await socialWorkService!.waitForTask(
+              firstB.taskId,
+            );
+            recordEpisode(completedB);
+            const cooldown = Number(
+              /约\s*(\d+)\s*秒后/u.exec(completedB.errorMessage ?? '')?.[1],
+            );
+            const safeRateLimitRetry =
+              completedB.status === 'failed' &&
+              completedB.errorCode === 'dsh_rate_limited' &&
+              completedB.toolCallCount === 0 &&
+              completedB.verificationResults.length > 0 &&
+              (
+                completedB.verificationResults as Array<{
+                  status: string;
+                  reason?: string;
+                }>
+              ).every(
+                (check) =>
+                  check.status === 'failed' && check.reason === 'file_missing',
+              ) &&
+              Number.isInteger(cooldown) &&
+              cooldown >= 1 &&
+              cooldown <= 120;
+            if (safeRateLimitRetry) {
+              await new Promise((resolve) =>
+                setTimeout(resolve, (cooldown + 1) * 1_000),
+              );
+              const retryB = await startEpisodeB();
+              if (!retryB.accepted || !retryB.taskId) {
+                throw new Error('限流等待后真实经历 B 未能重新启动。');
+              }
+              completedB = await socialWorkService!.waitForTask(retryB.taskId);
+              recordEpisode(completedB);
+            }
+            if (
+              completedB.status !== 'completed' ||
+              completedB.verificationStatus !== 'verified' ||
+              completedB.caseSnapshot?.taskId !== completedA.id ||
+              completedB.toolActionCategories.length === 0
+            ) {
+              throw new Error(
+                '真实经历 B 未复用 A、通过独立核验或记录工具类别。',
+              );
+            }
+            const proposalDeadline = Date.now() + 55_000;
+            let source = socialChatStore!.getSocialWorkTask(completedB.id);
+            while (
+              Date.now() < proposalDeadline &&
+              source.practiceCandidateStatus === 'pending'
+            ) {
+              await new Promise((resolve) => setTimeout(resolve, 100));
+              source = socialChatStore!.getSocialWorkTask(completedB.id);
+            }
+            livePracticeProposal = {
+              sourceTaskId: completedB.id,
+              status: source.practiceCandidateStatus,
+              candidate: source.practiceCandidate,
+              basisTaskId: source.practiceBasisTaskId,
+              routedVia: practiceRouteMetadata,
+            };
+            if (source.practiceCandidateStatus === 'failed') {
+              throw new Error(
+                '基于真实 DSH 经历的 FreeLLMAPI 提炼调用失败；查看本机网关请求日志。',
+              );
+            }
+            if (source.practiceCandidateStatus === 'pending') {
+              throw new Error('真实 DSH 经历的候选提炼超过 55 秒仍未结束。');
+            }
+            if (source.practiceCandidateStatus === 'available') {
+              const candidate = source.practiceCandidate;
+              if (
+                !candidate ||
+                candidate.basisTaskId !== completedA.id ||
+                candidate.trigger.length < 5 ||
+                candidate.action.length < 5 ||
+                candidate.limits.length < 5
+              ) {
+                throw new Error('真实经历候选缺少有效字段或来源。');
+              }
+            }
+          }
           if (testSocialWorkProposalSourceId) {
             const started = socialWorkService!.startPracticeProposal(
               testSocialWorkProposalSourceId,
@@ -2755,6 +2955,7 @@ async function startNoema() {
               status: source.practiceCandidateStatus,
               candidate: source.practiceCandidate,
               basisTaskId: source.practiceBasisTaskId,
+              routedVia: practiceRouteMetadata,
             };
             if (source.practiceCandidateStatus === 'failed') {
               throw new Error(
@@ -2779,7 +2980,7 @@ async function startNoema() {
           }
           let taskId: string | null = null;
           if (
-            testSocialWorkProposalSourceId &&
+            (testSocialWorkProposalSourceId || testSocialWorkLiveEpisodes) &&
             (livePracticeProposal as { status?: string } | null)?.status ===
               'none'
           ) {
@@ -2789,6 +2990,8 @@ async function startNoema() {
                 {
                   outcome: 'practice_proposal_none',
                   livePracticeProposal,
+                  liveEpisodeTasks,
+                  practiceRouteMetadata,
                   workspacePath,
                   socialWorkUiPreflight,
                 },
@@ -2884,6 +3087,8 @@ async function startNoema() {
                 workspacePath,
                 socialWorkUiSmoke,
                 livePracticeProposal,
+                liveEpisodeTasks,
+                practiceRouteMetadata,
               },
               null,
               2,
@@ -2907,6 +3112,8 @@ async function startNoema() {
                   error instanceof Error ? error.message.slice(0, 1_000) : null,
                 socialWorkUiPreflight,
                 livePracticeProposal,
+                liveEpisodeTasks,
+                practiceRouteMetadata,
               },
               null,
               2,
