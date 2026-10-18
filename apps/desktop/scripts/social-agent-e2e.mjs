@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import Database from 'better-sqlite3';
 import {
   existsSync,
   mkdirSync,
@@ -9,6 +10,8 @@ import {
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { RootStore } from '../src/root-store.mjs';
+import { SocialChatStore } from '../src/social-chat-store.mjs';
 import { configureElectronRuntime } from './electron-runtime.mjs';
 
 configureElectronRuntime();
@@ -52,7 +55,41 @@ const contactNarrowScreenshotPath = path.join(
   e2eRoot,
   `Noema-agent-capability-narrow-${screenshotTag}.png`,
 );
+const forwardDesktopScreenshotPath = path.join(
+  e2eRoot,
+  `Noema-cross-room-forward-desktop-${screenshotTag}.png`,
+);
+const forwardNarrowScreenshotPath = path.join(
+  e2eRoot,
+  `Noema-cross-room-forward-narrow-${screenshotTag}.png`,
+);
 mkdirSync(dshUserDataPath, { recursive: true });
+const seedDatabase = new Database(databasePath);
+new RootStore(seedDatabase);
+const seedSocial = new SocialChatStore(seedDatabase);
+const sourceTurn = seedSocial.beginTurn({
+  roomId: 'room-engineering-partner',
+  agentId: 'engineering-partner',
+  text: '以后关注模型更新时先看 OpenAI 官方发布说明，不要先引用二手整理。',
+  model: 'e2e-forward-seed',
+});
+seedSocial.appendAssistantDelta(
+  sourceTurn.assistantMessageId,
+  '收到：我会先核对 OpenAI 官方发布说明。',
+);
+seedSocial.completeReply(sourceTurn.assistantMessageId);
+const unrelatedTurn = seedSocial.beginTurn({
+  roomId: 'room-engineering-partner',
+  agentId: 'engineering-partner',
+  text: '另有一条无关私聊标记：紫水晶。',
+  model: 'e2e-forward-seed',
+});
+seedSocial.appendAssistantDelta(
+  unrelatedTurn.assistantMessageId,
+  '记录了紫水晶。',
+);
+seedSocial.completeReply(unrelatedTurn.assistantMessageId);
+seedDatabase.close();
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const appDirectory = path.resolve(scriptDirectory, '..');
@@ -73,6 +110,8 @@ const child = spawn(process.execPath, ['scripts/start.mjs'], {
     NOEMA_SMOKE_SOCIAL_AGENT_CREATE_NARROW_PATH: narrowScreenshotPath,
     NOEMA_SMOKE_SOCIAL_AGENT_CONTACT_PATH: contactDesktopScreenshotPath,
     NOEMA_SMOKE_SOCIAL_AGENT_CONTACT_NARROW_PATH: contactNarrowScreenshotPath,
+    NOEMA_SMOKE_SOCIAL_FORWARD_DESKTOP_PATH: forwardDesktopScreenshotPath,
+    NOEMA_SMOKE_SOCIAL_FORWARD_NARROW_PATH: forwardNarrowScreenshotPath,
   },
   stdio: 'inherit',
   windowsHide: true,
@@ -110,6 +149,8 @@ const summary = {
   narrowScreenshotPath,
   contactDesktopScreenshotPath,
   contactNarrowScreenshotPath,
+  forwardDesktopScreenshotPath,
+  forwardNarrowScreenshotPath,
 };
 console.log(JSON.stringify(summary, null, 2));
 
@@ -128,6 +169,18 @@ if (
   !result.workflow?.restored ||
   !result.workflow?.sameIdentityJoined ||
   !result.workflow?.groupDidNotImportDm ||
+  !result.workflow?.forwarding?.bundlePersisted ||
+  result.workflow?.forwarding?.selectedBeforeCancel !== 2 ||
+  !result.workflow?.forwarding?.forwardCardVisible ||
+  !result.workflow?.forwarding?.modelInputVerified ||
+  !result.workflow?.forwarding?.noProviderNetworkRequest ||
+  !result.workflow?.forwarding?.cancelHadNoSend ||
+  !result.workflow?.forwarding?.currentRoomReplyAttached ||
+  result.workflow?.forwarding?.narrow?.width > 700 ||
+  !result.workflow?.forwarding?.narrow?.documentNoOverflow ||
+  !result.workflow?.forwarding?.narrow?.dialogNoOverflow ||
+  !existsSync(forwardDesktopScreenshotPath) ||
+  !existsSync(forwardNarrowScreenshotPath) ||
   !existsSync(desktopScreenshotPath) ||
   !existsSync(narrowScreenshotPath) ||
   !existsSync(contactDesktopScreenshotPath) ||

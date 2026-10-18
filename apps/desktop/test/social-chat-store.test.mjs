@@ -50,7 +50,7 @@ test('social schema seeds stable identities and keeps one agent across independe
       db
         .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
         .get().version,
-      4,
+      5,
     );
   } finally {
     db.close();
@@ -99,8 +99,12 @@ test('social chat schema v1 upgrades additively to project-work state', () => {
       DELETE FROM social_schema_migrations WHERE version = 2;
       DELETE FROM social_schema_migrations WHERE version = 3;
       DELETE FROM social_schema_migrations WHERE version = 4;
+      DELETE FROM social_schema_migrations WHERE version = 5;
       ALTER TABLE social_agents DROP COLUMN capabilities_json;
       ALTER TABLE social_agents DROP COLUMN archived_at;
+      ALTER TABLE social_messages DROP COLUMN forwarded_sources_json;
+      ALTER TABLE social_messages DROP COLUMN reply_to_message_id;
+      ALTER TABLE social_messages DROP COLUMN reply_to_json;
     `);
 
     const upgraded = new SocialChatStore(db);
@@ -116,7 +120,7 @@ test('social chat schema v1 upgrades additively to project-work state', () => {
       db
         .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
         .get().version,
-      4,
+      5,
     );
     assert.equal(
       db
@@ -193,6 +197,135 @@ test('model context is room-scoped and preserves whitespace in streamed deltas',
     assert.equal(
       social.getAgent('engineering-partner').systemPrompt.includes('工程搭档'),
       true,
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test('message forwarding snapshots only selected complete messages from the source room', () => {
+  const { db, social } = makeStores();
+  try {
+    const created = social.createAgent({
+      name: '版本观察员',
+      headline: '长期跟踪 AI 模型发布',
+      description: '核对来源后再回答。',
+    });
+    const agentId = created.members[0].id;
+    const sourceTurn = social.beginTurn({
+      roomId: created.room.id,
+      agentId,
+      text: '以后关注模型更新时请优先看 OpenAI 官方发布说明。',
+      model: 'test-model',
+    });
+    social.appendAssistantDelta(
+      sourceTurn.assistantMessageId,
+      '我会先检查 OpenAI 官方发布说明。',
+    );
+    social.completeReply(sourceTurn.assistantMessageId);
+    const secondSourceTurn = social.beginTurn({
+      roomId: created.room.id,
+      agentId,
+      text: 'OpenAI 官方发布页面是模型版本信息的一手来源。',
+      model: 'test-model',
+    });
+    social.appendAssistantDelta(
+      secondSourceTurn.assistantMessageId,
+      '这次也会优先核对 OpenAI 官方发布页面。',
+    );
+    social.completeReply(secondSourceTurn.assistantMessageId);
+    const incompleteTurn = social.beginTurn({
+      roomId: created.room.id,
+      agentId,
+      text: 'OpenAI 官方发布中断消息不能被转发。',
+      model: 'test-model',
+    });
+    social.failReply(
+      incompleteTurn.assistantMessageId,
+      'test_failed',
+      '未完成的 assistant 回合',
+    );
+    const systemMessageId = 'test-system-history-result';
+    const now = new Date().toISOString();
+    db.prepare(`
+      INSERT INTO social_messages
+        (id, room_id, turn_id, role, content, status, runtime, created_at, updated_at)
+      VALUES (?, ?, ?, 'system', ?, 'complete', 'system', ?, ?)
+    `).run(
+      systemMessageId,
+      created.room.id,
+      'test-system-history-turn',
+      'OpenAI 官方发布 system event 不可转发。',
+      now,
+      now,
+    );
+
+    const noemaTurn = social.beginTurn({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: 'OpenAI 官方发布资料只在 Noema 私聊中。',
+      model: 'test-model',
+    });
+    social.appendAssistantDelta(noemaTurn.assistantMessageId, '收到。');
+    social.completeReply(noemaTurn.assistantMessageId);
+
+    const group = social.createGroup({
+      title: '模型观察',
+      agentIds: ['noema', agentId],
+    });
+    const sourceIds = [
+      sourceTurn.userMessageId,
+      secondSourceTurn.assistantMessageId,
+    ];
+    const forwarded = social.resolveForwardSources({
+      sourceRoomId: created.room.id,
+      targetRoomId: group.room.id,
+      sourceIds,
+    });
+    assert.equal(forwarded.length, 2);
+    assert.deepEqual(
+      forwarded.map((source) => source.id),
+      sourceIds,
+    );
+    assert.equal(
+      forwarded.every((source) => source.roomTitle === '版本观察员'),
+      true,
+    );
+    assert.equal(forwarded[0].sender, '你');
+    assert.equal(forwarded[1].sender, '版本观察员');
+    assert.match(forwarded[0].content, /OpenAI 官方发布说明/u);
+    assert.equal(
+      forwarded.some(
+        (source) => source.id === incompleteTurn.assistantMessageId,
+      ),
+      false,
+    );
+    assert.throws(
+      () =>
+        social.resolveForwardSources({
+          sourceRoomId: created.room.id,
+          targetRoomId: group.room.id,
+          sourceIds: [systemMessageId],
+        }),
+      /不可转发/u,
+    );
+    assert.throws(
+      () =>
+        social.resolveForwardSources({
+          sourceRoomId: created.room.id,
+          targetRoomId: created.room.id,
+          sourceIds: [sourceTurn.userMessageId],
+        }),
+      /另一间聊天/u,
+    );
+    assert.throws(
+      () =>
+        social.resolveForwardSources({
+          sourceRoomId: created.room.id,
+          targetRoomId: group.room.id,
+          sourceIds: [sourceTurn.userMessageId, sourceTurn.userMessageId],
+        }),
+      /不能重复/u,
     );
   } finally {
     db.close();

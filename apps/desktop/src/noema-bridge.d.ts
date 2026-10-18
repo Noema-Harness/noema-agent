@@ -160,8 +160,29 @@ export interface NoemaSocialMessage {
   errorCode: string | null;
   errorMessage: string | null;
   legacySourceId: string | null;
+  forwardedSources: NoemaSocialForwardedSource[];
+  replyTo: NoemaSocialReplySource | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface NoemaSocialForwardedSource {
+  id: string;
+  roomId: string;
+  roomTitle: string;
+  role: 'user' | 'assistant';
+  sender: string;
+  createdAt: string;
+  content: string;
+}
+
+export interface NoemaSocialReplySource {
+  id: string;
+  roomId: string;
+  role: 'user' | 'assistant';
+  sender: string;
+  createdAt: string;
+  content: string;
 }
 
 export type NoemaSocialState = Pick<
@@ -445,6 +466,9 @@ export interface NoemaBridge {
     roomId: string;
     agentId: string;
     text: string;
+    sourceRoomId?: string | null;
+    sourceIds?: string[];
+    replyToMessageId?: string | null;
   }): Promise<{ turnId: string; messageId: string }>;
   stopSocialReply(messageId: string): Promise<boolean>;
   retrySocialReply(messageId: string): Promise<{

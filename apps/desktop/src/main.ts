@@ -97,6 +97,10 @@ let rootAgent: RootAgent | null = null;
 let socialChatStore: SocialChatStore | null = null;
 let socialChatService: SocialChatService | null = null;
 let socialWorkService: SocialWorkService | null = null;
+let socialAgentE2eModelRequests: Array<{
+  model: string;
+  messages: Array<{ role: string; content: string }>;
+}> = [];
 let quickCaptureShortcutRegistration: ReturnType<
   typeof registerQuickCaptureShortcut
 > | null = null;
@@ -126,6 +130,10 @@ const testSocialAgentWorkflow =
   process.env.NOEMA_E2E_SOCIAL_AGENT_WORKFLOW === '1';
 const socialAgentE2eResultPath =
   process.env.NOEMA_E2E_SOCIAL_AGENT_RESULT_PATH ?? null;
+const socialAgentForwardDesktopScreenshotPath =
+  process.env.NOEMA_SMOKE_SOCIAL_FORWARD_DESKTOP_PATH ?? null;
+const socialAgentForwardNarrowScreenshotPath =
+  process.env.NOEMA_SMOKE_SOCIAL_FORWARD_NARROW_PATH ?? null;
 const testCaptureQuickCapture =
   process.env.NOEMA_SMOKE_CAPTURE_QUICK_CAPTURE === '1';
 const testCaptureHistoryTrace =
@@ -179,6 +187,8 @@ delete process.env.NOEMA_SMOKE_SOCIAL_AGENT_CREATE_PATH;
 delete process.env.NOEMA_SMOKE_SOCIAL_AGENT_CREATE_NARROW_PATH;
 delete process.env.NOEMA_SMOKE_SOCIAL_AGENT_CONTACT_PATH;
 delete process.env.NOEMA_SMOKE_SOCIAL_AGENT_CONTACT_NARROW_PATH;
+delete process.env.NOEMA_SMOKE_SOCIAL_FORWARD_DESKTOP_PATH;
+delete process.env.NOEMA_SMOKE_SOCIAL_FORWARD_NARROW_PATH;
 const testSocialWorkCaptureUi =
   process.env.NOEMA_E2E_SOCIAL_WORK_CAPTURE_UI === '1';
 delete process.env.NOEMA_E2E_DATABASE_PATH;
@@ -1267,9 +1277,216 @@ async function captureSocialAgentCreationE2e() {
   if (!mainWindow || mainWindow.isDestroyed()) {
     throw new Error('联系人创建测试没有可用窗口。');
   }
+  const forwardingSelection = await mainWindow.webContents
+    .executeJavaScript(`(async () => {
+    const waitFrames = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const waitFor = async (predicate, label) => {
+      const deadline = Date.now() + 5000;
+      while (Date.now() < deadline) {
+        const value = await predicate();
+        if (value) return value;
+        await new Promise((resolve) => setTimeout(resolve, 40));
+      }
+      throw new Error('等待超时：' + label);
+    };
+    await waitFor(() => document.querySelector('.room-list-item'), '联系人和聊天列表初始化');
+    const sourceRoomItem = [...document.querySelectorAll('.room-list-item')]
+      .find((item) => item.querySelector('.room-list-title')?.textContent?.trim() === '工程搭档');
+    if (!sourceRoomItem) throw new Error('找不到工程搭档私聊');
+    sourceRoomItem.click();
+    await waitFor(() => document.querySelector('.room-header h2')?.textContent?.trim() === '工程搭档', '工程搭档私聊');
+    const findSourceUser = () => [...document.querySelectorAll('.chat-message.user-message')]
+      .find((article) => article.textContent?.includes('OpenAI 官方发布说明'));
+    if (!findSourceUser()) throw new Error('找不到来源私聊中的目标消息');
+    const sourceRoom = await window.noema.getSocialRoom('room-engineering-partner');
+    const initialTargetCount = (await window.noema.getSocialRoom('room-engineering-collaboration')).messages.length;
+    const clickForward = () => {
+      const button = [...(findSourceUser()?.querySelectorAll('.message-actions button') ?? [])]
+        .find((candidate) => candidate.textContent?.trim() === '转发');
+      if (!button) throw new Error('来源消息没有显示转发操作');
+      button.click();
+    };
+    clickForward();
+    await waitFor(() => document.querySelector('.forward-selection-toolbar'), '转发消息选择状态');
+    const selectSecondMessage = () => {
+      const secondSource = [...document.querySelectorAll('.chat-message.agent-message')]
+        .find((article) => article.textContent?.includes('收到：我会先核对 OpenAI 官方发布说明'));
+      const button = [...(secondSource?.querySelectorAll('.message-actions button') ?? [])]
+        .find((candidate) => candidate.textContent?.includes('选择转发'));
+      if (!button) throw new Error('无法把同一私聊中的第二条消息加入合并转发');
+      button.click();
+    };
+    selectSecondMessage();
+    await waitFor(
+      () => document.querySelectorAll('.message-actions button.is-selected').length === 2,
+      '取消前选中两条消息',
+    );
+    const selectedBeforeCancel = document.querySelectorAll('.message-actions button.is-selected').length;
+    document.querySelector('.forward-selection-toolbar button:not(.primary-action)')?.click();
+    await waitFor(() => !document.querySelector('.forward-selection-toolbar'), '取消转发选择');
+    const targetCountAfterCancel = (await window.noema.getSocialRoom('room-engineering-collaboration')).messages.length;
+    const cancelHadNoSend = initialTargetCount === targetCountAfterCancel;
+    clickForward();
+    await waitFor(() => document.querySelector('.forward-selection-toolbar'), '重新开始转发');
+    selectSecondMessage();
+    await waitFor(
+      () => document.querySelectorAll('.message-actions button.is-selected').length === 2,
+      '合并转发选中两条消息',
+    );
+    document.querySelector('.forward-selection-toolbar .primary-action')?.click();
+    await waitFor(() => document.querySelector('.forward-dialog'), '转发目标选择窗口');
+    return {
+      sourceTitle: sourceRoom.room.title,
+      selectedCount: document.querySelectorAll('.message-actions button.is-selected').length,
+      previewContainsSource: Boolean(document.querySelector('.forward-dialog-preview')?.textContent?.includes('OpenAI 官方发布说明')),
+      previewHasTwoMessages: document.querySelectorAll('.forward-dialog-preview article').length === 2,
+      targetCanBeChosen: Boolean(document.querySelector('.forward-dialog select option[value="room-engineering-collaboration"]')),
+      cancelHadNoSend,
+      selectedBeforeCancel,
+    };
+  })()`);
+  mainWindow.setSize(1280, 800);
+  await mainWindow.webContents.executeJavaScript(
+    'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+  );
+  await new Promise((resolve) => setTimeout(resolve, 240));
+  if (socialAgentForwardDesktopScreenshotPath) {
+    const image = await mainWindow.capturePage();
+    writeSmokeScreenshot(socialAgentForwardDesktopScreenshotPath, image);
+  }
+  mainWindow.setSize(680, 560);
+  await mainWindow.webContents.executeJavaScript(
+    'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+  );
+  const forwardNarrow = await mainWindow.webContents.executeJavaScript(`(() => {
+    const dialog = document.querySelector('.forward-dialog');
+    const shell = document.querySelector('.social-shell');
+    const rect = dialog?.getBoundingClientRect();
+    return {
+      width: window.innerWidth,
+      dialogVisible: Boolean(rect && rect.width > 0 && rect.height > 0),
+      dialogInViewport: Boolean(rect && rect.left >= 0 && rect.right <= window.innerWidth && rect.top >= 0 && rect.bottom <= window.innerHeight),
+      dialogNoOverflow: Boolean(dialog && dialog.scrollWidth <= dialog.clientWidth),
+      shellNoOverflow: Boolean(shell && shell.scrollWidth <= shell.clientWidth),
+      documentNoOverflow: document.documentElement.scrollWidth <= window.innerWidth,
+    };
+  })()`);
+  if (
+    !forwardNarrow.dialogVisible ||
+    !forwardNarrow.dialogInViewport ||
+    !forwardNarrow.dialogNoOverflow ||
+    !forwardNarrow.shellNoOverflow ||
+    !forwardNarrow.documentNoOverflow
+  ) {
+    throw new Error(
+      `转发目标选择窄屏布局不符合预期：${JSON.stringify(forwardNarrow)}`,
+    );
+  }
+  if (socialAgentForwardNarrowScreenshotPath) {
+    const image = await mainWindow.capturePage();
+    writeSmokeScreenshot(socialAgentForwardNarrowScreenshotPath, image);
+  }
+  mainWindow.setSize(1280, 800);
+  await mainWindow.webContents.executeJavaScript(
+    'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+  );
+  const forwardingSent = await mainWindow.webContents
+    .executeJavaScript(`(async () => {
+    const waitFor = async (predicate, label) => {
+      const deadline = Date.now() + 7000;
+      while (Date.now() < deadline) {
+        const value = await predicate();
+        if (value) return value;
+        await new Promise((resolve) => setTimeout(resolve, 40));
+      }
+      throw new Error('等待超时：' + label);
+    };
+    const choose = document.querySelector('.forward-dialog select');
+    if (!choose) throw new Error('缺少转发目标选择器');
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set?.call(choose, 'room-engineering-collaboration');
+    choose.dispatchEvent(new Event('change', { bubbles: true }));
+    await waitFor(() => document.querySelector('.forward-recipient-options input[value="engineering-partner"]'), '群聊中的回应者');
+    document.querySelector('.forward-recipient-options input[value="engineering-partner"]')?.click();
+    const sendButton = document.querySelector('.forward-dialog button[type="submit"]');
+    if (!sendButton || sendButton.disabled) throw new Error('转发目标未准备好');
+    sendButton.click();
+    const state = await waitFor(async () => {
+      const room = await window.noema.getSocialRoom('room-engineering-collaboration');
+      const user = [...room.messages].reverse().find((message) => message.role === 'user' && message.forwardedSources?.length === 2);
+      const assistant = user ? room.messages.find((message) => message.turnId === user.turnId && message.role === 'assistant') : null;
+      return user && assistant?.status === 'complete' ? { room, user, assistant } : null;
+    }, '合并转发及本机回应');
+    await waitFor(
+      () =>
+        [...document.querySelectorAll('.forwarded-message-card')].some(
+          (item) => item.textContent?.includes('工程搭档'),
+        ),
+      '目标聊天中的转发卡片',
+    );
+    const userArticle = [...document.querySelectorAll('.chat-message.user-message')]
+      .find((article) => article.querySelector('.forwarded-message-card')?.textContent?.includes('OpenAI 官方发布说明'));
+    const replyButton = [...(userArticle?.querySelectorAll('.message-actions button') ?? [])]
+      .find((button) => button.textContent?.trim() === '回复');
+    if (!replyButton) throw new Error('转发消息没有当前房间回复入口');
+    replyButton.click();
+    await waitFor(() => document.querySelector('.reply-composer-preview'), '当前房间回复预览');
+    const replyExcerptVisible = document.querySelector('.reply-composer-preview')?.textContent?.includes('OpenAI 官方发布说明') ?? false;
+    const textarea = document.querySelector('#social-message-input');
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set?.call(textarea, '请说说这两条消息的重点。');
+    textarea?.dispatchEvent(new Event('input', { bubbles: true }));
+    document.querySelector('.message-composer button[type="submit"]')?.click();
+    const replied = await waitFor(async () => {
+      const room = await window.noema.getSocialRoom('room-engineering-collaboration');
+      const user = [...room.messages].reverse().find((message) => message.role === 'user' && message.content.includes('请说说这两条消息的重点。'));
+      const assistant = user ? room.messages.find((message) => message.turnId === user.turnId && message.role === 'assistant') : null;
+      return user && assistant?.status === 'complete' ? { room, user, assistant } : null;
+    }, '当前聊天回复及本机模型回应');
+    return {
+      bundlePersisted: state.user.forwardedSources.length === 2,
+      sourceRoom: state.user.forwardedSources[0]?.roomTitle ?? null,
+      forwardCardVisible: Boolean(userArticle?.querySelector('.forwarded-message-card')),
+      selectedContent: state.user.forwardedSources.map((source) => source.content),
+      replyExcerptVisible,
+      currentRoomReplyAttached: replied.user.replyTo?.roomId === 'room-engineering-collaboration',
+      replyText: replied.user.content,
+    };
+  })()`);
+  const modelRequest = socialAgentE2eModelRequests.at(-1);
+  const modelInput =
+    modelRequest?.messages.map((message) => message.content).join('\n') ?? '';
+  forwardingSent.modelInputVerified = Boolean(
+    modelRequest?.model === 'e2e-local-spy' &&
+    modelInput.includes('用户转发的聊天消息') &&
+    modelInput.includes('来自「工程搭档」') &&
+    modelInput.includes('OpenAI 官方发布说明') &&
+    !modelInput.includes('紫水晶') &&
+    modelInput.endsWith('请说说这两条消息的重点。'),
+  );
+  forwardingSent.noProviderNetworkRequest =
+    socialAgentE2eModelRequests.length === 2;
+  if (
+    forwardingSelection.selectedCount !== 2 ||
+    forwardingSelection.selectedBeforeCancel !== 2 ||
+    !forwardingSelection.previewContainsSource ||
+    !forwardingSelection.previewHasTwoMessages ||
+    !forwardingSelection.targetCanBeChosen ||
+    !forwardingSelection.cancelHadNoSend ||
+    !forwardingSent.bundlePersisted ||
+    !forwardingSent.forwardCardVisible ||
+    !forwardingSent.replyExcerptVisible ||
+    !forwardingSent.currentRoomReplyAttached ||
+    !forwardingSent.modelInputVerified ||
+    !forwardingSent.noProviderNetworkRequest
+  ) {
+    throw new Error(
+      `消息转发/回复流程与模型输入不符合预期：${JSON.stringify({ forwardingSelection, forwardingSent, modelRequest })}`,
+    );
+  }
   await mainWindow.webContents.executeJavaScript(`(async () => {
     const deadline = Date.now() + 5000;
-    document.querySelector('.new-agent-button')?.click();
+    const createButton = document.querySelector('.new-agent-button');
+    createButton?.focus();
+    createButton?.click();
     while (Date.now() < deadline && !document.querySelector('#social-agent-name')) {
       await new Promise((resolve) => setTimeout(resolve, 40));
     }
@@ -1341,6 +1558,31 @@ async function captureSocialAgentCreationE2e() {
   await mainWindow.webContents.executeJavaScript(
     'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
   );
+  const dialogCancel = await mainWindow.webContents
+    .executeJavaScript(`(async () => {
+    const waitFrames = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const deadline = Date.now() + 5000;
+    const initialDialog = {
+      focusedName: document.activeElement?.id === 'social-agent-name',
+      fieldCount: document.querySelectorAll('.agent-create-dialog .dialog-field').length,
+    };
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    while (Date.now() < deadline && document.querySelector('.agent-create-dialog')) {
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    }
+    if (document.querySelector('.agent-create-dialog')) throw new Error('Escape 没有关闭创建联系人表单');
+    await waitFrames();
+    return {
+      initialDialog,
+      cancelReturnedFocus: document.activeElement?.classList?.contains('new-agent-button') ?? false,
+      cancelFocusTarget: {
+        tagName: document.activeElement?.tagName ?? null,
+        className: document.activeElement?.className ?? null,
+        buttonConnected: Boolean(document.querySelector('.new-agent-button')?.isConnected),
+        buttonVisible: Boolean(document.querySelector('.new-agent-button')?.getClientRects().length),
+      },
+    };
+  })()`);
   mainWindow.setSize(360, 640);
   await mainWindow.webContents.executeJavaScript(
     'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
@@ -1363,14 +1605,12 @@ async function captureSocialAgentCreationE2e() {
       element.dispatchEvent(new Event('input', { bubbles: true }));
     };
     const initial = await window.noema.getSocialState();
-    const initialDialog = {
-      focusedName: document.activeElement?.id === 'social-agent-name',
-      fieldCount: document.querySelectorAll('.agent-create-dialog .dialog-field').length,
-    };
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    await waitFor(() => !document.querySelector('.agent-create-dialog'), 'Escape 关闭创建联系人表单');
-    const cancelReturnedFocus = document.activeElement?.classList?.contains('new-agent-button') ?? false;
-
+    const initialDialog = ${JSON.stringify(dialogCancel.initialDialog)};
+    const cancelReturnedFocus = ${JSON.stringify(dialogCancel.cancelReturnedFocus)};
+    const cancelFocusTarget = ${JSON.stringify(dialogCancel.cancelFocusTarget)};
+    document.querySelector('.mobile-back-button')?.click();
+    await waitFor(() => !document.querySelector('.social-body')?.classList.contains('room-open'), '移动端返回联系人列表');
+    await waitFrames();
     document.querySelector('.new-agent-button')?.click();
     await waitFor(() => document.querySelector('#social-agent-name'), '重新打开联系人表单');
     const name = 'E2E 图形观察员';
@@ -1478,11 +1718,17 @@ async function captureSocialAgentCreationE2e() {
     const sameIdentityJoined = groupSnapshot.members.some((member) => member.id === createdState.agent.id);
     const groupDidNotImportDm = !groupSnapshot.messages.some((message) => message.content.includes('长期观察游戏视觉与交互'));
     return {
+      forwarding: {
+        ...${JSON.stringify(forwardingSelection)},
+        narrow: ${JSON.stringify(forwardNarrow)},
+        ...${JSON.stringify(forwardingSent)},
+      },
       initial,
       initialDialog,
       dialogDesktop: ${JSON.stringify(dialogDesktop)},
       dialogNarrow: ${JSON.stringify(dialogNarrow)},
       cancelReturnedFocus,
+      cancelFocusTarget,
       agentId: createdState.agent.id,
       createdRoomId: directRoom.room.id,
       initialDirectIsEmpty,
@@ -2020,12 +2266,50 @@ async function startNoema() {
         }
       },
     });
+    socialAgentE2eModelRequests = [];
+    const socialAgentE2eModel = 'e2e-local-spy';
+    const socialChatProvider = socialAgentE2eValid
+      ? {
+          async *streamChat(input: {
+            model: string;
+            messages: Array<{ role: string; content: string }>;
+          }) {
+            socialAgentE2eModelRequests.push(input);
+            yield '我看到了这组转发消息。';
+          },
+        }
+      : provider;
+    const getSocialRootState = async () => {
+      const state = await agent.getUiState();
+      if (!socialAgentE2eValid) return state;
+      return {
+        ...state,
+        connected: true,
+        checking: false,
+        models: [
+          {
+            name: socialAgentE2eModel,
+            label: 'E2E 本机测试模型',
+            routeKind: 'direct' as const,
+            executionStatus: 'ready' as const,
+          },
+        ],
+        selectedModel: socialAgentE2eModel,
+        error: null,
+        providerConfigured: true,
+      };
+    };
     socialChatService = new SocialChatService({
       store: socialChatStore,
-      provider,
-      secretStore: providerSecretStore,
-      getSelectedModel: () => rootStore?.getSelectedModel() ?? null,
-      getRootState: () => agent.getUiState(),
+      provider: socialChatProvider as FreeLLMAPIClient,
+      secretStore: socialAgentE2eValid
+        ? { isConfigured: () => true }
+        : providerSecretStore,
+      getSelectedModel: () =>
+        socialAgentE2eValid
+          ? socialAgentE2eModel
+          : (rootStore?.getSelectedModel() ?? null),
+      getRootState: getSocialRootState,
       getProjectWorkReadiness: () =>
         socialWorkService?.getReadiness() ?? {
           available: false,

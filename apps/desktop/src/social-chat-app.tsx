@@ -15,6 +15,7 @@ import type {
   NoemaSocialAgent,
   NoemaSocialEvent,
   NoemaSocialMessage,
+  NoemaSocialReplySource,
   NoemaSocialRoom,
   NoemaSocialRoomState,
   NoemaSocialState,
@@ -150,6 +151,17 @@ function SocialChatApp() {
   const [draft, setDraft] = useState('');
   const [composerMode, setComposerMode] = useState<'chat' | 'project'>('chat');
   const [reuseCase, setReuseCase] = useState(false);
+  const [replyTarget, setReplyTarget] = useState<NoemaSocialReplySource | null>(
+    null,
+  );
+  const [forwardSelectionActive, setForwardSelectionActive] = useState(false);
+  const [selectedForwardMessageIds, setSelectedForwardMessageIds] = useState<
+    string[]
+  >([]);
+  const [forwardDialogOpen, setForwardDialogOpen] = useState(false);
+  const [forwardTargetRoomId, setForwardTargetRoomId] = useState('');
+  const [forwardRecipientId, setForwardRecipientId] = useState('');
+  const [forwardBusy, setForwardBusy] = useState(false);
   const [search, setSearch] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
@@ -178,7 +190,7 @@ function SocialChatApp() {
   const draftRef = useRef<HTMLTextAreaElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLFormElement>(null);
-  const returnFocusRef = useRef<HTMLElement | null>(null);
+  const forwardOriginMessageId = useRef<string | null>(null);
   const groupTriggerRef = useRef<HTMLButtonElement>(null);
   const agentTriggerRef = useRef<HTMLButtonElement>(null);
   const settingsTriggerRef = useRef<HTMLButtonElement>(null);
@@ -215,6 +227,24 @@ function SocialChatApp() {
     setSettingsOpen(false);
     setEditProviderConfig(false);
     requestAnimationFrame(() => settingsTriggerRef.current?.focus());
+  }, []);
+
+  const cancelForward = useCallback(() => {
+    const originMessageId = forwardOriginMessageId.current;
+    forwardOriginMessageId.current = null;
+    setForwardSelectionActive(false);
+    setSelectedForwardMessageIds([]);
+    setForwardDialogOpen(false);
+    setForwardTargetRoomId('');
+    setForwardRecipientId('');
+    requestAnimationFrame(() => {
+      if (!originMessageId) return;
+      document
+        .querySelector<HTMLElement>(
+          `[data-message-id="${originMessageId}"] .message-actions button`,
+        )
+        ?.focus();
+    });
   }, []);
 
   const loadRoom = useCallback(async (roomId: string) => {
@@ -308,14 +338,16 @@ function SocialChatApp() {
   }, []);
 
   useEffect(() => {
-    if (!createGroupOpen && !createAgentOpen && !settingsOpen) return;
+    if (
+      !createGroupOpen &&
+      !createAgentOpen &&
+      !settingsOpen &&
+      !forwardDialogOpen
+    ) {
+      return;
+    }
     const dialog = dialogRef.current;
     if (!dialog) return;
-    const previousFocus =
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null;
-    returnFocusRef.current = previousFocus;
     const focusableSelector =
       'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
     const focusables = () =>
@@ -333,6 +365,7 @@ function SocialChatApp() {
         event.preventDefault();
         if (createGroupOpen) closeGroupDialog();
         else if (createAgentOpen) closeAgentDialog();
+        else if (forwardDialogOpen) cancelForward();
         else closeSettingsDialog();
         return;
       }
@@ -361,15 +394,16 @@ function SocialChatApp() {
     return () => {
       cancelAnimationFrame(focusFrame);
       document.removeEventListener('keydown', onDialogKeyDown);
-      requestAnimationFrame(() => returnFocusRef.current?.focus());
     };
   }, [
     createGroupOpen,
     createAgentOpen,
     settingsOpen,
+    forwardDialogOpen,
     closeGroupDialog,
     closeAgentDialog,
     closeSettingsDialog,
+    cancelForward,
   ]);
 
   useLayoutEffect(() => {
@@ -409,6 +443,22 @@ function SocialChatApp() {
   const roomCanWork = members.some(
     (agent) => !agent.archivedAt && agent.capabilities.includes('project-work'),
   );
+  const forwardableRooms = rooms.filter(
+    (room) =>
+      room.id !== currentRoom?.id &&
+      room.memberIds.some((id) =>
+        activeAgents.some((agent) => agent.id === id),
+      ),
+  );
+  const forwardTargetRoom = forwardableRooms.find(
+    (room) => room.id === forwardTargetRoomId,
+  );
+  const forwardTargetMembers = (forwardTargetRoom?.memberIds ?? [])
+    .map((id) => agents.find((agent) => agent.id === id))
+    .filter((agent): agent is NoemaSocialAgent => Boolean(agent));
+  const selectedForwardMessages = messages.filter((message) =>
+    selectedForwardMessageIds.includes(message.id),
+  );
   const filteredRooms = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
     if (!query) return rooms;
@@ -428,13 +478,24 @@ function SocialChatApp() {
     setSelectedAgentId(room.memberIds[0] ?? 'noema');
     setComposerMode('chat');
     setReuseCase(false);
+    setReplyTarget(null);
+    setForwardSelectionActive(false);
+    setSelectedForwardMessageIds([]);
     setShowRoomList(false);
     setNotice('');
   };
 
   const handleSend = async (event?: FormEvent) => {
     event?.preventDefault();
-    if (!currentRoom || !currentRecipient || !draft.trim() || busy) return;
+    if (
+      !currentRoom ||
+      !currentRecipient ||
+      !draft.trim() ||
+      busy ||
+      forwardSelectionActive
+    ) {
+      return;
+    }
     if (currentRecipientArchived) {
       setNotice('这位联系人已归档；恢复后才能继续聊天。');
       return;
@@ -448,8 +509,10 @@ function SocialChatApp() {
         roomId: currentRoom.id,
         agentId: currentRecipient.id,
         text,
+        replyToMessageId: replyTarget?.id ?? null,
       });
       setDraft('');
+      setReplyTarget(null);
       if (draftRef.current) draftRef.current.style.height = 'auto';
       await Promise.all([refreshState(), loadRoom(currentRoom.id)]);
     } catch (error) {
@@ -462,9 +525,113 @@ function SocialChatApp() {
     }
   };
 
+  const beginForwardSelection = (message: NoemaSocialMessage) => {
+    if (
+      !currentRoom ||
+      !['user', 'assistant'].includes(message.role) ||
+      message.status !== 'complete'
+    ) {
+      return;
+    }
+    forwardOriginMessageId.current = message.id;
+    setForwardSelectionActive(true);
+    setSelectedForwardMessageIds([message.id]);
+    requestAnimationFrame(() => {
+      document
+        .querySelector<HTMLElement>(
+          `[data-message-id="${message.id}"] .message-actions button`,
+        )
+        ?.focus();
+    });
+  };
+
+  const toggleForwardMessage = (message: NoemaSocialMessage) => {
+    setSelectedForwardMessageIds((current) => {
+      if (current.includes(message.id)) {
+        return current.filter((id) => id !== message.id);
+      }
+      if (current.length >= 20) {
+        setNotice('一次最多合并转发 20 条消息。');
+        return current;
+      }
+      return [...current, message.id];
+    });
+  };
+
+  const openForwardDialog = () => {
+    if (!currentRoom || selectedForwardMessageIds.length === 0) return;
+    const targetRooms = rooms.filter(
+      (room) =>
+        room.id !== currentRoom.id &&
+        room.memberIds.some((id) =>
+          state?.agents.some((agent) => agent.id === id && !agent.archivedAt),
+        ),
+    );
+    const targetRoom = targetRooms[0];
+    if (!targetRoom) {
+      setNotice('没有可接收转发消息的聊天。');
+      return;
+    }
+    const recipientId = targetRoom.memberIds.find((id) =>
+      state?.agents.some((agent) => agent.id === id && !agent.archivedAt),
+    );
+    setForwardTargetRoomId(targetRoom.id);
+    setForwardRecipientId(recipientId ?? '');
+    setForwardDialogOpen(true);
+  };
+
+  const chooseForwardRoom = (roomId: string) => {
+    const room = forwardableRooms.find((candidate) => candidate.id === roomId);
+    const recipientId = room?.memberIds.find((id) =>
+      activeAgents.some((agent) => agent.id === id),
+    );
+    setForwardTargetRoomId(roomId);
+    setForwardRecipientId(recipientId ?? '');
+  };
+
+  const handleForward = async (event: FormEvent) => {
+    event.preventDefault();
+    if (
+      !currentRoom ||
+      !forwardTargetRoomId ||
+      !forwardRecipientId ||
+      selectedForwardMessageIds.length === 0 ||
+      forwardBusy
+    ) {
+      return;
+    }
+    setForwardBusy(true);
+    setNotice('');
+    try {
+      await window.noema.sendSocialMessage({
+        roomId: forwardTargetRoomId,
+        agentId: forwardRecipientId,
+        text: '',
+        sourceRoomId: currentRoom.id,
+        sourceIds: selectedForwardMessageIds,
+      });
+      setActiveRoomId(forwardTargetRoomId);
+      setSelectedAgentId(forwardRecipientId);
+      setShowRoomList(false);
+      forwardOriginMessageId.current = null;
+      cancelForward();
+      shouldFollowRef.current = true;
+      await Promise.all([refreshState(), loadRoom(forwardTargetRoomId)]);
+      requestAnimationFrame(() => draftRef.current?.focus());
+    } catch (error) {
+      setNotice(
+        error instanceof Error ? error.message : '消息没有转发，请重试。',
+      );
+    } finally {
+      setForwardBusy(false);
+    }
+  };
+
   const handleStartProjectWork = async (event?: FormEvent) => {
     event?.preventDefault();
     if (!currentRoom || !currentRecipient || !draft.trim() || workBusy) return;
+    setReplyTarget(null);
+    cancelForward();
     if (currentRecipientArchived) {
       setNotice('这位联系人已归档；恢复后才能承接项目工作。');
       return;
@@ -576,6 +743,7 @@ function SocialChatApp() {
       setShowRoomList(false);
       await refreshState();
       await loadRoom(group.room.id);
+      requestAnimationFrame(() => draftRef.current?.focus());
     } catch (error) {
       setNotice(error instanceof Error ? error.message : '群聊没有创建成功。');
     } finally {
@@ -602,6 +770,7 @@ function SocialChatApp() {
       setActiveRoomId(room.room.id);
       setShowRoomList(false);
       await Promise.all([refreshState(), loadRoom(room.room.id)]);
+      requestAnimationFrame(() => draftRef.current?.focus());
     } catch (error) {
       setNotice(
         error instanceof Error ? error.message : '联系人没有创建成功。',
@@ -701,6 +870,7 @@ function SocialChatApp() {
       setEditProviderConfig(false);
       setSettingsOpen(false);
       await refreshState();
+      requestAnimationFrame(() => settingsTriggerRef.current?.focus());
       if (result.error) setNotice(result.error);
     } catch (error) {
       setNotice(
@@ -1103,6 +1273,36 @@ function SocialChatApp() {
                               : null
                           }
                           onRetry={handleRetry}
+                          forwardSelectionActive={forwardSelectionActive}
+                          forwardSelected={selectedForwardMessageIds.includes(
+                            item.message.id,
+                          )}
+                          onReply={() => {
+                            const forwardedText = item.message.forwardedSources
+                              .map(
+                                (source) =>
+                                  `${source.sender}：${source.content}`,
+                              )
+                              .join('\n');
+                            setReplyTarget({
+                              id: item.message.id,
+                              roomId: currentRoom.id,
+                              role: item.message.role as 'user' | 'assistant',
+                              sender:
+                                item.message.role === 'user'
+                                  ? '你'
+                                  : (messageAgent.get(
+                                      item.message.agentId ?? '',
+                                    )?.name ?? '联系人'),
+                              createdAt: item.message.createdAt,
+                              content: forwardedText || item.message.content,
+                            });
+                            draftRef.current?.focus();
+                          }}
+                          onForward={() => beginForwardSelection(item.message)}
+                          onToggleForward={() =>
+                            toggleForwardMessage(item.message)
+                          }
                         />
                       ) : (
                         <ProjectWorkCard
@@ -1116,6 +1316,8 @@ function SocialChatApp() {
                           onRepeat={() => {
                             setSelectedAgentId(item.task.agentId);
                             setComposerMode('project');
+                            setReplyTarget(null);
+                            cancelForward();
                             setDraft(item.task.taskPrompt);
                             requestAnimationFrame(() =>
                               draftRef.current?.focus(),
@@ -1189,6 +1391,26 @@ function SocialChatApp() {
                 </div>
               ) : null}
 
+              {forwardSelectionActive ? (
+                <div className="forward-selection-toolbar" role="status">
+                  <span>
+                    已选 {selectedForwardMessageIds.length} 条消息
+                    <small>按时间顺序合并转发</small>
+                  </span>
+                  <button type="button" onClick={cancelForward}>
+                    取消
+                  </button>
+                  <button
+                    type="button"
+                    className="primary-action"
+                    onClick={openForwardDialog}
+                    disabled={!selectedForwardMessageIds.length}
+                  >
+                    选择目标聊天
+                  </button>
+                </div>
+              ) : null}
+
               {roomCanWork ? (
                 <div
                   className="composer-mode-switch"
@@ -1207,7 +1429,11 @@ function SocialChatApp() {
                     type="button"
                     className={composerMode === 'project' ? 'is-selected' : ''}
                     aria-pressed={composerMode === 'project'}
-                    onClick={() => setComposerMode('project')}
+                    onClick={() => {
+                      setReplyTarget(null);
+                      cancelForward();
+                      setComposerMode('project');
+                    }}
                     disabled={!state?.projectWork.available}
                     title={state?.projectWork.reason ?? undefined}
                   >
@@ -1241,6 +1467,27 @@ function SocialChatApp() {
                     </small>
                   </span>
                 </label>
+              ) : null}
+
+              {replyTarget && composerMode === 'chat' ? (
+                <div className="reply-composer-preview">
+                  <div>
+                    <strong>回复 {replyTarget.sender}</strong>
+                    <span>
+                      {replyTarget.content.replace(/\s+/gu, ' ').slice(0, 150)}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label="取消回复引用"
+                    onClick={() => {
+                      setReplyTarget(null);
+                      requestAnimationFrame(() => draftRef.current?.focus());
+                    }}
+                  >
+                    <Icon name="close" />
+                  </button>
+                </div>
               ) : null}
 
               <form
@@ -1277,6 +1524,7 @@ function SocialChatApp() {
                   onKeyDown={handleComposerKeyDown}
                   disabled={
                     !composerReady ||
+                    forwardSelectionActive ||
                     !currentRecipient ||
                     currentRecipientArchived ||
                     Boolean(activeReply) ||
@@ -1307,6 +1555,7 @@ function SocialChatApp() {
                       type="submit"
                       disabled={
                         !composerReady ||
+                        forwardSelectionActive ||
                         !draft.trim() ||
                         !currentRecipient ||
                         currentRecipientArchived ||
@@ -1329,7 +1578,9 @@ function SocialChatApp() {
               <p className="data-flow-note">
                 {composerMode === 'project'
                   ? '项目工作会留在当前聊天，并带入当前联系人的专业资料。启动前会选择文件夹并显示数据范围；Noema 会区分 DSH 结束与独立核验结果。'
-                  : '聊天记录保存在本机；发送后，本轮消息及当前联系人的专业范围与合作方式会经 FreeLLMAPI 发给当前模型。'}
+                  : replyTarget
+                    ? '回复只关联当前聊天中的这条消息；发送后双方都能看到引用。'
+                    : '聊天记录保存在本机；发送后，本轮消息及当前联系人的专业范围与合作方式会经 FreeLLMAPI 发给当前模型。'}
               </p>
             </>
           ) : (
@@ -1340,6 +1591,131 @@ function SocialChatApp() {
           )}
         </section>
       </div>
+
+      {forwardDialogOpen ? (
+        <div
+          className="dialog-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) cancelForward();
+          }}
+        >
+          <form
+            ref={dialogRef}
+            className="social-dialog forward-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="forward-dialog-title"
+            onSubmit={(event) => void handleForward(event)}
+          >
+            <div className="dialog-heading">
+              <div>
+                <h2 id="forward-dialog-title">转发到聊天</h2>
+                <p>
+                  {selectedForwardMessages.length} 条消息 · 来自「
+                  {currentRoom?.title ?? '当前聊天'}」
+                </p>
+              </div>
+              <button
+                className="icon-button"
+                type="button"
+                aria-label="取消转发"
+                onClick={cancelForward}
+              >
+                <Icon name="close" />
+              </button>
+            </div>
+            <div className="forward-dialog-preview">
+              {selectedForwardMessages.map((message) => (
+                <article key={message.id}>
+                  <strong>
+                    {message.role === 'user'
+                      ? '你'
+                      : (messageAgent.get(message.agentId ?? '')?.name ??
+                        '联系人')}
+                  </strong>
+                  <time dateTime={message.createdAt}>
+                    {timeLabel(message.createdAt)}
+                  </time>
+                  <p>
+                    {message.forwardedSources.length
+                      ? `已转发 ${message.forwardedSources.length} 条消息`
+                      : message.content}
+                  </p>
+                </article>
+              ))}
+            </div>
+            <label className="dialog-field">
+              <span>转发到</span>
+              <select
+                value={forwardTargetRoomId}
+                onChange={(event) => chooseForwardRoom(event.target.value)}
+                required
+                data-dialog-initial-focus
+              >
+                {forwardableRooms.map((room) => (
+                  <option key={room.id} value={room.id}>
+                    {room.title} ·{' '}
+                    {room.memberIds
+                      .map((id) => messageAgent.get(id)?.name ?? '')
+                      .filter(Boolean)
+                      .join('、')}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {forwardTargetRoom?.kind === 'group' ? (
+              <fieldset className="forward-recipient-options">
+                <legend>由谁回应这条转发</legend>
+                {forwardTargetMembers
+                  .filter((agent) => !agent.archivedAt)
+                  .map((agent) => (
+                    <label key={agent.id}>
+                      <input
+                        type="radio"
+                        name="forward-recipient"
+                        value={agent.id}
+                        checked={forwardRecipientId === agent.id}
+                        onChange={() => setForwardRecipientId(agent.id)}
+                      />
+                      <AgentMark agent={agent} small />
+                      {agent.name}
+                    </label>
+                  ))}
+              </fieldset>
+            ) : forwardTargetMembers[0] ? (
+              <div className="forward-recipient-summary">
+                <span>由联系人回应</span>
+                <strong>{forwardTargetMembers[0].name}</strong>
+              </div>
+            ) : null}
+            <p className="dialog-footnote">
+              转发后，消息会作为带来源的内容出现在目标聊天；目标聊天成员和所选回应者都能看到。
+            </p>
+            <div className="dialog-actions">
+              <button
+                className="secondary-action"
+                type="button"
+                onClick={cancelForward}
+                disabled={forwardBusy}
+              >
+                取消
+              </button>
+              <button
+                className="primary-action"
+                type="submit"
+                disabled={
+                  forwardBusy ||
+                  !forwardTargetRoom ||
+                  !forwardRecipientId ||
+                  selectedForwardMessages.length === 0
+                }
+              >
+                {forwardBusy ? '正在转发…' : '转发并请联系人回应'}
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
 
       {createAgentOpen ? (
         <div
@@ -1705,10 +2081,20 @@ function ChatMessage({
   message,
   agent,
   onRetry,
+  forwardSelectionActive,
+  forwardSelected,
+  onReply,
+  onForward,
+  onToggleForward,
 }: {
   message: NoemaSocialMessage;
   agent: NoemaSocialAgent | null;
   onRetry: (message: NoemaSocialMessage) => void;
+  forwardSelectionActive: boolean;
+  forwardSelected: boolean;
+  onReply: () => void;
+  onForward: () => void;
+  onToggleForward: () => void;
 }) {
   if (message.role === 'system') {
     return (
@@ -1720,23 +2106,90 @@ function ChatMessage({
     );
   }
 
+  const canActOnMessage = message.status === 'complete';
+  const actions = canActOnMessage ? (
+    <div className="message-actions">
+      {forwardSelectionActive ? (
+        <button
+          type="button"
+          className={forwardSelected ? 'is-selected' : ''}
+          aria-pressed={forwardSelected}
+          onClick={onToggleForward}
+        >
+          {forwardSelected ? '已选择' : '选择转发'}
+        </button>
+      ) : (
+        <>
+          <button type="button" onClick={onReply}>
+            回复
+          </button>
+          <button type="button" onClick={onForward}>
+            转发
+          </button>
+        </>
+      )}
+    </div>
+  ) : null;
+
+  const replyPreview = message.replyTo ? (
+    <div className="message-reply-reference">
+      <strong>{message.replyTo.sender}</strong>
+      <span>{message.replyTo.content}</span>
+    </div>
+  ) : null;
+  const forwardCard =
+    message.forwardedSources.length > 0 ? (
+      <div className="forwarded-message-card">
+        <strong>
+          {message.forwardedSources.length > 1 ? '合并转发' : '转发消息'}
+        </strong>
+        <span className="forwarded-message-source">
+          来自「{message.forwardedSources[0].roomTitle}」
+        </span>
+        <div className="forwarded-message-items">
+          {message.forwardedSources.map((source) => (
+            <div
+              className="forwarded-message-item"
+              key={`${source.roomId}:${source.id}`}
+            >
+              <div>
+                <b>{source.sender}</b>
+                <time dateTime={source.createdAt}>
+                  {timeLabel(source.createdAt)}
+                </time>
+              </div>
+              <p>{source.content}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    ) : null;
+
   if (message.role === 'user') {
     return (
-      <article className="chat-message user-message">
+      <article
+        className={`chat-message user-message ${forwardSelectionActive ? 'is-forward-selecting' : ''} ${forwardSelected ? 'is-forward-selected' : ''}`}
+        data-message-id={message.id}
+      >
         <div className="message-body">
-          <div className="message-bubble">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={markdownComponents}
-            >
-              {message.content}
-            </ReactMarkdown>
-          </div>
+          {replyPreview}
+          {forwardCard}
+          {message.content ? (
+            <div className="message-bubble">
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={markdownComponents}
+              >
+                {message.content}
+              </ReactMarkdown>
+            </div>
+          ) : null}
           <div className="message-meta">
             <time dateTime={message.createdAt}>
               {timeLabel(message.createdAt)}
             </time>
           </div>
+          {actions}
         </div>
         <span className="user-message-mark" aria-hidden="true">
           你
@@ -1750,7 +2203,8 @@ function ChatMessage({
     message.status === 'failed' || message.status === 'interrupted';
   return (
     <article
-      className={`chat-message agent-message ${running ? 'is-running' : ''}`}
+      className={`chat-message agent-message ${running ? 'is-running' : ''} ${forwardSelectionActive ? 'is-forward-selecting' : ''} ${forwardSelected ? 'is-forward-selected' : ''}`}
+      data-message-id={message.id}
     >
       {agent ? (
         <AgentMark agent={agent} />
@@ -1764,6 +2218,8 @@ function ChatMessage({
             {timeLabel(message.createdAt)}
           </time>
         </div>
+        {replyPreview}
+        {forwardCard}
         <div className="message-bubble">
           {message.content ? (
             <ReactMarkdown
@@ -1794,6 +2250,7 @@ function ChatMessage({
             请求路由 · {formatRoute(message.model)}
           </div>
         ) : null}
+        {actions}
       </div>
     </article>
   );

@@ -84,7 +84,7 @@ test('social chat sends only the selected room transcript and persists the real 
   }
 });
 
-test('a user-created specialist supplies its profile in each room without merging their conversation history', async () => {
+test('a user-created specialist receives only messages explicitly forwarded into the target room', async () => {
   const db = new Database(':memory:');
   new RootStore(db);
   const store = new SocialChatStore(db);
@@ -120,15 +120,34 @@ test('a user-created specialist supplies its profile in each room without mergin
     service.sendMessage({
       roomId: created.room.id,
       agentId,
-      text: '仅私聊的观察标记：月桂',
+      text: '仅私聊的观察标记：月桂。以后关于 OpenAI 官方发布更新请优先看一手来源。',
     });
     await new Promise((resolve) => setImmediate(resolve));
     await service.active.get(created.room.id)?.done;
-
+    const sourceMessage = store
+      .getRoomSnapshot(created.room.id)
+      .messages.find(
+        (message) =>
+          message.role === 'user' && message.content.includes('月桂'),
+      );
+    assert.ok(sourceMessage);
+    const unrelatedTurn = store.beginTurn({
+      roomId: created.room.id,
+      agentId,
+      text: '只在私聊中提到的无关标记：紫水晶',
+      model: 'test-model',
+    });
+    store.appendAssistantDelta(
+      unrelatedTurn.assistantMessageId,
+      '这条无关内容不应随引用带入。',
+    );
+    store.completeReply(unrelatedTurn.assistantMessageId);
     service.sendMessage({
       roomId: group.room.id,
       agentId,
-      text: '群聊中的项目问题。',
+      text: '',
+      sourceRoomId: created.room.id,
+      sourceIds: [sourceMessage.id],
     });
     await new Promise((resolve) => setImmediate(resolve));
     await service.active.get(group.room.id)?.done;
@@ -147,11 +166,70 @@ test('a user-created specialist supplies its profile in each room without mergin
       seenRequests[1].messages.some((message) =>
         message.content.includes('月桂'),
       ),
+      true,
+    );
+    assert.equal(
+      seenRequests[1].messages.some((message) =>
+        message.content.includes('紫水晶'),
+      ),
       false,
     );
+    const forwardedMessage = seenRequests[1].messages.find((message) =>
+      message.content.includes('用户转发的聊天消息'),
+    );
+    assert.match(forwardedMessage?.content ?? '', /来自「游戏工程观察员」/u);
     assert.equal(
       group.members.find((member) => member.id === agentId)?.id,
       agentId,
+    );
+    const savedGroupUser = store
+      .getRoomSnapshot(group.room.id)
+      .messages.find((message) => message.role === 'user');
+    assert.equal(savedGroupUser?.forwardedSources.length, 1);
+    assert.equal(savedGroupUser?.forwardedSources[0].id, sourceMessage.id);
+    const reopenedStoreSnapshot = new SocialChatStore(db).getRoomSnapshot(
+      group.room.id,
+    );
+    const reopenedUser = reopenedStoreSnapshot.messages.find(
+      (message) => message.id === savedGroupUser.id,
+    );
+    assert.deepEqual(reopenedUser?.forwardedSources, [
+      savedGroupUser.forwardedSources[0],
+    ]);
+
+    service.sendMessage({
+      roomId: group.room.id,
+      agentId,
+      text: '你怎么看这条记录？',
+      replyToMessageId: savedGroupUser.id,
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await service.active.get(group.room.id)?.done;
+    assert.equal(seenRequests.length, 3);
+    assert.match(
+      seenRequests[2].messages.at(-1)?.content ?? '',
+      /回复当前聊天中的你消息/u,
+    );
+    assert.match(
+      seenRequests[2].messages.at(-1)?.content ?? '',
+      /OpenAI 官方发布更新/u,
+    );
+    const replyUser = store
+      .getRoomSnapshot(group.room.id)
+      .messages.find(
+        (message) =>
+          message.role === 'user' && message.id !== savedGroupUser.id,
+      );
+    assert.equal(replyUser?.replyTo?.id, savedGroupUser.id);
+    assert.throws(
+      () =>
+        service.sendMessage({
+          roomId: created.room.id,
+          agentId,
+          text: '不能跨房间回复',
+          replyToMessageId: savedGroupUser.id,
+        }),
+      /当前聊天/u,
     );
   } finally {
     await service.shutdown();
@@ -173,7 +251,9 @@ test('stop signal interrupts a live room reply and preserves partial text', asyn
         signal.addEventListener(
           'abort',
           () => reject(new DOMException('aborted', 'AbortError')),
-          { once: true },
+          {
+            once: true,
+          },
         );
       });
     },
