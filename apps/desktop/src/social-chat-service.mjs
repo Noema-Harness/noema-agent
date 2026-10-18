@@ -10,11 +10,11 @@ function safeError(error) {
 
 /**
  * Sends room-scoped turns to a replaceable chat provider.
- * @param {{store:import('./social-chat-store.mjs').SocialChatStore,provider:import('./freellmapi-client.mjs').FreeLLMAPIClient,secretStore:{isConfigured:()=>boolean},getSelectedModel:()=>string|null,getRootState:()=>Promise<SocialProviderState>,emit?:(event:object)=>void}} options
+ * @param {{store:import('./social-chat-store.mjs').SocialChatStore,provider:import('./freellmapi-client.mjs').FreeLLMAPIClient,secretStore:{isConfigured:()=>boolean},getSelectedModel:()=>string|null,getRootState:()=>Promise<SocialProviderState>,getProjectWorkReadiness?:()=>{available:boolean,reason:string|null},emit?:(event:object)=>void}} options
  */
 export class SocialChatService {
   /**
-   * @param {{store:import('./social-chat-store.mjs').SocialChatStore,provider:import('./freellmapi-client.mjs').FreeLLMAPIClient,secretStore:{isConfigured:()=>boolean},getSelectedModel:()=>string|null,getRootState:()=>Promise<SocialProviderState>,emit?:(event:object)=>void}} options
+   * @param {{store:import('./social-chat-store.mjs').SocialChatStore,provider:import('./freellmapi-client.mjs').FreeLLMAPIClient,secretStore:{isConfigured:()=>boolean},getSelectedModel:()=>string|null,getRootState:()=>Promise<SocialProviderState>,getProjectWorkReadiness?:()=>{available:boolean,reason:string|null},emit?:(event:object)=>void}} options
    */
   constructor({
     store,
@@ -22,6 +22,10 @@ export class SocialChatService {
     secretStore,
     getSelectedModel,
     getRootState,
+    getProjectWorkReadiness = () => ({
+      available: false,
+      reason: '项目工作运行环境尚未初始化。',
+    }),
     emit = () => {},
   }) {
     this.store = store;
@@ -29,6 +33,7 @@ export class SocialChatService {
     this.secretStore = secretStore;
     this.getSelectedModel = getSelectedModel;
     this.getRootState = getRootState;
+    this.getProjectWorkReadiness = getProjectWorkReadiness;
     this.emit = emit;
     this.active = new Map();
     this.shuttingDown = false;
@@ -48,6 +53,7 @@ export class SocialChatService {
       providerConfigured: root.providerConfigured,
       providerBaseUrl: root.providerBaseUrl,
       providerName: 'FreeLLMAPI',
+      projectWork: this.getProjectWorkReadiness(),
       ...social,
     };
   }

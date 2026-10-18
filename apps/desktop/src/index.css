@@ -2898,6 +2898,8 @@ select:disabled {
   --chat-forest-deep: #244536;
   --chat-lime: #c9d98b;
   --chat-error: #a94136;
+  --chat-success: #367258;
+  --chat-warning: #8b662c;
   width: 100%;
   height: 100dvh;
   min-width: 320px;
@@ -3710,6 +3712,55 @@ select:disabled {
   background: #edf3ed;
   color: var(--chat-forest-deep);
 }
+.composer-mode-switch {
+  width: min(calc(100% - clamp(32px, 5vw, 112px)), 860px);
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 2px auto 0;
+  color: var(--chat-muted);
+  font-size: 10px;
+}
+.composer-mode-switch > button {
+  min-height: 27px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--chat-muted);
+  font-size: 10px;
+  cursor: pointer;
+}
+.composer-mode-switch > button:hover:not(:disabled) {
+  background: var(--chat-paper-alt);
+}
+.composer-mode-switch > button.is-selected {
+  border-color: var(--chat-line);
+  background: var(--chat-paper-alt);
+  color: var(--chat-forest-deep);
+  font-weight: 650;
+}
+.composer-mode-switch > button:disabled {
+  color: var(--chat-muted);
+  cursor: not-allowed;
+}
+.composer-mode-explainer,
+.composer-mode-unavailable {
+  margin-left: 6px;
+  color: var(--chat-muted);
+  font-size: 10px;
+}
+.composer-mode-unavailable button {
+  margin-left: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--chat-forest-deep);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
 .message-composer {
   width: min(calc(100% - clamp(32px, 5vw, 112px)), 860px);
   min-height: 106px;
@@ -3800,6 +3851,151 @@ select:disabled {
   color: #56645b;
   font-size: 10px;
   line-height: 1.45;
+}
+.project-work-card {
+  width: min(92%, 720px);
+  align-self: flex-start;
+  padding: 13px 15px 11px;
+  border: 1px solid var(--chat-line);
+  border-radius: 4px 13px 13px 13px;
+  background: var(--chat-paper-alt);
+  color: var(--chat-ink);
+}
+.project-work-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 22px;
+  color: var(--chat-forest-deep);
+  font-size: 11px;
+}
+.project-work-header time {
+  margin-left: auto;
+  color: var(--chat-muted);
+  font-size: 9px;
+  font-weight: 450;
+}
+.project-work-status-mark {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--chat-success);
+}
+.project-work-running .project-work-status-mark,
+.project-work-starting .project-work-status-mark,
+.project-work-verifying .project-work-status-mark {
+  background: var(--chat-warning);
+  animation: work-status-pulse 1.1s ease-in-out infinite alternate;
+}
+.project-work-failed .project-work-status-mark,
+.project-work-interrupted .project-work-status-mark {
+  background: var(--chat-error);
+}
+.project-work-request {
+  margin: 8px 0 10px;
+  color: var(--chat-ink);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.project-work-progress,
+.project-work-verification {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 7px 0;
+  color: var(--chat-muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+.project-work-location {
+  margin: 6px 0;
+  color: var(--chat-muted);
+  font-size: 10px;
+}
+.project-work-location summary {
+  width: fit-content;
+  cursor: pointer;
+}
+.project-work-location code {
+  display: block;
+  max-width: 100%;
+  margin-top: 5px;
+  overflow-wrap: anywhere;
+  color: var(--chat-forest-deep);
+  font-size: 10px;
+}
+.project-work-result {
+  margin: 8px 0;
+  padding-top: 7px;
+  border-top: 1px solid var(--chat-line);
+  color: var(--chat-ink);
+  font-size: 11px;
+  line-height: 1.6;
+}
+.project-work-result-label {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--chat-muted);
+  font-size: 9px;
+  font-weight: 650;
+}
+.project-work-result > :first-child {
+  margin-top: 0;
+}
+.project-work-result > :last-child {
+  margin-bottom: 0;
+}
+.project-work-verification.is-verified {
+  color: var(--chat-success);
+}
+.project-work-verification.is-failed,
+.project-work-verification.is-unavailable {
+  color: var(--chat-error);
+}
+.project-work-error {
+  margin: 7px 0;
+  color: var(--chat-error);
+  font-size: 10px;
+  line-height: 1.5;
+}
+.project-work-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px solid var(--chat-line);
+  color: var(--chat-muted);
+  font-size: 9px;
+}
+.project-work-footer button {
+  min-height: 27px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px;
+  border: 1px solid var(--chat-line);
+  border-radius: 7px;
+  background: var(--chat-paper);
+  color: var(--chat-muted);
+  font-size: 10px;
+  cursor: pointer;
+}
+.project-work-footer button:hover {
+  background: var(--chat-paper-alt);
+}
+.project-work-footer svg {
+  width: 13px;
+  height: 13px;
+}
+@keyframes work-status-pulse {
+  to {
+    opacity: 0.42;
+  }
 }
 .provider-warning,
 .inline-notice {
@@ -4076,6 +4272,27 @@ select:disabled {
     padding-right: 24px;
     padding-left: 24px;
   }
+  .composer-mode-switch {
+    width: calc(100% - 24px);
+    gap: 3px;
+  }
+  .composer-mode-explainer,
+  .composer-mode-unavailable {
+    line-height: 1.35;
+  }
+  .project-work-card {
+    width: 100%;
+    padding: 11px 12px 9px;
+  }
+  .project-work-header {
+    flex-wrap: wrap;
+  }
+  .project-work-header time {
+    margin-left: auto;
+  }
+  .project-work-footer {
+    align-items: flex-start;
+  }
 }
 @media (max-width: 700px) {
   .social-topbar {
@@ -4189,6 +4406,27 @@ select:disabled {
   .reply-routing .agent-mark-small {
     width: 20px;
     height: 20px;
+  }
+  .composer-mode-switch {
+    width: calc(100% - 24px);
+    gap: 3px;
+  }
+  .composer-mode-explainer,
+  .composer-mode-unavailable {
+    line-height: 1.35;
+  }
+  .project-work-card {
+    width: 100%;
+    padding: 11px 12px 9px;
+  }
+  .project-work-header {
+    flex-wrap: wrap;
+  }
+  .project-work-header time {
+    margin-left: auto;
+  }
+  .project-work-footer {
+    align-items: flex-start;
   }
   .message-composer {
     width: calc(100% - 20px);

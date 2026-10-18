@@ -18,6 +18,7 @@ import type {
   NoemaSocialRoom,
   NoemaSocialRoomState,
   NoemaSocialState,
+  NoemaSocialWorkTask,
 } from './noema-bridge.d.ts';
 
 const markdownComponents: Components = {
@@ -125,9 +126,11 @@ function SocialChatApp() {
   const [roomState, setRoomState] = useState<NoemaSocialRoomState | null>(null);
   const [selectedAgentId, setSelectedAgentId] = useState('noema');
   const [draft, setDraft] = useState('');
+  const [composerMode, setComposerMode] = useState<'chat' | 'project'>('chat');
   const [search, setSearch] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
+  const [workBusy, setWorkBusy] = useState(false);
   const [showRoomList, setShowRoomList] = useState(true);
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -316,7 +319,7 @@ function SocialChatApp() {
       }
     });
     return () => cancelAnimationFrame(frame);
-  }, [roomState?.messages]);
+  }, [roomState?.messages, roomState?.workTasks]);
 
   const agents = state?.agents ?? [];
   const rooms = state?.rooms ?? [];
@@ -324,6 +327,8 @@ function SocialChatApp() {
   const members = roomState?.room.id === activeRoomId ? roomState.members : [];
   const messages =
     roomState?.room.id === activeRoomId ? roomState.messages : [];
+  const workTasks =
+    roomState?.room.id === activeRoomId ? roomState.workTasks : [];
   const activeReply = messages.find(
     (message) => message.role === 'assistant' && message.status === 'streaming',
   );
@@ -333,6 +338,12 @@ function SocialChatApp() {
   );
   const currentRecipient =
     members.find((agent) => agent.id === selectedAgentId) ?? members[0] ?? null;
+  const currentRecipientCanWork = Boolean(
+    currentRecipient?.capabilities.includes('project-work'),
+  );
+  const roomCanWork = members.some((agent) =>
+    agent.capabilities.includes('project-work'),
+  );
   const filteredRooms = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
     if (!query) return rooms;
@@ -350,6 +361,7 @@ function SocialChatApp() {
     shouldFollowRef.current = true;
     setActiveRoomId(room.id);
     setSelectedAgentId(room.memberIds[0] ?? 'noema');
+    setComposerMode('chat');
     setShowRoomList(false);
     setNotice('');
   };
@@ -380,6 +392,48 @@ function SocialChatApp() {
     }
   };
 
+  const handleStartProjectWork = async (event?: FormEvent) => {
+    event?.preventDefault();
+    if (!currentRoom || !currentRecipient || !draft.trim() || workBusy) return;
+    if (!state?.projectWork.available) {
+      setNotice(state?.projectWork.reason ?? '项目工作当前不可用。');
+      return;
+    }
+    if (!currentRecipientCanWork) {
+      setNotice('请在群聊中选择工程搭档，再把任务交给它。');
+      return;
+    }
+    setWorkBusy(true);
+    setNotice('');
+    try {
+      const result = await window.noema.startSocialWorkTask({
+        roomId: currentRoom.id,
+        agentId: currentRecipient.id,
+        prompt: draft.trim(),
+      });
+      if (result.accepted) {
+        setDraft('');
+        if (draftRef.current) draftRef.current.style.height = 'auto';
+        setNotice('工程搭档已开始处理；你可以继续在这个聊天里说话。');
+        await Promise.all([refreshState(), loadRoom(currentRoom.id)]);
+      }
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : '项目工作没有启动。');
+    } finally {
+      setWorkBusy(false);
+      draftRef.current?.focus();
+    }
+  };
+
+  const handleStopProjectWork = async (task: NoemaSocialWorkTask) => {
+    try {
+      await window.noema.stopSocialWorkTask(task.id);
+      await loadRoom(task.roomId);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : '任务没有停止。');
+    }
+  };
+
   const handleComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (
       event.key === 'Enter' &&
@@ -387,7 +441,9 @@ function SocialChatApp() {
       !event.nativeEvent.isComposing
     ) {
       event.preventDefault();
-      void handleSend();
+      void (composerMode === 'project'
+        ? handleStartProjectWork()
+        : handleSend());
     }
   };
 
@@ -526,6 +582,24 @@ function SocialChatApp() {
             ? '所选模型需要配置服务商密钥。可以切换其他可用模型，或检查 FreeLLMAPI 设置。'
             : '所选模型最近报告额度已耗尽。可以切换其他模型后继续。'
           : null;
+  const composerReady =
+    composerMode === 'chat'
+      ? providerReady
+      : Boolean(state?.projectWork.available);
+  const timelineItems = [
+    ...messages.map((message) => ({
+      kind: 'message' as const,
+      createdAt: message.createdAt,
+      id: message.id,
+      message,
+    })),
+    ...workTasks.map((task) => ({
+      kind: 'work-task' as const,
+      createdAt: task.createdAt,
+      id: task.id,
+      task,
+    })),
+  ].sort((left, right) => left.createdAt.localeCompare(right.createdAt));
 
   return (
     <main className="social-shell">
@@ -778,7 +852,8 @@ function SocialChatApp() {
                 aria-live="polite"
                 aria-relevant="additions text"
               >
-                {!messages.some((message) => message.role !== 'system') ? (
+                {!messages.some((message) => message.role !== 'system') &&
+                workTasks.length === 0 ? (
                   <div className="room-empty-state">
                     {avatarAgent ? <AgentMark agent={avatarAgent} /> : null}
                     <h3>
@@ -799,18 +874,35 @@ function SocialChatApp() {
                       <span>聊天记录</span>
                       <span />
                     </div>
-                    {messages.map((message) => (
-                      <ChatMessage
-                        key={message.id}
-                        message={message}
-                        agent={
-                          message.agentId
-                            ? (messageAgent.get(message.agentId) ?? null)
-                            : null
-                        }
-                        onRetry={handleRetry}
-                      />
-                    ))}
+                    {timelineItems.map((item) =>
+                      item.kind === 'message' ? (
+                        <ChatMessage
+                          key={item.id}
+                          message={item.message}
+                          agent={
+                            item.message.agentId
+                              ? (messageAgent.get(item.message.agentId) ?? null)
+                              : null
+                          }
+                          onRetry={handleRetry}
+                        />
+                      ) : (
+                        <ProjectWorkCard
+                          key={item.id}
+                          task={item.task}
+                          agent={messageAgent.get(item.task.agentId) ?? null}
+                          onStop={() => void handleStopProjectWork(item.task)}
+                          onRepeat={() => {
+                            setSelectedAgentId(item.task.agentId);
+                            setComposerMode('project');
+                            setDraft(item.task.taskPrompt);
+                            requestAnimationFrame(() =>
+                              draftRef.current?.focus(),
+                            );
+                          }}
+                        />
+                      ),
+                    )}
                   </div>
                 )}
               </div>
@@ -828,7 +920,7 @@ function SocialChatApp() {
                 </div>
               ) : null}
 
-              {!providerReady ? (
+              {composerMode === 'chat' && !providerReady ? (
                 <div className="provider-warning" role="status">
                   <span>{providerWarning}</span>
                   <button type="button" onClick={() => setSettingsOpen(true)}>
@@ -843,7 +935,9 @@ function SocialChatApp() {
                   role="group"
                   aria-label="选择本轮回应者"
                 >
-                  <span>本条由</span>
+                  <span>
+                    {composerMode === 'project' ? '工作交给' : '本条由'}
+                  </span>
                   {members.map((member) => (
                     <button
                       key={member.id}
@@ -858,25 +952,72 @@ function SocialChatApp() {
                       {member.name}
                     </button>
                   ))}
-                  <span>回应</span>
+                  <span>{composerMode === 'project' ? '执行' : '回应'}</span>
+                </div>
+              ) : null}
+
+              {roomCanWork ? (
+                <div
+                  className="composer-mode-switch"
+                  role="group"
+                  aria-label="选择聊天方式"
+                >
+                  <button
+                    type="button"
+                    className={composerMode === 'chat' ? 'is-selected' : ''}
+                    aria-pressed={composerMode === 'chat'}
+                    onClick={() => setComposerMode('chat')}
+                  >
+                    聊天
+                  </button>
+                  <button
+                    type="button"
+                    className={composerMode === 'project' ? 'is-selected' : ''}
+                    aria-pressed={composerMode === 'project'}
+                    onClick={() => setComposerMode('project')}
+                    disabled={!state?.projectWork.available}
+                    title={state?.projectWork.reason ?? undefined}
+                  >
+                    项目工作
+                  </button>
+                  {composerMode === 'project' ? (
+                    <span className="composer-mode-explainer">
+                      选择文件夹后，由工程搭档在这里处理
+                    </span>
+                  ) : null}
+                  {!state?.projectWork.available ? (
+                    <span className="composer-mode-unavailable" role="status">
+                      {state?.projectWork.reason ?? '项目工作暂不可用。'}
+                    </span>
+                  ) : null}
                 </div>
               ) : null}
 
               <form
                 className="message-composer"
-                onSubmit={(event) => void handleSend(event)}
+                onSubmit={(event) =>
+                  void (composerMode === 'project'
+                    ? handleStartProjectWork(event)
+                    : handleSend(event))
+                }
               >
                 <label
                   className="visually-hidden"
                   htmlFor="social-message-input"
                 >
-                  给{currentRecipient?.name ?? '联系人'}发送消息
+                  {composerMode === 'project'
+                    ? `交给${currentRecipient?.name ?? '联系人'}的项目任务`
+                    : `给${currentRecipient?.name ?? '联系人'}发送消息`}
                 </label>
                 <textarea
                   id="social-message-input"
                   ref={draftRef}
                   value={draft}
-                  placeholder="写下你正在想的事…"
+                  placeholder={
+                    composerMode === 'project'
+                      ? '描述希望工程搭档在项目中完成什么…'
+                      : '写下你正在想的事…'
+                  }
                   rows={1}
                   onChange={(event) => {
                     setDraft(event.target.value);
@@ -885,12 +1026,22 @@ function SocialChatApp() {
                   }}
                   onKeyDown={handleComposerKeyDown}
                   disabled={
-                    !providerReady || !currentRecipient || Boolean(activeReply)
+                    !composerReady ||
+                    !currentRecipient ||
+                    Boolean(activeReply) ||
+                    workBusy ||
+                    (composerMode === 'project' && !currentRecipientCanWork)
                   }
                 />
                 <div className="composer-footer">
-                  <span>Enter 发送 · Shift + Enter 换行</span>
-                  {activeReply ? (
+                  <span>
+                    {composerMode === 'project'
+                      ? currentRecipientCanWork
+                        ? '选择项目文件夹后启动 · 你可以继续聊天'
+                        : '在群聊中选择工程搭档后才能启动项目工作'
+                      : 'Enter 发送 · Shift + Enter 换行'}
+                  </span>
+                  {activeReply && composerMode === 'chat' ? (
                     <button
                       className="stop-reply-button"
                       type="button"
@@ -904,21 +1055,29 @@ function SocialChatApp() {
                       className="send-message-button"
                       type="submit"
                       disabled={
-                        !providerReady ||
+                        !composerReady ||
                         !draft.trim() ||
                         !currentRecipient ||
-                        busy
+                        busy ||
+                        workBusy ||
+                        (composerMode === 'project' &&
+                          (!currentRecipientCanWork || Boolean(activeReply)))
                       }
                     >
-                      发送
+                      {composerMode === 'project'
+                        ? workBusy
+                          ? '启动中…'
+                          : '选择项目并启动'
+                        : '发送'}
                       <Icon name="send" />
                     </button>
                   )}
                 </div>
               </form>
               <p className="data-flow-note">
-                聊天记录保存在本机；发送后，消息会经 FreeLLMAPI
-                发给当前选择的模型。
+                {composerMode === 'project'
+                  ? '项目工作会留在当前聊天。启动前会选择文件夹并显示数据范围；Noema 会区分 DSH 结束与独立核验结果。'
+                  : '聊天记录保存在本机；发送后，消息会经 FreeLLMAPI 发给当前选择的模型。'}
               </p>
             </>
           ) : (
@@ -1262,6 +1421,130 @@ function ChatMessage({
           </div>
         ) : null}
       </div>
+    </article>
+  );
+}
+
+function ProjectWorkCard({
+  task,
+  agent,
+  onStop,
+  onRepeat,
+}: {
+  task: NoemaSocialWorkTask;
+  agent: NoemaSocialAgent | null;
+  onStop: () => void;
+  onRepeat: () => void;
+}) {
+  const active = ['starting', 'running', 'verifying'].includes(task.status);
+  const title =
+    task.status === 'starting'
+      ? '正在启动项目工作'
+      : task.status === 'running'
+        ? '工程搭档正在处理'
+        : task.status === 'verifying'
+          ? '正在核对交付文件'
+          : task.status === 'completed'
+            ? task.verificationStatus === 'verified'
+              ? '项目工作已完成并核验'
+              : '项目工作已结束 · 未独立核验'
+            : task.status === 'interrupted'
+              ? '项目工作已停止'
+              : '项目工作未完成';
+  const verificationLabel =
+    task.verificationStatus === 'verified'
+      ? '文件条件已由 Noema 独立确认'
+      : task.verificationStatus === 'failed'
+        ? '文件条件未通过'
+        : task.verificationStatus === 'unavailable'
+          ? '无法完成独立核验'
+          : '没有设置可自动核对的文件条件';
+  const toolLabels: Record<string, string> = {
+    read: '读取',
+    search: '搜索',
+    write: '写入',
+    edit: '编辑',
+    command: '命令',
+    other: '其他操作',
+  };
+  const toolSummary = Object.entries(
+    task.toolActionCategories.reduce<Record<string, number>>((counts, item) => {
+      counts[item] = (counts[item] ?? 0) + 1;
+      return counts;
+    }, {}),
+  )
+    .map(([category, count]) => `${toolLabels[category] ?? '操作'} ${count}`)
+    .join(' · ');
+  return (
+    <article
+      className={`project-work-card project-work-${task.status}`}
+      aria-label={`${agent?.name ?? '工程搭档'}：${title}`}
+      aria-live={active ? 'polite' : undefined}
+    >
+      <header className="project-work-header">
+        <span className="project-work-status-mark" aria-hidden="true" />
+        <strong>
+          {agent?.name ?? '工程搭档'} · {title}
+        </strong>
+        <time dateTime={task.updatedAt}>{timeLabel(task.updatedAt)}</time>
+      </header>
+      <p className="project-work-request">{task.taskPrompt}</p>
+      {active ? (
+        <div className="project-work-progress">
+          <span>
+            {task.phase === 'verifying'
+              ? '正在检查文件结果'
+              : '项目工作仍在进行'}
+          </span>
+          {task.toolCallCount > 0 ? (
+            <span>{toolSummary || `已进行 ${task.toolCallCount} 次操作`}</span>
+          ) : null}
+        </div>
+      ) : null}
+      <details className="project-work-location">
+        <summary>查看项目范围</summary>
+        <code title={task.workspacePath}>{task.workspacePath}</code>
+      </details>
+      {task.resultText ? (
+        <div className="project-work-result">
+          <span className="project-work-result-label">工程搭档回报</span>
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={markdownComponents}
+          >
+            {task.resultText}
+          </ReactMarkdown>
+        </div>
+      ) : null}
+      {!active ? (
+        <p
+          className={`project-work-verification is-${task.verificationStatus}`}
+        >
+          {verificationLabel}
+        </p>
+      ) : null}
+      {task.errorMessage ? (
+        <p className="project-work-error" role="status">
+          {task.errorMessage}
+        </p>
+      ) : null}
+      {!active && ['failed', 'interrupted'].includes(task.status) ? (
+        <footer className="project-work-footer">
+          <span>再次提交前，可以先检查项目里的部分改动</span>
+          <button type="button" onClick={onRepeat}>
+            再次编辑并执行
+          </button>
+        </footer>
+      ) : null}
+      {active ? (
+        <footer className="project-work-footer">
+          <span>停止不会撤销已经产生的文件改动</span>
+          <button type="button" onClick={onStop}>
+            <Icon name="stop" />
+            停止工作
+          </button>
+        </footer>
+      ) : null}
     </article>
   );
 }

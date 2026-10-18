@@ -33,16 +33,19 @@ const CHANNELS = Object.freeze({
   socialSend: 'noema:social-send',
   socialStop: 'noema:social-stop',
   socialRetry: 'noema:social-retry',
+  socialWorkStart: 'noema:social-work-start',
+  socialWorkStop: 'noema:social-work-stop',
 });
 
 /**
  * Registers only the narrow root-conversation operations that the renderer needs.
- * @param {{ipcMain: {handle: Function, removeHandler: Function}, rootAgent: object, socialChatService?:object, isTrustedSender: (sender: object) => boolean,chooseWorkspace?:()=>Promise<string|null>,sendMessage?:(text:string)=>Promise<object>|object,retryTurn?:(turnId:string,model:string|null)=>Promise<object>|object,finishQuickCapture?:()=>boolean,getQuickCaptureShortcutStatus?:()=>object|null,markQuickCaptureReady?:()=>boolean}} options
+ * @param {{ipcMain: {handle: Function, removeHandler: Function}, rootAgent: object, socialChatService?:object, socialWorkService?:object, isTrustedSender: (sender: object) => boolean,chooseWorkspace?:()=>Promise<string|null>,sendMessage?:(text:string)=>Promise<object>|object,retryTurn?:(turnId:string,model:string|null)=>Promise<object>|object,finishQuickCapture?:()=>boolean,getQuickCaptureShortcutStatus?:()=>object|null,markQuickCaptureReady?:()=>boolean}} options
  */
 export function registerRootIpc({
   ipcMain,
   rootAgent,
   socialChatService = null,
+  socialWorkService = null,
   isTrustedSender,
   chooseWorkspace = async () => null,
   sendMessage = (text) => rootAgent.sendMessage({ text }),
@@ -81,6 +84,14 @@ export function registerRootIpc({
     );
     register(CHANNELS.socialRetry, (messageId) =>
       socialChatService.retryReply(messageId),
+    );
+  }
+  if (socialWorkService) {
+    register(CHANNELS.socialWorkStart, (input) =>
+      socialWorkService.startTask(input),
+    );
+    register(CHANNELS.socialWorkStop, (taskId) =>
+      socialWorkService.stopTask(taskId),
     );
   }
   register(CHANNELS.models, () => rootAgent.refreshModels());

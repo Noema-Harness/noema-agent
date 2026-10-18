@@ -126,6 +126,7 @@ export interface NoemaSocialAgent {
   kind: 'core' | 'specialist';
   headline: string;
   description: string;
+  capabilities: string[];
 }
 
 export interface NoemaSocialRoom {
@@ -175,7 +176,40 @@ export type NoemaSocialState = Pick<
 > & {
   agents: NoemaSocialAgent[];
   rooms: NoemaSocialRoom[];
+  projectWork: { available: boolean; reason: string | null };
 };
+
+export interface NoemaSocialWorkTask {
+  id: string;
+  roomId: string;
+  agentId: string;
+  workspacePath: string;
+  taskPrompt: string;
+  status:
+    | 'starting'
+    | 'running'
+    | 'verifying'
+    | 'completed'
+    | 'failed'
+    | 'interrupted';
+  phase: string | null;
+  toolCallCount: number;
+  toolActionCategories: string[];
+  resultText: string;
+  errorCode: string | null;
+  errorMessage: string | null;
+  verificationStatus:
+    | 'not_planned'
+    | 'pending'
+    | 'verified'
+    | 'failed'
+    | 'unavailable';
+  verificationResults: Array<Record<string, unknown>>;
+  verificationAttempts: number;
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+}
 
 export interface NoemaSocialRoomState {
   room: Pick<
@@ -184,6 +218,7 @@ export interface NoemaSocialRoomState {
   >;
   members: NoemaSocialAgent[];
   messages: NoemaSocialMessage[];
+  workTasks: NoemaSocialWorkTask[];
 }
 
 export type NoemaSocialEvent =
@@ -213,7 +248,12 @@ export type NoemaSocialEvent =
       code?: string;
       empty?: boolean;
     }
-  | { type: 'chat-state-updated'; roomId: string };
+  | { type: 'chat-state-updated'; roomId: string }
+  | {
+      type: 'project-work-updated';
+      roomId: string;
+      task: NoemaSocialWorkTask;
+    };
 
 export interface NoemaCapture {
   id: string;
@@ -380,6 +420,17 @@ export interface NoemaBridge {
     turnId: string;
     messageId: string;
   }>;
+  startSocialWorkTask(input: {
+    roomId: string;
+    agentId: string;
+    prompt: string;
+  }): Promise<{
+    accepted: boolean;
+    taskId?: string;
+    roomId?: string;
+    reason?: string;
+  }>;
+  stopSocialWorkTask(taskId: string): Promise<boolean>;
   refreshModels(): Promise<
     Pick<
       NoemaRootState,

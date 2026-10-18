@@ -43,6 +43,86 @@ test('social schema seeds stable identities and keeps one agent across independe
       'room-engineering-partner',
     ]);
     assert.equal(social.getAgent('engineering-partner').kind, 'specialist');
+    assert.deepEqual(social.getAgent('engineering-partner').capabilities, [
+      'project-work',
+    ]);
+    assert.equal(
+      db
+        .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
+        .get().version,
+      2,
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test('an app restart interrupts a running social project task without replaying it', () => {
+  const { db, social } = makeStores();
+  try {
+    social.createSocialWorkTask({
+      id: 'task-restart',
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      workspacePath: 'C:\\scratch\\project',
+      workspaceKey: 'c:\\scratch\\project',
+      taskPrompt: '重启时不应自动重跑。',
+      model: 'auto:noema-free',
+    });
+    social.setSocialWorkTaskSession('task-restart', 'session-restart');
+    assert.equal(social.getSocialWorkTask('task-restart').status, 'running');
+
+    new SocialChatStore(db);
+
+    const task = social.getSocialWorkTask('task-restart');
+    assert.equal(task.status, 'interrupted');
+    assert.equal(task.runtimeSessionId, 'session-restart');
+    assert.equal(task.errorCode, 'app_restarted');
+  } finally {
+    db.close();
+  }
+});
+
+test('social chat schema v1 upgrades additively to project-work state', () => {
+  const { db, social } = makeStores();
+  try {
+    const message = social.beginTurn({
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      text: '保留的私聊标记：银杏',
+      model: 'test-model',
+    });
+    social.appendAssistantDelta(message.assistantMessageId, '已保存。');
+    social.completeReply(message.assistantMessageId);
+    db.exec(`
+      DROP TABLE social_work_tasks;
+      DELETE FROM social_schema_migrations WHERE version = 2;
+      ALTER TABLE social_agents DROP COLUMN capabilities_json;
+    `);
+
+    const upgraded = new SocialChatStore(db);
+    const room = upgraded.getRoomSnapshot('room-engineering-partner');
+    assert.equal(
+      room.messages.some((item) => item.content.includes('银杏')),
+      true,
+    );
+    assert.deepEqual(upgraded.getAgent('engineering-partner').capabilities, [
+      'project-work',
+    ]);
+    assert.equal(
+      db
+        .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
+        .get().version,
+      2,
+    );
+    assert.equal(
+      db
+        .prepare(
+          "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'social_work_tasks'",
+        )
+        .get() !== undefined,
+      true,
+    );
   } finally {
     db.close();
   }
