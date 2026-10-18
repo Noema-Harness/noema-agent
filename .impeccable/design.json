@@ -92,6 +92,13 @@
       "css": ".ds-member { display: flex; align-items: center; gap: 10px; padding: 8px 9px; border: 1px solid #cbdaca; border-radius: 8px; background: #f1f5ef; color: #1f2d27; font: 11px 'Segoe UI Variable', 'Segoe UI', 'Microsoft YaHei UI', sans-serif; cursor: pointer; } .ds-member:focus-within { outline: 3px solid #2e5c49; outline-offset: 2px; } .ds-member input { accent-color: #2e5c49; } .ds-member .ds-mini-mark { display: grid; flex: 0 0 auto; width: 20px; height: 20px; place-items: center; border-radius: 8px 8px 8px 3px; background: #e1eee3; color: #285d48; font-size: 10px; font-weight: 720; }"
     },
     {
+      "name": "Create a Professional Contact",
+      "kind": "dialog",
+      "description": "Creates a user-owned specialist identity from a long-term practice area and collaboration approach without asking for system-prompt editing or implying connected tools.",
+      "html": "<form class=\"social-dialog agent-create-dialog\"><label class=\"dialog-field\"><span>联系人名称</span><input placeholder=\"例如：林间观察员\"></label><label class=\"dialog-field\"><span>长期专业范围</span><input placeholder=\"长期研究一类可积累的实践\"></label><label class=\"dialog-field\"><span>你希望它如何与你合作</span><textarea placeholder=\"说明协作方式\"></textarea></label><button type=\"submit\">创建联系人并开始私聊</button></form>",
+      "css": ".agent-create-dialog { width: min(100%, 470px); max-height: calc(100dvh - 32px); overflow: auto; padding: 23px; border: 1px solid #d7dfd7; border-radius: 13px; background: var(--chat-paper); box-shadow: 0 20px 60px rgb(21 35 26 / 18%); } .agent-create-dialog textarea { width: 100%; min-height: 84px; resize: vertical; padding: 9px 11px; border: 1px solid var(--chat-line-strong); border-radius: 7px; background: var(--chat-paper); color: var(--chat-ink); font: 12px/1.55 'Segoe UI Variable', 'Segoe UI', 'Microsoft YaHei UI', sans-serif; }"
+    },
+    {
       "name": "Local Model Service Status",
       "kind": "custom",
       "description": "Reports the local FreeLLMAPI connection state alongside the selected model context.",

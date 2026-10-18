@@ -3099,12 +3099,19 @@ select:disabled {
   color: var(--chat-muted);
   font-size: 11px;
 }
+.sidebar-create-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.new-agent-button,
 .new-group-button {
   width: 34px;
   height: 34px;
   border-color: var(--chat-line);
   color: var(--chat-forest);
 }
+.new-agent-button svg,
 .new-group-button svg {
   width: 17px;
   height: 17px;
@@ -3287,6 +3294,11 @@ select:disabled {
   font-size: 10px;
   font-variant-numeric: tabular-nums;
 }
+.room-archived-mark {
+  flex: 0 0 auto;
+  color: var(--chat-muted);
+  font-size: 9px;
+}
 .room-preview {
   display: -webkit-box;
   overflow: hidden;
@@ -3379,6 +3391,36 @@ select:disabled {
   gap: 14px;
   color: var(--chat-muted);
   font-size: 10px;
+}
+.agent-archive-button {
+  min-height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--chat-line);
+  border-radius: 7px;
+  background: var(--chat-paper);
+  color: var(--chat-muted);
+  font-size: 9px;
+  cursor: pointer;
+}
+.agent-archive-button:hover:not(:disabled) {
+  background: var(--chat-paper-alt);
+  color: var(--chat-forest-deep);
+}
+.agent-archive-button:disabled {
+  opacity: 0.7;
+  cursor: progress;
+}
+.archived-agent-notice {
+  width: min(calc(100% - clamp(32px, 5vw, 112px)), 860px);
+  align-self: center;
+  margin: 7px auto 0;
+  padding: 8px 10px;
+  border: 1px solid var(--chat-line);
+  border-radius: 7px;
+  background: var(--chat-paper-alt);
+  color: var(--chat-muted);
+  font-size: 10px;
+  line-height: 1.45;
 }
 .member-count {
   font-variant-numeric: tabular-nums;
@@ -3711,6 +3753,10 @@ select:disabled {
   border-color: #d5e0d5;
   background: #edf3ed;
   color: var(--chat-forest-deep);
+}
+.reply-routing > button:disabled {
+  opacity: 0.56;
+  cursor: not-allowed;
 }
 .composer-mode-switch {
   width: min(calc(100% - clamp(32px, 5vw, 112px)), 860px);
@@ -4216,6 +4262,27 @@ select:disabled {
   color: #56645b;
   opacity: 1;
 }
+.dialog-field textarea {
+  width: 100%;
+  min-height: 84px;
+  resize: vertical;
+  padding: 9px 11px;
+  border: 1px solid var(--chat-line-strong);
+  border-radius: 7px;
+  background: var(--chat-paper);
+  color: var(--chat-ink);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.dialog-field textarea::placeholder {
+  color: #56645b;
+  opacity: 1;
+}
+.dialog-field small {
+  color: var(--chat-muted);
+  font-size: 9px;
+  line-height: 1.45;
+}
 .connection-summary {
   display: flex;
   align-items: center;
@@ -4452,6 +4519,10 @@ select:disabled {
   .room-header-meta {
     display: none;
   }
+  .room-header-meta:has(.agent-archive-button) {
+    display: flex;
+    flex: 0 0 auto;
+  }
   .mobile-back-button {
     width: 32px;
     height: 32px;
@@ -4537,6 +4608,29 @@ select:disabled {
     width: calc(100% - 24px);
     margin-bottom: 8px;
     font-size: 10px;
+  }
+  .agent-create-dialog {
+    padding: 16px;
+  }
+  .agent-create-dialog .dialog-heading {
+    margin-bottom: 14px;
+  }
+  .agent-create-dialog .dialog-field {
+    gap: 6px;
+    margin-bottom: 11px;
+  }
+  .agent-create-dialog .dialog-field input {
+    height: 38px;
+  }
+  .agent-create-dialog .dialog-field textarea {
+    min-height: 70px;
+  }
+  .agent-create-dialog .dialog-footnote {
+    margin-top: 10px;
+    line-height: 1.45;
+  }
+  .agent-create-dialog .dialog-actions {
+    margin-top: 14px;
   }
   .provider-warning,
   .inline-notice {

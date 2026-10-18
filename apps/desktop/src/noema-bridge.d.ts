@@ -127,6 +127,7 @@ export interface NoemaSocialAgent {
   headline: string;
   description: string;
   capabilities: string[];
+  archivedAt: string | null;
 }
 
 export interface NoemaSocialRoom {
@@ -238,6 +239,7 @@ export interface NoemaSocialRoomState {
 
 export type NoemaSocialEvent =
   | { type: 'chat-room-created'; roomId: string }
+  | { type: 'agent-state-updated'; agentId: string }
   | {
       type: 'chat-turn-started';
       turnId: string;
@@ -425,6 +427,15 @@ export interface NoemaBridge {
     title: string;
     agentIds: string[];
   }): Promise<NoemaSocialRoomState>;
+  createSocialAgent(input: {
+    name: string;
+    headline: string;
+    description: string;
+  }): Promise<NoemaSocialRoomState>;
+  setSocialAgentArchived(
+    agentId: string,
+    archived: boolean,
+  ): Promise<NoemaSocialAgent>;
   sendSocialMessage(input: {
     roomId: string;
     agentId: string;

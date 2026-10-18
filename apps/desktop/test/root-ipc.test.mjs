@@ -283,6 +283,14 @@ test('room-scoped project work requires the trusted app window and does not use 
   const socialChatService = {
     getUiState: async () => ({ projectWork: { available: true } }),
     store: { getRoomSnapshot: (roomId) => ({ room: { id: roomId } }) },
+    createAgent: (input) => ({
+      room: { id: 'room-created-agent' },
+      agent: input,
+    }),
+    setAgentArchived: (agentId, archived) => ({
+      id: agentId,
+      archivedAt: archived ? 'now' : null,
+    }),
     sendMessage: (input) => input,
     stopReply: () => true,
     retryReply: () => ({ accepted: true }),
@@ -311,6 +319,8 @@ test('room-scoped project work requires the trusted app window and does not use 
   assert.equal(harness.handlers.has(CHANNELS.socialWorkStart), true);
   assert.equal(harness.handlers.has(CHANNELS.socialWorkStop), true);
   assert.equal(harness.handlers.has(CHANNELS.socialWorkCaseEligible), true);
+  assert.equal(harness.handlers.has(CHANNELS.socialCreateAgent), true);
+  assert.equal(harness.handlers.has(CHANNELS.socialAgentArchive), true);
   const input = {
     roomId: 'room-engineering-collaboration',
     agentId: 'engineering-partner',
@@ -337,6 +347,26 @@ test('room-scoped project work requires the trusted app window and does not use 
       false,
     ),
     { id: 'task-1', caseEligible: false },
+  );
+  const agentInput = {
+    name: '图形观察员',
+    headline: '长期观察游戏视觉与交互',
+    description: '先和我厘清体验，再讨论如何验证。',
+  };
+  assert.deepEqual(
+    await harness.handlers.get(CHANNELS.socialCreateAgent)(
+      { sender: trustedSender },
+      agentInput,
+    ),
+    { room: { id: 'room-created-agent' }, agent: agentInput },
+  );
+  assert.deepEqual(
+    await harness.handlers.get(CHANNELS.socialAgentArchive)(
+      { sender: trustedSender },
+      'agent-created',
+      true,
+    ),
+    { id: 'agent-created', archivedAt: 'now' },
   );
   assert.deepEqual(calls, [
     ['start', input],

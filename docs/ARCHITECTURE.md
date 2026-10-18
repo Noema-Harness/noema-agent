@@ -49,8 +49,8 @@ Noema 持有 agent 的稳定 identity、专业范围、用户关系偏好和当�
 
 ## 首条社交聊天切片的实现边界
 
-- 桌面主入口读取 `social_agents`、`social_rooms`、`social_room_members` 与 `social_messages`；旧 root/worker 功能仍可从 `#legacy` 打开，不再决定主界面结构。
-- 社交表使用独立的 `social_schema_migrations` 版本线，与旧根对话 schema 分离。首次升级前，用 SQLite backup API 创建一次本地快照 `noema-before-social-chat-v1.sqlite3`；旧 root messages 以 `legacy_source_id` 幂等复制，原始行不会改写或删除。
+- 桌面主入口读取 `social_agents`、`social_rooms`、`social_room_members` 与 `social_messages`；用户可显式创建 specialist identity，创建只写入本机且默认无工具能力；归档保留身份与历史但停止新回复/新任务。旧 root/worker 功能仍可从 `#legacy` 打开，不再决定主界面结构。
+- 社交表使用独立的 `social_schema_migrations` 版本线（当前 v4），与旧根对话 schema 分离。首次升级前，用 SQLite backup API 创建一次本地快照 `noema-before-social-chat-v1.sqlite3`；旧 root messages 以 `legacy_source_id` 幂等复制，原始行不会改写或删除。
 - 当前首个稳定 identity 是 `noema` 与 `engineering-partner`。同一 friend id 可进入 DM 和 group；每次模型请求只组装该房间最近 40 条已完成用户/助手消息和目标 agent 的 profile prompt。system event 和其它 room transcript 不自动作为模型上下文。
 - 社交 renderer 的 IPC 状态只暴露联系人、房间与模型连接信息，不把旧 root transcript、captures、后台任务记录随新社交 UI 一并发送。
 - 群聊消息必须带本轮 `agentId`，一个房间一次只允许一条生成中的回复；运行时支持停止、失败消息保留及失败/中断后原位重试。Noema 主体与专业好友现在共享已选择的 FreeLLMAPI 路由；未连接可用模型时不伪造回复。

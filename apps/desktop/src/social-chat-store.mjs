@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 const MAX_CONTEXT_MESSAGES = 40;
 
 const SEEDED_AGENTS = [
@@ -234,6 +234,16 @@ export class SocialChatStore {
         `);
       })();
     }
+    if (current < 4) {
+      this.db.transaction(() => {
+        this.db.exec(`
+          ALTER TABLE social_agents ADD COLUMN archived_at TEXT;
+
+          INSERT INTO social_schema_migrations (version, applied_at)
+          VALUES (4, '${isoNow()}');
+        `);
+      })();
+    }
   }
 
   seedInitialSocialModel() {
@@ -373,6 +383,7 @@ export class SocialChatStore {
       .prepare(`
         SELECT id, name, kind, headline, description,
                capabilities_json AS capabilitiesJson,
+               archived_at AS archivedAt,
                created_at AS createdAt, updated_at AS updatedAt
         FROM social_agents ORDER BY CASE kind WHEN 'core' THEN 0 ELSE 1 END, name
       `)
@@ -480,7 +491,11 @@ export class SocialChatStore {
       throw new TypeError('请至少选择一位联系人加入群聊。');
     }
     const uniqueAgentIds = [...new Set(agentIds)];
-    for (const agentId of uniqueAgentIds) this.getAgent(agentId);
+    for (const agentId of uniqueAgentIds) {
+      if (this.getAgent(agentId).archivedAt) {
+        throw new Error('已归档联系人不能加入新群聊。');
+      }
+    }
 
     const id = `room-${randomUUID()}`;
     const systemTurnId = randomUUID();
@@ -518,6 +533,122 @@ export class SocialChatStore {
     return this.getRoomSnapshot(id);
   }
 
+  createAgent({ name, headline, description }) {
+    const normalizedName = requireText(name, '联系人名称', 60);
+    const normalizedHeadline = requireText(headline, '专业范围', 140);
+    const normalizedDescription = requireText(description, '合作方式', 800);
+    const agentId = `agent-${randomUUID()}`;
+    const roomId = `room-${randomUUID()}`;
+    const now = isoNow();
+    const systemPrompt = [
+      `你是 Noema 中由用户创建的持续专业联系人“${normalizedName}”。`,
+      `用户为你描述的长期专业范围：${normalizedHeadline}`,
+      `用户期望的合作方式：${normalizedDescription}`,
+      '这些资料表达用户希望与你长期交流的方向，不证明你已经具备对应领域的专家水平。诚实说明不确定性；不虚构专业经历、已核验能力、工具权限或执行结果。',
+      '使用简体中文，先理解当前对话意图，不要把普通分享都转成任务。当前聊天空间是唯一可用的对话历史，不要声称记得其他房间。当前联系人只有对话能力；没有明确连接的工具时，不声称查看或改动了外部资料。',
+    ].join('\n\n');
+
+    this.db.transaction(() => {
+      this.db
+        .prepare(`
+          INSERT INTO social_agents
+            (id, name, kind, headline, description, system_prompt,
+             capabilities_json, created_at, updated_at)
+          VALUES (?, ?, 'specialist', ?, ?, ?, '[]', ?, ?)
+        `)
+        .run(
+          agentId,
+          normalizedName,
+          normalizedHeadline,
+          normalizedDescription,
+          systemPrompt,
+          now,
+          now,
+        );
+      this.db
+        .prepare(`
+          INSERT INTO social_rooms (id, kind, title, created_at, updated_at)
+          VALUES (?, 'direct', ?, ?, ?)
+        `)
+        .run(roomId, normalizedName, now, now);
+      this.db
+        .prepare(`
+          INSERT INTO social_room_members (room_id, agent_id, position)
+          VALUES (?, ?, 0)
+        `)
+        .run(roomId, agentId);
+      this.db
+        .prepare(`
+          INSERT INTO social_messages
+            (id, room_id, turn_id, role, agent_id, content, status, runtime,
+             created_at, updated_at)
+          VALUES (?, ?, ?, 'system', ?, ?, 'complete', 'system', ?, ?)
+        `)
+        .run(
+          randomUUID(),
+          roomId,
+          randomUUID(),
+          agentId,
+          `你和${normalizedName}已成为联系人。这里是你们独立的私聊；需要共同协作时，可以在新群聊中邀请它。`,
+          now,
+          now,
+        );
+    })();
+    return this.getRoomSnapshot(roomId);
+  }
+
+  setAgentArchived(agentId, archived) {
+    if (typeof archived !== 'boolean') {
+      throw new TypeError('联系人归档状态无效。');
+    }
+    const agent = this.getAgent(agentId);
+    if (agent.kind !== 'specialist') {
+      throw new Error('Noema 核心联系人不能归档。');
+    }
+    if (Boolean(agent.archivedAt) === archived) return agent;
+    const now = isoNow();
+    const directRoom = this.db
+      .prepare(`
+        SELECT r.id
+        FROM social_rooms AS r
+        JOIN social_room_members AS rm ON rm.room_id = r.id
+        WHERE r.kind = 'direct' AND rm.agent_id = ?
+        ORDER BY r.created_at ASC LIMIT 1
+      `)
+      .get(agentId);
+    this.db.transaction(() => {
+      this.db
+        .prepare(`
+          UPDATE social_agents SET archived_at = ?, updated_at = ? WHERE id = ?
+        `)
+        .run(archived ? now : null, now, agentId);
+      if (directRoom) {
+        this.db
+          .prepare(`
+            INSERT INTO social_messages
+              (id, room_id, turn_id, role, agent_id, content, status, runtime,
+               created_at, updated_at)
+            VALUES (?, ?, ?, 'system', ?, ?, 'complete', 'system', ?, ?)
+          `)
+          .run(
+            randomUUID(),
+            directRoom.id,
+            randomUUID(),
+            agentId,
+            archived
+              ? `${agent.name}已归档。历史聊天和群聊记录会保留；归档期间不能开启新对话或承接新工作。`
+              : `${agent.name}已恢复，可以继续聊天并加入新群聊。`,
+            now,
+            now,
+          );
+        this.db
+          .prepare('UPDATE social_rooms SET updated_at = ? WHERE id = ?')
+          .run(now, directRoom.id);
+      }
+    })();
+    return this.getAgent(agentId);
+  }
+
   getRoomSnapshot(roomId) {
     requireText(roomId, '房间 ID', 200);
     const room = this.db
@@ -530,7 +661,8 @@ export class SocialChatStore {
     const members = this.db
       .prepare(`
         SELECT a.id, a.name, a.kind, a.headline, a.description,
-               a.capabilities_json AS capabilitiesJson
+               a.capabilities_json AS capabilitiesJson,
+               a.archived_at AS archivedAt
         FROM social_room_members AS rm
         JOIN social_agents AS a ON a.id = rm.agent_id
         WHERE rm.room_id = ? ORDER BY rm.position ASC
@@ -586,7 +718,8 @@ export class SocialChatStore {
     const agent = this.db
       .prepare(`
         SELECT id, name, kind, headline, description, system_prompt AS systemPrompt,
-               capabilities_json AS capabilitiesJson
+               capabilities_json AS capabilitiesJson,
+               archived_at AS archivedAt
         FROM social_agents WHERE id = ?
       `)
       .get(agentId);
@@ -611,6 +744,9 @@ export class SocialChatStore {
     const agent = this.getAgent(agentId);
     if (!this.isMember(roomId, agentId)) {
       throw new Error('这位好友不在当前聊天空间中。');
+    }
+    if (agent.archivedAt) {
+      throw new Error('这个联系人已归档；请先恢复后再开始项目工作。');
     }
     if (!agent.capabilities.includes('project-work')) {
       throw new Error(`${agent.name}目前不能承接项目工作。`);
@@ -931,6 +1067,9 @@ export class SocialChatStore {
     if (!this.isMember(roomId, agentId)) {
       throw new Error('这个联系人不在当前聊天空间中。');
     }
+    if (this.getAgent(agentId).archivedAt) {
+      throw new Error('这个联系人已归档；请先恢复后再发送消息。');
+    }
     if (this.hasStreamingReply(roomId)) {
       throw new Error('这间聊天中还有一条回复正在生成，请先停止或等待完成。');
     }
@@ -1111,6 +1250,9 @@ export class SocialChatStore {
     if (!row) throw new Error('找不到要重试的回复。');
     if (!['failed', 'interrupted'].includes(row.status)) {
       throw new Error('只有失败或已停止的回复可以重试。');
+    }
+    if (row.agentId && this.getAgent(row.agentId).archivedAt) {
+      throw new Error('这个联系人已归档；请先恢复后再重试回复。');
     }
     if (this.hasStreamingReply(row.roomId)) {
       throw new Error('这间聊天中已有回复正在生成。');

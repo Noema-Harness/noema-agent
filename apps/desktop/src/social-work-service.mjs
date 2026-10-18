@@ -228,6 +228,10 @@ export class SocialWorkService {
       : this.defaultVerificationChecks;
     // Run the shared normalizer before the workspace picker or any model call.
     const normalizedChecks = normalizeWorkspaceVerificationChecks(checks);
+    const preflightAgent = this.store.getAgent(agentId);
+    if (preflightAgent.archivedAt) {
+      throw new Error('这个联系人已归档；请先恢复后再开始项目工作。');
+    }
     const workspaceSelection = await this.chooseWorkspace({
       reuseCase: reuseCase === true,
     });

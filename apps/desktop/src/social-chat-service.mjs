@@ -58,6 +58,18 @@ export class SocialChatService {
     };
   }
 
+  createAgent(input) {
+    const room = this.store.createAgent(input);
+    this.emit({ type: 'chat-room-created', roomId: room.room.id });
+    return room;
+  }
+
+  setAgentArchived(agentId, archived) {
+    const agent = this.store.setAgentArchived(agentId, archived);
+    this.emit({ type: 'agent-state-updated', agentId });
+    return agent;
+  }
+
   sendMessage({ roomId, agentId, text }) {
     if (this.shuttingDown) throw new Error('Noema 正在关闭，暂不能发送消息。');
     const model = this.requireReadyModel();
