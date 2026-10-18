@@ -206,6 +206,21 @@ export interface NoemaSocialWorkTask {
     | 'unavailable';
   verificationResults: Array<Record<string, unknown>>;
   verificationAttempts: number;
+  caseEligible: boolean;
+  caseSnapshot: {
+    taskId: string;
+    roomId: string;
+    roomTitle: string;
+    completedAt: string;
+    taskPrompt: string;
+    resultText: string;
+    verificationChecks: Array<{
+      kind: string;
+      path: string;
+      status: 'verified' | 'unknown';
+    }>;
+  } | null;
+  caseReuseRequested: boolean;
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
@@ -424,6 +439,7 @@ export interface NoemaBridge {
     roomId: string;
     agentId: string;
     prompt: string;
+    reuseCase: boolean;
   }): Promise<{
     accepted: boolean;
     taskId?: string;
@@ -431,6 +447,10 @@ export interface NoemaBridge {
     reason?: string;
   }>;
   stopSocialWorkTask(taskId: string): Promise<boolean>;
+  setSocialWorkCaseEligible(
+    taskId: string,
+    eligible: boolean,
+  ): Promise<NoemaSocialWorkTask>;
   refreshModels(): Promise<
     Pick<
       NoemaRootState,

@@ -126,7 +126,7 @@ function historyExcerpt(content, matchAt) {
   return `${start > 0 ? '…' : ''}${content.slice(start, end)}${end < content.length ? '…' : ''}`;
 }
 
-function redactHistoryExcerpt(excerpt) {
+export function redactSensitiveText(excerpt) {
   let redacted = false;
   const sanitized = HISTORY_CREDENTIAL_PATTERNS.reduce(
     (content, pattern) =>
@@ -214,8 +214,8 @@ export function searchTranscriptHistory(
     .slice(0, boundedLimit)
     .map(({ id, role, createdAt, content, firstMatch }) => {
       const { snippet: sanitizedContent, redacted } =
-        redactHistoryExcerpt(content);
-      const sanitizedPrefix = redactHistoryExcerpt(
+        redactSensitiveText(content);
+      const sanitizedPrefix = redactSensitiveText(
         content.slice(0, firstMatch),
       ).snippet;
       return {

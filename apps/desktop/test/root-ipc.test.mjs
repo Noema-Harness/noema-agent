@@ -296,6 +296,10 @@ test('room-scoped project work requires the trusted app window and does not use 
       calls.push(['stop', taskId]);
       return true;
     },
+    setCaseEligible: (taskId, eligible) => {
+      calls.push(['case-eligible', taskId, eligible]);
+      return { id: taskId, caseEligible: eligible };
+    },
   };
   registerRootIpc({
     ipcMain: harness.ipcMain,
@@ -306,6 +310,7 @@ test('room-scoped project work requires the trusted app window and does not use 
   });
   assert.equal(harness.handlers.has(CHANNELS.socialWorkStart), true);
   assert.equal(harness.handlers.has(CHANNELS.socialWorkStop), true);
+  assert.equal(harness.handlers.has(CHANNELS.socialWorkCaseEligible), true);
   const input = {
     roomId: 'room-engineering-collaboration',
     agentId: 'engineering-partner',
@@ -325,9 +330,18 @@ test('room-scoped project work requires the trusted app window and does not use 
     ),
     true,
   );
+  assert.deepEqual(
+    await harness.handlers.get(CHANNELS.socialWorkCaseEligible)(
+      { sender: trustedSender },
+      'task-1',
+      false,
+    ),
+    { id: 'task-1', caseEligible: false },
+  );
   assert.deepEqual(calls, [
     ['start', input],
     ['stop', 'task-1'],
+    ['case-eligible', 'task-1', false],
   ]);
   await assert.rejects(
     harness.handlers.get(CHANNELS.socialWorkStart)({ sender: {} }, input),

@@ -1269,6 +1269,8 @@ async function captureSocialProjectWorkSmokeScreenshots() {
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     document.querySelectorAll('.composer-mode-switch button')[1]?.click();
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    document.querySelector('.project-work-case summary')?.click();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   })()`);
   const inspect = async (width: number, height: number) => {
     mainWindow?.setSize(width, height);
@@ -1281,12 +1283,19 @@ async function captureSocialProjectWorkSmokeScreenshots() {
       const composer = document.querySelector('.message-composer');
       const rect = composer?.getBoundingClientRect();
       const task = document.querySelector('.project-work-card');
+      const caseReference = document.querySelector('.project-work-case');
+      if (caseReference instanceof HTMLDetailsElement) caseReference.open = true;
+      const caseControl = document.querySelector('.case-reuse-control');
       const mode = document.querySelector('.composer-mode-switch button[aria-pressed="true"]');
       return {
         roomTitle: document.querySelector('.room-header h2')?.textContent?.trim() ?? '',
         taskVisible: Boolean(task),
         taskText: task?.textContent?.trim() ?? '',
         projectModeSelected: mode?.textContent?.trim() === '项目工作',
+        caseControlVisible: Boolean(caseControl && caseControl.getClientRects().length),
+        caseReferenceVisible: Boolean(caseReference && caseReference.getClientRects().length),
+        caseReferenceExpanded: caseReference instanceof HTMLDetailsElement && caseReference.open,
+        caseReferenceText: caseReference?.textContent?.trim() ?? '',
         composerVisible: Boolean(rect && rect.width > 0 && rect.height > 0 && rect.bottom <= window.innerHeight),
         shellNoOverflow: Boolean(shell && shell.scrollWidth <= shell.clientWidth),
         panelNoOverflow: Boolean(panel && panel.scrollWidth <= panel.clientWidth),
@@ -1300,6 +1309,10 @@ async function captureSocialProjectWorkSmokeScreenshots() {
     !desktop?.taskVisible ||
     desktop.roomTitle !== '工程协作' ||
     !desktop.projectModeSelected ||
+    !desktop.caseControlVisible ||
+    !desktop.caseReferenceVisible ||
+    !desktop.caseReferenceExpanded ||
+    !desktop.caseReferenceText.includes('room A fixture') ||
     !desktop.composerVisible ||
     !desktop.shellNoOverflow ||
     !desktop.panelNoOverflow ||
@@ -1318,6 +1331,10 @@ async function captureSocialProjectWorkSmokeScreenshots() {
     !narrow?.taskVisible ||
     narrow.roomTitle !== '工程协作' ||
     !narrow.projectModeSelected ||
+    !narrow.caseControlVisible ||
+    !narrow.caseReferenceVisible ||
+    !narrow.caseReferenceExpanded ||
+    !narrow.caseReferenceText.includes('room A fixture') ||
     !narrow.composerVisible ||
     !narrow.shellNoOverflow ||
     !narrow.panelNoOverflow ||
@@ -1563,13 +1580,17 @@ async function startNoema() {
         socialWorkE2eValid && testSocialWorkChecksJson
           ? JSON.parse(testSocialWorkChecksJson)
           : [],
-      chooseWorkspace: async () => {
+      chooseWorkspace: async ({ reuseCase = false } = {}) => {
         if (socialWorkE2eValid) return testSocialWorkWorkspace;
         if (!mainWindow || mainWindow.isDestroyed()) return null;
         const selection = await dialog.showOpenDialog(mainWindow, {
           title: '选择工程搭档可以操作的项目文件夹',
-          message:
+          message: [
             '工程搭档会读取/修改项目文件，并可运行前台项目命令。Windows 文件沙箱主要限制写入，不能限制网络或进程可见性，也不能保证目录外读取隔离。项目内容可能通过 FreeLLMAPI 发往当前第三方免费模型路由。不要选择含不应发送的密钥或隐私资料的目录。停止任务不会自动撤销已经发生的改动。',
+            reuseCase
+              ? '本轮还会检查同一位工程搭档在同一项目的其他聊天中，是否有一项通过 Noema 文件条件核验的工作；若找到，会把一份过滤常见凭据样式的限长摘要随本任务发送给模型，不会发送原聊天记录。过滤无法保证识别所有敏感信息。'
+              : '本轮不会从其他聊天带入项目案例。',
+          ].join('\n\n'),
           properties: ['openDirectory'],
           buttonLabel: '允许并继续',
         });
@@ -1718,6 +1739,9 @@ async function startNoema() {
               const modeButton = document.querySelectorAll('.composer-mode-switch button')[1];
               modeButton?.click();
               await waitFrame();
+              const caseReuse = document.querySelector('.case-reuse-control input');
+              caseReuse?.click();
+              await waitFrame();
               const input = document.querySelector('#social-message-input');
               const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
               const submit = document.querySelector('.message-composer button[type="submit"]');
@@ -1726,9 +1750,11 @@ async function startNoema() {
                 responderSelected: [...document.querySelectorAll('.reply-routing button')].find((button) => button.textContent?.includes('工程搭档'))?.getAttribute('aria-pressed') ?? null,
                 modeDisabled: modeButton?.disabled ?? true,
                 modeSelected: modeButton?.getAttribute('aria-pressed') ?? null,
+                caseReuseChecked: caseReuse?.checked ?? false,
                 inputDisabled: input?.disabled ?? true,
                 submitDisabled: submit?.disabled ?? true,
               };
+              if (!caseReuse?.checked) return { error: 'case-reuse-not-enabled', diagnostics };
               if (!input || input.disabled || !setter) return { error: 'composer-unavailable', diagnostics };
               setter.call(input, prompt);
               input.dispatchEvent(new Event('input', { bubbles: true }));

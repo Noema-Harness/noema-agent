@@ -140,6 +140,84 @@ test('social work keeps the stable friend and only includes the issuing room con
   }
 });
 
+test('a cross-room task receives only one bounded, redacted, verified case when explicitly enabled', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'noema-social-case-'));
+  const workspace = path.join(directory, 'workspace');
+  mkdirSync(workspace);
+  const { db, store } = makeStore();
+  const seen = [];
+  const service = new SocialWorkService({
+    store,
+    adapter: makeAdapter({
+      result: '完成。历史输出里出现过 sk-abcdefghijklmnop123456。',
+      onStart(input) {
+        seen.push(input);
+        const name = input.task.includes('room B') ? 'second.txt' : 'first.txt';
+        writeFileSync(path.join(input.workspacePath, name), 'verified');
+      },
+    }),
+    secretStore: { isConfigured: () => true },
+    chooseWorkspace: async () => workspace,
+  });
+
+  try {
+    const first = await service.startTask({
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      prompt: 'room A：生成可核验的项目结果。',
+      verificationChecks: [{ kind: 'file_exists', path: 'first.txt' }],
+    });
+    await service.waitForTask(first.taskId);
+    const source = store.getSocialWorkTask(first.taskId);
+    assert.equal(source.status, 'completed');
+    assert.equal(source.verificationStatus, 'verified');
+    assert.equal(source.caseEligible, true);
+
+    const second = await service.startTask({
+      roomId: 'room-engineering-collaboration',
+      agentId: 'engineering-partner',
+      prompt: 'room B：延续同一个项目的相关工作。',
+      verificationChecks: [{ kind: 'file_exists', path: 'second.txt' }],
+      reuseCase: true,
+    });
+    assert.equal(second.accepted, true);
+    const secondTask = store.getSocialWorkTask(second.taskId);
+    assert.equal(secondTask.caseReuseRequested, true);
+    assert.equal(secondTask.caseSnapshot?.taskId, first.taskId);
+    assert.equal(secondTask.caseSnapshot?.roomId, 'room-engineering-partner');
+    assert.match(seen[1].task, /room A：生成可核验的项目结果/u);
+    assert.match(seen[1].task, /历史输出里出现过 \[已隐藏疑似凭据\]/u);
+    assert.doesNotMatch(seen[1].task, /sk-abcdefghijklmnop123456/u);
+    assert.doesNotMatch(seen[1].task, /只在私聊里的背景|原房间原文/u);
+
+    await service.waitForTask(second.taskId);
+    const room = store.getRoomSnapshot('room-engineering-collaboration');
+    assert.equal(room.workTasks[0].caseSnapshot?.taskId, first.taskId);
+    assert.equal(room.workTasks[0].caseReuseRequested, true);
+    assert.equal(room.workTasks[0].runtimeSessionId, undefined);
+
+    await service.setCaseEligible(first.taskId, false);
+    assert.equal(store.getSocialWorkTask(first.taskId).caseEligible, false);
+    assert.equal(
+      store.getSocialWorkTask(second.taskId).caseSnapshot?.taskId,
+      first.taskId,
+    );
+    const third = await service.startTask({
+      roomId: 'room-engineering-collaboration',
+      agentId: 'engineering-partner',
+      prompt: 'room B：不应继续引用已撤回案例。',
+      verificationChecks: [{ kind: 'file_exists', path: 'second.txt' }],
+      reuseCase: true,
+    });
+    assert.equal(store.getSocialWorkTask(third.taskId).caseSnapshot, null);
+    await service.waitForTask(third.taskId);
+  } finally {
+    await service.shutdown();
+    db.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('canceling the workspace picker starts no DSH task and writes no task record', async () => {
   const { db, store } = makeStore();
   let launches = 0;

@@ -32,9 +32,12 @@ const bridge = {
     roomId: string;
     agentId: string;
     prompt: string;
+    reuseCase: boolean;
   }) => ipcRenderer.invoke('noema:social-work-start', input),
   stopSocialWorkTask: (taskId: string) =>
     ipcRenderer.invoke('noema:social-work-stop', taskId),
+  setSocialWorkCaseEligible: (taskId: string, eligible: boolean) =>
+    ipcRenderer.invoke('noema:social-work-case-eligible', taskId, eligible),
   refreshModels: () => ipcRenderer.invoke('noema:refresh-models'),
   configureProvider: (configuration: { baseUrl: string; apiKey: string }) =>
     ipcRenderer.invoke('noema:configure-provider', configuration),
