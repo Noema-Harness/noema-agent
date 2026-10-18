@@ -99,6 +99,7 @@ test('a user-created specialist receives only messages explicitly forwarded into
     agentIds: ['noema', agentId],
   });
   const seenRequests = [];
+  let providerReady = true;
   const provider = {
     async *streamChat(input) {
       seenRequests.push(input);
@@ -108,8 +109,8 @@ test('a user-created specialist receives only messages explicitly forwarded into
   const service = new SocialChatService({
     store,
     provider,
-    secretStore: { isConfigured: () => true },
-    getSelectedModel: () => 'test-model',
+    secretStore: { isConfigured: () => providerReady },
+    getSelectedModel: () => (providerReady ? 'test-model' : null),
     getRootState: async () => ({
       connected: true,
       selectedModel: 'test-model',
@@ -142,12 +143,39 @@ test('a user-created specialist receives only messages explicitly forwarded into
       '这条无关内容不应随引用带入。',
     );
     store.completeReply(unrelatedTurn.assistantMessageId);
+    providerReady = false;
+    const forwardResult = service.forwardMessages({
+      targetRoomId: group.room.id,
+      sourceRoomId: created.room.id,
+      sourceIds: [sourceMessage.id],
+    });
+    assert.equal(forwardResult.roomId, group.room.id);
+    assert.equal(seenRequests.length, 1, 'forwarding must not call the model');
+    const forwardedOnly = store
+      .getRoomSnapshot(group.room.id)
+      .messages.find((message) => message.id === forwardResult.messageId);
+    assert.equal(forwardedOnly?.forwardedSources.length, 1);
+    assert.equal(
+      store
+        .getRoomSnapshot(group.room.id)
+        .messages.some(
+          (message) =>
+            message.turnId === forwardedOnly?.turnId &&
+            message.role === 'assistant',
+        ),
+      false,
+    );
+    assert.match(
+      store.getSnapshot().rooms.find((room) => room.id === group.room.id)
+        ?.preview?.text ?? '',
+      /转发了 1 条来自/u,
+    );
+
+    providerReady = true;
     service.sendMessage({
       roomId: group.room.id,
       agentId,
-      text: '',
-      sourceRoomId: created.room.id,
-      sourceIds: [sourceMessage.id],
+      text: '你怎么看这条记录？',
     });
     await new Promise((resolve) => setImmediate(resolve));
     await service.active.get(group.room.id)?.done;
@@ -200,7 +228,7 @@ test('a user-created specialist receives only messages explicitly forwarded into
     service.sendMessage({
       roomId: group.room.id,
       agentId,
-      text: '你怎么看这条记录？',
+      text: '请回复这条转发记录。',
       replyToMessageId: savedGroupUser.id,
     });
     await new Promise((resolve) => setImmediate(resolve));
@@ -216,9 +244,12 @@ test('a user-created specialist receives only messages explicitly forwarded into
     );
     const replyUser = store
       .getRoomSnapshot(group.room.id)
-      .messages.find(
+      .messages.toReversed()
+      .find(
         (message) =>
-          message.role === 'user' && message.id !== savedGroupUser.id,
+          message.role === 'user' &&
+          message.id !== savedGroupUser.id &&
+          message.replyTo?.id === savedGroupUser.id,
       );
     assert.equal(replyUser?.replyTo?.id, savedGroupUser.id);
     assert.throws(

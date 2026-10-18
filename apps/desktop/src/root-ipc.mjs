@@ -34,6 +34,7 @@ const CHANNELS = Object.freeze({
   socialAgentProjectWork: 'noema:social-agent-project-work',
   socialAgentArchive: 'noema:social-agent-archive',
   socialSend: 'noema:social-send',
+  socialForward: 'noema:social-forward',
   socialStop: 'noema:social-stop',
   socialRetry: 'noema:social-retry',
   socialWorkStart: 'noema:social-work-start',
@@ -91,6 +92,9 @@ export function registerRootIpc({
     );
     register(CHANNELS.socialSend, (input) =>
       socialChatService.sendMessage(input),
+    );
+    register(CHANNELS.socialForward, (input) =>
+      socialChatService.forwardMessages(input),
     );
     register(CHANNELS.socialStop, (messageId) =>
       socialChatService.stopReply(messageId),

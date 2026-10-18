@@ -1405,17 +1405,14 @@ async function captureSocialAgentCreationE2e() {
     if (!choose) throw new Error('缺少转发目标选择器');
     Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set?.call(choose, 'room-engineering-collaboration');
     choose.dispatchEvent(new Event('change', { bubbles: true }));
-    await waitFor(() => document.querySelector('.forward-recipient-options input[value="engineering-partner"]'), '群聊中的回应者');
-    document.querySelector('.forward-recipient-options input[value="engineering-partner"]')?.click();
     const sendButton = document.querySelector('.forward-dialog button[type="submit"]');
     if (!sendButton || sendButton.disabled) throw new Error('转发目标未准备好');
     sendButton.click();
     const state = await waitFor(async () => {
       const room = await window.noema.getSocialRoom('room-engineering-collaboration');
       const user = [...room.messages].reverse().find((message) => message.role === 'user' && message.forwardedSources?.length === 2);
-      const assistant = user ? room.messages.find((message) => message.turnId === user.turnId && message.role === 'assistant') : null;
-      return user && assistant?.status === 'complete' ? { room, user, assistant } : null;
-    }, '合并转发及本机回应');
+      return user ? { room, user } : null;
+    }, '合并转发消息送达目标聊天');
     await waitFor(
       () =>
         [...document.querySelectorAll('.forwarded-message-card')].some(
@@ -1423,6 +1420,33 @@ async function captureSocialAgentCreationE2e() {
         ),
       '目标聊天中的转发卡片',
     );
+    const assistantForForward = state.room.messages.find(
+      (message) => message.turnId === state.user.turnId && message.role === 'assistant',
+    );
+    const userArticle = [...document.querySelectorAll('.chat-message.user-message')]
+      .find((article) => article.querySelector('.forwarded-message-card')?.textContent?.includes('OpenAI 官方发布说明'));
+    return {
+      bundlePersisted: state.user.forwardedSources.length === 2,
+      forwardCreatedAssistant: Boolean(assistantForForward),
+      sourceRoom: state.user.forwardedSources[0]?.roomTitle ?? null,
+      forwardCardVisible: Boolean(userArticle?.querySelector('.forwarded-message-card')),
+      selectedContent: state.user.forwardedSources.map((source) => source.content),
+    };
+  })()`);
+  forwardingSent.forwardingDidNotTriggerResponse =
+    !forwardingSent.forwardCreatedAssistant &&
+    socialAgentE2eModelRequests.length === 0;
+  const forwardingReply = await mainWindow.webContents
+    .executeJavaScript(`(async () => {
+    const waitFor = async (predicate, label) => {
+      const deadline = Date.now() + 7000;
+      while (Date.now() < deadline) {
+        const value = await predicate();
+        if (value) return value;
+        await new Promise((resolve) => setTimeout(resolve, 40));
+      }
+      throw new Error('等待超时：' + label);
+    };
     const userArticle = [...document.querySelectorAll('.chat-message.user-message')]
       .find((article) => article.querySelector('.forwarded-message-card')?.textContent?.includes('OpenAI 官方发布说明'));
     const replyButton = [...(userArticle?.querySelectorAll('.message-actions button') ?? [])]
@@ -1442,15 +1466,12 @@ async function captureSocialAgentCreationE2e() {
       return user && assistant?.status === 'complete' ? { room, user, assistant } : null;
     }, '当前聊天回复及本机模型回应');
     return {
-      bundlePersisted: state.user.forwardedSources.length === 2,
-      sourceRoom: state.user.forwardedSources[0]?.roomTitle ?? null,
-      forwardCardVisible: Boolean(userArticle?.querySelector('.forwarded-message-card')),
-      selectedContent: state.user.forwardedSources.map((source) => source.content),
       replyExcerptVisible,
       currentRoomReplyAttached: replied.user.replyTo?.roomId === 'room-engineering-collaboration',
       replyText: replied.user.content,
     };
   })()`);
+  Object.assign(forwardingSent, forwardingReply);
   const modelRequest = socialAgentE2eModelRequests.at(-1);
   const modelInput =
     modelRequest?.messages.map((message) => message.content).join('\n') ?? '';
@@ -1462,8 +1483,8 @@ async function captureSocialAgentCreationE2e() {
     !modelInput.includes('紫水晶') &&
     modelInput.endsWith('请说说这两条消息的重点。'),
   );
-  forwardingSent.noProviderNetworkRequest =
-    socialAgentE2eModelRequests.length === 2;
+  forwardingSent.followUpTriggeredOneResponse =
+    socialAgentE2eModelRequests.length === 1;
   if (
     forwardingSelection.selectedCount !== 2 ||
     forwardingSelection.selectedBeforeCancel !== 2 ||
@@ -1472,11 +1493,12 @@ async function captureSocialAgentCreationE2e() {
     !forwardingSelection.targetCanBeChosen ||
     !forwardingSelection.cancelHadNoSend ||
     !forwardingSent.bundlePersisted ||
+    !forwardingSent.forwardingDidNotTriggerResponse ||
     !forwardingSent.forwardCardVisible ||
     !forwardingSent.replyExcerptVisible ||
     !forwardingSent.currentRoomReplyAttached ||
     !forwardingSent.modelInputVerified ||
-    !forwardingSent.noProviderNetworkRequest
+    !forwardingSent.followUpTriggeredOneResponse
   ) {
     throw new Error(
       `消息转发/回复流程与模型输入不符合预期：${JSON.stringify({ forwardingSelection, forwardingSent, modelRequest })}`,

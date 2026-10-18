@@ -466,10 +466,13 @@ export interface NoemaBridge {
     roomId: string;
     agentId: string;
     text: string;
-    sourceRoomId?: string | null;
-    sourceIds?: string[];
     replyToMessageId?: string | null;
   }): Promise<{ turnId: string; messageId: string }>;
+  forwardSocialMessages(input: {
+    targetRoomId: string;
+    sourceRoomId: string;
+    sourceIds: string[];
+  }): Promise<{ messageId: string; roomId: string }>;
   stopSocialReply(messageId: string): Promise<boolean>;
   retrySocialReply(messageId: string): Promise<{
     turnId: string;

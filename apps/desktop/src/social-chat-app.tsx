@@ -160,7 +160,6 @@ function SocialChatApp() {
   >([]);
   const [forwardDialogOpen, setForwardDialogOpen] = useState(false);
   const [forwardTargetRoomId, setForwardTargetRoomId] = useState('');
-  const [forwardRecipientId, setForwardRecipientId] = useState('');
   const [forwardBusy, setForwardBusy] = useState(false);
   const [search, setSearch] = useState('');
   const [notice, setNotice] = useState('');
@@ -236,7 +235,6 @@ function SocialChatApp() {
     setSelectedForwardMessageIds([]);
     setForwardDialogOpen(false);
     setForwardTargetRoomId('');
-    setForwardRecipientId('');
     requestAnimationFrame(() => {
       if (!originMessageId) return;
       document
@@ -453,9 +451,6 @@ function SocialChatApp() {
   const forwardTargetRoom = forwardableRooms.find(
     (room) => room.id === forwardTargetRoomId,
   );
-  const forwardTargetMembers = (forwardTargetRoom?.memberIds ?? [])
-    .map((id) => agents.find((agent) => agent.id === id))
-    .filter((agent): agent is NoemaSocialAgent => Boolean(agent));
   const selectedForwardMessages = messages.filter((message) =>
     selectedForwardMessageIds.includes(message.id),
   );
@@ -572,21 +567,12 @@ function SocialChatApp() {
       setNotice('没有可接收转发消息的聊天。');
       return;
     }
-    const recipientId = targetRoom.memberIds.find((id) =>
-      state?.agents.some((agent) => agent.id === id && !agent.archivedAt),
-    );
     setForwardTargetRoomId(targetRoom.id);
-    setForwardRecipientId(recipientId ?? '');
     setForwardDialogOpen(true);
   };
 
   const chooseForwardRoom = (roomId: string) => {
-    const room = forwardableRooms.find((candidate) => candidate.id === roomId);
-    const recipientId = room?.memberIds.find((id) =>
-      activeAgents.some((agent) => agent.id === id),
-    );
     setForwardTargetRoomId(roomId);
-    setForwardRecipientId(recipientId ?? '');
   };
 
   const handleForward = async (event: FormEvent) => {
@@ -594,7 +580,6 @@ function SocialChatApp() {
     if (
       !currentRoom ||
       !forwardTargetRoomId ||
-      !forwardRecipientId ||
       selectedForwardMessageIds.length === 0 ||
       forwardBusy
     ) {
@@ -603,15 +588,17 @@ function SocialChatApp() {
     setForwardBusy(true);
     setNotice('');
     try {
-      await window.noema.sendSocialMessage({
-        roomId: forwardTargetRoomId,
-        agentId: forwardRecipientId,
-        text: '',
+      await window.noema.forwardSocialMessages({
+        targetRoomId: forwardTargetRoomId,
         sourceRoomId: currentRoom.id,
         sourceIds: selectedForwardMessageIds,
       });
       setActiveRoomId(forwardTargetRoomId);
-      setSelectedAgentId(forwardRecipientId);
+      setSelectedAgentId(
+        forwardTargetRoom?.memberIds.find((id) =>
+          activeAgents.some((agent) => agent.id === id),
+        ) ?? 'noema',
+      );
       setShowRoomList(false);
       forwardOriginMessageId.current = null;
       cancelForward();
@@ -1663,33 +1650,8 @@ function SocialChatApp() {
                 ))}
               </select>
             </label>
-            {forwardTargetRoom?.kind === 'group' ? (
-              <fieldset className="forward-recipient-options">
-                <legend>由谁回应这条转发</legend>
-                {forwardTargetMembers
-                  .filter((agent) => !agent.archivedAt)
-                  .map((agent) => (
-                    <label key={agent.id}>
-                      <input
-                        type="radio"
-                        name="forward-recipient"
-                        value={agent.id}
-                        checked={forwardRecipientId === agent.id}
-                        onChange={() => setForwardRecipientId(agent.id)}
-                      />
-                      <AgentMark agent={agent} small />
-                      {agent.name}
-                    </label>
-                  ))}
-              </fieldset>
-            ) : forwardTargetMembers[0] ? (
-              <div className="forward-recipient-summary">
-                <span>由联系人回应</span>
-                <strong>{forwardTargetMembers[0].name}</strong>
-              </div>
-            ) : null}
             <p className="dialog-footnote">
-              转发后，消息会作为带来源的内容出现在目标聊天；目标聊天成员和所选回应者都能看到。
+              转发只会把消息送到目标聊天，不会自动触发回复。需要讨论时，再像平常一样发送一条消息。
             </p>
             <div className="dialog-actions">
               <button
@@ -1706,11 +1668,10 @@ function SocialChatApp() {
                 disabled={
                   forwardBusy ||
                   !forwardTargetRoom ||
-                  !forwardRecipientId ||
                   selectedForwardMessages.length === 0
                 }
               >
-                {forwardBusy ? '正在转发…' : '转发并请联系人回应'}
+                {forwardBusy ? '正在转发…' : '转发'}
               </button>
             </div>
           </form>

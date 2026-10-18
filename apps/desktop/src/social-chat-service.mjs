@@ -76,26 +76,9 @@ export class SocialChatService {
     return agent;
   }
 
-  sendMessage({
-    roomId,
-    agentId,
-    text,
-    sourceRoomId = null,
-    sourceIds = [],
-    replyToMessageId = null,
-  }) {
+  sendMessage({ roomId, agentId, text, replyToMessageId = null }) {
     if (this.shuttingDown) throw new Error('Noema 正在关闭，暂不能发送消息。');
     const model = this.requireReadyModel();
-    if (!Array.isArray(sourceIds)) {
-      throw new TypeError('转发消息选择无效。');
-    }
-    const forwardedSources = sourceIds.length
-      ? this.store.resolveForwardSources({
-          sourceRoomId,
-          targetRoomId: roomId,
-          sourceIds,
-        })
-      : [];
     const replyTo = replyToMessageId
       ? this.store.resolveReplyTarget({
           roomId,
@@ -107,7 +90,6 @@ export class SocialChatService {
       agentId,
       text,
       model,
-      forwardedSources,
       replyTo,
     });
     const controller = new AbortController();
@@ -115,7 +97,7 @@ export class SocialChatService {
       ...turn,
       controller,
       text,
-      forwardedSources,
+      forwardedSources: [],
       replyTo,
       done: null,
     };
@@ -123,6 +105,17 @@ export class SocialChatService {
     this.active.set(roomId, run);
     this.emit({ type: 'chat-turn-started', ...turn });
     return { turnId: turn.turnId, messageId: turn.assistantMessageId };
+  }
+
+  forwardMessages({ sourceRoomId, sourceIds, targetRoomId }) {
+    if (this.shuttingDown) throw new Error('Noema 正在关闭，暂不能转发消息。');
+    const result = this.store.appendForwardedMessage({
+      sourceRoomId,
+      sourceIds,
+      targetRoomId,
+    });
+    this.emit({ type: 'chat-state-updated', roomId: targetRoomId });
+    return result;
   }
 
   retryReply(messageId) {
