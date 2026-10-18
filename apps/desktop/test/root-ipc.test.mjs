@@ -275,3 +275,62 @@ test('Codex import sends nothing until transmission consent and remains revocabl
   assert.equal(prompts, 2);
   assert.equal(sends, 2);
 });
+
+test('room-scoped project work requires the trusted app window and does not use root task IPC', async () => {
+  const harness = createIpcHarness();
+  const trustedSender = {};
+  const calls = [];
+  const socialChatService = {
+    getUiState: async () => ({ projectWork: { available: true } }),
+    store: { getRoomSnapshot: (roomId) => ({ room: { id: roomId } }) },
+    sendMessage: (input) => input,
+    stopReply: () => true,
+    retryReply: () => ({ accepted: true }),
+  };
+  const socialWorkService = {
+    startTask: async (input) => {
+      calls.push(['start', input]);
+      return { accepted: true, taskId: 'task-1' };
+    },
+    stopTask: (taskId) => {
+      calls.push(['stop', taskId]);
+      return true;
+    },
+  };
+  registerRootIpc({
+    ipcMain: harness.ipcMain,
+    rootAgent: { getUiState: async () => ({}) },
+    socialChatService,
+    socialWorkService,
+    isTrustedSender: (sender) => sender === trustedSender,
+  });
+  assert.equal(harness.handlers.has(CHANNELS.socialWorkStart), true);
+  assert.equal(harness.handlers.has(CHANNELS.socialWorkStop), true);
+  const input = {
+    roomId: 'room-engineering-collaboration',
+    agentId: 'engineering-partner',
+    prompt: '写一个明确的小改动。',
+  };
+  assert.deepEqual(
+    await harness.handlers.get(CHANNELS.socialWorkStart)(
+      { sender: trustedSender },
+      input,
+    ),
+    { accepted: true, taskId: 'task-1' },
+  );
+  assert.equal(
+    await harness.handlers.get(CHANNELS.socialWorkStop)(
+      { sender: trustedSender },
+      'task-1',
+    ),
+    true,
+  );
+  assert.deepEqual(calls, [
+    ['start', input],
+    ['stop', 'task-1'],
+  ]);
+  await assert.rejects(
+    harness.handlers.get(CHANNELS.socialWorkStart)({ sender: {} }, input),
+    /未授权/,
+  );
+});

@@ -218,7 +218,11 @@ export function makeNoemaDshWorkerPatch(model) {
     // DSH's provider default is 256k output tokens; cap worker calls so a
     // gateway model with a smaller context window can still receive the task.
     `    maxTokens: ${DSH_WORKER_MAX_TOKENS}`,
+    // dsh-base provides the sandbox-consuming PowerShell executor on Windows;
+    // keep command execution available for project checks but never expose jobs.
     '- id: tool-pwsh',
+    '  disabled: false',
+    '- id: tool-jobs',
     '  disabled: true',
     '- id: web',
     '  disabled: true',

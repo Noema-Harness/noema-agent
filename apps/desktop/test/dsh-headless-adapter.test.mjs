@@ -28,11 +28,12 @@ class FakeChild extends EventEmitter {
   }
 }
 
-test('worker patch pins the selected FreeLLMAPI model and disables unsupported tool surfaces', () => {
+test('worker patch pins the free model and enables only foreground sandboxed project commands', () => {
   const model = DSH_FREE_MODEL;
   const patch = makeNoemaDshWorkerPatch(model);
   assert.match(patch, /model: "auto:noema-free"/);
-  assert.match(patch, /- id: tool-pwsh\n  disabled: true/);
+  assert.match(patch, /- id: tool-pwsh\n  disabled: false/);
+  assert.match(patch, /- id: tool-jobs\n  disabled: true/);
   assert.match(patch, /- id: tool-web\n  disabled: true/);
   assert.match(patch, /- id: tool-subagent\n  disabled: true/);
   assert.throws(() => makeNoemaDshWorkerPatch(''), TypeError);

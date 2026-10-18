@@ -22,6 +22,7 @@ import { RootAgent } from './root-agent.mjs';
 import { RootStore } from './root-store.mjs';
 import { SocialChatStore } from './social-chat-store.mjs';
 import { SocialChatService } from './social-chat-service.mjs';
+import { SocialWorkService } from './social-work-service.mjs';
 import { backupBeforeSocialChatMigration } from './social-chat-migration-backup.mjs';
 import {
   resolveNoemaDatabasePath,
@@ -95,6 +96,7 @@ let unregisterRootIpc: (() => void) | null = null;
 let rootAgent: RootAgent | null = null;
 let socialChatStore: SocialChatStore | null = null;
 let socialChatService: SocialChatService | null = null;
+let socialWorkService: SocialWorkService | null = null;
 let quickCaptureShortcutRegistration: ReturnType<
   typeof registerQuickCaptureShortcut
 > | null = null;
@@ -113,6 +115,13 @@ const testHistoryRecall = process.env.NOEMA_E2E_HISTORY_RECALL === '1';
 const testDirectWorker = process.env.NOEMA_E2E_DIRECT_WORKER === '1';
 const testVerificationChecksJson =
   process.env.NOEMA_E2E_VERIFICATION_CHECKS ?? null;
+const testSocialWorkPrompt = process.env.NOEMA_E2E_SOCIAL_WORK_PROMPT ?? null;
+const testSocialWorkWorkspace =
+  process.env.NOEMA_E2E_SOCIAL_WORK_WORKSPACE ?? null;
+const testSocialWorkResultPath =
+  process.env.NOEMA_E2E_SOCIAL_WORK_RESULT_PATH ?? null;
+const testSocialWorkChecksJson =
+  process.env.NOEMA_E2E_SOCIAL_WORK_CHECKS ?? null;
 const testCaptureQuickCapture =
   process.env.NOEMA_SMOKE_CAPTURE_QUICK_CAPTURE === '1';
 const testCaptureHistoryTrace =
@@ -150,6 +159,12 @@ const socialGroupDialogScreenshotPath =
   process.env.NOEMA_SMOKE_SOCIAL_GROUP_DIALOG_PATH ?? null;
 const socialSettingsNarrowScreenshotPath =
   process.env.NOEMA_SMOKE_SOCIAL_SETTINGS_NARROW_PATH ?? null;
+const socialProjectWorkDesktopScreenshotPath =
+  process.env.NOEMA_SMOKE_SOCIAL_PROJECT_WORK_PATH ?? null;
+const socialProjectWorkNarrowScreenshotPath =
+  process.env.NOEMA_SMOKE_SOCIAL_PROJECT_WORK_NARROW_PATH ?? null;
+const testSocialWorkCaptureUi =
+  process.env.NOEMA_E2E_SOCIAL_WORK_CAPTURE_UI === '1';
 delete process.env.NOEMA_E2E_DATABASE_PATH;
 delete process.env.NOEMA_E2E_DSH_USER_DATA_PATH;
 delete process.env.NOEMA_E2E_WORKER_PREFACE;
@@ -158,6 +173,11 @@ delete process.env.NOEMA_E2E_ROOT_ONLY;
 delete process.env.NOEMA_E2E_HISTORY_RECALL;
 delete process.env.NOEMA_E2E_DIRECT_WORKER;
 delete process.env.NOEMA_E2E_VERIFICATION_CHECKS;
+delete process.env.NOEMA_E2E_SOCIAL_WORK_PROMPT;
+delete process.env.NOEMA_E2E_SOCIAL_WORK_WORKSPACE;
+delete process.env.NOEMA_E2E_SOCIAL_WORK_RESULT_PATH;
+delete process.env.NOEMA_E2E_SOCIAL_WORK_CHECKS;
+delete process.env.NOEMA_E2E_SOCIAL_WORK_CAPTURE_UI;
 delete process.env.NOEMA_SMOKE_CAPTURE_QUICK_CAPTURE;
 delete process.env.NOEMA_SMOKE_CAPTURE_HISTORY_TRACE;
 delete process.env.NOEMA_SMOKE_CAPTURE_TIMELINE_SEARCH;
@@ -223,8 +243,9 @@ const createWindow = () => {
     );
   }
 
-  if (process.env.NOEMA_SMOKE_TEST === '1') {
+  if (process.env.NOEMA_SMOKE_TEST === '1' && !testSocialWorkCaptureUi) {
     mainWindow.webContents.once('did-finish-load', async () => {
+      let bridgeProbeStage = 'root-state';
       try {
         const bridgeState = await mainWindow?.webContents.executeJavaScript(
           'window.noema.getRootState()',
@@ -232,6 +253,7 @@ const createWindow = () => {
         if (!bridgeState || !Array.isArray(bridgeState.messages)) {
           throw new Error('Root conversation bridge did not return its state');
         }
+        bridgeProbeStage = 'social-state';
         const socialState = await mainWindow?.webContents.executeJavaScript(
           'window.noema.getSocialState()',
         );
@@ -245,6 +267,7 @@ const createWindow = () => {
           );
         }
         const firstRoom = socialState.rooms[0];
+        bridgeProbeStage = 'social-room';
         const socialRoom = firstRoom
           ? await mainWindow?.webContents.executeJavaScript(
               `window.noema.getSocialRoom(${JSON.stringify(firstRoom.id)})`,
@@ -253,6 +276,7 @@ const createWindow = () => {
         if (!socialRoom?.room || !Array.isArray(socialRoom.members)) {
           throw new Error('Social chat room could not be opened through IPC');
         }
+        bridgeProbeStage = 'smoke-rendering';
         const quickCaptureSmoke = await captureQuickCaptureSmokeScreenshots();
         const historyTraceSmoke = await captureHistoryTraceSmokeScreenshots();
         const timelineSearchSmoke =
@@ -318,6 +342,7 @@ const createWindow = () => {
         }
       } catch (error) {
         writeSmokeLog('renderer-bridge-failed', {
+          stage: bridgeProbeStage,
           error: error instanceof Error ? error.message : String(error),
         });
       }
@@ -1031,6 +1056,67 @@ async function captureSocialChatSmokeScreenshots() {
       throw new Error(`群聊回应对象切换没有生效：${JSON.stringify(target)}`);
     }
 
+    if (
+      socialProjectWorkDesktopScreenshotPath ||
+      socialProjectWorkNarrowScreenshotPath
+    ) {
+      const projectMode = await mainWindow.webContents
+        .executeJavaScript(`(async () => {
+        const workCard = document.querySelector('.project-work-card');
+        const button = document.querySelectorAll('.composer-mode-switch button')[1];
+        if (!workCard || !button || button.disabled) {
+          return { available: false, workCard: Boolean(workCard) };
+        }
+        button.click();
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        return {
+          available: true,
+          selected: button.getAttribute('aria-pressed') === 'true',
+          placeholder: document.querySelector('.message-composer textarea')?.getAttribute('placeholder') ?? '',
+        };
+      })()`);
+      if (!projectMode.available || !projectMode.selected) {
+        throw new Error(
+          `真实项目工作活动没有进入可操作的聊天状态：${JSON.stringify(projectMode)}`,
+        );
+      }
+      const projectDesktop = await inspectAt(1280, 800);
+      if (
+        !projectDesktop?.composerVisible ||
+        !projectDesktop.shellNoOverflow ||
+        !projectDesktop.panelNoOverflow ||
+        !projectDesktop.documentNoOverflow
+      ) {
+        throw new Error(
+          `桌面项目工作界面布局不符合预期：${JSON.stringify(projectDesktop)}`,
+        );
+      }
+      if (socialProjectWorkDesktopScreenshotPath) {
+        const image = await mainWindow.capturePage();
+        writeSmokeScreenshot(socialProjectWorkDesktopScreenshotPath, image);
+        screenshots.push(socialProjectWorkDesktopScreenshotPath);
+      }
+      const projectNarrow = await inspectAt(680, 560);
+      if (
+        !projectNarrow?.composerVisible ||
+        !projectNarrow.shellNoOverflow ||
+        !projectNarrow.panelNoOverflow ||
+        !projectNarrow.documentNoOverflow
+      ) {
+        throw new Error(
+          `窄窗口项目工作界面布局不符合预期：${JSON.stringify(projectNarrow)}`,
+        );
+      }
+      if (socialProjectWorkNarrowScreenshotPath) {
+        const image = await mainWindow.capturePage();
+        writeSmokeScreenshot(socialProjectWorkNarrowScreenshotPath, image);
+        screenshots.push(socialProjectWorkNarrowScreenshotPath);
+      }
+      await mainWindow.webContents.executeJavaScript(`(() => {
+        document.querySelector('.composer-mode-switch button[aria-pressed="false"]')?.click();
+      })()`);
+    }
+
     const groupDialog = await mainWindow.webContents
       .executeJavaScript(`(async () => {
       const trigger = document.querySelector('.new-group-button');
@@ -1153,6 +1239,99 @@ async function captureSocialChatSmokeScreenshots() {
   } finally {
     mainWindow?.setSize(originalSize[0], originalSize[1]);
   }
+}
+
+async function captureSocialProjectWorkSmokeScreenshots() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    throw new Error('项目工作截图没有可用窗口。');
+  }
+  const screenshots: string[] = [];
+  await mainWindow.webContents.executeJavaScript(`(async () => {
+    const waitForRoom = async (title) => {
+      const deadline = Date.now() + 5_000;
+      while (Date.now() < deadline) {
+        if (document.querySelector('.room-header h2')?.textContent?.trim() === title) return true;
+        await new Promise((resolve) => setTimeout(resolve, 40));
+      }
+      return false;
+    };
+    const noemaRoom = [...document.querySelectorAll('.room-list-item')]
+      .find((item) => item.querySelector('.room-list-title')?.textContent?.trim() === 'Noema');
+    noemaRoom?.click();
+    await waitForRoom('Noema');
+    const groupRoom = [...document.querySelectorAll('.room-list-item')]
+      .find((item) => item.querySelector('.room-list-title')?.textContent?.trim() === '工程协作');
+    groupRoom?.click();
+    await waitForRoom('工程协作');
+    const engineering = [...document.querySelectorAll('.reply-routing button')]
+      .find((button) => button.textContent?.includes('工程搭档'));
+    engineering?.click();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    document.querySelectorAll('.composer-mode-switch button')[1]?.click();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  })()`);
+  const inspect = async (width: number, height: number) => {
+    mainWindow?.setSize(width, height);
+    await mainWindow?.webContents.executeJavaScript(
+      'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+    );
+    return mainWindow?.webContents.executeJavaScript(`(() => {
+      const shell = document.querySelector('.social-shell');
+      const panel = document.querySelector('.conversation-panel');
+      const composer = document.querySelector('.message-composer');
+      const rect = composer?.getBoundingClientRect();
+      const task = document.querySelector('.project-work-card');
+      const mode = document.querySelector('.composer-mode-switch button[aria-pressed="true"]');
+      return {
+        roomTitle: document.querySelector('.room-header h2')?.textContent?.trim() ?? '',
+        taskVisible: Boolean(task),
+        taskText: task?.textContent?.trim() ?? '',
+        projectModeSelected: mode?.textContent?.trim() === '项目工作',
+        composerVisible: Boolean(rect && rect.width > 0 && rect.height > 0 && rect.bottom <= window.innerHeight),
+        shellNoOverflow: Boolean(shell && shell.scrollWidth <= shell.clientWidth),
+        panelNoOverflow: Boolean(panel && panel.scrollWidth <= panel.clientWidth),
+        documentNoOverflow: document.documentElement.scrollWidth <= window.innerWidth,
+      };
+    })()`);
+  };
+
+  const desktop = await inspect(1280, 800);
+  if (
+    !desktop?.taskVisible ||
+    desktop.roomTitle !== '工程协作' ||
+    !desktop.projectModeSelected ||
+    !desktop.composerVisible ||
+    !desktop.shellNoOverflow ||
+    !desktop.panelNoOverflow ||
+    !desktop.documentNoOverflow
+  ) {
+    throw new Error(`桌面项目工作状态不符合预期：${JSON.stringify(desktop)}`);
+  }
+  if (socialProjectWorkDesktopScreenshotPath) {
+    const image = await mainWindow.capturePage();
+    writeSmokeScreenshot(socialProjectWorkDesktopScreenshotPath, image);
+    screenshots.push(socialProjectWorkDesktopScreenshotPath);
+  }
+
+  const narrow = await inspect(680, 560);
+  if (
+    !narrow?.taskVisible ||
+    narrow.roomTitle !== '工程协作' ||
+    !narrow.projectModeSelected ||
+    !narrow.composerVisible ||
+    !narrow.shellNoOverflow ||
+    !narrow.panelNoOverflow ||
+    !narrow.documentNoOverflow
+  ) {
+    throw new Error(`窄窗口项目工作状态不符合预期：${JSON.stringify(narrow)}`);
+  }
+  if (socialProjectWorkNarrowScreenshotPath) {
+    const image = await mainWindow.capturePage();
+    writeSmokeScreenshot(socialProjectWorkNarrowScreenshotPath, image);
+    screenshots.push(socialProjectWorkNarrowScreenshotPath);
+  }
+
+  return { desktop, narrow, screenshots };
 }
 
 async function verifyLiveSocialChatSmoke() {
@@ -1347,12 +1526,72 @@ async function startNoema() {
       });
     }
     socialChatStore = new SocialChatStore(rootStore.db);
+    const socialWorkE2eDirectory =
+      testDatabasePath && path.isAbsolute(testDatabasePath)
+        ? path.dirname(path.resolve(testDatabasePath))
+        : null;
+    const socialWorkE2eValid = Boolean(
+      !app.isPackaged &&
+      !testWorkerPrompt &&
+      typeof testSocialWorkPrompt === 'string' &&
+      testSocialWorkPrompt.startsWith('[NOEMA E2E]') &&
+      testSocialWorkPrompt.length <= 4_000 &&
+      typeof testDatabasePath === 'string' &&
+      typeof testSocialWorkWorkspace === 'string' &&
+      path.isAbsolute(testSocialWorkWorkspace) &&
+      typeof testSocialWorkResultPath === 'string' &&
+      path.isAbsolute(testSocialWorkResultPath) &&
+      typeof testDshUserDataPath === 'string' &&
+      path.isAbsolute(testDshUserDataPath) &&
+      socialWorkE2eDirectory &&
+      isIsolatedE2eDirectory(socialWorkE2eDirectory, app.getPath('userData')) &&
+      path.resolve(testDatabasePath) !==
+        path.join(app.getPath('userData'), 'noema.sqlite3') &&
+      isPathWithin(socialWorkE2eDirectory, testSocialWorkWorkspace) &&
+      path.resolve(testSocialWorkWorkspace) !== socialWorkE2eDirectory &&
+      isPathWithin(socialWorkE2eDirectory, testSocialWorkResultPath) &&
+      isPathWithin(socialWorkE2eDirectory, testDshUserDataPath) &&
+      path.resolve(testDshUserDataPath) !== socialWorkE2eDirectory &&
+      fs.existsSync(testSocialWorkWorkspace) &&
+      fs.statSync(testSocialWorkWorkspace).isDirectory(),
+    );
+    socialWorkService = new SocialWorkService({
+      store: socialChatStore,
+      adapter: dshAdapter,
+      secretStore: providerSecretStore,
+      defaultVerificationChecks:
+        socialWorkE2eValid && testSocialWorkChecksJson
+          ? JSON.parse(testSocialWorkChecksJson)
+          : [],
+      chooseWorkspace: async () => {
+        if (socialWorkE2eValid) return testSocialWorkWorkspace;
+        if (!mainWindow || mainWindow.isDestroyed()) return null;
+        const selection = await dialog.showOpenDialog(mainWindow, {
+          title: '选择工程搭档可以操作的项目文件夹',
+          message:
+            '工程搭档会读取/修改项目文件，并可运行前台项目命令。Windows 文件沙箱主要限制写入，不能限制网络或进程可见性，也不能保证目录外读取隔离。项目内容可能通过 FreeLLMAPI 发往当前第三方免费模型路由。不要选择含不应发送的密钥或隐私资料的目录。停止任务不会自动撤销已经发生的改动。',
+          properties: ['openDirectory'],
+          buttonLabel: '允许并继续',
+        });
+        return selection.canceled ? null : (selection.filePaths[0] ?? null);
+      },
+      emit: (payload) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send(CHANNELS.socialEvent, payload);
+        }
+      },
+    });
     socialChatService = new SocialChatService({
       store: socialChatStore,
       provider,
       secretStore: providerSecretStore,
       getSelectedModel: () => rootStore?.getSelectedModel() ?? null,
       getRootState: () => agent.getUiState(),
+      getProjectWorkReadiness: () =>
+        socialWorkService?.getReadiness() ?? {
+          available: false,
+          reason: '项目工作运行环境尚未初始化。',
+        },
       emit: (payload) => {
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send(CHANNELS.socialEvent, payload);
@@ -1363,6 +1602,7 @@ async function startNoema() {
       ipcMain,
       rootAgent: agent,
       socialChatService,
+      socialWorkService,
       isTrustedSender: (sender) =>
         Boolean(mainWindow && sender === mainWindow.webContents),
       sendMessage: createImportAwareSendMessage(agent, async (imported) => {
@@ -1410,6 +1650,164 @@ async function startNoema() {
             }
           : null,
     });
+    if (socialWorkE2eValid && socialWorkE2eDirectory) {
+      const resultPath = path.resolve(testSocialWorkResultPath!);
+      const workspacePath = path.resolve(testSocialWorkWorkspace!);
+      if (testSocialWorkCaptureUi) {
+        await agent.refreshModels();
+        await new Promise<void>((resolve) => {
+          createWindow();
+          if (!mainWindow || mainWindow.isDestroyed()) {
+            resolve();
+            return;
+          }
+          mainWindow.webContents.once('did-finish-load', () => resolve());
+        });
+      }
+      void (async () => {
+        let socialWorkUiPreflight: unknown = null;
+        try {
+          if (testSocialWorkCaptureUi && mainWindow) {
+            socialWorkUiPreflight = await mainWindow.webContents
+              .executeJavaScript(`(async () => {
+              if (!window.noema) return { bridge: false };
+              try {
+                const state = await window.noema.getSocialState();
+                return {
+                  bridge: true,
+                  agentCount: state.agents.length,
+                  roomCount: state.rooms.length,
+                  projectWork: state.projectWork,
+                };
+              } catch (error) {
+                return { bridge: true, error: String(error) };
+              }
+            })()`);
+            if (
+              !socialWorkUiPreflight ||
+              typeof socialWorkUiPreflight !== 'object' ||
+              !('roomCount' in socialWorkUiPreflight) ||
+              socialWorkUiPreflight.roomCount !== 3
+            ) {
+              throw new Error(
+                `桌面社交界面尚未就绪：${JSON.stringify(socialWorkUiPreflight)}`,
+              );
+            }
+          }
+          let taskId: string | null = null;
+          if (testSocialWorkCaptureUi) {
+            taskId = await mainWindow!.webContents
+              .executeJavaScript(`(async () => {
+              const prompt = ${JSON.stringify(testSocialWorkPrompt)};
+              const deadline = Date.now() + 10_000;
+              const waitFrame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+              let roomItem = null;
+              while (Date.now() < deadline && !roomItem) {
+                roomItem = [...document.querySelectorAll('.room-list-item')]
+                  .find((item) => item.querySelector('.room-list-title')?.textContent?.trim() === '工程协作') ?? null;
+                if (!roomItem) await new Promise((resolve) => setTimeout(resolve, 50));
+              }
+              roomItem?.click();
+              while (Date.now() < deadline && document.querySelector('.room-header h2')?.textContent?.trim() !== '工程协作') {
+                await new Promise((resolve) => setTimeout(resolve, 50));
+              }
+              const responder = [...document.querySelectorAll('.reply-routing button')]
+                .find((button) => button.textContent?.includes('工程搭档'));
+              responder?.click();
+              await waitFrame();
+              const modeButton = document.querySelectorAll('.composer-mode-switch button')[1];
+              modeButton?.click();
+              await waitFrame();
+              const input = document.querySelector('#social-message-input');
+              const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+              const submit = document.querySelector('.message-composer button[type="submit"]');
+              const diagnostics = {
+                roomTitle: document.querySelector('.room-header h2')?.textContent?.trim() ?? '',
+                responderSelected: [...document.querySelectorAll('.reply-routing button')].find((button) => button.textContent?.includes('工程搭档'))?.getAttribute('aria-pressed') ?? null,
+                modeDisabled: modeButton?.disabled ?? true,
+                modeSelected: modeButton?.getAttribute('aria-pressed') ?? null,
+                inputDisabled: input?.disabled ?? true,
+                submitDisabled: submit?.disabled ?? true,
+              };
+              if (!input || input.disabled || !setter) return { error: 'composer-unavailable', diagnostics };
+              setter.call(input, prompt);
+              input.dispatchEvent(new Event('input', { bubbles: true }));
+              await waitFrame();
+              if (!submit || submit.disabled) return { error: 'submit-disabled', diagnostics };
+              submit.click();
+              const taskDeadline = Date.now() + 10_000;
+              while (Date.now() < taskDeadline) {
+                const room = await window.noema.getSocialRoom('room-engineering-collaboration');
+                const task = room.workTasks.find((candidate) => candidate.taskPrompt === prompt);
+                if (task) return task.id;
+                await new Promise((resolve) => setTimeout(resolve, 100));
+              }
+              return { error: 'task-not-persisted', diagnostics, notice: document.querySelector('.inline-notice')?.textContent?.trim() ?? '' };
+            })()`);
+            if (typeof taskId !== 'string') {
+              throw new Error(
+                `聊天界面没有提交项目工作任务：${JSON.stringify(taskId)}`,
+              );
+            }
+          } else {
+            const started = await socialWorkService!.startTask({
+              roomId: 'room-engineering-collaboration',
+              agentId: 'engineering-partner',
+              prompt: testSocialWorkPrompt!,
+              verificationChecks: testSocialWorkChecksJson
+                ? JSON.parse(testSocialWorkChecksJson)
+                : [],
+            });
+            taskId = started.accepted ? (started.taskId ?? null) : null;
+          }
+          const task = taskId
+            ? await socialWorkService!.waitForTask(taskId)
+            : null;
+          const socialWorkUiSmoke = testSocialWorkCaptureUi
+            ? await captureSocialProjectWorkSmokeScreenshots()
+            : null;
+          fs.writeFileSync(
+            resultPath,
+            JSON.stringify(
+              {
+                outcome: task ? 'finished' : 'preflight_failed',
+                task,
+                workspacePath,
+                socialWorkUiSmoke,
+              },
+              null,
+              2,
+            ),
+            { encoding: 'utf8', flag: 'wx' },
+          );
+        } catch (error) {
+          fs.writeFileSync(
+            resultPath,
+            JSON.stringify(
+              {
+                outcome: 'setup_failed',
+                errorCode:
+                  error &&
+                  typeof error === 'object' &&
+                  'code' in error &&
+                  typeof error.code === 'string'
+                    ? error.code
+                    : 'social_work_e2e_failed',
+                errorMessage:
+                  error instanceof Error ? error.message.slice(0, 1_000) : null,
+                socialWorkUiPreflight,
+              },
+              null,
+              2,
+            ),
+            { encoding: 'utf8', flag: 'wx' },
+          );
+        } finally {
+          app.quit();
+        }
+      })();
+      return;
+    }
     if (
       !app.isPackaged &&
       testDatabasePath &&
@@ -1532,6 +1930,7 @@ app.on('before-quit', (event) => {
   void Promise.allSettled([
     rootAgent.shutdown(),
     socialChatService?.shutdown(),
+    socialWorkService?.shutdown(),
   ]).finally(() => {
     shutdownComplete = true;
     unregisterRootIpc?.();

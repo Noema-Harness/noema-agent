@@ -97,15 +97,23 @@
       "description": "Reports the local FreeLLMAPI connection state alongside the selected model context.",
       "html": "<div class=\"ds-status\"><i></i><span>本机 FreeLLMAPI 已连接</span></div>",
       "css": ".ds-status { display: inline-flex; align-items: center; gap: 8px; padding: 10px 11px; border: 1px solid #dce3dc; border-radius: 8px; background: #f6f8f4; color: #4e6154; font: 11px 'Segoe UI Variable', 'Segoe UI', 'Microsoft YaHei UI', sans-serif; } .ds-status i { width: 7px; height: 7px; flex: 0 0 auto; border: 1px solid currentColor; border-radius: 50%; background: currentColor; }"
+    },
+    {
+      "name": "Room-scoped Project Work Activity",
+      "kind": "custom",
+      "description": "An explicit project-work action runs through the selected specialist and returns its status, bounded result, chosen workspace, and independent file-check result to the originating room.",
+      "html": "<article class=\"project-work-card project-work-completed\"><header class=\"project-work-header\"><span class=\"project-work-status-mark\"></span><strong>工程搭档 · 项目工作已完成并核验</strong></header><p class=\"project-work-request\">在项目里实现用户描述的改动。</p><details class=\"project-work-location\"><summary>查看项目范围</summary><code>D:\\Projects\\Example</code></details><p class=\"project-work-verification is-verified\">文件条件已由 Noema 独立确认</p></article>",
+      "css": ".project-work-card { width: min(92%, 720px); padding: 13px 15px 11px; border: 1px solid var(--chat-line); border-radius: 4px 13px 13px 13px; background: var(--chat-paper-alt); color: var(--chat-ink); } .project-work-status-mark { width: 8px; height: 8px; border-radius: 50%; background: var(--chat-success); } .project-work-progress, .project-work-verification { display: flex; flex-wrap: wrap; gap: 6px 14px; color: var(--chat-muted); font-size: 10px; } .project-work-verification.is-verified { color: var(--chat-success); } .project-work-error { color: var(--chat-error); font-size: 10px; }"
     }
   ],
   "narrative": {
     "northStar": "Independent Rooms for Ongoing Conversation",
-    "overview": "This Windows-first, Chinese-first desktop slice uses familiar chat conventions. The active room owns the main area; a recent-chat sidebar keeps Noema and professional agents easy to return to. Stable agent identities appear across rooms, while each private or group room keeps its own transcript. In group rooms, the sender can choose who responds to each turn. This is the current assistant-selected interface direction, not a user-confirmed brand identity.\n\nThe interface uses a quiet warm-gray-green ground around paper-white chat surfaces, forest-green actions, and distinct identity marks for Noema and a professional contact. The roomy desktop layout gives the conversation most of the space. On narrow screens, the app switches between the chat list and the selected room, retaining a compact top bar and direct navigation back. Model and service information stays visible but secondary to the room and its messages.\n\nThe palette, type scale, and surface styling document this implementation slice. They remain changeable design choices, not permanent Noema brand assets. The earlier root-conversation and background-worker composition is historical; it is not the current main chat surface.\n\nThe stylesheet also retains earlier `#legacy` interface rules before the `.social-shell` block. Those styles are deprecated for the current main surface and are outside this design system; do not reuse their one-off values as current social-chat tokens.",
+    "overview": "This Windows-first, Chinese-first desktop slice uses familiar chat conventions. The active room owns the main area; a recent-chat sidebar keeps Noema and professional agents easy to return to. Stable agent identities appear across rooms, while each private or group room keeps its own transcript. In group rooms, the sender can choose who responds to each turn. A capable specialist can also receive an explicit project-work handoff; its activity and separately verified file result return to the same room. This is the current assistant-selected interface direction, not a user-confirmed brand identity.\n\nThe interface uses a quiet warm-gray-green ground around paper-white chat surfaces, forest-green actions, and distinct identity marks for Noema and a professional contact. The roomy desktop layout gives the conversation most of the space. On narrow screens, the app switches between the chat list and the selected room, retaining a compact top bar and direct navigation back. Model and service information stays visible but secondary to the room and its messages.\n\nThe palette, type scale, and surface styling document this implementation slice. They remain changeable design choices, not permanent Noema brand assets. The earlier root-conversation and background-worker composition is historical; it is not the current main chat surface.\n\nThe stylesheet also retains earlier `#legacy` interface rules before the `.social-shell` block. Those styles are deprecated for the current main surface and are outside this design system; do not reuse their one-off values as current social-chat tokens.",
     "keyCharacteristics": [
       "A room-centered chat surface with a persistent desktop contact/recent-chat list.",
       "Stable identity marks distinguish Noema from professional agents across separate rooms.",
       "Group turns expose an explicit responder choice.",
+      "Project work is started explicitly and returns as a verifiable activity within its originating room.",
       "Local transcript storage and the selected FreeLLMAPI model boundary are stated in the interface."
     ],
     "rules": [
@@ -119,6 +127,7 @@
       "Do make the current room the main focus and keep the sidebar about returning to a person or recent conversation.",
       "Do preserve separate private and group transcripts while reusing stable agent identity marks.",
       "Do show the group responder choice for each turn and identify which agent actually replied.",
+      "Do keep project work attached to its room and distinguish worker output from Noema's independent file verification.",
       "Do keep model and service state present but subordinate, with wording tied to the state the app actually knows.",
       "Do retain the local-storage and FreeLLMAPI data boundary in concise, readable language.",
       "Do let narrow screens move cleanly between the chat list and one active room.",

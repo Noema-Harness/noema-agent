@@ -28,6 +28,13 @@ const bridge = {
     ipcRenderer.invoke('noema:social-stop', messageId),
   retrySocialReply: (messageId: string) =>
     ipcRenderer.invoke('noema:social-retry', messageId),
+  startSocialWorkTask: (input: {
+    roomId: string;
+    agentId: string;
+    prompt: string;
+  }) => ipcRenderer.invoke('noema:social-work-start', input),
+  stopSocialWorkTask: (taskId: string) =>
+    ipcRenderer.invoke('noema:social-work-stop', taskId),
   refreshModels: () => ipcRenderer.invoke('noema:refresh-models'),
   configureProvider: (configuration: { baseUrl: string; apiKey: string }) =>
     ipcRenderer.invoke('noema:configure-provider', configuration),

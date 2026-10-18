@@ -26,6 +26,14 @@ Noema 持有 agent 的稳定 identity、专业范围、用户关系偏好和当�
 
 在当前房间将消息交给直接模型或外部 harness，接收真实回复和运行事件，并记录 runtime 来源/失败状态。Adapter 可替换；执行进度属于房间交互，不应被伪装成后台已经完成。
 
+### Room-scoped Project Work
+
+在聊天中执行项目工作必须是用户明确切换的动作，不根据普通聊天文本静默启动。社交域 `social_work_tasks` 为工作项的状态真相来源，并关联 Noema agent、发起 room、用户原始任务文本、所选 workspace、runtime/session、结果及独立核验；它不复用 legacy root 的 `background_tasks`，也不把 DSH session 当作好友身份。任务完成或失败作为同一 room 的活动卡片呈现，未来同一 room 的模型上下文可带入有界任务请求/结果摘要；其他 room 不受影响。
+
+首轮使用已有 DSH Headless adapter：新任务使用干净 session，只有受限限流续接才复用该任务的 session；不同任务和 room 不共用 DSH transcript。当前服务仅对明确传入的文件条件调用 `workspace-verifier`，不把 DSH final 当作核验通过。应用关闭会停止受管进程，仍在执行的任务在下次启动时记为中断，不自动重跑。
+
+运行时关闭 web、subagent 与 background jobs；前台 PowerShell 使用 DSH 自带 workspace-write sandbox，以支持工程项目检查。该沙箱的边界主要是文件写入，不能限制网络或进程可见性，并不完整隔离 Windows 上的读取。选择目录前必须显示这一事实、第三方模型数据流与停止不回滚提醒；首条真实 E2E 仅操作 scratch workspace。不得将当前实现宣传成安全沙箱或作为访问含密钥/私人文件目录的理由。持久取舍见 [ADR 0016](decisions/0016-room-scoped-project-work.md)。
+
 ### Experience 与 Practice
 
 房间事件、用户明确的互动偏好和好友专业实践变化是不同状态。事件保存来源/room；偏好服务于这位用户如何与 agent 配合；专业实践须以相关工作证据支持。首轮不自动把模型总结提升成永久方法，历史材料按需检索，不全量注入 prompt。

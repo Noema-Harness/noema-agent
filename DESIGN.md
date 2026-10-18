@@ -14,6 +14,9 @@ colors:
   muted: "#65736b"
   line: "#dce3dc"
   identity-highlight: "#c9d98b"
+  success: "#367258"
+  warning: "#8b662c"
+  error: "#a94136"
 typography:
   body:
     fontFamily: "Segoe UI Variable, Segoe UI, Microsoft YaHei UI, Microsoft YaHei, sans-serif"
@@ -119,6 +122,7 @@ The stylesheet also retains earlier `#legacy` interface rules before the `.socia
 - A room-centered chat surface with a persistent desktop contact/recent-chat list.
 - Stable identity marks distinguish Noema from professional agents across separate rooms.
 - Group turns expose an explicit responder choice.
+- Engineering work is explicitly switched from chat and returns as an activity in the same room.
 - Local transcript storage and the selected FreeLLMAPI model boundary are stated in the interface.
 
 ## Colors
@@ -212,6 +216,12 @@ The observed corner vocabulary includes 2, 4, 5, 7, 8, 9, 10, 11, 12, and 13px r
 - Agent messages are left-aligned on a very light neutral-green fill; user messages are right-aligned on forest green with white text. Keep timestamps and provenance separate from the message body.
 - Group responses must make the responding agent legible. A per-turn responder choice belongs directly above the composer, not in a separate operations panel.
 
+### Project Work Activity
+- A compact “聊天 / 项目工作” switch sits above the composer only in rooms with a capable agent. Project work is never inferred from ordinary chat text.
+- The work record stays in its originating room as one durable activity card, visually distinct from a chat bubble but not moved into a global task dashboard.
+- The card identifies the specialist, current status, user request, chosen project folder (collapsible), result, stop action, and whether Noema independently verified the declared file condition. A worker's final text is not the verification badge.
+- Starting work requires the user to choose a folder. The folder picker discloses third-party model transmission, Windows sandbox limitations, and that stopping does not roll back file edits. Do not imply that the chosen path is a complete read/network security boundary.
+
 ### Status and Data Boundary
 - The top bar may show that the local FreeLLMAPI service is connected and the selected model's reported availability. Treat this as current status information, not a guarantee that the next generation will succeed.
 - Keep the visible data statement accurate: chat records are stored locally and sent to the currently selected model via FreeLLMAPI after sending. Do not imply local-only inference or external provider state beyond the observed app state.
@@ -222,6 +232,7 @@ The observed corner vocabulary includes 2, 4, 5, 7, 8, 9, 10, 11, 12, and 13px r
 - **Do** make the current room the main focus and keep the sidebar about returning to a person or recent conversation.
 - **Do** preserve separate private and group transcripts while reusing stable agent identity marks.
 - **Do** show the group responder choice for each turn and identify which agent actually replied.
+- **Do** keep project work attached to its room and distinguish “worker finished” from “Noema verified.”
 - **Do** keep model and service state present but subordinate, with wording tied to the state the app actually knows.
 - **Do** retain the local-storage and FreeLLMAPI data boundary in concise, readable language.
 - **Do** let narrow screens move cleanly between the chat list and one active room.
