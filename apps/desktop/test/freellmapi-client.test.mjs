@@ -94,6 +94,97 @@ test('keeps optional free routes hidden while FreeLLMAPI marks them unavailable'
   assert.deepEqual(await client.listModels(), []);
 });
 
+test('buffers automatic router replies so FreeLLMAPI can fail over before delivery', async () => {
+  let requestBody;
+  let receivedRoute;
+  const client = new FreeLLMAPIClient({
+    getApiKey: () => 'test-key',
+    fetchImpl: async (_url, init) => {
+      requestBody = JSON.parse(init.body);
+      return Response.json(
+        {
+          choices: [
+            {
+              message: { role: 'assistant', content: '完整回复' },
+              finish_reason: 'stop',
+            },
+          ],
+        },
+        { headers: { 'X-Routed-Via': 'ovh/model' } },
+      );
+    },
+  });
+  const deltas = [];
+  for await (const delta of client.streamChat({
+    model: 'auto:noema-free',
+    messages: [{ role: 'user', content: '请回答' }],
+    signal: new AbortController().signal,
+    onRouteMetadata: (route) => {
+      receivedRoute = route;
+    },
+  })) {
+    deltas.push(delta);
+  }
+
+  assert.equal(requestBody.stream, false);
+  assert.equal(requestBody.max_tokens, 1024);
+  assert.deepEqual(deltas, ['完整回复']);
+  assert.equal(receivedRoute, 'ovh/model');
+});
+
+test('preserves tool calls for buffered automatic router replies', async () => {
+  let receivedCalls;
+  const client = new FreeLLMAPIClient({
+    getApiKey: () => 'test-key',
+    fetchImpl: async () =>
+      Response.json({
+        choices: [
+          {
+            message: {
+              role: 'assistant',
+              content: null,
+              tool_calls: [
+                {
+                  id: 'call_1',
+                  type: 'function',
+                  function: {
+                    name: 'delegate_task',
+                    arguments: '{"task":"Inspect the project"}',
+                  },
+                },
+              ],
+            },
+            finish_reason: 'tool_calls',
+          },
+        ],
+      }),
+  });
+  const deltas = [];
+  for await (const delta of client.streamChat({
+    model: 'free-router',
+    messages: [{ role: 'user', content: 'Inspect the project' }],
+    signal: new AbortController().signal,
+    tools: [{ type: 'function', function: { name: 'delegate_task' } }],
+    onToolCalls: (calls) => {
+      receivedCalls = calls;
+    },
+  })) {
+    deltas.push(delta);
+  }
+
+  assert.deepEqual(deltas, []);
+  assert.deepEqual(receivedCalls, [
+    {
+      id: 'call_1',
+      type: 'function',
+      function: {
+        name: 'delegate_task',
+        arguments: '{"task":"Inspect the project"}',
+      },
+    },
+  ]);
+});
+
 test('assembles streamed FreeLLMAPI tool-call deltas without exposing arguments as chat text', async () => {
   const encoder = new TextEncoder();
   const chunks = [
@@ -122,7 +213,7 @@ test('assembles streamed FreeLLMAPI tool-call deltas without exposing arguments 
   });
   const text = [];
   for await (const delta of client.streamChat({
-    model: 'auto:noema-free',
+    model: 'nvidia/nemotron-3.5-lightning',
     messages: [{ role: 'user', content: 'Read this project' }],
     signal: new AbortController().signal,
     tools: [{ type: 'function', function: { name: 'delegate_task' } }],
@@ -135,8 +226,10 @@ test('assembles streamed FreeLLMAPI tool-call deltas without exposing arguments 
   }))
     text.push(delta);
 
-  assert.equal(requestBody.model, 'auto:noema-free');
+  assert.equal(requestBody.model, 'nvidia/nemotron-3.5-lightning');
+  assert.equal(requestBody.stream, true);
   assert.equal(requestBody.tool_choice, 'auto');
+  assert.equal(requestBody.max_tokens, 1024);
   assert.deepEqual(text, []);
   assert.deepEqual(receivedCalls, [
     {
@@ -170,16 +263,16 @@ test('streams OpenAI-compatible SSE across arbitrary network chunk boundaries', 
       assert.equal(url, 'http://localhost:31415/v1/chat/completions');
       assert.equal(init.headers.authorization, 'Bearer test-key');
       const request = JSON.parse(init.body);
-      assert.equal(request.model, 'free-router');
+      assert.equal(request.model, 'nvidia/nemotron-3.5-lightning');
       assert.equal(request.stream, true);
-      assert.equal(request.max_tokens, 4096);
+      assert.equal(request.max_tokens, 1024);
       return new Response(stream, { status: 200 });
     },
   });
   const deltas = [];
   let routedVia = 'unexpected';
   for await (const delta of client.streamChat({
-    model: 'free-router',
+    model: 'nvidia/nemotron-3.5-lightning',
     messages: [{ role: 'user', content: '你好' }],
     signal: new AbortController().signal,
     onRouteMetadata: (route) => {
@@ -190,6 +283,38 @@ test('streams OpenAI-compatible SSE across arbitrary network chunk boundaries', 
   }
   assert.deepEqual(deltas, ['你好', '，Noema。']);
   assert.equal(routedVia, null);
+});
+
+test('rejects a stream that closes without FreeLLMAPI terminal marker', async () => {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(
+        encoder.encode(
+          'data: {"choices":[{"delta":{"content":"部分回复"}}]}\n\n',
+        ),
+      );
+      controller.close();
+    },
+  });
+  const client = new FreeLLMAPIClient({
+    getApiKey: () => 'test-key',
+    fetchImpl: async () => new Response(stream, { status: 200 }),
+  });
+  const partial = [];
+  await assert.rejects(
+    async () => {
+      for await (const delta of client.streamChat({
+        model: 'nvidia/nemotron-3.5-lightning',
+        messages: [{ role: 'user', content: '你好' }],
+        signal: new AbortController().signal,
+      })) {
+        partial.push(delta);
+      }
+    },
+    (error) => error.code === 'incomplete_stream',
+  );
+  assert.deepEqual(partial, ['部分回复']);
 });
 
 test('rejects non-local endpoints before attaching the API key', async () => {

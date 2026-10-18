@@ -1,4 +1,7 @@
 const DEFAULT_BASE_URL = 'http://127.0.0.1:3001/v1';
+// Keep routine turns within a modest free-route output budget; callers may
+// explicitly raise it for work that needs a longer response.
+const DEFAULT_MAX_OUTPUT_TOKENS = 1024;
 
 const VERIFIED_FREE_MODELS = new Map([
   [
@@ -186,12 +189,18 @@ export class FreeLLMAPIClient {
     model,
     messages,
     signal,
-    maxTokens = 4096,
+    maxTokens = DEFAULT_MAX_OUTPUT_TOKENS,
     tools,
     onToolCalls = () => {},
     onRouteMetadata = () => {},
   }) {
     const key = this.requireApiKey();
+    // FreeLLMAPI can fail over while a routed response is still buffered, but
+    // cannot replace a provider after streamed text has been committed. Router
+    // aliases therefore use a complete response; pinned direct models still
+    // stream normally.
+    const useBufferedRouterResponse =
+      VERIFIED_FREE_MODELS.get(model)?.routeKind === 'router';
     let response;
     try {
       response = await this.fetch(`${this.baseUrl}/chat/completions`, {
@@ -204,7 +213,7 @@ export class FreeLLMAPIClient {
         body: JSON.stringify({
           model,
           messages,
-          stream: true,
+          stream: !useBufferedRouterResponse,
           max_tokens: maxTokens,
           ...(tools?.length ? { tools, tool_choice: 'auto' } : {}),
         }),
@@ -242,9 +251,44 @@ export class FreeLLMAPIClient {
     }
     onRouteMetadata(routedVia);
 
+    if (useBufferedRouterResponse) {
+      let body;
+      try {
+        body = await response.json();
+      } catch {
+        throw new FreeLLMAPIError(
+          'invalid_response',
+          'FreeLLMAPI 返回了无法读取的完整回复。消息已保留，可以重试。',
+        );
+      }
+      if (body?.error) {
+        throw new FreeLLMAPIError(
+          'provider_error',
+          'FreeLLMAPI 当前免费模型路由未能完成请求。可以稍后重试或切换免费模型。',
+        );
+      }
+      const choice = body?.choices?.[0];
+      const text = extractMessageText(choice?.message);
+      const calls = choice?.message?.tool_calls;
+      if (Array.isArray(calls) && calls.length) {
+        onToolCalls(
+          finalizeToolCalls(new Map(calls.map((call, index) => [index, call]))),
+        );
+      }
+      if (text) yield text;
+      if (!text && (!Array.isArray(calls) || calls.length === 0)) {
+        throw new FreeLLMAPIError(
+          'empty_reply',
+          '免费模型没有返回文字或工具调用。消息已保留，可以重试。',
+        );
+      }
+      return;
+    }
+
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let pending = '';
+    let sawDone = false;
     const toolCalls = new Map();
     try {
       while (true) {
@@ -253,22 +297,35 @@ export class FreeLLMAPIClient {
         const lines = pending.split('\n');
         pending = lines.pop() ?? '';
         for (const line of lines) {
+          if (isSseDone(line)) {
+            sawDone = true;
+            break;
+          }
           const payload = parseSseDataLine(line);
           if (!payload) continue;
           const text = extractTextDelta(payload);
           if (text) yield text;
           collectToolCallDeltas(payload, toolCalls);
         }
+        if (sawDone) break;
         if (done) break;
       }
       const finalLine = pending.trim();
-      if (finalLine) {
+      if (!sawDone && isSseDone(finalLine)) {
+        sawDone = true;
+      } else if (!sawDone && finalLine) {
         const payload = parseSseDataLine(finalLine);
         if (payload) {
           const text = extractTextDelta(payload);
           if (text) yield text;
           collectToolCallDeltas(payload, toolCalls);
         }
+      }
+      if (!sawDone) {
+        throw new FreeLLMAPIError(
+          'incomplete_stream',
+          '免费模型的回复流意外中断，未收到完整结束标记。消息已保留，可以重试。',
+        );
       }
       if (toolCalls.size) onToolCalls(finalizeToolCalls(toolCalls));
     } catch (error) {
@@ -320,8 +377,24 @@ function parseSseDataLine(line) {
   return payload;
 }
 
+function isSseDone(line) {
+  return line.trim() === 'data: [DONE]';
+}
+
 function extractTextDelta(payload) {
   const content = payload?.choices?.[0]?.delta?.content;
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .filter((part) => part?.type === 'text' && typeof part.text === 'string')
+      .map((part) => part.text)
+      .join('');
+  }
+  return '';
+}
+
+function extractMessageText(message) {
+  const content = message?.content;
   if (typeof content === 'string') return content;
   if (Array.isArray(content)) {
     return content
