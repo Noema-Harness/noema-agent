@@ -173,7 +173,8 @@ if (
   result.workflow?.forwarding?.selectedBeforeCancel !== 2 ||
   !result.workflow?.forwarding?.forwardCardVisible ||
   !result.workflow?.forwarding?.modelInputVerified ||
-  !result.workflow?.forwarding?.noProviderNetworkRequest ||
+  !result.workflow?.forwarding?.forwardingDidNotTriggerResponse ||
+  !result.workflow?.forwarding?.followUpTriggeredOneResponse ||
   !result.workflow?.forwarding?.cancelHadNoSend ||
   !result.workflow?.forwarding?.currentRoomReplyAttached ||
   result.workflow?.forwarding?.narrow?.width > 700 ||

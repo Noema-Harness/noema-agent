@@ -461,7 +461,9 @@ export class SocialChatStore {
   getLatestMessagePreview(roomId) {
     const row = this.db
       .prepare(`
-        SELECT role, agent_id AS agentId, content, created_at AS createdAt
+        SELECT role, agent_id AS agentId, content,
+               forwarded_sources_json AS forwardedSourcesJson,
+               created_at AS createdAt
         FROM social_messages WHERE room_id = ?
         ORDER BY seq DESC LIMIT 1
       `)
@@ -501,8 +503,13 @@ export class SocialChatStore {
           : (this.db
               .prepare('SELECT name FROM social_agents WHERE id = ?')
               .get(row.agentId)?.name ?? '');
+    const forwardedSources = JSON.parse(row.forwardedSourcesJson ?? '[]');
+    const previewText =
+      forwardedSources.length > 0
+        ? `转发了 ${forwardedSources.length} 条来自「${forwardedSources[0].roomTitle}」的消息`
+        : row.content;
     return {
-      text: String(row.content).replace(/\s+/gu, ' ').slice(0, 88),
+      text: String(previewText).replace(/\s+/gu, ' ').slice(0, 88),
       sender,
       createdAt: row.createdAt,
     };
@@ -907,6 +914,39 @@ export class SocialChatStore {
       throw new Error('所选消息过长，请减少转发条数。');
     }
     return sources;
+  }
+
+  appendForwardedMessage({ sourceRoomId, sourceIds, targetRoomId }) {
+    const forwardedSources = this.resolveForwardSources({
+      sourceRoomId,
+      sourceIds,
+      targetRoomId,
+    });
+    const messageId = randomUUID();
+    const turnId = randomUUID();
+    const now = isoNow();
+    this.db.transaction(() => {
+      this.db
+        .prepare(`
+          INSERT INTO social_messages
+            (id, room_id, turn_id, role, content, status, runtime,
+             forwarded_sources_json, reply_to_message_id, reply_to_json,
+             created_at, updated_at)
+          VALUES (?, ?, ?, 'user', '', 'complete', 'local', ?, NULL, 'null', ?, ?)
+        `)
+        .run(
+          messageId,
+          targetRoomId,
+          turnId,
+          JSON.stringify(forwardedSources),
+          now,
+          now,
+        );
+      this.db
+        .prepare('UPDATE social_rooms SET updated_at = ? WHERE id = ?')
+        .run(now, targetRoomId);
+    })();
+    return { messageId, roomId: targetRoomId, forwardedSources };
   }
 
   resolveReplyTarget({ roomId, messageId }) {

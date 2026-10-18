@@ -33,10 +33,13 @@ const bridge = {
     roomId: string;
     agentId: string;
     text: string;
-    sourceRoomId?: string | null;
-    sourceIds?: string[];
     replyToMessageId?: string | null;
   }) => ipcRenderer.invoke('noema:social-send', input),
+  forwardSocialMessages: (input: {
+    targetRoomId: string;
+    sourceRoomId: string;
+    sourceIds: string[];
+  }) => ipcRenderer.invoke('noema:social-forward', input),
   stopSocialReply: (messageId: string) =>
     ipcRenderer.invoke('noema:social-stop', messageId),
   retrySocialReply: (messageId: string) =>
