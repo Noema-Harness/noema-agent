@@ -431,7 +431,12 @@ export interface NoemaBridge {
     name: string;
     headline: string;
     description: string;
+    projectWork: boolean;
   }): Promise<NoemaSocialRoomState>;
+  setSocialAgentProjectWork(
+    agentId: string,
+    enabled: boolean,
+  ): Promise<NoemaSocialAgent>;
   setSocialAgentArchived(
     agentId: string,
     archived: boolean,

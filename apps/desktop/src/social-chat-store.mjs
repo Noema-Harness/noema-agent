@@ -53,6 +53,19 @@ function requireText(value, label, maxLength = 100_000) {
   return value.trim();
 }
 
+function specialistSystemPrompt({ name, headline, description, projectWork }) {
+  return [
+    `你是 Noema 中由用户创建的持续专业联系人“${name}”。`,
+    `用户为你描述的长期专业范围：${headline}`,
+    `用户期望的合作方式：${description}`,
+    '这些资料表达用户希望与你长期交流的方向，不证明你已经具备对应领域的专家水平。诚实说明不确定性；不虚构专业经历、已核验能力、工具权限或执行结果。',
+    projectWork
+      ? '用户已开启 Noema 的项目文件任务能力。只有当用户明确切换到项目工作并选择目录后，才在该任务中通过现有 DSH 流程操作文件。普通聊天不授权文件操作；每项任务的具体范围以 Noema 显示的目录与数据确认步骤为准。'
+      : '当前只有聊天能力，不得声称可以读取或修改项目文件。',
+    '使用简体中文，先理解当前对话意图，不要把普通分享都转成任务。当前聊天空间是唯一可用的对话历史，不要声称记得其他房间。',
+  ].join('\n\n');
+}
+
 function hydrateMessage(row) {
   if (!row) return null;
   return {
@@ -533,20 +546,23 @@ export class SocialChatStore {
     return this.getRoomSnapshot(id);
   }
 
-  createAgent({ name, headline, description }) {
+  createAgent({ name, headline, description, projectWork = false }) {
     const normalizedName = requireText(name, '联系人名称', 60);
     const normalizedHeadline = requireText(headline, '专业范围', 140);
     const normalizedDescription = requireText(description, '合作方式', 800);
+    if (typeof projectWork !== 'boolean') {
+      throw new TypeError('项目工作能力必须明确选择。');
+    }
     const agentId = `agent-${randomUUID()}`;
     const roomId = `room-${randomUUID()}`;
     const now = isoNow();
-    const systemPrompt = [
-      `你是 Noema 中由用户创建的持续专业联系人“${normalizedName}”。`,
-      `用户为你描述的长期专业范围：${normalizedHeadline}`,
-      `用户期望的合作方式：${normalizedDescription}`,
-      '这些资料表达用户希望与你长期交流的方向，不证明你已经具备对应领域的专家水平。诚实说明不确定性；不虚构专业经历、已核验能力、工具权限或执行结果。',
-      '使用简体中文，先理解当前对话意图，不要把普通分享都转成任务。当前聊天空间是唯一可用的对话历史，不要声称记得其他房间。当前联系人只有对话能力；没有明确连接的工具时，不声称查看或改动了外部资料。',
-    ].join('\n\n');
+    const capabilities = projectWork ? ['project-work'] : [];
+    const systemPrompt = specialistSystemPrompt({
+      name: normalizedName,
+      headline: normalizedHeadline,
+      description: normalizedDescription,
+      projectWork,
+    });
 
     this.db.transaction(() => {
       this.db
@@ -554,7 +570,7 @@ export class SocialChatStore {
           INSERT INTO social_agents
             (id, name, kind, headline, description, system_prompt,
              capabilities_json, created_at, updated_at)
-          VALUES (?, ?, 'specialist', ?, ?, ?, '[]', ?, ?)
+          VALUES (?, ?, 'specialist', ?, ?, ?, ?, ?, ?)
         `)
         .run(
           agentId,
@@ -562,6 +578,7 @@ export class SocialChatStore {
           normalizedHeadline,
           normalizedDescription,
           systemPrompt,
+          JSON.stringify(capabilities),
           now,
           now,
         );
@@ -595,6 +612,77 @@ export class SocialChatStore {
         );
     })();
     return this.getRoomSnapshot(roomId);
+  }
+
+  setAgentProjectWork(agentId, enabled) {
+    if (typeof enabled !== 'boolean') {
+      throw new TypeError('项目工作能力必须是布尔值。');
+    }
+    const agent = this.getAgent(agentId);
+    if (agent.kind !== 'specialist') {
+      throw new Error('Noema 核心联系人不能修改工具能力。');
+    }
+    if (agent.archivedAt) {
+      throw new Error('已归档联系人不能修改能力；请先恢复联系人。');
+    }
+    const capabilities = new Set(agent.capabilities);
+    if (enabled) capabilities.add('project-work');
+    else capabilities.delete('project-work');
+    const nextCapabilities = [...capabilities];
+    const projectWork = nextCapabilities.includes('project-work');
+    const now = isoNow();
+    const directRoom = this.db
+      .prepare(`
+        SELECT r.id
+        FROM social_rooms AS r
+        JOIN social_room_members AS rm ON rm.room_id = r.id
+        WHERE r.kind = 'direct' AND rm.agent_id = ?
+        ORDER BY r.created_at ASC LIMIT 1
+      `)
+      .get(agentId);
+    this.db.transaction(() => {
+      this.db
+        .prepare(`
+          UPDATE social_agents
+          SET capabilities_json = ?, system_prompt = ?, updated_at = ?
+          WHERE id = ?
+        `)
+        .run(
+          JSON.stringify(nextCapabilities),
+          specialistSystemPrompt({
+            name: agent.name,
+            headline: agent.headline,
+            description: agent.description,
+            projectWork,
+          }),
+          now,
+          agentId,
+        );
+      if (directRoom) {
+        this.db
+          .prepare(`
+            INSERT INTO social_messages
+              (id, room_id, turn_id, role, agent_id, content, status, runtime,
+               created_at, updated_at)
+            VALUES (?, ?, ?, 'system', ?, ?, 'complete', 'system', ?, ?)
+          `)
+          .run(
+            randomUUID(),
+            directRoom.id,
+            randomUUID(),
+            agentId,
+            projectWork
+              ? `${agent.name}现在可以承接项目文件任务；每项任务仍需你明确切换模式并选择工作区。`
+              : `${agent.name}的项目文件任务能力已关闭；此前聊天和已开始任务不受影响。`,
+            now,
+            now,
+          );
+        this.db
+          .prepare('UPDATE social_rooms SET updated_at = ? WHERE id = ?')
+          .run(now, directRoom.id);
+      }
+    })();
+    return this.getAgent(agentId);
   }
 
   setAgentArchived(agentId, archived) {

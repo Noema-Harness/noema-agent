@@ -23,7 +23,10 @@ const bridge = {
     name: string;
     headline: string;
     description: string;
+    projectWork: boolean;
   }) => ipcRenderer.invoke('noema:social-create-agent', input),
+  setSocialAgentProjectWork: (agentId: string, enabled: boolean) =>
+    ipcRenderer.invoke('noema:social-agent-project-work', agentId, enabled),
   setSocialAgentArchived: (agentId: string, archived: boolean) =>
     ipcRenderer.invoke('noema:social-agent-archive', agentId, archived),
   sendSocialMessage: (input: {

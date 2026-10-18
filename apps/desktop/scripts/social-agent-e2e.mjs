@@ -44,6 +44,14 @@ const narrowScreenshotPath = path.join(
   e2eRoot,
   `Noema-agent-create-narrow-${screenshotTag}.png`,
 );
+const contactDesktopScreenshotPath = path.join(
+  e2eRoot,
+  `Noema-agent-capability-desktop-${screenshotTag}.png`,
+);
+const contactNarrowScreenshotPath = path.join(
+  e2eRoot,
+  `Noema-agent-capability-narrow-${screenshotTag}.png`,
+);
 mkdirSync(dshUserDataPath, { recursive: true });
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -63,6 +71,8 @@ const child = spawn(process.execPath, ['scripts/start.mjs'], {
     NOEMA_SMOKE_LOG_FILE: smokeLogPath,
     NOEMA_SMOKE_SOCIAL_AGENT_CREATE_PATH: desktopScreenshotPath,
     NOEMA_SMOKE_SOCIAL_AGENT_CREATE_NARROW_PATH: narrowScreenshotPath,
+    NOEMA_SMOKE_SOCIAL_AGENT_CONTACT_PATH: contactDesktopScreenshotPath,
+    NOEMA_SMOKE_SOCIAL_AGENT_CONTACT_NARROW_PATH: contactNarrowScreenshotPath,
   },
   stdio: 'inherit',
   windowsHide: true,
@@ -98,6 +108,8 @@ const summary = {
   scratchDirectory: e2eDirectory,
   desktopScreenshotPath,
   narrowScreenshotPath,
+  contactDesktopScreenshotPath,
+  contactNarrowScreenshotPath,
 };
 console.log(JSON.stringify(summary, null, 2));
 
@@ -105,7 +117,12 @@ if (
   result.outcome !== 'passed' ||
   !result.workflow?.cancelReturnedFocus ||
   !result.workflow?.initialDirectIsEmpty ||
-  !result.workflow?.capabilitiesAreEmpty ||
+  !result.workflow?.projectWorkDefaultedOff ||
+  !result.workflow?.capabilityWasExplicitlyGranted ||
+  !result.workflow?.projectWorkOptInAndReversible ||
+  result.workflow?.compactRoomLayout?.width > 700 ||
+  !result.workflow?.compactRoomLayout?.actionsVisible ||
+  !result.workflow?.compactRoomLayout?.headerNoOverflow ||
   !result.workflow?.archived ||
   !result.workflow?.archivedInviteExcluded ||
   !result.workflow?.restored ||
@@ -113,6 +130,10 @@ if (
   !result.workflow?.groupDidNotImportDm ||
   !existsSync(desktopScreenshotPath) ||
   !existsSync(narrowScreenshotPath) ||
+  !existsSync(contactDesktopScreenshotPath) ||
+  !existsSync(contactNarrowScreenshotPath) ||
+  !result.workflow?.contactDesktop?.actionsVisible ||
+  !result.workflow?.contactNarrow?.actionsVisible ||
   exit.code !== 0
 ) {
   process.exitCode = 1;

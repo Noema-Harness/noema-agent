@@ -171,8 +171,14 @@ const socialAgentCreateDesktopScreenshotPath =
   process.env.NOEMA_SMOKE_SOCIAL_AGENT_CREATE_PATH ?? null;
 const socialAgentCreateNarrowScreenshotPath =
   process.env.NOEMA_SMOKE_SOCIAL_AGENT_CREATE_NARROW_PATH ?? null;
+const socialAgentContactDesktopScreenshotPath =
+  process.env.NOEMA_SMOKE_SOCIAL_AGENT_CONTACT_PATH ?? null;
+const socialAgentContactNarrowScreenshotPath =
+  process.env.NOEMA_SMOKE_SOCIAL_AGENT_CONTACT_NARROW_PATH ?? null;
 delete process.env.NOEMA_SMOKE_SOCIAL_AGENT_CREATE_PATH;
 delete process.env.NOEMA_SMOKE_SOCIAL_AGENT_CREATE_NARROW_PATH;
+delete process.env.NOEMA_SMOKE_SOCIAL_AGENT_CONTACT_PATH;
+delete process.env.NOEMA_SMOKE_SOCIAL_AGENT_CONTACT_NARROW_PATH;
 const testSocialWorkCaptureUi =
   process.env.NOEMA_E2E_SOCIAL_WORK_CAPTURE_UI === '1';
 delete process.env.NOEMA_E2E_DATABASE_PATH;
@@ -1335,6 +1341,10 @@ async function captureSocialAgentCreationE2e() {
   await mainWindow.webContents.executeJavaScript(
     'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
   );
+  mainWindow.setSize(360, 640);
+  await mainWindow.webContents.executeJavaScript(
+    'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+  );
   const result = await mainWindow.webContents.executeJavaScript(`(async () => {
     const waitFrames = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     const waitFor = async (predicate, label) => {
@@ -1367,6 +1377,9 @@ async function captureSocialAgentCreationE2e() {
     setValue(document.querySelector('#social-agent-name'), name);
     setValue(document.querySelector('#social-agent-headline'), '长期观察游戏视觉与交互');
     setValue(document.querySelector('#social-agent-description'), '先和我厘清体验，再讨论如何验证。');
+    const creationCapability = document.querySelector('.agent-capability-choice input');
+    const projectWorkDefaultedOff = creationCapability?.checked === false;
+    creationCapability?.click();
     await waitFrames();
     document.querySelector('.agent-create-dialog button[type="submit"]')?.click();
     const createdState = await waitFor(async () => {
@@ -1379,7 +1392,51 @@ async function captureSocialAgentCreationE2e() {
       createdState.state.rooms.find((room) => room.kind === 'direct' && room.memberIds.includes(createdState.agent.id)).id,
     );
     const initialDirectIsEmpty = directRoom.messages.length === 1 && directRoom.messages[0].role === 'system';
-    const capabilitiesAreEmpty = createdState.agent.capabilities.length === 0;
+    const capabilityWasExplicitlyGranted = createdState.agent.capabilities.includes('project-work');
+    const projectWorkControl = document.querySelector('.agent-project-capability input');
+    const projectModeInitiallyVisible = Boolean(document.querySelector('.composer-mode-switch button'));
+    projectWorkControl?.click();
+    const projectWorkRevokedState = await waitFor(async () => {
+      const state = await window.noema.getSocialState();
+      const agent = state.agents.find((candidate) => candidate.id === createdState.agent.id);
+      return agent && !agent.capabilities.includes('project-work') ? state : null;
+    }, '撤回项目工作能力');
+    await waitFor(() => !document.querySelector('.composer-mode-switch'), '关闭项目工作入口');
+    const projectModeDisappeared = !document.querySelector('.composer-mode-switch');
+    const refreshedCapabilityControl = document.querySelector('.agent-project-capability input');
+    refreshedCapabilityControl?.click();
+    const projectWorkEnabledState = await waitFor(async () => {
+      const state = await window.noema.getSocialState();
+      const agent = state.agents.find((candidate) => candidate.id === createdState.agent.id);
+      return agent?.capabilities.includes('project-work') ? state : null;
+    }, '重新开启项目工作能力');
+    await waitFor(() => Boolean(document.querySelector('.composer-mode-switch button')), '恢复项目工作入口');
+    const projectModeAppeared = Boolean(document.querySelector('.composer-mode-switch button'));
+    const projectWorkOptInAndReversible =
+      projectWorkDefaultedOff &&
+      capabilityWasExplicitlyGranted &&
+      projectModeInitiallyVisible &&
+      projectModeDisappeared &&
+      projectModeAppeared &&
+      projectWorkRevokedState.agents.some(
+        (agent) => agent.id === createdState.agent.id && agent.capabilities.length === 0,
+      ) &&
+      projectWorkEnabledState.agents.some(
+        (agent) => agent.id === createdState.agent.id && agent.capabilities.includes('project-work'),
+      );
+    const shell = document.querySelector('.social-shell');
+    const panel = document.querySelector('.conversation-panel');
+    const header = document.querySelector('.room-header');
+    const controls = document.querySelector('.agent-header-actions');
+    const compactRoomLayout = {
+      width: window.innerWidth,
+      roomTitle: document.querySelector('.room-header h2')?.textContent?.trim() ?? '',
+      actionsVisible: Boolean(controls && controls.getClientRects().length),
+      shellNoOverflow: Boolean(shell && shell.scrollWidth <= shell.clientWidth),
+      panelNoOverflow: Boolean(panel && panel.scrollWidth <= panel.clientWidth),
+      headerNoOverflow: Boolean(header && header.scrollWidth <= header.clientWidth),
+      documentNoOverflow: document.documentElement.scrollWidth <= window.innerWidth,
+    };
 
     document.querySelector('.agent-archive-button')?.click();
     const archivedState = await waitFor(async () => {
@@ -1429,7 +1486,10 @@ async function captureSocialAgentCreationE2e() {
       agentId: createdState.agent.id,
       createdRoomId: directRoom.room.id,
       initialDirectIsEmpty,
-      capabilitiesAreEmpty,
+      projectWorkDefaultedOff,
+      capabilityWasExplicitlyGranted,
+      projectWorkOptInAndReversible,
+      compactRoomLayout,
       archived: Boolean(archivedState.agents.find((agent) => agent.id === createdState.agent.id)?.archivedAt),
       archivedUi,
       archivedInviteExcluded,
@@ -1445,9 +1505,17 @@ async function captureSocialAgentCreationE2e() {
   if (
     !result?.initialDialog?.focusedName ||
     result.initialDialog.fieldCount !== 3 ||
+    result.compactRoomLayout.width > 700 ||
+    !result.compactRoomLayout.actionsVisible ||
+    !result.compactRoomLayout.shellNoOverflow ||
+    !result.compactRoomLayout.panelNoOverflow ||
+    !result.compactRoomLayout.headerNoOverflow ||
+    !result.compactRoomLayout.documentNoOverflow ||
     !result.cancelReturnedFocus ||
     !result.initialDirectIsEmpty ||
-    !result.capabilitiesAreEmpty ||
+    !result.projectWorkDefaultedOff ||
+    !result.capabilityWasExplicitlyGranted ||
+    !result.projectWorkOptInAndReversible ||
     !result.archived ||
     !result.archivedUi ||
     !result.archivedInviteExcluded ||
@@ -1460,7 +1528,75 @@ async function captureSocialAgentCreationE2e() {
       `用户专业联系人创建流程不符合预期：${JSON.stringify(result)}`,
     );
   }
-  return result;
+  await mainWindow.webContents.executeJavaScript(`(async () => {
+    const row = [...document.querySelectorAll('.room-list-item')]
+      .find((item) => item.querySelector('.room-list-title')?.textContent?.trim() === 'E2E 图形观察员');
+    row?.click();
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline && document.querySelector('.room-header h2')?.textContent?.trim() !== 'E2E 图形观察员') {
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    }
+  })()`);
+  const inspectContactRoom = async (width: number, height: number) => {
+    mainWindow?.setSize(width, height);
+    await mainWindow?.webContents.executeJavaScript(
+      'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+    );
+    return mainWindow?.webContents.executeJavaScript(`(() => {
+      const shell = document.querySelector('.social-shell');
+      const panel = document.querySelector('.conversation-panel');
+      const header = document.querySelector('.room-header');
+      const actions = document.querySelector('.agent-header-actions');
+      const capability = document.querySelector('.agent-project-capability input');
+      return {
+        width: window.innerWidth,
+        roomTitle: document.querySelector('.room-header h2')?.textContent?.trim() ?? '',
+        actionsVisible: Boolean(actions && actions.getClientRects().length),
+        projectWorkEnabled: capability?.checked ?? null,
+        shellNoOverflow: Boolean(shell && shell.scrollWidth <= shell.clientWidth),
+        panelNoOverflow: Boolean(panel && panel.scrollWidth <= panel.clientWidth),
+        headerNoOverflow: Boolean(header && header.scrollWidth <= header.clientWidth),
+        documentNoOverflow: document.documentElement.scrollWidth <= window.innerWidth,
+      };
+    })()`);
+  };
+  const contactDesktop = await inspectContactRoom(1280, 800);
+  if (
+    contactDesktop?.roomTitle !== 'E2E 图形观察员' ||
+    !contactDesktop.actionsVisible ||
+    contactDesktop.projectWorkEnabled !== true ||
+    !contactDesktop.shellNoOverflow ||
+    !contactDesktop.panelNoOverflow ||
+    !contactDesktop.headerNoOverflow ||
+    !contactDesktop.documentNoOverflow
+  ) {
+    throw new Error(
+      `联系人能力控制桌面布局不符合预期：${JSON.stringify(contactDesktop)}`,
+    );
+  }
+  if (socialAgentContactDesktopScreenshotPath) {
+    const image = await mainWindow.capturePage();
+    writeSmokeScreenshot(socialAgentContactDesktopScreenshotPath, image);
+  }
+  const contactNarrow = await inspectContactRoom(666, 640);
+  if (
+    contactNarrow?.roomTitle !== 'E2E 图形观察员' ||
+    !contactNarrow.actionsVisible ||
+    contactNarrow.projectWorkEnabled !== true ||
+    !contactNarrow.shellNoOverflow ||
+    !contactNarrow.panelNoOverflow ||
+    !contactNarrow.headerNoOverflow ||
+    !contactNarrow.documentNoOverflow
+  ) {
+    throw new Error(
+      `联系人能力控制窄窗口布局不符合预期：${JSON.stringify(contactNarrow)}`,
+    );
+  }
+  if (socialAgentContactNarrowScreenshotPath) {
+    const image = await mainWindow.capturePage();
+    writeSmokeScreenshot(socialAgentContactNarrowScreenshotPath, image);
+  }
+  return { ...result, contactDesktop, contactNarrow };
 }
 
 async function captureSocialProjectWorkSmokeScreenshots() {
@@ -1854,20 +1990,6 @@ async function startNoema() {
       app.quit();
       return;
     }
-    writeSmokeLog('social-agent-e2e-preflight', {
-      enabled: testSocialAgentWorkflow,
-      valid: socialAgentE2eValid,
-      packaged: app.isPackaged,
-      hasDatabase: Boolean(testDatabasePath),
-      hasDshDirectory: Boolean(testDshUserDataPath),
-      hasResultPath: Boolean(socialAgentE2eResultPath),
-      isolatedDirectory: socialAgentE2eDirectory
-        ? isIsolatedE2eDirectory(
-            socialAgentE2eDirectory,
-            app.getPath('userData'),
-          )
-        : false,
-    });
     socialWorkService = new SocialWorkService({
       store: socialChatStore,
       adapter: dshAdapter,
@@ -1995,7 +2117,7 @@ async function startNoema() {
               {
                 outcome: 'failed',
                 errorMessage:
-                  error instanceof Error ? error.message.slice(0, 1_500) : null,
+                  error instanceof Error ? error.message.slice(0, 8_000) : null,
               },
               null,
               2,

@@ -64,6 +64,12 @@ export class SocialChatService {
     return room;
   }
 
+  setAgentProjectWork(agentId, enabled) {
+    const agent = this.store.setAgentProjectWork(agentId, enabled);
+    this.emit({ type: 'agent-state-updated', agentId });
+    return agent;
+  }
+
   setAgentArchived(agentId, archived) {
     const agent = this.store.setAgentArchived(agentId, archived);
     this.emit({ type: 'agent-state-updated', agentId });
