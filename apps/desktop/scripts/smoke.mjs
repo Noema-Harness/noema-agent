@@ -50,7 +50,9 @@ const timelineSearchScreenshotPaths = [
 if (probeFreeLLMAPI) {
   mkdirSync(probeDirectory, { recursive: true });
   const fixture = new RootStore(path.join(probeDirectory, 'root.sqlite3'));
-  fixture.setSelectedModel('nvidia/nemotron-3-super-120b-a12b:free');
+  fixture.setSelectedModel(
+    process.env.NOEMA_SMOKE_MODEL ?? 'nvidia/nemotron-3-super-120b-a12b:free',
+  );
   fixture.close();
 }
 let historyTraceDatabasePath;
@@ -386,6 +388,18 @@ child.on('exit', (code, signal) => {
       console.log(
         `FreeLLMAPI model readiness rendered: ${(loaded.modelAvailabilitySmoke?.routes ?? []).map((model) => `${model.name}=${model.executionStatus ?? 'unknown'}`).join(', ')}; narrow layout: ${loaded.modelAvailabilitySmoke?.narrowLayoutValid ? 'fits' : 'not checked'}`,
       );
+      if (process.env.NOEMA_SMOKE_SOCIAL_CHAT_LIVE === '1') {
+        if (!loaded.socialLiveChatSmoke?.verified) {
+          console.error(
+            'Synthetic Noema chat did not complete through the selected FreeLLMAPI route.',
+          );
+          process.exitCode = 1;
+          return;
+        }
+        console.log(
+          `Synthetic Noema chat: response received through ${loaded.socialLiveChatSmoke.model ?? 'an unreported route'}; marker matched; ${loaded.socialLiveChatSmoke.responseLength} response characters.`,
+        );
+      }
     }
     return;
   }

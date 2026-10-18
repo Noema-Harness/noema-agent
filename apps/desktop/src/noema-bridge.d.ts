@@ -120,6 +120,101 @@ export interface NoemaRootState {
   codexImportAvailable: boolean;
 }
 
+export interface NoemaSocialAgent {
+  id: string;
+  name: string;
+  kind: 'core' | 'specialist';
+  headline: string;
+  description: string;
+}
+
+export interface NoemaSocialRoom {
+  id: string;
+  kind: 'direct' | 'group';
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  lastMessageAt: string | null;
+  messageCount: number;
+  memberIds: string[];
+  preview: {
+    text: string;
+    sender: string;
+    createdAt: string;
+  } | null;
+}
+
+export interface NoemaSocialMessage {
+  id: string;
+  roomId: string;
+  turnId: string;
+  role: 'user' | 'assistant' | 'system';
+  agentId: string | null;
+  content: string;
+  status: 'complete' | 'streaming' | 'interrupted' | 'failed';
+  attempt: number;
+  model: string | null;
+  runtime: 'freellmapi' | 'local' | 'system';
+  errorCode: string | null;
+  errorMessage: string | null;
+  legacySourceId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type NoemaSocialState = Pick<
+  NoemaRootState,
+  | 'connected'
+  | 'checking'
+  | 'models'
+  | 'selectedModel'
+  | 'error'
+  | 'providerConfigured'
+  | 'providerBaseUrl'
+  | 'providerName'
+> & {
+  agents: NoemaSocialAgent[];
+  rooms: NoemaSocialRoom[];
+};
+
+export interface NoemaSocialRoomState {
+  room: Pick<
+    NoemaSocialRoom,
+    'id' | 'kind' | 'title' | 'createdAt' | 'updatedAt'
+  >;
+  members: NoemaSocialAgent[];
+  messages: NoemaSocialMessage[];
+}
+
+export type NoemaSocialEvent =
+  | { type: 'chat-room-created'; roomId: string }
+  | {
+      type: 'chat-turn-started';
+      turnId: string;
+      assistantMessageId: string;
+      roomId: string;
+      agentId: string;
+      model: string | null;
+    }
+  | {
+      type: 'chat-message-delta';
+      roomId: string;
+      messageId: string;
+      delta: string;
+    }
+  | {
+      type:
+        | 'chat-turn-completed'
+        | 'chat-turn-interrupted'
+        | 'chat-turn-failed';
+      roomId: string;
+      messageId: string;
+      message?: string;
+      code?: string;
+      empty?: boolean;
+    }
+  | { type: 'chat-state-updated'; roomId: string };
+
 export interface NoemaCapture {
   id: string;
   content: string;
@@ -269,6 +364,22 @@ export interface NoemaQuickCaptureShortcutStatus {
 export interface NoemaBridge {
   appVersion: string;
   getRootState(): Promise<NoemaRootState>;
+  getSocialState(): Promise<NoemaSocialState>;
+  getSocialRoom(roomId: string): Promise<NoemaSocialRoomState>;
+  createSocialGroup(input: {
+    title: string;
+    agentIds: string[];
+  }): Promise<NoemaSocialRoomState>;
+  sendSocialMessage(input: {
+    roomId: string;
+    agentId: string;
+    text: string;
+  }): Promise<{ turnId: string; messageId: string }>;
+  stopSocialReply(messageId: string): Promise<boolean>;
+  retrySocialReply(messageId: string): Promise<{
+    turnId: string;
+    messageId: string;
+  }>;
   refreshModels(): Promise<
     Pick<
       NoemaRootState,
@@ -325,6 +436,7 @@ export interface NoemaBridge {
   }): Promise<NoemaInteractionAdjustment | null>;
   withdrawInteractionAdjustment(id: string): Promise<boolean>;
   onRootEvent(listener: (event: NoemaRootEvent) => void): () => void;
+  onSocialEvent(listener: (event: NoemaSocialEvent) => void): () => void;
   onQuickCaptureRequested(
     listener: (request: NoemaQuickCaptureRequest) => void,
   ): () => void;

@@ -11,6 +11,7 @@ import remarkGfm from 'remark-gfm';
 import { createRoot } from 'react-dom/client';
 import { findTranscriptMatches } from './transcript-search.mjs';
 import { QuickCaptureDialog } from './quick-capture-dialog';
+import { SocialChatApp } from './social-chat-app';
 import type {
   NoemaBackgroundTask,
   NoemaCapture,
@@ -200,7 +201,7 @@ function shortSessionId(sessionId: string | null) {
 }
 
 function App() {
-  if (typeof window.noema?.getRootState !== 'function') {
+  if (typeof window.noema?.getSocialState !== 'function') {
     return (
       <main className="desktop-runtime-needed">
         <section
@@ -217,7 +218,11 @@ function App() {
       </main>
     );
   }
-  return <DesktopApp />;
+  return window.location.hash === '#legacy' ? (
+    <DesktopApp />
+  ) : (
+    <SocialChatApp />
+  );
 }
 
 function DesktopApp() {

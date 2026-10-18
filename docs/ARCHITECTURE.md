@@ -39,6 +39,16 @@ Noema 持有 agent 的稳定 identity、专业范围、用户关系偏好和当�
 
 输入连接与行动权限必须分离。外部网页、视频、评论和工具输出默认是内容证据，不是能修改 Noema 系统规则的指令。
 
+## 首条社交聊天切片的实现边界
+
+- 桌面主入口读取 `social_agents`、`social_rooms`、`social_room_members` 与 `social_messages`；旧 root/worker 功能仍可从 `#legacy` 打开，不再决定主界面结构。
+- 社交表使用独立的 `social_schema_migrations` 版本线，与旧根对话 schema 分离。首次升级前，用 SQLite backup API 创建一次本地快照 `noema-before-social-chat-v1.sqlite3`；旧 root messages 以 `legacy_source_id` 幂等复制，原始行不会改写或删除。
+- 当前首个稳定 identity 是 `noema` 与 `engineering-partner`。同一 friend id 可进入 DM 和 group；每次模型请求只组装该房间最近 40 条已完成用户/助手消息和目标 agent 的 profile prompt。system event 和其它 room transcript 不自动作为模型上下文。
+- 社交 renderer 的 IPC 状态只暴露联系人、房间与模型连接信息，不把旧 root transcript、captures、后台任务记录随新社交 UI 一并发送。
+- 群聊消息必须带本轮 `agentId`，一个房间一次只允许一条生成中的回复；运行时支持停止、失败消息保留及失败/中断后原位重试。Noema 主体与专业好友现在共享已选择的 FreeLLMAPI 路由；未连接可用模型时不伪造回复。
+- 这个切片没有实现用户自建/编辑 agent、跨房间 recall、自动实践晋升或工作工具权限。旧根对话里的 captures、workers、Codex import 与 interaction adjustments 仍保留在 legacy 面；它们尚未迁入社交领域对象。
+- 首次迁移的备份与复制都在用户设备本地。聊天消息会通过本机 FreeLLMAPI 发送到所选模型/路由；Noema 的当前房间隔离不是上游服务数据隔离。
+
 ## 记忆演化边界
 
 `Experience` 保存具体发生过什么；`Understanding` 保存当前可变的概括及证据；`Preference/Commitment` 保存用户明确表达的持续约束；`Procedure/Capability` 保存如何执行以及经何种测试启用。某事件可以支持一个理解，但不能静默覆盖用户明确偏好或系统权限。
