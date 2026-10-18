@@ -57,9 +57,13 @@ const narrowScreenshotPath = path.join(
 const marker = `NOEMA-SOCIAL-WORK-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 const syntheticAdapter = process.argv.includes('--synthetic');
 const livePractice = process.argv.includes('--live-practice');
-if (livePractice && syntheticAdapter) {
+const liveEpisodes = process.argv.includes('--live-episodes');
+if (
+  (livePractice && (syntheticAdapter || liveEpisodes)) ||
+  (liveEpisodes && syntheticAdapter)
+) {
   throw new Error(
-    '--live-practice requires the real FreeLLMAPI and DSH adapters.',
+    'Live practice modes require the real FreeLLMAPI and DSH adapters and are mutually exclusive.',
   );
 }
 const relativePath = 'NOEMA-E2E-RESULT.txt';
@@ -71,7 +75,7 @@ const verificationChecks = [
 ].map((text) => ({ kind: 'file_contains', path: relativePath, text }));
 const prompt = [
   '[NOEMA E2E] 仅在当前临时工作区完成一项小任务。',
-  `创建 ${relativePath}，写一份结构化恢复清单，必须包含“恢复前”“执行恢复”“恢复后验证”三个标题；“恢复后验证”部分需包含验收标记 ${marker}。`,
+  `创建 ${relativePath}，正文使用简体中文，写一份结构化恢复清单；必须逐字使用二级标题“## 恢复前”“## 执行恢复”“## 恢复后验证”，并逐字包含验收标记 ${marker}。`,
   '只修改这个文件；不要读取、写入或运行工作区之外的内容。',
   `Noema 会在任务结束后独立检查：${JSON.stringify(verificationChecks)}`,
 ].join('\n');
@@ -84,119 +88,127 @@ mkdirSync(workspacePath, { recursive: true });
 const sourceCaseTaskId = 'e2e-room-a-verified-case';
 const practiceSourceTaskId = 'e2e-room-b-practice-source';
 const practiceSourcePrompt =
-  '请在 IMPORT-GUIDE.md 写一份素材导入说明，包含“开始前”“导入步骤”“失败恢复”三个标题；失败恢复需说明重新校验来源文件。只修改这个文件。';
+  '[NOEMA E2E] 请在 RELEASE-CHECKLIST.md 用简体中文写一份 1.3.0 发布清单，逐字使用二级标题“## 发布前”“## 执行”“## 回滚”；回滚部分必须逐字包含“恢复上一版本”。只修改这个文件。';
+const basisEpisodePrompt =
+  '[NOEMA E2E] 请在 IMPORT-GUIDE.md 用简体中文写一份素材导入说明，逐字使用二级标题“## 开始前”“## 导入步骤”“## 失败恢复”；失败恢复部分必须逐字包含“重新校验来源文件”。只修改这个文件。';
 const sourceCasePath = 'IMPORT-GUIDE.md';
 const practiceSourcePath = 'RELEASE-CHECKLIST.md';
-writeFileSync(
-  path.join(workspacePath, sourceCasePath),
-  '# 素材导入说明\n\n## 开始前\n确认来源文件可读。\n\n## 导入步骤\n按顺序导入并记录结果。\n\n## 失败恢复\n重新校验来源文件后再试。',
-);
-writeFileSync(
-  path.join(workspacePath, practiceSourcePath),
-  '# 1.3.0 发布清单\n\n## 发布前\n检查构建产物。\n\n## 执行\n发布并记录版本。\n\n## 回滚\n恢复上一版本并确认服务可用。',
-);
 const sourceChecks = ['## 开始前', '## 导入步骤', '重新校验来源文件'].map(
   (text) => ({ kind: 'file_contains', path: sourceCasePath, text }),
 );
 const practiceSourceChecks = ['## 发布前', '## 执行', '恢复上一版本'].map(
   (text) => ({ kind: 'file_contains', path: practiceSourcePath, text }),
 );
-const sourceVerification = verifyWorkspaceChecks(workspacePath, sourceChecks);
-const practiceSourceVerification = verifyWorkspaceChecks(
-  workspacePath,
-  practiceSourceChecks,
-);
+if (!liveEpisodes) {
+  writeFileSync(
+    path.join(workspacePath, sourceCasePath),
+    '# 素材导入说明\n\n## 开始前\n确认来源文件可读。\n\n## 导入步骤\n按顺序导入并记录结果。\n\n## 失败恢复\n重新校验来源文件后再试。',
+  );
+  writeFileSync(
+    path.join(workspacePath, practiceSourcePath),
+    '# 1.3.0 发布清单\n\n## 发布前\n检查构建产物。\n\n## 执行\n发布并记录版本。\n\n## 回滚\n恢复上一版本并确认服务可用。',
+  );
+}
+const sourceVerification = liveEpisodes
+  ? null
+  : verifyWorkspaceChecks(workspacePath, sourceChecks);
+const practiceSourceVerification = liveEpisodes
+  ? null
+  : verifyWorkspaceChecks(workspacePath, practiceSourceChecks);
 if (
-  sourceVerification.status !== 'verified' ||
-  practiceSourceVerification.status !== 'verified'
+  !liveEpisodes &&
+  (sourceVerification?.status !== 'verified' ||
+    practiceSourceVerification?.status !== 'verified')
 ) {
   throw new Error('Could not independently verify the room-A case fixture.');
 }
 const seedDatabase = new Database(databasePath);
 new RootStore(seedDatabase);
 const seedSocialStore = new SocialChatStore(seedDatabase);
-seedSocialStore.createSocialWorkTask({
-  id: sourceCaseTaskId,
-  roomId: 'room-engineering-collaboration',
-  agentId: 'engineering-partner',
-  workspacePath,
-  workspaceKey: path
-    .normalize(workspacePath)
-    .replaceAll('/', '\\')
-    .toLocaleLowerCase('en-US'),
-  taskPrompt: '请整理一份素材导入说明，要求三个指定标题及失败恢复步骤。',
-  model: 'e2e-fixture',
-  verificationChecks: sourceChecks,
-});
-seedSocialStore.finishSocialWorkTask(sourceCaseTaskId, {
-  status: 'completed',
-  resultText:
-    '素材导入说明已按三个标题完成，失败恢复步骤包含重新校验来源文件。',
-  verificationStatus: 'verified',
-  verificationResults: sourceVerification.checks,
-  verificationAttempts: 0,
-});
-for (const category of ['read', 'write', 'read']) {
-  seedSocialStore.recordSocialWorkTaskToolAction(sourceCaseTaskId, category);
-}
-const basisCase = seedSocialStore.findReusableCase({
-  agentId: 'engineering-partner',
-  workspaceKey: path
-    .normalize(workspacePath)
-    .replaceAll('/', '\\')
-    .toLocaleLowerCase('en-US'),
-  excludeRoomId: 'room-engineering-partner',
-});
-if (!basisCase || basisCase.taskId !== sourceCaseTaskId) {
-  throw new Error('Could not load the verified room-A case fixture.');
-}
-seedSocialStore.createSocialWorkTask({
-  id: practiceSourceTaskId,
-  roomId: 'room-engineering-partner',
-  agentId: 'engineering-partner',
-  workspacePath,
-  workspaceKey: path
-    .normalize(workspacePath)
-    .replaceAll('/', '\\')
-    .toLocaleLowerCase('en-US'),
-  taskPrompt: practiceSourcePrompt,
-  model: 'e2e-fixture',
-  verificationChecks: practiceSourceChecks,
-  caseReuseRequested: true,
-  caseSnapshot: basisCase,
-});
-seedSocialStore.finishSocialWorkTask(practiceSourceTaskId, {
-  status: 'completed',
-  resultText: '1.3.0 发布清单已按三个标题完成，回滚步骤包含恢复上一版本。',
-  toolCallCount: 1,
-  verificationStatus: 'verified',
-  verificationResults: practiceSourceVerification.checks,
-  verificationAttempts: 0,
-});
-for (const category of ['read', 'write', 'read']) {
-  seedSocialStore.recordSocialWorkTaskToolAction(
-    practiceSourceTaskId,
-    category,
-  );
-}
-if (!livePractice) {
-  if (!seedSocialStore.beginPracticeProposal(practiceSourceTaskId)) {
-    throw new Error(
-      'Could not put the room-B practice fixture into proposal state.',
+if (!liveEpisodes) {
+  seedSocialStore.createSocialWorkTask({
+    id: sourceCaseTaskId,
+    roomId: 'room-engineering-collaboration',
+    agentId: 'engineering-partner',
+    workspacePath,
+    workspaceKey: path
+      .normalize(workspacePath)
+      .replaceAll('/', '\\')
+      .toLocaleLowerCase('en-US'),
+    taskPrompt:
+      '请整理一份素材导入说明，逐字使用三个指定二级标题及失败恢复步骤。',
+    model: 'e2e-fixture',
+    verificationChecks: sourceChecks,
+  });
+  seedSocialStore.finishSocialWorkTask(sourceCaseTaskId, {
+    status: 'completed',
+    resultText: '素材导入说明已按指定标题和恢复步骤完成。',
+    verificationStatus: 'verified',
+    verificationResults: sourceVerification.checks,
+    verificationAttempts: 0,
+  });
+  for (const category of ['read', 'write', 'read']) {
+    seedSocialStore.recordSocialWorkTaskToolAction(sourceCaseTaskId, category);
+  }
+  const basisCase = seedSocialStore.findReusableCase({
+    agentId: 'engineering-partner',
+    workspaceKey: path
+      .normalize(workspacePath)
+      .replaceAll('/', '\\')
+      .toLocaleLowerCase('en-US'),
+    excludeRoomId: 'room-engineering-partner',
+  });
+  if (!basisCase || basisCase.taskId !== sourceCaseTaskId) {
+    throw new Error('Could not load the verified room-A case fixture.');
+  }
+  seedSocialStore.createSocialWorkTask({
+    id: practiceSourceTaskId,
+    roomId: 'room-engineering-partner',
+    agentId: 'engineering-partner',
+    workspacePath,
+    workspaceKey: path
+      .normalize(workspacePath)
+      .replaceAll('/', '\\')
+      .toLocaleLowerCase('en-US'),
+    taskPrompt: practiceSourcePrompt,
+    model: 'e2e-fixture',
+    verificationChecks: practiceSourceChecks,
+    caseReuseRequested: true,
+    caseSnapshot: basisCase,
+  });
+  seedSocialStore.finishSocialWorkTask(practiceSourceTaskId, {
+    status: 'completed',
+    resultText: '1.3.0 发布清单已按三个标题完成，回滚步骤包含恢复上一版本。',
+    toolCallCount: 1,
+    verificationStatus: 'verified',
+    verificationResults: practiceSourceVerification.checks,
+    verificationAttempts: 0,
+  });
+  for (const category of ['read', 'write', 'read']) {
+    seedSocialStore.recordSocialWorkTaskToolAction(
+      practiceSourceTaskId,
+      category,
     );
   }
-  seedSocialStore.savePracticeCandidate(practiceSourceTaskId, {
-    trigger:
-      '当前任务要求在同一项目中新增一个指定路径的文件，并给出精确内容条件。',
-    action:
-      '先按相对路径写入文件，再通过读取或 Noema 文件核验确认指定标记存在。',
-    limits:
-      '仅适用于用户明确给出文件路径和内容条件的小型文件任务；不要据此扩大到其他目录或代码修改。',
-    basisTaskId: sourceCaseTaskId,
-    basisRoomId: basisCase.roomId,
-    basisRoomTitle: basisCase.roomTitle,
-    basisTaskPrompt: basisCase.taskPrompt,
-  });
+  if (!livePractice) {
+    if (!seedSocialStore.beginPracticeProposal(practiceSourceTaskId)) {
+      throw new Error(
+        'Could not put the room-B practice fixture into proposal state.',
+      );
+    }
+    seedSocialStore.savePracticeCandidate(practiceSourceTaskId, {
+      trigger:
+        '当前任务要求在同一项目中新增一个指定路径的文件，并给出精确内容条件。',
+      action:
+        '先按相对路径写入文件，再通过读取或 Noema 文件核验确认指定标记存在。',
+      limits:
+        '仅适用于用户明确给出文件路径和内容条件的小型文件任务；不要据此扩大到其他目录或代码修改。',
+      basisTaskId: sourceCaseTaskId,
+      basisRoomId: basisCase.roomId,
+      basisRoomTitle: basisCase.roomTitle,
+      basisTaskPrompt: basisCase.taskPrompt,
+    });
+  }
 }
 seedDatabase.close();
 
@@ -212,6 +224,11 @@ const child = spawn(process.execPath, ['scripts/start.mjs'], {
     NOEMA_E2E_DSH_USER_DATA_PATH: dshUserDataPath,
     NOEMA_E2E_SOCIAL_WORK_PROMPT: prompt,
     NOEMA_E2E_SOCIAL_WORK_SOURCE_PROMPT: practiceSourcePrompt,
+    NOEMA_E2E_SOCIAL_WORK_LIVE_EPISODES: liveEpisodes ? '1' : '0',
+    NOEMA_E2E_SOCIAL_WORK_EPISODE_A_PROMPT: basisEpisodePrompt,
+    NOEMA_E2E_SOCIAL_WORK_EPISODE_A_CHECKS: JSON.stringify(sourceChecks),
+    NOEMA_E2E_SOCIAL_WORK_EPISODE_B_CHECKS:
+      JSON.stringify(practiceSourceChecks),
     NOEMA_E2E_SOCIAL_WORK_WORKSPACE: workspacePath,
     NOEMA_E2E_SOCIAL_WORK_RESULT_PATH: resultPath,
     NOEMA_E2E_SOCIAL_WORK_CHECKS: JSON.stringify(verificationChecks),
@@ -265,13 +282,21 @@ const summary = {
   caseSnapshot: result.task?.caseSnapshot ?? null,
   practiceSnapshot: result.task?.practiceSnapshot ?? null,
   practiceCandidateStatus: result.task?.practiceCandidateStatus ?? null,
-  expectedSourceCaseTaskId: sourceCaseTaskId,
-  expectedPracticeSourceTaskId: practiceSourceTaskId,
+  expectedSourceCaseTaskId:
+    result.livePracticeProposal?.basisTaskId ?? sourceCaseTaskId,
+  expectedPracticeSourceTaskId:
+    result.livePracticeProposal?.sourceTaskId ?? practiceSourceTaskId,
   workspacePath,
   childExitCode: exit.code,
   executionMode: syntheticAdapter ? 'synthetic-adapter' : 'live-dsh',
-  proposalMode: livePractice ? 'real-freellmapi' : 'seeded-fixture',
+  proposalMode: liveEpisodes
+    ? 'real-dsh-episodes'
+    : livePractice
+      ? 'real-freellmapi-seeded'
+      : 'seeded-fixture',
   livePracticeProposal: result.livePracticeProposal ?? null,
+  practiceRouteMetadata: result.practiceRouteMetadata ?? [],
+  liveEpisodeTasks: result.liveEpisodeTasks ?? null,
   childSignal: exit.signal,
   scratchDirectory: e2eRootDirectory,
   uiSmoke: result.socialWorkUiSmoke,
@@ -281,19 +306,56 @@ const summary = {
 console.log(JSON.stringify(summary, null, 2));
 
 const proposalWasEmpty =
-  livePractice && result.outcome === 'practice_proposal_none';
+  (livePractice || liveEpisodes) && result.outcome === 'practice_proposal_none';
+const liveEpisodeHistory = result.liveEpisodeTasks ?? [];
+const liveEpisodeHistoryValid =
+  !liveEpisodes ||
+  (() => {
+    if (liveEpisodeHistory.length < 2 || liveEpisodeHistory.length > 3) {
+      return false;
+    }
+    const [episodeA, ...episodeBAttempts] = liveEpisodeHistory;
+    const finalEpisodeB = episodeBAttempts.at(-1);
+    const onlyRetryWasSafe = episodeBAttempts
+      .slice(0, -1)
+      .every(
+        (task) =>
+          task.status === 'failed' &&
+          task.errorCode === 'dsh_rate_limited' &&
+          task.toolCallCount === 0 &&
+          task.verificationResults.length > 0 &&
+          task.verificationResults.every((check) => check.status === 'failed'),
+      );
+    return (
+      episodeA.status === 'completed' &&
+      episodeA.verificationStatus === 'verified' &&
+      episodeA.toolActionCategories.length > 0 &&
+      finalEpisodeB.status === 'completed' &&
+      finalEpisodeB.verificationStatus === 'verified' &&
+      finalEpisodeB.toolActionCategories.length > 0 &&
+      finalEpisodeB.caseSnapshot?.taskId === episodeA.id &&
+      onlyRetryWasSafe
+    );
+  })();
 let validationFailed = exit.code !== 0;
 if (proposalWasEmpty) {
   validationFailed ||=
-    result.livePracticeProposal?.status !== 'none' || result.task != null;
+    result.livePracticeProposal?.status !== 'none' ||
+    result.task != null ||
+    !liveEpisodeHistoryValid;
 } else {
+  const expectedPracticeSourceTaskId =
+    result.livePracticeProposal?.sourceTaskId ?? practiceSourceTaskId;
+  const expectedBasisTaskId =
+    result.livePracticeProposal?.basisTaskId ?? sourceCaseTaskId;
   validationFailed ||=
     result.outcome !== 'finished' ||
     result.task?.status !== 'completed' ||
     result.task?.verificationStatus !== 'verified' ||
     result.task?.caseSnapshot !== null ||
-    result.task?.practiceSnapshot?.sourceTaskId !== practiceSourceTaskId ||
-    result.task?.practiceSnapshot?.basisTaskId !== sourceCaseTaskId ||
+    result.task?.practiceSnapshot?.sourceTaskId !==
+      expectedPracticeSourceTaskId ||
+    result.task?.practiceSnapshot?.basisTaskId !== expectedBasisTaskId ||
     result.task?.practiceSnapshot?.roomId !== 'room-engineering-partner' ||
     result.task?.practiceSnapshot?.basisTaskPrompt?.includes('素材导入说明') !==
       true ||
@@ -318,10 +380,17 @@ if (proposalWasEmpty) {
     !result.socialWorkUiSmoke?.narrow?.documentNoOverflow ||
     !result.socialWorkUiSmoke?.candidateReview?.withdrawn ||
     result.socialWorkUiSmoke?.candidateReview?.trialVerification !== 'verified';
-  if (livePractice) {
+  if (livePractice || liveEpisodes) {
     validationFailed ||=
       result.livePracticeProposal?.status !== 'available' ||
       !result.livePracticeProposal?.candidate;
+  }
+  if (liveEpisodes) {
+    validationFailed ||=
+      !liveEpisodeHistoryValid ||
+      result.livePracticeProposal?.sourceTaskId !==
+        liveEpisodeHistory.at(-1)?.id ||
+      result.livePracticeProposal?.basisTaskId !== liveEpisodeHistory[0]?.id;
   }
 }
 if (validationFailed) {
