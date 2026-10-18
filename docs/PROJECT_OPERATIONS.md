@@ -89,7 +89,7 @@ Issue 从候选工作进入 Todo 前，需要满足：
 - `.github/workflows/desktop-checks.yml` 在 push 与 PR 上验证 Windows 环境：干净安装、lint、类型检查、安全测试、开发态桌面 smoke、生产打包后的真实 Electron 启动 smoke、Electron 构建目录与 Squirrel 安装器。Forge/Vite 的打包过滤仅保留 `.vite` 构建；`better-sqlite3` 是主进程外置的 native runtime，必须经 `packagerConfig.afterCopy` 显式放入 app 包。该 hook 兼容 npm workspace 的 hoisted 根目录布局和 workspace-local 布局，生产启动 smoke 检查包内模块并实际打开 renderer。
 - `npm run smoke:freellmapi --workspace noema-desktop` 使用隔离的根 SQLite / DSH_HOME 和本机已加密凭据，只读取 loopback FreeLLMAPI 的可用模型目录，不发送聊天或生成请求；它用于区分“网关目录可读”和“上游模型生成成功”，后者必须另做合成生成验证。
 - 修改 FreeLLMAPI 路由、传输或 Noema 客户端后，用 `npm run e2e:social-agents --workspace noema-desktop -- --live` 做真实合成调用；它要求 Node 24.21.x、本机 FreeLLMAPI 正在运行，使用 `auto:noema-free`，只发送 E2E 合成消息，并验证完整回复持久化。该测试会消耗上游免费额度/限频，平时不要当作每次开发的常规 smoke。自动路由以完整响应方式请求，使 FreeLLMAPI 能在交付前回退；直接模型 SSE 必须收到 `[DONE]` 才算完整。
-- `npm run e2e:social-work --workspace noema-desktop` 是真实 DSH 集成路径；在上游模型不稳定时可附加 `--synthetic`，走仅限隔离 E2E 目录的合成执行器，验证桌面 UI、任务状态、Noema 文件核验及跨房间候选试用/撤回，不调用模型或 DSH。合成模式不替代真实 DSH 能力验证。
+- `npm run e2e:social-work --workspace noema-desktop` 是真实 DSH 集成路径；在上游模型不稳定时可附加 `--synthetic`，走仅限隔离 E2E 目录的合成执行器，验证桌面 UI、任务状态、Noema 文件核验及跨房间候选试用/撤回，不调用模型或 DSH。`--live-practice` 会用当前 FreeLLMAPI 路由真实提炼一条候选，再启动一次真实 DSH 合成任务；会消耗免费模型额度/限频，不要在 CI 或日常每次开发中运行。两种模式互斥；合成模式不替代真实 DSH 能力验证。
 - 当前仓库是 GitHub Free 下的私有仓库。GitHub API 明确拒绝为此仓库启用 branch protection/rulesets；所以 CI 已自动运行，但平台目前不能强制阻止不合格的直接 push。若以后要求服务器端强制 PR/检查，需要升级 GitHub 方案或改变仓库可见性；现在不擅自公开代码或增加订阅。
 - 当前 CI 证明开发构建、生产打包后的真实启动、桌面 smoke 与未签名 Squirrel 安装器可生成。手动运行 Desktop checks 时只上传 7 天保留的私有 Windows 便携预览目录，方便在 D 盘直接运行；PR/push 不上传，避免占满 artifact 配额。Squirrel 安装器仍参与 CI 验证，但本机 maker 在 C/D 临时目录写 `.nupkg` 均遇到 Access Denied；不关闭安全防护，也不把未签名安装器当日常入口。便携预览和安装器均未配置代码签名或自动更新；只有确定正式发行需求后再建 release 流程。
 
