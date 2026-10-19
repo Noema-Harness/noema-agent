@@ -237,11 +237,11 @@ function buildTaskPrompt({
 
 /**
  * Owns room-scoped project work while treating DSH as an execution adapter.
- * @param {{store:import('./social-chat-store.mjs').SocialChatStore,adapter:import('./dsh-headless-adapter.mjs').DshHeadlessAdapter|null,secretStore:{isConfigured:()=>boolean},practiceProvider?:import('./freellmapi-client.mjs').FreeLLMAPIClient|null,chooseWorkspace:(options?:{reuseCase?:boolean})=>Promise<string|null>,emit?:(event:object)=>void}} options
+ * @param {{store:import('./social-chat-store.mjs').SocialChatStore,adapter:import('./dsh-headless-adapter.mjs').DshHeadlessAdapter|null,secretStore:{isConfigured:()=>boolean},practiceProvider?:import('./freellmapi-client.mjs').FreeLLMAPIClient|null,chooseWorkspace:(options?:{reuseCase?:boolean})=>Promise<string|null>,confirmPracticeCandidate?:(input:{candidate:{sourceTaskId:string,basisTaskId:string,basisRoomTitle:string,basisTaskPrompt:string,roomTitle:string,trigger:string,action:string,limits:string},taskPrompt:string,caseSnapshot:{taskId:string,taskPrompt:string}|null})=>Promise<'trial'|'case'|'cancel'>,emit?:(event:object)=>void}} options
  */
 export class SocialWorkService {
   /**
-   * @param {{store:import('./social-chat-store.mjs').SocialChatStore,adapter:import('./dsh-headless-adapter.mjs').DshHeadlessAdapter|null,secretStore:{isConfigured:()=>boolean},practiceProvider?:import('./freellmapi-client.mjs').FreeLLMAPIClient|null,chooseWorkspace:(options?:{reuseCase?:boolean})=>Promise<string|null>,defaultVerificationChecks?:unknown,delayImpl?:(milliseconds:number,signal:AbortSignal)=>Promise<boolean>,emit?:(event:object)=>void}} options
+   * @param {{store:import('./social-chat-store.mjs').SocialChatStore,adapter:import('./dsh-headless-adapter.mjs').DshHeadlessAdapter|null,secretStore:{isConfigured:()=>boolean},practiceProvider?:import('./freellmapi-client.mjs').FreeLLMAPIClient|null,chooseWorkspace:(options?:{reuseCase?:boolean})=>Promise<string|null>,confirmPracticeCandidate?:(input:{candidate:{sourceTaskId:string,basisTaskId:string,basisRoomTitle:string,basisTaskPrompt:string,roomTitle:string,trigger:string,action:string,limits:string},taskPrompt:string,caseSnapshot:{taskId:string,taskPrompt:string}|null})=>Promise<'trial'|'case'|'cancel'>,defaultVerificationChecks?:unknown,delayImpl?:(milliseconds:number,signal:AbortSignal)=>Promise<boolean>,emit?:(event:object)=>void}} options
    */
   constructor({
     store,
@@ -249,6 +249,7 @@ export class SocialWorkService {
     secretStore,
     practiceProvider = null,
     chooseWorkspace,
+    confirmPracticeCandidate = null,
     defaultVerificationChecks = [],
     delayImpl = waitForRetry,
     emit = () => {},
@@ -258,6 +259,7 @@ export class SocialWorkService {
     this.secretStore = secretStore;
     this.practiceProvider = practiceProvider;
     this.chooseWorkspace = chooseWorkspace;
+    this.confirmPracticeCandidate = confirmPracticeCandidate;
     this.defaultVerificationChecks = normalizeWorkspaceVerificationChecks(
       defaultVerificationChecks,
     );
@@ -341,9 +343,9 @@ export class SocialWorkService {
             excludeRoomId: roomId,
           })
         : null;
-    const practiceSnapshot = createPracticeSnapshot(practiceCandidate);
-    const caseSnapshot =
-      reuseCase === true && !practiceSnapshot
+    let practiceSnapshot = createPracticeSnapshot(practiceCandidate);
+    let caseSnapshot =
+      reuseCase === true
         ? createCaseSnapshot(
             this.store.findReusableCase({
               agentId,
@@ -352,6 +354,26 @@ export class SocialWorkService {
             }),
           )
         : null;
+    if (practiceSnapshot) {
+      const decision = this.confirmPracticeCandidate
+        ? await this.confirmPracticeCandidate({
+            candidate: practiceSnapshot,
+            taskPrompt: prompt,
+            caseSnapshot,
+          })
+        : 'case';
+      if (decision === 'cancel') {
+        return {
+          accepted: false,
+          reason: '已取消本次项目工作；没有启动 DSH。',
+        };
+      }
+      if (decision === 'case') practiceSnapshot = null;
+      else if (decision !== 'trial') {
+        throw new Error('候选做法的使用决定无效；没有启动项目工作。');
+      }
+      if (practiceSnapshot) caseSnapshot = null;
+    }
     const task = buildTaskPrompt({
       agent,
       context,

@@ -225,6 +225,8 @@ test('a verified case transfer can propose, trial, and revoke one bounded practi
   const { db, store } = makeStore();
   const seen = [];
   const proposalRequests = [];
+  const practiceConfirmations = [];
+  let practiceDecision = 'trial';
   let launchCount = 0;
   const service = new SocialWorkService({
     store,
@@ -240,6 +242,10 @@ test('a verified case transfer can propose, trial, and revoke one bounded practi
       },
     }),
     secretStore: { isConfigured: () => true },
+    confirmPracticeCandidate: async (input) => {
+      practiceConfirmations.push(input);
+      return practiceDecision;
+    },
     practiceProvider: {
       async *streamChat(input) {
         proposalRequests.push(input);
@@ -318,11 +324,48 @@ test('a verified case transfer can propose, trial, and revoke one bounded practi
       title: '实践试用群',
       agentIds: ['noema', 'engineering-partner'],
     });
+    practiceDecision = 'case';
+    const caseOnly = await service.startTask({
+      roomId: thirdRoom.room.id,
+      agentId: 'engineering-partner',
+      prompt: 'room C：只参考原案例，不采用候选做法。',
+      verificationChecks: checksFor('result-3.txt'),
+      reuseCase: true,
+    });
+    const caseOnlyTask = store.getSocialWorkTask(caseOnly.taskId);
+    assert.equal(caseOnlyTask.practiceSnapshot, null);
+    assert.equal(caseOnlyTask.caseSnapshot?.taskId, second.taskId);
+    assert.equal(
+      store.getSocialWorkTask(second.taskId).practiceCandidateStatus,
+      'available',
+    );
+    await service.waitForTask(caseOnly.taskId);
+
+    practiceDecision = 'cancel';
+    const taskCountBeforeCancel = store.listRoomWorkTasks(
+      thirdRoom.room.id,
+    ).length;
+    const launchesBeforeCancel = launchCount;
+    const canceled = await service.startTask({
+      roomId: thirdRoom.room.id,
+      agentId: 'engineering-partner',
+      prompt: 'room C：取消候选审阅后不应启动任务。',
+      verificationChecks: checksFor('result-canceled.txt'),
+      reuseCase: true,
+    });
+    assert.equal(canceled.accepted, false);
+    assert.equal(launchCount, launchesBeforeCancel);
+    assert.equal(
+      store.listRoomWorkTasks(thirdRoom.room.id).length,
+      taskCountBeforeCancel,
+    );
+
+    practiceDecision = 'trial';
     const third = await service.startTask({
       roomId: thirdRoom.room.id,
       agentId: 'engineering-partner',
-      prompt: 'room C：在同一项目中新增第三份验收文件。',
-      verificationChecks: checksFor('result-3.txt'),
+      prompt: 'room C：在同一项目中新增第四份验收文件。',
+      verificationChecks: checksFor('result-4.txt'),
       reuseCase: true,
     });
     const trialStart = store.getSocialWorkTask(third.taskId);
@@ -334,8 +377,17 @@ test('a verified case transfer can propose, trial, and revoke one bounded practi
       .workTasks.find((task) => task.id === third.taskId);
     assert.equal(projectedTrial?.practiceSnapshot?.sourceTaskId, second.taskId);
     assert.equal(projectedTrial?.practiceSnapshot?.basisTaskId, first.taskId);
-    assert.match(seen[2].task, /候选做法（一次试用）/u);
-    assert.match(seen[2].task, /新增文件且用户给出精确内容验收条件/u);
+    assert.match(seen[3].task, /候选做法（一次试用）/u);
+    assert.match(seen[3].task, /新增文件且用户给出精确内容验收条件/u);
+    assert.equal(practiceConfirmations.length, 3);
+    assert.equal(
+      practiceConfirmations[0].candidate.action,
+      '按相对路径写入后，再独立读取并核对指定标记。',
+    );
+    assert.equal(
+      practiceConfirmations[1].taskPrompt,
+      'room C：取消候选审阅后不应启动任务。',
+    );
     await service.waitForTask(third.taskId);
     const trialed = store.getSocialWorkTask(second.taskId);
     assert.equal(trialed.practiceCandidateStatus, 'trialed');
@@ -348,11 +400,11 @@ test('a verified case transfer can propose, trial, and revoke one bounded practi
       roomId: 'room-engineering-collaboration',
       agentId: 'engineering-partner',
       prompt: 'room B：候选撤回后，再新增一份验收文件。',
-      verificationChecks: checksFor('result-4.txt'),
+      verificationChecks: checksFor('result-5.txt'),
       reuseCase: true,
     });
     assert.equal(store.getSocialWorkTask(fourth.taskId).practiceSnapshot, null);
-    assert.doesNotMatch(seen[3].task, /候选做法（一次试用）/u);
+    assert.doesNotMatch(seen[4].task, /候选做法（一次试用）/u);
     await service.waitForTask(fourth.taskId);
   } finally {
     await service.shutdown();

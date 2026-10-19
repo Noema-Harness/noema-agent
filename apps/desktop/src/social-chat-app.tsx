@@ -646,6 +646,8 @@ function SocialChatApp() {
         if (draftRef.current) draftRef.current.style.height = 'auto';
         setNotice('工程搭档已开始处理；你可以继续在这个聊天里说话。');
         await Promise.all([refreshState(), loadRoom(currentRoom.id)]);
+      } else if (result.reason) {
+        setNotice(result.reason);
       }
     } catch (error) {
       setNotice(error instanceof Error ? error.message : '项目工作没有启动。');
@@ -1463,7 +1465,7 @@ function SocialChatApp() {
                   <span>
                     <strong>参考同项目的已核验经验</strong>
                     <small>
-                      有候选做法时优先试用一次；否则带入另一聊天的一项限长案例。不会复制原聊天。核验通过后，Noema
+                      若有候选，选定文件夹后会展示触发条件、做法、边界和来源；默认只带入已核验案例。不会复制原聊天。核验后，Noema
                       可能再用当前免费路由整理一条可撤回的候选做法。
                     </small>
                   </span>

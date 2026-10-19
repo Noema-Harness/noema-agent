@@ -58,12 +58,15 @@ const marker = `NOEMA-SOCIAL-WORK-${Date.now()}-${Math.random().toString(36).sli
 const syntheticAdapter = process.argv.includes('--synthetic');
 const livePractice = process.argv.includes('--live-practice');
 const liveEpisodes = process.argv.includes('--live-episodes');
+const caseOnly = process.argv.includes('--case-only');
 if (
   (livePractice && (syntheticAdapter || liveEpisodes)) ||
-  (liveEpisodes && syntheticAdapter)
+  (liveEpisodes && syntheticAdapter) ||
+  (caseOnly && !syntheticAdapter) ||
+  (caseOnly && (livePractice || liveEpisodes))
 ) {
   throw new Error(
-    'Live practice modes require the real FreeLLMAPI and DSH adapters and are mutually exclusive.',
+    'Use one compatible E2E mode: synthetic, live-practice, live-episodes, or synthetic --case-only.',
   );
 }
 const relativePath = 'NOEMA-E2E-RESULT.txt';
@@ -225,6 +228,8 @@ const child = spawn(process.execPath, ['scripts/start.mjs'], {
     NOEMA_E2E_SOCIAL_WORK_PROMPT: prompt,
     NOEMA_E2E_SOCIAL_WORK_SOURCE_PROMPT: practiceSourcePrompt,
     NOEMA_E2E_SOCIAL_WORK_LIVE_EPISODES: liveEpisodes ? '1' : '0',
+    NOEMA_E2E_SOCIAL_WORK_PRACTICE_DECISION:
+      liveEpisodes || caseOnly ? 'case' : 'trial',
     NOEMA_E2E_SOCIAL_WORK_EPISODE_A_PROMPT: basisEpisodePrompt,
     NOEMA_E2E_SOCIAL_WORK_EPISODE_A_CHECKS: JSON.stringify(sourceChecks),
     NOEMA_E2E_SOCIAL_WORK_EPISODE_B_CHECKS:
@@ -295,6 +300,7 @@ const summary = {
       ? 'real-freellmapi-seeded'
       : 'seeded-fixture',
   livePracticeProposal: result.livePracticeProposal ?? null,
+  practiceConfirmationEvidence: result.practiceConfirmationEvidence ?? [],
   practiceRouteMetadata: result.practiceRouteMetadata ?? [],
   liveEpisodeTasks: result.liveEpisodeTasks ?? null,
   childSignal: exit.signal,
@@ -344,6 +350,8 @@ if (proposalWasEmpty) {
     result.task != null ||
     !liveEpisodeHistoryValid;
 } else {
+  const practiceDecision =
+    result.practiceConfirmationEvidence?.at(-1)?.decision ?? 'trial';
   const expectedPracticeSourceTaskId =
     result.livePracticeProposal?.sourceTaskId ?? practiceSourceTaskId;
   const expectedBasisTaskId =
@@ -352,20 +360,28 @@ if (proposalWasEmpty) {
     result.outcome !== 'finished' ||
     result.task?.status !== 'completed' ||
     result.task?.verificationStatus !== 'verified' ||
-    result.task?.caseSnapshot !== null ||
-    result.task?.practiceSnapshot?.sourceTaskId !==
-      expectedPracticeSourceTaskId ||
-    result.task?.practiceSnapshot?.basisTaskId !== expectedBasisTaskId ||
-    result.task?.practiceSnapshot?.roomId !== 'room-engineering-partner' ||
-    result.task?.practiceSnapshot?.basisTaskPrompt?.includes('素材导入说明') !==
-      true ||
+    (practiceDecision !== 'case' &&
+      (result.task?.caseSnapshot !== null ||
+        result.task?.practiceSnapshot?.sourceTaskId !==
+          expectedPracticeSourceTaskId ||
+        result.task?.practiceSnapshot?.basisTaskId !== expectedBasisTaskId ||
+        result.task?.practiceSnapshot?.roomId !== 'room-engineering-partner' ||
+        result.task?.practiceSnapshot?.basisTaskPrompt?.includes(
+          '素材导入说明',
+        ) !== true)) ||
+    (practiceDecision === 'case' &&
+      (result.task?.practiceSnapshot !== null ||
+        result.task?.caseSnapshot?.taskId !== expectedPracticeSourceTaskId ||
+        result.practiceConfirmationEvidence?.at(-1)?.fallbackCaseTaskId !==
+          expectedPracticeSourceTaskId)) ||
+    !result.practiceConfirmationEvidence?.length ||
     independentVerification.status !== 'verified' ||
     !result.socialWorkUiSmoke?.desktop?.taskVisible ||
     !result.socialWorkUiSmoke?.desktop?.projectModeSelected ||
     !result.socialWorkUiSmoke?.desktop?.caseControlVisible ||
     !result.socialWorkUiSmoke?.desktop?.experienceReferenceVisible ||
     !result.socialWorkUiSmoke?.desktop?.experienceReferenceText?.includes(
-      '素材导入说明',
+      practiceDecision === 'case' ? 'RELEASE-CHECKLIST.md' : '素材导入说明',
     ) ||
     !result.socialWorkUiSmoke?.desktop?.composerVisible ||
     !result.socialWorkUiSmoke?.desktop?.documentNoOverflow ||
@@ -374,13 +390,19 @@ if (proposalWasEmpty) {
     !result.socialWorkUiSmoke?.narrow?.caseControlVisible ||
     !result.socialWorkUiSmoke?.narrow?.experienceReferenceVisible ||
     !result.socialWorkUiSmoke?.narrow?.experienceReferenceText?.includes(
-      '素材导入说明',
+      practiceDecision === 'case' ? 'RELEASE-CHECKLIST.md' : '素材导入说明',
     ) ||
     !result.socialWorkUiSmoke?.narrow?.composerVisible ||
     !result.socialWorkUiSmoke?.narrow?.documentNoOverflow ||
     !result.socialWorkUiSmoke?.candidateReview?.withdrawn ||
-    result.socialWorkUiSmoke?.candidateReview?.trialVerification !== 'verified';
-  if (livePractice || liveEpisodes) {
+    result.socialWorkUiSmoke?.candidateReview?.trialVerification !==
+      (practiceDecision === 'case' ? null : 'verified');
+  if (liveEpisodes) {
+    validationFailed ||=
+      result.livePracticeProposal?.status !== 'available' ||
+      !result.livePracticeProposal?.candidate;
+  }
+  if (livePractice && practiceDecision === 'trial') {
     validationFailed ||=
       result.livePracticeProposal?.status !== 'available' ||
       !result.livePracticeProposal?.candidate;
