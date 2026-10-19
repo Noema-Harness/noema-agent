@@ -134,6 +134,8 @@ const testSocialWorkProposalSourceId =
   process.env.NOEMA_E2E_SOCIAL_WORK_PROPOSAL_SOURCE_ID ?? null;
 const testSocialWorkLiveEpisodes =
   process.env.NOEMA_E2E_SOCIAL_WORK_LIVE_EPISODES === '1';
+const testSocialWorkPracticeDecision =
+  process.env.NOEMA_E2E_SOCIAL_WORK_PRACTICE_DECISION ?? null;
 const testSocialWorkEpisodeAPrompt =
   process.env.NOEMA_E2E_SOCIAL_WORK_EPISODE_A_PROMPT ?? null;
 const testSocialWorkEpisodeAChecks =
@@ -224,6 +226,7 @@ delete process.env.NOEMA_E2E_SOCIAL_WORK_CHECKS;
 delete process.env.NOEMA_E2E_SOCIAL_WORK_SYNTHETIC;
 delete process.env.NOEMA_E2E_SOCIAL_WORK_PROPOSAL_SOURCE_ID;
 delete process.env.NOEMA_E2E_SOCIAL_WORK_LIVE_EPISODES;
+delete process.env.NOEMA_E2E_SOCIAL_WORK_PRACTICE_DECISION;
 delete process.env.NOEMA_E2E_SOCIAL_WORK_EPISODE_A_PROMPT;
 delete process.env.NOEMA_E2E_SOCIAL_WORK_EPISODE_A_CHECKS;
 delete process.env.NOEMA_E2E_SOCIAL_WORK_EPISODE_B_CHECKS;
@@ -1921,6 +1924,10 @@ async function captureSocialProjectWorkSmokeScreenshots() {
   if (!mainWindow || mainWindow.isDestroyed()) {
     throw new Error('项目工作截图没有可用窗口。');
   }
+  const expectedExperienceReference =
+    testSocialWorkPracticeDecision === 'case'
+      ? 'RELEASE-CHECKLIST.md'
+      : '素材导入说明';
   const screenshots: string[] = [];
   await mainWindow.webContents.executeJavaScript(`(async () => {
     const waitForRoom = async (title) => {
@@ -1953,7 +1960,7 @@ async function captureSocialProjectWorkSmokeScreenshots() {
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
     const targetTask = findTargetTask();
-    const experience = targetTask?.querySelector('.project-work-practice');
+    const experience = targetTask?.querySelector('.project-work-practice') ?? targetTask?.querySelector('.project-work-case');
     experience?.querySelector('summary')?.click();
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   })()`);
@@ -1970,7 +1977,7 @@ async function captureSocialProjectWorkSmokeScreenshots() {
       const targetPrompt = ${JSON.stringify(testSocialWorkPrompt)};
       const task = [...document.querySelectorAll('.project-work-card')]
         .find((card) => card.querySelector('.project-work-request')?.textContent?.trim() === targetPrompt);
-      const experienceReference = task?.querySelector('.project-work-practice');
+      const experienceReference = task?.querySelector('.project-work-practice') ?? task?.querySelector('.project-work-case');
         if (experienceReference instanceof HTMLDetailsElement) experienceReference.open = true;
       const caseControl = document.querySelector('.case-reuse-control');
       const mode = document.querySelector('.composer-mode-switch button[aria-pressed="true"]');
@@ -1999,7 +2006,7 @@ async function captureSocialProjectWorkSmokeScreenshots() {
     !desktop.caseControlVisible ||
     !desktop.experienceReferenceVisible ||
     !desktop.experienceReferenceExpanded ||
-    !desktop.experienceReferenceText.includes('素材导入说明') ||
+    !desktop.experienceReferenceText.includes(expectedExperienceReference) ||
     !desktop.composerVisible ||
     !desktop.shellNoOverflow ||
     !desktop.panelNoOverflow ||
@@ -2021,7 +2028,7 @@ async function captureSocialProjectWorkSmokeScreenshots() {
     !narrow.caseControlVisible ||
     !narrow.experienceReferenceVisible ||
     !narrow.experienceReferenceExpanded ||
-    !narrow.experienceReferenceText.includes('素材导入说明') ||
+    !narrow.experienceReferenceText.includes(expectedExperienceReference) ||
     !narrow.composerVisible ||
     !narrow.shellNoOverflow ||
     !narrow.panelNoOverflow ||
@@ -2083,8 +2090,10 @@ async function captureSocialProjectWorkSmokeScreenshots() {
     !candidateReview?.sourceTaskVisible ||
     !candidateReview.withdrawn ||
     candidateReview.status !== 'revoked' ||
-    candidateReview.trialStatus !== 'completed' ||
-    candidateReview.trialVerification !== 'verified'
+    candidateReview.trialStatus !==
+      (testSocialWorkPracticeDecision === 'case' ? null : 'completed') ||
+    candidateReview.trialVerification !==
+      (testSocialWorkPracticeDecision === 'case' ? null : 'verified')
   ) {
     throw new Error(
       `候选来源与撤回状态不符合预期：${JSON.stringify(candidateReview)}`,
@@ -2314,6 +2323,8 @@ async function startNoema() {
           testSocialWorkEpisodeAPrompt.startsWith('[NOEMA E2E]') &&
           typeof testSocialWorkEpisodeAChecks === 'string' &&
           typeof testSocialWorkEpisodeBChecks === 'string')) &&
+      (!testSocialWorkPracticeDecision ||
+        ['trial', 'case', 'cancel'].includes(testSocialWorkPracticeDecision)) &&
       socialWorkE2eDirectory &&
       isIsolatedE2eDirectory(socialWorkE2eDirectory, app.getPath('userData')) &&
       path.resolve(testDatabasePath) !==
@@ -2495,6 +2506,7 @@ async function startNoema() {
           },
         }
       : null) as unknown as DshHeadlessAdapter | null;
+    const practiceConfirmationEvidence: Array<Record<string, unknown>> = [];
     socialWorkService = new SocialWorkService({
       store: socialChatStore,
       adapter: syntheticSocialWorkAdapter ?? dshAdapter,
@@ -2514,13 +2526,86 @@ async function startNoema() {
           message: [
             '工程搭档会使用自己的专业资料、读取/修改项目文件，并可运行前台项目命令。Windows 文件沙箱主要限制写入，不能限制网络或进程可见性，也不能保证目录外读取隔离。项目内容可能通过 FreeLLMAPI 发往当前第三方免费模型路由。不要选择含不应发送的密钥或隐私资料的目录。停止任务不会自动撤销已经发生的改动。',
             reuseCase
-              ? '本轮还会检查同一位工程搭档在同一项目的其他聊天中，是否有一项通过 Noema 文件条件核验的工作；若找到，会把一份过滤常见凭据样式的限长摘要随本任务发送给模型，不会发送原聊天记录。若本任务也通过 Noema 核验，Noema 还可能用同一免费路由对两项任务的摘要和核验结果做一次额外分析，提出一条候选做法；候选不会自动升级为技能，可在任务卡撤回。过滤无法保证识别所有敏感信息。'
+              ? '本轮还会检查同一位工程搭档在同一项目的其他聊天中，是否有一项通过 Noema 文件条件核验的工作；若找到，会把一份过滤常见凭据样式的限长摘要随本任务发送给模型，不会发送原聊天记录。若本任务也通过 Noema 核验，Noema 还可能用同一免费路由对两项任务的摘要和核验结果做一次额外分析，提出一条候选做法；候选不会自动升级为技能，可在任务卡撤回。若已有候选，选定目录后还会先展示候选正文，供你决定本轮是否试用；普通经验复用勾选不会自动授权使用某条候选。过滤无法保证识别所有敏感信息。'
               : '本轮不会从其他聊天带入项目案例。',
           ].join('\n\n'),
           properties: ['openDirectory'],
           buttonLabel: '允许并继续',
         });
         return selection.canceled ? null : (selection.filePaths[0] ?? null);
+      },
+      confirmPracticeCandidate: async ({
+        candidate,
+        taskPrompt,
+        caseSnapshot,
+      }: {
+        candidate: {
+          sourceTaskId: string;
+          basisTaskId: string;
+          basisRoomTitle: string;
+          basisTaskPrompt: string;
+          roomTitle: string;
+          trigger: string;
+          action: string;
+          limits: string;
+        };
+        taskPrompt: string;
+        caseSnapshot: { taskId: string; taskPrompt: string } | null;
+      }) => {
+        const preview = {
+          taskPrompt,
+          trigger: candidate.trigger,
+          action: candidate.action,
+          limits: candidate.limits,
+          sourceRoomTitle: candidate.roomTitle,
+          sourceTaskId: candidate.sourceTaskId,
+          basisTaskPrompt: candidate.basisTaskPrompt,
+          fallbackCaseTaskId: caseSnapshot?.taskId ?? null,
+        };
+        if (socialWorkE2eValid) {
+          const decision =
+            testSocialWorkPracticeDecision ??
+            (testSocialWorkLiveEpisodes ? 'case' : 'trial');
+          practiceConfirmationEvidence.push({ ...preview, decision });
+          return decision as 'trial' | 'case' | 'cancel';
+        }
+        if (!mainWindow || mainWindow.isDestroyed()) return 'cancel';
+        const previewText = (value: string, limit: number) =>
+          value.length <= limit
+            ? value
+            : `${value.slice(0, limit)}\n……（预览已截断）`;
+        const confirmation = await dialog.showMessageBox(mainWindow, {
+          type: 'question',
+          title: '先审阅这条做法是否适合当前任务',
+          message: '这是一条由过往已核验工作提炼的候选，不是已学会的能力。',
+          detail: [
+            `当前任务：\n${previewText(taskPrompt, 1_800)}`,
+            `触发条件：\n${candidate.trigger}`,
+            `候选做法：\n${candidate.action}`,
+            `适用边界：\n${candidate.limits}`,
+            `来源：${candidate.roomTitle}；基础案例：${previewText(candidate.basisTaskPrompt || candidate.basisTaskId, 1_200)}`,
+            caseSnapshot
+              ? `选择“只引用已核验案例”会带入「${caseSnapshot.taskPrompt || caseSnapshot.taskId}」，不发送候选做法。`
+              : '当前没有可带入的原案例；选择“不试用候选”时只执行当前任务。',
+            '选择“试用”会把这条候选和当前任务一并发送给当前 FreeLLMAPI 免费路由。试用结果只表示 Noema 文件条件是否通过，不证明候选导致了结果。',
+          ].join('\n\n'),
+          buttons: [
+            caseSnapshot ? '只引用已核验案例' : '不带入候选',
+            '试用候选一次',
+            '取消任务',
+          ],
+          defaultId: 0,
+          cancelId: 2,
+          noLink: true,
+        });
+        const decision =
+          confirmation.response === 1
+            ? 'trial'
+            : confirmation.response === 0
+              ? 'case'
+              : 'cancel';
+        practiceConfirmationEvidence.push({ ...preview, decision });
+        return decision;
       },
       emit: (payload) => {
         if (mainWindow && !mainWindow.isDestroyed()) {
@@ -2990,6 +3075,7 @@ async function startNoema() {
                 {
                   outcome: 'practice_proposal_none',
                   livePracticeProposal,
+                  practiceConfirmationEvidence,
                   liveEpisodeTasks,
                   practiceRouteMetadata,
                   workspacePath,
@@ -3087,6 +3173,7 @@ async function startNoema() {
                 workspacePath,
                 socialWorkUiSmoke,
                 livePracticeProposal,
+                practiceConfirmationEvidence,
                 liveEpisodeTasks,
                 practiceRouteMetadata,
               },
@@ -3112,6 +3199,7 @@ async function startNoema() {
                   error instanceof Error ? error.message.slice(0, 1_000) : null,
                 socialWorkUiPreflight,
                 livePracticeProposal,
+                practiceConfirmationEvidence,
                 liveEpisodeTasks,
                 practiceRouteMetadata,
               },
