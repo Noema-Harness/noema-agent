@@ -2110,7 +2110,7 @@ function ChatMessage({
       const editor = adjustmentEditorRef.current;
       const thread = editor?.closest('.message-thread');
       if (!editor || !thread) return;
-      editor.style.maxHeight = `${Math.max(180, thread.clientHeight - 12)}px`;
+      editor.style.maxHeight = `${Math.max(180, thread.clientHeight - 28)}px`;
       editor.style.overflowY = 'auto';
       const editorBounds = editor.getBoundingClientRect();
       const threadBounds = thread.getBoundingClientRect();
