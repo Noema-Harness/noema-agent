@@ -2106,6 +2106,8 @@ function ChatMessage({
 
   useLayoutEffect(() => {
     if (!adjustmentEditorOpen || !adjustmentEditorRef.current) return;
+    const observedThread =
+      adjustmentEditorRef.current.closest('.message-thread');
     const keepEditorVisible = () => {
       const editor = adjustmentEditorRef.current;
       const thread = editor?.closest('.message-thread');
@@ -2124,8 +2126,15 @@ function ChatMessage({
     adjustmentEditorRef.current.querySelector('input')?.focus({
       preventScroll: true,
     });
+    const resizeObserver = observedThread
+      ? new ResizeObserver(keepEditorVisible)
+      : null;
+    if (observedThread) resizeObserver?.observe(observedThread);
     window.addEventListener('resize', keepEditorVisible);
-    return () => window.removeEventListener('resize', keepEditorVisible);
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener('resize', keepEditorVisible);
+    };
   }, [adjustmentEditorOpen]);
 
   const openAdjustmentEditor = () => {
