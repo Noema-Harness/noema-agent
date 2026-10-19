@@ -140,6 +140,90 @@ test('social work keeps the stable friend and only includes the issuing room con
   }
 });
 
+test('project tasks include only active coding adjustments and persist the exact input snapshot', async () => {
+  const directory = mkdtempSync(
+    path.join(tmpdir(), 'noema-social-adjustments-'),
+  );
+  const workspace = path.join(directory, 'workspace');
+  mkdirSync(workspace);
+  const { db, store } = makeStore();
+  const seen = [];
+  const adjustments = [
+    {
+      id: 'coding-adjustment',
+      sourceSurface: 'social',
+      sourceRoomId: 'room-noema',
+      sourceTurnId: 'turn-coding',
+      scope: 'coding',
+      situation: '任务阶段性结束但仍可推进',
+      behavior: '继续到验收完成，只有阻塞或用户决策才停。',
+      sourceQuote: '继续到验收完成',
+      status: 'active',
+      userEdited: false,
+      editedAt: null,
+    },
+    {
+      id: 'conversation-adjustment',
+      sourceSurface: 'social',
+      sourceRoomId: 'room-noema',
+      sourceTurnId: 'turn-chat',
+      scope: 'conversation',
+      situation: '用户分享不愉快经历',
+      behavior: '先回应当下，再问细节。',
+      sourceQuote: '先回应当下',
+      status: 'active',
+      userEdited: false,
+      editedAt: null,
+    },
+    {
+      id: 'withdrawn-adjustment',
+      sourceSurface: 'root',
+      sourceRoomId: null,
+      sourceTurnId: 'turn-withdrawn',
+      scope: 'both',
+      situation: '已撤回',
+      behavior: '不得发送。',
+      sourceQuote: '已撤回',
+      status: 'withdrawn',
+      userEdited: false,
+      editedAt: null,
+    },
+  ];
+  const service = new SocialWorkService({
+    store,
+    adapter: makeAdapter({ onStart: (input) => seen.push(input) }),
+    secretStore: { isConfigured: () => true },
+    getCodingInteractionAdjustments: () => adjustments,
+    chooseWorkspace: async () => workspace,
+  });
+
+  try {
+    const accepted = await service.startTask({
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      prompt: '创建一个结果文件。',
+      verificationChecks: [],
+    });
+    assert.equal(accepted.accepted, true);
+    await service.runs.get(accepted.taskId)?.completion;
+
+    const task = store.getSocialWorkTask(accepted.taskId);
+    assert.deepEqual(task.interactionAdjustmentIds, ['coding-adjustment']);
+    assert.deepEqual(
+      task.interactionAdjustmentSnapshots.map((item) => item.id),
+      ['coding-adjustment'],
+    );
+    assert.match(seen[0].task, /继续到验收完成/);
+    assert.doesNotMatch(seen[0].task, /先回应当下/);
+    assert.doesNotMatch(seen[0].task, /不得发送/);
+    assert.doesNotMatch(seen[0].task, /引用标记/);
+  } finally {
+    await service.shutdown();
+    db.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('a cross-room task receives only one bounded, redacted, verified case when explicitly enabled', async () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'noema-social-case-'));
   const workspace = path.join(directory, 'workspace');

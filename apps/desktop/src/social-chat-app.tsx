@@ -13,6 +13,8 @@ import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type {
   NoemaSocialAgent,
+  NoemaInteractionAdjustment,
+  NoemaInteractionAdjustmentSnapshot,
   NoemaSocialEvent,
   NoemaSocialMessage,
   NoemaSocialReplySource,
@@ -316,7 +318,8 @@ function SocialChatApp() {
       if (
         event.type === 'models-updated' ||
         event.type === 'model-selected' ||
-        event.type === 'provider-configured'
+        event.type === 'provider-configured' ||
+        event.type === 'interaction-adjustments-updated'
       ) {
         void refreshState().catch(() => {});
       }
@@ -1271,6 +1274,19 @@ function SocialChatApp() {
                               ? (messageAgent.get(item.message.agentId) ?? null)
                               : null
                           }
+                          canManageInteractionAdjustment={
+                            currentRoom.kind === 'direct' &&
+                            currentRoom.memberIds.length === 1 &&
+                            currentRoom.memberIds[0] === 'noema'
+                          }
+                          interactionAdjustment={
+                            state?.interactionAdjustments.find(
+                              (adjustment) =>
+                                adjustment.sourceSurface === 'social' &&
+                                adjustment.sourceRoomId === currentRoom.id &&
+                                adjustment.sourceTurnId === item.message.turnId,
+                            ) ?? null
+                          }
                           onRetry={handleRetry}
                           forwardSelectionActive={forwardSelectionActive}
                           forwardSelected={selectedForwardMessageIds.includes(
@@ -2057,6 +2073,8 @@ function SocialChatApp() {
 function ChatMessage({
   message,
   agent,
+  canManageInteractionAdjustment,
+  interactionAdjustment,
   onRetry,
   forwardSelectionActive,
   forwardSelected,
@@ -2066,6 +2084,8 @@ function ChatMessage({
 }: {
   message: NoemaSocialMessage;
   agent: NoemaSocialAgent | null;
+  canManageInteractionAdjustment: boolean;
+  interactionAdjustment: NoemaInteractionAdjustment | null;
   onRetry: (message: NoemaSocialMessage) => void;
   forwardSelectionActive: boolean;
   forwardSelected: boolean;
@@ -2073,6 +2093,112 @@ function ChatMessage({
   onForward: () => void;
   onToggleForward: () => void;
 }) {
+  const adjustmentEditorRef = useRef<HTMLFormElement>(null);
+  const [adjustmentEditorOpen, setAdjustmentEditorOpen] = useState(false);
+  const [adjustmentScope, setAdjustmentScope] = useState<
+    'conversation' | 'coding' | 'both'
+  >('conversation');
+  const [adjustmentSituation, setAdjustmentSituation] = useState('');
+  const [adjustmentBehavior, setAdjustmentBehavior] = useState('');
+  const [adjustmentQuote, setAdjustmentQuote] = useState('');
+  const [adjustmentSaving, setAdjustmentSaving] = useState(false);
+  const [adjustmentError, setAdjustmentError] = useState('');
+
+  useLayoutEffect(() => {
+    if (!adjustmentEditorOpen || !adjustmentEditorRef.current) return;
+    const keepEditorVisible = () => {
+      const editor = adjustmentEditorRef.current;
+      const thread = editor?.closest('.message-thread');
+      if (!editor || !thread) return;
+      editor.style.maxHeight = `${Math.max(180, thread.clientHeight - 12)}px`;
+      editor.style.overflowY = 'auto';
+      const editorBounds = editor.getBoundingClientRect();
+      const threadBounds = thread.getBoundingClientRect();
+      if (editorBounds.bottom > threadBounds.bottom) {
+        thread.scrollTop += editorBounds.bottom - threadBounds.bottom;
+      } else if (editorBounds.top < threadBounds.top) {
+        thread.scrollTop -= threadBounds.top - editorBounds.top;
+      }
+    };
+    keepEditorVisible();
+    adjustmentEditorRef.current.querySelector('input')?.focus({
+      preventScroll: true,
+    });
+    window.addEventListener('resize', keepEditorVisible);
+    return () => window.removeEventListener('resize', keepEditorVisible);
+  }, [adjustmentEditorOpen]);
+
+  const openAdjustmentEditor = () => {
+    setAdjustmentScope(interactionAdjustment?.scope ?? 'conversation');
+    setAdjustmentSituation(interactionAdjustment?.situation ?? '');
+    setAdjustmentBehavior(interactionAdjustment?.behavior ?? '');
+    setAdjustmentQuote(
+      interactionAdjustment?.sourceQuote ?? message.content.slice(0, 240),
+    );
+    setAdjustmentError('');
+    setAdjustmentEditorOpen(true);
+  };
+
+  const saveInteractionAdjustment = async (event: FormEvent) => {
+    event.preventDefault();
+    if (
+      !message.content.includes(adjustmentQuote) ||
+      !adjustmentQuote.trim() ||
+      adjustmentQuote.length > 240
+    ) {
+      setAdjustmentError('引用必须是这条消息中的连续原文，且不超过 240 字。');
+      return;
+    }
+    setAdjustmentSaving(true);
+    setAdjustmentError('');
+    try {
+      if (interactionAdjustment?.status === 'active') {
+        await window.noema.updateInteractionAdjustment({
+          id: interactionAdjustment.id,
+          scope: adjustmentScope,
+          situation: adjustmentSituation.trim(),
+          behavior: adjustmentBehavior.trim(),
+        });
+      } else {
+        await window.noema.addSocialInteractionAdjustment({
+          sourceTurnId: message.turnId,
+          sourceRoomId: message.roomId,
+          scope: adjustmentScope,
+          situation: adjustmentSituation.trim(),
+          behavior: adjustmentBehavior.trim(),
+          sourceQuote: adjustmentQuote.trim(),
+        });
+      }
+      setAdjustmentEditorOpen(false);
+    } catch (error) {
+      setAdjustmentError(
+        error instanceof Error ? error.message : '互动约定没有保存。',
+      );
+    } finally {
+      setAdjustmentSaving(false);
+    }
+  };
+
+  const withdrawInteractionAdjustment = async () => {
+    if (!interactionAdjustment || interactionAdjustment.status !== 'active') {
+      return;
+    }
+    setAdjustmentSaving(true);
+    setAdjustmentError('');
+    try {
+      await window.noema.withdrawInteractionAdjustment(
+        interactionAdjustment.id,
+      );
+      setAdjustmentEditorOpen(false);
+    } catch (error) {
+      setAdjustmentError(
+        error instanceof Error ? error.message : '互动约定没有撤回。',
+      );
+    } finally {
+      setAdjustmentSaving(false);
+    }
+  };
+
   if (message.role === 'system') {
     return (
       <div className="system-message">
@@ -2100,6 +2226,20 @@ function ChatMessage({
           <button type="button" onClick={onReply}>
             回复
           </button>
+          {canManageInteractionAdjustment && message.role === 'user' ? (
+            <button
+              type="button"
+              onClick={openAdjustmentEditor}
+              disabled={interactionAdjustment?.status === 'withdrawn'}
+              title="只在 Noema 私聊中为这条用户原话显式保存互动约定"
+            >
+              {interactionAdjustment?.status === 'active'
+                ? '互动约定'
+                : interactionAdjustment?.status === 'withdrawn'
+                  ? '已撤回'
+                  : '设为约定'}
+            </button>
+          ) : null}
           <button type="button" onClick={onForward}>
             转发
           </button>
@@ -2167,6 +2307,116 @@ function ChatMessage({
             </time>
           </div>
           {actions}
+          {adjustmentEditorOpen && canManageInteractionAdjustment ? (
+            <form
+              ref={adjustmentEditorRef}
+              className="interaction-adjustment-editor"
+              onSubmit={(event) => void saveInteractionAdjustment(event)}
+            >
+              <div className="interaction-adjustment-editor-heading">
+                <strong>
+                  {interactionAdjustment?.status === 'active'
+                    ? '修改互动约定'
+                    : '保存为互动约定'}
+                </strong>
+                <button
+                  type="button"
+                  className="interaction-adjustment-close"
+                  onClick={() => setAdjustmentEditorOpen(false)}
+                  aria-label="关闭互动约定编辑"
+                  disabled={adjustmentSaving}
+                >
+                  ×
+                </button>
+              </div>
+              <label>
+                <span>遇到什么情况？</span>
+                <input
+                  value={adjustmentSituation}
+                  onChange={(event) =>
+                    setAdjustmentSituation(event.target.value)
+                  }
+                  maxLength={180}
+                  required
+                  placeholder="例如：我在分享一段不愉快的经历时"
+                />
+              </label>
+              <label>
+                <span>希望 Noema 怎么做？</span>
+                <textarea
+                  value={adjustmentBehavior}
+                  onChange={(event) =>
+                    setAdjustmentBehavior(event.target.value)
+                  }
+                  maxLength={240}
+                  required
+                  rows={2}
+                  placeholder="写下你希望它未来如何回应"
+                />
+              </label>
+              <label>
+                <span>适用范围</span>
+                <select
+                  value={adjustmentScope}
+                  onChange={(event) =>
+                    setAdjustmentScope(
+                      event.target.value as 'conversation' | 'coding' | 'both',
+                    )
+                  }
+                >
+                  <option value="conversation">Noema 日常对话</option>
+                  <option value="coding">项目工作</option>
+                  <option value="both">对话和项目工作</option>
+                </select>
+              </label>
+              {interactionAdjustment?.status !== 'active' ? (
+                <label>
+                  <span>来源原话（需为连续原文）</span>
+                  <textarea
+                    value={adjustmentQuote}
+                    onChange={(event) => setAdjustmentQuote(event.target.value)}
+                    maxLength={240}
+                    required
+                    rows={2}
+                  />
+                </label>
+              ) : (
+                <p className="interaction-adjustment-source">
+                  来源原话：{interactionAdjustment.sourceQuote}
+                </p>
+              )}
+              <p className="interaction-adjustment-note">
+                只保存你明确写下的偏好，不会自动从聊天中提取；撤回会停止后续带入，不会改写过去的请求。
+              </p>
+              {adjustmentError ? (
+                <p className="interaction-adjustment-error" role="alert">
+                  {adjustmentError}
+                </p>
+              ) : null}
+              <div className="interaction-adjustment-actions">
+                {interactionAdjustment?.status === 'active' ? (
+                  <button
+                    type="button"
+                    className="interaction-adjustment-withdraw"
+                    onClick={() => void withdrawInteractionAdjustment()}
+                    disabled={adjustmentSaving}
+                  >
+                    撤回
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => setAdjustmentEditorOpen(false)}
+                  disabled={adjustmentSaving}
+                >
+                  取消
+                </button>
+                <button type="submit" disabled={adjustmentSaving}>
+                  {adjustmentSaving ? '保存中…' : '保存约定'}
+                </button>
+              </div>
+            </form>
+          ) : null}
         </div>
         <span className="user-message-mark" aria-hidden="true">
           你
@@ -2227,9 +2477,79 @@ function ChatMessage({
             请求路由 · {formatRoute(message.model)}
           </div>
         ) : null}
+        <InteractionAdjustmentTrace
+          snapshots={message.interactionAdjustmentSnapshots}
+          attempts={message.interactionAdjustmentAttempts}
+          currentAttempt={message.attempt}
+          kind="conversation"
+        />
         {actions}
       </div>
     </article>
+  );
+}
+
+function InteractionAdjustmentTrace({
+  snapshots,
+  attempts = [],
+  currentAttempt = 1,
+  kind,
+}: {
+  snapshots: NoemaInteractionAdjustmentSnapshot[];
+  attempts?: NoemaSocialMessage['interactionAdjustmentAttempts'];
+  currentAttempt?: number;
+  kind: 'conversation' | 'project';
+}) {
+  const history =
+    attempts.length > 0
+      ? attempts
+      : snapshots.length > 0
+        ? [
+            {
+              attempt: currentAttempt,
+              interactionAdjustmentIds: snapshots.map(
+                (snapshot) => snapshot.id,
+              ),
+              interactionAdjustmentSnapshots: snapshots,
+            },
+          ]
+        : [];
+  if (!history.some((entry) => entry.interactionAdjustmentSnapshots.length)) {
+    return null;
+  }
+  return (
+    <details className="interaction-adjustment-trace">
+      <summary>
+        {history.length > 1 ? `查看 ${history.length} 次回复尝试` : '本轮带入'}
+        {kind === 'project' ? '编码协作' : '互动'}约定
+      </summary>
+      {history.map((entry) => (
+        <section className="interaction-adjustment-attempt" key={entry.attempt}>
+          {history.length > 1 ? <strong>第 {entry.attempt} 次</strong> : null}
+          {entry.interactionAdjustmentSnapshots.length ? (
+            <ul>
+              {entry.interactionAdjustmentSnapshots.map((snapshot) => (
+                <li key={snapshot.id}>
+                  <strong>{snapshot.situation}</strong>
+                  <span>{snapshot.behavior}</span>
+                  <small>
+                    来源：
+                    {snapshot.sourceSurface === 'social'
+                      ? 'Noema 聊天'
+                      : '旧根对话'}
+                    · 原话「
+                    {snapshot.sourceQuote}」
+                  </small>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p>这次尝试没有带入互动约定。</p>
+          )}
+        </section>
+      ))}
+      <p>这只表示 Noema 组装上下文时带入了它们，不证明上游收到或模型遵循。</p>
+    </details>
   );
 }
 
@@ -2301,6 +2621,10 @@ function ProjectWorkCard({
         <time dateTime={task.updatedAt}>{timeLabel(task.updatedAt)}</time>
       </header>
       <p className="project-work-request">{task.taskPrompt}</p>
+      <InteractionAdjustmentTrace
+        snapshots={task.interactionAdjustmentSnapshots}
+        kind="project"
+      />
       {task.practiceSnapshot ? (
         <details className="project-work-case project-work-practice">
           <summary>本轮试用了一条跨房间候选做法</summary>

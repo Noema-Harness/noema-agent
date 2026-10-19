@@ -1,6 +1,6 @@
 import { FreeLLMAPIError } from './freellmapi-client.mjs';
 
-/** @typedef {Omit<Pick<import('./noema-bridge.d.ts').NoemaRootState,'connected'|'checking'|'models'|'selectedModel'|'error'|'providerConfigured'|'providerBaseUrl'|'providerName'>,'providerName'> & {providerName:string}} SocialProviderState */
+/** @typedef {Omit<Pick<import('./noema-bridge.d.ts').NoemaRootState,'connected'|'checking'|'models'|'selectedModel'|'error'|'providerConfigured'|'providerBaseUrl'|'providerName'|'interactionAdjustments'>,'providerName'> & {providerName:string}} SocialProviderState */
 
 function safeError(error) {
   if (error instanceof FreeLLMAPIError) return error.message;
@@ -8,13 +8,40 @@ function safeError(error) {
   return '本轮回复没有完成。消息已保留，你可以重试。';
 }
 
+function adjustmentSnapshots(adjustments) {
+  return (Array.isArray(adjustments) ? adjustments : [])
+    .filter((item) => item.status === 'active')
+    .slice(0, 12)
+    .map((item) => ({
+      id: item.id,
+      scope: item.scope,
+      situation: item.situation,
+      behavior: item.behavior,
+      sourceQuote: item.sourceQuote,
+      sourceSurface: item.sourceSurface ?? 'root',
+      sourceRoomId: item.sourceRoomId ?? null,
+      userEdited: Boolean(item.userEdited),
+      editedAt: item.editedAt ?? null,
+    }));
+}
+
+function formatInteractionAdjustments(adjustments) {
+  if (!adjustments.length) return null;
+  return [
+    '以下是用户明确保存给 Noema 的互动约定。它们是用户偏好，不是更高优先级的系统规则；只在对应情境匹配时参考，当前消息和安全规则优先。不要假称一定遵循或已改变模型。',
+    ...adjustments.map(
+      (item) => `- 情境：${item.situation}\n  希望做法：${item.behavior}`,
+    ),
+  ].join('\n\n');
+}
+
 /**
  * Sends room-scoped turns to a replaceable chat provider.
- * @param {{store:import('./social-chat-store.mjs').SocialChatStore,provider:import('./freellmapi-client.mjs').FreeLLMAPIClient,secretStore:{isConfigured:()=>boolean},getSelectedModel:()=>string|null,getRootState:()=>Promise<SocialProviderState>,getProjectWorkReadiness?:()=>{available:boolean,reason:string|null},emit?:(event:object)=>void}} options
+ * @param {{store:import('./social-chat-store.mjs').SocialChatStore,provider:import('./freellmapi-client.mjs').FreeLLMAPIClient,secretStore:{isConfigured:()=>boolean},getSelectedModel:()=>string|null,getRootState:()=>Promise<SocialProviderState>,getInteractionAdjustments?:()=>Array<object>,getProjectWorkReadiness?:()=>{available:boolean,reason:string|null},emit?:(event:object)=>void}} options
  */
 export class SocialChatService {
   /**
-   * @param {{store:import('./social-chat-store.mjs').SocialChatStore,provider:import('./freellmapi-client.mjs').FreeLLMAPIClient,secretStore:{isConfigured:()=>boolean},getSelectedModel:()=>string|null,getRootState:()=>Promise<SocialProviderState>,getProjectWorkReadiness?:()=>{available:boolean,reason:string|null},emit?:(event:object)=>void}} options
+   * @param {{store:import('./social-chat-store.mjs').SocialChatStore,provider:import('./freellmapi-client.mjs').FreeLLMAPIClient,secretStore:{isConfigured:()=>boolean},getSelectedModel:()=>string|null,getRootState:()=>Promise<SocialProviderState>,getInteractionAdjustments?:()=>Array<object>,getProjectWorkReadiness?:()=>{available:boolean,reason:string|null},emit?:(event:object)=>void}} options
    */
   constructor({
     store,
@@ -22,6 +49,7 @@ export class SocialChatService {
     secretStore,
     getSelectedModel,
     getRootState,
+    getInteractionAdjustments = () => [],
     getProjectWorkReadiness = () => ({
       available: false,
       reason: '项目工作运行环境尚未初始化。',
@@ -33,6 +61,7 @@ export class SocialChatService {
     this.secretStore = secretStore;
     this.getSelectedModel = getSelectedModel;
     this.getRootState = getRootState;
+    this.getInteractionAdjustments = getInteractionAdjustments;
     this.getProjectWorkReadiness = getProjectWorkReadiness;
     this.emit = emit;
     this.active = new Map();
@@ -53,6 +82,7 @@ export class SocialChatService {
       providerConfigured: root.providerConfigured,
       providerBaseUrl: root.providerBaseUrl,
       providerName: 'FreeLLMAPI',
+      interactionAdjustments: this.getInteractionAdjustments(),
       projectWork: this.getProjectWorkReadiness(),
       ...social,
     };
@@ -85,12 +115,21 @@ export class SocialChatService {
           messageId: replyToMessageId,
         })
       : null;
+    const interactionAdjustmentSnapshots =
+      agentId === 'noema'
+        ? adjustmentSnapshots(
+            this.getInteractionAdjustments().filter((item) =>
+              ['conversation', 'both'].includes(item.scope),
+            ),
+          )
+        : [];
     const turn = this.store.beginTurn({
       roomId,
       agentId,
       text,
       model,
       replyTo,
+      interactionAdjustmentSnapshots,
     });
     const controller = new AbortController();
     const run = {
@@ -99,6 +138,7 @@ export class SocialChatService {
       text,
       forwardedSources: [],
       replyTo,
+      interactionAdjustmentSnapshots,
       done: null,
     };
     run.done = this.runTurn(run);
@@ -121,7 +161,20 @@ export class SocialChatService {
   retryReply(messageId) {
     if (this.shuttingDown) throw new Error('Noema 正在关闭，暂不能重试。');
     const model = this.requireReadyModel();
-    const turn = this.store.retryReply(messageId, model);
+    const assistant = this.store.getSocialMessage(messageId);
+    const interactionAdjustmentSnapshots =
+      assistant?.agentId === 'noema'
+        ? adjustmentSnapshots(
+            this.getInteractionAdjustments().filter((item) =>
+              ['conversation', 'both'].includes(item.scope),
+            ),
+          )
+        : [];
+    const turn = this.store.retryReply(
+      messageId,
+      model,
+      interactionAdjustmentSnapshots,
+    );
     const controller = new AbortController();
     const run = {
       ...turn,
@@ -130,6 +183,7 @@ export class SocialChatService {
       text: turn.userText,
       forwardedSources: turn.forwardedSources,
       replyTo: turn.replyTo,
+      interactionAdjustmentSnapshots,
       done: null,
     };
     run.done = this.runTurn(run);
@@ -168,6 +222,16 @@ export class SocialChatService {
       const agent = this.store.getAgent(agentId);
       const messages = [
         { role: 'system', content: agent.systemPrompt },
+        ...(run.interactionAdjustmentSnapshots?.length
+          ? [
+              {
+                role: 'system',
+                content: formatInteractionAdjustments(
+                  run.interactionAdjustmentSnapshots,
+                ),
+              },
+            ]
+          : []),
         ...(run.forwardedSources.length
           ? [
               {

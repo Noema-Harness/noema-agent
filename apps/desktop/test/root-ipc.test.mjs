@@ -44,6 +44,7 @@ test('registers only named root-agent actions and rejects non-window senders', a
     previewCodexThread: async (threadId) => ({ threadId }),
     importCodexThread: async (input) => input,
     removeContextImport: () => true,
+    addSocialInteractionAdjustment: async (input) => input,
     updateInteractionAdjustment: async (input) => input,
     withdrawInteractionAdjustment: (id) => id === 'adjustment-1',
   };
@@ -92,6 +93,7 @@ test('registers only named root-agent actions and rejects non-window senders', a
       CHANNELS.previewCodexThread,
       CHANNELS.importCodexThread,
       CHANNELS.removeContextImport,
+      CHANNELS.addSocialInteractionAdjustment,
       CHANNELS.updateInteractionAdjustment,
       CHANNELS.withdrawInteractionAdjustment,
       CHANNELS.quickCaptureShortcutStatus,
@@ -155,6 +157,21 @@ test('registers only named root-agent actions and rejects non-window senders', a
       'adjustment-1',
     ),
     true,
+  );
+  const socialAdjustment = {
+    sourceTurnId: 'social-turn-1',
+    sourceRoomId: 'room-noema',
+    scope: 'conversation',
+    situation: '用户分享一段经历',
+    behavior: '先自然回应，再继续交流。',
+    sourceQuote: '继续交流',
+  };
+  assert.deepEqual(
+    await harness.handlers.get(CHANNELS.addSocialInteractionAdjustment)(
+      { sender: trustedSender },
+      socialAdjustment,
+    ),
+    socialAdjustment,
   );
   assert.equal(
     await harness.handlers.get(CHANNELS.finishQuickCapture)({

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
+import { normalizeInteractionAdjustmentSnapshots } from './root-store.mjs';
 
-const SCHEMA_VERSION = 6;
+const SCHEMA_VERSION = 8;
 const MAX_CONTEXT_MESSAGES = 40;
 const MAX_FORWARDED_MESSAGES = 20;
 const MAX_FORWARDED_CONTENT_LENGTH = 40_000;
@@ -75,6 +76,15 @@ function hydrateMessage(row) {
     agentId: row.agentId ?? null,
     forwardedSources: JSON.parse(row.forwardedSourcesJson ?? '[]'),
     replyTo: JSON.parse(row.replyToJson ?? 'null'),
+    interactionAdjustmentIds: JSON.parse(
+      row.interactionAdjustmentIdsJson ?? '[]',
+    ),
+    interactionAdjustmentSnapshots: normalizeInteractionAdjustmentSnapshots(
+      JSON.parse(row.interactionAdjustmentSnapshotsJson ?? '[]'),
+    ),
+    interactionAdjustmentAttempts: JSON.parse(
+      row.interactionAdjustmentAttemptsJson ?? '[]',
+    ),
   };
 }
 
@@ -96,6 +106,12 @@ function hydrateSocialWorkTask(row) {
     practiceTrialVerificationStatus:
       row.practiceTrialVerificationStatus ?? null,
     practiceSnapshot: JSON.parse(row.practiceSnapshotJson ?? 'null'),
+    interactionAdjustmentIds: JSON.parse(
+      row.interactionAdjustmentIdsJson ?? '[]',
+    ),
+    interactionAdjustmentSnapshots: normalizeInteractionAdjustmentSnapshots(
+      JSON.parse(row.interactionAdjustmentSnapshotsJson ?? '[]'),
+    ),
   };
 }
 
@@ -309,6 +325,34 @@ export class SocialChatStore {
 
           INSERT INTO social_schema_migrations (version, applied_at)
           VALUES (6, '${isoNow()}');
+        `);
+      })();
+    }
+    if (current < 7) {
+      this.db.transaction(() => {
+        this.db.exec(`
+          ALTER TABLE social_messages
+            ADD COLUMN interaction_adjustment_ids_json TEXT NOT NULL DEFAULT '[]';
+          ALTER TABLE social_messages
+            ADD COLUMN interaction_adjustment_snapshots_json TEXT NOT NULL DEFAULT '[]';
+          ALTER TABLE social_work_tasks
+            ADD COLUMN interaction_adjustment_ids_json TEXT NOT NULL DEFAULT '[]';
+          ALTER TABLE social_work_tasks
+            ADD COLUMN interaction_adjustment_snapshots_json TEXT NOT NULL DEFAULT '[]';
+
+          INSERT INTO social_schema_migrations (version, applied_at)
+          VALUES (7, '${isoNow()}');
+        `);
+      })();
+    }
+    if (current < 8) {
+      this.db.transaction(() => {
+        this.db.exec(`
+          ALTER TABLE social_messages
+            ADD COLUMN interaction_adjustment_attempts_json TEXT NOT NULL DEFAULT '[]';
+
+          INSERT INTO social_schema_migrations (version, applied_at)
+          VALUES (8, '${isoNow()}');
         `);
       })();
     }
@@ -831,6 +875,9 @@ export class SocialChatStore {
                forwarded_sources_json AS forwardedSourcesJson,
                reply_to_message_id AS replyToMessageId,
                reply_to_json AS replyToJson,
+               interaction_adjustment_ids_json AS interactionAdjustmentIdsJson,
+               interaction_adjustment_snapshots_json AS interactionAdjustmentSnapshotsJson,
+               interaction_adjustment_attempts_json AS interactionAdjustmentAttemptsJson,
                created_at AS createdAt, updated_at AS updatedAt
         FROM social_messages WHERE room_id = ? ORDER BY seq ASC
       `)
@@ -866,11 +913,34 @@ export class SocialChatStore {
         practiceTrialTaskStatus: task.practiceTrialTaskStatus,
         practiceTrialVerificationStatus: task.practiceTrialVerificationStatus,
         practiceSnapshot: task.practiceSnapshot,
+        interactionAdjustmentIds: task.interactionAdjustmentIds,
+        interactionAdjustmentSnapshots: task.interactionAdjustmentSnapshots,
         createdAt: task.createdAt,
         updatedAt: task.updatedAt,
         completedAt: task.completedAt,
       })),
     };
+  }
+
+  getSocialMessage(messageId) {
+    const row = this.db
+      .prepare(`
+        SELECT id, room_id AS roomId, turn_id AS turnId, role,
+               agent_id AS agentId, content, status, attempt, model, runtime,
+               error_code AS errorCode, error_message AS errorMessage,
+               legacy_source_id AS legacySourceId,
+               forwarded_sources_json AS forwardedSourcesJson,
+               reply_to_message_id AS replyToMessageId,
+               reply_to_json AS replyToJson,
+               interaction_adjustment_ids_json AS interactionAdjustmentIdsJson,
+               interaction_adjustment_snapshots_json AS interactionAdjustmentSnapshotsJson,
+               interaction_adjustment_attempts_json AS interactionAdjustmentAttemptsJson,
+               created_at AS createdAt, updated_at AS updatedAt
+        FROM social_messages WHERE id = ?
+      `)
+      .get(requireText(messageId, '消息 ID', 200));
+    if (!row) throw new Error('找不到这个聊天消息。');
+    return hydrateMessage(row);
   }
 
   getAgent(agentId) {
@@ -1040,6 +1110,7 @@ export class SocialChatStore {
     caseReuseRequested = false,
     caseSnapshot = null,
     practiceSnapshot = null,
+    interactionAdjustmentSnapshots = [],
   }) {
     requireText(id, '任务 ID', 200);
     requireText(roomId, '房间 ID', 200);
@@ -1059,6 +1130,11 @@ export class SocialChatStore {
     requireText(workspaceKey, '工作区标识', 2_000);
     const normalizedPrompt = requireText(taskPrompt, '项目任务', 40_000);
     const normalizedModel = requireText(model, '模型路由', 200);
+    const normalizedAdjustmentSnapshots =
+      normalizeInteractionAdjustmentSnapshots(interactionAdjustmentSnapshots);
+    const interactionAdjustmentIds = normalizedAdjustmentSnapshots.map(
+      (adjustment) => adjustment.id,
+    );
     const now = isoNow();
     if (practiceSnapshot && caseSnapshot) {
       throw new Error('同一任务不能同时复制案例摘要和实践候选。');
@@ -1082,8 +1158,9 @@ export class SocialChatStore {
             (id, room_id, agent_id, workspace_path, workspace_key, task_prompt,
              model, runtime, status, verification_status,
              verification_checks_json, case_snapshot_json, case_reuse_requested,
-             practice_snapshot_json, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, 'dsh', 'starting', ?, ?, ?, ?, ?, ?, ?)
+             practice_snapshot_json, interaction_adjustment_ids_json,
+             interaction_adjustment_snapshots_json, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, 'dsh', 'starting', ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `)
         .run(
           id,
@@ -1098,6 +1175,8 @@ export class SocialChatStore {
           JSON.stringify(caseSnapshot),
           caseReuseRequested ? 1 : 0,
           JSON.stringify(practiceSnapshot),
+          JSON.stringify(interactionAdjustmentIds),
+          JSON.stringify(normalizedAdjustmentSnapshots),
           now,
           now,
         );
@@ -1159,6 +1238,8 @@ export class SocialChatStore {
                practice_trial_task_status AS practiceTrialTaskStatus,
                practice_trial_verification_status AS practiceTrialVerificationStatus,
                practice_snapshot_json AS practiceSnapshotJson,
+               interaction_adjustment_ids_json AS interactionAdjustmentIdsJson,
+               interaction_adjustment_snapshots_json AS interactionAdjustmentSnapshotsJson,
                created_at AS createdAt, updated_at AS updatedAt,
                completed_at AS completedAt
         FROM social_work_tasks WHERE id = ?
@@ -1193,6 +1274,8 @@ export class SocialChatStore {
                practice_trial_task_status AS practiceTrialTaskStatus,
                practice_trial_verification_status AS practiceTrialVerificationStatus,
                practice_snapshot_json AS practiceSnapshotJson,
+               interaction_adjustment_ids_json AS interactionAdjustmentIdsJson,
+               interaction_adjustment_snapshots_json AS interactionAdjustmentSnapshotsJson,
                created_at AS createdAt, updated_at AS updatedAt,
                completed_at AS completedAt
         FROM social_work_tasks WHERE room_id = ? ORDER BY created_at ASC
@@ -1688,6 +1771,7 @@ export class SocialChatStore {
     model,
     forwardedSources = [],
     replyTo = null,
+    interactionAdjustmentSnapshots = [],
   }) {
     const normalizedText = typeof text === 'string' ? text.trim() : '';
     if (normalizedText.length > 100_000) {
@@ -1713,6 +1797,12 @@ export class SocialChatStore {
     if (!normalizedText && forwardedSources.length === 0 && !replyTo) {
       throw new TypeError('消息不能为空。');
     }
+    const adjustmentSnapshots = normalizeInteractionAdjustmentSnapshots(
+      interactionAdjustmentSnapshots,
+    );
+    const adjustmentIds = adjustmentSnapshots.map(
+      (adjustment) => adjustment.id,
+    );
     if (
       replyTo &&
       (typeof replyTo.id !== 'string' ||
@@ -1762,10 +1852,29 @@ export class SocialChatStore {
           INSERT INTO social_messages
             (id, room_id, turn_id, role, agent_id, content, status, attempt,
              model, runtime, forwarded_sources_json, reply_to_message_id,
-             reply_to_json, created_at, updated_at)
-          VALUES (?, ?, ?, 'assistant', ?, '', 'streaming', 1, ?, 'freellmapi', '[]', NULL, 'null', ?, ?)
+             reply_to_json, interaction_adjustment_ids_json,
+             interaction_adjustment_snapshots_json,
+             interaction_adjustment_attempts_json, created_at, updated_at)
+          VALUES (?, ?, ?, 'assistant', ?, '', 'streaming', 1, ?, 'freellmapi', '[]', NULL, 'null', ?, ?, ?, ?, ?)
         `)
-        .run(assistantMessageId, roomId, turnId, agentId, model, now, now);
+        .run(
+          assistantMessageId,
+          roomId,
+          turnId,
+          agentId,
+          model,
+          JSON.stringify(adjustmentIds),
+          JSON.stringify(adjustmentSnapshots),
+          JSON.stringify([
+            {
+              attempt: 1,
+              interactionAdjustmentIds: adjustmentIds,
+              interactionAdjustmentSnapshots: adjustmentSnapshots,
+            },
+          ]),
+          now,
+          now,
+        );
       this.db
         .prepare('UPDATE social_rooms SET updated_at = ? WHERE id = ?')
         .run(now, roomId);
@@ -1779,6 +1888,8 @@ export class SocialChatStore {
       model,
       forwardedSources,
       replyTo,
+      interactionAdjustmentIds: adjustmentIds,
+      interactionAdjustmentSnapshots: adjustmentSnapshots,
     };
   }
 
@@ -1936,11 +2047,14 @@ export class SocialChatStore {
     );
   }
 
-  retryReply(messageId, model) {
+  retryReply(messageId, model, interactionAdjustmentSnapshots = []) {
     const row = this.db
       .prepare(`
         SELECT id, room_id AS roomId, turn_id AS turnId, agent_id AS agentId,
                attempt, status,
+               interaction_adjustment_ids_json AS interactionAdjustmentIdsJson,
+               interaction_adjustment_snapshots_json AS interactionAdjustmentSnapshotsJson,
+               interaction_adjustment_attempts_json AS interactionAdjustmentAttemptsJson,
                (SELECT u.id FROM social_messages AS u
                 WHERE u.turn_id = social_messages.turn_id AND u.role = 'user'
                 ORDER BY u.seq ASC LIMIT 1) AS userMessageId,
@@ -1966,18 +2080,55 @@ export class SocialChatStore {
     if (this.hasStreamingReply(row.roomId)) {
       throw new Error('这间聊天中已有回复正在生成。');
     }
+    const adjustmentSnapshots = normalizeInteractionAdjustmentSnapshots(
+      interactionAdjustmentSnapshots,
+    );
+    const adjustmentIds = adjustmentSnapshots.map(
+      (adjustment) => adjustment.id,
+    );
+    const interactionAdjustmentAttempts = JSON.parse(
+      row.interactionAdjustmentAttemptsJson ?? '[]',
+    );
+    if (interactionAdjustmentAttempts.length === 0) {
+      interactionAdjustmentAttempts.push({
+        attempt: row.attempt,
+        interactionAdjustmentIds: JSON.parse(
+          row.interactionAdjustmentIdsJson ?? '[]',
+        ),
+        interactionAdjustmentSnapshots: normalizeInteractionAdjustmentSnapshots(
+          JSON.parse(row.interactionAdjustmentSnapshotsJson ?? '[]'),
+        ),
+      });
+    }
+    interactionAdjustmentAttempts.push({
+      attempt: row.attempt + 1,
+      interactionAdjustmentIds: adjustmentIds,
+      interactionAdjustmentSnapshots: adjustmentSnapshots,
+    });
     const now = isoNow();
     this.db
       .prepare(`
         UPDATE social_messages SET content = '', status = 'streaming',
           attempt = attempt + 1, model = ?, error_code = NULL,
-          error_message = NULL, updated_at = ? WHERE id = ?
+          error_message = NULL, interaction_adjustment_ids_json = ?,
+          interaction_adjustment_snapshots_json = ?,
+          interaction_adjustment_attempts_json = ?, updated_at = ? WHERE id = ?
       `)
-      .run(model, now, messageId);
+      .run(
+        model,
+        JSON.stringify(adjustmentIds),
+        JSON.stringify(adjustmentSnapshots),
+        JSON.stringify(interactionAdjustmentAttempts),
+        now,
+        messageId,
+      );
     return {
       ...row,
       forwardedSources: JSON.parse(row.forwardedSourcesJson ?? '[]'),
       replyTo: JSON.parse(row.replyToJson ?? 'null'),
+      interactionAdjustmentIds: adjustmentIds,
+      interactionAdjustmentSnapshots: adjustmentSnapshots,
+      interactionAdjustmentAttempts,
       attempt: row.attempt + 1,
       model,
     };

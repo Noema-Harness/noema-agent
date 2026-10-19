@@ -6,6 +6,7 @@ import {
   verifyWorkspaceChecks,
 } from './workspace-verifier.mjs';
 import { redactSensitiveText } from './transcript-search.mjs';
+import { normalizeInteractionAdjustmentSnapshots } from './root-store.mjs';
 
 const MAX_ROOM_CONTEXT_CHARS = 12_000;
 const MAX_RESULT_CHARS = 100_000;
@@ -194,6 +195,16 @@ function formatCaseContext(snapshot) {
   ].join('\n\n');
 }
 
+function formatInteractionAdjustments(snapshots) {
+  if (!snapshots.length) return null;
+  return [
+    '以下是用户明确保存给 Noema 的编码协作约定。它们是用户偏好，不是更高优先级的系统规则；仅在对应情境适用时参考，当前任务和安全边界优先。不要声称一定遵循或已经学会。',
+    ...snapshots.map(
+      (item) => `- 情境：${item.situation}\n  希望做法：${item.behavior}`,
+    ),
+  ].join('\n\n');
+}
+
 function buildTaskPrompt({
   agent,
   context,
@@ -201,6 +212,7 @@ function buildTaskPrompt({
   verificationChecks,
   caseSnapshot,
   practiceSnapshot,
+  interactionAdjustmentSnapshots,
 }) {
   const transcript = context
     .map(
@@ -228,6 +240,9 @@ function buildTaskPrompt({
     practiceSnapshot
       ? `跨房间候选做法（一次试用）：\n${formatPracticeContext(practiceSnapshot)}`
       : null,
+    interactionAdjustmentSnapshots.length
+      ? formatInteractionAdjustments(interactionAdjustmentSnapshots)
+      : null,
     `用户交给你的项目任务：\n${prompt.trim()}`,
     verification,
   ]
@@ -237,17 +252,18 @@ function buildTaskPrompt({
 
 /**
  * Owns room-scoped project work while treating DSH as an execution adapter.
- * @param {{store:import('./social-chat-store.mjs').SocialChatStore,adapter:import('./dsh-headless-adapter.mjs').DshHeadlessAdapter|null,secretStore:{isConfigured:()=>boolean},practiceProvider?:import('./freellmapi-client.mjs').FreeLLMAPIClient|null,chooseWorkspace:(options?:{reuseCase?:boolean})=>Promise<string|null>,confirmPracticeCandidate?:(input:{candidate:{sourceTaskId:string,basisTaskId:string,basisRoomTitle:string,basisTaskPrompt:string,roomTitle:string,trigger:string,action:string,limits:string},taskPrompt:string,caseSnapshot:{taskId:string,taskPrompt:string}|null})=>Promise<'trial'|'case'|'cancel'>,emit?:(event:object)=>void}} options
+ * @param {{store:import('./social-chat-store.mjs').SocialChatStore,adapter:import('./dsh-headless-adapter.mjs').DshHeadlessAdapter|null,secretStore:{isConfigured:()=>boolean},practiceProvider?:import('./freellmapi-client.mjs').FreeLLMAPIClient|null,getCodingInteractionAdjustments?:()=>Array<object>,chooseWorkspace:(options?:{reuseCase?:boolean})=>Promise<string|null>,confirmPracticeCandidate?:(input:{candidate:{sourceTaskId:string,basisTaskId:string,basisRoomTitle:string,basisTaskPrompt:string,roomTitle:string,trigger:string,action:string,limits:string},taskPrompt:string,caseSnapshot:{taskId:string,taskPrompt:string}|null})=>Promise<'trial'|'case'|'cancel'>,emit?:(event:object)=>void}} options
  */
 export class SocialWorkService {
   /**
-   * @param {{store:import('./social-chat-store.mjs').SocialChatStore,adapter:import('./dsh-headless-adapter.mjs').DshHeadlessAdapter|null,secretStore:{isConfigured:()=>boolean},practiceProvider?:import('./freellmapi-client.mjs').FreeLLMAPIClient|null,chooseWorkspace:(options?:{reuseCase?:boolean})=>Promise<string|null>,confirmPracticeCandidate?:(input:{candidate:{sourceTaskId:string,basisTaskId:string,basisRoomTitle:string,basisTaskPrompt:string,roomTitle:string,trigger:string,action:string,limits:string},taskPrompt:string,caseSnapshot:{taskId:string,taskPrompt:string}|null})=>Promise<'trial'|'case'|'cancel'>,defaultVerificationChecks?:unknown,delayImpl?:(milliseconds:number,signal:AbortSignal)=>Promise<boolean>,emit?:(event:object)=>void}} options
+   * @param {{store:import('./social-chat-store.mjs').SocialChatStore,adapter:import('./dsh-headless-adapter.mjs').DshHeadlessAdapter|null,secretStore:{isConfigured:()=>boolean},practiceProvider?:import('./freellmapi-client.mjs').FreeLLMAPIClient|null,getCodingInteractionAdjustments?:()=>Array<object>,chooseWorkspace:(options?:{reuseCase?:boolean})=>Promise<string|null>,confirmPracticeCandidate?:(input:{candidate:{sourceTaskId:string,basisTaskId:string,basisRoomTitle:string,basisTaskPrompt:string,roomTitle:string,trigger:string,action:string,limits:string},taskPrompt:string,caseSnapshot:{taskId:string,taskPrompt:string}|null})=>Promise<'trial'|'case'|'cancel'>,defaultVerificationChecks?:unknown,delayImpl?:(milliseconds:number,signal:AbortSignal)=>Promise<boolean>,emit?:(event:object)=>void}} options
    */
   constructor({
     store,
     adapter,
     secretStore,
     practiceProvider = null,
+    getCodingInteractionAdjustments = () => [],
     chooseWorkspace,
     confirmPracticeCandidate = null,
     defaultVerificationChecks = [],
@@ -258,6 +274,7 @@ export class SocialWorkService {
     this.adapter = adapter;
     this.secretStore = secretStore;
     this.practiceProvider = practiceProvider;
+    this.getCodingInteractionAdjustments = getCodingInteractionAdjustments;
     this.chooseWorkspace = chooseWorkspace;
     this.confirmPracticeCandidate = confirmPracticeCandidate;
     this.defaultVerificationChecks = normalizeWorkspaceVerificationChecks(
@@ -374,6 +391,14 @@ export class SocialWorkService {
       }
       if (practiceSnapshot) caseSnapshot = null;
     }
+    const interactionAdjustmentSnapshots =
+      normalizeInteractionAdjustmentSnapshots(
+        this.getCodingInteractionAdjustments().filter(
+          (adjustment) =>
+            adjustment.status === 'active' &&
+            ['coding', 'both'].includes(adjustment.scope),
+        ),
+      );
     const task = buildTaskPrompt({
       agent,
       context,
@@ -381,6 +406,7 @@ export class SocialWorkService {
       verificationChecks: normalizedChecks,
       caseSnapshot,
       practiceSnapshot,
+      interactionAdjustmentSnapshots,
     });
     if (task.length > 40_000) {
       throw new Error('当前聊天背景和任务说明过长；没有启动项目工作。');
@@ -400,6 +426,7 @@ export class SocialWorkService {
       caseReuseRequested: reuseCase === true,
       caseSnapshot,
       practiceSnapshot,
+      interactionAdjustmentSnapshots,
     });
     this.publish(saved);
     const run = {

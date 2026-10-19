@@ -88,6 +88,14 @@ const bridge = {
     expectedSourceUpdatedAt: string | number | null;
   }) => ipcRenderer.invoke('noema:import-codex-thread', input),
   removeContextImport: () => ipcRenderer.invoke('noema:remove-context-import'),
+  addSocialInteractionAdjustment: (input: {
+    sourceTurnId: string;
+    sourceRoomId: string;
+    scope: 'conversation' | 'coding' | 'both';
+    situation: string;
+    behavior: string;
+    sourceQuote: string;
+  }) => ipcRenderer.invoke('noema:add-social-interaction-adjustment', input),
   updateInteractionAdjustment: (input: {
     id: string;
     scope: 'conversation' | 'coding' | 'both';

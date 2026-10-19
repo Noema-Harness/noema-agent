@@ -110,12 +110,23 @@ function normalizeInteractionAdjustmentSnapshots(snapshots) {
       situation,
       behavior,
       sourceQuote,
+      sourceSurface = 'root',
+      sourceRoomId = null,
       userEdited,
       editedAt,
     } = snapshot;
     requireText(id, 'adjustment id', 200);
     if (!['conversation', 'coding', 'both'].includes(scope)) {
       throw new TypeError('互动调整适用范围无效。');
+    }
+    if (!['root', 'social'].includes(sourceSurface)) {
+      throw new TypeError('互动调整来源类型无效。');
+    }
+    if (
+      sourceRoomId !== null &&
+      (typeof sourceRoomId !== 'string' || sourceRoomId.length > 200)
+    ) {
+      throw new TypeError('互动调整来源聊天空间无效。');
     }
     const normalizedSituation = requireText(situation, 'situation', 180).trim();
     const normalizedBehavior = requireText(behavior, 'behavior', 240).trim();
@@ -136,6 +147,8 @@ function normalizeInteractionAdjustmentSnapshots(snapshots) {
     return {
       id,
       scope,
+      sourceSurface,
+      sourceRoomId,
       situation: normalizedSituation,
       behavior: normalizedBehavior,
       sourceQuote: normalizedSourceQuote,
@@ -617,7 +630,63 @@ export class RootStore {
       });
       applyHistorySourceDeliverySchema();
     }
-    if (currentVersion > 13)
+    if (currentVersion < 14) {
+      const applyInteractionAdjustmentSourceSchema = this.db.transaction(() => {
+        const hasAdjustmentTable = Boolean(
+          this.db
+            .prepare(
+              "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'interaction_adjustments'",
+            )
+            .get(),
+        );
+        this.db.exec(`
+          CREATE TABLE interaction_adjustments_next (
+            seq INTEGER PRIMARY KEY AUTOINCREMENT,
+            id TEXT NOT NULL UNIQUE,
+            source_surface TEXT NOT NULL CHECK (source_surface IN ('root', 'social')),
+            source_room_id TEXT,
+            source_turn_id TEXT NOT NULL,
+            scope TEXT NOT NULL CHECK (scope IN ('conversation', 'coding', 'both')),
+            situation TEXT NOT NULL CHECK (length(situation) BETWEEN 1 AND 180),
+            behavior TEXT NOT NULL CHECK (length(behavior) BETWEEN 1 AND 240),
+            source_quote TEXT NOT NULL CHECK (length(source_quote) BETWEEN 1 AND 240),
+            status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'withdrawn')),
+            created_at TEXT NOT NULL,
+            withdrawn_at TEXT,
+            original_scope TEXT CHECK (original_scope IS NULL OR original_scope IN ('conversation', 'coding', 'both')),
+            original_situation TEXT,
+            original_behavior TEXT,
+            user_edited INTEGER NOT NULL DEFAULT 0 CHECK (user_edited IN (0, 1)),
+            edited_at TEXT,
+            UNIQUE (source_surface, source_turn_id)
+          );
+        `);
+        if (hasAdjustmentTable) {
+          this.db.exec(`
+            INSERT INTO interaction_adjustments_next (
+              seq, id, source_surface, source_room_id, source_turn_id, scope,
+              situation, behavior, source_quote, status, created_at, withdrawn_at,
+              original_scope, original_situation, original_behavior, user_edited,
+              edited_at
+            )
+            SELECT seq, id, 'root', NULL, source_turn_id, scope,
+              situation, behavior, source_quote, status, created_at, withdrawn_at,
+              original_scope, original_situation, original_behavior, user_edited,
+              edited_at
+            FROM interaction_adjustments;
+            DROP TABLE interaction_adjustments;
+          `);
+        }
+        this.db.exec(`
+          ALTER TABLE interaction_adjustments_next RENAME TO interaction_adjustments;
+          CREATE INDEX interaction_adjustments_status_order
+            ON interaction_adjustments(status, seq DESC);
+          INSERT INTO schema_migrations (version, applied_at) VALUES (14, '${nowIso()}');
+        `);
+      });
+      applyInteractionAdjustmentSourceSchema();
+    }
+    if (currentVersion > 14)
       throw new Error(
         `Database schema ${currentVersion} is newer than this Noema build supports`,
       );
@@ -1523,11 +1592,23 @@ export class RootStore {
           {
             type: 'interaction_adjustments',
             adjustments: interactionAdjustmentSnapshots.map(
-              ({ id, scope, situation, behavior, userEdited }) => ({
+              ({
                 id,
                 scope,
                 situation,
                 behavior,
+                sourceSurface,
+                sourceRoomId,
+                sourceQuote,
+                userEdited,
+              }) => ({
+                id,
+                scope,
+                situation,
+                behavior,
+                sourceSurface,
+                sourceRoomId,
+                sourceQuote,
                 userEdited,
               }),
             ),
@@ -1725,7 +1806,9 @@ export class RootStore {
         : ['coding', 'both'];
     return this.db
       .prepare(`
-        SELECT id, source_turn_id AS sourceTurnId, scope, situation, behavior,
+        SELECT id, source_surface AS sourceSurface,
+          source_room_id AS sourceRoomId,
+          source_turn_id AS sourceTurnId, scope, situation, behavior,
           source_quote AS sourceQuote, status,
           original_scope AS originalScope,
           original_situation AS originalSituation,
@@ -1744,11 +1827,13 @@ export class RootStore {
   }
 
   /**
-   * @param {{id:string,sourceTurnId:string,scope:'conversation'|'coding'|'both',situation:string,behavior:string,sourceQuote:string}} input
+   * @param {{id:string,sourceTurnId:string,sourceSurface?:'root'|'social',sourceRoomId?:string|null,scope:'conversation'|'coding'|'both',situation:string,behavior:string,sourceQuote:string}} input
    */
   addInteractionAdjustment({
     id,
     sourceTurnId,
+    sourceSurface = 'root',
+    sourceRoomId = null,
     scope,
     situation,
     behavior,
@@ -1756,26 +1841,49 @@ export class RootStore {
   }) {
     requireText(id, 'adjustment id', 200);
     requireText(sourceTurnId, 'source turn id', 200);
+    if (!['root', 'social'].includes(sourceSurface)) {
+      throw new TypeError('互动调整来源类型无效。');
+    }
+    if (sourceSurface === 'social') {
+      requireText(sourceRoomId, 'source room id', 200);
+    } else if (sourceRoomId !== null) {
+      throw new TypeError('根对话互动调整不应带聊天空间 ID。');
+    }
     if (!['conversation', 'coding', 'both'].includes(scope)) {
       throw new TypeError('互动调整适用范围无效。');
     }
     requireText(situation, 'situation', 180);
     requireText(behavior, 'behavior', 240);
     requireText(sourceQuote, 'source quote', 240);
-    const source = this.db
-      .prepare(`
-        SELECT content FROM root_messages
-        WHERE turn_id = ? AND role = 'user' AND attempt = 1
-      `)
-      .get(sourceTurnId);
+    const source =
+      sourceSurface === 'root'
+        ? this.db
+            .prepare(`
+              SELECT content FROM root_messages
+              WHERE turn_id = ? AND role = 'user' AND attempt = 1
+            `)
+            .get(sourceTurnId)
+        : this.db
+            .prepare(`
+              SELECT m.content
+              FROM social_messages AS m
+              JOIN social_rooms AS r ON r.id = m.room_id
+              JOIN social_room_members AS member
+                ON member.room_id = r.id AND member.agent_id = 'noema'
+              WHERE m.turn_id = ? AND m.room_id = ? AND r.kind = 'direct'
+                AND m.role = 'user' AND m.status = 'complete'
+              LIMIT 1
+            `)
+            .get(sourceTurnId, sourceRoomId);
     if (!source || !source.content.includes(sourceQuote)) {
       throw new TypeError('互动调整没有引用本轮用户原话，未保存。');
     }
     const existing = this.db
       .prepare(`
-        SELECT id FROM interaction_adjustments WHERE source_turn_id = ?
+        SELECT id FROM interaction_adjustments
+        WHERE source_surface = ? AND source_turn_id = ?
       `)
-      .get(sourceTurnId);
+      .get(sourceSurface, sourceTurnId);
     if (existing) {
       return this.getInteractionAdjustment(existing.id);
     }
@@ -1794,11 +1902,14 @@ export class RootStore {
       this.db
         .prepare(`
         INSERT INTO interaction_adjustments (
-          id, source_turn_id, scope, situation, behavior, source_quote, status, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, 'active', ?)
+          id, source_surface, source_room_id, source_turn_id, scope,
+          situation, behavior, source_quote, status, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)
       `)
         .run(
           id,
+          sourceSurface,
+          sourceRoomId,
           sourceTurnId,
           scope,
           situation.trim(),
@@ -1825,7 +1936,9 @@ export class RootStore {
   getInteractionAdjustment(id) {
     const adjustment = this.db
       .prepare(`
-          SELECT a.id, a.source_turn_id AS sourceTurnId, a.scope,
+          SELECT a.id, a.source_surface AS sourceSurface,
+            a.source_room_id AS sourceRoomId,
+            a.source_turn_id AS sourceTurnId, a.scope,
             a.situation, a.behavior, a.status,
             a.created_at AS createdAt, a.withdrawn_at AS withdrawnAt,
             a.source_quote AS sourceQuote,
@@ -1834,8 +1947,6 @@ export class RootStore {
             a.original_behavior AS originalBehavior,
             a.user_edited AS userEdited, a.edited_at AS editedAt
           FROM interaction_adjustments AS a
-          JOIN root_messages AS m
-            ON m.turn_id = a.source_turn_id AND m.role = 'user' AND m.attempt = 1
           WHERE a.id = ?
         `)
       .get(id);
@@ -1847,7 +1958,9 @@ export class RootStore {
   getInteractionAdjustments() {
     return this.db
       .prepare(`
-        SELECT a.id, a.source_turn_id AS sourceTurnId, a.scope,
+        SELECT a.id, a.source_surface AS sourceSurface,
+          a.source_room_id AS sourceRoomId,
+          a.source_turn_id AS sourceTurnId, a.scope,
           a.situation, a.behavior, a.status,
           a.created_at AS createdAt, a.withdrawn_at AS withdrawnAt,
           a.source_quote AS sourceQuote,
@@ -1856,8 +1969,6 @@ export class RootStore {
           a.original_behavior AS originalBehavior,
           a.user_edited AS userEdited, a.edited_at AS editedAt
         FROM interaction_adjustments AS a
-        JOIN root_messages AS m
-          ON m.turn_id = a.source_turn_id AND m.role = 'user' AND m.attempt = 1
         ORDER BY a.seq ASC
       `)
       .all()
@@ -2181,4 +2292,4 @@ export class RootStore {
   }
 }
 
-export { MAX_MESSAGE_LENGTH };
+export { MAX_MESSAGE_LENGTH, normalizeInteractionAdjustmentSnapshots };

@@ -36,3 +36,5 @@ Noema 是独立的个人 agent 应用，由用户拥有其身份、连续性和�
 本文件保持为短的项目契约。Codex 专用的可复用流程放在 `.codex/skills/`，长任务计划规范放在 `.agents/PLANS.md`，详细背景放在所链接文档中。Skill 描述要短且有明确触发条件；不要靠叠加 prompt、skill 或 hook 替代明确的代码边界和持久状态设计。
 
 创建或明显修改用户可见界面时，按需读取 `.codex/skills/noema-interface-quality/SKILL.md`。任何单一设计 Skill、组件库、模板目录或随机概念选择都只是工具，不是 Noema 的审美来源。先从当前用户任务与 Noema 独有机制推导界面结构，再用成熟设计系统和审计型 Skill 检查可用性、可访问性、状态反馈与实现质量；把可验证的质量标准和可替换的风格处方分开。只有在真实运行界面中检查过主要状态后，才报告视觉交付完成。
+
+排查或验证 FreeLLMAPI 调用时，先读取 `.codex/skills/freellmapi-operations/SKILL.md`；它区分网关连接、模型目录与真实生成，并记录本机可复用的验证流程。

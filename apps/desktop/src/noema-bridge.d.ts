@@ -162,6 +162,13 @@ export interface NoemaSocialMessage {
   legacySourceId: string | null;
   forwardedSources: NoemaSocialForwardedSource[];
   replyTo: NoemaSocialReplySource | null;
+  interactionAdjustmentIds: string[];
+  interactionAdjustmentSnapshots: NoemaInteractionAdjustmentSnapshot[];
+  interactionAdjustmentAttempts: Array<{
+    attempt: number;
+    interactionAdjustmentIds: string[];
+    interactionAdjustmentSnapshots: NoemaInteractionAdjustmentSnapshot[];
+  }>;
   createdAt: string;
   updatedAt: string;
 }
@@ -196,6 +203,7 @@ export type NoemaSocialState = Pick<
   | 'providerBaseUrl'
   | 'providerName'
 > & {
+  interactionAdjustments: NoemaInteractionAdjustment[];
   agents: NoemaSocialAgent[];
   rooms: NoemaSocialRoom[];
   projectWork: { available: boolean; reason: string | null };
@@ -283,6 +291,8 @@ export interface NoemaSocialWorkTask {
     limits: string;
     proposedAt: string;
   } | null;
+  interactionAdjustmentIds: string[];
+  interactionAdjustmentSnapshots: NoemaInteractionAdjustmentSnapshot[];
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
@@ -343,6 +353,8 @@ export interface NoemaCapture {
 
 export interface NoemaInteractionAdjustment {
   id: string;
+  sourceSurface: 'root' | 'social';
+  sourceRoomId: string | null;
   sourceTurnId: string;
   scope: 'conversation' | 'coding' | 'both';
   situation: string;
@@ -360,6 +372,8 @@ export interface NoemaInteractionAdjustment {
 
 export interface NoemaInteractionAdjustmentSnapshot {
   id: string;
+  sourceSurface: 'root' | 'social';
+  sourceRoomId: string | null;
   scope: 'conversation' | 'coding' | 'both';
   situation: string;
   behavior: string;
@@ -583,6 +597,14 @@ export interface NoemaBridge {
     expectedSourceUpdatedAt: string | number | null;
   }): Promise<NoemaContextImport>;
   removeContextImport(): Promise<boolean>;
+  addSocialInteractionAdjustment(input: {
+    sourceTurnId: string;
+    sourceRoomId: string;
+    scope: 'conversation' | 'coding' | 'both';
+    situation: string;
+    behavior: string;
+    sourceQuote: string;
+  }): Promise<NoemaInteractionAdjustment>;
   updateInteractionAdjustment(input: {
     id: string;
     scope: 'conversation' | 'coding' | 'both';
