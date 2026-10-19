@@ -17,5 +17,6 @@
 - `0021-buffer-free-router-replies.md`：FreeLLMAPI 自动路由请求用完整响应模式，让网关在交付前完成上游回退；直连模型保留流式，并要求流式回复有完整结束标记。
 - `0022-one-shot-practice-trial.md`：仅将已独立核验且经历过一次修复的工程任务转成有界候选，并在同好友/同 workspace 的另一个 room 做一次可撤回试用；不宣称已学会或自动晋升长期技能。
 - `0023-review-practice-before-dispatch.md`：模型生成的跨房间候选必须在派发前向用户展示来源、触发、做法与边界；普通经验复用勾选不自动授权把某条隐藏候选注入任务。
+- `0024-interaction-adjustments-in-social-chat.md`：复用 RootStore 的明确互动调整，让它能在 Noema 当前社交聊天与项目任务主路径保存、分范围应用和查看快照；不自动总结普通聊天，也不让专业好友继承 Noema 的对话约定。
 
 不要把未决问题伪装成已接受架构；新决定替代旧决定时保留历史并互相链接。

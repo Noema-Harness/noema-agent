@@ -410,6 +410,18 @@ export class RootAgent {
     return withdrawn;
   }
 
+  addSocialInteractionAdjustment(input) {
+    const adjustment = this.store.addInteractionAdjustment({
+      ...input,
+      id: randomUUID(),
+      sourceSurface: 'social',
+    });
+    if (adjustment.status === 'active') {
+      this.emit({ type: 'interaction-adjustments-updated' });
+    }
+    return adjustment;
+  }
+
   updateInteractionAdjustment(input) {
     const adjustment = this.store.updateInteractionAdjustment(input);
     if (adjustment) this.emit({ type: 'interaction-adjustments-updated' });
@@ -1073,6 +1085,8 @@ export class RootAgent {
             situation,
             behavior,
             sourceQuote,
+            sourceSurface,
+            sourceRoomId,
             userEdited,
             editedAt,
           }) => ({
@@ -1081,6 +1095,8 @@ export class RootAgent {
             situation,
             behavior,
             sourceQuote,
+            sourceSurface,
+            sourceRoomId,
             userEdited,
             editedAt,
           }),

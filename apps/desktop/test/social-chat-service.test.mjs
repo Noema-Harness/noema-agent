@@ -84,6 +84,120 @@ test('social chat sends only the selected room transcript and persists the real 
   }
 });
 
+test('Noema chat injects only conversation-scoped adjustments and snapshots them per reply', async () => {
+  const db = new Database(':memory:');
+  const root = new RootStore(db);
+  const store = new SocialChatStore(db);
+  const source = store.beginTurn({
+    roomId: 'room-noema',
+    agentId: 'noema',
+    text: '分享经历时请先接住我，再决定要不要分析。',
+    model: 'seed-model',
+  });
+  store.appendAssistantDelta(source.assistantMessageId, '明白。');
+  store.completeReply(source.assistantMessageId);
+  const conversationAdjustment = root.addInteractionAdjustment({
+    id: 'conversation-adjustment',
+    sourceSurface: 'social',
+    sourceRoomId: 'room-noema',
+    sourceTurnId: source.turnId,
+    scope: 'conversation',
+    situation: '用户分享一段不愉快的经历',
+    behavior: '先回应当下感受，再问是否需要一起分析。',
+    sourceQuote: '先接住我',
+  });
+  const codingSource = store.beginTurn({
+    roomId: 'room-noema',
+    agentId: 'noema',
+    text: '编码时先列清关键验收项。',
+    model: 'seed-model',
+  });
+  store.appendAssistantDelta(codingSource.assistantMessageId, '记下了。');
+  store.completeReply(codingSource.assistantMessageId);
+  root.addInteractionAdjustment({
+    id: 'coding-adjustment',
+    sourceSurface: 'social',
+    sourceRoomId: 'room-noema',
+    sourceTurnId: codingSource.turnId,
+    scope: 'coding',
+    situation: '开始项目编码工作',
+    behavior: '先明确可独立检查的验收项。',
+    sourceQuote: '关键验收项',
+  });
+  const requests = [];
+  const service = new SocialChatService({
+    store,
+    provider: {
+      async *streamChat(input) {
+        requests.push(input);
+        yield '先聊这件事本身。';
+      },
+    },
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'test-model',
+    getRootState: async () => ({
+      connected: true,
+      selectedModel: 'test-model',
+    }),
+    getInteractionAdjustments: () => root.getInteractionAdjustments(),
+  });
+
+  try {
+    service.sendMessage({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '今天和家人聊得不太顺。',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await service.active.get('room-noema')?.done;
+
+    const adjustmentContext = requests[0].messages.find((message) =>
+      message.content.includes('用户明确保存给 Noema 的互动约定'),
+    );
+    assert.ok(adjustmentContext);
+    assert.match(adjustmentContext.content, /先回应当下感受/);
+    assert.doesNotMatch(adjustmentContext.content, /明确可独立检查的验收项/);
+    const reply = store
+      .getRoomSnapshot('room-noema')
+      .messages.find(
+        (message) =>
+          message.role === 'assistant' &&
+          message.content === '先聊这件事本身。',
+      );
+    assert.deepEqual(reply?.interactionAdjustmentIds, [
+      conversationAdjustment.id,
+    ]);
+    assert.deepEqual(
+      reply?.interactionAdjustmentAttempts[0].interactionAdjustmentIds,
+      [conversationAdjustment.id],
+    );
+
+    service.sendMessage({
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      text: '请看看这个项目方案。',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await service.active.get('room-engineering-partner')?.done;
+    assert.equal(
+      requests[1].messages.some((message) =>
+        message.content.includes('互动约定'),
+      ),
+      false,
+    );
+    const socialState = await service.getUiState();
+    assert.equal(
+      socialState.interactionAdjustments.some(
+        (adjustment) => adjustment.id === conversationAdjustment.id,
+      ),
+      true,
+    );
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});
+
 test('a user-created specialist receives only messages explicitly forwarded into the target room', async () => {
   const db = new Database(':memory:');
   new RootStore(db);

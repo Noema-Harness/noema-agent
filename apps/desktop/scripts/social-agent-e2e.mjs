@@ -65,6 +65,14 @@ const forwardNarrowScreenshotPath = path.join(
   e2eRoot,
   `Noema-cross-room-forward-narrow-${screenshotTag}.png`,
 );
+const interactionDesktopScreenshotPath = path.join(
+  e2eRoot,
+  `Noema-interaction-adjustment-desktop-${screenshotTag}.png`,
+);
+const interactionNarrowScreenshotPath = path.join(
+  e2eRoot,
+  `Noema-interaction-adjustment-narrow-${screenshotTag}.png`,
+);
 mkdirSync(dshUserDataPath, { recursive: true });
 const seedDatabase = new Database(databasePath);
 const seedRoot = new RootStore(seedDatabase);
@@ -92,6 +100,17 @@ seedSocial.appendAssistantDelta(
   '记录了紫水晶。',
 );
 seedSocial.completeReply(unrelatedTurn.assistantMessageId);
+const interactionSource = seedSocial.beginTurn({
+  roomId: 'room-noema',
+  agentId: 'noema',
+  text: 'E2E 原话标记：分享不愉快经历时，请先问我最在意的部分。',
+  model: 'e2e-forward-seed',
+});
+seedSocial.appendAssistantDelta(
+  interactionSource.assistantMessageId,
+  '我会先听你说，再决定是否需要一起分析。',
+);
+seedSocial.completeReply(interactionSource.assistantMessageId);
 seedDatabase.close();
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -118,6 +137,9 @@ const child = spawn(process.execPath, ['scripts/start.mjs'], {
     NOEMA_SMOKE_SOCIAL_AGENT_CONTACT_NARROW_PATH: contactNarrowScreenshotPath,
     NOEMA_SMOKE_SOCIAL_FORWARD_DESKTOP_PATH: forwardDesktopScreenshotPath,
     NOEMA_SMOKE_SOCIAL_FORWARD_NARROW_PATH: forwardNarrowScreenshotPath,
+    NOEMA_SMOKE_SOCIAL_ADJUSTMENT_DESKTOP_PATH:
+      interactionDesktopScreenshotPath,
+    NOEMA_SMOKE_SOCIAL_ADJUSTMENT_NARROW_PATH: interactionNarrowScreenshotPath,
   },
   stdio: 'inherit',
   windowsHide: true,
@@ -158,6 +180,8 @@ const summary = {
   contactNarrowScreenshotPath,
   forwardDesktopScreenshotPath,
   forwardNarrowScreenshotPath,
+  interactionDesktopScreenshotPath,
+  interactionNarrowScreenshotPath,
 };
 console.log(JSON.stringify(summary, null, 2));
 
@@ -165,6 +189,13 @@ if (
   result.outcome !== 'passed' ||
   !result.workflow?.cancelReturnedFocus ||
   !result.workflow?.initialDirectIsEmpty ||
+  !result.workflow?.interactionAdjustments?.created ||
+  !result.workflow?.interactionAdjustments?.sourceValidated ||
+  !result.workflow?.interactionAdjustments?.usedOnNoemaReply ||
+  !result.workflow?.interactionAdjustments?.updated ||
+  !result.workflow?.interactionAdjustments?.usedUpdatedBehavior ||
+  !result.workflow?.interactionAdjustments?.withdrawn ||
+  !result.workflow?.interactionAdjustments?.notUsedAfterWithdrawal ||
   !result.workflow?.projectWorkDefaultedOff ||
   !result.workflow?.capabilityWasExplicitlyGranted ||
   !result.workflow?.projectWorkOptInAndReversible ||
@@ -194,6 +225,8 @@ if (
   (liveProviderE2e && !result.workflow?.forwarding?.liveProviderUsed) ||
   !existsSync(forwardDesktopScreenshotPath) ||
   !existsSync(forwardNarrowScreenshotPath) ||
+  !existsSync(interactionDesktopScreenshotPath) ||
+  !existsSync(interactionNarrowScreenshotPath) ||
   !existsSync(desktopScreenshotPath) ||
   !existsSync(narrowScreenshotPath) ||
   !existsSync(contactDesktopScreenshotPath) ||

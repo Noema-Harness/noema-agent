@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { RootStore } from '../src/root-store.mjs';
+import { SocialChatStore } from '../src/social-chat-store.mjs';
 
 function memoryStore() {
   return new RootStore(':memory:');
@@ -17,7 +18,7 @@ test('root store migrates idempotently and persists the selected model', () => {
     store.db
       .prepare('SELECT MAX(version) AS version FROM schema_migrations')
       .get().version,
-    13,
+    14,
   );
   store.setSelectedModel('free-router');
   assert.equal(store.getSelectedModel(), 'free-router');
@@ -210,7 +211,7 @@ test('schema-v12 databases add history delivery status without rewriting prior s
   assert.equal(
     db.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()
       .version,
-    13,
+    14,
   );
   assert.equal(
     db
@@ -259,7 +260,7 @@ test('a schema-v4 database upgrades through interaction and verification state',
     store.db
       .prepare('SELECT MAX(version) AS version FROM schema_migrations')
       .get().version,
-    13,
+    14,
   );
   assert.equal(
     store.db
@@ -370,6 +371,8 @@ test('schema-v9 migration snapshots existing adjustments without guessing older 
       situation: 'Original situation',
       behavior: 'Original behavior',
       sourceQuote: 'original quote',
+      sourceSurface: 'root',
+      sourceRoomId: null,
       userEdited: false,
       editedAt: null,
     },
@@ -378,7 +381,7 @@ test('schema-v9 migration snapshots existing adjustments without guessing older 
   assert.equal(
     db.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()
       .version,
-    13,
+    14,
   );
   assert.deepEqual(readSnapshots('root_messages', 'assistant-2'), expected);
   assert.deepEqual(readSnapshots('root_messages', 'assistant-1'), []);
@@ -439,7 +442,7 @@ test('schema-v9 migration backfills only the latest root attempt and task snapsh
   assert.equal(
     db.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()
       .version,
-    13,
+    14,
   );
   assert.deepEqual(JSON.parse(latestAttempt.snapshots), [
     {
@@ -448,6 +451,8 @@ test('schema-v9 migration backfills only the latest root attempt and task snapsh
       situation: 'Original situation',
       behavior: 'Original behavior',
       sourceQuote: 'original quote',
+      sourceSurface: 'root',
+      sourceRoomId: null,
       userEdited: false,
       editedAt: null,
     },
@@ -460,6 +465,8 @@ test('schema-v9 migration backfills only the latest root attempt and task snapsh
       situation: 'Original situation',
       behavior: 'Original behavior',
       sourceQuote: 'original quote',
+      sourceSurface: 'root',
+      sourceRoomId: null,
       userEdited: false,
       editedAt: null,
     },
@@ -695,6 +702,75 @@ test('interaction adjustments require a quoted user correction and stay scoped',
   );
   assert.deepEqual(store.getInteractionAdjustmentsForSurface('coding'), []);
   store.close();
+});
+
+test('social interaction adjustments require a completed exact quote from the Noema direct message', () => {
+  const db = new Database(':memory:');
+  const root = new RootStore(db);
+  const social = new SocialChatStore(db);
+  const direct = social.beginTurn({
+    roomId: 'room-noema',
+    agentId: 'noema',
+    text: '遇到阻塞时，请先告诉我真实原因，再继续能做的部分。',
+    model: 'test-model',
+  });
+  const adjustment = root.addInteractionAdjustment({
+    id: 'social-adjustment-1',
+    sourceSurface: 'social',
+    sourceRoomId: 'room-noema',
+    sourceTurnId: direct.turnId,
+    scope: 'both',
+    situation: '任务遇到可恢复的阻塞',
+    behavior: '说明具体阻塞，并继续推进不受影响的工作。',
+    sourceQuote: '先告诉我真实原因',
+  });
+
+  assert.equal(adjustment.sourceSurface, 'social');
+  assert.equal(adjustment.sourceRoomId, 'room-noema');
+  assert.deepEqual(
+    root.getInteractionAdjustmentsForSurface('coding').map((item) => item.id),
+    ['social-adjustment-1'],
+  );
+
+  const group = social.createGroup({
+    title: 'Noema 与工程搭档',
+    agentIds: ['noema', 'engineering-partner'],
+  });
+  const groupTurn = social.beginTurn({
+    roomId: group.room.id,
+    agentId: 'noema',
+    text: '这是群聊中的另一个请求。',
+    model: 'test-model',
+  });
+  assert.throws(
+    () =>
+      root.addInteractionAdjustment({
+        id: 'social-adjustment-group',
+        sourceSurface: 'social',
+        sourceRoomId: group.room.id,
+        sourceTurnId: groupTurn.turnId,
+        scope: 'conversation',
+        situation: '群聊内容',
+        behavior: '不应从群聊创建 Noema 专属约定。',
+        sourceQuote: '群聊中的另一个请求',
+      }),
+    /没有引用本轮用户原话/,
+  );
+  assert.throws(
+    () =>
+      root.addInteractionAdjustment({
+        id: 'social-adjustment-wrong-room',
+        sourceSurface: 'social',
+        sourceRoomId: 'room-engineering-partner',
+        sourceTurnId: direct.turnId,
+        scope: 'conversation',
+        situation: '错误 room 来源',
+        behavior: '不可跨 room 挂接来源。',
+        sourceQuote: '先告诉我真实原因',
+      }),
+    /没有引用本轮用户原话/,
+  );
+  root.close();
 });
 
 test('conversation-scoped adjustments survive the recent-turn window until withdrawn', () => {

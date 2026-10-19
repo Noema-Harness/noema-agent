@@ -50,7 +50,7 @@ test('social schema seeds stable identities and keeps one agent across independe
       db
         .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
         .get().version,
-      6,
+      8,
     );
   } finally {
     db.close();
@@ -101,11 +101,16 @@ test('social chat schema v1 upgrades additively to project-work state', () => {
       DELETE FROM social_schema_migrations WHERE version = 4;
       DELETE FROM social_schema_migrations WHERE version = 5;
       DELETE FROM social_schema_migrations WHERE version = 6;
+      DELETE FROM social_schema_migrations WHERE version = 7;
+      DELETE FROM social_schema_migrations WHERE version = 8;
       ALTER TABLE social_agents DROP COLUMN capabilities_json;
       ALTER TABLE social_agents DROP COLUMN archived_at;
       ALTER TABLE social_messages DROP COLUMN forwarded_sources_json;
       ALTER TABLE social_messages DROP COLUMN reply_to_message_id;
       ALTER TABLE social_messages DROP COLUMN reply_to_json;
+      ALTER TABLE social_messages DROP COLUMN interaction_adjustment_ids_json;
+      ALTER TABLE social_messages DROP COLUMN interaction_adjustment_snapshots_json;
+      ALTER TABLE social_messages DROP COLUMN interaction_adjustment_attempts_json;
     `);
 
     const upgraded = new SocialChatStore(db);
@@ -121,7 +126,7 @@ test('social chat schema v1 upgrades additively to project-work state', () => {
       db
         .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
         .get().version,
-      6,
+      8,
     );
     assert.equal(
       db
@@ -130,6 +135,64 @@ test('social chat schema v1 upgrades additively to project-work state', () => {
         )
         .get() !== undefined,
       true,
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test('social schema v7 adds retry snapshots without rewriting the last known attempt', () => {
+  const { db, social } = makeStores();
+  try {
+    const turn = social.beginTurn({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: 'E2E 旧尝试标记',
+      model: 'test-model',
+      interactionAdjustmentSnapshots: [
+        {
+          id: 'v7-adjustment',
+          scope: 'conversation',
+          sourceSurface: 'social',
+          sourceRoomId: 'room-noema',
+          situation: '用户分享近况',
+          behavior: '先自然接话。',
+          sourceQuote: '自然接话',
+          userEdited: false,
+          editedAt: null,
+        },
+      ],
+    });
+    social.failReply(turn.assistantMessageId, 'test_failure', '重试前失败');
+    db.exec(`
+      ALTER TABLE social_messages DROP COLUMN interaction_adjustment_attempts_json;
+      DELETE FROM social_schema_migrations WHERE version = 8;
+    `);
+
+    const upgraded = new SocialChatStore(db);
+    const failed = upgraded
+      .getRoomSnapshot('room-noema')
+      .messages.find((message) => message.id === turn.assistantMessageId);
+    assert.equal(failed?.attempt, 1);
+    assert.equal(
+      failed?.interactionAdjustmentSnapshots[0]?.id,
+      'v7-adjustment',
+    );
+
+    const retried = upgraded.retryReply(
+      turn.assistantMessageId,
+      'next-model',
+      [],
+    );
+    assert.deepEqual(
+      retried.interactionAdjustmentAttempts.map((attempt) => ({
+        attempt: attempt.attempt,
+        ids: attempt.interactionAdjustmentIds,
+      })),
+      [
+        { attempt: 1, ids: ['v7-adjustment'] },
+        { attempt: 2, ids: [] },
+      ],
     );
   } finally {
     db.close();
@@ -535,9 +598,26 @@ test('a reply can be retried after failure without duplicating its user turn', (
       agentId: 'noema',
       text: '重试标记：银杏',
       model: 'test-model',
+      interactionAdjustmentSnapshots: [
+        {
+          id: 'retry-adjustment',
+          scope: 'conversation',
+          sourceSurface: 'social',
+          sourceRoomId: 'room-noema',
+          situation: '用户分享近况',
+          behavior: '先自然接话，再判断是否需要建议。',
+          sourceQuote: '先自然接话',
+          userEdited: false,
+          editedAt: null,
+        },
+      ],
     });
     social.failReply(turn.assistantMessageId, 'test_failure', '模型暂不可用');
-    const retried = social.retryReply(turn.assistantMessageId, 'next-model');
+    const retried = social.retryReply(
+      turn.assistantMessageId,
+      'next-model',
+      [],
+    );
     assert.equal(retried.attempt, 2);
     const snapshot = social.getRoomSnapshot('room-noema');
     assert.equal(
@@ -549,6 +629,17 @@ test('a reply can be retried after failure without duplicating its user turn', (
     );
     assert.equal(reply?.status, 'streaming');
     assert.equal(reply?.model, 'next-model');
+    assert.deepEqual(
+      reply?.interactionAdjustmentAttempts.map((attempt) => ({
+        attempt: attempt.attempt,
+        ids: attempt.interactionAdjustmentIds,
+      })),
+      [
+        { attempt: 1, ids: ['retry-adjustment'] },
+        { attempt: 2, ids: [] },
+      ],
+    );
+    assert.equal(reply?.interactionAdjustmentSnapshots.length, 0);
   } finally {
     db.close();
   }

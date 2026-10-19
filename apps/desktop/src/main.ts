@@ -202,6 +202,10 @@ const socialAgentContactDesktopScreenshotPath =
   process.env.NOEMA_SMOKE_SOCIAL_AGENT_CONTACT_PATH ?? null;
 const socialAgentContactNarrowScreenshotPath =
   process.env.NOEMA_SMOKE_SOCIAL_AGENT_CONTACT_NARROW_PATH ?? null;
+const socialInteractionAdjustmentDesktopScreenshotPath =
+  process.env.NOEMA_SMOKE_SOCIAL_ADJUSTMENT_DESKTOP_PATH ?? null;
+const socialInteractionAdjustmentNarrowScreenshotPath =
+  process.env.NOEMA_SMOKE_SOCIAL_ADJUSTMENT_NARROW_PATH ?? null;
 delete process.env.NOEMA_SMOKE_SOCIAL_AGENT_CREATE_PATH;
 delete process.env.NOEMA_SMOKE_SOCIAL_AGENT_CREATE_NARROW_PATH;
 delete process.env.NOEMA_SMOKE_SOCIAL_AGENT_CONTACT_PATH;
@@ -1306,6 +1310,270 @@ async function captureSocialAgentCreationE2e() {
   if (!mainWindow || mainWindow.isDestroyed()) {
     throw new Error('联系人创建测试没有可用窗口。');
   }
+  const adjustmentEditorReady = await mainWindow.webContents
+    .executeJavaScript(`(async () => {
+    const waitFor = async (predicate, label) => {
+      const deadline = Date.now() + 7000;
+      while (Date.now() < deadline) {
+        const value = await predicate();
+        if (value) return value;
+        await new Promise((resolve) => setTimeout(resolve, 40));
+      }
+      throw new Error('等待超时：' + label);
+    };
+    const setValue = (element, value) => {
+      if (!element) throw new Error('互动约定表单缺少字段');
+      const prototype = element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+      Object.getOwnPropertyDescriptor(prototype, 'value')?.set?.call(element, value);
+      element.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    await waitFor(async () => {
+      try {
+        const state = await window.noema.getSocialState();
+        return state.rooms.length > 0 && document.querySelector('.room-list-item');
+      } catch {
+        return null;
+      }
+    }, '联系人和聊天列表初始化');
+    const loadedNoemaRoom = [...document.querySelectorAll('.room-list-item')]
+      .find((item) => item.querySelector('.room-list-title')?.textContent?.trim() === 'Noema');
+    if (!loadedNoemaRoom) throw new Error('Noema 私聊未出现在联系人列表中');
+    loadedNoemaRoom.click();
+    const roomOpened = await waitFor(
+      () => document.querySelector('.social-body')?.classList.contains('room-open'),
+      'Noema 私聊已打开',
+      1200,
+    ).catch(() => false);
+    if (!roomOpened) {
+      throw new Error('点击 Noema 聊天后仍停留在列表：' + JSON.stringify({
+        bodyClass: document.querySelector('.social-body')?.className,
+        roomTitle: document.querySelector('.room-header h2')?.textContent?.trim(),
+        row: loadedNoemaRoom.outerHTML.slice(0, 500),
+      }));
+    }
+    const sourceText = 'E2E 原话标记：分享不愉快经历时，请先问我最在意的部分。';
+    const sourceArticle = () => [...document.querySelectorAll('.chat-message.user-message')]
+      .find((article) => article.textContent?.includes(sourceText));
+    await waitFor(sourceArticle, 'Noema 私聊中的用户原话');
+    const sourceAction = [...(sourceArticle()?.querySelectorAll('.message-actions button') ?? [])]
+      .find((button) => button.textContent?.trim() === '设为约定');
+    if (!sourceAction) throw new Error('Noema 私聊原话没有显示互动约定入口');
+    sourceAction.click();
+    const form = await waitFor(() => document.querySelector('.interaction-adjustment-editor'), '互动约定行内编辑器');
+    setValue(form.querySelector('input'), '用户分享一段不愉快经历但没有请求分析');
+    setValue(form.querySelectorAll('textarea')[0], '先回应当下感受，再问用户最在意的部分；不要立刻分析或给建议。');
+    const scope = form.querySelector('select');
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set?.call(scope, 'conversation');
+    scope.dispatchEvent(new Event('change', { bubbles: true }));
+    setValue(form.querySelectorAll('textarea')[1], '请先问我最在意的部分');
+    return true;
+  })()`);
+  if (!adjustmentEditorReady) {
+    throw new Error('互动约定编辑器未打开。');
+  }
+  const adjustmentDesktopLayout = await mainWindow.webContents
+    .executeJavaScript(`(() => {
+    const form = document.querySelector('.interaction-adjustment-editor');
+    return {
+      width: window.innerWidth,
+      visible: Boolean(form?.getClientRects().length),
+      noOverflow: Boolean(form && form.scrollWidth <= form.clientWidth && document.documentElement.scrollWidth <= window.innerWidth),
+      roomOpen: document.querySelector('.social-body')?.classList.contains('room-open') === true,
+      roomTitle: document.querySelector('.room-header h2')?.textContent?.trim() ?? '',
+    };
+  })()`);
+  if (socialInteractionAdjustmentDesktopScreenshotPath) {
+    writeSmokeScreenshot(
+      socialInteractionAdjustmentDesktopScreenshotPath,
+      await mainWindow.capturePage(),
+    );
+  }
+  mainWindow.setSize(680, 640);
+  await mainWindow.webContents.executeJavaScript(
+    'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+  );
+  const adjustmentNarrowLayout = await mainWindow.webContents
+    .executeJavaScript(`(() => {
+    const form = document.querySelector('.interaction-adjustment-editor');
+    const rect = form?.getBoundingClientRect();
+    const thread = document.querySelector('.message-thread');
+    const threadRect = thread?.getBoundingClientRect();
+    const saveButton = form?.querySelector('button[type="submit"]');
+    const saveRect = saveButton?.getBoundingClientRect();
+    return {
+      width: window.innerWidth,
+      visible: Boolean(rect && threadRect && rect.width > 0 && rect.height > 0 && rect.top >= threadRect.top && rect.bottom <= threadRect.bottom),
+      noOverflow: Boolean(form && form.scrollWidth <= form.clientWidth && document.documentElement.scrollWidth <= window.innerWidth),
+      saveVisible: Boolean(saveRect && threadRect && saveRect.top >= threadRect.top && saveRect.bottom <= threadRect.bottom),
+      roomOpen: document.querySelector('.social-body')?.classList.contains('room-open') === true,
+      roomTitle: document.querySelector('.room-header h2')?.textContent?.trim() ?? '',
+      formTop: rect?.top ?? null,
+      formBottom: rect?.bottom ?? null,
+      threadTop: threadRect?.top ?? null,
+      threadBottom: threadRect?.bottom ?? null,
+      threadScrollTop: thread?.scrollTop ?? null,
+      threadClientHeight: thread?.clientHeight ?? null,
+      threadScrollHeight: thread?.scrollHeight ?? null,
+      formClientHeight: form?.clientHeight ?? null,
+      formScrollHeight: form?.scrollHeight ?? null,
+    };
+  })()`);
+  if (socialInteractionAdjustmentNarrowScreenshotPath) {
+    writeSmokeScreenshot(
+      socialInteractionAdjustmentNarrowScreenshotPath,
+      await mainWindow.capturePage(),
+    );
+  }
+  mainWindow.setSize(1280, 800);
+  await mainWindow.webContents.executeJavaScript(
+    'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+  );
+  if (
+    !adjustmentDesktopLayout.visible ||
+    !adjustmentDesktopLayout.noOverflow ||
+    !adjustmentDesktopLayout.roomOpen ||
+    adjustmentDesktopLayout.roomTitle !== 'Noema' ||
+    adjustmentNarrowLayout.width > 700 ||
+    !adjustmentNarrowLayout.visible ||
+    !adjustmentNarrowLayout.noOverflow ||
+    !adjustmentNarrowLayout.saveVisible ||
+    !adjustmentNarrowLayout.roomOpen ||
+    adjustmentNarrowLayout.roomTitle !== 'Noema'
+  ) {
+    throw new Error(
+      `互动约定编辑器布局不符合预期：${JSON.stringify({ desktop: adjustmentDesktopLayout, narrow: adjustmentNarrowLayout })}`,
+    );
+  }
+  const interactionAdjustments = await mainWindow.webContents
+    .executeJavaScript(`(async () => {
+    const waitFor = async (predicate, label, timeoutMs = 10000) => {
+      const deadline = Date.now() + timeoutMs;
+      while (Date.now() < deadline) {
+        const value = await predicate();
+        if (value) return value;
+        await new Promise((resolve) => setTimeout(resolve, 40));
+      }
+      throw new Error('等待超时：' + label);
+    };
+    const setValue = (element, value) => {
+      if (!element) throw new Error('互动约定测试缺少输入框');
+      const prototype = element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+      Object.getOwnPropertyDescriptor(prototype, 'value')?.set?.call(element, value);
+      element.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    const sourceText = 'E2E 原话标记：分享不愉快经历时，请先问我最在意的部分。';
+    const sourceArticle = () => [...document.querySelectorAll('.chat-message.user-message')]
+      .find((article) => article.textContent?.includes(sourceText));
+    const form = document.querySelector('.interaction-adjustment-editor');
+    if (!form) throw new Error('窄屏核验后互动约定编辑器没有恢复');
+    form.querySelector('button[type="submit"]')?.click();
+    const saved = await waitFor(async () => {
+      const state = await window.noema.getSocialState();
+      return state.interactionAdjustments?.find((item) =>
+        item.sourceSurface === 'social' &&
+        item.sourceRoomId === 'room-noema' &&
+        item.sourceQuote === '请先问我最在意的部分'
+      ) ?? null;
+    }, '互动约定持久化');
+    const sourceState = await window.noema.getSocialRoom('room-noema');
+    const sourceMessage = sourceState.messages.find((message) => message.role === 'user' && message.content.includes(sourceText));
+    const sourceValidated = saved.sourceTurnId === sourceMessage?.turnId;
+    const send = async (text) => {
+      const input = document.querySelector('#social-message-input');
+      setValue(input, text);
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+      return waitFor(async () => {
+        const room = await window.noema.getSocialRoom('room-noema');
+        const user = [...room.messages].reverse().find((message) => message.role === 'user' && message.content === text);
+        const reply = user ? room.messages.find((message) => message.turnId === user.turnId && message.role === 'assistant') : null;
+        return reply?.status === 'complete' ? { user, reply } : null;
+      }, 'Noema 合成回复', 10000);
+    };
+    const firstReply = await send('E2E 后续消息：今天发生了一件让我有点难受的事。');
+    const usedOnNoemaReply = firstReply.reply.interactionAdjustmentIds?.includes(saved.id) === true;
+    const currentSourceArticle = sourceArticle();
+    const savedAction = [...(currentSourceArticle?.querySelectorAll('.message-actions button') ?? [])]
+      .find((button) => button.textContent?.trim() === '互动约定');
+    savedAction?.click();
+    const editForm = await waitFor(() => document.querySelector('.interaction-adjustment-editor'), '已保存互动约定的管理入口');
+    const revisedBehavior = '先回应情绪，再问一个具体问题；不自动给建议。';
+    setValue(editForm.querySelector('textarea'), revisedBehavior);
+    editForm.querySelector('button[type="submit"]')?.click();
+    const updated = await waitFor(async () => {
+      const state = await window.noema.getSocialState();
+      return state.interactionAdjustments?.find((item) =>
+        item.id === saved.id && item.status === 'active' && item.behavior === revisedBehavior
+      ) ?? null;
+    }, '互动约定修改后持久化');
+    const updateReply = await send('E2E 修改后消息：想起这件事还是有些不舒服。');
+    const usedUpdatedBehavior = updateReply.reply.interactionAdjustmentSnapshots?.some(
+      (item) => item.id === saved.id && item.behavior === revisedBehavior,
+    ) === true;
+    const updatedAction = [...(sourceArticle()?.querySelectorAll('.message-actions button') ?? [])]
+      .find((button) => button.textContent?.trim() === '互动约定');
+    updatedAction?.click();
+    await waitFor(() => document.querySelector('.interaction-adjustment-editor'), '修改后互动约定管理入口');
+    document.querySelector('.interaction-adjustment-withdraw')?.click();
+    const withdrawn = await waitFor(async () => {
+      const state = await window.noema.getSocialState();
+      return state.interactionAdjustments?.find((item) => item.id === saved.id && item.status === 'withdrawn') ?? null;
+    }, '互动约定撤回状态');
+    const secondReply = await send('E2E 撤回后消息：再聊一件普通小事。');
+    const notUsedAfterWithdrawal = !secondReply.reply.interactionAdjustmentIds?.includes(saved.id);
+    return {
+      created: Boolean(saved),
+      sourceValidated,
+      usedOnNoemaReply,
+      updated: updated.behavior === revisedBehavior,
+      usedUpdatedBehavior,
+      withdrawn: withdrawn.status === 'withdrawn',
+      notUsedAfterWithdrawal,
+      layout: { desktop: ${JSON.stringify(adjustmentDesktopLayout)}, narrow: ${JSON.stringify(adjustmentNarrowLayout)} },
+      snapshots: {
+        first: firstReply.reply.interactionAdjustmentSnapshots,
+        updated: updateReply.reply.interactionAdjustmentSnapshots,
+        second: secondReply.reply.interactionAdjustmentSnapshots,
+      },
+    };
+  })()`);
+  const interactionRequests = socialAgentE2eModelRequests.splice(0);
+  interactionAdjustments.usedOnNoemaReply &&=
+    interactionRequests[0]?.messages.some((message) =>
+      message.content.includes('先回应当下感受'),
+    ) === true;
+  interactionAdjustments.notUsedAfterWithdrawal &&=
+    interactionRequests[2]?.messages.some((message) =>
+      message.content.includes('先回应当下感受'),
+    ) === false;
+  interactionAdjustments.usedUpdatedBehavior &&=
+    interactionRequests[1]?.messages.some((message) =>
+      message.content.includes('先回应情绪，再问一个具体问题'),
+    ) === true;
+  if (
+    !interactionAdjustments?.created ||
+    !interactionAdjustments.sourceValidated ||
+    !interactionAdjustments.usedOnNoemaReply ||
+    !interactionAdjustments.updated ||
+    !interactionAdjustments.usedUpdatedBehavior ||
+    !interactionAdjustments.withdrawn ||
+    !interactionAdjustments.notUsedAfterWithdrawal
+  ) {
+    throw new Error(
+      `社交聊天互动约定链路不符合预期：${JSON.stringify(interactionAdjustments)}`,
+    );
+  }
+  if (
+    !interactionAdjustments.layout?.desktop?.visible ||
+    !interactionAdjustments.layout?.desktop?.noOverflow ||
+    interactionAdjustments.layout?.narrow?.width > 700 ||
+    !interactionAdjustments.layout?.narrow?.visible ||
+    !interactionAdjustments.layout?.narrow?.noOverflow
+  ) {
+    throw new Error(
+      `互动约定编辑器布局不符合预期：${JSON.stringify(interactionAdjustments.layout)}`,
+    );
+  }
+  socialAgentE2eModelRequests = [];
   const forwardingSelection = await mainWindow.webContents
     .executeJavaScript(`(async () => {
     const waitFrames = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -1793,6 +2061,7 @@ async function captureSocialAgentCreationE2e() {
     const sameIdentityJoined = groupSnapshot.members.some((member) => member.id === createdState.agent.id);
     const groupDidNotImportDm = !groupSnapshot.messages.some((message) => message.content.includes('长期观察游戏视觉与交互'));
     return {
+      interactionAdjustments: ${JSON.stringify(interactionAdjustments)},
       forwarding: {
         ...${JSON.stringify(forwardingSelection)},
         narrow: ${JSON.stringify(forwardNarrow)},
@@ -2514,6 +2783,8 @@ async function startNoema() {
         ? { isConfigured: () => true }
         : providerSecretStore,
       practiceProvider: useSyntheticSocialWork ? null : practiceProvider,
+      getCodingInteractionAdjustments: () =>
+        agent.store.getInteractionAdjustmentsForSurface('coding'),
       defaultVerificationChecks:
         socialWorkE2eValid && testSocialWorkChecksJson
           ? JSON.parse(testSocialWorkChecksJson)
@@ -2670,6 +2941,7 @@ async function startNoema() {
           ? socialAgentE2eModel
           : (rootStore?.getSelectedModel() ?? null),
       getRootState: getSocialRootState,
+      getInteractionAdjustments: () => agent.store.getInteractionAdjustments(),
       getProjectWorkReadiness: () =>
         socialWorkService?.getReadiness() ?? {
           available: false,

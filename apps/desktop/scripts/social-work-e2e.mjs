@@ -75,7 +75,11 @@ const verificationChecks = [
   '## 执行恢复',
   '## 恢复后验证',
   marker,
-].map((text) => ({ kind: 'file_contains', path: relativePath, text }));
+].map((text) => ({
+  kind: 'file_contains',
+  path: relativePath,
+  text,
+}));
 const prompt = [
   '[NOEMA E2E] 仅在当前临时工作区完成一项小任务。',
   `创建 ${relativePath}，正文使用简体中文，写一份结构化恢复清单；必须逐字使用二级标题“## 恢复前”“## 执行恢复”“## 恢复后验证”，并逐字包含验收标记 ${marker}。`,
@@ -97,10 +101,18 @@ const basisEpisodePrompt =
 const sourceCasePath = 'IMPORT-GUIDE.md';
 const practiceSourcePath = 'RELEASE-CHECKLIST.md';
 const sourceChecks = ['## 开始前', '## 导入步骤', '重新校验来源文件'].map(
-  (text) => ({ kind: 'file_contains', path: sourceCasePath, text }),
+  (text) => ({
+    kind: 'file_contains',
+    path: sourceCasePath,
+    text,
+  }),
 );
 const practiceSourceChecks = ['## 发布前', '## 执行', '恢复上一版本'].map(
-  (text) => ({ kind: 'file_contains', path: practiceSourcePath, text }),
+  (text) => ({
+    kind: 'file_contains',
+    path: practiceSourcePath,
+    text,
+  }),
 );
 if (!liveEpisodes) {
   writeFileSync(
@@ -126,8 +138,30 @@ if (
   throw new Error('Could not independently verify the room-A case fixture.');
 }
 const seedDatabase = new Database(databasePath);
-new RootStore(seedDatabase);
+const seedRootStore = new RootStore(seedDatabase);
 const seedSocialStore = new SocialChatStore(seedDatabase);
+const interactionAdjustmentId = 'e2e-social-coding-adjustment';
+const interactionSource = seedSocialStore.beginTurn({
+  roomId: 'room-noema',
+  agentId: 'noema',
+  text: 'E2E 原话：编码任务先说明真实阻塞，没阻塞就继续到验收。',
+  model: 'e2e-fixture',
+});
+seedSocialStore.appendAssistantDelta(
+  interactionSource.assistantMessageId,
+  '我会区分阻塞与阶段进度。',
+);
+seedSocialStore.completeReply(interactionSource.assistantMessageId);
+seedRootStore.addInteractionAdjustment({
+  id: interactionAdjustmentId,
+  sourceSurface: 'social',
+  sourceRoomId: 'room-noema',
+  sourceTurnId: interactionSource.turnId,
+  scope: 'coding',
+  situation: '编码任务的阶段性进度汇报',
+  behavior: '只有真实阻塞或用户需要决策时才暂停；否则继续到验收。',
+  sourceQuote: '没阻塞就继续到验收',
+});
 if (!liveEpisodes) {
   seedSocialStore.createSocialWorkTask({
     id: sourceCaseTaskId,
@@ -360,6 +394,14 @@ if (proposalWasEmpty) {
     result.outcome !== 'finished' ||
     result.task?.status !== 'completed' ||
     result.task?.verificationStatus !== 'verified' ||
+    result.task?.interactionAdjustmentIds?.includes(interactionAdjustmentId) !==
+      true ||
+    result.task?.interactionAdjustmentSnapshots?.some(
+      (adjustment) =>
+        adjustment.id === interactionAdjustmentId &&
+        adjustment.sourceSurface === 'social' &&
+        adjustment.sourceRoomId === 'room-noema',
+    ) !== true ||
     (practiceDecision !== 'case' &&
       (result.task?.caseSnapshot !== null ||
         result.task?.practiceSnapshot?.sourceTaskId !==
