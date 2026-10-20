@@ -9,7 +9,7 @@ Use this only for product-shaping or high-impact architecture work; do not apply
 
 Before accepting a change:
 
-1. Name the user problem and the everyday situation it improves. A capability list alone is not a problem statement.
+1. Identify whether this is problem discovery or refinement of an accepted direction. Name the everyday user problem, current alternative and intended improvement. Existing demo capabilities are implementation evidence, not reasons to choose a product direction. Keep engineering invariants, implementation methods, user outcomes and visual identity distinct; compare alternatives on the same user problem. If the premise fails, withdraw dependent proposals rather than reframe an existing feature as the new purpose.
 2. Apply the standalone-app test: why must this responsibility belong to Noema rather than a skill, plugin, existing agent, or small external tool?
 3. Identify the source of truth, owner, lifecycle, permissions, failure behavior, and removal path for every new state or integration.
 4. Prefer one simple, replaceable boundary over a new framework, daemon, abstraction layer, or plugin marketplace unless independent lifecycle or security needs justify it.

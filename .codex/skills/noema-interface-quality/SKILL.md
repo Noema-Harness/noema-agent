@@ -5,42 +5,35 @@ description: Design or materially change user-visible Noema screens, flows, or c
 
 # Noema Interface Quality
 
-Use this before material changes to a user-visible Noema surface and again for visual verification. It is a product-specific design process, not a style preset.
+## Establish the design question
 
-## Design authority
+Read the active Issue, `docs/design/chat-redesign-brief.md` and only the product/architecture records relevant to this change. Check whether the work is exploring a product direction, defining a visual language, or improving an accepted flow. These need different evidence.
 
-1. Read the active Issue, `docs/design/chat-redesign-brief.md`, `PRODUCT.md`, relevant architecture decisions, and existing UI. Keep user-confirmed facts, evidence, and the current design hypothesis distinct. Existing placeholder screens are anti-reference unless explicitly adopted. Full interface redesign includes composition, interaction, typography, wording and state behavior; it is not a finishing palette pass.
-2. Derive composition from the actual user task and Noema's current product mechanism. A color palette, type pairing, animation, icon set, or “anti-slop” checklist cannot by itself make a screen distinctive. Ask what the screen must let the user understand or do that a generic agent app would not.
-3. Inspect a small number of mature, relevant product implementations and more than one design method when the visual direction is open. Extract interaction and hierarchy ideas with their tradeoffs; do not copy a competitor's brand or turn references into a feature checklist.
+Noema is a basic demo. Its current screens and features document implementation, not a finished product or a source of proven differentiation. Start product proposals from a concrete user situation, current alternatives and an intended improvement. Use the demo later to estimate reuse, gaps and removal cost. Do not turn context isolation into a selling point, rebrand prompt-based memory as a novel relationship model, or infer that another existing feature must contain the answer when a proposal is rejected.
 
-## Use design tools selectively
+Product value and visual identity are related but separate questions. Familiar functionality can have a distinctive, deliberate visual language. A unique feature is not a prerequisite for good visual design, and a polished screen is not evidence of a valuable product. Compare alternatives on the same user problem and outcome, not an engineering invariant against a feature or an implementation method against a value proposition.
 
-Creative-direction tools propose a point of view; catalogs retrieve candidates; generation tools produce variants; audit tools check observable usability. None establishes product fit or taste. Use only what the current question needs, retain its applicable quality checks and reject style prescriptions outside Noema's context. Do not combine tool catalogs or anti-pattern lists into a mega-prompt. Record a meaningful rejected alternative and its tradeoff when it explains a durable choice.
+## Form a concrete proposal
+
+Communication apps such as WeChat and Telegram inform navigation, reading, input and recovery conventions. SillyTavern may inform conversation mechanisms; it is not a roleplay or visual target for Noema. These references do not prescribe an exact messenger layout, agent roster, permanent room structure or brand.
+
+Inspect relevant mature interfaces and design references for the actual question. State the useful observations and their tradeoffs. Establish intentional choices for composition, typography, density, color, wording and motion; avoid merely restyling the existing shell or selecting an arbitrary anti-default theme. Tools and design catalogs are aids, not aesthetic authority.
+
+Before asking for a directional decision, make the proposal understandable through a realistic user sequence or prototype, its intended benefit and strongest alternative. State what is existing, proposed and unknown. Review gates do not replace the assistant's own premise checks; withdraw conclusions that depend on a rejected premise. Do not present another repackaging of the same unsupported idea for approval.
+
+Keep the user's requested feedback gates. Ordinary reversible component and implementation choices stay autonomous. New state or architecture follows `noema-architecture-review` when its trigger applies.
 
 ## Stable quality floor
 
-Judge the rendered experience, not compliance with one Skill:
-
-- The primary task and current state are apparent without decoding decorative language.
-- Hierarchy follows importance; density is intentional; repeated elements behave consistently.
-- Every action has a clear affordance, visible feedback, keyboard path, focus state, and recoverable failure where applicable.
-- Text is concrete, concise, and truthful; examples are labeled when synthetic. Empty, loading, disabled, and populated states are designed when relevant.
-- Contrast, zoom, reduced motion, small-window layout, and overflow are checked in the running app.
-- Motion communicates a state transition or relationship; decoration does not compete with reading or control.
-- The visual signature is generated by a product-specific structure or behavior, not by piling on effects or choosing a rare palette.
-
-## Noema-specific hypothesis and scope
-
-Noema's current user-confirmed interaction direction follows familiar communication apps such as WeChat and Telegram: Noema is the core companion; persistent agents are contacts/friends whose interests need not be a profession or tool; DMs and groups are separate conversation spaces; the same identity may participate in several rooms without merging transcripts. Inspect messengers for interaction conventions. SillyTavern may inform conversation/context mechanisms, not a roleplay product or visual target. This direction is not a demand to reproduce an exact messenger UI.
-
-Persistent memory and agent rosters alone do not establish Noema's unique value. The current candidate is user-owned identities and continuity across rooms and replaceable runtimes. Treat this as a hypothesis, not proven differentiation; do not make professional-growth workflows a prerequisite for having a contact. Follow live Issue #2, the Product Charter and current ADRs; older workbench screens and unpublished changes are not the target by default.
-
-The visual structure should make three things immediately legible: **who** the user is talking to, **which room/context** the conversation belongs to, and **what the agent can actually do here**. A friend can reappear in a DM or group without implying a shared transcript; avoid making different backends look like different people. Keep conversation as the primary work surface, with room participants, runtime status, and ongoing work visible only to the extent they help the user converse or steer the actual agent. Do not turn Noema into a task dashboard or a generic AI chat shell.
-
-Do not default to a memory dashboard, agent-control cockpit, memory-card gallery, mascot/avatar, decorative graph, or a single task timeline that erases room boundaries. Use familiar chat conventions when they clarify the user's existing mental model; derive any distinct visual signature from persistent agent identities, room membership, and evidence-aware continuity rather than arbitrary metaphor, rare palette, or motion for its own sake.
+- The primary activity, participants, context and actual state are clear.
+- Familiar actions have consistent affordances, feedback, keyboard access and visible focus.
+- Claims match implementation; demo data and simulated behavior are labeled.
+- Empty, loading, active, interrupted, failed and recovered states are covered where relevant.
+- Contrast, zoom, reduced motion, narrow windows and overflow work in the rendered app.
+- Runtime details appear only when they help the user understand or control what is happening.
 
 ## Delivery
 
-Before broad visual implementation, present a small set of concrete directions at realistic scale, recommend one and explain hierarchy, reading density and agent identity treatment. Preserve this as a user feedback gate; ordinary component details remain autonomous. A candidate preview is not an accepted design or a delivered application. Use a representative non-coding conversation, including a failure/recovery state, rather than hiding usability behind polished empty screens.
+Use populated, representative content and a complete interaction rather than a polished empty screen. Match prototype fidelity to the question; it is not accepted design or real model behavior merely because it runs.
 
-Build a real interaction rather than a static mockup when the Issue asks for a prototype. Include the path to inspect, correct, ignore, and export relevant understanding if these are in scope; label mock behavior honestly and do not imply model/runtime functionality that does not exist. Run the app, inspect at its intended desktop size and a narrow size, exercise primary actions and keyboard/focus behavior, and fix visible hierarchy, spacing, typography, contrast, overflow, and feedback defects. Record only durable design decisions; preserve prototypes as hypotheses until reviewed against actual use.
+Inspect the running application at desktop and narrow sizes, exercise primary actions and keyboard paths, and fix visible defects before reporting visual delivery. Keep usability checks, observed product benefit and user aesthetic feedback distinct. Preserve durable decisions and evidence in their existing project records; remove superseded prototypes instead of accumulating candidates.
