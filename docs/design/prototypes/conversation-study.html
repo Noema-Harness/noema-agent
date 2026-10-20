@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Noema · 通信界面研究稿</title>
+<style>
+:root{color-scheme:light;--ink:#20231e;--muted:#62675c;--line:#d9ddd1;--ground:#fafbf7;--index:#e7edce;--accent:#b83c23;--quiet:#eef1e6;--focus:#a3301d}
+*{box-sizing:border-box}body{margin:0;background:#d9ddd1;color:var(--ink);font-family:"Segoe UI Variable Text","Microsoft YaHei UI","Microsoft YaHei",sans-serif;font-size:15px}button,input,textarea,select{font:inherit;color:inherit}button{cursor:pointer}button:disabled{cursor:default;opacity:.45}button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,summary:focus-visible{outline:3px solid var(--focus);outline-offset:3px}button{touch-action:manipulation}svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex:none}[hidden]{display:none!important}
+.review-bar{min-height:52px;max-width:1360px;margin:auto;padding:10px 22px;display:flex;align-items:center;justify-content:space-between;gap:16px;font-size:12px}.review-bar strong{font-weight:650}.review-bar span{color:#515749;margin-left:12px}.review-actions{display:flex;gap:6px;flex-wrap:wrap}.review-actions button{border:1px solid #9da58f;background:transparent;min-height:32px;padding:4px 10px}.review-actions button[aria-pressed=true]{background:var(--ink);color:white}
+.preview-stage{width:calc(100% - 44px);max-width:1316px;margin:8px auto 20px;transition:width 180ms ease}.preview-stage.is-narrow{width:min(440px,calc(100% - 24px))}.app-frame{container-type:inline-size;height:calc(100dvh - 84px);min-height:430px;background:var(--ground);box-shadow:0 12px 40px #252d151a}.workspace{height:100%;display:grid;grid-template-columns:294px minmax(0,1fr);position:relative;overflow:hidden}
+.sidebar{display:flex;flex-direction:column;background:var(--index);padding:28px 24px 24px;min-height:0;border-right:1px solid #cdd4b6}.brand{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:30px}.wordmark{font-family:Arial,sans-serif;font-size:45px;line-height:1;letter-spacing:-3px;font-weight:800}.brand-dot{color:var(--accent)}.edition{font-size:11px;border-top:2px solid var(--ink);padding-top:5px;letter-spacing:.08em;margin-top:4px}
+.search{display:flex;align-items:center;gap:9px;border-bottom:1px solid #aeb79b;padding:8px 0 12px}.search svg{width:17px;height:17px}.search input{width:100%;min-width:0;background:none;border:0;outline-offset:5px;font-size:13px;padding:3px 0}.search kbd{font-size:11px;font-family:inherit;white-space:nowrap;color:#566048}
+.index-label{display:flex;justify-content:space-between;align-items:baseline;margin:32px 0 12px;font-size:12px;letter-spacing:.06em}.index-label strong{font-size:20px;font-weight:550;letter-spacing:.02em}.room-list{overflow:auto;margin:0 -8px;padding:0 8px;min-height:0}.room{display:block;width:100%;text-align:left;border:0;border-top:1px solid #bdc6aa;background:transparent;padding:17px 0;position:relative}.room:last-child{border-bottom:1px solid #bdc6aa}.room:hover{background:#ffffff40}.room[aria-current=page]{padding-left:13px;background:#f8faee}.room[aria-current=page]:before{content:"";position:absolute;left:0;top:19px;width:4px;height:23px;background:var(--accent)}.room-top{display:flex;align-items:baseline;gap:8px}.room-name{font-size:18px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.room-time{margin-left:auto;font-size:11px;white-space:nowrap;color:#58614e}.room-description{display:block;font-size:12px;margin:7px 0 0;color:#535c48;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.5}.draft-label{color:var(--accent);font-weight:650}.room-kind{font-size:10px;letter-spacing:.06em;border-bottom:1px solid #7a8468;padding-bottom:1px;color:#536044}.index-empty{font-size:13px;line-height:1.8;color:#536044}.sidebar-foot{margin-top:auto;padding-top:28px;display:flex;justify-content:space-between;gap:10px;font-size:11px;color:#59624d}.sidebar-foot b{font-weight:500;letter-spacing:.05em}
+.conversation{display:grid;grid-template-rows:auto minmax(0,1fr) auto;min-height:0;min-width:0;background:var(--ground);position:relative}.conversation-head{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:28px 40px 24px;border-bottom:1px solid var(--line)}.title-row{display:flex;align-items:center;gap:12px;min-width:0}.room-title{font-size:34px;line-height:1.15;letter-spacing:-.04em;font-weight:560;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.room-subtitle{font-size:12px;color:var(--muted);margin:10px 0 0;letter-spacing:.03em}.head-actions{display:flex;align-items:center;gap:12px}.room-type{font-size:11px;border-bottom:1px solid #b6bca9;padding-bottom:5px;white-space:nowrap}.icon-button{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;background:transparent;border:1px solid var(--line);flex:none}.icon-button:hover{background:var(--quiet)}.back{display:none}
+.history{min-height:0;overflow:auto;scrollbar-gutter:stable;padding:26px 40px 12px;overscroll-behavior:contain}.history-inner{max-width:780px;margin:auto}.day-divider{display:flex;align-items:center;gap:15px;font-size:11px;color:var(--muted);letter-spacing:.04em;margin:0 0 34px}.day-divider:before{content:"";width:24px;height:1px;background:#959e86}.day-divider:after{content:"";flex:1;height:1px;background:var(--line)}.message{display:grid;grid-template-columns:64px minmax(0,1fr);gap:20px;margin:0 0 36px;min-width:0}.message-gutter{padding-top:3px;font-size:11px;line-height:1.5;color:var(--muted);min-width:0}.sender{font-weight:650;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink);font-size:12px}.message time{display:block;margin-top:7px;font-variant-numeric:tabular-nums;font-size:11px}.message-body{min-width:0;position:relative}.message-copy{font-size:15px;line-height:1.95;white-space:pre-wrap;overflow-wrap:anywhere;letter-spacing:.005em}.message.is-user{margin-left:54px;grid-template-columns:34px minmax(0,1fr)}.is-user .message-copy{background:var(--quiet);padding:15px 20px;border-left:2px solid #a8b58e}.is-user .sender{color:#536144}.message-actions{position:absolute;right:0;bottom:-32px;display:flex;gap:15px;justify-content:flex-end;opacity:0;transition:opacity 120ms}.message:hover .message-actions,.message:focus-within .message-actions{opacity:1}.text-action{background:none;border:0;padding:5px 2px;min-height:30px;font-size:11px;color:var(--muted);text-decoration:underline;text-underline-offset:4px}.text-action:hover{color:var(--accent)}.quote{font-size:12px;line-height:1.65;border-left:2px solid #a4ad96;margin-bottom:10px;padding:4px 12px;color:var(--muted);max-height:70px;overflow:hidden}.quote b{display:block;font-weight:600}.message-state{display:flex;gap:12px;align-items:center;margin-top:12px;font-size:12px;color:var(--muted);line-height:1.6}.message-state.is-error{color:#a52c1b}.message-state .text-action{color:inherit;font-size:12px}.streaming:after{content:"";display:inline-block;width:6px;height:16px;background:var(--accent);margin-left:5px;vertical-align:-2px;animation:pulse 1s infinite}.empty-state{padding:65px 0;max-width:440px;margin:auto}.empty-state .empty-name{font-size:45px;font-weight:500;letter-spacing:-.04em;margin:0 0 25px}.empty-state p{font-size:14px;color:var(--muted);line-height:1.9;margin:0}.new-messages{position:absolute;right:40px;bottom:155px;background:var(--ink);color:white;border:0;padding:0;width:40px;height:40px;font-size:20px;box-shadow:0 5px 15px #0002}
+.composer-area{padding:12px 40px 21px;background:var(--ground);border-top:1px solid var(--line)}.composer-wrap{max-width:780px;margin:auto}.replying{display:flex;gap:12px;align-items:center;border-left:2px solid var(--accent);padding:6px 0 6px 13px;margin-bottom:12px;font-size:12px;line-height:1.6}.replying-text{min-width:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}.replying-text strong{color:var(--ink);display:block}.replying .icon-button{width:32px;height:32px;border:0}.compose-row{display:flex;gap:18px;align-items:flex-end}.compose-row textarea{resize:none;flex:1;min-width:0;max-height:160px;min-height:52px;background:transparent;border:0;padding:12px 0;font-size:15px;line-height:1.8;outline-offset:5px}.send-button{width:48px;height:48px;display:flex;align-items:center;justify-content:center;background:var(--ink);color:var(--ground);border:0;flex:none;margin-bottom:3px}.send-button:hover:not(:disabled){background:var(--accent)}.send-button.is-stop{background:var(--accent)}.stop-shape{display:block;width:13px;height:13px;background:currentColor}.composer-foot{display:flex;justify-content:space-between;align-items:center;gap:10px;padding-top:9px;font-size:10px;color:var(--muted)}.recipient{display:flex;align-items:center;gap:8px;font-size:11px}.recipient select{background:transparent;border:0;border-bottom:1px solid #acb59c;padding:2px 16px 3px 0;font-size:11px}.notice{font-size:12px;padding:9px 0;color:var(--accent);line-height:1.6}.visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.workspace:has(.details-panel:not([hidden])):before{content:"";position:absolute;inset:0;z-index:2;background:#20231e1f}.details-panel{position:absolute;right:0;top:0;bottom:0;width:min(330px,100%);background:var(--ground);border-left:1px solid var(--line);padding:28px 25px;z-index:3;box-shadow:-20px 0 45px #2233110c;overflow:auto}.details-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:34px}.details-heading h2{font-size:20px;font-weight:550;margin:0}.details-panel p{font-size:13px;line-height:1.9;color:var(--muted)}.person{padding:18px 0;border-top:1px solid var(--line);font-size:15px}.person small{display:block;font-size:11px;margin-top:7px;color:var(--muted)}
+@keyframes pulse{50%{opacity:.25}}
+@container (max-width:760px){.workspace{grid-template-columns:1fr}.workspace[data-view=chat] .sidebar{display:none}.workspace[data-view=list] .conversation{display:none}.sidebar{padding:28px;border:0}.room{padding-top:20px;padding-bottom:20px}.conversation-head{padding:24px 20px 21px;gap:12px}.title-row{gap:12px}.room-title{font-size:28px}.back{display:inline-flex;border:0;width:28px;height:40px;margin-left:-6px}.room-type{display:none}.head-actions{gap:0}.history{padding:24px 20px 10px}.message{grid-template-columns:54px minmax(0,1fr);gap:12px;margin-bottom:38px}.message.is-user{margin-left:22px;grid-template-columns:28px minmax(0,1fr)}.message-copy{font-size:15px;line-height:1.85}.is-user .message-copy{padding:12px 15px}.composer-area{padding:11px 20px 18px}.composer-foot{font-size:11px}.compose-row{gap:12px}.compose-row textarea{font-size:15px}.send-button{width:44px;height:44px}.new-messages{right:20px;bottom:150px}.day-divider{margin-bottom:28px}.room-subtitle{margin-top:8px}.details-panel{width:100%}}
+@media(max-width:650px){.review-bar{padding:8px 12px;gap:8px}.review-bar span{display:none}.review-actions{gap:4px}.review-actions button{font-size:10px;padding:4px 6px}.preview-stage{width:calc(100% - 24px);margin-top:0}.app-frame{height:calc(100dvh - 68px);min-height:390px}}
+@media(hover:none){.message{margin-bottom:48px}.message-actions{opacity:1}.text-action{min-height:40px}.icon-button{min-height:44px}}
+@media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+<svg aria-hidden="true" style="display:none">
+<symbol id="icon-send" viewBox="0 0 24 24"><path d="m5 12 14-7-5 14-3-6-6-1Z"/><path d="m11 13 8-8"/></symbol>
+<symbol id="icon-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4.5 4.5"/></symbol>
+<symbol id="icon-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
+<symbol id="icon-back" viewBox="0 0 24 24"><path d="m14 5-7 7 7 7"/></symbol>
+<symbol id="icon-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+</svg>
+<div class="review-bar">
+  <div><strong>界面研究稿 · 01</strong><span>合成内容 / 模拟回复 / 仅本页内存</span></div>
+  <div class="review-actions"><button id="narrow" aria-pressed="false">窄窗</button><button id="failure">查看失败状态</button><button id="reset">重置样稿</button></div>
+</div>
+<div class="preview-stage" id="stage"><div class="app-frame"><main class="workspace" id="workspace" data-view="chat">
+  <aside class="sidebar" aria-label="聊天列表">
+    <div class="brand"><div class="wordmark" aria-label="Noema">noema<span class="brand-dot">.</span></div><span class="edition">对话</span></div>
+    <label class="search"><svg aria-hidden="true"><use href="#icon-search"/></svg><input id="search" type="search" placeholder="找联系人或聊天" aria-label="搜索聊天"><kbd>Ctrl K</kbd></label>
+    <div class="index-label"><strong>聊天</strong><span id="room-count"></span></div>
+    <nav class="room-list" id="rooms" aria-label="会话"></nav>
+  </aside>
+  <section class="conversation" aria-label="当前聊天">
+    <header class="conversation-head">
+      <div class="title-row"><button class="icon-button back" id="back" aria-label="返回聊天列表"><svg aria-hidden="true"><use href="#icon-back"/></svg></button><div><h1 class="room-title" id="room-title"></h1><p class="room-subtitle" id="room-subtitle"></p></div></div>
+      <div class="head-actions"><button class="icon-button" id="details" aria-label="查看聊天信息" aria-expanded="false"><svg aria-hidden="true"><use href="#icon-more"/></svg></button></div>
+    </header>
+    <div class="history" id="history" aria-label="聊天消息" tabindex="0"><div class="history-inner" id="messages"></div></div>
+    <button class="new-messages" id="new-messages" aria-label="回到最新消息" title="回到最新消息" hidden>↓</button>
+    <section class="composer-area" aria-label="写消息"><div class="composer-wrap">
+      <div class="replying" id="replying" hidden><div class="replying-text" id="replying-text"></div><button class="icon-button" id="cancel-reply" aria-label="取消回复引用"><svg aria-hidden="true"><use href="#icon-close"/></svg></button></div>
+      <div class="notice" id="notice" role="status" hidden></div>
+      <form id="composer"><div class="compose-row"><textarea id="draft" rows="1" aria-label="写消息" placeholder="说点什么，继续聊。"></textarea><button class="send-button" id="send" type="submit" aria-label="发送消息"><svg aria-hidden="true"><use href="#icon-send"/></svg></button></div></form>
+      <div class="composer-foot"><span>Enter 发送 · Shift + Enter 换行</span><label class="recipient" id="recipient" hidden>发送给 <select id="target" aria-label="选择本轮回应的 agent"></select></label><span id="draft-status">草稿仅在本页暂存</span></div>
+    </div></section>
+    <aside class="details-panel" id="details-panel" role="dialog" aria-modal="true" aria-label="聊天信息" hidden><div class="details-heading"><h2>聊天信息</h2><button class="icon-button" id="close-details" aria-label="关闭聊天信息"><svg aria-hidden="true"><use href="#icon-close"/></svg></button></div><div id="details-content"></div></aside>
+  </section>
+</main></div></div>
+<div role="status" id="announcer" class="visually-hidden"></div>
+<template id="message-template"><article class="message"><div class="message-gutter"><span class="sender"></span><time></time></div><div class="message-body"><div class="quote" hidden></div><div class="message-copy"></div><div class="message-state" hidden></div><div class="message-actions"></div></div></article></template>
+<script>
+'use strict';
+const initialRooms=[
+ {id:'noema',name:'Noema',kind:'私聊',subtitle:'私聊',people:['Noema'],messages:[
+  {id:'m1',sender:'你',role:'user',time:'14:06',text:'周末想出去走一走，不赶景点。帮我想个轻松一点的安排。',status:'complete'},
+  {id:'m2',sender:'Noema',role:'assistant',time:'14:06',text:'可以把它当成一段没有任务的下午。\n\n先选一条熟悉、但没认真走过的路。走上半小时，遇到想停的地方就停下来；带一本薄书，也可以什么都不带。\n\n如果还想留一点新鲜感，就在回程时换一条街。不用把时间填满，也不用带回什么成果。',status:'complete'},
+  {id:'m3',sender:'你',role:'user',time:'14:09',text:'对，就是想留一点随时改主意的余地。',status:'complete'},
+  {id:'m4',sender:'Noema',role:'assistant',time:'14:09',text:'那就只定一个起点，终点留空。\n\n出门前看看天气和返程方式。剩下的，到了再说。',status:'complete'}
+ ]},
+ {id:'lin',name:'林止',kind:'私聊',subtitle:'私聊',people:['林止'],messages:[
+  {id:'l1',sender:'你',role:'user',time:'13:20',text:'最近读东西总想划线，最后却不记得真正留下了什么。',status:'complete'},
+  {id:'l2',sender:'林止',role:'assistant',time:'13:20',text:'或许可以试试读完一段后，把书合上。\n\n不急着概括，只写下还在脑子里的那一句。留下来的未必是最漂亮的话，可能只是让你停了一下的地方。',status:'complete'}
+ ]},
+ {id:'walk',name:'周末走走',kind:'群聊',subtitle:'Noema、阿遥 · 2 位 agent',people:['Noema','阿遥'],messages:[
+  {id:'g1',sender:'你',role:'user',time:'11:10',text:'把散步的想法放在这里。先不用做计划，想到什么再聊。',status:'complete'},
+  {id:'g2',sender:'阿遥',role:'assistant',time:'11:10',text:'好。等你想继续的时候，我们再从这里开始。',status:'complete'}
+ ]},
+ {id:'empty',name:'白榆',kind:'私聊',subtitle:'私聊',people:['白榆'],messages:[]}
+];
+let rooms=structuredClone(initialRooms),active='noema';
+let drafts={},replyTargets={},targets={},positions={},following={},timers=new Map(),sequence=0;
+const $=id=>document.getElementById(id);
+const room=()=>rooms.find(item=>item.id===active);
+function element(tag,className,text){const node=document.createElement(tag);if(className)node.className=className;if(text!==undefined)node.textContent=text;return node}
+function action(label,handler){const b=element('button','text-action',label);b.type='button';b.addEventListener('click',handler);return b}
+function announce(text){$('announcer').textContent=text}
+function demoTime(){const minutes=(14*60+10+sequence)%1440;return String(Math.floor(minutes/60)).padStart(2,'0')+':'+String(minutes%60).padStart(2,'0')}
+function resizeDraft(){$('draft').style.height='auto';$('draft').style.height=Math.min(160,$('draft').scrollHeight)+'px'}
+function renderRooms(){
+ const query=$('search').value.trim().toLocaleLowerCase();
+ const visible=rooms.filter(item=>(item.name+' '+item.messages.map(m=>m.text).join(' ')).toLocaleLowerCase().includes(query));
+ $('room-count').textContent=String(visible.length).padStart(2,'0');
+ $('rooms').replaceChildren();
+ for(const item of visible){
+  const b=element('button','room');b.type='button';if(item.id===active)b.setAttribute('aria-current','page');
+  const top=element('span','room-top');top.append(element('span','room-name',item.name),element('span','room-kind',item.kind));
+  const last=item.messages.at(-1);top.append(element('span','room-time',last?last.time:''));
+  const preview=element('span','room-description');
+  if(drafts[item.id]){preview.append(element('span','draft-label','草稿 · '),document.createTextNode(drafts[item.id].slice(0,64)))}
+  else preview.textContent=last?(last.sender+'：'+(last.text||'正在回复…').replace(/\s+/g,' ').slice(0,64)):'还没有消息';
+  b.append(top,preview);b.addEventListener('click',()=>selectRoom(item.id));$('rooms').append(b);
+ }
+ if(!visible.length)$('rooms').append(element('p','index-empty','没有找到这段聊天。\n试试其他名字或内容。'));
+}
+function renderMessages({restore=false}={}){
+ const history=$('history'),previous=history.scrollTop;
+ const follow=following[active]!==false;
+ const fragment=document.createDocumentFragment();
+ if(!room().messages.length){
+  const empty=element('div','empty-state');empty.append(element('h2','empty-name','从这里开始。'),element('p','', '不用准备一个完整的问题。\n一句刚刚想到的话，也可以。'));fragment.append(empty);
+ }else{
+  fragment.append(element('div','day-divider','10 月 21 日 · 对话示意'));
+  for(const message of room().messages){
+   const node=$('message-template').content.firstElementChild.cloneNode(true);
+   node.dataset.messageId=message.id;node.classList.toggle('is-user',message.role==='user');
+   node.setAttribute('aria-label',message.sender+'的消息');
+   node.querySelector('.sender').textContent=message.sender;node.querySelector('.sender').title=message.sender;
+   node.querySelector('time').textContent=message.time;
+   const copy=node.querySelector('.message-copy');copy.textContent=message.text;
+   copy.classList.toggle('streaming',message.status==='streaming');
+   if(message.reply){const quote=node.querySelector('.quote');quote.hidden=false;quote.append(element('b','',message.reply.sender),document.createTextNode(message.reply.text))}
+   const state=node.querySelector('.message-state');
+   if(message.status==='failed'||message.status==='interrupted'){
+    state.hidden=false;state.classList.toggle('is-error',message.status==='failed');
+    state.append(document.createTextNode(message.status==='failed'?'这次回复中断了，已有内容保留。':'已停止，已有内容保留。'),action('重新回复',()=>startReply(active,message)));
+   }
+   if(message.status==='complete'){
+    const actions=node.querySelector('.message-actions');
+    actions.append(action('回复',()=>{replyTargets[active]={id:message.id,sender:message.sender,text:message.text};syncComposer();$('draft').focus()}),action('复制',async()=>{try{await navigator.clipboard.writeText(message.text);announce('消息已复制')}catch{announce('复制不可用，请选择消息文字复制')}}));
+   }
+   fragment.append(node);
+  }
+ }
+ $('messages').replaceChildren(fragment);
+ if(restore){history.scrollTop=positions[active]??history.scrollHeight}
+ else history.scrollTop=follow?history.scrollHeight:previous;
+ $('new-messages').hidden=follow||history.scrollHeight-history.clientHeight-history.scrollTop<32;
+}
+function syncComposer(){
+ const running=timers.has(active);
+ $('send').disabled=!running&&!$('draft').value.trim();
+ $('send').classList.toggle('is-stop',running);
+ $('send').setAttribute('aria-label',running?'停止本轮回复':'发送消息');
+ $('send').innerHTML=running?'<span class="stop-shape" aria-hidden="true"></span>':'<svg aria-hidden="true"><use href="#icon-send"/></svg>';
+ const reply=replyTargets[active];$('replying').hidden=!reply;
+ if(reply){$('replying-text').replaceChildren(element('strong','','回复 '+reply.sender),document.createTextNode(reply.text))}
+ $('draft-status').textContent=running?'正在模拟回复…':$('draft').value?'草稿仅在本页暂存':'仅本页合成对话';
+}
+function renderHeader(){
+ $('room-title').textContent=room().name;$('room-subtitle').textContent=room().subtitle;
+ $('draft').setAttribute('aria-label','给'+(targets[active]||room().people[0])+'写消息');
+ $('recipient').hidden=room().kind!=='群聊';
+ $('target').replaceChildren(...room().people.map(name=>{const option=element('option','',name);option.value=name;return option}));
+ $('target').value=targets[active]||room().people[0];
+ $('details-content').replaceChildren(element('p','',room().kind+' · '+room().name),...room().people.map(name=>{const p=element('div','person',name);p.append(element('small','','agent · 合成样例身份'));return p}),element('p','','此页是视觉与交互研究稿，不会连接模型或读取应用数据。'));
+}
+function setDetailsInert(value){document.querySelector('.sidebar').inert=value;document.querySelector('.review-bar').inert=value;for(const child of document.querySelector('.conversation').children){if(child.id!=='details-panel')child.inert=value}}
+function closeDetails(){$('details-panel').hidden=true;$('details').setAttribute('aria-expanded','false');setDetailsInert(false)}
+function selectRoom(id){
+ positions[active]=$('history').scrollTop;drafts[active]=$('draft').value;
+ active=id;closeDetails();$('notice').hidden=true;
+ $('workspace').dataset.view='chat';$('draft').value=drafts[id]||'';
+ renderRooms();renderHeader();renderMessages({restore:true});resizeDraft();syncComposer();
+}
+function startReply(roomId,message){
+ if(timers.has(roomId))return;
+ message.text='';message.status='streaming';following[roomId]=true;
+ const text=Array.from('（模拟回复）收到这条消息。这页只演示阅读、输入、切换聊天，以及停止和重试的状态反馈；不会调用模型。你可以在回复途中切到另一段聊天，再回来继续。');
+ let offset=0;
+ const handle=setInterval(()=>{
+  offset+=4;message.text=text.slice(0,offset).join('');
+  if(offset>=text.length){message.status='complete';clearInterval(handle);timers.delete(roomId);announce(message.sender+'的模拟回复已完成')}
+  if(active===roomId){renderMessages();syncComposer()}if(message.status==='complete')renderRooms();
+ },65);
+ timers.set(roomId,{handle,message});
+ if(active===roomId){renderMessages();syncComposer()}
+}
+function stopReply(){
+ const run=timers.get(active);if(!run)return;
+ clearInterval(run.handle);run.message.status='interrupted';if(!run.message.text)run.message.text='';timers.delete(active);renderMessages();syncComposer();announce('已停止模拟回复');
+}
+function send(){
+ if(timers.has(active)){stopReply();return}
+ const text=$('draft').value.trim();if(!text)return;
+ const current=room(),roomId=active,sender=targets[active]||current.people[0];
+ const message={id:'u'+(++sequence),role:'user',sender:'你',time:demoTime(),text,status:'complete',reply:replyTargets[roomId]||null};
+ current.messages.push(message);
+ drafts[roomId]='';replyTargets[roomId]=null;$('draft').value='';resizeDraft();following[roomId]=true;
+ const reply={id:'a'+(++sequence),role:'assistant',sender,time:demoTime(),text:'',status:'streaming'};current.messages.push(reply);
+ renderMessages();renderRooms();syncComposer();startReply(roomId,reply);$('draft').focus();
+}
+$('composer').addEventListener('submit',event=>{event.preventDefault();send()});
+$('draft').addEventListener('input',()=>{drafts[active]=$('draft').value;resizeDraft();syncComposer();renderRooms()});
+$('draft').addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing&&event.keyCode!==229){event.preventDefault();if(!timers.has(active))send()}});
+$('search').addEventListener('input',renderRooms);
+$('target').addEventListener('change',()=>{targets[active]=$('target').value;renderHeader()});
+$('cancel-reply').addEventListener('click',()=>{replyTargets[active]=null;syncComposer();$('draft').focus()});
+$('back').addEventListener('click',()=>{$('workspace').dataset.view='list';$('search').focus()});
+$('details').addEventListener('click',()=>{$('details-panel').hidden=false;$('details').setAttribute('aria-expanded','true');setDetailsInert(true);$('close-details').focus()});
+$('details-panel').addEventListener('keydown',event=>{if(event.key==='Tab'){event.preventDefault();$('close-details').focus()}});
+$('close-details').addEventListener('click',()=>{closeDetails();$('details').focus()});
+$('new-messages').addEventListener('click',()=>{following[active]=true;$('history').scrollTop=$('history').scrollHeight;$('new-messages').hidden=true});
+$('history').addEventListener('scroll',()=>{following[active]=$('history').scrollHeight-$('history').clientHeight-$('history').scrollTop<32;$('new-messages').hidden=following[active]});
+$('narrow').addEventListener('click',()=>{const narrow=$('stage').classList.toggle('is-narrow');$('narrow').setAttribute('aria-pressed',String(narrow))});
+$('failure').addEventListener('click',()=>{
+ if(timers.has(active))stopReply();
+ const failed={id:'f'+(++sequence),role:'assistant',sender:targets[active]||room().people[0],time:demoTime(),text:'可以从一个不必赶时间的起点开始。',status:'failed'};
+ room().messages.push(failed);following[active]=true;renderMessages();renderRooms();announce('已展示合成失败状态，可以重新回复');
+});
+$('reset').addEventListener('click',()=>{
+ for(const run of timers.values())clearInterval(run.handle);timers.clear();
+ rooms=structuredClone(initialRooms);drafts={};replyTargets={};targets={};positions={};following={};active='noema';$('search').value='';$('draft').value='';$('workspace').dataset.view='chat';closeDetails();renderRooms();renderHeader();renderMessages();resizeDraft();syncComposer();announce('样稿已重置，页面内输入已清空');
+});
+document.addEventListener('keydown',event=>{
+ if(event.isComposing)return;
+ if(!$('details-panel').hidden&&event.key!=='Escape')return;
+ if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='k'){event.preventDefault();$('workspace').dataset.view='list';$('search').focus()}
+ if(event.key==='Escape'){if(!$('details-panel').hidden){closeDetails();$('details').focus()}else{replyTargets[active]=null;syncComposer();$('draft').focus()}}
+ if(event.altKey&&(event.key==='ArrowUp'||event.key==='ArrowDown')){event.preventDefault();const index=rooms.findIndex(r=>r.id===active),next=(index+(event.key==='ArrowDown'?1:-1)+rooms.length)%rooms.length;selectRoom(rooms[next].id)}
+});
+window.addEventListener('pagehide',()=>{for(const run of timers.values())clearInterval(run.handle)});
+renderRooms();renderHeader();renderMessages();syncComposer();
+</script>
+</body>
+</html>
+
+
+
+
