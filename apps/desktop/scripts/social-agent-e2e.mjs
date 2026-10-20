@@ -217,6 +217,9 @@ if (
   result.outcome !== 'passed' ||
   !result.workflow?.cancelReturnedFocus ||
   !result.workflow?.initialDirectIsEmpty ||
+  !result.workflow?.roomDraftIsolation?.partnerStartedEmpty ||
+  !result.workflow?.roomDraftIsolation?.noemaDraftRestored ||
+  !result.workflow?.roomDraftIsolation?.partnerDraftRestored ||
   !result.workflow?.interactionAdjustments?.created ||
   !result.workflow?.interactionAdjustments?.sourceValidated ||
   !result.workflow?.interactionAdjustments?.usedOnNoemaReply ||
