@@ -17,7 +17,9 @@ Product value and visual identity are related but separate questions. Familiar f
 
 Communication apps such as WeChat and Telegram inform navigation, reading, input and recovery conventions. SillyTavern may inform conversation mechanisms; it is not a roleplay or visual target for Noema. These references do not prescribe an exact messenger layout, agent roster, permanent room structure or brand.
 
-Inspect relevant mature interfaces and design references for the actual question. State the useful observations and their tradeoffs. Establish intentional choices for composition, typography, density, color, wording and motion; avoid merely restyling the existing shell or selecting an arbitrary anti-default theme. Tools and design catalogs are aids, not aesthetic authority.
+Before choosing components, decide what the whole screen should make prominent and what can recede. Treat inherited layouts and navigation as hypotheses, not requirements; preserve familiar actions without assuming their usual arrangement. When repeated proposals remain generic, revisit these early structural choices before generating more style variants.
+
+Use relevant design references to understand how their choices work together, rather than collecting attractive components. Develop a coherent visual idea across composition, typography, graphics, wording, states and narrow layouts; judge populated screens as a whole. A large illustration, unusual color or hidden sidebar is a choice with costs, not a reusable recipe. Tools and catalogs support this judgment; they do not supply it.
 
 Before asking for a directional decision, make the proposal understandable through a realistic user sequence or prototype, its intended benefit and strongest alternative. State what is existing, proposed and unknown. Review gates do not replace the assistant's own premise checks; withdraw conclusions that depend on a rejected premise. Do not present another repackaging of the same unsupported idea for approval.
 
