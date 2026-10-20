@@ -11,7 +11,7 @@ Read the active Issue, `docs/design/chat-redesign-brief.md` and only the product
 
 Noema is a basic demo. Its current screens and features document implementation, not a finished product or a source of proven differentiation. Start product proposals from a concrete user situation, current alternatives and an intended improvement. Use the demo later to estimate reuse, gaps and removal cost. Do not turn context isolation into a selling point, rebrand prompt-based memory as a novel relationship model, or infer that another existing feature must contain the answer when a proposal is rejected.
 
-Product value and visual identity are related but separate questions. Familiar functionality can have a distinctive, deliberate visual language. A unique feature is not a prerequisite for good visual design, and a polished screen is not evidence of a valuable product. Compare alternatives on the same user problem and outcome, not an engineering invariant against a feature or an implementation method against a value proposition.
+Develop product purpose, interaction and visual identity together while using distinct evidence to judge each. For an immature product, surface missing user outcomes and capabilities rather than designing only around existing screens. Tie composition, density and character to expected use; visual studies can expose product gaps. Familiar functionality can have distinctive visual language, but aesthetic success does not establish product fit or value. Compare alternatives on the same user problem and outcome, not an engineering invariant against a feature.
 
 ## Form a concrete proposal
 
@@ -21,7 +21,7 @@ Before choosing components, decide what the whole screen should make prominent a
 
 Use relevant design references to understand how their choices work together, rather than collecting attractive components. Develop a coherent visual idea across composition, typography, graphics, wording, states and narrow layouts; judge populated screens as a whole. A large illustration, unusual color or hidden sidebar is a choice with costs, not a reusable recipe. Tools and catalogs support this judgment; they do not supply it.
 
-Before asking for a directional decision, make the proposal understandable through a realistic user sequence or prototype, its intended benefit and strongest alternative. State what is existing, proposed and unknown. Review gates do not replace the assistant's own premise checks; withdraw conclusions that depend on a rejected premise. Do not present another repackaging of the same unsupported idea for approval.
+Before asking for a directional decision, show a realistic user sequence or prototype, its intended benefit and strongest alternative. State what is existing, proposed and unknown. Evaluate feedback against the brief and observed behavior: distinguish taste and explicit direction from factual or causal claims, and retain what remains supported. Narrow a correction to the premise that failed; do not turn criticism into an opposite prohibition. Review gates do not replace this judgment.
 
 Keep the user's requested feedback gates. Ordinary reversible component and implementation choices stay autonomous. New state or architecture follows `noema-architecture-review` when its trigger applies.
 
