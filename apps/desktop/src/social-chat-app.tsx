@@ -150,7 +150,7 @@ function SocialChatApp() {
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [roomState, setRoomState] = useState<NoemaSocialRoomState | null>(null);
   const [selectedAgentId, setSelectedAgentId] = useState('noema');
-  const [draft, setDraft] = useState('');
+  const [draftsByRoom, setDraftsByRoom] = useState<Record<string, string>>({});
   const [composerMode, setComposerMode] = useState<'chat' | 'project'>('chat');
   const [reuseCase, setReuseCase] = useState(false);
   const [replyTarget, setReplyTarget] = useState<NoemaSocialReplySource | null>(
@@ -197,6 +197,19 @@ function SocialChatApp() {
   const settingsTriggerRef = useRef<HTMLButtonElement>(null);
   const shouldFollowRef = useRef(true);
   const loadSequenceRef = useRef(0);
+
+  const draft = activeRoomId ? (draftsByRoom[activeRoomId] ?? '') : '';
+  const setRoomDraft = (roomId: string, value: string) => {
+    setDraftsByRoom((current) => {
+      const next = { ...current };
+      if (value) next[roomId] = value;
+      else delete next[roomId];
+      return next;
+    });
+  };
+  const setDraft = (value: string) => {
+    if (activeRoomId) setRoomDraft(activeRoomId, value);
+  };
 
   const refreshState = useCallback(async () => {
     const next = await window.noema.getSocialState();
@@ -498,21 +511,22 @@ function SocialChatApp() {
       setNotice('这位联系人已归档；恢复后才能继续聊天。');
       return;
     }
+    const roomId = currentRoom.id;
     const text = draft;
     setBusy(true);
     setNotice('');
     shouldFollowRef.current = true;
     try {
       await window.noema.sendSocialMessage({
-        roomId: currentRoom.id,
+        roomId,
         agentId: currentRecipient.id,
         text,
         replyToMessageId: replyTarget?.id ?? null,
       });
-      setDraft('');
+      setRoomDraft(roomId, '');
       setReplyTarget(null);
       if (draftRef.current) draftRef.current.style.height = 'auto';
-      await Promise.all([refreshState(), loadRoom(currentRoom.id)]);
+      await Promise.all([refreshState(), loadRoom(roomId)]);
     } catch (error) {
       setNotice(
         error instanceof Error ? error.message : '消息没有发送，请重试。',
@@ -634,21 +648,22 @@ function SocialChatApp() {
       setNotice('请在群聊中选择工程搭档，再把任务交给它。');
       return;
     }
+    const roomId = currentRoom.id;
     setWorkBusy(true);
     setNotice('');
     try {
       const result = await window.noema.startSocialWorkTask({
-        roomId: currentRoom.id,
+        roomId,
         agentId: currentRecipient.id,
         prompt: draft.trim(),
         reuseCase,
       });
       if (result.accepted) {
-        setDraft('');
+        setRoomDraft(roomId, '');
         setReuseCase(false);
         if (draftRef.current) draftRef.current.style.height = 'auto';
         setNotice('工程搭档已开始处理；你可以继续在这个聊天里说话。');
-        await Promise.all([refreshState(), loadRoom(currentRoom.id)]);
+        await Promise.all([refreshState(), loadRoom(roomId)]);
       } else if (result.reason) {
         setNotice(result.reason);
       }

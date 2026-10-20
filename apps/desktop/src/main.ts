@@ -1310,6 +1310,57 @@ async function captureSocialAgentCreationE2e() {
   if (!mainWindow || mainWindow.isDestroyed()) {
     throw new Error('联系人创建测试没有可用窗口。');
   }
+  const roomDraftIsolation = await mainWindow.webContents
+    .executeJavaScript(`(async () => {
+    const waitFor = async (predicate, label) => {
+      const deadline = Date.now() + 7000;
+      while (Date.now() < deadline) {
+        const value = await predicate();
+        if (value) return value;
+        await new Promise((resolve) => setTimeout(resolve, 40));
+      }
+      throw new Error('等待超时：' + label);
+    };
+    const setDraft = (value) => {
+      const input = document.querySelector('#social-message-input');
+      if (!input) throw new Error('找不到聊天草稿输入框');
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set?.call(input, value);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      return input;
+    };
+    const selectRoom = async (title) => {
+      const row = [...document.querySelectorAll('.room-list-item')]
+        .find((item) => item.querySelector('.room-list-title')?.textContent?.trim() === title);
+      if (!row) throw new Error('找不到聊天：' + title);
+      row.click();
+      await waitFor(() => document.querySelector('.room-header h2')?.textContent?.trim() === title, title + ' 聊天');
+      return document.querySelector('#social-message-input');
+    };
+    await waitFor(() => document.querySelector('.room-list-item'), '联系人和聊天列表初始化');
+    await selectRoom('Noema');
+    const noemaDraft = 'E2E 草稿仅属于 Noema';
+    setDraft(noemaDraft);
+    const partnerInput = await selectRoom('工程搭档');
+    const partnerStartedEmpty = partnerInput?.value === '';
+    const partnerDraft = 'E2E 草稿仅属于工程搭档';
+    setDraft(partnerDraft);
+    const noemaInput = await selectRoom('Noema');
+    const noemaDraftRestored = noemaInput?.value === noemaDraft;
+    const partnerInputAgain = await selectRoom('工程搭档');
+    const partnerDraftRestored = partnerInputAgain?.value === partnerDraft;
+    await selectRoom('Noema');
+    setDraft('');
+    return { partnerStartedEmpty, noemaDraftRestored, partnerDraftRestored };
+  })()`);
+  if (
+    !roomDraftIsolation?.partnerStartedEmpty ||
+    !roomDraftIsolation?.noemaDraftRestored ||
+    !roomDraftIsolation?.partnerDraftRestored
+  ) {
+    throw new Error(
+      `切换聊天时的草稿隔离不符合预期：${JSON.stringify(roomDraftIsolation)}`,
+    );
+  }
   const adjustmentEditorReady = await mainWindow.webContents
     .executeJavaScript(`(async () => {
     const waitFor = async (predicate, label) => {
@@ -2061,6 +2112,7 @@ async function captureSocialAgentCreationE2e() {
     const sameIdentityJoined = groupSnapshot.members.some((member) => member.id === createdState.agent.id);
     const groupDidNotImportDm = !groupSnapshot.messages.some((message) => message.content.includes('长期观察游戏视觉与交互'));
     return {
+      roomDraftIsolation: ${JSON.stringify(roomDraftIsolation)},
       interactionAdjustments: ${JSON.stringify(interactionAdjustments)},
       forwarding: {
         ...${JSON.stringify(forwardingSelection)},
