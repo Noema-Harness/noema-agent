@@ -2117,9 +2117,10 @@ function ChatMessage({
       const editorBounds = editor.getBoundingClientRect();
       const threadBounds = thread.getBoundingClientRect();
       if (editorBounds.bottom > threadBounds.bottom) {
-        thread.scrollTop += editorBounds.bottom - threadBounds.bottom;
+        thread.scrollTop +=
+          Math.ceil(editorBounds.bottom - threadBounds.bottom) + 1;
       } else if (editorBounds.top < threadBounds.top) {
-        thread.scrollTop -= threadBounds.top - editorBounds.top;
+        thread.scrollTop -= Math.ceil(threadBounds.top - editorBounds.top) + 1;
       }
     };
     keepEditorVisible();
