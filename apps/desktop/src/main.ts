@@ -1200,13 +1200,37 @@ async function captureSocialChatSmokeScreenshots() {
         }
         button.click();
         await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const updatedWorkCard = document.querySelector('.project-work-card');
+        const taskDetail = updatedWorkCard?.querySelector('.project-work-task-detail');
+        const sourceBody = updatedWorkCard?.closest('.conversation-turn')
+          ?.querySelector('.user-message .message-body');
+        const actionIndent = updatedWorkCard && sourceBody
+          ? Math.round(updatedWorkCard.getBoundingClientRect().left - sourceBody.getBoundingClientRect().left)
+          : null;
+        const taskTextCollapsed = taskDetail instanceof HTMLDetailsElement && !taskDetail.open && Boolean(taskDetail.querySelector('.project-work-request')?.textContent?.trim());
+        taskDetail?.querySelector('summary')?.click();
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const taskTextExpandWorks = taskDetail instanceof HTMLDetailsElement && taskDetail.open && Boolean(taskDetail.querySelector('.project-work-request')?.textContent?.trim());
+        taskDetail?.querySelector('summary')?.click();
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
         return {
           available: true,
           selected: button.getAttribute('aria-pressed') === 'true',
           placeholder: document.querySelector('.message-composer textarea')?.getAttribute('placeholder') ?? '',
+          taskTextCollapsed,
+          taskTextExpandWorks,
+          actionIndent,
         };
       })()`);
-      if (!projectMode.available || !projectMode.selected) {
+      if (
+        !projectMode.available ||
+        !projectMode.selected ||
+        !projectMode.taskTextCollapsed ||
+        !projectMode.taskTextExpandWorks ||
+        projectMode.actionIndent === null ||
+        projectMode.actionIndent < 0 ||
+        projectMode.actionIndent > 40
+      ) {
         throw new Error(
           `真实项目工作活动没有进入可操作的聊天状态：${JSON.stringify(projectMode)}`,
         );

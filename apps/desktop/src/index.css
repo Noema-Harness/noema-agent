@@ -4259,9 +4259,9 @@ select:disabled {
   line-height: 1.4;
 }
 .project-work-card {
-  width: calc(100% - 130px);
+  width: calc(100% - 28px);
   align-self: flex-start;
-  margin: 0 0 9px 130px;
+  margin: 12px 0 9px 28px;
   padding: 9px 12px 8px;
   border: 0;
   border-left: 2px solid var(--chat-accent);
@@ -4307,6 +4307,20 @@ select:disabled {
   line-height: 1.55;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+.project-work-task-detail {
+  margin: 6px 0 8px;
+  color: var(--chat-muted);
+  font-size: 10px;
+}
+.project-work-task-detail summary {
+  width: fit-content;
+  cursor: pointer;
+}
+.project-work-task-detail .project-work-request {
+  margin: 7px 0 0;
+  padding-left: 9px;
+  border-left: 1px solid var(--chat-line-strong);
 }
 .project-work-case {
   margin: 8px 0 10px;
@@ -4803,8 +4817,8 @@ select:disabled {
     line-height: 1.35;
   }
   .project-work-card {
-    width: calc(100% - 68px);
-    margin-left: 68px;
+    width: calc(100% - 28px);
+    margin-left: 28px;
     padding: 8px 9px 7px;
   }
   .project-work-header {
@@ -4921,8 +4935,8 @@ select:disabled {
     line-height: 1.35;
   }
   .project-work-card {
-    width: calc(100% - 68px);
-    margin-left: 68px;
+    width: calc(100% - 28px);
+    margin-left: 28px;
     padding: 7px 9px 6px;
   }
   .project-work-header {

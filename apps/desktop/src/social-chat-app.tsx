@@ -2911,7 +2911,14 @@ function ProjectWorkCard({
         </strong>
         <time dateTime={task.updatedAt}>{timeLabel(task.updatedAt)}</time>
       </header>
-      <p className="project-work-request">{task.taskPrompt}</p>
+      {task.sourceMessageId ? (
+        <details className="project-work-task-detail">
+          <summary>查看交给执行者的完整任务文本</summary>
+          <p className="project-work-request">{task.taskPrompt}</p>
+        </details>
+      ) : (
+        <p className="project-work-request">{task.taskPrompt}</p>
+      )}
       <InteractionAdjustmentTrace
         snapshots={task.interactionAdjustmentSnapshots}
         kind="project"
