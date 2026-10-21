@@ -18,8 +18,8 @@ Only the last observation validates inference at that moment. Free upstreams hav
 
 - FreeLLMAPI desktop data lives at `%APPDATA%\FreeLLMAPI`; its current desktop API port is read from `config.json` (currently 31415), and Noema auto-discovers it. Do not assume the default 3001 port.
 - The outbound proxy setting lives in `freeapi.db`, not `config.json`. Current verified value is `socks5h://127.0.0.1:7890`, mode `forward`, enabled. Historical Noema logs showed repeated provider socket resets under `http://127.0.0.1:7890`; SOCKS5h was selected after an isolated generation succeeded, but later requests still showed upstream failures. Treat this as the better current transport, not a guaranteed fix.
-- The installed FreeLLMAPI desktop version was 0.16.0 at last inspection. Check the installed version and official release notes before any update; do not update merely to chase a newer number.
-- Noema development requires Node 24.21.x and npm >=10.9. The machine's system Node 20.18 is incompatible and can crash native tests; bundled Node 24.19/npm 10.8 also fails the project's npm gate. A verified Node 24.21.0 plus npm 11.6.2 runtime is installed under `D:\Tools\NoemaRuntime`.
+- FreeLLMAPI 0.16.6 is installed at `%LOCALAPPDATA%\NoemaTools\FreeLLMAPI-0.16.6`; its official GitHub release SHA-256 was verified before installation. Its existing `%APPDATA%\FreeLLMAPI` data was backed up and the app now serves the configured local gateway on port 31415. Check official release notes and preserve the database before future updates.
+- Noema development requires Node 24.21.x and npm >=10.9. Verified Node 24.21.0 plus npm 11.19.0 is installed under `%LOCALAPPDATA%\NoemaTools\node-v24.21.0` and added to the current user's PATH. DSH CLI 0.1.7-rc.2 is installed under `%LOCALAPPDATA%\NoemaTools\dsh`, also on PATH. In a shell opened before PATH was updated, prepend these paths explicitly.
 
 ## Safe verification
 
