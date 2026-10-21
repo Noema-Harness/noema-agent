@@ -15,13 +15,13 @@ Develop product purpose, interaction and visual identity together while using di
 
 ## Form a concrete proposal
 
+For open-ended redesign, or after feedback rejects a structure as generic, do not start a polished screen. First locate the failure in the user problem, capability lifecycle, interaction structure, information hierarchy or visual language; retire the rejected composition. Compare a few materially different low-cost arrangements against one real use sequence, including what each lets the user understand and control. Record the sequence, alternatives, chosen structure and tradeoff in the active Issue before writing prototype UI. Do not create a side document for this checkpoint.
+
 Communication apps such as WeChat and Telegram inform navigation, reading, input and recovery conventions. SillyTavern may inform conversation mechanisms; it is not a roleplay or visual target for Noema. These references do not prescribe an exact messenger layout, agent roster, permanent room structure or brand.
 
 Before choosing components, decide what the whole screen should make prominent and what can recede. Treat inherited layouts and navigation as hypotheses, not requirements; preserve familiar actions without assuming their usual arrangement.
 
 Before turning a new capability into a visible screen element, trace its real lifecycle: who owns its source, what event creates or changes it, whether it persists, what model/tool work and recurring cost it requires, how stale or failed results are corrected, and what control the user needs. Then decide whether the capability belongs in ordinary conversation, an on-demand detail, or only in internal execution. If those choices are unknown, do not invent an always-on card, timeline, status, or generated message that makes the mechanism look settled. A concept prototype may expose the open question, but must not imply a working or chosen lifecycle.
-
-For open-ended redesign, or after feedback rejects a structure as generic, do not jump straight to another polished screen. First identify whether the failure is in the user problem, capability lifecycle, interaction structure, information hierarchy, or visual language; retire the rejected composition. Compare a few materially different low-cost arrangements against the same real use sequence, including what each lets the user understand and control. Choose and explain one structure before applying detailed visual treatment. Do not generate skin variations around an unexamined layout, and do not reuse a successful visual treatment from an unrelated exploration as a recipe.
 
 Use relevant design references to understand how their choices work together, rather than collecting attractive components. Develop a coherent visual idea across composition, typography, graphics, wording, states and narrow layouts; judge populated screens as a whole. A large illustration, unusual color or hidden sidebar is a choice with costs, not a reusable recipe. Tools and catalogs support this judgment; they do not supply it.
 
