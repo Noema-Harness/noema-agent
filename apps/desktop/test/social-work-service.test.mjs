@@ -178,10 +178,7 @@ test('Noema internal dispatch stores project work in the source room with a capa
     assert.deepEqual(authorizationPrompts, ['检查并修复项目配置。']);
     const noemaRoom = store.getRoomSnapshot('room-noema');
     assert.equal(noemaRoom.workTasks.length, 1);
-    assert.equal(
-      noemaRoom.workTasks[0].sourceMessageId,
-      source.userMessageId,
-    );
+    assert.equal(noemaRoom.workTasks[0].sourceMessageId, source.userMessageId);
     await assert.rejects(
       service.startTask({
         roomId: 'room-noema',

@@ -464,6 +464,7 @@ function SocialChatApp() {
   const agents = state?.agents ?? [];
   const activeAgents = agents.filter((agent) => !agent.archivedAt);
   const rooms = state?.rooms ?? [];
+  const noemaRoom = rooms.find((room) => room.id === 'room-noema') ?? null;
   const currentRoom = rooms.find((room) => room.id === activeRoomId) ?? null;
   const members = roomState?.room.id === activeRoomId ? roomState.members : [];
   const messages =
@@ -515,6 +516,79 @@ function SocialChatApp() {
         .includes(query);
     });
   }, [messageAgent, rooms, search]);
+  const otherRooms = filteredRooms.filter((room) => room.id !== noemaRoom?.id);
+
+  const renderRoomListItem = (room: NoemaSocialRoom, extraClassName = '') => {
+    const firstAgent = messageAgent.get(room.memberIds[0] ?? '');
+    const selected = room.id === activeRoomId;
+    const preview = room.preview;
+    const memberNames = room.memberIds
+      .map((id) => messageAgent.get(id)?.name)
+      .filter(Boolean)
+      .join('、');
+    return (
+      <button
+        key={room.id}
+        type="button"
+        className={`room-list-item ${extraClassName} ${selected ? 'is-selected' : ''}`}
+        aria-current={selected ? 'page' : undefined}
+        onClick={() => selectRoom(room)}
+      >
+        <span className="room-avatar-stack">
+          {room.kind === 'group' ? (
+            <span className="group-avatar" aria-hidden="true">
+              {room.memberIds.slice(0, 2).map((agentId) => {
+                const agent = messageAgent.get(agentId);
+                return agent ? (
+                  <AgentMark key={agent.id} agent={agent} small />
+                ) : null;
+              })}
+            </span>
+          ) : firstAgent ? (
+            <AgentMark agent={firstAgent} />
+          ) : null}
+          {room.kind === 'group' ? (
+            <span className="room-kind-mark" aria-label="群聊">
+              组
+            </span>
+          ) : null}
+        </span>
+        <span className="room-list-copy">
+          <span className="room-list-title-line">
+            <span className="room-list-title">{room.title}</span>
+            {room.parentRoomId ? (
+              <span className="continuation-room-mark">主题</span>
+            ) : null}
+            {room.closedAt ? (
+              <span className="continuation-room-mark">已结束</span>
+            ) : null}
+            {room.memberIds.some(
+              (agentId) => messageAgent.get(agentId)?.archivedAt,
+            ) ? (
+              <span className="room-archived-mark">已归档联系人</span>
+            ) : null}
+            {preview ? (
+              <time dateTime={preview.createdAt}>
+                {timeLabel(preview.createdAt)}
+              </time>
+            ) : null}
+          </span>
+          <span className="room-preview">
+            {preview ? (
+              <>
+                {preview.sender ? <b>{preview.sender}：</b> : null}
+                {preview.text}
+              </>
+            ) : room.kind === 'group' ? (
+              memberNames
+            ) : (
+              firstAgent?.headline
+            )}
+          </span>
+        </span>
+      </button>
+    );
+  };
 
   const selectRoom = (room: NoemaSocialRoom) => {
     shouldFollowRef.current = true;
@@ -1034,17 +1108,6 @@ function SocialChatApp() {
   const providerReady = Boolean(
     state?.connected && modelOptions.length > 0 && !activeRouteUnavailable,
   );
-  const modelConnectionLabel = state?.checking
-    ? '正在连接模型'
-    : !state?.connected || modelOptions.length === 0
-      ? '模型未连接'
-      : activeRouteUnavailable
-        ? activeRoute?.executionStatus === 'needsKey'
-          ? '所选模型需要密钥'
-          : '所选模型暂不可用'
-        : activeRoute?.executionStatus === 'ready'
-          ? '对话已就绪'
-          : '模型链状态未知';
   const providerWarning = state?.checking
     ? '正在检查本机模型服务…'
     : !state?.providerConfigured
@@ -1124,43 +1187,7 @@ function SocialChatApp() {
           </span>
           <span>Noema</span>
         </a>
-        <div className="topbar-divider" aria-hidden="true" />
-        <span className={`model-connection ${providerReady ? 'is-ready' : ''}`}>
-          <span className="connection-dot" />
-          {modelConnectionLabel}
-        </span>
         <div className="topbar-spacer" />
-        {providerReady ? (
-          <label className="model-select-wrap">
-            <span>使用</span>
-            <select
-              aria-label="选择对话模型"
-              value={activeModel}
-              disabled={switchingModel}
-              onChange={(event) => void handleModelChange(event.target.value)}
-            >
-              {modelOptions.map((model) => (
-                <option
-                  key={model.name}
-                  value={model.name}
-                  disabled={
-                    model.executionStatus === 'exhausted' ||
-                    model.executionStatus === 'needsKey'
-                  }
-                >
-                  {model.label}
-                  {model.executionStatus === 'ready'
-                    ? ' · 最近可用'
-                    : model.executionStatus === 'exhausted'
-                      ? ' · 暂不可用'
-                      : model.executionStatus === 'needsKey'
-                        ? ' · 需密钥'
-                        : ' · 状态未知'}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
         <button
           className="icon-button settings-button"
           ref={settingsTriggerRef}
@@ -1177,8 +1204,8 @@ function SocialChatApp() {
         <aside className="conversation-sidebar" aria-label="聊天列表">
           <div className="sidebar-heading">
             <div>
-              <h1>聊天</h1>
-              <p>和你的 agent 接着聊</p>
+              <h1>消息</h1>
+              <p>和 Noema 与其他联系人保持对话</p>
             </div>
             <div className="sidebar-create-actions">
               <button
@@ -1217,85 +1244,26 @@ function SocialChatApp() {
             <kbd>Ctrl K</kbd>
           </label>
 
+          <div className="primary-conversation-heading">主聊</div>
+          {noemaRoom ? (
+            <nav className="primary-conversation-nav" aria-label="Noema 主聊">
+              {renderRoomListItem(noemaRoom, 'noema-primary-item')}
+            </nav>
+          ) : null}
+
           <div className="conversation-list-heading">
-            <span>最近聊天</span>
-            <span>{filteredRooms.length}</span>
+            <span>其他聊天</span>
+            <span>{otherRooms.length}</span>
           </div>
 
-          <nav className="conversation-list" aria-label="最近聊天">
-            {filteredRooms.map((room) => {
-              const firstAgent = messageAgent.get(room.memberIds[0] ?? '');
-              const selected = room.id === activeRoomId;
-              const preview = room.preview;
-              const memberNames = room.memberIds
-                .map((id) => messageAgent.get(id)?.name)
-                .filter(Boolean)
-                .join('、');
-              return (
-                <button
-                  key={room.id}
-                  type="button"
-                  className={`room-list-item ${selected ? 'is-selected' : ''}`}
-                  aria-current={selected ? 'page' : undefined}
-                  onClick={() => selectRoom(room)}
-                >
-                  <span className="room-avatar-stack">
-                    {room.kind === 'group' ? (
-                      <span className="group-avatar" aria-hidden="true">
-                        {room.memberIds.slice(0, 2).map((agentId) => {
-                          const agent = messageAgent.get(agentId);
-                          return agent ? (
-                            <AgentMark key={agent.id} agent={agent} small />
-                          ) : null;
-                        })}
-                      </span>
-                    ) : firstAgent ? (
-                      <AgentMark agent={firstAgent} />
-                    ) : null}
-                    {room.kind === 'group' ? (
-                      <span className="room-kind-mark" aria-label="群聊">
-                        组
-                      </span>
-                    ) : null}
-                  </span>
-                  <span className="room-list-copy">
-                    <span className="room-list-title-line">
-                      <span className="room-list-title">{room.title}</span>
-                      {room.parentRoomId ? (
-                        <span className="continuation-room-mark">主题</span>
-                      ) : null}
-                      {room.closedAt ? (
-                        <span className="continuation-room-mark">已结束</span>
-                      ) : null}
-                      {room.memberIds.some(
-                        (agentId) => messageAgent.get(agentId)?.archivedAt,
-                      ) ? (
-                        <span className="room-archived-mark">已归档联系人</span>
-                      ) : null}
-                      {preview ? (
-                        <time dateTime={preview.createdAt}>
-                          {timeLabel(preview.createdAt)}
-                        </time>
-                      ) : null}
-                    </span>
-                    <span className="room-preview">
-                      {preview ? (
-                        <>
-                          {preview.sender ? <b>{preview.sender}：</b> : null}
-                          {preview.text}
-                        </>
-                      ) : room.kind === 'group' ? (
-                        memberNames
-                      ) : (
-                        firstAgent?.headline
-                      )}
-                    </span>
-                  </span>
-                </button>
-              );
-            })}
-            {filteredRooms.length === 0 ? (
-              <p className="no-search-results">没有找到匹配的聊天。</p>
+          <nav className="conversation-list" aria-label="其他聊天">
+            {otherRooms.map((room) => renderRoomListItem(room))}
+            {otherRooms.length === 0 ? (
+              <p className="no-search-results">
+                {search
+                  ? '没有找到匹配的聊天。'
+                  : '专业联系人和群聊会显示在这里。'}
+              </p>
             ) : null}
           </nav>
 
