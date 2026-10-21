@@ -56,12 +56,44 @@ const NOEMA_PROJECT_WORK_TOOL = {
   },
 };
 
-function noemaActionGuidance(available) {
+function specialistDelegationTool(agents) {
+  if (!agents.length) return null;
+  return {
+    type: 'function',
+    function: {
+      name: 'delegate_to_specialist',
+      description:
+        'Delegate a self-contained knowledge subtask to one existing specialist when its stated scope materially helps. This performs one additional model inference and returns the specialist’s actual result. Do not use for ordinary conversation or when you can answer well yourself.',
+      parameters: {
+        type: 'object',
+        properties: {
+          agent_id: {
+            type: 'string',
+            enum: agents.map((agent) => agent.id),
+            description: 'The existing active specialist to receive the task.',
+          },
+          task: {
+            type: 'string',
+            description:
+              'The minimum self-contained task needed for the work. Do not include unrelated room history or private details.',
+          },
+        },
+        required: ['agent_id', 'task'],
+        additionalProperties: false,
+      },
+    },
+  };
+}
+
+function noemaActionGuidance(projectWorkAvailable, specialistAgents) {
   return [
     '你在 Noema 私聊中回应用户。绝大多数聊天、探索、计划、写作和建议都直接在对话中完成，不创建执行状态。',
-    available
+    projectWorkAvailable
       ? '仅当用户明确要求对本地项目文件进行检查、修改、构建或验证时，才可调用 start_project_work。调用会打开本机工作区授权与数据流披露；用户选择工作区后任务才会被创建。不得因用户提到代码、项目或未来想法就启动。'
       : '当前没有可用的项目文件执行能力。不要声称能在本机项目中检查或修改文件。',
+    specialistAgents.length
+      ? '仅当请求需要一项可独立完成的知识工作，且现有专业联系人的职责确实匹配时，才可调用 delegate_to_specialist。它会额外调用一次同一模型；只发送工具中的 task，不发送完整聊天记录。不得为普通交流或形式上的多 agent 协作调用。把真实委托内容和该联系人实际返回的结果显示在本条回复中，不另做总结调用。'
+      : '当前没有可用的专业联系人可供委派。',
   ].join('\n');
 }
 
@@ -278,6 +310,29 @@ export class SocialChatService {
     const { assistantMessageId, roomId, agentId, model, controller } = run;
     try {
       const agent = this.store.getAgent(agentId);
+      const specialistAgents =
+        agentId === 'noema'
+          ? this.store
+              .listAgents()
+              .filter(
+                (item) =>
+                  item.kind === 'specialist' &&
+                  !item.archivedAt &&
+                  item.id !== 'noema',
+              )
+              .slice(0, 32)
+              .map((item) => this.store.getAgent(item.id))
+          : [];
+      const specialistTool = specialistDelegationTool(specialistAgents);
+      const actionTools =
+        agentId === 'noema'
+          ? [
+              ...(this.startProjectWorkFromNoema
+                ? [NOEMA_PROJECT_WORK_TOOL]
+                : []),
+              ...(specialistTool ? [specialistTool] : []),
+            ]
+          : [];
       const messages = [
         { role: 'system', content: agent.systemPrompt },
         ...(agentId === 'noema'
@@ -289,6 +344,7 @@ export class SocialChatService {
                     this.startProjectWorkFromNoema &&
                     this.getProjectWorkReadiness().available,
                   ),
+                  specialistAgents,
                 ),
               },
             ]
@@ -320,9 +376,9 @@ export class SocialChatService {
         model,
         messages,
         signal: controller.signal,
-        ...(agentId === 'noema' && this.startProjectWorkFromNoema
+        ...(actionTools.length
           ? {
-              tools: [NOEMA_PROJECT_WORK_TOOL],
+              tools: actionTools,
               onToolCalls: (calls) => {
                 toolCalls = calls;
               },
@@ -339,51 +395,115 @@ export class SocialChatService {
         });
       }
       if (toolCalls.length) {
-        if (
-          toolCalls.length !== 1 ||
-          toolCalls[0]?.function?.name !== 'start_project_work'
-        ) {
+        if (toolCalls.length !== 1) {
           throw new FreeLLMAPIError(
             'social_tool_invalid',
-            'Noema 请求了无法处理的操作；没有启动项目工作。',
+            'Noema 同时请求了多个操作；没有执行操作。',
           );
         }
+        const toolName = toolCalls[0]?.function?.name;
         let input;
         try {
           input = JSON.parse(toolCalls[0].function.arguments);
         } catch {
           throw new FreeLLMAPIError(
             'social_tool_invalid',
-            'Noema 给出的项目任务说明无法读取；没有启动项目工作。',
+            'Noema 给出的操作说明无法读取；没有执行操作。',
           );
         }
-        if (
-          typeof input?.task !== 'string' ||
-          !input.task.trim() ||
-          input.task.length > 40_000 ||
-          !this.getProjectWorkReadiness().available
-        ) {
+        if (toolName === 'delegate_to_specialist') {
+          const specialistSnapshot = specialistAgents.find(
+            (item) => item.id === input?.agent_id,
+          );
+          const specialist = specialistSnapshot
+            ? this.store.getAgent(specialistSnapshot.id)
+            : null;
+          if (
+            !specialist ||
+            specialist.archivedAt ||
+            typeof input?.task !== 'string' ||
+            !input.task.trim() ||
+            input.task.length > 8_000
+          ) {
+            throw new FreeLLMAPIError(
+              'social_tool_invalid',
+              '专业联系人或委托内容无效；没有执行委派。',
+            );
+          }
+          const task = input.task.trim();
+          const handoff = `\n\n交给「${specialist.name}」处理：\n> ${task.replaceAll('\n', '\n> ')}\n\n「${specialist.name}」完成的内容：\n`;
+          this.store.appendAssistantDelta(assistantMessageId, handoff);
+          this.emit({
+            type: 'chat-message-delta',
+            roomId,
+            messageId: assistantMessageId,
+            delta: handoff,
+          });
+          content += handoff;
+          let specialistReply = '';
+          for await (const delta of this.provider.streamChat({
+            model,
+            messages: [
+              { role: 'system', content: specialist.systemPrompt },
+              {
+                role: 'system',
+                content:
+                  'Noema 将一项独立知识工作委托给你。只依据下面的任务完成工作，不声称看过主聊天或其它资料；如缺少必要背景，说明缺少什么。请给出可直接供用户阅读的结果。',
+              },
+              { role: 'user', content: task },
+            ],
+            signal: controller.signal,
+          })) {
+            specialistReply += delta;
+            this.store.appendAssistantDelta(assistantMessageId, delta);
+            this.emit({
+              type: 'chat-message-delta',
+              roomId,
+              messageId: assistantMessageId,
+              delta,
+            });
+          }
+          if (!specialistReply.trim()) {
+            throw new FreeLLMAPIError(
+              'empty_reply',
+              `「${specialist.name}」没有返回文字。原消息已保留，可以重试。`,
+            );
+          }
+          content += specialistReply;
+        } else if (toolName === 'start_project_work') {
+          if (
+            typeof input?.task !== 'string' ||
+            !input.task.trim() ||
+            input.task.length > 40_000 ||
+            !this.getProjectWorkReadiness().available
+          ) {
+            throw new FreeLLMAPIError(
+              'social_tool_invalid',
+              '项目工作说明无效或当前不可用；没有启动任务。',
+            );
+          }
+          const result = await this.startProjectWorkFromNoema({
+            roomId,
+            prompt: input.task.trim(),
+            sourceMessageId: run.userMessageId,
+          });
+          const statusText = result.accepted
+            ? '已从这条对话启动项目工作。执行者、工作区和结果会显示在原请求附近。'
+            : result.reason || '没有启动项目工作。';
+          this.store.appendAssistantDelta(assistantMessageId, statusText);
+          this.emit({
+            type: 'chat-message-delta',
+            roomId,
+            messageId: assistantMessageId,
+            delta: statusText,
+          });
+          content += statusText;
+        } else {
           throw new FreeLLMAPIError(
             'social_tool_invalid',
-            '项目工作说明无效或当前不可用；没有启动任务。',
+            'Noema 请求了无法处理的操作；没有执行操作。',
           );
         }
-        const result = await this.startProjectWorkFromNoema({
-          roomId,
-          prompt: input.task.trim(),
-          sourceMessageId: run.userMessageId,
-        });
-        const statusText = result.accepted
-          ? '已从这条对话启动项目工作。执行者、工作区和结果会显示在原请求附近。'
-          : result.reason || '没有启动项目工作。';
-        this.store.appendAssistantDelta(assistantMessageId, statusText);
-        this.emit({
-          type: 'chat-message-delta',
-          roomId,
-          messageId: assistantMessageId,
-          delta: statusText,
-        });
-        content += statusText;
       }
       if (!content.trim()) {
         throw new FreeLLMAPIError(

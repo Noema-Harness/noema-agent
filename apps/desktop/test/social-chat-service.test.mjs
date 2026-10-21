@@ -40,6 +40,7 @@ test('social chat sends only the selected room transcript and persists the real 
     await service.active.get('room-engineering-partner')?.done;
 
     assert.equal(seenRequests.length, 1);
+    assert.equal(seenRequests[0].tools, undefined);
     assert.equal(seenRequests[0].messages[0].role, 'system');
     assert.equal(
       seenRequests[0].messages[0].content.includes('工程搭档'),
@@ -137,7 +138,10 @@ test('Noema can start existing project work from an explicit request while other
     await new Promise((resolve) => setImmediate(resolve));
     await service.active.get('room-noema')?.done;
 
-    assert.equal(requests[0].tools?.length, 1);
+    assert.deepEqual(
+      requests[0].tools?.map((tool) => tool.function.name),
+      ['start_project_work', 'delegate_to_specialist'],
+    );
     assert.deepEqual(started, [
       {
         roomId: 'room-noema',
@@ -160,12 +164,96 @@ test('Noema can start existing project work from an explicit request while other
     });
     await new Promise((resolve) => setImmediate(resolve));
     await service.active.get('room-noema')?.done;
-    assert.equal(requests[1].tools?.length, 1);
+    assert.deepEqual(
+      requests[1].tools?.map((tool) => tool.function.name),
+      ['start_project_work', 'delegate_to_specialist'],
+    );
     assert.equal(started.length, 1);
     assert.match(
       store.getRoomSnapshot('room-noema').messages.at(-1)?.content ?? '',
       /先讨论这个方向/u,
     );
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});
+
+test('Noema delegates a bounded task to one active specialist and shows the real result in the source message', async () => {
+  const db = new Database(':memory:');
+  new RootStore(db);
+  const store = new SocialChatStore(db);
+  const requests = [];
+  const provider = {
+    async *streamChat(input) {
+      requests.push(input);
+      if (requests.length === 1) {
+        input.onToolCalls([
+          {
+            function: {
+              name: 'delegate_to_specialist',
+              arguments: JSON.stringify({
+                agent_id: 'engineering-partner',
+                task: '比较这两个方案的维护成本。',
+              }),
+            },
+          },
+        ]);
+        return;
+      }
+      yield '方案 A 更易维护，因为变更边界更小。';
+    },
+  };
+  const service = new SocialChatService({
+    store,
+    provider,
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'test-model',
+    getRootState: async () => ({
+      connected: true,
+      selectedModel: 'test-model',
+    }),
+  });
+
+  try {
+    const sent = service.sendMessage({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '请结合刚才讨论的背景比较两个方案。上下文标记：主聊天机密。',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await service.active.get('room-noema')?.done;
+
+    assert.equal(requests.length, 2);
+    const specialistTool = requests[0].tools?.find(
+      (tool) => tool.function.name === 'delegate_to_specialist',
+    );
+    assert.deepEqual(
+      specialistTool?.function.parameters.properties.agent_id.enum,
+      ['engineering-partner'],
+    );
+    assert.match(requests[0].messages.at(-1).content, /主聊天机密/u);
+    assert.deepEqual(
+      requests[1].messages.map((message) => message.role),
+      ['system', 'system', 'user'],
+    );
+    assert.match(requests[1].messages[0].content, /工程搭档/u);
+    assert.equal(
+      requests[1].messages.some((message) =>
+        message.content.includes('主聊天机密'),
+      ),
+      false,
+    );
+    assert.equal(
+      requests[1].messages.at(-1).content,
+      '比较这两个方案的维护成本。',
+    );
+    const reply = store
+      .getRoomSnapshot('room-noema')
+      .messages.find((message) => message.id === sent.messageId);
+    assert.match(reply?.content ?? '', /交给「工程搭档」处理/u);
+    assert.match(reply?.content ?? '', /方案 A 更易维护/u);
+    assert.equal(reply?.status, 'complete');
   } finally {
     await service.shutdown();
     db.close();
