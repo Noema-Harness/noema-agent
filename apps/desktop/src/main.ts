@@ -153,6 +153,15 @@ const socialAgentForwardDesktopScreenshotPath =
   process.env.NOEMA_SMOKE_SOCIAL_FORWARD_DESKTOP_PATH ?? null;
 const socialAgentForwardNarrowScreenshotPath =
   process.env.NOEMA_SMOKE_SOCIAL_FORWARD_NARROW_PATH ?? null;
+const socialAgentDelegationDesktopScreenshotPath =
+  process.env.NOEMA_SMOKE_SOCIAL_DELEGATION_DESKTOP_PATH ?? null;
+const socialAgentDelegationNarrowScreenshotPath =
+  process.env.NOEMA_SMOKE_SOCIAL_DELEGATION_NARROW_PATH ?? null;
+const socialAgentDelegationMarker = '请帮我独立核对';
+const socialAgentDelegationTask =
+  '列出比较三种代码托管方案时应核对的五个关键字段。';
+const socialAgentDelegationResult =
+  '核对套餐价格、计费周期、并发限制、私有仓库权限和超额费用。';
 const socialContinuationDesktopScreenshotPath =
   process.env.NOEMA_SMOKE_SOCIAL_CONTINUATION_DESKTOP_PATH ?? null;
 const socialContinuationNarrowScreenshotPath =
@@ -220,6 +229,8 @@ delete process.env.NOEMA_SMOKE_SOCIAL_AGENT_CONTACT_PATH;
 delete process.env.NOEMA_SMOKE_SOCIAL_AGENT_CONTACT_NARROW_PATH;
 delete process.env.NOEMA_SMOKE_SOCIAL_FORWARD_DESKTOP_PATH;
 delete process.env.NOEMA_SMOKE_SOCIAL_FORWARD_NARROW_PATH;
+delete process.env.NOEMA_SMOKE_SOCIAL_DELEGATION_DESKTOP_PATH;
+delete process.env.NOEMA_SMOKE_SOCIAL_DELEGATION_NARROW_PATH;
 delete process.env.NOEMA_SMOKE_SOCIAL_CONTINUATION_DESKTOP_PATH;
 delete process.env.NOEMA_SMOKE_SOCIAL_CONTINUATION_NARROW_PATH;
 delete process.env.NOEMA_SMOKE_SOCIAL_CONTINUATION_ROOM_DESKTOP_PATH;
@@ -1969,6 +1980,171 @@ async function captureSocialAgentCreationE2e() {
       `消息转发/回复流程与模型输入不符合预期：${JSON.stringify({ forwardingSelection, forwardingSent, modelRequest })}`,
     );
   }
+  let specialistDelegation: Record<string, unknown> | null = null;
+  if (!testSocialAgentLiveE2e) {
+    socialAgentE2eModelRequests = [];
+    const delegation = (await mainWindow.webContents
+      .executeJavaScript(`(async () => {
+      const waitFor = async (predicate, label, timeoutMs = 7000) => {
+        const deadline = Date.now() + timeoutMs;
+        while (Date.now() < deadline) {
+          const value = await predicate();
+          if (value) return value;
+          await new Promise((resolve) => setTimeout(resolve, 40));
+        }
+        throw new Error('等待超时：' + label);
+      };
+      const noemaRoomItem = [...document.querySelectorAll('.room-list-item')]
+        .find((item) => item.querySelector('.room-list-title')?.textContent?.trim() === 'Noema');
+      noemaRoomItem?.click();
+      await waitFor(() => document.querySelector('.room-header h2')?.textContent?.trim() === 'Noema', '返回 Noema 主聊');
+      const before = await window.noema.getSocialState();
+      const beforeRoom = await window.noema.getSocialRoom('room-noema');
+      const input = document.querySelector('#social-message-input');
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+      if (!input || input.disabled || !setter) throw new Error('Noema 主聊输入框不可用');
+      const trigger = ${JSON.stringify(socialAgentDelegationMarker)} + '一项信息，并整理成清单：比较三种代码托管方案应核对哪些关键字段？';
+      setter.call(input, trigger);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+      const completed = await waitFor(async () => {
+        const room = await window.noema.getSocialRoom('room-noema');
+        const user = [...room.messages].reverse().find((message) => message.role === 'user' && message.content.includes(${JSON.stringify(socialAgentDelegationMarker)}));
+        const assistant = user ? room.messages.find((message) => message.turnId === user.turnId && message.role === 'assistant') : null;
+        if (assistant?.status === 'failed' || assistant?.status === 'interrupted') {
+          throw new Error('委派回复未完成：' + (assistant.errorCode ?? assistant.status));
+        }
+        return user && assistant?.status === 'complete' ? { room, user, assistant } : null;
+      }, '专业 agent 委派完成');
+      await waitFor(
+        () =>
+          [...document.querySelectorAll('.chat-message.agent-message')].some(
+            (article) => article.dataset.messageId === completed.assistant.id,
+          ),
+        '专业 agent 委派回复显示在聊天中',
+      );
+      const after = await window.noema.getSocialState();
+      const assistantArticle = [...document.querySelectorAll('.chat-message.agent-message')]
+        .find((article) => article.dataset.messageId === completed.assistant.id);
+      const turn = assistantArticle?.closest('.conversation-turn');
+      const messagesInTurn = turn?.querySelectorAll('.chat-message').length ?? 0;
+      const promptText = ${JSON.stringify(socialAgentDelegationTask)};
+      return {
+        userText: completed.user.content,
+        assistantMessageId: completed.assistant.id,
+        assistantText: completed.assistant.content,
+        assistantStatus: completed.assistant.status,
+        sameTurn: completed.user.turnId === completed.assistant.turnId,
+        groupedInUi: messagesInTurn === 2,
+        assistantVisible: Boolean(assistantArticle && assistantArticle.getClientRects().length),
+        visibleDelegationLabels: Boolean(turn?.textContent?.includes('交给「工程搭档」处理') && turn.textContent.includes('「工程搭档」完成的内容')),
+        actualResultVisible: Boolean(turn?.textContent?.includes(${JSON.stringify(socialAgentDelegationResult)})),
+        initialMessageCount: beforeRoom.messages.length,
+        messageCountDelta: completed.room.messages.length - beforeRoom.messages.length,
+        roomCountUnchanged: before.rooms.length === after.rooms.length,
+        workspaceTasksUnchanged: completed.room.workTasks.length === beforeRoom.workTasks.length,
+        model: completed.assistant.model,
+        promptText,
+      };
+    })()`)) as Record<string, unknown>;
+    specialistDelegation = delegation;
+    const delegationRequests = socialAgentE2eModelRequests.splice(0);
+    const delegatedInput = delegationRequests[1]?.messages ?? [];
+    delegation.specialistContextBounded =
+      delegationRequests.length === 2 &&
+      delegatedInput.length === 3 &&
+      delegatedInput.at(-1)?.role === 'user' &&
+      delegatedInput.at(-1)?.content === socialAgentDelegationTask &&
+      delegatedInput.every(
+        (message) =>
+          !message.content.includes(socialAgentDelegationMarker) &&
+          !message.content.includes('紫水晶') &&
+          !message.content.includes('先问我最在意的部分'),
+      );
+    delegation.singleExtraInference = delegationRequests.length === 2;
+    if (
+      delegation.assistantStatus !== 'complete' ||
+      !delegation.sameTurn ||
+      !delegation.groupedInUi ||
+      !delegation.assistantVisible ||
+      !delegation.visibleDelegationLabels ||
+      !delegation.actualResultVisible ||
+      delegation.messageCountDelta !== 2 ||
+      !delegation.roomCountUnchanged ||
+      !delegation.workspaceTasksUnchanged ||
+      !delegation.specialistContextBounded ||
+      !delegation.singleExtraInference
+    ) {
+      throw new Error(
+        `Noema 主聊委派与消息呈现不符合预期：${JSON.stringify(delegation)}`,
+      );
+    }
+    mainWindow.setSize(1280, 800);
+    await mainWindow.webContents.executeJavaScript(
+      'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+    );
+    await mainWindow.webContents.executeJavaScript(`(() => {
+      const trigger = [...document.querySelectorAll('.chat-message.user-message')]
+        .find((article) => article.textContent?.includes(${JSON.stringify(socialAgentDelegationMarker)}));
+      trigger?.scrollIntoView({ block: 'center' });
+    })()`);
+    await mainWindow.webContents.executeJavaScript(
+      'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+    );
+    if (socialAgentDelegationDesktopScreenshotPath) {
+      writeSmokeScreenshot(
+        socialAgentDelegationDesktopScreenshotPath,
+        await mainWindow.capturePage(),
+      );
+    }
+    mainWindow.setSize(680, 560);
+    await mainWindow.webContents.executeJavaScript(
+      'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+    );
+    await mainWindow.webContents.executeJavaScript(`(() => {
+      const reply = [...document.querySelectorAll('.chat-message.agent-message')]
+        .find((article) => article.dataset.messageId === ${JSON.stringify(specialistDelegation.assistantMessageId)});
+      reply?.scrollIntoView({ block: 'center' });
+    })()`);
+    await mainWindow.webContents.executeJavaScript(
+      'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+    );
+    const delegationNarrowLayout = await mainWindow.webContents
+      .executeJavaScript(`(() => {
+      const shell = document.querySelector('.social-shell');
+      const thread = document.querySelector('.message-thread');
+      const composer = document.querySelector('.message-composer');
+      const rect = composer?.getBoundingClientRect();
+      return {
+        width: window.innerWidth,
+        composerVisible: Boolean(rect && rect.width > 0 && rect.height > 0 && rect.bottom <= window.innerHeight),
+        shellNoOverflow: Boolean(shell && shell.scrollWidth <= shell.clientWidth),
+        threadNoOverflow: Boolean(thread && thread.scrollWidth <= thread.clientWidth),
+        documentNoOverflow: document.documentElement.scrollWidth <= window.innerWidth,
+        groupedTurnVisible: Boolean([...document.querySelectorAll('.conversation-turn')].some((turn) => turn.querySelectorAll('.chat-message').length === 2 && turn.getClientRects().length)),
+      };
+    })()`);
+    delegation.narrowLayout = delegationNarrowLayout;
+    if (
+      !delegationNarrowLayout.composerVisible ||
+      !delegationNarrowLayout.shellNoOverflow ||
+      !delegationNarrowLayout.threadNoOverflow ||
+      !delegationNarrowLayout.documentNoOverflow ||
+      !delegationNarrowLayout.groupedTurnVisible
+    ) {
+      throw new Error(
+        `专业 agent 委派窄窗布局不符合预期：${JSON.stringify(delegationNarrowLayout)}`,
+      );
+    }
+    delegation.passed = true;
+    if (socialAgentDelegationNarrowScreenshotPath) {
+      writeSmokeScreenshot(
+        socialAgentDelegationNarrowScreenshotPath,
+        await mainWindow.capturePage(),
+      );
+    }
+  }
   const continuationThreadWorkflow = await mainWindow.webContents
     .executeJavaScript(`(async () => {
     const waitFor = async (predicate, label) => {
@@ -2414,6 +2590,7 @@ async function captureSocialAgentCreationE2e() {
         narrow: ${JSON.stringify(forwardNarrow)},
         ...${JSON.stringify(forwardingSent)},
       },
+      specialistDelegation: ${JSON.stringify(specialistDelegation)},
       continuationThread: {
         ...${JSON.stringify(continuationThreadWorkflow)},
         narrow: ${JSON.stringify(continuationNarrow)},
@@ -3246,8 +3423,35 @@ async function startNoema() {
             async *streamChat(input: {
               model: string;
               messages: Array<{ role: string; content: string }>;
+              onToolCalls?: (
+                calls: Array<{
+                  function: { name: string; arguments: string };
+                }>,
+              ) => void;
             }) {
               socialAgentE2eModelRequests.push(input);
+              const latestUserMessage = [...input.messages]
+                .reverse()
+                .find((message) => message.role === 'user')?.content;
+              if (latestUserMessage?.includes(socialAgentDelegationMarker)) {
+                input.onToolCalls?.([
+                  {
+                    function: {
+                      name: 'delegate_to_specialist',
+                      arguments: JSON.stringify({
+                        agent_id: 'engineering-partner',
+                        task: socialAgentDelegationTask,
+                      }),
+                    },
+                  },
+                ]);
+                yield '我会把这项独立核对交给工程搭档。';
+                return;
+              }
+              if (latestUserMessage === socialAgentDelegationTask) {
+                yield socialAgentDelegationResult;
+                return;
+              }
               yield '我看到了这组转发消息。';
             },
           }

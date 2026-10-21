@@ -65,6 +65,14 @@ const forwardNarrowScreenshotPath = path.join(
   e2eRoot,
   `Noema-cross-room-forward-narrow-${screenshotTag}.png`,
 );
+const delegationDesktopScreenshotPath = path.join(
+  e2eRoot,
+  `Noema-specialist-delegation-desktop-${screenshotTag}.png`,
+);
+const delegationNarrowScreenshotPath = path.join(
+  e2eRoot,
+  `Noema-specialist-delegation-narrow-${screenshotTag}.png`,
+);
 const continuationDesktopScreenshotPath = path.join(
   e2eRoot,
   `Noema-continuation-desktop-${screenshotTag}.png`,
@@ -153,6 +161,8 @@ const child = spawn(process.execPath, ['scripts/start.mjs'], {
     NOEMA_SMOKE_SOCIAL_AGENT_CONTACT_NARROW_PATH: contactNarrowScreenshotPath,
     NOEMA_SMOKE_SOCIAL_FORWARD_DESKTOP_PATH: forwardDesktopScreenshotPath,
     NOEMA_SMOKE_SOCIAL_FORWARD_NARROW_PATH: forwardNarrowScreenshotPath,
+    NOEMA_SMOKE_SOCIAL_DELEGATION_DESKTOP_PATH: delegationDesktopScreenshotPath,
+    NOEMA_SMOKE_SOCIAL_DELEGATION_NARROW_PATH: delegationNarrowScreenshotPath,
     NOEMA_SMOKE_SOCIAL_CONTINUATION_DESKTOP_PATH:
       continuationDesktopScreenshotPath,
     NOEMA_SMOKE_SOCIAL_CONTINUATION_NARROW_PATH:
@@ -204,6 +214,8 @@ const summary = {
   contactNarrowScreenshotPath,
   forwardDesktopScreenshotPath,
   forwardNarrowScreenshotPath,
+  delegationDesktopScreenshotPath,
+  delegationNarrowScreenshotPath,
   continuationDesktopScreenshotPath,
   continuationNarrowScreenshotPath,
   continuationRoomDesktopScreenshotPath,
@@ -248,6 +260,7 @@ if (
   (liveProviderE2e &&
     !result.workflow?.forwarding?.liveProviderReplyComplete) ||
   !result.workflow?.forwarding?.cancelHadNoSend ||
+  (!liveProviderE2e && !result.workflow?.specialistDelegation?.passed) ||
   (!liveProviderE2e &&
     !result.workflow?.forwarding?.currentRoomReplyAttached) ||
   result.workflow?.forwarding?.narrow?.width > 700 ||
@@ -256,6 +269,9 @@ if (
   (liveProviderE2e && !result.workflow?.forwarding?.liveProviderUsed) ||
   !existsSync(forwardDesktopScreenshotPath) ||
   !existsSync(forwardNarrowScreenshotPath) ||
+  (!liveProviderE2e &&
+    (!existsSync(delegationDesktopScreenshotPath) ||
+      !existsSync(delegationNarrowScreenshotPath))) ||
   !existsSync(interactionDesktopScreenshotPath) ||
   !existsSync(interactionNarrowScreenshotPath) ||
   !existsSync(desktopScreenshotPath) ||
