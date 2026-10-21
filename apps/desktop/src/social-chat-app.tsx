@@ -1137,6 +1137,17 @@ function SocialChatApp() {
         task,
       })),
   ].sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+  const conversationTurns: {
+    id: string;
+    items: typeof timelineItems;
+  }[] = [];
+  for (const item of timelineItems) {
+    const turnId =
+      item.kind === 'message' ? item.message.turnId : `task:${item.id}`;
+    const previousTurn = conversationTurns.at(-1);
+    if (previousTurn?.id === turnId) previousTurn.items.push(item);
+    else conversationTurns.push({ id: turnId, items: [item] });
+  }
 
   const renderProjectWorkCard = (task: NoemaSocialWorkTask) => (
     <ProjectWorkCard
@@ -1407,85 +1418,99 @@ function SocialChatApp() {
                       <span>聊天记录</span>
                       <span />
                     </div>
-                    {timelineItems.map((item) =>
-                      item.kind === 'message' ? (
-                        <React.Fragment key={item.id}>
-                          <ChatMessage
-                            message={item.message}
-                            continuationOrigin={Boolean(
-                              currentRoom.parentRoomId &&
-                              item.message.forwardedSources.some(
-                                (source) =>
-                                  source.id === currentRoom.originMessageId,
-                              ),
-                            )}
-                            roomClosed={Boolean(currentRoom.closedAt)}
-                            agent={
-                              item.message.agentId
-                                ? (messageAgent.get(item.message.agentId) ??
-                                  null)
-                                : null
-                            }
-                            canManageInteractionAdjustment={
-                              currentRoom.kind === 'direct' &&
-                              currentRoom.memberIds.length === 1 &&
-                              currentRoom.memberIds[0] === 'noema'
-                            }
-                            interactionAdjustment={
-                              state?.interactionAdjustments.find(
-                                (adjustment) =>
-                                  adjustment.sourceSurface === 'social' &&
-                                  adjustment.sourceRoomId === currentRoom.id &&
-                                  adjustment.sourceTurnId ===
-                                    item.message.turnId,
-                              ) ?? null
-                            }
-                            onRetry={handleRetry}
-                            forwardSelectionActive={forwardSelectionActive}
-                            forwardSelected={selectedForwardMessageIds.includes(
-                              item.message.id,
-                            )}
-                            onReply={() => {
-                              const forwardedText =
-                                item.message.forwardedSources
-                                  .map(
+                    {conversationTurns.map((turn) => (
+                      <section
+                        className="conversation-turn"
+                        data-conversation-turn={turn.id}
+                        key={turn.id}
+                      >
+                        {turn.items.map((item) =>
+                          item.kind === 'message' ? (
+                            <React.Fragment key={item.id}>
+                              <ChatMessage
+                                message={item.message}
+                                continuationOrigin={Boolean(
+                                  currentRoom.parentRoomId &&
+                                  item.message.forwardedSources.some(
                                     (source) =>
-                                      `${source.sender}：${source.content}`,
-                                  )
-                                  .join('\n');
-                              setReplyTarget({
-                                id: item.message.id,
-                                roomId: currentRoom.id,
-                                role: item.message.role as 'user' | 'assistant',
-                                sender:
-                                  item.message.role === 'user'
-                                    ? '你'
-                                    : (messageAgent.get(
-                                        item.message.agentId ?? '',
-                                      )?.name ?? '联系人'),
-                                createdAt: item.message.createdAt,
-                                content: forwardedText || item.message.content,
-                              });
-                              draftRef.current?.focus();
-                            }}
-                            onForward={() =>
-                              beginForwardSelection(item.message)
-                            }
-                            continuationThreads={childThreads.filter(
-                              (thread) =>
-                                thread.originMessageId === item.message.id,
-                            )}
-                            onOpenContinuation={(thread) => selectRoom(thread)}
-                            onToggleForward={() =>
-                              toggleForwardMessage(item.message)
-                            }
-                          />
-                          {item.tasks.map(renderProjectWorkCard)}
-                        </React.Fragment>
-                      ) : (
-                        renderProjectWorkCard(item.task)
-                      ),
-                    )}
+                                      source.id === currentRoom.originMessageId,
+                                  ),
+                                )}
+                                roomClosed={Boolean(currentRoom.closedAt)}
+                                agent={
+                                  item.message.agentId
+                                    ? (messageAgent.get(item.message.agentId) ??
+                                      null)
+                                    : null
+                                }
+                                canManageInteractionAdjustment={
+                                  currentRoom.kind === 'direct' &&
+                                  currentRoom.memberIds.length === 1 &&
+                                  currentRoom.memberIds[0] === 'noema'
+                                }
+                                interactionAdjustment={
+                                  state?.interactionAdjustments.find(
+                                    (adjustment) =>
+                                      adjustment.sourceSurface === 'social' &&
+                                      adjustment.sourceRoomId ===
+                                        currentRoom.id &&
+                                      adjustment.sourceTurnId ===
+                                        item.message.turnId,
+                                  ) ?? null
+                                }
+                                onRetry={handleRetry}
+                                forwardSelectionActive={forwardSelectionActive}
+                                forwardSelected={selectedForwardMessageIds.includes(
+                                  item.message.id,
+                                )}
+                                onReply={() => {
+                                  const forwardedText =
+                                    item.message.forwardedSources
+                                      .map(
+                                        (source) =>
+                                          `${source.sender}：${source.content}`,
+                                      )
+                                      .join('\n');
+                                  setReplyTarget({
+                                    id: item.message.id,
+                                    roomId: currentRoom.id,
+                                    role: item.message.role as
+                                      | 'user'
+                                      | 'assistant',
+                                    sender:
+                                      item.message.role === 'user'
+                                        ? '你'
+                                        : (messageAgent.get(
+                                            item.message.agentId ?? '',
+                                          )?.name ?? '联系人'),
+                                    createdAt: item.message.createdAt,
+                                    content:
+                                      forwardedText || item.message.content,
+                                  });
+                                  draftRef.current?.focus();
+                                }}
+                                onForward={() =>
+                                  beginForwardSelection(item.message)
+                                }
+                                continuationThreads={childThreads.filter(
+                                  (thread) =>
+                                    thread.originMessageId === item.message.id,
+                                )}
+                                onOpenContinuation={(thread) =>
+                                  selectRoom(thread)
+                                }
+                                onToggleForward={() =>
+                                  toggleForwardMessage(item.message)
+                                }
+                              />
+                              {item.tasks.map(renderProjectWorkCard)}
+                            </React.Fragment>
+                          ) : (
+                            renderProjectWorkCard(item.task)
+                          ),
+                        )}
+                      </section>
+                    ))}
                   </div>
                 )}
               </div>

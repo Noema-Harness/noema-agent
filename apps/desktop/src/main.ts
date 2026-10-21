@@ -1103,11 +1103,15 @@ async function captureSocialChatSmokeScreenshots() {
         const composer = document.querySelector('.message-composer');
         const routing = document.querySelector('.reply-routing');
         const rect = composer?.getBoundingClientRect();
+        const groupedResponseTurns = [...document.querySelectorAll('.conversation-turn')]
+          .filter((turn) => turn.querySelectorAll('.chat-message').length > 1)
+          .length;
         return {
           loaded: Boolean(shell),
           roomTitle: document.querySelector('.room-header h2')?.textContent?.trim() ?? '',
           participantCount: document.querySelectorAll('.room-header-copy p').length,
           routingChoices: routing?.querySelectorAll('button').length ?? 0,
+          groupedResponseTurns,
           composerVisible: Boolean(rect && rect.width > 0 && rect.height > 0 && rect.bottom <= window.innerHeight),
           shellNoOverflow: Boolean(shell && shell.scrollWidth <= shell.clientWidth),
           panelNoOverflow: Boolean(panel && panel.scrollWidth <= panel.clientWidth),
@@ -1132,6 +1136,7 @@ async function captureSocialChatSmokeScreenshots() {
       !desktop?.loaded ||
       desktop.roomTitle !== '工程协作' ||
       desktop.routingChoices !== 2 ||
+      desktop.groupedResponseTurns < 1 ||
       !desktop.composerVisible ||
       !desktop.shellNoOverflow ||
       !desktop.panelNoOverflow ||

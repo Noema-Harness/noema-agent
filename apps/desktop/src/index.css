@@ -3387,19 +3387,23 @@ select:disabled {
   scrollbar-width: thin;
 }
 .message-sequence {
-  width: min(100%, 1040px);
+  width: min(100%, 900px);
   min-height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 0;
+  gap: 2px;
   margin: 0 auto;
+}
+.conversation-turn {
+  padding: 11px 0 15px;
+  border-bottom: 1px solid var(--chat-line);
 }
 .room-start-marker {
   display: flex;
   align-items: center;
   justify-content: flex-start;
   gap: 9px;
-  margin: 0 0 8px 130px;
+  margin: 0 0 4px;
   color: var(--chat-muted);
   font-size: 9px;
   letter-spacing: 0.08em;
@@ -3412,13 +3416,13 @@ select:disabled {
   background: var(--chat-line);
 }
 .chat-message {
-  display: grid;
-  grid-template-columns: 112px minmax(0, 1fr);
-  align-items: start;
-  gap: 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 5px;
   width: 100%;
-  padding: 13px 0;
-  border-top: 1px solid var(--chat-line);
+  padding: 0;
+  border: 0;
 }
 .agent-message {
   align-self: stretch;
@@ -3426,12 +3430,17 @@ select:disabled {
 .user-message {
   align-self: stretch;
 }
+.conversation-turn .agent-message {
+  margin: 12px 0 0 14px;
+  padding-left: 14px;
+  border-left: 1px solid var(--chat-line);
+}
 .message-author {
   min-width: 0;
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding-top: 3px;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0;
 }
 .message-author strong {
   overflow: hidden;
@@ -3508,8 +3517,8 @@ select:disabled {
   line-height: 1.55;
 }
 .user-message .message-bubble {
-  padding-left: 11px;
-  border-left: 2px solid var(--chat-accent);
+  padding: 0;
+  border: 0;
   color: var(--chat-ink);
 }
 .user-message .message-bubble a {
