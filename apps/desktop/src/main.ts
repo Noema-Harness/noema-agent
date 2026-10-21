@@ -1991,7 +1991,8 @@ async function captureSocialAgentCreationE2e() {
     const originVisible = snapshot.messages[0]?.forwardedSources?.some((item) => item.id === ${JSON.stringify(continuationThreadWorkflow.sourceId)});
     const originIdMatches = room.originMessageId === ${JSON.stringify(continuationThreadWorkflow.sourceId)};
     const originLabelVisible = document.querySelector('.forwarded-message-card')?.textContent?.includes('来源消息') === true;
-    return { threadRoomId: room.id, originVisible, originIdMatches, originLabelVisible };
+    const originMessageTimeHidden = !document.querySelector('.chat-message.user-message .message-meta');
+    return { threadRoomId: room.id, originVisible, originIdMatches, originLabelVisible, originMessageTimeHidden };
   })()`);
   mainWindow.setSize(1280, 800);
   await mainWindow.webContents.executeJavaScript(
@@ -2075,6 +2076,7 @@ async function captureSocialAgentCreationE2e() {
     !continuationLifecycle.originVisible ||
     !continuationLifecycle.originIdMatches ||
     !continuationLifecycle.originLabelVisible ||
+    !continuationLifecycle.originMessageTimeHidden ||
     !continuationLifecycle.originBacklinkVisible ||
     !continuationLifecycle.closedComposerDisabled ||
     !continuationLifecycle.deleted ||

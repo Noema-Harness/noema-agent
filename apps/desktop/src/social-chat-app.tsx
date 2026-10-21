@@ -2608,11 +2608,13 @@ function ChatMessage({
               </ReactMarkdown>
             </div>
           ) : null}
-          <div className="message-meta">
-            <time dateTime={message.createdAt}>
-              {timeLabel(message.createdAt)}
-            </time>
-          </div>
+          {continuationOrigin && !message.content ? null : (
+            <div className="message-meta">
+              <time dateTime={message.createdAt}>
+                {timeLabel(message.createdAt)}
+              </time>
+            </div>
+          )}
           {actions}
           {continuationThreads.map((thread) => (
             <button
