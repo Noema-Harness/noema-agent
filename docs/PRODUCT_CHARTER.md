@@ -24,9 +24,11 @@
 
 用户以 Noema 开发为实际案例报告：AI 能承担大量执行，人仍须持续做产品、架构、测试等判断，并纠正 AI 的偏差。这是一位用户对一件复杂工作的描述；不证明所有个人任务都如此，也不把 Noema 缩成开发工具。跨应用补背景只是可能负担之一，不能替代对判断、纠偏和交付质量责任的设计。
 
-据此采用的产品工作假设是：Noema 是用户持续交谈的单一入口，也为复杂或重复的事情召集合适的协作者；Noema 负责跟进委托结果、检查交付并承接后续变化，让用户表达目标而不必成为一群 agent 的日常经理。普通问题由 Noema 自己处理，协作者只在其持续价值超过引入和维护成本时保留。是否减少总负担、能否跨编程与日常事务可靠工作、是否胜过“单一通用 agent + 项目空间”，仍待实践；这是假设，不是用户确认的产品承诺。
+**整体产品假设（助手提案，尚未定稿）：**Noema 是一个以持续聊天为主要入口、面向广泛个人需求的独立 agent。用户可与同一个 Noema 交流、一起理解和探索问题，也可在需要时借助工具或其他 agent 把事情推进到现实结果；它会随着真实使用逐渐适合用户。聊天关系、个人辅助、行动能力和持续个体化共同构成产品版图，任何一条机制都不等于完整定位。首版应选择能验证整体承诺的少数切片，不必同时实现所有支柱。
 
-对照材料显示，项目内聚合聊天、文件与指令，以及在消息中调用 bot、允许 bot 互相回应，已是现有产品提供的能力；因此它们是可借鉴的交互惯例，不能单独成为 Noema 的卖点。Telegram 的 guest bot 只接收被调用的消息及其回复，官方 bot-to-bot 模式也依赖显式开启与聊天上下文；这不等于长期上下文、交付责任或跨任务复用已经解决。[ChatGPT Projects](https://help.openai.com/en/articles/10169521-projects-in-chatgpt) · [Claude Projects](https://support.anthropic.com/en/articles/9517075-what-are-projects) · [Telegram guest bots](https://core.telegram.org/api/bots/guest-mode) · [Telegram bot-to-bot communication](https://core.telegram.org/api/bots/bot-to-bot)。Noema 的工作假设应由“持续的个人 agent 如何管理协作者并对结果负责”来判断，而非单纯增加 agent 数量、聊天房间或记忆记录。
+目前唯一具体描述较深的使用案例来自 Noema 开发：AI 已能执行工作，人仍承担产品、架构、测试和纠偏等多重判断。这支持把“共同理解、批判、执行和复核”纳入个人 agent 的能力版图，但不足以把整体产品缩成工作委托/协作者管理，也不足以证明这已是 Noema 的选用理由。普通交流、学习探索、生活事务与个人创造等范围仍需按实际用户问题进一步补足；它们是要探索的领域，不是已经确认的需求清单。
+
+对照材料显示，项目内聚合聊天、文件与指令，以及在消息中调用 bot、允许 bot 互相回应，已是现有产品提供的能力；因此它们是可借鉴的交互惯例，不能单独成为 Noema 的卖点。Telegram 的 guest bot 只接收被调用的消息及其回复，官方 bot-to-bot 模式也依赖显式开启与聊天上下文；这不等于长期上下文、交付责任或跨任务复用已经解决。[ChatGPT Projects](https://help.openai.com/en/articles/10169521-projects-in-chatgpt) · [Claude Projects](https://support.anthropic.com/en/articles/9517075-what-are-projects) · [Telegram guest bots](https://core.telegram.org/api/bots/guest-mode) · [Telegram bot-to-bot communication](https://core.telegram.org/api/bots/bot-to-bot)。这些是局部能力与交互惯例证据，不能据此把 Noema 的整体比较轴缩为“谁更会委派”。协作者组织与结果把关只是个人 agent 版图中的一个能力支柱。
 
 用户拥有独立个人 agent 是当前愿景，但这不自动证明 Noema 比现有应用、skill 或小工具更值得选择。
 
