@@ -3288,6 +3288,15 @@ select:disabled {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.continuation-room-mark {
+  flex: 0 0 auto;
+  padding: 1px 5px;
+  border: 1px solid var(--chat-line);
+  border-radius: 4px;
+  color: var(--chat-muted);
+  font-size: 9px;
+  line-height: 1.4;
+}
 .room-list-title-line time {
   flex: 0 0 auto;
   color: #56645b;
@@ -3391,6 +3400,18 @@ select:disabled {
   gap: 14px;
   color: var(--chat-muted);
   font-size: 10px;
+}
+.continuation-parent-link {
+  flex: 0 0 auto;
+  padding: 5px 0;
+  border: 0;
+  background: transparent;
+  color: var(--chat-forest-deep);
+  font-size: 10px;
+  cursor: pointer;
+}
+.continuation-status {
+  white-space: nowrap;
 }
 .agent-archive-button {
   min-height: 28px;
@@ -3869,6 +3890,23 @@ select:disabled {
 .forward-selection-toolbar button:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+.message-continuation-link {
+  display: block;
+  max-width: 100%;
+  margin: 5px 4px 0 auto;
+  padding: 3px 0;
+  border: 0;
+  background: transparent;
+  color: var(--chat-forest-deep);
+  font-size: 10px;
+  text-align: right;
+  cursor: pointer;
+}
+.message-continuation-link:hover,
+.continuation-parent-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 .message-actions {
   display: flex;

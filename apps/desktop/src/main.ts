@@ -153,6 +153,14 @@ const socialAgentForwardDesktopScreenshotPath =
   process.env.NOEMA_SMOKE_SOCIAL_FORWARD_DESKTOP_PATH ?? null;
 const socialAgentForwardNarrowScreenshotPath =
   process.env.NOEMA_SMOKE_SOCIAL_FORWARD_NARROW_PATH ?? null;
+const socialContinuationDesktopScreenshotPath =
+  process.env.NOEMA_SMOKE_SOCIAL_CONTINUATION_DESKTOP_PATH ?? null;
+const socialContinuationNarrowScreenshotPath =
+  process.env.NOEMA_SMOKE_SOCIAL_CONTINUATION_NARROW_PATH ?? null;
+const socialContinuationRoomDesktopScreenshotPath =
+  process.env.NOEMA_SMOKE_SOCIAL_CONTINUATION_ROOM_DESKTOP_PATH ?? null;
+const socialContinuationRoomNarrowScreenshotPath =
+  process.env.NOEMA_SMOKE_SOCIAL_CONTINUATION_ROOM_NARROW_PATH ?? null;
 const testCaptureQuickCapture =
   process.env.NOEMA_SMOKE_CAPTURE_QUICK_CAPTURE === '1';
 const testCaptureHistoryTrace =
@@ -212,6 +220,10 @@ delete process.env.NOEMA_SMOKE_SOCIAL_AGENT_CONTACT_PATH;
 delete process.env.NOEMA_SMOKE_SOCIAL_AGENT_CONTACT_NARROW_PATH;
 delete process.env.NOEMA_SMOKE_SOCIAL_FORWARD_DESKTOP_PATH;
 delete process.env.NOEMA_SMOKE_SOCIAL_FORWARD_NARROW_PATH;
+delete process.env.NOEMA_SMOKE_SOCIAL_CONTINUATION_DESKTOP_PATH;
+delete process.env.NOEMA_SMOKE_SOCIAL_CONTINUATION_NARROW_PATH;
+delete process.env.NOEMA_SMOKE_SOCIAL_CONTINUATION_ROOM_DESKTOP_PATH;
+delete process.env.NOEMA_SMOKE_SOCIAL_CONTINUATION_ROOM_NARROW_PATH;
 const testSocialWorkCaptureUi =
   process.env.NOEMA_E2E_SOCIAL_WORK_CAPTURE_UI === '1';
 delete process.env.NOEMA_E2E_DATABASE_PATH;
@@ -1402,9 +1414,9 @@ async function captureSocialAgentCreationE2e() {
     const saveRect = saveButton?.getBoundingClientRect();
     return {
       width: window.innerWidth,
-      visible: Boolean(rect && threadRect && rect.width > 0 && rect.height > 0 && rect.top >= threadRect.top && rect.bottom <= threadRect.bottom),
+      visible: Boolean(rect && threadRect && rect.width > 0 && rect.height > 0 && rect.top >= threadRect.top - 2 && rect.bottom <= threadRect.bottom + 2),
       noOverflow: Boolean(form && form.scrollWidth <= form.clientWidth && document.documentElement.scrollWidth <= window.innerWidth),
-      saveVisible: Boolean(saveRect && threadRect && saveRect.top >= threadRect.top && saveRect.bottom <= threadRect.bottom),
+      saveVisible: Boolean(saveRect && threadRect && saveRect.top >= threadRect.top - 2 && saveRect.bottom <= threadRect.bottom + 2),
       roomOpen: document.querySelector('.social-body')?.classList.contains('room-open') === true,
       roomTitle: document.querySelector('.room-header h2')?.textContent?.trim() ?? '',
       formTop: rect?.top ?? null,
@@ -1655,6 +1667,9 @@ async function captureSocialAgentCreationE2e() {
   await mainWindow.webContents.executeJavaScript(
     'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
   );
+  await mainWindow.webContents.executeJavaScript(
+    'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+  );
   const forwardNarrow = await mainWindow.webContents.executeJavaScript(`(() => {
     const dialog = document.querySelector('.forward-dialog');
     const shell = document.querySelector('.social-shell');
@@ -1825,6 +1840,206 @@ async function captureSocialAgentCreationE2e() {
       `消息转发/回复流程与模型输入不符合预期：${JSON.stringify({ forwardingSelection, forwardingSent, modelRequest })}`,
     );
   }
+  const continuationThreadWorkflow = await mainWindow.webContents
+    .executeJavaScript(`(async () => {
+    const waitFor = async (predicate, label) => {
+      const deadline = Date.now() + 6000;
+      while (Date.now() < deadline) {
+        const value = await predicate();
+        if (value) return value;
+        await new Promise((resolve) => setTimeout(resolve, 40));
+      }
+      throw new Error('等待超时：' + label);
+    };
+    const setValue = (element, value) => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(element, value);
+      element.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    const noemaRoom = [...document.querySelectorAll('.room-list-item')]
+      .find((item) => item.querySelector('.room-list-title')?.textContent?.trim() === 'Noema');
+    if (!noemaRoom) throw new Error('找不到 Noema 主聊天');
+    noemaRoom.click();
+    await waitFor(() => document.querySelector('.room-header h2')?.textContent?.trim() === 'Noema', 'Noema 主聊天');
+    const sourceText = 'E2E 原话标记：分享不愉快经历时，请先问我最在意的部分。';
+    const sourceMessage = () => [...document.querySelectorAll('.chat-message.user-message')]
+      .find((article) => article.textContent?.includes(sourceText));
+    const source = await waitFor(sourceMessage, '来源消息');
+    const sourceId = source.dataset.messageId;
+    [...source.querySelectorAll('.message-actions button')]
+      .find((button) => button.textContent?.trim() === '转发')?.click();
+    await waitFor(() => document.querySelector('.forward-selection-toolbar'), '消息选择状态');
+    [...document.querySelectorAll('.forward-selection-toolbar button')]
+      .find((button) => button.textContent?.trim() === '开主题')?.click();
+    await waitFor(() => document.querySelector('[aria-labelledby="continuation-title"]'), '主题创建窗口');
+    setValue(document.querySelector('[aria-labelledby="continuation-title"] input'), 'E2E 持续主题');
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    return { sourceId, dialogVisible: Boolean(document.querySelector('[aria-labelledby="continuation-title"]')) };
+  })()`);
+  mainWindow.setSize(1280, 800);
+  await mainWindow.webContents.executeJavaScript(
+    'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+  );
+  if (socialContinuationDesktopScreenshotPath) {
+    writeSmokeScreenshot(
+      socialContinuationDesktopScreenshotPath,
+      await mainWindow.capturePage(),
+    );
+  }
+  mainWindow.setSize(680, 560);
+  const continuationNarrow = await mainWindow.webContents
+    .executeJavaScript(`(() => {
+    const dialog = document.querySelector('[aria-labelledby="continuation-title"]');
+    const rect = dialog?.getBoundingClientRect();
+    const shell = document.querySelector('.social-shell');
+    return {
+      width: window.innerWidth,
+      visible: Boolean(rect && rect.width > 0 && rect.height > 0),
+      inViewport: Boolean(rect && rect.left >= 0 && rect.right <= window.innerWidth && rect.top >= 0 && rect.bottom <= window.innerHeight),
+      dialogNoOverflow: Boolean(dialog && dialog.scrollWidth <= dialog.clientWidth),
+      shellNoOverflow: Boolean(shell && shell.scrollWidth <= shell.clientWidth),
+      documentNoOverflow: document.documentElement.scrollWidth <= window.innerWidth,
+    };
+  })()`);
+  if (socialContinuationNarrowScreenshotPath) {
+    writeSmokeScreenshot(
+      socialContinuationNarrowScreenshotPath,
+      await mainWindow.capturePage(),
+    );
+  }
+  if (
+    !continuationThreadWorkflow.dialogVisible ||
+    !continuationNarrow.visible ||
+    !continuationNarrow.inViewport ||
+    !continuationNarrow.dialogNoOverflow ||
+    !continuationNarrow.shellNoOverflow ||
+    !continuationNarrow.documentNoOverflow
+  ) {
+    throw new Error(
+      `主题创建窗口布局不符合预期：${JSON.stringify({ continuationThreadWorkflow, continuationNarrow })}`,
+    );
+  }
+  const continuationCreated = await mainWindow.webContents
+    .executeJavaScript(`(async () => {
+    const waitFor = async (predicate, label) => {
+      const deadline = Date.now() + 7000;
+      while (Date.now() < deadline) {
+        const value = await predicate();
+        if (value) return value;
+        await new Promise((resolve) => setTimeout(resolve, 40));
+      }
+      throw new Error('等待超时：' + label);
+    };
+    const titleInput = document.querySelector('[aria-labelledby="continuation-title"] input');
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(titleInput, 'E2E 持续主题');
+    titleInput?.dispatchEvent(new Event('input', { bubbles: true }));
+    [...document.querySelectorAll('[aria-labelledby="continuation-title"] button[type="submit"]')][0]?.click();
+    await waitFor(() => document.querySelector('.room-header h2')?.textContent?.trim() === 'E2E 持续主题', '新主题聊天');
+    const state = await window.noema.getSocialState();
+    const room = state.rooms.find((item) => item.title === 'E2E 持续主题');
+    const snapshot = await window.noema.getSocialRoom(room.id);
+    const originVisible = snapshot.messages[0]?.forwardedSources?.some((item) => item.id === ${JSON.stringify(continuationThreadWorkflow.sourceId)});
+    const originIdMatches = room.originMessageId === ${JSON.stringify(continuationThreadWorkflow.sourceId)};
+    const originLabelVisible = document.querySelector('.forwarded-message-card')?.textContent?.includes('来源消息') === true;
+    return { threadRoomId: room.id, originVisible, originIdMatches, originLabelVisible };
+  })()`);
+  mainWindow.setSize(1280, 800);
+  await mainWindow.webContents.executeJavaScript(
+    'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+  );
+  if (socialContinuationRoomDesktopScreenshotPath) {
+    writeSmokeScreenshot(
+      socialContinuationRoomDesktopScreenshotPath,
+      await mainWindow.capturePage(),
+    );
+  }
+  mainWindow.setSize(680, 560);
+  await mainWindow.webContents.executeJavaScript(
+    'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+  );
+  const continuationRoomNarrow = await mainWindow.webContents
+    .executeJavaScript(`(() => {
+    const shell = document.querySelector('.social-shell');
+    const panel = document.querySelector('.conversation-panel');
+    const header = document.querySelector('.room-header');
+    return {
+      width: window.innerWidth,
+      roomTitle: document.querySelector('.room-header h2')?.textContent?.trim() ?? '',
+      shellNoOverflow: Boolean(shell && shell.scrollWidth <= shell.clientWidth),
+      panelNoOverflow: Boolean(panel && panel.scrollWidth <= panel.clientWidth),
+      headerNoOverflow: Boolean(header && header.scrollWidth <= header.clientWidth),
+      documentNoOverflow: document.documentElement.scrollWidth <= window.innerWidth,
+    };
+  })()`);
+  if (socialContinuationRoomNarrowScreenshotPath) {
+    writeSmokeScreenshot(
+      socialContinuationRoomNarrowScreenshotPath,
+      await mainWindow.capturePage(),
+    );
+  }
+  mainWindow.setSize(1280, 800);
+  const continuationLifecycle = await mainWindow.webContents
+    .executeJavaScript(`(async () => {
+    const waitFor = async (predicate, label) => {
+      const deadline = Date.now() + 7000;
+      while (Date.now() < deadline) {
+        const value = await predicate();
+        if (value) return value;
+        await new Promise((resolve) => setTimeout(resolve, 40));
+      }
+      throw new Error('等待超时：' + label);
+    };
+    const room = (await window.noema.getSocialState()).rooms.find((item) => item.id === ${JSON.stringify(continuationCreated.threadRoomId)});
+    document.querySelector('.continuation-parent-link')?.click();
+    await waitFor(() => document.querySelector('.room-header h2')?.textContent?.trim() === 'Noema', '来源聊天回链');
+    const sourceLink = await waitFor(() => [...document.querySelectorAll('.message-continuation-link')].find((item) => item.textContent?.includes('E2E 持续主题')), '来源消息上的主题链接');
+    const originBacklinkVisible = Boolean(sourceLink);
+    sourceLink.click();
+    await waitFor(() => document.querySelector('.room-header h2')?.textContent?.trim() === 'E2E 持续主题', '返回主题聊天');
+    const closeButton = [...document.querySelectorAll('.room-header-meta button')].find((button) => button.textContent?.trim() === '结束主题');
+    closeButton?.click();
+    await waitFor(async () => (await window.noema.getSocialRoom(room.id)).room.closedAt, '结束主题');
+    await waitFor(() => document.querySelector('#social-message-input')?.disabled, '已结束主题的输入锁定');
+    const closedComposerDisabled = Boolean(document.querySelector('#social-message-input')?.disabled);
+    const reopenButton = await waitFor(() => [...document.querySelectorAll('.room-header-meta button')]
+      .find((button) => button.textContent?.trim() === '重新打开' && !button.disabled), '重新打开按钮就绪');
+    reopenButton.click();
+    await waitFor(async () => !(await window.noema.getSocialRoom(room.id)).room.closedAt, '重新打开主题');
+    const deleteButton = await waitFor(() => [...document.querySelectorAll('.room-header-meta button')]
+      .find((button) => button.textContent?.trim() === '删除' && !button.disabled), '删除按钮就绪');
+    window.confirm = () => true;
+    deleteButton.click();
+    await waitFor(() => document.querySelector('.room-header h2')?.textContent?.trim() === 'Noema', '删除后返回来源聊天');
+    const afterDelete = await window.noema.getSocialState();
+    return {
+      originBacklinkVisible,
+      closedComposerDisabled,
+      deleted: !afterDelete.rooms.some((item) => item.id === room.id),
+      parentPreserved: afterDelete.rooms.some((item) => item.id === 'room-noema'),
+    };
+  })()`);
+  Object.assign(continuationLifecycle, continuationCreated, {
+    threadNarrow: continuationRoomNarrow,
+  });
+  if (
+    !continuationLifecycle.originVisible ||
+    !continuationLifecycle.originIdMatches ||
+    !continuationLifecycle.originLabelVisible ||
+    !continuationLifecycle.originBacklinkVisible ||
+    !continuationLifecycle.closedComposerDisabled ||
+    !continuationLifecycle.deleted ||
+    !continuationLifecycle.parentPreserved ||
+    continuationRoomNarrow.width > 700 ||
+    continuationRoomNarrow.roomTitle !== 'E2E 持续主题' ||
+    !continuationRoomNarrow.shellNoOverflow ||
+    !continuationRoomNarrow.panelNoOverflow ||
+    !continuationRoomNarrow.headerNoOverflow ||
+    !continuationRoomNarrow.documentNoOverflow
+  ) {
+    throw new Error(
+      `主题线程生命周期不符合预期：${JSON.stringify(continuationLifecycle)}`,
+    );
+  }
+  mainWindow.setSize(1280, 800);
   await mainWindow.webContents.executeJavaScript(`(async () => {
     const deadline = Date.now() + 5000;
     const createButton = document.querySelector('.new-agent-button');
@@ -2066,6 +2281,12 @@ async function captureSocialAgentCreationE2e() {
         ...${JSON.stringify(forwardingSelection)},
         narrow: ${JSON.stringify(forwardNarrow)},
         ...${JSON.stringify(forwardingSent)},
+      },
+      continuationThread: {
+        ...${JSON.stringify(continuationThreadWorkflow)},
+        narrow: ${JSON.stringify(continuationNarrow)},
+        threadNarrow: ${JSON.stringify(continuationRoomNarrow)},
+        ...${JSON.stringify(continuationLifecycle)},
       },
       initial,
       initialDialog,

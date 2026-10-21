@@ -19,6 +19,19 @@ const bridge = {
     ipcRenderer.invoke('noema:social-room', roomId),
   createSocialGroup: (input: { title: string; agentIds: string[] }) =>
     ipcRenderer.invoke('noema:social-create-group', input),
+  createSocialContinuationThread: (input: {
+    sourceRoomId: string;
+    sourceIds: string[];
+    title: string;
+  }) => ipcRenderer.invoke('noema:social-create-continuation-thread', input),
+  setSocialContinuationThreadClosed: (roomId: string, closed: boolean) =>
+    ipcRenderer.invoke(
+      'noema:social-set-continuation-thread-closed',
+      roomId,
+      closed,
+    ),
+  deleteSocialContinuationThread: (roomId: string) =>
+    ipcRenderer.invoke('noema:social-delete-continuation-thread', roomId),
   createSocialAgent: (input: {
     name: string;
     headline: string;

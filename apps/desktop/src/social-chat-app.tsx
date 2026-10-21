@@ -163,6 +163,13 @@ function SocialChatApp() {
   const [forwardDialogOpen, setForwardDialogOpen] = useState(false);
   const [forwardTargetRoomId, setForwardTargetRoomId] = useState('');
   const [forwardBusy, setForwardBusy] = useState(false);
+  const [threadDialogOpen, setThreadDialogOpen] = useState(false);
+  const [threadTitle, setThreadTitle] = useState('');
+  const [threadBusy, setThreadBusy] = useState(false);
+  const [threadStatusBusy, setThreadStatusBusy] = useState(false);
+  const [pendingScrollMessageId, setPendingScrollMessageId] = useState<
+    string | null
+  >(null);
   const [search, setSearch] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
@@ -192,6 +199,7 @@ function SocialChatApp() {
   const searchRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLFormElement>(null);
   const forwardOriginMessageId = useRef<string | null>(null);
+  const threadTriggerRef = useRef<HTMLButtonElement>(null);
   const groupTriggerRef = useRef<HTMLButtonElement>(null);
   const agentTriggerRef = useRef<HTMLButtonElement>(null);
   const settingsTriggerRef = useRef<HTMLButtonElement>(null);
@@ -245,6 +253,11 @@ function SocialChatApp() {
         )
         ?.focus();
     });
+  }, []);
+
+  const closeThreadDialog = useCallback(() => {
+    setThreadDialogOpen(false);
+    requestAnimationFrame(() => threadTriggerRef.current?.focus());
   }, []);
 
   const loadRoom = useCallback(async (roomId: string) => {
@@ -343,7 +356,8 @@ function SocialChatApp() {
       !createGroupOpen &&
       !createAgentOpen &&
       !settingsOpen &&
-      !forwardDialogOpen
+      !forwardDialogOpen &&
+      !threadDialogOpen
     ) {
       return;
     }
@@ -367,6 +381,7 @@ function SocialChatApp() {
         if (createGroupOpen) closeGroupDialog();
         else if (createAgentOpen) closeAgentDialog();
         else if (forwardDialogOpen) cancelForward();
+        else if (threadDialogOpen) closeThreadDialog();
         else closeSettingsDialog();
         return;
       }
@@ -401,10 +416,12 @@ function SocialChatApp() {
     createAgentOpen,
     settingsOpen,
     forwardDialogOpen,
+    threadDialogOpen,
     closeGroupDialog,
     closeAgentDialog,
     closeSettingsDialog,
     cancelForward,
+    closeThreadDialog,
   ]);
 
   useLayoutEffect(() => {
@@ -417,6 +434,19 @@ function SocialChatApp() {
     });
     return () => cancelAnimationFrame(frame);
   }, [roomState?.messages, roomState?.workTasks]);
+
+  useLayoutEffect(() => {
+    if (!pendingScrollMessageId || roomState?.room.id !== activeRoomId) return;
+    const frame = requestAnimationFrame(() => {
+      document
+        .querySelector<HTMLElement>(
+          `[data-message-id="${pendingScrollMessageId}"]`,
+        )
+        ?.scrollIntoView({ block: 'center' });
+      setPendingScrollMessageId(null);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [activeRoomId, pendingScrollMessageId, roomState]);
 
   const agents = state?.agents ?? [];
   const activeAgents = agents.filter((agent) => !agent.archivedAt);
@@ -456,6 +486,9 @@ function SocialChatApp() {
   );
   const selectedForwardMessages = messages.filter((message) =>
     selectedForwardMessageIds.includes(message.id),
+  );
+  const childThreads = rooms.filter(
+    (room) => room.parentRoomId === currentRoom?.id,
   );
   const filteredRooms = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
@@ -572,6 +605,95 @@ function SocialChatApp() {
     }
     setForwardTargetRoomId(targetRoom.id);
     setForwardDialogOpen(true);
+  };
+
+  const openThreadDialog = () => {
+    const first = selectedForwardMessages[0];
+    if (
+      !currentRoom ||
+      currentRoom.kind !== 'direct' ||
+      currentRoom.memberIds.length !== 1 ||
+      currentRoom.memberIds[0] !== 'noema' ||
+      !first ||
+      selectedForwardMessageIds.length === 0
+    )
+      return;
+    const initial = first.content.replace(/\s+/gu, ' ').trim().slice(0, 80);
+    setThreadTitle(initial || '未命名主题');
+    setThreadDialogOpen(true);
+  };
+
+  const handleCreateThread = async (event: FormEvent) => {
+    event.preventDefault();
+    if (
+      !currentRoom ||
+      !threadTitle.trim() ||
+      !selectedForwardMessageIds.length ||
+      threadBusy
+    )
+      return;
+    setThreadBusy(true);
+    setNotice('');
+    try {
+      const created = await window.noema.createSocialContinuationThread({
+        sourceRoomId: currentRoom.id,
+        sourceIds: selectedForwardMessageIds,
+        title: threadTitle.trim(),
+      });
+      forwardOriginMessageId.current = null;
+      cancelForward();
+      setThreadDialogOpen(false);
+      setActiveRoomId(created.room.id);
+      setSelectedAgentId('noema');
+      setShowRoomList(false);
+      shouldFollowRef.current = true;
+      await Promise.all([refreshState(), loadRoom(created.room.id)]);
+      requestAnimationFrame(() => draftRef.current?.focus());
+    } catch (error) {
+      setNotice(
+        error instanceof Error ? error.message : '主题没有创建，请重试。',
+      );
+    } finally {
+      setThreadBusy(false);
+    }
+  };
+
+  const handleThreadStatus = async (closed: boolean) => {
+    if (!currentRoom || threadStatusBusy) return;
+    setThreadStatusBusy(true);
+    try {
+      await window.noema.setSocialContinuationThreadClosed(
+        currentRoom.id,
+        closed,
+      );
+      await Promise.all([refreshState(), loadRoom(currentRoom.id)]);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : '主题状态没有更新。');
+    } finally {
+      setThreadStatusBusy(false);
+    }
+  };
+
+  const handleDeleteThread = async () => {
+    if (!currentRoom?.parentRoomId || threadStatusBusy) return;
+    if (
+      !window.confirm(
+        `删除主题“${currentRoom.title}”？这会删除主题聊天及其消息，但不会影响来源聊天。`,
+      )
+    )
+      return;
+    const parentRoomId = currentRoom.parentRoomId;
+    setThreadStatusBusy(true);
+    try {
+      await window.noema.deleteSocialContinuationThread(currentRoom.id);
+      await refreshState();
+      const parent = rooms.find((room) => room.id === parentRoomId);
+      if (parent) selectRoom(parent);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : '主题没有删除。');
+    } finally {
+      setThreadStatusBusy(false);
+    }
   };
 
   const chooseForwardRoom = (roomId: string) => {
@@ -1086,6 +1208,12 @@ function SocialChatApp() {
                   <span className="room-list-copy">
                     <span className="room-list-title-line">
                       <span className="room-list-title">{room.title}</span>
+                      {room.parentRoomId ? (
+                        <span className="continuation-room-mark">主题</span>
+                      ) : null}
+                      {room.closedAt ? (
+                        <span className="continuation-room-mark">已结束</span>
+                      ) : null}
                       {room.memberIds.some(
                         (agentId) => messageAgent.get(agentId)?.archivedAt,
                       ) ? (
@@ -1141,6 +1269,23 @@ function SocialChatApp() {
                 >
                   <Icon name="back" />
                 </button>
+                {currentRoom.parentRoomId ? (
+                  <button
+                    className="continuation-parent-link"
+                    type="button"
+                    onClick={() => {
+                      const parent = rooms.find(
+                        (room) => room.id === currentRoom.parentRoomId,
+                      );
+                      if (!parent) return;
+                      selectRoom(parent);
+                      setPendingScrollMessageId(currentRoom.originMessageId);
+                    }}
+                    title="回到来源消息"
+                  >
+                    ← 来源
+                  </button>
+                ) : null}
                 {currentRoom.kind === 'direct' && avatarAgent ? (
                   <AgentMark agent={avatarAgent} />
                 ) : (
@@ -1180,7 +1325,36 @@ function SocialChatApp() {
                   )}
                 </div>
                 <div className="room-header-meta">
-                  {currentRoom.kind === 'group' ? (
+                  {currentRoom.parentRoomId ? (
+                    <>
+                      <span className="continuation-status">
+                        {currentRoom.closedAt ? '已结束' : '持续主题'}
+                      </span>
+                      <button
+                        className="agent-archive-button"
+                        type="button"
+                        onClick={() =>
+                          void handleThreadStatus(!currentRoom.closedAt)
+                        }
+                        disabled={threadStatusBusy}
+                      >
+                        {threadStatusBusy
+                          ? '更新中…'
+                          : currentRoom.closedAt
+                            ? '重新打开'
+                            : '结束主题'}
+                      </button>
+                      <button
+                        className="agent-archive-button"
+                        type="button"
+                        onClick={() => void handleDeleteThread()}
+                        disabled={threadStatusBusy}
+                        title="删除此主题聊天及其消息"
+                      >
+                        删除
+                      </button>
+                    </>
+                  ) : currentRoom.kind === 'group' ? (
                     <span className="member-count">
                       {members.length + 1} 位参与者
                     </span>
@@ -1269,6 +1443,14 @@ function SocialChatApp() {
                         <ChatMessage
                           key={item.id}
                           message={item.message}
+                          continuationOrigin={Boolean(
+                            currentRoom.parentRoomId &&
+                            item.message.forwardedSources.some(
+                              (source) =>
+                                source.id === currentRoom.originMessageId,
+                            ),
+                          )}
+                          roomClosed={Boolean(currentRoom.closedAt)}
                           agent={
                             item.message.agentId
                               ? (messageAgent.get(item.message.agentId) ?? null)
@@ -1315,6 +1497,11 @@ function SocialChatApp() {
                             draftRef.current?.focus();
                           }}
                           onForward={() => beginForwardSelection(item.message)}
+                          continuationThreads={childThreads.filter(
+                            (thread) =>
+                              thread.originMessageId === item.message.id,
+                          )}
+                          onOpenContinuation={(thread) => selectRoom(thread)}
                           onToggleForward={() =>
                             toggleForwardMessage(item.message)
                           }
@@ -1417,6 +1604,21 @@ function SocialChatApp() {
                   </span>
                   <button type="button" onClick={cancelForward}>
                     取消
+                  </button>
+                  <button
+                    type="button"
+                    ref={threadTriggerRef}
+                    className="secondary-action"
+                    onClick={openThreadDialog}
+                    disabled={
+                      !selectedForwardMessageIds.length ||
+                      currentRoom.kind !== 'direct' ||
+                      currentRoom.memberIds[0] !== 'noema' ||
+                      Boolean(currentRoom.parentRoomId)
+                    }
+                    title="把选中的消息作为来源，在 Noema 私聊下开一条主题聊天"
+                  >
+                    开主题
                   </button>
                   <button
                     type="button"
@@ -1543,6 +1745,7 @@ function SocialChatApp() {
                   onKeyDown={handleComposerKeyDown}
                   disabled={
                     !composerReady ||
+                    Boolean(currentRoom.closedAt) ||
                     forwardSelectionActive ||
                     !currentRecipient ||
                     currentRecipientArchived ||
@@ -1574,6 +1777,7 @@ function SocialChatApp() {
                       type="submit"
                       disabled={
                         !composerReady ||
+                        Boolean(currentRoom.closedAt) ||
                         forwardSelectionActive ||
                         !draft.trim() ||
                         !currentRecipient ||
@@ -1704,6 +1908,72 @@ function SocialChatApp() {
                 }
               >
                 {forwardBusy ? '正在转发…' : '转发'}
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+
+      {threadDialogOpen ? (
+        <div
+          className="dialog-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !threadBusy)
+              closeThreadDialog();
+          }}
+        >
+          <form
+            ref={dialogRef}
+            className="social-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="continuation-title"
+            onSubmit={(event) => void handleCreateThread(event)}
+          >
+            <div className="dialog-heading">
+              <div>
+                <h2 id="continuation-title">另开一条主题聊天</h2>
+                <p>选中的原话会作为可见来源放在新聊天开头。</p>
+              </div>
+              <button
+                className="icon-button"
+                type="button"
+                aria-label="关闭"
+                onClick={closeThreadDialog}
+                disabled={threadBusy}
+              >
+                <Icon name="close" />
+              </button>
+            </div>
+            <label className="dialog-field">
+              <span>主题名称</span>
+              <input
+                value={threadTitle}
+                onChange={(event) => setThreadTitle(event.target.value)}
+                maxLength={80}
+                required
+                data-dialog-initial-focus
+              />
+            </label>
+            <p className="dialog-footnote">
+              这是同一个 Noema
+              的独立聊天。创建不会调用模型，也不会带入来源聊天的其他记录。
+            </p>
+            <div className="dialog-actions">
+              <button
+                className="secondary-action"
+                type="button"
+                onClick={closeThreadDialog}
+                disabled={threadBusy}
+              >
+                取消
+              </button>
+              <button
+                className="primary-action"
+                type="submit"
+                disabled={threadBusy || !threadTitle.trim()}
+              >
+                {threadBusy ? '正在创建…' : '创建主题'}
               </button>
             </div>
           </form>
@@ -2072,6 +2342,8 @@ function SocialChatApp() {
 
 function ChatMessage({
   message,
+  continuationOrigin,
+  roomClosed,
   agent,
   canManageInteractionAdjustment,
   interactionAdjustment,
@@ -2081,8 +2353,12 @@ function ChatMessage({
   onReply,
   onForward,
   onToggleForward,
+  continuationThreads,
+  onOpenContinuation,
 }: {
   message: NoemaSocialMessage;
+  continuationOrigin: boolean;
+  roomClosed: boolean;
   agent: NoemaSocialAgent | null;
   canManageInteractionAdjustment: boolean;
   interactionAdjustment: NoemaInteractionAdjustment | null;
@@ -2092,6 +2368,8 @@ function ChatMessage({
   onReply: () => void;
   onForward: () => void;
   onToggleForward: () => void;
+  continuationThreads: NoemaSocialRoom[];
+  onOpenContinuation: (room: NoemaSocialRoom) => void;
 }) {
   const adjustmentEditorRef = useRef<HTMLFormElement>(null);
   const [adjustmentEditorOpen, setAdjustmentEditorOpen] = useState(false);
@@ -2218,7 +2496,7 @@ function ChatMessage({
     );
   }
 
-  const canActOnMessage = message.status === 'complete';
+  const canActOnMessage = message.status === 'complete' && !roomClosed;
   const actions = canActOnMessage ? (
     <div className="message-actions">
       {forwardSelectionActive ? (
@@ -2267,7 +2545,11 @@ function ChatMessage({
     message.forwardedSources.length > 0 ? (
       <div className="forwarded-message-card">
         <strong>
-          {message.forwardedSources.length > 1 ? '合并转发' : '转发消息'}
+          {continuationOrigin
+            ? '来源消息'
+            : message.forwardedSources.length > 1
+              ? '合并转发'
+              : '转发消息'}
         </strong>
         <span className="forwarded-message-source">
           来自「{message.forwardedSources[0].roomTitle}」
@@ -2316,6 +2598,17 @@ function ChatMessage({
             </time>
           </div>
           {actions}
+          {continuationThreads.map((thread) => (
+            <button
+              className="message-continuation-link"
+              type="button"
+              key={thread.id}
+              onClick={() => onOpenContinuation(thread)}
+            >
+              ↳ 继续：{thread.title}
+              {thread.closedAt ? ' · 已结束' : ''}
+            </button>
+          ))}
           {adjustmentEditorOpen && canManageInteractionAdjustment ? (
             <form
               ref={adjustmentEditorRef}
@@ -2476,7 +2769,11 @@ function ChatMessage({
         {failed ? (
           <div className="message-failure" role="status">
             <span>{message.errorMessage ?? '这条回复没有完成。'}</span>
-            <button type="button" onClick={() => onRetry(message)}>
+            <button
+              type="button"
+              onClick={() => onRetry(message)}
+              disabled={roomClosed}
+            >
               重试
             </button>
           </div>
@@ -2493,6 +2790,17 @@ function ChatMessage({
           kind="conversation"
         />
         {actions}
+        {continuationThreads.map((thread) => (
+          <button
+            className="message-continuation-link"
+            type="button"
+            key={thread.id}
+            onClick={() => onOpenContinuation(thread)}
+          >
+            ↳ 继续：{thread.title}
+            {thread.closedAt ? ' · 已结束' : ''}
+          </button>
+        ))}
       </div>
     </article>
   );

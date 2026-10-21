@@ -50,7 +50,7 @@ test('social schema seeds stable identities and keeps one agent across independe
       db
         .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
         .get().version,
-      8,
+      9,
     );
   } finally {
     db.close();
@@ -111,6 +111,11 @@ test('social chat schema v1 upgrades additively to project-work state', () => {
       ALTER TABLE social_messages DROP COLUMN interaction_adjustment_ids_json;
       ALTER TABLE social_messages DROP COLUMN interaction_adjustment_snapshots_json;
       ALTER TABLE social_messages DROP COLUMN interaction_adjustment_attempts_json;
+      DROP INDEX social_rooms_parent_order;
+      ALTER TABLE social_rooms DROP COLUMN parent_room_id;
+      ALTER TABLE social_rooms DROP COLUMN origin_message_id;
+      ALTER TABLE social_rooms DROP COLUMN closed_at;
+      DELETE FROM social_schema_migrations WHERE version = 9;
     `);
 
     const upgraded = new SocialChatStore(db);
@@ -126,7 +131,7 @@ test('social chat schema v1 upgrades additively to project-work state', () => {
       db
         .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
         .get().version,
-      8,
+      9,
     );
     assert.equal(
       db
@@ -167,6 +172,11 @@ test('social schema v7 adds retry snapshots without rewriting the last known att
     db.exec(`
       ALTER TABLE social_messages DROP COLUMN interaction_adjustment_attempts_json;
       DELETE FROM social_schema_migrations WHERE version = 8;
+      DROP INDEX social_rooms_parent_order;
+      ALTER TABLE social_rooms DROP COLUMN parent_room_id;
+      ALTER TABLE social_rooms DROP COLUMN origin_message_id;
+      ALTER TABLE social_rooms DROP COLUMN closed_at;
+      DELETE FROM social_schema_migrations WHERE version = 9;
     `);
 
     const upgraded = new SocialChatStore(db);
@@ -390,6 +400,175 @@ test('message forwarding snapshots only selected complete messages from the sour
           sourceIds: [sourceTurn.userMessageId, sourceTurn.userMessageId],
         }),
       /不能重复/u,
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test('continuation threads preserve visible source context and room lineage', () => {
+  const { db, social } = makeStores();
+  try {
+    const sourceTurn = social.beginTurn({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '几天后继续比较各平台 AI 订阅价格。',
+      model: 'test-model',
+    });
+    social.appendAssistantDelta(
+      sourceTurn.assistantMessageId,
+      '先确定要跟踪的平台和计费周期。',
+    );
+    social.completeReply(sourceTurn.assistantMessageId);
+
+    const thread = social.createContinuationThread({
+      sourceRoomId: 'room-noema',
+      sourceIds: [sourceTurn.userMessageId, sourceTurn.assistantMessageId],
+      title: 'AI 订阅价格',
+    });
+    assert.equal(thread.room.parentRoomId, 'room-noema');
+    assert.equal(thread.room.originMessageId, sourceTurn.userMessageId);
+    assert.equal(thread.room.closedAt, null);
+    assert.deepEqual(
+      thread.members.map((member) => member.id),
+      ['noema'],
+    );
+    assert.deepEqual(
+      thread.messages[0].forwardedSources.map((source) => source.id),
+      [sourceTurn.userMessageId, sourceTurn.assistantMessageId],
+    );
+    const roomListEntry = social
+      .listRooms()
+      .find((room) => room.id === thread.room.id);
+    assert.equal(roomListEntry.parentRoomId, 'room-noema');
+    assert.equal(
+      social
+        .getContext(thread.room.id)
+        .some((message) => message.content.includes('比较各平台 AI 订阅价格')),
+      true,
+    );
+    assert.throws(
+      () =>
+        social.createContinuationThread({
+          sourceRoomId: 'room-engineering-partner',
+          sourceIds: [sourceTurn.userMessageId],
+          title: '无效来源',
+        }),
+      /Noema 的主聊天/u,
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test('continuation threads keep their origin in the bounded context and can close and reopen', () => {
+  const { db, social } = makeStores();
+  try {
+    const sourceTurn = social.beginTurn({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '持续跟踪某类产品的变化。',
+      model: 'test-model',
+    });
+    social.appendAssistantDelta(sourceTurn.assistantMessageId, '可以继续。');
+    social.completeReply(sourceTurn.assistantMessageId);
+    const thread = social.createContinuationThread({
+      sourceRoomId: 'room-noema',
+      sourceIds: [sourceTurn.userMessageId, sourceTurn.assistantMessageId],
+      title: '产品变化跟踪',
+    });
+
+    for (let index = 0; index < 22; index += 1) {
+      const turn = social.beginTurn({
+        roomId: thread.room.id,
+        agentId: 'noema',
+        text: `后续交流 ${index}`,
+        model: 'test-model',
+      });
+      social.appendAssistantDelta(turn.assistantMessageId, `回复 ${index}`);
+      social.completeReply(turn.assistantMessageId);
+    }
+    const context = social.getContext(thread.room.id);
+    assert.equal(context.length, 40);
+    assert.equal(
+      context.some((message) =>
+        message.content.includes('持续跟踪某类产品的变化'),
+      ),
+      true,
+    );
+
+    const closed = social.setContinuationThreadClosed(thread.room.id, true);
+    assert.ok(closed.room.closedAt);
+    assert.throws(
+      () =>
+        social.beginTurn({
+          roomId: thread.room.id,
+          agentId: 'noema',
+          text: '已结束线程不能继续发送',
+          model: 'test-model',
+        }),
+      /主题已结束/u,
+    );
+    assert.throws(
+      () =>
+        social.appendForwardedMessage({
+          sourceRoomId: thread.room.id,
+          sourceIds: [thread.messages[0].id],
+          targetRoomId: 'room-engineering-partner',
+        }),
+      /主题已结束/u,
+    );
+    const reopened = social.setContinuationThreadClosed(thread.room.id, false);
+    assert.equal(reopened.room.closedAt, null);
+    const resumed = social.beginTurn({
+      roomId: thread.room.id,
+      agentId: 'noema',
+      text: '重新打开后继续',
+      model: 'test-model',
+    });
+    social.appendAssistantDelta(resumed.assistantMessageId, '继续中。');
+    social.completeReply(resumed.assistantMessageId);
+
+    db.prepare('DELETE FROM social_rooms WHERE id = ?').run('room-noema');
+    assert.equal(
+      db.prepare('SELECT 1 FROM social_rooms WHERE id = ?').get(thread.room.id),
+      undefined,
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test('deleting a continuation thread removes only that branch', () => {
+  const { db, social } = makeStores();
+  try {
+    const turn = social.beginTurn({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '为之后的工作留下一个独立脉络。',
+      model: 'test-model',
+    });
+    social.appendAssistantDelta(turn.assistantMessageId, '好的。');
+    social.completeReply(turn.assistantMessageId);
+    const thread = social.createContinuationThread({
+      sourceRoomId: 'room-noema',
+      sourceIds: [turn.assistantMessageId, turn.userMessageId],
+      title: '独立脉络',
+    });
+    assert.equal(thread.room.originMessageId, turn.userMessageId);
+    const result = social.deleteContinuationThread(thread.room.id);
+    assert.equal(result.parentRoomId, 'room-noema');
+    assert.equal(
+      db.prepare('SELECT 1 FROM social_rooms WHERE id = ?').get(thread.room.id),
+      undefined,
+    );
+    assert.ok(
+      db.prepare('SELECT 1 FROM social_rooms WHERE id = ?').get('room-noema'),
+    );
+    assert.ok(
+      db
+        .prepare('SELECT 1 FROM social_messages WHERE id = ?')
+        .get(turn.userMessageId),
     );
   } finally {
     db.close();

@@ -31,6 +31,10 @@ const CHANNELS = Object.freeze({
   socialState: 'noema:social-state',
   socialRoom: 'noema:social-room',
   socialCreateGroup: 'noema:social-create-group',
+  socialCreateContinuationThread: 'noema:social-create-continuation-thread',
+  socialSetContinuationThreadClosed:
+    'noema:social-set-continuation-thread-closed',
+  socialDeleteContinuationThread: 'noema:social-delete-continuation-thread',
   socialCreateAgent: 'noema:social-create-agent',
   socialAgentProjectWork: 'noema:social-agent-project-work',
   socialAgentArchive: 'noema:social-agent-archive',
@@ -83,6 +87,15 @@ export function registerRootIpc({
       });
       return room;
     });
+    register(CHANNELS.socialCreateContinuationThread, (input) =>
+      socialChatService.createContinuationThread(input),
+    );
+    register(CHANNELS.socialSetContinuationThreadClosed, (roomId, closed) =>
+      socialChatService.setContinuationThreadClosed(roomId, closed),
+    );
+    register(CHANNELS.socialDeleteContinuationThread, (roomId) =>
+      socialChatService.deleteContinuationThread(roomId),
+    );
     register(CHANNELS.socialCreateAgent, (input) =>
       socialChatService.createAgent(input),
     );

@@ -134,6 +134,9 @@ export interface NoemaSocialRoom {
   id: string;
   kind: 'direct' | 'group';
   title: string;
+  parentRoomId: string | null;
+  originMessageId: string | null;
+  closedAt: string | null;
   createdAt: string;
   updatedAt: string;
   lastMessageAt: string | null;
@@ -301,7 +304,14 @@ export interface NoemaSocialWorkTask {
 export interface NoemaSocialRoomState {
   room: Pick<
     NoemaSocialRoom,
-    'id' | 'kind' | 'title' | 'createdAt' | 'updatedAt'
+    | 'id'
+    | 'kind'
+    | 'title'
+    | 'parentRoomId'
+    | 'originMessageId'
+    | 'closedAt'
+    | 'createdAt'
+    | 'updatedAt'
   >;
   members: NoemaSocialAgent[];
   messages: NoemaSocialMessage[];
@@ -502,6 +512,18 @@ export interface NoemaBridge {
     title: string;
     agentIds: string[];
   }): Promise<NoemaSocialRoomState>;
+  createSocialContinuationThread(input: {
+    sourceRoomId: string;
+    sourceIds: string[];
+    title: string;
+  }): Promise<NoemaSocialRoomState>;
+  setSocialContinuationThreadClosed(
+    roomId: string,
+    closed: boolean,
+  ): Promise<NoemaSocialRoomState>;
+  deleteSocialContinuationThread(roomId: string): Promise<{
+    parentRoomId: string;
+  }>;
   createSocialAgent(input: {
     name: string;
     headline: string;

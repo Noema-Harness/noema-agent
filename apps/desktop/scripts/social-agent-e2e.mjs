@@ -65,6 +65,22 @@ const forwardNarrowScreenshotPath = path.join(
   e2eRoot,
   `Noema-cross-room-forward-narrow-${screenshotTag}.png`,
 );
+const continuationDesktopScreenshotPath = path.join(
+  e2eRoot,
+  `Noema-continuation-desktop-${screenshotTag}.png`,
+);
+const continuationNarrowScreenshotPath = path.join(
+  e2eRoot,
+  `Noema-continuation-narrow-${screenshotTag}.png`,
+);
+const continuationRoomDesktopScreenshotPath = path.join(
+  e2eRoot,
+  `Noema-continuation-room-desktop-${screenshotTag}.png`,
+);
+const continuationRoomNarrowScreenshotPath = path.join(
+  e2eRoot,
+  `Noema-continuation-room-narrow-${screenshotTag}.png`,
+);
 const interactionDesktopScreenshotPath = path.join(
   e2eRoot,
   `Noema-interaction-adjustment-desktop-${screenshotTag}.png`,
@@ -137,6 +153,14 @@ const child = spawn(process.execPath, ['scripts/start.mjs'], {
     NOEMA_SMOKE_SOCIAL_AGENT_CONTACT_NARROW_PATH: contactNarrowScreenshotPath,
     NOEMA_SMOKE_SOCIAL_FORWARD_DESKTOP_PATH: forwardDesktopScreenshotPath,
     NOEMA_SMOKE_SOCIAL_FORWARD_NARROW_PATH: forwardNarrowScreenshotPath,
+    NOEMA_SMOKE_SOCIAL_CONTINUATION_DESKTOP_PATH:
+      continuationDesktopScreenshotPath,
+    NOEMA_SMOKE_SOCIAL_CONTINUATION_NARROW_PATH:
+      continuationNarrowScreenshotPath,
+    NOEMA_SMOKE_SOCIAL_CONTINUATION_ROOM_DESKTOP_PATH:
+      continuationRoomDesktopScreenshotPath,
+    NOEMA_SMOKE_SOCIAL_CONTINUATION_ROOM_NARROW_PATH:
+      continuationRoomNarrowScreenshotPath,
     NOEMA_SMOKE_SOCIAL_ADJUSTMENT_DESKTOP_PATH:
       interactionDesktopScreenshotPath,
     NOEMA_SMOKE_SOCIAL_ADJUSTMENT_NARROW_PATH: interactionNarrowScreenshotPath,
@@ -180,6 +204,10 @@ const summary = {
   contactNarrowScreenshotPath,
   forwardDesktopScreenshotPath,
   forwardNarrowScreenshotPath,
+  continuationDesktopScreenshotPath,
+  continuationNarrowScreenshotPath,
+  continuationRoomDesktopScreenshotPath,
+  continuationRoomNarrowScreenshotPath,
   interactionDesktopScreenshotPath,
   interactionNarrowScreenshotPath,
 };

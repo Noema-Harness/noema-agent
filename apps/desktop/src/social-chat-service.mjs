@@ -94,6 +94,32 @@ export class SocialChatService {
     return room;
   }
 
+  createContinuationThread(input) {
+    if (this.shuttingDown) throw new Error('Noema 正在关闭，暂不能新建主题。');
+    const room = this.store.createContinuationThread(input);
+    this.emit({ type: 'chat-room-created', roomId: room.room.id });
+    this.emit({ type: 'chat-state-updated', roomId: input.sourceRoomId });
+    return room;
+  }
+
+  setContinuationThreadClosed(roomId, closed) {
+    if (this.shuttingDown) throw new Error('Noema 正在关闭，暂不能更新主题。');
+    if (closed && this.active.has(roomId))
+      throw new Error('主题中仍有回复正在生成；停止回复后再结束。');
+    const room = this.store.setContinuationThreadClosed(roomId, closed);
+    this.emit({ type: 'chat-state-updated', roomId });
+    return room;
+  }
+
+  deleteContinuationThread(roomId) {
+    if (this.shuttingDown) throw new Error('Noema 正在关闭，暂不能删除主题。');
+    if (this.active.has(roomId))
+      throw new Error('主题中仍有回复正在生成；停止回复后再删除。');
+    const result = this.store.deleteContinuationThread(roomId);
+    this.emit({ type: 'chat-state-updated', roomId: result.parentRoomId });
+    return result;
+  }
+
   setAgentProjectWork(agentId, enabled) {
     const agent = this.store.setAgentProjectWork(agentId, enabled);
     this.emit({ type: 'agent-state-updated', agentId });
