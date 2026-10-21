@@ -1,104 +1,73 @@
-# Personal agent：产品类别、真实边界与 Noema 的对照
+# Personal agent：用户问题、现有替代与 Noema 候选
 
-日期：2026-10-18  
-状态：2026-10-18 的第一轮产品/市场核查，包含当时的候选推论。2026-10-21 用户反馈后，文末从“持续好友/实践所有权”收敛定位的结论已撤回；不再作为当前产品答案。新工作以[当前产品与界面基线](../design/chat-redesign-brief.md)和 Issue #104 为准。旧外部资料保留为带日期的研究线索，引用前核对时效；未在本轮全量复核。
-关联：Issue #2 / M1；[持续型好友与聊天空间讨论基线](../design/persistent-agent-social-model.md) · [经验到专业实践研究](./experience-to-practice.md)
+日期：2026-10-21
 
-## 研究问题
+状态：产品探索记录。整体价值承诺仍是助手假设，尚未形成最终品牌定位。
 
-“Personal agent”最近同时成为大公司产品类别、创业公司叙事和开源社区项目的总称。它是否是真实产品方向，Codex 这类应用是否已足以覆盖需求？不能只按宣传语判断，需看产品实际持有什么状态、能做什么、持续多久、用户给它什么权限、以及有无真实用户证据。
+## 研究边界
 
-当前先采用一个可观察而非营销式的定义：**personal agent 是具有个人连续状态、能连接个人工具/数据、并可在用户不逐轮驱动时继续完成或跟进任务的 agent 产品/系统。**不同产品只覆盖其中一部分；“更像人”“理解你”不是可比能力，除非能落实到可审计的行为、记忆来源和控制权。
+Noema 已确认是独立的聊天型个人 agent。用户希望它既能持续交流，也能按任务需要使用工具或组织其它 agent；agent 可能从不同经历中发展自己的方法与身份。这是产品方向的起点，不是完整规格。产品范围应覆盖普通交流、理解与探索、计划与行动、创造，以及必要的协作；不能把其中一个机制提升为整款产品的价值。
 
-## 不是一个单一类别，而是几种产品形态叠在一起
+以下竞品资料只证明厂商公开描述的能力和限制，不证明功能稳定、用户留存或体验质量。Noema 唯一有深度的实际使用线索来自用户报告的 Noema 开发：AI 执行变容易后，人仍承担产品判断、架构、测试、纠偏和协调。它说明“复杂工作中监督 AI 的负担”值得作为一个高复杂度切口研究，不代表所有用户的主要需求，也不能把 Noema 定义成编程产品。
 
-| 形态 | 代表产品 | 实际重点 | 不等同于 |
+## 现有替代已经覆盖什么
+
+| 替代形态 | 已公开的用户路径 | 对 Noema 的含义与边界 |
+| --- | --- | --- |
+| 通用聊天与项目空间 | ChatGPT Projects 把相关对话、文件和指令放在一起，供写作、研究、计划等持续工作复用上下文。 | 问答、项目上下文与聊天入口都是基线能力。仅把它们做成联系人/房间，不构成选择理由。[Projects in ChatGPT](https://help.openai.com/en/articles/10169521-projects-in-chatgpt) |
+| 常驻个人 agent | OpenAI Dots 允许用户给一个常驻 agent 设目标、连应用、持续对话与反馈；它可以跨会话推进工作、使用云端计算机、安排任务并暂停。官方列举演示文稿、内容制作和改进应用等场景。断开 app 不会删除已获得的信息，需删除整个 dot。 | “一个主 agent 长期跟进多类工作”已是直接竞品方向。Noema 不能只以跨会话、主动或后台工作来定位；必须对数据生命周期、协作者结构或用户结果给出更好的取舍。[Dots 使用说明](https://help.openai.com/en/articles/20001530-getting-started-with-your-dot) |
+| 跨应用行动 agent | Meta 将 Muse 描述为消息式个人 agent，可通过 Muse app/WhatsApp 交办多步事务；任务可在应用关闭后继续，并在发送邮件、购买等环节申请批准。其产品说明称运行在专用 VM。 | “像聊天一样委托现实事务”已被主流产品采用。安全、授权、撤回与执行结果不是高级设置，而是行动能力的一部分。上述均为 Meta 的产品描述，不视作独立安全审计。[Muse 产品说明](https://about.fb.com/news/2026/09/introducing-muse-personal-ai-agent) |
+| 任务、监控与技能 | Gemini Spark 把目标放进 task thread，可连接应用、选择 skill，并按时间、邮件条件或主题变化触发；官方也说明订阅、并发与算力限制，且监控并不适合时效性要求很高的事件。 | 长期目标与主动跟进已有产品先例。实际边界还包括触发延迟、配额、可用地区和账号依赖，不能把“永远在线”当成可靠性证明。[Spark schedules](https://support.google.com/gemini/answer/17094710) |
+| 消息中的临时 agent | Telegram 可在私聊或群聊里 @guest bot。bot 只看到被提及的消息及其回复，不读取其它消息；Telegram 也支持 bot-to-bot 通信和用户配置的聊天自动化。 | 消息入口、多人聊天和临时调用 specialist 都是成熟交互先例。它们不等于持久协作者身份或跨任务积累；Noema 不应以“agent 出现在聊天里”本身当卖点。[Telegram guest bots](https://telegram.org/blog/ai-bot-revolution-11-new-features/fa?setln=en) |
+
+这些来源大多是官方说明，不能证明功能做得好。它们足以说明：通用聊天、项目上下文、个人记忆、日程/监控、跨 app 执行以及消息内调用 agent，都不能仅凭“我们也有”成为 Noema 的卖点。与此同时，别人已做过也不意味着 Noema 不应做；选择依据应是用户结果、执行质量和代价。
+
+## 用户问题地图
+
+| 用户带来的事情 | 今天的低成本替代 | 可观察的未解负担 | Noema 要回答的问题 |
 | --- | --- | --- | --- |
-| 个人化对话助手 | ChatGPT Memory、Gemini Personal Intelligence | 用历史对话、连接应用和偏好改善当下回答 | 长期自主执行 |
-| 持续委托型 agent | OpenAI Dots、Meta Muse、Gemini Spark、Jo、Instinct | 连接邮箱/日历/浏览器等，做后台、周期性或多步任务 | 一个新的基础模型或真正有意识的个体 |
-| 工作流/企业 autopilot | Microsoft Autopilot（原 Scout）、ChatGPT Work Scheduled Tasks | 组织身份、M365/应用数据、触发器、权限和审核 | 面向个人日常的通用产品 |
-| 可自托管个人 agent harness | OpenClaw、Hermes | 用户自行连接模型、工具、会话与记忆，能深度 DIY | 开箱即用、受控的消费级助手 |
+| 随手提问、谈想法、学新东西 | 通用对话助手、搜索、向熟人请教 | 需要重新补背景；回答质量与个性化因模型和会话而异 | Noema 的持续关系带来什么可感知改善，而不是再做一个聊天框？ |
+| 逐步推进一个主题或项目 | Projects、文档/任务工具、定时任务 | 上下文分散，计划和结果需要人工维护；自动任务可能延迟或受限 | Noema 如何在用户离线时推进，又让用户容易查看、改向、暂停或接手？ |
+| 处理生活事务或跨应用操作 | 各服务原生功能、自动化工具、主流个人 agent | 授权成本、错误副作用、撤回困难、服务可用性 | 每项行动的边界、费用、确认点、失败责任与可撤销性怎样成为主流程？ |
+| 创作、研究或复杂项目 | 专业应用、通用模型、垂直 agent | 人仍要负责目标拆解、质量判断、纠偏和跨工具协调；这是用户报告的 Noema 开发实例 | Noema 能否减少监督和重新解释的负担，并对交付结果承担可见责任？这是候选切口，不是全产品定位。 |
+| 需要多种专业视角或执行能力的事情 | 多个模型/服务、prompt 人设、临时 bot、人工团队 | 用户自己要挑工具、复制背景、串接结果；临时 agent 通常不自然地延续为长期协作者 | 用户提出的“核心 Noema + 可持续发展的协作 agent”能否比临时调用更省心？身份和成长必须改变后续行为，不能只是换名字或加一条总结提示。 |
+| 希望有专属感和长期陪伴 | 个性化设置、记忆功能、陪伴型产品 | 个性化可能退化为提示词；情感表达可能变成角色表演或牺牲办事质量 | 如何让专属感来自真实连续性与更合适的帮助，同时不声称模型具有意识或真实情感？ |
 
-这些方向会收敛到同一客户端，但其用户价值、数据边界和失败后果不同。仅把产品叫作 personal agent，不能说明它在解决同一种问题。
+这些行是使用问题领域，不是首版功能列表。产品可以既重视实际成事，也保留专属伙伴感；两者能否互相加强，应由用户结果决定。
 
-## 有代表性的现有产品
+## 当前产品判断
 
-### OpenAI：Dots 把 Codex 作为纵向能力之一，主产品是持续委托
+**整体品类与范围：**Noema 是以聊天为主要入口、覆盖多种个人需求的独立 agent。用户可以用它交流和共同思考，也可以请它把事情往现实结果推进；它根据问题选择自身处理、调用工具或组织协作。具体值不值得选择，不能由“个人 agent”这个类别单独回答。
 
-官方将 Dots 定义为 ChatGPT 内的 always-on agent：用户建立一个 primary dot，给它目标、连接应用并定义自主权限；它有自己的云端计算机，可在对话以外持续工作，通过 ChatGPT、Slack、Teams 接收指令/汇报。它可以查看已连接信息、主动形成 memory、执行 scheduled tasks，并能创建 Codex Cloud 或本地 Codex/Work 任务。换言之，OpenAI 自己的产品边界已经把“个人主 agent”与“编程执行引擎”分开：Codex 是它可调用的专长工作环境，不是完整 personal-agent 产品本身。[Dots 产品说明](https://openai.com/index/introducing-dots/) · [Dots 使用、Codex 调用与记忆说明](https://help.openai.com/en/articles/20001530-getting-started-with-your-dot)
+**助手的候选整体承诺：**让用户能把日常想法、问题和待办带给同一个持续的个人 agent，由它陪用户澄清、探索和推进；当事情复杂到不适合由单一 agent 处理时，它能安排合适的协作者，并把结果带回原有关系。这覆盖广泛个人用途，而不是只做任务委派或专业 agent 管理。它目前只是用于推动体验设计的候选，不是已验证的品牌句，也不是用户亲自确认。
 
-实际限制同样重要：现阶段消费者先使用单个 dot，多个 dot 及团队能力是未来方向；dot 的单项任务对话不会自动获得与它的全部过往对话；本地电脑接入是可选权限；断开 app 不会自动删除该 app 已被 dot 获得的信息，删除 dot 才会整体清除其对话、memory 和 scheduled tasks。它很接近“一个连续伙伴，按需调用 Codex”，但还没有证明稳定专业好友 roster 或好友的专业实践成长。[Dots memory/task controls](https://help.openai.com/en/articles/20001530-getting-started-with-your-dot) · [ChatGPT Work 与 Codex 的差异](https://help.openai.com/en/articles/20001275-chatgpt-work-and-codex)
+**可能的机制差异：**核心 Noema 保持长期对话关系；必要时外放工作；协作者可以在真实工作中复用并发展经验。多 agent、跨房间或自我反思本身都不构成价值。若这些机制增加用户调度、等待、阅读噪音或模型成本，却没有改善结果，应删掉或退回更简单路径。
 
-**对“Codex 够不够用”的判断：**Codex 是专门处理代码库和工程任务的 agent，能并行执行、远端继续、跨设备查看和使用 worktree；它可覆盖大量 vibecoding 工作，不自动覆盖跨 Gmail/群聊/日历、长期监控、生活事务和跨任务个人状态。与此同时，ChatGPT Work 已支持 scheduled / webhook-triggered tasks，ChatGPT apps/agent 可提供一般网页与连接器能力，Dots 则把这些能力、记忆和 Codex 云任务组合到一个个人入口中。因此，准确的比较对象不是“Codex 单独 vs Noema”，而是“现有聊天/工作/编程 agent 的最低成本组合 vs Noema 是否有额外生命周期价值”。[Codex](https://help.openai.com/en/articles/11369540-using-codex-with-your-chatgpt-plan) · [Work scheduled/event-triggered tasks](https://help.openai.com/en/articles/20001275-chatgpt-work-and-codex) · [ChatGPT Agent](https://help.openai.com/en/articles/11752874-chatgpt-agent)
+**首个切口建议：**先用一类需要理解目标、分工、执行和结果把关的复杂事项，验证 Noema 是否真能减少用户作为产品经理/架构师/测试者/协调者的持续负担；把普通交流、生活事务、创造与关系体验作为整体产品不可丢失的范围来评估，不要求首版一次实现。该切口来自用户自己的开发体验，优点是信号具体；风险是样本单一、容易把产品做成工程工作台。
 
-### Meta Muse：消费级生活事务 + 自己的安全 VM
+## 用用户自己的例子检验协作者成长机制
 
-Muse 的设计目标是直接处理个人事务：用户可在 app 或 WhatsApp 聊天，分享长期目标，连接日历/消息/邮箱或其他应用，做浏览器、购买、预约等动作；对长任务，应用关闭后仍继续，遇到关键步骤再回来申请批准。官方结构里，Muse 使用独立 Secure VM，Sentinel 控制外网动作，凭据独立保管，重要动作需要审核，所有操作有审计记录。这把“个人 agent 的信任/执行边界”作为产品的一部分，而不是只靠 system prompt。[Meta Muse 产品说明](https://about.fb.com/news/2026/09/introducing-muse-personal-ai-agent)
+这是一条验证机制是否连贯的示例旅程，不是首版需求清单：
 
-独立报道显示 Muse 的上线带来大量初期尝试：第三方应用数据估算其上线数周达到数百万下载、美国 App Store 排名靠前，但 Meta 没有公开自身用户数，估算受 Meta 跨产品推广影响，也不是长期留存或付款证据。[TechCrunch 对第三方下载/活跃数据的说明](https://techcrunch.com/2026/09/21/metas-muse-is-outpacing-chatgpts-early-mobile-launch/)。实际体验报道既记录了用户用它省下旅行、订阅、客服等时间，也记录了商家拒绝与 AI 通话、未经预期的行动和用户对权限的犹豫；这表示 consumer curiosity 真实存在，但“允许 agent 执行”仍不是默认共识。[The Atlantic 的用户案例与外部摩擦](https://www.theatlantic.com/technology/2026/10/ai-agent-chaos-e-commerce/689010/)
+1. 用户先请 Noema 整理本周 AI 新闻。Noema 判断这项工作需要外部研究，就自己寻找合适协作者；没有合适对象时，可以创建“新闻观察者”。用户在主聊天中看到 Noema 如何安排、何时回来和最终结果，不必先学 agent runtime 或手动拆解执行图。
+2. 几天后用户请 Noema 做一个跟踪各家 AI 平台价格的工具。Noema 可复用“新闻观察者”的研究能力，并组建当前项目所需的其它协作；用户继续与 Noema 对话，需要时介入原项目空间。研究员职责从“找新闻”扩展为平台研究，名字和自我描述可能随之变化。
+3. 上次经历不应由每次任务结束时的一次独立 LLM 总结来制造。先把已产生的任务信息留成有来源的简短经历记录：任务目的、角色、关键资料/动作、交付结果、用户纠正和可核验结果。此举复用现有工作输出，不额外生成一段“成长总结”。原始聊天和工具日志按各自保留策略存放，不整段注入后续 prompt。
+4. 新任务只带入少量相关经历或已验证做法，来源可查；它是执行上下文，不是“带入一条经历”的伪装消息。若用户明确把某条消息带到另一房间，则沿用可见转发/引用语义。没有可复用内容时，不制造经历组件。
+5. 角色、名称等身份变化需要证据并保留版本。一次跨领域任务可能造成描述过时，但仅因某个任务结束就自动改名也会混淆用户。候选做法是让 Noema 在真实职责发生明显变化时基于已有工作证据更新身份，并能展示变更缘由、保留旧称和回退；不用单独生成一条系统消息。具体何时变更仍待后续交互设计。
 
-### Google Gemini Spark：围绕日常信息流的 24/7 任务、主题监控与技能
+这个机制不增加每项任务之后的必需模型调用。潜在成本来自后续任务检索到的上下文 token 和少数身份更新时的推理，因此要设小的相关性/上下文上限；如果身份变化不改变后续职责或成果，就删掉自动成长功能，保留联系人可以手动编辑的普通个人资料。这样保留用户对协作者成长的方向，同时避免把成本、消息组件和身份戏剧化提前塞入产品。
 
-Spark 支持个人 Google 账号、Schedule、Skills、connected apps 与自定义 MCP；可以监控新闻/博客/市场等主题，处理邮箱整理、briefing、跨应用或本地电脑工作，且在设备关闭后继续。相较传统“问一次、答一次”的界面，它把 recurring work 和 proactive monitoring 作为明显的产品入口。[Spark 功能与持续任务说明](https://support.google.com/gemini/answer/17094507) · [Spark 更新日志](https://support.google.com/gemini/answer/17171264)
+## 方案比较与淘汰条件
 
-它不是开放、普遍、免成本的个人系统：官方要求个人 Google 账号、活动记录开启及 Google AI Pro/Ultra 订阅；具体地区、桌面端和连接器功能仍有差异。它的强处是 Google 生态内自然的数据连接，弱处是体验和状态由 Google 与其账户体系拥有。[使用资格和当前限制](https://support.google.com/gemini/answer/17094507)
+| 候选 | 好处 | 代价/风险 | 判断 |
+| --- | --- | --- | --- |
+| 通用个人执行助理 | 覆盖行动和自动跟进，容易讲清用户结果 | Dots、Muse、Spark 已公开覆盖相近主张；依赖大量连接器、权限和运行保障 | 不足以解释 Noema 为什么独立存在；只作为能力范围参考。 |
+| 只做持续记忆的聊天伙伴 | 可覆盖日常交流和个性化 | “记得更多”是常见功能；对准确、范围、撤回有持续责任 | 不能把记忆机制作为整体产品答案。 |
+| 只做专业 agent 网络 | 和用户初始构想吻合，可能形成持续积累 | 容易变成 agent 编排工作台；用户未必愿意管理角色；身份成长有显著状态与推理成本 | 作为能力差异候选，必须从用户结果证明；不拿它替代广泛定位。 |
+| 复杂事项的协作与把关切口 | 有用户具体经验，能直接检验是否减轻纠偏/监督负担 | 若变成唯一场景会收窄产品；验证责任不能只靠模型自述 | 建议作为第一条深度体验切片，检验结果后再扩展。 |
 
-### Microsoft Autopilot（Scout）：personal agent 的企业版
+重审信号：若使用者主要把 Noema 当作通用聊天助手，缩减 agent 网络；若它确能明显减少复杂事项中的管理和复核成本，则投资持续协作者与经验机制；若协作增加噪音或耗费而无质量收益，则删减协作层。任何情况下，Noema 的整体定位都不由该单一切片自动决定。
 
-Microsoft 的首个 Autopilot/Scout 面向企业，用户在 Teams 与它沟通，agent 连接 Outlook、Teams、OneDrive、SharePoint 等，可在本机和云端行动；每个 agent 有可归因的 Entra 身份和组织级权限、凭据与 DLP 管控。产品采用 OpenClaw 技术底座，Microsoft 主要增加企业级 identity、policy 和治理。[Autopilot 产品说明](https://www.microsoft.com/en-us/copilot/blog/2026/06/02/introducing-microsoft-scout-your-always-on-personal-agent/)
+## 下一步
 
-这是一个值得借鉴的架构分工：底层 agent/runtime 可以复用，产品需补上清楚的身份、授权和审计。但它不是个人长期生活伴侣的证据，初始目标是 M365 中的工作协同和企业合规。
-
-### Jo：个人/家庭上下文、跨群聊检索和主动简报
-
-YC 的 Jo 产品页称其可在 Mac/web 使用，并通过 iMessage、WhatsApp、Telegram 与用户交互；连接 Gmail、日历、消息平台和本机历史，为用户整理每日简报、群聊计划、待回消息和周期任务。它明确展示了“我私聊问一下：周六足球几点？群里最后定了什么？”这一类细节回忆，并称可在个人或家庭空间里保持各成员独立的 memory、权限和 cloud machine。[Jo 官方产品页](https://askjo.ai/) · [YC 产品介绍与当前发布状态](https://www.ycombinator.com/companies/jo)
-
-这说明跨群聊查询未必只是抽象的架构完善；它能自然服务家庭安排、旅行和共同事务。仍要区分这是 Jo 的产品定位与创始人/官网举例，尚无独立的大规模使用研究证明它应成为 Noema 主轴；它也只提供一个 personal agent，不是围绕多位长期专家好友组织的系统。
-
-### Instinct：消息即入口、生活事务代理；强烈暴露 trust 问题
-
-Instinct 在公开报道中是 invite-only 的消息/语音型生活助理，使用者从 iMessage/WhatsApp 交代订票、旅行、邮箱和客服等事务。它展示了一种“不要再打开一个 agent 应用，直接给个人 agent 发消息”的入口设计。早期测试者报告它能替人完成高摩擦生活任务，但同一时期也有明确隐私与越权事件报告：邮件内容留存/删除行为引发争议、未经批准发出邮件、用户做提示注入测试后退出。TechCrunch 报道称团队随后补充了删除外部数据的控制，但这是早期私测，不能外推成当前版本的完整安全审计。[TechCrunch 对 Instinct 早期测试与投诉的报道](https://techcrunch.com/2026/08/24/instincts-powerful-ai-assistant-is-raising-privacy-and-security-concerns/) · [The Atlantic 对 personal-agent 风险的独立报道](https://www.theatlantic.com/technology/2026/09/instinct-ai-personal-assistant-credit-card/688607/)
-
-值得借鉴的是自然语言/消息入口和办事链条；不能忽略的是，agent 权限越大，删除/撤权/审计/责任越是核心产品行为，而非“设置页补充项”。
-
-### 开源运行时：OpenClaw、Hermes 不等于消费产品，但足以反证“从零造全套”
-
-OpenClaw 和 Hermes 已有多 agent、多 session、聊天渠道、skills/memory、后台任务等运行时能力，开发者可自行连接本地或云端模型。OpenClaw 的多 `agentId` 可提供相互隔离的身份/workspace；同一 agent 也可有 DM/群聊等多房间。Hermes 有持久 session、背景 review、skill creation。它们证明个人 agent 的许多工具循环已是可复用底座，不证明其默认配置已把“同一个私人专业好友跨不同 room/runtime 形成可信专业实践”解决好。详见[经验研究记录](./experience-to-practice.md)。
-
-## 需求不是“真/假”二选一：目前证据支持的是有边界的需求
-
-- **试用/好奇心是真实的，但不能当作长期留存。** Muse 初期下载量和 app-store 排名很高，部分独立报道也取得到活跃用户估算；但厂商没有公开长期留存、重复委托率或愿意付费的稳定数据。首次下载主要说明新鲜感、分发和用户好奇，不能证明人们愿意每天把生活托付给 agent。[TechCrunch 的第三方数据及其估算边界](https://techcrunch.com/2026/09/21/metas-muse-is-outpacing-chatgpts-early-mobile-launch/) · [The Information 的 weekly-active-user 报道](https://www.theinformation.com/briefings/exclusive-metas-muse-tops-3-million-weekly-users)
-- **用户愿意让 agent “帮点忙”，不等于愿意交出广泛权限。** Pew 2026 年美国调查中，未使用 chatbot 的人，83% 说缺乏兴趣是原因、79% 提到个人数据用途、76% 不信任准确性。Thales 在 14,300 名消费者、13 个国家的调查发现，63% 对某些线上 AI 辅助任务持开放态度，但逐项看只有 13% 愿意让 AI 基于邮箱/日历代读邮件并回复、11% 愿意让它重订旅行、7% 愿让它转账；33% 不愿让 AI 替自己做任何线上任务。YouGov 2025 年美国零售调查中，65% 接受 AI 比价，14% 接受 AI 代下单。**偏向辅助判断和低风险重复行政任务的接受度，高于自主决策和高影响操作。**[Pew](https://www.pewresearch.org/chart/lack-of-interest-concerns-around-privacy-and-accuracy-are-common-reasons-why-people-dont-use-chatbots/) · [Thales 2026 Digital Trust Index](https://cpl.thalesgroup.com/sites/default/files/content/campaigns/trust-index/2026-thales-digital-trust-index.pdf) · [YouGov](https://yougov.com/en-us/articles/53808-american-trust-in-ai-for-retail-consumer-sentiment-in-2025)
-- **个人 agent 的关键成本可能不是使用费，而是“让它了解我的生活并给出权限”的信任成本。** Muse、Dots、Spark 的官方设计都强调审批/授权/可见控制；早期用户讨论也集中在它到底看了什么、是否还记得、能不能撤销、是否未经确认行动。个人 agent 需要数据，接入越深入越有价值；但对相当一部分用户，接入本身就是产品阻力。
-
-因此，个人 agent 不是“伪需求”，但“人人都需要一个全知全能、永远在线、能替你处理一切的 agent”也尚未被市场验证。更扎实的楔子是高频、跨应用、拖延成本明显、结果可回顾，且用户愿意为相应权限买单的任务；先在安全边界清晰的范围里增加代理权，而不是把无条件自主当作成熟标准。
-
-## 对 Noema 的压力测试
-
-1. **仅称“personal agent”已不够定位。** Dots、Muse、Spark 和多家创业公司都宣称长期了解用户、跨 app 行动、后台推进；OpenClaw/Hermes 让高级用户可自行搭建。Noema 不能只把这些能力放进一个新 UI。
-2. **“Codex 已经够用”取决于边界。** 只做代码、由用户逐次下达任务时，Codex 本身很强；把它与 ChatGPT Work/Apps 和自动化组合，也能覆盖一批一般任务。只是 Codex 的主责任是工程代码任务，不等于持续接管邮箱/聊天/日历/生活事务的个人层。OpenAI 自己把 Dots 做成主 agent 并调用 Codex cloud task，说明更一般的 agent 产品可以把 Codex 当专长执行器，而不必把两者看作竞品。
-3. **Noema 可能的不同点仍在“好友”而非“管家”。** 这些产品大多把单一主 agent 当作跨生活的代理人；开放运行时能有多个 agent，但身份、工作空间与 session 常是工程配置。Noema 可能更聚焦同一个用户与多位持续专业好友之间的关系连续、不同聊天空间的证据边界，以及专业实践如何从工作经历变化。这值得继续检验，但不等于现在已证明是独特需求，也不排除 Dots 等后续推出多 agent。
-4. **Noema 的独立价值要过组合反证。** 现有大公司产品已能做单 agent + 后台任务 + apps + memory；开源 runtime 能做 multi-agent/session/skills。Noema 若只包装成一个跨模型/跨 app 的统一入口，很可能被平台功能吸收。更可能的架构责任，是“谁是用户的这个好友、它如何在多 room/多 runtime 中保有可审计且可撤回的实践连续性”，但研究和最低成本组合测试尚未完成。
-
-## 值得借鉴的机制，而不是照抄产品外壳
-
-1. **一位主 agent 与专门执行 runtime 分开。** Dots 把持续个人代理与 Codex 任务组合起来；主 agent 承接用户目标、保持注意力连续，编码仍由 Codex 承担。这是 Noema“核心伙伴不亲自做所有长任务”的具体产业参照，也意味着该模式本身已不是 Noema 独占。
-2. **后台能力必须和可见状态/权限一起出现。** Dots 的 in-progress/scheduled/completed 任务、Pause、审批规则；Muse 的 VM、Sentinel、动作审计和逐 app 权限；Microsoft Autopilot 的 agent identity 和 Entra policy，都是为了让“替用户做事”可控制、可归责。实现离线和自动任务却没有清楚的暂停/审计/撤回边界，不是成熟的个人 agent。
-3. **固定的日常入口来自具体循环，而不是 24 小时不停聊天。** Gemini Spark 的 Daily Brief、主题监控和 Schedules，以及 Jo 的晨间简报/待回消息/家庭群约定，将 agent 放入早晨检查、计划更新、约定查找等现成时间点。这里的价值来自重复生活情境与低摩擦，不是因为 agent 一直在线本身。
-4. **跨房间事实检索有明确的消费者场景。** Jo 展示家庭群聊约定回忆，OpenAI apps/Dots 也可连接多个账户源。这个能力可能值得作为“个人 agent 的日常检索入口”研究，但任何结果都必须显示来源并遵循原房间授权；它仍不等于把事件晋升为专业实践。
-5. **从一开始给用户数据和偏好生命周期控制。** 记忆来源展示、逐个纠正/删除、断开来源、历史和当前状态冲突处理，属于 personal-agent 产品核心。Dots 当前断开应用不会删除已读到的信息，只能删除整个 dot；这反例说明“有连接开关”不代表用户已掌握记忆生命周期。[Dots memory/reset controls](https://help.openai.com/en/articles/20001530-getting-started-with-your-dot)
-
-这些机制和 Noema 的好友/实践研究可以相交，但还没有共同构成 Noema 的差异化结论；本节不批准 UI、通知策略或权限 schema。
-
-## 历史候选结论（2026-10-21 撤回）
-
-2026 年的 personal agent 已是正在实现的产品类别，不只是宣传词；但产品定义仍分裂，市场实际采用也远未证明用户愿意交出广泛的个人权限。Codex 足以承担高强度编码执行，不能单凭它代表整个 personal-agent 需求；同时，Dots/Work 与 Gemini/Muse 已表明“统一主 agent 跨 apps 持续工作”不是 Noema 独占的方向。
-
-当时曾建议从通用个人 AI 收窄到跨供应商持续好友、专业实践版本与跨 room 证据边界。该建议没有充分证明具体使用问题与独立产品价值，仍围绕现有身份/房间/实践实现选择问题；现已撤回，不因已经有过研究就继续作为默认方向。状态所有权、可迁移和可撤回可以是可靠性与架构要求，只有在具体使用结果中体现优势时，才能支撑产品选择理由。
-
-## 研究边界与后续核验
-
-- 继续对照 Dots、Jo 与 Muse 的实际长期使用、任务失败、用户撤权/删除理由，而不只引用发布稿和首月下载。
-- 明确 Codex + ChatGPT Work/Apps + 可复用 skills/agent frameworks 的最低成本组合能做到什么、哪些状态/身份责任仍缺失。
-- 检查“用户拥有而非平台拥有的持续好友与实践”是否有具体用户行为或痛点证据，避免把开源/模型无关/可迁移当成自动成立的价值。
-- 本轮只补产品分类与市场证据；不批准任何 Noema UI、agent roster schema、连接器清单或实现计划。
+用这条旅程设计一个包含普通聊天、长期事项、一次用户授权、协作状态、结果核验和后续复用的可评审界面方案。沿旅程核对现有联系人/房间/消息/项目工作结构哪些可复用、哪些应替换或删除，再决定品牌构图、视觉语言与工程边界。原型应区分已存在实现、可实现的候选和未决假设；在反馈前不把此候选升格为最终定位。
