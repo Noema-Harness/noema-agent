@@ -488,6 +488,9 @@ function SocialChatApp() {
   const roomCanWork = members.some(
     (agent) => !agent.archivedAt && agent.capabilities.includes('project-work'),
   );
+  const showProjectModeSwitch =
+    roomCanWork &&
+    (currentRoom?.id !== 'room-noema' || composerMode === 'project');
   const forwardableRooms = rooms.filter(
     (room) =>
       room.id !== currentRoom?.id &&
@@ -1610,7 +1613,7 @@ function SocialChatApp() {
                 </div>
               ) : null}
 
-              {roomCanWork ? (
+              {showProjectModeSwitch ? (
                 <div
                   className="composer-mode-switch"
                   role="group"

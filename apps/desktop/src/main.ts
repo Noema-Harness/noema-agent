@@ -1112,6 +1112,9 @@ async function captureSocialChatSmokeScreenshots() {
           participantCount: document.querySelectorAll('.room-header-copy p').length,
           routingChoices: routing?.querySelectorAll('button').length ?? 0,
           groupedResponseTurns,
+          projectModeSwitchVisible: Boolean(
+            document.querySelector('.composer-mode-switch'),
+          ),
           composerVisible: Boolean(rect && rect.width > 0 && rect.height > 0 && rect.bottom <= window.innerHeight),
           shellNoOverflow: Boolean(shell && shell.scrollWidth <= shell.clientWidth),
           panelNoOverflow: Boolean(panel && panel.scrollWidth <= panel.clientWidth),
@@ -1137,6 +1140,7 @@ async function captureSocialChatSmokeScreenshots() {
       desktop.roomTitle !== '工程协作' ||
       desktop.routingChoices !== 2 ||
       desktop.groupedResponseTurns < 1 ||
+      !desktop.projectModeSwitchVisible ||
       !desktop.composerVisible ||
       !desktop.shellNoOverflow ||
       !desktop.panelNoOverflow ||
@@ -1145,6 +1149,29 @@ async function captureSocialChatSmokeScreenshots() {
     ) {
       throw new Error(`桌面聊天状态不符合预期：${JSON.stringify(desktop)}`);
     }
+    await mainWindow.webContents.executeJavaScript(`(() => {
+      const mainChat = [...document.querySelectorAll('.room-list-item')]
+        .find((item) => item.querySelector('.room-list-title')?.textContent?.trim() === 'Noema');
+      mainChat?.click();
+    })()`);
+    await mainWindow.webContents.executeJavaScript(
+      'new Promise((resolve) => setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(resolve)), 80))',
+    );
+    const noemaProjectModeSwitchVisible =
+      await mainWindow.webContents.executeJavaScript(
+        `Boolean(document.querySelector('.composer-mode-switch'))`,
+      );
+    if (noemaProjectModeSwitchVisible) {
+      throw new Error('Noema 主聊仍显示冗余的手动项目模式切换。');
+    }
+    await mainWindow.webContents.executeJavaScript(`(() => {
+      const group = [...document.querySelectorAll('.room-list-item')]
+        .find((item) => item.textContent?.includes('工程协作'));
+      group?.click();
+    })()`);
+    await mainWindow.webContents.executeJavaScript(
+      'new Promise((resolve) => setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(resolve)), 80))',
+    );
     if (socialChatDesktopScreenshotPath) {
       const image = await mainWindow.capturePage();
       writeSmokeScreenshot(socialChatDesktopScreenshotPath, image);
