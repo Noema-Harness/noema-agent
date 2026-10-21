@@ -26,9 +26,9 @@ Noema 持有 agent 的稳定 identity、专业范围、用户关系偏好和当�
 
 在当前房间将消息交给直接模型或外部 harness，接收真实回复和运行事件，并记录 runtime 来源/失败状态。Adapter 可替换；执行进度属于房间交互，不应被伪装成后台已经完成。
 
-### Room-scoped Project Work
+### Room-scoped Actions
 
-在聊天中执行项目工作必须是用户明确切换的动作，不根据普通聊天文本静默启动。社交域 `social_work_tasks` 为工作项的状态真相来源，并关联 Noema agent、发起 room、用户原始任务文本、所选 workspace、runtime/session、结果及独立核验；它不复用 legacy root 的 `background_tasks`，也不把 DSH session 当作好友身份。任务完成或失败作为同一 room 的活动卡片呈现，未来同一 room 的模型上下文可带入有界任务请求/结果摘要；其他 room 不受影响。
+Noema 私聊是默认入口。普通交流、探索、写作和一般计划留在聊天；只有实际存在且适配的能力才形成独立执行状态。模型不能直接操作文件，文件工作必须经过本机服务的权限检查和用户工作区选择。`social_work_tasks` 是当前项目执行状态的唯一来源，记录来源 room、真实执行者、原始范围、workspace、runtime/session、结果和独立核验；它不复用 legacy root 的 `background_tasks`，也不把 DSH session 当作好友身份。任务卡贴近来源请求呈现执行者、范围、状态、失败/停止和核验；普通讨论不会制造任务状态。交互基线见 [ADR 0026](decisions/0026-noema-first-chat-and-visible-actions.md)。
 
 首轮使用已有 DSH Headless adapter：新任务使用干净 session，只有受限限流续接才复用该任务的 session；不同任务和 room 不共用 DSH transcript。当前服务仅对明确传入的文件条件调用 `workspace-verifier`，不把 DSH final 当作核验通过。应用关闭会停止受管进程，仍在执行的任务在下次启动时记为中断，不自动重跑。
 
@@ -53,7 +53,7 @@ Noema 持有 agent 的稳定 identity、专业范围、用户关系偏好和当�
 - 社交表使用独立的 `social_schema_migrations` 版本线（当前 v4），与旧根对话 schema 分离。首次升级前，用 SQLite backup API 创建一次本地快照 `noema-before-social-chat-v1.sqlite3`；旧 root messages 以 `legacy_source_id` 幂等复制，原始行不会改写或删除。
 - 当前首个稳定 identity 是 `noema` 与 `engineering-partner`。同一 friend id 可进入 DM 和 group；每次模型请求只组装该房间最近 40 条已完成用户/助手消息和目标 agent 的 profile prompt。system event 和其它 room transcript 不自动作为模型上下文。
 - 社交 renderer 的 IPC 状态只暴露联系人、房间与模型连接信息，不把旧 root transcript、captures、后台任务记录随新社交 UI 一并发送。
-- 群聊消息必须带本轮 `agentId`，一个房间一次只允许一条生成中的回复；运行时支持停止、失败消息保留及失败/中断后原位重试。Noema 主体与专业好友现在共享已选择的 FreeLLMAPI 路由；未连接可用模型时不伪造回复。
+- 群聊消息必须带本轮 `agentId`，一个房间一次只允许一条生成中的回复；运行时支持停止、失败消息保留及失败/中断后原位重试。Noema 主体与专业好友现在共享已选择的 FreeLLMAPI 路由；未连接可用模型时不伪造回复。当前 renderer 仍保留联系人与模式选择；这是待按 ADR 0026 逐步收敛的实现状态，不是目标交互。
 - 这个切片没有实现用户自建/编辑 agent、跨房间 recall、自动实践晋升或工作工具权限。旧根对话里的 captures、workers、Codex import 与 interaction adjustments 仍保留在 legacy 面；它们尚未迁入社交领域对象。
 - 首次迁移的备份与复制都在用户设备本地。聊天消息会通过本机 FreeLLMAPI 发送到所选模型/路由；Noema 的当前房间隔离不是上游服务数据隔离。
 

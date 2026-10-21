@@ -216,6 +216,7 @@ export interface NoemaSocialWorkTask {
   id: string;
   roomId: string;
   agentId: string;
+  sourceMessageId: string | null;
   workspacePath: string;
   taskPrompt: string;
   status:

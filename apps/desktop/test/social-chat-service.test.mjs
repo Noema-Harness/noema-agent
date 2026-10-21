@@ -84,6 +84,94 @@ test('social chat sends only the selected room transcript and persists the real 
   }
 });
 
+test('Noema can start existing project work from an explicit request while other turns stay ordinary chat', async () => {
+  const db = new Database(':memory:');
+  new RootStore(db);
+  const store = new SocialChatStore(db);
+  const requests = [];
+  const started = [];
+  const provider = {
+    async *streamChat(input) {
+      requests.push(input);
+      if (
+        requests.length === 1 &&
+        input.tools?.some((tool) => tool.function.name === 'start_project_work')
+      ) {
+        input.onToolCalls([
+          {
+            function: {
+              name: 'start_project_work',
+              arguments: JSON.stringify({
+                task: '检查本地项目的依赖配置并修复可复现的问题。',
+              }),
+            },
+          },
+        ]);
+      } else {
+        yield '我们可以先讨论这个方向。';
+      }
+    },
+  };
+  const service = new SocialChatService({
+    store,
+    provider,
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'test-model',
+    getRootState: async () => ({
+      connected: true,
+      selectedModel: 'test-model',
+    }),
+    getProjectWorkReadiness: () => ({ available: true, reason: null }),
+    startProjectWorkFromNoema: async (input) => {
+      started.push(input);
+      return { accepted: true, taskId: 'work-1' };
+    },
+  });
+
+  try {
+    service.sendMessage({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '请检查本地项目的依赖配置并修复问题。',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await service.active.get('room-noema')?.done;
+
+    assert.equal(requests[0].tools?.length, 1);
+    assert.deepEqual(started, [
+      {
+        roomId: 'room-noema',
+        prompt: '检查本地项目的依赖配置并修复可复现的问题。',
+        sourceMessageId: store
+          .getRoomSnapshot('room-noema')
+          .messages.find((message) => message.role === 'user').id,
+      },
+    ]);
+    const first = store
+      .getRoomSnapshot('room-noema')
+      .messages.find((message) => message.role === 'assistant');
+    assert.match(first.content, /已从这条对话启动项目工作/u);
+    assert.equal(first.status, 'complete');
+
+    service.sendMessage({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '我们先聊聊有没有必要做这个。',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await service.active.get('room-noema')?.done;
+    assert.equal(requests[1].tools?.length, 1);
+    assert.equal(started.length, 1);
+    assert.match(
+      store.getRoomSnapshot('room-noema').messages.at(-1)?.content ?? '',
+      /先讨论这个方向/u,
+    );
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});
+
 test('Noema chat injects only conversation-scoped adjustments and snapshots them per reply', async () => {
   const db = new Database(':memory:');
   const root = new RootStore(db);

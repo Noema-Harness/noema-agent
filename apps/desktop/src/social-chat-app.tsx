@@ -1060,20 +1060,58 @@ function SocialChatApp() {
     composerMode === 'chat'
       ? providerReady
       : Boolean(state?.projectWork.available);
+  const messagesById = new Map(
+    messages.map((message) => [message.id, message]),
+  );
+  const tasksBySourceMessage = new Map<string, NoemaSocialWorkTask[]>();
+  for (const task of workTasks) {
+    if (!task.sourceMessageId || !messagesById.has(task.sourceMessageId))
+      continue;
+    const anchored = tasksBySourceMessage.get(task.sourceMessageId) ?? [];
+    anchored.push(task);
+    tasksBySourceMessage.set(task.sourceMessageId, anchored);
+  }
+  const anchoredTaskIds = new Set(
+    [...tasksBySourceMessage.values()].flatMap((tasks) =>
+      tasks.map((task) => task.id),
+    ),
+  );
   const timelineItems = [
     ...messages.map((message) => ({
       kind: 'message' as const,
       createdAt: message.createdAt,
       id: message.id,
       message,
+      tasks: tasksBySourceMessage.get(message.id) ?? [],
     })),
-    ...workTasks.map((task) => ({
-      kind: 'work-task' as const,
-      createdAt: task.createdAt,
-      id: task.id,
-      task,
-    })),
+    ...workTasks
+      .filter((task) => !anchoredTaskIds.has(task.id))
+      .map((task) => ({
+        kind: 'work-task' as const,
+        createdAt: task.createdAt,
+        id: task.id,
+        task,
+      })),
   ].sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+
+  const renderProjectWorkCard = (task: NoemaSocialWorkTask) => (
+    <ProjectWorkCard
+      key={task.id}
+      task={task}
+      agent={messageAgent.get(task.agentId) ?? null}
+      onStop={() => void handleStopProjectWork(task)}
+      onDisableCase={() => void handleDisableCaseReuse(task)}
+      onWithdrawPractice={() => void handleWithdrawPracticeCandidate(task)}
+      onRepeat={() => {
+        setSelectedAgentId(task.agentId);
+        setComposerMode('project');
+        setReplyTarget(null);
+        cancelForward();
+        setDraft(task.taskPrompt);
+        requestAnimationFrame(() => draftRef.current?.focus());
+      }}
+    />
+  );
 
   return (
     <main className="social-shell">
@@ -1455,95 +1493,81 @@ function SocialChatApp() {
                     </div>
                     {timelineItems.map((item) =>
                       item.kind === 'message' ? (
-                        <ChatMessage
-                          key={item.id}
-                          message={item.message}
-                          continuationOrigin={Boolean(
-                            currentRoom.parentRoomId &&
-                            item.message.forwardedSources.some(
-                              (source) =>
-                                source.id === currentRoom.originMessageId,
-                            ),
-                          )}
-                          roomClosed={Boolean(currentRoom.closedAt)}
-                          agent={
-                            item.message.agentId
-                              ? (messageAgent.get(item.message.agentId) ?? null)
-                              : null
-                          }
-                          canManageInteractionAdjustment={
-                            currentRoom.kind === 'direct' &&
-                            currentRoom.memberIds.length === 1 &&
-                            currentRoom.memberIds[0] === 'noema'
-                          }
-                          interactionAdjustment={
-                            state?.interactionAdjustments.find(
-                              (adjustment) =>
-                                adjustment.sourceSurface === 'social' &&
-                                adjustment.sourceRoomId === currentRoom.id &&
-                                adjustment.sourceTurnId === item.message.turnId,
-                            ) ?? null
-                          }
-                          onRetry={handleRetry}
-                          forwardSelectionActive={forwardSelectionActive}
-                          forwardSelected={selectedForwardMessageIds.includes(
-                            item.message.id,
-                          )}
-                          onReply={() => {
-                            const forwardedText = item.message.forwardedSources
-                              .map(
+                        <React.Fragment key={item.id}>
+                          <ChatMessage
+                            message={item.message}
+                            continuationOrigin={Boolean(
+                              currentRoom.parentRoomId &&
+                              item.message.forwardedSources.some(
                                 (source) =>
-                                  `${source.sender}：${source.content}`,
-                              )
-                              .join('\n');
-                            setReplyTarget({
-                              id: item.message.id,
-                              roomId: currentRoom.id,
-                              role: item.message.role as 'user' | 'assistant',
-                              sender:
-                                item.message.role === 'user'
-                                  ? '你'
-                                  : (messageAgent.get(
-                                      item.message.agentId ?? '',
-                                    )?.name ?? '联系人'),
-                              createdAt: item.message.createdAt,
-                              content: forwardedText || item.message.content,
-                            });
-                            draftRef.current?.focus();
-                          }}
-                          onForward={() => beginForwardSelection(item.message)}
-                          continuationThreads={childThreads.filter(
-                            (thread) =>
-                              thread.originMessageId === item.message.id,
-                          )}
-                          onOpenContinuation={(thread) => selectRoom(thread)}
-                          onToggleForward={() =>
-                            toggleForwardMessage(item.message)
-                          }
-                        />
+                                  source.id === currentRoom.originMessageId,
+                              ),
+                            )}
+                            roomClosed={Boolean(currentRoom.closedAt)}
+                            agent={
+                              item.message.agentId
+                                ? (messageAgent.get(item.message.agentId) ??
+                                  null)
+                                : null
+                            }
+                            canManageInteractionAdjustment={
+                              currentRoom.kind === 'direct' &&
+                              currentRoom.memberIds.length === 1 &&
+                              currentRoom.memberIds[0] === 'noema'
+                            }
+                            interactionAdjustment={
+                              state?.interactionAdjustments.find(
+                                (adjustment) =>
+                                  adjustment.sourceSurface === 'social' &&
+                                  adjustment.sourceRoomId === currentRoom.id &&
+                                  adjustment.sourceTurnId ===
+                                    item.message.turnId,
+                              ) ?? null
+                            }
+                            onRetry={handleRetry}
+                            forwardSelectionActive={forwardSelectionActive}
+                            forwardSelected={selectedForwardMessageIds.includes(
+                              item.message.id,
+                            )}
+                            onReply={() => {
+                              const forwardedText =
+                                item.message.forwardedSources
+                                  .map(
+                                    (source) =>
+                                      `${source.sender}：${source.content}`,
+                                  )
+                                  .join('\n');
+                              setReplyTarget({
+                                id: item.message.id,
+                                roomId: currentRoom.id,
+                                role: item.message.role as 'user' | 'assistant',
+                                sender:
+                                  item.message.role === 'user'
+                                    ? '你'
+                                    : (messageAgent.get(
+                                        item.message.agentId ?? '',
+                                      )?.name ?? '联系人'),
+                                createdAt: item.message.createdAt,
+                                content: forwardedText || item.message.content,
+                              });
+                              draftRef.current?.focus();
+                            }}
+                            onForward={() =>
+                              beginForwardSelection(item.message)
+                            }
+                            continuationThreads={childThreads.filter(
+                              (thread) =>
+                                thread.originMessageId === item.message.id,
+                            )}
+                            onOpenContinuation={(thread) => selectRoom(thread)}
+                            onToggleForward={() =>
+                              toggleForwardMessage(item.message)
+                            }
+                          />
+                          {item.tasks.map(renderProjectWorkCard)}
+                        </React.Fragment>
                       ) : (
-                        <ProjectWorkCard
-                          key={item.id}
-                          task={item.task}
-                          agent={messageAgent.get(item.task.agentId) ?? null}
-                          onStop={() => void handleStopProjectWork(item.task)}
-                          onDisableCase={() =>
-                            void handleDisableCaseReuse(item.task)
-                          }
-                          onWithdrawPractice={() =>
-                            void handleWithdrawPracticeCandidate(item.task)
-                          }
-                          onRepeat={() => {
-                            setSelectedAgentId(item.task.agentId);
-                            setComposerMode('project');
-                            setReplyTarget(null);
-                            cancelForward();
-                            setDraft(item.task.taskPrompt);
-                            requestAnimationFrame(() =>
-                              draftRef.current?.focus(),
-                            );
-                          }}
-                        />
+                        renderProjectWorkCard(item.task)
                       ),
                     )}
                   </div>

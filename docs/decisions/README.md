@@ -19,5 +19,6 @@
 - `0023-review-practice-before-dispatch.md`：模型生成的跨房间候选必须在派发前向用户展示来源、触发、做法与边界；普通经验复用勾选不自动授权把某条隐藏候选注入任务。
 - `0024-interaction-adjustments-in-social-chat.md`：复用 RootStore 的明确互动调整，让它能在 Noema 当前社交聊天与项目任务主路径保存、分范围应用和查看快照；不自动总结普通聊天，也不让专业好友继承 Noema 的对话约定。
 - `0025-topic-continuation-threads.md`：以可回源的 Noema 子聊天承接确需跨日继续的主题；复用房间和消息作为唯一事实来源，不新增通用事项/任务层，不暗中加载源聊天或定时执行。
+- `0026-noema-first-chat-and-visible-actions.md`：以 Noema 私聊为默认入口，真实异步行动在原聊天中可见且可控制；普通讨论不对象化，现有项目工作作为首个受限能力。
 
 不要把未决问题伪装成已接受架构；新决定替代旧决定时保留历史并互相链接。

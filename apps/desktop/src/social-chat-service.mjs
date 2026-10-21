@@ -35,13 +35,43 @@ function formatInteractionAdjustments(adjustments) {
   ].join('\n\n');
 }
 
+const NOEMA_PROJECT_WORK_TOOL = {
+  type: 'function',
+  function: {
+    name: 'start_project_work',
+    description:
+      'Start the existing project-file work capability only when the user clearly asks Noema to inspect, modify, build, or verify files in a project. Calling this opens the local workspace authorization flow. Do not call for discussion, advice, planning, code examples, or brainstorming.',
+    parameters: {
+      type: 'object',
+      properties: {
+        task: {
+          type: 'string',
+          description:
+            'A bounded project task preserving the user’s requested outcome and constraints.',
+        },
+      },
+      required: ['task'],
+      additionalProperties: false,
+    },
+  },
+};
+
+function noemaActionGuidance(available) {
+  return [
+    '你在 Noema 私聊中回应用户。绝大多数聊天、探索、计划、写作和建议都直接在对话中完成，不创建执行状态。',
+    available
+      ? '仅当用户明确要求对本地项目文件进行检查、修改、构建或验证时，才可调用 start_project_work。调用会打开本机工作区授权与数据流披露；用户选择工作区后任务才会被创建。不得因用户提到代码、项目或未来想法就启动。'
+      : '当前没有可用的项目文件执行能力。不要声称能在本机项目中检查或修改文件。',
+  ].join('\n');
+}
+
 /**
  * Sends room-scoped turns to a replaceable chat provider.
- * @param {{store:import('./social-chat-store.mjs').SocialChatStore,provider:import('./freellmapi-client.mjs').FreeLLMAPIClient,secretStore:{isConfigured:()=>boolean},getSelectedModel:()=>string|null,getRootState:()=>Promise<SocialProviderState>,getInteractionAdjustments?:()=>Array<object>,getProjectWorkReadiness?:()=>{available:boolean,reason:string|null},emit?:(event:object)=>void}} options
+ * @param {{store:import('./social-chat-store.mjs').SocialChatStore,provider:import('./freellmapi-client.mjs').FreeLLMAPIClient,secretStore:{isConfigured:()=>boolean},getSelectedModel:()=>string|null,getRootState:()=>Promise<SocialProviderState>,getInteractionAdjustments?:()=>Array<object>,getProjectWorkReadiness?:()=>{available:boolean,reason:string|null},startProjectWorkFromNoema?:(input:{roomId:string,prompt:string,sourceMessageId:string})=>Promise<{accepted:boolean,taskId?:string,reason?:string}>,emit?:(event:object)=>void}} options
  */
 export class SocialChatService {
   /**
-   * @param {{store:import('./social-chat-store.mjs').SocialChatStore,provider:import('./freellmapi-client.mjs').FreeLLMAPIClient,secretStore:{isConfigured:()=>boolean},getSelectedModel:()=>string|null,getRootState:()=>Promise<SocialProviderState>,getInteractionAdjustments?:()=>Array<object>,getProjectWorkReadiness?:()=>{available:boolean,reason:string|null},emit?:(event:object)=>void}} options
+   * @param {{store:import('./social-chat-store.mjs').SocialChatStore,provider:import('./freellmapi-client.mjs').FreeLLMAPIClient,secretStore:{isConfigured:()=>boolean},getSelectedModel:()=>string|null,getRootState:()=>Promise<SocialProviderState>,getInteractionAdjustments?:()=>Array<object>,getProjectWorkReadiness?:()=>{available:boolean,reason:string|null},startProjectWorkFromNoema?:(input:{roomId:string,prompt:string,sourceMessageId:string})=>Promise<{accepted:boolean,taskId?:string,reason?:string}>,emit?:(event:object)=>void}} options
    */
   constructor({
     store,
@@ -50,6 +80,7 @@ export class SocialChatService {
     getSelectedModel,
     getRootState,
     getInteractionAdjustments = () => [],
+    startProjectWorkFromNoema = null,
     getProjectWorkReadiness = () => ({
       available: false,
       reason: '项目工作运行环境尚未初始化。',
@@ -62,6 +93,7 @@ export class SocialChatService {
     this.getSelectedModel = getSelectedModel;
     this.getRootState = getRootState;
     this.getInteractionAdjustments = getInteractionAdjustments;
+    this.startProjectWorkFromNoema = startProjectWorkFromNoema;
     this.getProjectWorkReadiness = getProjectWorkReadiness;
     this.emit = emit;
     this.active = new Map();
@@ -248,6 +280,19 @@ export class SocialChatService {
       const agent = this.store.getAgent(agentId);
       const messages = [
         { role: 'system', content: agent.systemPrompt },
+        ...(agentId === 'noema'
+          ? [
+              {
+                role: 'system',
+                content: noemaActionGuidance(
+                  Boolean(
+                    this.startProjectWorkFromNoema &&
+                    this.getProjectWorkReadiness().available,
+                  ),
+                ),
+              },
+            ]
+          : []),
         ...(run.interactionAdjustmentSnapshots?.length
           ? [
               {
@@ -270,10 +315,19 @@ export class SocialChatService {
         ...this.store.getContext(roomId),
       ];
       let content = '';
+      let toolCalls = [];
       for await (const delta of this.provider.streamChat({
         model,
         messages,
         signal: controller.signal,
+        ...(agentId === 'noema' && this.startProjectWorkFromNoema
+          ? {
+              tools: [NOEMA_PROJECT_WORK_TOOL],
+              onToolCalls: (calls) => {
+                toolCalls = calls;
+              },
+            }
+          : {}),
       })) {
         content += delta;
         this.store.appendAssistantDelta(assistantMessageId, delta);
@@ -283,6 +337,53 @@ export class SocialChatService {
           messageId: assistantMessageId,
           delta,
         });
+      }
+      if (toolCalls.length) {
+        if (
+          toolCalls.length !== 1 ||
+          toolCalls[0]?.function?.name !== 'start_project_work'
+        ) {
+          throw new FreeLLMAPIError(
+            'social_tool_invalid',
+            'Noema 请求了无法处理的操作；没有启动项目工作。',
+          );
+        }
+        let input;
+        try {
+          input = JSON.parse(toolCalls[0].function.arguments);
+        } catch {
+          throw new FreeLLMAPIError(
+            'social_tool_invalid',
+            'Noema 给出的项目任务说明无法读取；没有启动项目工作。',
+          );
+        }
+        if (
+          typeof input?.task !== 'string' ||
+          !input.task.trim() ||
+          input.task.length > 40_000 ||
+          !this.getProjectWorkReadiness().available
+        ) {
+          throw new FreeLLMAPIError(
+            'social_tool_invalid',
+            '项目工作说明无效或当前不可用；没有启动任务。',
+          );
+        }
+        const result = await this.startProjectWorkFromNoema({
+          roomId,
+          prompt: input.task.trim(),
+          sourceMessageId: run.userMessageId,
+        });
+        const statusText = result.accepted
+          ? '已从这条对话启动项目工作。执行者、工作区和结果会显示在原请求附近。'
+          : result.reason || '没有启动项目工作。';
+        this.store.appendAssistantDelta(assistantMessageId, statusText);
+        this.emit({
+          type: 'chat-message-delta',
+          roomId,
+          messageId: assistantMessageId,
+          delta: statusText,
+        });
+        content += statusText;
       }
       if (!content.trim()) {
         throw new FreeLLMAPIError(

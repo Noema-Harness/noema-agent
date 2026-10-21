@@ -252,11 +252,11 @@ function buildTaskPrompt({
 
 /**
  * Owns room-scoped project work while treating DSH as an execution adapter.
- * @param {{store:import('./social-chat-store.mjs').SocialChatStore,adapter:import('./dsh-headless-adapter.mjs').DshHeadlessAdapter|null,secretStore:{isConfigured:()=>boolean},practiceProvider?:import('./freellmapi-client.mjs').FreeLLMAPIClient|null,getCodingInteractionAdjustments?:()=>Array<object>,chooseWorkspace:(options?:{reuseCase?:boolean})=>Promise<string|null>,confirmPracticeCandidate?:(input:{candidate:{sourceTaskId:string,basisTaskId:string,basisRoomTitle:string,basisTaskPrompt:string,roomTitle:string,trigger:string,action:string,limits:string},taskPrompt:string,caseSnapshot:{taskId:string,taskPrompt:string}|null})=>Promise<'trial'|'case'|'cancel'>,emit?:(event:object)=>void}} options
+ * @param {{store:import('./social-chat-store.mjs').SocialChatStore,adapter:import('./dsh-headless-adapter.mjs').DshHeadlessAdapter|null,secretStore:{isConfigured:()=>boolean},practiceProvider?:import('./freellmapi-client.mjs').FreeLLMAPIClient|null,getCodingInteractionAdjustments?:()=>Array<object>,chooseWorkspace:(options?:{reuseCase?:boolean,prompt?:string})=>Promise<string|null>,confirmPracticeCandidate?:(input:{candidate:{sourceTaskId:string,basisTaskId:string,basisRoomTitle:string,basisTaskPrompt:string,roomTitle:string,trigger:string,action:string,limits:string},taskPrompt:string,caseSnapshot:{taskId:string,taskPrompt:string}|null})=>Promise<'trial'|'case'|'cancel'>,emit?:(event:object)=>void}} options
  */
 export class SocialWorkService {
   /**
-   * @param {{store:import('./social-chat-store.mjs').SocialChatStore,adapter:import('./dsh-headless-adapter.mjs').DshHeadlessAdapter|null,secretStore:{isConfigured:()=>boolean},practiceProvider?:import('./freellmapi-client.mjs').FreeLLMAPIClient|null,getCodingInteractionAdjustments?:()=>Array<object>,chooseWorkspace:(options?:{reuseCase?:boolean})=>Promise<string|null>,confirmPracticeCandidate?:(input:{candidate:{sourceTaskId:string,basisTaskId:string,basisRoomTitle:string,basisTaskPrompt:string,roomTitle:string,trigger:string,action:string,limits:string},taskPrompt:string,caseSnapshot:{taskId:string,taskPrompt:string}|null})=>Promise<'trial'|'case'|'cancel'>,defaultVerificationChecks?:unknown,delayImpl?:(milliseconds:number,signal:AbortSignal)=>Promise<boolean>,emit?:(event:object)=>void}} options
+   * @param {{store:import('./social-chat-store.mjs').SocialChatStore,adapter:import('./dsh-headless-adapter.mjs').DshHeadlessAdapter|null,secretStore:{isConfigured:()=>boolean},practiceProvider?:import('./freellmapi-client.mjs').FreeLLMAPIClient|null,getCodingInteractionAdjustments?:()=>Array<object>,chooseWorkspace:(options?:{reuseCase?:boolean,prompt?:string})=>Promise<string|null>,confirmPracticeCandidate?:(input:{candidate:{sourceTaskId:string,basisTaskId:string,basisRoomTitle:string,basisTaskPrompt:string,roomTitle:string,trigger:string,action:string,limits:string},taskPrompt:string,caseSnapshot:{taskId:string,taskPrompt:string}|null})=>Promise<'trial'|'case'|'cancel'>,defaultVerificationChecks?:unknown,delayImpl?:(milliseconds:number,signal:AbortSignal)=>Promise<boolean>,emit?:(event:object)=>void}} options
    */
   constructor({
     store,
@@ -306,13 +306,21 @@ export class SocialWorkService {
     return { available: true, reason: null };
   }
 
-  async startTask({
-    roomId,
-    agentId,
-    prompt,
-    verificationChecks,
-    reuseCase = false,
-  }) {
+  startTask(input) {
+    return this.startTaskInternal(input, false);
+  }
+
+  async startTaskInternal(
+    {
+      roomId,
+      agentId,
+      prompt,
+      verificationChecks,
+      reuseCase = false,
+      sourceMessageId = null,
+    },
+    dispatchFromNoema,
+  ) {
     if (this.shuttingDown)
       throw new Error('Noema 正在关闭，暂不能启动项目工作。');
     const readiness = this.getReadiness();
@@ -330,11 +338,15 @@ export class SocialWorkService {
     // Run the shared normalizer before the workspace picker or any model call.
     const normalizedChecks = normalizeWorkspaceVerificationChecks(checks);
     const preflightAgent = this.store.getAgent(agentId);
+    if (!dispatchFromNoema && !this.store.isMember(roomId, agentId)) {
+      throw new Error('这位好友不在当前聊天空间中。');
+    }
     if (preflightAgent.archivedAt) {
       throw new Error('这个联系人已归档；请先恢复后再开始项目工作。');
     }
     const workspaceSelection = await this.chooseWorkspace({
       reuseCase: reuseCase === true,
+      prompt: prompt.trim(),
     });
     if (!workspaceSelection)
       return { accepted: false, reason: '已取消选择项目文件夹。' };
@@ -414,10 +426,14 @@ export class SocialWorkService {
 
     const id = randomUUID();
     const model = 'auto:noema-free';
-    const saved = this.store.createSocialWorkTask({
+    const saveTask = dispatchFromNoema
+      ? this.store.createNoemaDispatchedSocialWorkTask.bind(this.store)
+      : this.store.createSocialWorkTask.bind(this.store);
+    const saved = saveTask({
       id,
       roomId,
       agentId,
+      sourceMessageId,
       workspacePath: realWorkspacePath,
       workspaceKey,
       taskPrompt: prompt,
@@ -446,6 +462,40 @@ export class SocialWorkService {
       run,
     });
     return { accepted: true, taskId: id, roomId };
+  }
+
+  async startTaskFromNoema({ roomId, prompt, sourceMessageId }) {
+    const room = this.store.getRoomSnapshot(roomId);
+    if (
+      room.room.kind !== 'direct' ||
+      room.members.length !== 1 ||
+      room.members[0].id !== 'noema'
+    ) {
+      throw new Error('Noema 只能从自己的私聊中发起内部项目工作。');
+    }
+    const sourceMessage = this.store.getSocialMessage(sourceMessageId);
+    if (sourceMessage?.role !== 'user' || sourceMessage.roomId !== roomId) {
+      throw new Error('项目工作的来源必须是当前聊天中的用户消息。');
+    }
+    const candidates = this.store
+      .listAgents()
+      .filter(
+        (agent) =>
+          !agent.archivedAt && agent.capabilities.includes('project-work'),
+      );
+    const executor =
+      candidates.find((agent) => agent.id === 'engineering-partner') ??
+      candidates[0];
+    if (!executor) throw new Error('当前没有可承接项目工作的协作者。');
+    return this.startTaskInternal(
+      {
+        roomId,
+        agentId: executor.id,
+        prompt,
+        sourceMessageId,
+      },
+      true,
+    );
   }
 
   async executeTask({

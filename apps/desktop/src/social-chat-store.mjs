@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { normalizeInteractionAdjustmentSnapshots } from './root-store.mjs';
 
-const SCHEMA_VERSION = 9;
+const SCHEMA_VERSION = 10;
 const MAX_CONTEXT_MESSAGES = 40;
 const MAX_FORWARDED_MESSAGES = 20;
 const MAX_FORWARDED_CONTENT_LENGTH = 40_000;
@@ -369,6 +369,18 @@ export class SocialChatStore {
 
           INSERT INTO social_schema_migrations (version, applied_at)
           VALUES (9, '${isoNow()}');
+        `);
+      })();
+    }
+    if (current < 10) {
+      this.db.transaction(() => {
+        this.db.exec(`
+          ALTER TABLE social_work_tasks
+            ADD COLUMN source_message_id TEXT REFERENCES social_messages(id) ON DELETE SET NULL;
+          CREATE INDEX social_work_tasks_source_message
+            ON social_work_tasks(source_message_id);
+          INSERT INTO social_schema_migrations (version, applied_at)
+          VALUES (10, '${isoNow()}');
         `);
       })();
     }
@@ -1054,6 +1066,7 @@ export class SocialChatStore {
         id: task.id,
         roomId: task.roomId,
         agentId: task.agentId,
+        sourceMessageId: task.sourceMessageId,
         workspacePath: task.workspacePath,
         taskPrompt: task.taskPrompt,
         status: task.status,
@@ -1263,25 +1276,45 @@ export class SocialChatStore {
     };
   }
 
-  createSocialWorkTask({
-    id,
-    roomId,
-    agentId,
-    workspacePath,
-    workspaceKey,
-    taskPrompt,
-    model,
-    verificationChecks = [],
-    caseReuseRequested = false,
-    caseSnapshot = null,
-    practiceSnapshot = null,
-    interactionAdjustmentSnapshots = [],
-  }) {
+  createSocialWorkTask(input) {
+    return this.createSocialWorkTaskRecord(input, false);
+  }
+
+  createNoemaDispatchedSocialWorkTask(input) {
+    return this.createSocialWorkTaskRecord(input, true);
+  }
+
+  createSocialWorkTaskRecord(
+    {
+      id,
+      roomId,
+      agentId,
+      workspacePath,
+      workspaceKey,
+      taskPrompt,
+      sourceMessageId = null,
+      model,
+      verificationChecks = [],
+      caseReuseRequested = false,
+      caseSnapshot = null,
+      practiceSnapshot = null,
+      interactionAdjustmentSnapshots = [],
+    },
+    allowNoemaDispatch,
+  ) {
     requireText(id, '任务 ID', 200);
     requireText(roomId, '房间 ID', 200);
     this.assertRoomOpen(roomId);
     const agent = this.getAgent(agentId);
-    if (!this.isMember(roomId, agentId)) {
+    const room = this.getRoomSnapshot(roomId);
+    const isNoemaDirectRoom =
+      room.room.kind === 'direct' &&
+      room.members.length === 1 &&
+      room.members[0].id === 'noema';
+    if (
+      !this.isMember(roomId, agentId) &&
+      !(allowNoemaDispatch && isNoemaDirectRoom)
+    ) {
       throw new Error('这位好友不在当前聊天空间中。');
     }
     if (agent.archivedAt) {
@@ -1295,6 +1328,24 @@ export class SocialChatStore {
     }
     requireText(workspaceKey, '工作区标识', 2_000);
     const normalizedPrompt = requireText(taskPrompt, '项目任务', 40_000);
+    const normalizedSourceMessageId =
+      sourceMessageId === null
+        ? null
+        : requireText(sourceMessageId, '来源消息 ID', 200);
+    if (allowNoemaDispatch && !normalizedSourceMessageId) {
+      throw new Error('Noema 内部发起的项目工作必须关联原请求。');
+    }
+    if (normalizedSourceMessageId) {
+      const sourceMessage = this.db
+        .prepare(`
+          SELECT 1 FROM social_messages
+          WHERE id = ? AND room_id = ? AND role = 'user'
+        `)
+        .get(normalizedSourceMessageId, roomId);
+      if (!sourceMessage) {
+        throw new Error('项目工作的来源必须是当前聊天中的用户消息。');
+      }
+    }
     const normalizedModel = requireText(model, '模型路由', 200);
     const normalizedAdjustmentSnapshots =
       normalizeInteractionAdjustmentSnapshots(interactionAdjustmentSnapshots);
@@ -1321,17 +1372,18 @@ export class SocialChatStore {
       this.db
         .prepare(`
           INSERT INTO social_work_tasks
-            (id, room_id, agent_id, workspace_path, workspace_key, task_prompt,
+            (id, room_id, agent_id, source_message_id, workspace_path, workspace_key, task_prompt,
              model, runtime, status, verification_status,
              verification_checks_json, case_snapshot_json, case_reuse_requested,
              practice_snapshot_json, interaction_adjustment_ids_json,
              interaction_adjustment_snapshots_json, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, 'dsh', 'starting', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'dsh', 'starting', ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `)
         .run(
           id,
           roomId,
           agentId,
+          normalizedSourceMessageId,
           workspacePath,
           workspaceKey,
           normalizedPrompt,
@@ -1383,6 +1435,7 @@ export class SocialChatStore {
     const row = this.db
       .prepare(`
         SELECT id, room_id AS roomId, agent_id AS agentId,
+               source_message_id AS sourceMessageId,
                workspace_path AS workspacePath, workspace_key AS workspaceKey,
                task_prompt AS taskPrompt, model, runtime,
                runtime_session_id AS runtimeSessionId, status, phase,
@@ -1419,6 +1472,7 @@ export class SocialChatStore {
     return this.db
       .prepare(`
         SELECT id, room_id AS roomId, agent_id AS agentId,
+               source_message_id AS sourceMessageId,
                workspace_path AS workspacePath, workspace_key AS workspaceKey,
                task_prompt AS taskPrompt, model, runtime,
                runtime_session_id AS runtimeSessionId, status, phase,

@@ -140,6 +140,63 @@ test('social work keeps the stable friend and only includes the issuing room con
   }
 });
 
+test('Noema internal dispatch stores project work in the source room with a capable executor', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'noema-internal-work-'));
+  const workspace = path.join(directory, 'workspace');
+  mkdirSync(workspace);
+  const { db, store } = makeStore();
+  const authorizationPrompts = [];
+  const service = new SocialWorkService({
+    store,
+    adapter: makeAdapter(),
+    secretStore: { isConfigured: () => true },
+    chooseWorkspace: async ({ prompt }) => {
+      authorizationPrompts.push(prompt);
+      return workspace;
+    },
+  });
+
+  try {
+    const source = store.beginTurn({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '请检查并修复项目配置。',
+      model: 'test-model',
+    });
+    const accepted = await service.startTaskFromNoema({
+      roomId: 'room-noema',
+      prompt: '检查并修复项目配置。',
+      sourceMessageId: source.userMessageId,
+    });
+    assert.equal(accepted.accepted, true);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    const task = store.getSocialWorkTask(accepted.taskId);
+    assert.equal(task.roomId, 'room-noema');
+    assert.equal(task.agentId, 'engineering-partner');
+    assert.equal(task.sourceMessageId, source.userMessageId);
+    assert.deepEqual(authorizationPrompts, ['检查并修复项目配置。']);
+    const noemaRoom = store.getRoomSnapshot('room-noema');
+    assert.equal(noemaRoom.workTasks.length, 1);
+    assert.equal(
+      noemaRoom.workTasks[0].sourceMessageId,
+      source.userMessageId,
+    );
+    await assert.rejects(
+      service.startTask({
+        roomId: 'room-noema',
+        agentId: 'engineering-partner',
+        prompt: '尝试绕过 Noema 内部路由。',
+      }),
+      /不在当前聊天空间/u,
+    );
+  } finally {
+    await service.shutdown();
+    db.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('project tasks include only active coding adjustments and persist the exact input snapshot', async () => {
   const directory = mkdtempSync(
     path.join(tmpdir(), 'noema-social-adjustments-'),

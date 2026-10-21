@@ -50,7 +50,7 @@ test('social schema seeds stable identities and keeps one agent across independe
       db
         .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
         .get().version,
-      9,
+      10,
     );
   } finally {
     db.close();
@@ -116,6 +116,7 @@ test('social chat schema v1 upgrades additively to project-work state', () => {
       ALTER TABLE social_rooms DROP COLUMN origin_message_id;
       ALTER TABLE social_rooms DROP COLUMN closed_at;
       DELETE FROM social_schema_migrations WHERE version = 9;
+      DELETE FROM social_schema_migrations WHERE version = 10;
     `);
 
     const upgraded = new SocialChatStore(db);
@@ -131,7 +132,7 @@ test('social chat schema v1 upgrades additively to project-work state', () => {
       db
         .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
         .get().version,
-      9,
+      10,
     );
     assert.equal(
       db
@@ -171,12 +172,15 @@ test('social schema v7 adds retry snapshots without rewriting the last known att
     social.failReply(turn.assistantMessageId, 'test_failure', '重试前失败');
     db.exec(`
       ALTER TABLE social_messages DROP COLUMN interaction_adjustment_attempts_json;
+      DROP INDEX social_work_tasks_source_message;
+      ALTER TABLE social_work_tasks DROP COLUMN source_message_id;
       DELETE FROM social_schema_migrations WHERE version = 8;
       DROP INDEX social_rooms_parent_order;
       ALTER TABLE social_rooms DROP COLUMN parent_room_id;
       ALTER TABLE social_rooms DROP COLUMN origin_message_id;
       ALTER TABLE social_rooms DROP COLUMN closed_at;
       DELETE FROM social_schema_migrations WHERE version = 9;
+      DELETE FROM social_schema_migrations WHERE version = 10;
     `);
 
     const upgraded = new SocialChatStore(db);

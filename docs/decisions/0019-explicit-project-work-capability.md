@@ -1,6 +1,6 @@
 # ADR 0019：专业联系人对项目文件的操作能力必须显式选择
 
-- 状态：接受为可撤回的能力边界试验（助手在用户委托范围内决定）；不是 agent 专业度验证
+- 状态：能力与授权边界仍有效；用户逐轮切换模式并选择执行联系人的交互已由 [ADR 0026](0026-noema-first-chat-and-visible-actions.md) 取代
 - 日期：2026-10-18
 - 关联：Issue #2、#84；ADR 0016、0018
 
@@ -14,7 +14,7 @@ ADR 0018 让用户创建自己的长期专业联系人，但新联系人只能�
 
 1. **联系人创建时默认关闭。** 用户可以选择“允许它承接项目文件任务”；选择含义仅限于既有 DSH project-work 路径，不表示自动运行。未选择时 `capabilities_json=[]`，模型不能靠名称/专业范围得到任何文件操作权限。
 2. **能力可在联系人私聊中单独开关。** 关闭能力不归档/删除身份，不更改 room membership 或历史；重新启用后同一身份可继续。归档与能力是两个独立状态，归档时保留 capability 配置，但服务端阻止启动。
-3. **每项任务仍需主动的用户动作。** 必须在含有该联系人且拥有 `project-work` capability 的房间切换至项目工作、提交任务并逐项通过已有 workspace picker 及其 FreeLLMAPI/Windows sandbox/停止不回滚披露。普通聊天永远不隐式启动文件操作。
+3. **每项文件任务仍需明确授权。** 在已有 workspace picker 选择工作区，并逐项看到 FreeLLMAPI、Windows sandbox 与停止不回滚披露；普通聊天文本本身不会默许文件写入。执行者可由 Noema 内部选择，不要求用户先切到模式或选择联系人。
 4. **服务端数据库能力列表是权限事实。** renderer、profile 文案或 agent 自我声明不授予能力。`SocialChatStore.createSocialWorkTask` 和 `SocialWorkService.startTask` 均核对真实 agent capability 与 archive 状态；没有 capability 时不能打开目录 picker 或创建任务记录。
 5. **只授权已实现的能力。** 当前能力枚举保留 `project-work` 一个项。新联系人没有 DSH/Codex/MCP/网页浏览/通用命令能力；不以抽象 `permissions` 或未来设想预留多层权限框架。
 6. **Profile 与执行方式分离。** 用户资料说明专业范围和合作习惯；系统 prompt 由这些字段和当前 capability 状态生成。profile 不能创造工具 sandbox，project task 仍以既有任务 prompt + Noema 独立核验为界。

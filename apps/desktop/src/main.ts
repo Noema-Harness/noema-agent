@@ -3064,12 +3064,13 @@ async function startNoema() {
         socialWorkE2eValid && testSocialWorkChecksJson
           ? JSON.parse(testSocialWorkChecksJson)
           : [],
-      chooseWorkspace: async ({ reuseCase = false } = {}) => {
+      chooseWorkspace: async ({ reuseCase = false, prompt = '' } = {}) => {
         if (socialWorkE2eValid) return testSocialWorkWorkspace;
         if (!mainWindow || mainWindow.isDestroyed()) return null;
         const selection = await dialog.showOpenDialog(mainWindow, {
-          title: '选择工程搭档可以操作的项目文件夹',
+          title: '检查项目工作并选择文件夹',
           message: [
+            `Noema 准备交给协作者执行：\n${prompt}`,
             '工程搭档会使用自己的专业资料、读取/修改项目文件，并可运行前台项目命令。Windows 文件沙箱主要限制写入，不能限制网络或进程可见性，也不能保证目录外读取隔离。项目内容可能通过 FreeLLMAPI 发往当前第三方免费模型路由。不要选择含不应发送的密钥或隐私资料的目录。停止任务不会自动撤销已经发生的改动。',
             reuseCase
               ? '本轮还会检查同一位工程搭档在同一项目的其他聊天中，是否有一项通过 Noema 文件条件核验的工作；若找到，会把一份过滤常见凭据样式的限长摘要随本任务发送给模型，不会发送原聊天记录。若本任务也通过 Noema 核验，Noema 还可能用同一免费路由对两项任务的摘要和核验结果做一次额外分析，提出一条候选做法；候选不会自动升级为技能，可在任务卡撤回。若已有候选，选定目录后还会先展示候选正文，供你决定本轮是否试用；普通经验复用勾选不会自动授权使用某条候选。过滤无法保证识别所有敏感信息。'
@@ -3222,6 +3223,8 @@ async function startNoema() {
           available: false,
           reason: '项目工作运行环境尚未初始化。',
         },
+      startProjectWorkFromNoema: (input) =>
+        socialWorkService!.startTaskFromNoema(input),
       emit: (payload) => {
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send(CHANNELS.socialEvent, payload);
