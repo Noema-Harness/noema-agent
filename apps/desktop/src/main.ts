@@ -161,6 +161,10 @@ const socialMessageSearchScreenshotPath =
   process.env.NOEMA_SMOKE_SOCIAL_SEARCH_PATH ?? null;
 const socialHistoryRecallScreenshotPath =
   process.env.NOEMA_SMOKE_SOCIAL_HISTORY_RECALL_PATH ?? null;
+const socialAgentProfileDesktopScreenshotPath =
+  process.env.NOEMA_SMOKE_SOCIAL_AGENT_PROFILE_PATH ?? null;
+const socialAgentProfileNarrowScreenshotPath =
+  process.env.NOEMA_SMOKE_SOCIAL_AGENT_PROFILE_NARROW_PATH ?? null;
 const socialAgentDelegationMarker = '请帮我独立核对';
 const socialHistoryRecallMarker = 'Noema 历史回忆验证标记：河谷石英';
 const socialAgentDelegationTask =
@@ -2752,7 +2756,7 @@ async function captureSocialAgentCreationE2e() {
     await waitFrames();
     document.querySelector('.new-agent-button')?.click();
     await waitFor(() => document.querySelector('#social-agent-name'), '重新打开联系人表单');
-    const name = 'E2E 图形观察员';
+    let name = 'E2E 图形观察员';
     setValue(document.querySelector('#social-agent-name'), name);
     setValue(document.querySelector('#social-agent-headline'), '长期观察游戏视觉与交互');
     setValue(document.querySelector('#social-agent-description'), '先和我厘清体验，再讨论如何验证。');
@@ -2803,6 +2807,64 @@ async function captureSocialAgentCreationE2e() {
       projectWorkEnabledState.agents.some(
         (agent) => agent.id === createdState.agent.id && agent.capabilities.includes('project-work'),
       );
+    const directBeforeProfileEdit = await window.noema.getSocialRoom(directRoom.room.id);
+    const initialDirectMessageIds = directBeforeProfileEdit.messages.map((message) => message.id);
+    document.querySelector('button[aria-label^="编辑"]')?.click();
+    await waitFor(() => document.querySelector('#social-agent-name'), '编辑联系人资料表单');
+    await waitFrames();
+    const profileEditNarrow = (() => {
+      const dialog = document.querySelector('.agent-create-dialog')?.getBoundingClientRect();
+      const submit = document.querySelector('.agent-create-dialog button[type="submit"]')?.getBoundingClientRect();
+      const shell = document.querySelector('.social-shell');
+      return {
+        width: window.innerWidth,
+        visible: Boolean(dialog && dialog.width > 0 && dialog.height > 0),
+        fieldCount: document.querySelectorAll('.agent-create-dialog .dialog-field').length,
+        shellNoOverflow: Boolean(shell && shell.scrollWidth <= shell.clientWidth),
+        documentNoOverflow: document.documentElement.scrollWidth <= window.innerWidth,
+        submitVisible: Boolean(dialog && submit && submit.top >= dialog.top && submit.bottom <= dialog.bottom && submit.bottom <= window.innerHeight),
+      };
+    })();
+    if (
+      !profileEditNarrow.visible ||
+      profileEditNarrow.fieldCount !== 3 ||
+      !profileEditNarrow.shellNoOverflow ||
+      !profileEditNarrow.documentNoOverflow ||
+      !profileEditNarrow.submitVisible
+    ) throw new Error('窄窗口联系人资料表单布局不符合预期：' + JSON.stringify(profileEditNarrow));
+    const updatedName = 'E2E 视觉与交互研究员';
+    setValue(document.querySelector('#social-agent-name'), updatedName);
+    setValue(document.querySelector('#social-agent-headline'), '长期研究游戏视觉、交互与用户测试');
+    setValue(document.querySelector('#social-agent-description'), '先检查一手证据，再说明不确定性和可验证的下一步。');
+    document.querySelector('.agent-create-dialog button[type="submit"]')?.click();
+    const profileUpdatedState = await waitFor(async () => {
+      const state = await window.noema.getSocialState();
+      const agent = state.agents.find((candidate) => candidate.id === createdState.agent.id);
+      return agent?.name === updatedName ? { state, agent } : null;
+    }, '更新后的联系人资料');
+    await waitFor(() => document.querySelector('.room-header h2')?.textContent?.trim() === updatedName, '同步更新联系人私聊标题');
+    const updatedDirectRoom = await window.noema.getSocialRoom(directRoom.room.id);
+    const profileEdit = {
+      name: updatedName,
+      identityPreserved: profileUpdatedState.agent.id === createdState.agent.id,
+      updatedForFutureReplies:
+        profileUpdatedState.agent.headline === '长期研究游戏视觉、交互与用户测试' &&
+        profileUpdatedState.agent.description === '先检查一手证据，再说明不确定性和可验证的下一步。',
+      capabilityPreserved: profileUpdatedState.agent.capabilities.includes('project-work'),
+      historyPreserved:
+        updatedDirectRoom.messages.length === initialDirectMessageIds.length &&
+        updatedDirectRoom.messages.every((message, index) => message.id === initialDirectMessageIds[index]),
+      directTitleUpdated: updatedDirectRoom.room.title === updatedName,
+      narrowLayout: profileEditNarrow,
+    };
+    if (
+      !profileEdit.identityPreserved ||
+      !profileEdit.updatedForFutureReplies ||
+      !profileEdit.capabilityPreserved ||
+      !profileEdit.historyPreserved ||
+      !profileEdit.directTitleUpdated
+    ) throw new Error('联系人资料编辑破坏了身份、能力或聊天记录：' + JSON.stringify(profileEdit));
+    name = updatedName;
     const shell = document.querySelector('.social-shell');
     const panel = document.querySelector('.conversation-panel');
     const header = document.querySelector('.room-header');
@@ -2884,6 +2946,7 @@ async function captureSocialAgentCreationE2e() {
       projectWorkDefaultedOff,
       capabilityWasExplicitlyGranted,
       projectWorkOptInAndReversible,
+      agentProfileEdit: profileEdit,
       compactRoomLayout,
       archived: Boolean(archivedState.agents.find((agent) => agent.id === createdState.agent.id)?.archivedAt),
       archivedUi,
@@ -2924,14 +2987,106 @@ async function captureSocialAgentCreationE2e() {
     );
   }
   await mainWindow.webContents.executeJavaScript(`(async () => {
+    const expectedAgentName = ${JSON.stringify(result.agentProfileEdit?.name ?? '')};
     const row = [...document.querySelectorAll('.room-list-item')]
-      .find((item) => item.querySelector('.room-list-title')?.textContent?.trim() === 'E2E 图形观察员');
+      .find((item) => item.querySelector('.room-list-title')?.textContent?.trim() === expectedAgentName);
     row?.click();
     const deadline = Date.now() + 5000;
-    while (Date.now() < deadline && document.querySelector('.room-header h2')?.textContent?.trim() !== 'E2E 图形观察员') {
+    while (Date.now() < deadline && document.querySelector('.room-header h2')?.textContent?.trim() !== expectedAgentName) {
       await new Promise((resolve) => setTimeout(resolve, 40));
     }
   })()`);
+  const inspectAgentProfileDialog = async (width: number, height: number) => {
+    mainWindow?.setSize(width, height);
+    await mainWindow?.webContents.executeJavaScript(
+      `new Promise((resolve) => {
+        const dialog = document.querySelector('.agent-create-dialog');
+        const animations = dialog?.getAnimations() ?? [];
+        Promise.all(animations.map((animation) => animation.finished.catch(() => undefined)))
+          .then(() => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      })`,
+    );
+    return mainWindow?.webContents.executeJavaScript(`(() => {
+      const dialog = document.querySelector('.agent-create-dialog')?.getBoundingClientRect();
+      const submit = document.querySelector('.agent-create-dialog button[type="submit"]')?.getBoundingClientRect();
+      const shell = document.querySelector('.social-shell');
+      return {
+        width: window.innerWidth,
+        visible: Boolean(dialog && dialog.width > 0 && dialog.height > 0),
+        fieldCount: document.querySelectorAll('.agent-create-dialog .dialog-field').length,
+        shellNoOverflow: Boolean(shell && shell.scrollWidth <= shell.clientWidth),
+        documentNoOverflow: document.documentElement.scrollWidth <= window.innerWidth,
+        submitVisible: Boolean(dialog && submit && submit.top >= dialog.top && submit.bottom <= dialog.bottom && submit.bottom <= window.innerHeight),
+      };
+    })()`);
+  };
+  await mainWindow.webContents.executeJavaScript(`(async () => {
+    const edit = document.querySelector('button[aria-label^="编辑"]');
+    if (!edit) throw new Error('联系人私聊缺少资料编辑入口');
+    edit.click();
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline && !document.querySelector('.agent-create-dialog')) {
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    }
+    if (!document.querySelector('.agent-create-dialog')) throw new Error('资料编辑窗口没有打开');
+  })()`);
+  const profileNarrow = await inspectAgentProfileDialog(360, 640);
+  if (
+    !profileNarrow?.visible ||
+    profileNarrow.width > 700 ||
+    profileNarrow.fieldCount !== 3 ||
+    !profileNarrow.shellNoOverflow ||
+    !profileNarrow.documentNoOverflow ||
+    !profileNarrow.submitVisible
+  ) {
+    throw new Error(
+      `窄窗口联系人资料编辑布局不符合预期：${JSON.stringify(profileNarrow)}`,
+    );
+  }
+  if (socialAgentProfileNarrowScreenshotPath) {
+    writeSmokeScreenshot(
+      socialAgentProfileNarrowScreenshotPath,
+      await mainWindow.capturePage(),
+    );
+  }
+  await mainWindow.webContents.executeJavaScript(
+    `document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))`,
+  );
+  await mainWindow.webContents.executeJavaScript(
+    `new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))`,
+  );
+  mainWindow.setSize(1280, 800);
+  await mainWindow.webContents.executeJavaScript(`(async () => {
+    const edit = document.querySelector('button[aria-label^="编辑"]');
+    edit?.click();
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline && !document.querySelector('.agent-create-dialog')) {
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    }
+  })()`);
+  const profileDesktop = await inspectAgentProfileDialog(1280, 800);
+  if (
+    !profileDesktop?.visible ||
+    profileDesktop.fieldCount !== 3 ||
+    !profileDesktop.shellNoOverflow ||
+    !profileDesktop.documentNoOverflow ||
+    !profileDesktop.submitVisible
+  ) {
+    throw new Error(
+      `桌面联系人资料编辑布局不符合预期：${JSON.stringify(profileDesktop)}`,
+    );
+  }
+  if (socialAgentProfileDesktopScreenshotPath) {
+    writeSmokeScreenshot(
+      socialAgentProfileDesktopScreenshotPath,
+      await mainWindow.capturePage(),
+    );
+  }
+  await mainWindow.webContents.executeJavaScript(
+    `document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))`,
+  );
+  result.agentProfileEdit.desktopLayout = profileDesktop;
+  result.agentProfileEdit.narrowLayout = profileNarrow;
   const inspectContactRoom = async (width: number, height: number) => {
     mainWindow?.setSize(width, height);
     await mainWindow?.webContents.executeJavaScript(
@@ -2957,7 +3112,7 @@ async function captureSocialAgentCreationE2e() {
   };
   const contactDesktop = await inspectContactRoom(1280, 800);
   if (
-    contactDesktop?.roomTitle !== 'E2E 图形观察员' ||
+    contactDesktop?.roomTitle !== result.agentProfileEdit?.name ||
     !contactDesktop.actionsVisible ||
     contactDesktop.projectWorkEnabled !== true ||
     !contactDesktop.shellNoOverflow ||
@@ -2975,7 +3130,7 @@ async function captureSocialAgentCreationE2e() {
   }
   const contactNarrow = await inspectContactRoom(666, 640);
   if (
-    contactNarrow?.roomTitle !== 'E2E 图形观察员' ||
+    contactNarrow?.roomTitle !== result.agentProfileEdit?.name ||
     !contactNarrow.actionsVisible ||
     contactNarrow.projectWorkEnabled !== true ||
     !contactNarrow.shellNoOverflow ||

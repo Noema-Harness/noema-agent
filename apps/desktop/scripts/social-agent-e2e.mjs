@@ -105,6 +105,14 @@ const interactionNarrowScreenshotPath = path.join(
   e2eRoot,
   `Noema-interaction-adjustment-narrow-${screenshotTag}.png`,
 );
+const agentProfileDesktopScreenshotPath = path.join(
+  e2eRoot,
+  `Noema-agent-profile-desktop-${screenshotTag}.png`,
+);
+const agentProfileNarrowScreenshotPath = path.join(
+  e2eRoot,
+  `Noema-agent-profile-narrow-${screenshotTag}.png`,
+);
 mkdirSync(dshUserDataPath, { recursive: true });
 const seedDatabase = new Database(databasePath);
 const seedRoot = new RootStore(seedDatabase);
@@ -184,6 +192,9 @@ const child = spawn(process.execPath, ['scripts/start.mjs'], {
     NOEMA_SMOKE_SOCIAL_ADJUSTMENT_DESKTOP_PATH:
       interactionDesktopScreenshotPath,
     NOEMA_SMOKE_SOCIAL_ADJUSTMENT_NARROW_PATH: interactionNarrowScreenshotPath,
+    NOEMA_SMOKE_SOCIAL_AGENT_PROFILE_PATH: agentProfileDesktopScreenshotPath,
+    NOEMA_SMOKE_SOCIAL_AGENT_PROFILE_NARROW_PATH:
+      agentProfileNarrowScreenshotPath,
   },
   stdio: 'inherit',
   windowsHide: true,
@@ -234,6 +245,8 @@ const summary = {
   continuationRoomNarrowScreenshotPath,
   interactionDesktopScreenshotPath,
   interactionNarrowScreenshotPath,
+  agentProfileDesktopScreenshotPath,
+  agentProfileNarrowScreenshotPath,
 };
 console.log(JSON.stringify(summary, null, 2));
 
@@ -295,6 +308,12 @@ if (
       !existsSync(delegationNarrowScreenshotPath))) ||
   !existsSync(interactionDesktopScreenshotPath) ||
   !existsSync(interactionNarrowScreenshotPath) ||
+  !existsSync(agentProfileDesktopScreenshotPath) ||
+  !existsSync(agentProfileNarrowScreenshotPath) ||
+  !result.workflow?.agentProfileEdit?.identityPreserved ||
+  !result.workflow?.agentProfileEdit?.updatedForFutureReplies ||
+  !result.workflow?.agentProfileEdit?.capabilityPreserved ||
+  !result.workflow?.agentProfileEdit?.historyPreserved ||
   !existsSync(desktopScreenshotPath) ||
   !existsSync(narrowScreenshotPath) ||
   !existsSync(contactDesktopScreenshotPath) ||

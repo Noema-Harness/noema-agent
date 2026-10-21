@@ -185,6 +185,7 @@ function SocialChatApp() {
   const [showRoomList, setShowRoomList] = useState(true);
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
   const [createAgentOpen, setCreateAgentOpen] = useState(false);
+  const [editingAgentId, setEditingAgentId] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [editProviderConfig, setEditProviderConfig] = useState(false);
   const [groupTitle, setGroupTitle] = useState('');
@@ -197,6 +198,7 @@ function SocialChatApp() {
   const [agentDescription, setAgentDescription] = useState('');
   const [agentProjectWork, setAgentProjectWork] = useState(false);
   const [creatingAgent, setCreatingAgent] = useState(false);
+  const [updatingAgentProfile, setUpdatingAgentProfile] = useState(false);
   const [updatingAgentId, setUpdatingAgentId] = useState<string | null>(null);
   const [providerBaseUrl, setProviderBaseUrl] = useState('');
   const [providerApiKey, setProviderApiKey] = useState('');
@@ -211,6 +213,7 @@ function SocialChatApp() {
   const threadTriggerRef = useRef<HTMLButtonElement>(null);
   const groupTriggerRef = useRef<HTMLButtonElement>(null);
   const agentTriggerRef = useRef<HTMLButtonElement>(null);
+  const editAgentTriggerRef = useRef<HTMLButtonElement>(null);
   const settingsTriggerRef = useRef<HTMLButtonElement>(null);
   const shouldFollowRef = useRef(true);
   const loadSequenceRef = useRef(0);
@@ -246,13 +249,17 @@ function SocialChatApp() {
   }, []);
 
   const closeAgentDialog = useCallback(() => {
+    const returnToEdit = Boolean(editingAgentId);
     setCreateAgentOpen(false);
+    setEditingAgentId(null);
     setAgentName('');
     setAgentHeadline('');
     setAgentDescription('');
     setAgentProjectWork(false);
-    requestAnimationFrame(() => agentTriggerRef.current?.focus());
-  }, []);
+    requestAnimationFrame(() =>
+      (returnToEdit ? editAgentTriggerRef : agentTriggerRef).current?.focus(),
+    );
+  }, [editingAgentId]);
 
   const closeSettingsDialog = useCallback(() => {
     setSettingsOpen(false);
@@ -415,6 +422,7 @@ function SocialChatApp() {
     if (
       !createGroupOpen &&
       !createAgentOpen &&
+      !editingAgentId &&
       !settingsOpen &&
       !forwardDialogOpen &&
       !threadDialogOpen
@@ -439,7 +447,7 @@ function SocialChatApp() {
       if (event.key === 'Escape') {
         event.preventDefault();
         if (createGroupOpen) closeGroupDialog();
-        else if (createAgentOpen) closeAgentDialog();
+        else if (createAgentOpen || editingAgentId) closeAgentDialog();
         else if (forwardDialogOpen) cancelForward();
         else if (threadDialogOpen) closeThreadDialog();
         else closeSettingsDialog();
@@ -474,6 +482,7 @@ function SocialChatApp() {
   }, [
     createGroupOpen,
     createAgentOpen,
+    editingAgentId,
     settingsOpen,
     forwardDialogOpen,
     threadDialogOpen,
@@ -510,6 +519,9 @@ function SocialChatApp() {
 
   const agents = state?.agents ?? [];
   const activeAgents = agents.filter((agent) => !agent.archivedAt);
+  const editingAgent = editingAgentId
+    ? (agents.find((agent) => agent.id === editingAgentId) ?? null)
+    : null;
   const rooms = state?.rooms ?? [];
   const noemaRoom = rooms.find((room) => room.id === 'room-noema') ?? null;
   const currentRoom = rooms.find((room) => room.id === activeRoomId) ?? null;
@@ -1041,6 +1053,43 @@ function SocialChatApp() {
     }
   };
 
+  const openAgentProfileEditor = (agent: NoemaSocialAgent) => {
+    setAgentName(agent.name);
+    setAgentHeadline(agent.headline);
+    setAgentDescription(agent.description);
+    setEditingAgentId(agent.id);
+  };
+
+  const handleUpdateAgentProfile = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!editingAgentId) return;
+    setUpdatingAgentProfile(true);
+    setNotice('');
+    try {
+      await window.noema.updateSocialAgentProfile({
+        agentId: editingAgentId,
+        name: agentName.trim(),
+        headline: agentHeadline.trim(),
+        description: agentDescription.trim(),
+      });
+      setEditingAgentId(null);
+      setAgentName('');
+      setAgentHeadline('');
+      setAgentDescription('');
+      if (activeRoomId) {
+        await Promise.all([refreshState(), loadRoom(activeRoomId)]);
+      }
+      setNotice('资料已更新；之后开始的新回复会使用这些资料。');
+      requestAnimationFrame(() => editAgentTriggerRef.current?.focus());
+    } catch (error) {
+      setNotice(
+        error instanceof Error ? error.message : '联系人资料没有更新。',
+      );
+    } finally {
+      setUpdatingAgentProfile(false);
+    }
+  };
+
   const handleToggleAgentProjectWork = async (agent: NoemaSocialAgent) => {
     const nextEnabled = !agent.capabilities.includes('project-work');
     setUpdatingAgentId(agent.id);
@@ -1463,6 +1512,16 @@ function SocialChatApp() {
                     </span>
                   ) : members[0]?.kind === 'specialist' ? (
                     <div className="agent-header-actions">
+                      <button
+                        className="agent-edit-profile-button"
+                        ref={editAgentTriggerRef}
+                        type="button"
+                        aria-label={`编辑${members[0].name}的资料`}
+                        title="编辑联系人资料"
+                        onClick={() => openAgentProfileEditor(members[0])}
+                      >
+                        编辑资料
+                      </button>
                       <label
                         className="agent-project-capability"
                         title="此联系人是否可在你明确选择项目目录后承接文件任务"
@@ -2081,7 +2140,7 @@ function SocialChatApp() {
         </div>
       ) : null}
 
-      {createAgentOpen ? (
+      {createAgentOpen || editingAgentId ? (
         <div
           className="dialog-backdrop"
           onMouseDown={(event) => {
@@ -2094,12 +2153,22 @@ function SocialChatApp() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="create-agent-title"
-            onSubmit={(event) => void handleCreateAgent(event)}
+            onSubmit={(event) =>
+              void (editingAgentId
+                ? handleUpdateAgentProfile(event)
+                : handleCreateAgent(event))
+            }
           >
             <div className="dialog-heading">
               <div>
-                <h2 id="create-agent-title">创建专业联系人</h2>
-                <p>给它一个可以长期实践的领域，而不是一次任务。</p>
+                <h2 id="create-agent-title">
+                  {editingAgentId ? '编辑联系人资料' : '创建专业联系人'}
+                </h2>
+                <p>
+                  {editingAgentId
+                    ? `正在编辑${editingAgent?.name ?? '联系人'}。身份和聊天记录会保留。`
+                    : '给它一个可以长期实践的领域，而不是一次任务。'}
+                </p>
               </div>
               <button
                 className="icon-button"
@@ -2121,7 +2190,7 @@ function SocialChatApp() {
                 placeholder="例如：林间观察员"
                 onChange={(event) => setAgentName(event.target.value)}
                 required
-                disabled={creatingAgent}
+                disabled={creatingAgent || updatingAgentProfile}
               />
             </label>
             <label className="dialog-field">
@@ -2133,7 +2202,7 @@ function SocialChatApp() {
                 placeholder="例如：长期研究 Godot 游戏开发与项目迭代"
                 onChange={(event) => setAgentHeadline(event.target.value)}
                 required
-                disabled={creatingAgent}
+                disabled={creatingAgent || updatingAgentProfile}
               />
               <small>尽量写一类可持续积累的实践，不写单次待办。</small>
             </label>
@@ -2147,33 +2216,39 @@ function SocialChatApp() {
                 placeholder="例如：先和我厘清目标，再拆成可以验证的小步；发现方案有风险时直接指出。"
                 onChange={(event) => setAgentDescription(event.target.value)}
                 required
-                disabled={creatingAgent}
+                disabled={creatingAgent || updatingAgentProfile}
               />
             </label>
-            <label className="agent-capability-choice">
-              <input
-                type="checkbox"
-                checked={agentProjectWork}
-                onChange={(event) => setAgentProjectWork(event.target.checked)}
-                disabled={creatingAgent}
-              />
-              <span>
-                <strong>允许它承接项目文件任务</strong>
-                <small>
-                  默认关闭。开启后，它可在你明确切到项目工作并选择目录后，通过现有
-                  DSH 流程操作项目文件；不会因为普通聊天自动执行。
-                </small>
-              </span>
-            </label>
+            {!editingAgentId ? (
+              <label className="agent-capability-choice">
+                <input
+                  type="checkbox"
+                  checked={agentProjectWork}
+                  onChange={(event) =>
+                    setAgentProjectWork(event.target.checked)
+                  }
+                  disabled={creatingAgent}
+                />
+                <span>
+                  <strong>允许它承接项目文件任务</strong>
+                  <small>
+                    默认关闭。开启后，它可在你明确切到项目工作并选择目录后，通过现有
+                    DSH 流程操作项目文件；不会因为普通聊天自动执行。
+                  </small>
+                </span>
+              </label>
+            ) : null}
             <p className="dialog-footnote">
-              创建时资料只保存在本机，不调用模型。以后在这里聊天时，专业范围与合作方式会随消息发送给当前模型。专业范围是你的设定，不代表其能力已经验证。
+              {editingAgentId
+                ? '资料保存在本机，不会调用模型。更新会影响之后在该联系人的各个聊天中开始的新回复；历史消息不变。专业范围是你的设定，不代表其能力已经验证。'
+                : '创建时资料只保存在本机，不调用模型。以后在这里聊天时，专业范围与合作方式会随消息发送给当前模型。专业范围是你的设定，不代表其能力已经验证。'}
             </p>
             <div className="dialog-actions">
               <button
                 className="secondary-action"
                 type="button"
                 onClick={closeAgentDialog}
-                disabled={creatingAgent}
+                disabled={creatingAgent || updatingAgentProfile}
               >
                 取消
               </button>
@@ -2182,12 +2257,19 @@ function SocialChatApp() {
                 type="submit"
                 disabled={
                   creatingAgent ||
+                  updatingAgentProfile ||
                   !agentName.trim() ||
                   !agentHeadline.trim() ||
                   !agentDescription.trim()
                 }
               >
-                {creatingAgent ? '正在创建…' : '创建联系人并开始私聊'}
+                {creatingAgent
+                  ? '正在创建…'
+                  : updatingAgentProfile
+                    ? '正在保存…'
+                    : editingAgentId
+                      ? '保存资料'
+                      : '创建联系人并开始私聊'}
               </button>
             </div>
           </form>

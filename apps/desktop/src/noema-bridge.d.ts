@@ -556,6 +556,12 @@ export interface NoemaBridge {
     description: string;
     projectWork: boolean;
   }): Promise<NoemaSocialRoomState>;
+  updateSocialAgentProfile(input: {
+    agentId: string;
+    name: string;
+    headline: string;
+    description: string;
+  }): Promise<NoemaSocialAgent>;
   setSocialAgentProjectWork(
     agentId: string,
     enabled: boolean,

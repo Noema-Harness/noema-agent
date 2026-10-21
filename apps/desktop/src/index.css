@@ -3387,7 +3387,8 @@ select:disabled {
 .continuation-status {
   white-space: nowrap;
 }
-.agent-archive-button {
+.agent-archive-button,
+.agent-edit-profile-button {
   min-height: 28px;
   padding: 0 8px;
   border: 1px solid var(--chat-line);
@@ -3397,11 +3398,13 @@ select:disabled {
   font-size: 9px;
   cursor: pointer;
 }
-.agent-archive-button:hover:not(:disabled) {
+.agent-archive-button:hover:not(:disabled),
+.agent-edit-profile-button:hover:not(:disabled) {
   background: var(--chat-paper-alt);
   color: var(--chat-accent-deep);
 }
-.agent-archive-button:disabled {
+.agent-archive-button:disabled,
+.agent-edit-profile-button:disabled {
   opacity: 0.7;
   cursor: progress;
 }

@@ -159,6 +159,12 @@ export class SocialChatService {
     return room;
   }
 
+  updateAgentProfile(input) {
+    const agent = this.store.updateAgentProfile(input);
+    this.emit({ type: 'agent-state-updated', agentId: agent.id });
+    return agent;
+  }
+
   createContinuationThread(input) {
     if (this.shuttingDown) throw new Error('Noema 正在关闭，暂不能新建主题。');
     const room = this.store.createContinuationThread(input);

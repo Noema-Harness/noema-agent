@@ -937,6 +937,75 @@ test('a user-created specialist keeps one identity across a fresh DM, group, and
   }
 });
 
+test('editing a specialist updates future identity across rooms without changing its id, capabilities, or history', () => {
+  const { db, social } = makeStores();
+  try {
+    const created = social.createAgent({
+      name: '新闻观察者',
+      headline: '跟踪人工智能新闻',
+      description: '先核对来源，再整理重要变化。',
+      projectWork: true,
+    });
+    const agentId = created.members[0].id;
+    const roomId = created.room.id;
+    const firstMessage = created.messages[0].id;
+    const group = social.createGroup({
+      title: '跨平台订阅研究',
+      agentIds: ['noema', agentId],
+    });
+    const beforeGroupTitle = group.room.title;
+
+    const updated = social.updateAgentProfile({
+      agentId,
+      name: 'AI 产业观察员',
+      headline: '跟踪 AI 平台产品、价格与政策变化',
+      description: '核对一手来源，标出不确定性，并把变化放进持续跟踪的背景中。',
+    });
+
+    assert.equal(updated.id, agentId);
+    assert.equal(updated.name, 'AI 产业观察员');
+    assert.match(updated.systemPrompt, /AI 平台产品、价格与政策变化/u);
+    assert.match(updated.systemPrompt, /标出不确定性/u);
+    assert.match(updated.systemPrompt, /用户已开启 Noema 的项目文件任务能力/u);
+    assert.deepEqual(updated.capabilities, ['project-work']);
+    assert.equal(social.getRoomSnapshot(roomId).room.title, 'AI 产业观察员');
+    assert.equal(social.getRoomSnapshot(roomId).messages[0].id, firstMessage);
+    assert.equal(social.getRoomSnapshot(roomId).messages.length, 1);
+    assert.equal(
+      social.getRoomSnapshot(group.room.id).room.title,
+      beforeGroupTitle,
+    );
+    assert.equal(
+      social
+        .getRoomSnapshot(group.room.id)
+        .members.find((member) => member.id === agentId).name,
+      'AI 产业观察员',
+    );
+    assert.throws(
+      () =>
+        social.updateAgentProfile({
+          agentId,
+          name: 'Noema',
+          headline: '合法长度',
+          description: '合法描述',
+        }),
+      /已有联系人使用这个名称/u,
+    );
+    assert.throws(
+      () =>
+        social.updateAgentProfile({
+          agentId: 'noema',
+          name: '另一个名字',
+          headline: '合法长度',
+          description: '合法描述',
+        }),
+      /核心联系人资料/u,
+    );
+  } finally {
+    db.close();
+  }
+});
+
 test('a reply can be retried after failure without duplicating its user turn', () => {
   const { db, social } = makeStores();
   try {

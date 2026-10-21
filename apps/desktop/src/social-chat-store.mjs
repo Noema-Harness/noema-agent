@@ -928,6 +928,57 @@ export class SocialChatStore {
     return this.getRoomSnapshot(roomId);
   }
 
+  updateAgentProfile({ agentId, name, headline, description }) {
+    const agent = this.getAgent(agentId);
+    if (agent.kind !== 'specialist') {
+      throw new Error('Noema 核心联系人资料不能在这里修改。');
+    }
+    const normalizedName = requireText(name, '联系人名称', 60);
+    const normalizedHeadline = requireText(headline, '专业范围', 140);
+    const normalizedDescription = requireText(description, '合作方式', 800);
+    const duplicate = this.db
+      .prepare(
+        `SELECT 1 FROM social_agents
+         WHERE id <> ? AND name = ? COLLATE NOCASE LIMIT 1`,
+      )
+      .get(agentId, normalizedName);
+    if (duplicate) throw new Error('已有联系人使用这个名称。');
+
+    const now = isoNow();
+    const systemPrompt = specialistSystemPrompt({
+      name: normalizedName,
+      headline: normalizedHeadline,
+      description: normalizedDescription,
+      projectWork: agent.capabilities.includes('project-work'),
+    });
+    this.db.transaction(() => {
+      this.db
+        .prepare(`
+          UPDATE social_agents
+          SET name = ?, headline = ?, description = ?, system_prompt = ?, updated_at = ?
+          WHERE id = ?
+        `)
+        .run(
+          normalizedName,
+          normalizedHeadline,
+          normalizedDescription,
+          systemPrompt,
+          now,
+          agentId,
+        );
+      this.db
+        .prepare(`
+          UPDATE social_rooms
+          SET title = ?, updated_at = ?
+          WHERE kind = 'direct' AND id IN (
+            SELECT room_id FROM social_room_members WHERE agent_id = ?
+          )
+        `)
+        .run(normalizedName, now, agentId);
+    })();
+    return this.getAgent(agentId);
+  }
+
   setAgentProjectWork(agentId, enabled) {
     if (typeof enabled !== 'boolean') {
       throw new TypeError('项目工作能力必须是布尔值。');
