@@ -361,6 +361,10 @@ const createWindow = () => {
         const modelAvailabilitySmoke = await inspectModelAvailabilitySmoke(
           bridgeState.models ?? [],
           bridgeState.selectedModel ?? null,
+          {
+            connected: Boolean(bridgeState.connected),
+            providerConfigured: Boolean(bridgeState.providerConfigured),
+          },
         );
         const socialChatSmoke = await captureSocialChatSmokeScreenshots();
         const socialLiveChatSmoke = await verifyLiveSocialChatSmoke();
@@ -809,6 +813,7 @@ async function inspectModelAvailabilitySmoke(
     executionStatus: 'ready' | 'needsKey' | 'exhausted' | null;
   }>,
   selectedModel: string | null,
+  providerState: { connected: boolean; providerConfigured: boolean },
 ) {
   if (!testCaptureModelAvailability && models.length === 0) return null;
   if (!mainWindow || mainWindow.isDestroyed()) {
@@ -819,21 +824,27 @@ async function inspectModelAvailabilitySmoke(
   );
   if (socialSurface) {
     mainWindow.setSize(1280, 720);
-    const socialState = await mainWindow.webContents.executeJavaScript(`(() => {
-      const select = document.querySelector('select[aria-label="选择对话模型"]');
+    const socialState = await mainWindow.webContents
+      .executeJavaScript(`new Promise((resolve) => {
+      document.querySelector('[aria-label="连接与模型设置"]')?.click();
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+      const dialog = document.querySelector('.settings-dialog');
+      const select = dialog?.querySelector('select[aria-label="在设置中选择对话模型"]');
       const warning = document.querySelector('.provider-warning')?.textContent?.trim() ?? '';
-      return {
+      resolve({
         options: [...(select?.options ?? [])].map((option) => ({
           value: option.value,
           label: option.textContent?.trim() ?? '',
           disabled: option.disabled,
         })),
         selectedModel: select?.value ?? '',
-        connectionLabel: document.querySelector('.model-connection')?.textContent?.trim() ?? '',
+        connectionSummary: dialog?.querySelector('.connection-summary')?.textContent?.trim() ?? '',
+        dialogVisible: Boolean(dialog),
         composerDisabled: Boolean(document.querySelector('#social-message-input')?.disabled),
         warning,
-      };
-    })()`);
+      });
+      }));
+    })`);
     const mismatches = models.flatMap((model) => {
       const option = socialState.options.find(
         (candidate: { value: string; label: string; disabled: boolean }) =>
@@ -856,29 +867,39 @@ async function inspectModelAvailabilitySmoke(
     });
     if (mismatches.length) {
       throw new Error(
-        `Noema 聊天模型列表与 FreeLLMAPI 状态不一致：${mismatches.join('; ')}`,
+        `Noema 设置中的模型列表与 FreeLLMAPI 状态不一致：${mismatches.join('; ')}`,
       );
     }
+    if (!socialState.dialogVisible) {
+      throw new Error('连接与模型设置没有打开。');
+    }
     const selectedStatus = models.find(
-      (model) => model.name === socialState.selectedModel,
+      (model) => model.name === selectedModel,
     )?.executionStatus;
     const selectedUnavailable =
       selectedStatus === 'exhausted' || selectedStatus === 'needsKey';
-    const expectedLabel = selectedUnavailable
-      ? selectedStatus === 'needsKey'
-        ? '所选模型需要密钥'
-        : '所选模型暂不可用'
-      : selectedStatus === 'ready'
-        ? '对话已就绪'
-        : '模型链状态未知';
-    if (!socialState.connectionLabel.includes(expectedLabel)) {
-      throw new Error('聊天顶部没有显示所选路由的真实就绪状态。');
+    const providerReady = Boolean(
+      providerState.connected && models.length > 0 && !selectedUnavailable,
+    );
+    if (socialState.selectedModel !== (selectedModel ?? '')) {
+      throw new Error('设置中的当前模型与 Noema 持久化选择不一致。');
     }
-    if (selectedUnavailable !== socialState.composerDisabled) {
+    const expectedConnectionSummary = providerState.providerConfigured
+      ? providerState.connected
+        ? '本机 FreeLLMAPI 已连接'
+        : 'FreeLLMAPI 已配置，当前连接不可用'
+      : '';
+    if (
+      expectedConnectionSummary &&
+      !socialState.connectionSummary.includes(expectedConnectionSummary)
+    ) {
+      throw new Error('连接设置没有显示本机 FreeLLMAPI 的真实连接状态。');
+    }
+    if (providerReady === socialState.composerDisabled) {
       throw new Error('所选模型状态与聊天输入框的可用状态不一致。');
     }
-    if (selectedUnavailable && !socialState.warning) {
-      throw new Error('所选模型不可用时没有给出切换或恢复说明。');
+    if (Boolean(socialState.warning) === providerReady) {
+      throw new Error('聊天输入区没有按模型服务的真实状态显示提示。');
     }
 
     const screenshots: string[] = [];
@@ -894,14 +915,15 @@ async function inspectModelAvailabilitySmoke(
       mainWindow.setSize(680, 560);
       narrowLayoutValid = await mainWindow.webContents
         .executeJavaScript(`(() => {
-        const roomHeader = document.querySelector('.room-header');
+        const dialog = document.querySelector('.settings-dialog');
+        const rect = dialog?.getBoundingClientRect();
         return Boolean(
           document.documentElement.scrollWidth <= window.innerWidth &&
-          roomHeader && roomHeader.scrollWidth <= roomHeader.clientWidth
+          rect && rect.width <= window.innerWidth && rect.height <= window.innerHeight
         );
       })()`);
       if (!narrowLayoutValid) {
-        throw new Error('窄窗口下模型状态标签挤出了聊天界面。');
+        throw new Error('窄窗口下连接与模型设置超出可视范围。');
       }
       writeSmokeScreenshot(
         modelAvailabilityNarrowScreenshotPath,
@@ -914,7 +936,7 @@ async function inspectModelAvailabilitySmoke(
       routes: models,
       options: socialState.options,
       selectedModel: socialState.selectedModel,
-      connectionLabel: socialState.connectionLabel,
+      connectionSummary: socialState.connectionSummary,
       selectedUnavailable,
       narrowLayoutValid,
       screenshots,

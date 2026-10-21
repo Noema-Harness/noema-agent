@@ -50,9 +50,7 @@ const timelineSearchScreenshotPaths = [
 if (probeFreeLLMAPI) {
   mkdirSync(probeDirectory, { recursive: true });
   const fixture = new RootStore(path.join(probeDirectory, 'root.sqlite3'));
-  fixture.setSelectedModel(
-    process.env.NOEMA_SMOKE_MODEL ?? 'nvidia/nemotron-3-super-120b-a12b:free',
-  );
+  fixture.setSelectedModel(process.env.NOEMA_SMOKE_MODEL ?? 'auto:noema-free');
   fixture.close();
 }
 let historyTraceDatabasePath;
