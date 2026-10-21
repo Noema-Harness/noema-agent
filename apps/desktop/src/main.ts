@@ -894,10 +894,10 @@ async function inspectModelAvailabilitySmoke(
       mainWindow.setSize(680, 560);
       narrowLayoutValid = await mainWindow.webContents
         .executeJavaScript(`(() => {
-        const topbar = document.querySelector('.social-topbar');
+        const roomHeader = document.querySelector('.room-header');
         return Boolean(
           document.documentElement.scrollWidth <= window.innerWidth &&
-          topbar && topbar.scrollWidth <= topbar.clientWidth
+          roomHeader && roomHeader.scrollWidth <= roomHeader.clientWidth
         );
       })()`);
       if (!narrowLayoutValid) {
@@ -1077,7 +1077,7 @@ async function captureSocialChatSmokeScreenshots() {
       return mainWindow?.webContents.executeJavaScript(`(() => {
         const shell = document.querySelector('.social-shell');
         const panel = document.querySelector('.conversation-panel');
-        const header = document.querySelector('.social-topbar');
+        const header = document.querySelector('.room-header');
         const composer = document.querySelector('.message-composer');
         const routing = document.querySelector('.reply-routing');
         const rect = composer?.getBoundingClientRect();

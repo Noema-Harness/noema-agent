@@ -1,250 +1,74 @@
 ---
-name: Noema Social Chat
-description: A Chinese-first desktop chat organized around stable agent identities and independent conversation rooms.
+name: Noema Conversation Surface
+description: Chinese-first desktop conversation organized as a continuous, high-density transcript with visible, source-linked work.
 colors:
-  primary: "#2e5c49"
-  primary-deep: "#244536"
-  core-identity: "#e1eee3"
-  specialist-identity: "#f2e9dd"
-  specialist-ink: "#815334"
-  ground: "#e9ede7"
-  paper: "#fbfcf9"
-  paper-alt: "#f4f6f1"
-  ink: "#1f2d27"
-  muted: "#65736b"
-  line: "#dce3dc"
-  identity-highlight: "#c9d98b"
+  accent: "#a34432"
+  accent-deep: "#743629"
+  accent-soft: "#f1e5df"
+  ground: "#f3f2ee"
+  paper: "#faf9f6"
+  paper-alt: "#eeede8"
+  ink: "#242622"
+  muted: "#6d6e68"
+  line: "#d8d7d0"
+  line-strong: "#bab9b1"
   success: "#367258"
   warning: "#8b662c"
   error: "#a94136"
 typography:
   body:
     fontFamily: "Segoe UI Variable, Segoe UI, Microsoft YaHei UI, Microsoft YaHei, sans-serif"
-    fontSize: "14px"
-  title:
-    fontFamily: "Segoe UI Variable, Segoe UI, Microsoft YaHei UI, Microsoft YaHei, sans-serif"
-    fontSize: "23px"
-    fontWeight: 660
-    lineHeight: 1.05
-  message:
-    fontFamily: "Segoe UI Variable, Segoe UI, Microsoft YaHei UI, Microsoft YaHei, sans-serif"
     fontSize: "13px"
-    lineHeight: 1.72
-  dialog-title:
-    fontFamily: "Segoe UI Variable, Segoe UI, Microsoft YaHei UI, Microsoft YaHei, sans-serif"
-    fontSize: "19px"
-    fontWeight: 680
-  empty-state-title:
-    fontFamily: "Segoe UI Variable, Segoe UI, Microsoft YaHei UI, Microsoft YaHei, sans-serif"
-    fontSize: "17px"
-    fontWeight: 660
-  identity:
-    fontFamily: "Segoe UI Variable, Segoe UI, Microsoft YaHei UI, Microsoft YaHei, sans-serif"
-    fontSize: "16px"
-    fontWeight: 720
-  compact:
-    fontFamily: "Segoe UI Variable, Segoe UI, Microsoft YaHei UI, Microsoft YaHei, sans-serif"
-    fontSize: "12px"
-  control:
-    fontFamily: "Segoe UI Variable, Segoe UI, Microsoft YaHei UI, Microsoft YaHei, sans-serif"
-    fontSize: "11px"
-  label:
-    fontFamily: "Segoe UI Variable, Segoe UI, Microsoft YaHei UI, Microsoft YaHei, sans-serif"
+  conversation:
+    fontSize: "13px"
+    lineHeight: 1.62
+  author:
     fontSize: "10px"
-    fontWeight: 680
+    fontWeight: 620
   timestamp:
-    fontFamily: "Segoe UI Variable, Segoe UI, Microsoft YaHei UI, Microsoft YaHei, sans-serif"
     fontSize: "9px"
   inline-code:
     fontFamily: "Consolas, Cascadia Code, monospace"
     fontSize: "0.9em"
-rounded:
-  micro: "2px"
-  small: "4px"
-  small-control: "5px"
-  control: "7px"
-  search: "8px"
-  room-item: "9px"
-  compact-item: "10px"
-  composer: "11px"
-  panel: "12px"
-  dialog: "13px"
-  circle: "50%"
-  agent-mark: "12px 12px 12px 4px"
-  agent-mark-small: "8px 8px 8px 3px"
-  agent-mark-compact: "10px 10px 10px 3px"
-  agent-message: "4px 13px 13px 13px"
-  user-message: "13px 4px 13px 13px"
-spacing:
-  sm: "8px"
-  md: "12px"
-  lg: "16px"
-  xl: "24px"
-components:
-  button-primary:
-    backgroundColor: "{colors.primary}"
-    textColor: "#ffffff"
-    rounded: "{rounded.control}"
-    padding: "0 11px"
-    height: "30px"
-  room-selected:
-    backgroundColor: "#eef3ec"
-    rounded: "{rounded.room-item}"
-    padding: "9px 10px"
-  composer:
-    backgroundColor: "#ffffff"
-    textColor: "{colors.ink}"
-    rounded: "{rounded.composer}"
-    padding: "12px 14px 9px"
-    height: "106px"
-  responder-selected:
-    backgroundColor: "#edf3ed"
-    textColor: "{colors.primary-deep}"
-    rounded: "{rounded.control}"
-    padding: "4px 8px 4px 5px"
+shape:
+  controls: "2px"
+  dialogs: "4px"
 ---
 
-# Design System: Noema Social Chat
+# Noema Conversation Surface
 
-## Overview
+## Working visual premise
 
-**Creative North Star: “Independent Rooms for Ongoing Conversation”**
+The screen reads as one continuous conversation record, not a stack of role cards. A narrow author-and-time rail makes turns easy to scan; message text occupies one shared reading column. A restrained vermilion accent marks the user's words and primary actions. Room lists behave like an index, while the writing area sits at the foot of the transcript as a ruled surface.
 
-This Windows-first, Chinese-first desktop slice uses familiar chat conventions. The active room owns the main area; a recent-chat sidebar keeps Noema and professional agents easy to return to. Stable agent identities appear across rooms, while each private or group room keeps its own transcript. In group rooms, the sender can choose who responds to each turn. This is the current assistant-selected interface direction, not a user-confirmed brand identity.
+This is an assistant-selected direction prepared for review after repeated feedback that the familiar avatar, bubble, rounded-composer shell felt AI-generated. It is not an accepted Noema brand identity. The product-wide visual identity remains open.
 
-The interface uses a quiet warm-gray-green ground around paper-white chat surfaces, forest-green actions, and distinct identity marks for Noema and a professional contact. The roomy desktop layout gives the conversation most of the space. On narrow screens, the app switches between the chat list and the selected room, retaining a compact top bar and direct navigation back. Model and service information stays visible but secondary to the room and its messages.
+The visual character should feel contemporary, thoughtful and personal, with high information density. Use typography, alignment and rhythm to distinguish Noema. Avoid manufacturing identity with gradients, floating cards, decorative avatars, oversized empty states, generic AI iconography, faux paper texture or retro display type. Familiar chat actions remain easy to find.
 
-The palette, type scale, and surface styling document this implementation slice. They remain changeable design choices, not permanent Noema brand assets. The earlier root-conversation and background-worker composition is historical; it is not the current main chat surface.
+## Palette and type
 
-The stylesheet also retains earlier `#legacy` interface rules before the `.social-shell` block. Those styles are deprecated for the current main surface and are outside this design system; do not reuse their one-off values as current social-chat tokens.
+Use the warm mineral ground, near-white reading surface and charcoal text defined in the front matter. Keep vermilion to selected navigation, the user's author marker, focus and primary actions. Use status colors only for truthful success, running, warning and failure states.
 
-**Key Characteristics:**
-- A room-centered chat surface with a persistent desktop contact/recent-chat list.
-- Stable identity marks distinguish Noema from professional agents across separate rooms.
-- Group turns expose an explicit responder choice.
-- Engineering work is explicitly switched from chat and returns as an activity in the same room.
-- Local transcript storage and the selected FreeLLMAPI model boundary are stated in the interface.
+Use the operating-system sans stack for Chinese and Latin interface text. Message copy stays readable at 13px desktop and 12px narrow with compact line height. Author, source and status labels remain secondary; timestamps use tabular numerals. Use monospace only for code. Do not add a font dependency to simulate a brand.
 
-## Colors
+## Composition
 
-The current slice pairs a muted green-gray ground and paper surfaces with forest-green actions; pale green and warm beige marks distinguish agent identities.
+The desktop shell is a two-column workspace without a separate branded top bar. The left rail is a compact conversation index with Noema as the fixed primary entry and other chats below. The active chat uses a short header, full-width scroll area, and a consistent author gutter. Do not center each message in a narrow bubble column.
 
-### Primary
-- **Forest action green** (`{colors.primary}`): Primary send and confirmation actions, selected response controls, and ready indicators. Keep connection state truthful; green must not imply a successful reply when only a model is listed as available.
-- **Deep forest** (`{colors.primary-deep}`): Emphasis for selected responder controls and identity details.
+Each turn is a row in one vertical transcript. Sender and time occupy the gutter; content, reply/forward references and message actions share the reading column. User messages use a slim accent rule rather than a filled bubble. Agent messages use the same text surface and clearly name their sender. Keep separators quiet and let content establish the rhythm.
 
-### Neutral
-- **Warm green-gray ground** (`{colors.ground}`): The desktop shell behind the chat and sidebar surfaces.
-- **Paper white** (`{colors.paper}`): Main conversation panel, sidebar, and modal surfaces.
-- **Quiet paper tint** (`{colors.paper-alt}`): Secondary control surfaces and subtle hover states.
-- **Deep green ink** (`{colors.ink}`): Main headings, message text, and control labels.
-- **Muted leaf gray** (`{colors.muted}`): Supporting copy and secondary status labels.
-- **Soft divider** (`{colors.line}`): Panel separation, input outlines, and low-emphasis borders.
+The composer shares the transcript's reading-column width and uses a top rule rather than a floating card. Keep send/stop controls visible, keyboard instructions concise and the accurate data-flow statement readable. Provider configuration appears only when it needs attention or in settings.
 
-### Tertiary
-- **Noema identity green** (`{colors.core-identity}`): The light field behind Noema's persistent identity mark.
-- **Professional-contact beige** (`{colors.specialist-identity}`) and **earth-brown ink** (`{colors.specialist-ink}`): Distinguish the professional contact mark from Noema without implying provider health or capability.
-- **Identity highlight** (`{colors.identity-highlight}`): Small accent bars in the brand symbol; keep its use limited to that mark.
+## Action and state presentation
 
-### Named Rules
-**The Room Truth Rule.** Use color to identify people, places, and current state. Never use a status color to imply a reply succeeded, a model is reachable now, or an agent has capabilities that the live state does not confirm.
+An actual asynchronous work record follows its source turn in the same content column. Use a compact ruled block with the real executor, scope, current state, result, stop/failure controls and independent verification. Do not add decorative task indicators or imply general delegation.
 
-## Typography
+Represent loading, empty, failed, interrupted and recovered states in the same transcript grammar. Empty states should orient the user without a centered illustration or marketing claim. Keep actions discoverable by keyboard and pointer; provide visible focus and sufficient contrast.
 
-**Display Font:** Segoe UI Variable, with Segoe UI and Chinese UI sans-serif fallbacks.
-**Body Font:** Segoe UI Variable, Segoe UI, Microsoft YaHei UI, Microsoft YaHei, sans-serif.
-**Label/Mono Font:** Consolas / Cascadia Code for code in messages only.
+## Narrow windows
 
-**Character:** Compact, native-feeling sans-serif typography supports Chinese conversation and clear control labels. Message copy is more open than metadata; timestamps and room previews remain quiet.
+At 700px and below, show either the conversation index or one chat, with a direct back action. Reduce the author gutter to preserve a readable text measure. Message, source and action content must wrap without horizontal overflow. The settings control remains reachable from both views.
 
-### Hierarchy
-- **Title** (weight 660, 23px, line-height 1.05): Chat-list heading.
-- **Dialog / empty-state title** (weight 680/660, 19px/17px): Modal heading and empty-room prompt.
-- **Identity mark** (weight 720, 16px): Initial inside the stable agent identity tile.
-- **Room title** (weight 680, 14px): Identifies the active private or group room in its header.
-- **Message** (regular, 13px, line-height 1.72): Conversation body on desktop; narrows to 12px on smaller screens.
-- **Control / label** (11px/10px): Compact controls, section labels, provenance, and supporting metadata.
-- **Timestamp** (9px): Secondary time marks.
-- **Inline code** (0.9em): Code within message text uses the monospace stack; fenced blocks use 11px Consolas/Cascadia Code.
+## Sources of truth
 
-The complete observed social-chat font-size set is 9, 10, 11, 12, 13, 14, 16, 17, 19, and 23px, plus inline code at 0.9em. Line-height values present in this slice range from 1 to 1.72 and are attached to the specific text roles in CSS.
-
-## Layout
-
-At desktop widths, a 58px top bar sits above a two-column body: a 280–324px conversation sidebar beside the flexible active-room panel. The sidebar groups recent rooms with search and a new-group action; the active room contains its own header, scrollable message thread, responder controls when applicable, composer, and a short data-flow note. The message sequence is centered and capped at 760px for readable line length. The shell has a 320px minimum width.
-
-At widths up to 700px, the sidebar and room become mutually exclusive views inside the same shell; a back control returns from the room to the list, and the model selector leaves the top bar. At 420px and below, horizontal padding and secondary metadata shrink further. Group creation and model settings remain dialogs sized to the available viewport. Preserve these actual breakpoints and the list-to-room navigation behavior when adapting this surface.
-
-Spacing is compact around labels and controls (commonly 7–12px) and wider around the message thread (17–21px between messages, 24px desktop top inset). The composer stays anchored below the thread rather than becoming a floating tool panel.
-
-## Elevation & Depth
-
-The chat surface relies mostly on tonal separation and thin borders: the green-gray shell frames paper panels, selected rooms use a light tint, and message bubbles use subtle tinted fills. Shadows are reserved for modal separation and a small composer focus halo. Keep ordinary navigation and messages visually flat.
-
-### Shadow Vocabulary
-- **Dialog lift** (`0 20px 60px rgb(21 35 26 / 18%)`): Separates group and connection settings dialogs from the dimmed chat.
-- **Composer focus halo** (`0 0 0 3px rgb(46 92 73 / 8%)`): Makes the focused message field visible without changing the conversation hierarchy.
-
-## Shapes
-
-The observed corner vocabulary includes 2, 4, 5, 7, 8, 9, 10, 11, 12, and 13px radii plus circular marks (`50%`). Controls generally use 7–9px; the sidebar and conversation panels use 12px corners, and the composer uses 11px. Agent identity tiles use soft asymmetric silhouettes with a small clipped corner. Message bubbles use directional asymmetric corners: the agent bubble has a tighter upper-left corner and the user's bubble a tighter upper-right corner. Thin green-gray strokes define panels, fields, and selection states; avoid adding heavy outlines or a generic card around each message.
-
-## Components
-
-### Buttons
-- **Primary send / confirm:** Compact forest-green button with white text, a 7px radius, and a 30px height for the composer send action. Group and settings dialog actions use the same green fill at a 35px minimum height.
-- **Disabled:** Retain the button shape but mute the green surface; disabled state must remain visibly distinct from a ready-to-send action.
-- **Focus:** Keyboard focus uses a 3px outline with offset; preserve it on icon buttons, selects, inputs, and the composer.
-
-### Inputs / Fields
-- **Search:** A 38px-high, lightly tinted field with an 8px radius, search icon, and optional shortcut hint. Keep its placeholder legible.
-- **Composer:** A white multiline field with an 11px radius, thin outline, 106px desktop minimum height, and a green focus halo. It remains part of the active room and supports Enter to send / Shift+Enter for a line break as labeled in the interface.
-- **Settings and group fields:** White inputs with a thin outline, 7px radius, and direct Chinese labels.
-
-### Navigation
-- **Conversation list:** Each row shows a room title, recent message preview, time, and one or more stable agent marks. Use a pale green surface and border to identify the selected room.
-- **Narrow layout:** Replace the desktop two-column layout with one view at a time. Keep the back affordance in the room header and hide the desktop model selector while preserving access to model settings.
-- **Creating contacts:** Keep “创建专业联系人”和“新建群聊” as distinct, clearly named actions beside the chat heading. The contact form asks for a name, long-term professional scope, and collaboration approach; it never asks users to write a system prompt. Creation is local and opens that contact's new direct room with a system welcome event.
-- **Archived contacts:** Existing rooms and messages remain visible as history, with an explicit archived marker. Archived agents cannot receive new replies or tasks and are excluded from new group invitations; their direct room exposes a restore action. In group rooms, archived members are visibly disabled while active members remain selectable.
-
-### Cards / Containers
-- Use the two large paper panels as the page's main containers. The active room itself is the content surface; do not wrap every message in a separate raised card.
-- Group and connection settings use a paper dialog over a dimmed backdrop. A selected group member gets a light green row fill and border.
-
-### Identity Marks
-- Noema uses a pale green square-like mark; the professional contact uses a pale beige mark with warm-brown lettering. A group avatar may stack these marks. Keep identity styling stable across the room list, header, message attribution, and responder picker.
-
-### Message Bubbles
-- Agent messages are left-aligned on a very light neutral-green fill; user messages are right-aligned on forest green with white text. Keep timestamps and provenance separate from the message body.
-- Group responses must make the responding agent legible. A per-turn responder choice belongs directly above the composer, not in a separate operations panel.
-
-### Project Work Activity
-- A compact “聊天 / 项目工作” switch sits above the composer only in rooms with a capable agent. Project work is never inferred from ordinary chat text.
-- The work record stays in its originating room as one durable activity card, visually distinct from a chat bubble but not moved into a global task dashboard.
-- The card identifies the specialist, current status, user request, chosen project folder (collapsible), result, stop action, and whether Noema independently verified the declared file condition. A worker's final text is not the verification badge.
-- Project mode offers an unchecked, per-task “参考同项目的已核验经验” control. Its supporting text states that at most one bounded summary with common credential-shaped text filtered may be sent with the task; it does not promise complete secret detection, and the folder consent dialog repeats this boundary. If the selected workspace has a proposed cross-room practice, a native review appears after folder selection and before task creation: the exact trigger, action, applicability limits, current task and provenance are shown. The default is to use only the already-verified case; the user may instead try the candidate once or cancel. The model never silently decides whether a hidden candidate is authorized for this task.
-- A task card that cites a prior case exposes the source room and bounded task/result excerpt on demand. A completed, independently verified source can be withdrawn from future reuse from that same card; the history of tasks that already received its snapshot is unchanged.
-- Starting work requires the user to choose a folder. The folder picker discloses third-party model transmission, Windows sandbox limitations, and that stopping does not roll back file edits. Do not imply that the chosen path is a complete read/network security boundary.
-
-### Status and Data Boundary
-- The top bar may show that the local FreeLLMAPI service is connected and the selected model's reported availability. Treat this as current status information, not a guarantee that the next generation will succeed.
-- Keep the visible data statement accurate: chat records are stored locally; after sending, the turn and selected contact's professional scope/collaboration profile go through FreeLLMAPI to the currently selected model. Do not imply local-only inference or external provider state beyond the observed app state.
-
-## Do's and Don'ts
-
-### Do:
-- **Do** make the current room the main focus and keep the sidebar about returning to a person or recent conversation.
-- **Do** preserve separate private and group transcripts while reusing stable agent identity marks.
-- **Do** show the group responder choice for each turn and identify which agent actually replied.
-- **Do** keep project work attached to its room and distinguish “worker finished” from “Noema verified.”
-- **Do** keep model and service state present but subordinate, with wording tied to the state the app actually knows.
-- **Do** retain the local-storage and FreeLLMAPI data boundary in concise, readable language.
-- **Do** let narrow screens move cleanly between the chat list and one active room.
-- **Do** treat the current palette and type as implementation choices that may evolve.
-
-### Don't:
-- **Don't** turn the main chat into a dashboard, task panel, or abstract relationship map.
-- **Don't** imply cross-room memory, personality growth, tool execution, or external-provider state unless the implementation establishes it.
-- **Don't** equate a model directory's “ready” label or service connection with a successful response.
-- **Don't** describe Noema or professional agents as conscious or as having human feelings.
-- **Don't** present the green and beige palette as a user-approved permanent brand system.
+Product and interaction constraints live in [the chat redesign brief](docs/design/chat-redesign-brief.md) and [ADR 0026](docs/decisions/0026-noema-first-chat-and-visible-actions.md). This file records the current visual implementation only. Revisit this direction when real use shows that the transcript impairs speaker scanning, ordinary conversation or action comprehension; do not treat style feedback as proof of product positioning.

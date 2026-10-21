@@ -534,25 +534,6 @@ function SocialChatApp() {
         aria-current={selected ? 'page' : undefined}
         onClick={() => selectRoom(room)}
       >
-        <span className="room-avatar-stack">
-          {room.kind === 'group' ? (
-            <span className="group-avatar" aria-hidden="true">
-              {room.memberIds.slice(0, 2).map((agentId) => {
-                const agent = messageAgent.get(agentId);
-                return agent ? (
-                  <AgentMark key={agent.id} agent={agent} small />
-                ) : null;
-              })}
-            </span>
-          ) : firstAgent ? (
-            <AgentMark agent={firstAgent} />
-          ) : null}
-          {room.kind === 'group' ? (
-            <span className="room-kind-mark" aria-label="群聊">
-              组
-            </span>
-          ) : null}
-        </span>
         <span className="room-list-copy">
           <span className="room-list-title-line">
             <span className="room-list-title">{room.title}</span>
@@ -1178,34 +1159,12 @@ function SocialChatApp() {
 
   return (
     <main className="social-shell">
-      <header className="social-topbar">
-        <a className="social-brand" href="#chat" aria-label="Noema 首页">
-          <span className="brand-symbol" aria-hidden="true">
-            <span />
-            <span />
-            <span />
-          </span>
-          <span>Noema</span>
-        </a>
-        <div className="topbar-spacer" />
-        <button
-          className="icon-button settings-button"
-          ref={settingsTriggerRef}
-          type="button"
-          aria-label="连接与模型设置"
-          title="连接与模型设置"
-          onClick={() => setSettingsOpen(true)}
-        >
-          <Icon name="settings" />
-        </button>
-      </header>
-
       <div className={`social-body ${showRoomList ? '' : 'room-open'}`}>
         <aside className="conversation-sidebar" aria-label="聊天列表">
           <div className="sidebar-heading">
             <div>
-              <h1>消息</h1>
-              <p>和 Noema 与其他联系人保持对话</p>
+              <p className="sidebar-kicker">个人对话</p>
+              <h1>Noema</h1>
             </div>
             <div className="sidebar-create-actions">
               <button
@@ -1268,13 +1227,23 @@ function SocialChatApp() {
           </nav>
 
           <div className="sidebar-bottom">
-            <div className="sidebar-self-mark" aria-hidden="true">
-              你
-            </div>
             <div className="sidebar-self-copy">
-              <strong>个人空间</strong>
-              <span>消息保存在这台设备</span>
+              <strong>本地对话</strong>
+              <span>记录保存在这台设备</span>
             </div>
+            <button
+              className="icon-button settings-button sidebar-settings-button"
+              ref={settingsTriggerRef}
+              type="button"
+              aria-label="连接与模型设置"
+              title="连接与模型设置"
+              onClick={(event) => {
+                settingsTriggerRef.current = event.currentTarget;
+                setSettingsOpen(true);
+              }}
+            >
+              <Icon name="settings" />
+            </button>
           </div>
         </aside>
 
@@ -1289,6 +1258,18 @@ function SocialChatApp() {
                   onClick={() => setShowRoomList(true)}
                 >
                   <Icon name="back" />
+                </button>
+                <button
+                  className="icon-button settings-button room-settings-button"
+                  type="button"
+                  aria-label="连接与模型设置"
+                  title="连接与模型设置"
+                  onClick={(event) => {
+                    settingsTriggerRef.current = event.currentTarget;
+                    setSettingsOpen(true);
+                  }}
+                >
+                  <Icon name="settings" />
                 </button>
                 {currentRoom.parentRoomId ? (
                   <button
@@ -1307,43 +1288,15 @@ function SocialChatApp() {
                     ← 来源
                   </button>
                 ) : null}
-                {currentRoom.kind === 'direct' && avatarAgent ? (
-                  <AgentMark agent={avatarAgent} />
-                ) : (
-                  <span className="group-header-mark" aria-hidden="true">
-                    <AgentMark
-                      agent={
-                        members[0] ??
-                        agents[0] ?? {
-                          id: 'noema',
-                          name: 'Noema',
-                          kind: 'core',
-                        }
-                      }
-                      small
-                    />
-                    <AgentMark
-                      agent={
-                        members[1] ??
-                        agents[1] ?? {
-                          id: 'engineering-partner',
-                          name: '工程搭档',
-                          kind: 'specialist',
-                        }
-                      }
-                      small
-                    />
-                  </span>
-                )}
                 <div className="room-header-copy">
                   <h2>{currentRoom.title}</h2>
                   {currentRoom.kind === 'group' ? (
                     <p>
                       {members.map((member) => member.name).join(' · ')} 与你
                     </p>
-                  ) : (
+                  ) : members[0]?.kind === 'specialist' ? (
                     <p>{members[0]?.headline ?? '持续对话'}</p>
-                  )}
+                  ) : null}
                 </div>
                 <div className="room-header-meta">
                   {currentRoom.parentRoomId ? (
@@ -1415,11 +1368,7 @@ function SocialChatApp() {
                             : '归档'}
                       </button>
                     </div>
-                  ) : (
-                    <span className="room-presence">
-                      <i /> 持续联系人
-                    </span>
-                  )}
+                  ) : null}
                 </div>
               </header>
 
@@ -1440,7 +1389,6 @@ function SocialChatApp() {
                 {!messages.some((message) => message.role !== 'system') &&
                 workTasks.length === 0 ? (
                   <div className="room-empty-state">
-                    {avatarAgent ? <AgentMark agent={avatarAgent} /> : null}
                     <h3>
                       {currentRoom.kind === 'group'
                         ? '在这里一起聊'
@@ -1594,7 +1542,6 @@ function SocialChatApp() {
                       title={member.archivedAt ? '联系人已归档' : undefined}
                       onClick={() => setSelectedAgentId(member.id)}
                     >
-                      <AgentMark agent={member} small />
                       {member.name}
                       {member.archivedAt ? ' · 已归档' : ''}
                     </button>
@@ -2587,6 +2534,12 @@ function ChatMessage({
         className={`chat-message user-message ${forwardSelectionActive ? 'is-forward-selecting' : ''} ${forwardSelected ? 'is-forward-selected' : ''}`}
         data-message-id={message.id}
       >
+        <div className="message-author">
+          <strong>你</strong>
+          <time dateTime={message.createdAt}>
+            {timeLabel(message.createdAt)}
+          </time>
+        </div>
         <div className="message-body">
           {replyPreview}
           {forwardCard}
@@ -2600,13 +2553,6 @@ function ChatMessage({
               </ReactMarkdown>
             </div>
           ) : null}
-          {continuationOrigin && !message.content ? null : (
-            <div className="message-meta">
-              <time dateTime={message.createdAt}>
-                {timeLabel(message.createdAt)}
-              </time>
-            </div>
-          )}
           {actions}
           {continuationThreads.map((thread) => (
             <button
@@ -2730,9 +2676,6 @@ function ChatMessage({
             </form>
           ) : null}
         </div>
-        <span className="user-message-mark" aria-hidden="true">
-          你
-        </span>
       </article>
     );
   }
@@ -2745,18 +2688,11 @@ function ChatMessage({
       className={`chat-message agent-message ${running ? 'is-running' : ''} ${forwardSelectionActive ? 'is-forward-selecting' : ''} ${forwardSelected ? 'is-forward-selected' : ''}`}
       data-message-id={message.id}
     >
-      {agent ? (
-        <AgentMark agent={agent} />
-      ) : (
-        <span className="agent-mark agent-mark-core">N</span>
-      )}
+      <div className="message-author">
+        <strong>{agent?.name ?? 'Noema'}</strong>
+        <time dateTime={message.createdAt}>{timeLabel(message.createdAt)}</time>
+      </div>
       <div className="message-body">
-        <div className="message-name-line">
-          <strong>{agent?.name ?? 'Noema'}</strong>
-          <time dateTime={message.createdAt}>
-            {timeLabel(message.createdAt)}
-          </time>
-        </div>
         {replyPreview}
         {forwardCard}
         <div className="message-bubble">
