@@ -159,7 +159,10 @@ const socialAgentDelegationNarrowScreenshotPath =
   process.env.NOEMA_SMOKE_SOCIAL_DELEGATION_NARROW_PATH ?? null;
 const socialMessageSearchScreenshotPath =
   process.env.NOEMA_SMOKE_SOCIAL_SEARCH_PATH ?? null;
+const socialHistoryRecallScreenshotPath =
+  process.env.NOEMA_SMOKE_SOCIAL_HISTORY_RECALL_PATH ?? null;
 const socialAgentDelegationMarker = '请帮我独立核对';
+const socialHistoryRecallMarker = 'Noema 历史回忆验证标记：河谷石英';
 const socialAgentDelegationTask =
   '列出比较三种代码托管方案时应核对的五个关键字段。';
 const socialAgentDelegationResult =
@@ -2162,6 +2165,18 @@ async function captureSocialAgentCreationE2e() {
   }
   let historySearch: Record<string, unknown> | null = null;
   if (!testSocialAgentLiveE2e) {
+    if (!socialChatService) throw new Error('社交聊天服务尚未就绪');
+    const historySeed = socialChatService.store.beginTurn({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: `${socialHistoryRecallMarker}。`,
+      model: 'e2e-local-spy',
+    });
+    socialChatService.store.appendAssistantDelta(
+      historySeed.assistantMessageId,
+      '这条旧消息用于检查 Noema 是否能在用户明确提及时找回原文。',
+    );
+    socialChatService.store.completeReply(historySeed.assistantMessageId);
     mainWindow.setSize(1280, 800);
     const searchFlow = (await mainWindow.webContents
       .executeJavaScript(`(async () => {
@@ -2264,13 +2279,126 @@ async function captureSocialAgentCreationE2e() {
         }),
       };
     })()`)) as Record<string, unknown>;
-    historySearch = searchFlow;
+    socialAgentE2eModelRequests = [];
+    const historyRecall = (await mainWindow.webContents
+      .executeJavaScript(`(async () => {
+      const waitFor = async (predicate, label, timeoutMs = 7000) => {
+        const deadline = Date.now() + timeoutMs;
+        while (Date.now() < deadline) {
+          const value = await predicate();
+          if (value) return value;
+          await new Promise((resolve) => setTimeout(resolve, 40));
+        }
+        throw new Error('等待超时：' + label);
+      };
+      const noemaRoomItem = [...document.querySelectorAll('.room-list-item')]
+        .find((item) => item.querySelector('.room-list-title')?.textContent?.trim() === 'Noema');
+      noemaRoomItem?.click();
+      await waitFor(() => document.querySelector('.room-header h2')?.textContent?.trim() === 'Noema', '返回 Noema 主聊');
+      const input = document.querySelector('#social-message-input');
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+      if (!input || input.disabled || !setter) throw new Error('Noema 主聊输入框不可用');
+      const userText = '你还记得我们之前说过「${socialHistoryRecallMarker}」吗？';
+      setter.call(input, userText);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+      const state = await waitFor(async () => {
+        const room = await window.noema.getSocialRoom('room-noema');
+        const user = [...room.messages].reverse().find((message) => message.role === 'user' && message.content === userText);
+        const assistant = user ? room.messages.find((message) => message.turnId === user.turnId && message.role === 'assistant') : null;
+        if (assistant?.status === 'failed' || assistant?.status === 'interrupted') {
+          throw new Error('历史回忆回复未完成：' + (assistant.errorCode ?? assistant.status));
+        }
+        return user && assistant?.status === 'complete' ? { room, user, assistant } : null;
+      }, 'Noema 历史回忆回复完成');
+      const article = await waitFor(
+        () => [...document.querySelectorAll('.chat-message.agent-message')]
+          .find((item) => item.dataset.messageId === state.assistant.id),
+        '历史来源追溯显示在回复旁',
+      );
+      const trace = article.querySelector('.social-history-recall-trace');
+      if (!trace) throw new Error('主聊没有显示历史来源追溯');
+      trace.open = true;
+      trace.setAttribute('open', '');
+      const sourceButton = trace.querySelector('button');
+      const sourceId = sourceButton?.closest('li')?.querySelector('blockquote')?.textContent;
+      const sourceExcerptVisible = Boolean(
+        trace.open &&
+        sourceButton?.getBoundingClientRect().height &&
+        sourceButton.closest('li')?.querySelector('blockquote')?.getBoundingClientRect().height,
+      );
+      const sourceMessageId = state.assistant.historySources?.[0]?.id;
+      const sourceRoomId = state.assistant.historySources?.[0]?.roomId;
+      const sourceVisible = Boolean(
+        trace.textContent.includes(${JSON.stringify(socialHistoryRecallMarker)}) &&
+        trace.textContent.includes('跳到原对话') &&
+        state.assistant.historySearchStatus === 'found' &&
+        state.assistant.historySourcesIncluded === true &&
+        state.assistant.historySources.some((source) => source.id === ${JSON.stringify(historySeed.userMessageId)}),
+      );
+      if (!sourceVisible || !sourceExcerptVisible || !sourceButton || sourceRoomId !== 'room-noema') {
+        throw new Error('历史来源未按预期展示：' + JSON.stringify(state.assistant.historySources));
+      }
+      return {
+        userText,
+        assistantId: state.assistant.id,
+        status: state.assistant.historySearchStatus,
+        sourceCount: state.assistant.historySources.length,
+        sourcesIncluded: state.assistant.historySourcesIncluded,
+        sourceRoomId,
+        sourceText: sourceId,
+        sourceMessageId,
+        sourceVisible,
+        sourceExcerptVisible,
+      };
+    })()`)) as Record<string, unknown>;
+    const recallModelInput =
+      socialAgentE2eModelRequests[0]?.messages
+        .map((message) => message.content)
+        .join('\n') ?? '';
+    const recallModelCalls = socialAgentE2eModelRequests.length;
+    historySearch = {
+      ...searchFlow,
+      recall: { ...historyRecall, modelCalls: recallModelCalls },
+    };
+    if (
+      recallModelCalls !== 1 ||
+      !recallModelInput.includes(socialHistoryRecallMarker) ||
+      recallModelInput.includes('紫水晶') ||
+      !historyRecall.sourceVisible ||
+      !historyRecall.sourceExcerptVisible
+    ) {
+      throw new Error(
+        `历史回忆未保持范围、成本和来源边界：${JSON.stringify({ historyRecall, recallModelCalls, recallModelInput })}`,
+      );
+    }
+    if (socialHistoryRecallScreenshotPath) {
+      writeSmokeScreenshot(
+        socialHistoryRecallScreenshotPath,
+        await mainWindow.capturePage(),
+      );
+    }
+    const recallSourceJump = await mainWindow.webContents
+      .executeJavaScript(`(() => {
+      const trace = document.querySelector('[data-message-id="${historyRecall.assistantId}"] .social-history-recall-trace');
+      const button = trace?.querySelector('button');
+      const sourceId = ${JSON.stringify(historyRecall.sourceMessageId)};
+      button?.click();
+      const target = document.querySelector('[data-message-id="' + sourceId + '"]');
+      const thread = document.querySelector('.message-thread')?.getBoundingClientRect();
+      const rect = target?.getBoundingClientRect();
+      return Boolean(target && rect && thread && rect.bottom > thread.top && rect.top < thread.bottom);
+    })()`);
+    if (!recallSourceJump) throw new Error('历史来源入口没有跳回原消息');
+    (historySearch.recall as Record<string, unknown>).sourceJumped = true;
     if (
       searchFlow.earlierResultRoom !== 'Noema' ||
       !searchFlow.earlierResultReached ||
       !searchFlow.crossRoomResultReached ||
       !searchFlow.searchClearedAfterOpen ||
-      !searchFlow.searchResultsVisible
+      !searchFlow.searchResultsVisible ||
+      !recallSourceJump
     ) {
       throw new Error(
         `历史消息搜索没有回到原对话：${JSON.stringify(searchFlow)}`,
@@ -3575,8 +3703,17 @@ async function startNoema() {
                   function: { name: string; arguments: string };
                 }>,
               ) => void;
+              onRouteMetadata?: (route: string | null) => void;
             }) {
               socialAgentE2eModelRequests.push(input);
+              const history = input.messages.find((message) =>
+                message.content.includes('"type":"noema_history_recall"'),
+              );
+              if (history) {
+                input.onRouteMetadata?.('e2e-local-spy');
+                yield '我找到了你提到的旧对话，可以从来源查看原文。';
+                return;
+              }
               const latestUserMessage = [...input.messages]
                 .reverse()
                 .find((message) => message.role === 'user')?.content;

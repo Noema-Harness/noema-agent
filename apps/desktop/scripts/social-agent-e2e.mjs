@@ -77,6 +77,10 @@ const messageSearchScreenshotPath = path.join(
   e2eRoot,
   `Noema-message-search-${screenshotTag}.png`,
 );
+const historyRecallScreenshotPath = path.join(
+  e2eRoot,
+  `Noema-history-recall-${screenshotTag}.png`,
+);
 const continuationDesktopScreenshotPath = path.join(
   e2eRoot,
   `Noema-continuation-desktop-${screenshotTag}.png`,
@@ -168,6 +172,7 @@ const child = spawn(process.execPath, ['scripts/start.mjs'], {
     NOEMA_SMOKE_SOCIAL_DELEGATION_DESKTOP_PATH: delegationDesktopScreenshotPath,
     NOEMA_SMOKE_SOCIAL_DELEGATION_NARROW_PATH: delegationNarrowScreenshotPath,
     NOEMA_SMOKE_SOCIAL_SEARCH_PATH: messageSearchScreenshotPath,
+    NOEMA_SMOKE_SOCIAL_HISTORY_RECALL_PATH: historyRecallScreenshotPath,
     NOEMA_SMOKE_SOCIAL_CONTINUATION_DESKTOP_PATH:
       continuationDesktopScreenshotPath,
     NOEMA_SMOKE_SOCIAL_CONTINUATION_NARROW_PATH:
@@ -222,6 +227,7 @@ const summary = {
   delegationDesktopScreenshotPath,
   delegationNarrowScreenshotPath,
   messageSearchScreenshotPath,
+  historyRecallScreenshotPath,
   continuationDesktopScreenshotPath,
   continuationNarrowScreenshotPath,
   continuationRoomDesktopScreenshotPath,
@@ -271,7 +277,11 @@ if (
     (!result.workflow?.historySearch?.earlierResultReached ||
       !result.workflow?.historySearch?.crossRoomResultReached ||
       !result.workflow?.historySearch?.searchClearedAfterOpen ||
-      !existsSync(messageSearchScreenshotPath))) ||
+      !existsSync(messageSearchScreenshotPath) ||
+      !result.workflow?.historySearch?.recall?.sourceVisible ||
+      !result.workflow?.historySearch?.recall?.sourceJumped ||
+      result.workflow?.historySearch?.recall?.modelCalls !== 1 ||
+      !existsSync(historyRecallScreenshotPath))) ||
   (!liveProviderE2e &&
     !result.workflow?.forwarding?.currentRoomReplyAttached) ||
   result.workflow?.forwarding?.narrow?.width > 700 ||

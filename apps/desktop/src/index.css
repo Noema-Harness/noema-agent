@@ -1112,6 +1112,14 @@ select:disabled {
   line-height: 1.55;
 }
 
+.social-history-recall-trace {
+  color: var(--chat-muted);
+}
+
+.social-history-recall-trace blockquote {
+  color: var(--chat-ink);
+}
+
 .history-recall-trace summary {
   width: fit-content;
   max-width: 100%;

@@ -85,6 +85,145 @@ test('social chat sends only the selected room transcript and persists the real 
   }
 });
 
+test('Noema retrieves bounded, redacted history from its own threads only when the user refers to it', async () => {
+  const db = new Database(':memory:');
+  new RootStore(db);
+  const store = new SocialChatStore(db);
+  const requests = [];
+  const provider = {
+    async *streamChat(input) {
+      requests.push(input);
+      const recall = input.messages.find((message) =>
+        message.content.includes('"type":"noema_history_recall"'),
+      );
+      if (recall) {
+        const result = JSON.parse(recall.content.split('\n').at(-1));
+        assert.equal(result.status, 'found');
+        assert.ok(
+          result.sources.some((source) => source.roomTitle === '旧版面板'),
+        );
+        assert.equal(
+          JSON.stringify(result.sources).includes('紫罗兰晶体私密标记'),
+          false,
+        );
+        assert.ok(
+          result.sources.some((source) =>
+            source.snippet.includes('[已隐藏疑似凭据]'),
+          ),
+        );
+      }
+      input.onRouteMetadata?.('test-model');
+      yield recall ? '当时说过用体素采样校准碰撞箱。' : '我会继续聊这件事。';
+    },
+  };
+  const service = new SocialChatService({
+    store,
+    provider,
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'test-model',
+    getRootState: async () => ({
+      connected: true,
+      selectedModel: 'test-model',
+    }),
+  });
+
+  try {
+    const prior = store.beginTurn({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: 'Minecraft 碰撞箱用体素化工具校准。api_key: abcdefghijklmnopqrstuvwxyz123456',
+      model: 'test-model',
+    });
+    store.appendAssistantDelta(
+      prior.assistantMessageId,
+      '使用体素采样更稳定。',
+    );
+    store.completeReply(prior.assistantMessageId);
+    const thread = store.createContinuationThread({
+      sourceRoomId: 'room-noema',
+      sourceIds: [prior.userMessageId],
+      title: '旧版面板',
+    });
+    const threadedSource = store.beginTurn({
+      roomId: thread.room.id,
+      agentId: 'noema',
+      text: 'Minecraft 碰撞箱的检修记录仍在主题旧版面板继续。',
+      model: 'test-model',
+    });
+    store.appendAssistantDelta(threadedSource.assistantMessageId, '好的。');
+    store.completeReply(threadedSource.assistantMessageId);
+
+    const privateTurn = store.beginTurn({
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      text: '紫罗兰晶体私密标记，不属于 Noema 的历史范围。',
+      model: 'test-model',
+    });
+    store.appendAssistantDelta(privateTurn.assistantMessageId, '收到。');
+    store.completeReply(privateTurn.assistantMessageId);
+
+    const ordinary = service.sendMessage({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '我们先聊聊最近的构思。',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await service.active.get('room-noema')?.done;
+    assert.equal(
+      requests[0].messages.some((message) =>
+        message.content.includes('noema_history_recall'),
+      ),
+      false,
+    );
+
+    const recallTurn = service.sendMessage({
+      roomId: thread.room.id,
+      agentId: 'noema',
+      text: '你还记得我们之前讨论 Minecraft 碰撞箱怎么校准吗？',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await service.active.get(thread.room.id)?.done;
+
+    assert.equal(requests.length, 2);
+    const recall = requests[1].messages.find((message) =>
+      message.content.includes('"type":"noema_history_recall"'),
+    );
+    assert.ok(recall);
+    const reply = store
+      .getRoomSnapshot(thread.room.id)
+      .messages.find((message) => message.id === recallTurn.messageId);
+    assert.equal(reply.historySearchStatus, 'found');
+    assert.equal(reply.historySourcesIncluded, true);
+    assert.ok(
+      reply.historySources.some((source) => source.id === prior.userMessageId),
+    );
+
+    const specialist = service.sendMessage({
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      text: '你还记得我们之前讨论过什么吗？',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await service.active.get('room-engineering-partner')?.done;
+    assert.equal(requests.length, 3);
+    assert.equal(
+      requests[2].messages.some((message) =>
+        message.content.includes('noema_history_recall'),
+      ),
+      false,
+    );
+    assert.equal(
+      JSON.stringify(requests[2].messages).includes('体素采样'),
+      false,
+    );
+    assert.ok(ordinary.messageId);
+    assert.ok(specialist.messageId);
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});
+
 test('Noema can start existing project work from an explicit request while other turns stay ordinary chat', async () => {
   const db = new Database(':memory:');
   new RootStore(db);

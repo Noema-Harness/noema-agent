@@ -32,7 +32,7 @@ export interface NoemaRootMessage {
   contextCharacters: number;
   interactionAdjustmentIds: string[];
   interactionAdjustmentSnapshots: NoemaInteractionAdjustmentSnapshot[];
-  historySources: NoemaHistorySource[];
+  historySources: NoemaSocialHistorySource[];
   historySearchStatus: 'not_searched' | 'found' | 'no_match';
   historySourcesIncluded: boolean;
   errorCode: string | null;
@@ -172,6 +172,9 @@ export interface NoemaSocialMessage {
     interactionAdjustmentIds: string[];
     interactionAdjustmentSnapshots: NoemaInteractionAdjustmentSnapshot[];
   }>;
+  historySources: NoemaSocialHistorySource[];
+  historySearchStatus: 'not_searched' | 'found' | 'no_match';
+  historySourcesIncluded: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -185,6 +188,16 @@ export interface NoemaSocialSearchResult {
   content: string;
   forwarded: boolean;
   createdAt: string;
+}
+
+export interface NoemaSocialHistorySource {
+  id: string;
+  roomId: string;
+  roomTitle: string;
+  role: 'user' | 'assistant';
+  createdAt: string;
+  snippet: string;
+  redacted: boolean;
 }
 
 export interface NoemaSocialForwardedSource {

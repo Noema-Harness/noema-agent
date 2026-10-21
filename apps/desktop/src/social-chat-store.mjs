@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { normalizeInteractionAdjustmentSnapshots } from './root-store.mjs';
+import { searchTranscriptHistory } from './transcript-search.mjs';
 
-const SCHEMA_VERSION = 10;
+const SCHEMA_VERSION = 11;
 const MAX_CONTEXT_MESSAGES = 40;
 const MAX_FORWARDED_MESSAGES = 20;
 const MAX_FORWARDED_CONTENT_LENGTH = 40_000;
@@ -85,6 +86,13 @@ function hydrateMessage(row) {
     interactionAdjustmentAttempts: JSON.parse(
       row.interactionAdjustmentAttemptsJson ?? '[]',
     ),
+    historySources: row.historySources ?? [],
+    historySearchStatus: ['not_searched', 'found', 'no_match'].includes(
+      row.historySearchStatus,
+    )
+      ? row.historySearchStatus
+      : 'not_searched',
+    historySourcesIncluded: Boolean(row.historySourcesIncluded),
   };
 }
 
@@ -381,6 +389,35 @@ export class SocialChatStore {
             ON social_work_tasks(source_message_id);
           INSERT INTO social_schema_migrations (version, applied_at)
           VALUES (10, '${isoNow()}');
+        `);
+      })();
+    }
+    if (current < 11) {
+      this.db.transaction(() => {
+        this.db.exec(`
+          ALTER TABLE social_messages
+            ADD COLUMN history_search_status TEXT NOT NULL DEFAULT 'not_searched'
+              CHECK (history_search_status IN ('not_searched', 'found', 'no_match'));
+          ALTER TABLE social_messages
+            ADD COLUMN history_sources_included INTEGER NOT NULL DEFAULT 0
+              CHECK (history_sources_included IN (0, 1));
+
+          CREATE TABLE social_message_history_sources (
+            assistant_message_id TEXT NOT NULL
+              REFERENCES social_messages(id) ON DELETE CASCADE,
+            source_message_id TEXT NOT NULL
+              REFERENCES social_messages(id) ON DELETE CASCADE,
+            position INTEGER NOT NULL CHECK (position >= 0),
+            snippet TEXT NOT NULL,
+            redacted INTEGER NOT NULL CHECK (redacted IN (0, 1)),
+            PRIMARY KEY (assistant_message_id, source_message_id),
+            UNIQUE (assistant_message_id, position)
+          );
+          CREATE INDEX social_message_history_sources_source
+            ON social_message_history_sources(source_message_id);
+
+          INSERT INTO social_schema_migrations (version, applied_at)
+          VALUES (11, '${isoNow()}');
         `);
       })();
     }
@@ -1041,7 +1078,7 @@ export class SocialChatStore {
         ...agent,
         capabilities: JSON.parse(agent.capabilitiesJson),
       }));
-    const messages = this.db
+    const rows = this.db
       .prepare(`
         SELECT id, room_id AS roomId, turn_id AS turnId, role,
                agent_id AS agentId, content, status, attempt, model, runtime,
@@ -1053,11 +1090,47 @@ export class SocialChatStore {
                interaction_adjustment_ids_json AS interactionAdjustmentIdsJson,
                interaction_adjustment_snapshots_json AS interactionAdjustmentSnapshotsJson,
                interaction_adjustment_attempts_json AS interactionAdjustmentAttemptsJson,
+               history_search_status AS historySearchStatus,
+               history_sources_included AS historySourcesIncluded,
                created_at AS createdAt, updated_at AS updatedAt
         FROM social_messages WHERE room_id = ? ORDER BY seq ASC
       `)
-      .all(roomId)
-      .map(hydrateMessage);
+      .all(roomId);
+    const historyRows = this.db
+      .prepare(`
+        SELECT hs.assistant_message_id AS assistantMessageId,
+               source.id, source.room_id AS roomId, room.title AS roomTitle,
+               source.role, source.created_at AS createdAt,
+               hs.snippet, hs.redacted
+        FROM social_message_history_sources AS hs
+        JOIN social_messages AS source ON source.id = hs.source_message_id
+        JOIN social_rooms AS room ON room.id = source.room_id
+        WHERE hs.assistant_message_id IN (
+          SELECT id FROM social_messages WHERE room_id = ? AND role = 'assistant'
+        )
+        ORDER BY hs.assistant_message_id, hs.position
+      `)
+      .all(roomId);
+    const historiesByAssistant = new Map();
+    for (const source of historyRows) {
+      const history = historiesByAssistant.get(source.assistantMessageId) ?? [];
+      history.push({
+        id: source.id,
+        roomId: source.roomId,
+        roomTitle: source.roomTitle,
+        role: source.role,
+        createdAt: source.createdAt,
+        snippet: source.snippet,
+        redacted: Boolean(source.redacted),
+      });
+      historiesByAssistant.set(source.assistantMessageId, history);
+    }
+    const messages = rows.map((row) =>
+      hydrateMessage({
+        ...row,
+        historySources: historiesByAssistant.get(row.id) ?? [],
+      }),
+    );
     return {
       room,
       members,
@@ -1140,6 +1213,176 @@ export class SocialChatStore {
     });
   }
 
+  isNoemaHistoryRoom(roomId) {
+    requireText(roomId, '聊天 ID', 200);
+    return Boolean(
+      this.db
+        .prepare(`
+          WITH RECURSIVE noema_rooms(id) AS (
+            SELECT id FROM social_rooms WHERE id = 'room-noema' AND kind = 'direct'
+            UNION ALL
+            SELECT child.id FROM social_rooms AS child
+            JOIN noema_rooms AS parent ON child.parent_room_id = parent.id
+          )
+          SELECT 1 FROM noema_rooms WHERE id = ?
+        `)
+        .get(roomId),
+    );
+  }
+
+  searchNoemaHistory(query, currentTurnId, roomId) {
+    const needle = requireText(query, '历史检索内容', 100_000);
+    requireText(currentTurnId, '当前 turn ID', 200);
+    if (!this.isNoemaHistoryRoom(roomId)) {
+      throw new Error('历史检索只对 Noema 主私聊及其延续主题开放。');
+    }
+    const rows = this.db
+      .prepare(`
+        WITH RECURSIVE noema_rooms(id) AS (
+          SELECT id FROM social_rooms WHERE id = 'room-noema' AND kind = 'direct'
+          UNION ALL
+          SELECT child.id FROM social_rooms AS child
+          JOIN noema_rooms AS parent ON child.parent_room_id = parent.id
+        )
+        SELECT m.id, m.turn_id AS turnId, m.role, m.content,
+               m.status, m.created_at AS createdAt, m.room_id AS roomId,
+               room.title AS roomTitle
+        FROM social_messages AS m
+        JOIN noema_rooms AS allowed_room ON allowed_room.id = m.room_id
+        JOIN social_rooms AS room ON room.id = m.room_id
+        WHERE m.role IN ('user', 'assistant')
+          AND m.status = 'complete'
+          AND m.turn_id != ?
+          AND (m.role = 'user' OR m.agent_id = 'noema')
+          AND EXISTS (
+            SELECT 1 FROM social_messages AS reply
+            WHERE reply.turn_id = m.turn_id AND reply.role = 'assistant'
+              AND reply.agent_id = 'noema' AND reply.status = 'complete'
+          )
+      `)
+      .all(currentTurnId);
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    return searchTranscriptHistory(
+      rows.map((row) => ({
+        ...row,
+        turnStatus: 'completed',
+      })),
+      needle,
+      { currentTurnId },
+    ).map((source) => {
+      const row = byId.get(source.id);
+      return {
+        ...source,
+        roomId: row.roomId,
+        roomTitle: row.roomTitle,
+      };
+    });
+  }
+
+  setReplyHistorySources(assistantMessageId, status, sources) {
+    if (!['found', 'no_match'].includes(status)) {
+      throw new TypeError('历史检索状态无效。');
+    }
+    if (!Array.isArray(sources) || sources.length > 4) {
+      throw new TypeError('历史来源数量无效。');
+    }
+    if ((status === 'found') !== sources.length > 0) {
+      throw new TypeError('历史检索状态与来源数量不匹配。');
+    }
+    const assistant = this.getSocialMessage(assistantMessageId);
+    if (
+      assistant.role !== 'assistant' ||
+      assistant.agentId !== 'noema' ||
+      assistant.status !== 'streaming'
+    ) {
+      throw new Error('只有正在生成的 Noema 回复可以记录历史来源。');
+    }
+    const sourceQuery = this.db.prepare(`
+      WITH RECURSIVE noema_rooms(id) AS (
+        SELECT id FROM social_rooms WHERE id = 'room-noema' AND kind = 'direct'
+        UNION ALL
+        SELECT child.id FROM social_rooms AS child
+        JOIN noema_rooms AS parent ON child.parent_room_id = parent.id
+      )
+      SELECT m.id, m.room_id AS roomId, m.turn_id AS turnId, m.role,
+             m.agent_id AS agentId, m.status, m.created_at AS createdAt
+      FROM social_messages AS m
+      JOIN noema_rooms AS allowed_room ON allowed_room.id = m.room_id
+      WHERE m.id = ?
+    `);
+    const validated = sources.map((source) => {
+      const row = sourceQuery.get(requireText(source.id, '历史来源 ID', 200));
+      if (
+        !row ||
+        row.turnId === assistant.turnId ||
+        row.role !== source.role ||
+        row.status !== 'complete' ||
+        row.roomId !== source.roomId ||
+        row.createdAt !== source.createdAt ||
+        (row.role === 'assistant' && row.agentId !== 'noema') ||
+        typeof source.snippet !== 'string' ||
+        source.snippet.length > 322
+      ) {
+        throw new TypeError('历史来源不属于已完成的 Noema 对话。');
+      }
+      return {
+        id: row.id,
+        snippet: source.snippet,
+        redacted: Boolean(source.redacted),
+      };
+    });
+    this.db.transaction(() => {
+      this.db
+        .prepare(
+          'DELETE FROM social_message_history_sources WHERE assistant_message_id = ?',
+        )
+        .run(assistantMessageId);
+      const insert = this.db.prepare(`
+        INSERT INTO social_message_history_sources
+          (assistant_message_id, source_message_id, position, snippet, redacted)
+        VALUES (?, ?, ?, ?, ?)
+      `);
+      validated.forEach((source, position) => {
+        insert.run(
+          assistantMessageId,
+          source.id,
+          position,
+          source.snippet,
+          source.redacted ? 1 : 0,
+        );
+      });
+      const updated = this.db
+        .prepare(`
+          UPDATE social_messages
+          SET history_search_status = ?, history_sources_included = 0,
+              updated_at = ?
+          WHERE id = ? AND status = 'streaming' AND agent_id = 'noema'
+        `)
+        .run(status, isoNow(), assistantMessageId);
+      if (updated.changes !== 1) {
+        throw new Error('当前 Noema 回复已不再生成。');
+      }
+    })();
+    return validated.length;
+  }
+
+  markReplyHistorySourcesIncluded(messageId) {
+    return (
+      this.db
+        .prepare(`
+          UPDATE social_messages
+          SET history_sources_included = 1, updated_at = ?
+          WHERE id = ? AND status = 'streaming'
+            AND history_search_status = 'found'
+            AND EXISTS (
+              SELECT 1 FROM social_message_history_sources AS hs
+              WHERE hs.assistant_message_id = social_messages.id
+            )
+        `)
+        .run(isoNow(), messageId).changes === 1
+    );
+  }
+
   getSocialMessage(messageId) {
     const row = this.db
       .prepare(`
@@ -1153,6 +1396,8 @@ export class SocialChatStore {
                interaction_adjustment_ids_json AS interactionAdjustmentIdsJson,
                interaction_adjustment_snapshots_json AS interactionAdjustmentSnapshotsJson,
                interaction_adjustment_attempts_json AS interactionAdjustmentAttemptsJson,
+               history_search_status AS historySearchStatus,
+               history_sources_included AS historySourcesIncluded,
                created_at AS createdAt, updated_at AS updatedAt
         FROM social_messages WHERE id = ?
       `)
@@ -2409,22 +2654,31 @@ export class SocialChatStore {
       interactionAdjustmentSnapshots: adjustmentSnapshots,
     });
     const now = isoNow();
-    this.db
-      .prepare(`
+    this.db.transaction(() => {
+      this.db
+        .prepare(
+          'DELETE FROM social_message_history_sources WHERE assistant_message_id = ?',
+        )
+        .run(messageId);
+      this.db
+        .prepare(`
         UPDATE social_messages SET content = '', status = 'streaming',
           attempt = attempt + 1, model = ?, error_code = NULL,
           error_message = NULL, interaction_adjustment_ids_json = ?,
           interaction_adjustment_snapshots_json = ?,
-          interaction_adjustment_attempts_json = ?, updated_at = ? WHERE id = ?
+          interaction_adjustment_attempts_json = ?,
+          history_search_status = 'not_searched', history_sources_included = 0,
+          updated_at = ? WHERE id = ?
       `)
-      .run(
-        model,
-        JSON.stringify(adjustmentIds),
-        JSON.stringify(adjustmentSnapshots),
-        JSON.stringify(interactionAdjustmentAttempts),
-        now,
-        messageId,
-      );
+        .run(
+          model,
+          JSON.stringify(adjustmentIds),
+          JSON.stringify(adjustmentSnapshots),
+          JSON.stringify(interactionAdjustmentAttempts),
+          now,
+          messageId,
+        );
+    })();
     return {
       ...row,
       forwardedSources: JSON.parse(row.forwardedSourcesJson ?? '[]'),

@@ -16,6 +16,7 @@ import type {
   NoemaInteractionAdjustment,
   NoemaInteractionAdjustmentSnapshot,
   NoemaSocialEvent,
+  NoemaSocialHistorySource,
   NoemaSocialMessage,
   NoemaSocialReplySource,
   NoemaSocialRoom,
@@ -640,6 +641,13 @@ function SocialChatApp() {
     if (!room) return;
     setPendingScrollMessageId(result.id);
     setSearch('');
+    selectRoom(room);
+  };
+
+  const openHistorySource = (source: NoemaSocialHistorySource) => {
+    const room = rooms.find((candidate) => candidate.id === source.roomId);
+    if (!room) return;
+    setPendingScrollMessageId(source.id);
     selectRoom(room);
   };
 
@@ -1572,6 +1580,7 @@ function SocialChatApp() {
                                   ) ?? null
                                 }
                                 onRetry={handleRetry}
+                                onOpenHistorySource={openHistorySource}
                                 forwardSelectionActive={forwardSelectionActive}
                                 forwardSelected={selectedForwardMessageIds.includes(
                                   item.message.id,
@@ -2441,6 +2450,7 @@ function ChatMessage({
   canManageInteractionAdjustment,
   interactionAdjustment,
   onRetry,
+  onOpenHistorySource,
   forwardSelectionActive,
   forwardSelected,
   onReply,
@@ -2457,6 +2467,7 @@ function ChatMessage({
   canManageInteractionAdjustment: boolean;
   interactionAdjustment: NoemaInteractionAdjustment | null;
   onRetry: (message: NoemaSocialMessage) => void;
+  onOpenHistorySource: (source: NoemaSocialHistorySource) => void;
   forwardSelectionActive: boolean;
   forwardSelected: boolean;
   onReply: () => void;
@@ -2879,6 +2890,10 @@ function ChatMessage({
           currentAttempt={message.attempt}
           kind="conversation"
         />
+        <SocialHistoryRecallTrace
+          message={message}
+          onOpenSource={onOpenHistorySource}
+        />
         {actions}
         {continuationThreads.map((thread) => (
           <button
@@ -2893,6 +2908,63 @@ function ChatMessage({
         ))}
       </div>
     </article>
+  );
+}
+
+function SocialHistoryRecallTrace({
+  message,
+  onOpenSource,
+}: {
+  message: NoemaSocialMessage;
+  onOpenSource: (source: NoemaSocialHistorySource) => void;
+}) {
+  if (message.historySearchStatus === 'not_searched') return null;
+  const sources = message.historySources;
+  const summary =
+    message.historySearchStatus === 'no_match'
+      ? '查过 Noema 的旧对话，没有找到相关内容'
+      : message.historySourcesIncluded
+        ? `本轮请求带入 ${sources.length} 条旧对话摘录`
+        : `本机找到 ${sources.length} 条旧对话；上游是否收到无法确认`;
+  return (
+    <details className="history-recall-trace social-history-recall-trace">
+      <summary>{summary}</summary>
+      {sources.length ? (
+        <ul>
+          {sources.map((source) => (
+            <li key={source.id}>
+              <div className="history-source-heading">
+                <span>
+                  {source.roomTitle} · {source.role === 'user' ? '你' : 'Noema'}{' '}
+                  · {timeLabel(source.createdAt)}
+                  {source.redacted ? ' · 部分内容已隐藏' : ''}
+                </span>
+                <button type="button" onClick={() => onOpenSource(source)}>
+                  跳到原对话
+                </button>
+              </div>
+              <blockquote>{source.snippet}</blockquote>
+            </li>
+          ))}
+        </ul>
+      ) : message.historySearchStatus === 'found' ? (
+        <p>来源消息已删除，Noema 不再保留该摘录。</p>
+      ) : (
+        <p>只检查了 Noema 主私聊及其延续主题；没有把旧消息加入本轮请求。</p>
+      )}
+      {sources.length && message.historySourcesIncluded ? (
+        <p className="history-recall-caveat">
+          FreeLLMAPI
+          已接受包含这些摘录的请求；这不证明模型实际使用或理解了它们。
+        </p>
+      ) : null}
+      {sources.length && !message.historySourcesIncluded ? (
+        <p className="history-recall-caveat">
+          本机找到了这些摘录，但 FreeLLMAPI
+          未返回接受响应；无法确认是否送达上游。
+        </p>
+      ) : null}
+    </details>
   );
 }
 

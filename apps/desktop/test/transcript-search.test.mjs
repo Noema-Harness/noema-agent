@@ -3,7 +3,21 @@ import test from 'node:test';
 import {
   findTranscriptMatches,
   searchTranscriptHistory,
+  userReferencesPastNoemaContext,
 } from '../src/transcript-search.mjs';
+
+test('history recall triggers on an explicit reference to prior conversation, not casual remembering', () => {
+  assert.equal(
+    userReferencesPastNoemaContext('你还记得我们上次讨论的碰撞箱办法吗？'),
+    true,
+  );
+  assert.equal(
+    userReferencesPastNoemaContext('我之前说过希望优先看到测试结果。'),
+    true,
+  );
+  assert.equal(userReferencesPastNoemaContext('记得买牛奶。'), false);
+  assert.equal(userReferencesPastNoemaContext('今天想聊聊咖啡。'), false);
+});
 
 const messages = [
   {

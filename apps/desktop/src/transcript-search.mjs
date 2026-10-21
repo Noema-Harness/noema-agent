@@ -3,6 +3,8 @@
 
 const MAX_HISTORY_SEARCH_RESULTS = 4;
 const MAX_HISTORY_EXCERPT_LENGTH = 320;
+const PAST_CONTEXT_REFERENCE =
+  /(?:(?:之前|以前|过去|曾经|先前|上次|上回|刚才|前面|上周|前几天).{0,20}(?:聊过|讨论过|说过|提过|提到过|问过|决定|选择|计划|做过)|(?:聊过|讨论过|说过|提过|提到过|问过).{0,20}(?:吗|什么|哪|我们|我|你|那)|(?:还)?记得.{0,16}(?:我们|我|你).{0,20}(?:说|聊|提|讨论|决定|选择|喜欢|偏好|计划|做|关注)|last\s+time|earlier|previously|before|remember\s+when|did\s+we\s+(?:discuss|talk))/iu;
 const HISTORY_SEARCH_STOPWORDS = new Set([
   '之前',
   '前的',
@@ -39,6 +41,10 @@ const HISTORY_CREDENTIAL_PATTERNS = [
   /\beyJ[a-z0-9_-]{10,}\.[a-z0-9_-]{10,}\.[a-z0-9_-]{10,}\b/giu,
   /((?:api[\s_-]?key|access[\s_-]?token|secret|password|passwd|密钥|密码|口令)\s*(?::|：|=|\bis\b|为|是)\s*["'`]?)[^\s,，。;；"'`]{6,}/giu,
 ];
+
+export function userReferencesPastNoemaContext(text) {
+  return typeof text === 'string' && PAST_CONTEXT_REFERENCE.test(text);
+}
 
 /**
  * Search all locally-owned items on the primary timeline. This is a local

@@ -50,7 +50,7 @@ test('social schema seeds stable identities and keeps one agent across independe
       db
         .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
         .get().version,
-      10,
+      11,
     );
   } finally {
     db.close();
@@ -83,6 +83,131 @@ test('message search spans rooms, matches literal text and returns local navigat
     });
     assert.equal(social.searchMessages('%').length, 1);
     assert.throws(() => social.searchMessages('   '), /不能为空/);
+  } finally {
+    db.close();
+  }
+});
+
+test('Noema history recall searches only its private room lineage and deletes source links with the source', () => {
+  const { db, social } = makeStores();
+  try {
+    const prior = social.beginTurn({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: 'Minecraft 模组的碰撞箱用体素化工具生成后更稳定；夜光石是当时的回归测试名称。',
+      model: 'test-model',
+    });
+    social.appendAssistantDelta(
+      prior.assistantMessageId,
+      '先采样方块边界，再校准碰撞箱。',
+    );
+    social.completeReply(prior.assistantMessageId);
+    const child = social.createContinuationThread({
+      sourceRoomId: 'room-noema',
+      sourceIds: [prior.userMessageId],
+      title: 'Minecraft 碰撞箱',
+    });
+    const childTurn = social.beginTurn({
+      roomId: child.room.id,
+      agentId: 'noema',
+      text: '这轮记录：夜光石是回归测试名称。',
+      model: 'test-model',
+    });
+    social.appendAssistantDelta(
+      childTurn.assistantMessageId,
+      '我会按这个名称继续。',
+    );
+    social.completeReply(childTurn.assistantMessageId);
+
+    const privateTurn = social.beginTurn({
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      text: '不应被 Noema 主聊取回的标记：紫罗兰晶体。',
+      model: 'test-model',
+    });
+    social.appendAssistantDelta(privateTurn.assistantMessageId, '已记录。');
+    social.completeReply(privateTurn.assistantMessageId);
+
+    const current = social.beginTurn({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '你还记得我们之前讨论的夜光石回归测试名称吗？',
+      model: 'test-model',
+    });
+    const results = social.searchNoemaHistory(
+      '你还记得我们之前讨论的夜光石回归测试名称吗？',
+      current.turnId,
+      current.roomId,
+    );
+    assert.ok(results.some((source) => source.id === childTurn.userMessageId));
+    assert.ok(results.some((source) => source.id === prior.userMessageId));
+    assert.equal(
+      results.some((source) => source.snippet.includes('紫罗兰晶体')),
+      false,
+    );
+
+    social.setReplyHistorySources(current.assistantMessageId, 'found', results);
+    assert.equal(
+      social.markReplyHistorySourcesIncluded(current.assistantMessageId),
+      true,
+    );
+    let assistant = social
+      .getRoomSnapshot('room-noema')
+      .messages.find((message) => message.id === current.assistantMessageId);
+    assert.equal(assistant.historySearchStatus, 'found');
+    assert.equal(assistant.historySourcesIncluded, true);
+    assert.ok(assistant.historySources.length > 0);
+    assert.ok(
+      assistant.historySources.every((source) =>
+        ['Noema', 'Minecraft 碰撞箱'].includes(source.roomTitle),
+      ),
+    );
+
+    social.deleteContinuationThread(child.room.id);
+    assistant = social
+      .getRoomSnapshot('room-noema')
+      .messages.find((message) => message.id === current.assistantMessageId);
+    assert.equal(assistant.historySearchStatus, 'found');
+    assert.equal(
+      assistant.historySources.some(
+        (source) => source.roomId === child.room.id,
+      ),
+      false,
+    );
+    assert.ok(
+      assistant.historySources.some(
+        (source) => source.id === prior.userMessageId,
+      ),
+    );
+    social.appendAssistantDelta(
+      current.assistantMessageId,
+      '我找到相关旧对话。',
+    );
+    social.completeReply(current.assistantMessageId);
+
+    const noMatchTurn = social.beginTurn({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '你记得之前说过 zqv-9981 吗？',
+      model: 'test-model',
+    });
+    assert.deepEqual(
+      social.searchNoemaHistory(
+        '你记得之前说过 zqv-9981 吗？',
+        noMatchTurn.turnId,
+        noMatchTurn.roomId,
+      ),
+      [],
+    );
+    assert.throws(
+      () =>
+        social.searchNoemaHistory(
+          '你记得之前说过什么吗？',
+          current.turnId,
+          'room-engineering-collaboration',
+        ),
+      /只对 Noema 主私聊/u,
+    );
   } finally {
     db.close();
   }
@@ -148,6 +273,10 @@ test('social chat schema v1 upgrades additively to project-work state', () => {
       ALTER TABLE social_rooms DROP COLUMN closed_at;
       DELETE FROM social_schema_migrations WHERE version = 9;
       DELETE FROM social_schema_migrations WHERE version = 10;
+      DELETE FROM social_schema_migrations WHERE version = 11;
+      DROP TABLE social_message_history_sources;
+      ALTER TABLE social_messages DROP COLUMN history_search_status;
+      ALTER TABLE social_messages DROP COLUMN history_sources_included;
     `);
 
     const upgraded = new SocialChatStore(db);
@@ -163,7 +292,7 @@ test('social chat schema v1 upgrades additively to project-work state', () => {
       db
         .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
         .get().version,
-      10,
+      11,
     );
     assert.equal(
       db
@@ -212,6 +341,10 @@ test('social schema v7 adds retry snapshots without rewriting the last known att
       ALTER TABLE social_rooms DROP COLUMN closed_at;
       DELETE FROM social_schema_migrations WHERE version = 9;
       DELETE FROM social_schema_migrations WHERE version = 10;
+      DELETE FROM social_schema_migrations WHERE version = 11;
+      DROP TABLE social_message_history_sources;
+      ALTER TABLE social_messages DROP COLUMN history_search_status;
+      ALTER TABLE social_messages DROP COLUMN history_sources_included;
     `);
 
     const upgraded = new SocialChatStore(db);
