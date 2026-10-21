@@ -1,6 +1,6 @@
 # Noema 持续 agent 与聊天空间：构想和历史边界
 
-状态：2026-10-21 按用户重述修订。旧版将部分助手解释写成“用户确认”，并预设专业范围、邀请审批等细节，表述过强；不再作为当前要求。旧版完整内容保留在 Git 历史。[产品章程](../PRODUCT_CHARTER.md)规定当前方向，[产品与界面简报](chat-redesign-brief.md)承载当前提案，[ADR 0015](../decisions/0015-agent-friends-and-conversation-rooms.md)保留首轮架构取舍。
+状态：2026-10-21 按用户重述修订。旧版将部分助手解释写成“用户确认”，并预设专业范围、邀请审批等细节，表述过强；不再作为当前要求。旧版完整内容保留在 Git 历史。[产品章程](../PRODUCT_CHARTER.md)规定当前产品边界，[产品与界面基线](chat-redesign-brief.md)说明当前探索范围，[ADR 0015](../decisions/0015-agent-friends-and-conversation-rooms.md)记录首轮架构取舍。
 
 ## 用户重述的初步构想
 

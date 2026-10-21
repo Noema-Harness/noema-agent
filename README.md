@@ -39,7 +39,7 @@ Windows CI 定义完整检查，参见 [Desktop checks](.github/workflows/deskto
 ## 理解与接手
 
 - [项目约定](AGENTS.md)：恢复现场、产品边界与质量门。
-- [产品章程](docs/PRODUCT_CHARTER.md)与[界面设计基线](docs/design/chat-redesign-brief.md)：已确认方向、工作假设和反馈门。
+- [产品章程](docs/PRODUCT_CHARTER.md)与[产品/界面探索基线](docs/design/chat-redesign-brief.md)：已确认边界、未决问题和当前设计工作方式。
 - [架构](docs/ARCHITECTURE.md)与[决策历史](docs/decisions/README.md)：状态所有权、边界与长期取舍。
 - [协作方式](docs/PROJECT_OPERATIONS.md)：Issue/Project、并行分支和陌生 agent 交接。
 
