@@ -1440,6 +1440,9 @@ function SocialChatApp() {
                                   ),
                                 )}
                                 roomClosed={Boolean(currentRoom.closedAt)}
+                                hideSenderMetadata={
+                                  currentRoom.kind === 'direct'
+                                }
                                 agent={
                                   item.message.agentId
                                     ? (messageAgent.get(item.message.agentId) ??
@@ -2326,6 +2329,7 @@ function ChatMessage({
   message,
   continuationOrigin,
   roomClosed,
+  hideSenderMetadata,
   agent,
   canManageInteractionAdjustment,
   interactionAdjustment,
@@ -2341,6 +2345,7 @@ function ChatMessage({
   message: NoemaSocialMessage;
   continuationOrigin: boolean;
   roomClosed: boolean;
+  hideSenderMetadata: boolean;
   agent: NoemaSocialAgent | null;
   canManageInteractionAdjustment: boolean;
   interactionAdjustment: NoemaInteractionAdjustment | null;
@@ -2562,7 +2567,9 @@ function ChatMessage({
         className={`chat-message user-message ${forwardSelectionActive ? 'is-forward-selecting' : ''} ${forwardSelected ? 'is-forward-selected' : ''}`}
         data-message-id={message.id}
       >
-        <div className="message-author">
+        <div
+          className={`message-author ${hideSenderMetadata ? 'visually-hidden' : ''}`}
+        >
           <strong>你</strong>
           <time dateTime={message.createdAt}>
             {timeLabel(message.createdAt)}
@@ -2716,7 +2723,9 @@ function ChatMessage({
       className={`chat-message agent-message ${running ? 'is-running' : ''} ${forwardSelectionActive ? 'is-forward-selecting' : ''} ${forwardSelected ? 'is-forward-selected' : ''}`}
       data-message-id={message.id}
     >
-      <div className="message-author">
+      <div
+        className={`message-author ${hideSenderMetadata ? 'visually-hidden' : ''}`}
+      >
         <strong>{agent?.name ?? 'Noema'}</strong>
         <time dateTime={message.createdAt}>{timeLabel(message.createdAt)}</time>
       </div>

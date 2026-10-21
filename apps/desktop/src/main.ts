@@ -1117,12 +1117,15 @@ async function captureSocialChatSmokeScreenshots() {
         const groupedResponseTurns = [...document.querySelectorAll('.conversation-turn')]
           .filter((turn) => turn.querySelectorAll('.chat-message').length > 1)
           .length;
+        const groupAttributionVisible = [...document.querySelectorAll('.conversation-turn .chat-message .message-author')]
+          .some((author) => !author.classList.contains('visually-hidden'));
         return {
           loaded: Boolean(shell),
           roomTitle: document.querySelector('.room-header h2')?.textContent?.trim() ?? '',
           participantCount: document.querySelectorAll('.room-header-copy p').length,
           routingChoices: routing?.querySelectorAll('button').length ?? 0,
           groupedResponseTurns,
+          groupAttributionVisible,
           projectModeSwitchVisible: Boolean(
             document.querySelector('.composer-mode-switch'),
           ),
@@ -1151,6 +1154,7 @@ async function captureSocialChatSmokeScreenshots() {
       desktop.roomTitle !== '工程协作' ||
       desktop.routingChoices !== 2 ||
       desktop.groupedResponseTurns < 1 ||
+      !desktop.groupAttributionVisible ||
       !desktop.projectModeSwitchVisible ||
       !desktop.composerVisible ||
       !desktop.shellNoOverflow ||
@@ -2037,6 +2041,13 @@ async function captureSocialAgentCreationE2e() {
         assistantStatus: completed.assistant.status,
         sameTurn: completed.user.turnId === completed.assistant.turnId,
         groupedInUi: messagesInTurn === 2,
+        directSpeakerMetaVisuallyHidden: Boolean(
+          turn &&
+            [...turn.querySelectorAll('.chat-message .message-author')].length === 2 &&
+            [...turn.querySelectorAll('.chat-message .message-author')].every(
+              (author) => author.classList.contains('visually-hidden'),
+            ),
+        ),
         assistantVisible: Boolean(assistantArticle && assistantArticle.getClientRects().length),
         visibleDelegationLabels: Boolean(turn?.textContent?.includes('交给「工程搭档」处理') && turn.textContent.includes('「工程搭档」完成的内容')),
         actualResultVisible: Boolean(turn?.textContent?.includes(${JSON.stringify(socialAgentDelegationResult)})),
@@ -2067,6 +2078,7 @@ async function captureSocialAgentCreationE2e() {
       delegation.assistantStatus !== 'complete' ||
       !delegation.sameTurn ||
       !delegation.groupedInUi ||
+      !delegation.directSpeakerMetaVisuallyHidden ||
       !delegation.assistantVisible ||
       !delegation.visibleDelegationLabels ||
       !delegation.actualResultVisible ||
