@@ -73,6 +73,10 @@ const delegationNarrowScreenshotPath = path.join(
   e2eRoot,
   `Noema-specialist-delegation-narrow-${screenshotTag}.png`,
 );
+const messageSearchScreenshotPath = path.join(
+  e2eRoot,
+  `Noema-message-search-${screenshotTag}.png`,
+);
 const continuationDesktopScreenshotPath = path.join(
   e2eRoot,
   `Noema-continuation-desktop-${screenshotTag}.png`,
@@ -163,6 +167,7 @@ const child = spawn(process.execPath, ['scripts/start.mjs'], {
     NOEMA_SMOKE_SOCIAL_FORWARD_NARROW_PATH: forwardNarrowScreenshotPath,
     NOEMA_SMOKE_SOCIAL_DELEGATION_DESKTOP_PATH: delegationDesktopScreenshotPath,
     NOEMA_SMOKE_SOCIAL_DELEGATION_NARROW_PATH: delegationNarrowScreenshotPath,
+    NOEMA_SMOKE_SOCIAL_SEARCH_PATH: messageSearchScreenshotPath,
     NOEMA_SMOKE_SOCIAL_CONTINUATION_DESKTOP_PATH:
       continuationDesktopScreenshotPath,
     NOEMA_SMOKE_SOCIAL_CONTINUATION_NARROW_PATH:
@@ -216,6 +221,7 @@ const summary = {
   forwardNarrowScreenshotPath,
   delegationDesktopScreenshotPath,
   delegationNarrowScreenshotPath,
+  messageSearchScreenshotPath,
   continuationDesktopScreenshotPath,
   continuationNarrowScreenshotPath,
   continuationRoomDesktopScreenshotPath,
@@ -261,6 +267,11 @@ if (
     !result.workflow?.forwarding?.liveProviderReplyComplete) ||
   !result.workflow?.forwarding?.cancelHadNoSend ||
   (!liveProviderE2e && !result.workflow?.specialistDelegation?.passed) ||
+  (!liveProviderE2e &&
+    (!result.workflow?.historySearch?.earlierResultReached ||
+      !result.workflow?.historySearch?.crossRoomResultReached ||
+      !result.workflow?.historySearch?.searchClearedAfterOpen ||
+      !existsSync(messageSearchScreenshotPath))) ||
   (!liveProviderE2e &&
     !result.workflow?.forwarding?.currentRoomReplyAttached) ||
   result.workflow?.forwarding?.narrow?.width > 700 ||

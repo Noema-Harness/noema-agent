@@ -30,6 +30,7 @@ const CHANNELS = Object.freeze({
   socialEvent: 'noema:social-event',
   socialState: 'noema:social-state',
   socialRoom: 'noema:social-room',
+  socialSearchMessages: 'noema:social-search-messages',
   socialCreateGroup: 'noema:social-create-group',
   socialCreateContinuationThread: 'noema:social-create-continuation-thread',
   socialSetContinuationThreadClosed:
@@ -78,6 +79,9 @@ export function registerRootIpc({
     register(CHANNELS.socialState, () => socialChatService.getUiState());
     register(CHANNELS.socialRoom, (roomId) =>
       socialChatService.store.getRoomSnapshot(roomId),
+    );
+    register(CHANNELS.socialSearchMessages, (query) =>
+      socialChatService.store.searchMessages(query),
     );
     register(CHANNELS.socialCreateGroup, (input) => {
       const room = socialChatService.store.createGroup(input);

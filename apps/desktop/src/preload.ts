@@ -5,6 +5,7 @@ import type {
   NoemaRootEvent,
   NoemaRootState,
   NoemaSocialEvent,
+  NoemaSocialSearchResult,
   NoemaSocialRoomState,
   NoemaSocialState,
 } from './noema-bridge.d.ts';
@@ -17,6 +18,8 @@ const bridge = {
     ipcRenderer.invoke('noema:social-state'),
   getSocialRoom: (roomId: string): Promise<NoemaSocialRoomState> =>
     ipcRenderer.invoke('noema:social-room', roomId),
+  searchSocialMessages: (query: string): Promise<NoemaSocialSearchResult[]> =>
+    ipcRenderer.invoke('noema:social-search-messages', query),
   createSocialGroup: (input: { title: string; agentIds: string[] }) =>
     ipcRenderer.invoke('noema:social-create-group', input),
   createSocialContinuationThread: (input: {

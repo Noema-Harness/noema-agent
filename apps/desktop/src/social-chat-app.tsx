@@ -20,6 +20,7 @@ import type {
   NoemaSocialReplySource,
   NoemaSocialRoom,
   NoemaSocialRoomState,
+  NoemaSocialSearchResult,
   NoemaSocialState,
   NoemaSocialWorkTask,
 } from './noema-bridge.d.ts';
@@ -171,6 +172,12 @@ function SocialChatApp() {
     string | null
   >(null);
   const [search, setSearch] = useState('');
+  const [messageSearchResults, setMessageSearchResults] = useState<
+    NoemaSocialSearchResult[]
+  >([]);
+  const [messageSearchResultQuery, setMessageSearchResultQuery] = useState('');
+  const [messageSearchLoading, setMessageSearchLoading] = useState(false);
+  const [messageSearchError, setMessageSearchError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
   const [workBusy, setWorkBusy] = useState(false);
@@ -197,6 +204,7 @@ function SocialChatApp() {
   const conversationRef = useRef<HTMLDivElement>(null);
   const draftRef = useRef<HTMLTextAreaElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const searchRequestRef = useRef(0);
   const dialogRef = useRef<HTMLFormElement>(null);
   const forwardOriginMessageId = useRef<string | null>(null);
   const threadTriggerRef = useRef<HTMLButtonElement>(null);
@@ -365,6 +373,44 @@ function SocialChatApp() {
   }, []);
 
   useEffect(() => {
+    const query = search.trim();
+    const requestId = ++searchRequestRef.current;
+    if (!query) {
+      setMessageSearchResults([]);
+      setMessageSearchResultQuery('');
+      setMessageSearchLoading(false);
+      setMessageSearchError('');
+      return;
+    }
+    setMessageSearchResults([]);
+    setMessageSearchResultQuery('');
+    setMessageSearchLoading(true);
+    setMessageSearchError('');
+    const timeout = window.setTimeout(() => {
+      void window.noema
+        .searchSocialMessages(query)
+        .then((results) => {
+          if (requestId === searchRequestRef.current) {
+            setMessageSearchResults(results);
+            setMessageSearchResultQuery(query);
+            setMessageSearchLoading(false);
+          }
+        })
+        .catch((error: unknown) => {
+          if (requestId === searchRequestRef.current) {
+            setMessageSearchResults([]);
+            setMessageSearchResultQuery(query);
+            setMessageSearchError(
+              error instanceof Error ? error.message : '搜索历史消息失败。',
+            );
+            setMessageSearchLoading(false);
+          }
+        });
+    }, 160);
+    return () => window.clearTimeout(timeout);
+  }, [search]);
+
+  useEffect(() => {
     if (
       !createGroupOpen &&
       !createAgentOpen &&
@@ -520,6 +566,8 @@ function SocialChatApp() {
     });
   }, [messageAgent, rooms, search]);
   const otherRooms = filteredRooms.filter((room) => room.id !== noemaRoom?.id);
+  const visibleMessageSearchResults =
+    messageSearchResultQuery === search.trim() ? messageSearchResults : [];
 
   const renderRoomListItem = (room: NoemaSocialRoom, extraClassName = '') => {
     const firstAgent = messageAgent.get(room.memberIds[0] ?? '');
@@ -585,6 +633,14 @@ function SocialChatApp() {
     setSelectedForwardMessageIds([]);
     setShowRoomList(false);
     setNotice('');
+  };
+
+  const openMessageSearchResult = (result: NoemaSocialSearchResult) => {
+    const room = rooms.find((candidate) => candidate.id === result.roomId);
+    if (!room) return;
+    setPendingScrollMessageId(result.id);
+    setSearch('');
+    selectRoom(room);
   };
 
   const handleSend = async (event?: FormEvent) => {
@@ -1209,10 +1265,10 @@ function SocialChatApp() {
             <input
               type="search"
               ref={searchRef}
-              placeholder="搜索联系人或聊天"
+              placeholder="搜索聊天和消息"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              aria-label="搜索联系人或聊天"
+              aria-label="搜索联系人、聊天和消息"
             />
             <kbd>Ctrl K</kbd>
           </label>
@@ -1231,12 +1287,63 @@ function SocialChatApp() {
 
           <nav className="conversation-list" aria-label="其他聊天">
             {otherRooms.map((room) => renderRoomListItem(room))}
-            {otherRooms.length === 0 ? (
+            {otherRooms.length === 0 &&
+            !messageSearchLoading &&
+            messageSearchResultQuery === search.trim() &&
+            !messageSearchError &&
+            visibleMessageSearchResults.length === 0 ? (
               <p className="no-search-results">
                 {search
-                  ? '没有找到匹配的聊天。'
+                  ? '没有找到匹配的聊天或消息。'
                   : '专业联系人和群聊会显示在这里。'}
               </p>
+            ) : null}
+            {search.trim() ? (
+              <section
+                className="message-search-results"
+                aria-label="消息搜索结果"
+                aria-live="polite"
+                data-search-query={messageSearchResultQuery}
+                data-search-state={
+                  messageSearchLoading
+                    ? 'loading'
+                    : messageSearchError
+                      ? 'error'
+                      : 'complete'
+                }
+              >
+                <h3>消息</h3>
+                {messageSearchLoading &&
+                visibleMessageSearchResults.length === 0 ? (
+                  <p className="message-search-state">正在搜索历史消息…</p>
+                ) : null}
+                {messageSearchError ? (
+                  <p className="message-search-state" role="status">
+                    {messageSearchError}
+                  </p>
+                ) : null}
+                {visibleMessageSearchResults.map((result) => (
+                  <button
+                    className="message-search-result"
+                    data-message-id={result.id}
+                    key={`${result.roomId}:${result.id}`}
+                    type="button"
+                    onClick={() => openMessageSearchResult(result)}
+                  >
+                    <span className="message-search-result-heading">
+                      <strong>{result.roomTitle}</strong>
+                      <span>{timeLabel(result.createdAt)}</span>
+                    </span>
+                    <span className="message-search-result-meta">
+                      {result.sender}
+                      {result.forwarded ? ' · 转发内容' : ''}
+                    </span>
+                    <span className="message-search-result-excerpt">
+                      {result.content}
+                    </span>
+                  </button>
+                ))}
+              </section>
             ) : null}
           </nav>
 

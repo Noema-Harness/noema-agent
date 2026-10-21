@@ -176,6 +176,17 @@ export interface NoemaSocialMessage {
   updatedAt: string;
 }
 
+export interface NoemaSocialSearchResult {
+  id: string;
+  roomId: string;
+  roomTitle: string;
+  role: 'user' | 'assistant';
+  sender: string;
+  content: string;
+  forwarded: boolean;
+  createdAt: string;
+}
+
 export interface NoemaSocialForwardedSource {
   id: string;
   roomId: string;
@@ -509,6 +520,7 @@ export interface NoemaBridge {
   getRootState(): Promise<NoemaRootState>;
   getSocialState(): Promise<NoemaSocialState>;
   getSocialRoom(roomId: string): Promise<NoemaSocialRoomState>;
+  searchSocialMessages(query: string): Promise<NoemaSocialSearchResult[]>;
   createSocialGroup(input: {
     title: string;
     agentIds: string[];

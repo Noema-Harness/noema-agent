@@ -1098,6 +1098,48 @@ export class SocialChatStore {
     };
   }
 
+  searchMessages(query, limit = 12) {
+    const needle = requireText(query, '搜索内容', 120);
+    const boundedLimit = Number.isInteger(limit)
+      ? Math.max(1, Math.min(50, limit))
+      : 12;
+    const rows = this.db
+      .prepare(`
+        SELECT m.id, m.room_id AS roomId, m.role,
+               m.agent_id AS agentId, m.content,
+               m.forwarded_sources_json AS forwardedSourcesJson,
+               m.created_at AS createdAt, r.title AS roomTitle, a.name AS agentName
+        FROM social_messages AS m
+        JOIN social_rooms AS r ON r.id = m.room_id
+        LEFT JOIN social_agents AS a ON a.id = m.agent_id
+        WHERE m.status = 'complete'
+          AND m.role IN ('user', 'assistant')
+          AND (
+            instr(lower(m.content), lower(?)) > 0 OR
+            instr(lower(m.forwarded_sources_json), lower(?)) > 0
+          )
+        ORDER BY m.created_at DESC, m.seq DESC
+        LIMIT ?
+      `)
+      .all(needle, needle, boundedLimit);
+    return rows.map((row) => {
+      const forwardedSources = JSON.parse(row.forwardedSourcesJson ?? '[]');
+      const matchingSource = forwardedSources.find((source) =>
+        source.content.toLocaleLowerCase().includes(needle.toLocaleLowerCase()),
+      );
+      return {
+        id: row.id,
+        roomId: row.roomId,
+        roomTitle: row.roomTitle,
+        role: row.role,
+        sender: row.role === 'user' ? '你' : (row.agentName ?? 'Noema'),
+        content: matchingSource ? matchingSource.content : row.content,
+        forwarded: Boolean(matchingSource),
+        createdAt: row.createdAt,
+      };
+    });
+  }
+
   getSocialMessage(messageId) {
     const row = this.db
       .prepare(`

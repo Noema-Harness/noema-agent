@@ -157,6 +157,8 @@ const socialAgentDelegationDesktopScreenshotPath =
   process.env.NOEMA_SMOKE_SOCIAL_DELEGATION_DESKTOP_PATH ?? null;
 const socialAgentDelegationNarrowScreenshotPath =
   process.env.NOEMA_SMOKE_SOCIAL_DELEGATION_NARROW_PATH ?? null;
+const socialMessageSearchScreenshotPath =
+  process.env.NOEMA_SMOKE_SOCIAL_SEARCH_PATH ?? null;
 const socialAgentDelegationMarker = '请帮我独立核对';
 const socialAgentDelegationTask =
   '列出比较三种代码托管方案时应核对的五个关键字段。';
@@ -231,6 +233,7 @@ delete process.env.NOEMA_SMOKE_SOCIAL_FORWARD_DESKTOP_PATH;
 delete process.env.NOEMA_SMOKE_SOCIAL_FORWARD_NARROW_PATH;
 delete process.env.NOEMA_SMOKE_SOCIAL_DELEGATION_DESKTOP_PATH;
 delete process.env.NOEMA_SMOKE_SOCIAL_DELEGATION_NARROW_PATH;
+delete process.env.NOEMA_SMOKE_SOCIAL_SEARCH_PATH;
 delete process.env.NOEMA_SMOKE_SOCIAL_CONTINUATION_DESKTOP_PATH;
 delete process.env.NOEMA_SMOKE_SOCIAL_CONTINUATION_NARROW_PATH;
 delete process.env.NOEMA_SMOKE_SOCIAL_CONTINUATION_ROOM_DESKTOP_PATH;
@@ -2157,6 +2160,137 @@ async function captureSocialAgentCreationE2e() {
       );
     }
   }
+  let historySearch: Record<string, unknown> | null = null;
+  if (!testSocialAgentLiveE2e) {
+    mainWindow.setSize(1280, 800);
+    const searchFlow = (await mainWindow.webContents
+      .executeJavaScript(`(async () => {
+      const waitFor = async (predicate, label) => {
+        const deadline = Date.now() + 7000;
+        while (Date.now() < deadline) {
+          const value = await predicate();
+          if (value) return value;
+          await new Promise((resolve) => setTimeout(resolve, 40));
+        }
+        throw new Error('等待超时：' + label);
+      };
+      const setSearch = (query) => {
+        const input = document.querySelector('.chat-search input');
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+        if (!input || !setter) throw new Error('聊天搜索框不可用');
+        setter.call(input, query);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      };
+      setSearch('不愉快经历');
+      const earlierHit = await waitFor(
+        () =>
+          document.querySelector('.message-search-results')?.dataset.searchQuery === '不愉快经历' &&
+          document.querySelector('.message-search-results')?.dataset.searchState === 'complete'
+            ? [...document.querySelectorAll('.message-search-result')]
+                .find((button) => button.textContent?.includes('不愉快经历'))
+            : null,
+        '搜索到不在最新预览中的历史消息',
+      );
+      const earlierTitle = earlierHit.querySelector('.message-search-result-heading strong')?.textContent?.trim();
+      const earlierMessageId = earlierHit.dataset.messageId;
+      earlierHit.click();
+      await waitFor(() => {
+        const room = document.querySelector('.room-header h2')?.textContent?.trim();
+        const target = document.querySelector('[data-message-id="' + earlierMessageId + '"]');
+        const thread = document.querySelector('.message-thread')?.getBoundingClientRect();
+        const rect = target?.getBoundingClientRect();
+        return room === 'Noema' && rect && thread && rect.bottom > thread.top && rect.top < thread.bottom;
+      }, '跳回历史消息');
+      setSearch('紫水晶');
+      const crossRoomHit = await waitFor(
+        () =>
+          document.querySelector('.message-search-results')?.dataset.searchQuery === '紫水晶' &&
+          document.querySelector('.message-search-results')?.dataset.searchState === 'complete'
+            ? [...document.querySelectorAll('.message-search-result')]
+                .find((button) => button.textContent?.includes('紫水晶') && button.querySelector('.message-search-result-heading strong')?.textContent?.trim() === '工程搭档')
+            : null,
+        '搜索到另一聊天中的消息',
+      );
+      const crossRoomMessageId = crossRoomHit.dataset.messageId;
+      crossRoomHit.click();
+      await waitFor(() => {
+        const room = document.querySelector('.room-header h2')?.textContent?.trim();
+        const target = document.querySelector('[data-message-id="' + crossRoomMessageId + '"]');
+        const thread = document.querySelector('.message-thread')?.getBoundingClientRect();
+        const rect = target?.getBoundingClientRect();
+        return room === '工程搭档' && rect && thread && rect.bottom > thread.top && rect.top < thread.bottom;
+      }, '跨聊天跳回命中消息');
+      const searchClearedAfterOpen = document.querySelector('.chat-search input')?.value === '';
+      setSearch('紫水晶');
+      await waitFor(
+        () =>
+          document.querySelector('.message-search-results')?.dataset.searchQuery === '紫水晶' &&
+          document.querySelector('.message-search-results')?.dataset.searchState === 'complete' &&
+          [...document.querySelectorAll('.message-search-result')]
+            .some((button) => button.textContent?.includes('紫水晶')),
+        '显示聊天搜索结果',
+      );
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const searchResults = [...document.querySelectorAll('.message-search-result')];
+      const visibleSearchResults = searchResults.filter((button) => {
+        const rect = button.getBoundingClientRect();
+        return getComputedStyle(button).visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+      });
+      return {
+        earlierResultRoom: earlierTitle,
+        earlierResultReached: true,
+        crossRoomResultRoom: '工程搭档',
+        crossRoomResultReached: true,
+        searchClearedAfterOpen,
+        searchResultCount: searchResults.length,
+        searchResultsVisible: visibleSearchResults.length > 0,
+        searchResultBounds: visibleSearchResults.map((button) => {
+          const rect = button.getBoundingClientRect();
+          const list = button.closest('.conversation-list');
+          const listRect = list?.getBoundingClientRect();
+          const style = getComputedStyle(button);
+          return {
+            top: rect.top,
+            bottom: rect.bottom,
+            listTop: listRect?.top,
+            listBottom: listRect?.bottom,
+            listScrollTop: list?.scrollTop,
+            display: style.display,
+            visibility: style.visibility,
+            opacity: style.opacity,
+            color: style.color,
+            text: button.textContent?.trim(),
+          };
+        }),
+      };
+    })()`)) as Record<string, unknown>;
+    historySearch = searchFlow;
+    if (
+      searchFlow.earlierResultRoom !== 'Noema' ||
+      !searchFlow.earlierResultReached ||
+      !searchFlow.crossRoomResultReached ||
+      !searchFlow.searchClearedAfterOpen ||
+      !searchFlow.searchResultsVisible
+    ) {
+      throw new Error(
+        `历史消息搜索没有回到原对话：${JSON.stringify(searchFlow)}`,
+      );
+    }
+    if (socialMessageSearchScreenshotPath) {
+      writeSmokeScreenshot(
+        socialMessageSearchScreenshotPath,
+        await mainWindow.capturePage(),
+      );
+    }
+    await mainWindow.webContents.executeJavaScript(`(() => {
+      const input = document.querySelector('.chat-search input');
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+      if (input && setter) {
+        setter.call(input, '');
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    })()`);
+  }
   const continuationThreadWorkflow = await mainWindow.webContents
     .executeJavaScript(`(async () => {
     const waitFor = async (predicate, label) => {
@@ -2603,6 +2737,7 @@ async function captureSocialAgentCreationE2e() {
         ...${JSON.stringify(forwardingSent)},
       },
       specialistDelegation: ${JSON.stringify(specialistDelegation)},
+      historySearch: ${JSON.stringify(historySearch)},
       continuationThread: {
         ...${JSON.stringify(continuationThreadWorkflow)},
         narrow: ${JSON.stringify(continuationNarrow)},

@@ -57,6 +57,37 @@ test('social schema seeds stable identities and keeps one agent across independe
   }
 });
 
+test('message search spans rooms, matches literal text and returns local navigation context', () => {
+  const { db, social } = makeStores();
+  try {
+    const turn = social.beginTurn({
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      text: 'GitHub 项目费用为10%，待复核。',
+      model: 'test-model',
+    });
+    social.appendAssistantDelta(turn.assistantMessageId, '我会继续核对。');
+    social.completeReply(turn.assistantMessageId);
+
+    const results = social.searchMessages('GITHUB');
+    assert.equal(results.length, 1);
+    assert.deepEqual(results[0], {
+      id: turn.userMessageId,
+      roomId: 'room-engineering-partner',
+      roomTitle: '工程搭档',
+      role: 'user',
+      sender: '你',
+      content: 'GitHub 项目费用为10%，待复核。',
+      forwarded: false,
+      createdAt: results[0].createdAt,
+    });
+    assert.equal(social.searchMessages('%').length, 1);
+    assert.throws(() => social.searchMessages('   '), /不能为空/);
+  } finally {
+    db.close();
+  }
+});
+
 test('an app restart interrupts a running social project task without replaying it', () => {
   const { db, social } = makeStores();
   try {
