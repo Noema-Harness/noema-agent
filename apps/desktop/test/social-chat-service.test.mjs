@@ -390,7 +390,8 @@ test('Noema delegates a bounded task to one active specialist and shows the real
     const reply = store
       .getRoomSnapshot('room-noema')
       .messages.find((message) => message.id === sent.messageId);
-    assert.match(reply?.content ?? '', /交给「工程搭档」处理/u);
+    assert.match(reply?.content ?? '', /工程搭档的协助/u);
+    assert.match(reply?.content ?? '', /比较这两个方案的维护成本/u);
     assert.match(reply?.content ?? '', /方案 A 更易维护/u);
     assert.equal(reply?.status, 'complete');
   } finally {

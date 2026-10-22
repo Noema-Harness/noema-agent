@@ -2042,6 +2042,26 @@ async function captureSocialAgentCreationE2e() {
       const assistantArticle = [...document.querySelectorAll('.chat-message.agent-message')]
         .find((article) => article.dataset.messageId === completed.assistant.id);
       const turn = assistantArticle?.closest('.conversation-turn');
+      const userArticle = turn?.querySelector('.user-message');
+      const measureMessage = (article) => {
+        const body = article?.querySelector('.message-body');
+        const bubble = article?.querySelector('.message-bubble');
+        const bodyRect = body?.getBoundingClientRect();
+        const bubbleRect = bubble?.getBoundingClientRect();
+        return bodyRect && bubbleRect
+          ? {
+              bodyHeight: Math.round(bodyRect.height),
+              bubbleHeight: Math.round(bubbleRect.height),
+              bodyWidth: Math.round(bodyRect.width),
+              bubbleWidth: Math.round(bubbleRect.width),
+              authorHeight: Math.round(article.querySelector('.message-author')?.getBoundingClientRect().height ?? 0),
+            }
+          : null;
+      };
+      const messageGeometry = {
+        user: measureMessage(userArticle),
+        assistant: measureMessage(assistantArticle),
+      };
       const messagesInTurn = turn?.querySelectorAll('.chat-message').length ?? 0;
       const promptText = ${JSON.stringify(socialAgentDelegationTask)};
       return {
@@ -2059,7 +2079,16 @@ async function captureSocialAgentCreationE2e() {
             turn.querySelector('.agent-message .message-author strong')?.textContent?.trim() === 'Noema',
         ),
         assistantVisible: Boolean(assistantArticle && assistantArticle.getClientRects().length),
-        visibleDelegationLabels: Boolean(turn?.textContent?.includes('交给「工程搭档」处理') && turn.textContent.includes('「工程搭档」完成的内容')),
+        messageGeometry,
+        messageBodyFitsContent: [messageGeometry.user, messageGeometry.assistant].every(
+          (item) => item && item.bodyHeight <= item.bubbleHeight + 32,
+        ),
+        messageAuxiliaryOutsideBubble: Boolean(
+          turn &&
+            !turn.querySelector('.message-actions')?.closest('.message-body') &&
+            !turn.querySelector('.interaction-adjustment-trace')?.closest('.message-body'),
+        ),
+        visibleDelegationLabels: Boolean(turn?.textContent?.includes('工程搭档的协助') && turn.textContent.includes(${JSON.stringify(socialAgentDelegationTask)})),
         actualResultVisible: Boolean(turn?.textContent?.includes(${JSON.stringify(socialAgentDelegationResult)})),
         initialMessageCount: beforeRoom.messages.length,
         messageCountDelta: completed.room.messages.length - beforeRoom.messages.length,
@@ -2090,6 +2119,8 @@ async function captureSocialAgentCreationE2e() {
       !delegation.groupedInUi ||
       !delegation.directSpeakerAttributionWorks ||
       !delegation.assistantVisible ||
+      !delegation.messageAuxiliaryOutsideBubble ||
+      !delegation.messageBodyFitsContent ||
       !delegation.visibleDelegationLabels ||
       !delegation.actualResultVisible ||
       delegation.messageCountDelta !== 2 ||
@@ -3898,14 +3929,29 @@ async function startNoema() {
                     },
                   },
                 ]);
-                yield '我会把这项独立核对交给工程搭档。';
                 return;
               }
               if (latestUserMessage === socialAgentDelegationTask) {
                 yield socialAgentDelegationResult;
                 return;
               }
-              yield '我看到了这组转发消息。';
+              if (latestUserMessage?.includes('今天发生了一件让我有点难受')) {
+                yield '听起来这件事还留在你心里。你愿意先讲讲，最难受的是哪一部分吗？';
+                return;
+              }
+              if (latestUserMessage?.includes('想起这件事还是有些不舒服')) {
+                yield '它似乎还在影响你。你现在最想先说的是哪一部分？';
+                return;
+              }
+              if (latestUserMessage?.includes('我们再聊一件普通小事')) {
+                yield '好啊，说来听听，你想聊什么？';
+                return;
+              }
+              if (latestUserMessage?.includes('请说说这两条消息的重点')) {
+                yield '第一条是 OpenAI 的官方发布说明，第二条补充了项目进展；前者说明能力变化，后者说明这些变化怎样影响实际使用。';
+                return;
+              }
+              yield '收到。你想先从哪一部分聊起？';
             },
           }
         : testSocialAgentLiveE2e

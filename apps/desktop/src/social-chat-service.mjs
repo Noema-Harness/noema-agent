@@ -93,7 +93,7 @@ function noemaActionGuidance(projectWorkAvailable, specialistAgents) {
       ? '仅当用户明确要求对本地项目文件进行检查、修改、构建或验证时，才可调用 start_project_work。调用会打开本机工作区授权与数据流披露；用户选择工作区后任务才会被创建。不得因用户提到代码、项目或未来想法就启动。'
       : '当前没有可用的项目文件执行能力。不要声称能在本机项目中检查或修改文件。',
     specialistAgents.length
-      ? '仅当请求需要一项可独立完成的知识工作，且现有专业联系人的职责确实匹配时，才可调用 delegate_to_specialist。它会额外调用一次同一模型；只发送工具中的 task，不发送完整聊天记录。不得为普通交流或形式上的多 agent 协作调用。把真实委托内容和该联系人实际返回的结果显示在本条回复中，不另做总结调用。'
+      ? '仅当请求需要一项可独立完成的知识工作，且现有专业联系人的职责确实匹配时，才可调用 delegate_to_specialist。它会额外调用一次同一模型；只发送工具中的 task，不发送完整聊天记录。不得为普通交流或形式上的多 agent 协作调用。不要朗读委派流程、重复转述任务或伪装成独立持久任务；直接用返回结果回答。界面会在同一条 Noema 回复中标注协助者并展示原委托，不要再调用模型总结。'
       : '当前没有可用的专业联系人可供委派。',
   ].join('\n');
 }
@@ -477,15 +477,15 @@ export class SocialChatService {
             );
           }
           const task = input.task.trim();
-          const handoff = `\n\n交给「${specialist.name}」处理：\n> ${task.replaceAll('\n', '\n> ')}\n\n「${specialist.name}」完成的内容：\n`;
-          this.store.appendAssistantDelta(assistantMessageId, handoff);
+          const sourceLabel = `\n\n**${specialist.name}的协助**\n\n> ${task.replaceAll('\n', '\n> ')}\n\n`;
+          this.store.appendAssistantDelta(assistantMessageId, sourceLabel);
           this.emit({
             type: 'chat-message-delta',
             roomId,
             messageId: assistantMessageId,
-            delta: handoff,
+            delta: sourceLabel,
           });
-          content += handoff;
+          content += sourceLabel;
           let specialistReply = '';
           for await (const delta of this.provider.streamChat({
             model,

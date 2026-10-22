@@ -2776,6 +2776,8 @@ function ChatMessage({
               </ReactMarkdown>
             </div>
           ) : null}
+        </div>
+        <div className="message-details">
           {actions}
           {continuationThreads.map((thread) => (
             <button
@@ -2935,6 +2937,8 @@ function ChatMessage({
             </span>
           ) : null}
         </div>
+      </div>
+      <div className="message-details">
         {failed ? (
           <div className="message-failure" role="status">
             <span>{message.errorMessage ?? '这条回复没有完成。'}</span>
