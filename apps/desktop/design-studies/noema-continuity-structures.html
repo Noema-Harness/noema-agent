@@ -6,7 +6,8 @@
     <title>Noema · 三种空间组织</title>
     <style>
       :root {
-        font-family: "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", sans-serif;
+        font-family:
+          'Segoe UI Variable', 'Segoe UI', 'Microsoft YaHei UI', sans-serif;
         color: #20282d;
         background: #e9ecee;
         font-size: 14px;
@@ -21,7 +22,15 @@
       * {
         box-sizing: border-box;
       }
-      :where(html, .index, .chat-scroll, .work-content, .session-scroll, .dialog-body, textarea) {
+      :where(
+        html,
+        .index,
+        .chat-scroll,
+        .work-content,
+        .session-scroll,
+        .dialog-body,
+        textarea
+      ) {
         scrollbar-gutter: stable;
       }
       @supports not selector(::-webkit-scrollbar) {
@@ -30,11 +39,14 @@
           scrollbar-color: transparent transparent;
         }
         html.scroll-active,
-        :where(.index, .chat-scroll, .work-content, .session-scroll, .dialog-body, textarea):is(
-          :hover,
-          :focus-within,
-          .scroll-active
-        ) {
+        :where(
+          .index,
+          .chat-scroll,
+          .work-content,
+          .session-scroll,
+          .dialog-body,
+          textarea
+        ):is(:hover, :focus-within, .scroll-active) {
           scrollbar-color: #a5b0b8 transparent;
         }
       }
@@ -63,11 +75,14 @@
           background-clip: padding-box;
         }
         html.scroll-active::-webkit-scrollbar-thumb,
-        :where(.index, .chat-scroll, .work-content, .session-scroll, .dialog-body, textarea):is(
-            :hover,
-            :focus-within,
-            .scroll-active
-          )::-webkit-scrollbar-thumb {
+        :where(
+            .index,
+            .chat-scroll,
+            .work-content,
+            .session-scroll,
+            .dialog-body,
+            textarea
+          ):is(:hover, :focus-within, .scroll-active)::-webkit-scrollbar-thumb {
           background-color: #a5b0b8;
         }
         ::-webkit-scrollbar-thumb:hover {
@@ -181,7 +196,7 @@
         border: 1px solid transparent;
         border-radius: 4px;
       }
-      .variants button[aria-pressed="true"] {
+      .variants button[aria-pressed='true'] {
         background: #263c47;
         color: white;
         border-color: #263c47;
@@ -196,7 +211,7 @@
         padding: 7px 10px;
         border-bottom: 2px solid transparent;
       }
-      .scenes button[aria-pressed="true"] {
+      .scenes button[aria-pressed='true'] {
         color: #1f4e62;
         border-bottom-color: #28556a;
       }
@@ -387,7 +402,7 @@
         outline-offset: -2px;
       }
       .index-resizer::after {
-        content: "";
+        content: '';
         position: absolute;
         inset: 0 3px;
         background: transparent;
@@ -1485,7 +1500,7 @@
         .study-note {
           flex-wrap: wrap;
         }
-        .study-note button[data-action="explanation"] {
+        .study-note button[data-action='explanation'] {
           display: none;
         }
         .study-head .study-meta button {
@@ -1909,21 +1924,29 @@
   </head>
   <body>
     <header class="study-head">
-      <div><strong>Noema / 三种空间组织</strong><span>同一套产品关系，不同的界面重心</span></div>
+      <div>
+        <strong>Noema / 三种空间组织</strong
+        ><span>同一套产品关系，不同的界面重心</span>
+      </div>
       <div class="study-meta">
         <span>交互研究 · 全部为演示数据，不调用模型</span
-        ><button data-action="narrow">窄窗对照</button><button data-action="focus">进入预览</button>
+        ><button data-action="narrow">窄窗对照</button
+        ><button data-action="focus">进入预览</button>
       </div>
     </header>
     <div class="study-controls">
       <nav class="variants" aria-label="结构方案">
         <button data-layout="a">A · 对话主轴</button
         ><button data-layout="b">B · 对话与工作并置</button
-        ><button data-layout="c">C · 成员与项目索引<small>已选空间结构</small></button>
+        ><button data-layout="c">
+          C · 成员与项目索引<small>已选空间结构</small>
+        </button>
       </nav>
       <nav class="scenes" aria-label="同一组使用情境">
-        <button data-scene="daily">日常相处</button><button data-scene="news">新闻短委托</button
-        ><button data-scene="project">组建项目</button><button data-scene="review">交付评审</button
+        <button data-scene="daily">日常相处</button
+        ><button data-scene="news">新闻短委托</button
+        ><button data-scene="project">组建项目</button
+        ><button data-scene="review">交付评审</button
         ><button data-scene="archive">归档与恢复</button>
         <button data-scene="execution">委托执行</button>
       </nav>
@@ -1937,7 +1960,11 @@
     <script id="study-runtime">
       // Deterministic UI study only: no model, network or filesystem execution.
       class StudyConversation {
-        constructor(changed = () => {}, schedule = setTimeout, cancel = clearTimeout) {
+        constructor(
+          changed = () => {},
+          schedule = setTimeout,
+          cancel = clearTimeout,
+        ) {
           this.changed = changed;
           this.schedule = schedule;
           this.cancel = cancel;
@@ -1946,7 +1973,12 @@
         }
         room(key) {
           if (!this.rooms.has(key))
-            this.rooms.set(key, { messages: [], queue: [], active: null, paused: false });
+            this.rooms.set(key, {
+              messages: [],
+              queue: [],
+              active: null,
+              paused: false,
+            });
           return this.rooms.get(key);
         }
         send(key, input) {
@@ -1954,7 +1986,7 @@
           const packet = {
             ...input,
             files: (input.files || []).map((f) => ({ ...f })),
-            id: "input-" + ++this.sequence,
+            id: 'input-' + ++this.sequence,
           };
           const room = this.room(key);
           if (room.active || room.paused) {
@@ -1967,33 +1999,39 @@
           const room = this.room(key);
           if (room.active) return false;
           if (!room.messages.some((m) => m.id === packet.id))
-            room.messages.push({ ...packet, role: "user" });
+            room.messages.push({ ...packet, role: 'user' });
           if (!reply) {
             reply = {
-              id: "reply-" + ++this.sequence,
-              role: "assistant",
-              text: "",
-              status: "running",
+              id: 'reply-' + ++this.sequence,
+              role: 'assistant',
+              text: '',
+              status: 'running',
               packet,
               attempt: 0,
             };
             room.messages.push(reply);
           }
-          reply.status = "running";
+          reply.status = 'running';
           reply.attempt++;
-          reply.text = "";
+          reply.text = '';
           const generation = ++this.sequence;
           const active = { reply, generation, timers: [] };
           room.active = active;
-          const response = packet.response || "本轮演示回复已完成，没有调用模型。";
+          const response =
+            packet.response || '本轮演示回复已完成，没有调用模型。';
           active.timers.push(
             this.schedule(() => {
               if (room.active?.generation !== generation) return;
-              reply.text = response.slice(0, Math.max(12, Math.floor(response.length / 2)));
+              reply.text = response.slice(
+                0,
+                Math.max(12, Math.floor(response.length / 2)),
+              );
               this.changed();
             }, 1000),
           );
-          active.timers.push(this.schedule(() => this.finish(key, generation, response), 6500));
+          active.timers.push(
+            this.schedule(() => this.finish(key, generation, response), 6500),
+          );
           this.changed();
           return true;
         }
@@ -2003,13 +2041,14 @@
           const active = room.active;
           active.timers.forEach(this.cancel);
           active.reply.text = text;
-          active.reply.status = "complete";
+          active.reply.status = 'complete';
           room.active = null;
-          if (!room.paused && room.queue.length) this.start(key, room.queue.shift());
+          if (!room.paused && room.queue.length)
+            this.start(key, room.queue.shift());
           else this.changed();
           return true;
         }
-        interrupt(key, status = "stopped") {
+        interrupt(key, status = 'stopped') {
           const room = this.room(key);
           if (!room.active) return false;
           room.active.timers.forEach(this.cancel);
@@ -2022,7 +2061,12 @@
         retry(key, replyID) {
           const room = this.room(key);
           const reply = room.messages.find((m) => m.id === replyID);
-          if (room.active || !reply || !["failed", "stopped"].includes(reply.status)) return false;
+          if (
+            room.active ||
+            !reply ||
+            !['failed', 'stopped'].includes(reply.status)
+          )
+            return false;
           return this.start(key, reply.packet, reply);
         }
         withdraw(key, id) {
@@ -2050,7 +2094,8 @@
           return this.start(key, room.queue.shift());
         }
         reset() {
-          for (const room of this.rooms.values()) room.active?.timers.forEach(this.cancel);
+          for (const room of this.rooms.values())
+            room.active?.timers.forEach(this.cancel);
           this.rooms.clear();
         }
       }
@@ -2061,142 +2106,153 @@
         }
         create() {
           this.generation++;
-          this.status = "permission";
+          this.status = 'permission';
           this.grant = null;
           this.uncertain = false;
           this.steps = [
-            { title: "读取现有说明", state: "pending" },
-            { title: "修改计价单位说明", state: "pending" },
-            { title: "核对文件与界面", state: "pending" },
+            { title: '读取现有说明', state: 'pending' },
+            { title: '修改计价单位说明', state: 'pending' },
+            { title: '核对文件与界面', state: 'pending' },
           ];
         }
         decide(generation, decision) {
           if (
-            this.status !== "permission" ||
+            this.status !== 'permission' ||
             generation !== this.generation ||
-            !["once", "project", "deny"].includes(decision)
+            !['once', 'project', 'deny'].includes(decision)
           )
             return false;
-          if (decision === "deny") {
-            this.status = "denied";
+          if (decision === 'deny') {
+            this.status = 'denied';
             this.generation++;
             return true;
           }
           this.grant = decision;
           if (this.uncertain) {
-            this.status = "checking";
+            this.status = 'checking';
             return true;
           }
-          this.status = "running";
-          this.steps.find((s) => s.state !== "complete").state = "running";
+          this.status = 'running';
+          this.steps.find((s) => s.state !== 'complete').state = 'running';
           return true;
         }
         advance() {
-          if (this.status !== "running") return false;
-          this.steps.find((s) => s.state === "running").state = "complete";
-          const next = this.steps.find((s) => s.state !== "complete");
-          if (next) next.state = "running";
-          else this.status = "complete";
+          if (this.status !== 'running') return false;
+          this.steps.find((s) => s.state === 'running').state = 'complete';
+          const next = this.steps.find((s) => s.state !== 'complete');
+          if (next) next.state = 'running';
+          else this.status = 'complete';
           return true;
         }
-        interrupt(reason = "failed") {
-          if (!["running", "permission"].includes(this.status)) return false;
-          const step = this.steps.find((s) => s.state === "running");
+        interrupt(reason = 'failed') {
+          if (!['running', 'permission'].includes(this.status)) return false;
+          const step = this.steps.find((s) => s.state === 'running');
           this.uncertain = step === this.steps[1];
-          if (step) step.state = "pending";
+          if (step) step.state = 'pending';
           this.status = reason;
           this.generation++;
           return true;
         }
         resume() {
-          if (!["failed", "stopped"].includes(this.status) || !this.grant) return false;
+          if (!['failed', 'stopped'].includes(this.status) || !this.grant)
+            return false;
           if (this.uncertain) {
-            this.status = "checking";
+            this.status = 'checking';
             return true;
           }
-          this.status = "running";
-          this.steps.find((s) => s.state !== "complete").state = "running";
+          this.status = 'running';
+          this.steps.find((s) => s.state !== 'complete').state = 'running';
           return true;
         }
         reconcile(applied) {
-          if (this.status !== "checking" || typeof applied !== "boolean") return false;
-          if (applied) this.steps[1].state = "complete";
+          if (this.status !== 'checking' || typeof applied !== 'boolean')
+            return false;
+          if (applied) this.steps[1].state = 'complete';
           this.uncertain = false;
-          this.status = "running";
-          this.steps.find((s) => s.state !== "complete").state = "running";
+          this.status = 'running';
+          this.steps.find((s) => s.state !== 'complete').state = 'running';
           return true;
         }
         revoke() {
           if (!this.grant) return false;
-          if (this.status === "running") this.interrupt("stopped");
+          if (this.status === 'running') this.interrupt('stopped');
           this.grant = null;
           this.generation++;
-          if (!["complete", "denied"].includes(this.status)) this.status = "revoked";
+          if (!['complete', 'denied'].includes(this.status))
+            this.status = 'revoked';
           return true;
         }
         requestAccess() {
-          if (!["denied", "revoked", "stopped"].includes(this.status) || this.grant) return false;
+          if (
+            !['denied', 'revoked', 'stopped'].includes(this.status) ||
+            this.grant
+          )
+            return false;
           this.generation++;
-          this.status = "permission";
+          this.status = 'permission';
           return true;
         }
       }
     </script>
     <script>
-      "use strict";
+      'use strict';
       const $ = (s) => document.querySelector(s);
       const state = {
-        layout: "c",
+        layout: 'c',
         indexWidth: 232,
         indexOpen: true,
         mobileIndexOpen: false,
-        scene: "review",
+        scene: 'review',
         workspace: null,
-        projectStage: "review",
-        tab: "delivery",
-        member: "research",
-        name: "Noema",
-        preference: "直接交流，必要时说清依据。",
+        projectStage: 'review',
+        tab: 'delivery',
+        member: 'research',
+        name: 'Noema',
+        preference: '直接交流，必要时说清依据。',
         approved: false,
         archived: false,
         narrow: false,
         focused: false,
         drafts: {},
-        feedback: "",
+        feedback: '',
         extra: {},
         groupExtra: [],
         sessionExtra: {},
-        notice: "",
+        notice: '',
         reopened: false,
-        model: "general",
+        model: 'general',
         attachments: {},
         quotes: {},
         composerErrors: {},
-        indexQuery: "",
-        uiNotice: "",
+        indexQuery: '',
+        uiNotice: '',
       };
-      const draftStoreKey = "noema-structure-study-v3";
+      const draftStoreKey = 'noema-structure-study-v3';
       try {
-        const saved = JSON.parse(localStorage.getItem(draftStoreKey) || "{}");
-        if (saved.drafts && typeof saved.drafts === "object")
+        const saved = JSON.parse(localStorage.getItem(draftStoreKey) || '{}');
+        if (saved.drafts && typeof saved.drafts === 'object')
           state.drafts = Object.fromEntries(
             Object.entries(saved.drafts).filter(
-              ([k, v]) => typeof v === "string" && v.length < 100000,
+              ([k, v]) => typeof v === 'string' && v.length < 100000,
             ),
           );
-        if (typeof saved.name === "string" && saved.name.trim())
+        if (typeof saved.name === 'string' && saved.name.trim())
           state.name = saved.name.slice(0, 24);
-        if (typeof saved.preference === "string")
+        if (typeof saved.preference === 'string')
           state.preference = saved.preference.slice(0, 4000);
-        if (["general", "reasoning"].includes(saved.model)) state.model = saved.model;
-        if (saved.indexWidth >= 184 && saved.indexWidth <= 400) state.indexWidth = saved.indexWidth;
-        if (typeof saved.indexOpen === "boolean") state.indexOpen = saved.indexOpen;
+        if (['general', 'reasoning'].includes(saved.model))
+          state.model = saved.model;
+        if (saved.indexWidth >= 184 && saved.indexWidth <= 400)
+          state.indexWidth = saved.indexWidth;
+        if (typeof saved.indexOpen === 'boolean')
+          state.indexOpen = saved.indexOpen;
       } catch {
-        state.uiNotice = "本机草稿存储不可用；当前页仍可使用。";
+        state.uiNotice = '本机草稿存储不可用；当前页仍可使用。';
       }
       const conversations = new StudyConversation(() => render());
       const delegatedWork = new StudyWork();
-      const modelLabel = () => (state.model === "reasoning" ? "演示推理模型" : "演示通用模型");
+      const modelLabel = () =>
+        state.model === 'reasoning' ? '演示推理模型' : '演示通用模型';
       function persistDrafts() {
         try {
           localStorage.setItem(
@@ -2211,56 +2267,63 @@
             }),
           );
         } catch {
-          state.uiNotice = "文字草稿暂时无法保存到本机，请保留当前页面。";
+          state.uiNotice = '文字草稿暂时无法保存到本机，请保留当前页面。';
         }
       }
       const people = {
         research: {
-          name: "新闻观察者",
-          role: "研究 · 来源核对",
-          mark: "研",
-          class: "",
-          status: "研究已交付",
-          description: "寻找原始信息，核对变化与时间，分清事实和推断。",
+          name: '新闻观察者',
+          role: '研究 · 来源核对',
+          mark: '研',
+          class: '',
+          status: '研究已交付',
+          description: '寻找原始信息，核对变化与时间，分清事实和推断。',
         },
         designer: {
-          name: "界面设计师",
-          role: "交互 · 视觉",
-          mark: "设",
-          class: "designer",
-          status: "等待界面评审",
-          description: "把需求转成可审阅的界面，说明设计取舍并修正体验。",
+          name: '界面设计师',
+          role: '交互 · 视觉',
+          mark: '设',
+          class: 'designer',
+          status: '等待界面评审',
+          description: '把需求转成可审阅的界面，说明设计取舍并修正体验。',
         },
         engineer: {
-          name: "应用工程师",
-          role: "实现 · 验证",
-          mark: "工",
-          class: "engineer",
-          status: "等待评审结果",
-          description: "实现经过确认的方案，验证结果，维护项目的可运行状态。",
+          name: '应用工程师',
+          role: '实现 · 验证',
+          mark: '工',
+          class: 'engineer',
+          status: '等待评审结果',
+          description: '实现经过确认的方案，验证结果，维护项目的可运行状态。',
         },
       };
       const notes = {
         a: {
-          title: "A · 对话主轴",
-          text: "Noema 对话占据整个窗口。成员与项目按需整页打开，返回后继续原来的对话。",
-          risk: "取舍：日常最轻；看成果与讨论需要来回切换。",
+          title: 'A · 对话主轴',
+          text: 'Noema 对话占据整个窗口。成员与项目按需整页打开，返回后继续原来的对话。',
+          risk: '取舍：日常最轻；看成果与讨论需要来回切换。',
         },
         b: {
-          title: "B · 对话与工作并置",
-          text: "默认仍是完整对话。打开项目时，对话留在左侧，项目与成果在右侧展开。",
-          risk: "取舍：边看边谈最直接；小窗口改为单页，不能强挤双栏。",
+          title: 'B · 对话与工作并置',
+          text: '默认仍是完整对话。打开项目时，对话留在左侧，项目与成果在右侧展开。',
+          risk: '取舍：边看边谈最直接；小窗口改为单页，不能强挤双栏。',
         },
         c: {
-          title: "C · 成员与项目索引",
-          text: "已选空间结构：左侧导航可拖动调宽、拖至左缘收起，也可用顶栏按钮开闭。内容区域在主聊、成员和项目之间切换。",
-          risk: "本轮只确认空间组织；视觉语言、组件细节和整体体验仍待评审。A / B 保留作历史对照。",
+          title: 'C · 成员与项目索引',
+          text: '已选空间结构：左侧导航可拖动调宽、拖至左缘收起，也可用顶栏按钮开闭。内容区域在主聊、成员和项目之间切换。',
+          risk: '本轮只确认空间组织；视觉语言、组件细节和整体体验仍待评审。A / B 保留作历史对照。',
         },
       };
       function esc(x) {
-        return String(x ?? "").replace(
+        return String(x ?? '').replace(
           /[&<>"']/g,
-          (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
+          (c) =>
+            ({
+              '&': '&amp;',
+              '<': '&lt;',
+              '>': '&gt;',
+              '"': '&quot;',
+              "'": '&#39;',
+            })[c],
         );
       }
       function icon(n) {
@@ -2276,7 +2339,8 @@
           settings:
             '<path d="M5 7h14M5 17h14"/><circle cx="9" cy="7" r="2" fill="currentColor"/><circle cx="15" cy="17" r="2" fill="currentColor"/>',
           search: '<circle cx="10" cy="10" r="6"/><path d="m15 15 5 5"/>',
-          attach: '<path d="m8 12 6-6a3 3 0 0 1 4 4l-8 8a5 5 0 0 1-7-7l8-8m-3 9 6-6"/>',
+          attach:
+            '<path d="m8 12 6-6a3 3 0 0 1 4 4l-8 8a5 5 0 0 1-7-7l8-8m-3 9 6-6"/>',
           link: '<path d="M8 5H5v14h14v-3m-7-11h7v7m0-7L9 15"/>',
           file: '<path d="M7 3h7l4 4v14H7V3Zm7 0v5h4M10 12h5m-5 4h5"/>',
           archive:
@@ -2284,15 +2348,18 @@
           noema: '<path d="M5 18V9a5 5 0 0 1 10 0v9M9 18V9m10 9V6"/>',
         };
         return (
-          '<svg aria-hidden="true" viewBox="0 0 24 24">' + (paths[n] || paths.noema) + "</svg>"
+          '<svg aria-hidden="true" viewBox="0 0 24 24">' +
+          (paths[n] || paths.noema) +
+          '</svg>'
         );
       }
       function avatar(id) {
-        if (id === "core") return '<span class="portrait core">' + icon("noema") + "</span>";
+        if (id === 'core')
+          return '<span class="portrait core">' + icon('noema') + '</span>';
         const p = people[id];
-        return '<span class="portrait ' + p.class + '">' + p.mark + "</span>";
+        return '<span class="portrait ' + p.class + '">' + p.mark + '</span>';
       }
-      function button(action, content, cls = "", extra = "") {
+      function button(action, content, cls = '', extra = '') {
         return (
           '<button data-action="' +
           action +
@@ -2300,58 +2367,62 @@
           cls +
           '" ' +
           extra +
-          ">" +
+          '>' +
           content +
-          "</button>"
+          '</button>'
         );
       }
-      function message(who, html, time = "14:26", person = "") {
-        const name = who === "assistant" ? state.name : who === "user" ? "你" : who;
+      function message(who, html, time = '14:26', person = '') {
+        const name =
+          who === 'assistant' ? state.name : who === 'user' ? '你' : who;
         return (
           '<article class="message ' +
-          (who === "user" ? "user" : "assistant") +
+          (who === 'user' ? 'user' : 'assistant') +
           '">' +
-          (who === "user"
-            ? ""
+          (who === 'user'
+            ? ''
             : '<div class="byline"><strong>' +
               esc(name) +
-              "</strong><span>" +
+              '</strong><span>' +
               time +
-              "</span></div>") +
+              '</span></div>') +
           html +
           '<div class="message-actions">' +
-          button("copy-message", "复制") +
-          button("quote-message", "引用") +
-          "</div>" +
-          "</article>"
+          button('copy-message', '复制') +
+          button('quote-message', '引用') +
+          '</div>' +
+          '</article>'
         );
       }
       function roomScope() {
-        return ["member-main", "member-project"].includes(state.workspace)
-          ? (state.workspace === "member-main" ? "main-" : "project-") + state.member
-          : "core";
+        return ['member-main', 'member-project'].includes(state.workspace)
+          ? (state.workspace === 'member-main' ? 'main-' : 'project-') +
+              state.member
+          : 'core';
       }
-      function fileChips(files, scope = "") {
+      function fileChips(files, scope = '') {
         return files
           .map(
             (file, i) =>
               '<span class="attachment-chip' +
-              (file.problem ? " problem" : "") +
+              (file.problem ? ' problem' : '') +
               '">' +
-              (file.url ? '<img src="' + esc(file.url) + '" alt="">' : icon("file")) +
+              (file.url
+                ? '<img src="' + esc(file.url) + '" alt="">'
+                : icon('file')) +
               '<button type="button" class="file-open file-name" data-action="view-attachment" data-attachment="' +
-              esc(file.id || "") +
+              esc(file.id || '') +
               '" title="' +
               esc(file.name) +
               '">' +
               esc(file.name) +
-              (file.problem ? " · " + esc(file.problem) : "") +
-              "</button>" +
+              (file.problem ? ' · ' + esc(file.problem) : '') +
+              '</button>' +
               (scope
                 ? button(
-                    "remove-attachment",
-                    "×",
-                    "",
+                    'remove-attachment',
+                    '×',
+                    '',
                     'aria-label="移除附件 ' +
                       esc(file.name) +
                       '" data-scope="' +
@@ -2360,60 +2431,68 @@
                       i +
                       '"',
                   )
-                : "") +
-              "</span>",
+                : '') +
+              '</span>',
           )
-          .join("");
+          .join('');
       }
       function runtimeMessages(scope) {
         return conversations
           .room(scope)
           .messages.map((item) => {
-            if (item.html) return message(item.role, item.html, "刚刚");
-            const name = scope === "core" ? "assistant" : people[scope.split("-")[1]].name;
+            if (item.html) return message(item.role, item.html, '刚刚');
+            const name =
+              scope === 'core' ? 'assistant' : people[scope.split('-')[1]].name;
             const quote = item.quote
               ? '<blockquote class="message-quote">' +
                 esc(item.quote.author) +
-                "：" +
+                '：' +
                 esc(item.quote.text) +
-                "</blockquote>"
-              : "";
+                '</blockquote>'
+              : '';
             let body =
-              quote + (item.text ? "<p>" + esc(item.text).replace(/\n/g, "<br>") + "</p>" : "");
+              quote +
+              (item.text
+                ? '<p>' + esc(item.text).replace(/\n/g, '<br>') + '</p>'
+                : '');
             if (item.files?.length)
-              body += '<div class="composer-files">' + fileChips(item.files) + "</div>";
-            if (item.role === "assistant") {
-              if (item.status === "running" && !item.text)
-                body += '<p class="runtime-caption" role="status">正在整理回复…</p>';
+              body +=
+                '<div class="composer-files">' +
+                fileChips(item.files) +
+                '</div>';
+            if (item.role === 'assistant') {
+              if (item.status === 'running' && !item.text)
+                body +=
+                  '<p class="runtime-caption" role="status">正在整理回复…</p>';
               const status = {
-                running: "回复中",
-                complete: "演示回复完成",
-                stopped: "已停止 · 已生成内容保留",
-                failed: "连接中断 · 已生成内容保留",
+                running: '回复中',
+                complete: '演示回复完成',
+                stopped: '已停止 · 已生成内容保留',
+                failed: '连接中断 · 已生成内容保留',
               }[item.status];
               body +=
                 '<div class="runtime-caption">' +
                 status +
-                " · " +
+                ' · ' +
                 esc(item.packet.model) +
-                (["failed", "stopped"].includes(item.status)
+                (['failed', 'stopped'].includes(item.status)
                   ? button(
-                      "retry-reply",
-                      "重试本轮",
-                      "",
+                      'retry-reply',
+                      '重试本轮',
+                      '',
                       'data-scope="' +
                         scope +
                         '" data-reply="' +
                         item.id +
                         '" ' +
-                        (conversations.room(scope).active ? "disabled" : ""),
+                        (conversations.room(scope).active ? 'disabled' : ''),
                     )
-                  : "") +
-                "</div>";
+                  : '') +
+                '</div>';
             }
-            return message(item.role === "user" ? "user" : name, body, "刚刚");
+            return message(item.role === 'user' ? 'user' : name, body, '刚刚');
           })
-          .join("");
+          .join('');
       }
       function queueMarkup(scope) {
         const room = conversations.room(scope);
@@ -2421,142 +2500,176 @@
           (room.active
             ? '<div class="runtime-status" role="status"><span>正在回复 · ' +
               esc(room.active.reply.packet.model) +
-              "</span>" +
+              '</span>' +
               button(
-                "stop-reply",
-                "停止回复",
-                "",
-                'data-scope="' + scope + '" title="只停止这轮回复；不会回滚操作或停止其他项目"',
+                'stop-reply',
+                '停止回复',
+                '',
+                'data-scope="' +
+                  scope +
+                  '" title="只停止这轮回复；不会回滚操作或停止其他项目"',
               ) +
-              "</div>"
-            : "") +
+              '</div>'
+            : '') +
           (room.paused && room.queue.length
             ? '<div class="runtime-status"><span>队列已暂停 · ' +
               room.queue.length +
-              " 条未发送</span>" +
-              button("resume-queue", "继续队列", "", 'data-scope="' + scope + '"') +
-              "</div>"
-            : "") +
+              ' 条未发送</span>' +
+              button(
+                'resume-queue',
+                '继续队列',
+                '',
+                'data-scope="' + scope + '"',
+              ) +
+              '</div>'
+            : '') +
           (room.queue.length
             ? '<div class="queue-list" aria-label="当前对话的待发消息">' +
               room.queue
                 .map(
                   (packet) =>
                     '<div class="queue-row"><div class="queue-text">' +
-                    esc(packet.text || packet.files.map((f) => f.name).join("、")) +
+                    esc(
+                      packet.text || packet.files.map((f) => f.name).join('、'),
+                    ) +
                     '<small>尚未发送 · 只属于当前对话</small></div><div class="queue-actions">' +
                     button(
-                      "withdraw-queued",
-                      "撤回到输入框",
-                      "",
-                      'data-scope="' + scope + '" data-packet="' + packet.id + '"',
+                      'withdraw-queued',
+                      '撤回到输入框',
+                      '',
+                      'data-scope="' +
+                        scope +
+                        '" data-packet="' +
+                        packet.id +
+                        '"',
                     ) +
                     button(
-                      "prioritize-queued",
-                      room.active ? "停止并发送" : "现在发送",
-                      "",
-                      'data-scope="' + scope + '" data-packet="' + packet.id + '"',
+                      'prioritize-queued',
+                      room.active ? '停止并发送' : '现在发送',
+                      '',
+                      'data-scope="' +
+                        scope +
+                        '" data-packet="' +
+                        packet.id +
+                        '"',
                     ) +
-                    "</div></div>",
+                    '</div></div>',
                 )
-                .join("") +
-              "</div>"
-            : "")
+                .join('') +
+              '</div>'
+            : '')
         );
       }
       const workLabels = {
-        permission: "等待本次授权",
-        running: "应用工程师执行中",
-        failed: "工具连接中断",
-        stopped: "已停止",
-        denied: "已拒绝 · 未执行",
-        checking: "正在核对写入结果",
-        revoked: "授权已撤回",
-        complete: "执行完成",
+        permission: '等待本次授权',
+        running: '应用工程师执行中',
+        failed: '工具连接中断',
+        stopped: '已停止',
+        denied: '已拒绝 · 未执行',
+        checking: '正在核对写入结果',
+        revoked: '授权已撤回',
+        complete: '执行完成',
       };
       function workRequest(interactive = true) {
         const work = delegatedWork;
-        let actions = "";
-        if (interactive && work.status === "permission")
+        let actions = '';
+        if (interactive && work.status === 'permission')
           actions =
             button(
-              "work-allow-once",
-              "只允许本次",
-              "primary",
+              'work-allow-once',
+              '只允许本次',
+              'primary',
               'data-generation="' + work.generation + '"',
             ) +
             button(
-              "work-allow-project",
-              "允许此项目",
-              "secondary",
+              'work-allow-project',
+              '允许此项目',
+              'secondary',
               'data-generation="' + work.generation + '"',
             ) +
-            button("work-deny", "拒绝", "quiet", 'data-generation="' + work.generation + '"');
-        if (interactive && work.status === "running")
-          actions = button("work-stop", "停止这项执行", "secondary");
-        if (interactive && ["failed", "stopped"].includes(work.status) && work.grant)
+            button(
+              'work-deny',
+              '拒绝',
+              'quiet',
+              'data-generation="' + work.generation + '"',
+            );
+        if (interactive && work.status === 'running')
+          actions = button('work-stop', '停止这项执行', 'secondary');
+        if (
+          interactive &&
+          ['failed', 'stopped'].includes(work.status) &&
+          work.grant
+        )
           actions = button(
-            "work-resume",
-            work.uncertain ? "先核对执行结果" : "从未完成步骤继续",
-            "primary",
+            'work-resume',
+            work.uncertain ? '先核对执行结果' : '从未完成步骤继续',
+            'primary',
           );
-        if (interactive && ["denied", "revoked", "stopped"].includes(work.status) && !work.grant)
-          actions = button("work-reapply", "重新申请本次授权", "secondary");
+        if (
+          interactive &&
+          ['denied', 'revoked', 'stopped'].includes(work.status) &&
+          !work.grant
+        )
+          actions = button('work-reapply', '重新申请本次授权', 'secondary');
         return (
           '<section class="work-request" aria-label="修改计价单位说明"><h3>修改计价单位说明</h3><p role="status">' +
           workLabels[work.status] +
-          (work.uncertain ? " · 写入是否完成尚待核对" : "") +
-          "</p><dl><dt>执行者</dt><dd>应用工程师 / 原项目会话</dd><dt>范围</dt><dd>示例工作区 / AI 服务价格追踪器</dd><dt>将要操作</dt><dd>读取并修改本项目文件，核对显示结果；不含对外发布。</dd></dl>" +
-          (work.status === "permission"
+          (work.uncertain ? ' · 写入是否完成尚待核对' : '') +
+          '</p><dl><dt>执行者</dt><dd>应用工程师 / 原项目会话</dd><dt>范围</dt><dd>示例工作区 / AI 服务价格追踪器</dd><dt>将要操作</dt><dd>读取并修改本项目文件，核对显示结果；不含对外发布。</dd></dl>' +
+          (work.status === 'permission'
             ? '<p class="request-explanation">“只允许本次”限于这次修订；“允许此项目”仅记住这个示例项目，可在设置撤回。未选择前不会执行。</p>'
-            : "") +
-          (work.status === "failed" || work.status === "stopped"
+            : '') +
+          (work.status === 'failed' || work.status === 'stopped'
             ? '<p class="request-explanation">已完成的步骤保留。停止不代表撤销文件修改；写入结果不确定时，先核对再决定是否重试。</p>'
-            : "") +
+            : '') +
           '<div class="request-actions">' +
           actions +
-          "</div><details><summary>查看执行记录</summary><ol>" +
+          '</div><details><summary>查看执行记录</summary><ol>' +
           work.steps
             .map(
               (s) =>
-                "<li>" +
+                '<li>' +
                 esc(s.title) +
-                " — " +
-                { pending: "尚未完成", running: "进行中", complete: "已完成（演示）" }[s.state] +
-                "</li>",
+                ' — ' +
+                {
+                  pending: '尚未完成',
+                  running: '进行中',
+                  complete: '已完成（演示）',
+                }[s.state] +
+                '</li>',
             )
-            .join("") +
+            .join('') +
           '</ol><p class="request-explanation">执行和核对由页面外的演示事件推进，没有读写真实文件。</p></details></section>'
         );
       }
       function projectLink() {
         return button(
-          "open-project",
-          icon("project") +
+          'open-project',
+          icon('project') +
             '<span class="link-copy"><strong>AI 服务价格追踪器</strong><small>' +
             (state.archived
-              ? "已归档 · 随时可以续接"
-              : state.scene === "execution"
+              ? '已归档 · 随时可以续接'
+              : state.scene === 'execution'
                 ? workLabels[delegatedWork.status]
                 : state.reopened
-                  ? "已恢复 · 小修订进行中"
+                  ? '已恢复 · 小修订进行中'
                   : state.approved
-                    ? "已反馈 · 正在继续实现"
+                    ? '已反馈 · 正在继续实现'
                     : state.feedback
-                      ? "反馈已提交 · Noema 处理中"
-                      : state.projectStage === "forming"
-                        ? "团队已组建 · 研究与设计中"
-                        : "界面第一版 · 等待你评审") +
-            "</small></span>" +
-            icon("link"),
-          "project-link",
+                      ? '反馈已提交 · Noema 处理中'
+                      : state.projectStage === 'forming'
+                        ? '团队已组建 · 研究与设计中'
+                        : '界面第一版 · 等待你评审') +
+            '</small></span>' +
+            icon('link'),
+          'project-link',
         );
       }
       function personLink(id) {
         return button(
-          "member-main",
+          'member-main',
           esc(people[id].name),
-          "inline-person",
+          'inline-person',
           'data-member="' + id + '"',
         );
       }
@@ -2566,100 +2679,129 @@
           '<div class="review-context">价格追踪器 / 界面第一版</div>' +
           (state.feedback
             ? '<p class="review-answer"><strong>你的反馈</strong><br>' +
-              esc(state.feedback).replace(/\n/g, "<br>") +
+              esc(state.feedback).replace(/\n/g, '<br>') +
               '</p><div class="review-receipt">' +
-              (state.approved || state.archived ? "已反馈团队" : "Noema 已收到 · 正在处理") +
-              "</div>"
+              (state.approved || state.archived
+                ? '已反馈团队'
+                : 'Noema 已收到 · 正在处理') +
+              '</div>'
             : '<form data-form="review"><label for="review-feedback">这版的阅读顺序和整体界面符合你的预期吗？</label><textarea id="review-feedback" data-draft="review" rows="3" placeholder="可以说喜欢哪里、哪里要改，或还需要澄清什么…" required>' +
-              esc(state.drafts.review || "") +
+              esc(state.drafts.review || '') +
               '</textarea><div class="review-submit"><span>回复交给 Noema，由它向团队反馈。</span><button class="primary" type="submit">发送反馈</button></div></form>') +
-          "</section>"
+          '</section>'
         );
       }
       function transcript() {
         let t = '<div class="dayline">今天 · 10 月 23 日</div>';
-        if (state.scene === "daily")
+        if (state.scene === 'daily')
           t +=
-            message("assistant", "<p>上次说到想换工作，这几天有新的想法吗？</p>", "09:18") +
             message(
-              "user",
-              "<p>有一点。我发现不是不喜欢现在的工作，而是最近一直没有自己的时间。</p>",
+              'assistant',
+              '<p>上次说到想换工作，这几天有新的想法吗？</p>',
+              '09:18',
             ) +
             message(
-              "assistant",
-              "<p>听起来，你想改变的首先是工作占据生活的方式。最近哪一段时间最像是被工作拿走了？</p>",
-              "09:21",
+              'user',
+              '<p>有一点。我发现不是不喜欢现在的工作，而是最近一直没有自己的时间。</p>',
             ) +
-            message("user", "<p>下班后还在接着想项目，周末也在盯进度。</p>") +
             message(
-              "assistant",
-              "<p>那可以先从周末试起：项目继续推进，需要你判断时我再带着具体成果来找你。你不用守在窗口前。</p>",
-              "09:23",
+              'assistant',
+              '<p>听起来，你想改变的首先是工作占据生活的方式。最近哪一段时间最像是被工作拿走了？</p>',
+              '09:21',
+            ) +
+            message('user', '<p>下班后还在接着想项目，周末也在盯进度。</p>') +
+            message(
+              'assistant',
+              '<p>那可以先从周末试起：项目继续推进，需要你判断时我再带着具体成果来找你。你不用守在窗口前。</p>',
+              '09:23',
             );
-        if (state.scene === "news")
+        if (state.scene === 'news')
           t +=
-            message("user", "<p>帮我看看今天 AI 行业值得关注的新闻，别只罗列标题。</p>") +
             message(
-              "assistant",
-              "<p>我会请 " + personLink("research") + " 核对原始来源，再给你一份有重点的简报。</p>",
-              "10:04",
+              'user',
+              '<p>帮我看看今天 AI 行业值得关注的新闻，别只罗列标题。</p>',
             ) +
             message(
-              "assistant",
+              'assistant',
+              '<p>我会请 ' +
+                personLink('research') +
+                ' 核对原始来源，再给你一份有重点的简报。</p>',
+              '10:04',
+            ) +
+            message(
+              'assistant',
               '<p>简报回来了。我把它分成三类，方便你判断哪些值得继续看：</p><ol class="news-items"><li><strong>模型发布</strong> — 重点看能力与使用范围的实际变化。</li><li><strong>价格调整</strong> — 分清 API 单价和订阅价格。</li><li><strong>工具更新</strong> — 只保留会改变使用方式的部分。</li></ol><p>原始发布和事件时间放在来源说明里，你可以继续查看其中一项。</p><div class="source-line">' +
-                button("sources", "查看简报与来源") +
-                button("member-main", "与新闻观察者交流", "", 'data-member="research"') +
-                "</div>",
-              "10:16",
+                button('sources', '查看简报与来源') +
+                button(
+                  'member-main',
+                  '与新闻观察者交流',
+                  '',
+                  'data-member="research"',
+                ) +
+                '</div>',
+              '10:16',
             );
-        if (state.scene === "project")
+        if (state.scene === 'project')
           t +=
-            message("user", "<p>想做一个 AI 服务价格追踪工具，价格变了我能及时知道。</p>") +
             message(
-              "assistant",
-              "<p>先确认最影响方向的一点：你主要关心产品订阅，还是 API 的使用价格？</p>",
-              "11:02",
+              'user',
+              '<p>想做一个 AI 服务价格追踪工具，价格变了我能及时知道。</p>',
             ) +
-            message("user", "<p>先做 API，给自己用。价格和单位要看得明白，也能回看变化。</p>") +
             message(
-              "assistant",
-              "<p>我会先组织来源研究、界面设计和应用实现。团队会先把比较口径理清，再做第一版给你看。</p>" +
+              'assistant',
+              '<p>先确认最影响方向的一点：你主要关心产品订阅，还是 API 的使用价格？</p>',
+              '11:02',
+            ) +
+            message(
+              'user',
+              '<p>先做 API，给自己用。价格和单位要看得明白，也能回看变化。</p>',
+            ) +
+            message(
+              'assistant',
+              '<p>我会先组织来源研究、界面设计和应用实现。团队会先把比较口径理清，再做第一版给你看。</p>' +
                 projectLink() +
                 '<div class="source-line">已建立项目空间 · 3 位执行成员</div>',
-              "11:06",
+              '11:06',
             );
-        if (state.scene === "review")
+        if (state.scene === 'review')
           t +=
-            message("user", "<p>我发现周末也一直在盯项目，想把这件事改掉。</p>") +
             message(
-              "assistant",
-              "<p>可以先把“随时检查进度”放下。项目需要你判断时，我会把问题和成果一起带回来。</p>",
-              "14:20",
+              'user',
+              '<p>我发现周末也一直在盯项目，想把这件事改掉。</p>',
             ) +
             message(
-              "assistant",
-              "<p>价格追踪器的第一版界面已经做好。来源口径也核对过了，现在需要你看的是：信息是否顺眼、价格变化是否一眼看得明白。</p><p>相关开发已暂停，等你明确反馈。</p>" +
+              'assistant',
+              '<p>可以先把“随时检查进度”放下。项目需要你判断时，我会把问题和成果一起带回来。</p>',
+              '14:20',
+            ) +
+            message(
+              'assistant',
+              '<p>价格追踪器的第一版界面已经做好。来源口径也核对过了，现在需要你看的是：信息是否顺眼、价格变化是否一眼看得明白。</p><p>相关开发已暂停，等你明确反馈。</p>' +
                 projectLink() +
                 reviewRequest(),
-              "14:26",
+              '14:26',
             );
-        if (state.scene === "archive")
+        if (state.scene === 'archive')
           t += message(
-            "assistant",
-            "<p>价格追踪器已经交付，成员也完成了本次复盘。项目已自动归档，原来的成员、讨论和工作会话都保留着。</p>" +
+            'assistant',
+            '<p>价格追踪器已经交付，成员也完成了本次复盘。项目已自动归档，原来的成员、讨论和工作会话都保留着。</p>' +
               projectLink(),
-            "昨天 18:40",
+            '昨天 18:40',
           );
-        if (state.scene === "execution")
+        if (state.scene === 'execution')
           t +=
-            message("user", "<p>把价格追踪器的计价单位说明补充清楚，再核对一下。</p>", "15:10") +
             message(
-              "assistant",
-              "<p>我会让原项目的应用工程师处理。它需要访问对应工作区，授权和后续进度都留在这条请求下。</p>" +
+              'user',
+              '<p>把价格追踪器的计价单位说明补充清楚，再核对一下。</p>',
+              '15:10',
+            ) +
+            message(
+              'assistant',
+              '<p>我会让原项目的应用工程师处理。它需要访问对应工作区，授权和后续进度都留在这条请求下。</p>' +
                 workRequest(),
-              "15:11",
+              '15:11',
             );
-        t += runtimeMessages("core");
+        t += runtimeMessages('core');
         return t;
       }
       function composer(scope, placeholder) {
@@ -2667,7 +2809,8 @@
           files = state.attachments[scope] || [],
           quote = state.quotes[scope];
         const invalid = files.some((f) => f.problem);
-        const canSend = !invalid && !!((state.drafts[scope] || "").trim() || files.length);
+        const canSend =
+          !invalid && !!((state.drafts[scope] || '').trim() || files.length);
         return (
           '<form class="composer" data-form="chat" data-scope="' +
           scope +
@@ -2676,21 +2819,33 @@
           (quote
             ? '<div class="draft-quote"><span>引用 ' +
               esc(quote.author) +
-              "：" +
+              '：' +
               esc(quote.text) +
-              "</span>" +
-              button("clear-quote", "×", "", 'aria-label="取消引用" data-scope="' + scope + '"') +
-              "</div>"
-            : "") +
+              '</span>' +
+              button(
+                'clear-quote',
+                '×',
+                '',
+                'aria-label="取消引用" data-scope="' + scope + '"',
+              ) +
+              '</div>'
+            : '') +
           (files.length
-            ? '<div class="composer-files">' + fileChips(files, scope) + "</div>"
-            : "") +
+            ? '<div class="composer-files">' +
+              fileChips(files, scope) +
+              '</div>'
+            : '') +
           (state.composerErrors[scope]
             ? '<div class="composer-error" role="alert">' +
               esc(state.composerErrors[scope]) +
-              button("clear-composer-error", "关闭", "", 'data-scope="' + scope + '"') +
-              "</div>"
-            : "") +
+              button(
+                'clear-composer-error',
+                '关闭',
+                '',
+                'data-scope="' + scope + '"',
+              ) +
+              '</div>'
+            : '') +
           '<div class="composer-field"><textarea rows="2" aria-label="' +
           esc(placeholder) +
           '" placeholder="' +
@@ -2698,29 +2853,29 @@
           '" data-draft="' +
           scope +
           '">' +
-          esc(state.drafts[scope] || "") +
+          esc(state.drafts[scope] || '') +
           '</textarea><input type="file" hidden multiple accept=".txt,.md,.csv,.pdf,.png,.jpg,.jpeg,.webp" data-file-scope="' +
           scope +
           '">' +
           button(
-            "pick-attachments",
-            icon("attach"),
-            "icon-button attach-button",
+            'pick-attachments',
+            icon('attach'),
+            'icon-button attach-button',
             'type="button" aria-label="添加附件" data-scope="' +
               scope +
               '" title="图片、文本、CSV 或 PDF，每条最多 5 个，单个 10 MB；仅本地预览"',
           ) +
           '<button class="send" type="submit" aria-label="' +
-          (room.active || room.paused ? "加入发送队列" : "发送消息") +
+          (room.active || room.paused ? '加入发送队列' : '发送消息') +
           '" ' +
-          (canSend ? "" : "disabled") +
-          ">" +
-          icon("send") +
+          (canSend ? '' : 'disabled') +
+          '>' +
+          icon('send') +
           '</button></div><div class="composer-hint"><span>' +
-          "Enter 发送 · Shift + Enter 换行" +
-          "</span><span>" +
+          'Enter 发送 · Shift + Enter 换行' +
+          '</span><span>' +
           esc(modelLabel()) +
-          " · 演示</span></div></div></form>"
+          ' · 演示</span></div></div></form>'
         );
       }
       function chatPane() {
@@ -2728,174 +2883,182 @@
           '<section class="chat" aria-label="与' +
           esc(state.name) +
           '的主对话"><header class="pane-head"><div class="identity">' +
-          avatar("core") +
+          avatar('core') +
           '<div class="chat-header-title"><strong>' +
           esc(state.name) +
           '</strong><small>与你的持续对话</small></div></div><div class="pane-actions">' +
-          (state.layout !== "c"
+          (state.layout !== 'c'
             ? button(
-                "directory",
-                icon("people"),
-                "icon-button wide-action",
+                'directory',
+                icon('people'),
+                'icon-button wide-action',
                 'aria-label="打开成员和项目"',
               )
-            : "") +
+            : '') +
           button(
-            "find-messages",
-            icon("search"),
-            "icon-button",
+            'find-messages',
+            icon('search'),
+            'icon-button',
             'aria-label="查找当前对话" title="查找当前对话"',
           ) +
           '</div></header><div class="chat-scroll"><div class="chat-body">' +
           transcript() +
-          "</div></div>" +
+          '</div></div>' +
           '<button class="jump-latest" data-action="jump-latest" hidden>回到最新消息 ↓</button>' +
-          composer("core", "和" + state.name + "说点什么…") +
-          "</section>"
+          composer('core', '和' + state.name + '说点什么…') +
+          '</section>'
         );
       }
       function indexMarkup() {
         return (
           '<label class="index-search">' +
-          icon("search") +
+          icon('search') +
           '<input type="search" aria-label="搜索成员或项目" placeholder="搜索成员或项目" value="' +
           esc(state.indexQuery) +
           '"></label><div class="index-empty" hidden>没有匹配的成员或项目</div><div class="section-title">与你对话</div>' +
           button(
-            "home",
-            avatar("core") +
+            'home',
+            avatar('core') +
               '<span><span class="item-title">' +
               esc(state.name) +
-              "</span><small>你的个人伙伴</small></span>",
-            "index-item " + (!state.workspace ? "selected" : ""),
+              '</span><small>你的个人伙伴</small></span>',
+            'index-item ' + (!state.workspace ? 'selected' : ''),
           ) +
           '<div class="section-title">成员 <span>3</span></div>' +
           Object.entries(people)
             .map(([id, p]) =>
               button(
-                "member-main",
+                'member-main',
                 avatar(id) +
                   '<span><span class="item-title">' +
                   p.name +
-                  "</span><small>" +
+                  '</span><small>' +
                   p.role +
-                  "</small></span>",
-                "index-item " +
-                  (state.workspace === "member-main" && state.member === id ? "selected" : ""),
+                  '</small></span>',
+                'index-item ' +
+                  (state.workspace === 'member-main' && state.member === id
+                    ? 'selected'
+                    : ''),
                 'data-member="' + id + '"',
               ),
             )
-            .join("") +
+            .join('') +
           '<div class="section-title">项目 <span>' +
-          (state.archived ? "0" : "1") +
-          "</span></div>" +
+          (state.archived ? '0' : '1') +
+          '</span></div>' +
           (!state.archived
             ? button(
-                "open-project",
+                'open-project',
                 '<span class="project-icon">' +
-                  icon("project") +
+                  icon('project') +
                   '</span><span><span class="item-title">价格追踪器</span><small>' +
-                  (state.scene === "execution"
+                  (state.scene === 'execution'
                     ? workLabels[delegatedWork.status]
                     : state.reopened
-                      ? "小修订进行中"
+                      ? '小修订进行中'
                       : state.approved
-                        ? "按反馈调整中"
+                        ? '按反馈调整中'
                         : state.feedback
-                          ? "Noema 处理反馈中"
-                          : state.projectStage === "forming"
-                            ? "研究与设计中"
-                            : "等待你的评审") +
-                  "</small></span>",
-                "index-item " + (state.workspace === "project" ? "selected" : ""),
+                          ? 'Noema 处理反馈中'
+                          : state.projectStage === 'forming'
+                            ? '研究与设计中'
+                            : '等待你的评审') +
+                  '</small></span>',
+                'index-item ' +
+                  (state.workspace === 'project' ? 'selected' : ''),
               )
             : '<div class="bottom-link">当前没有活跃项目</div>') +
           button(
-            "archives",
-            icon("archive") + " <span>已归档项目 · " + (state.archived ? "1" : "0") + "</span>",
-            "bottom-link",
+            'archives',
+            icon('archive') +
+              ' <span>已归档项目 · ' +
+              (state.archived ? '1' : '0') +
+              '</span>',
+            'bottom-link',
           ) +
           '<div class="section-title">个人</div>' +
-          button("settings", "伙伴设置", "bottom-link")
+          button('settings', '伙伴设置', 'bottom-link')
         );
       }
-      function workHead(title, subtitle, extra = "") {
+      function workHead(title, subtitle, extra = '') {
         return (
           '<header class="work-head"><div class="work-title">' +
           button(
-            "workspace-back",
-            icon("back"),
-            "icon-button",
+            'workspace-back',
+            icon('back'),
+            'icon-button',
             'aria-label="' +
-              (state.workspace === "profile"
-                ? "返回成员会话"
-                : state.workspace === "member-project"
-                  ? "返回项目成员"
-                  : "返回Noema主聊") +
+              (state.workspace === 'profile'
+                ? '返回成员会话'
+                : state.workspace === 'member-project'
+                  ? '返回项目成员'
+                  : '返回Noema主聊') +
               '"',
           ) +
-          "<div><strong>" +
+          '<div><strong>' +
           esc(title) +
-          "</strong><small>" +
+          '</strong><small>' +
           esc(subtitle) +
           '</small></div></div><div class="pane-actions">' +
           extra +
-          "</div></header>"
+          '</div></header>'
         );
       }
       function preview() {
         return '<section class="artifact" aria-label="待评审的界面成果"><div class="artifact-chrome"><span>界面第一版 / 预览</span><span>演示成果</span></div><div class="artifact-preview"><div class="preview-title">AI API 价格追踪 <small>个人项目</small></div><p class="preview-subtitle">关注价格的变化，也看见变化发生在什么时候。</p><div class="preview-topline"><strong>关注的模型</strong><span>变化记录</span><span>来源</span></div><table class="price-table"><thead><tr><th>模型</th><th>计价单位</th><th>输入 / 输出</th><th>最近变化</th></tr></thead><tbody><tr><td>示例模型 Alpha</td><td>每百万 token</td><td>$1.20 / $4.80</td><td class="change">输入 ↓ 20%</td></tr><tr><td>示例模型 Beta</td><td>每百万 token</td><td>$2.00 / $8.00</td><td>没有变化</td></tr></tbody></table><div class="artifact-foot">所有供应商、价格与变化均为界面演示数据。</div></div></section>';
       }
       function delivery() {
-        if (state.projectStage === "forming")
+        if (state.projectStage === 'forming')
           return '<h2>研究与设计进行中</h2><p class="lead">团队正在核对计价口径并准备界面方案。成果尚未交付，需要评审时 Noema 会在对话里带回具体问题。</p>';
         if (state.archived)
           return (
             '<div class="archive-empty"><div class="project-stage">' +
-            icon("archive") +
+            icon('archive') +
             ' 已归档</div><h2>项目已收起，工作仍然保留。</h2><p>成员、项目会话与交付记录都在。恢复后可以从上次的工作继续，无须创建新的项目群。</p><div class="archive-date">上次交付：价格追踪器第一版</div><div class="archive-actions">' +
-            button("reopen-project", "恢复项目", "primary") +
-            button("group-tab", "查看原来的讨论", "secondary") +
-            "</div></div>"
+            button('reopen-project', '恢复项目', 'primary') +
+            button('group-tab', '查看原来的讨论', 'secondary') +
+            '</div></div>'
           );
         const active = state.approved || state.reopened;
         return (
           '<div class="project-stage"><span class="state-mark ' +
-          (active ? "running" : "") +
+          (active ? 'running' : '') +
           '"></span>' +
           (state.reopened
-            ? "小修订 · 应用工程师处理中"
+            ? '小修订 · 应用工程师处理中'
             : state.approved
-              ? "已收到反馈 · 正在继续实现"
+              ? '已收到反馈 · 正在继续实现'
               : state.feedback
-                ? "反馈已提交 · Noema 处理中"
-                : "界面评审 · 等待你的反馈") +
-          "</div><h2>" +
+                ? '反馈已提交 · Noema 处理中'
+                : '界面评审 · 等待你的反馈') +
+          '</div><h2>' +
           (state.reopened
-            ? "修订价格单位说明"
+            ? '修订价格单位说明'
             : state.approved
-              ? "正在按你的反馈调整"
+              ? '正在按你的反馈调整'
               : state.feedback
-                ? "反馈已交给 Noema"
-                : "界面第一版") +
+                ? '反馈已交给 Noema'
+                : '界面第一版') +
           '</h2><p class="lead">' +
           (state.reopened
-            ? "沿用原项目、成员和工作会话。这次只修改一处说明，不重新组队。"
+            ? '沿用原项目、成员和工作会话。这次只修改一处说明，不重新组队。'
             : state.approved
-              ? "反馈已回到界面设计师的项目会话；结果仍会由 Noema 带回主聊。"
+              ? '反馈已回到界面设计师的项目会话；结果仍会由 Noema 带回主聊。'
               : state.feedback
-                ? "Noema 正在梳理反馈，向团队确认下一步之前，相关开发保持暂停。"
-                : "本轮完成价格比较与变化记录的第一版。需要你判断阅读顺序和整体视觉。") +
-          "</p>" +
+                ? 'Noema 正在梳理反馈，向团队确认下一步之前，相关开发保持暂停。'
+                : '本轮完成价格比较与变化记录的第一版。需要你判断阅读顺序和整体视觉。') +
+          '</p>' +
           preview() +
           '<div class="file-row">' +
-          icon("file") +
+          icon('file') +
           '<span class="file-main">第一版界面<small>界面设计师交付 · 可查看原始工作会话</small></span>' +
-          button("member-project", "查看会话", "", 'data-member="designer"') +
-          "</div>" +
+          button('member-project', '查看会话', '', 'data-member="designer"') +
+          '</div>' +
           (state.approved
-            ? '<div class="welcome-note">' + esc(state.notice || "反馈已收到。") + "</div>"
-            : "")
+            ? '<div class="welcome-note">' +
+              esc(state.notice || '反馈已收到。') +
+              '</div>'
+            : '')
         );
       }
       function groupMsg(id, name, body, time) {
@@ -2904,81 +3067,83 @@
           avatar(id) +
           '<div class="msg-text"><header><strong>' +
           esc(name) +
-          "</strong><span>" +
+          '</strong><span>' +
           time +
-          "</span></header>" +
+          '</span></header>' +
           body +
-          "</div></article>"
+          '</div></article>'
         );
       }
       function discussion() {
         return (
           '<div class="discussion"><p class="lead">共同讨论与项目决定在这里；成员的完整执行过程在各自的工作会话中。</p>' +
-          (state.projectStage === "forming"
+          (state.projectStage === 'forming'
             ? groupMsg(
-                "core",
+                'core',
                 state.name,
-                "<p>先由新闻观察者核对来源和计价单位。口径确认后，界面设计师出方案，应用工程师跟进实现。</p>",
-                "11:10",
+                '<p>先由新闻观察者核对来源和计价单位。口径确认后，界面设计师出方案，应用工程师跟进实现。</p>',
+                '11:10',
               ) +
               groupMsg(
-                "research",
+                'research',
                 people.research.name,
-                "<p>开始核对官方定价来源，有影响比较口径的差异会在这里说明。</p>",
-                "11:12",
+                '<p>开始核对官方定价来源，有影响比较口径的差异会在这里说明。</p>',
+                '11:12',
               )
             : groupMsg(
-                "research",
+                'research',
                 people.research.name,
-                "<p>官方来源和计价单位已经核对。<mark>@应用工程师</mark> 数据表里保留原币种和生效日期，便于后续回查。</p>",
-                "13:10",
+                '<p>官方来源和计价单位已经核对。<mark>@应用工程师</mark> 数据表里保留原币种和生效日期，便于后续回查。</p>',
+                '13:10',
               ) +
               groupMsg(
-                "engineer",
+                'engineer',
                 people.engineer.name,
-                "<p>收到。单位字段已拆开，不把不同计价口径直接混排。</p>",
-                "13:18",
+                '<p>收到。单位字段已拆开，不把不同计价口径直接混排。</p>',
+                '13:18',
               ) +
               groupMsg(
-                "designer",
+                'designer',
                 people.designer.name,
-                "<p><mark>@Noema</mark> 第一版界面已交付。视觉和阅读顺序需要用户确认，可以进入评审。</p>",
-                "14:25",
+                '<p><mark>@Noema</mark> 第一版界面已交付。视觉和阅读顺序需要用户确认，可以进入评审。</p>',
+                '14:25',
               ) +
               groupMsg(
-                "core",
+                'core',
                 state.name,
-                "<p><mark>@所有人</mark> 当前先等待界面评审，相关开发暂停。已有资料保留，收到用户反馈后继续。</p>",
-                "14:26",
+                '<p><mark>@所有人</mark> 当前先等待界面评审，相关开发暂停。已有资料保留，收到用户反馈后继续。</p>',
+                '14:26',
               )) +
           (state.approved
             ? groupMsg(
-                "core",
+                'core',
                 state.name,
-                "<p><mark>@界面设计师</mark> 用户反馈：" +
+                '<p><mark>@界面设计师</mark> 用户反馈：' +
                   esc(state.feedback) +
-                  "</p><p>先调整界面方案，再由应用工程师跟进实现；完成后向我提交结果。</p>",
-                "刚刚",
+                  '</p><p>先调整界面方案，再由应用工程师跟进实现；完成后向我提交结果。</p>',
+                '刚刚',
               )
-            : "") +
+            : '') +
           (state.archived
             ? groupMsg(
-                "core",
+                'core',
                 state.name,
-                "<p>交付与必要的成长流程已完成，项目归档。成员与会话保留，后续可续接。</p>",
-                "昨天 18:40",
+                '<p>交付与必要的成长流程已完成，项目归档。成员与会话保留，后续可续接。</p>',
+                '昨天 18:40',
               )
-            : "") +
+            : '') +
           '<div class="note-row">@ 消息对所有成员公开；被提及者优先收到，其他成员按未读查阅。</div>' +
           (state.reopened
             ? groupMsg(
-                "core",
+                'core',
                 state.name,
-                "<p>项目恢复。本轮仅修订价格单位说明，由应用工程师继续；其余成员无需重新工作。</p>",
-                "刚刚",
+                '<p>项目恢复。本轮仅修订价格单位说明，由应用工程师继续；其余成员无需重新工作。</p>',
+                '刚刚',
               )
-            : "") +
-          state.groupExtra.map((x) => groupMsg("core", "你", x, "刚刚")).join("") +
+            : '') +
+          state.groupExtra
+            .map((x) => groupMsg('core', '你', x, '刚刚'))
+            .join('') +
           '<form class="group-form" data-form="group"><input aria-label="在项目群中发消息" placeholder="在项目群中发消息，或 @某位成员"><button class="primary" type="submit">发送</button></form></div>'
         );
       }
@@ -2988,327 +3153,364 @@
           Object.entries(people)
             .map(([id, p]) =>
               button(
-                "member-project",
+                'member-project',
                 avatar(id) +
                   '<span class="member-name"><strong>' +
                   p.name +
-                  "</strong><small>" +
+                  '</strong><small>' +
                   p.role +
                   '</small></span><span class="status">' +
                   (state.reopened
-                    ? id === "engineer"
-                      ? "正在修订说明"
-                      : "本轮未唤起"
+                    ? id === 'engineer'
+                      ? '正在修订说明'
+                      : '本轮未唤起'
                     : state.approved
-                      ? id === "designer"
-                        ? "按反馈调整中"
-                        : id === "engineer"
-                          ? "等待设计调整"
-                          : "本轮无新增工作"
+                      ? id === 'designer'
+                        ? '按反馈调整中'
+                        : id === 'engineer'
+                          ? '等待设计调整'
+                          : '本轮无新增工作'
                       : state.archived
-                        ? "本轮已完成"
-                        : state.projectStage === "forming"
-                          ? id === "research"
-                            ? "核对来源中"
-                            : id === "designer"
-                              ? "等待研究口径"
-                              : "等待方案"
+                        ? '本轮已完成'
+                        : state.projectStage === 'forming'
+                          ? id === 'research'
+                            ? '核对来源中'
+                            : id === 'designer'
+                              ? '等待研究口径'
+                              : '等待方案'
                           : state.feedback
-                            ? "等待 Noema 反馈"
+                            ? '等待 Noema 反馈'
                             : p.status) +
-                  "</span>" +
-                  icon("arrow"),
-                "member-row",
+                  '</span>' +
+                  icon('arrow'),
+                'member-row',
                 'data-member="' + id + '"',
               ),
             )
-            .join("") +
+            .join('') +
           '</div><div class="project-summary"><section><h3>项目中的交流</h3><p>打开成员即可查看它在此项目中的工作，定向交接不会进入它的日常私聊。</p></section><section><h3>持续存在的成员</h3><p>常驻身份、个人工作区和已沉淀能力属于成员自己。项目结束不会销毁成员。</p></section></div>'
         );
       }
       function projectPane() {
         return (
           workHead(
-            "AI 服务价格追踪器",
+            'AI 服务价格追踪器',
             state.archived
-              ? "已归档项目"
-              : state.scene === "execution"
-                ? "项目空间 · " + workLabels[delegatedWork.status]
-                : "项目空间 · " +
+              ? '已归档项目'
+              : state.scene === 'execution'
+                ? '项目空间 · ' + workLabels[delegatedWork.status]
+                : '项目空间 · ' +
                   (state.reopened
-                    ? "小修订进行中"
+                    ? '小修订进行中'
                     : state.approved
-                      ? "继续实现中"
+                      ? '继续实现中'
                       : state.feedback
-                        ? "Noema 处理反馈中"
-                        : state.projectStage === "forming"
-                          ? "研究与设计中"
-                          : "等待界面评审"),
+                        ? 'Noema 处理反馈中'
+                        : state.projectStage === 'forming'
+                          ? '研究与设计中'
+                          : '等待界面评审'),
           ) +
           '<nav class="work-tabs" aria-label="项目视图">' +
-          ["delivery", "group", "members"]
+          ['delivery', 'group', 'members']
             .map((tab, i) =>
               button(
-                "tab",
-                ["交付", "共同讨论", "成员 · 3"][i],
-                state.tab === tab ? "active" : "",
-                'data-tab="' + tab + '" aria-pressed="' + (state.tab === tab) + '"',
+                'tab',
+                ['交付', '共同讨论', '成员 · 3'][i],
+                state.tab === tab ? 'active' : '',
+                'data-tab="' +
+                  tab +
+                  '" aria-pressed="' +
+                  (state.tab === tab) +
+                  '"',
               ),
             )
-            .join("") +
+            .join('') +
           '</nav><div class="work-content">' +
-          (state.tab === "delivery"
-            ? state.scene === "execution"
-              ? workRequest(false) + button("locate-work", "回到 Noema 的授权与进度", "quiet")
+          (state.tab === 'delivery'
+            ? state.scene === 'execution'
+              ? workRequest(false) +
+                button('locate-work', '回到 Noema 的授权与进度', 'quiet')
               : delivery()
-            : state.tab === "group"
+            : state.tab === 'group'
               ? discussion()
               : members()) +
-          "</div>" +
+          '</div>' +
           (!state.archived &&
           !state.approved &&
           !state.reopened &&
-          state.projectStage === "review" &&
-          state.scene !== "execution"
+          state.projectStage === 'review' &&
+          state.scene !== 'execution'
             ? '<div class="review-dock"><div>' +
-              (state.feedback ? "Noema 正在处理反馈" : "Noema 正在等你的评审") +
+              (state.feedback ? 'Noema 正在处理反馈' : 'Noema 正在等你的评审') +
               '<small>请求保留在与 Noema 的对话中</small></div><div class="dock-actions">' +
               button(
-                "locate-review",
-                (state.feedback ? "查看已提交反馈 " : "回到评审请求 ") + icon("arrow"),
-                "review-jump",
+                'locate-review',
+                (state.feedback ? '查看已提交反馈 ' : '回到评审请求 ') +
+                  icon('arrow'),
+                'review-jump',
               ) +
-              "</div></div>"
-            : "")
+              '</div></div>'
+            : '')
         );
       }
       function profile() {
         const p = people[state.member];
         return (
-          workHead(p.name, "成员资料") +
+          workHead(p.name, '成员资料') +
           '<div class="work-content"><div class="profile-hero">' +
           avatar(state.member) +
-          "<div><h2>" +
+          '<div><h2>' +
           p.name +
-          "</h2><p>" +
+          '</h2><p>' +
           p.role +
           '</p></div></div><div class="profile-detail"><p>' +
           p.description +
           '</p><div class="profile-links">' +
-          button("member-main", "打开常驻私聊", "primary", 'data-member="' + state.member + '"') +
           button(
-            "member-project",
-            "项目中的工作会话",
-            "secondary",
+            'member-main',
+            '打开常驻私聊',
+            'primary',
+            'data-member="' + state.member + '"',
+          ) +
+          button(
+            'member-project',
+            '项目中的工作会话',
+            'secondary',
             'data-member="' + state.member + '"',
           ) +
           '</div><h3>参与过的工作</h3><div class="history-item"><strong>AI 服务价格追踪器</strong><small>本次职责：' +
-          (state.member === "research"
-            ? "官方来源研究与价格口径核对"
-            : state.member === "designer"
-              ? "界面方案与交付评审"
-              : "应用实现与结果验证") +
+          (state.member === 'research'
+            ? '官方来源研究与价格口径核对'
+            : state.member === 'designer'
+              ? '界面方案与交付评审'
+              : '应用实现与结果验证') +
           '</small></div><div class="history-item"><strong>' +
-          (state.member === "research" ? "日常 AI 资讯整理" : "初次加入团队") +
+          (state.member === 'research' ? '日常 AI 资讯整理' : '初次加入团队') +
           '</strong><small>经历提供依据，不代表自动获得新的专业能力。</small></div><h3>自己的能力与工作方式</h3><div class="asset-row"><span>可复用方法</span><strong>' +
-          (state.member === "research"
-            ? "原始来源核对"
-            : state.member === "designer"
-              ? "界面阅读顺序检查"
-              : "可运行结果验证") +
+          (state.member === 'research'
+            ? '原始来源核对'
+            : state.member === 'designer'
+              ? '界面阅读顺序检查'
+              : '可运行结果验证') +
           '</strong></div><div class="asset-row"><span>长期定位</span><span>可以依据真实经历重新审视</span></div><details><summary>查看本次成长候选（演示）</summary><p style="margin-top:12px">' +
-          (state.member === "research"
-            ? "这次工作不只涉及新闻，还涉及跨来源的信息研究。成员提出将职责描述从“新闻观察”扩展为“资料研究与来源核对”，并说明了本次交付作为依据。"
-            : "成员可以提出对自身技能、工作方法或定位的修订；并不要求每个项目都必须产生变化。") +
-          "</p><p>由成员自己提出和修改；Noema 评议并汇总必要的用户判断。</p></details></div></div>"
+          (state.member === 'research'
+            ? '这次工作不只涉及新闻，还涉及跨来源的信息研究。成员提出将职责描述从“新闻观察”扩展为“资料研究与来源核对”，并说明了本次交付作为依据。'
+            : '成员可以提出对自身技能、工作方法或定位的修订；并不要求每个项目都必须产生变化。') +
+          '</p><p>由成员自己提出和修改；Noema 评议并汇总必要的用户判断。</p></details></div></div>'
         );
       }
       function memberSession() {
         const p = people[state.member],
-          project = state.workspace === "member-project",
-          scope = (project ? "project-" : "main-") + state.member;
+          project = state.workspace === 'member-project',
+          scope = (project ? 'project-' : 'main-') + state.member;
         let body =
           '<div class="session-label">' +
-          (project ? "价格追踪器 / 此成员的项目工作会话" : "日常私聊 / 与项目工作会话分开") +
-          "</div>";
-        if (project && state.projectStage === "forming")
+          (project
+            ? '价格追踪器 / 此成员的项目工作会话'
+            : '日常私聊 / 与项目工作会话分开') +
+          '</div>';
+        if (project && state.projectStage === 'forming')
           body +=
             message(
-              "Noema",
-              "<p>" +
-                (state.member === "research"
-                  ? "请先核对官方定价来源和计价单位，说明可比较的口径。"
-                  : "请先等待研究口径，资料确认后继续本项目的" +
-                    (state.member === "designer" ? "界面方案。" : "应用实现。")) +
-                "</p>",
-              "11:10",
+              'Noema',
+              '<p>' +
+                (state.member === 'research'
+                  ? '请先核对官方定价来源和计价单位，说明可比较的口径。'
+                  : '请先等待研究口径，资料确认后继续本项目的' +
+                    (state.member === 'designer'
+                      ? '界面方案。'
+                      : '应用实现。')) +
+                '</p>',
+              '11:10',
             ) +
             message(
               p.name,
-              "<p>" +
-                (state.member === "research"
-                  ? "正在核对官方来源，尚未完成。"
-                  : "收到，先查看项目目标和职责，等待研究口径。") +
-                "</p>",
-              "11:12",
+              '<p>' +
+                (state.member === 'research'
+                  ? '正在核对官方来源，尚未完成。'
+                  : '收到，先查看项目目标和职责，等待研究口径。') +
+                '</p>',
+              '11:12',
             );
         else if (project)
           body +=
             message(
-              "Noema",
-              "<p>" +
-                (state.member === "research"
-                  ? "请核对官方定价来源，明确计价单位和生效日期，向我汇报关键差异。"
-                  : state.member === "designer"
-                    ? "请完成可供用户评审的第一版界面，说明取舍，交付后等待判断。"
-                    : "请按已确认的口径实现价格记录，保留来源与时间，并验证可运行结果。") +
-                "</p>",
-              "11:10",
+              'Noema',
+              '<p>' +
+                (state.member === 'research'
+                  ? '请核对官方定价来源，明确计价单位和生效日期，向我汇报关键差异。'
+                  : state.member === 'designer'
+                    ? '请完成可供用户评审的第一版界面，说明取舍，交付后等待判断。'
+                    : '请按已确认的口径实现价格记录，保留来源与时间，并验证可运行结果。') +
+                '</p>',
+              '11:10',
             ) +
             message(
               p.name,
-              "<p>" +
-                (state.member === "research"
-                  ? "已核对来源。不同提供方的价格口径不能直接放在同一列，我会保留原始单位再做归一化显示。"
-                  : state.member === "designer"
-                    ? "第一版以价格变化为首要阅读入口，完整价格作为下一层信息。已交付界面，等待用户评审。"
-                    : "数据记录和来源关联已经完成。界面评审通过后再继续相应调整。") +
-                "</p>",
-              "14:20",
+              '<p>' +
+                (state.member === 'research'
+                  ? '已核对来源。不同提供方的价格口径不能直接放在同一列，我会保留原始单位再做归一化显示。'
+                  : state.member === 'designer'
+                    ? '第一版以价格变化为首要阅读入口，完整价格作为下一层信息。已交付界面，等待用户评审。'
+                    : '数据记录和来源关联已经完成。界面评审通过后再继续相应调整。') +
+                '</p>',
+              '14:20',
             ) +
             '<details class="tool-record"><summary>查看执行记录 · 演示</summary><p>读取项目资料 → 处理本职工作 → 检查交付 → 提交阶段报告。<br>这是结构示意，不是真实模型或工具执行记录。</p></details>' +
             message(
-              state.member === "engineer" ? "新闻观察者" : "应用工程师",
-              "<p>" +
-                (state.member === "engineer"
-                  ? "价格口径说明已交接，原始来源也保留在项目资料里。"
-                  : "这份价格单位说明已经收到，我会保留原始来源字段。") +
-                "</p>",
-              "14:23",
+              state.member === 'engineer' ? '新闻观察者' : '应用工程师',
+              '<p>' +
+                (state.member === 'engineer'
+                  ? '价格口径说明已交接，原始来源也保留在项目资料里。'
+                  : '这份价格单位说明已经收到，我会保留原始来源字段。') +
+                '</p>',
+              '14:23',
             );
         else
           body +=
             message(
-              "Noema",
-              "<p>邀请你加入价格追踪器项目，负责" +
-                (state.member === "research"
-                  ? "来源研究与信息核对"
-                  : state.member === "designer"
-                    ? "交互与视觉设计"
-                    : "应用实现与验证") +
-                "。项目工作在独立会话中进行。</p>",
-              "昨天",
+              'Noema',
+              '<p>邀请你加入价格追踪器项目，负责' +
+                (state.member === 'research'
+                  ? '来源研究与信息核对'
+                  : state.member === 'designer'
+                    ? '交互与视觉设计'
+                    : '应用实现与验证') +
+                '。项目工作在独立会话中进行。</p>',
+              '昨天',
             ) +
             message(
               p.name,
-              "<p>我会根据实际资料完成这部分工作，遇到影响项目的分歧再向你反馈。</p>",
-              "昨天",
+              '<p>我会根据实际资料完成这部分工作，遇到影响项目的分歧再向你反馈。</p>',
+              '昨天',
             ) +
-            message("你", "<p>之后我也可以直接来找你聊吗？</p>", "09:02") +
+            message('你', '<p>之后我也可以直接来找你聊吗？</p>', '09:02') +
             message(
               p.name,
-              "<p>可以。这里是我们平时的对话；项目里的工作在对应项目中继续。</p>",
-              "09:02",
+              '<p>可以。这里是我们平时的对话；项目里的工作在对应项目中继续。</p>',
+              '09:02',
             );
-        if (project && state.approved && state.member !== "research")
+        if (project && state.approved && state.member !== 'research')
           body += message(
-            "Noema",
-            "<p>用户反馈：" +
+            'Noema',
+            '<p>用户反馈：' +
               esc(state.feedback) +
-              "</p><p>" +
-              (state.member === "designer"
-                ? "请先据此调整界面方案，完成后交回我评审。"
-                : "请等待设计调整后跟进实现，核对结果后向我报告。") +
-              "</p>",
-            "刚刚",
+              '</p><p>' +
+              (state.member === 'designer'
+                ? '请先据此调整界面方案，完成后交回我评审。'
+                : '请等待设计调整后跟进实现，核对结果后向我报告。') +
+              '</p>',
+            '刚刚',
           );
-        if (project && state.reopened && state.member === "engineer")
+        if (project && state.reopened && state.member === 'engineer')
           body +=
             message(
-              "Noema",
-              "<p>继续这个项目的小修订：在价格单位说明中明确单价按每百万 token 计。范围仅限这段文案。</p>",
-              "刚刚",
+              'Noema',
+              '<p>继续这个项目的小修订：在价格单位说明中明确单价按每百万 token 计。范围仅限这段文案。</p>',
+              '刚刚',
             ) +
-            message(p.name, "<p>已续接上次的工作记录，正在原文件中修订并核对显示。</p>", "刚刚");
-        if (project && state.scene === "execution" && state.member === "engineer")
-          body += message(p.name, workRequest(false), "15:11");
+            message(
+              p.name,
+              '<p>已续接上次的工作记录，正在原文件中修订并核对显示。</p>',
+              '刚刚',
+            );
+        if (
+          project &&
+          state.scene === 'execution' &&
+          state.member === 'engineer'
+        )
+          body += message(p.name, workRequest(false), '15:11');
         body += runtimeMessages(scope);
         return (
           workHead(
             p.name,
-            project ? "价格追踪器 · 项目会话" : "常驻私聊",
-            button("find-messages", icon("search"), "icon-button", 'aria-label="查找当前对话"') +
-              button("profile", "资料", "quiet"),
+            project ? '价格追踪器 · 项目会话' : '常驻私聊',
+            button(
+              'find-messages',
+              icon('search'),
+              'icon-button',
+              'aria-label="查找当前对话"',
+            ) + button('profile', '资料', 'quiet'),
           ) +
           '<div class="session-content"><div class="session-scroll">' +
           body +
           '<div class="conversation-links">' +
           button(
-            project ? "member-main" : "member-project",
-            project ? "打开常驻私聊" : "查看项目工作会话",
-            "",
+            project ? 'member-main' : 'member-project',
+            project ? '打开常驻私聊' : '查看项目工作会话',
+            '',
             'data-member="' + state.member + '"',
           ) +
-          "</div></div>" +
-          composer(scope, "发给" + p.name + (project ? " · 价格追踪器" : "…")) +
-          "</div>"
+          '</div></div>' +
+          composer(scope, '发给' + p.name + (project ? ' · 价格追踪器' : '…')) +
+          '</div>'
         );
       }
       function archives() {
         return (
-          workHead("已归档项目", "不占活跃列表，记录与工作会话保留") +
+          workHead('已归档项目', '不占活跃列表，记录与工作会话保留') +
           '<div class="work-content"><h2>可以续接的工作</h2><p class="lead">新的需求属于原项目时，从这里恢复；Noema 也可以在对话中替你找到它。</p>' +
           button(
-            "open-project",
-            icon("archive") +
+            'open-project',
+            icon('archive') +
               '<span class="link-copy"><strong>AI 服务价格追踪器</strong><small>' +
-              (state.archived ? "已归档 · 3 位成员的项目会话保留" : "当前活跃 · 尚未归档") +
-              "</small></span>" +
-              icon("arrow"),
-            "project-link",
+              (state.archived
+                ? '已归档 · 3 位成员的项目会话保留'
+                : '当前活跃 · 尚未归档') +
+              '</small></span>' +
+              icon('arrow'),
+            'project-link',
           ) +
           '<div class="project-summary"><section><h3>小修订不等于重新成长</h3><p>恢复后修改一句说明，可以完成后再次归档。只有值得沉淀的变化才触发相应成长流程。</p></section></div></div>'
         );
       }
       function indexLimit() {
-        return Math.min(400, Math.floor($("#app").clientWidth * 0.45));
+        return Math.min(400, Math.floor($('#app').clientWidth * 0.45));
       }
       function syncIndex() {
-        const app = $("#app");
+        const app = $('#app');
         const narrow = app.clientWidth <= 820;
         const open = narrow ? state.mobileIndexOpen : state.indexOpen;
-        const width = narrow ? state.indexWidth : Math.min(state.indexWidth, indexLimit());
-        app.classList.toggle("narrow-shell", narrow);
-        app.classList.toggle("index-closed", !open);
-        app.style.setProperty("--index-width", width + "px");
-        for (const pane of document.querySelectorAll(".shell > .chat, .shell > .workspace"))
-          pane.inert = state.layout === "c" && narrow && open;
-        const toggle = $(".index-toggle");
-        toggle.setAttribute("aria-expanded", String(open));
-        toggle.setAttribute("aria-label", open ? "收起导航" : "展开导航");
-        const separator = $(".index-resizer");
-        separator.setAttribute("aria-valuemax", String(indexLimit()));
-        separator.setAttribute("aria-valuenow", String(open ? width : 0));
-        separator.setAttribute("aria-valuetext", open ? width + " 像素" : "已收起");
+        const width = narrow
+          ? state.indexWidth
+          : Math.min(state.indexWidth, indexLimit());
+        app.classList.toggle('narrow-shell', narrow);
+        app.classList.toggle('index-closed', !open);
+        app.style.setProperty('--index-width', width + 'px');
+        for (const pane of document.querySelectorAll(
+          '.shell > .chat, .shell > .workspace',
+        ))
+          pane.inert = state.layout === 'c' && narrow && open;
+        const toggle = $('.index-toggle');
+        toggle.setAttribute('aria-expanded', String(open));
+        toggle.setAttribute('aria-label', open ? '收起导航' : '展开导航');
+        const separator = $('.index-resizer');
+        separator.setAttribute('aria-valuemax', String(indexLimit()));
+        separator.setAttribute('aria-valuenow', String(open ? width : 0));
+        separator.setAttribute(
+          'aria-valuetext',
+          open ? width + ' 像素' : '已收起',
+        );
       }
       function resizeIndex(width) {
         state.indexOpen = width > 72;
-        if (state.indexOpen) state.indexWidth = Math.max(184, Math.min(indexLimit(), width));
+        if (state.indexOpen)
+          state.indexWidth = Math.max(184, Math.min(indexLimit(), width));
         syncIndex();
       }
       let indexDrag = null;
-      document.addEventListener("pointerdown", (e) => {
-        if (!e.target.closest(".index-resizer") || e.button !== 0) return;
+      document.addEventListener('pointerdown', (e) => {
+        if (!e.target.closest('.index-resizer') || e.button !== 0) return;
         e.preventDefault();
         indexDrag = {
           id: e.pointerId,
-          left: $(".shell").getBoundingClientRect().left,
+          left: $('.shell').getBoundingClientRect().left,
           restoreWidth: state.indexWidth,
         };
         e.target.setPointerCapture(e.pointerId);
-        $("#app").classList.add("resizing");
+        $('#app').classList.add('resizing');
       });
-      document.addEventListener("pointermove", (e) => {
+      document.addEventListener('pointermove', (e) => {
         if (indexDrag && e.pointerId === indexDrag.id)
           resizeIndex(Math.round(e.clientX - indexDrag.left));
       });
@@ -3316,105 +3518,122 @@
         if (!indexDrag || e.pointerId !== indexDrag.id) return;
         if (!state.indexOpen) state.indexWidth = indexDrag.restoreWidth;
         indexDrag = null;
-        $("#app").classList.remove("resizing");
+        $('#app').classList.remove('resizing');
         persistDrafts();
-        if (!state.indexOpen) $(".index-toggle").focus();
+        if (!state.indexOpen) $('.index-toggle').focus();
       }
-      document.addEventListener("pointerup", finishIndexDrag);
-      document.addEventListener("pointercancel", finishIndexDrag);
-      document.addEventListener("keydown", (e) => {
-        if (e.key === "Escape" && state.mobileIndexOpen && !$("#dialog").open) {
+      document.addEventListener('pointerup', finishIndexDrag);
+      document.addEventListener('pointercancel', finishIndexDrag);
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && state.mobileIndexOpen && !$('#dialog').open) {
           state.mobileIndexOpen = false;
           syncIndex();
-          $(".index-toggle").focus();
+          $('.index-toggle').focus();
         }
-        if (!e.target.matches(".index-resizer")) return;
+        if (!e.target.matches('.index-resizer')) return;
         const step = e.shiftKey ? 40 : 16;
         const width = Math.min(state.indexWidth, indexLimit());
-        if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
         e.preventDefault();
-        if (e.key === "Home") resizeIndex(0);
-        if (e.key === "End") resizeIndex(indexLimit());
-        if (e.key === "ArrowLeft") resizeIndex(width <= 184 ? 0 : width - step);
-        if (e.key === "ArrowRight") resizeIndex(width + step);
-        if (!state.indexOpen) $(".index-toggle").focus();
+        if (e.key === 'Home') resizeIndex(0);
+        if (e.key === 'End') resizeIndex(indexLimit());
+        if (e.key === 'ArrowLeft') resizeIndex(width <= 184 ? 0 : width - step);
+        if (e.key === 'ArrowRight') resizeIndex(width + step);
+        if (!state.indexOpen) $('.index-toggle').focus();
       });
       const scrollPositions = new Map();
       let noticeTimer;
       function showNotice(text) {
         state.uiNotice = text;
-        const output = $("#ui-notice");
+        const output = $('#ui-notice');
         if (output) {
           output.textContent = text;
           output.hidden = false;
         }
         clearTimeout(noticeTimer);
         noticeTimer = setTimeout(() => {
-          state.uiNotice = "";
-          const current = $("#ui-notice");
+          state.uiNotice = '';
+          const current = $('#ui-notice');
           if (current) current.hidden = true;
         }, 3500);
       }
       function filterIndex() {
         const query = state.indexQuery.trim().toLocaleLowerCase();
-        const rows = [...document.querySelectorAll('.index .index-item:not([data-action="home"])')];
+        const rows = [
+          ...document.querySelectorAll(
+            '.index .index-item:not([data-action="home"])',
+          ),
+        ];
         let matches = 0;
         for (const row of rows) {
-          row.hidden = !!query && !row.textContent.toLocaleLowerCase().includes(query);
+          row.hidden =
+            !!query && !row.textContent.toLocaleLowerCase().includes(query);
           if (!row.hidden) matches++;
         }
-        const empty = $(".index-empty");
+        const empty = $('.index-empty');
         if (empty) empty.hidden = !query || matches > 0;
-        const titles = document.querySelectorAll(".index .section-title");
+        const titles = document.querySelectorAll('.index .section-title');
         if (titles[1])
           titles[1].hidden =
-            !!query && !rows.some((x) => x.dataset.action === "member-main" && !x.hidden);
+            !!query &&
+            !rows.some((x) => x.dataset.action === 'member-main' && !x.hidden);
         if (titles[2])
           titles[2].hidden =
-            !!query && !rows.some((x) => x.dataset.action === "open-project" && !x.hidden);
+            !!query &&
+            !rows.some((x) => x.dataset.action === 'open-project' && !x.hidden);
       }
       function messageText(article) {
         const copy = article.cloneNode(true);
         copy
-          .querySelectorAll(".byline,.message-actions,form,.runtime-caption")
+          .querySelectorAll('.byline,.message-actions,form,.runtime-caption')
           .forEach((x) => x.remove());
         copy
-          .querySelectorAll("p,blockquote,li")
-          .forEach((x) => x.insertAdjacentText("afterend", "\n"));
-        return copy.textContent.trim().replace(/\n{3,}/g, "\n\n");
+          .querySelectorAll('p,blockquote,li')
+          .forEach((x) => x.insertAdjacentText('afterend', '\n'));
+        return copy.textContent.trim().replace(/\n{3,}/g, '\n\n');
       }
       let searchMatches = [];
       function fitComposer(input) {
-        input.style.height = "auto";
-        input.style.height = Math.max(96, Math.min(190, input.scrollHeight)) + "px";
+        input.style.height = 'auto';
+        input.style.height =
+          Math.max(96, Math.min(190, input.scrollHeight)) + 'px';
       }
       function findMessages(query) {
-        const panel = ["member-main", "member-project"].includes(state.workspace)
-          ? $(".session-scroll")
-          : $(".chat-scroll");
-        searchMatches = [...panel.querySelectorAll(".message")]
+        const panel = ['member-main', 'member-project'].includes(
+          state.workspace,
+        )
+          ? $('.session-scroll')
+          : $('.chat-scroll');
+        searchMatches = [...panel.querySelectorAll('.message')]
           .map((article, index) => ({
             article,
             index,
             text: messageText(article),
-            author: article.querySelector(".byline strong")?.textContent || "你",
+            author:
+              article.querySelector('.byline strong')?.textContent || '你',
           }))
           .filter(
             (x) =>
-              query.trim() && x.text.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
+              query.trim() &&
+              x.text
+                .toLocaleLowerCase()
+                .includes(query.trim().toLocaleLowerCase()),
           );
-        $("#search-results").innerHTML = query.trim()
+        $('#search-results').innerHTML = query.trim()
           ? searchMatches.length
             ? searchMatches
                 .map((x, i) =>
                   button(
-                    "search-jump",
-                    "<small>" + esc(x.author) + "</small>" + esc(x.text.slice(0, 220)),
-                    "search-result",
+                    'search-jump',
+                    '<small>' +
+                      esc(x.author) +
+                      '</small>' +
+                      esc(x.text.slice(0, 220)),
+                    'search-result',
                     'data-match="' + i + '"',
                   ),
                 )
-                .join("")
+                .join('')
             : '<p class="index-empty">当前对话没有匹配消息。</p>'
           : '<p class="index-empty">输入关键词，查找当前会话中的消息。</p>';
       }
@@ -3430,19 +3649,22 @@
             ),
         );
         if (fresh.length + list.length > 5) {
-          state.composerErrors[scope] = "每条消息最多 5 个附件。本次选择未加入，请减少数量后重选。";
+          state.composerErrors[scope] =
+            '每条消息最多 5 个附件。本次选择未加入，请减少数量后重选。';
           render();
           return;
         }
         for (const file of fresh) {
-          const supported = /\.(txt|md|csv|pdf|png|jpe?g|webp)$/i.test(file.name);
+          const supported = /\.(txt|md|csv|pdf|png|jpe?g|webp)$/i.test(
+            file.name,
+          );
           const problem = !supported
-            ? "不支持此类型"
+            ? '不支持此类型'
             : file.size > 10 * 1024 * 1024
-              ? "超过 10 MB"
-              : "";
+              ? '超过 10 MB'
+              : '';
           list.push({
-            id: "attachment-" + ++conversations.sequence,
+            id: 'attachment-' + ++conversations.sequence,
             file,
             name: file.name,
             size: file.size,
@@ -3455,124 +3677,147 @@
                 : null,
           });
         }
-        state.composerErrors[scope] = "";
+        state.composerErrors[scope] = '';
         render();
-        if (fresh.length !== files.length) showNotice("重复附件未再次添加。");
-        else showNotice("附件仅在本页预览，不会上传或交给真实模型。");
+        if (fresh.length !== files.length) showNotice('重复附件未再次添加。');
+        else showNotice('附件仅在本页预览，不会上传或交给真实模型。');
       }
       function render() {
         const focused = document.activeElement;
         const focusDraft = focused?.dataset?.draft;
-        const selection = focusDraft ? [focused.selectionStart, focused.selectionEnd] : null;
-        for (const scroll of document.querySelectorAll("[data-scroll-key]")) {
+        const selection = focusDraft
+          ? [focused.selectionStart, focused.selectionEnd]
+          : null;
+        for (const scroll of document.querySelectorAll('[data-scroll-key]')) {
           if (scroll.clientHeight)
             scrollPositions.set(scroll.dataset.scrollKey, {
               top: scroll.scrollTop,
-              tail: scroll.scrollHeight - scroll.clientHeight - scroll.scrollTop < 60,
+              tail:
+                scroll.scrollHeight - scroll.clientHeight - scroll.scrollTop <
+                60,
             });
         }
-        const app = $("#app");
+        const app = $('#app');
         app.className =
-          "app layout-" +
+          'app layout-' +
           state.layout +
-          (state.workspace ? " has-workspace" : "") +
-          (state.focused ? " focused-frame" : "");
+          (state.workspace ? ' has-workspace' : '') +
+          (state.focused ? ' focused-frame' : '');
         app.innerHTML =
           '<div class="window-head"><div class="wordmark"><button class="index-toggle" data-action="toggle-index" aria-controls="navigation-index" aria-label="收起导航"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button><span class="logo">' +
-          icon("noema") +
+          icon('noema') +
           '</span>noema</div><div class="window-tools">' +
           '<div class="window-controls" aria-label="窗口控件（原型示意）"><button class="window-control" disabled title="最小化：浏览器原型中不可用" aria-label="最小化（原型中不可用）"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10"/></svg></button><button class="window-control" disabled title="最大化：浏览器原型中不可用" aria-label="最大化（原型中不可用）"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="3" width="10" height="10"/></svg></button><button class="window-control" disabled title="关闭窗口：浏览器原型中不可用" aria-label="关闭窗口（原型中不可用）"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 3 10 10M13 3 3 13"/></svg></button></div></div></div><div class="shell"><button class="index-shade" data-action="toggle-index" aria-label="收起导航"></button><aside class="index" id="navigation-index" aria-label="成员和项目索引">' +
           indexMarkup() +
           '</aside><div class="index-resizer" role="separator" tabindex="0" aria-label="调整导航宽度，方向键调整，Home 收起" aria-orientation="vertical" aria-controls="navigation-index" aria-valuemin="0"></div>' +
           chatPane() +
           '<section class="workspace" aria-label="当前工作内容">' +
-          (state.workspace === "project"
+          (state.workspace === 'project'
             ? projectPane()
-            : state.workspace === "profile"
+            : state.workspace === 'profile'
               ? profile()
-              : state.workspace === "archives"
+              : state.workspace === 'archives'
                 ? archives()
                 : state.workspace
                   ? memberSession()
-                  : "") +
+                  : '') +
           '</section></div><output class="ui-toast" id="ui-notice" role="status" ' +
-          (state.uiNotice ? "" : "hidden") +
-          ">" +
+          (state.uiNotice ? '' : 'hidden') +
+          '>' +
           esc(state.uiNotice) +
-          "</output>";
+          '</output>';
         document
-          .querySelectorAll("[data-layout]")
+          .querySelectorAll('[data-layout]')
           .forEach((x) =>
-            x.setAttribute("aria-pressed", String(x.dataset.layout === state.layout)),
+            x.setAttribute(
+              'aria-pressed',
+              String(x.dataset.layout === state.layout),
+            ),
           );
         document
-          .querySelectorAll("[data-scene]")
-          .forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.scene === state.scene)));
+          .querySelectorAll('[data-scene]')
+          .forEach((x) =>
+            x.setAttribute(
+              'aria-pressed',
+              String(x.dataset.scene === state.scene),
+            ),
+          );
         const n = notes[state.layout];
-        $("#study-note").innerHTML =
-          "<strong>" +
+        $('#study-note').innerHTML =
+          '<strong>' +
           n.title +
-          "</strong><div>" +
+          '</strong><div>' +
           n.text +
           '<br><span class="risk">' +
           n.risk +
-          "</span></div>" +
-          (state.scene === "archive" && state.archived
-            ? button("simulate-request", "演示：提出一条小修订")
-            : "") +
+          '</span></div>' +
+          (state.scene === 'archive' && state.archived
+            ? button('simulate-request', '演示：提出一条小修订')
+            : '') +
           (state.approved || state.reopened
             ? button(
-                "simulate-completion",
-                state.reopened ? "演示：小修订交付" : "演示：交付及成长完成",
+                'simulate-completion',
+                state.reopened ? '演示：小修订交付' : '演示：交付及成长完成',
               )
-            : "") +
-          (state.feedback && !state.approved && !state.archived && !state.reopened
-            ? button("simulate-handoff", "演示：Noema 将反馈交给团队")
-            : "") +
-          button("explanation", "评审说明 ↗");
-        if (state.scene === "execution") {
+            : '') +
+          (state.feedback &&
+          !state.approved &&
+          !state.archived &&
+          !state.reopened
+            ? button('simulate-handoff', '演示：Noema 将反馈交给团队')
+            : '') +
+          button('explanation', '评审说明 ↗');
+        if (state.scene === 'execution') {
           const controls =
-            delegatedWork.status === "running"
-              ? button("simulate-work-step", "演示：完成当前步骤") +
-                button("simulate-work-failure", "演示：工具连接中断")
-              : delegatedWork.status === "checking"
-                ? button("simulate-write-applied", "演示：核对为已写入") +
-                  button("simulate-write-missing", "演示：核对为尚未写入")
-                : "";
-          $("#study-note").insertAdjacentHTML("beforeend", controls);
+            delegatedWork.status === 'running'
+              ? button('simulate-work-step', '演示：完成当前步骤') +
+                button('simulate-work-failure', '演示：工具连接中断')
+              : delegatedWork.status === 'checking'
+                ? button('simulate-write-applied', '演示：核对为已写入') +
+                  button('simulate-write-missing', '演示：核对为尚未写入')
+                : '';
+          $('#study-note').insertAdjacentHTML('beforeend', controls);
         }
         if (conversations.room(roomScope()).active)
-          $("#study-note").insertAdjacentHTML(
-            "beforeend",
-            button("simulate-reply-failure", "演示：回复连接中断"),
+          $('#study-note').insertAdjacentHTML(
+            'beforeend',
+            button('simulate-reply-failure', '演示：回复连接中断'),
           );
-        $("#stage").classList.toggle("narrow", state.narrow);
-        document.body.classList.toggle("focused", state.focused);
+        $('#stage').classList.toggle('narrow', state.narrow);
+        document.body.classList.toggle('focused', state.focused);
         syncIndex();
         filterIndex();
-        document.querySelectorAll(".composer textarea").forEach(fitComposer);
+        document.querySelectorAll('.composer textarea').forEach(fitComposer);
         for (const scroll of document.querySelectorAll(
-          ".chat-scroll,.session-scroll,.work-content",
+          '.chat-scroll,.session-scroll,.work-content',
         )) {
-          const key = scroll.matches(".chat-scroll")
-            ? "core"
-            : scroll.matches(".session-scroll")
+          const key = scroll.matches('.chat-scroll')
+            ? 'core'
+            : scroll.matches('.session-scroll')
               ? roomScope()
-              : "view:" + state.workspace + ":" + state.tab + ":" + state.member;
+              : 'view:' +
+                state.workspace +
+                ':' +
+                state.tab +
+                ':' +
+                state.member;
           scroll.dataset.scrollKey = key;
           const saved = scrollPositions.get(key);
           scroll.scrollTop =
-            state.scrollToTail === key || (saved?.tail && !key.startsWith("view:"))
+            state.scrollToTail === key ||
+            (saved?.tail && !key.startsWith('view:'))
               ? scroll.scrollHeight
               : saved
                 ? saved.top
-                : key.startsWith("view:")
+                : key.startsWith('view:')
                   ? 0
                   : scroll.scrollHeight;
         }
         state.scrollToTail = null;
         if (focusDraft) {
-          const next = document.querySelector('[data-draft="' + focusDraft + '"]');
+          const next = document.querySelector(
+            '[data-draft="' + focusDraft + '"]',
+          );
           if (next) {
             next.focus({ preventScroll: true });
             next.setSelectionRange(...selection);
@@ -3580,73 +3825,78 @@
         }
       }
       function modal(title, body) {
-        const d = $("#dialog");
+        const d = $('#dialog');
         d.innerHTML =
           '<div class="dialog-head"><strong id="dialog-title">' +
           title +
-          "</strong>" +
-          button("close-dialog", icon("close"), "icon-button", 'aria-label="关闭对话框"') +
+          '</strong>' +
+          button(
+            'close-dialog',
+            icon('close'),
+            'icon-button',
+            'aria-label="关闭对话框"',
+          ) +
           '</div><div class="dialog-body">' +
           body +
-          "</div>";
+          '</div>';
         if (!d.open) d.showModal();
       }
       function directory() {
         modal(
-          "成员与项目",
-          "<h3>持续存在的成员</h3>" +
+          '成员与项目',
+          '<h3>持续存在的成员</h3>' +
             Object.entries(people)
               .map(([id, p]) =>
                 button(
-                  "member-main",
+                  'member-main',
                   avatar(id) +
                     '<span><span class="item-title">' +
                     p.name +
-                    "</span><small>" +
+                    '</span><small>' +
                     p.role +
-                    "</small></span>",
-                  "index-item",
+                    '</small></span>',
+                  'index-item',
                   'data-member="' + id + '"',
                 ),
               )
-              .join("") +
-            "<h3>项目</h3>" +
+              .join('') +
+            '<h3>项目</h3>' +
             (!state.archived
               ? button(
-                  "open-project",
-                  icon("project") +
-                    "<span>AI 服务价格追踪器<small>" +
-                    (state.projectStage === "forming"
-                      ? "研究与设计中"
+                  'open-project',
+                  icon('project') +
+                    '<span>AI 服务价格追踪器<small>' +
+                    (state.projectStage === 'forming'
+                      ? '研究与设计中'
                       : state.approved
-                        ? "按反馈调整中"
+                        ? '按反馈调整中'
                         : state.feedback
-                          ? "Noema 处理反馈中"
-                          : "等待评审") +
-                    " · 点击进入项目空间</small></span>",
-                  "index-item",
+                          ? 'Noema 处理反馈中'
+                          : '等待评审') +
+                    ' · 点击进入项目空间</small></span>',
+                  'index-item',
                 )
-              : "<p>当前没有活跃项目。</p>") +
+              : '<p>当前没有活跃项目。</p>') +
             button(
-              "archives",
-              icon("archive") +
-                "<span>已归档项目<small>项目记录、成员与会话不会被销毁</small></span>",
-              "index-item",
+              'archives',
+              icon('archive') +
+                '<span>已归档项目<small>项目记录、成员与会话不会被销毁</small></span>',
+              'index-item',
             ) +
-            "<h3>个人</h3>" +
-            button("settings", "伙伴设置", "bottom-link"),
+            '<h3>个人</h3>' +
+            button('settings', '伙伴设置', 'bottom-link'),
         );
       }
-      function addCore(html, who = "assistant") {
-        conversations.room("core").messages.push({
-          id: "event-" + ++conversations.sequence,
-          role: who === "user" ? "user" : "assistant",
+      function addCore(html, who = 'assistant') {
+        conversations.room('core').messages.push({
+          id: 'event-' + ++conversations.sequence,
+          role: who === 'user' ? 'user' : 'assistant',
           html,
         });
       }
       async function act(action, el) {
         const scope = el?.dataset.scope || roomScope();
-        if (action === "view-attachment") {
+        if (action === 'view-attachment') {
           const all = Object.values(state.attachments).flat();
           for (const room of conversations.rooms.values()) {
             all.push(
@@ -3656,146 +3906,170 @@
           }
           const file = all.find((f) => f.id === el.dataset.attachment);
           if (!file) {
-            showNotice("此附件在刷新后不可用，请重新选择。");
+            showNotice('此附件在刷新后不可用，请重新选择。');
             return;
           }
           modal(
             file.name,
             file.problem
-              ? "<p>" + esc(file.problem) + "</p>"
+              ? '<p>' + esc(file.problem) + '</p>'
               : file.url
                 ? '<img class="file-preview" alt="' +
                   esc(file.name) +
                   '" src="' +
                   esc(file.url) +
                   '"><p class="runtime-caption">仅本地预览，未上传。</p>'
-                : "<p>文件大小：" +
+                : '<p>文件大小：' +
                   Math.max(1, Math.ceil(file.size / 1024)) +
-                  " KB</p><p>此原型尚未解析文档，也未把文件发送给模型。</p>",
+                  ' KB</p><p>此原型尚未解析文档，也未把文件发送给模型。</p>',
           );
           return;
         }
-        if (action === "copy-message") {
+        if (action === 'copy-message') {
           try {
-            await navigator.clipboard.writeText(messageText(el.closest(".message")));
-            showNotice("已复制消息。");
+            await navigator.clipboard.writeText(
+              messageText(el.closest('.message')),
+            );
+            showNotice('已复制消息。');
           } catch {
-            showNotice("浏览器未允许复制，请选择消息文字复制。");
+            showNotice('浏览器未允许复制，请选择消息文字复制。');
           }
           return;
         }
-        if (action === "quote-message") {
-          const article = el.closest(".message");
+        if (action === 'quote-message') {
+          const article = el.closest('.message');
           state.quotes[scope] = {
-            author: article.querySelector(".byline strong")?.textContent || "你",
+            author:
+              article.querySelector('.byline strong')?.textContent || '你',
             text: messageText(article).slice(0, 500),
           };
           render();
-          document.querySelector('.composer[data-scope="' + scope + '"] textarea').focus();
+          document
+            .querySelector('.composer[data-scope="' + scope + '"] textarea')
+            .focus();
           return;
         }
-        if (action === "clear-quote") {
+        if (action === 'clear-quote') {
           delete state.quotes[scope];
           render();
           return;
         }
-        if (action === "pick-attachments") {
+        if (action === 'pick-attachments') {
           document.querySelector('[data-file-scope="' + scope + '"]').click();
           return;
         }
-        if (action === "remove-attachment") {
+        if (action === 'remove-attachment') {
           state.attachments[scope].splice(Number(el.dataset.file), 1);
           render();
           return;
         }
-        if (action === "clear-composer-error") {
-          state.composerErrors[scope] = "";
+        if (action === 'clear-composer-error') {
+          state.composerErrors[scope] = '';
           render();
           return;
         }
-        if (action === "stop-reply") {
+        if (action === 'stop-reply') {
           conversations.interrupt(scope);
           return;
         }
-        if (action === "retry-reply") {
+        if (action === 'retry-reply') {
           conversations.retry(scope, el.dataset.reply);
           return;
         }
-        if (action === "resume-queue") {
+        if (action === 'resume-queue') {
           conversations.resume(scope);
           return;
         }
-        if (action === "prioritize-queued") {
+        if (action === 'prioritize-queued') {
           state.scrollToTail = scope;
           conversations.prioritize(scope, el.dataset.packet);
           return;
         }
-        if (action === "withdraw-queued") {
+        if (action === 'withdraw-queued') {
           const packet = conversations.withdraw(scope, el.dataset.packet);
           if (packet) {
             const restored =
               packet.quote && state.quotes[scope]
-                ? "引用 " + packet.quote.author + "：" + packet.quote.text + "\n" + packet.text
+                ? '引用 ' +
+                  packet.quote.author +
+                  '：' +
+                  packet.quote.text +
+                  '\n' +
+                  packet.text
                 : packet.text;
-            state.drafts[scope] = [state.drafts[scope], restored].filter(Boolean).join("\n\n");
-            state.attachments[scope] = [...(state.attachments[scope] || []), ...packet.files];
-            if (packet.quote && !state.quotes[scope]) state.quotes[scope] = packet.quote;
+            state.drafts[scope] = [state.drafts[scope], restored]
+              .filter(Boolean)
+              .join('\n\n');
+            state.attachments[scope] = [
+              ...(state.attachments[scope] || []),
+              ...packet.files,
+            ];
+            if (packet.quote && !state.quotes[scope])
+              state.quotes[scope] = packet.quote;
             persistDrafts();
             render();
           }
           return;
         }
-        if (action === "find-messages") {
+        if (action === 'find-messages') {
           modal(
-            "查找当前对话",
+            '查找当前对话',
             '<label for="message-search">关键词</label><input id="message-search" type="search" class="search-input" placeholder="输入要查找的内容"><div id="search-results"><p class="index-empty">仅搜索当前会话，不会把其他私聊交给 Noema。</p></div>',
           );
-          $("#message-search").focus();
+          $('#message-search').focus();
           return;
         }
-        if (action === "search-jump") {
+        if (action === 'search-jump') {
           const match = searchMatches[Number(el.dataset.match)];
           if (!match) return;
-          $("#dialog").close();
-          const scroll = match.article.closest(".chat-scroll,.session-scroll");
+          $('#dialog').close();
+          const scroll = match.article.closest('.chat-scroll,.session-scroll');
           scroll.scrollTop +=
-            match.article.getBoundingClientRect().top - scroll.getBoundingClientRect().top - 20;
-          match.article.classList.add("search-match");
+            match.article.getBoundingClientRect().top -
+            scroll.getBoundingClientRect().top -
+            20;
+          match.article.classList.add('search-match');
           match.article.tabIndex = -1;
           match.article.focus({ preventScroll: true });
-          setTimeout(() => match.article.classList.remove("search-match"), 2000);
+          setTimeout(
+            () => match.article.classList.remove('search-match'),
+            2000,
+          );
           return;
         }
-        if (action === "jump-latest") {
-          const scroll = $(".chat-scroll");
+        if (action === 'jump-latest') {
+          const scroll = $('.chat-scroll');
           scroll.scrollTop = scroll.scrollHeight;
           el.hidden = true;
           return;
         }
-        if (action === "simulate-reply-failure") {
-          conversations.interrupt(roomScope(), "failed");
+        if (action === 'simulate-reply-failure') {
+          conversations.interrupt(roomScope(), 'failed');
           return;
         }
         if (
-          action.startsWith("work-") ||
-          action.startsWith("simulate-work-") ||
-          action.startsWith("simulate-write-")
+          action.startsWith('work-') ||
+          action.startsWith('simulate-work-') ||
+          action.startsWith('simulate-write-')
         ) {
-          if (action === "work-allow-once")
-            delegatedWork.decide(Number(el.dataset.generation), "once");
-          if (action === "work-allow-project")
-            delegatedWork.decide(Number(el.dataset.generation), "project");
-          if (action === "work-deny") delegatedWork.decide(Number(el.dataset.generation), "deny");
-          if (action === "work-stop") delegatedWork.interrupt("stopped");
-          if (action === "work-resume") delegatedWork.resume();
-          if (action === "work-reapply") delegatedWork.requestAccess();
-          if (action === "work-revoke") delegatedWork.revoke();
-          if (action === "simulate-work-step") delegatedWork.advance();
-          if (action === "simulate-work-failure") delegatedWork.interrupt();
-          if (action === "simulate-write-applied") delegatedWork.reconcile(true);
-          if (action === "simulate-write-missing") delegatedWork.reconcile(false);
-          if (action === "work-revoke" && $("#dialog").open) {
-            const section = el.closest(".settings-section");
+          if (action === 'work-allow-once')
+            delegatedWork.decide(Number(el.dataset.generation), 'once');
+          if (action === 'work-allow-project')
+            delegatedWork.decide(Number(el.dataset.generation), 'project');
+          if (action === 'work-deny')
+            delegatedWork.decide(Number(el.dataset.generation), 'deny');
+          if (action === 'work-stop') delegatedWork.interrupt('stopped');
+          if (action === 'work-resume') delegatedWork.resume();
+          if (action === 'work-reapply') delegatedWork.requestAccess();
+          if (action === 'work-revoke') delegatedWork.revoke();
+          if (action === 'simulate-work-step') delegatedWork.advance();
+          if (action === 'simulate-work-failure') delegatedWork.interrupt();
+          if (action === 'simulate-write-applied')
+            delegatedWork.reconcile(true);
+          if (action === 'simulate-write-missing')
+            delegatedWork.reconcile(false);
+          if (action === 'work-revoke' && $('#dialog').open) {
+            const section = el.closest('.settings-section');
             section.innerHTML =
               '<h3>能力与授权</h3><p role="status">示例项目授权已撤回。其他尚未保存的设置保留在这里。</p>';
             section.tabIndex = -1;
@@ -3804,151 +4078,165 @@
           render();
           return;
         }
-        if (action === "locate-work") {
+        if (action === 'locate-work') {
           state.workspace = null;
           render();
-          const target = document.querySelector(".chat .work-request");
-          const scroll = $(".chat-scroll");
+          const target = document.querySelector('.chat .work-request');
+          const scroll = $('.chat-scroll');
           scroll.scrollTop +=
-            target.getBoundingClientRect().top - scroll.getBoundingClientRect().top - 15;
+            target.getBoundingClientRect().top -
+            scroll.getBoundingClientRect().top -
+            15;
           return;
         }
-        if (action === "toggle-index") {
-          if ($("#app").clientWidth <= 820) state.mobileIndexOpen = !state.mobileIndexOpen;
+        if (action === 'toggle-index') {
+          if ($('#app').clientWidth <= 820)
+            state.mobileIndexOpen = !state.mobileIndexOpen;
           else state.indexOpen = !state.indexOpen;
           syncIndex();
           persistDrafts();
-          $(".index-toggle").focus();
+          $('.index-toggle').focus();
           return;
         }
         state.mobileIndexOpen = false;
-        if (action === "close-dialog") {
-          $("#dialog").close();
+        if (action === 'close-dialog') {
+          $('#dialog').close();
           return;
         }
-        if (action === "directory") {
+        if (action === 'directory') {
           directory();
           return;
         }
-        if (action === "settings") {
+        if (action === 'settings') {
           modal(
-            "你的 Noema",
+            '你的 Noema',
             '<form class="settings-form" data-form="settings"><label for="partner-name">伙伴名字</label><input id="partner-name" name="name" value="' +
               esc(state.name) +
               '" maxlength="24" required><label for="partner-preference">希望它怎样与你交流</label><textarea id="partner-preference" name="preference">' +
               esc(state.preference) +
               '</textarea><section class="settings-section"><h3>模型与连接</h3><label for="model-choice">后续轮次使用的模型</label><select name="model" id="model-choice"><option value="general" ' +
-              (state.model === "general" ? "selected" : "") +
+              (state.model === 'general' ? 'selected' : '') +
               '>演示通用模型 · 文本与图片</option><option value="reasoning" ' +
-              (state.model === "reasoning" ? "selected" : "") +
+              (state.model === 'reasoning' ? 'selected' : '') +
               '>演示推理模型 · 文本与图片</option></select><p>当前未连接模型服务，不产生真实调用或费用。切换只影响后续发送，正在进行的轮次保留原模型。</p></section><section class="settings-section"><h3>能力与授权</h3><p>联网检索、文件执行和系统通知尚未接入。可在“委托执行”情境中检查申请、拒绝、撤回与恢复流程。</p>' +
-              (delegatedWork.grant === "project"
-                ? "<p>示例价格追踪器项目：已允许项目文件访问。</p>" +
-                  button("work-revoke", "撤回示例项目授权", "secondary", 'type="button"')
-                : "<p>没有保存的项目授权。</p>") +
+              (delegatedWork.grant === 'project'
+                ? '<p>示例价格追踪器项目：已允许项目文件访问。</p>' +
+                  button(
+                    'work-revoke',
+                    '撤回示例项目授权',
+                    'secondary',
+                    'type="button"',
+                  )
+                : '<p>没有保存的项目授权。</p>') +
               '</section><section class="settings-section"><h3>本机保存</h3><p>此原型只记住文字草稿、伙伴设定和侧栏宽度；附件与执行状态仅存在于当前页面，刷新后需重新选择。没有真实消息上传。</p></section><button class="primary" type="submit">保存设置</button></form>',
           );
           return;
         }
-        if (action === "sources") {
+        if (action === 'sources') {
           modal(
-            "简报与来源说明",
-            "<p>这个页面只比较 Noema 的信息组织方式，没有检索真实新闻。</p><p>正式简报应保留原始来源、事件时间和已核对的信息；演示不编造当日新闻或来源链接。</p>",
+            '简报与来源说明',
+            '<p>这个页面只比较 Noema 的信息组织方式，没有检索真实新闻。</p><p>正式简报应保留原始来源、事件时间和已核对的信息；演示不编造当日新闻或来源链接。</p>',
           );
           return;
         }
-        if (action === "explanation") {
+        if (action === 'explanation') {
           modal(
-            "这次评审什么",
-            "<h3>C 的空间结构已选定</h3><p>左侧导航可调宽与收起；A、B 保留为历史对照。整体视觉尚未验收。</p><h3>本轮走查</h3><ol><li>在“交付评审”中直接阅读 Noema 的请求，打开成果，再从项目页回到原请求。</li><li>在请求内填写反馈；普通聊天独立进行，不会自动恢复项目。</li><li>提交后可用页面下方的演示控件，模拟 Noema 判断并向团队安排下一步。这不是正式产品里的手动继续按钮。</li><li>打开成员的项目会话、成员资料，检查返回路径；在“归档与恢复”中试用原项目续接。</li></ol><h3>演示边界</h3><p>此页不调用模型、不运行真实项目、不修改 agent 资产。组队、执行、回访、成长与反馈判断都只用于演示。</p>",
+            '这次评审什么',
+            '<h3>C 的空间结构已选定</h3><p>左侧导航可调宽与收起；A、B 保留为历史对照。整体视觉尚未验收。</p><h3>本轮走查</h3><ol><li>在“交付评审”中直接阅读 Noema 的请求，打开成果，再从项目页回到原请求。</li><li>在请求内填写反馈；普通聊天独立进行，不会自动恢复项目。</li><li>提交后可用页面下方的演示控件，模拟 Noema 判断并向团队安排下一步。这不是正式产品里的手动继续按钮。</li><li>打开成员的项目会话、成员资料，检查返回路径；在“归档与恢复”中试用原项目续接。</li></ol><h3>演示边界</h3><p>此页不调用模型、不运行真实项目、不修改 agent 资产。组队、执行、回访、成长与反馈判断都只用于演示。</p>',
           );
           return;
         }
-        if ($("#dialog").open) $("#dialog").close();
-        if (action === "locate-review") {
+        if ($('#dialog').open) $('#dialog').close();
+        if (action === 'locate-review') {
           state.workspace = null;
-          state.scene = "review";
+          state.scene = 'review';
           render();
-          const scroll = $(".chat-scroll");
+          const scroll = $('.chat-scroll');
           scroll.scrollTop +=
-            $("#review-request").getBoundingClientRect().top -
+            $('#review-request').getBoundingClientRect().top -
             scroll.getBoundingClientRect().top -
             16;
-          ($("#review-feedback") || $("#review-request")).focus({ preventScroll: true });
+          ($('#review-feedback') || $('#review-request')).focus({
+            preventScroll: true,
+          });
           return;
         }
-        if (action === "workspace-back") {
-          if (state.workspace === "profile") state.workspace = state.profileOrigin || "member-main";
-          else if (state.workspace === "member-project") {
-            state.workspace = "project";
-            state.tab = "members";
+        if (action === 'workspace-back') {
+          if (state.workspace === 'profile')
+            state.workspace = state.profileOrigin || 'member-main';
+          else if (state.workspace === 'member-project') {
+            state.workspace = 'project';
+            state.tab = 'members';
           } else state.workspace = null;
         }
-        if (action === "home") state.workspace = null;
-        if (action === "simulate-handoff") {
+        if (action === 'home') state.workspace = null;
+        if (action === 'simulate-handoff') {
           state.approved = true;
           addCore(
-            "<p>我把这份意见整理给了项目团队：界面设计师先调整，应用工程师跟进实现。相关工作继续，改好后再带回来给你看。</p>",
+            '<p>我把这份意见整理给了项目团队：界面设计师先调整，应用工程师跟进实现。相关工作继续，改好后再带回来给你看。</p>',
           );
         }
-        if (action === "open-project") {
-          state.workspace = "project";
-          state.tab = "delivery";
+        if (action === 'open-project') {
+          state.workspace = 'project';
+          state.tab = 'delivery';
         }
-        if (action === "tab") state.tab = el.dataset.tab;
-        if (action === "group-tab") state.tab = "group";
-        if (action === "member-main" || action === "member-project") {
+        if (action === 'tab') state.tab = el.dataset.tab;
+        if (action === 'group-tab') state.tab = 'group';
+        if (action === 'member-main' || action === 'member-project') {
           state.member = el.dataset.member || state.member;
           state.workspace = action;
         }
-        if (action === "profile") {
+        if (action === 'profile') {
           state.profileOrigin = state.workspace;
-          state.workspace = "profile";
+          state.workspace = 'profile';
         }
-        if (action === "archives") state.workspace = "archives";
-        if (action === "simulate-completion") {
+        if (action === 'archives') state.workspace = 'archives';
+        if (action === 'simulate-completion') {
           const small = state.reopened;
           state.archived = true;
           state.approved = false;
           state.reopened = false;
-          state.tab = "delivery";
+          state.tab = 'delivery';
           addCore(
-            "<p>" +
+            '<p>' +
               (small
-                ? "说明已修改并核对。这次没有需要沉淀的新经验，项目已再次归档。"
-                : "本轮项目已完成，成员的成长流程也已处理，项目已自动归档。") +
-              "</p>" +
+                ? '说明已修改并核对。这次没有需要沉淀的新经验，项目已再次归档。'
+                : '本轮项目已完成，成员的成长流程也已处理，项目已自动归档。') +
+              '</p>' +
               projectLink(),
           );
         }
-        if (action === "simulate-request") {
+        if (action === 'simulate-request') {
           state.archived = false;
           state.reopened = true;
-          state.workspace = "project";
-          state.tab = "members";
-          addCore("<p>把追踪器里的单位说明补充清楚：单价按每百万 token 计。</p>", "user");
+          state.workspace = 'project';
+          state.tab = 'members';
           addCore(
-            "<p>已恢复原项目，让应用工程师在原来的项目会话里继续这处修订。无须重新组队。</p>" +
+            '<p>把追踪器里的单位说明补充清楚：单价按每百万 token 计。</p>',
+            'user',
+          );
+          addCore(
+            '<p>已恢复原项目，让应用工程师在原来的项目会话里继续这处修订。无须重新组队。</p>' +
               projectLink(),
           );
         }
-        if (action === "reopen-project") {
+        if (action === 'reopen-project') {
           state.archived = false;
           state.reopened = true;
-          state.workspace = "project";
-          state.tab = "members";
+          state.workspace = 'project';
+          state.tab = 'members';
           addCore(
-            "<p>演示：已恢复价格追踪器。成员回到原来的项目会话。小修订不会自动触发一轮完整成长复盘。</p>",
+            '<p>演示：已恢复价格追踪器。成员回到原来的项目会话。小修订不会自动触发一轮完整成长复盘。</p>',
           );
         }
-        if (action === "narrow") state.narrow = !state.narrow;
-        if (action === "focus") state.focused = !state.focused;
+        if (action === 'narrow') state.narrow = !state.narrow;
+        if (action === 'focus') state.focused = !state.focused;
         render();
       }
-      document.addEventListener("click", (e) => {
-        const plan = e.target.closest("[data-layout]"),
-          scene = e.target.closest("[data-scene]"),
-          action = e.target.closest("[data-action]");
+      document.addEventListener('click', (e) => {
+        const plan = e.target.closest('[data-layout]'),
+          scene = e.target.closest('[data-scene]'),
+          action = e.target.closest('[data-action]');
         if (plan) {
           state.layout = plan.dataset.layout;
           render();
@@ -3959,15 +4247,15 @@
           delegatedWork.create();
           scrollPositions.clear();
           state.scene = scene.dataset.scene;
-          state.workspace = state.scene === "project" ? "project" : null;
-          state.projectStage = state.scene === "project" ? "forming" : "review";
-          state.tab = state.scene === "project" ? "members" : "delivery";
-          state.archived = state.scene === "archive";
+          state.workspace = state.scene === 'project' ? 'project' : null;
+          state.projectStage = state.scene === 'project' ? 'forming' : 'review';
+          state.tab = state.scene === 'project' ? 'members' : 'delivery';
+          state.archived = state.scene === 'archive';
           state.approved = false;
-          state.notice = "";
-          state.feedback = "";
+          state.notice = '';
+          state.feedback = '';
           state.reopened = false;
-          state.drafts.review = "";
+          state.drafts.review = '';
           state.extra[state.scene] = [];
           state.groupExtra = [];
           state.sessionExtra = {};
@@ -3979,124 +4267,145 @@
           act(action.dataset.action, action);
         }
       });
-      document.addEventListener("input", (e) => {
+      document.addEventListener('input', (e) => {
         const key = e.target.dataset.draft;
         if (key) {
           state.drafts[key] = e.target.value;
           persistDrafts();
-          const form = e.target.closest(".composer");
+          const form = e.target.closest('.composer');
           if (form) {
             fitComposer(e.target);
-            form.querySelector(".send").disabled =
+            form.querySelector('.send').disabled =
               (state.attachments[key] || []).some((f) => f.problem) ||
-              !((e.target.value || "").trim() || (state.attachments[key] || []).length);
+              !(
+                (e.target.value || '').trim() ||
+                (state.attachments[key] || []).length
+              );
           }
         }
-        if (e.target.matches(".index-search input")) {
+        if (e.target.matches('.index-search input')) {
           state.indexQuery = e.target.value;
           filterIndex();
         }
-        if (e.target.id === "message-search") findMessages(e.target.value);
+        if (e.target.id === 'message-search') findMessages(e.target.value);
       });
-      document.addEventListener("change", (e) => {
-        if (e.target.matches("[data-file-scope]"))
-          receiveFiles(e.target.dataset.fileScope, Array.from(e.target.files || []));
+      document.addEventListener('change', (e) => {
+        if (e.target.matches('[data-file-scope]'))
+          receiveFiles(
+            e.target.dataset.fileScope,
+            Array.from(e.target.files || []),
+          );
       });
-      document.addEventListener("dragover", (e) => {
-        if (e.target.closest(".composer")) e.preventDefault();
+      document.addEventListener('dragover', (e) => {
+        if (e.target.closest('.composer')) e.preventDefault();
       });
-      document.addEventListener("drop", (e) => {
-        const form = e.target.closest(".composer");
+      document.addEventListener('drop', (e) => {
+        const form = e.target.closest('.composer');
         if (!form) return;
         e.preventDefault();
         receiveFiles(form.dataset.scope, Array.from(e.dataTransfer.files));
       });
-      document.addEventListener("paste", (e) => {
-        const form = e.target.closest(".composer");
+      document.addEventListener('paste', (e) => {
+        const form = e.target.closest('.composer');
         const files = Array.from(e.clipboardData?.files || []);
         if (form && files.length) {
           e.preventDefault();
           receiveFiles(form.dataset.scope, files);
         }
       });
-      window.addEventListener("beforeunload", persistDrafts);
-      document.addEventListener("submit", (e) => {
+      window.addEventListener('beforeunload', persistDrafts);
+      document.addEventListener('submit', (e) => {
         const form = e.target;
         if (!form.dataset.form) return;
         e.preventDefault();
         const kind = form.dataset.form;
-        if (kind === "settings") {
+        if (kind === 'settings') {
           const data = new FormData(form);
-          state.name = String(data.get("name")).trim() || "Noema";
-          state.preference = String(data.get("preference")).trim();
-          state.model = ["general", "reasoning"].includes(data.get("model"))
-            ? data.get("model")
-            : "general";
+          state.name = String(data.get('name')).trim() || 'Noema';
+          state.preference = String(data.get('preference')).trim();
+          state.model = ['general', 'reasoning'].includes(data.get('model'))
+            ? data.get('model')
+            : 'general';
           persistDrafts();
-          $("#dialog").close();
-          addCore("<p>我现在叫 " + esc(state.name) + "。你在设置里写的交流偏好也已经收到。</p>");
-          render();
-          return;
-        }
-        if (kind === "review") {
-          const feedback = form.querySelector("textarea").value.trim();
-          if (!feedback) {
-            $("#review-feedback").focus();
-            $("#review-feedback").setCustomValidity("请填写反馈内容。");
-            $("#review-feedback").reportValidity();
-            $("#review-feedback").setCustomValidity("");
-            return;
-          }
-          state.feedback = feedback;
-          state.drafts.review = "";
-          state.notice = "你的反馈：" + feedback;
+          $('#dialog').close();
           addCore(
-            "<p>收到反馈。我先梳理这版需要调整的地方；向团队确认下一步之前，相关开发保持暂停。</p>",
+            '<p>我现在叫 ' +
+              esc(state.name) +
+              '。你在设置里写的交流偏好也已经收到。</p>',
           );
           render();
           return;
         }
-        if (kind === "group") {
-          const input = form.querySelector("input");
-          if (!input.value.trim()) return;
-          state.groupExtra.push("<p>" + esc(input.value.trim()) + "</p>");
+        if (kind === 'review') {
+          const feedback = form.querySelector('textarea').value.trim();
+          if (!feedback) {
+            $('#review-feedback').focus();
+            $('#review-feedback').setCustomValidity('请填写反馈内容。');
+            $('#review-feedback').reportValidity();
+            $('#review-feedback').setCustomValidity('');
+            return;
+          }
+          state.feedback = feedback;
+          state.drafts.review = '';
+          state.notice = '你的反馈：' + feedback;
+          addCore(
+            '<p>收到反馈。我先梳理这版需要调整的地方；向团队确认下一步之前，相关开发保持暂停。</p>',
+          );
           render();
           return;
         }
-        if (kind === "chat") {
+        if (kind === 'group') {
+          const input = form.querySelector('input');
+          if (!input.value.trim()) return;
+          state.groupExtra.push('<p>' + esc(input.value.trim()) + '</p>');
+          render();
+          return;
+        }
+        if (kind === 'chat') {
           const scope = form.dataset.scope,
-            text = form.querySelector("textarea").value.trim();
+            text = form.querySelector('textarea').value.trim();
           const files = state.attachments[scope] || [];
           if ((!text && !files.length) || files.some((f) => f.problem)) return;
           if (files.length > 5) {
-            state.composerErrors[scope] = "当前草稿超过 5 个附件，请移除多余附件后发送。";
+            state.composerErrors[scope] =
+              '当前草稿超过 5 个附件，请移除多余附件后发送。';
             render();
             return;
           }
           const quote = state.quotes[scope];
           const response =
-            (scope === "core"
-              ? "这是 Noema 的演示回复：消息会留在当前主聊。"
-              : "这是当前成员会话的演示回复，不会自动转交给 Noema。") +
-            (files.length ? "附件仅展示本地预览与归属，没有实际解析内容。" : "") +
-            "可以在回复期间追加消息、停止本轮，或模拟连接中断后重试。";
-          state.drafts[scope] = "";
+            (scope === 'core'
+              ? '这是 Noema 的演示回复：消息会留在当前主聊。'
+              : '这是当前成员会话的演示回复，不会自动转交给 Noema。') +
+            (files.length
+              ? '附件仅展示本地预览与归属，没有实际解析内容。'
+              : '') +
+            '可以在回复期间追加消息、停止本轮，或模拟连接中断后重试。';
+          state.drafts[scope] = '';
           state.attachments[scope] = [];
           delete state.quotes[scope];
           state.scrollToTail = scope;
-          conversations.send(scope, { text, files, quote, model: modelLabel(), response });
+          conversations.send(scope, {
+            text,
+            files,
+            quote,
+            model: modelLabel(),
+            response,
+          });
           persistDrafts();
-          const input = document.querySelector('textarea[data-draft="' + scope + '"]');
+          const input = document.querySelector(
+            'textarea[data-draft="' + scope + '"]',
+          );
           if (input) input.focus();
         }
       });
-      document.addEventListener("keydown", (e) => {
+      document.addEventListener('keydown', (e) => {
         if (
-          e.key === "Enter" &&
+          e.key === 'Enter' &&
           !e.shiftKey &&
           !e.isComposing &&
           e.keyCode !== 229 &&
-          e.target.matches(".composer textarea")
+          e.target.matches('.composer textarea')
         ) {
           e.preventDefault();
           e.target.form.requestSubmit();
@@ -4104,26 +4413,29 @@
       });
       const scrollTimers = new WeakMap();
       document.addEventListener(
-        "scroll",
+        'scroll',
         (e) => {
-          const target = e.target === document ? document.documentElement : e.target;
+          const target =
+            e.target === document ? document.documentElement : e.target;
           if (!(target instanceof Element)) return;
-          if (target.matches(".chat-scroll")) {
-            const jump = $(".jump-latest");
+          if (target.matches('.chat-scroll')) {
+            const jump = $('.jump-latest');
             if (jump)
-              jump.hidden = target.scrollHeight - target.scrollTop - target.clientHeight < 80;
+              jump.hidden =
+                target.scrollHeight - target.scrollTop - target.clientHeight <
+                80;
           }
-          target.classList.add("scroll-active");
+          target.classList.add('scroll-active');
           clearTimeout(scrollTimers.get(target));
           scrollTimers.set(
             target,
-            setTimeout(() => target.classList.remove("scroll-active"), 900),
+            setTimeout(() => target.classList.remove('scroll-active'), 900),
           );
         },
         true,
       );
       render();
-      new ResizeObserver(syncIndex).observe($("#app"));
+      new ResizeObserver(syncIndex).observe($('#app'));
     </script>
   </body>
 </html>
