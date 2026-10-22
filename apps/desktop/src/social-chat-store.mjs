@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { normalizeInteractionAdjustmentSnapshots } from './root-store.mjs';
 import { searchTranscriptHistory } from './transcript-search.mjs';
+import { SOCIAL_SCHEMA_VERSION } from './social-chat-schema.mjs';
 
-const SCHEMA_VERSION = 11;
 const MAX_CONTEXT_MESSAGES = 40;
 const MAX_FORWARDED_MESSAGES = 20;
 const MAX_FORWARDED_CONTENT_LENGTH = 40_000;
@@ -149,7 +149,7 @@ export class SocialChatStore {
       this.db
         .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
         .get()?.version ?? 0;
-    if (current > SCHEMA_VERSION) {
+    if (current > SOCIAL_SCHEMA_VERSION) {
       throw new Error(
         `Social chat schema ${current} is newer than this Noema build supports.`,
       );
