@@ -20,10 +20,13 @@
         --blue-soft: #e7edf5;
         --green: #587567;
         --green-soft: #e8eee9;
-        font-family: "Segoe UI Variable", "Aptos", "Microsoft YaHei UI", sans-serif;
+        font-family:
+          'Segoe UI Variable', 'Aptos', 'Microsoft YaHei UI', sans-serif;
       }
 
-      * { box-sizing: border-box; }
+      * {
+        box-sizing: border-box;
+      }
 
       body {
         margin: 0;
@@ -33,7 +36,10 @@
         font-size: 14px;
       }
 
-      button { font: inherit; color: inherit; }
+      button {
+        font: inherit;
+        color: inherit;
+      }
 
       .study-head {
         min-height: 104px;
@@ -45,21 +51,31 @@
         border-bottom: 1px solid var(--line);
       }
 
-      .eyebrow, .micro-label, .section-kicker, .event-meta, .thread-meta,
-      .message-meta, .room-meta, .source-ref, .variant-impact {
+      .eyebrow,
+      .micro-label,
+      .section-kicker,
+      .event-meta,
+      .thread-meta,
+      .message-meta,
+      .room-meta,
+      .source-ref,
+      .variant-impact {
         font-size: 11px;
-        letter-spacing: .035em;
+        letter-spacing: 0.035em;
         color: var(--muted);
       }
 
-      .eyebrow { color: var(--mark); text-transform: uppercase; }
+      .eyebrow {
+        color: var(--mark);
+        text-transform: uppercase;
+      }
 
       h1 {
         margin: 5px 0 0;
         font-size: clamp(21px, 2.2vw, 29px);
         line-height: 1.1;
         font-weight: 570;
-        letter-spacing: -.035em;
+        letter-spacing: -0.035em;
       }
 
       .study-question {
@@ -77,11 +93,19 @@
         min-height: 62px;
         padding: 10px 30px;
         border-bottom: 1px solid var(--line);
-        background: rgba(251,252,249,.58);
+        background: rgba(251, 252, 249, 0.58);
       }
 
-      .control-group { display: flex; align-items: center; gap: 5px; }
-      .control-label { margin-right: 8px; color: var(--muted); font-size: 11px; }
+      .control-group {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+      }
+      .control-label {
+        margin-right: 8px;
+        color: var(--muted);
+        font-size: 11px;
+      }
 
       .switcher button {
         border: 0;
@@ -92,8 +116,10 @@
         cursor: pointer;
       }
 
-      .switcher button:hover { color: var(--ink); }
-      .switcher button[aria-pressed="true"] {
+      .switcher button:hover {
+        color: var(--ink);
+      }
+      .switcher button[aria-pressed='true'] {
         border-color: var(--mark);
         color: var(--ink);
       }
@@ -103,7 +129,7 @@
         border: 1px solid transparent;
         padding: 8px 11px;
       }
-      .variant-pick button[aria-pressed="true"] {
+      .variant-pick button[aria-pressed='true'] {
         border-color: var(--ink);
         background: var(--ink);
         color: white;
@@ -143,9 +169,22 @@
         border-bottom: 1px solid var(--line);
       }
 
-      .wordmark { font-size: 14px; font-weight: 650; letter-spacing: -.02em; }
-      .index-count { color: var(--quiet); font-size: 11px; }
-      .index-section { padding: 16px 15px 7px; color: var(--quiet); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
+      .wordmark {
+        font-size: 14px;
+        font-weight: 650;
+        letter-spacing: -0.02em;
+      }
+      .index-count {
+        color: var(--quiet);
+        font-size: 11px;
+      }
+      .index-section {
+        padding: 16px 15px 7px;
+        color: var(--quiet);
+        font-size: 10px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
 
       .room-row {
         position: relative;
@@ -156,12 +195,36 @@
         border-left: 3px solid transparent;
       }
 
-      .room-row.active { background: #e9ece7; border-left-color: var(--mark); }
-      .room-row.branch { background: #eef2f4; border-left-color: var(--blue); }
-      .room-name { font-size: 13px; font-weight: 580; }
-      .room-time { color: var(--quiet); font-size: 10px; }
-      .room-preview { grid-column: 1 / -1; overflow: hidden; color: var(--muted); font-size: 11px; white-space: nowrap; text-overflow: ellipsis; }
-      .room-tag { grid-column: 1 / -1; margin-top: 3px; color: var(--blue); font-size: 10px; }
+      .room-row.active {
+        background: #e9ece7;
+        border-left-color: var(--mark);
+      }
+      .room-row.branch {
+        background: #eef2f4;
+        border-left-color: var(--blue);
+      }
+      .room-name {
+        font-size: 13px;
+        font-weight: 580;
+      }
+      .room-time {
+        color: var(--quiet);
+        font-size: 10px;
+      }
+      .room-preview {
+        grid-column: 1 / -1;
+        overflow: hidden;
+        color: var(--muted);
+        font-size: 11px;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
+      .room-tag {
+        grid-column: 1 / -1;
+        margin-top: 3px;
+        color: var(--blue);
+        font-size: 10px;
+      }
 
       .index-bottom {
         margin-top: auto;
@@ -189,9 +252,19 @@
         border-bottom: 1px solid var(--line);
       }
 
-      .conversation-title { font-size: 14px; font-weight: 610; }
-      .conversation-subtitle { margin-left: 10px; color: var(--muted); font-size: 11px; }
-      .head-side { color: var(--muted); font-size: 11px; }
+      .conversation-title {
+        font-size: 14px;
+        font-weight: 610;
+      }
+      .conversation-subtitle {
+        margin-left: 10px;
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .head-side {
+        color: var(--muted);
+        font-size: 11px;
+      }
 
       .timeline {
         min-height: 0;
@@ -208,8 +281,15 @@
         max-width: 826px;
       }
 
-      .sequence-intro .section-kicker { padding-top: 5px; }
-      .sequence-intro p { margin: 0; color: var(--muted); line-height: 1.5; font-size: 12px; }
+      .sequence-intro .section-kicker {
+        padding-top: 5px;
+      }
+      .sequence-intro p {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.5;
+        font-size: 12px;
+      }
 
       .turn {
         display: grid;
@@ -219,17 +299,46 @@
         max-width: 826px;
       }
 
-      .turn + .turn { margin-top: 20px; }
-      .speaker { padding-top: 3px; color: var(--muted); font-size: 11px; }
-      .speaker.you { color: var(--mark); }
-      .speaker.agent { color: var(--green); }
-      .message { min-width: 0; line-height: 1.62; font-size: 14px; }
-      .message p { margin: 0; }
-      .message p + p { margin-top: 9px; }
-      .message strong { font-weight: 620; }
-      .message em { color: #59605b; }
-      .message-meta { display: block; margin-top: 6px; color: var(--quiet); }
-      .agent-turn .message { padding-left: 13px; border-left: 2px solid #b5c6bc; }
+      .turn + .turn {
+        margin-top: 20px;
+      }
+      .speaker {
+        padding-top: 3px;
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .speaker.you {
+        color: var(--mark);
+      }
+      .speaker.agent {
+        color: var(--green);
+      }
+      .message {
+        min-width: 0;
+        line-height: 1.62;
+        font-size: 14px;
+      }
+      .message p {
+        margin: 0;
+      }
+      .message p + p {
+        margin-top: 9px;
+      }
+      .message strong {
+        font-weight: 620;
+      }
+      .message em {
+        color: #59605b;
+      }
+      .message-meta {
+        display: block;
+        margin-top: 6px;
+        color: var(--quiet);
+      }
+      .agent-turn .message {
+        padding-left: 13px;
+        border-left: 2px solid #b5c6bc;
+      }
 
       .handoff {
         margin: 13px 0 0 105px;
@@ -241,8 +350,18 @@
         line-height: 1.45;
       }
 
-      .handoff-label { display: block; margin-bottom: 3px; color: var(--blue); font-size: 10px; letter-spacing: .035em; }
-      .source-ref { display: inline-block; margin-top: 5px; color: var(--blue); }
+      .handoff-label {
+        display: block;
+        margin-bottom: 3px;
+        color: var(--blue);
+        font-size: 10px;
+        letter-spacing: 0.035em;
+      }
+      .source-ref {
+        display: inline-block;
+        margin-top: 5px;
+        color: var(--blue);
+      }
 
       .branch-line {
         display: grid;
@@ -252,9 +371,26 @@
         max-width: 826px;
       }
 
-      .branch-rail { position: relative; min-height: 64px; }
-      .branch-rail::before { content: ""; position: absolute; top: -4px; right: 22px; bottom: 0; border-right: 1px solid var(--blue); }
-      .branch-rail::after { content: ""; position: absolute; top: 0; right: 22px; width: 16px; border-top: 1px solid var(--blue); }
+      .branch-rail {
+        position: relative;
+        min-height: 64px;
+      }
+      .branch-rail::before {
+        content: '';
+        position: absolute;
+        top: -4px;
+        right: 22px;
+        bottom: 0;
+        border-right: 1px solid var(--blue);
+      }
+      .branch-rail::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        right: 22px;
+        width: 16px;
+        border-top: 1px solid var(--blue);
+      }
 
       .branch-link {
         display: flex;
@@ -272,10 +408,22 @@
         cursor: pointer;
       }
 
-      .branch-link:hover .branch-title { text-decoration: underline; text-underline-offset: 3px; }
-      .branch-title { font-weight: 610; font-size: 13px; }
-      .branch-state { color: var(--muted); font-size: 11px; }
-      .branch-participants { color: var(--quiet); font-size: 10px; }
+      .branch-link:hover .branch-title {
+        text-decoration: underline;
+        text-underline-offset: 3px;
+      }
+      .branch-title {
+        font-weight: 610;
+        font-size: 13px;
+      }
+      .branch-state {
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .branch-participants {
+        color: var(--quiet);
+        font-size: 10px;
+      }
 
       .composer {
         display: grid;
@@ -288,10 +436,18 @@
         background: #fbfcf9;
       }
 
-      .composer-copy { color: var(--quiet); font-size: 11px; }
-      .composer-send { color: var(--mark); font-size: 12px; }
+      .composer-copy {
+        color: var(--quiet);
+        font-size: 11px;
+      }
+      .composer-send {
+        color: var(--mark);
+        font-size: 12px;
+      }
 
-      .thread-mode .conversation-head { background: #edf2f4; }
+      .thread-mode .conversation-head {
+        background: #edf2f4;
+      }
       .thread-context {
         display: flex;
         align-items: center;
@@ -305,10 +461,30 @@
         font-size: 11px;
       }
 
-      .return-link { padding: 4px 0; border: 0; background: transparent; color: var(--blue); cursor: pointer; }
-      .return-link:hover { text-decoration: underline; text-underline-offset: 3px; }
-      .contributor-line { display: flex; flex-wrap: wrap; gap: 10px 20px; margin: 5px 0 17px 106px; color: var(--muted); font-size: 11px; }
-      .contributor-line span::before { content: "—"; margin-right: 6px; color: var(--green); }
+      .return-link {
+        padding: 4px 0;
+        border: 0;
+        background: transparent;
+        color: var(--blue);
+        cursor: pointer;
+      }
+      .return-link:hover {
+        text-decoration: underline;
+        text-underline-offset: 3px;
+      }
+      .contributor-line {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px 20px;
+        margin: 5px 0 17px 106px;
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .contributor-line span::before {
+        content: '—';
+        margin-right: 6px;
+        color: var(--green);
+      }
 
       .proof-strip {
         display: grid;
@@ -321,40 +497,120 @@
         line-height: 1.45;
       }
 
-      .proof-strip strong { color: var(--ink); font-weight: 610; }
-      .proof-state { white-space: nowrap; color: var(--mark); }
+      .proof-strip strong {
+        color: var(--ink);
+        font-weight: 610;
+      }
+      .proof-state {
+        white-space: nowrap;
+        color: var(--mark);
+      }
 
       @media (max-width: 760px) {
-        .study-head { grid-template-columns: 1fr; gap: 9px; padding: 15px 16px; }
-        .study-question { justify-self: start; font-size: 12px; }
-        .controls { align-items: flex-start; flex-direction: column; gap: 8px; padding: 8px 11px; }
-        .control-group { max-width: 100%; overflow-x: auto; }
-        .control-label { flex: 0 0 auto; }
-        .switcher button { white-space: nowrap; padding: 7px 8px; }
-        .variant-pick button { min-width: auto; }
-        .variant-note { display: none; }
-        .workspace { grid-template-columns: 1fr; height: calc(100dvh - 225px); min-height: 480px; }
-        .room-index { display: none; }
-        .conversation-head { padding: 0 14px; }
-        .conversation-subtitle { display: block; margin: 2px 0 0; }
-        .timeline { padding: 18px 14px 28px; }
-        .sequence-intro, .turn, .branch-line { grid-template-columns: 58px minmax(0,1fr); gap: 9px; }
-        .speaker { font-size: 10px; }
-        .handoff { margin-left: 67px; }
-        .branch-rail::before { right: 12px; }
-        .branch-rail::after { right: 12px; width: 10px; }
-        .contributor-line { margin-left: 67px; }
-        .thread-context { align-items: flex-start; flex-direction: column; }
-        .proof-strip { grid-template-columns: 1fr; padding: 10px 14px; }
-        .proof-state { white-space: normal; }
+        .study-head {
+          grid-template-columns: 1fr;
+          gap: 9px;
+          padding: 15px 16px;
+        }
+        .study-question {
+          justify-self: start;
+          font-size: 12px;
+        }
+        .controls {
+          align-items: flex-start;
+          flex-direction: column;
+          gap: 8px;
+          padding: 8px 11px;
+        }
+        .control-group {
+          max-width: 100%;
+          overflow-x: auto;
+        }
+        .control-label {
+          flex: 0 0 auto;
+        }
+        .switcher button {
+          white-space: nowrap;
+          padding: 7px 8px;
+        }
+        .variant-pick button {
+          min-width: auto;
+        }
+        .variant-note {
+          display: none;
+        }
+        .workspace {
+          grid-template-columns: 1fr;
+          height: calc(100dvh - 225px);
+          min-height: 480px;
+        }
+        .room-index {
+          display: none;
+        }
+        .conversation-head {
+          padding: 0 14px;
+        }
+        .conversation-subtitle {
+          display: block;
+          margin: 2px 0 0;
+        }
+        .timeline {
+          padding: 18px 14px 28px;
+        }
+        .sequence-intro,
+        .turn,
+        .branch-line {
+          grid-template-columns: 58px minmax(0, 1fr);
+          gap: 9px;
+        }
+        .speaker {
+          font-size: 10px;
+        }
+        .handoff {
+          margin-left: 67px;
+        }
+        .branch-rail::before {
+          right: 12px;
+        }
+        .branch-rail::after {
+          right: 12px;
+          width: 10px;
+        }
+        .contributor-line {
+          margin-left: 67px;
+        }
+        .thread-context {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+        .proof-strip {
+          grid-template-columns: 1fr;
+          padding: 10px 14px;
+        }
+        .proof-state {
+          white-space: normal;
+        }
       }
 
       @media (max-width: 420px) {
-        .conversation { grid-template-rows: 52px 1fr auto; }
-        .sequence-intro, .turn, .branch-line { grid-template-columns: 45px minmax(0,1fr); gap: 7px; }
-        .handoff { margin-left: 52px; }
-        .contributor-line { margin-left: 52px; }
-        .proof-state { display: none; }
+        .conversation {
+          grid-template-rows: 52px 1fr auto;
+        }
+        .sequence-intro,
+        .turn,
+        .branch-line {
+          grid-template-columns: 45px minmax(0, 1fr);
+          gap: 7px;
+        }
+        .handoff {
+          margin-left: 52px;
+        }
+        .contributor-line {
+          margin-left: 52px;
+        }
+        .proof-state {
+          display: none;
+        }
       }
     </style>
   </head>
@@ -364,50 +620,88 @@
         <div class="eyebrow">NOEMA · PRODUCT STRUCTURE</div>
         <h1>对话怎样长成一件事</h1>
       </div>
-      <p class="study-question">同一个人持续和 Noema 交流。什么时候留在原对话，什么时候值得分出一条能回来、能继续的工作脉络？</p>
+      <p class="study-question">
+        同一个人持续和 Noema
+        交流。什么时候留在原对话，什么时候值得分出一条能回来、能继续的工作脉络？
+      </p>
     </header>
 
     <nav class="controls" aria-label="体验对照">
-      <div class="control-group switcher" id="scenario-switcher" aria-label="使用情境">
+      <div
+        class="control-group switcher"
+        id="scenario-switcher"
+        aria-label="使用情境"
+      >
         <span class="control-label">情境</span>
-        <button type="button" data-scenario="everyday" aria-pressed="true">日常交流</button>
-        <button type="button" data-scenario="lookup" aria-pressed="false">一次性资料</button>
-        <button type="button" data-scenario="project" aria-pressed="false">跨日事项</button>
+        <button type="button" data-scenario="everyday" aria-pressed="true">
+          日常交流
+        </button>
+        <button type="button" data-scenario="lookup" aria-pressed="false">
+          一次性资料
+        </button>
+        <button type="button" data-scenario="project" aria-pressed="false">
+          跨日事项
+        </button>
       </div>
-      <div class="control-group switcher variant-pick" id="variant-switcher" aria-label="结构方案">
+      <div
+        class="control-group switcher variant-pick"
+        id="variant-switcher"
+        aria-label="结构方案"
+      >
         <span class="control-label">结构</span>
-        <button type="button" data-variant="inline" aria-pressed="false">都留在主聊</button>
-        <button type="button" data-variant="thread" aria-pressed="true">来源线程</button>
-        <button type="button" data-variant="rooms" aria-pressed="false">事项工作区</button>
+        <button type="button" data-variant="inline" aria-pressed="false">
+          都留在主聊
+        </button>
+        <button type="button" data-variant="thread" aria-pressed="true">
+          来源线程
+        </button>
+        <button type="button" data-variant="rooms" aria-pressed="false">
+          事项工作区
+        </button>
       </div>
       <div class="variant-note" id="variant-note"></div>
     </nav>
 
     <main class="workspace" id="workspace" aria-live="polite"></main>
     <footer class="proof-strip">
-      <div><strong>能力边界</strong>　这是目标结构的交互研究稿；当前 Noema 尚无联网检索、自动建组或价格追踪能力。执行状态只有在真实发生时才能出现。</div>
-      <div class="proof-state" id="proof-state">未执行任何任务 · 仅切换交互结构</div>
+      <div>
+        <strong>能力边界</strong>　这是目标结构的交互研究稿；当前 Noema
+        尚无联网检索、自动建组或价格追踪能力。执行状态只有在真实发生时才能出现。
+      </div>
+      <div class="proof-state" id="proof-state">
+        未执行任何任务 · 仅切换交互结构
+      </div>
     </footer>
 
     <script>
-      const state = { scenario: 'everyday', variant: 'thread', inThread: false };
+      const state = {
+        scenario: 'everyday',
+        variant: 'thread',
+        inThread: false,
+      };
 
       const variantCopy = {
-        inline: '所有交流和执行记录都留在主聊。最少切换；长期更新逐渐挤压普通对话。',
-        thread: '跨日讨论分出 Noema 主题线程；执行任务仍关联来源消息。两个对象互相指路，各自保有清楚生命周期。',
-        rooms: '持续项目有独立工作区，主题对话、参与者和任务状态关联在一起。概览更完整；需要新的对象、权限和删除边界。',
+        inline:
+          '所有交流和执行记录都留在主聊。最少切换；长期更新逐渐挤压普通对话。',
+        thread:
+          '跨日讨论分出 Noema 主题线程；执行任务仍关联来源消息。两个对象互相指路，各自保有清楚生命周期。',
+        rooms:
+          '持续项目有独立工作区，主题对话、参与者和任务状态关联在一起。概览更完整；需要新的对象、权限和删除边界。',
       };
 
       const scenarioCopy = {
         everyday: '改一段文字只需要交流，不需要任务面板、状态栏或新聊天。',
-        lookup: '一次性问题保持在主聊；如果需要最新资料，Noema 应把来源随答案带回。当前版本没有联网能力。',
-        project: '长期事项有自己的参与者、阶段与恢复点；它仍从主聊提出，也应能回到主聊。',
+        lookup:
+          '一次性问题保持在主聊；如果需要最新资料，Noema 应把来源随答案带回。当前版本没有联网能力。',
+        project:
+          '长期事项有自己的参与者、阶段与恢复点；它仍从主聊提出，也应能回到主聊。',
       };
 
       const options = {
         everyday: {
           user: '我想给朋友回消息，但不想显得太生硬。帮我把这句改自然一点：“你那边处理完了吗？”',
-          noema: '可以这样说：“你那边方便的时候，跟我说下处理得怎么样就好。”语气松一点，也没有催促的感觉。',
+          noema:
+            '可以这样说：“你那边方便的时候，跟我说下处理得怎么样就好。”语气松一点，也没有催促的感觉。',
           time: '今天 10:42',
         },
         lookup: {
@@ -417,15 +711,24 @@
         },
         project: {
           user: '我想做个跟踪几个 AI 平台定价和套餐变化的工具。先帮我把这件事推进起来。',
-          noema: '这件事要跨几轮研究和实现。我先和你确认要跟踪的平台与更新范围；确认后再把持续工作从这条消息分出来。',
+          noema:
+            '这件事要跨几轮研究和实现。我先和你确认要跟踪的平台与更新范围；确认后再把持续工作从这条消息分出来。',
           time: '周一 09:16',
         },
       };
 
       function esc(text) {
-        return text.replace(/[&<>"']/g, (char) => ({
-          '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-        })[char]);
+        return text.replace(
+          /[&<>"']/g,
+          (char) =>
+            ({
+              '&': '&amp;',
+              '<': '&lt;',
+              '>': '&gt;',
+              '"': '&quot;',
+              "'": '&#39;',
+            })[char],
+        );
       }
 
       function indexMarkup() {
@@ -434,22 +737,42 @@
           <div class="index-section">最近</div>
           <div class="room-row active"><span class="room-name">Noema</span><span class="room-time">10:48</span><span class="room-preview">${esc(options[state.scenario].user)}</span></div>`;
         if (state.scenario === 'project' && state.variant === 'thread') {
-          return common + `<div class="index-row"><div class="index-section">跨日讨论</div><div class="room-row branch"><span class="room-name">价格工具 · 与 Noema 讨论</span><span class="room-time">周一</span><span class="room-preview">范围已确认 · 研究能力尚未连接</span><span class="room-tag">来源于 Noema 主聊</span></div></div><div class="index-bottom">这里只是你和 Noema 的独立讨论上下文。真正启动的执行任务仍留在其来源消息旁。</div>`;
+          return (
+            common +
+            `<div class="index-row"><div class="index-section">跨日讨论</div><div class="room-row branch"><span class="room-name">价格工具 · 与 Noema 讨论</span><span class="room-time">周一</span><span class="room-preview">范围已确认 · 研究能力尚未连接</span><span class="room-tag">来源于 Noema 主聊</span></div></div><div class="index-bottom">这里只是你和 Noema 的独立讨论上下文。真正启动的执行任务仍留在其来源消息旁。</div>`
+          );
         }
         if (state.scenario === 'project' && state.variant === 'rooms') {
           return `<div class="index-top"><span class="wordmark">Noema</span><span class="index-count">2 对话 · 1 工作区</span></div><div class="index-section">最近对话</div><div class="room-row"><span class="room-name">Noema</span><span class="room-time">周一</span><span class="room-preview">已确认平台和比较范围……</span></div><div class="index-section">持续事项</div><div class="room-row active"><span class="room-name">AI 平台定价工具</span><span class="room-time">进行中</span><span class="room-preview">研究 · 文件实现 · 结果核验</span><span class="room-tag">来源：Noema 主聊中的原始请求</span></div><div class="index-bottom">工作区是额外的持久对象，需设计成员、任务、来源、权限和删除路径。当前 Noema 尚无此工作区能力。</div>`;
         }
         if (state.scenario === 'project' && state.variant === 'inline') {
-          return common + `<div class="index-bottom">所有工作也留在 Noema 主聊。事项多了以后，历史聊天和进行中的项目会混在同一条记录里。</div>`;
+          return (
+            common +
+            `<div class="index-bottom">所有工作也留在 Noema 主聊。事项多了以后，历史聊天和进行中的项目会混在同一条记录里。</div>`
+          );
         }
-        return common + `<div class="index-bottom">日常对话不需要先选联系人、项目或模式。</div>`;
+        return (
+          common +
+          `<div class="index-bottom">日常对话不需要先选联系人、项目或模式。</div>`
+        );
       }
 
       function baseConversation() {
         const item = options[state.scenario];
-        const inGroup = state.scenario === 'project' && state.variant === 'rooms' && !state.inThread;
-        const title = state.inThread ? '价格工具 · 与 Noema 讨论' : inGroup ? 'AI 平台定价工具' : 'Noema';
-        const subtitle = state.inThread ? '主题线程 · 只含你与 Noema' : inGroup ? '独立事项工作区 · 概念候选' : '你的个人 agent';
+        const inGroup =
+          state.scenario === 'project' &&
+          state.variant === 'rooms' &&
+          !state.inThread;
+        const title = state.inThread
+          ? '价格工具 · 与 Noema 讨论'
+          : inGroup
+            ? 'AI 平台定价工具'
+            : 'Noema';
+        const subtitle = state.inThread
+          ? '主题线程 · 只含你与 Noema'
+          : inGroup
+            ? '独立事项工作区 · 概念候选'
+            : '你的个人 agent';
         return `<section class="conversation ${state.inThread ? 'thread-mode' : ''}">
           <header class="conversation-head"><div><span class="conversation-title">${title}</span><span class="conversation-subtitle">${subtitle}</span></div><span class="head-side">${state.scenario === 'project' && state.inThread ? '持续事项 · 草案' : '个人对话'}</span></header>
           <div class="timeline" id="timeline">${renderTimeline(item)}</div>
@@ -464,9 +787,10 @@
             ? renderRoomsProject(item)
             : renderProjectMain(item);
         }
-        const action = state.scenario === 'lookup'
-          ? `<div class="handoff"><span class="handoff-label">资料来源 · 目标能力示意</span>答案应把原始发布与报道一并列出，方便你直接核查。此处没有真实联网结果。</div>`
-          : '';
+        const action =
+          state.scenario === 'lookup'
+            ? `<div class="handoff"><span class="handoff-label">资料来源 · 目标能力示意</span>答案应把原始发布与报道一并列出，方便你直接核查。此处没有真实联网结果。</div>`
+            : '';
         return `<div class="sequence-intro"><span class="section-kicker">${state.scenario === 'lookup' ? '短问题' : '日常对话'}</span><p>${esc(scenarioCopy[state.scenario])}</p></div>
           <article class="turn"><div class="speaker you">你 <span class="message-meta">${item.time}</span></div><div class="message"><p>${esc(item.user)}</p></div></article>
           <article class="turn agent-turn"><div class="speaker agent">Noema</div><div class="message"><p>${esc(item.noema)}</p>${state.scenario === 'lookup' ? `<p>先核对来源，再告诉你哪些变化有实际影响。</p>` : ''}<span class="message-meta">${state.scenario === 'lookup' ? '回答应附来源 · 此处为结构示意' : '刚刚'}</span></div></article>${action}`;
@@ -510,32 +834,55 @@
 
       function render() {
         document.querySelectorAll('[data-scenario]').forEach((button) => {
-          button.setAttribute('aria-pressed', String(button.dataset.scenario === state.scenario));
+          button.setAttribute(
+            'aria-pressed',
+            String(button.dataset.scenario === state.scenario),
+          );
         });
         document.querySelectorAll('[data-variant]').forEach((button) => {
-          button.setAttribute('aria-pressed', String(button.dataset.variant === state.variant));
+          button.setAttribute(
+            'aria-pressed',
+            String(button.dataset.variant === state.variant),
+          );
         });
-        document.getElementById('variant-note').textContent = variantCopy[state.variant];
-        document.getElementById('workspace').innerHTML = `<aside class="room-index" aria-label="对话索引">${indexMarkup()}</aside>${baseConversation()}`;
-        document.querySelectorAll('[data-open-thread]').forEach((button) => button.addEventListener('click', () => { state.inThread = true; render(); }));
-        document.querySelectorAll('[data-return]').forEach((button) => button.addEventListener('click', () => { state.inThread = false; render(); }));
-        document.getElementById('proof-state').textContent = state.scenario === 'project'
-          ? '持续事项示意 · 不含后台执行或真实协作者'
-          : state.scenario === 'lookup'
-            ? '一次性请求示意 · 未进行联网检索'
-            : '普通交流示意 · 未调用模型';
+        document.getElementById('variant-note').textContent =
+          variantCopy[state.variant];
+        document.getElementById('workspace').innerHTML =
+          `<aside class="room-index" aria-label="对话索引">${indexMarkup()}</aside>${baseConversation()}`;
+        document.querySelectorAll('[data-open-thread]').forEach((button) =>
+          button.addEventListener('click', () => {
+            state.inThread = true;
+            render();
+          }),
+        );
+        document.querySelectorAll('[data-return]').forEach((button) =>
+          button.addEventListener('click', () => {
+            state.inThread = false;
+            render();
+          }),
+        );
+        document.getElementById('proof-state').textContent =
+          state.scenario === 'project'
+            ? '持续事项示意 · 不含后台执行或真实协作者'
+            : state.scenario === 'lookup'
+              ? '一次性请求示意 · 未进行联网检索'
+              : '普通交流示意 · 未调用模型';
       }
 
-      document.querySelectorAll('[data-scenario]').forEach((button) => button.addEventListener('click', () => {
-        state.scenario = button.dataset.scenario;
-        state.inThread = false;
-        render();
-      }));
-      document.querySelectorAll('[data-variant]').forEach((button) => button.addEventListener('click', () => {
-        state.variant = button.dataset.variant;
-        state.inThread = false;
-        render();
-      }));
+      document.querySelectorAll('[data-scenario]').forEach((button) =>
+        button.addEventListener('click', () => {
+          state.scenario = button.dataset.scenario;
+          state.inThread = false;
+          render();
+        }),
+      );
+      document.querySelectorAll('[data-variant]').forEach((button) =>
+        button.addEventListener('click', () => {
+          state.variant = button.dataset.variant;
+          state.inThread = false;
+          render();
+        }),
+      );
       render();
     </script>
   </body>
