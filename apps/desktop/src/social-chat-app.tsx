@@ -12,6 +12,7 @@ import React, {
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useConversationNavigation } from './use-conversation-navigation';
+import { useScrollActivity } from './use-scroll-activity';
 import type {
   NoemaSocialAgent,
   NoemaInteractionAdjustment,
@@ -172,6 +173,8 @@ function SocialChatApp() {
   const [workBusy, setWorkBusy] = useState(false);
   const [showRoomList, setShowRoomList] = useState(false);
   const navigation = useConversationNavigation();
+  const shellRef = useRef<HTMLElement>(null);
+  useScrollActivity(shellRef);
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
   const [createAgentOpen, setCreateAgentOpen] = useState(false);
   const [editingAgentId, setEditingAgentId] = useState<string | null>(null);
@@ -1300,7 +1303,7 @@ function SocialChatApp() {
   );
 
   return (
-    <main className="social-shell">
+    <main className="social-shell" ref={shellRef}>
       <div
         ref={navigation.containerRef}
         className={`social-body ${showRoomList ? '' : 'room-open'}${navigation.collapsed ? ' navigation-collapsed' : ''}${navigation.dragging ? ' navigation-resizing' : ''}`}

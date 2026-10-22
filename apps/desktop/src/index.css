@@ -3112,7 +3112,7 @@ select:disabled {
 }
 .primary-conversation-nav {
   padding: 0 0 6px;
-  border-bottom: 1px solid #34424b;
+  border-bottom: 1px solid var(--chat-line);
 }
 .conversation-list-heading span:last-child {
   color: var(--chat-muted);
@@ -3147,7 +3147,7 @@ select:disabled {
     background 140ms ease;
 }
 .room-list-item:hover {
-  background: #202e37;
+  background: var(--chat-paper-alt);
 }
 .room-list-item.is-selected {
   background: #263640;
@@ -3155,21 +3155,6 @@ select:disabled {
 }
 .room-list-item.noema-primary-item {
   min-height: 50px;
-  border-left: 2px solid var(--chat-accent);
-  background: #263640;
-  color: #fff;
-  border-radius: 0;
-}
-.room-list-item.noema-primary-item:hover,
-.room-list-item.noema-primary-item.is-selected {
-  border-left-color: var(--chat-accent);
-  background: #263640;
-  box-shadow: none;
-}
-.noema-primary-item .room-list-title-line time,
-.noema-primary-item .room-preview,
-.noema-primary-item .room-preview b {
-  color: #b9c4ca;
 }
 .agent-mark {
   width: 32px;
@@ -3258,7 +3243,7 @@ select:disabled {
   -webkit-line-clamp: 1;
 }
 .room-preview b {
-  color: #d0d8dc;
+  color: var(--chat-muted);
   font-weight: 600;
 }
 .no-search-results {
@@ -5314,6 +5299,52 @@ select:disabled {
   padding: 17px 15px 12px;
   border-right: 1px solid #dfe5e1;
   background: #eef1ef;
+}
+
+/* The same scroll affordance applies to navigation, messages and dialogs. */
+@supports selector(::-webkit-scrollbar) {
+  .social-shell * {
+    scrollbar-width: auto;
+    scrollbar-color: auto;
+  }
+
+  .social-shell ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .social-shell ::-webkit-scrollbar-track,
+  .social-shell ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  .social-shell ::-webkit-scrollbar-button {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+
+  .social-shell ::-webkit-scrollbar-thumb {
+    border: 2px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    background-clip: padding-box;
+  }
+
+  .social-shell
+    :is(:hover, :focus-within, .scroll-active)::-webkit-scrollbar-thumb {
+    background-color: #a5b0b8;
+  }
+
+  .social-shell ::-webkit-scrollbar-thumb:hover {
+    background-color: #77858f;
+  }
+}
+
+@media (forced-colors: active) {
+  .social-shell ::-webkit-scrollbar-thumb {
+    background-color: ButtonText;
+  }
 }
 
 .sidebar-heading h1 {
