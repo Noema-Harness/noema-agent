@@ -11,6 +11,7 @@ import {
 import fs from 'node:fs';
 import path from 'node:path';
 import { EncryptedSecretStore } from './encrypted-secret-store.mjs';
+import { verifyConversationNavigation } from './conversation-navigation-e2e.mjs';
 import { runIsolatedWorkerE2E } from './isolated-worker-e2e.mjs';
 import { DEFAULT_BASE_URL, FreeLLMAPIClient } from './freellmapi-client.mjs';
 import {
@@ -1425,6 +1426,7 @@ async function captureSocialAgentCreationE2e() {
   if (!mainWindow || mainWindow.isDestroyed()) {
     throw new Error('联系人创建测试没有可用窗口。');
   }
+  const navigationLayout = await verifyConversationNavigation(mainWindow);
   const roomDraftIsolation = await mainWindow.webContents
     .executeJavaScript(`(async () => {
     const waitFor = async (predicate, label) => {
@@ -2782,7 +2784,7 @@ async function captureSocialAgentCreationE2e() {
     const initialDialog = ${JSON.stringify(dialogCancel.initialDialog)};
     const cancelReturnedFocus = ${JSON.stringify(dialogCancel.cancelReturnedFocus)};
     const cancelFocusTarget = ${JSON.stringify(dialogCancel.cancelFocusTarget)};
-    document.querySelector('.mobile-back-button')?.click();
+    document.querySelector('.navigation-reveal')?.click();
     await waitFor(() => !document.querySelector('.social-body')?.classList.contains('room-open'), '移动端返回联系人列表');
     await waitFrames();
     document.querySelector('.new-agent-button')?.click();
@@ -2950,6 +2952,7 @@ async function captureSocialAgentCreationE2e() {
     const sameIdentityJoined = groupSnapshot.members.some((member) => member.id === createdState.agent.id);
     const groupDidNotImportDm = !groupSnapshot.messages.some((message) => message.content.includes('长期观察游戏视觉与交互'));
     return {
+      navigationLayout: ${JSON.stringify(navigationLayout)},
       roomDraftIsolation: ${JSON.stringify(roomDraftIsolation)},
       interactionAdjustments: ${JSON.stringify(interactionAdjustments)},
       forwarding: {

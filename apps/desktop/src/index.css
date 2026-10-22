@@ -2971,10 +2971,11 @@ select:disabled {
   color: var(--chat-ink);
 }
 .social-body {
+  position: relative;
   min-height: 0;
   flex: 1;
   display: grid;
-  grid-template-columns: minmax(248px, 282px) minmax(0, 1fr);
+  grid-template-columns: var(--conversation-sidebar-width, 264px) minmax(0, 1fr);
   overflow: hidden;
   padding: 0;
   gap: 0;
@@ -4933,7 +4934,6 @@ select:disabled {
     --chat-author-gap: 12px;
   }
   .social-body {
-    grid-template-columns: minmax(260px, 285px) minmax(0, 1fr);
     gap: 0;
     padding: 0;
   }
@@ -5023,9 +5023,6 @@ select:disabled {
   }
   .room-settings-button {
     display: inline-grid;
-  }
-  .sidebar-settings-button {
-    display: none;
   }
   .mobile-back-button {
     width: 32px;
@@ -5230,7 +5227,80 @@ select:disabled {
 }
 
 .social-body {
-  grid-template-columns: minmax(238px, 264px) minmax(0, 1fr);
+  grid-template-columns: var(--conversation-sidebar-width, 264px) minmax(0, 1fr);
+}
+
+.social-body.navigation-collapsed {
+  grid-template-columns: 0 minmax(0, 1fr);
+}
+
+.navigation-collapsed .conversation-sidebar {
+  visibility: hidden;
+}
+
+.navigation-resize-handle {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  bottom: 0;
+  left: var(--conversation-sidebar-width, 264px);
+  width: 8px;
+  transform: translateX(-50%);
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.navigation-resize-handle::after {
+  position: absolute;
+  inset: 0 3px;
+  background: transparent;
+  content: '';
+}
+
+.navigation-resize-handle:hover::after,
+.navigation-resize-handle:focus-visible::after,
+.navigation-resizing .navigation-resize-handle::after {
+  background: var(--chat-accent);
+}
+
+.navigation-resize-handle:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.navigation-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+
+.navigation-collapsed .navigation-resize-handle {
+  display: none;
+}
+
+.navigation-collapsed.navigation-resizing .navigation-resize-handle {
+  display: block;
+  left: 0;
+}
+
+.navigation-reveal {
+  display: none;
+  flex: 0 0 auto;
+}
+
+.navigation-reveal svg,
+.navigation-collapse svg {
+  width: 18px;
+  height: 18px;
+}
+
+.navigation-collapsed .navigation-reveal {
+  display: inline-grid;
+}
+
+.navigation-collapse {
+  margin-left: 8px;
+  margin-right: auto;
+  flex: 0 0 auto;
 }
 
 .conversation-sidebar {
@@ -5462,6 +5532,16 @@ select:disabled {
 
   .conversation-sidebar {
     padding: 18px 16px 12px;
+    visibility: visible;
+  }
+
+  .navigation-resize-handle,
+  .navigation-collapsed.navigation-resizing .navigation-resize-handle {
+    display: none;
+  }
+
+  .navigation-reveal {
+    display: inline-grid;
   }
 
   .room-header {

@@ -11,6 +11,7 @@ import React, {
 } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { useConversationNavigation } from './use-conversation-navigation';
 import type {
   NoemaSocialAgent,
   NoemaInteractionAdjustment,
@@ -169,7 +170,8 @@ function SocialChatApp() {
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
   const [workBusy, setWorkBusy] = useState(false);
-  const [showRoomList, setShowRoomList] = useState(true);
+  const [showRoomList, setShowRoomList] = useState(false);
+  const navigation = useConversationNavigation();
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
   const [createAgentOpen, setCreateAgentOpen] = useState(false);
   const [editingAgentId, setEditingAgentId] = useState<string | null>(null);
@@ -360,12 +362,36 @@ function SocialChatApp() {
     const focusSearch = (event: globalThis.KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault();
-        searchRef.current?.focus();
+        navigation.reveal();
+        setShowRoomList(true);
+        requestAnimationFrame(() => searchRef.current?.focus());
       }
     };
     window.addEventListener('keydown', focusSearch);
     return () => window.removeEventListener('keydown', focusSearch);
-  }, []);
+  }, [navigation.reveal]);
+
+  useEffect(() => {
+    if (!navigation.narrow || !showRoomList) return;
+    const dismissNavigation = (event: globalThis.KeyboardEvent) => {
+      if (
+        event.key !== 'Escape' ||
+        event.defaultPrevented ||
+        (event.target instanceof Element &&
+          event.target.closest('[role="dialog"]'))
+      )
+        return;
+      event.preventDefault();
+      setShowRoomList(false);
+      requestAnimationFrame(() =>
+        document
+          .querySelector<HTMLButtonElement>('.navigation-reveal')
+          ?.focus(),
+      );
+    };
+    window.addEventListener('keydown', dismissNavigation);
+    return () => window.removeEventListener('keydown', dismissNavigation);
+  }, [navigation.narrow, showRoomList]);
 
   useEffect(() => {
     const query = search.trim();
@@ -1275,10 +1301,36 @@ function SocialChatApp() {
 
   return (
     <main className="social-shell">
-      <div className={`social-body ${showRoomList ? '' : 'room-open'}`}>
-        <aside className="conversation-sidebar" aria-label="聊天列表">
+      <div
+        ref={navigation.containerRef}
+        className={`social-body ${showRoomList ? '' : 'room-open'}${navigation.collapsed ? ' navigation-collapsed' : ''}${navigation.dragging ? ' navigation-resizing' : ''}`}
+        style={navigation.style}
+      >
+        <aside
+          id="conversation-navigation"
+          className="conversation-sidebar"
+          aria-label="聊天列表"
+          inert={navigation.narrow ? !showRoomList : navigation.collapsed}
+        >
           <div className="sidebar-heading">
             <h1>Noema</h1>
+            <button
+              className="icon-button navigation-collapse"
+              type="button"
+              aria-label="收起导航"
+              title="收起导航"
+              onClick={() => {
+                if (navigation.narrow) setShowRoomList(false);
+                else navigation.collapse();
+                requestAnimationFrame(() =>
+                  document
+                    .querySelector<HTMLButtonElement>('.navigation-reveal')
+                    ?.focus(),
+                );
+              }}
+            >
+              <Icon name="back" />
+            </button>
             <div className="sidebar-create-actions">
               <button
                 className="sidebar-create-action new-agent-button"
@@ -1417,29 +1469,60 @@ function SocialChatApp() {
           </div>
         </aside>
 
-        <section className="conversation-panel" aria-label="当前聊天">
+        <div
+          className="navigation-resize-handle"
+          role="separator"
+          tabIndex={navigation.narrow || navigation.collapsed ? -1 : 0}
+          aria-label="调整导航宽度"
+          aria-controls="conversation-navigation"
+          aria-orientation="vertical"
+          aria-valuemin={0}
+          aria-valuemax={navigation.widthLimit}
+          aria-valuenow={
+            navigation.collapsed ? 0 : Math.round(navigation.width)
+          }
+          aria-valuetext={
+            navigation.collapsed
+              ? '导航已收起'
+              : `导航宽度 ${Math.round(navigation.width)} 像素`
+          }
+          title="拖动调整宽度；拖至左侧收起；方向键调整，Home 收起，End 最宽"
+          {...navigation.separatorProps}
+        />
+
+        <section
+          className="conversation-panel"
+          aria-label="当前聊天"
+          inert={navigation.narrow && showRoomList}
+        >
           {currentRoom && roomState?.room.id === currentRoom.id ? (
             <>
               <header className="room-header">
                 <button
                   type="button"
-                  className="mobile-back-button"
-                  aria-label="返回聊天列表"
-                  onClick={() => setShowRoomList(true)}
-                >
-                  <Icon name="back" />
-                </button>
-                <button
-                  className="icon-button settings-button room-settings-button"
-                  type="button"
-                  aria-label="连接与模型设置"
-                  title="连接与模型设置"
-                  onClick={(event) => {
-                    settingsTriggerRef.current = event.currentTarget;
-                    setSettingsOpen(true);
+                  className="icon-button navigation-reveal"
+                  aria-label="展开导航"
+                  title="展开导航"
+                  aria-expanded={
+                    navigation.narrow ? showRoomList : !navigation.collapsed
+                  }
+                  aria-controls="conversation-navigation"
+                  onClick={() => {
+                    navigation.reveal();
+                    setShowRoomList(true);
+                    requestAnimationFrame(() => searchRef.current?.focus());
                   }}
                 >
-                  <Icon name="settings" />
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    aria-hidden="true"
+                  >
+                    <rect x="3" y="4" width="18" height="16" rx="2" />
+                    <path d="M9 4v16" />
+                  </svg>
                 </button>
                 {currentRoom.parentRoomId ? (
                   <button
