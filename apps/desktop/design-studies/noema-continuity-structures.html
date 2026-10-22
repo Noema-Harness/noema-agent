@@ -207,13 +207,15 @@
         margin-left: 15px;
       }
       .shell {
+        position: relative;
         height: calc(100% - 38px);
         display: flex;
         min-width: 0;
         overflow: hidden;
       }
       .index {
-        flex: 0 0 208px;
+        flex: 0 0 var(--index-width, 232px);
+        min-width: 0;
         border-right: 1px solid var(--line);
         background: #f7f8f9;
         padding: 20px 10px 12px;
@@ -282,6 +284,71 @@
       }
       .app.layout-c .index {
         display: block;
+      }
+      .app.layout-c.index-closed .index {
+        display: none;
+      }
+      .index-resizer,
+      .index-shade,
+      .index-toggle {
+        display: none;
+      }
+      .layout-c .index-toggle {
+        display: inline-flex;
+        align-items: center;
+        padding: 4px;
+        border-radius: 3px;
+      }
+      .index-toggle svg {
+        width: 18px;
+        height: 18px;
+      }
+      .layout-c:not(.index-closed):not(.narrow-shell) .index-resizer {
+        display: block;
+        position: absolute;
+        z-index: 5;
+        top: 0;
+        bottom: 0;
+        left: calc(var(--index-width) - 4px);
+        width: 8px;
+        cursor: col-resize;
+        touch-action: none;
+        outline-offset: -2px;
+      }
+      .index-resizer::after {
+        content: "";
+        position: absolute;
+        inset: 0 3px;
+        background: transparent;
+      }
+      .index-resizer:hover::after,
+      .index-resizer:focus-visible::after,
+      .resizing .index-resizer::after {
+        background: var(--accent);
+      }
+      .app.resizing {
+        user-select: none;
+        cursor: col-resize;
+      }
+      .layout-c.resizing.index-closed .index-resizer {
+        display: block;
+        left: 0;
+      }
+      .layout-c.narrow-shell:not(.index-closed) .index {
+        position: absolute;
+        z-index: 4;
+        inset: 0 auto 0 0;
+        width: min(var(--index-width), calc(100% - 48px));
+        box-shadow: 8px 0 20px #17252e1a;
+      }
+      .layout-c.narrow-shell:not(.index-closed) .index-shade {
+        display: block;
+        position: absolute;
+        inset: 0;
+        z-index: 3;
+        background: #17252e35;
+        width: 100%;
+        border-radius: 0;
       }
       .chat {
         display: flex;
@@ -1250,9 +1317,6 @@
         .app.has-workspace.layout-b .chat {
           display: none;
         }
-        .app.layout-c .index {
-          display: none;
-        }
         .pane-head {
           padding: 0 20px;
         }
@@ -1434,8 +1498,8 @@
     <div class="study-controls">
       <nav class="variants" aria-label="结构方案">
         <button data-layout="a">A · 对话主轴</button
-        ><button data-layout="b">B · 对话与工作并置<small>推荐候选</small></button
-        ><button data-layout="c">C · 成员与项目索引</button>
+        ><button data-layout="b">B · 对话与工作并置</button
+        ><button data-layout="c">C · 成员与项目索引<small>已选空间结构</small></button>
       </nav>
       <nav class="scenes" aria-label="同一组使用情境">
         <button data-scene="daily">日常相处</button><button data-scene="news">新闻短委托</button
@@ -1453,7 +1517,10 @@
       "use strict";
       const $ = (s) => document.querySelector(s);
       const state = {
-        layout: "b",
+        layout: "c",
+        indexWidth: 232,
+        indexOpen: true,
+        mobileIndexOpen: false,
         scene: "review",
         workspace: "project",
         tab: "delivery",
@@ -1512,8 +1579,8 @@
         },
         c: {
           title: "C · 成员与项目索引",
-          text: "长期成员和项目拥有固定索引。内容区域在主聊、成员和项目空间之间完整切换。",
-          risk: "取舍：查找明确、适合积累；主伙伴的重心更容易被索引稀释。",
+          text: "已选空间结构：左侧导航可拖动调宽、拖至左缘收起，也可用顶栏按钮开闭。内容区域在主聊、成员和项目之间切换。",
+          risk: "本轮只确认空间组织；视觉语言、组件细节和整体体验仍待评审。A / B 保留作历史对照。",
         },
       };
       function esc(x) {
@@ -2119,6 +2186,74 @@
           '<div class="project-summary"><section><h3>小修订不等于重新成长</h3><p>恢复后修改一句说明，可以完成后再次归档。只有值得沉淀的变化才触发相应成长流程。</p></section></div></div>'
         );
       }
+      function indexLimit() {
+        return Math.min(400, Math.floor($("#app").clientWidth * 0.45));
+      }
+      function syncIndex() {
+        const app = $("#app");
+        const narrow = app.clientWidth <= 820;
+        const open = narrow ? state.mobileIndexOpen : state.indexOpen;
+        const width = narrow ? state.indexWidth : Math.min(state.indexWidth, indexLimit());
+        app.classList.toggle("narrow-shell", narrow);
+        app.classList.toggle("index-closed", !open);
+        app.style.setProperty("--index-width", width + "px");
+        for (const pane of document.querySelectorAll(".shell > .chat, .shell > .workspace"))
+          pane.inert = state.layout === "c" && narrow && open;
+        const toggle = $(".index-toggle");
+        toggle.setAttribute("aria-expanded", String(open));
+        toggle.setAttribute("aria-label", open ? "收起导航" : "展开导航");
+        const separator = $(".index-resizer");
+        separator.setAttribute("aria-valuemax", String(indexLimit()));
+        separator.setAttribute("aria-valuenow", String(open ? width : 0));
+        separator.setAttribute("aria-valuetext", open ? width + " 像素" : "已收起");
+      }
+      function resizeIndex(width) {
+        state.indexOpen = width > 72;
+        if (state.indexOpen) state.indexWidth = Math.max(184, Math.min(indexLimit(), width));
+        syncIndex();
+      }
+      let indexDrag = null;
+      document.addEventListener("pointerdown", (e) => {
+        if (!e.target.closest(".index-resizer") || e.button !== 0) return;
+        e.preventDefault();
+        indexDrag = {
+          id: e.pointerId,
+          left: $(".shell").getBoundingClientRect().left,
+          restoreWidth: state.indexWidth,
+        };
+        e.target.setPointerCapture(e.pointerId);
+        $("#app").classList.add("resizing");
+      });
+      document.addEventListener("pointermove", (e) => {
+        if (indexDrag && e.pointerId === indexDrag.id)
+          resizeIndex(Math.round(e.clientX - indexDrag.left));
+      });
+      function finishIndexDrag(e) {
+        if (!indexDrag || e.pointerId !== indexDrag.id) return;
+        if (!state.indexOpen) state.indexWidth = indexDrag.restoreWidth;
+        indexDrag = null;
+        $("#app").classList.remove("resizing");
+        if (!state.indexOpen) $(".index-toggle").focus();
+      }
+      document.addEventListener("pointerup", finishIndexDrag);
+      document.addEventListener("pointercancel", finishIndexDrag);
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && state.mobileIndexOpen && !$("#dialog").open) {
+          state.mobileIndexOpen = false;
+          syncIndex();
+          $(".index-toggle").focus();
+        }
+        if (!e.target.matches(".index-resizer")) return;
+        const step = e.shiftKey ? 40 : 16;
+        const width = Math.min(state.indexWidth, indexLimit());
+        if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+        e.preventDefault();
+        if (e.key === "Home") resizeIndex(0);
+        if (e.key === "End") resizeIndex(indexLimit());
+        if (e.key === "ArrowLeft") resizeIndex(width <= 184 ? 0 : width - step);
+        if (e.key === "ArrowRight") resizeIndex(width + step);
+        if (!state.indexOpen) $(".index-toggle").focus();
+      });
       function render() {
         const app = $("#app");
         app.className =
@@ -2127,15 +2262,15 @@
           (state.workspace ? " has-workspace" : "") +
           (state.focused ? " focused-frame" : "");
         app.innerHTML =
-          '<div class="window-head"><div class="wordmark"><span class="logo">' +
+          '<div class="window-head"><div class="wordmark"><button class="index-toggle" data-action="toggle-index" aria-controls="navigation-index" aria-label="收起导航"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button><span class="logo">' +
           icon("noema") +
           '</span>noema</div><div class="window-tools">' +
           button("home", esc(state.name), "home-tool") +
           button("directory", "成员与项目") +
           button("settings", "设置") +
-          '<span class="window-dots">— □ ×</span></div></div><div class="shell"><aside class="index" aria-label="成员和项目索引">' +
+          '<span class="window-dots">— □ ×</span></div></div><div class="shell"><button class="index-shade" data-action="toggle-index" aria-label="收起导航"></button><aside class="index" id="navigation-index" aria-label="成员和项目索引">' +
           indexMarkup() +
-          "</aside>" +
+          '</aside><div class="index-resizer" role="separator" tabindex="0" aria-label="调整导航宽度，方向键调整，Home 收起" aria-orientation="vertical" aria-controls="navigation-index" aria-valuemin="0"></div>' +
           chatPane() +
           '<section class="workspace" aria-label="当前工作内容">' +
           (state.workspace === "project"
@@ -2177,6 +2312,7 @@
           button("explanation", "评审说明 ↗");
         $("#stage").classList.toggle("narrow", state.narrow);
         document.body.classList.toggle("focused", state.focused);
+        syncIndex();
         for (const x of document.querySelectorAll(".chat-scroll,.session-scroll"))
           x.scrollTop = x.scrollHeight;
       }
@@ -2232,6 +2368,14 @@
         (state.extra[state.scene] ??= []).push(message(who, html, "刚刚"));
       }
       function act(action, el) {
+        if (action === "toggle-index") {
+          if ($("#app").clientWidth <= 820) state.mobileIndexOpen = !state.mobileIndexOpen;
+          else state.indexOpen = !state.indexOpen;
+          syncIndex();
+          $(".index-toggle").focus();
+          return;
+        }
+        state.mobileIndexOpen = false;
         if (action === "close-dialog") {
           $("#dialog").close();
           return;
@@ -2469,6 +2613,7 @@
         }
       });
       render();
+      new ResizeObserver(syncIndex).observe($("#app"));
     </script>
   </body>
 </html>
