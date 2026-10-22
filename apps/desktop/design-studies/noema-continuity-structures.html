@@ -378,7 +378,7 @@
         <span class="control-label">结构</span>
         <button type="button" data-variant="inline" aria-pressed="false">都留在主聊</button>
         <button type="button" data-variant="thread" aria-pressed="true">来源线程</button>
-        <button type="button" data-variant="rooms" aria-pressed="false">协作房间</button>
+        <button type="button" data-variant="rooms" aria-pressed="false">事项工作区</button>
       </div>
       <div class="variant-note" id="variant-note"></div>
     </nav>
@@ -393,9 +393,9 @@
       const state = { scenario: 'everyday', variant: 'thread', inThread: false };
 
       const variantCopy = {
-        inline: '所有交流和事项都留在主聊。最少切换；长期内容逐渐挤压普通对话。',
-        thread: '复杂事项从原消息分支，主聊与线程互返。选择性分流；需要一条清楚的创建边界。',
-        rooms: '协作者各有房间，主聊负责带回结论。过程直接；用户要理解并巡视更多房间。',
+        inline: '所有交流和执行记录都留在主聊。最少切换；长期更新逐渐挤压普通对话。',
+        thread: '跨日讨论分出 Noema 主题线程；执行任务仍关联来源消息。两个对象互相指路，各自保有清楚生命周期。',
+        rooms: '持续项目有独立工作区，主题对话、参与者和任务状态关联在一起。概览更完整；需要新的对象、权限和删除边界。',
       };
 
       const scenarioCopy = {
@@ -434,10 +434,10 @@
           <div class="index-section">最近</div>
           <div class="room-row active"><span class="room-name">Noema</span><span class="room-time">10:48</span><span class="room-preview">${esc(options[state.scenario].user)}</span></div>`;
         if (state.scenario === 'project' && state.variant === 'thread') {
-          return common + `<div class="index-row"><div class="index-section">从主聊分出</div><div class="room-row branch"><span class="room-name">AI 平台定价与变更</span><span class="room-time">周一</span><span class="room-preview">平台清单已确认 · 等待研究结果</span><span class="room-tag">来源于 Noema 主聊</span></div></div><div class="index-bottom">主聊仍是你和 Noema 的主要交流。持续事项出现在这里，随时可以回到来源。</div>`;
+          return common + `<div class="index-row"><div class="index-section">跨日讨论</div><div class="room-row branch"><span class="room-name">价格工具 · 与 Noema 讨论</span><span class="room-time">周一</span><span class="room-preview">范围已确认 · 研究能力尚未连接</span><span class="room-tag">来源于 Noema 主聊</span></div></div><div class="index-bottom">这里只是你和 Noema 的独立讨论上下文。真正启动的执行任务仍留在其来源消息旁。</div>`;
         }
         if (state.scenario === 'project' && state.variant === 'rooms') {
-          return `<div class="index-top"><span class="wordmark">Noema</span><span class="index-count">3 对话</span></div><div class="index-section">最近</div><div class="room-row"><span class="room-name">Noema</span><span class="room-time">周一</span><span class="room-preview">我已经把平台清单整理好了……</span></div><div class="room-row active"><span class="room-name">定价研究小组</span><span class="room-time">09:38</span><span class="room-preview">研究员：先核对官方套餐页面...</span><span class="room-tag">3 位参与者 · 14 条消息</span></div><div class="index-bottom">工作有自己的聊天空间。进度和结果需要由你在不同房间之间串起来。</div>`;
+          return `<div class="index-top"><span class="wordmark">Noema</span><span class="index-count">2 对话 · 1 工作区</span></div><div class="index-section">最近对话</div><div class="room-row"><span class="room-name">Noema</span><span class="room-time">周一</span><span class="room-preview">已确认平台和比较范围……</span></div><div class="index-section">持续事项</div><div class="room-row active"><span class="room-name">AI 平台定价工具</span><span class="room-time">进行中</span><span class="room-preview">研究 · 文件实现 · 结果核验</span><span class="room-tag">来源：Noema 主聊中的原始请求</span></div><div class="index-bottom">工作区是额外的持久对象，需设计成员、任务、来源、权限和删除路径。当前 Noema 尚无此工作区能力。</div>`;
         }
         if (state.scenario === 'project' && state.variant === 'inline') {
           return common + `<div class="index-bottom">所有工作也留在 Noema 主聊。事项多了以后，历史聊天和进行中的项目会混在同一条记录里。</div>`;
@@ -448,8 +448,8 @@
       function baseConversation() {
         const item = options[state.scenario];
         const inGroup = state.scenario === 'project' && state.variant === 'rooms' && !state.inThread;
-        const title = state.inThread ? 'AI 平台定价与变更' : inGroup ? '定价研究小组' : 'Noema';
-        const subtitle = state.inThread ? '来源：Noema 主聊 · 由 Noema 负责对你回报' : inGroup ? 'Noema · 研究员 · 工程搭档' : '你的个人 agent';
+        const title = state.inThread ? '价格工具 · 与 Noema 讨论' : inGroup ? 'AI 平台定价工具' : 'Noema';
+        const subtitle = state.inThread ? '主题线程 · 只含你与 Noema' : inGroup ? '独立事项工作区 · 概念候选' : '你的个人 agent';
         return `<section class="conversation ${state.inThread ? 'thread-mode' : ''}">
           <header class="conversation-head"><div><span class="conversation-title">${title}</span><span class="conversation-subtitle">${subtitle}</span></div><span class="head-side">${state.scenario === 'project' && state.inThread ? '持续事项 · 草案' : '个人对话'}</span></header>
           <div class="timeline" id="timeline">${renderTimeline(item)}</div>
@@ -473,43 +473,39 @@
       }
 
       function renderProjectMain(item) {
-        if (state.variant === 'rooms') {
-          return `<div class="sequence-intro"><span class="section-kicker">原始请求</span><p>协作已移到独立群聊。Noema 主聊只保留它带回来的简报。</p></div>
-            <article class="turn"><div class="speaker you">你 <span class="message-meta">${item.time}</span></div><div class="message"><p>${esc(item.user)}</p></div></article>
-            <article class="turn agent-turn"><div class="speaker agent">Noema</div><div class="message"><p>我建了一个定价研究小组，研究员和工程搭档已经开始梳理。</p><p>你可以去「定价研究小组」看他们的进度。完成后我会把结论带回来。</p><span class="message-meta">返回主聊的责任仍在 Noema</span></div></article>`;
-        }
         if (state.variant === 'thread') {
-          return `<div class="sequence-intro"><span class="section-kicker">原始请求</span><p>先把目标和边界在主聊里说清；事项成形后再分出线程，不自动建 agent 或启动外部工作。</p></div>
+          return `<div class="sequence-intro"><span class="section-kicker">原始请求</span><p>先把目标和边界在主聊里说清；跨日讨论分线程，任何真实执行仍有自己独立、可核验的任务记录。</p></div>
             <article class="turn"><div class="speaker you">你 <span class="message-meta">${item.time}</span></div><div class="message"><p>${esc(item.user)}</p></div></article>
-            <article class="turn agent-turn"><div class="speaker agent">Noema</div><div class="message"><p>${esc(item.noema)}</p><p>你确认之后，我会把研究、方案和验证放进同一条事项线程。我仍负责向你整理结果与下一步。</p><span class="message-meta">周一 09:18</span></div></article>
+            <article class="turn agent-turn"><div class="speaker agent">Noema</div><div class="message"><p>${esc(item.noema)}</p><p>你确认之后，我会开一条你和我之间的主题讨论，保留目标与取舍。研究、文件执行和核验不会混进这条对话线程，而会各自显示在它们实际来源消息旁。</p><span class="message-meta">周一 09:18</span></div></article>
             <article class="turn"><div class="speaker you">你 <span class="message-meta">周一 09:42</span></div><div class="message"><p>先覆盖 OpenAI、Anthropic 和 Google，个人套餐与免费版都要看，按月比较。</p></div></article>
-            <article class="turn agent-turn"><div class="speaker agent">Noema</div><div class="message"><p>好，我把这条消息分成一条持续事项。平台范围已经确定，联网研究与价格追踪目前还没启动。</p><span class="message-meta">周一 09:43</span></div></article>
-            <div class="branch-line"><div class="branch-rail"></div><button class="branch-link" type="button" data-open-thread><span class="branch-title">AI 平台定价与变更</span><span class="branch-state">范围已确认 · 尚未开始执行</span><span class="branch-participants">Noema · 研究员 · 工程搭档</span></button></div>`;
+            <article class="turn agent-turn"><div class="speaker agent">Noema</div><div class="message"><p>范围已明确。这条线程只承接我们之后的讨论。当前没有联网研究能力，因此研究任务尚未创建；文件实现也要等你选择工作区后才能启动。</p><span class="message-meta">周一 09:43</span></div></article>
+            <div class="branch-line"><div class="branch-rail"></div><button class="branch-link" type="button" data-open-thread><span class="branch-title">价格工具 · 与 Noema 讨论</span><span class="branch-state">用户与 Noema 的跨日上下文</span><span class="branch-participants">主题对话，不含工作执行状态</span></button></div>
+            <div class="handoff"><span class="handoff-label">执行边界 · 来源消息上的独立记录</span>网页研究：当前没有此能力，未启动。文件实现：只有在选择工作区并授权后才创建 DSH 任务；停止和核验属于任务记录。</div>`;
         }
-        return `<div class="sequence-intro"><span class="section-kicker">持续事项</span><p>协作过程全部留在同一条聊天里。用户不需要切换，但跨日更新会与普通交流并排累积。</p></div>
+        return `<div class="sequence-intro"><span class="section-kicker">持续事项</span><p>跨日讨论、协作过程和任务状态都回到主聊的一条记录里。用户不需要切换，但不同生命周期混在一起，长久使用后较难辨认。</p></div>
           <article class="turn"><div class="speaker you">你 <span class="message-meta">${item.time}</span></div><div class="message"><p>${esc(item.user)}</p></div></article>
-          <article class="turn agent-turn"><div class="speaker agent">Noema</div><div class="message"><p>${esc(item.noema)}</p><p>平台清单已确认。我安排研究员核对套餐和计费页面，工程搭档等资料齐后再估实现范围。</p><span class="message-meta">周一 09:25</span></div></article>
-          <div class="handoff"><span class="handoff-label">事项进展 · 同一条消息流</span>研究员已提交 4 个官方价格来源；工程搭档等待核对字段。<span class="source-ref">查看来源与核验条件　↗</span></div>
-          <article class="turn agent-turn"><div class="speaker agent">Noema</div><div class="message"><p>这轮先确认了按月 / 按年价格、使用上限、超额计费和地区差异。下一步是把套餐变化转成可比较的数据结构。</p><span class="message-meta">周二 16:10 · 已回到对话</span></div></article>`;
+          <article class="turn agent-turn"><div class="speaker agent">Noema</div><div class="message"><p>范围确认后，未来的协作结果仍会回到这条聊天记录。要是每项工作都以内嵌进度持续展开，研究、实现和普通交流会逐渐交织。</p><span class="message-meta">结构示意 · 无真实协作者或资料</span></div></article>
+          <div class="handoff"><span class="handoff-label">未来执行结果 · 仅示意</span>这里将关联真实工作任务及其结果；当前没有联网研究能力，也没有在本原型中启动任何任务。<span class="source-ref">执行状态应回到来源消息</span></div>
+          <article class="turn agent-turn"><div class="speaker agent">Noema</div><div class="message"><p>普通聊天、后续讨论和任务结果都在一个时间线。路径连续，但长事项会不断增加消息噪音。</p><span class="message-meta">结构示意 · 未运行</span></div></article>`;
       }
 
       function renderThreadTimeline() {
-        return `<div class="thread-context"><span>从 Noema 主聊的原始请求分出　·　当前仍是草案情境</span><button type="button" class="return-link" data-return>← 回到来源消息</button></div>
-          <div class="sequence-intro"><span class="section-kicker">事项边界</span><p>平台：OpenAI、Anthropic、Google；关注公开套餐价格、用量上限与主要变更。用户选择范围后才开始研究。</p></div>
-          <div class="contributor-line"><span>Noema：目标和交付把关</span><span>研究员：来源与变更</span><span>工程搭档：实现方案</span></div>
+        return `<div class="thread-context"><span>从 Noema 主聊的原始请求分出　·　本线程只保存你和 Noema 的对话；执行记录留在来源消息旁</span><button type="button" class="return-link" data-return>← 回到来源消息</button></div>
+          <div class="sequence-intro"><span class="section-kicker">讨论范围</span><p>平台：OpenAI、Anthropic、Google；关注公开套餐价格、用量上限与主要变更。此处保留你和 Noema 的判断过程，不承载执行者、后台状态或工作结果。</p></div>
+          <div class="contributor-line"><span>对话参与者：你 · Noema</span><span>来源消息：平台与比较范围</span></div>
           <article class="turn"><div class="speaker you">你 <span class="message-meta">周一 09:42</span></div><div class="message"><p>先覆盖这三家，免费版和个人付费版都要看。先做能按月比较的版本。</p></div></article>
-          <article class="turn agent-turn"><div class="speaker agent">Noema</div><div class="message"><p>范围明确了。我先让研究员只核对官方套餐页面；拿到来源后再和工程搭档一起定数据字段。这里不会自动监控或定时运行。</p><span class="message-meta">周一 09:43</span></div></article>
-          <div class="handoff"><span class="handoff-label">研究员 · 已提交资料</span>三家官方价格页、套餐名称、计费周期和用量说明。两处按地区变化的价格已标出，尚未核实商业 API 与消费者套餐是否可比。<span class="source-ref">原始来源 4 项　·　待 Noema 复核</span></div>
-          <article class="turn agent-turn"><div class="speaker agent">Noema</div><div class="message"><p>我核对了这些字段与页面原文。现在可以开始数据结构草案；价格抓取需要单独决定更新方式，当前还没有定时任务。</p><span class="message-meta">周一 11:05 · 下一步待讨论</span></div></article>
-          <div class="handoff"><span class="handoff-label">恢复点</span>已确认平台与比较字段；下一步：决定地区和币种。停在这里不会丢失来源或把待办误当成正在运行。</div>`;
+          <article class="turn agent-turn"><div class="speaker agent">Noema</div><div class="message"><p>要实现按月比较，我们还得先确定地区和币种。联网核价是独立研究能力；文件建设则需要实际的项目工作任务。两者如果启动，都会关联回来源请求，但不作为这条讨论线程中的发言。</p><span class="message-meta">周一 09:43</span></div></article>
+          <article class="turn"><div class="speaker you">你 <span class="message-meta">周二 10:12</span></div><div class="message"><p>先按美国地区和美元来，价格变更时我再回来继续讨论。</p></div></article>
+          <article class="turn agent-turn"><div class="speaker agent">Noema</div><div class="message"><p>好，地区与币种已定。这条讨论线程保留了我们后续对话；如果你接下来要求实际改项目文件，我会回到原请求启动有明确工作区范围的任务。</p><span class="message-meta">周二 10:13</span></div></article>`;
       }
 
       function renderRoomsProject(item) {
-        return `<div class="sequence-intro"><span class="section-kicker">独立协作空间</span><p>小组成员直接发言，Noema 继续对用户负责。</p></div>
-          <article class="turn"><div class="speaker you">你 <span class="message-meta">09:16</span></div><div class="message"><p>先比较三家平台的官方套餐和计费周期。</p></div></article>
-          <article class="turn agent-turn"><div class="speaker">研究员</div><div class="message"><p>我找到三家官方定价页；其中 Google 的地区价格不同，需要先确定地区。</p><span class="message-meta">09:38</span></div></article>
-          <article class="turn agent-turn"><div class="speaker">工程搭档</div><div class="message"><p>建议先把来源和套餐差异整理成结构化字段。没有地区选择前不应开始写抓取规则。</p><span class="message-meta">09:44</span></div></article>
-          <article class="turn agent-turn"><div class="speaker agent">Noema</div><div class="message"><p>我把两个意见带回来了：先确认地区，再定数据字段。你可以直接在群里回复他们，也可以回 Noema 主聊继续。</p><span class="message-meta">Noema 要负责把小组结果重新接回主线</span></div></article>`;
+        return `<div class="sequence-intro"><span class="section-kicker">独立事项工作区 · 假设方案</span><p>工作区把主题讨论、协作者与执行记录组合在一个新的持久对象中。它可以承载更多团队行为，但要额外决定成员、权限、任务归属、来源回链、删除和归档。</p></div>
+          <article class="turn"><div class="speaker you">你 <span class="message-meta">09:16</span></div><div class="message"><p>${esc(item.user)}</p></div></article>
+          <article class="turn agent-turn"><div class="speaker agent">Noema</div><div class="message"><p>我为这件长期工作建立一个独立工作区。你和我在这里讨论范围；真正的研究或文件任务各自生成可停止、可核验的执行记录。</p><span class="message-meta">工作区结构 · 当前 Noema 尚未实现</span></div></article>
+          <div class="handoff"><span class="handoff-label">未来执行记录 A · 网页研究</span>待连接研究能力；开始前需明确来源范围、更新时间和费用边界。<span class="source-ref">来源：本事项的范围确认</span></div>
+          <div class="handoff"><span class="handoff-label">未来执行记录 B · 文件实现</span>当前 DSH 能力仍须选择工作区并披露文件范围。停止不回滚；结果需按验证条件核对。<span class="source-ref">来源：工作区中的实现请求</span></div>
+          <article class="turn agent-turn"><div class="speaker agent">Noema</div><div class="message"><p>独立工作区可以让多个持续任务有一个共同归属；代价是 Noema 主聊、主题线程、事项工作区三者之间必须维持清楚的来源与回访路径。</p><span class="message-meta">结构候选 · 未验证</span></div></article>`;
       }
 
       function render() {
