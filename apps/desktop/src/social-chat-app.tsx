@@ -1581,7 +1581,10 @@ function SocialChatApp() {
                     </p>
                   </div>
                 ) : (
-                  <div className="message-sequence">
+                  <div
+                    className="message-sequence"
+                    data-room-kind={currentRoom.kind}
+                  >
                     {conversationTurns.map((turn) => (
                       <section
                         className="conversation-turn"
