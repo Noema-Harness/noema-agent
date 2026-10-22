@@ -1,0 +1,546 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Noema · 对话怎样长成一件事</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #202322;
+        --muted: #707572;
+        --quiet: #969b97;
+        --line: #d9ddda;
+        --paper: #f0f1ed;
+        --white: #fbfcf9;
+        --warm: #f6f2e8;
+        --mark: #bf4e32;
+        --mark-soft: #f1e5dd;
+        --blue: #295ca8;
+        --blue-soft: #e7edf5;
+        --green: #587567;
+        --green-soft: #e8eee9;
+        font-family: "Segoe UI Variable", "Aptos", "Microsoft YaHei UI", sans-serif;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        background: var(--paper);
+        color: var(--ink);
+        min-width: 320px;
+        font-size: 14px;
+      }
+
+      button { font: inherit; color: inherit; }
+
+      .study-head {
+        min-height: 104px;
+        display: grid;
+        grid-template-columns: minmax(220px, 1fr) minmax(340px, 620px);
+        align-items: end;
+        gap: 32px;
+        padding: 20px 30px 18px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .eyebrow, .micro-label, .section-kicker, .event-meta, .thread-meta,
+      .message-meta, .room-meta, .source-ref, .variant-impact {
+        font-size: 11px;
+        letter-spacing: .035em;
+        color: var(--muted);
+      }
+
+      .eyebrow { color: var(--mark); text-transform: uppercase; }
+
+      h1 {
+        margin: 5px 0 0;
+        font-size: clamp(21px, 2.2vw, 29px);
+        line-height: 1.1;
+        font-weight: 570;
+        letter-spacing: -.035em;
+      }
+
+      .study-question {
+        justify-self: end;
+        max-width: 600px;
+        margin: 0;
+        color: #4e5551;
+        line-height: 1.55;
+      }
+
+      .controls {
+        display: flex;
+        align-items: center;
+        gap: 28px;
+        min-height: 62px;
+        padding: 10px 30px;
+        border-bottom: 1px solid var(--line);
+        background: rgba(251,252,249,.58);
+      }
+
+      .control-group { display: flex; align-items: center; gap: 5px; }
+      .control-label { margin-right: 8px; color: var(--muted); font-size: 11px; }
+
+      .switcher button {
+        border: 0;
+        background: transparent;
+        padding: 8px 10px;
+        color: #606662;
+        border-bottom: 2px solid transparent;
+        cursor: pointer;
+      }
+
+      .switcher button:hover { color: var(--ink); }
+      .switcher button[aria-pressed="true"] {
+        border-color: var(--mark);
+        color: var(--ink);
+      }
+
+      .variant-pick button {
+        min-width: 104px;
+        border: 1px solid transparent;
+        padding: 8px 11px;
+      }
+      .variant-pick button[aria-pressed="true"] {
+        border-color: var(--ink);
+        background: var(--ink);
+        color: white;
+      }
+
+      .variant-note {
+        margin-left: auto;
+        max-width: 360px;
+        text-align: right;
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.4;
+      }
+
+      .workspace {
+        display: grid;
+        grid-template-columns: 246px minmax(0, 1fr);
+        height: calc(100dvh - 167px);
+        min-height: 510px;
+        background: var(--white);
+      }
+
+      .room-index {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        border-right: 1px solid var(--line);
+        background: #f7f8f4;
+      }
+
+      .index-top {
+        height: 56px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 15px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .wordmark { font-size: 14px; font-weight: 650; letter-spacing: -.02em; }
+      .index-count { color: var(--quiet); font-size: 11px; }
+      .index-section { padding: 16px 15px 7px; color: var(--quiet); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
+
+      .room-row {
+        position: relative;
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 3px 9px;
+        padding: 10px 15px 11px 18px;
+        border-left: 3px solid transparent;
+      }
+
+      .room-row.active { background: #e9ece7; border-left-color: var(--mark); }
+      .room-row.branch { background: #eef2f4; border-left-color: var(--blue); }
+      .room-name { font-size: 13px; font-weight: 580; }
+      .room-time { color: var(--quiet); font-size: 10px; }
+      .room-preview { grid-column: 1 / -1; overflow: hidden; color: var(--muted); font-size: 11px; white-space: nowrap; text-overflow: ellipsis; }
+      .room-tag { grid-column: 1 / -1; margin-top: 3px; color: var(--blue); font-size: 10px; }
+
+      .index-bottom {
+        margin-top: auto;
+        padding: 13px 15px;
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.45;
+      }
+
+      .conversation {
+        position: relative;
+        display: grid;
+        grid-template-rows: 56px 1fr auto;
+        min-width: 0;
+        min-height: 0;
+      }
+
+      .conversation-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 0 22px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .conversation-title { font-size: 14px; font-weight: 610; }
+      .conversation-subtitle { margin-left: 10px; color: var(--muted); font-size: 11px; }
+      .head-side { color: var(--muted); font-size: 11px; }
+
+      .timeline {
+        min-height: 0;
+        overflow: auto;
+        padding: 23px clamp(18px, 5vw, 68px) 36px;
+      }
+
+      .sequence-intro {
+        display: grid;
+        grid-template-columns: 92px minmax(0, 720px);
+        gap: 14px;
+        align-items: start;
+        margin: 0 auto 26px;
+        max-width: 826px;
+      }
+
+      .sequence-intro .section-kicker { padding-top: 5px; }
+      .sequence-intro p { margin: 0; color: var(--muted); line-height: 1.5; font-size: 12px; }
+
+      .turn {
+        display: grid;
+        grid-template-columns: 92px minmax(0, 720px);
+        gap: 14px;
+        margin: 0 auto;
+        max-width: 826px;
+      }
+
+      .turn + .turn { margin-top: 20px; }
+      .speaker { padding-top: 3px; color: var(--muted); font-size: 11px; }
+      .speaker.you { color: var(--mark); }
+      .speaker.agent { color: var(--green); }
+      .message { min-width: 0; line-height: 1.62; font-size: 14px; }
+      .message p { margin: 0; }
+      .message p + p { margin-top: 9px; }
+      .message strong { font-weight: 620; }
+      .message em { color: #59605b; }
+      .message-meta { display: block; margin-top: 6px; color: var(--quiet); }
+      .agent-turn .message { padding-left: 13px; border-left: 2px solid #b5c6bc; }
+
+      .handoff {
+        margin: 13px 0 0 105px;
+        max-width: 720px;
+        padding: 9px 0 9px 13px;
+        border-left: 2px solid var(--blue);
+        color: #43515a;
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .handoff-label { display: block; margin-bottom: 3px; color: var(--blue); font-size: 10px; letter-spacing: .035em; }
+      .source-ref { display: inline-block; margin-top: 5px; color: var(--blue); }
+
+      .branch-line {
+        display: grid;
+        grid-template-columns: 92px minmax(0, 720px);
+        gap: 14px;
+        margin: 15px auto 0;
+        max-width: 826px;
+      }
+
+      .branch-rail { position: relative; min-height: 64px; }
+      .branch-rail::before { content: ""; position: absolute; top: -4px; right: 22px; bottom: 0; border-right: 1px solid var(--blue); }
+      .branch-rail::after { content: ""; position: absolute; top: 0; right: 22px; width: 16px; border-top: 1px solid var(--blue); }
+
+      .branch-link {
+        display: flex;
+        align-items: baseline;
+        flex-wrap: wrap;
+        gap: 7px 14px;
+        border-top: 1px solid #c9d3df;
+        padding: 10px 0 8px;
+        color: var(--blue);
+        text-align: left;
+        background: transparent;
+        border-left: 0;
+        border-right: 0;
+        border-bottom: 0;
+        cursor: pointer;
+      }
+
+      .branch-link:hover .branch-title { text-decoration: underline; text-underline-offset: 3px; }
+      .branch-title { font-weight: 610; font-size: 13px; }
+      .branch-state { color: var(--muted); font-size: 11px; }
+      .branch-participants { color: var(--quiet); font-size: 10px; }
+
+      .composer {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        align-items: center;
+        gap: 12px;
+        min-height: 54px;
+        padding: 7px 19px 7px 22px;
+        border-top: 1px solid var(--line);
+        background: #fbfcf9;
+      }
+
+      .composer-copy { color: var(--quiet); font-size: 11px; }
+      .composer-send { color: var(--mark); font-size: 12px; }
+
+      .thread-mode .conversation-head { background: #edf2f4; }
+      .thread-context {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin: 0 auto 22px;
+        max-width: 826px;
+        padding: 9px 0;
+        border-bottom: 1px solid #c9d3df;
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .return-link { padding: 4px 0; border: 0; background: transparent; color: var(--blue); cursor: pointer; }
+      .return-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+      .contributor-line { display: flex; flex-wrap: wrap; gap: 10px 20px; margin: 5px 0 17px 106px; color: var(--muted); font-size: 11px; }
+      .contributor-line span::before { content: "—"; margin-right: 6px; color: var(--green); }
+
+      .proof-strip {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 14px;
+        padding: 12px 30px;
+        background: #e8eae5;
+        color: #59605b;
+        font-size: 11px;
+        line-height: 1.45;
+      }
+
+      .proof-strip strong { color: var(--ink); font-weight: 610; }
+      .proof-state { white-space: nowrap; color: var(--mark); }
+
+      @media (max-width: 760px) {
+        .study-head { grid-template-columns: 1fr; gap: 9px; padding: 15px 16px; }
+        .study-question { justify-self: start; font-size: 12px; }
+        .controls { align-items: flex-start; flex-direction: column; gap: 8px; padding: 8px 11px; }
+        .control-group { max-width: 100%; overflow-x: auto; }
+        .control-label { flex: 0 0 auto; }
+        .switcher button { white-space: nowrap; padding: 7px 8px; }
+        .variant-pick button { min-width: auto; }
+        .variant-note { display: none; }
+        .workspace { grid-template-columns: 1fr; height: calc(100dvh - 225px); min-height: 480px; }
+        .room-index { display: none; }
+        .conversation-head { padding: 0 14px; }
+        .conversation-subtitle { display: block; margin: 2px 0 0; }
+        .timeline { padding: 18px 14px 28px; }
+        .sequence-intro, .turn, .branch-line { grid-template-columns: 58px minmax(0,1fr); gap: 9px; }
+        .speaker { font-size: 10px; }
+        .handoff { margin-left: 67px; }
+        .branch-rail::before { right: 12px; }
+        .branch-rail::after { right: 12px; width: 10px; }
+        .contributor-line { margin-left: 67px; }
+        .thread-context { align-items: flex-start; flex-direction: column; }
+        .proof-strip { grid-template-columns: 1fr; padding: 10px 14px; }
+        .proof-state { white-space: normal; }
+      }
+
+      @media (max-width: 420px) {
+        .conversation { grid-template-rows: 52px 1fr auto; }
+        .sequence-intro, .turn, .branch-line { grid-template-columns: 45px minmax(0,1fr); gap: 7px; }
+        .handoff { margin-left: 52px; }
+        .contributor-line { margin-left: 52px; }
+        .proof-state { display: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="study-head">
+      <div>
+        <div class="eyebrow">NOEMA · PRODUCT STRUCTURE</div>
+        <h1>对话怎样长成一件事</h1>
+      </div>
+      <p class="study-question">同一个人持续和 Noema 交流。什么时候留在原对话，什么时候值得分出一条能回来、能继续的工作脉络？</p>
+    </header>
+
+    <nav class="controls" aria-label="体验对照">
+      <div class="control-group switcher" id="scenario-switcher" aria-label="使用情境">
+        <span class="control-label">情境</span>
+        <button type="button" data-scenario="everyday" aria-pressed="true">日常交流</button>
+        <button type="button" data-scenario="lookup" aria-pressed="false">一次性资料</button>
+        <button type="button" data-scenario="project" aria-pressed="false">跨日事项</button>
+      </div>
+      <div class="control-group switcher variant-pick" id="variant-switcher" aria-label="结构方案">
+        <span class="control-label">结构</span>
+        <button type="button" data-variant="inline" aria-pressed="false">都留在主聊</button>
+        <button type="button" data-variant="thread" aria-pressed="true">来源线程</button>
+        <button type="button" data-variant="rooms" aria-pressed="false">协作房间</button>
+      </div>
+      <div class="variant-note" id="variant-note"></div>
+    </nav>
+
+    <main class="workspace" id="workspace" aria-live="polite"></main>
+    <footer class="proof-strip">
+      <div><strong>能力边界</strong>　这是目标结构的交互研究稿；当前 Noema 尚无联网检索、自动建组或价格追踪能力。执行状态只有在真实发生时才能出现。</div>
+      <div class="proof-state" id="proof-state">未执行任何任务 · 仅切换交互结构</div>
+    </footer>
+
+    <script>
+      const state = { scenario: 'everyday', variant: 'thread', inThread: false };
+
+      const variantCopy = {
+        inline: '所有交流和事项都留在主聊。最少切换；长期内容逐渐挤压普通对话。',
+        thread: '复杂事项从原消息分支，主聊与线程互返。选择性分流；需要一条清楚的创建边界。',
+        rooms: '协作者各有房间，主聊负责带回结论。过程直接；用户要理解并巡视更多房间。',
+      };
+
+      const scenarioCopy = {
+        everyday: '改一段文字只需要交流，不需要任务面板、状态栏或新聊天。',
+        lookup: '一次性问题保持在主聊；如果需要最新资料，Noema 应把来源随答案带回。当前版本没有联网能力。',
+        project: '长期事项有自己的参与者、阶段与恢复点；它仍从主聊提出，也应能回到主聊。',
+      };
+
+      const options = {
+        everyday: {
+          user: '我想给朋友回消息，但不想显得太生硬。帮我把这句改自然一点：“你那边处理完了吗？”',
+          noema: '可以这样说：“你那边方便的时候，跟我说下处理得怎么样就好。”语气松一点，也没有催促的感觉。',
+          time: '今天 10:42',
+        },
+        lookup: {
+          user: '这周 AI 行业有哪些值得关注的事？只要三件，想知道为什么值得关注。',
+          noema: '我会先找本周的一手发布和可靠报道，再把三件事和来源放在一起。',
+          time: '今天 10:48',
+        },
+        project: {
+          user: '我想做个跟踪几个 AI 平台定价和套餐变化的工具。先帮我把这件事推进起来。',
+          noema: '这件事要跨几轮研究和实现。我先和你确认要跟踪的平台与更新范围；确认后再把持续工作从这条消息分出来。',
+          time: '周一 09:16',
+        },
+      };
+
+      function esc(text) {
+        return text.replace(/[&<>"']/g, (char) => ({
+          '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+        })[char]);
+      }
+
+      function indexMarkup() {
+        const common = `
+          <div class="index-top"><span class="wordmark">Noema</span><span class="index-count">2 对话</span></div>
+          <div class="index-section">最近</div>
+          <div class="room-row active"><span class="room-name">Noema</span><span class="room-time">10:48</span><span class="room-preview">${esc(options[state.scenario].user)}</span></div>`;
+        if (state.scenario === 'project' && state.variant === 'thread') {
+          return common + `<div class="index-row"><div class="index-section">从主聊分出</div><div class="room-row branch"><span class="room-name">AI 平台定价与变更</span><span class="room-time">周一</span><span class="room-preview">平台清单已确认 · 等待研究结果</span><span class="room-tag">来源于 Noema 主聊</span></div></div><div class="index-bottom">主聊仍是你和 Noema 的主要交流。持续事项出现在这里，随时可以回到来源。</div>`;
+        }
+        if (state.scenario === 'project' && state.variant === 'rooms') {
+          return `<div class="index-top"><span class="wordmark">Noema</span><span class="index-count">3 对话</span></div><div class="index-section">最近</div><div class="room-row"><span class="room-name">Noema</span><span class="room-time">周一</span><span class="room-preview">我已经把平台清单整理好了……</span></div><div class="room-row active"><span class="room-name">定价研究小组</span><span class="room-time">09:38</span><span class="room-preview">研究员：先核对官方套餐页面...</span><span class="room-tag">3 位参与者 · 14 条消息</span></div><div class="index-bottom">工作有自己的聊天空间。进度和结果需要由你在不同房间之间串起来。</div>`;
+        }
+        if (state.scenario === 'project' && state.variant === 'inline') {
+          return common + `<div class="index-bottom">所有工作也留在 Noema 主聊。事项多了以后，历史聊天和进行中的项目会混在同一条记录里。</div>`;
+        }
+        return common + `<div class="index-bottom">日常对话不需要先选联系人、项目或模式。</div>`;
+      }
+
+      function baseConversation() {
+        const item = options[state.scenario];
+        const inGroup = state.scenario === 'project' && state.variant === 'rooms' && !state.inThread;
+        const title = state.inThread ? 'AI 平台定价与变更' : inGroup ? '定价研究小组' : 'Noema';
+        const subtitle = state.inThread ? '来源：Noema 主聊 · 由 Noema 负责对你回报' : inGroup ? 'Noema · 研究员 · 工程搭档' : '你的个人 agent';
+        return `<section class="conversation ${state.inThread ? 'thread-mode' : ''}">
+          <header class="conversation-head"><div><span class="conversation-title">${title}</span><span class="conversation-subtitle">${subtitle}</span></div><span class="head-side">${state.scenario === 'project' && state.inThread ? '持续事项 · 草案' : '个人对话'}</span></header>
+          <div class="timeline" id="timeline">${renderTimeline(item)}</div>
+          <div class="composer"><span class="composer-copy">把下一件事直接说给 Noema</span><span class="composer-send">发送　↗</span></div>
+        </section>`;
+      }
+
+      function renderTimeline(item) {
+        if (state.inThread) return renderThreadTimeline();
+        if (state.scenario === 'project') {
+          return state.variant === 'rooms'
+            ? renderRoomsProject(item)
+            : renderProjectMain(item);
+        }
+        const action = state.scenario === 'lookup'
+          ? `<div class="handoff"><span class="handoff-label">资料来源 · 目标能力示意</span>答案应把原始发布与报道一并列出，方便你直接核查。此处没有真实联网结果。</div>`
+          : '';
+        return `<div class="sequence-intro"><span class="section-kicker">${state.scenario === 'lookup' ? '短问题' : '日常对话'}</span><p>${esc(scenarioCopy[state.scenario])}</p></div>
+          <article class="turn"><div class="speaker you">你 <span class="message-meta">${item.time}</span></div><div class="message"><p>${esc(item.user)}</p></div></article>
+          <article class="turn agent-turn"><div class="speaker agent">Noema</div><div class="message"><p>${esc(item.noema)}</p>${state.scenario === 'lookup' ? `<p>先核对来源，再告诉你哪些变化有实际影响。</p>` : ''}<span class="message-meta">${state.scenario === 'lookup' ? '回答应附来源 · 此处为结构示意' : '刚刚'}</span></div></article>${action}`;
+      }
+
+      function renderProjectMain(item) {
+        if (state.variant === 'rooms') {
+          return `<div class="sequence-intro"><span class="section-kicker">原始请求</span><p>协作已移到独立群聊。Noema 主聊只保留它带回来的简报。</p></div>
+            <article class="turn"><div class="speaker you">你 <span class="message-meta">${item.time}</span></div><div class="message"><p>${esc(item.user)}</p></div></article>
+            <article class="turn agent-turn"><div class="speaker agent">Noema</div><div class="message"><p>我建了一个定价研究小组，研究员和工程搭档已经开始梳理。</p><p>你可以去「定价研究小组」看他们的进度。完成后我会把结论带回来。</p><span class="message-meta">返回主聊的责任仍在 Noema</span></div></article>`;
+        }
+        if (state.variant === 'thread') {
+          return `<div class="sequence-intro"><span class="section-kicker">原始请求</span><p>先把目标和边界在主聊里说清；事项成形后再分出线程，不自动建 agent 或启动外部工作。</p></div>
+            <article class="turn"><div class="speaker you">你 <span class="message-meta">${item.time}</span></div><div class="message"><p>${esc(item.user)}</p></div></article>
+            <article class="turn agent-turn"><div class="speaker agent">Noema</div><div class="message"><p>${esc(item.noema)}</p><p>你确认之后，我会把研究、方案和验证放进同一条事项线程。我仍负责向你整理结果与下一步。</p><span class="message-meta">周一 09:18</span></div></article>
+            <article class="turn"><div class="speaker you">你 <span class="message-meta">周一 09:42</span></div><div class="message"><p>先覆盖 OpenAI、Anthropic 和 Google，个人套餐与免费版都要看，按月比较。</p></div></article>
+            <article class="turn agent-turn"><div class="speaker agent">Noema</div><div class="message"><p>好，我把这条消息分成一条持续事项。平台范围已经确定，联网研究与价格追踪目前还没启动。</p><span class="message-meta">周一 09:43</span></div></article>
+            <div class="branch-line"><div class="branch-rail"></div><button class="branch-link" type="button" data-open-thread><span class="branch-title">AI 平台定价与变更</span><span class="branch-state">范围已确认 · 尚未开始执行</span><span class="branch-participants">Noema · 研究员 · 工程搭档</span></button></div>`;
+        }
+        return `<div class="sequence-intro"><span class="section-kicker">持续事项</span><p>协作过程全部留在同一条聊天里。用户不需要切换，但跨日更新会与普通交流并排累积。</p></div>
+          <article class="turn"><div class="speaker you">你 <span class="message-meta">${item.time}</span></div><div class="message"><p>${esc(item.user)}</p></div></article>
+          <article class="turn agent-turn"><div class="speaker agent">Noema</div><div class="message"><p>${esc(item.noema)}</p><p>平台清单已确认。我安排研究员核对套餐和计费页面，工程搭档等资料齐后再估实现范围。</p><span class="message-meta">周一 09:25</span></div></article>
+          <div class="handoff"><span class="handoff-label">事项进展 · 同一条消息流</span>研究员已提交 4 个官方价格来源；工程搭档等待核对字段。<span class="source-ref">查看来源与核验条件　↗</span></div>
+          <article class="turn agent-turn"><div class="speaker agent">Noema</div><div class="message"><p>这轮先确认了按月 / 按年价格、使用上限、超额计费和地区差异。下一步是把套餐变化转成可比较的数据结构。</p><span class="message-meta">周二 16:10 · 已回到对话</span></div></article>`;
+      }
+
+      function renderThreadTimeline() {
+        return `<div class="thread-context"><span>从 Noema 主聊的原始请求分出　·　当前仍是草案情境</span><button type="button" class="return-link" data-return>← 回到来源消息</button></div>
+          <div class="sequence-intro"><span class="section-kicker">事项边界</span><p>平台：OpenAI、Anthropic、Google；关注公开套餐价格、用量上限与主要变更。用户选择范围后才开始研究。</p></div>
+          <div class="contributor-line"><span>Noema：目标和交付把关</span><span>研究员：来源与变更</span><span>工程搭档：实现方案</span></div>
+          <article class="turn"><div class="speaker you">你 <span class="message-meta">周一 09:42</span></div><div class="message"><p>先覆盖这三家，免费版和个人付费版都要看。先做能按月比较的版本。</p></div></article>
+          <article class="turn agent-turn"><div class="speaker agent">Noema</div><div class="message"><p>范围明确了。我先让研究员只核对官方套餐页面；拿到来源后再和工程搭档一起定数据字段。这里不会自动监控或定时运行。</p><span class="message-meta">周一 09:43</span></div></article>
+          <div class="handoff"><span class="handoff-label">研究员 · 已提交资料</span>三家官方价格页、套餐名称、计费周期和用量说明。两处按地区变化的价格已标出，尚未核实商业 API 与消费者套餐是否可比。<span class="source-ref">原始来源 4 项　·　待 Noema 复核</span></div>
+          <article class="turn agent-turn"><div class="speaker agent">Noema</div><div class="message"><p>我核对了这些字段与页面原文。现在可以开始数据结构草案；价格抓取需要单独决定更新方式，当前还没有定时任务。</p><span class="message-meta">周一 11:05 · 下一步待讨论</span></div></article>
+          <div class="handoff"><span class="handoff-label">恢复点</span>已确认平台与比较字段；下一步：决定地区和币种。停在这里不会丢失来源或把待办误当成正在运行。</div>`;
+      }
+
+      function renderRoomsProject(item) {
+        return `<div class="sequence-intro"><span class="section-kicker">独立协作空间</span><p>小组成员直接发言，Noema 继续对用户负责。</p></div>
+          <article class="turn"><div class="speaker you">你 <span class="message-meta">09:16</span></div><div class="message"><p>先比较三家平台的官方套餐和计费周期。</p></div></article>
+          <article class="turn agent-turn"><div class="speaker">研究员</div><div class="message"><p>我找到三家官方定价页；其中 Google 的地区价格不同，需要先确定地区。</p><span class="message-meta">09:38</span></div></article>
+          <article class="turn agent-turn"><div class="speaker">工程搭档</div><div class="message"><p>建议先把来源和套餐差异整理成结构化字段。没有地区选择前不应开始写抓取规则。</p><span class="message-meta">09:44</span></div></article>
+          <article class="turn agent-turn"><div class="speaker agent">Noema</div><div class="message"><p>我把两个意见带回来了：先确认地区，再定数据字段。你可以直接在群里回复他们，也可以回 Noema 主聊继续。</p><span class="message-meta">Noema 要负责把小组结果重新接回主线</span></div></article>`;
+      }
+
+      function render() {
+        document.querySelectorAll('[data-scenario]').forEach((button) => {
+          button.setAttribute('aria-pressed', String(button.dataset.scenario === state.scenario));
+        });
+        document.querySelectorAll('[data-variant]').forEach((button) => {
+          button.setAttribute('aria-pressed', String(button.dataset.variant === state.variant));
+        });
+        document.getElementById('variant-note').textContent = variantCopy[state.variant];
+        document.getElementById('workspace').innerHTML = `<aside class="room-index" aria-label="对话索引">${indexMarkup()}</aside>${baseConversation()}`;
+        document.querySelectorAll('[data-open-thread]').forEach((button) => button.addEventListener('click', () => { state.inThread = true; render(); }));
+        document.querySelectorAll('[data-return]').forEach((button) => button.addEventListener('click', () => { state.inThread = false; render(); }));
+        document.getElementById('proof-state').textContent = state.scenario === 'project'
+          ? '持续事项示意 · 不含后台执行或真实协作者'
+          : state.scenario === 'lookup'
+            ? '一次性请求示意 · 未进行联网检索'
+            : '普通交流示意 · 未调用模型';
+      }
+
+      document.querySelectorAll('[data-scenario]').forEach((button) => button.addEventListener('click', () => {
+        state.scenario = button.dataset.scenario;
+        state.inThread = false;
+        render();
+      }));
+      document.querySelectorAll('[data-variant]').forEach((button) => button.addEventListener('click', () => {
+        state.variant = button.dataset.variant;
+        state.inThread = false;
+        render();
+      }));
+      render();
+    </script>
+  </body>
+</html>
