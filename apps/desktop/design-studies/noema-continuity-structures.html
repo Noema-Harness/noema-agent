@@ -258,9 +258,6 @@
         padding: 3px 5px;
         color: #64717a;
       }
-      .window-tools .home-tool {
-        color: var(--ink);
-      }
       .window-controls {
         display: flex;
         align-items: center;
@@ -744,26 +741,6 @@
         color: #7c8891;
         margin-top: 3px;
       }
-      .work-close {
-        font-size: 11px;
-        color: #6e7b85;
-        min-width: 32px;
-        height: 32px;
-        padding: 0 8px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 6px;
-        border-radius: 4px;
-        white-space: nowrap;
-      }
-      .work-close svg {
-        width: 16px;
-        height: 16px;
-      }
-      .work-close:hover {
-        background: #edf1f3;
-      }
       .work-tabs {
         display: flex;
         gap: 22px;
@@ -920,21 +897,28 @@
         font-size: 11px;
         color: #375e74;
       }
-      .review-form {
-        margin-top: 20px;
-        max-width: 820px;
+      .review-request {
+        margin-top: 16px;
+        padding-top: 14px;
+        border-top: 1px solid var(--line);
       }
-      .review-form label {
+      .review-context {
+        color: var(--muted);
+        font-size: 11px;
+        margin-bottom: 10px;
+      }
+      .review-request label {
         display: block;
-        font-size: 12px;
+        font-size: 13px;
         font-weight: 550;
         margin-bottom: 9px;
       }
-      .review-form textarea {
+      .review-request textarea {
         display: block;
         width: 100%;
         min-height: 66px;
         resize: vertical;
+        max-height: 240px;
         border: 1px solid #d6dfe4;
         border-radius: 5px;
         background: white;
@@ -942,12 +926,43 @@
         font-size: 12px;
         line-height: 1.7;
       }
-      .review-actions {
+      .review-submit {
         display: flex;
         align-items: center;
         gap: 9px;
         flex-wrap: wrap;
         margin-top: 11px;
+        justify-content: space-between;
+      }
+      .review-submit span,
+      .review-receipt {
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .review-answer {
+        font-size: 13px;
+        line-height: 1.7;
+      }
+      .review-answer strong {
+        font-size: 11px;
+        color: var(--muted);
+        font-weight: 500;
+      }
+      .review-jump {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: var(--accent);
+        padding: 8px 0 8px 8px;
+      }
+      .review-jump svg {
+        width: 15px;
+        height: 15px;
+      }
+      #review-request:focus-visible {
+        outline: 2px solid #27779c;
+        outline-offset: 5px;
       }
       .primary {
         background: #2c5367;
@@ -967,12 +982,6 @@
         font-size: 11px;
         color: #6d7d89;
         padding: 8px;
-      }
-      .review-actions .review-note {
-        font-size: 10px;
-        color: #8a959d;
-        flex-basis: 100%;
-        padding-top: 4px;
       }
       .project-summary {
         display: grid;
@@ -1416,9 +1425,6 @@
         .chat-scroll {
           padding: 24px;
         }
-        .work-close span {
-          display: none;
-        }
         .project-summary {
           grid-template-columns: 1fr;
           gap: 16px;
@@ -1544,29 +1550,9 @@
         gap: 7px;
         flex: none;
       }
-      .review-reference {
-        font-size: 11px;
-        color: #426a80;
-        margin: 0 0 8px;
-        padding: 6px 9px;
-        background: #edf3f6;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-      }
-      .review-reference button {
-        font-size: 10px;
-        color: #718899;
-      }
-      .composer:has(.review-reference) textarea {
-        min-height: 68px;
-      }
       @container (max-width:820px) {
         .review-dock {
           padding: 11px 16px;
-        }
-        .review-dock .primary {
-          padding: 8px 10px;
         }
       }
     </style>
@@ -1606,7 +1592,8 @@
         indexOpen: true,
         mobileIndexOpen: false,
         scene: "review",
-        workspace: "project",
+        workspace: null,
+        projectStage: "review",
         tab: "delivery",
         member: "research",
         name: "Noema",
@@ -1622,7 +1609,6 @@
         sessionExtra: {},
         notice: "",
         reopened: false,
-        reviewTarget: false,
       };
       const people = {
         research: {
@@ -1741,7 +1727,11 @@
                 ? "已恢复 · 小修订进行中"
                 : state.approved
                   ? "已反馈 · 正在继续实现"
-                  : "界面第一版 · 等待你评审") +
+                  : state.feedback
+                    ? "反馈已提交 · Noema 处理中"
+                    : state.projectStage === "forming"
+                      ? "团队已组建 · 研究与设计中"
+                      : "界面第一版 · 等待你评审") +
             "</small></span>" +
             icon("link"),
           "project-link",
@@ -1753,6 +1743,22 @@
           esc(people[id].name),
           "inline-person",
           'data-member="' + id + '"',
+        );
+      }
+      function reviewRequest() {
+        return (
+          '<section class="review-request" id="review-request" aria-label="价格追踪器界面评审" tabindex="-1">' +
+          '<div class="review-context">价格追踪器 / 界面第一版</div>' +
+          (state.feedback
+            ? '<p class="review-answer"><strong>你的反馈</strong><br>' +
+              esc(state.feedback).replace(/\n/g, "<br>") +
+              '</p><div class="review-receipt">' +
+              (state.approved || state.archived ? "已反馈团队" : "Noema 已收到 · 正在处理") +
+              "</div>"
+            : '<form data-form="review"><label for="review-feedback">这版的阅读顺序和整体界面符合你的预期吗？</label><textarea id="review-feedback" data-draft="review" rows="3" placeholder="可以说喜欢哪里、哪里要改，或还需要澄清什么…" required>' +
+              esc(state.drafts.review || "") +
+              '</textarea><div class="review-submit"><span>回复交给 Noema，由它向团队反馈。</span><button class="primary" type="submit">发送反馈</button></div></form>') +
+          "</section>"
         );
       }
       function transcript() {
@@ -1818,11 +1824,10 @@
             message(
               "assistant",
               "<p>价格追踪器的第一版界面已经做好。来源口径也核对过了，现在需要你看的是：信息是否顺眼、价格变化是否一眼看得明白。</p><p>相关开发已暂停，等你明确反馈。</p>" +
-                projectLink(),
+                projectLink() +
+                reviewRequest(),
               "14:26",
-            ) +
-            message("user", "<p>我先打开看看。刚才说周末的事情，我们也可以接着聊。</p>") +
-            message("assistant", "<p>行，项目等你的意见。周末那件事，我们也接着说。</p>", "14:27");
+            );
         if (state.scene === "archive")
           t += message(
             "assistant",
@@ -1834,30 +1839,24 @@
         return t;
       }
       function composer(scope, placeholder) {
-        const review = scope === "core" && state.reviewTarget;
         return (
           '<form class="composer" data-form="chat" data-scope="' +
           scope +
           '"><div class="composer-inner">' +
-          (review
-            ? '<div class="review-reference"><span>反馈给 Noema · 价格追踪器 / 界面第一版</span>' +
-              button("cancel-feedback", "取消") +
-              "</div>"
-            : "") +
           '<div class="composer-field"><textarea rows="2" aria-label="' +
-          esc(review ? "给Noema的项目评审反馈" : placeholder) +
+          esc(placeholder) +
           '" placeholder="' +
-          esc(review ? "写下反馈，发送后按此继续项目…" : placeholder) +
+          esc(placeholder) +
           '" data-draft="' +
           scope +
           '">' +
           esc(state.drafts[scope] || "") +
           '</textarea><button class="send" type="submit" aria-label="' +
-          (review ? "发送反馈并继续项目" : "发送消息") +
+          "发送消息" +
           '">' +
           icon("send") +
           '</button></div><div class="composer-hint"><span>' +
-          (review ? "发送即确认按这份反馈继续项目" : "Enter 发送 · Shift + Enter 换行") +
+          "Enter 发送 · Shift + Enter 换行" +
           "</span><span>交互演示</span></div></div></form>"
         );
       }
@@ -1870,13 +1869,14 @@
           '<div class="chat-header-title"><strong>' +
           esc(state.name) +
           '</strong><small>与你的持续对话</small></div></div><div class="pane-actions">' +
-          button(
-            "directory",
-            icon("people"),
-            "icon-button wide-action",
-            'aria-label="打开成员和项目"',
-          ) +
-          button("settings", icon("settings"), "icon-button", 'aria-label="伙伴设置"') +
+          (state.layout !== "c"
+            ? button(
+                "directory",
+                icon("people"),
+                "icon-button wide-action",
+                'aria-label="打开成员和项目"',
+              )
+            : "") +
           '</div></header><div class="chat-scroll"><div class="chat-body">' +
           transcript() +
           "</div></div>" +
@@ -1921,7 +1921,15 @@
                 '<span class="project-icon">' +
                   icon("project") +
                   '</span><span><span class="item-title">价格追踪器</span><small>' +
-                  (state.reopened ? "小修订进行中" : state.approved ? "实现中" : "等待你的评审") +
+                  (state.reopened
+                    ? "小修订进行中"
+                    : state.approved
+                      ? "按反馈调整中"
+                      : state.feedback
+                        ? "Noema 处理反馈中"
+                        : state.projectStage === "forming"
+                          ? "研究与设计中"
+                          : "等待你的评审") +
                   "</small></span>",
                 "index-item " + (state.workspace === "project" ? "selected" : ""),
               )
@@ -1938,19 +1946,24 @@
       function workHead(title, subtitle, extra = "") {
         return (
           '<header class="work-head"><div class="work-title">' +
-          button("home", icon("back"), "icon-button", 'aria-label="返回Noema主聊"') +
+          button(
+            "workspace-back",
+            icon("back"),
+            "icon-button",
+            'aria-label="' +
+              (state.workspace === "profile"
+                ? "返回成员会话"
+                : state.workspace === "member-project"
+                  ? "返回项目成员"
+                  : "返回Noema主聊") +
+              '"',
+          ) +
           "<div><strong>" +
           esc(title) +
           "</strong><small>" +
           esc(subtitle) +
           '</small></div></div><div class="pane-actions">' +
           extra +
-          button(
-            "home",
-            "<span>收起</span>" + icon("close"),
-            "work-close",
-            'aria-label="收起工作内容" title="返回主聊"',
-          ) +
           "</div></header>"
         );
       }
@@ -1958,6 +1971,8 @@
         return '<section class="artifact" aria-label="待评审的界面成果"><div class="artifact-chrome"><span>界面第一版 / 预览</span><span>演示成果</span></div><div class="artifact-preview"><div class="preview-title">AI API 价格追踪 <small>个人项目</small></div><p class="preview-subtitle">关注价格的变化，也看见变化发生在什么时候。</p><div class="preview-topline"><strong>关注的模型</strong><span>变化记录</span><span>来源</span></div><table class="price-table"><thead><tr><th>模型</th><th>计价单位</th><th>输入 / 输出</th><th>最近变化</th></tr></thead><tbody><tr><td>示例模型 Alpha</td><td>每百万 token</td><td>$1.20 / $4.80</td><td class="change">输入 ↓ 20%</td></tr><tr><td>示例模型 Beta</td><td>每百万 token</td><td>$2.00 / $8.00</td><td>没有变化</td></tr></tbody></table><div class="artifact-foot">所有供应商、价格与变化均为界面演示数据。</div></div></section>';
       }
       function delivery() {
+        if (state.projectStage === "forming")
+          return '<h2>研究与设计进行中</h2><p class="lead">团队正在核对计价口径并准备界面方案。成果尚未交付，需要评审时 Noema 会在对话里带回具体问题。</p>';
         if (state.archived)
           return (
             '<div class="archive-empty"><div class="project-stage">' +
@@ -1976,19 +1991,25 @@
             ? "小修订 · 应用工程师处理中"
             : state.approved
               ? "已收到反馈 · 正在继续实现"
-              : "界面评审 · 等待你的反馈") +
+              : state.feedback
+                ? "反馈已提交 · Noema 处理中"
+                : "界面评审 · 等待你的反馈") +
           "</div><h2>" +
           (state.reopened
             ? "修订价格单位说明"
             : state.approved
               ? "正在按你的反馈调整"
-              : "界面第一版") +
+              : state.feedback
+                ? "反馈已交给 Noema"
+                : "界面第一版") +
           '</h2><p class="lead">' +
           (state.reopened
             ? "沿用原项目、成员和工作会话。这次只修改一处说明，不重新组队。"
             : state.approved
               ? "反馈已回到界面设计师的项目会话；结果仍会由 Noema 带回主聊。"
-              : "本轮完成价格比较与变化记录的第一版。需要你判断阅读顺序和整体视觉。") +
+              : state.feedback
+                ? "Noema 正在梳理反馈，向团队确认下一步之前，相关开发保持暂停。"
+                : "本轮完成价格比较与变化记录的第一版。需要你判断阅读顺序和整体视觉。") +
           "</p>" +
           preview() +
           '<div class="file-row">' +
@@ -2017,30 +2038,61 @@
       function discussion() {
         return (
           '<div class="discussion"><p class="lead">共同讨论与项目决定在这里；成员的完整执行过程在各自的工作会话中。</p>' +
-          groupMsg(
-            "research",
-            people.research.name,
-            "<p>官方来源和计价单位已经核对。<mark>@应用工程师</mark> 数据表里保留原币种和生效日期，便于后续回查。</p>",
-            "13:10",
-          ) +
-          groupMsg(
-            "engineer",
-            people.engineer.name,
-            "<p>收到。单位字段已拆开，不把不同计价口径直接混排。</p>",
-            "13:18",
-          ) +
-          groupMsg(
-            "designer",
-            people.designer.name,
-            "<p><mark>@Noema</mark> 第一版界面已交付。视觉和阅读顺序需要用户确认，可以进入评审。</p>",
-            "14:25",
-          ) +
-          groupMsg(
-            "core",
-            state.name,
-            "<p><mark>@所有人</mark> 当前先等待界面评审，相关开发暂停。已有资料保留，收到用户反馈后继续。</p>",
-            "14:26",
-          ) +
+          (state.projectStage === "forming"
+            ? groupMsg(
+                "core",
+                state.name,
+                "<p>先由新闻观察者核对来源和计价单位。口径确认后，界面设计师出方案，应用工程师跟进实现。</p>",
+                "11:10",
+              ) +
+              groupMsg(
+                "research",
+                people.research.name,
+                "<p>开始核对官方定价来源，有影响比较口径的差异会在这里说明。</p>",
+                "11:12",
+              )
+            : groupMsg(
+                "research",
+                people.research.name,
+                "<p>官方来源和计价单位已经核对。<mark>@应用工程师</mark> 数据表里保留原币种和生效日期，便于后续回查。</p>",
+                "13:10",
+              ) +
+              groupMsg(
+                "engineer",
+                people.engineer.name,
+                "<p>收到。单位字段已拆开，不把不同计价口径直接混排。</p>",
+                "13:18",
+              ) +
+              groupMsg(
+                "designer",
+                people.designer.name,
+                "<p><mark>@Noema</mark> 第一版界面已交付。视觉和阅读顺序需要用户确认，可以进入评审。</p>",
+                "14:25",
+              ) +
+              groupMsg(
+                "core",
+                state.name,
+                "<p><mark>@所有人</mark> 当前先等待界面评审，相关开发暂停。已有资料保留，收到用户反馈后继续。</p>",
+                "14:26",
+              )) +
+          (state.approved
+            ? groupMsg(
+                "core",
+                state.name,
+                "<p><mark>@界面设计师</mark> 用户反馈：" +
+                  esc(state.feedback) +
+                  "</p><p>先调整界面方案，再由应用工程师跟进实现；完成后向我提交结果。</p>",
+                "刚刚",
+              )
+            : "") +
+          (state.archived
+            ? groupMsg(
+                "core",
+                state.name,
+                "<p>交付与必要的成长流程已完成，项目归档。成员与会话保留，后续可续接。</p>",
+                "昨天 18:40",
+              )
+            : "") +
           '<div class="note-row">@ 消息对所有成员公开；被提及者优先收到，其他成员按未读查阅。</div>' +
           (state.reopened
             ? groupMsg(
@@ -2072,8 +2124,22 @@
                       ? "正在修订说明"
                       : "本轮未唤起"
                     : state.approved
-                      ? "准备继续"
-                      : p.status) +
+                      ? id === "designer"
+                        ? "按反馈调整中"
+                        : id === "engineer"
+                          ? "等待设计调整"
+                          : "本轮无新增工作"
+                      : state.archived
+                        ? "本轮已完成"
+                        : state.projectStage === "forming"
+                          ? id === "research"
+                            ? "核对来源中"
+                            : id === "designer"
+                              ? "等待研究口径"
+                              : "等待方案"
+                          : state.feedback
+                            ? "等待 Noema 反馈"
+                            : p.status) +
                   "</span>" +
                   icon("arrow"),
                 "member-row",
@@ -2095,14 +2161,18 @@
                     ? "小修订进行中"
                     : state.approved
                       ? "继续实现中"
-                      : "等待界面评审"),
+                      : state.feedback
+                        ? "Noema 处理反馈中"
+                        : state.projectStage === "forming"
+                          ? "研究与设计中"
+                          : "等待界面评审"),
           ) +
           '<nav class="work-tabs" aria-label="项目视图">' +
           ["delivery", "group", "members"]
             .map((tab, i) =>
               button(
                 "tab",
-                ["交付与评审", "共同讨论", "成员 · 3"][i],
+                ["交付", "共同讨论", "成员 · 3"][i],
                 state.tab === tab ? "active" : "",
                 'data-tab="' + tab + '" aria-pressed="' + (state.tab === tab) + '"',
               ),
@@ -2115,10 +2185,15 @@
               ? discussion()
               : members()) +
           "</div>" +
-          (!state.archived && !state.approved && !state.reopened
-            ? '<div class="review-dock"><div>等待你看过这一版<small>反馈仍在与 Noema 的主对话里</small></div><div class="dock-actions">' +
-              button("begin-feedback", "给这版反馈", "primary") +
-              button("later", "稍后", "secondary") +
+          (!state.archived && !state.approved && !state.reopened && state.projectStage === "review"
+            ? '<div class="review-dock"><div>' +
+              (state.feedback ? "Noema 正在处理反馈" : "Noema 正在等你的评审") +
+              '<small>请求保留在与 Noema 的对话中</small></div><div class="dock-actions">' +
+              button(
+                "locate-review",
+                (state.feedback ? "查看已提交反馈 " : "回到评审请求 ") + icon("arrow"),
+                "review-jump",
+              ) +
               "</div></div>"
             : "")
         );
@@ -2172,7 +2247,28 @@
           '<div class="session-label">' +
           (project ? "价格追踪器 / 此成员的项目工作会话" : "日常私聊 / 与项目工作会话分开") +
           "</div>";
-        if (project)
+        if (project && state.projectStage === "forming")
+          body +=
+            message(
+              "Noema",
+              "<p>" +
+                (state.member === "research"
+                  ? "请先核对官方定价来源和计价单位，说明可比较的口径。"
+                  : "请先等待研究口径，资料确认后继续本项目的" +
+                    (state.member === "designer" ? "界面方案。" : "应用实现。")) +
+                "</p>",
+              "11:10",
+            ) +
+            message(
+              p.name,
+              "<p>" +
+                (state.member === "research"
+                  ? "正在核对官方来源，尚未完成。"
+                  : "收到，先查看项目目标和职责，等待研究口径。") +
+                "</p>",
+              "11:12",
+            );
+        else if (project)
           body +=
             message(
               "Noema",
@@ -2230,6 +2326,18 @@
               "<p>可以。这里是我们平时的对话；项目里的工作在对应项目中继续。</p>",
               "09:02",
             );
+        if (project && state.approved && state.member !== "research")
+          body += message(
+            "Noema",
+            "<p>用户反馈：" +
+              esc(state.feedback) +
+              "</p><p>" +
+              (state.member === "designer"
+                ? "请先据此调整界面方案，完成后交回我评审。"
+                : "请等待设计调整后跟进实现，核对结果后向我报告。") +
+              "</p>",
+            "刚刚",
+          );
         if (project && state.reopened && state.member === "engineer")
           body +=
             message(
@@ -2354,9 +2462,6 @@
           '<div class="window-head"><div class="wordmark"><button class="index-toggle" data-action="toggle-index" aria-controls="navigation-index" aria-label="收起导航"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button><span class="logo">' +
           icon("noema") +
           '</span>noema</div><div class="window-tools">' +
-          button("home", esc(state.name), "home-tool") +
-          button("directory", "成员与项目") +
-          button("settings", "设置") +
           '<div class="window-controls" aria-label="窗口控件（原型示意）"><button class="window-control" disabled title="最小化：浏览器原型中不可用" aria-label="最小化（原型中不可用）"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10"/></svg></button><button class="window-control" disabled title="最大化：浏览器原型中不可用" aria-label="最大化（原型中不可用）"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="3" width="10" height="10"/></svg></button><button class="window-control" disabled title="关闭窗口：浏览器原型中不可用" aria-label="关闭窗口（原型中不可用）"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 3 10 10M13 3 3 13"/></svg></button></div></div></div><div class="shell"><button class="index-shade" data-action="toggle-index" aria-label="收起导航"></button><aside class="index" id="navigation-index" aria-label="成员和项目索引">' +
           indexMarkup() +
           '</aside><div class="index-resizer" role="separator" tabindex="0" aria-label="调整导航宽度，方向键调整，Home 收起" aria-orientation="vertical" aria-controls="navigation-index" aria-valuemin="0"></div>' +
@@ -2397,6 +2502,9 @@
                 "simulate-completion",
                 state.reopened ? "演示：小修订交付" : "演示：交付及成长完成",
               )
+            : "") +
+          (state.feedback && !state.approved && !state.archived && !state.reopened
+            ? button("simulate-handoff", "演示：Noema 将反馈交给团队")
             : "") +
           button("explanation", "评审说明 ↗");
         $("#stage").classList.toggle("narrow", state.narrow);
@@ -2441,7 +2549,15 @@
               ? button(
                   "open-project",
                   icon("project") +
-                    "<span>AI 服务价格追踪器<small>等待评审 · 点击进入项目空间</small></span>",
+                    "<span>AI 服务价格追踪器<small>" +
+                    (state.projectStage === "forming"
+                      ? "研究与设计中"
+                      : state.approved
+                        ? "按反馈调整中"
+                        : state.feedback
+                          ? "Noema 处理反馈中"
+                          : "等待评审") +
+                    " · 点击进入项目空间</small></span>",
                   "index-item",
                 )
               : "<p>当前没有活跃项目。</p>") +
@@ -2450,7 +2566,9 @@
               icon("archive") +
                 "<span>已归档项目<small>项目记录、成员与会话不会被销毁</small></span>",
               "index-item",
-            ),
+            ) +
+            "<h3>个人</h3>" +
+            button("settings", "伙伴设置", "bottom-link"),
         );
       }
       function addCore(html, who = "assistant") {
@@ -2494,22 +2612,37 @@
         if (action === "explanation") {
           modal(
             "这次评审什么",
-            "<h3>三种结构，共用一段经历</h3><p>A 将对话作为主轴，项目整页打开；B 让对话与当前工作并置；C 用常驻成员与项目索引切换空间。</p><h3>建议先试这四步</h3><ol><li>打开“交付评审”，比较看成果与继续聊天时的切换成本。</li><li>在项目中进入“成员”，打开一个成员的项目会话，再切到它的常驻私聊。</li><li>在“归档与恢复”情境中恢复旧项目，模拟小修订交付并观察自动归档。</li><li>切到“日常相处”与窄窗，检查项目界面是否侵占普通交流。</li></ol><h3>尚未交付的能力</h3><p>所有组队、执行、回访、成长和通知均为演示。此页不调用模型，不运行真实项目，不修改任何 agent 资产。它不是正式产品，也不是已接受的视觉定稿。</p><h3>视觉方向</h3><p>暂用高密度、低装饰的桌面语言统一比较：中性色面、清晰文字、少量有意义的状态色。先判断空间关系，再定制完整品牌视觉；不将换色或换字体当作另一方案。</p><h3>参考边界</h3><p>查看了 Zulip 的真实话题阅读与成员索引，以及 tldraw 的工作画布。借鉴的是上下文归属和操作让位于内容的方式，不将它们作为 Noema 的视觉模板。</p>",
+            "<h3>C 的空间结构已选定</h3><p>左侧导航可调宽与收起；A、B 保留为历史对照。整体视觉尚未验收。</p><h3>本轮走查</h3><ol><li>在“交付评审”中直接阅读 Noema 的请求，打开成果，再从项目页回到原请求。</li><li>在请求内填写反馈；普通聊天独立进行，不会自动恢复项目。</li><li>提交后可用页面下方的演示控件，模拟 Noema 判断并向团队安排下一步。这不是正式产品里的手动继续按钮。</li><li>打开成员的项目会话、成员资料，检查返回路径；在“归档与恢复”中试用原项目续接。</li></ol><h3>演示边界</h3><p>此页不调用模型、不运行真实项目、不修改 agent 资产。组队、执行、回访、成长与反馈判断都只用于演示。</p>",
           );
           return;
         }
         if ($("#dialog").open) $("#dialog").close();
-        if (action === "begin-feedback") {
-          state.reviewTarget = true;
-          if (state.layout !== "b" || document.querySelector("#app").clientWidth <= 820)
-            state.workspace = null;
+        if (action === "locate-review") {
+          state.workspace = null;
+          state.scene = "review";
           render();
-          const field = document.querySelector('textarea[data-draft="core"]');
-          if (field) field.focus();
+          const scroll = $(".chat-scroll");
+          scroll.scrollTop +=
+            $("#review-request").getBoundingClientRect().top -
+            scroll.getBoundingClientRect().top -
+            16;
+          ($("#review-feedback") || $("#review-request")).focus({ preventScroll: true });
           return;
         }
-        if (action === "cancel-feedback") state.reviewTarget = false;
+        if (action === "workspace-back") {
+          if (state.workspace === "profile") state.workspace = state.profileOrigin || "member-main";
+          else if (state.workspace === "member-project") {
+            state.workspace = "project";
+            state.tab = "members";
+          } else state.workspace = null;
+        }
         if (action === "home") state.workspace = null;
+        if (action === "simulate-handoff") {
+          state.approved = true;
+          addCore(
+            "<p>我把这份意见整理给了项目团队：界面设计师先调整，应用工程师跟进实现。相关工作继续，改好后再带回来给你看。</p>",
+          );
+        }
         if (action === "open-project") {
           state.workspace = "project";
           state.tab = "delivery";
@@ -2520,20 +2653,16 @@
           state.member = el.dataset.member || state.member;
           state.workspace = action;
         }
-        if (action === "profile") state.workspace = "profile";
-        if (action === "archives") state.workspace = "archives";
-        if (action === "later") {
-          state.workspace = null;
-          addCore(
-            "<p>价格追踪器继续保持等待评审。你随时可以从上面的交付消息打开它，我们先接着聊。</p>",
-          );
+        if (action === "profile") {
+          state.profileOrigin = state.workspace;
+          state.workspace = "profile";
         }
+        if (action === "archives") state.workspace = "archives";
         if (action === "simulate-completion") {
           const small = state.reopened;
           state.archived = true;
           state.approved = false;
           state.reopened = false;
-          state.reviewTarget = false;
           state.tab = "delivery";
           addCore(
             "<p>" +
@@ -2579,14 +2708,15 @@
         }
         if (scene) {
           state.scene = scene.dataset.scene;
-          state.workspace = ["review", "project"].includes(state.scene) ? "project" : null;
+          state.workspace = state.scene === "project" ? "project" : null;
+          state.projectStage = state.scene === "project" ? "forming" : "review";
           state.tab = state.scene === "project" ? "members" : "delivery";
           state.archived = state.scene === "archive";
           state.approved = false;
           state.notice = "";
           state.feedback = "";
           state.reopened = false;
-          state.reviewTarget = false;
+          state.drafts.review = "";
           state.extra[state.scene] = [];
           state.groupExtra = [];
           state.sessionExtra = {};
@@ -2600,8 +2730,7 @@
       });
       document.addEventListener("input", (e) => {
         const key = e.target.dataset.draft;
-        if (key === "feedback") state.feedback = e.target.value;
-        else if (key) state.drafts[key] = e.target.value;
+        if (key) state.drafts[key] = e.target.value;
       });
       document.addEventListener("submit", (e) => {
         const form = e.target;
@@ -2618,19 +2747,19 @@
           return;
         }
         if (kind === "review") {
-          if (!state.feedback.trim()) {
+          const feedback = form.querySelector("textarea").value.trim();
+          if (!feedback) {
             $("#review-feedback").focus();
-            $("#review-feedback").setCustomValidity("请先给出明确反馈，再继续项目。");
+            $("#review-feedback").setCustomValidity("请填写反馈内容。");
             $("#review-feedback").reportValidity();
             $("#review-feedback").setCustomValidity("");
             return;
           }
-          const feedback = state.feedback.trim();
-          state.approved = true;
+          state.feedback = feedback;
+          state.drafts.review = "";
           state.notice = "你的反馈：" + feedback;
-          addCore("<p>价格追踪器评审：" + esc(feedback) + "</p>", "user");
           addCore(
-            "<p>反馈已交给项目中的界面设计师，相关工作恢复。这个页面只是演示，不会实际执行。</p>",
+            "<p>收到反馈。我先梳理这版需要调整的地方；向团队确认下一步之前，相关开发保持暂停。</p>",
           );
           render();
           return;
@@ -2648,17 +2777,6 @@
           if (!text) return;
           state.drafts[scope] = "";
           if (scope === "core") {
-            if (state.reviewTarget) {
-              state.approved = true;
-              state.reviewTarget = false;
-              state.notice = "你的反馈：" + text;
-              addCore("<p>价格追踪器评审：" + esc(text) + "</p>", "user");
-              addCore(
-                "<p>我会按这份反馈安排界面设计师继续调整，相关工作已恢复。结果回来后我再给你看。</p>",
-              );
-              render();
-              return;
-            }
             addCore("<p>" + esc(text) + "</p>", "user");
             let reply = "<p>这条消息已进入演示对话。正式产品会在这里理解你的需求并回应。</p>";
             if (/归档|收起项目/.test(text)) {
@@ -2668,7 +2786,7 @@
               state.archived = false;
               reply = "<p>演示：原项目已恢复，成员继续原来的工作会话。</p>" + projectLink();
             } else if (/改名|叫你|名字/.test(text)) {
-              reply = "<p>可以通过右上角的设置调整名字和交流偏好；本页只模拟这条设置链路。</p>";
+              reply = "<p>可以通过导航里的伙伴设置调整名字和交流偏好；本页只模拟这条设置链路。</p>";
             }
             addCore(reply);
           } else {
