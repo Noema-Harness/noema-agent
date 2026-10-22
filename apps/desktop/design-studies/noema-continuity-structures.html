@@ -2,887 +2,2472 @@
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Noema · 对话怎样长成一件事</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Noema · 三种空间组织</title>
     <style>
       :root {
-        color-scheme: light;
-        --ink: #202322;
-        --muted: #707572;
-        --quiet: #969b97;
-        --line: #d9ddda;
-        --paper: #f0f1ed;
-        --white: #fbfcf9;
-        --warm: #f6f2e8;
-        --mark: #bf4e32;
-        --mark-soft: #f1e5dd;
-        --blue: #295ca8;
-        --blue-soft: #e7edf5;
-        --green: #587567;
-        --green-soft: #e8eee9;
-        font-family:
-          'Segoe UI Variable', 'Aptos', 'Microsoft YaHei UI', sans-serif;
+        font-family: "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", sans-serif;
+        color: #20282d;
+        background: #e9ecee;
+        font-size: 14px;
+        font-synthesis: none;
+        --ink: #20282d;
+        --muted: #68727b;
+        --line: #e3e7e9;
+        --accent: #28556a;
+        --soft: #eef3f5;
+        --paper: #fcfcfc;
       }
-
       * {
         box-sizing: border-box;
       }
-
       body {
         margin: 0;
-        background: var(--paper);
-        color: var(--ink);
-        min-width: 320px;
-        font-size: 14px;
       }
-
-      button {
+      button,
+      input,
+      textarea {
         font: inherit;
+      }
+      button {
         color: inherit;
-      }
-
-      .study-head {
-        min-height: 104px;
-        display: grid;
-        grid-template-columns: minmax(220px, 1fr) minmax(340px, 620px);
-        align-items: end;
-        gap: 32px;
-        padding: 20px 30px 18px;
-        border-bottom: 1px solid var(--line);
-      }
-
-      .eyebrow,
-      .micro-label,
-      .section-kicker,
-      .event-meta,
-      .thread-meta,
-      .message-meta,
-      .room-meta,
-      .source-ref,
-      .variant-impact {
-        font-size: 11px;
-        letter-spacing: 0.035em;
-        color: var(--muted);
-      }
-
-      .eyebrow {
-        color: var(--mark);
-        text-transform: uppercase;
-      }
-
-      h1 {
-        margin: 5px 0 0;
-        font-size: clamp(21px, 2.2vw, 29px);
-        line-height: 1.1;
-        font-weight: 570;
-        letter-spacing: -0.035em;
-      }
-
-      .study-question {
-        justify-self: end;
-        max-width: 600px;
-        margin: 0;
-        color: #4e5551;
-        line-height: 1.55;
-      }
-
-      .controls {
-        display: flex;
-        align-items: center;
-        gap: 28px;
-        min-height: 62px;
-        padding: 10px 30px;
-        border-bottom: 1px solid var(--line);
-        background: rgba(251, 252, 249, 0.58);
-      }
-
-      .control-group {
-        display: flex;
-        align-items: center;
-        gap: 5px;
-      }
-      .control-label {
-        margin-right: 8px;
-        color: var(--muted);
-        font-size: 11px;
-      }
-
-      .switcher button {
-        border: 0;
-        background: transparent;
-        padding: 8px 10px;
-        color: #606662;
-        border-bottom: 2px solid transparent;
         cursor: pointer;
       }
-
-      .switcher button:hover {
-        color: var(--ink);
+      button:disabled {
+        cursor: default;
+        color: #869098;
       }
-      .switcher button[aria-pressed='true'] {
-        border-color: var(--mark);
-        color: var(--ink);
+      button,
+      a,
+      input,
+      textarea {
+        outline-offset: 4px;
       }
-
-      .variant-pick button {
-        min-width: 104px;
-        border: 1px solid transparent;
-        padding: 8px 11px;
+      button:focus-visible,
+      a:focus-visible,
+      input:focus-visible,
+      textarea:focus-visible {
+        outline: 2px solid #27779c;
       }
-      .variant-pick button[aria-pressed='true'] {
-        border-color: var(--ink);
-        background: var(--ink);
-        color: white;
+      button {
+        background: transparent;
+        border: 0;
       }
-
-      .variant-note {
-        margin-left: auto;
-        max-width: 360px;
-        text-align: right;
-        color: var(--muted);
-        font-size: 11px;
-        line-height: 1.4;
+      svg {
+        width: 19px;
+        height: 19px;
+        flex: none;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.6;
+        stroke-linecap: round;
+        stroke-linejoin: round;
       }
-
-      .workspace {
-        display: grid;
-        grid-template-columns: 246px minmax(0, 1fr);
-        height: calc(100dvh - 167px);
-        min-height: 510px;
-        background: var(--white);
+      p {
+        margin: 0 0 12px;
       }
-
-      .room-index {
-        display: flex;
-        flex-direction: column;
-        min-width: 0;
-        border-right: 1px solid var(--line);
-        background: #f7f8f4;
+      p:last-child {
+        margin: 0;
       }
-
-      .index-top {
-        height: 56px;
+      .study-head {
+        height: 58px;
+        padding: 0 25px;
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 0 15px;
-        border-bottom: 1px solid var(--line);
+        gap: 14px;
+        background: #f6f7f8;
+        border-bottom: 1px solid #d9dfe3;
       }
-
+      .study-head strong {
+        font-size: 15px;
+        font-weight: 650;
+        letter-spacing: -0.4px;
+      }
+      .study-head span {
+        font-size: 12px;
+        color: #5f6b74;
+        margin-left: 13px;
+      }
+      .study-head .study-meta {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+      }
+      .study-meta button {
+        font-size: 12px;
+        padding: 7px 10px;
+        border: 1px solid #d5dce0;
+        border-radius: 4px;
+      }
+      .study-controls {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 10px 24px;
+        align-items: center;
+        background: #f6f7f8;
+      }
+      .variants,
+      .scenes {
+        display: flex;
+        gap: 5px;
+        flex-wrap: wrap;
+      }
+      .variants button {
+        padding: 9px 14px;
+        font-size: 13px;
+        border: 1px solid transparent;
+        border-radius: 4px;
+      }
+      .variants button[aria-pressed="true"] {
+        background: #263c47;
+        color: white;
+        border-color: #263c47;
+      }
+      .variants small {
+        opacity: 0.7;
+        margin-left: 6px;
+      }
+      .scenes button {
+        font-size: 12px;
+        color: #5b6670;
+        padding: 7px 10px;
+        border-bottom: 2px solid transparent;
+      }
+      .scenes button[aria-pressed="true"] {
+        color: #1f4e62;
+        border-bottom-color: #28556a;
+      }
+      .stage {
+        padding: 7px 18px 0;
+      }
+      .app {
+        container-type: inline-size;
+        margin: auto;
+        width: 100%;
+        height: calc(100dvh - 180px);
+        min-height: 470px;
+        background: var(--paper);
+        border: 1px solid #cdd5db;
+        border-radius: 7px;
+        box-shadow: 0 8px 28px #2336420a;
+        overflow: hidden;
+        transition: width 0.18s;
+      }
+      .stage.narrow .app {
+        width: min(420px, 100%);
+      }
+      .window-head {
+        height: 38px;
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 17px;
+        background: #f6f7f8;
+      }
       .wordmark {
         font-size: 14px;
         font-weight: 650;
-        letter-spacing: -0.02em;
+        letter-spacing: -0.5px;
+        display: flex;
+        align-items: center;
+        gap: 9px;
       }
-      .index-count {
-        color: var(--quiet);
-        font-size: 11px;
+      .logo {
+        display: inline-flex;
+        width: 20px;
+        height: 20px;
+        align-items: center;
+        justify-content: center;
       }
-      .index-section {
-        padding: 16px 15px 7px;
-        color: var(--quiet);
-        font-size: 10px;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
+      .logo svg {
+        width: 20px;
+        height: 20px;
+        stroke-width: 1.5;
       }
-
-      .room-row {
-        position: relative;
-        display: grid;
-        grid-template-columns: 1fr auto;
-        gap: 3px 9px;
-        padding: 10px 15px 11px 18px;
-        border-left: 3px solid transparent;
+      .window-tools {
+        display: flex;
+        gap: 9px;
+        align-items: center;
       }
-
-      .room-row.active {
-        background: #e9ece7;
-        border-left-color: var(--mark);
+      .window-tools button {
+        font-size: 12px;
+        padding: 3px 5px;
+        color: #64717a;
       }
-      .room-row.branch {
-        background: #eef2f4;
-        border-left-color: var(--blue);
+      .window-tools .home-tool {
+        color: var(--ink);
       }
-      .room-name {
+      .window-dots {
+        color: #89939a;
         font-size: 13px;
-        font-weight: 580;
+        letter-spacing: 8px;
+        margin-left: 15px;
       }
-      .room-time {
-        color: var(--quiet);
+      .shell {
+        height: calc(100% - 38px);
+        display: flex;
+        min-width: 0;
+        overflow: hidden;
+      }
+      .index {
+        flex: 0 0 208px;
+        border-right: 1px solid var(--line);
+        background: #f7f8f9;
+        padding: 20px 10px 12px;
+        display: none;
+        overflow: auto;
+      }
+      .index .section-title {
+        font-size: 11px;
+        color: #727d85;
+        margin: 23px 10px 8px;
+        display: flex;
+        justify-content: space-between;
+      }
+      .index .section-title:first-child {
+        margin-top: 0;
+      }
+      .index .index-item {
+        width: 100%;
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        text-align: left;
+        padding: 10px;
+        border-radius: 4px;
+        margin-bottom: 3px;
+      }
+      .index .index-item:hover {
+        background: #edf0f2;
+      }
+      .index .index-item.selected {
+        background: #e7edef;
+        color: #1f4658;
+      }
+      .index-item .item-title {
+        font-weight: 550;
+        font-size: 13px;
+        display: block;
+        line-height: 1.45;
+      }
+      .index-item small {
+        display: block;
+        color: #74808a;
+        font-size: 11px;
+        margin-top: 3px;
+      }
+      .index-item .project-icon {
+        height: 29px;
+        width: 29px;
+        border: 1px solid #d2dce1;
+        border-radius: 5px;
+        display: grid;
+        place-items: center;
+      }
+      .index .bottom-link {
+        font-size: 12px;
+        color: #687681;
+        padding: 10px;
+        width: 100%;
+        text-align: left;
+      }
+      .index .bottom-link:hover {
+        color: var(--accent);
+      }
+      .index .tiny-count {
         font-size: 10px;
       }
-      .room-preview {
-        grid-column: 1 / -1;
-        overflow: hidden;
-        color: var(--muted);
+      .app.layout-c .index {
+        display: block;
+      }
+      .chat {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        flex: 1;
+        background: var(--paper);
+      }
+      .pane-head {
+        height: 70px;
+        min-height: 70px;
+        padding: 0 27px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        border-bottom: 1px solid var(--line);
+      }
+      .identity {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-width: 0;
+      }
+      .identity strong {
+        font-size: 15px;
+        font-weight: 600;
+        display: block;
+      }
+      .identity small {
+        display: block;
         font-size: 11px;
+        color: #7a858d;
+        margin-top: 4px;
+      }
+      .portrait {
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: #edf1f3;
+        color: #485b65;
+        flex-shrink: 0;
+        font-size: 13px;
+        font-weight: 600;
+        border: 1px solid #e0e7ea;
+      }
+      .portrait.core {
+        background: #e4edf0;
+        color: #2a4b5d;
+      }
+      .portrait.core svg {
+        width: 24px;
+        height: 24px;
+      }
+      .portrait.designer {
+        background: #eee9ed;
+        color: #795b71;
+      }
+      .portrait.engineer {
+        background: #e9eee9;
+        color: #4d6554;
+      }
+      .pane-actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .icon-button {
+        width: 30px;
+        height: 30px;
+        display: grid;
+        place-items: center;
+        border-radius: 4px;
+        color: #6c7780;
+      }
+      .icon-button:hover {
+        background: #edf1f3;
+        color: #243f4e;
+      }
+      .chat-scroll {
+        overflow: auto;
+        flex: 1;
+        min-height: 0;
+        padding: 25px 32px 22px;
+        scrollbar-width: thin;
+        scrollbar-color: #ccd4d9 transparent;
+      }
+      .chat-body {
+        max-width: 700px;
+        margin: 0 auto;
+      }
+      .dayline {
+        font-size: 11px;
+        color: #8b949a;
+        text-align: center;
+        margin: 0 0 27px;
+      }
+      .message {
+        font-size: 14px;
+        line-height: 1.85;
+        margin: 0 0 25px;
+        max-width: 100%;
+      }
+      .message .byline {
+        font-size: 11px;
+        line-height: 1.5;
+        color: #7b858d;
+        margin-bottom: 7px;
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+      .message .byline strong {
+        color: #3a4a54;
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .message.user {
+        margin-left: auto;
+        max-width: 85%;
+        width: fit-content;
+        background: #edf1f4;
+        padding: 10px 14px;
+        border-radius: 9px 9px 2px 9px;
+        line-height: 1.7;
+      }
+      .message.assistant {
+        padding: 0 3px;
+      }
+      .message .inline-person {
+        color: #28556a;
+        border-bottom: 1px solid #b8cbd5;
+        padding: 0 1px;
+        font-size: inherit;
+      }
+      .message .inline-person:hover {
+        background: #e9f0f3;
+      }
+      .message .source-line {
+        font-size: 11px;
+        color: #7c878e;
+        margin-top: 11px;
+        display: flex;
+        gap: 13px;
+      }
+      .message .source-line button {
+        font-size: 11px;
+        color: #4c6a7b;
+        padding: 0;
+      }
+      .project-link {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        text-align: left;
+        margin: 16px 0 6px;
+        padding: 13px 0;
+        border-top: 1px solid var(--line);
+        border-bottom: 1px solid var(--line);
+        line-height: 1.5;
+      }
+      .project-link .link-copy {
+        flex: 1;
+      }
+      .project-link strong {
+        font-size: 13px;
+        font-weight: 600;
+        display: block;
+      }
+      .project-link small {
+        font-size: 11px;
+        color: #77838c;
+        display: block;
+        margin-top: 4px;
+      }
+      .project-link:hover {
+        color: var(--accent);
+      }
+      .state-mark {
+        width: 6px;
+        height: 6px;
+        background: #b48b4e;
+        border-radius: 50%;
+        display: inline-block;
+        flex: none;
+      }
+      .state-mark.running {
+        background: #528774;
+      }
+      .state-mark.closed {
+        background: #82909b;
+      }
+      .news-items {
+        padding-left: 19px;
+        margin: 13px 0;
+        font-size: 13px;
+      }
+      .news-items li {
+        margin-bottom: 8px;
+        padding-left: 4px;
+      }
+      .news-items strong {
+        font-weight: 600;
+      }
+      .composer {
+        flex: none;
+        padding: 14px 26px 18px;
+        border-top: 1px solid var(--line);
+        background: #fcfcfc;
+      }
+      .composer-inner {
+        max-width: 720px;
+        margin: auto;
+        position: relative;
+      }
+      .composer textarea {
+        display: block;
+        width: 100%;
+        resize: none;
+        border: 1px solid #d8e0e5;
+        border-radius: 7px;
+        min-height: 76px;
+        padding: 12px 45px 12px 13px;
+        background: #fff;
+        color: var(--ink);
+        font-size: 13px;
+        line-height: 1.6;
+      }
+      .composer textarea::placeholder {
+        color: #8a949d;
+      }
+      .send {
+        position: absolute;
+        right: 8px;
+        bottom: 8px;
+        background: #2c5265;
+        color: #fff;
+        width: 28px;
+        height: 28px;
+        border-radius: 5px;
+        display: grid;
+        place-items: center;
+      }
+      .send svg {
+        width: 16px;
+        height: 16px;
+      }
+      .composer-hint {
+        font-size: 10px;
+        color: #8b969e;
+        margin-top: 7px;
+        display: flex;
+        justify-content: space-between;
+      }
+      .workspace {
+        display: none;
+        flex: 1;
+        min-width: 0;
+        flex-direction: column;
+        background: #f7f8fa;
+        overflow: hidden;
+      }
+      .app.has-workspace .workspace {
+        display: flex;
+      }
+      .app.has-workspace.layout-a .chat,
+      .app.has-workspace.layout-c .chat {
+        display: none;
+      }
+      .app.has-workspace.layout-b .chat {
+        flex: 0 0 365px;
+        border-right: 1px solid #d8e0e5;
+      }
+      .app.has-workspace.layout-b .chat .pane-head {
+        padding: 0 20px;
+      }
+      .app.has-workspace.layout-b .chat-scroll {
+        padding: 22px 21px;
+      }
+      .app.has-workspace.layout-b .chat .composer {
+        padding: 12px 18px;
+      }
+      .app.has-workspace.layout-b .chat .message {
+        font-size: 13px;
+        margin-bottom: 22px;
+      }
+      .app.has-workspace.layout-b .chat .pane-actions .wide-action {
+        display: none;
+      }
+      .work-head {
+        min-height: 62px;
+        height: 62px;
+        padding: 0 24px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 15px;
+        background: #fbfcfc;
+        border-bottom: 1px solid var(--line);
+      }
+      .work-title {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+      }
+      .work-title strong {
+        font-size: 14px;
+        font-weight: 600;
+        display: block;
+      }
+      .work-title small {
+        display: block;
+        font-size: 11px;
+        color: #7c8891;
+        margin-top: 3px;
+      }
+      .work-close {
+        font-size: 11px;
+        color: #6e7b85;
+        padding: 8px;
+        white-space: nowrap;
+      }
+      .work-tabs {
+        display: flex;
+        gap: 22px;
+        padding: 0 25px;
+        height: 42px;
+        min-height: 42px;
+        background: #fbfcfc;
+        border-bottom: 1px solid var(--line);
+      }
+      .work-tabs button {
+        font-size: 12px;
+        border-bottom: 2px solid transparent;
+        padding: 0 1px;
+        color: #6e7a83;
+      }
+      .work-tabs button.active {
+        border-color: #2d5365;
+        color: #2d5365;
+        font-weight: 600;
+      }
+      .work-content {
+        overflow: auto;
+        flex: 1;
+        min-height: 0;
+        padding: 24px 28px;
+        scrollbar-width: thin;
+      }
+      .project-stage {
+        display: flex;
+        gap: 9px;
+        align-items: center;
+        font-size: 12px;
+        color: #526574;
+        margin-bottom: 9px;
+      }
+      .work-content h2 {
+        font-size: 21px;
+        line-height: 1.5;
+        letter-spacing: -0.4px;
+        font-weight: 600;
+        margin: 0 0 9px;
+      }
+      .work-content .lead {
+        font-size: 12px;
+        line-height: 1.8;
+        color: #6f7c85;
+        margin: 0 0 20px;
+        max-width: 650px;
+      }
+      .artifact {
+        border: 1px solid #d4dee4;
+        border-radius: 5px;
+        background: #fff;
+        overflow: hidden;
+        margin: 18px 0 20px;
+      }
+      .artifact-chrome {
+        height: 29px;
+        padding: 0 12px;
+        background: #edf1f4;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 10px;
+        color: #71818e;
+        border-bottom: 1px solid #dbe3e8;
+      }
+      .artifact-preview {
+        padding: 24px 26px 25px;
+        min-height: 244px;
+      }
+      .artifact-preview .preview-title {
+        font-size: 19px;
+        font-weight: 600;
+        letter-spacing: -0.4px;
+        color: #293b48;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .artifact-preview .preview-title small {
+        font-weight: 400;
+        font-size: 10px;
+        color: #9ca6af;
+        letter-spacing: 0;
+      }
+      .artifact-preview .preview-subtitle {
+        font-size: 11px;
+        color: #7e8c97;
+        margin: 8px 0 20px;
+      }
+      .artifact-preview .preview-topline {
+        display: flex;
+        gap: 18px;
+        font-size: 11px;
+        color: #758491;
+        border-bottom: 1px solid #e5eaee;
+        margin-bottom: 9px;
+        padding-bottom: 9px;
+      }
+      .artifact-preview .preview-topline strong {
+        color: #344e63;
+        font-weight: 600;
+      }
+      .price-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 11px;
+        line-height: 1.65;
+      }
+      .price-table th {
+        text-align: left;
+        color: #84919b;
+        font-weight: 400;
+        padding: 7px 8px;
+      }
+      .price-table td {
+        padding: 11px 8px;
+        border-top: 1px solid #eaf0f3;
+        color: #415767;
+      }
+      .price-table td:first-child {
+        font-weight: 550;
+      }
+      .price-table .change {
+        color: #397c67;
+      }
+      .price-table td:nth-child(3),
+      .price-table th:nth-child(3) {
+        text-align: right;
+      }
+      .artifact-foot {
+        font-size: 10px;
+        color: #8e9ba4;
+        margin-top: 15px;
+      }
+      .file-row {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        padding: 13px 0;
+        border-bottom: 1px solid var(--line);
+        font-size: 12px;
+      }
+      .file-row .file-main {
+        flex: 1;
+      }
+      .file-row small {
+        display: block;
+        font-size: 10px;
+        color: #7d8b95;
+        margin-top: 4px;
+      }
+      .file-row button {
+        font-size: 11px;
+        color: #375e74;
+      }
+      .review-form {
+        margin-top: 20px;
+        max-width: 820px;
+      }
+      .review-form label {
+        display: block;
+        font-size: 12px;
+        font-weight: 550;
+        margin-bottom: 9px;
+      }
+      .review-form textarea {
+        display: block;
+        width: 100%;
+        min-height: 66px;
+        resize: vertical;
+        border: 1px solid #d6dfe4;
+        border-radius: 5px;
+        background: white;
+        padding: 11px 12px;
+        font-size: 12px;
+        line-height: 1.7;
+      }
+      .review-actions {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        flex-wrap: wrap;
+        margin-top: 11px;
+      }
+      .primary {
+        background: #2c5367;
+        color: white;
+        padding: 9px 14px;
+        border-radius: 4px;
+        font-size: 12px;
+      }
+      .secondary {
+        border: 1px solid #ced9e0;
+        background: #fff;
+        padding: 8px 12px;
+        border-radius: 4px;
+        font-size: 12px;
+      }
+      .quiet {
+        font-size: 11px;
+        color: #6d7d89;
+        padding: 8px;
+      }
+      .review-actions .review-note {
+        font-size: 10px;
+        color: #8a959d;
+        flex-basis: 100%;
+        padding-top: 4px;
+      }
+      .project-summary {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 22px;
+        margin: 20px 0;
+      }
+      .project-summary h3,
+      .members-title {
+        font-size: 12px;
+        font-weight: 600;
+        margin: 0 0 10px;
+      }
+      .project-summary p {
+        font-size: 12px;
+        color: #677883;
+        line-height: 1.8;
+      }
+      .member-list {
+        border-top: 1px solid var(--line);
+      }
+      .member-row {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        gap: 13px;
+        padding: 14px 3px;
+        border-bottom: 1px solid var(--line);
+        text-align: left;
+      }
+      .member-row:hover {
+        background: #eef2f4;
+      }
+      .member-row .member-name {
+        flex: 1;
+      }
+      .member-row strong {
+        font-weight: 550;
+        font-size: 13px;
+        display: block;
+      }
+      .member-row small {
+        font-size: 11px;
+        color: #7c8992;
+        display: block;
+        margin-top: 4px;
+      }
+      .member-row .status {
+        font-size: 11px;
+        color: #687f8b;
+      }
+      .discussion {
+        max-width: 790px;
+        margin: auto;
+      }
+      .discussion .group-msg {
+        display: flex;
+        gap: 12px;
+        padding: 13px 0 20px;
+        font-size: 13px;
+        line-height: 1.8;
+      }
+      .group-msg .msg-text {
+        flex: 1;
+        min-width: 0;
+      }
+      .group-msg header {
+        font-size: 11px;
+        color: #83909a;
+        margin-bottom: 5px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .group-msg header strong {
+        font-size: 12px;
+        color: #405562;
+      }
+      .group-msg mark {
+        background: #e8f0f5;
+        color: #295973;
+        padding: 1px 3px;
+        border-radius: 2px;
+      }
+      .note-row {
+        font-size: 11px;
+        color: #81909b;
+        padding: 11px 0;
+        border-top: 1px solid #e0e6e9;
+        margin: 8px 0 16px;
+      }
+      .group-form {
+        display: flex;
+        gap: 8px;
+        border-top: 1px solid var(--line);
+        padding: 16px 0 4px;
+      }
+      .group-form input {
+        flex: 1;
+        min-width: 0;
+        padding: 10px;
+        border: 1px solid #d3dde4;
+        background: #fff;
+        border-radius: 4px;
+        font-size: 12px;
+      }
+      .profile-hero {
+        display: flex;
+        align-items: center;
+        gap: 17px;
+        margin-bottom: 25px;
+      }
+      .profile-hero .portrait {
+        width: 55px;
+        height: 55px;
+        font-size: 20px;
+        border-radius: 15px;
+      }
+      .profile-hero h2 {
+        margin: 0 0 4px;
+      }
+      .profile-hero p {
+        font-size: 12px;
+        color: #7b8790;
+      }
+      .profile-detail {
+        max-width: 700px;
+        font-size: 12px;
+        line-height: 1.9;
+      }
+      .profile-detail h3 {
+        font-size: 12px;
+        margin: 24px 0 10px;
+      }
+      .profile-detail ul {
+        padding-left: 17px;
+        color: #607581;
+      }
+      .profile-detail .asset-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 15px;
+        border-top: 1px solid var(--line);
+        padding: 12px 0;
+      }
+      .profile-detail .asset-row span {
+        color: #647886;
+      }
+      .history-item {
+        border-left: 2px solid #d4dfe6;
+        margin: 13px 0;
+        padding: 0 0 0 15px;
+      }
+      .history-item strong {
+        font-weight: 550;
+      }
+      .history-item small {
+        color: #82909b;
+        display: block;
+        margin-top: 3px;
+      }
+      .profile-links {
+        display: flex;
+        gap: 8px;
+        margin-top: 22px;
+        flex-wrap: wrap;
+      }
+      .session-content {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        min-height: 0;
+      }
+      .session-scroll {
+        overflow: auto;
+        flex: 1;
+        padding: 24px 28px;
+      }
+      .session-label {
+        font-size: 11px;
+        color: #778d9a;
+        margin-bottom: 22px;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .session-scroll .message {
+        font-size: 13px;
+      }
+      .tool-record {
+        font-size: 11px;
+        color: #7e8b94;
+        padding: 10px 0;
+        border-top: 1px solid var(--line);
+        margin: 15px 0;
+      }
+      .tool-record summary {
+        cursor: pointer;
+      }
+      .tool-record p {
+        margin: 9px 0 0;
+        font-size: 11px;
+        line-height: 1.9;
+      }
+      .session-content .composer {
+        background: #f8fafb;
+      }
+      .archive-empty {
+        max-width: 650px;
+        margin: 20px auto;
+        padding: 20px 0;
+        font-size: 13px;
+        line-height: 1.8;
+      }
+      .archive-empty h2 {
+        font-size: 20px;
+      }
+      .archive-empty p {
+        color: #6e818f;
+      }
+      .archive-empty .archive-date {
+        font-size: 11px;
+        color: #87959e;
+        margin: 18px 0;
+      }
+      .archive-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 20px;
+      }
+      .study-note {
+        padding: 12px 25px 10px;
+        font-size: 12px;
+        line-height: 1.7;
+        color: #586b78;
+        display: flex;
+        gap: 15px;
+        align-items: baseline;
+        max-width: 1500px;
+        margin: auto;
+      }
+      .study-note strong {
+        color: #2d4758;
+        white-space: nowrap;
+      }
+      .study-note .risk {
+        color: #7e8b93;
+        font-size: 11px;
+      }
+      .study-note div {
+        flex: 1;
+      }
+      .study-note button {
+        font-size: 11px;
+        white-space: nowrap;
+        color: #28556a;
+      }
+      dialog {
+        border: 1px solid #d5dde2;
+        border-radius: 7px;
+        padding: 0;
+        max-width: min(620px, calc(100vw - 30px));
+        width: 570px;
+        color: var(--ink);
+        box-shadow: 0 20px 80px #122d3b22;
+      }
+      dialog::backdrop {
+        background: #1b2e3e55;
+      }
+      dialog .dialog-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 19px 23px;
+        border-bottom: 1px solid var(--line);
+      }
+      dialog .dialog-head strong {
+        font-size: 15px;
+      }
+      dialog .dialog-body {
+        padding: 22px 24px;
+        font-size: 13px;
+        line-height: 1.9;
+        max-height: 70dvh;
+        overflow: auto;
+      }
+      dialog h3 {
+        font-size: 13px;
+        margin: 20px 0 6px;
+      }
+      dialog h3:first-child {
+        margin-top: 0;
+      }
+      dialog p {
+        color: #657783;
+      }
+      dialog ul {
+        padding-left: 18px;
+        color: #657783;
+      }
+      dialog .index-item {
+        padding: 12px 0;
+        display: flex;
+        width: 100%;
+        gap: 13px;
+        align-items: center;
+        text-align: left;
+        border-bottom: 1px solid var(--line);
+      }
+      dialog .index-item .item-title {
+        font-size: 13px;
+      }
+      dialog .index-item small {
+        font-size: 11px;
+        display: block;
+        color: #80909b;
+        margin-top: 3px;
+      }
+      .settings-form label {
+        font-size: 12px;
+        display: block;
+        margin: 0 0 7px;
+      }
+      .settings-form input,
+      .settings-form textarea {
+        width: 100%;
+        border: 1px solid #d6e0e6;
+        padding: 10px;
+        font-size: 13px;
+        border-radius: 4px;
+        margin-bottom: 18px;
+      }
+      .settings-form textarea {
+        min-height: 80px;
+        resize: vertical;
+      }
+      .study-note a {
+        color: #28556a;
+      }
+      .app.focused-frame {
+        height: calc(100dvh - 55px);
+      }
+      body.focused .study-head,
+      body.focused .study-controls,
+      body.focused .study-note {
+        display: none;
+      }
+      body.focused .stage {
+        padding-top: 8px;
+      }
+      .preview-exit {
+        display: none;
+        position: fixed;
+        right: 30px;
+        bottom: 10px;
+        font-size: 11px;
+        color: #5a6e7c;
+        background: #e9ecee;
+        padding: 4px 8px;
+        border-radius: 3px;
+      }
+      body.focused .preview-exit {
+        display: block;
+      }
+      .welcome-note {
+        font-size: 11px;
+        background: #edf2f5;
+        color: #627b8d;
+        padding: 9px 13px;
+        border-left: 2px solid #8aa7b8;
+        margin: 16px 0;
+      }
+      .actions-line {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 20px;
+      }
+      .actions-line button {
+        font-size: 11px;
+        color: #647c8b;
+      }
+      .pill-free {
+        font-size: 10px;
+        color: #82929e;
+      }
+      .conversation-links {
+        display: flex;
+        gap: 10px;
+        font-size: 11px;
+        color: #627c8e;
+        margin-top: 15px;
+      }
+      .conversation-links button {
+        padding: 0;
+      }
+      .member-heading {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .chat-header-title {
+        min-width: 0;
+      }
+      .chat-header-title strong {
+        overflow: hidden;
         white-space: nowrap;
         text-overflow: ellipsis;
       }
-      .room-tag {
-        grid-column: 1 / -1;
-        margin-top: 3px;
-        color: var(--blue);
-        font-size: 10px;
-      }
-
-      .index-bottom {
-        margin-top: auto;
-        padding: 13px 15px;
-        border-top: 1px solid var(--line);
-        color: var(--muted);
-        font-size: 11px;
-        line-height: 1.45;
-      }
-
-      .conversation {
-        position: relative;
-        display: grid;
-        grid-template-rows: 56px 1fr auto;
-        min-width: 0;
-        min-height: 0;
-      }
-
-      .conversation-head {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        padding: 0 22px;
-        border-bottom: 1px solid var(--line);
-      }
-
-      .conversation-title {
-        font-size: 14px;
-        font-weight: 610;
-      }
-      .conversation-subtitle {
-        margin-left: 10px;
-        color: var(--muted);
+      .group-msg .portrait {
+        width: 29px;
+        height: 29px;
         font-size: 11px;
       }
-      .head-side {
-        color: var(--muted);
+      .archived-label {
+        color: #7a8994;
         font-size: 11px;
+        margin-left: 6px;
       }
-
-      .timeline {
-        min-height: 0;
-        overflow: auto;
-        padding: 23px clamp(18px, 5vw, 68px) 36px;
+      button:hover {
+        filter: brightness(0.96);
       }
-
-      .sequence-intro {
-        display: grid;
-        grid-template-columns: 92px minmax(0, 720px);
-        gap: 14px;
-        align-items: start;
-        margin: 0 auto 26px;
-        max-width: 826px;
+      .project-link:active,
+      .member-row:active {
+        background: #e9f0f3;
       }
-
-      .sequence-intro .section-kicker {
-        padding-top: 5px;
-      }
-      .sequence-intro p {
-        margin: 0;
-        color: var(--muted);
-        line-height: 1.5;
-        font-size: 12px;
-      }
-
-      .turn {
-        display: grid;
-        grid-template-columns: 92px minmax(0, 720px);
-        gap: 14px;
-        margin: 0 auto;
-        max-width: 826px;
-      }
-
-      .turn + .turn {
-        margin-top: 20px;
-      }
-      .speaker {
-        padding-top: 3px;
-        color: var(--muted);
-        font-size: 11px;
-      }
-      .speaker.you {
-        color: var(--mark);
-      }
-      .speaker.agent {
-        color: var(--green);
-      }
-      .message {
-        min-width: 0;
-        line-height: 1.62;
-        font-size: 14px;
-      }
-      .message p {
-        margin: 0;
-      }
-      .message p + p {
-        margin-top: 9px;
-      }
-      .message strong {
-        font-weight: 620;
-      }
-      .message em {
-        color: #59605b;
-      }
-      .message-meta {
-        display: block;
-        margin-top: 6px;
-        color: var(--quiet);
-      }
-      .agent-turn .message {
-        padding-left: 13px;
-        border-left: 2px solid #b5c6bc;
-      }
-
-      .handoff {
-        margin: 13px 0 0 105px;
-        max-width: 720px;
-        padding: 9px 0 9px 13px;
-        border-left: 2px solid var(--blue);
-        color: #43515a;
-        font-size: 12px;
-        line-height: 1.45;
-      }
-
-      .handoff-label {
-        display: block;
-        margin-bottom: 3px;
-        color: var(--blue);
-        font-size: 10px;
-        letter-spacing: 0.035em;
-      }
-      .source-ref {
-        display: inline-block;
-        margin-top: 5px;
-        color: var(--blue);
-      }
-
-      .branch-line {
-        display: grid;
-        grid-template-columns: 92px minmax(0, 720px);
-        gap: 14px;
-        margin: 15px auto 0;
-        max-width: 826px;
-      }
-
-      .branch-rail {
-        position: relative;
-        min-height: 64px;
-      }
-      .branch-rail::before {
-        content: '';
-        position: absolute;
-        top: -4px;
-        right: 22px;
-        bottom: 0;
-        border-right: 1px solid var(--blue);
-      }
-      .branch-rail::after {
-        content: '';
-        position: absolute;
-        top: 0;
-        right: 22px;
-        width: 16px;
-        border-top: 1px solid var(--blue);
-      }
-
-      .branch-link {
-        display: flex;
-        align-items: baseline;
-        flex-wrap: wrap;
-        gap: 7px 14px;
-        border-top: 1px solid #c9d3df;
-        padding: 10px 0 8px;
-        color: var(--blue);
-        text-align: left;
-        background: transparent;
-        border-left: 0;
-        border-right: 0;
-        border-bottom: 0;
-        cursor: pointer;
-      }
-
-      .branch-link:hover .branch-title {
-        text-decoration: underline;
-        text-underline-offset: 3px;
-      }
-      .branch-title {
-        font-weight: 610;
-        font-size: 13px;
-      }
-      .branch-state {
-        color: var(--muted);
-        font-size: 11px;
-      }
-      .branch-participants {
-        color: var(--quiet);
-        font-size: 10px;
-      }
-
-      .composer {
-        display: grid;
-        grid-template-columns: 1fr auto;
-        align-items: center;
-        gap: 12px;
-        min-height: 54px;
-        padding: 7px 19px 7px 22px;
-        border-top: 1px solid var(--line);
-        background: #fbfcf9;
-      }
-
-      .composer-copy {
-        color: var(--quiet);
-        font-size: 11px;
-      }
-      .composer-send {
-        color: var(--mark);
-        font-size: 12px;
-      }
-
-      .thread-mode .conversation-head {
-        background: #edf2f4;
-      }
-      .thread-context {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        margin: 0 auto 22px;
-        max-width: 826px;
-        padding: 9px 0;
-        border-bottom: 1px solid #c9d3df;
-        color: var(--muted);
-        font-size: 11px;
-      }
-
-      .return-link {
-        padding: 4px 0;
-        border: 0;
-        background: transparent;
-        color: var(--blue);
-        cursor: pointer;
-      }
-      .return-link:hover {
-        text-decoration: underline;
-        text-underline-offset: 3px;
-      }
-      .contributor-line {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px 20px;
-        margin: 5px 0 17px 106px;
-        color: var(--muted);
-        font-size: 11px;
-      }
-      .contributor-line span::before {
-        content: '—';
-        margin-right: 6px;
-        color: var(--green);
-      }
-
-      .proof-strip {
-        display: grid;
-        grid-template-columns: 1fr auto;
-        gap: 14px;
-        padding: 12px 30px;
-        background: #e8eae5;
-        color: #59605b;
-        font-size: 11px;
-        line-height: 1.45;
-      }
-
-      .proof-strip strong {
-        color: var(--ink);
-        font-weight: 610;
-      }
-      .proof-state {
-        white-space: nowrap;
-        color: var(--mark);
-      }
-
-      @media (max-width: 760px) {
-        .study-head {
-          grid-template-columns: 1fr;
-          gap: 9px;
-          padding: 15px 16px;
-        }
-        .study-question {
-          justify-self: start;
-          font-size: 12px;
-        }
-        .controls {
-          align-items: flex-start;
-          flex-direction: column;
-          gap: 8px;
-          padding: 8px 11px;
-        }
-        .control-group {
-          max-width: 100%;
-          overflow-x: auto;
-        }
-        .control-label {
-          flex: 0 0 auto;
-        }
-        .switcher button {
-          white-space: nowrap;
-          padding: 7px 8px;
-        }
-        .variant-pick button {
-          min-width: auto;
-        }
-        .variant-note {
+      @container (max-width:820px) {
+        .app.has-workspace.layout-b .chat {
           display: none;
         }
-        .workspace {
-          grid-template-columns: 1fr;
-          height: calc(100dvh - 225px);
-          min-height: 480px;
-        }
-        .room-index {
+        .app.layout-c .index {
           display: none;
         }
-        .conversation-head {
-          padding: 0 14px;
+        .pane-head {
+          padding: 0 20px;
         }
-        .conversation-subtitle {
-          display: block;
-          margin: 2px 0 0;
+        .work-content {
+          padding: 20px;
         }
-        .timeline {
-          padding: 18px 14px 28px;
+        .artifact-preview {
+          padding: 18px;
         }
-        .sequence-intro,
-        .turn,
-        .branch-line {
-          grid-template-columns: 58px minmax(0, 1fr);
-          gap: 9px;
+        .chat-scroll {
+          padding: 24px;
         }
-        .speaker {
+        .work-close {
+          font-size: 0;
+        }
+        .work-close svg {
+          width: 18px;
+        }
+        .project-summary {
+          grid-template-columns: 1fr;
+          gap: 16px;
+        }
+        .window-dots {
+          display: none;
+        }
+        .app.has-workspace .work-head {
+          padding: 0 16px;
+        }
+        .work-title strong {
+          font-size: 13px;
+        }
+        .work-title small {
           font-size: 10px;
         }
-        .handoff {
-          margin-left: 67px;
+      }
+      @media (max-width: 800px) {
+        .study-head {
+          height: auto;
+          min-height: 55px;
+          padding: 12px 15px;
         }
-        .branch-rail::before {
-          right: 12px;
+        .study-head span {
+          display: none;
         }
-        .branch-rail::after {
-          right: 12px;
-          width: 10px;
+        .study-head .study-meta {
+          gap: 6px;
         }
-        .contributor-line {
-          margin-left: 67px;
+        .study-controls {
+          padding: 8px 12px;
+          display: block;
         }
-        .thread-context {
-          align-items: flex-start;
-          flex-direction: column;
+        .scenes {
+          margin-top: 8px;
         }
-        .proof-strip {
-          grid-template-columns: 1fr;
-          padding: 10px 14px;
+        .variants button {
+          padding: 8px 10px;
+          font-size: 12px;
         }
-        .proof-state {
-          white-space: normal;
+        .variants small {
+          display: none;
+        }
+        .stage {
+          padding: 5px 8px 0;
+        }
+        .app {
+          height: calc(100dvh - 235px);
+          min-height: 465px;
+        }
+        .study-note {
+          padding: 10px 13px;
+          gap: 8px;
+        }
+        .study-note .risk {
+          display: none;
+        }
+        .study-note {
+          flex-wrap: wrap;
+        }
+        .study-note button[data-action="explanation"] {
+          display: none;
+        }
+        .study-head .study-meta button {
+          font-size: 10px;
+          padding: 6px;
+        }
+        .pane-head {
+          height: 62px;
+          min-height: 62px;
+        }
+        .composer {
+          padding: 12px 18px;
+        }
+        .price-table th,
+        .price-table td {
+          padding: 8px 4px;
+        }
+        .artifact-preview .preview-title {
+          font-size: 16px;
+        }
+        .price-table th:last-child,
+        .price-table td:last-child {
+          display: none;
+        }
+        .work-content h2 {
+          font-size: 19px;
+        }
+        .pane-actions {
+          gap: 1px;
+        }
+        .stage.narrow .app {
+          width: 100%;
         }
       }
-
-      @media (max-width: 420px) {
-        .conversation {
-          grid-template-rows: 52px 1fr auto;
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          transition: none !important;
+          scroll-behavior: auto !important;
         }
-        .sequence-intro,
-        .turn,
-        .branch-line {
-          grid-template-columns: 45px minmax(0, 1fr);
-          gap: 7px;
+      }
+      .review-dock {
+        flex: none;
+        background: #fbfcfc;
+        border-top: 1px solid #dbe3e8;
+        padding: 14px 22px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      .review-dock > div:first-child {
+        font-size: 12px;
+        line-height: 1.6;
+      }
+      .review-dock small {
+        display: block;
+        font-size: 10px;
+        color: #7b8b96;
+      }
+      .review-dock .dock-actions {
+        display: flex;
+        gap: 7px;
+        flex: none;
+      }
+      .review-reference {
+        font-size: 11px;
+        color: #426a80;
+        margin: 0 0 8px;
+        padding: 6px 9px;
+        background: #edf3f6;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .review-reference button {
+        font-size: 10px;
+        color: #718899;
+      }
+      .composer:has(.review-reference) textarea {
+        min-height: 68px;
+      }
+      @container (max-width:820px) {
+        .review-dock {
+          padding: 11px 16px;
         }
-        .handoff {
-          margin-left: 52px;
-        }
-        .contributor-line {
-          margin-left: 52px;
-        }
-        .proof-state {
-          display: none;
+        .review-dock .primary {
+          padding: 8px 10px;
         }
       }
     </style>
   </head>
   <body>
     <header class="study-head">
-      <div>
-        <div class="eyebrow">NOEMA · PRODUCT STRUCTURE</div>
-        <h1>对话怎样长成一件事</h1>
+      <div><strong>Noema / 三种空间组织</strong><span>同一套产品关系，不同的界面重心</span></div>
+      <div class="study-meta">
+        <span>交互研究 · 全部为演示数据，不调用模型</span
+        ><button data-action="narrow">窄窗对照</button><button data-action="focus">进入预览</button>
       </div>
-      <p class="study-question">
-        同一个人持续和 Noema
-        交流。什么时候留在原对话，什么时候值得分出一条能回来、能继续的工作脉络？
-      </p>
     </header>
-
-    <nav class="controls" aria-label="体验对照">
-      <div
-        class="control-group switcher"
-        id="scenario-switcher"
-        aria-label="使用情境"
-      >
-        <span class="control-label">情境</span>
-        <button type="button" data-scenario="everyday" aria-pressed="true">
-          日常交流
-        </button>
-        <button type="button" data-scenario="lookup" aria-pressed="false">
-          一次性资料
-        </button>
-        <button type="button" data-scenario="project" aria-pressed="false">
-          跨日事项
-        </button>
-      </div>
-      <div
-        class="control-group switcher variant-pick"
-        id="variant-switcher"
-        aria-label="结构方案"
-      >
-        <span class="control-label">结构</span>
-        <button type="button" data-variant="inline" aria-pressed="false">
-          都留在主聊
-        </button>
-        <button type="button" data-variant="thread" aria-pressed="true">
-          来源线程
-        </button>
-        <button type="button" data-variant="rooms" aria-pressed="false">
-          事项工作区
-        </button>
-      </div>
-      <div class="variant-note" id="variant-note"></div>
-    </nav>
-
-    <main class="workspace" id="workspace" aria-live="polite"></main>
-    <footer class="proof-strip">
-      <div>
-        <strong>能力边界</strong>　这是目标结构的交互研究稿；当前 Noema
-        尚无联网检索、自动建组或价格追踪能力。执行状态只有在真实发生时才能出现。
-      </div>
-      <div class="proof-state" id="proof-state">
-        未执行任何任务 · 仅切换交互结构
-      </div>
-    </footer>
-
+    <div class="study-controls">
+      <nav class="variants" aria-label="结构方案">
+        <button data-layout="a">A · 对话主轴</button
+        ><button data-layout="b">B · 对话与工作并置<small>推荐候选</small></button
+        ><button data-layout="c">C · 成员与项目索引</button>
+      </nav>
+      <nav class="scenes" aria-label="同一组使用情境">
+        <button data-scene="daily">日常相处</button><button data-scene="news">新闻短委托</button
+        ><button data-scene="project">组建项目</button><button data-scene="review">交付评审</button
+        ><button data-scene="archive">归档与恢复</button>
+      </nav>
+    </div>
+    <main class="stage" id="stage">
+      <section class="app" id="app" aria-label="Noema 交互研究"></section>
+    </main>
+    <footer class="study-note" id="study-note"></footer>
+    <button class="preview-exit" data-action="focus">退出预览</button>
+    <dialog id="dialog" aria-labelledby="dialog-title"></dialog>
     <script>
+      "use strict";
+      const $ = (s) => document.querySelector(s);
       const state = {
-        scenario: 'everyday',
-        variant: 'thread',
-        inThread: false,
+        layout: "b",
+        scene: "review",
+        workspace: "project",
+        tab: "delivery",
+        member: "research",
+        name: "Noema",
+        preference: "直接交流，必要时说清依据。",
+        approved: false,
+        archived: false,
+        narrow: false,
+        focused: false,
+        drafts: {},
+        feedback: "",
+        extra: {},
+        groupExtra: [],
+        sessionExtra: {},
+        notice: "",
+        reopened: false,
+        reviewTarget: false,
       };
-
-      const variantCopy = {
-        inline:
-          '所有交流和执行记录都留在主聊。最少切换；长期更新逐渐挤压普通对话。',
-        thread:
-          '跨日讨论分出 Noema 主题线程；执行任务仍关联来源消息。两个对象互相指路，各自保有清楚生命周期。',
-        rooms:
-          '持续项目有独立工作区，主题对话、参与者和任务状态关联在一起。概览更完整；需要新的对象、权限和删除边界。',
-      };
-
-      const scenarioCopy = {
-        everyday: '改一段文字只需要交流，不需要任务面板、状态栏或新聊天。',
-        lookup:
-          '一次性问题保持在主聊；如果需要最新资料，Noema 应把来源随答案带回。当前版本没有联网能力。',
-        project:
-          '长期事项有自己的参与者、阶段与恢复点；它仍从主聊提出，也应能回到主聊。',
-      };
-
-      const options = {
-        everyday: {
-          user: '我想给朋友回消息，但不想显得太生硬。帮我把这句改自然一点：“你那边处理完了吗？”',
-          noema:
-            '可以这样说：“你那边方便的时候，跟我说下处理得怎么样就好。”语气松一点，也没有催促的感觉。',
-          time: '今天 10:42',
+      const people = {
+        research: {
+          name: "新闻观察者",
+          role: "研究 · 来源核对",
+          mark: "研",
+          class: "",
+          status: "研究已交付",
+          description: "寻找原始信息，核对变化与时间，分清事实和推断。",
         },
-        lookup: {
-          user: '这周 AI 行业有哪些值得关注的事？只要三件，想知道为什么值得关注。',
-          noema: '我会先找本周的一手发布和可靠报道，再把三件事和来源放在一起。',
-          time: '今天 10:48',
+        designer: {
+          name: "界面设计师",
+          role: "交互 · 视觉",
+          mark: "设",
+          class: "designer",
+          status: "等待界面评审",
+          description: "把需求转成可审阅的界面，说明设计取舍并修正体验。",
         },
-        project: {
-          user: '我想做个跟踪几个 AI 平台定价和套餐变化的工具。先帮我把这件事推进起来。',
-          noema:
-            '这件事要跨几轮研究和实现。我先和你确认要跟踪的平台与更新范围；确认后再把持续工作从这条消息分出来。',
-          time: '周一 09:16',
+        engineer: {
+          name: "应用工程师",
+          role: "实现 · 验证",
+          mark: "工",
+          class: "engineer",
+          status: "等待评审结果",
+          description: "实现经过确认的方案，验证结果，维护项目的可运行状态。",
         },
       };
-
-      function esc(text) {
-        return text.replace(
+      const notes = {
+        a: {
+          title: "A · 对话主轴",
+          text: "Noema 对话占据整个窗口。成员与项目按需整页打开，返回后继续原来的对话。",
+          risk: "取舍：日常最轻；看成果与讨论需要来回切换。",
+        },
+        b: {
+          title: "B · 对话与工作并置",
+          text: "默认仍是完整对话。打开项目时，对话留在左侧，项目与成果在右侧展开。",
+          risk: "取舍：边看边谈最直接；小窗口改为单页，不能强挤双栏。",
+        },
+        c: {
+          title: "C · 成员与项目索引",
+          text: "长期成员和项目拥有固定索引。内容区域在主聊、成员和项目空间之间完整切换。",
+          risk: "取舍：查找明确、适合积累；主伙伴的重心更容易被索引稀释。",
+        },
+      };
+      function esc(x) {
+        return String(x ?? "").replace(
           /[&<>"']/g,
-          (char) =>
-            ({
-              '&': '&amp;',
-              '<': '&lt;',
-              '>': '&gt;',
-              '"': '&quot;',
-              "'": '&#39;',
-            })[char],
+          (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
         );
       }
-
-      function indexMarkup() {
-        const common = `
-          <div class="index-top"><span class="wordmark">Noema</span><span class="index-count">2 对话</span></div>
-          <div class="index-section">最近</div>
-          <div class="room-row active"><span class="room-name">Noema</span><span class="room-time">10:48</span><span class="room-preview">${esc(options[state.scenario].user)}</span></div>`;
-        if (state.scenario === 'project' && state.variant === 'thread') {
-          return (
-            common +
-            `<div class="index-row"><div class="index-section">跨日讨论</div><div class="room-row branch"><span class="room-name">价格工具 · 与 Noema 讨论</span><span class="room-time">周一</span><span class="room-preview">范围已确认 · 研究能力尚未连接</span><span class="room-tag">来源于 Noema 主聊</span></div></div><div class="index-bottom">这里只是你和 Noema 的独立讨论上下文。真正启动的执行任务仍留在其来源消息旁。</div>`
-          );
-        }
-        if (state.scenario === 'project' && state.variant === 'rooms') {
-          return `<div class="index-top"><span class="wordmark">Noema</span><span class="index-count">2 对话 · 1 工作区</span></div><div class="index-section">最近对话</div><div class="room-row"><span class="room-name">Noema</span><span class="room-time">周一</span><span class="room-preview">已确认平台和比较范围……</span></div><div class="index-section">持续事项</div><div class="room-row active"><span class="room-name">AI 平台定价工具</span><span class="room-time">进行中</span><span class="room-preview">研究 · 文件实现 · 结果核验</span><span class="room-tag">来源：Noema 主聊中的原始请求</span></div><div class="index-bottom">工作区是额外的持久对象，需设计成员、任务、来源、权限和删除路径。当前 Noema 尚无此工作区能力。</div>`;
-        }
-        if (state.scenario === 'project' && state.variant === 'inline') {
-          return (
-            common +
-            `<div class="index-bottom">所有工作也留在 Noema 主聊。事项多了以后，历史聊天和进行中的项目会混在同一条记录里。</div>`
-          );
-        }
+      function icon(n) {
+        const paths = {
+          arrow: '<path d="M5 12h14m-5-5 5 5-5 5"/>',
+          back: '<path d="m13 6-6 6 6 6m-6-6h12"/>',
+          close: '<path d="m6 6 12 12M18 6 6 18"/>',
+          send: '<path d="m12 5 0 14M6 11l6-6 6 6"/>',
+          people:
+            '<circle cx="9" cy="8" r="3"/><path d="M3 20v-2a6 6 0 0 1 12 0v2m1-15a3 3 0 0 1 0 6m2 3a5 5 0 0 1 3 4v2"/>',
+          project:
+            '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4m8-4v4M4 11h16m-11 4h6"/>',
+          settings:
+            '<path d="M5 7h14M5 17h14"/><circle cx="9" cy="7" r="2" fill="currentColor"/><circle cx="15" cy="17" r="2" fill="currentColor"/>',
+          link: '<path d="M8 5H5v14h14v-3m-7-11h7v7m0-7L9 15"/>',
+          file: '<path d="M7 3h7l4 4v14H7V3Zm7 0v5h4M10 12h5m-5 4h5"/>',
+          archive:
+            '<rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v12h14V8m-10 5h6"/>',
+          noema: '<path d="M5 18V9a5 5 0 0 1 10 0v9M9 18V9m10 9V6"/>',
+        };
         return (
-          common +
-          `<div class="index-bottom">日常对话不需要先选联系人、项目或模式。</div>`
+          '<svg aria-hidden="true" viewBox="0 0 24 24">' + (paths[n] || paths.noema) + "</svg>"
         );
       }
-
-      function baseConversation() {
-        const item = options[state.scenario];
-        const inGroup =
-          state.scenario === 'project' &&
-          state.variant === 'rooms' &&
-          !state.inThread;
-        const title = state.inThread
-          ? '价格工具 · 与 Noema 讨论'
-          : inGroup
-            ? 'AI 平台定价工具'
-            : 'Noema';
-        const subtitle = state.inThread
-          ? '主题线程 · 只含你与 Noema'
-          : inGroup
-            ? '独立事项工作区 · 概念候选'
-            : '你的个人 agent';
-        return `<section class="conversation ${state.inThread ? 'thread-mode' : ''}">
-          <header class="conversation-head"><div><span class="conversation-title">${title}</span><span class="conversation-subtitle">${subtitle}</span></div><span class="head-side">${state.scenario === 'project' && state.inThread ? '持续事项 · 草案' : '个人对话'}</span></header>
-          <div class="timeline" id="timeline">${renderTimeline(item)}</div>
-          <div class="composer"><span class="composer-copy">把下一件事直接说给 Noema</span><span class="composer-send">发送　↗</span></div>
-        </section>`;
+      function avatar(id) {
+        if (id === "core") return '<span class="portrait core">' + icon("noema") + "</span>";
+        const p = people[id];
+        return '<span class="portrait ' + p.class + '">' + p.mark + "</span>";
       }
-
-      function renderTimeline(item) {
-        if (state.inThread) return renderThreadTimeline();
-        if (state.scenario === 'project') {
-          return state.variant === 'rooms'
-            ? renderRoomsProject(item)
-            : renderProjectMain(item);
-        }
-        const action =
-          state.scenario === 'lookup'
-            ? `<div class="handoff"><span class="handoff-label">资料来源 · 目标能力示意</span>答案应把原始发布与报道一并列出，方便你直接核查。此处没有真实联网结果。</div>`
-            : '';
-        return `<div class="sequence-intro"><span class="section-kicker">${state.scenario === 'lookup' ? '短问题' : '日常对话'}</span><p>${esc(scenarioCopy[state.scenario])}</p></div>
-          <article class="turn"><div class="speaker you">你 <span class="message-meta">${item.time}</span></div><div class="message"><p>${esc(item.user)}</p></div></article>
-          <article class="turn agent-turn"><div class="speaker agent">Noema</div><div class="message"><p>${esc(item.noema)}</p>${state.scenario === 'lookup' ? `<p>先核对来源，再告诉你哪些变化有实际影响。</p>` : ''}<span class="message-meta">${state.scenario === 'lookup' ? '回答应附来源 · 此处为结构示意' : '刚刚'}</span></div></article>${action}`;
+      function button(action, content, cls = "", extra = "") {
+        return (
+          '<button data-action="' +
+          action +
+          '" class="' +
+          cls +
+          '" ' +
+          extra +
+          ">" +
+          content +
+          "</button>"
+        );
       }
-
-      function renderProjectMain(item) {
-        if (state.variant === 'thread') {
-          return `<div class="sequence-intro"><span class="section-kicker">原始请求</span><p>先把目标和边界在主聊里说清；跨日讨论分线程，任何真实执行仍有自己独立、可核验的任务记录。</p></div>
-            <article class="turn"><div class="speaker you">你 <span class="message-meta">${item.time}</span></div><div class="message"><p>${esc(item.user)}</p></div></article>
-            <article class="turn agent-turn"><div class="speaker agent">Noema</div><div class="message"><p>${esc(item.noema)}</p><p>你确认之后，我会开一条你和我之间的主题讨论，保留目标与取舍。研究、文件执行和核验不会混进这条对话线程，而会各自显示在它们实际来源消息旁。</p><span class="message-meta">周一 09:18</span></div></article>
-            <article class="turn"><div class="speaker you">你 <span class="message-meta">周一 09:42</span></div><div class="message"><p>先覆盖 OpenAI、Anthropic 和 Google，个人套餐与免费版都要看，按月比较。</p></div></article>
-            <article class="turn agent-turn"><div class="speaker agent">Noema</div><div class="message"><p>范围已明确。这条线程只承接我们之后的讨论。当前没有联网研究能力，因此研究任务尚未创建；文件实现也要等你选择工作区后才能启动。</p><span class="message-meta">周一 09:43</span></div></article>
-            <div class="branch-line"><div class="branch-rail"></div><button class="branch-link" type="button" data-open-thread><span class="branch-title">价格工具 · 与 Noema 讨论</span><span class="branch-state">用户与 Noema 的跨日上下文</span><span class="branch-participants">主题对话，不含工作执行状态</span></button></div>
-            <div class="handoff"><span class="handoff-label">执行边界 · 来源消息上的独立记录</span>网页研究：当前没有此能力，未启动。文件实现：只有在选择工作区并授权后才创建 DSH 任务；停止和核验属于任务记录。</div>`;
-        }
-        return `<div class="sequence-intro"><span class="section-kicker">持续事项</span><p>跨日讨论、协作过程和任务状态都回到主聊的一条记录里。用户不需要切换，但不同生命周期混在一起，长久使用后较难辨认。</p></div>
-          <article class="turn"><div class="speaker you">你 <span class="message-meta">${item.time}</span></div><div class="message"><p>${esc(item.user)}</p></div></article>
-          <article class="turn agent-turn"><div class="speaker agent">Noema</div><div class="message"><p>范围确认后，未来的协作结果仍会回到这条聊天记录。要是每项工作都以内嵌进度持续展开，研究、实现和普通交流会逐渐交织。</p><span class="message-meta">结构示意 · 无真实协作者或资料</span></div></article>
-          <div class="handoff"><span class="handoff-label">未来执行结果 · 仅示意</span>这里将关联真实工作任务及其结果；当前没有联网研究能力，也没有在本原型中启动任何任务。<span class="source-ref">执行状态应回到来源消息</span></div>
-          <article class="turn agent-turn"><div class="speaker agent">Noema</div><div class="message"><p>普通聊天、后续讨论和任务结果都在一个时间线。路径连续，但长事项会不断增加消息噪音。</p><span class="message-meta">结构示意 · 未运行</span></div></article>`;
+      function message(who, html, time = "14:26", person = "") {
+        const name = who === "assistant" ? state.name : who === "user" ? "你" : who;
+        return (
+          '<article class="message ' +
+          (who === "user" ? "user" : "assistant") +
+          '">' +
+          (who === "user"
+            ? ""
+            : '<div class="byline"><strong>' +
+              esc(name) +
+              "</strong><span>" +
+              time +
+              "</span></div>") +
+          html +
+          "</article>"
+        );
       }
-
-      function renderThreadTimeline() {
-        return `<div class="thread-context"><span>从 Noema 主聊的原始请求分出　·　本线程只保存你和 Noema 的对话；执行记录留在来源消息旁</span><button type="button" class="return-link" data-return>← 回到来源消息</button></div>
-          <div class="sequence-intro"><span class="section-kicker">讨论范围</span><p>平台：OpenAI、Anthropic、Google；关注公开套餐价格、用量上限与主要变更。此处保留你和 Noema 的判断过程，不承载执行者、后台状态或工作结果。</p></div>
-          <div class="contributor-line"><span>对话参与者：你 · Noema</span><span>来源消息：平台与比较范围</span></div>
-          <article class="turn"><div class="speaker you">你 <span class="message-meta">周一 09:42</span></div><div class="message"><p>先覆盖这三家，免费版和个人付费版都要看。先做能按月比较的版本。</p></div></article>
-          <article class="turn agent-turn"><div class="speaker agent">Noema</div><div class="message"><p>要实现按月比较，我们还得先确定地区和币种。联网核价是独立研究能力；文件建设则需要实际的项目工作任务。两者如果启动，都会关联回来源请求，但不作为这条讨论线程中的发言。</p><span class="message-meta">周一 09:43</span></div></article>
-          <article class="turn"><div class="speaker you">你 <span class="message-meta">周二 10:12</span></div><div class="message"><p>先按美国地区和美元来，价格变更时我再回来继续讨论。</p></div></article>
-          <article class="turn agent-turn"><div class="speaker agent">Noema</div><div class="message"><p>好，地区与币种已定。这条讨论线程保留了我们后续对话；如果你接下来要求实际改项目文件，我会回到原请求启动有明确工作区范围的任务。</p><span class="message-meta">周二 10:13</span></div></article>`;
+      function projectLink() {
+        return button(
+          "open-project",
+          icon("project") +
+            '<span class="link-copy"><strong>AI 服务价格追踪器</strong><small>' +
+            (state.archived
+              ? "已归档 · 随时可以续接"
+              : state.reopened
+                ? "已恢复 · 小修订进行中"
+                : state.approved
+                  ? "已反馈 · 正在继续实现"
+                  : "界面第一版 · 等待你评审") +
+            "</small></span>" +
+            icon("link"),
+          "project-link",
+        );
       }
-
-      function renderRoomsProject(item) {
-        return `<div class="sequence-intro"><span class="section-kicker">独立事项工作区 · 假设方案</span><p>工作区把主题讨论、协作者与执行记录组合在一个新的持久对象中。它可以承载更多团队行为，但要额外决定成员、权限、任务归属、来源回链、删除和归档。</p></div>
-          <article class="turn"><div class="speaker you">你 <span class="message-meta">09:16</span></div><div class="message"><p>${esc(item.user)}</p></div></article>
-          <article class="turn agent-turn"><div class="speaker agent">Noema</div><div class="message"><p>我为这件长期工作建立一个独立工作区。你和我在这里讨论范围；真正的研究或文件任务各自生成可停止、可核验的执行记录。</p><span class="message-meta">工作区结构 · 当前 Noema 尚未实现</span></div></article>
-          <div class="handoff"><span class="handoff-label">未来执行记录 A · 网页研究</span>待连接研究能力；开始前需明确来源范围、更新时间和费用边界。<span class="source-ref">来源：本事项的范围确认</span></div>
-          <div class="handoff"><span class="handoff-label">未来执行记录 B · 文件实现</span>当前 DSH 能力仍须选择工作区并披露文件范围。停止不回滚；结果需按验证条件核对。<span class="source-ref">来源：工作区中的实现请求</span></div>
-          <article class="turn agent-turn"><div class="speaker agent">Noema</div><div class="message"><p>独立工作区可以让多个持续任务有一个共同归属；代价是 Noema 主聊、主题线程、事项工作区三者之间必须维持清楚的来源与回访路径。</p><span class="message-meta">结构候选 · 未验证</span></div></article>`;
+      function personLink(id) {
+        return button(
+          "member-main",
+          esc(people[id].name),
+          "inline-person",
+          'data-member="' + id + '"',
+        );
       }
-
+      function transcript() {
+        let t = '<div class="dayline">今天 · 10 月 23 日</div>';
+        if (state.scene === "daily")
+          t +=
+            message("assistant", "<p>上次说到想换工作，这几天有新的想法吗？</p>", "09:18") +
+            message(
+              "user",
+              "<p>有一点。我发现不是不喜欢现在的工作，而是最近一直没有自己的时间。</p>",
+            ) +
+            message(
+              "assistant",
+              "<p>听起来，你想改变的首先是工作占据生活的方式。最近哪一段时间最像是被工作拿走了？</p>",
+              "09:21",
+            ) +
+            message("user", "<p>下班后还在接着想项目，周末也在盯进度。</p>") +
+            message(
+              "assistant",
+              "<p>那可以先从周末试起：项目继续推进，需要你判断时我再带着具体成果来找你。你不用守在窗口前。</p>",
+              "09:23",
+            );
+        if (state.scene === "news")
+          t +=
+            message("user", "<p>帮我看看今天 AI 行业值得关注的新闻，别只罗列标题。</p>") +
+            message(
+              "assistant",
+              "<p>我会请 " + personLink("research") + " 核对原始来源，再给你一份有重点的简报。</p>",
+              "10:04",
+            ) +
+            message(
+              "assistant",
+              '<p>简报回来了。我把它分成三类，方便你判断哪些值得继续看：</p><ol class="news-items"><li><strong>模型发布</strong> — 重点看能力与使用范围的实际变化。</li><li><strong>价格调整</strong> — 分清 API 单价和订阅价格。</li><li><strong>工具更新</strong> — 只保留会改变使用方式的部分。</li></ol><p>原始发布和事件时间放在来源说明里，你可以继续查看其中一项。</p><div class="source-line">' +
+                button("sources", "查看简报与来源") +
+                button("member-main", "与新闻观察者交流", "", 'data-member="research"') +
+                "</div>",
+              "10:16",
+            );
+        if (state.scene === "project")
+          t +=
+            message("user", "<p>想做一个 AI 服务价格追踪工具，价格变了我能及时知道。</p>") +
+            message(
+              "assistant",
+              "<p>先确认最影响方向的一点：你主要关心产品订阅，还是 API 的使用价格？</p>",
+              "11:02",
+            ) +
+            message("user", "<p>先做 API，给自己用。价格和单位要看得明白，也能回看变化。</p>") +
+            message(
+              "assistant",
+              "<p>我会先组织来源研究、界面设计和应用实现。团队会先把比较口径理清，再做第一版给你看。</p>" +
+                projectLink() +
+                '<div class="source-line">已建立项目空间 · 3 位执行成员</div>',
+              "11:06",
+            );
+        if (state.scene === "review")
+          t +=
+            message("user", "<p>我发现周末也一直在盯项目，想把这件事改掉。</p>") +
+            message(
+              "assistant",
+              "<p>可以先把“随时检查进度”放下。项目需要你判断时，我会把问题和成果一起带回来。</p>",
+              "14:20",
+            ) +
+            message(
+              "assistant",
+              "<p>价格追踪器的第一版界面已经做好。来源口径也核对过了，现在需要你看的是：信息是否顺眼、价格变化是否一眼看得明白。</p><p>相关开发已暂停，等你明确反馈。</p>" +
+                projectLink(),
+              "14:26",
+            ) +
+            message("user", "<p>我先打开看看。刚才说周末的事情，我们也可以接着聊。</p>") +
+            message("assistant", "<p>行，项目等你的意见。周末那件事，我们也接着说。</p>", "14:27");
+        if (state.scene === "archive")
+          t += message(
+            "assistant",
+            "<p>价格追踪器已经交付，成员也完成了本次复盘。项目已自动归档，原来的成员、讨论和工作会话都保留着。</p>" +
+              projectLink(),
+            "昨天 18:40",
+          );
+        t += (state.extra[state.scene] || []).join("");
+        return t;
+      }
+      function composer(scope, placeholder) {
+        const review = scope === "core" && state.reviewTarget;
+        return (
+          '<form class="composer" data-form="chat" data-scope="' +
+          scope +
+          '"><div class="composer-inner">' +
+          (review
+            ? '<div class="review-reference"><span>反馈给 Noema · 价格追踪器 / 界面第一版</span>' +
+              button("cancel-feedback", "取消") +
+              "</div>"
+            : "") +
+          '<textarea rows="2" aria-label="' +
+          esc(review ? "给Noema的项目评审反馈" : placeholder) +
+          '" placeholder="' +
+          esc(review ? "写下反馈，发送后按此继续项目…" : placeholder) +
+          '" data-draft="' +
+          scope +
+          '">' +
+          esc(state.drafts[scope] || "") +
+          '</textarea><button class="send" type="submit" aria-label="' +
+          (review ? "发送反馈并继续项目" : "发送消息") +
+          '">' +
+          icon("send") +
+          '</button><div class="composer-hint"><span>' +
+          (review ? "发送即确认按这份反馈继续项目" : "Enter 发送 · Shift + Enter 换行") +
+          "</span><span>交互演示</span></div></div></form>"
+        );
+      }
+      function chatPane() {
+        return (
+          '<section class="chat" aria-label="与' +
+          esc(state.name) +
+          '的主对话"><header class="pane-head"><div class="identity">' +
+          avatar("core") +
+          '<div class="chat-header-title"><strong>' +
+          esc(state.name) +
+          '</strong><small>与你的持续对话</small></div></div><div class="pane-actions">' +
+          button(
+            "directory",
+            icon("people"),
+            "icon-button wide-action",
+            'aria-label="打开成员和项目"',
+          ) +
+          button("settings", icon("settings"), "icon-button", 'aria-label="伙伴设置"') +
+          '</div></header><div class="chat-scroll"><div class="chat-body">' +
+          transcript() +
+          "</div></div>" +
+          composer("core", "和" + state.name + "说点什么…") +
+          "</section>"
+        );
+      }
+      function indexMarkup() {
+        return (
+          '<div class="section-title">与你对话</div>' +
+          button(
+            "home",
+            avatar("core") +
+              '<span><span class="item-title">' +
+              esc(state.name) +
+              "</span><small>你的个人伙伴</small></span>",
+            "index-item " + (!state.workspace ? "selected" : ""),
+          ) +
+          '<div class="section-title">成员 <span>3</span></div>' +
+          Object.entries(people)
+            .map(([id, p]) =>
+              button(
+                "member-main",
+                avatar(id) +
+                  '<span><span class="item-title">' +
+                  p.name +
+                  "</span><small>" +
+                  p.role +
+                  "</small></span>",
+                "index-item " +
+                  (state.workspace === "member-main" && state.member === id ? "selected" : ""),
+                'data-member="' + id + '"',
+              ),
+            )
+            .join("") +
+          '<div class="section-title">项目 <span>' +
+          (state.archived ? "0" : "1") +
+          "</span></div>" +
+          (!state.archived
+            ? button(
+                "open-project",
+                '<span class="project-icon">' +
+                  icon("project") +
+                  '</span><span><span class="item-title">价格追踪器</span><small>' +
+                  (state.reopened ? "小修订进行中" : state.approved ? "实现中" : "等待你的评审") +
+                  "</small></span>",
+                "index-item " + (state.workspace === "project" ? "selected" : ""),
+              )
+            : '<div class="bottom-link">当前没有活跃项目</div>') +
+          button(
+            "archives",
+            icon("archive") + " <span>已归档项目 · " + (state.archived ? "1" : "0") + "</span>",
+            "bottom-link",
+          ) +
+          '<div class="section-title">个人</div>' +
+          button("settings", "伙伴设置", "bottom-link")
+        );
+      }
+      function workHead(title, subtitle, extra = "") {
+        return (
+          '<header class="work-head"><div class="work-title">' +
+          button("home", icon("back"), "icon-button", 'aria-label="返回Noema主聊"') +
+          "<div><strong>" +
+          esc(title) +
+          "</strong><small>" +
+          esc(subtitle) +
+          '</small></div></div><div class="pane-actions">' +
+          extra +
+          button("home", "收起 " + icon("close"), "work-close", 'aria-label="收起工作内容"') +
+          "</div></header>"
+        );
+      }
+      function preview() {
+        return '<section class="artifact" aria-label="待评审的界面成果"><div class="artifact-chrome"><span>界面第一版 / 预览</span><span>演示成果</span></div><div class="artifact-preview"><div class="preview-title">AI API 价格追踪 <small>个人项目</small></div><p class="preview-subtitle">关注价格的变化，也看见变化发生在什么时候。</p><div class="preview-topline"><strong>关注的模型</strong><span>变化记录</span><span>来源</span></div><table class="price-table"><thead><tr><th>模型</th><th>计价单位</th><th>输入 / 输出</th><th>最近变化</th></tr></thead><tbody><tr><td>示例模型 Alpha</td><td>每百万 token</td><td>$1.20 / $4.80</td><td class="change">输入 ↓ 20%</td></tr><tr><td>示例模型 Beta</td><td>每百万 token</td><td>$2.00 / $8.00</td><td>没有变化</td></tr></tbody></table><div class="artifact-foot">所有供应商、价格与变化均为界面演示数据。</div></div></section>';
+      }
+      function delivery() {
+        if (state.archived)
+          return (
+            '<div class="archive-empty"><div class="project-stage">' +
+            icon("archive") +
+            ' 已归档</div><h2>项目已收起，工作仍然保留。</h2><p>成员、项目会话与交付记录都在。恢复后可以从上次的工作继续，无须创建新的项目群。</p><div class="archive-date">上次交付：价格追踪器第一版</div><div class="archive-actions">' +
+            button("reopen-project", "恢复项目", "primary") +
+            button("group-tab", "查看原来的讨论", "secondary") +
+            "</div></div>"
+          );
+        const active = state.approved || state.reopened;
+        return (
+          '<div class="project-stage"><span class="state-mark ' +
+          (active ? "running" : "") +
+          '"></span>' +
+          (state.reopened
+            ? "小修订 · 应用工程师处理中"
+            : state.approved
+              ? "已收到反馈 · 正在继续实现"
+              : "界面评审 · 等待你的反馈") +
+          "</div><h2>" +
+          (state.reopened
+            ? "修订价格单位说明"
+            : state.approved
+              ? "正在按你的反馈调整"
+              : "界面第一版") +
+          '</h2><p class="lead">' +
+          (state.reopened
+            ? "沿用原项目、成员和工作会话。这次只修改一处说明，不重新组队。"
+            : state.approved
+              ? "反馈已回到界面设计师的项目会话；结果仍会由 Noema 带回主聊。"
+              : "本轮完成价格比较与变化记录的第一版。需要你判断阅读顺序和整体视觉。") +
+          "</p>" +
+          preview() +
+          '<div class="file-row">' +
+          icon("file") +
+          '<span class="file-main">第一版界面<small>界面设计师交付 · 可查看原始工作会话</small></span>' +
+          button("member-project", "查看会话", "", 'data-member="designer"') +
+          "</div>" +
+          (state.approved
+            ? '<div class="welcome-note">' + esc(state.notice || "反馈已收到。") + "</div>"
+            : "")
+        );
+      }
+      function groupMsg(id, name, body, time) {
+        return (
+          '<article class="group-msg">' +
+          avatar(id) +
+          '<div class="msg-text"><header><strong>' +
+          esc(name) +
+          "</strong><span>" +
+          time +
+          "</span></header>" +
+          body +
+          "</div></article>"
+        );
+      }
+      function discussion() {
+        return (
+          '<div class="discussion"><p class="lead">共同讨论与项目决定在这里；成员的完整执行过程在各自的工作会话中。</p>' +
+          groupMsg(
+            "research",
+            people.research.name,
+            "<p>官方来源和计价单位已经核对。<mark>@应用工程师</mark> 数据表里保留原币种和生效日期，便于后续回查。</p>",
+            "13:10",
+          ) +
+          groupMsg(
+            "engineer",
+            people.engineer.name,
+            "<p>收到。单位字段已拆开，不把不同计价口径直接混排。</p>",
+            "13:18",
+          ) +
+          groupMsg(
+            "designer",
+            people.designer.name,
+            "<p><mark>@Noema</mark> 第一版界面已交付。视觉和阅读顺序需要用户确认，可以进入评审。</p>",
+            "14:25",
+          ) +
+          groupMsg(
+            "core",
+            state.name,
+            "<p><mark>@所有人</mark> 当前先等待界面评审，相关开发暂停。已有资料保留，收到用户反馈后继续。</p>",
+            "14:26",
+          ) +
+          '<div class="note-row">@ 消息对所有成员公开；被提及者优先收到，其他成员按未读查阅。</div>' +
+          (state.reopened
+            ? groupMsg(
+                "core",
+                state.name,
+                "<p>项目恢复。本轮仅修订价格单位说明，由应用工程师继续；其余成员无需重新工作。</p>",
+                "刚刚",
+              )
+            : "") +
+          state.groupExtra.map((x) => groupMsg("core", "你", x, "刚刚")).join("") +
+          '<form class="group-form" data-form="group"><input aria-label="在项目群中发消息" placeholder="在项目群中发消息，或 @某位成员"><button class="primary" type="submit">发送</button></form></div>'
+        );
+      }
+      function members() {
+        return (
+          '<h2>这次项目的成员</h2><p class="lead">同一位持续存在的成员，在这里拥有独立的项目工作会话。</p><div class="member-list">' +
+          Object.entries(people)
+            .map(([id, p]) =>
+              button(
+                "member-project",
+                avatar(id) +
+                  '<span class="member-name"><strong>' +
+                  p.name +
+                  "</strong><small>" +
+                  p.role +
+                  '</small></span><span class="status">' +
+                  (state.reopened
+                    ? id === "engineer"
+                      ? "正在修订说明"
+                      : "本轮未唤起"
+                    : state.approved
+                      ? "准备继续"
+                      : p.status) +
+                  "</span>" +
+                  icon("arrow"),
+                "member-row",
+                'data-member="' + id + '"',
+              ),
+            )
+            .join("") +
+          '</div><div class="project-summary"><section><h3>项目中的交流</h3><p>打开成员即可查看它在此项目中的工作，定向交接不会进入它的日常私聊。</p></section><section><h3>持续存在的成员</h3><p>常驻身份、个人工作区和已沉淀能力属于成员自己。项目结束不会销毁成员。</p></section></div>'
+        );
+      }
+      function projectPane() {
+        return (
+          workHead(
+            "AI 服务价格追踪器",
+            state.archived
+              ? "已归档项目"
+              : "项目空间 · " +
+                  (state.reopened
+                    ? "小修订进行中"
+                    : state.approved
+                      ? "继续实现中"
+                      : "等待界面评审"),
+          ) +
+          '<nav class="work-tabs" aria-label="项目视图">' +
+          ["delivery", "group", "members"]
+            .map((tab, i) =>
+              button(
+                "tab",
+                ["交付与评审", "共同讨论", "成员 · 3"][i],
+                state.tab === tab ? "active" : "",
+                'data-tab="' + tab + '" aria-pressed="' + (state.tab === tab) + '"',
+              ),
+            )
+            .join("") +
+          '</nav><div class="work-content">' +
+          (state.tab === "delivery"
+            ? delivery()
+            : state.tab === "group"
+              ? discussion()
+              : members()) +
+          "</div>" +
+          (!state.archived && !state.approved && !state.reopened
+            ? '<div class="review-dock"><div>等待你看过这一版<small>反馈仍在与 Noema 的主对话里</small></div><div class="dock-actions">' +
+              button("begin-feedback", "给这版反馈", "primary") +
+              button("later", "稍后", "secondary") +
+              "</div></div>"
+            : "")
+        );
+      }
+      function profile() {
+        const p = people[state.member];
+        return (
+          workHead(p.name, "成员资料") +
+          '<div class="work-content"><div class="profile-hero">' +
+          avatar(state.member) +
+          "<div><h2>" +
+          p.name +
+          "</h2><p>" +
+          p.role +
+          '</p></div></div><div class="profile-detail"><p>' +
+          p.description +
+          '</p><div class="profile-links">' +
+          button("member-main", "打开常驻私聊", "primary", 'data-member="' + state.member + '"') +
+          button(
+            "member-project",
+            "项目中的工作会话",
+            "secondary",
+            'data-member="' + state.member + '"',
+          ) +
+          '</div><h3>参与过的工作</h3><div class="history-item"><strong>AI 服务价格追踪器</strong><small>本次职责：' +
+          (state.member === "research"
+            ? "官方来源研究与价格口径核对"
+            : state.member === "designer"
+              ? "界面方案与交付评审"
+              : "应用实现与结果验证") +
+          '</small></div><div class="history-item"><strong>' +
+          (state.member === "research" ? "日常 AI 资讯整理" : "初次加入团队") +
+          '</strong><small>经历提供依据，不代表自动获得新的专业能力。</small></div><h3>自己的能力与工作方式</h3><div class="asset-row"><span>可复用方法</span><strong>' +
+          (state.member === "research"
+            ? "原始来源核对"
+            : state.member === "designer"
+              ? "界面阅读顺序检查"
+              : "可运行结果验证") +
+          '</strong></div><div class="asset-row"><span>长期定位</span><span>可以依据真实经历重新审视</span></div><details><summary>查看本次成长候选（演示）</summary><p style="margin-top:12px">' +
+          (state.member === "research"
+            ? "这次工作不只涉及新闻，还涉及跨来源的信息研究。成员提出将职责描述从“新闻观察”扩展为“资料研究与来源核对”，并说明了本次交付作为依据。"
+            : "成员可以提出对自身技能、工作方法或定位的修订；并不要求每个项目都必须产生变化。") +
+          "</p><p>由成员自己提出和修改；Noema 评议并汇总必要的用户判断。</p></details></div></div>"
+        );
+      }
+      function memberSession() {
+        const p = people[state.member],
+          project = state.workspace === "member-project",
+          scope = (project ? "project-" : "main-") + state.member;
+        let body =
+          '<div class="session-label">' +
+          (project ? "价格追踪器 / 此成员的项目工作会话" : "日常私聊 / 与项目工作会话分开") +
+          "</div>";
+        if (project)
+          body +=
+            message(
+              "Noema",
+              "<p>" +
+                (state.member === "research"
+                  ? "请核对官方定价来源，明确计价单位和生效日期，向我汇报关键差异。"
+                  : state.member === "designer"
+                    ? "请完成可供用户评审的第一版界面，说明取舍，交付后等待判断。"
+                    : "请按已确认的口径实现价格记录，保留来源与时间，并验证可运行结果。") +
+                "</p>",
+              "11:10",
+            ) +
+            message(
+              p.name,
+              "<p>" +
+                (state.member === "research"
+                  ? "已核对来源。不同提供方的价格口径不能直接放在同一列，我会保留原始单位再做归一化显示。"
+                  : state.member === "designer"
+                    ? "第一版以价格变化为首要阅读入口，完整价格作为下一层信息。已交付界面，等待用户评审。"
+                    : "数据记录和来源关联已经完成。界面评审通过后再继续相应调整。") +
+                "</p>",
+              "14:20",
+            ) +
+            '<details class="tool-record"><summary>查看执行记录 · 演示</summary><p>读取项目资料 → 处理本职工作 → 检查交付 → 提交阶段报告。<br>这是结构示意，不是真实模型或工具执行记录。</p></details>' +
+            message(
+              state.member === "engineer" ? "新闻观察者" : "应用工程师",
+              "<p>" +
+                (state.member === "engineer"
+                  ? "价格口径说明已交接，原始来源也保留在项目资料里。"
+                  : "这份价格单位说明已经收到，我会保留原始来源字段。") +
+                "</p>",
+              "14:23",
+            );
+        else
+          body +=
+            message(
+              "Noema",
+              "<p>邀请你加入价格追踪器项目，负责" +
+                (state.member === "research"
+                  ? "来源研究与信息核对"
+                  : state.member === "designer"
+                    ? "交互与视觉设计"
+                    : "应用实现与验证") +
+                "。项目工作在独立会话中进行。</p>",
+              "昨天",
+            ) +
+            message(
+              p.name,
+              "<p>我会根据实际资料完成这部分工作，遇到影响项目的分歧再向你反馈。</p>",
+              "昨天",
+            ) +
+            message("你", "<p>之后我也可以直接来找你聊吗？</p>", "09:02") +
+            message(
+              p.name,
+              "<p>可以。这里是我们平时的对话；项目里的工作在对应项目中继续。</p>",
+              "09:02",
+            );
+        if (project && state.reopened && state.member === "engineer")
+          body +=
+            message(
+              "Noema",
+              "<p>继续这个项目的小修订：在价格单位说明中明确单价按每百万 token 计。范围仅限这段文案。</p>",
+              "刚刚",
+            ) +
+            message(p.name, "<p>已续接上次的工作记录，正在原文件中修订并核对显示。</p>", "刚刚");
+        body += (state.sessionExtra[scope] || []).join("");
+        return (
+          workHead(
+            p.name,
+            project ? "价格追踪器 · 项目会话" : "常驻私聊",
+            button("profile", "资料", "quiet"),
+          ) +
+          '<div class="session-content"><div class="session-scroll">' +
+          body +
+          '<div class="conversation-links">' +
+          button(
+            project ? "member-main" : "member-project",
+            project ? "打开常驻私聊" : "查看项目工作会话",
+            "",
+            'data-member="' + state.member + '"',
+          ) +
+          "</div></div>" +
+          composer(scope, "发给" + p.name + (project ? " · 价格追踪器" : "…")) +
+          "</div>"
+        );
+      }
+      function archives() {
+        return (
+          workHead("已归档项目", "不占活跃列表，记录与工作会话保留") +
+          '<div class="work-content"><h2>可以续接的工作</h2><p class="lead">新的需求属于原项目时，从这里恢复；Noema 也可以在对话中替你找到它。</p>' +
+          button(
+            "open-project",
+            icon("archive") +
+              '<span class="link-copy"><strong>AI 服务价格追踪器</strong><small>' +
+              (state.archived ? "已归档 · 3 位成员的项目会话保留" : "当前活跃 · 尚未归档") +
+              "</small></span>" +
+              icon("arrow"),
+            "project-link",
+          ) +
+          '<div class="project-summary"><section><h3>小修订不等于重新成长</h3><p>恢复后修改一句说明，可以完成后再次归档。只有值得沉淀的变化才触发相应成长流程。</p></section></div></div>'
+        );
+      }
       function render() {
-        document.querySelectorAll('[data-scenario]').forEach((button) => {
-          button.setAttribute(
-            'aria-pressed',
-            String(button.dataset.scenario === state.scenario),
+        const app = $("#app");
+        app.className =
+          "app layout-" +
+          state.layout +
+          (state.workspace ? " has-workspace" : "") +
+          (state.focused ? " focused-frame" : "");
+        app.innerHTML =
+          '<div class="window-head"><div class="wordmark"><span class="logo">' +
+          icon("noema") +
+          '</span>noema</div><div class="window-tools">' +
+          button("home", esc(state.name), "home-tool") +
+          button("directory", "成员与项目") +
+          button("settings", "设置") +
+          '<span class="window-dots">— □ ×</span></div></div><div class="shell"><aside class="index" aria-label="成员和项目索引">' +
+          indexMarkup() +
+          "</aside>" +
+          chatPane() +
+          '<section class="workspace" aria-label="当前工作内容">' +
+          (state.workspace === "project"
+            ? projectPane()
+            : state.workspace === "profile"
+              ? profile()
+              : state.workspace === "archives"
+                ? archives()
+                : state.workspace
+                  ? memberSession()
+                  : "") +
+          "</section></div>";
+        document
+          .querySelectorAll("[data-layout]")
+          .forEach((x) =>
+            x.setAttribute("aria-pressed", String(x.dataset.layout === state.layout)),
           );
-        });
-        document.querySelectorAll('[data-variant]').forEach((button) => {
-          button.setAttribute(
-            'aria-pressed',
-            String(button.dataset.variant === state.variant),
-          );
-        });
-        document.getElementById('variant-note').textContent =
-          variantCopy[state.variant];
-        document.getElementById('workspace').innerHTML =
-          `<aside class="room-index" aria-label="对话索引">${indexMarkup()}</aside>${baseConversation()}`;
-        document.querySelectorAll('[data-open-thread]').forEach((button) =>
-          button.addEventListener('click', () => {
-            state.inThread = true;
-            render();
-          }),
-        );
-        document.querySelectorAll('[data-return]').forEach((button) =>
-          button.addEventListener('click', () => {
-            state.inThread = false;
-            render();
-          }),
-        );
-        document.getElementById('proof-state').textContent =
-          state.scenario === 'project'
-            ? '持续事项示意 · 不含后台执行或真实协作者'
-            : state.scenario === 'lookup'
-              ? '一次性请求示意 · 未进行联网检索'
-              : '普通交流示意 · 未调用模型';
+        document
+          .querySelectorAll("[data-scene]")
+          .forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.scene === state.scene)));
+        const n = notes[state.layout];
+        $("#study-note").innerHTML =
+          "<strong>" +
+          n.title +
+          "</strong><div>" +
+          n.text +
+          '<br><span class="risk">' +
+          n.risk +
+          "</span></div>" +
+          (state.scene === "archive" && state.archived
+            ? button("simulate-request", "演示：提出一条小修订")
+            : "") +
+          (state.approved || state.reopened
+            ? button(
+                "simulate-completion",
+                state.reopened ? "演示：小修订交付" : "演示：交付及成长完成",
+              )
+            : "") +
+          button("explanation", "评审说明 ↗");
+        $("#stage").classList.toggle("narrow", state.narrow);
+        document.body.classList.toggle("focused", state.focused);
+        for (const x of document.querySelectorAll(".chat-scroll,.session-scroll"))
+          x.scrollTop = x.scrollHeight;
       }
-
-      document.querySelectorAll('[data-scenario]').forEach((button) =>
-        button.addEventListener('click', () => {
-          state.scenario = button.dataset.scenario;
-          state.inThread = false;
+      function modal(title, body) {
+        const d = $("#dialog");
+        d.innerHTML =
+          '<div class="dialog-head"><strong id="dialog-title">' +
+          title +
+          "</strong>" +
+          button("close-dialog", icon("close"), "icon-button", 'aria-label="关闭对话框"') +
+          '</div><div class="dialog-body">' +
+          body +
+          "</div>";
+        if (!d.open) d.showModal();
+      }
+      function directory() {
+        modal(
+          "成员与项目",
+          "<h3>持续存在的成员</h3>" +
+            Object.entries(people)
+              .map(([id, p]) =>
+                button(
+                  "member-main",
+                  avatar(id) +
+                    '<span><span class="item-title">' +
+                    p.name +
+                    "</span><small>" +
+                    p.role +
+                    "</small></span>",
+                  "index-item",
+                  'data-member="' + id + '"',
+                ),
+              )
+              .join("") +
+            "<h3>项目</h3>" +
+            (!state.archived
+              ? button(
+                  "open-project",
+                  icon("project") +
+                    "<span>AI 服务价格追踪器<small>等待评审 · 点击进入项目空间</small></span>",
+                  "index-item",
+                )
+              : "<p>当前没有活跃项目。</p>") +
+            button(
+              "archives",
+              icon("archive") +
+                "<span>已归档项目<small>项目记录、成员与会话不会被销毁</small></span>",
+              "index-item",
+            ),
+        );
+      }
+      function addCore(html, who = "assistant") {
+        (state.extra[state.scene] ??= []).push(message(who, html, "刚刚"));
+      }
+      function act(action, el) {
+        if (action === "close-dialog") {
+          $("#dialog").close();
+          return;
+        }
+        if (action === "directory") {
+          directory();
+          return;
+        }
+        if (action === "settings") {
+          modal(
+            "你的 Noema",
+            '<form class="settings-form" data-form="settings"><label for="partner-name">伙伴名字</label><input id="partner-name" name="name" value="' +
+              esc(state.name) +
+              '" maxlength="24" required><label for="partner-preference">希望它怎样与你交流</label><textarea id="partner-preference" name="preference">' +
+              esc(state.preference) +
+              '</textarea><p>这里的修改会在演示对话中得到确认；正式产品需让同一份个人设定同步生效。</p><button class="primary" type="submit">保存设置</button></form>',
+          );
+          return;
+        }
+        if (action === "sources") {
+          modal(
+            "简报与来源说明",
+            "<p>这个页面只比较 Noema 的信息组织方式，没有检索真实新闻。</p><p>正式简报应保留原始来源、事件时间和已核对的信息；演示不编造当日新闻或来源链接。</p>",
+          );
+          return;
+        }
+        if (action === "explanation") {
+          modal(
+            "这次评审什么",
+            "<h3>三种结构，共用一段经历</h3><p>A 将对话作为主轴，项目整页打开；B 让对话与当前工作并置；C 用常驻成员与项目索引切换空间。</p><h3>建议先试这四步</h3><ol><li>打开“交付评审”，比较看成果与继续聊天时的切换成本。</li><li>在项目中进入“成员”，打开一个成员的项目会话，再切到它的常驻私聊。</li><li>在“归档与恢复”情境中恢复旧项目，模拟小修订交付并观察自动归档。</li><li>切到“日常相处”与窄窗，检查项目界面是否侵占普通交流。</li></ol><h3>尚未交付的能力</h3><p>所有组队、执行、回访、成长和通知均为演示。此页不调用模型，不运行真实项目，不修改任何 agent 资产。它不是正式产品，也不是已接受的视觉定稿。</p><h3>视觉方向</h3><p>暂用高密度、低装饰的桌面语言统一比较：中性色面、清晰文字、少量有意义的状态色。先判断空间关系，再定制完整品牌视觉；不将换色或换字体当作另一方案。</p><h3>参考边界</h3><p>查看了 Zulip 的真实话题阅读与成员索引，以及 tldraw 的工作画布。借鉴的是上下文归属和操作让位于内容的方式，不将它们作为 Noema 的视觉模板。</p>",
+          );
+          return;
+        }
+        if ($("#dialog").open) $("#dialog").close();
+        if (action === "begin-feedback") {
+          state.reviewTarget = true;
+          if (state.layout !== "b" || document.querySelector("#app").clientWidth <= 820)
+            state.workspace = null;
           render();
-        }),
-      );
-      document.querySelectorAll('[data-variant]').forEach((button) =>
-        button.addEventListener('click', () => {
-          state.variant = button.dataset.variant;
-          state.inThread = false;
+          const field = document.querySelector('textarea[data-draft="core"]');
+          if (field) field.focus();
+          return;
+        }
+        if (action === "cancel-feedback") state.reviewTarget = false;
+        if (action === "home") state.workspace = null;
+        if (action === "open-project") {
+          state.workspace = "project";
+          state.tab = "delivery";
+        }
+        if (action === "tab") state.tab = el.dataset.tab;
+        if (action === "group-tab") state.tab = "group";
+        if (action === "member-main" || action === "member-project") {
+          state.member = el.dataset.member || state.member;
+          state.workspace = action;
+        }
+        if (action === "profile") state.workspace = "profile";
+        if (action === "archives") state.workspace = "archives";
+        if (action === "later") {
+          state.workspace = null;
+          addCore(
+            "<p>价格追踪器继续保持等待评审。你随时可以从上面的交付消息打开它，我们先接着聊。</p>",
+          );
+        }
+        if (action === "simulate-completion") {
+          const small = state.reopened;
+          state.archived = true;
+          state.approved = false;
+          state.reopened = false;
+          state.reviewTarget = false;
+          state.tab = "delivery";
+          addCore(
+            "<p>" +
+              (small
+                ? "说明已修改并核对。这次没有需要沉淀的新经验，项目已再次归档。"
+                : "本轮项目已完成，成员的成长流程也已处理，项目已自动归档。") +
+              "</p>" +
+              projectLink(),
+          );
+        }
+        if (action === "simulate-request") {
+          state.archived = false;
+          state.reopened = true;
+          state.workspace = "project";
+          state.tab = "members";
+          addCore("<p>把追踪器里的单位说明补充清楚：单价按每百万 token 计。</p>", "user");
+          addCore(
+            "<p>已恢复原项目，让应用工程师在原来的项目会话里继续这处修订。无须重新组队。</p>" +
+              projectLink(),
+          );
+        }
+        if (action === "reopen-project") {
+          state.archived = false;
+          state.reopened = true;
+          state.workspace = "project";
+          state.tab = "members";
+          addCore(
+            "<p>演示：已恢复价格追踪器。成员回到原来的项目会话。小修订不会自动触发一轮完整成长复盘。</p>",
+          );
+        }
+        if (action === "narrow") state.narrow = !state.narrow;
+        if (action === "focus") state.focused = !state.focused;
+        render();
+      }
+      document.addEventListener("click", (e) => {
+        const plan = e.target.closest("[data-layout]"),
+          scene = e.target.closest("[data-scene]"),
+          action = e.target.closest("[data-action]");
+        if (plan) {
+          state.layout = plan.dataset.layout;
           render();
-        }),
-      );
+          return;
+        }
+        if (scene) {
+          state.scene = scene.dataset.scene;
+          state.workspace = ["review", "project"].includes(state.scene) ? "project" : null;
+          state.tab = state.scene === "project" ? "members" : "delivery";
+          state.archived = state.scene === "archive";
+          state.approved = false;
+          state.notice = "";
+          state.feedback = "";
+          state.reopened = false;
+          state.reviewTarget = false;
+          state.extra[state.scene] = [];
+          state.groupExtra = [];
+          state.sessionExtra = {};
+          render();
+          return;
+        }
+        if (action) {
+          e.preventDefault();
+          act(action.dataset.action, action);
+        }
+      });
+      document.addEventListener("input", (e) => {
+        const key = e.target.dataset.draft;
+        if (key === "feedback") state.feedback = e.target.value;
+        else if (key) state.drafts[key] = e.target.value;
+      });
+      document.addEventListener("submit", (e) => {
+        const form = e.target;
+        if (!form.dataset.form) return;
+        e.preventDefault();
+        const kind = form.dataset.form;
+        if (kind === "settings") {
+          const data = new FormData(form);
+          state.name = String(data.get("name")).trim() || "Noema";
+          state.preference = String(data.get("preference")).trim();
+          $("#dialog").close();
+          addCore("<p>我现在叫 " + esc(state.name) + "。你在设置里写的交流偏好也已经收到。</p>");
+          render();
+          return;
+        }
+        if (kind === "review") {
+          if (!state.feedback.trim()) {
+            $("#review-feedback").focus();
+            $("#review-feedback").setCustomValidity("请先给出明确反馈，再继续项目。");
+            $("#review-feedback").reportValidity();
+            $("#review-feedback").setCustomValidity("");
+            return;
+          }
+          const feedback = state.feedback.trim();
+          state.approved = true;
+          state.notice = "你的反馈：" + feedback;
+          addCore("<p>价格追踪器评审：" + esc(feedback) + "</p>", "user");
+          addCore(
+            "<p>反馈已交给项目中的界面设计师，相关工作恢复。这个页面只是演示，不会实际执行。</p>",
+          );
+          render();
+          return;
+        }
+        if (kind === "group") {
+          const input = form.querySelector("input");
+          if (!input.value.trim()) return;
+          state.groupExtra.push("<p>" + esc(input.value.trim()) + "</p>");
+          render();
+          return;
+        }
+        if (kind === "chat") {
+          const scope = form.dataset.scope,
+            text = form.querySelector("textarea").value.trim();
+          if (!text) return;
+          state.drafts[scope] = "";
+          if (scope === "core") {
+            if (state.reviewTarget) {
+              state.approved = true;
+              state.reviewTarget = false;
+              state.notice = "你的反馈：" + text;
+              addCore("<p>价格追踪器评审：" + esc(text) + "</p>", "user");
+              addCore(
+                "<p>我会按这份反馈安排界面设计师继续调整，相关工作已恢复。结果回来后我再给你看。</p>",
+              );
+              render();
+              return;
+            }
+            addCore("<p>" + esc(text) + "</p>", "user");
+            let reply = "<p>这条消息已进入演示对话。正式产品会在这里理解你的需求并回应。</p>";
+            if (/归档|收起项目/.test(text)) {
+              state.archived = true;
+              reply = "<p>演示：项目已从活跃列表收起，记录与成员会话保留。</p>";
+            } else if (/恢复|重新打开/.test(text)) {
+              state.archived = false;
+              reply = "<p>演示：原项目已恢复，成员继续原来的工作会话。</p>" + projectLink();
+            } else if (/改名|叫你|名字/.test(text)) {
+              reply = "<p>可以通过右上角的设置调整名字和交流偏好；本页只模拟这条设置链路。</p>";
+            }
+            addCore(reply);
+          } else {
+            (state.sessionExtra[scope] ??= []).push(
+              message("你", "<p>" + esc(text) + "</p>", "刚刚"),
+            );
+            state.sessionExtra[scope].push(
+              message(
+                people[state.member].name,
+                "<p>收到。这条消息只在当前" +
+                  (scope.startsWith("main") ? "日常私聊" : "项目工作会话") +
+                  "中回应，不会作为你的私聊消息转给 Noema。</p>",
+                "刚刚",
+              ),
+            );
+          }
+          render();
+          const input = document.querySelector('textarea[data-draft="' + scope + '"]');
+          if (input) input.focus();
+        }
+      });
+      document.addEventListener("keydown", (e) => {
+        if (
+          e.key === "Enter" &&
+          !e.shiftKey &&
+          !e.isComposing &&
+          e.target.matches(".composer textarea")
+        ) {
+          e.preventDefault();
+          e.target.form.requestSubmit();
+        }
+      });
       render();
     </script>
   </body>
