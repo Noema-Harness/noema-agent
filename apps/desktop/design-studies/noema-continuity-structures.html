@@ -21,6 +21,67 @@
       * {
         box-sizing: border-box;
       }
+      :where(html, .index, .chat-scroll, .work-content, .session-scroll, .dialog-body, textarea) {
+        scrollbar-gutter: stable;
+      }
+      @supports not selector(::-webkit-scrollbar) {
+        * {
+          scrollbar-width: thin;
+          scrollbar-color: transparent transparent;
+        }
+        html.scroll-active,
+        :where(.index, .chat-scroll, .work-content, .session-scroll, .dialog-body, textarea):is(
+          :hover,
+          :focus-within,
+          .scroll-active
+        ) {
+          scrollbar-color: #a5b0b8 transparent;
+        }
+      }
+      @supports selector(::-webkit-scrollbar) {
+        * {
+          scrollbar-width: auto;
+          scrollbar-color: auto;
+        }
+        ::-webkit-scrollbar {
+          width: 8px;
+          height: 8px;
+        }
+        ::-webkit-scrollbar-track,
+        ::-webkit-scrollbar-corner {
+          background: transparent;
+        }
+        ::-webkit-scrollbar-button {
+          display: none;
+          width: 0;
+          height: 0;
+        }
+        ::-webkit-scrollbar-thumb {
+          background: transparent;
+          border: 2px solid transparent;
+          border-radius: 8px;
+          background-clip: padding-box;
+        }
+        html.scroll-active::-webkit-scrollbar-thumb,
+        :where(.index, .chat-scroll, .work-content, .session-scroll, .dialog-body, textarea):is(
+            :hover,
+            :focus-within,
+            .scroll-active
+          )::-webkit-scrollbar-thumb {
+          background-color: #a5b0b8;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+          background-color: #77858f;
+        }
+      }
+      @media (forced-colors: active) {
+        * {
+          scrollbar-color: auto;
+        }
+        ::-webkit-scrollbar-thumb {
+          background-color: ButtonText;
+        }
+      }
       body {
         margin: 0;
       }
@@ -200,11 +261,24 @@
       .window-tools .home-tool {
         color: var(--ink);
       }
-      .window-dots {
-        color: #89939a;
-        font-size: 13px;
-        letter-spacing: 8px;
-        margin-left: 15px;
+      .window-controls {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        margin-left: 12px;
+      }
+      .window-tools .window-control {
+        width: 32px;
+        height: 30px;
+        padding: 0;
+        display: grid;
+        place-items: center;
+      }
+      .window-control svg {
+        width: 12px;
+        height: 12px;
+        stroke-width: 1.4;
+        stroke-linecap: square;
       }
       .shell {
         position: relative;
@@ -436,8 +510,6 @@
         flex: 1;
         min-height: 0;
         padding: 25px 32px 22px;
-        scrollbar-width: thin;
-        scrollbar-color: #ccd4d9 transparent;
       }
       .chat-body {
         max-width: 700px;
@@ -566,6 +638,8 @@
       .composer-inner {
         max-width: 720px;
         margin: auto;
+      }
+      .composer-field {
         position: relative;
       }
       .composer textarea {
@@ -673,8 +747,22 @@
       .work-close {
         font-size: 11px;
         color: #6e7b85;
-        padding: 8px;
+        min-width: 32px;
+        height: 32px;
+        padding: 0 8px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        border-radius: 4px;
         white-space: nowrap;
+      }
+      .work-close svg {
+        width: 16px;
+        height: 16px;
+      }
+      .work-close:hover {
+        background: #edf1f3;
       }
       .work-tabs {
         display: flex;
@@ -701,7 +789,6 @@
         flex: 1;
         min-height: 0;
         padding: 24px 28px;
-        scrollbar-width: thin;
       }
       .project-stage {
         display: flex;
@@ -1329,17 +1416,14 @@
         .chat-scroll {
           padding: 24px;
         }
-        .work-close {
-          font-size: 0;
-        }
-        .work-close svg {
-          width: 18px;
+        .work-close span {
+          display: none;
         }
         .project-summary {
           grid-template-columns: 1fr;
           gap: 16px;
         }
-        .window-dots {
+        .window-controls {
           display: none;
         }
         .app.has-workspace .work-head {
@@ -1760,7 +1844,7 @@
               button("cancel-feedback", "取消") +
               "</div>"
             : "") +
-          '<textarea rows="2" aria-label="' +
+          '<div class="composer-field"><textarea rows="2" aria-label="' +
           esc(review ? "给Noema的项目评审反馈" : placeholder) +
           '" placeholder="' +
           esc(review ? "写下反馈，发送后按此继续项目…" : placeholder) +
@@ -1772,7 +1856,7 @@
           (review ? "发送反馈并继续项目" : "发送消息") +
           '">' +
           icon("send") +
-          '</button><div class="composer-hint"><span>' +
+          '</button></div><div class="composer-hint"><span>' +
           (review ? "发送即确认按这份反馈继续项目" : "Enter 发送 · Shift + Enter 换行") +
           "</span><span>交互演示</span></div></div></form>"
         );
@@ -1861,7 +1945,12 @@
           esc(subtitle) +
           '</small></div></div><div class="pane-actions">' +
           extra +
-          button("home", "收起 " + icon("close"), "work-close", 'aria-label="收起工作内容"') +
+          button(
+            "home",
+            "<span>收起</span>" + icon("close"),
+            "work-close",
+            'aria-label="收起工作内容" title="返回主聊"',
+          ) +
           "</div></header>"
         );
       }
@@ -2268,7 +2357,7 @@
           button("home", esc(state.name), "home-tool") +
           button("directory", "成员与项目") +
           button("settings", "设置") +
-          '<span class="window-dots">— □ ×</span></div></div><div class="shell"><button class="index-shade" data-action="toggle-index" aria-label="收起导航"></button><aside class="index" id="navigation-index" aria-label="成员和项目索引">' +
+          '<div class="window-controls" aria-label="窗口控件（原型示意）"><button class="window-control" disabled title="最小化：浏览器原型中不可用" aria-label="最小化（原型中不可用）"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10"/></svg></button><button class="window-control" disabled title="最大化：浏览器原型中不可用" aria-label="最大化（原型中不可用）"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="3" width="10" height="10"/></svg></button><button class="window-control" disabled title="关闭窗口：浏览器原型中不可用" aria-label="关闭窗口（原型中不可用）"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 3 10 10M13 3 3 13"/></svg></button></div></div></div><div class="shell"><button class="index-shade" data-action="toggle-index" aria-label="收起导航"></button><aside class="index" id="navigation-index" aria-label="成员和项目索引">' +
           indexMarkup() +
           '</aside><div class="index-resizer" role="separator" tabindex="0" aria-label="调整导航宽度，方向键调整，Home 收起" aria-orientation="vertical" aria-controls="navigation-index" aria-valuemin="0"></div>' +
           chatPane() +
@@ -2612,6 +2701,21 @@
           e.target.form.requestSubmit();
         }
       });
+      const scrollTimers = new WeakMap();
+      document.addEventListener(
+        "scroll",
+        (e) => {
+          const target = e.target === document ? document.documentElement : e.target;
+          if (!(target instanceof Element)) return;
+          target.classList.add("scroll-active");
+          clearTimeout(scrollTimers.get(target));
+          scrollTimers.set(
+            target,
+            setTimeout(() => target.classList.remove("scroll-active"), 900),
+          );
+        },
+        true,
+      );
       render();
       new ResizeObserver(syncIndex).observe($("#app"));
     </script>
