@@ -82,9 +82,8 @@ const verificationChecks = [
 }));
 const prompt = [
   '[NOEMA E2E] 仅在当前临时工作区完成一项小任务。',
-  `创建 ${relativePath}，正文使用简体中文，写一份结构化恢复清单；必须逐字使用二级标题“## 恢复前”“## 执行恢复”“## 恢复后验证”，并逐字包含验收标记 ${marker}。`,
+  `创建 ${relativePath}，用简体中文写一份恢复清单，依次说明“恢复前”“执行恢复”“恢复后验证”，并在文末写入编号 ${marker}。`,
   '只修改这个文件；不要读取、写入或运行工作区之外的内容。',
-  `Noema 会在任务结束后独立检查：${JSON.stringify(verificationChecks)}`,
 ].join('\n');
 mkdirSync(e2eDirectory, { recursive: true });
 mkdirSync(workspacePath, { recursive: true });

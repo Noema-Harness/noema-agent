@@ -143,7 +143,7 @@ seedSocial.completeReply(unrelatedTurn.assistantMessageId);
 const interactionSource = seedSocial.beginTurn({
   roomId: 'room-noema',
   agentId: 'noema',
-  text: 'E2E 原话标记：分享不愉快经历时，请先问我最在意的部分。',
+  text: '分享不愉快经历时，请先问我最在意的部分。',
   model: 'e2e-forward-seed',
 });
 seedSocial.appendAssistantDelta(

@@ -54,19 +54,6 @@ function timeLabel(value: string | null | undefined) {
   }).format(date);
 }
 
-function formatModel(model: string) {
-  return model
-    .replace(/^auto:/, '')
-    .replace(/^nvidia\//, '')
-    .replace(/[-_]/gu, ' ');
-}
-
-function formatRoute(model: string) {
-  if (model === 'auto:noema-free') return 'Noema 免费模型链（自动路由）';
-  if (model === 'free-router') return 'FreeLLMAPI 免费路由（自动选择）';
-  return formatModel(model);
-}
-
 function Icon({
   name,
   ...props
@@ -1192,9 +1179,11 @@ function SocialChatApp() {
   };
 
   const avatarAgent =
-    currentRoom?.kind === 'direct'
-      ? members[0]
-      : (currentRecipient ?? members[0]);
+    currentRoom?.kind === 'group'
+      ? null
+      : currentRoom?.kind === 'direct'
+        ? members[0]
+        : (currentRecipient ?? members[0]);
   const modelOptions = state?.models ?? [];
   const activeModel = state?.selectedModel ?? '';
   const activeRoute = modelOptions.find((model) => model.name === activeModel);
@@ -1289,30 +1278,33 @@ function SocialChatApp() {
       <div className={`social-body ${showRoomList ? '' : 'room-open'}`}>
         <aside className="conversation-sidebar" aria-label="聊天列表">
           <div className="sidebar-heading">
-            <div>
-              <p className="sidebar-kicker">个人对话</p>
-              <h1>Noema</h1>
-            </div>
+            <h1>Noema</h1>
             <div className="sidebar-create-actions">
               <button
-                className="icon-button new-agent-button"
+                className="sidebar-create-action new-agent-button"
                 ref={agentTriggerRef}
                 type="button"
                 aria-label="创建专业联系人"
                 title="创建专业联系人"
                 onClick={() => setCreateAgentOpen(true)}
               >
-                <Icon name="user-add" />
+                <span className="sidebar-create-mark" aria-hidden="true">
+                  ＋
+                </span>
+                <span className="sidebar-create-label">联系人</span>
               </button>
               <button
-                className="icon-button new-group-button"
+                className="sidebar-create-action new-group-button"
                 ref={groupTriggerRef}
                 type="button"
                 aria-label="新建群聊"
                 title="新建群聊"
                 onClick={() => setCreateGroupOpen(true)}
               >
-                <Icon name="users" />
+                <span className="sidebar-create-mark" aria-hidden="true">
+                  ＋
+                </span>
+                <span className="sidebar-create-label">群聊</span>
               </button>
             </div>
           </div>
@@ -1590,11 +1582,6 @@ function SocialChatApp() {
                   </div>
                 ) : (
                   <div className="message-sequence">
-                    <div className="room-start-marker">
-                      <span />
-                      <span>聊天记录</span>
-                      <span />
-                    </div>
                     {conversationTurns.map((turn) => (
                       <section
                         className="conversation-turn"
@@ -1614,9 +1601,7 @@ function SocialChatApp() {
                                   ),
                                 )}
                                 roomClosed={Boolean(currentRoom.closedAt)}
-                                hideSenderMetadata={
-                                  currentRoom.kind === 'direct'
-                                }
+                                hideSenderMetadata={false}
                                 agent={
                                   item.message.agentId
                                     ? (messageAgent.get(item.message.agentId) ??
@@ -1963,7 +1948,7 @@ function SocialChatApp() {
                   ? '项目工作会留在当前聊天，并带入当前联系人的专业资料。启动前会选择文件夹并显示数据范围；Noema 会区分 DSH 结束与独立核验结果。'
                   : replyTarget
                     ? '回复只关联当前聊天中的这条消息；发送后双方都能看到引用。'
-                    : '聊天记录保存在本机；发送后，本轮消息及当前联系人的专业范围与合作方式会经 FreeLLMAPI 发给当前模型。'}
+                    : '发送后，本轮对话与联系人的专业资料会交给当前模型处理；聊天记录保存在本机。'}
               </p>
             </>
           ) : (
@@ -2923,9 +2908,7 @@ function ChatMessage({
       className={`chat-message agent-message ${running ? 'is-running' : ''} ${forwardSelectionActive ? 'is-forward-selecting' : ''} ${forwardSelected ? 'is-forward-selected' : ''}`}
       data-message-id={message.id}
     >
-      <div
-        className={`message-author ${hideSenderMetadata ? 'visually-hidden' : ''}`}
-      >
+      <div className="message-author">
         <strong>{agent?.name ?? 'Noema'}</strong>
         <time dateTime={message.createdAt}>{timeLabel(message.createdAt)}</time>
       </div>
@@ -2959,11 +2942,6 @@ function ChatMessage({
             >
               重试
             </button>
-          </div>
-        ) : null}
-        {message.model && !running ? (
-          <div className="reply-provenance">
-            请求路由 · {formatRoute(message.model)}
           </div>
         ) : null}
         <InteractionAdjustmentTrace

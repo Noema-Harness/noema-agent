@@ -1517,7 +1517,7 @@ async function captureSocialAgentCreationE2e() {
         row: loadedNoemaRoom.outerHTML.slice(0, 500),
       }));
     }
-    const sourceText = 'E2E 原话标记：分享不愉快经历时，请先问我最在意的部分。';
+    const sourceText = '分享不愉快经历时，请先问我最在意的部分。';
     const sourceArticle = () => [...document.querySelectorAll('.chat-message.user-message')]
       .find((article) => article.textContent?.includes(sourceText));
     await waitFor(sourceArticle, 'Noema 私聊中的用户原话');
@@ -1627,7 +1627,7 @@ async function captureSocialAgentCreationE2e() {
       Object.getOwnPropertyDescriptor(prototype, 'value')?.set?.call(element, value);
       element.dispatchEvent(new Event('input', { bubbles: true }));
     };
-    const sourceText = 'E2E 原话标记：分享不愉快经历时，请先问我最在意的部分。';
+    const sourceText = '分享不愉快经历时，请先问我最在意的部分。';
     const sourceArticle = () => [...document.querySelectorAll('.chat-message.user-message')]
       .find((article) => article.textContent?.includes(sourceText));
     const form = document.querySelector('.interaction-adjustment-editor');
@@ -1655,7 +1655,7 @@ async function captureSocialAgentCreationE2e() {
         return reply?.status === 'complete' ? { user, reply } : null;
       }, 'Noema 合成回复', 10000);
     };
-    const firstReply = await send('E2E 后续消息：今天发生了一件让我有点难受的事。');
+    const firstReply = await send('今天发生了一件让我有点难受的事。');
     const usedOnNoemaReply = firstReply.reply.interactionAdjustmentIds?.includes(saved.id) === true;
     const currentSourceArticle = sourceArticle();
     const savedAction = [...(currentSourceArticle?.querySelectorAll('.message-actions button') ?? [])]
@@ -1671,7 +1671,7 @@ async function captureSocialAgentCreationE2e() {
         item.id === saved.id && item.status === 'active' && item.behavior === revisedBehavior
       ) ?? null;
     }, '互动约定修改后持久化');
-    const updateReply = await send('E2E 修改后消息：想起这件事还是有些不舒服。');
+    const updateReply = await send('想起这件事还是有些不舒服。');
     const usedUpdatedBehavior = updateReply.reply.interactionAdjustmentSnapshots?.some(
       (item) => item.id === saved.id && item.behavior === revisedBehavior,
     ) === true;
@@ -1684,7 +1684,7 @@ async function captureSocialAgentCreationE2e() {
       const state = await window.noema.getSocialState();
       return state.interactionAdjustments?.find((item) => item.id === saved.id && item.status === 'withdrawn') ?? null;
     }, '互动约定撤回状态');
-    const secondReply = await send('E2E 撤回后消息：再聊一件普通小事。');
+    const secondReply = await send('我们再聊一件普通小事。');
     const notUsedAfterWithdrawal = !secondReply.reply.interactionAdjustmentIds?.includes(saved.id);
     return {
       created: Boolean(saved),
@@ -2051,12 +2051,12 @@ async function captureSocialAgentCreationE2e() {
         assistantStatus: completed.assistant.status,
         sameTurn: completed.user.turnId === completed.assistant.turnId,
         groupedInUi: messagesInTurn === 2,
-        directSpeakerMetaVisuallyHidden: Boolean(
+        directSpeakerAttributionWorks: Boolean(
           turn &&
-            [...turn.querySelectorAll('.chat-message .message-author')].length === 2 &&
-            [...turn.querySelectorAll('.chat-message .message-author')].every(
-              (author) => author.classList.contains('visually-hidden'),
-            ),
+            !turn.querySelector('.user-message .message-author')?.classList.contains('visually-hidden') &&
+            turn.querySelector('.user-message .message-author strong')?.textContent?.trim() === '你' &&
+            !turn.querySelector('.agent-message .message-author')?.classList.contains('visually-hidden') &&
+            turn.querySelector('.agent-message .message-author strong')?.textContent?.trim() === 'Noema',
         ),
         assistantVisible: Boolean(assistantArticle && assistantArticle.getClientRects().length),
         visibleDelegationLabels: Boolean(turn?.textContent?.includes('交给「工程搭档」处理') && turn.textContent.includes('「工程搭档」完成的内容')),
@@ -2088,7 +2088,7 @@ async function captureSocialAgentCreationE2e() {
       delegation.assistantStatus !== 'complete' ||
       !delegation.sameTurn ||
       !delegation.groupedInUi ||
-      !delegation.directSpeakerMetaVisuallyHidden ||
+      !delegation.directSpeakerAttributionWorks ||
       !delegation.assistantVisible ||
       !delegation.visibleDelegationLabels ||
       !delegation.actualResultVisible ||
@@ -2443,7 +2443,7 @@ async function captureSocialAgentCreationE2e() {
     if (!noemaRoom) throw new Error('找不到 Noema 主聊天');
     noemaRoom.click();
     await waitFor(() => document.querySelector('.room-header h2')?.textContent?.trim() === 'Noema', 'Noema 主聊天');
-    const sourceText = 'E2E 原话标记：分享不愉快经历时，请先问我最在意的部分。';
+    const sourceText = '分享不愉快经历时，请先问我最在意的部分。';
     const sourceMessage = () => [...document.querySelectorAll('.chat-message.user-message')]
       .find((article) => article.textContent?.includes(sourceText));
     const source = await waitFor(sourceMessage, '来源消息');
@@ -3158,7 +3158,8 @@ async function captureSocialProjectWorkSmokeScreenshots() {
       ? 'RELEASE-CHECKLIST.md'
       : '素材导入说明';
   const screenshots: string[] = [];
-  await mainWindow.webContents.executeJavaScript(`(async () => {
+  const experienceToggle = await mainWindow.webContents
+    .executeJavaScript(`(async () => {
     const waitForRoom = async (title) => {
       const deadline = Date.now() + 5_000;
       while (Date.now() < deadline) {
@@ -3190,9 +3191,23 @@ async function captureSocialProjectWorkSmokeScreenshots() {
     }
     const targetTask = findTargetTask();
     const experience = targetTask?.querySelector('.project-work-practice') ?? targetTask?.querySelector('.project-work-case');
-    experience?.querySelector('summary')?.click();
+    if (!experience || experience.open) return { available: false };
+    experience.querySelector('summary')?.click();
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const expanded = experience.open && experience.textContent?.includes(${JSON.stringify(expectedExperienceReference)});
+    experience.querySelector('summary')?.click();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    return { available: true, expanded, collapsed: !experience.open };
   })()`);
+  if (
+    !experienceToggle?.available ||
+    !experienceToggle.expanded ||
+    !experienceToggle.collapsed
+  ) {
+    throw new Error(
+      `项目经验细节无法按需展开和收起：${JSON.stringify(experienceToggle)}`,
+    );
+  }
   const inspect = async (width: number, height: number) => {
     mainWindow?.setSize(width, height);
     await mainWindow?.webContents.executeJavaScript(
@@ -3207,7 +3222,6 @@ async function captureSocialProjectWorkSmokeScreenshots() {
       const task = [...document.querySelectorAll('.project-work-card')]
         .find((card) => card.querySelector('.project-work-request')?.textContent?.trim() === targetPrompt);
       const experienceReference = task?.querySelector('.project-work-practice') ?? task?.querySelector('.project-work-case');
-        if (experienceReference instanceof HTMLDetailsElement) experienceReference.open = true;
       const caseControl = document.querySelector('.case-reuse-control');
       const mode = document.querySelector('.composer-mode-switch button[aria-pressed="true"]');
       return {
@@ -3234,7 +3248,7 @@ async function captureSocialProjectWorkSmokeScreenshots() {
     !desktop.projectModeSelected ||
     !desktop.caseControlVisible ||
     !desktop.experienceReferenceVisible ||
-    !desktop.experienceReferenceExpanded ||
+    desktop.experienceReferenceExpanded ||
     !desktop.experienceReferenceText.includes(expectedExperienceReference) ||
     !desktop.composerVisible ||
     !desktop.shellNoOverflow ||
@@ -3256,7 +3270,7 @@ async function captureSocialProjectWorkSmokeScreenshots() {
     !narrow.projectModeSelected ||
     !narrow.caseControlVisible ||
     !narrow.experienceReferenceVisible ||
-    !narrow.experienceReferenceExpanded ||
+    narrow.experienceReferenceExpanded ||
     !narrow.experienceReferenceText.includes(expectedExperienceReference) ||
     !narrow.composerVisible ||
     !narrow.shellNoOverflow ||
