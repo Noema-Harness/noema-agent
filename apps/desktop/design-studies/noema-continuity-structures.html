@@ -1555,6 +1555,356 @@
           padding: 11px 16px;
         }
       }
+      .index-search {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin: 0 6px 18px;
+        color: var(--muted);
+      }
+      [hidden] {
+        display: none !important;
+      }
+      .app {
+        position: relative;
+      }
+      .ui-toast {
+        position: absolute;
+        bottom: 16px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 10;
+        max-width: 80%;
+        padding: 9px 14px;
+        border: 1px solid var(--line);
+        border-radius: 5px;
+        background: var(--paper);
+        color: var(--ink);
+        font-size: 12px;
+        box-shadow: 0 3px 15px #00000012;
+      }
+      .index-search svg {
+        width: 15px;
+        height: 15px;
+      }
+      .index-search input {
+        min-width: 0;
+        width: 100%;
+        border: 0;
+        background: transparent;
+        color: var(--ink);
+        padding: 6px 0;
+        font-size: 12px;
+      }
+      .index-empty {
+        font-size: 12px;
+        color: var(--muted);
+        margin: 20px 10px;
+      }
+      .message {
+        position: relative;
+      }
+      .message-actions {
+        display: flex;
+        gap: 4px;
+        margin-top: 5px;
+        opacity: 0;
+      }
+      .message:hover .message-actions,
+      .message:focus-within .message-actions {
+        opacity: 1;
+      }
+      .message-actions button {
+        color: var(--muted);
+        font-size: 11px;
+        border-radius: 3px;
+        padding: 4px 6px;
+      }
+      .message-actions button:hover {
+        background: var(--soft);
+        color: var(--ink);
+      }
+      .message.user .message-actions {
+        justify-content: flex-end;
+      }
+      .message-quote,
+      .draft-quote {
+        border-left: 2px solid #9eafb8;
+        padding: 5px 10px;
+        color: var(--muted);
+        font-size: 12px;
+        margin-bottom: 9px;
+      }
+      .draft-quote {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .draft-quote span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .draft-quote button {
+        flex: none;
+      }
+      .composer textarea {
+        padding-bottom: 44px;
+        min-height: 96px;
+      }
+      .attach-button {
+        position: absolute;
+        left: 8px;
+        bottom: 8px;
+      }
+      .attach-button svg {
+        width: 17px;
+        height: 17px;
+      }
+      .send:disabled {
+        background: #dfe5e8;
+        color: #9aa5ad;
+      }
+      .composer-files {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-bottom: 8px;
+      }
+      .attachment-chip {
+        display: inline-flex;
+        max-width: 100%;
+        align-items: center;
+        gap: 7px;
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        background: white;
+        padding: 5px 7px;
+        font-size: 11px;
+      }
+      .attachment-chip .file-name {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        max-width: 220px;
+      }
+      .attachment-chip img {
+        width: 27px;
+        height: 27px;
+        object-fit: cover;
+        border-radius: 2px;
+      }
+      .attachment-chip button {
+        padding: 2px;
+        color: var(--muted);
+      }
+      .attachment-chip.problem,
+      .composer-error {
+        color: #9c4140;
+        border-color: #e0bdbc;
+      }
+      .composer-error {
+        font-size: 11px;
+        margin-bottom: 8px;
+      }
+      .composer-error button {
+        text-decoration: underline;
+        padding-left: 8px;
+      }
+      .runtime-status,
+      .queue-row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 12px;
+        padding: 9px 0;
+        border-bottom: 1px solid var(--line);
+        margin-bottom: 9px;
+      }
+      .runtime-status span,
+      .queue-text {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .runtime-status button,
+      .queue-row button {
+        flex: none;
+        color: var(--accent);
+        font-size: 11px;
+        padding: 4px;
+      }
+      .queue-row small {
+        display: block;
+        color: var(--muted);
+        font-size: 10px;
+        margin-top: 2px;
+      }
+      .queue-actions {
+        display: flex;
+        flex: none;
+        gap: 6px;
+      }
+      .runtime-caption {
+        color: var(--muted);
+        font-size: 11px;
+        margin-top: 8px;
+      }
+      .runtime-caption button {
+        color: var(--accent);
+        margin-left: 8px;
+        font-size: 11px;
+        text-decoration: underline;
+      }
+      .jump-latest {
+        align-self: center;
+        font-size: 11px;
+        color: var(--accent);
+        padding: 7px 12px;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: var(--paper);
+        margin: 6px auto;
+      }
+      .search-result {
+        display: block;
+        width: 100%;
+        text-align: left;
+        font-size: 13px;
+        padding: 12px 0;
+        border-bottom: 1px solid var(--line);
+        line-height: 1.6;
+      }
+      .search-input {
+        display: block;
+        width: 100%;
+        border: 1px solid #d6dfe4;
+        border-radius: 4px;
+        padding: 9px 11px;
+        margin: 10px 0 16px;
+        background: white;
+      }
+      .queue-list {
+        max-height: 140px;
+        overflow: auto;
+        padding: 0 2px;
+        margin-bottom: 8px;
+        scrollbar-gutter: stable;
+      }
+      .queue-list:is(:hover, :focus-within)::-webkit-scrollbar-thumb {
+        background-color: #a5b0b8;
+      }
+      .file-open {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+        text-align: left;
+      }
+      .search-result small {
+        display: block;
+        color: var(--muted);
+        margin-bottom: 4px;
+        font-size: 11px;
+      }
+      .message.search-match {
+        outline: 2px solid #99b7c5;
+        outline-offset: 7px;
+      }
+      .work-request {
+        border-top: 1px solid var(--line);
+        margin-top: 16px;
+        padding-top: 14px;
+      }
+      .work-request h3 {
+        font-size: 14px;
+        margin: 0 0 12px;
+      }
+      .work-request dl {
+        display: grid;
+        grid-template-columns: 65px 1fr;
+        gap: 7px 12px;
+        font-size: 12px;
+      }
+      .work-request dt {
+        color: var(--muted);
+      }
+      .work-request dd {
+        margin: 0;
+        overflow-wrap: anywhere;
+      }
+      .work-request .request-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 15px;
+      }
+      .work-request details {
+        font-size: 12px;
+        margin-top: 15px;
+      }
+      .work-request li {
+        padding: 5px 0;
+      }
+      .work-request .request-explanation {
+        font-size: 11px;
+        color: var(--muted);
+        line-height: 1.7;
+      }
+      .settings-form select {
+        width: 100%;
+        border: 1px solid #d6dfe4;
+        border-radius: 4px;
+        padding: 9px;
+        background: white;
+        margin-bottom: 10px;
+      }
+      .settings-section {
+        border-top: 1px solid var(--line);
+        padding-top: 16px;
+        margin-top: 20px;
+      }
+      .settings-section h3 {
+        font-size: 13px;
+        margin: 0 0 10px;
+      }
+      .settings-section p {
+        font-size: 12px;
+        color: var(--muted);
+        line-height: 1.7;
+      }
+      .file-preview {
+        max-width: 100%;
+        max-height: 50vh;
+        object-fit: contain;
+      }
+      .notice-line {
+        font-size: 11px;
+        color: var(--muted);
+        padding: 0 18px 8px;
+        text-align: center;
+      }
+      @media (hover: none) {
+        .message-actions {
+          opacity: 1;
+        }
+      }
+      @container (max-width:600px) {
+        .review-dock {
+          flex-wrap: wrap;
+        }
+        .queue-actions {
+          flex-wrap: wrap;
+          justify-content: flex-end;
+          max-width: 130px;
+        }
+        .attachment-chip .file-name {
+          max-width: 160px;
+        }
+      }
     </style>
   </head>
   <body>
@@ -1575,6 +1925,7 @@
         <button data-scene="daily">日常相处</button><button data-scene="news">新闻短委托</button
         ><button data-scene="project">组建项目</button><button data-scene="review">交付评审</button
         ><button data-scene="archive">归档与恢复</button>
+        <button data-scene="execution">委托执行</button>
       </nav>
     </div>
     <main class="stage" id="stage">
@@ -1583,6 +1934,214 @@
     <footer class="study-note" id="study-note"></footer>
     <button class="preview-exit" data-action="focus">退出预览</button>
     <dialog id="dialog" aria-labelledby="dialog-title"></dialog>
+    <script id="study-runtime">
+      // Deterministic UI study only: no model, network or filesystem execution.
+      class StudyConversation {
+        constructor(changed = () => {}, schedule = setTimeout, cancel = clearTimeout) {
+          this.changed = changed;
+          this.schedule = schedule;
+          this.cancel = cancel;
+          this.rooms = new Map();
+          this.sequence = 0;
+        }
+        room(key) {
+          if (!this.rooms.has(key))
+            this.rooms.set(key, { messages: [], queue: [], active: null, paused: false });
+          return this.rooms.get(key);
+        }
+        send(key, input) {
+          if (!input.text.trim() && !input.files?.length) return null;
+          const packet = {
+            ...input,
+            files: (input.files || []).map((f) => ({ ...f })),
+            id: "input-" + ++this.sequence,
+          };
+          const room = this.room(key);
+          if (room.active || room.paused) {
+            room.queue.push(packet);
+            this.changed();
+          } else this.start(key, packet);
+          return packet.id;
+        }
+        start(key, packet, reply = null) {
+          const room = this.room(key);
+          if (room.active) return false;
+          if (!room.messages.some((m) => m.id === packet.id))
+            room.messages.push({ ...packet, role: "user" });
+          if (!reply) {
+            reply = {
+              id: "reply-" + ++this.sequence,
+              role: "assistant",
+              text: "",
+              status: "running",
+              packet,
+              attempt: 0,
+            };
+            room.messages.push(reply);
+          }
+          reply.status = "running";
+          reply.attempt++;
+          reply.text = "";
+          const generation = ++this.sequence;
+          const active = { reply, generation, timers: [] };
+          room.active = active;
+          const response = packet.response || "本轮演示回复已完成，没有调用模型。";
+          active.timers.push(
+            this.schedule(() => {
+              if (room.active?.generation !== generation) return;
+              reply.text = response.slice(0, Math.max(12, Math.floor(response.length / 2)));
+              this.changed();
+            }, 1000),
+          );
+          active.timers.push(this.schedule(() => this.finish(key, generation, response), 6500));
+          this.changed();
+          return true;
+        }
+        finish(key, generation, text) {
+          const room = this.room(key);
+          if (room.active?.generation !== generation) return false;
+          const active = room.active;
+          active.timers.forEach(this.cancel);
+          active.reply.text = text;
+          active.reply.status = "complete";
+          room.active = null;
+          if (!room.paused && room.queue.length) this.start(key, room.queue.shift());
+          else this.changed();
+          return true;
+        }
+        interrupt(key, status = "stopped") {
+          const room = this.room(key);
+          if (!room.active) return false;
+          room.active.timers.forEach(this.cancel);
+          room.active.reply.status = status;
+          room.active = null;
+          room.paused = room.queue.length > 0;
+          this.changed();
+          return true;
+        }
+        retry(key, replyID) {
+          const room = this.room(key);
+          const reply = room.messages.find((m) => m.id === replyID);
+          if (room.active || !reply || !["failed", "stopped"].includes(reply.status)) return false;
+          return this.start(key, reply.packet, reply);
+        }
+        withdraw(key, id) {
+          const room = this.room(key);
+          const index = room.queue.findIndex((m) => m.id === id);
+          if (index < 0) return null;
+          const [packet] = room.queue.splice(index, 1);
+          if (!room.queue.length && !room.active) room.paused = false;
+          this.changed();
+          return packet;
+        }
+        prioritize(key, id) {
+          const room = this.room(key);
+          const index = room.queue.findIndex((m) => m.id === id);
+          if (index < 0) return false;
+          const [packet] = room.queue.splice(index, 1);
+          this.interrupt(key);
+          room.paused = room.queue.length > 0;
+          return this.start(key, packet);
+        }
+        resume(key) {
+          const room = this.room(key);
+          if (room.active || !room.queue.length) return false;
+          room.paused = false;
+          return this.start(key, room.queue.shift());
+        }
+        reset() {
+          for (const room of this.rooms.values()) room.active?.timers.forEach(this.cancel);
+          this.rooms.clear();
+        }
+      }
+      class StudyWork {
+        constructor() {
+          this.generation = 0;
+          this.create();
+        }
+        create() {
+          this.generation++;
+          this.status = "permission";
+          this.grant = null;
+          this.uncertain = false;
+          this.steps = [
+            { title: "读取现有说明", state: "pending" },
+            { title: "修改计价单位说明", state: "pending" },
+            { title: "核对文件与界面", state: "pending" },
+          ];
+        }
+        decide(generation, decision) {
+          if (
+            this.status !== "permission" ||
+            generation !== this.generation ||
+            !["once", "project", "deny"].includes(decision)
+          )
+            return false;
+          if (decision === "deny") {
+            this.status = "denied";
+            this.generation++;
+            return true;
+          }
+          this.grant = decision;
+          if (this.uncertain) {
+            this.status = "checking";
+            return true;
+          }
+          this.status = "running";
+          this.steps.find((s) => s.state !== "complete").state = "running";
+          return true;
+        }
+        advance() {
+          if (this.status !== "running") return false;
+          this.steps.find((s) => s.state === "running").state = "complete";
+          const next = this.steps.find((s) => s.state !== "complete");
+          if (next) next.state = "running";
+          else this.status = "complete";
+          return true;
+        }
+        interrupt(reason = "failed") {
+          if (!["running", "permission"].includes(this.status)) return false;
+          const step = this.steps.find((s) => s.state === "running");
+          this.uncertain = step === this.steps[1];
+          if (step) step.state = "pending";
+          this.status = reason;
+          this.generation++;
+          return true;
+        }
+        resume() {
+          if (!["failed", "stopped"].includes(this.status) || !this.grant) return false;
+          if (this.uncertain) {
+            this.status = "checking";
+            return true;
+          }
+          this.status = "running";
+          this.steps.find((s) => s.state !== "complete").state = "running";
+          return true;
+        }
+        reconcile(applied) {
+          if (this.status !== "checking" || typeof applied !== "boolean") return false;
+          if (applied) this.steps[1].state = "complete";
+          this.uncertain = false;
+          this.status = "running";
+          this.steps.find((s) => s.state !== "complete").state = "running";
+          return true;
+        }
+        revoke() {
+          if (!this.grant) return false;
+          if (this.status === "running") this.interrupt("stopped");
+          this.grant = null;
+          this.generation++;
+          if (!["complete", "denied"].includes(this.status)) this.status = "revoked";
+          return true;
+        }
+        requestAccess() {
+          if (!["denied", "revoked", "stopped"].includes(this.status) || this.grant) return false;
+          this.generation++;
+          this.status = "permission";
+          return true;
+        }
+      }
+    </script>
     <script>
       "use strict";
       const $ = (s) => document.querySelector(s);
@@ -1609,7 +2168,52 @@
         sessionExtra: {},
         notice: "",
         reopened: false,
+        model: "general",
+        attachments: {},
+        quotes: {},
+        composerErrors: {},
+        indexQuery: "",
+        uiNotice: "",
       };
+      const draftStoreKey = "noema-structure-study-v3";
+      try {
+        const saved = JSON.parse(localStorage.getItem(draftStoreKey) || "{}");
+        if (saved.drafts && typeof saved.drafts === "object")
+          state.drafts = Object.fromEntries(
+            Object.entries(saved.drafts).filter(
+              ([k, v]) => typeof v === "string" && v.length < 100000,
+            ),
+          );
+        if (typeof saved.name === "string" && saved.name.trim())
+          state.name = saved.name.slice(0, 24);
+        if (typeof saved.preference === "string")
+          state.preference = saved.preference.slice(0, 4000);
+        if (["general", "reasoning"].includes(saved.model)) state.model = saved.model;
+        if (saved.indexWidth >= 184 && saved.indexWidth <= 400) state.indexWidth = saved.indexWidth;
+        if (typeof saved.indexOpen === "boolean") state.indexOpen = saved.indexOpen;
+      } catch {
+        state.uiNotice = "本机草稿存储不可用；当前页仍可使用。";
+      }
+      const conversations = new StudyConversation(() => render());
+      const delegatedWork = new StudyWork();
+      const modelLabel = () => (state.model === "reasoning" ? "演示推理模型" : "演示通用模型");
+      function persistDrafts() {
+        try {
+          localStorage.setItem(
+            draftStoreKey,
+            JSON.stringify({
+              drafts: state.drafts,
+              name: state.name,
+              preference: state.preference,
+              model: state.model,
+              indexWidth: state.indexWidth,
+              indexOpen: state.indexOpen,
+            }),
+          );
+        } catch {
+          state.uiNotice = "文字草稿暂时无法保存到本机，请保留当前页面。";
+        }
+      }
       const people = {
         research: {
           name: "新闻观察者",
@@ -1671,6 +2275,8 @@
             '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4m8-4v4M4 11h16m-11 4h6"/>',
           settings:
             '<path d="M5 7h14M5 17h14"/><circle cx="9" cy="7" r="2" fill="currentColor"/><circle cx="15" cy="17" r="2" fill="currentColor"/>',
+          search: '<circle cx="10" cy="10" r="6"/><path d="m15 15 5 5"/>',
+          attach: '<path d="m8 12 6-6a3 3 0 0 1 4 4l-8 8a5 5 0 0 1-7-7l8-8m-3 9 6-6"/>',
           link: '<path d="M8 5H5v14h14v-3m-7-11h7v7m0-7L9 15"/>',
           file: '<path d="M7 3h7l4 4v14H7V3Zm7 0v5h4M10 12h5m-5 4h5"/>',
           archive:
@@ -1713,7 +2319,214 @@
               time +
               "</span></div>") +
           html +
+          '<div class="message-actions">' +
+          button("copy-message", "复制") +
+          button("quote-message", "引用") +
+          "</div>" +
           "</article>"
+        );
+      }
+      function roomScope() {
+        return ["member-main", "member-project"].includes(state.workspace)
+          ? (state.workspace === "member-main" ? "main-" : "project-") + state.member
+          : "core";
+      }
+      function fileChips(files, scope = "") {
+        return files
+          .map(
+            (file, i) =>
+              '<span class="attachment-chip' +
+              (file.problem ? " problem" : "") +
+              '">' +
+              (file.url ? '<img src="' + esc(file.url) + '" alt="">' : icon("file")) +
+              '<button type="button" class="file-open file-name" data-action="view-attachment" data-attachment="' +
+              esc(file.id || "") +
+              '" title="' +
+              esc(file.name) +
+              '">' +
+              esc(file.name) +
+              (file.problem ? " · " + esc(file.problem) : "") +
+              "</button>" +
+              (scope
+                ? button(
+                    "remove-attachment",
+                    "×",
+                    "",
+                    'aria-label="移除附件 ' +
+                      esc(file.name) +
+                      '" data-scope="' +
+                      scope +
+                      '" data-file="' +
+                      i +
+                      '"',
+                  )
+                : "") +
+              "</span>",
+          )
+          .join("");
+      }
+      function runtimeMessages(scope) {
+        return conversations
+          .room(scope)
+          .messages.map((item) => {
+            if (item.html) return message(item.role, item.html, "刚刚");
+            const name = scope === "core" ? "assistant" : people[scope.split("-")[1]].name;
+            const quote = item.quote
+              ? '<blockquote class="message-quote">' +
+                esc(item.quote.author) +
+                "：" +
+                esc(item.quote.text) +
+                "</blockquote>"
+              : "";
+            let body =
+              quote + (item.text ? "<p>" + esc(item.text).replace(/\n/g, "<br>") + "</p>" : "");
+            if (item.files?.length)
+              body += '<div class="composer-files">' + fileChips(item.files) + "</div>";
+            if (item.role === "assistant") {
+              if (item.status === "running" && !item.text)
+                body += '<p class="runtime-caption" role="status">正在整理回复…</p>';
+              const status = {
+                running: "回复中",
+                complete: "演示回复完成",
+                stopped: "已停止 · 已生成内容保留",
+                failed: "连接中断 · 已生成内容保留",
+              }[item.status];
+              body +=
+                '<div class="runtime-caption">' +
+                status +
+                " · " +
+                esc(item.packet.model) +
+                (["failed", "stopped"].includes(item.status)
+                  ? button(
+                      "retry-reply",
+                      "重试本轮",
+                      "",
+                      'data-scope="' +
+                        scope +
+                        '" data-reply="' +
+                        item.id +
+                        '" ' +
+                        (conversations.room(scope).active ? "disabled" : ""),
+                    )
+                  : "") +
+                "</div>";
+            }
+            return message(item.role === "user" ? "user" : name, body, "刚刚");
+          })
+          .join("");
+      }
+      function queueMarkup(scope) {
+        const room = conversations.room(scope);
+        return (
+          (room.active
+            ? '<div class="runtime-status" role="status"><span>正在回复 · ' +
+              esc(room.active.reply.packet.model) +
+              "</span>" +
+              button(
+                "stop-reply",
+                "停止回复",
+                "",
+                'data-scope="' + scope + '" title="只停止这轮回复；不会回滚操作或停止其他项目"',
+              ) +
+              "</div>"
+            : "") +
+          (room.paused && room.queue.length
+            ? '<div class="runtime-status"><span>队列已暂停 · ' +
+              room.queue.length +
+              " 条未发送</span>" +
+              button("resume-queue", "继续队列", "", 'data-scope="' + scope + '"') +
+              "</div>"
+            : "") +
+          (room.queue.length
+            ? '<div class="queue-list" aria-label="当前对话的待发消息">' +
+              room.queue
+                .map(
+                  (packet) =>
+                    '<div class="queue-row"><div class="queue-text">' +
+                    esc(packet.text || packet.files.map((f) => f.name).join("、")) +
+                    '<small>尚未发送 · 只属于当前对话</small></div><div class="queue-actions">' +
+                    button(
+                      "withdraw-queued",
+                      "撤回到输入框",
+                      "",
+                      'data-scope="' + scope + '" data-packet="' + packet.id + '"',
+                    ) +
+                    button(
+                      "prioritize-queued",
+                      room.active ? "停止并发送" : "现在发送",
+                      "",
+                      'data-scope="' + scope + '" data-packet="' + packet.id + '"',
+                    ) +
+                    "</div></div>",
+                )
+                .join("") +
+              "</div>"
+            : "")
+        );
+      }
+      const workLabels = {
+        permission: "等待本次授权",
+        running: "应用工程师执行中",
+        failed: "工具连接中断",
+        stopped: "已停止",
+        denied: "已拒绝 · 未执行",
+        checking: "正在核对写入结果",
+        revoked: "授权已撤回",
+        complete: "执行完成",
+      };
+      function workRequest(interactive = true) {
+        const work = delegatedWork;
+        let actions = "";
+        if (interactive && work.status === "permission")
+          actions =
+            button(
+              "work-allow-once",
+              "只允许本次",
+              "primary",
+              'data-generation="' + work.generation + '"',
+            ) +
+            button(
+              "work-allow-project",
+              "允许此项目",
+              "secondary",
+              'data-generation="' + work.generation + '"',
+            ) +
+            button("work-deny", "拒绝", "quiet", 'data-generation="' + work.generation + '"');
+        if (interactive && work.status === "running")
+          actions = button("work-stop", "停止这项执行", "secondary");
+        if (interactive && ["failed", "stopped"].includes(work.status) && work.grant)
+          actions = button(
+            "work-resume",
+            work.uncertain ? "先核对执行结果" : "从未完成步骤继续",
+            "primary",
+          );
+        if (interactive && ["denied", "revoked", "stopped"].includes(work.status) && !work.grant)
+          actions = button("work-reapply", "重新申请本次授权", "secondary");
+        return (
+          '<section class="work-request" aria-label="修改计价单位说明"><h3>修改计价单位说明</h3><p role="status">' +
+          workLabels[work.status] +
+          (work.uncertain ? " · 写入是否完成尚待核对" : "") +
+          "</p><dl><dt>执行者</dt><dd>应用工程师 / 原项目会话</dd><dt>范围</dt><dd>示例工作区 / AI 服务价格追踪器</dd><dt>将要操作</dt><dd>读取并修改本项目文件，核对显示结果；不含对外发布。</dd></dl>" +
+          (work.status === "permission"
+            ? '<p class="request-explanation">“只允许本次”限于这次修订；“允许此项目”仅记住这个示例项目，可在设置撤回。未选择前不会执行。</p>'
+            : "") +
+          (work.status === "failed" || work.status === "stopped"
+            ? '<p class="request-explanation">已完成的步骤保留。停止不代表撤销文件修改；写入结果不确定时，先核对再决定是否重试。</p>'
+            : "") +
+          '<div class="request-actions">' +
+          actions +
+          "</div><details><summary>查看执行记录</summary><ol>" +
+          work.steps
+            .map(
+              (s) =>
+                "<li>" +
+                esc(s.title) +
+                " — " +
+                { pending: "尚未完成", running: "进行中", complete: "已完成（演示）" }[s.state] +
+                "</li>",
+            )
+            .join("") +
+          '</ol><p class="request-explanation">执行和核对由页面外的演示事件推进，没有读写真实文件。</p></details></section>'
         );
       }
       function projectLink() {
@@ -1723,15 +2536,17 @@
             '<span class="link-copy"><strong>AI 服务价格追踪器</strong><small>' +
             (state.archived
               ? "已归档 · 随时可以续接"
-              : state.reopened
-                ? "已恢复 · 小修订进行中"
-                : state.approved
-                  ? "已反馈 · 正在继续实现"
-                  : state.feedback
-                    ? "反馈已提交 · Noema 处理中"
-                    : state.projectStage === "forming"
-                      ? "团队已组建 · 研究与设计中"
-                      : "界面第一版 · 等待你评审") +
+              : state.scene === "execution"
+                ? workLabels[delegatedWork.status]
+                : state.reopened
+                  ? "已恢复 · 小修订进行中"
+                  : state.approved
+                    ? "已反馈 · 正在继续实现"
+                    : state.feedback
+                      ? "反馈已提交 · Noema 处理中"
+                      : state.projectStage === "forming"
+                        ? "团队已组建 · 研究与设计中"
+                        : "界面第一版 · 等待你评审") +
             "</small></span>" +
             icon("link"),
           "project-link",
@@ -1835,14 +2650,47 @@
               projectLink(),
             "昨天 18:40",
           );
-        t += (state.extra[state.scene] || []).join("");
+        if (state.scene === "execution")
+          t +=
+            message("user", "<p>把价格追踪器的计价单位说明补充清楚，再核对一下。</p>", "15:10") +
+            message(
+              "assistant",
+              "<p>我会让原项目的应用工程师处理。它需要访问对应工作区，授权和后续进度都留在这条请求下。</p>" +
+                workRequest(),
+              "15:11",
+            );
+        t += runtimeMessages("core");
         return t;
       }
       function composer(scope, placeholder) {
+        const room = conversations.room(scope),
+          files = state.attachments[scope] || [],
+          quote = state.quotes[scope];
+        const invalid = files.some((f) => f.problem);
+        const canSend = !invalid && !!((state.drafts[scope] || "").trim() || files.length);
         return (
           '<form class="composer" data-form="chat" data-scope="' +
           scope +
           '"><div class="composer-inner">' +
+          queueMarkup(scope) +
+          (quote
+            ? '<div class="draft-quote"><span>引用 ' +
+              esc(quote.author) +
+              "：" +
+              esc(quote.text) +
+              "</span>" +
+              button("clear-quote", "×", "", 'aria-label="取消引用" data-scope="' + scope + '"') +
+              "</div>"
+            : "") +
+          (files.length
+            ? '<div class="composer-files">' + fileChips(files, scope) + "</div>"
+            : "") +
+          (state.composerErrors[scope]
+            ? '<div class="composer-error" role="alert">' +
+              esc(state.composerErrors[scope]) +
+              button("clear-composer-error", "关闭", "", 'data-scope="' + scope + '"') +
+              "</div>"
+            : "") +
           '<div class="composer-field"><textarea rows="2" aria-label="' +
           esc(placeholder) +
           '" placeholder="' +
@@ -1851,13 +2699,28 @@
           scope +
           '">' +
           esc(state.drafts[scope] || "") +
-          '</textarea><button class="send" type="submit" aria-label="' +
-          "发送消息" +
+          '</textarea><input type="file" hidden multiple accept=".txt,.md,.csv,.pdf,.png,.jpg,.jpeg,.webp" data-file-scope="' +
+          scope +
           '">' +
+          button(
+            "pick-attachments",
+            icon("attach"),
+            "icon-button attach-button",
+            'type="button" aria-label="添加附件" data-scope="' +
+              scope +
+              '" title="图片、文本、CSV 或 PDF，每条最多 5 个，单个 10 MB；仅本地预览"',
+          ) +
+          '<button class="send" type="submit" aria-label="' +
+          (room.active || room.paused ? "加入发送队列" : "发送消息") +
+          '" ' +
+          (canSend ? "" : "disabled") +
+          ">" +
           icon("send") +
           '</button></div><div class="composer-hint"><span>' +
           "Enter 发送 · Shift + Enter 换行" +
-          "</span><span>交互演示</span></div></div></form>"
+          "</span><span>" +
+          esc(modelLabel()) +
+          " · 演示</span></div></div></form>"
         );
       }
       function chatPane() {
@@ -1877,16 +2740,27 @@
                 'aria-label="打开成员和项目"',
               )
             : "") +
+          button(
+            "find-messages",
+            icon("search"),
+            "icon-button",
+            'aria-label="查找当前对话" title="查找当前对话"',
+          ) +
           '</div></header><div class="chat-scroll"><div class="chat-body">' +
           transcript() +
           "</div></div>" +
+          '<button class="jump-latest" data-action="jump-latest" hidden>回到最新消息 ↓</button>' +
           composer("core", "和" + state.name + "说点什么…") +
           "</section>"
         );
       }
       function indexMarkup() {
         return (
-          '<div class="section-title">与你对话</div>' +
+          '<label class="index-search">' +
+          icon("search") +
+          '<input type="search" aria-label="搜索成员或项目" placeholder="搜索成员或项目" value="' +
+          esc(state.indexQuery) +
+          '"></label><div class="index-empty" hidden>没有匹配的成员或项目</div><div class="section-title">与你对话</div>' +
           button(
             "home",
             avatar("core") +
@@ -1921,15 +2795,17 @@
                 '<span class="project-icon">' +
                   icon("project") +
                   '</span><span><span class="item-title">价格追踪器</span><small>' +
-                  (state.reopened
-                    ? "小修订进行中"
-                    : state.approved
-                      ? "按反馈调整中"
-                      : state.feedback
-                        ? "Noema 处理反馈中"
-                        : state.projectStage === "forming"
-                          ? "研究与设计中"
-                          : "等待你的评审") +
+                  (state.scene === "execution"
+                    ? workLabels[delegatedWork.status]
+                    : state.reopened
+                      ? "小修订进行中"
+                      : state.approved
+                        ? "按反馈调整中"
+                        : state.feedback
+                          ? "Noema 处理反馈中"
+                          : state.projectStage === "forming"
+                            ? "研究与设计中"
+                            : "等待你的评审") +
                   "</small></span>",
                 "index-item " + (state.workspace === "project" ? "selected" : ""),
               )
@@ -2156,7 +3032,9 @@
             "AI 服务价格追踪器",
             state.archived
               ? "已归档项目"
-              : "项目空间 · " +
+              : state.scene === "execution"
+                ? "项目空间 · " + workLabels[delegatedWork.status]
+                : "项目空间 · " +
                   (state.reopened
                     ? "小修订进行中"
                     : state.approved
@@ -2180,12 +3058,18 @@
             .join("") +
           '</nav><div class="work-content">' +
           (state.tab === "delivery"
-            ? delivery()
+            ? state.scene === "execution"
+              ? workRequest(false) + button("locate-work", "回到 Noema 的授权与进度", "quiet")
+              : delivery()
             : state.tab === "group"
               ? discussion()
               : members()) +
           "</div>" +
-          (!state.archived && !state.approved && !state.reopened && state.projectStage === "review"
+          (!state.archived &&
+          !state.approved &&
+          !state.reopened &&
+          state.projectStage === "review" &&
+          state.scene !== "execution"
             ? '<div class="review-dock"><div>' +
               (state.feedback ? "Noema 正在处理反馈" : "Noema 正在等你的评审") +
               '<small>请求保留在与 Noema 的对话中</small></div><div class="dock-actions">' +
@@ -2346,12 +3230,15 @@
               "刚刚",
             ) +
             message(p.name, "<p>已续接上次的工作记录，正在原文件中修订并核对显示。</p>", "刚刚");
-        body += (state.sessionExtra[scope] || []).join("");
+        if (project && state.scene === "execution" && state.member === "engineer")
+          body += message(p.name, workRequest(false), "15:11");
+        body += runtimeMessages(scope);
         return (
           workHead(
             p.name,
             project ? "价格追踪器 · 项目会话" : "常驻私聊",
-            button("profile", "资料", "quiet"),
+            button("find-messages", icon("search"), "icon-button", 'aria-label="查找当前对话"') +
+              button("profile", "资料", "quiet"),
           ) +
           '<div class="session-content"><div class="session-scroll">' +
           body +
@@ -2430,6 +3317,7 @@
         if (!state.indexOpen) state.indexWidth = indexDrag.restoreWidth;
         indexDrag = null;
         $("#app").classList.remove("resizing");
+        persistDrafts();
         if (!state.indexOpen) $(".index-toggle").focus();
       }
       document.addEventListener("pointerup", finishIndexDrag);
@@ -2451,7 +3339,138 @@
         if (e.key === "ArrowRight") resizeIndex(width + step);
         if (!state.indexOpen) $(".index-toggle").focus();
       });
+      const scrollPositions = new Map();
+      let noticeTimer;
+      function showNotice(text) {
+        state.uiNotice = text;
+        const output = $("#ui-notice");
+        if (output) {
+          output.textContent = text;
+          output.hidden = false;
+        }
+        clearTimeout(noticeTimer);
+        noticeTimer = setTimeout(() => {
+          state.uiNotice = "";
+          const current = $("#ui-notice");
+          if (current) current.hidden = true;
+        }, 3500);
+      }
+      function filterIndex() {
+        const query = state.indexQuery.trim().toLocaleLowerCase();
+        const rows = [...document.querySelectorAll('.index .index-item:not([data-action="home"])')];
+        let matches = 0;
+        for (const row of rows) {
+          row.hidden = !!query && !row.textContent.toLocaleLowerCase().includes(query);
+          if (!row.hidden) matches++;
+        }
+        const empty = $(".index-empty");
+        if (empty) empty.hidden = !query || matches > 0;
+        const titles = document.querySelectorAll(".index .section-title");
+        if (titles[1])
+          titles[1].hidden =
+            !!query && !rows.some((x) => x.dataset.action === "member-main" && !x.hidden);
+        if (titles[2])
+          titles[2].hidden =
+            !!query && !rows.some((x) => x.dataset.action === "open-project" && !x.hidden);
+      }
+      function messageText(article) {
+        const copy = article.cloneNode(true);
+        copy
+          .querySelectorAll(".byline,.message-actions,form,.runtime-caption")
+          .forEach((x) => x.remove());
+        copy
+          .querySelectorAll("p,blockquote,li")
+          .forEach((x) => x.insertAdjacentText("afterend", "\n"));
+        return copy.textContent.trim().replace(/\n{3,}/g, "\n\n");
+      }
+      let searchMatches = [];
+      function fitComposer(input) {
+        input.style.height = "auto";
+        input.style.height = Math.max(96, Math.min(190, input.scrollHeight)) + "px";
+      }
+      function findMessages(query) {
+        const panel = ["member-main", "member-project"].includes(state.workspace)
+          ? $(".session-scroll")
+          : $(".chat-scroll");
+        searchMatches = [...panel.querySelectorAll(".message")]
+          .map((article, index) => ({
+            article,
+            index,
+            text: messageText(article),
+            author: article.querySelector(".byline strong")?.textContent || "你",
+          }))
+          .filter(
+            (x) =>
+              query.trim() && x.text.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
+          );
+        $("#search-results").innerHTML = query.trim()
+          ? searchMatches.length
+            ? searchMatches
+                .map((x, i) =>
+                  button(
+                    "search-jump",
+                    "<small>" + esc(x.author) + "</small>" + esc(x.text.slice(0, 220)),
+                    "search-result",
+                    'data-match="' + i + '"',
+                  ),
+                )
+                .join("")
+            : '<p class="index-empty">当前对话没有匹配消息。</p>'
+          : '<p class="index-empty">输入关键词，查找当前会话中的消息。</p>';
+      }
+      function receiveFiles(scope, files) {
+        const list = (state.attachments[scope] ||= []);
+        const fresh = files.filter(
+          (file) =>
+            !list.some(
+              (x) =>
+                x.name === file.name &&
+                x.size === file.size &&
+                x.lastModified === file.lastModified,
+            ),
+        );
+        if (fresh.length + list.length > 5) {
+          state.composerErrors[scope] = "每条消息最多 5 个附件。本次选择未加入，请减少数量后重选。";
+          render();
+          return;
+        }
+        for (const file of fresh) {
+          const supported = /\.(txt|md|csv|pdf|png|jpe?g|webp)$/i.test(file.name);
+          const problem = !supported
+            ? "不支持此类型"
+            : file.size > 10 * 1024 * 1024
+              ? "超过 10 MB"
+              : "";
+          list.push({
+            id: "attachment-" + ++conversations.sequence,
+            file,
+            name: file.name,
+            size: file.size,
+            type: file.type,
+            lastModified: file.lastModified,
+            problem,
+            url:
+              !problem && /^image\/(png|jpeg|webp)$/.test(file.type)
+                ? URL.createObjectURL(file)
+                : null,
+          });
+        }
+        state.composerErrors[scope] = "";
+        render();
+        if (fresh.length !== files.length) showNotice("重复附件未再次添加。");
+        else showNotice("附件仅在本页预览，不会上传或交给真实模型。");
+      }
       function render() {
+        const focused = document.activeElement;
+        const focusDraft = focused?.dataset?.draft;
+        const selection = focusDraft ? [focused.selectionStart, focused.selectionEnd] : null;
+        for (const scroll of document.querySelectorAll("[data-scroll-key]")) {
+          if (scroll.clientHeight)
+            scrollPositions.set(scroll.dataset.scrollKey, {
+              top: scroll.scrollTop,
+              tail: scroll.scrollHeight - scroll.clientHeight - scroll.scrollTop < 60,
+            });
+        }
         const app = $("#app");
         app.className =
           "app layout-" +
@@ -2476,7 +3495,11 @@
                 : state.workspace
                   ? memberSession()
                   : "") +
-          "</section></div>";
+          '</section></div><output class="ui-toast" id="ui-notice" role="status" ' +
+          (state.uiNotice ? "" : "hidden") +
+          ">" +
+          esc(state.uiNotice) +
+          "</output>";
         document
           .querySelectorAll("[data-layout]")
           .forEach((x) =>
@@ -2507,11 +3530,54 @@
             ? button("simulate-handoff", "演示：Noema 将反馈交给团队")
             : "") +
           button("explanation", "评审说明 ↗");
+        if (state.scene === "execution") {
+          const controls =
+            delegatedWork.status === "running"
+              ? button("simulate-work-step", "演示：完成当前步骤") +
+                button("simulate-work-failure", "演示：工具连接中断")
+              : delegatedWork.status === "checking"
+                ? button("simulate-write-applied", "演示：核对为已写入") +
+                  button("simulate-write-missing", "演示：核对为尚未写入")
+                : "";
+          $("#study-note").insertAdjacentHTML("beforeend", controls);
+        }
+        if (conversations.room(roomScope()).active)
+          $("#study-note").insertAdjacentHTML(
+            "beforeend",
+            button("simulate-reply-failure", "演示：回复连接中断"),
+          );
         $("#stage").classList.toggle("narrow", state.narrow);
         document.body.classList.toggle("focused", state.focused);
         syncIndex();
-        for (const x of document.querySelectorAll(".chat-scroll,.session-scroll"))
-          x.scrollTop = x.scrollHeight;
+        filterIndex();
+        document.querySelectorAll(".composer textarea").forEach(fitComposer);
+        for (const scroll of document.querySelectorAll(
+          ".chat-scroll,.session-scroll,.work-content",
+        )) {
+          const key = scroll.matches(".chat-scroll")
+            ? "core"
+            : scroll.matches(".session-scroll")
+              ? roomScope()
+              : "view:" + state.workspace + ":" + state.tab + ":" + state.member;
+          scroll.dataset.scrollKey = key;
+          const saved = scrollPositions.get(key);
+          scroll.scrollTop =
+            state.scrollToTail === key || (saved?.tail && !key.startsWith("view:"))
+              ? scroll.scrollHeight
+              : saved
+                ? saved.top
+                : key.startsWith("view:")
+                  ? 0
+                  : scroll.scrollHeight;
+        }
+        state.scrollToTail = null;
+        if (focusDraft) {
+          const next = document.querySelector('[data-draft="' + focusDraft + '"]');
+          if (next) {
+            next.focus({ preventScroll: true });
+            next.setSelectionRange(...selection);
+          }
+        }
       }
       function modal(title, body) {
         const d = $("#dialog");
@@ -2572,13 +3638,186 @@
         );
       }
       function addCore(html, who = "assistant") {
-        (state.extra[state.scene] ??= []).push(message(who, html, "刚刚"));
+        conversations.room("core").messages.push({
+          id: "event-" + ++conversations.sequence,
+          role: who === "user" ? "user" : "assistant",
+          html,
+        });
       }
-      function act(action, el) {
+      async function act(action, el) {
+        const scope = el?.dataset.scope || roomScope();
+        if (action === "view-attachment") {
+          const all = Object.values(state.attachments).flat();
+          for (const room of conversations.rooms.values()) {
+            all.push(
+              ...room.messages.flatMap((m) => m.files || []),
+              ...room.queue.flatMap((m) => m.files || []),
+            );
+          }
+          const file = all.find((f) => f.id === el.dataset.attachment);
+          if (!file) {
+            showNotice("此附件在刷新后不可用，请重新选择。");
+            return;
+          }
+          modal(
+            file.name,
+            file.problem
+              ? "<p>" + esc(file.problem) + "</p>"
+              : file.url
+                ? '<img class="file-preview" alt="' +
+                  esc(file.name) +
+                  '" src="' +
+                  esc(file.url) +
+                  '"><p class="runtime-caption">仅本地预览，未上传。</p>'
+                : "<p>文件大小：" +
+                  Math.max(1, Math.ceil(file.size / 1024)) +
+                  " KB</p><p>此原型尚未解析文档，也未把文件发送给模型。</p>",
+          );
+          return;
+        }
+        if (action === "copy-message") {
+          try {
+            await navigator.clipboard.writeText(messageText(el.closest(".message")));
+            showNotice("已复制消息。");
+          } catch {
+            showNotice("浏览器未允许复制，请选择消息文字复制。");
+          }
+          return;
+        }
+        if (action === "quote-message") {
+          const article = el.closest(".message");
+          state.quotes[scope] = {
+            author: article.querySelector(".byline strong")?.textContent || "你",
+            text: messageText(article).slice(0, 500),
+          };
+          render();
+          document.querySelector('.composer[data-scope="' + scope + '"] textarea').focus();
+          return;
+        }
+        if (action === "clear-quote") {
+          delete state.quotes[scope];
+          render();
+          return;
+        }
+        if (action === "pick-attachments") {
+          document.querySelector('[data-file-scope="' + scope + '"]').click();
+          return;
+        }
+        if (action === "remove-attachment") {
+          state.attachments[scope].splice(Number(el.dataset.file), 1);
+          render();
+          return;
+        }
+        if (action === "clear-composer-error") {
+          state.composerErrors[scope] = "";
+          render();
+          return;
+        }
+        if (action === "stop-reply") {
+          conversations.interrupt(scope);
+          return;
+        }
+        if (action === "retry-reply") {
+          conversations.retry(scope, el.dataset.reply);
+          return;
+        }
+        if (action === "resume-queue") {
+          conversations.resume(scope);
+          return;
+        }
+        if (action === "prioritize-queued") {
+          state.scrollToTail = scope;
+          conversations.prioritize(scope, el.dataset.packet);
+          return;
+        }
+        if (action === "withdraw-queued") {
+          const packet = conversations.withdraw(scope, el.dataset.packet);
+          if (packet) {
+            const restored =
+              packet.quote && state.quotes[scope]
+                ? "引用 " + packet.quote.author + "：" + packet.quote.text + "\n" + packet.text
+                : packet.text;
+            state.drafts[scope] = [state.drafts[scope], restored].filter(Boolean).join("\n\n");
+            state.attachments[scope] = [...(state.attachments[scope] || []), ...packet.files];
+            if (packet.quote && !state.quotes[scope]) state.quotes[scope] = packet.quote;
+            persistDrafts();
+            render();
+          }
+          return;
+        }
+        if (action === "find-messages") {
+          modal(
+            "查找当前对话",
+            '<label for="message-search">关键词</label><input id="message-search" type="search" class="search-input" placeholder="输入要查找的内容"><div id="search-results"><p class="index-empty">仅搜索当前会话，不会把其他私聊交给 Noema。</p></div>',
+          );
+          $("#message-search").focus();
+          return;
+        }
+        if (action === "search-jump") {
+          const match = searchMatches[Number(el.dataset.match)];
+          if (!match) return;
+          $("#dialog").close();
+          const scroll = match.article.closest(".chat-scroll,.session-scroll");
+          scroll.scrollTop +=
+            match.article.getBoundingClientRect().top - scroll.getBoundingClientRect().top - 20;
+          match.article.classList.add("search-match");
+          match.article.tabIndex = -1;
+          match.article.focus({ preventScroll: true });
+          setTimeout(() => match.article.classList.remove("search-match"), 2000);
+          return;
+        }
+        if (action === "jump-latest") {
+          const scroll = $(".chat-scroll");
+          scroll.scrollTop = scroll.scrollHeight;
+          el.hidden = true;
+          return;
+        }
+        if (action === "simulate-reply-failure") {
+          conversations.interrupt(roomScope(), "failed");
+          return;
+        }
+        if (
+          action.startsWith("work-") ||
+          action.startsWith("simulate-work-") ||
+          action.startsWith("simulate-write-")
+        ) {
+          if (action === "work-allow-once")
+            delegatedWork.decide(Number(el.dataset.generation), "once");
+          if (action === "work-allow-project")
+            delegatedWork.decide(Number(el.dataset.generation), "project");
+          if (action === "work-deny") delegatedWork.decide(Number(el.dataset.generation), "deny");
+          if (action === "work-stop") delegatedWork.interrupt("stopped");
+          if (action === "work-resume") delegatedWork.resume();
+          if (action === "work-reapply") delegatedWork.requestAccess();
+          if (action === "work-revoke") delegatedWork.revoke();
+          if (action === "simulate-work-step") delegatedWork.advance();
+          if (action === "simulate-work-failure") delegatedWork.interrupt();
+          if (action === "simulate-write-applied") delegatedWork.reconcile(true);
+          if (action === "simulate-write-missing") delegatedWork.reconcile(false);
+          if (action === "work-revoke" && $("#dialog").open) {
+            const section = el.closest(".settings-section");
+            section.innerHTML =
+              '<h3>能力与授权</h3><p role="status">示例项目授权已撤回。其他尚未保存的设置保留在这里。</p>';
+            section.tabIndex = -1;
+            section.focus();
+          }
+          render();
+          return;
+        }
+        if (action === "locate-work") {
+          state.workspace = null;
+          render();
+          const target = document.querySelector(".chat .work-request");
+          const scroll = $(".chat-scroll");
+          scroll.scrollTop +=
+            target.getBoundingClientRect().top - scroll.getBoundingClientRect().top - 15;
+          return;
+        }
         if (action === "toggle-index") {
           if ($("#app").clientWidth <= 820) state.mobileIndexOpen = !state.mobileIndexOpen;
           else state.indexOpen = !state.indexOpen;
           syncIndex();
+          persistDrafts();
           $(".index-toggle").focus();
           return;
         }
@@ -2598,7 +3837,16 @@
               esc(state.name) +
               '" maxlength="24" required><label for="partner-preference">希望它怎样与你交流</label><textarea id="partner-preference" name="preference">' +
               esc(state.preference) +
-              '</textarea><p>这里的修改会在演示对话中得到确认；正式产品需让同一份个人设定同步生效。</p><button class="primary" type="submit">保存设置</button></form>',
+              '</textarea><section class="settings-section"><h3>模型与连接</h3><label for="model-choice">后续轮次使用的模型</label><select name="model" id="model-choice"><option value="general" ' +
+              (state.model === "general" ? "selected" : "") +
+              '>演示通用模型 · 文本与图片</option><option value="reasoning" ' +
+              (state.model === "reasoning" ? "selected" : "") +
+              '>演示推理模型 · 文本与图片</option></select><p>当前未连接模型服务，不产生真实调用或费用。切换只影响后续发送，正在进行的轮次保留原模型。</p></section><section class="settings-section"><h3>能力与授权</h3><p>联网检索、文件执行和系统通知尚未接入。可在“委托执行”情境中检查申请、拒绝、撤回与恢复流程。</p>' +
+              (delegatedWork.grant === "project"
+                ? "<p>示例价格追踪器项目：已允许项目文件访问。</p>" +
+                  button("work-revoke", "撤回示例项目授权", "secondary", 'type="button"')
+                : "<p>没有保存的项目授权。</p>") +
+              '</section><section class="settings-section"><h3>本机保存</h3><p>此原型只记住文字草稿、伙伴设定和侧栏宽度；附件与执行状态仅存在于当前页面，刷新后需重新选择。没有真实消息上传。</p></section><button class="primary" type="submit">保存设置</button></form>',
           );
           return;
         }
@@ -2707,6 +3955,9 @@
           return;
         }
         if (scene) {
+          conversations.reset();
+          delegatedWork.create();
+          scrollPositions.clear();
           state.scene = scene.dataset.scene;
           state.workspace = state.scene === "project" ? "project" : null;
           state.projectStage = state.scene === "project" ? "forming" : "review";
@@ -2730,8 +3981,45 @@
       });
       document.addEventListener("input", (e) => {
         const key = e.target.dataset.draft;
-        if (key) state.drafts[key] = e.target.value;
+        if (key) {
+          state.drafts[key] = e.target.value;
+          persistDrafts();
+          const form = e.target.closest(".composer");
+          if (form) {
+            fitComposer(e.target);
+            form.querySelector(".send").disabled =
+              (state.attachments[key] || []).some((f) => f.problem) ||
+              !((e.target.value || "").trim() || (state.attachments[key] || []).length);
+          }
+        }
+        if (e.target.matches(".index-search input")) {
+          state.indexQuery = e.target.value;
+          filterIndex();
+        }
+        if (e.target.id === "message-search") findMessages(e.target.value);
       });
+      document.addEventListener("change", (e) => {
+        if (e.target.matches("[data-file-scope]"))
+          receiveFiles(e.target.dataset.fileScope, Array.from(e.target.files || []));
+      });
+      document.addEventListener("dragover", (e) => {
+        if (e.target.closest(".composer")) e.preventDefault();
+      });
+      document.addEventListener("drop", (e) => {
+        const form = e.target.closest(".composer");
+        if (!form) return;
+        e.preventDefault();
+        receiveFiles(form.dataset.scope, Array.from(e.dataTransfer.files));
+      });
+      document.addEventListener("paste", (e) => {
+        const form = e.target.closest(".composer");
+        const files = Array.from(e.clipboardData?.files || []);
+        if (form && files.length) {
+          e.preventDefault();
+          receiveFiles(form.dataset.scope, files);
+        }
+      });
+      window.addEventListener("beforeunload", persistDrafts);
       document.addEventListener("submit", (e) => {
         const form = e.target;
         if (!form.dataset.form) return;
@@ -2741,6 +4029,10 @@
           const data = new FormData(form);
           state.name = String(data.get("name")).trim() || "Noema";
           state.preference = String(data.get("preference")).trim();
+          state.model = ["general", "reasoning"].includes(data.get("model"))
+            ? data.get("model")
+            : "general";
+          persistDrafts();
           $("#dialog").close();
           addCore("<p>我现在叫 " + esc(state.name) + "。你在设置里写的交流偏好也已经收到。</p>");
           render();
@@ -2774,36 +4066,26 @@
         if (kind === "chat") {
           const scope = form.dataset.scope,
             text = form.querySelector("textarea").value.trim();
-          if (!text) return;
-          state.drafts[scope] = "";
-          if (scope === "core") {
-            addCore("<p>" + esc(text) + "</p>", "user");
-            let reply = "<p>这条消息已进入演示对话。正式产品会在这里理解你的需求并回应。</p>";
-            if (/归档|收起项目/.test(text)) {
-              state.archived = true;
-              reply = "<p>演示：项目已从活跃列表收起，记录与成员会话保留。</p>";
-            } else if (/恢复|重新打开/.test(text)) {
-              state.archived = false;
-              reply = "<p>演示：原项目已恢复，成员继续原来的工作会话。</p>" + projectLink();
-            } else if (/改名|叫你|名字/.test(text)) {
-              reply = "<p>可以通过导航里的伙伴设置调整名字和交流偏好；本页只模拟这条设置链路。</p>";
-            }
-            addCore(reply);
-          } else {
-            (state.sessionExtra[scope] ??= []).push(
-              message("你", "<p>" + esc(text) + "</p>", "刚刚"),
-            );
-            state.sessionExtra[scope].push(
-              message(
-                people[state.member].name,
-                "<p>收到。这条消息只在当前" +
-                  (scope.startsWith("main") ? "日常私聊" : "项目工作会话") +
-                  "中回应，不会作为你的私聊消息转给 Noema。</p>",
-                "刚刚",
-              ),
-            );
+          const files = state.attachments[scope] || [];
+          if ((!text && !files.length) || files.some((f) => f.problem)) return;
+          if (files.length > 5) {
+            state.composerErrors[scope] = "当前草稿超过 5 个附件，请移除多余附件后发送。";
+            render();
+            return;
           }
-          render();
+          const quote = state.quotes[scope];
+          const response =
+            (scope === "core"
+              ? "这是 Noema 的演示回复：消息会留在当前主聊。"
+              : "这是当前成员会话的演示回复，不会自动转交给 Noema。") +
+            (files.length ? "附件仅展示本地预览与归属，没有实际解析内容。" : "") +
+            "可以在回复期间追加消息、停止本轮，或模拟连接中断后重试。";
+          state.drafts[scope] = "";
+          state.attachments[scope] = [];
+          delete state.quotes[scope];
+          state.scrollToTail = scope;
+          conversations.send(scope, { text, files, quote, model: modelLabel(), response });
+          persistDrafts();
           const input = document.querySelector('textarea[data-draft="' + scope + '"]');
           if (input) input.focus();
         }
@@ -2813,6 +4095,7 @@
           e.key === "Enter" &&
           !e.shiftKey &&
           !e.isComposing &&
+          e.keyCode !== 229 &&
           e.target.matches(".composer textarea")
         ) {
           e.preventDefault();
@@ -2825,6 +4108,11 @@
         (e) => {
           const target = e.target === document ? document.documentElement : e.target;
           if (!(target instanceof Element)) return;
+          if (target.matches(".chat-scroll")) {
+            const jump = $(".jump-latest");
+            if (jump)
+              jump.hidden = target.scrollHeight - target.scrollTop - target.clientHeight < 80;
+          }
           target.classList.add("scroll-active");
           clearTimeout(scrollTimers.get(target));
           scrollTimers.set(
