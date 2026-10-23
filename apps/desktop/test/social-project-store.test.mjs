@@ -305,7 +305,9 @@ test('schema v11 upgrades without deleting existing chats or re-enabling revoked
   try {
     db.exec(`
       DROP TABLE social_work_execution_steps;
+      DELETE FROM social_schema_migrations WHERE version = 14;
       DELETE FROM social_schema_migrations WHERE version = 13;
+      ALTER TABLE social_work_tasks DROP COLUMN execution_engine;
       DROP TABLE social_project_sessions;
       DROP TABLE social_projects;
       DELETE FROM social_schema_migrations WHERE version = 12;
@@ -315,7 +317,7 @@ test('schema v11 upgrades without deleting existing chats or re-enabling revoked
       db
         .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
         .get().version,
-      13,
+      14,
     );
     assert.deepEqual(
       upgradedStore

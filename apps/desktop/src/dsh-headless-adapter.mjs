@@ -281,6 +281,7 @@ export class DshHeadlessAdapter {
     env = process.env,
     spawnImpl = spawn,
   }) {
+    this.executionEngine = 'dsh';
     this.runtime = runtime;
     this.userDataPath = path.resolve(userDataPath);
     this.providerBaseUrl = providerBaseUrl;

@@ -97,14 +97,14 @@ test('a later schema upgrade gets a verified snapshot without overwriting the fi
     const next = await backupBeforeSocialChatMigration({
       db: root.db,
       databasePath,
-      targetVersion: 14,
+      targetVersion: 15,
     });
     assert.equal(
       fs.readdirSync(directory).some((name) => name.includes('.partial-')),
       false,
     );
     assert.notEqual(next, first);
-    const snapshot = new Database(next, { readonly: true });
+    const snapshot = new Database(next);
     try {
       assert.equal(
         snapshot
@@ -112,7 +112,7 @@ test('a later schema upgrade gets a verified snapshot without overwriting the fi
             'SELECT MAX(version) AS version FROM social_schema_migrations',
           )
           .get().version,
-        13,
+        14,
       );
       assert.equal(
         snapshot
@@ -130,7 +130,7 @@ test('a later schema upgrade gets a verified snapshot without overwriting the fi
       await backupBeforeSocialChatMigration({
         db: root.db,
         databasePath,
-        targetVersion: 14,
+        targetVersion: 15,
       }),
       next,
     );

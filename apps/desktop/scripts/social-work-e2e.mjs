@@ -82,7 +82,7 @@ const verificationChecks = [
 }));
 const prompt = [
   '[NOEMA E2E] 仅在当前临时工作区完成一项小任务。',
-  `创建 ${relativePath}，用简体中文写一份恢复清单，依次说明“恢复前”“执行恢复”“恢复后验证”，并在文末写入编号 ${marker}。`,
+  `先列出工作区文件，确认 ${relativePath} 不存在；再创建它，用简体中文写一份恢复清单，依次说明“恢复前”“执行恢复”“恢复后验证”，并在文末写入编号 ${marker}。写入后用 read_file 重新读取该文件，核对三个标题和编号都在。`,
   '只修改这个文件；不要读取、写入或运行工作区之外的内容。',
 ].join('\n');
 mkdirSync(e2eDirectory, { recursive: true });
@@ -317,6 +317,7 @@ const summary = {
   errorCode: result.task?.errorCode ?? null,
   errorMessage: result.task?.errorMessage ?? result.errorMessage ?? null,
   toolCallCount: result.task?.toolCallCount ?? 0,
+  executionEngine: result.task?.executionEngine ?? null,
   caseSnapshot: result.task?.caseSnapshot ?? null,
   practiceSnapshot: result.task?.practiceSnapshot ?? null,
   practiceCandidateStatus: result.task?.practiceCandidateStatus ?? null,
@@ -326,7 +327,7 @@ const summary = {
     result.livePracticeProposal?.sourceTaskId ?? practiceSourceTaskId,
   workspacePath,
   childExitCode: exit.code,
-  executionMode: syntheticAdapter ? 'synthetic-adapter' : 'live-dsh',
+  executionMode: syntheticAdapter ? 'synthetic-adapter' : 'live-noema',
   proposalMode: liveEpisodes
     ? 'real-dsh-episodes'
     : livePractice
@@ -392,6 +393,8 @@ if (proposalWasEmpty) {
   validationFailed ||=
     result.outcome !== 'finished' ||
     result.task?.status !== 'completed' ||
+    (!syntheticAdapter && result.task?.executionEngine !== 'noema') ||
+    (!syntheticAdapter && result.task?.toolCallCount < 2) ||
     result.task?.verificationStatus !== 'verified' ||
     result.task?.interactionAdjustmentIds?.includes(interactionAdjustmentId) !==
       true ||

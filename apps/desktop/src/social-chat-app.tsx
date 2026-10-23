@@ -2996,6 +2996,12 @@ function SocialChatApp() {
                 disabled={modelOptions.length === 0 || switchingModel}
                 onChange={(event) => void handleModelChange(event.target.value)}
               >
+                {activeModel &&
+                !modelOptions.some((model) => model.name === activeModel) ? (
+                  <option value={activeModel} disabled>
+                    {activeModel} · 当前目录未列出
+                  </option>
+                ) : null}
                 {modelOptions.map((model) => (
                   <option
                     key={model.name}

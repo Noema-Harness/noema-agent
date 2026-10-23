@@ -523,6 +523,17 @@ export class SocialChatStore {
         `);
       })();
     }
+    if (current < 14) {
+      this.db.transaction(() => {
+        this.db.exec(`
+          ALTER TABLE social_work_tasks
+            ADD COLUMN execution_engine TEXT NOT NULL DEFAULT 'dsh';
+          UPDATE social_work_tasks SET execution_engine = runtime;
+          INSERT INTO social_schema_migrations (version, applied_at)
+          VALUES (14, '${isoNow()}');
+        `);
+      })();
+    }
   }
 
   seedInitialSocialModel() {
@@ -1710,6 +1721,7 @@ export class SocialChatStore {
       taskPrompt,
       sourceMessageId = null,
       model,
+      executionEngine = 'dsh',
       verificationChecks = [],
       caseReuseRequested = false,
       caseSnapshot = null,
@@ -1789,11 +1801,11 @@ export class SocialChatStore {
         .prepare(`
           INSERT INTO social_work_tasks
             (id, room_id, agent_id, source_message_id, workspace_path, workspace_key, task_prompt,
-             model, runtime, status, verification_status,
+             model, runtime, execution_engine, status, verification_status,
              verification_checks_json, case_snapshot_json, case_reuse_requested,
              practice_snapshot_json, interaction_adjustment_ids_json,
              interaction_adjustment_snapshots_json, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'dsh', 'starting', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'dsh', ?, 'starting', ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `)
         .run(
           id,
@@ -1804,6 +1816,7 @@ export class SocialChatStore {
           workspaceKey,
           normalizedPrompt,
           normalizedModel,
+          requireText(executionEngine, '执行器', 40),
           verificationChecks.length ? 'pending' : 'not_planned',
           JSON.stringify(verificationChecks),
           JSON.stringify(caseSnapshot),
@@ -1854,6 +1867,7 @@ export class SocialChatStore {
                source_message_id AS sourceMessageId,
                workspace_path AS workspacePath, workspace_key AS workspaceKey,
                task_prompt AS taskPrompt, model, runtime,
+               execution_engine AS executionEngine,
                runtime_session_id AS runtimeSessionId, status, phase,
                tool_call_count AS toolCallCount,
                tool_action_categories_json AS toolActionCategoriesJson,
@@ -1894,6 +1908,7 @@ export class SocialChatStore {
                source_message_id AS sourceMessageId,
                workspace_path AS workspacePath, workspace_key AS workspaceKey,
                task_prompt AS taskPrompt, model, runtime,
+               execution_engine AS executionEngine,
                runtime_session_id AS runtimeSessionId, status, phase,
                tool_call_count AS toolCallCount,
                tool_action_categories_json AS toolActionCategoriesJson,

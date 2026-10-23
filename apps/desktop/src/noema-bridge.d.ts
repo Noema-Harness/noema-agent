@@ -274,6 +274,7 @@ export interface NoemaSocialWorkTask {
   agentId: string;
   sourceMessageId: string | null;
   workspacePath: string;
+  executionEngine: string;
   taskPrompt: string;
   status:
     | 'starting'

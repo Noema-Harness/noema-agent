@@ -115,7 +115,7 @@ test('social work keeps the stable friend and only includes the issuing room con
     assert.equal(task.status, 'completed');
     assert.equal(task.agentId, 'engineering-partner');
     assert.equal(task.roomId, 'room-engineering-collaboration');
-    assert.equal(task.runtime, 'dsh');
+    assert.equal(task.executionEngine, 'noema');
     assert.equal(task.runtimeSessionId, 'session-room-task');
     assert.equal(task.verificationStatus, 'verified');
     assert.equal(task.resultText, '任务结果。');
@@ -800,7 +800,7 @@ test('a rate-limited task resumes once in the same DSH session only after its fi
   }
 });
 
-test('project work is unavailable without DSH or FreeLLMAPI and does not open a folder picker', async () => {
+test('project work is unavailable without an executor or FreeLLMAPI and does not open a folder picker', async () => {
   const { db, store } = makeStore();
   let picked = false;
   const service = new SocialWorkService({
@@ -820,7 +820,7 @@ test('project work is unavailable without DSH or FreeLLMAPI and does not open a 
         agentId: 'engineering-partner',
         prompt: '不能绕过运行环境预检。',
       }),
-      /DSH Headless/,
+      /Noema 项目执行器/,
     );
     assert.equal(picked, false);
     assert.equal(store.listRoomWorkTasks('room-engineering-partner').length, 0);
