@@ -389,6 +389,9 @@ export class SocialProjectStore {
     requireText(projectId, '项目 ID', 200);
     const project = this.getProject(projectId);
     if (project.status === 'archived') return project;
+    if (project.status === 'awaiting_user') {
+      throw new Error('项目仍在等待用户反馈，不能归档。');
+    }
     const active = this.db
       .prepare(`
         SELECT 1

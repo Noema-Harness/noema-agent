@@ -80,6 +80,12 @@ test('a project creates one shared room and separate hidden member sessions', ()
       stores.socialProjectStore.listProjects({ includeArchived: false }).length,
       1,
     );
+    stores.socialProjectStore.setAwaitingUser(project.id, true);
+    assert.throws(
+      () => stores.socialProjectStore.archiveProject(project.id),
+      /等待用户反馈/,
+    );
+    stores.socialProjectStore.setAwaitingUser(project.id, false);
   } finally {
     stores.db.close();
   }
@@ -138,6 +144,24 @@ test('private, project-session, and group transcripts remain independent through
       stores.socialChatStore
         .getRoomSnapshot(project.groupRoomId)
         .messages.some((m) => m.content === '群内公开内容。'),
+    );
+
+    const reopenedChatStore = new SocialChatStore(stores.db);
+    const reopenedProjectStore = new SocialProjectStore({
+      db: stores.db,
+      socialChatStore: reopenedChatStore,
+    });
+    const reopened = reopenedProjectStore.getProject(project.id);
+    assert.equal(reopened.groupRoomId, project.groupRoomId);
+    assert.equal(
+      reopenedProjectStore.getProjectSession(project.id, member.agentId).room
+        .room.id,
+      session.room.room.id,
+    );
+    assert.ok(
+      reopenedProjectStore
+        .getProjectSession(project.id, member.agentId)
+        .room.messages.some((message) => message.content === '项目会话内容。'),
     );
 
     const interrupted = stores.socialChatStore.beginTurn({
