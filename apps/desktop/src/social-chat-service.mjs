@@ -453,13 +453,19 @@ export class SocialChatService {
             }
           : {}),
         onRouteMetadata: () => {
-          if (historySources.length) {
+          if (!controller.signal.aborted && historySources.length) {
             this.store.markReplyHistorySourcesIncluded(assistantMessageId);
           }
         },
       })) {
+        controller.signal.throwIfAborted();
         content += delta;
-        this.store.appendAssistantDelta(assistantMessageId, delta);
+        if (!this.store.appendAssistantDelta(assistantMessageId, delta)) {
+          throw new FreeLLMAPIError(
+            'reply_not_streaming',
+            '本轮回复已停止写入。',
+          );
+        }
         this.emit({
           type: 'chat-message-delta',
           roomId,
@@ -467,6 +473,7 @@ export class SocialChatService {
           delta,
         });
       }
+      controller.signal.throwIfAborted();
       if (toolCalls.length) {
         if (toolCalls.length !== 1) {
           throw new FreeLLMAPIError(
@@ -475,6 +482,7 @@ export class SocialChatService {
           );
         }
         const toolName = toolCalls[0]?.function?.name;
+        controller.signal.throwIfAborted();
         let input;
         try {
           input = JSON.parse(toolCalls[0].function.arguments);
@@ -504,8 +512,16 @@ export class SocialChatService {
             );
           }
           const task = input.task.trim();
+          controller.signal.throwIfAborted();
           const sourceLabel = `\n\n**${specialist.name}的协助**\n\n> ${task.replaceAll('\n', '\n> ')}\n\n`;
-          this.store.appendAssistantDelta(assistantMessageId, sourceLabel);
+          if (
+            !this.store.appendAssistantDelta(assistantMessageId, sourceLabel)
+          ) {
+            throw new FreeLLMAPIError(
+              'reply_not_streaming',
+              '本轮回复已停止写入。',
+            );
+          }
           this.emit({
             type: 'chat-message-delta',
             roomId,
@@ -527,8 +543,14 @@ export class SocialChatService {
             ],
             signal: controller.signal,
           })) {
+            controller.signal.throwIfAborted();
             specialistReply += delta;
-            this.store.appendAssistantDelta(assistantMessageId, delta);
+            if (!this.store.appendAssistantDelta(assistantMessageId, delta)) {
+              throw new FreeLLMAPIError(
+                'reply_not_streaming',
+                '本轮回复已停止写入。',
+              );
+            }
             this.emit({
               type: 'chat-message-delta',
               roomId,
@@ -555,6 +577,7 @@ export class SocialChatService {
               '项目工作说明无效或当前不可用；没有启动任务。',
             );
           }
+          controller.signal.throwIfAborted();
           const result = await this.startProjectWorkFromNoema({
             roomId,
             prompt: input.task.trim(),
@@ -563,7 +586,14 @@ export class SocialChatService {
           const statusText = result.accepted
             ? '已从这条对话启动项目工作。执行者、工作区和结果会显示在原请求附近。'
             : result.reason || '没有启动项目工作。';
-          this.store.appendAssistantDelta(assistantMessageId, statusText);
+          if (
+            !this.store.appendAssistantDelta(assistantMessageId, statusText)
+          ) {
+            throw new FreeLLMAPIError(
+              'reply_not_streaming',
+              '本轮回复已停止写入。',
+            );
+          }
           this.emit({
             type: 'chat-message-delta',
             roomId,
@@ -584,7 +614,8 @@ export class SocialChatService {
           '模型没有返回文字。这条消息已保留，可以重试。',
         );
       }
-      this.store.completeReply(assistantMessageId);
+      controller.signal.throwIfAborted();
+      if (!this.store.completeReply(assistantMessageId)) return;
       this.emit({
         type: 'chat-turn-completed',
         roomId,
@@ -596,13 +627,14 @@ export class SocialChatService {
         controller.signal.aborted || error?.name === 'AbortError';
       const message = safeError(error);
       if (interrupted) {
-        this.store.interruptReply(assistantMessageId);
-        this.emit({
-          type: 'chat-turn-interrupted',
-          roomId,
-          messageId: assistantMessageId,
-          message,
-        });
+        if (this.store.interruptReply(assistantMessageId)) {
+          this.emit({
+            type: 'chat-turn-interrupted',
+            roomId,
+            messageId: assistantMessageId,
+            message,
+          });
+        }
       } else {
         const code =
           typeof error?.code === 'string' ? error.code : 'chat_error';
@@ -625,6 +657,15 @@ export class SocialChatService {
     for (const run of this.active.values()) {
       if (run.assistantMessageId !== messageId) continue;
       run.controller.abort();
+      if (this.store.interruptReply(messageId)) {
+        this.emit({
+          type: 'chat-turn-interrupted',
+          roomId: run.roomId,
+          messageId,
+          message: '已停止生成；已有内容已保留。',
+        });
+        this.emit({ type: 'chat-state-updated', roomId: run.roomId });
+      }
       return true;
     }
     return false;

@@ -803,25 +803,19 @@ test('a user-created specialist receives only messages explicitly forwarded into
   }
 });
 
-test('stop signal interrupts a live room reply and preserves partial text', async () => {
+test('stop immediately persists interruption and rejects late provider output', async () => {
   const db = new Database(':memory:');
   new RootStore(db);
   const store = createSocialTestStore(db);
   let release;
   const events = [];
   const provider = {
-    async *streamChat({ signal }) {
+    async *streamChat() {
       yield '部分文字';
-      await new Promise((resolve, reject) => {
+      await new Promise((resolve) => {
         release = resolve;
-        signal.addEventListener(
-          'abort',
-          () => reject(new DOMException('aborted', 'AbortError')),
-          {
-            once: true,
-          },
-        );
       });
+      yield '迟到文字';
     },
   };
   const service = new SocialChatService({
@@ -841,6 +835,16 @@ test('stop signal interrupts a live room reply and preserves partial text', asyn
     });
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(service.stopReply(turn.messageId), true);
+    const stopped = store
+      .getRoomSnapshot('room-noema')
+      .messages.find((item) => item.id === turn.messageId);
+    assert.equal(stopped?.status, 'interrupted');
+    assert.equal(stopped?.content, '部分文字');
+    assert.equal(
+      events.filter((event) => event.type === 'chat-turn-interrupted').length,
+      1,
+    );
+    release();
     await service.active.get('room-noema')?.done;
     const message = store
       .getRoomSnapshot('room-noema')
@@ -848,8 +852,8 @@ test('stop signal interrupts a live room reply and preserves partial text', asyn
     assert.equal(message?.status, 'interrupted');
     assert.equal(message?.content, '部分文字');
     assert.equal(
-      events.some((event) => event.type === 'chat-turn-interrupted'),
-      true,
+      events.filter((event) => event.type === 'chat-turn-interrupted').length,
+      1,
     );
   } finally {
     release?.();
