@@ -3134,6 +3134,11 @@ async function captureSocialTextAttachmentsE2e() {
     if (!(input instanceof HTMLTextAreaElement) || !setter) throw new Error('找不到聊天输入框。');
     setter.call(input, '请概括这个文件。');
     input.dispatchEvent(new Event('input', { bubbles: true }));
+    choose(new File(['remove me'], 'discard.txt', { type: 'text/plain' }));
+    await waitFor(() => document.querySelector('.attachment-chip')?.textContent?.includes('discard.txt'), '待移除附件预览');
+    document.querySelector('[aria-label="移除附件 discard.txt"]')?.click();
+    await waitFor(() => !document.querySelector('.attachment-chip'), '移除附件');
+    const draftPreservedAfterRemoval = input.value === '请概括这个文件。';
     choose(new File(['附件正文标记：琥珀海岸'], 'brief.txt', { type: 'text/plain' }));
     await waitFor(() => document.querySelector('.attachment-chip')?.textContent?.includes('brief.txt'), '附件预览');
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -3149,7 +3154,7 @@ async function captureSocialTextAttachmentsE2e() {
         composerVisible: Boolean(composer && composer.getBoundingClientRect().bottom <= window.innerHeight),
       };
     })();
-    return { unsupportedNotice, desktop };
+    return { unsupportedNotice, draftPreservedAfterRemoval, desktop };
   })()`);
 
   if (ui.missingNoema) {
@@ -3162,6 +3167,7 @@ async function captureSocialTextAttachmentsE2e() {
     throw new Error(`附件 E2E 未找到 Noema：${JSON.stringify(ui)}`);
   }
   if (
+    !ui.draftPreservedAfterRemoval ||
     !ui.desktop?.sendEnabled ||
     !ui.desktop?.chipVisible ||
     !ui.desktop?.shellNoOverflow ||
@@ -3244,6 +3250,7 @@ async function captureSocialTextAttachmentsE2e() {
   mainWindow.setSize(1280, 800);
   const result = {
     unsupportedNotice: ui.unsupportedNotice,
+    draftPreservedAfterRemoval: ui.draftPreservedAfterRemoval,
     desktop: ui.desktop,
     narrow,
     messagePersisted:
@@ -3259,6 +3266,7 @@ async function captureSocialTextAttachmentsE2e() {
   };
   if (
     !result.unsupportedNotice.includes('PDF 与图片暂不支持') ||
+    !result.draftPreservedAfterRemoval ||
     !result.messagePersisted ||
     !result.replyCompleted ||
     !result.modelReceivedAttachment ||

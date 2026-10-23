@@ -279,6 +279,7 @@ console.log(JSON.stringify(summary, null, 2));
 if (attachmentsOnly) {
   if (
     result.outcome !== 'passed' ||
+    !result.workflow?.textAttachments?.draftPreservedAfterRemoval ||
     !result.workflow?.textAttachments?.messagePersisted ||
     !result.workflow?.textAttachments?.modelReceivedAttachment ||
     !result.workflow?.textAttachments?.singleModelRequest ||
