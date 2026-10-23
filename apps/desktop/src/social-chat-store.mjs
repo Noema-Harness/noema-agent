@@ -4,8 +4,52 @@ import { searchTranscriptHistory } from './transcript-search.mjs';
 import { SOCIAL_SCHEMA_VERSION } from './social-chat-schema.mjs';
 
 const MAX_CONTEXT_MESSAGES = 40;
+const MAX_CONTEXT_HISTORY_CHARACTERS = 12_000;
 const MAX_FORWARDED_MESSAGES = 20;
 const MAX_FORWARDED_CONTENT_LENGTH = 40_000;
+
+function boundContextHistory(entries, threadAnchorMessageId) {
+  const groups = new Map();
+  for (const entry of entries) {
+    const groupId = entry.contextGroupId ?? entry.id ?? entry.order;
+    let group = groups.get(groupId);
+    if (!group) {
+      group = { id: groupId, characters: 0, entries: [], order: entry.order };
+      groups.set(groupId, group);
+    }
+    group.entries.push(entry);
+    group.characters += entry.content.length;
+    if (entry.order > group.order) group.order = entry.order;
+  }
+
+  const orderedGroups = [...groups.values()].sort((left, right) =>
+    left.order.localeCompare(right.order),
+  );
+  const latestUser = [...entries]
+    .reverse()
+    .find((entry) => entry.isChatMessage && entry.role === 'user');
+  const required = new Set(
+    [
+      latestUser?.contextGroupId,
+      entries.find((entry) => entry.id === threadAnchorMessageId)
+        ?.contextGroupId,
+    ].filter(Boolean),
+  );
+  const selected = new Set(required);
+  let historyCharacters = 0;
+  for (const group of orderedGroups.toReversed()) {
+    if (required.has(group.id)) continue;
+    if (historyCharacters + group.characters > MAX_CONTEXT_HISTORY_CHARACTERS) {
+      break;
+    }
+    selected.add(group.id);
+    historyCharacters += group.characters;
+  }
+
+  return entries.filter((entry) =>
+    selected.has(entry.contextGroupId ?? entry.id ?? entry.order),
+  );
+}
 
 const SEEDED_AGENTS = [
   {
@@ -2453,7 +2497,7 @@ export class SocialChatStore {
   getContext(roomId, { beforeMessageId = null } = {}) {
     const rows = this.db
       .prepare(`
-        SELECT id, role, agent_id AS agentId, content, status,
+        SELECT id, turn_id AS turnId, role, agent_id AS agentId, content, status,
                forwarded_sources_json AS forwardedSourcesJson,
                reply_to_json AS replyToJson,
                created_at AS createdAt, seq AS timelineOrder
@@ -2474,7 +2518,7 @@ export class SocialChatStore {
     if (roomLineage?.parentRoomId && rows.length > 0) {
       const openingMessage = this.db
         .prepare(`
-          SELECT id, role, agent_id AS agentId, content, status,
+          SELECT id, turn_id AS turnId, role, agent_id AS agentId, content, status,
                  forwarded_sources_json AS forwardedSourcesJson,
                  reply_to_json AS replyToJson,
                  created_at AS createdAt, seq AS timelineOrder
@@ -2521,6 +2565,8 @@ export class SocialChatStore {
         .join('\n\n');
       return {
         id: row.id,
+        contextGroupId: row.turnId ?? row.id,
+        isChatMessage: true,
         order: `${row.createdAt}:message:${String(row.timelineOrder).padStart(16, '0')}`,
         role: row.role === 'assistant' ? 'assistant' : 'user',
         content:
@@ -2546,6 +2592,7 @@ export class SocialChatStore {
               ? '未完成'
               : '仍在执行';
       entries.push({
+        contextGroupId: `task:${task.id}`,
         order: `${task.updatedAt}:task:${task.id}:request`,
         role: 'user',
         content: `[项目工作请求；工作区“${workspaceName ?? '未知项目'}”] ${task.taskPrompt.slice(0, 2_000)}`,
@@ -2558,6 +2605,7 @@ export class SocialChatStore {
         .filter(Boolean)
         .join('\n');
       entries.push({
+        contextGroupId: `task:${task.id}`,
         order: `${task.updatedAt}:task:${task.id}:result`,
         role: 'assistant',
         content: outcome,
@@ -2566,12 +2614,16 @@ export class SocialChatStore {
     const orderedEntries = entries.sort((left, right) =>
       left.order.localeCompare(right.order),
     );
+    const budgetedEntries = boundContextHistory(
+      orderedEntries,
+      threadAnchorMessageId,
+    );
     if (threadAnchorMessageId) {
-      const anchor = orderedEntries.find(
+      const anchor = budgetedEntries.find(
         (entry) => entry.id === threadAnchorMessageId,
       );
       if (anchor) {
-        const recent = orderedEntries
+        const recent = budgetedEntries
           .filter((entry) => entry.id !== threadAnchorMessageId)
           .slice(-(MAX_CONTEXT_MESSAGES - 1));
         return [anchor, ...recent]
@@ -2579,7 +2631,7 @@ export class SocialChatStore {
           .map(({ role, content }) => ({ role, content }));
       }
     }
-    return orderedEntries
+    return budgetedEntries
       .slice(-MAX_CONTEXT_MESSAGES)
       .map(({ role, content }) => ({ role, content }));
   }

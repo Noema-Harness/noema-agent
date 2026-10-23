@@ -764,6 +764,56 @@ test('continuation threads keep their origin in the bounded context and can clos
   }
 });
 
+test('social context budgets whole recent turns while retaining the thread origin and latest request', () => {
+  const { db, social } = makeStores();
+  try {
+    const source = social.beginTurn({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '保留主题起点。',
+      model: 'test-model',
+    });
+    social.appendAssistantDelta(source.assistantMessageId, '主题已建立。');
+    social.completeReply(source.assistantMessageId);
+    const thread = social.createContinuationThread({
+      sourceRoomId: 'room-noema',
+      sourceIds: [source.userMessageId, source.assistantMessageId],
+      title: '上下文预算检查',
+    });
+
+    for (const [text, reply] of [
+      ['旧'.repeat(4_000), '旧答'.repeat(2_000)],
+      ['近'.repeat(4_000), '近答'.repeat(2_000)],
+      ['当前请求需要完整保留。', '已完成。'],
+    ]) {
+      const turn = social.beginTurn({
+        roomId: thread.room.id,
+        agentId: 'noema',
+        text,
+        model: 'test-model',
+      });
+      social.appendAssistantDelta(turn.assistantMessageId, reply);
+      social.completeReply(turn.assistantMessageId);
+    }
+
+    const context = social.getContext(thread.room.id);
+    const content = context.map((message) => message.content).join('\n');
+    assert.match(content, /保留主题起点/u);
+    assert.match(content, /当前请求需要完整保留/u);
+    assert.match(content, /近答/u);
+    assert.doesNotMatch(content, /旧答/u);
+    assert.ok(content.length < 13_000);
+    assert.equal(
+      social
+        .getRoomSnapshot(thread.room.id)
+        .messages.some((message) => message.content.includes('旧答')),
+      true,
+    );
+  } finally {
+    db.close();
+  }
+});
+
 test('deleting a continuation thread removes only that branch', () => {
   const { db, social } = makeStores();
   try {
