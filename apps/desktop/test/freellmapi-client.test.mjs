@@ -19,6 +19,11 @@ test('lists only the explicitly verified free routes from available models', asy
           { id: 'auto:noema-free', available: true },
           { id: 'free-router', available: true },
           {
+            id: 'kilo-auto/free',
+            available: true,
+            execution_status: 'ready',
+          },
+          {
             id: 'nemotron-3-super-120b',
             available: true,
             execution_status: 'ready',
@@ -49,6 +54,12 @@ test('lists only the explicitly verified free routes from available models', asy
       label: 'FreeLLMAPI 免费路由 · 自动',
       routeKind: 'router',
       executionStatus: null,
+    },
+    {
+      name: 'kilo-auto/free',
+      label: 'Kilo 免费自动路由',
+      routeKind: 'router',
+      executionStatus: 'ready',
     },
     {
       name: 'nvidia/nemotron-3-super-120b-a12b:free',
@@ -134,10 +145,12 @@ test('buffers automatic router replies so FreeLLMAPI can fail over before delive
 
 test('preserves tool calls for buffered automatic router replies', async () => {
   let receivedCalls;
+  let requestBody;
   const client = new FreeLLMAPIClient({
     getApiKey: () => 'test-key',
-    fetchImpl: async () =>
-      Response.json({
+    fetchImpl: async (_url, init) => {
+      requestBody = JSON.parse(init.body);
+      return Response.json({
         choices: [
           {
             message: {
@@ -157,11 +170,12 @@ test('preserves tool calls for buffered automatic router replies', async () => {
             finish_reason: 'tool_calls',
           },
         ],
-      }),
+      });
+    },
   });
   const deltas = [];
   for await (const delta of client.streamChat({
-    model: 'free-router',
+    model: 'kilo-auto/free',
     messages: [{ role: 'user', content: 'Inspect the project' }],
     signal: new AbortController().signal,
     tools: [{ type: 'function', function: { name: 'delegate_task' } }],
@@ -172,6 +186,8 @@ test('preserves tool calls for buffered automatic router replies', async () => {
     deltas.push(delta);
   }
 
+  assert.equal(requestBody.stream, false);
+  assert.equal(requestBody.model, 'kilo-auto/free');
   assert.deepEqual(deltas, []);
   assert.deepEqual(receivedCalls, [
     {

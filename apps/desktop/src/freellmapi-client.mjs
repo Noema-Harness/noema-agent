@@ -21,6 +21,14 @@ const VERIFIED_FREE_MODELS = new Map([
     },
   ],
   [
+    'kilo-auto/free',
+    {
+      name: 'kilo-auto/free',
+      label: 'Kilo 免费自动路由',
+      routeKind: 'router',
+    },
+  ],
+  [
     'nemotron-3-super-120b',
     {
       name: 'nvidia/nemotron-3-super-120b-a12b:free',
