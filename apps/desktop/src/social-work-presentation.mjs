@@ -16,7 +16,9 @@ export function socialWorkCardTitle(task) {
     dsh_rate_limited: '模型请求被限流',
     dsh_task_timeout: '执行超时',
     dsh_tool_loop: '重复操作过多，已停止',
+    tool_round_limit: '工具步骤达到上限',
     verification_failed: '文件验收未通过',
+    provider_unavailable: '模型没有返回结果',
     dsh_process_failed: '执行进程异常退出',
     dsh_process_error: '执行进程异常退出',
     dsh_start_failed: '执行进程异常退出',
@@ -27,6 +29,78 @@ export function socialWorkCardTitle(task) {
     failureTitles[task.errorCode] ??
     (task.status === 'interrupted' ? '项目工作已停止' : '项目工作未完成')
   );
+}
+
+export function socialWorkRecoveryPresentation(task) {
+  const steps = Array.isArray(task.executionSteps) ? task.executionSteps : [];
+  const toolCallCount = Number.isSafeInteger(task.toolCallCount)
+    ? task.toolCallCount
+    : 0;
+  const categories = Array.isArray(task.toolActionCategories)
+    ? task.toolActionCategories
+    : [];
+
+  if (steps.length === 0) {
+    if (toolCallCount === 0) {
+      return {
+        kind: 'clear',
+        message: '执行记录显示尚未调用工具；可以直接再次编辑并执行。',
+      };
+    }
+    if (
+      categories.length >= toolCallCount &&
+      categories.every((category) => ['read', 'search'].includes(category))
+    ) {
+      return {
+        kind: 'clear',
+        message:
+          '历史记录只包含读取或搜索，没有记录写入或命令；可以直接再次编辑并执行。',
+      };
+    }
+    return {
+      kind: 'unknown',
+      message:
+        '这条任务缺少完整的逐步操作记录；请先检查工作区，再决定是否重新执行。',
+    };
+  }
+
+  const sideEffectSteps = steps.filter(
+    (step) =>
+      step.hasSideEffect === true ||
+      ['write', 'edit', 'command'].includes(step.category),
+  );
+  if (toolCallCount > steps.length) {
+    return {
+      kind: 'unknown',
+      message:
+        '执行记录不完整，无法确认所有操作是否影响了工作区；请先检查工作区，再决定是否重新执行。',
+    };
+  }
+
+  if (
+    sideEffectSteps.some(
+      (step) => !['applied', 'not_applied'].includes(step.effectStatus),
+    )
+  ) {
+    return {
+      kind: 'unknown',
+      message:
+        '有写入或命令的结果不确定；请先检查工作区和执行记录，再决定是否重新执行。',
+    };
+  }
+
+  if (sideEffectSteps.some((step) => step.effectStatus === 'applied')) {
+    return {
+      kind: 'changed',
+      message:
+        '执行记录显示写入或命令已返回成功，但不代表验收通过；请先检查工作区，再决定是否重新执行。',
+    };
+  }
+
+  return {
+    kind: 'clear',
+    message: '执行记录没有显示已生效的写入或命令；可以直接再次编辑并执行。',
+  };
 }
 
 export function socialWorkExecutionStepPresentation(step) {

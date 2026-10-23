@@ -3416,6 +3416,12 @@ async function captureSocialProjectWorkSmokeScreenshots() {
       const experienceReference = task?.querySelector('.project-work-practice') ?? task?.querySelector('.project-work-case');
       const caseControl = document.querySelector('.case-reuse-control');
       const mode = document.querySelector('.composer-mode-switch button[aria-pressed="true"]');
+      const failedCard = document.querySelector('.project-work-card.project-work-failed');
+      const recovery = failedCard?.querySelector('.project-work-recovery');
+      const retryButton = failedCard?.querySelector('.project-work-footer button');
+      retryButton?.scrollIntoView({ block: 'end' });
+      const recoveryRect = recovery?.getBoundingClientRect();
+      const retryRect = retryButton?.getBoundingClientRect();
       return {
         roomTitle: document.querySelector('.room-header h2')?.textContent?.trim() ?? '',
         taskVisible: Boolean(task),
@@ -3425,6 +3431,10 @@ async function captureSocialProjectWorkSmokeScreenshots() {
           experienceReferenceVisible: Boolean(experienceReference && experienceReference.getClientRects().length),
           experienceReferenceExpanded: experienceReference instanceof HTMLDetailsElement && experienceReference.open,
           experienceReferenceText: experienceReference?.textContent?.trim() ?? '',
+          failureRecoveryVisible: Boolean(recoveryRect && recoveryRect.top > 0 && recoveryRect.bottom <= (rect?.top ?? window.innerHeight)),
+          failureRecoveryMessage: recovery?.textContent?.trim() ?? '',
+          failureRetryLabel: retryButton?.textContent?.trim() ?? '',
+          failureRetryVisible: Boolean(retryRect && retryRect.top > 0 && retryRect.bottom <= (rect?.top ?? window.innerHeight)),
         composerVisible: Boolean(rect && rect.width > 0 && rect.height > 0 && rect.bottom <= window.innerHeight),
         shellNoOverflow: Boolean(shell && shell.scrollWidth <= shell.clientWidth),
         panelNoOverflow: Boolean(panel && panel.scrollWidth <= panel.clientWidth),
@@ -3442,6 +3452,10 @@ async function captureSocialProjectWorkSmokeScreenshots() {
     !desktop.experienceReferenceVisible ||
     desktop.experienceReferenceExpanded ||
     !desktop.experienceReferenceText.includes(expectedExperienceReference) ||
+    !desktop.failureRecoveryVisible ||
+    !desktop.failureRecoveryMessage.includes('没有显示已生效的写入或命令') ||
+    desktop.failureRetryLabel !== '再次编辑并执行' ||
+    !desktop.failureRetryVisible ||
     !desktop.composerVisible ||
     !desktop.shellNoOverflow ||
     !desktop.panelNoOverflow ||
@@ -3464,6 +3478,10 @@ async function captureSocialProjectWorkSmokeScreenshots() {
     !narrow.experienceReferenceVisible ||
     narrow.experienceReferenceExpanded ||
     !narrow.experienceReferenceText.includes(expectedExperienceReference) ||
+    !narrow.failureRecoveryVisible ||
+    !narrow.failureRecoveryMessage.includes('没有显示已生效的写入或命令') ||
+    narrow.failureRetryLabel !== '再次编辑并执行' ||
+    !narrow.failureRetryVisible ||
     !narrow.composerVisible ||
     !narrow.shellNoOverflow ||
     !narrow.panelNoOverflow ||

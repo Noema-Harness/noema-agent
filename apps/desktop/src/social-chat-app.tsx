@@ -16,6 +16,7 @@ import { useScrollActivity } from './use-scroll-activity';
 import {
   socialWorkCardTitle,
   socialWorkExecutionStepPresentation,
+  socialWorkRecoveryPresentation,
 } from './social-work-presentation.mjs';
 import type {
   NoemaSocialAgent,
@@ -3671,6 +3672,9 @@ function ProjectWorkCard({
 }) {
   const active = ['starting', 'running', 'verifying'].includes(task.status);
   const executionSteps = task.executionSteps ?? [];
+  const recovery = ['failed', 'interrupted'].includes(task.status)
+    ? socialWorkRecoveryPresentation(task)
+    : null;
   const title = socialWorkCardTitle(task);
   const verificationLabel =
     task.verificationStatus === 'verified'
@@ -3894,11 +3898,17 @@ function ProjectWorkCard({
           {task.errorMessage}
         </p>
       ) : null}
-      {!active && ['failed', 'interrupted'].includes(task.status) ? (
+      {recovery ? (
+        <p
+          className={`project-work-recovery is-${recovery.kind}`}
+          role="status"
+        >
+          {recovery.message}
+        </p>
+      ) : null}
+      {recovery ? (
         <footer className="project-work-footer">
-          <span>
-            先核对已有文件改动。重新提交会创建新任务，不会续接刚才的执行会话。
-          </span>
+          <span>重新执行会创建新任务，不会续接刚才的会话。</span>
           <button type="button" onClick={onRepeat}>
             再次编辑并执行
           </button>

@@ -246,6 +246,43 @@ if (!liveEpisodes) {
     });
   }
 }
+const recoveryFixtureTaskId = 'e2e-room-c-read-only-failure';
+seedSocialStore.createSocialWorkTask({
+  id: recoveryFixtureTaskId,
+  roomId: 'room-engineering-collaboration',
+  agentId: 'engineering-partner',
+  workspacePath,
+  workspaceKey: path
+    .normalize(workspacePath)
+    .replaceAll('/', '\\')
+    .toLocaleLowerCase('en-US'),
+  taskPrompt: '[NOEMA E2E] 读取后模型中断的恢复状态演练。',
+  model: 'auto:noema-free',
+  executionEngine: 'noema',
+});
+const recoveryStepId = 'e2e-room-c-read-files';
+seedSocialStore.startSocialWorkExecutionStep(recoveryFixtureTaskId, {
+  id: recoveryStepId,
+  toolName: 'list_files',
+  externalCallId: 'e2e-read-files',
+  category: 'read',
+  hasSideEffect: false,
+});
+seedSocialStore.finishSocialWorkExecutionStep(
+  recoveryFixtureTaskId,
+  recoveryStepId,
+  { status: 'succeeded', effectStatus: 'none' },
+);
+seedSocialStore.recordSocialWorkTaskToolAction(recoveryFixtureTaskId, 'read');
+seedSocialStore.finishSocialWorkTask(recoveryFixtureTaskId, {
+  status: 'failed',
+  errorCode: 'provider_unavailable',
+  errorMessage: '模型没有返回后续结果；此次演练没有执行写入或命令。',
+  toolCallCount: 1,
+  verificationStatus: 'not_planned',
+  verificationResults: [],
+  verificationAttempts: 0,
+});
 seedDatabase.close();
 
 const child = spawn(process.execPath, ['scripts/start.mjs'], {
@@ -427,6 +464,12 @@ if (proposalWasEmpty) {
     !result.socialWorkUiSmoke?.desktop?.experienceReferenceText?.includes(
       practiceDecision === 'case' ? 'RELEASE-CHECKLIST.md' : '素材导入说明',
     ) ||
+    !result.socialWorkUiSmoke?.desktop?.failureRecoveryVisible ||
+    !result.socialWorkUiSmoke?.desktop?.failureRecoveryMessage?.includes(
+      '没有显示已生效的写入或命令',
+    ) ||
+    result.socialWorkUiSmoke?.desktop?.failureRetryLabel !== '再次编辑并执行' ||
+    !result.socialWorkUiSmoke?.desktop?.failureRetryVisible ||
     !result.socialWorkUiSmoke?.desktop?.composerVisible ||
     !result.socialWorkUiSmoke?.desktop?.documentNoOverflow ||
     !result.socialWorkUiSmoke?.narrow?.taskVisible ||
@@ -436,6 +479,12 @@ if (proposalWasEmpty) {
     !result.socialWorkUiSmoke?.narrow?.experienceReferenceText?.includes(
       practiceDecision === 'case' ? 'RELEASE-CHECKLIST.md' : '素材导入说明',
     ) ||
+    !result.socialWorkUiSmoke?.narrow?.failureRecoveryVisible ||
+    !result.socialWorkUiSmoke?.narrow?.failureRecoveryMessage?.includes(
+      '没有显示已生效的写入或命令',
+    ) ||
+    result.socialWorkUiSmoke?.narrow?.failureRetryLabel !== '再次编辑并执行' ||
+    !result.socialWorkUiSmoke?.narrow?.failureRetryVisible ||
     !result.socialWorkUiSmoke?.narrow?.composerVisible ||
     !result.socialWorkUiSmoke?.narrow?.documentNoOverflow ||
     !result.socialWorkUiSmoke?.candidateReview?.withdrawn ||

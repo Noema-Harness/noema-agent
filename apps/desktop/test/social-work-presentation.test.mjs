@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   socialWorkCardTitle,
   socialWorkExecutionStepPresentation,
+  socialWorkRecoveryPresentation,
 } from '../src/social-work-presentation.mjs';
 
 test('project work cards name the recoverable failure instead of hiding it in generic status', () => {
@@ -11,6 +12,8 @@ test('project work cards name the recoverable failure instead of hiding it in ge
     ['dsh_rate_limited', 'failed', '模型请求被限流'],
     ['dsh_task_timeout', 'failed', '执行超时'],
     ['dsh_tool_loop', 'failed', '重复操作过多，已停止'],
+    ['tool_round_limit', 'failed', '工具步骤达到上限'],
+    ['provider_unavailable', 'failed', '模型没有返回结果'],
     ['verification_failed', 'failed', '文件验收未通过'],
     ['dsh_process_failed', 'failed', '执行进程异常退出'],
     ['dsh_node_unavailable', 'failed', '本机执行环境不可用'],
@@ -29,6 +32,59 @@ test('project work cards name the recoverable failure instead of hiding it in ge
       errorCode,
     );
   }
+});
+
+test('failed task recovery distinguishes safe replay from possible workspace changes', () => {
+  const result = (task) => socialWorkRecoveryPresentation(task);
+  assert.equal(result({ toolCallCount: 0, executionSteps: [] }).kind, 'clear');
+  assert.match(
+    result({
+      toolCallCount: 1,
+      toolActionCategories: ['read'],
+      executionSteps: [
+        { category: 'read', hasSideEffect: false, effectStatus: 'none' },
+      ],
+    }).message,
+    /没有显示已生效的写入或命令/u,
+  );
+  assert.equal(
+    result({
+      toolCallCount: 1,
+      executionSteps: [
+        { category: 'write', hasSideEffect: true, effectStatus: 'applied' },
+      ],
+    }).kind,
+    'changed',
+  );
+  assert.equal(
+    result({
+      toolCallCount: 1,
+      executionSteps: [
+        { category: 'command', hasSideEffect: true, effectStatus: 'unknown' },
+      ],
+    }).kind,
+    'unknown',
+  );
+});
+
+test('legacy or incomplete execution records do not imply that replay is safe', () => {
+  assert.equal(
+    socialWorkRecoveryPresentation({
+      toolCallCount: 1,
+      toolActionCategories: ['write'],
+      executionSteps: [],
+    }).kind,
+    'unknown',
+  );
+  assert.equal(
+    socialWorkRecoveryPresentation({
+      toolCallCount: 2,
+      executionSteps: [
+        { category: 'read', hasSideEffect: false, effectStatus: 'none' },
+      ],
+    }).kind,
+    'unknown',
+  );
 });
 
 test('completed project work keeps the independent verification distinction', () => {

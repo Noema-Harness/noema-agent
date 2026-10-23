@@ -4753,6 +4753,21 @@ select:disabled {
   font-size: 10px;
   line-height: 1.5;
 }
+.project-work-recovery {
+  margin: 6px 0;
+  color: var(--chat-muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+.project-work-recovery.is-clear {
+  color: var(--chat-success);
+}
+.project-work-recovery.is-changed {
+  color: var(--chat-warning);
+}
+.project-work-recovery.is-unknown {
+  color: var(--chat-error);
+}
 .project-work-footer {
   display: flex;
   align-items: center;
