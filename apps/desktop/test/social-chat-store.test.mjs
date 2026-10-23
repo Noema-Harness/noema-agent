@@ -101,7 +101,7 @@ test('an explicit team fixture keeps one agent across independent rooms', () => 
       db
         .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
         .get().version,
-      12,
+      13,
     );
   } finally {
     db.close();
@@ -290,6 +290,80 @@ test('an app restart interrupts a running social project task without replaying 
   }
 });
 
+test('project work records safe tool outcomes and marks in-flight writes unknown after restart', () => {
+  const { db, social } = makeStores();
+  try {
+    social.createSocialWorkTask({
+      id: 'task-step-recovery',
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      workspacePath: 'C:\\scratch\\project',
+      workspaceKey: 'c:\\scratch\\project',
+      taskPrompt: '记录工具状态，但不要重放未确认的写入。',
+      model: 'auto:noema-free',
+    });
+    social.setSocialWorkTaskSession('task-step-recovery', 'session-step');
+    social.startSocialWorkExecutionStep('task-step-recovery', {
+      id: 'step-read',
+      externalCallId: 'call-read',
+      toolName: 'read_file',
+      category: 'read',
+      hasSideEffect: false,
+    });
+    social.finishSocialWorkExecutionStep('task-step-recovery', 'step-read', {
+      status: 'succeeded',
+      effectStatus: 'none',
+    });
+    social.startSocialWorkExecutionStep('task-step-recovery', {
+      id: 'step-write',
+      externalCallId: 'call-write',
+      toolName: 'write',
+      category: 'write',
+      hasSideEffect: true,
+    });
+
+    new SocialChatStore(db);
+
+    const task = social.getSocialWorkTask('task-step-recovery');
+    assert.equal(task.status, 'interrupted');
+    assert.deepEqual(
+      task.executionSteps.map(({ category, status, effectStatus }) => ({
+        category,
+        status,
+        effectStatus,
+      })),
+      [
+        { category: 'read', status: 'succeeded', effectStatus: 'none' },
+        {
+          category: 'write',
+          status: 'outcome_unknown',
+          effectStatus: 'unknown',
+        },
+      ],
+    );
+    assert.deepEqual(Object.keys(task.executionSteps[1]).sort(), [
+      'category',
+      'completedAt',
+      'effectStatus',
+      'externalCallId',
+      'hasSideEffect',
+      'id',
+      'ordinal',
+      'startedAt',
+      'status',
+      'taskId',
+      'toolName',
+    ]);
+    assert.deepEqual(
+      social.getRoomSnapshot('room-engineering-partner').workTasks[0]
+        .executionSteps,
+      task.executionSteps,
+    );
+  } finally {
+    db.close();
+  }
+});
+
 test('social chat schema v1 upgrades additively to project-work state', () => {
   const { db, social } = makeStores();
   try {
@@ -305,6 +379,8 @@ test('social chat schema v1 upgrades additively to project-work state', () => {
       DROP TABLE social_project_sessions;
       DROP TABLE social_projects;
       DELETE FROM social_schema_migrations WHERE version = 12;
+      DROP TABLE social_work_execution_steps;
+      DELETE FROM social_schema_migrations WHERE version = 13;
       DROP TABLE social_work_tasks;
       DELETE FROM social_schema_migrations WHERE version = 2;
       DELETE FROM social_schema_migrations WHERE version = 3;
@@ -346,7 +422,7 @@ test('social chat schema v1 upgrades additively to project-work state', () => {
       db
         .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
         .get().version,
-      12,
+      13,
     );
     assert.equal(
       db
@@ -385,6 +461,8 @@ test('social schema v7 adds retry snapshots without rewriting the last known att
     });
     social.failReply(turn.assistantMessageId, 'test_failure', '重试前失败');
     db.exec(`
+      DROP TABLE social_work_execution_steps;
+      DELETE FROM social_schema_migrations WHERE version = 13;
       DROP TABLE social_project_sessions;
       DROP TABLE social_projects;
       DELETE FROM social_schema_migrations WHERE version = 12;

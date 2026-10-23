@@ -118,10 +118,11 @@ function hydrateMessage(row) {
   };
 }
 
-function hydrateSocialWorkTask(row) {
+function hydrateSocialWorkTask(row, executionSteps = []) {
   if (!row) return null;
   return {
     ...row,
+    executionSteps,
     toolActionCategories: JSON.parse(row.toolActionCategoriesJson ?? '[]'),
     verificationChecks: JSON.parse(row.verificationChecksJson ?? '[]'),
     verificationResults: JSON.parse(row.verificationResultsJson ?? '[]'),
@@ -485,6 +486,40 @@ export class SocialChatStore {
 
           INSERT INTO social_schema_migrations (version, applied_at)
           VALUES (12, '${isoNow()}');
+        `);
+      })();
+    }
+    if (current < 13) {
+      this.db.transaction(() => {
+        this.db.exec(`
+          CREATE TABLE social_work_execution_steps (
+            id TEXT PRIMARY KEY,
+            task_id TEXT NOT NULL
+              REFERENCES social_work_tasks(id) ON DELETE CASCADE,
+            ordinal INTEGER NOT NULL CHECK (ordinal > 0),
+            external_call_id TEXT,
+            tool_name TEXT NOT NULL,
+            category TEXT NOT NULL CHECK (
+              category IN ('read', 'search', 'write', 'edit', 'command', 'other')
+            ),
+            has_side_effect INTEGER NOT NULL CHECK (has_side_effect IN (0, 1)),
+            status TEXT NOT NULL CHECK (
+              status IN ('running', 'succeeded', 'failed', 'outcome_unknown', 'interrupted')
+            ),
+            effect_status TEXT NOT NULL CHECK (
+              effect_status IN ('none', 'pending', 'applied', 'not_applied', 'unknown')
+            ),
+            started_at TEXT NOT NULL,
+            completed_at TEXT,
+            UNIQUE (task_id, ordinal)
+          );
+          CREATE INDEX social_work_execution_steps_task_order
+            ON social_work_execution_steps(task_id, ordinal);
+          CREATE INDEX social_work_execution_steps_external_call
+            ON social_work_execution_steps(task_id, external_call_id, ordinal);
+
+          INSERT INTO social_schema_migrations (version, applied_at)
+          VALUES (13, '${isoNow()}');
         `);
       })();
     }
@@ -1239,6 +1274,7 @@ export class SocialChatStore {
         phase: task.phase,
         toolCallCount: task.toolCallCount,
         toolActionCategories: task.toolActionCategories,
+        executionSteps: task.executionSteps,
         resultText: task.resultText,
         errorCode: task.errorCode,
         errorMessage: task.errorMessage,
@@ -1845,11 +1881,14 @@ export class SocialChatStore {
       `)
       .get(requireText(taskId, '任务 ID', 200));
     if (!row) throw new Error('找不到这项项目工作。');
-    return hydrateSocialWorkTask(row);
+    return hydrateSocialWorkTask(
+      row,
+      this.listSocialWorkExecutionSteps(row.id),
+    );
   }
 
   listRoomWorkTasks(roomId) {
-    return this.db
+    const rows = this.db
       .prepare(`
         SELECT id, room_id AS roomId, agent_id AS agentId,
                source_message_id AS sourceMessageId,
@@ -1880,8 +1919,126 @@ export class SocialChatStore {
                completed_at AS completedAt
         FROM social_work_tasks WHERE room_id = ? ORDER BY created_at ASC
       `)
-      .all(requireText(roomId, '房间 ID', 200))
-      .map(hydrateSocialWorkTask);
+      .all(requireText(roomId, '房间 ID', 200));
+    if (rows.length === 0) return [];
+    const taskIds = rows.map((row) => row.id);
+    const placeholders = taskIds.map(() => '?').join(', ');
+    const steps = this.db
+      .prepare(`
+        SELECT id, task_id AS taskId, ordinal,
+               external_call_id AS externalCallId,
+               tool_name AS toolName, category, has_side_effect AS hasSideEffect,
+               status, effect_status AS effectStatus,
+               started_at AS startedAt, completed_at AS completedAt
+        FROM social_work_execution_steps
+        WHERE task_id IN (${placeholders})
+        ORDER BY task_id, ordinal
+      `)
+      .all(...taskIds);
+    const byTask = new Map();
+    for (const step of steps) {
+      const list = byTask.get(step.taskId) ?? [];
+      list.push({ ...step, hasSideEffect: Boolean(step.hasSideEffect) });
+      byTask.set(step.taskId, list);
+    }
+    return rows.map((row) =>
+      hydrateSocialWorkTask(row, byTask.get(row.id) ?? []),
+    );
+  }
+
+  listSocialWorkExecutionSteps(taskId) {
+    return this.db
+      .prepare(`
+        SELECT id, task_id AS taskId, ordinal,
+               external_call_id AS externalCallId,
+               tool_name AS toolName, category, has_side_effect AS hasSideEffect,
+               status, effect_status AS effectStatus,
+               started_at AS startedAt, completed_at AS completedAt
+        FROM social_work_execution_steps
+        WHERE task_id = ? ORDER BY ordinal
+      `)
+      .all(taskId)
+      .map((step) => ({ ...step, hasSideEffect: Boolean(step.hasSideEffect) }));
+  }
+
+  startSocialWorkExecutionStep(taskId, step) {
+    if (!step || typeof step !== 'object') {
+      throw new TypeError('项目工具步骤无效。');
+    }
+    const id = requireText(step.id, '步骤 ID', 200);
+    const category = [
+      'read',
+      'search',
+      'write',
+      'edit',
+      'command',
+      'other',
+    ].includes(step.category)
+      ? step.category
+      : 'other';
+    const hasSideEffect = step.hasSideEffect === true;
+    const now = isoNow();
+    this.db.transaction(() => {
+      const task = this.db
+        .prepare('SELECT status FROM social_work_tasks WHERE id = ?')
+        .get(taskId);
+      if (!task || !['starting', 'running'].includes(task.status)) return;
+      const ordinal =
+        (this.db
+          .prepare(
+            'SELECT MAX(ordinal) AS ordinal FROM social_work_execution_steps WHERE task_id = ?',
+          )
+          .get(taskId)?.ordinal ?? 0) + 1;
+      this.db
+        .prepare(`
+          INSERT INTO social_work_execution_steps
+            (id, task_id, ordinal, external_call_id, tool_name, category,
+             has_side_effect, status, effect_status, started_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, 'running', ?, ?)
+        `)
+        .run(
+          id,
+          taskId,
+          ordinal,
+          typeof step.externalCallId === 'string'
+            ? step.externalCallId.slice(0, 200)
+            : null,
+          requireText(step.toolName || 'unknown', '工具名称', 100),
+          category,
+          hasSideEffect ? 1 : 0,
+          hasSideEffect ? 'pending' : 'none',
+          now,
+        );
+    })();
+    return (
+      this.listSocialWorkExecutionSteps(taskId).find(
+        (entry) => entry.id === id,
+      ) ?? null
+    );
+  }
+
+  finishSocialWorkExecutionStep(taskId, stepId, outcome) {
+    const status = ['succeeded', 'failed'].includes(outcome?.status)
+      ? outcome.status
+      : 'interrupted';
+    const effectStatus = ['none', 'applied', 'not_applied', 'unknown'].includes(
+      outcome?.effectStatus,
+    )
+      ? outcome.effectStatus
+      : 'unknown';
+    const now = isoNow();
+    this.db
+      .prepare(`
+        UPDATE social_work_execution_steps
+        SET status = ?, effect_status = ?, completed_at = ?
+        WHERE task_id = ? AND id = ? AND status = 'running'
+      `)
+      .run(status, effectStatus, now, taskId, stepId);
+    return (
+      this.listSocialWorkExecutionSteps(taskId).find(
+        (entry) => entry.id === stepId,
+      ) ?? null
+    );
   }
 
   setSocialWorkTaskSession(taskId, runtimeSessionId) {
@@ -2226,8 +2383,24 @@ export class SocialChatStore {
       ? outcome.status
       : 'failed';
     const now = isoNow();
-    this.db
-      .prepare(`
+    this.db.transaction(() => {
+      this.db
+        .prepare(`
+          UPDATE social_work_execution_steps
+          SET status = CASE
+                WHEN has_side_effect = 1 THEN 'outcome_unknown'
+                ELSE 'interrupted'
+              END,
+              effect_status = CASE
+                WHEN has_side_effect = 1 THEN 'unknown'
+                ELSE effect_status
+              END,
+              completed_at = ?
+          WHERE task_id = ? AND status = 'running'
+        `)
+        .run(now, taskId);
+      this.db
+        .prepare(`
         UPDATE social_work_tasks SET status = ?, phase = ?,
           runtime_session_id = COALESCE(?, runtime_session_id),
           result_text = ?, error_code = ?, error_message = ?,
@@ -2240,28 +2413,29 @@ export class SocialChatStore {
           END,
           updated_at = ?, completed_at = ?
         WHERE id = ?
-      `)
-      .run(
-        status,
-        status,
-        outcome.runtimeSessionId ?? null,
-        String(outcome.resultText ?? '').slice(0, 100_000),
-        outcome.errorCode ? String(outcome.errorCode).slice(0, 100) : null,
-        outcome.errorMessage
-          ? String(outcome.errorMessage).slice(0, 2_000)
-          : null,
-        Number.isInteger(outcome.toolCallCount) ? outcome.toolCallCount : 0,
-        outcome.verificationStatus ?? 'not_planned',
-        JSON.stringify(outcome.verificationResults ?? []),
-        Number.isInteger(outcome.verificationAttempts)
-          ? outcome.verificationAttempts
-          : 0,
-        status,
-        outcome.verificationStatus ?? 'not_planned',
-        now,
-        now,
-        taskId,
-      );
+        `)
+        .run(
+          status,
+          status,
+          outcome.runtimeSessionId ?? null,
+          String(outcome.resultText ?? '').slice(0, 100_000),
+          outcome.errorCode ? String(outcome.errorCode).slice(0, 100) : null,
+          outcome.errorMessage
+            ? String(outcome.errorMessage).slice(0, 2_000)
+            : null,
+          Number.isInteger(outcome.toolCallCount) ? outcome.toolCallCount : 0,
+          outcome.verificationStatus ?? 'not_planned',
+          JSON.stringify(outcome.verificationResults ?? []),
+          Number.isInteger(outcome.verificationAttempts)
+            ? outcome.verificationAttempts
+            : 0,
+          status,
+          outcome.verificationStatus ?? 'not_planned',
+          now,
+          now,
+          taskId,
+        );
+    })();
     this.db
       .prepare('UPDATE social_rooms SET updated_at = ? WHERE id = ?')
       .run(now, this.getSocialWorkTask(taskId).roomId);
@@ -2291,15 +2465,36 @@ export class SocialChatStore {
 
   recoverInterruptedSocialWorkTasks() {
     const now = isoNow();
-    const recovered = this.db
-      .prepare(`
+    const recover = this.db.transaction(() => {
+      const taskCount = this.db
+        .prepare(`
         UPDATE social_work_tasks SET status = 'interrupted',
           phase = 'interrupted', error_code = 'app_restarted',
           error_message = 'Noema 关闭时任务仍在运行；已停止自动执行。可查看已产生的文件改动后手动重试。',
           updated_at = ?, completed_at = ?
         WHERE status IN ('starting', 'running', 'verifying')
       `)
-      .run(now, now).changes;
+        .run(now, now).changes;
+      this.db
+        .prepare(`
+        UPDATE social_work_execution_steps
+        SET status = CASE
+              WHEN has_side_effect = 1 THEN 'outcome_unknown'
+              ELSE 'interrupted'
+            END,
+            effect_status = CASE
+              WHEN has_side_effect = 1 THEN 'unknown'
+              ELSE effect_status
+            END,
+            completed_at = ?
+        WHERE status = 'running' AND task_id IN (
+          SELECT id FROM social_work_tasks WHERE error_code = 'app_restarted'
+        )
+      `)
+        .run(now);
+      return taskCount;
+    });
+    const recovered = recover();
     const interruptedTrials = this.db
       .prepare(`
         SELECT id, runtime_session_id AS runtimeSessionId,

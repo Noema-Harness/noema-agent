@@ -563,6 +563,18 @@ export class SocialWorkService {
               });
             } else if (event.type === 'tool-call') {
               const currentRunCount = Number(event.count) || 0;
+              if (typeof event.stepId === 'string') {
+                this.store.startSocialWorkExecutionStep(taskId, {
+                  id: event.stepId,
+                  externalCallId: event.externalCallId,
+                  toolName:
+                    typeof event.tool === 'string'
+                      ? event.tool.slice(0, 100)
+                      : 'unknown',
+                  category: event.category,
+                  hasSideEffect: event.hasSideEffect === true,
+                });
+              }
               this.store.recordSocialWorkTaskToolAction(
                 taskId,
                 workToolCategory(event.tool),
@@ -570,6 +582,19 @@ export class SocialWorkService {
               this.store.updateSocialWorkTaskProgress(taskId, {
                 phase: 'tool_call',
                 toolCallCount: toolCallOffset + currentRunCount,
+              });
+            } else if (
+              event.type === 'tool-result' &&
+              typeof event.stepId === 'string'
+            ) {
+              this.store.finishSocialWorkExecutionStep(taskId, event.stepId, {
+                status:
+                  event.status === 'completed'
+                    ? 'succeeded'
+                    : event.status === 'error'
+                      ? 'failed'
+                      : 'interrupted',
+                effectStatus: event.effectStatus,
               });
             }
             this.publish(this.store.getSocialWorkTask(taskId));

@@ -158,7 +158,9 @@ test('worker process streams safe status events and reports the final result', a
     child.stdout.write(
       '{"type":"session","sessionId":"session-test"}\n' +
         '{"type":"status","phase":"turn_start"}\n' +
-        '{"type":"tool_call","tool":"write","input":{"path":"secret path omitted"}}\n' +
+        '{"type":"tool_call","callId":"call-write","tool":"write","input":{"path":"secret path omitted"}}\n' +
+        '{"type":"tool_result","callId":"call-write","status":"completed","result":"omitted"}\n' +
+        '{"type":"tool_call","tool":"tool-pwsh","input":{"command":"hidden command"}}\n' +
         '{"type":"tool_result","status":"completed","result":"omitted"}\n' +
         '{"type":"final","text":"Created file."}\n',
     );
@@ -168,15 +170,32 @@ test('worker process streams safe status events and reports the final result', a
     assert.equal(result.status, 'completed');
     assert.equal(result.sessionId, 'session-test');
     assert.equal(result.result, 'Created file.');
-    assert.equal(result.toolCallCount, 1);
+    assert.equal(result.toolCallCount, 2);
     assert.deepEqual(
       observed.map((event) => event.type),
-      ['session', 'status', 'tool-call', 'tool-result', 'final'],
+      [
+        'session',
+        'status',
+        'tool-call',
+        'tool-result',
+        'tool-call',
+        'tool-result',
+        'final',
+      ],
     );
+    assert.equal(observed[2].category, 'write');
+    assert.equal(observed[2].hasSideEffect, true);
+    assert.equal(observed[2].stepId, observed[3].stepId);
+    assert.equal(observed[3].effectStatus, 'applied');
+    assert.equal(observed[4].category, 'command');
+    assert.equal(observed[4].hasSideEffect, true);
+    assert.equal(observed[4].stepId, observed[5].stepId);
+    assert.equal(observed[5].effectStatus, 'unknown');
     assert.equal(
       JSON.stringify(observed).includes('secret path omitted'),
       false,
     );
+    assert.equal(JSON.stringify(observed).includes('hidden command'), false);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

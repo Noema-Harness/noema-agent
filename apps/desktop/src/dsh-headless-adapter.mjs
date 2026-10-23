@@ -177,6 +177,9 @@ function normalizeDshToolCategory(tool) {
   ) {
     return 'edit';
   }
+  if (/(read|open|list|stat|inspect|fetch)/.test(name)) return 'read';
+  if (/(search|grep|find|glob|query)/.test(name)) return 'search';
+  if (/(shell|terminal|command|exec|pwsh|bash)/.test(name)) return 'command';
   return 'other';
 }
 
@@ -433,6 +436,8 @@ function createRunHandle({
   let startedResolved = false;
   let doneResolved = false;
   const toolCallRepeats = new Map();
+  const pendingExecutionSteps = new Map();
+  const uncorrelatedExecutionSteps = [];
   const pendingWorkspaceMutations = new Map();
   const invalidArgumentWritesByRepeatKey = new Map();
   let workspaceMutationSucceeded = false;
@@ -521,24 +526,38 @@ function createRunHandle({
       case 'tool_call': {
         toolCallCount += 1;
         const tool = typeof event.tool === 'string' ? event.tool : 'unknown';
-        const callId = typeof event.callId === 'string' ? event.callId : null;
+        const callId =
+          typeof event.callId === 'string' &&
+          /^[A-Za-z0-9._:-]{1,200}$/.test(event.callId)
+            ? event.callId
+            : null;
+        const stepId = randomUUID();
+        const category = normalizeDshToolCategory(tool);
+        const hasSideEffect = ['write', 'edit', 'command'].includes(category);
+        const executionStep = { stepId, tool, category, hasSideEffect };
+        if (callId) pendingExecutionSteps.set(callId, executionStep);
+        else uncorrelatedExecutionSteps.push(executionStep);
         const inputSignature = createHash('sha256')
           .update(JSON.stringify(event.input ?? null))
           .digest('hex');
         const repeatKey = `${tool}:${inputSignature}`;
         const repeatCount = (toolCallRepeats.get(repeatKey) ?? 0) + 1;
         toolCallRepeats.set(repeatKey, repeatCount);
-        const isWorkspaceMutation = ['write', 'edit'].includes(
-          normalizeDshToolCategory(tool),
-        );
+        const isWorkspaceMutation = ['write', 'edit'].includes(category);
         if (isWorkspaceMutation) {
           if (callId) pendingWorkspaceMutations.set(callId, repeatKey);
           else workspaceMutationUnknown = true;
+        } else if (category === 'command') {
+          workspaceMutationUnknown = true;
         }
         emit({
           type: 'tool-call',
           count: toolCallCount,
           tool,
+          stepId,
+          externalCallId: callId,
+          category,
+          hasSideEffect,
         });
         if (
           toolCallCount > MAX_TOOL_CALLS ||
@@ -568,7 +587,17 @@ function createRunHandle({
         break;
       }
       case 'tool_result': {
-        const callId = typeof event.callId === 'string' ? event.callId : null;
+        const callId =
+          typeof event.callId === 'string' &&
+          /^[A-Za-z0-9._:-]{1,200}$/.test(event.callId)
+            ? event.callId
+            : null;
+        let executionStep = callId ? pendingExecutionSteps.get(callId) : null;
+        if (executionStep) {
+          pendingExecutionSteps.delete(callId);
+        } else if (!callId && uncorrelatedExecutionSteps.length === 1) {
+          executionStep = uncorrelatedExecutionSteps.shift();
+        }
         const repeatKey = callId ? pendingWorkspaceMutations.get(callId) : null;
         if (callId && repeatKey) {
           pendingWorkspaceMutations.delete(callId);
@@ -589,6 +618,18 @@ function createRunHandle({
         emit({
           type: 'tool-result',
           status: typeof event.status === 'string' ? event.status : 'unknown',
+          stepId: executionStep?.stepId ?? null,
+          category: executionStep?.category ?? 'other',
+          hasSideEffect: executionStep?.hasSideEffect ?? false,
+          effectStatus: !executionStep?.hasSideEffect
+            ? 'none'
+            : event.status === 'completed' &&
+                ['write', 'edit'].includes(executionStep.category)
+              ? 'applied'
+              : event.status === 'error' &&
+                  isDshInvalidArgumentsResult(event.result)
+                ? 'not_applied'
+                : 'unknown',
         });
         break;
       }

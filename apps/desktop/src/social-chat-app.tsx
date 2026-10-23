@@ -13,6 +13,10 @@ import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useConversationNavigation } from './use-conversation-navigation';
 import { useScrollActivity } from './use-scroll-activity';
+import {
+  socialWorkCardTitle,
+  socialWorkExecutionStepPresentation,
+} from './social-work-presentation.mjs';
 import type {
   NoemaSocialAgent,
   NoemaInteractionAdjustment,
@@ -3660,20 +3664,8 @@ function ProjectWorkCard({
   onWithdrawPractice: () => void;
 }) {
   const active = ['starting', 'running', 'verifying'].includes(task.status);
-  const title =
-    task.status === 'starting'
-      ? '正在启动项目工作'
-      : task.status === 'running'
-        ? '工程搭档正在处理'
-        : task.status === 'verifying'
-          ? '正在核对交付文件'
-          : task.status === 'completed'
-            ? task.verificationStatus === 'verified'
-              ? '项目工作已完成并核验'
-              : '项目工作已结束 · 未独立核验'
-            : task.status === 'interrupted'
-              ? '项目工作已停止'
-              : '项目工作未完成';
+  const executionSteps = task.executionSteps ?? [];
+  const title = socialWorkCardTitle(task);
   const verificationLabel =
     task.verificationStatus === 'verified'
       ? '文件条件已由 Noema 独立确认'
@@ -3848,6 +3840,27 @@ function ProjectWorkCard({
           ) : null}
         </div>
       ) : null}
+      {executionSteps.length > 0 ? (
+        <details className="project-work-task-detail project-work-execution-steps">
+          <summary>查看执行记录（{executionSteps.length}）</summary>
+          <ol>
+            {executionSteps.map((step) => {
+              const presentation = socialWorkExecutionStepPresentation(step);
+              return (
+                <li key={step.id}>
+                  <span>
+                    {presentation.categoryLabel} · {presentation.statusLabel}
+                  </span>
+                  {presentation.effectLabel ? (
+                    <small>{presentation.effectLabel}</small>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ol>
+          <small>记录工具类别与状态，不包含工具参数或文件内容。</small>
+        </details>
+      ) : null}
       <details className="project-work-location">
         <summary>查看项目范围</summary>
         <code title={task.workspacePath}>{task.workspacePath}</code>
@@ -3877,7 +3890,9 @@ function ProjectWorkCard({
       ) : null}
       {!active && ['failed', 'interrupted'].includes(task.status) ? (
         <footer className="project-work-footer">
-          <span>再次提交前，可以先检查项目里的部分改动</span>
+          <span>
+            先核对已有文件改动。重新提交会创建新任务，不会续接刚才的执行会话。
+          </span>
           <button type="button" onClick={onRepeat}>
             再次编辑并执行
           </button>

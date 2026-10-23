@@ -285,6 +285,23 @@ export interface NoemaSocialWorkTask {
   phase: string | null;
   toolCallCount: number;
   toolActionCategories: string[];
+  executionSteps: Array<{
+    id: string;
+    ordinal: number;
+    externalCallId: string | null;
+    toolName: string;
+    category: 'read' | 'search' | 'write' | 'edit' | 'command' | 'other';
+    hasSideEffect: boolean;
+    status:
+      | 'running'
+      | 'succeeded'
+      | 'failed'
+      | 'outcome_unknown'
+      | 'interrupted';
+    effectStatus: 'none' | 'pending' | 'applied' | 'not_applied' | 'unknown';
+    startedAt: string;
+    completedAt: string | null;
+  }>;
   resultText: string;
   errorCode: string | null;
   errorMessage: string | null;

@@ -34,7 +34,22 @@ function makeAdapter({
     async startTask(input) {
       onStart(input);
       input.onEvent({ type: 'status', phase: 'turn_start' });
-      input.onEvent({ type: 'tool-call', count: 1, tool: 'write' });
+      const stepId = `${input.taskId}-step-1`;
+      input.onEvent({
+        type: 'tool-call',
+        count: 1,
+        tool: 'write',
+        stepId,
+        externalCallId: 'call-write',
+        category: 'write',
+        hasSideEffect: true,
+      });
+      input.onEvent({
+        type: 'tool-result',
+        stepId,
+        status: 'completed',
+        effectStatus: 'applied',
+      });
       return {
         started: Promise.resolve({ sessionId: 'session-room-task' }),
         done: Promise.resolve({
@@ -105,6 +120,14 @@ test('social work keeps the stable friend and only includes the issuing room con
     assert.equal(task.verificationStatus, 'verified');
     assert.equal(task.resultText, '任务结果。');
     assert.deepEqual(task.toolActionCategories, ['write']);
+    assert.deepEqual(
+      task.executionSteps.map(({ category, status, effectStatus }) => ({
+        category,
+        status,
+        effectStatus,
+      })),
+      [{ category: 'write', status: 'succeeded', effectStatus: 'applied' }],
+    );
     assert.match(seen[0].task, /群标记-海盐/);
     assert.match(seen[0].task, /面向用户的最终说明使用简体中文/);
     assert.doesNotMatch(seen[0].task, /私有标记-松果/);

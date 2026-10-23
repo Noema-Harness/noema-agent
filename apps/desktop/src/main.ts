@@ -8,6 +8,7 @@ import {
   shell,
   screen,
 } from 'electron';
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { EncryptedSecretStore } from './encrypted-secret-store.mjs';
@@ -3366,15 +3367,34 @@ async function captureSocialProjectWorkSmokeScreenshots() {
     const expanded = experience.open && experience.textContent?.includes(${JSON.stringify(expectedExperienceReference)});
     experience.querySelector('summary')?.click();
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    return { available: true, expanded, collapsed: !experience.open };
+    const execution = targetTask?.querySelector('.project-work-execution-steps');
+    if (!execution || execution.open) return { available: true, expanded, collapsed: !experience.open, executionVisible: false };
+    execution.querySelector('summary')?.click();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const executionExpanded = execution.open &&
+      execution.textContent?.includes('写入') &&
+      execution.textContent?.includes('已返回结果');
+    execution.querySelector('summary')?.click();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    return {
+      available: true,
+      expanded,
+      collapsed: !experience.open,
+      executionVisible: true,
+      executionExpanded,
+      executionCollapsed: !execution.open,
+    };
   })()`);
   if (
     !experienceToggle?.available ||
     !experienceToggle.expanded ||
-    !experienceToggle.collapsed
+    !experienceToggle.collapsed ||
+    !experienceToggle.executionVisible ||
+    !experienceToggle.executionExpanded ||
+    !experienceToggle.executionCollapsed
   ) {
     throw new Error(
-      `项目经验细节无法按需展开和收起：${JSON.stringify(experienceToggle)}`,
+      `项目细节无法按需展开和收起：${JSON.stringify(experienceToggle)}`,
     );
   }
   const inspect = async (width: number, height: number) => {
@@ -3894,15 +3914,26 @@ async function startNoema() {
                   check.text,
                 ]);
               }
+              const stepId = randomUUID();
+              onEvent({
+                type: 'tool-call',
+                tool: 'synthetic_fixture_write',
+                count: 1,
+                stepId,
+                externalCallId: 'synthetic-write',
+                category: 'write',
+                hasSideEffect: true,
+              });
               for (const [relativePath, texts] of groupedChecks) {
                 const filePath = path.resolve(workspacePath, relativePath);
                 fs.mkdirSync(path.dirname(filePath), { recursive: true });
                 fs.writeFileSync(filePath, texts.join('\n'), 'utf8');
               }
               onEvent({
-                type: 'tool-call',
-                tool: 'synthetic_fixture_write',
-                count: 1,
+                type: 'tool-result',
+                stepId,
+                status: 'completed',
+                effectStatus: 'applied',
               });
               return {
                 status: 'completed' as const,
