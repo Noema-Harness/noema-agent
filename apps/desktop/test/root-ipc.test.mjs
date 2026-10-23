@@ -408,3 +408,85 @@ test('room-scoped project work requires the trusted app window and does not use 
     /未授权/,
   );
 });
+
+test('project IPC exposes metadata and preserves lifecycle events for the renderer', async () => {
+  const harness = createIpcHarness();
+  const trustedSender = {};
+  const events = [];
+  const project = {
+    id: 'project-1',
+    title: '版本定价观察',
+    brief: '跟踪平台价格变化。',
+    status: 'active',
+    groupRoomId: 'room-project-1',
+    members: [],
+  };
+  const socialChatService = {
+    getUiState: async () => ({ rooms: [], agents: [] }),
+    emit: (event) => events.push(event),
+  };
+  const socialProjectStore = {
+    listProjects: (options) => {
+      assert.deepEqual(options, { includeArchived: true });
+      return [project];
+    },
+    createProject: (input) => ({ ...project, ...input }),
+    archiveProject: () => ({ ...project, status: 'archived' }),
+    restoreProject: () => project,
+  };
+  registerRootIpc({
+    ipcMain: harness.ipcMain,
+    rootAgent: { getUiState: async () => ({}) },
+    socialChatService,
+    socialProjectStore,
+    isTrustedSender: (sender) => sender === trustedSender,
+  });
+
+  assert.deepEqual(
+    await harness.handlers.get(CHANNELS.socialState)({ sender: trustedSender }),
+    { rooms: [], agents: [], projects: [project] },
+  );
+  const created = await harness.handlers.get(CHANNELS.socialCreateProject)(
+    { sender: trustedSender },
+    {
+      title: project.title,
+      brief: project.brief,
+      agentIds: ['noema', 'researcher'],
+    },
+  );
+  assert.equal(created.groupRoomId, project.groupRoomId);
+  assert.deepEqual(events[0], {
+    type: 'chat-room-created',
+    roomId: project.groupRoomId,
+  });
+  assert.equal(
+    (
+      await harness.handlers.get(CHANNELS.socialArchiveProject)(
+        { sender: trustedSender },
+        project.id,
+      )
+    ).status,
+    'archived',
+  );
+  assert.equal(
+    (
+      await harness.handlers.get(CHANNELS.socialRestoreProject)(
+        { sender: trustedSender },
+        project.id,
+      )
+    ).status,
+    'active',
+  );
+  assert.deepEqual(events.slice(1), [
+    {
+      type: 'project-updated',
+      projectId: project.id,
+      groupRoomId: project.groupRoomId,
+    },
+    {
+      type: 'project-updated',
+      projectId: project.id,
+      groupRoomId: project.groupRoomId,
+    },
+  ]);
+});

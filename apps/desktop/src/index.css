@@ -3130,6 +3130,148 @@ select:disabled {
   scrollbar-color: #c9d2ca transparent;
   scrollbar-width: thin;
 }
+.project-navigation {
+  padding-top: 4px;
+  border-top: 1px solid var(--chat-line);
+}
+.project-list-heading {
+  padding-top: 12px;
+}
+.project-list-item {
+  width: 100%;
+  min-height: 48px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 7px 8px;
+  border: 0;
+  border-left: 2px solid transparent;
+  background: transparent;
+  color: var(--chat-ink);
+  text-align: left;
+  cursor: pointer;
+}
+.project-list-item:hover,
+.project-list-item.is-selected {
+  background: rgb(255 255 255 / 54%);
+}
+.project-list-item.is-selected {
+  border-left-color: var(--chat-accent);
+}
+.project-list-title {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+}
+.project-list-title strong {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 620;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.project-list-marker {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border: 1px solid var(--chat-accent);
+  border-radius: 50%;
+}
+.project-list-meta {
+  padding-left: 13px;
+  overflow: hidden;
+  color: var(--chat-muted);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.project-review-mark {
+  flex: 0 0 auto;
+  color: #945f29;
+  font-size: 9px;
+}
+.project-list-empty {
+  margin: 5px 8px 10px;
+  color: var(--chat-muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+.archived-project-toggle {
+  width: 100%;
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--chat-muted);
+  font-size: 10px;
+  text-align: left;
+  cursor: pointer;
+}
+.archived-project-toggle span:last-child {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+.archived-project-item {
+  opacity: 0.76;
+}
+.project-context-strip {
+  min-height: 54px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px clamp(22px, 3vw, 40px);
+  border-bottom: 1px solid var(--chat-line);
+  background: var(--chat-paper-alt);
+}
+.project-context-copy {
+  min-width: 0;
+}
+.project-context-kicker {
+  color: var(--chat-muted);
+  font-size: 9px;
+  font-weight: 680;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.project-context-copy p {
+  max-width: 760px;
+  margin: 3px 0 0;
+  overflow: hidden;
+  color: var(--chat-ink);
+  font-size: 10px;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.project-archive-action {
+  min-height: 30px;
+  flex: 0 0 auto;
+  padding: 0 9px;
+  border: 1px solid var(--chat-line-strong);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--chat-muted);
+  font-size: 10px;
+  cursor: pointer;
+}
+.project-archive-action:hover:not(:disabled) {
+  border-color: var(--chat-accent);
+  color: var(--chat-ink);
+}
+.project-archive-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.project-dialog {
+  width: min(100%, 540px);
+}
 .room-list-item {
   width: 100%;
   min-height: 48px;

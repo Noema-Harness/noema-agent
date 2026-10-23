@@ -22,6 +22,17 @@ const bridge = {
     ipcRenderer.invoke('noema:social-search-messages', query),
   createSocialGroup: (input: { title: string; agentIds: string[] }) =>
     ipcRenderer.invoke('noema:social-create-group', input),
+  createSocialProject: (input: {
+    title: string;
+    brief: string;
+    agentIds: string[];
+    originRoomId?: string;
+    sourceMessageId?: string | null;
+  }) => ipcRenderer.invoke('noema:social-create-project', input),
+  archiveSocialProject: (projectId: string) =>
+    ipcRenderer.invoke('noema:social-archive-project', projectId),
+  restoreSocialProject: (projectId: string) =>
+    ipcRenderer.invoke('noema:social-restore-project', projectId),
   createSocialContinuationThread: (input: {
     sourceRoomId: string;
     sourceIds: string[];

@@ -22,6 +22,7 @@ import {
 import { RootAgent } from './root-agent.mjs';
 import { RootStore } from './root-store.mjs';
 import { SocialChatStore } from './social-chat-store.mjs';
+import { SocialProjectStore } from './social-project-store.mjs';
 import { SocialChatService } from './social-chat-service.mjs';
 import { SocialWorkService } from './social-work-service.mjs';
 import { backupBeforeSocialChatMigration } from './social-chat-migration-backup.mjs';
@@ -96,6 +97,7 @@ let providerSecretStore: EncryptedSecretStore | null = null;
 let unregisterRootIpc: (() => void) | null = null;
 let rootAgent: RootAgent | null = null;
 let socialChatStore: SocialChatStore | null = null;
+let socialProjectStore: SocialProjectStore | null = null;
 let socialChatService: SocialChatService | null = null;
 let socialWorkService: SocialWorkService | null = null;
 let socialAgentE2eModelRequests: Array<{
@@ -166,6 +168,8 @@ const socialAgentProfileDesktopScreenshotPath =
   process.env.NOEMA_SMOKE_SOCIAL_AGENT_PROFILE_PATH ?? null;
 const socialAgentProfileNarrowScreenshotPath =
   process.env.NOEMA_SMOKE_SOCIAL_AGENT_PROFILE_NARROW_PATH ?? null;
+const socialAgentProjectScreenshotPath =
+  process.env.NOEMA_SMOKE_SOCIAL_PROJECT_PATH ?? null;
 const socialAgentDelegationMarker = '请帮我独立核对';
 const socialHistoryRecallMarker = 'Noema 历史回忆验证标记：河谷石英';
 const socialAgentDelegationTask =
@@ -2955,6 +2959,62 @@ async function captureSocialAgentCreationE2e() {
     const groupSnapshot = await window.noema.getSocialRoom(groupRoom.id);
     const sameIdentityJoined = groupSnapshot.members.some((member) => member.id === createdState.agent.id);
     const groupDidNotImportDm = !groupSnapshot.messages.some((message) => message.content.includes('长期观察游戏视觉与交互'));
+    document.querySelector('.new-project-button')?.click();
+    await waitFor(() => document.querySelector('.project-dialog input'), '新项目表单');
+    setValue(document.querySelector('.project-dialog input'), 'E2E 定价追踪');
+    setValue(document.querySelector('.project-dialog textarea'), '比较平台价格并记录变化。');
+    const projectMemberOption = [...document.querySelectorAll('.project-dialog .group-agent-option')]
+      .find((option) => option.querySelector('strong')?.textContent?.trim() === name);
+    if (!projectMemberOption) throw new Error('已创建的专业联系人没有出现在项目成员列表中');
+    projectMemberOption.querySelector('input')?.click();
+    document.querySelector('.project-dialog button[type="submit"]')?.click();
+    await waitFor(() => document.querySelector('.room-header h2')?.textContent?.trim() === 'E2E 定价追踪', '项目群聊');
+    const projectCreatedState = await waitFor(async () => {
+      const state = await window.noema.getSocialState();
+      const project = state.projects.find((candidate) => candidate.title === 'E2E 定价追踪');
+      return project ? { state, project } : null;
+    }, '项目持久化状态');
+    const projectSidebarEntry = [...document.querySelectorAll('.project-list-item')]
+      .find((item) => item.querySelector('strong')?.textContent?.trim() === 'E2E 定价追踪');
+    const projectNotDuplicatedInOtherChats = ![...document.querySelectorAll('.conversation-list .room-list-item')]
+      .some((item) => item.querySelector('.room-list-title')?.textContent?.includes('E2E 定价追踪'));
+    const projectBannerVisible = Boolean(document.querySelector('.project-context-strip')?.textContent?.includes('比较平台价格并记录变化'));
+    const projectMemberSession = projectCreatedState.project.members.find((member) => member.agentId === createdState.agent.id);
+    const projectGroup = await window.noema.getSocialRoom(projectCreatedState.project.groupRoomId);
+    const projectPrivateDmUnchanged = !(await window.noema.getSocialRoom(directRoom.room.id)).messages.some((message) => message.content.includes('比较平台价格并记录变化'));
+    document.querySelector('.project-archive-action')?.click();
+    const archivedProjectState = await waitFor(async () => {
+      const state = await window.noema.getSocialState();
+      const project = state.projects.find((candidate) => candidate.id === projectCreatedState.project.id);
+      return project?.status === 'archived' ? state : null;
+    }, '项目归档状态');
+    const archivedProjectHidden = !archivedProjectState.rooms.some((room) => room.id === projectCreatedState.project.groupRoomId);
+    await waitFor(() => document.querySelector('.archived-project-toggle'), '归档项目分区');
+    document.querySelector('.archived-project-toggle')?.click();
+    const archivedProjectEntry = await waitFor(() =>
+      [...document.querySelectorAll('.archived-project-item')]
+        .find((item) => item.querySelector('strong')?.textContent?.trim() === 'E2E 定价追踪'),
+      '归档列表中的项目恢复入口',
+    );
+    archivedProjectEntry?.click();
+    const restoredProjectState = await waitFor(async () => {
+      const state = await window.noema.getSocialState();
+      const project = state.projects.find((candidate) => candidate.id === projectCreatedState.project.id);
+      return project?.status === 'active' ? state : null;
+    }, '项目恢复状态');
+    await waitFor(() => document.querySelector('.room-header h2')?.textContent?.trim() === 'E2E 定价追踪', '恢复后的原项目空间');
+    const projectLifecycle = {
+      created: Boolean(projectSidebarEntry && projectCreatedState.project.status === 'active'),
+      projectNotDuplicatedInOtherChats,
+      projectBannerVisible,
+      memberSessionCreated: Boolean(projectMemberSession?.sessionRoomId),
+      groupRoomLoaded: projectGroup.room.id === projectCreatedState.project.groupRoomId,
+      projectPrivateDmUnchanged,
+      archived: archivedProjectState.projects.find((candidate) => candidate.id === projectCreatedState.project.id)?.status === 'archived',
+      archivedProjectHidden,
+      restored: restoredProjectState.rooms.some((room) => room.id === projectCreatedState.project.groupRoomId),
+      restoredSameSession: restoredProjectState.projects.find((candidate) => candidate.id === projectCreatedState.project.id)?.members.find((member) => member.agentId === createdState.agent.id)?.sessionRoomId === projectMemberSession?.sessionRoomId,
+    };
     return {
       navigationLayout: ${JSON.stringify(navigationLayout)},
       roomDraftIsolation: ${JSON.stringify(roomDraftIsolation)},
@@ -2993,10 +3053,20 @@ async function captureSocialAgentCreationE2e() {
       inviteVisible,
       sameIdentityJoined,
       groupDidNotImportDm,
+      projectLifecycle,
       totalAgents: groupState.agents.length,
       totalRooms: groupState.rooms.length,
     };
   })()`);
+
+  if (socialAgentProjectScreenshotPath) {
+    mainWindow.setSize(1280, 800);
+    await mainWindow.webContents.executeJavaScript(
+      'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+    );
+    const image = await mainWindow.capturePage();
+    writeSmokeScreenshot(socialAgentProjectScreenshotPath, image);
+  }
 
   if (
     !result?.initialDialog?.focusedName ||
@@ -3018,7 +3088,17 @@ async function captureSocialAgentCreationE2e() {
     !result.restored ||
     !result.inviteVisible ||
     !result.sameIdentityJoined ||
-    !result.groupDidNotImportDm
+    !result.groupDidNotImportDm ||
+    !result.projectLifecycle?.created ||
+    !result.projectLifecycle.projectNotDuplicatedInOtherChats ||
+    !result.projectLifecycle.projectBannerVisible ||
+    !result.projectLifecycle.memberSessionCreated ||
+    !result.projectLifecycle.groupRoomLoaded ||
+    !result.projectLifecycle.projectPrivateDmUnchanged ||
+    !result.projectLifecycle.archived ||
+    !result.projectLifecycle.archivedProjectHidden ||
+    !result.projectLifecycle.restored ||
+    !result.projectLifecycle.restoredSameSession
   ) {
     throw new Error(
       `用户专业联系人创建流程不符合预期：${JSON.stringify(result)}`,
@@ -3576,6 +3656,10 @@ async function startNoema() {
       });
     }
     socialChatStore = new SocialChatStore(rootStore.db);
+    socialProjectStore = new SocialProjectStore({
+      db: rootStore.db,
+      socialChatStore,
+    });
     const socialWorkE2eDirectory =
       testDatabasePath && path.isAbsolute(testDatabasePath)
         ? path.dirname(path.resolve(testDatabasePath))
@@ -4023,6 +4107,7 @@ async function startNoema() {
       ipcMain,
       rootAgent: agent,
       socialChatService,
+      socialProjectStore,
       socialWorkService,
       isTrustedSender: (sender) =>
         Boolean(mainWindow && sender === mainWindow.webContents),

@@ -233,8 +233,34 @@ export type NoemaSocialState = Pick<
   interactionAdjustments: NoemaInteractionAdjustment[];
   agents: NoemaSocialAgent[];
   rooms: NoemaSocialRoom[];
+  projects: NoemaSocialProject[];
   projectWork: { available: boolean; reason: string | null };
 };
+
+export interface NoemaSocialProject {
+  id: string;
+  title: string;
+  brief: string;
+  status: 'active' | 'awaiting_user' | 'archived';
+  originRoomId: string;
+  sourceMessageId: string | null;
+  groupRoomId: string;
+  createdAt: string;
+  updatedAt: string;
+  archivedAt: string | null;
+  lastActivityAt: string;
+  members: Array<{
+    agentId: string;
+    sessionRoomId: string;
+    status: 'active' | 'removed';
+    joinedAt: string;
+    removedAt: string | null;
+    name: string;
+    headline: string;
+    kind: 'noema' | 'specialist';
+    agentArchivedAt: string | null;
+  }>;
+}
 
 export interface NoemaSocialWorkTask {
   id: string;
@@ -345,6 +371,7 @@ export interface NoemaSocialRoomState {
 
 export type NoemaSocialEvent =
   | { type: 'chat-room-created'; roomId: string }
+  | { type: 'project-updated'; projectId: string; groupRoomId: string }
   | { type: 'agent-state-updated'; agentId: string }
   | {
       type: 'chat-turn-started';
@@ -538,6 +565,15 @@ export interface NoemaBridge {
     title: string;
     agentIds: string[];
   }): Promise<NoemaSocialRoomState>;
+  createSocialProject(input: {
+    title: string;
+    brief: string;
+    agentIds: string[];
+    originRoomId?: string;
+    sourceMessageId?: string | null;
+  }): Promise<NoemaSocialProject>;
+  archiveSocialProject(projectId: string): Promise<NoemaSocialProject>;
+  restoreSocialProject(projectId: string): Promise<NoemaSocialProject>;
   createSocialContinuationThread(input: {
     sourceRoomId: string;
     sourceIds: string[];

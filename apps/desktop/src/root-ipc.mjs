@@ -32,6 +32,9 @@ const CHANNELS = Object.freeze({
   socialRoom: 'noema:social-room',
   socialSearchMessages: 'noema:social-search-messages',
   socialCreateGroup: 'noema:social-create-group',
+  socialCreateProject: 'noema:social-create-project',
+  socialArchiveProject: 'noema:social-archive-project',
+  socialRestoreProject: 'noema:social-restore-project',
   socialCreateContinuationThread: 'noema:social-create-continuation-thread',
   socialSetContinuationThreadClosed:
     'noema:social-set-continuation-thread-closed',
@@ -52,12 +55,13 @@ const CHANNELS = Object.freeze({
 
 /**
  * Registers only the narrow root-conversation operations that the renderer needs.
- * @param {{ipcMain: {handle: Function, removeHandler: Function}, rootAgent: object, socialChatService?:object, socialWorkService?:object, isTrustedSender: (sender: object) => boolean,chooseWorkspace?:()=>Promise<string|null>,sendMessage?:(text:string)=>Promise<object>|object,retryTurn?:(turnId:string,model:string|null)=>Promise<object>|object,finishQuickCapture?:()=>boolean,getQuickCaptureShortcutStatus?:()=>object|null,markQuickCaptureReady?:()=>boolean}} options
+ * @param {{ipcMain: {handle: Function, removeHandler: Function}, rootAgent: object, socialChatService?:object, socialProjectStore?:object, socialWorkService?:object, isTrustedSender: (sender: object) => boolean,chooseWorkspace?:()=>Promise<string|null>,sendMessage?:(text:string)=>Promise<object>|object,retryTurn?:(turnId:string,model:string|null)=>Promise<object>|object,finishQuickCapture?:()=>boolean,getQuickCaptureShortcutStatus?:()=>object|null,markQuickCaptureReady?:()=>boolean}} options
  */
 export function registerRootIpc({
   ipcMain,
   rootAgent,
   socialChatService = null,
+  socialProjectStore = null,
   socialWorkService = null,
   isTrustedSender,
   chooseWorkspace = async () => null,
@@ -77,7 +81,11 @@ export function registerRootIpc({
 
   register(CHANNELS.state, () => rootAgent.getUiState());
   if (socialChatService) {
-    register(CHANNELS.socialState, () => socialChatService.getUiState());
+    register(CHANNELS.socialState, async () => ({
+      ...(await socialChatService.getUiState()),
+      projects:
+        socialProjectStore?.listProjects({ includeArchived: true }) ?? [],
+    }));
     register(CHANNELS.socialRoom, (roomId) =>
       socialChatService.store.getRoomSnapshot(roomId),
     );
@@ -91,6 +99,35 @@ export function registerRootIpc({
         roomId: room.room.id,
       });
       return room;
+    });
+    register(CHANNELS.socialCreateProject, (input) => {
+      if (!socialProjectStore) throw new Error('项目存储尚未初始化。');
+      const project = socialProjectStore.createProject(input);
+      socialChatService.emit({
+        type: 'chat-room-created',
+        roomId: project.groupRoomId,
+      });
+      return project;
+    });
+    register(CHANNELS.socialArchiveProject, (projectId) => {
+      if (!socialProjectStore) throw new Error('项目存储尚未初始化。');
+      const project = socialProjectStore.archiveProject(projectId);
+      socialChatService.emit({
+        type: 'project-updated',
+        projectId: project.id,
+        groupRoomId: project.groupRoomId,
+      });
+      return project;
+    });
+    register(CHANNELS.socialRestoreProject, (projectId) => {
+      if (!socialProjectStore) throw new Error('项目存储尚未初始化。');
+      const project = socialProjectStore.restoreProject(projectId);
+      socialChatService.emit({
+        type: 'project-updated',
+        projectId: project.id,
+        groupRoomId: project.groupRoomId,
+      });
+      return project;
     });
     register(CHANNELS.socialCreateContinuationThread, (input) =>
       socialChatService.createContinuationThread(input),

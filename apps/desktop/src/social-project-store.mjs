@@ -44,7 +44,9 @@ export class SocialProjectStore {
         ORDER BY lastActivityAt DESC, p.created_at DESC
       `)
       .all(includeArchived ? 1 : 0);
-    return projects.map((project) => this.#hydrateProject(project));
+    return projects.map((project) =>
+      this.#hydrateProject(project, { includeGroup: false }),
+    );
   }
 
   getProject(projectId) {
@@ -74,7 +76,7 @@ export class SocialProjectStore {
     return this.#hydrateProject(project);
   }
 
-  #hydrateProject(project) {
+  #hydrateProject(project, { includeGroup = true } = {}) {
     const members = this.db
       .prepare(`
         SELECT ps.agent_id AS agentId, ps.room_id AS sessionRoomId,
@@ -87,7 +89,9 @@ export class SocialProjectStore {
       .all(project.id);
     return {
       ...project,
-      group: this.socialChatStore.getRoomSnapshot(project.groupRoomId),
+      ...(includeGroup
+        ? { group: this.socialChatStore.getRoomSnapshot(project.groupRoomId) }
+        : {}),
       members,
     };
   }
