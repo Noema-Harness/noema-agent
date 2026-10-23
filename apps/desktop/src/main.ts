@@ -235,10 +235,16 @@ const socialAgentContactDesktopScreenshotPath =
   process.env.NOEMA_SMOKE_SOCIAL_AGENT_CONTACT_PATH ?? null;
 const socialAgentContactNarrowScreenshotPath =
   process.env.NOEMA_SMOKE_SOCIAL_AGENT_CONTACT_NARROW_PATH ?? null;
+const socialTextAttachmentDesktopScreenshotPath =
+  process.env.NOEMA_SMOKE_SOCIAL_ATTACHMENTS_DESKTOP_PATH ?? null;
+const socialTextAttachmentNarrowScreenshotPath =
+  process.env.NOEMA_SMOKE_SOCIAL_ATTACHMENTS_NARROW_PATH ?? null;
 delete process.env.NOEMA_SMOKE_SOCIAL_AGENT_CREATE_PATH;
 delete process.env.NOEMA_SMOKE_SOCIAL_AGENT_CREATE_NARROW_PATH;
 delete process.env.NOEMA_SMOKE_SOCIAL_AGENT_CONTACT_PATH;
 delete process.env.NOEMA_SMOKE_SOCIAL_AGENT_CONTACT_NARROW_PATH;
+delete process.env.NOEMA_SMOKE_SOCIAL_ATTACHMENTS_DESKTOP_PATH;
+delete process.env.NOEMA_SMOKE_SOCIAL_ATTACHMENTS_NARROW_PATH;
 delete process.env.NOEMA_SMOKE_SOCIAL_FORWARD_DESKTOP_PATH;
 delete process.env.NOEMA_SMOKE_SOCIAL_FORWARD_NARROW_PATH;
 delete process.env.NOEMA_SMOKE_SOCIAL_DELEGATION_DESKTOP_PATH;
@@ -3074,7 +3080,174 @@ async function captureSocialAgentCreationE2e() {
     const image = await mainWindow.capturePage();
     writeSmokeScreenshot(socialAgentContactNarrowScreenshotPath, image);
   }
-  return { ...result, contactDesktop, contactNarrow };
+  const textAttachments = await captureSocialTextAttachmentsE2e();
+  return { ...result, contactDesktop, contactNarrow, textAttachments };
+}
+
+async function captureSocialTextAttachmentsE2e() {
+  if (!mainWindow || mainWindow.isDestroyed() || testSocialAgentLiveE2e) {
+    throw new Error('文字附件 E2E 需要隔离的确定性模型与桌面窗口。');
+  }
+  const requestCountBefore = socialAgentE2eModelRequests.length;
+  const ui = await mainWindow.webContents.executeJavaScript(`(async () => {
+    const waitFor = async (predicate, label, timeoutMs = 7000) => {
+      const deadline = Date.now() + timeoutMs;
+      while (Date.now() < deadline) {
+        const value = await predicate();
+        if (value) return value;
+        await new Promise((resolve) => setTimeout(resolve, 40));
+      }
+      throw new Error('等待超时：' + label);
+    };
+    await waitFor(() => document.querySelector('.room-list-item'), '聊天列表初始化');
+    const noema = [...document.querySelectorAll('.room-list-item')]
+      .find((item) => item.querySelector('.room-list-title')?.textContent?.trim() === 'Noema');
+    if (!noema) throw new Error('找不到 Noema 主聊天。');
+    noema.click();
+    await waitFor(() => document.querySelector('.room-header h2')?.textContent?.trim() === 'Noema', 'Noema 主聊');
+
+    const choose = (file) => {
+      const input = document.querySelector('input[aria-label="选择附件"]');
+      if (!(input instanceof HTMLInputElement)) throw new Error('找不到附件输入框。');
+      const transfer = new DataTransfer();
+      transfer.items.add(file);
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'files')?.set?.call(input, transfer.files);
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    choose(new File(['unsupported'], 'scan.pdf', { type: 'application/pdf' }));
+    await waitFor(() => document.querySelector('.inline-notice')?.textContent?.includes('PDF 与图片暂不支持'), '不支持格式提示');
+    const unsupportedNotice = document.querySelector('.inline-notice')?.textContent?.trim() ?? '';
+
+    const input = document.querySelector('#social-message-input');
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+    if (!(input instanceof HTMLTextAreaElement) || !setter) throw new Error('找不到聊天输入框。');
+    setter.call(input, '请概括这个文件。');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    choose(new File(['附件正文标记：琥珀海岸'], 'brief.txt', { type: 'text/plain' }));
+    await waitFor(() => document.querySelector('.attachment-chip')?.textContent?.includes('brief.txt'), '附件预览');
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const desktop = (() => {
+      const shell = document.querySelector('.social-shell');
+      const composer = document.querySelector('.message-composer');
+      return {
+        width: window.innerWidth,
+        sendEnabled: !document.querySelector('.send-message-button')?.disabled,
+        chipVisible: Boolean(document.querySelector('.attachment-chip')?.getClientRects().length),
+        shellNoOverflow: Boolean(shell && shell.scrollWidth <= shell.clientWidth),
+        documentNoOverflow: document.documentElement.scrollWidth <= window.innerWidth,
+        composerVisible: Boolean(composer && composer.getBoundingClientRect().bottom <= window.innerHeight),
+      };
+    })();
+    return { unsupportedNotice, desktop };
+  })()`);
+
+  if (
+    !ui.desktop?.sendEnabled ||
+    !ui.desktop?.chipVisible ||
+    !ui.desktop?.shellNoOverflow ||
+    !ui.desktop?.documentNoOverflow ||
+    !ui.desktop?.composerVisible
+  ) {
+    throw new Error(`文字附件桌面输入状态异常：${JSON.stringify(ui)}`);
+  }
+  if (socialTextAttachmentDesktopScreenshotPath) {
+    writeSmokeScreenshot(
+      socialTextAttachmentDesktopScreenshotPath,
+      await mainWindow.capturePage(),
+    );
+  }
+
+  mainWindow.setSize(680, 560);
+  const narrow = await mainWindow.webContents.executeJavaScript(`(() => {
+    const shell = document.querySelector('.social-shell');
+    const composer = document.querySelector('.message-composer');
+    return {
+      width: window.innerWidth,
+      sendEnabled: !document.querySelector('.send-message-button')?.disabled,
+      chipVisible: Boolean(document.querySelector('.attachment-chip')?.getClientRects().length),
+      shellNoOverflow: Boolean(shell && shell.scrollWidth <= shell.clientWidth),
+      documentNoOverflow: document.documentElement.scrollWidth <= window.innerWidth,
+      composerVisible: Boolean(composer && composer.getBoundingClientRect().bottom <= window.innerHeight),
+    };
+  })()`);
+  if (
+    !narrow?.sendEnabled ||
+    !narrow?.chipVisible ||
+    !narrow?.shellNoOverflow ||
+    !narrow?.documentNoOverflow ||
+    !narrow?.composerVisible
+  ) {
+    throw new Error(`文字附件窄窗输入状态异常：${JSON.stringify(narrow)}`);
+  }
+  if (socialTextAttachmentNarrowScreenshotPath) {
+    writeSmokeScreenshot(
+      socialTextAttachmentNarrowScreenshotPath,
+      await mainWindow.capturePage(),
+    );
+  }
+
+  const sent = await mainWindow.webContents.executeJavaScript(`(async () => {
+    const waitFor = async (predicate, label, timeoutMs = 7000) => {
+      const deadline = Date.now() + timeoutMs;
+      while (Date.now() < deadline) {
+        const value = await predicate();
+        if (value) return value;
+        await new Promise((resolve) => setTimeout(resolve, 40));
+      }
+      throw new Error('等待超时：' + label);
+    };
+    document.querySelector('.send-message-button')?.click();
+    return waitFor(async () => {
+      const room = await window.noema.getSocialRoom('room-noema');
+      const user = [...room.messages].reverse().find((message) =>
+        message.role === 'user' && message.content.includes('附件正文标记：琥珀海岸'),
+      );
+      const assistant = user
+        ? room.messages.find((message) => message.turnId === user.turnId && message.role === 'assistant')
+        : null;
+      if (assistant?.status === 'failed' || assistant?.status === 'interrupted') {
+        throw new Error('附件消息回复失败：' + assistant.errorMessage);
+      }
+      if (user && assistant?.status === 'complete') {
+        return {
+          messageContent: user.content,
+          replyStatus: assistant.status,
+          remainingAttachmentChips: document.querySelectorAll('.attachment-chip').length,
+        };
+      }
+      return null;
+    }, '附件消息完成');
+  })()`);
+  const request = socialAgentE2eModelRequests.at(-1);
+  const modelInput =
+    request?.messages.map((message) => message.content).join('\n') ?? '';
+  mainWindow.setSize(1280, 800);
+  const result = {
+    unsupportedNotice: ui.unsupportedNotice,
+    desktop: ui.desktop,
+    narrow,
+    messagePersisted:
+      sent.messageContent.includes('附件文件："brief.txt"') &&
+      sent.messageContent.includes('附件正文标记：琥珀海岸'),
+    replyCompleted: sent.replyStatus === 'complete',
+    modelReceivedAttachment:
+      modelInput.includes('附件文件："brief.txt"') &&
+      modelInput.includes('附件正文标记：琥珀海岸'),
+    singleModelRequest:
+      socialAgentE2eModelRequests.length === requestCountBefore + 1,
+    attachmentDraftCleared: sent.remainingAttachmentChips === 0,
+  };
+  if (
+    !result.unsupportedNotice.includes('PDF 与图片暂不支持') ||
+    !result.messagePersisted ||
+    !result.replyCompleted ||
+    !result.modelReceivedAttachment ||
+    !result.singleModelRequest ||
+    !result.attachmentDraftCleared
+  ) {
+    throw new Error(`文字附件没有完成同条消息闭环：${JSON.stringify(result)}`);
+  }
+  return result;
 }
 
 async function verifyLiveSocialChatSmoke() {

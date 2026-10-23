@@ -36,6 +36,9 @@ if (!path.isAbsolute(configuredE2eRoot) || !existsSync(configuredE2eRoot)) {
 }
 const e2eRoot = path.resolve(configuredE2eRoot);
 const e2eDirectory = mkdtempSync(path.join(e2eRoot, 'Noema-social-agents-'));
+const electronUserDataDirectory = mkdtempSync(
+  path.join(e2eRoot, 'Noema-social-agents-electron-home-'),
+);
 const databasePath = path.join(e2eDirectory, 'noema.sqlite3');
 const dshUserDataPath = path.join(e2eDirectory, 'dsh-home');
 const resultPath = path.join(e2eDirectory, 'result.json');
@@ -117,6 +120,14 @@ const projectScreenshotPath = path.join(
   e2eRoot,
   `Noema-project-space-${screenshotTag}.png`,
 );
+const attachmentDesktopScreenshotPath = path.join(
+  e2eRoot,
+  `Noema-text-attachment-desktop-${screenshotTag}.png`,
+);
+const attachmentNarrowScreenshotPath = path.join(
+  e2eRoot,
+  `Noema-text-attachment-narrow-${screenshotTag}.png`,
+);
 mkdirSync(dshUserDataPath, { recursive: true });
 const seedDatabase = new Database(databasePath);
 const seedRoot = new RootStore(seedDatabase);
@@ -167,7 +178,7 @@ const child = spawn(process.execPath, ['scripts/start.mjs'], {
       .filter(Boolean)
       .join(path.delimiter),
     NOEMA_SMOKE_TEST: '1',
-    NOEMA_SMOKE_USER_DATA_DIR: path.join(e2eDirectory, 'electron-home'),
+    NOEMA_SMOKE_USER_DATA_DIR: electronUserDataDirectory,
     NOEMA_E2E_DATABASE_PATH: databasePath,
     NOEMA_E2E_DSH_USER_DATA_PATH: dshUserDataPath,
     NOEMA_E2E_SOCIAL_AGENT_WORKFLOW: '1',
@@ -201,6 +212,9 @@ const child = spawn(process.execPath, ['scripts/start.mjs'], {
     NOEMA_SMOKE_SOCIAL_AGENT_PROFILE_NARROW_PATH:
       agentProfileNarrowScreenshotPath,
     NOEMA_SMOKE_SOCIAL_PROJECT_PATH: projectScreenshotPath,
+    NOEMA_SMOKE_SOCIAL_ATTACHMENTS_DESKTOP_PATH:
+      attachmentDesktopScreenshotPath,
+    NOEMA_SMOKE_SOCIAL_ATTACHMENTS_NARROW_PATH: attachmentNarrowScreenshotPath,
   },
   stdio: 'inherit',
   windowsHide: true,
@@ -254,6 +268,8 @@ const summary = {
   agentProfileDesktopScreenshotPath,
   agentProfileNarrowScreenshotPath,
   projectScreenshotPath,
+  attachmentDesktopScreenshotPath,
+  attachmentNarrowScreenshotPath,
 };
 console.log(JSON.stringify(summary, null, 2));
 
@@ -328,6 +344,15 @@ if (
   !existsSync(projectScreenshotPath) ||
   !result.workflow?.contactDesktop?.actionsVisible ||
   !result.workflow?.contactNarrow?.actionsVisible ||
+  !result.workflow?.textAttachments?.messagePersisted ||
+  !result.workflow?.textAttachments?.modelReceivedAttachment ||
+  !result.workflow?.textAttachments?.singleModelRequest ||
+  !result.workflow?.textAttachments?.attachmentDraftCleared ||
+  result.workflow?.textAttachments?.desktop?.width < 700 ||
+  result.workflow?.textAttachments?.narrow?.width > 700 ||
+  !result.workflow?.textAttachments?.narrow?.documentNoOverflow ||
+  !existsSync(attachmentDesktopScreenshotPath) ||
+  !existsSync(attachmentNarrowScreenshotPath) ||
   exit.code !== 0
 ) {
   process.exitCode = 1;
@@ -335,4 +360,5 @@ if (
 
 if (process.exitCode !== 1) {
   rmSync(e2eDirectory, { recursive: true, force: true });
+  rmSync(electronUserDataDirectory, { recursive: true, force: true });
 }

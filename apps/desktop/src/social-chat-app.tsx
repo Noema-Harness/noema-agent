@@ -14,6 +14,12 @@ import remarkGfm from 'remark-gfm';
 import { useConversationNavigation } from './use-conversation-navigation';
 import { useScrollActivity } from './use-scroll-activity';
 import { resolveGroupRecipient } from './group-mentions.mjs';
+import {
+  isSupportedChatTextAttachment,
+  MAX_CHAT_ATTACHMENT_BYTES,
+  MAX_CHAT_ATTACHMENT_COUNT,
+  prepareChatMessage,
+} from './chat-text-attachments.mjs';
 import { ProjectReviewCard } from './project-review-card';
 import {
   socialWorkCardTitle,
@@ -336,45 +342,39 @@ function SocialChatApp() {
 
   const addDraftAttachments = (files: FileList | null) => {
     if (!activeRoomId || !files?.length) return;
-    const acceptedTypes = new Set([
-      'text/plain',
-      'text/markdown',
-      'text/csv',
-      'application/pdf',
-      'image/png',
-      'image/jpeg',
-      'image/webp',
-    ]);
     const selected = Array.from(files);
     const roomFiles = draftAttachmentsByRoom[activeRoomId] ?? [];
+    const seen = new Set(
+      roomFiles.map(
+        (file) => `${file.name}\u0000${file.size}\u0000${file.lastModified}`,
+      ),
+    );
+    const rejected: string[] = [];
     const valid = selected.filter((file) => {
-      const extension = file.name.split('.').pop()?.toLowerCase();
-      const supported =
-        acceptedTypes.has(file.type) ||
-        ['txt', 'md', 'csv', 'pdf', 'png', 'jpg', 'jpeg', 'webp'].includes(
-          extension ?? '',
+      if (!isSupportedChatTextAttachment(file)) {
+        rejected.push(
+          `${file.name}：当前只支持 TXT、Markdown 和 CSV 文本；PDF 与图片暂不支持。`,
         );
-      if (!supported) {
-        setNotice(`${file.name}：只支持图片、文本、CSV 或 PDF。`);
         return false;
       }
-      if (file.size > 10 * 1024 * 1024) {
-        setNotice(`${file.name}：单个附件不能超过 10 MB。`);
+      if (file.size > MAX_CHAT_ATTACHMENT_BYTES) {
+        rejected.push(`${file.name}：单个文本附件不能超过 256 KiB。`);
         return false;
       }
-      return !roomFiles.some(
-        (existing) =>
-          existing.name === file.name &&
-          existing.size === file.size &&
-          existing.lastModified === file.lastModified,
-      );
+      const key = `${file.name}\u0000${file.size}\u0000${file.lastModified}`;
+      if (seen.has(key)) {
+        rejected.push(`${file.name}：重复附件已忽略。`);
+        return false;
+      }
+      seen.add(key);
+      return true;
     });
-    const remaining = Math.max(0, 5 - roomFiles.length);
+    const remaining = Math.max(0, MAX_CHAT_ATTACHMENT_COUNT - roomFiles.length);
     const added = valid.slice(0, remaining);
     if (valid.length > remaining) {
-      setNotice('每条消息最多添加 5 个附件；其余文件未加入。');
-    } else if (added.length) {
-      setNotice('附件仅保留在本机预览；当前不会上传或发送给模型。');
+      rejected.push(
+        `每条消息最多添加 ${MAX_CHAT_ATTACHMENT_COUNT} 个附件；其余文件未加入。`,
+      );
     }
     if (added.length) {
       setDraftAttachmentsByRoom((current) => ({
@@ -382,22 +382,25 @@ function SocialChatApp() {
         [activeRoomId]: [...(current[activeRoomId] ?? []), ...added],
       }));
     }
+    setNotice(rejected.join('\n'));
   };
 
   const removeDraftAttachment = (index: number) => {
     if (!activeRoomId) return;
-    if (
-      draftAttachments.length === 1 &&
-      notice === '附件仅保留在本机预览；当前不会上传或发送给模型。'
-    ) {
-      setNotice('');
-    }
     setDraftAttachmentsByRoom((current) => {
       const nextFiles = [...(current[activeRoomId] ?? [])];
       nextFiles.splice(index, 1);
       const next = { ...current };
       if (nextFiles.length) next[activeRoomId] = nextFiles;
       else delete next[activeRoomId];
+      return next;
+    });
+  };
+
+  const clearDraftAttachments = (roomId: string) => {
+    setDraftAttachmentsByRoom((current) => {
+      const next = { ...current };
+      delete next[roomId];
       return next;
     });
   };
@@ -1022,8 +1025,7 @@ function SocialChatApp() {
     if (
       !currentRoom ||
       !currentRecipient ||
-      !draft.trim() ||
-      draftAttachments.length > 0 ||
+      (!draft.trim() && draftAttachments.length === 0) ||
       busy ||
       forwardSelectionActive
     ) {
@@ -1044,44 +1046,48 @@ function SocialChatApp() {
     }
     const roomId = currentRoom.id;
     const text = draft;
-    if (activeReply) {
-      if (currentRoomQueue.length >= 20) {
-        setNotice('当前聊天最多暂存 20 条待发消息。');
-        return;
-      }
-      setQueuedMessagesByRoom((current) => {
-        const queue = current[roomId] ?? [];
-        return {
-          ...current,
-          [roomId]: [
-            ...queue,
-            {
-              id: crypto.randomUUID(),
-              roomId,
-              agentId: recipient.id,
-              text,
-              replyToMessageId: replyTarget?.id ?? null,
-              error: null,
-            },
-          ],
-        };
-      });
-      setRoomDraft(roomId, '');
-      setReplyTarget(null);
-      if (draftRef.current) draftRef.current.style.height = 'auto';
+    if (activeReply && currentRoomQueue.length >= 20) {
+      setNotice('当前聊天最多暂存 20 条待发消息。');
       return;
     }
     setBusy(true);
     setNotice('');
-    shouldFollowRef.current = true;
     try {
+      const messageText = await prepareChatMessage(text, draftAttachments);
+      if (activeReply) {
+        setQueuedMessagesByRoom((current) => {
+          const queue = current[roomId] ?? [];
+          return {
+            ...current,
+            [roomId]: [
+              ...queue,
+              {
+                id: crypto.randomUUID(),
+                roomId,
+                agentId: recipient.id,
+                text: messageText,
+                replyToMessageId: replyTarget?.id ?? null,
+                error: null,
+              },
+            ],
+          };
+        });
+        setRoomDraft(roomId, '');
+        clearDraftAttachments(roomId);
+        setReplyTarget(null);
+        if (draftRef.current) draftRef.current.style.height = 'auto';
+        setNotice('已加入当前聊天的发送队列。');
+        return;
+      }
+      shouldFollowRef.current = true;
       await window.noema.sendSocialMessage({
         roomId,
         agentId: recipient.id,
-        text,
+        text: messageText,
         replyToMessageId: replyTarget?.id ?? null,
       });
       setRoomDraft(roomId, '');
+      clearDraftAttachments(roomId);
       setReplyTarget(null);
       if (draftRef.current) draftRef.current.style.height = 'auto';
       await Promise.all([refreshState(), loadRoom(roomId)]);
@@ -1836,7 +1842,9 @@ function SocialChatApp() {
     !currentRecipient ||
     currentRecipientArchived;
   const sendDisabled =
-    composerDisabled || !draft.trim() || busy || draftAttachments.length > 0;
+    composerDisabled ||
+    (!draft.trim() && draftAttachments.length === 0) ||
+    busy;
   const submitProjectReview = async (review: NoemaSocialProjectReview) => {
     if (busy || activeReply)
       throw new Error('请等待当前回复结束，再提交反馈。');
@@ -2178,7 +2186,7 @@ function SocialChatApp() {
             ) : null}
 
             {draftAttachments.length ? (
-              <div className="composer-files" aria-label="本地附件预览">
+              <div className="composer-files" aria-label="待发送文字附件">
                 {draftAttachments.map((file, index) => (
                   <span
                     className="attachment-chip"
@@ -2230,7 +2238,7 @@ function SocialChatApp() {
                 className="visually-hidden"
                 type="file"
                 multiple
-                accept=".txt,.md,.csv,.pdf,.png,.jpg,.jpeg,.webp"
+                accept=".txt,.md,.csv,.pdf,.png,.jpg,.jpeg,.webp,text/plain,text/markdown,text/csv,application/pdf,image/png,image/jpeg,image/webp"
                 aria-label="选择附件"
                 onChange={(event) => {
                   addDraftAttachments(event.currentTarget.files);
@@ -2241,7 +2249,7 @@ function SocialChatApp() {
                 className="icon-button attach-button"
                 type="button"
                 aria-label="添加附件"
-                title="图片、文本、CSV 或 PDF；每条最多 5 个，单个不超过 10 MB，仅本机预览"
+                title="发送 UTF-8 TXT、Markdown 或 CSV；每条最多 5 个，每个不超过 256 KiB。PDF 与图片暂不支持发送。"
                 disabled={composerDisabled}
                 onClick={() => attachmentInputRef.current?.click()}
               >
@@ -2260,7 +2268,7 @@ function SocialChatApp() {
             <div className="composer-hint">
               <span>
                 {draftAttachments.length
-                  ? '附件仅本地预览；移除后可发送文字'
+                  ? `${draftAttachments.length} 个文字附件会随本条消息进入模型上下文`
                   : 'Enter 发送 · Shift + Enter 换行'}
               </span>
               <span>{activeRoute?.label || activeModel || '尚未连接模型'}</span>
