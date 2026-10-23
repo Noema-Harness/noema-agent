@@ -262,6 +262,12 @@ export interface NoemaSocialProject {
   }>;
 }
 
+export interface NoemaSocialProjectSession {
+  project: Pick<NoemaSocialProject, 'id' | 'title' | 'brief' | 'status'>;
+  agentId: string;
+  room: NoemaSocialRoomState;
+}
+
 export interface NoemaSocialWorkTask {
   id: string;
   roomId: string;
@@ -572,6 +578,10 @@ export interface NoemaBridge {
     originRoomId?: string;
     sourceMessageId?: string | null;
   }): Promise<NoemaSocialProject>;
+  getSocialProjectSession(
+    projectId: string,
+    agentId: string,
+  ): Promise<NoemaSocialProjectSession>;
   archiveSocialProject(projectId: string): Promise<NoemaSocialProject>;
   restoreSocialProject(projectId: string): Promise<NoemaSocialProject>;
   createSocialContinuationThread(input: {

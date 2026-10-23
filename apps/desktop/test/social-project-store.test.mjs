@@ -91,6 +91,48 @@ test('a project creates one shared room and separate hidden member sessions', ()
   }
 });
 
+test('project session lookup is tied to one active member and excludes archived work', () => {
+  const stores = makeStores();
+  const member = createMember(stores.socialChatStore);
+  try {
+    const project = createProject(stores, member);
+    const sessionRoomId = project.members[0].sessionRoomId;
+    assert.deepEqual(
+      stores.socialProjectStore.getProjectSessionContext(
+        sessionRoomId,
+        member.agentId,
+      ),
+      {
+        projectId: project.id,
+        title: project.title,
+        brief: project.brief,
+        status: 'active',
+        agentId: member.agentId,
+        roomId: sessionRoomId,
+      },
+    );
+    assert.throws(
+      () =>
+        stores.socialProjectStore.getProjectSessionContext(
+          sessionRoomId,
+          'noema',
+        ),
+      /只属于其指定成员/,
+    );
+    stores.socialProjectStore.archiveProject(project.id);
+    assert.throws(
+      () =>
+        stores.socialProjectStore.getProjectSessionContext(
+          sessionRoomId,
+          member.agentId,
+        ),
+      /项目已归档/,
+    );
+  } finally {
+    stores.db.close();
+  }
+});
+
 test('private, project-session, and group transcripts remain independent through archive and restore', () => {
   const stores = makeStores();
   const member = createMember(stores.socialChatStore);

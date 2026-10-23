@@ -433,6 +433,11 @@ test('project IPC exposes metadata and preserves lifecycle events for the render
     createProject: (input) => ({ ...project, ...input }),
     archiveProject: () => ({ ...project, status: 'archived' }),
     restoreProject: () => project,
+    getProjectSession: (projectId, agentId) => ({
+      project: { id: projectId, title: project.title },
+      agentId,
+      room: { room: { id: 'room-project-session' } },
+    }),
   };
   registerRootIpc({
     ipcMain: harness.ipcMain,
@@ -445,6 +450,18 @@ test('project IPC exposes metadata and preserves lifecycle events for the render
   assert.deepEqual(
     await harness.handlers.get(CHANNELS.socialState)({ sender: trustedSender }),
     { rooms: [], agents: [], projects: [project] },
+  );
+  assert.deepEqual(
+    await harness.handlers.get(CHANNELS.socialProjectSession)(
+      { sender: trustedSender },
+      project.id,
+      'researcher',
+    ),
+    {
+      project: { id: project.id, title: project.title },
+      agentId: 'researcher',
+      room: { room: { id: 'room-project-session' } },
+    },
   );
   const created = await harness.handlers.get(CHANNELS.socialCreateProject)(
     { sender: trustedSender },

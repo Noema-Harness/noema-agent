@@ -184,6 +184,11 @@ function SocialChatApp() {
   const [projectBusy, setProjectBusy] = useState(false);
   const [archivedProjectsOpen, setArchivedProjectsOpen] = useState(false);
   const [projectStatusBusy, setProjectStatusBusy] = useState(false);
+  const [activeProjectSession, setActiveProjectSession] = useState<{
+    projectId: string;
+    agentId: string;
+    roomId: string;
+  } | null>(null);
   const [createAgentOpen, setCreateAgentOpen] = useState(false);
   const [editingAgentId, setEditingAgentId] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -233,13 +238,24 @@ function SocialChatApp() {
     const next = await window.noema.getSocialState();
     setState(next);
     setProviderBaseUrl(next.providerBaseUrl);
+    const projectSessionStillActive = activeProjectSession
+      ? next.projects.some(
+          (project) =>
+            project.id === activeProjectSession.projectId &&
+            project.status !== 'archived',
+        )
+      : false;
+    if (activeProjectSession && !projectSessionStillActive) {
+      setActiveProjectSession(null);
+    }
     setActiveRoomId((current) =>
-      current && next.rooms.some((room) => room.id === current)
+      (current && next.rooms.some((room) => room.id === current)) ||
+      (current === activeProjectSession?.roomId && projectSessionStillActive)
         ? current
         : 'room-noema',
     );
     return next;
-  }, []);
+  }, [activeProjectSession]);
 
   const closeGroupDialog = useCallback(() => {
     setCreateGroupOpen(false);
@@ -559,7 +575,21 @@ function SocialChatApp() {
     : null;
   const rooms = state?.rooms ?? [];
   const noemaRoom = rooms.find((room) => room.id === 'room-noema') ?? null;
-  const currentRoom = rooms.find((room) => room.id === activeRoomId) ?? null;
+  const currentProjectSessionRoom =
+    activeProjectSession && roomState?.room.id === activeProjectSession.roomId
+      ? {
+          ...roomState.room,
+          lastMessageAt: roomState.messages.at(-1)?.createdAt ?? null,
+          messageCount: roomState.messages.length,
+          memberIds: roomState.members.map((member) => member.id),
+          preview: null,
+        }
+      : null;
+  const currentRoom =
+    rooms.find((room) => room.id === activeRoomId) ??
+    (currentProjectSessionRoom?.id === activeRoomId
+      ? currentProjectSessionRoom
+      : null);
   const members = roomState?.room.id === activeRoomId ? roomState.members : [];
   const messages =
     roomState?.room.id === activeRoomId ? roomState.messages : [];
@@ -633,8 +663,13 @@ function SocialChatApp() {
   const archivedProjects = visibleProjects.filter(
     (project) => project.status === 'archived',
   );
-  const activeProject = projects.find(
-    (project) => project.groupRoomId === currentRoom?.id,
+  const activeProject =
+    projects.find((project) => project.groupRoomId === currentRoom?.id) ??
+    projects.find((project) => project.id === activeProjectSession?.projectId);
+  const viewingProjectSession = Boolean(
+    activeProjectSession &&
+    activeProjectSession.roomId === currentRoom?.id &&
+    activeProject?.id === activeProjectSession.projectId,
   );
   const visibleMessageSearchResults =
     messageSearchResultQuery === search.trim() ? messageSearchResults : [];
@@ -693,6 +728,7 @@ function SocialChatApp() {
   };
 
   const selectRoom = (room: NoemaSocialRoom) => {
+    setActiveProjectSession(null);
     shouldFollowRef.current = true;
     setActiveRoomId(room.id);
     setSelectedAgentId(room.memberIds[0] ?? 'noema');
@@ -1133,6 +1169,45 @@ function SocialChatApp() {
     } catch (error) {
       setNotice(error instanceof Error ? error.message : '无法打开这个项目。');
     }
+  };
+
+  const openProjectMemberSession = async (
+    project: NoemaSocialProject,
+    agentId: string,
+  ) => {
+    setNotice('');
+    try {
+      const session = await window.noema.getSocialProjectSession(
+        project.id,
+        agentId,
+      );
+      shouldFollowRef.current = true;
+      setActiveProjectSession({
+        projectId: project.id,
+        agentId,
+        roomId: session.room.room.id,
+      });
+      setRoomState(session.room);
+      setActiveRoomId(session.room.room.id);
+      setSelectedAgentId(agentId);
+      setComposerMode('chat');
+      setReplyTarget(null);
+      setForwardSelectionActive(false);
+      setSelectedForwardMessageIds([]);
+      setShowRoomList(false);
+    } catch (error) {
+      setNotice(
+        error instanceof Error ? error.message : '无法打开成员的项目会话。',
+      );
+    }
+  };
+
+  const returnToProjectGroup = () => {
+    if (!activeProject) return;
+    const room = rooms.find(
+      (candidate) => candidate.id === activeProject.groupRoomId,
+    );
+    if (room) selectRoom(room);
   };
 
   const archiveCurrentProject = async () => {
@@ -1849,28 +1924,65 @@ function SocialChatApp() {
                 >
                   <div className="project-context-copy">
                     <span className="project-context-kicker">
-                      {activeProject.status === 'awaiting_user'
-                        ? '等待你的反馈'
-                        : '项目空间'}
+                      {viewingProjectSession
+                        ? `项目成员会话 · ${members[0]?.name ?? '成员'}`
+                        : activeProject.status === 'awaiting_user'
+                          ? '等待你的反馈'
+                          : '项目空间'}
                     </span>
                     <p>{activeProject.brief}</p>
+                    {viewingProjectSession ? (
+                      <div className="project-session-actions">
+                        <span>仅此成员与本项目的独立记录</span>
+                        <button type="button" onClick={returnToProjectGroup}>
+                          返回项目群
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="project-session-actions">
+                        {activeProject.members
+                          .filter(
+                            (member) =>
+                              member.status === 'active' &&
+                              Boolean(member.sessionRoomId) &&
+                              member.agentId !== 'noema',
+                          )
+                          .map((member) => (
+                            <button
+                              key={member.agentId}
+                              type="button"
+                              disabled={Boolean(member.agentArchivedAt)}
+                              onClick={() =>
+                                void openProjectMemberSession(
+                                  activeProject,
+                                  member.agentId,
+                                )
+                              }
+                            >
+                              打开 {member.name} 的项目会话
+                            </button>
+                          ))}
+                      </div>
+                    )}
                   </div>
-                  <button
-                    className="project-archive-action"
-                    type="button"
-                    disabled={
-                      projectStatusBusy ||
-                      activeProject.status === 'awaiting_user'
-                    }
-                    title={
-                      activeProject.status === 'awaiting_user'
-                        ? '先在 Noema 主聊完成待反馈事项'
-                        : '从活动列表归档，保留项目和成员会话'
-                    }
-                    onClick={() => void archiveCurrentProject()}
-                  >
-                    {projectStatusBusy ? '正在归档…' : '归档项目'}
-                  </button>
+                  {!viewingProjectSession ? (
+                    <button
+                      className="project-archive-action"
+                      type="button"
+                      disabled={
+                        projectStatusBusy ||
+                        activeProject.status === 'awaiting_user'
+                      }
+                      title={
+                        activeProject.status === 'awaiting_user'
+                          ? '先在 Noema 主聊完成待反馈事项'
+                          : '从活动列表归档，保留项目和成员会话'
+                      }
+                      onClick={() => void archiveCurrentProject()}
+                    >
+                      {projectStatusBusy ? '正在归档…' : '归档项目'}
+                    </button>
+                  ) : null}
                 </section>
               ) : null}
 

@@ -5,6 +5,7 @@ import type {
   NoemaRootEvent,
   NoemaRootState,
   NoemaSocialEvent,
+  NoemaSocialProjectSession,
   NoemaSocialSearchResult,
   NoemaSocialRoomState,
   NoemaSocialState,
@@ -29,6 +30,12 @@ const bridge = {
     originRoomId?: string;
     sourceMessageId?: string | null;
   }) => ipcRenderer.invoke('noema:social-create-project', input),
+  getSocialProjectSession: (projectId: string, agentId: string) =>
+    ipcRenderer.invoke(
+      'noema:social-project-session',
+      projectId,
+      agentId,
+    ) as Promise<NoemaSocialProjectSession>,
   archiveSocialProject: (projectId: string) =>
     ipcRenderer.invoke('noema:social-archive-project', projectId),
   restoreSocialProject: (projectId: string) =>

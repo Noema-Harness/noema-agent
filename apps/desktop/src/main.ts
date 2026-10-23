@@ -3003,6 +3003,20 @@ async function captureSocialAgentCreationE2e() {
       return project?.status === 'active' ? state : null;
     }, '项目恢复状态');
     await waitFor(() => document.querySelector('.room-header h2')?.textContent?.trim() === 'E2E 定价追踪', '恢复后的原项目空间');
+    const openMemberSession = [...document.querySelectorAll('.project-session-actions button')]
+      .find((button) => button.textContent?.includes('打开 ' + name + ' 的项目会话'));
+    if (!openMemberSession) throw new Error('项目群没有提供成员独立会话入口');
+    openMemberSession.click();
+    await waitFor(() => document.querySelector('.room-header h2')?.textContent?.trim() === name, '成员项目会话');
+    const sessionMarker = 'E2E 项目会话请求标记：蓝松石';
+    setValue(document.querySelector('#social-message-input'), sessionMarker);
+    document.querySelector('.send-message-button')?.click();
+    const projectSessionReply = await waitFor(async () => {
+      const room = await window.noema.getSocialRoom(projectMemberSession.sessionRoomId);
+      const userMessage = room.messages.find((message) => message.content.includes(sessionMarker));
+      const assistantMessage = userMessage && room.messages.find((message) => message.turnId === userMessage.turnId && message.role === 'assistant');
+      return assistantMessage?.status === 'complete' ? { room, userMessage, assistantMessage } : null;
+    }, '成员项目会话回复');
     const projectLifecycle = {
       created: Boolean(projectSidebarEntry && projectCreatedState.project.status === 'active'),
       projectNotDuplicatedInOtherChats,
@@ -3014,6 +3028,9 @@ async function captureSocialAgentCreationE2e() {
       archivedProjectHidden,
       restored: restoredProjectState.rooms.some((room) => room.id === projectCreatedState.project.groupRoomId),
       restoredSameSession: restoredProjectState.projects.find((candidate) => candidate.id === projectCreatedState.project.id)?.members.find((member) => member.agentId === createdState.agent.id)?.sessionRoomId === projectMemberSession?.sessionRoomId,
+      memberSessionOpened: document.querySelector('.project-context-kicker')?.textContent?.includes(name) ?? false,
+      memberSessionReplied: projectSessionReply.assistantMessage.status === 'complete',
+      projectSessionContainsOnlyItsOwnRequest: projectSessionReply.room.messages.some((message) => message.content.includes(sessionMarker)) && !projectSessionReply.room.messages.some((message) => message.content.includes('葡萄柚') || message.content.includes('珊瑚标记')),
     };
     return {
       navigationLayout: ${JSON.stringify(navigationLayout)},
@@ -3059,6 +3076,22 @@ async function captureSocialAgentCreationE2e() {
     };
   })()`);
 
+  const projectSessionPrompt =
+    socialAgentE2eModelRequests.at(-1)?.messages ?? [];
+  result.projectLifecycle.projectSessionModelScope =
+    projectSessionPrompt.some((message) =>
+      message.content.includes('noema_project_session'),
+    ) &&
+    projectSessionPrompt.some((message) =>
+      message.content.includes('比较平台价格并记录变化'),
+    ) &&
+    projectSessionPrompt.some((message) =>
+      message.content.includes('E2E 项目会话请求标记：蓝松石'),
+    ) &&
+    !projectSessionPrompt.some((message) =>
+      /葡萄柚|珊瑚标记/.test(message.content),
+    );
+
   if (socialAgentProjectScreenshotPath) {
     mainWindow.setSize(1280, 800);
     await mainWindow.webContents.executeJavaScript(
@@ -3098,21 +3131,39 @@ async function captureSocialAgentCreationE2e() {
     !result.projectLifecycle.archived ||
     !result.projectLifecycle.archivedProjectHidden ||
     !result.projectLifecycle.restored ||
-    !result.projectLifecycle.restoredSameSession
+    !result.projectLifecycle.restoredSameSession ||
+    !result.projectLifecycle.memberSessionOpened ||
+    !result.projectLifecycle.memberSessionReplied ||
+    !result.projectLifecycle.projectSessionContainsOnlyItsOwnRequest ||
+    !result.projectLifecycle.projectSessionModelScope
   ) {
     throw new Error(
       `用户专业联系人创建流程不符合预期：${JSON.stringify(result)}`,
     );
   }
   await mainWindow.webContents.executeJavaScript(`(async () => {
+    const waitFor = async (predicate, label) => {
+      const deadline = Date.now() + 5000;
+      while (Date.now() < deadline) {
+        if (predicate()) return;
+        await new Promise((resolve) => setTimeout(resolve, 40));
+      }
+      throw new Error('等待超时：' + label);
+    };
+    document.querySelector('.navigation-reveal')?.click();
+    await waitFor(() => !document.querySelector('.social-body')?.classList.contains('room-open'), '打开移动端聊天列表');
     const expectedAgentName = ${JSON.stringify(result.agentProfileEdit?.name ?? '')};
     const row = [...document.querySelectorAll('.room-list-item')]
       .find((item) => item.querySelector('.room-list-title')?.textContent?.trim() === expectedAgentName);
+    if (!row) throw new Error('找不到专业联系人的常驻私聊列表项');
     row?.click();
-    const deadline = Date.now() + 5000;
-    while (Date.now() < deadline && document.querySelector('.room-header h2')?.textContent?.trim() !== expectedAgentName) {
-      await new Promise((resolve) => setTimeout(resolve, 40));
-    }
+    await waitFor(
+      () =>
+        document.querySelector('.room-header h2')?.textContent?.trim() ===
+          expectedAgentName &&
+        !document.querySelector('.project-context-strip'),
+      '返回成员常驻私聊',
+    );
   })()`);
   const inspectAgentProfileDialog = async (width: number, height: number) => {
     mainWindow?.setSize(width, height);
@@ -4095,6 +4146,8 @@ async function startNoema() {
           available: false,
           reason: '项目工作运行环境尚未初始化。',
         },
+      getProjectSessionContext: (roomId, agentId) =>
+        socialProjectStore?.getProjectSessionContext(roomId, agentId) ?? null,
       startProjectWorkFromNoema: (input) =>
         socialWorkService!.startTaskFromNoema(input),
       emit: (payload) => {
@@ -4207,7 +4260,12 @@ async function startNoema() {
               resolve();
               return;
             }
-            mainWindow.webContents.once('did-finish-load', () => resolve());
+            const contents = mainWindow.webContents;
+            if (!contents.isLoadingMainFrame() && contents.getURL()) {
+              resolve();
+              return;
+            }
+            contents.once('did-finish-load', () => resolve());
           });
           const workflow = await captureSocialAgentCreationE2e();
           fs.writeFileSync(

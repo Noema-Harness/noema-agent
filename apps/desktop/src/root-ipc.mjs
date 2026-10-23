@@ -33,6 +33,7 @@ const CHANNELS = Object.freeze({
   socialSearchMessages: 'noema:social-search-messages',
   socialCreateGroup: 'noema:social-create-group',
   socialCreateProject: 'noema:social-create-project',
+  socialProjectSession: 'noema:social-project-session',
   socialArchiveProject: 'noema:social-archive-project',
   socialRestoreProject: 'noema:social-restore-project',
   socialCreateContinuationThread: 'noema:social-create-continuation-thread',
@@ -108,6 +109,10 @@ export function registerRootIpc({
         roomId: project.groupRoomId,
       });
       return project;
+    });
+    register(CHANNELS.socialProjectSession, (projectId, agentId) => {
+      if (!socialProjectStore) throw new Error('项目存储尚未初始化。');
+      return socialProjectStore.getProjectSession(projectId, agentId);
     });
     register(CHANNELS.socialArchiveProject, (projectId) => {
       if (!socialProjectStore) throw new Error('项目存储尚未初始化。');

@@ -5,6 +5,7 @@ import Database from 'better-sqlite3';
 import { RootStore } from '../src/root-store.mjs';
 import { SocialChatService } from '../src/social-chat-service.mjs';
 import { SocialChatStore } from '../src/social-chat-store.mjs';
+import { SocialProjectStore } from '../src/social-project-store.mjs';
 
 test('social chat sends only the selected room transcript and persists the real streamed response', async () => {
   const db = new Database(':memory:');
@@ -80,6 +81,109 @@ test('social chat sends only the selected room transcript and persists the real 
       true,
     );
     assert.equal(events.at(-1)?.type, 'chat-state-updated');
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});
+
+test('project member replies and retries preserve project scope and user-context authority', async () => {
+  const db = new Database(':memory:');
+  new RootStore(db);
+  const store = createSocialTestStore(db);
+  const projectStore = new SocialProjectStore({ db, socialChatStore: store });
+  const project = projectStore.createProject({
+    title: 'E2E 价格追踪器',
+    brief: '核对供应商价格并保留时间和来源。',
+    agentIds: ['noema', 'engineering-partner'],
+  });
+  const projectSession = projectStore.getProjectSession(
+    project.id,
+    'engineering-partner',
+  );
+  const privateTurn = store.beginTurn({
+    roomId: 'room-engineering-partner',
+    agentId: 'engineering-partner',
+    text: '不要带入私聊的葡萄柚标记。',
+    model: 'test-model',
+  });
+  store.completeReply(privateTurn.assistantMessageId);
+  const groupTurn = store.beginTurn({
+    roomId: project.groupRoomId,
+    agentId: 'noema',
+    text: '群聊的珊瑚标记也不进入个人项目会话。',
+    model: 'test-model',
+  });
+  store.completeReply(groupTurn.assistantMessageId);
+  const seenRequests = [];
+  const service = new SocialChatService({
+    store,
+    provider: {
+      async *streamChat(input) {
+        seenRequests.push(input);
+        if (seenRequests.length === 1) throw new Error('临时传输失败。');
+        yield '我会核对价格、时间和来源。';
+      },
+    },
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'test-model',
+    getRootState: async () => ({
+      connected: true,
+      selectedModel: 'test-model',
+    }),
+    getProjectSessionContext: (roomId, agentId) =>
+      projectStore.getProjectSessionContext(roomId, agentId),
+  });
+
+  try {
+    const sent = service.sendMessage({
+      roomId: projectSession.room.room.id,
+      agentId: 'engineering-partner',
+      text: '开始核对。',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await service.active.get(projectSession.room.room.id)?.done;
+
+    assert.equal(seenRequests.length, 1);
+    const prompt = seenRequests[0].messages
+      .map((message) => message.content)
+      .join('\n');
+    assert.match(prompt, /E2E 价格追踪器/);
+    assert.match(prompt, /核对供应商价格并保留时间和来源/);
+    assert.match(prompt, /开始核对/);
+    assert.doesNotMatch(prompt, /葡萄柚/);
+    assert.doesNotMatch(prompt, /珊瑚标记/);
+    assert.equal(
+      seenRequests[0].messages.find((message) =>
+        message.content.includes('"type":"noema_project_session"'),
+      )?.role,
+      'user',
+    );
+    assert.throws(
+      () =>
+        service.sendMessage({
+          roomId: projectSession.room.room.id,
+          agentId: 'noema',
+          text: '越权检查。',
+        }),
+      /只属于其指定成员/,
+    );
+    assert.equal(store.getSocialMessage(sent.messageId)?.status, 'failed');
+    projectStore.archiveProject(project.id);
+    assert.throws(() => service.retryReply(sent.messageId), /项目已归档/);
+    assert.equal(seenRequests.length, 1);
+    projectStore.restoreProject(project.id);
+    service.retryReply(sent.messageId);
+    await service.active.get(projectSession.room.room.id)?.done;
+    assert.equal(store.getSocialMessage(sent.messageId)?.status, 'complete');
+    assert.equal(seenRequests.length, 2);
+    const retriedPrompt = JSON.stringify(seenRequests[1].messages);
+    assert.match(retriedPrompt, /核对供应商价格并保留时间和来源/);
+    assert.doesNotMatch(retriedPrompt, /葡萄柚|珊瑚标记/);
+    assert.throws(
+      () => service.retryReply('missing-message'),
+      /找不到这个聊天消息/,
+    );
   } finally {
     await service.shutdown();
     db.close();

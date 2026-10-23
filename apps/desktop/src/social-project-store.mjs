@@ -113,6 +113,9 @@ export class SocialProjectStore {
     if (row.membershipStatus !== 'active') {
       throw new Error('这位成员已离开项目，不能继续使用原项目会话。');
     }
+    if (row.projectStatus === 'archived') {
+      throw new Error('项目已归档；恢复项目后才能打开成员会话。');
+    }
     return {
       project: {
         id: row.projectId,
@@ -122,6 +125,38 @@ export class SocialProjectStore {
       },
       agentId: row.agentId,
       room: this.socialChatStore.getRoomSnapshot(row.sessionRoomId),
+    };
+  }
+
+  getProjectSessionContext(roomId, agentId) {
+    requireText(roomId, '项目会话 ID', 200);
+    requireText(agentId, '成员 ID', 200);
+    const row = this.db
+      .prepare(`
+        SELECT p.id AS projectId, p.title, p.brief, p.status AS projectStatus,
+               ps.agent_id AS agentId, ps.status AS membershipStatus
+        FROM social_project_sessions AS ps
+        JOIN social_projects AS p ON p.id = ps.project_id
+        WHERE ps.room_id = ?
+      `)
+      .get(roomId);
+    if (!row) return null;
+    if (row.agentId !== agentId) {
+      throw new Error('这个项目会话只属于其指定成员。');
+    }
+    if (row.membershipStatus !== 'active') {
+      throw new Error('成员已离开项目，不能继续使用原项目会话。');
+    }
+    if (row.projectStatus === 'archived') {
+      throw new Error('项目已归档；恢复项目后才能继续发送。');
+    }
+    return {
+      projectId: row.projectId,
+      title: row.title,
+      brief: row.brief,
+      status: row.projectStatus,
+      agentId: row.agentId,
+      roomId,
     };
   }
 
