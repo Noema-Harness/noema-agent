@@ -511,7 +511,7 @@ export class NoemaProjectExecutor {
       throw new Error('所选工作区不可用。');
     if (
       checkpoint &&
-      (checkpoint.phase !== 'interrupted' ||
+      (!['interrupted', 'failed'].includes(checkpoint.phase) ||
         checkpoint.resumePhase !== 'ready_for_model' ||
         !Array.isArray(checkpoint.messages) ||
         !Number.isInteger(checkpoint.round) ||

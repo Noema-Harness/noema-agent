@@ -1005,6 +1005,79 @@ test('a restarted Noema task resumes from durable model-boundary messages', asyn
   }
 });
 
+test('an unavailable provider can be resumed explicitly without replaying tools', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'noema-provider-resume-'));
+  const { db, store } = makeStore();
+  let providerCalls = 0;
+  let resumedMessages;
+  const provider = {
+    async *streamChat({ messages, onToolCalls }) {
+      providerCalls += 1;
+      if (providerCalls === 1) {
+        onToolCalls([
+          {
+            id: 'read-before-provider-failure',
+            type: 'function',
+            function: {
+              name: 'list_files',
+              arguments: JSON.stringify({ path: '.' }),
+            },
+          },
+        ]);
+        return;
+      }
+      if (providerCalls === 2) {
+        const error = new Error('route temporarily unavailable');
+        error.code = 'provider_unavailable';
+        throw error;
+      }
+      resumedMessages = messages;
+      yield '已沿用已完成的读取继续任务。';
+    },
+  };
+  const service = new SocialWorkService({
+    store,
+    adapter: new NoemaProjectExecutor({ provider }),
+    secretStore: { isConfigured: () => true },
+    chooseWorkspace: async () => directory,
+  });
+  try {
+    const accepted = await service.startTask({
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      prompt: '先检查项目目录，再继续处理。',
+    });
+    const failed = await service.waitForTask(accepted.taskId);
+    assert.equal(failed.status, 'failed');
+    assert.equal(failed.errorCode, 'provider_unavailable');
+    assert.equal(failed.canResume, true);
+    assert.equal(failed.executionSteps.length, 1);
+    assert.equal(failed.executionSteps[0].status, 'succeeded');
+    assert.equal(failed.executionSteps[0].effectStatus, 'none');
+
+    const checkpoint = store.getSocialWorkRuntimeCheckpoint(accepted.taskId);
+    assert.equal(checkpoint.phase, 'failed');
+    assert.equal(checkpoint.resumePhase, 'ready_for_model');
+
+    assert.equal((await service.resumeTask(accepted.taskId)).accepted, true);
+    const completed = await service.waitForTask(accepted.taskId);
+    assert.equal(completed.status, 'completed');
+    assert.equal(completed.canResume, false);
+    assert.equal(completed.toolCallCount, 1);
+    assert.equal(completed.executionSteps.length, 1);
+    assert.equal(providerCalls, 3);
+    assert.equal(resumedMessages.at(-2).role, 'tool');
+    assert.equal(
+      resumedMessages.at(-2).tool_call_id,
+      'read-before-provider-failure',
+    );
+  } finally {
+    await service.shutdown();
+    db.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('output budget failure is persisted as non-resumable with no attempted write', async () => {
   const directory = mkdtempSync(
     path.join(tmpdir(), 'noema-output-budget-task-'),

@@ -331,6 +331,62 @@ test('only a model-boundary Noema checkpoint can be explicitly resumed', () => {
   }
 });
 
+test('a provider-failure checkpoint cannot resume with an unresolved write', () => {
+  const { db, social } = makeStores();
+  try {
+    social.createSocialWorkTask({
+      id: 'task-provider-failure-unknown-write',
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      workspacePath: 'C:\\scratch\\project',
+      workspaceKey: 'c:\\scratch\\project',
+      taskPrompt: '不要重放结果未知的写入。',
+      model: 'test-model',
+      executionEngine: 'noema',
+    });
+    social.setSocialWorkTaskSession(
+      'task-provider-failure-unknown-write',
+      'session-provider-failure',
+    );
+    social.startSocialWorkExecutionStep('task-provider-failure-unknown-write', {
+      id: 'unknown-write',
+      externalCallId: 'write-call',
+      arguments: JSON.stringify({ path: 'out.txt', content: 'maybe written' }),
+      toolName: 'write_file',
+      category: 'write',
+      hasSideEffect: true,
+    });
+    social.saveSocialWorkRuntimeCheckpoint(
+      'task-provider-failure-unknown-write',
+      {
+        messages: [{ role: 'user', content: 'task' }],
+        round: 1,
+        toolCallCount: 1,
+        phase: 'failed',
+        resumePhase: 'ready_for_model',
+      },
+    );
+    social.finishSocialWorkTask('task-provider-failure-unknown-write', {
+      status: 'failed',
+      runtimeSessionId: 'session-provider-failure',
+      errorCode: 'provider_unavailable',
+      errorMessage: '模型供应商不可用。',
+      toolCallCount: 1,
+    });
+
+    const task = social.getSocialWorkTask(
+      'task-provider-failure-unknown-write',
+    );
+    assert.equal(task.canResume, false);
+    assert.throws(
+      () => social.resumeSocialWorkTask('task-provider-failure-unknown-write'),
+      /不满足安全续接条件/u,
+    );
+  } finally {
+    db.close();
+  }
+});
+
 test('project work records safe tool outcomes and marks in-flight writes unknown after restart', () => {
   const { db, social } = makeStores();
   try {

@@ -124,11 +124,17 @@ function hydrateMessage(row) {
 
 function hydrateSocialWorkTask(row, executionSteps = [], checkpoint = null) {
   if (!row) return null;
-  const canResume = Boolean(
+  const restartRecovery =
     row.status === 'interrupted' &&
     row.errorCode === 'app_restarted' &&
+    checkpoint?.phase === 'interrupted';
+  const providerRecovery =
+    row.status === 'failed' &&
+    row.errorCode === 'provider_unavailable' &&
+    checkpoint?.phase === 'failed';
+  const canResume = Boolean(
+    (restartRecovery || providerRecovery) &&
     row.executionEngine === 'noema' &&
-    checkpoint?.phase === 'interrupted' &&
     checkpoint.resumePhase === 'ready_for_model' &&
     checkpoint.round < 16 &&
     !executionSteps.some(
@@ -2098,7 +2104,12 @@ export class SocialChatStore {
         round,
         toolCallCount,
         phase,
-        phase === 'ready_for_model' ? 'ready_for_model' : null,
+        checkpoint.resumePhase === 'ready_for_model' &&
+          ['failed', 'interrupted'].includes(phase)
+          ? 'ready_for_model'
+          : phase === 'ready_for_model'
+            ? 'ready_for_model'
+            : null,
         isoNow(),
       );
     return this.getSocialWorkRuntimeCheckpoint(taskId);
@@ -2228,11 +2239,17 @@ export class SocialChatStore {
       const task = this.db
         .prepare(`
           SELECT workspace_key AS workspaceKey FROM social_work_tasks
-          WHERE id = ? AND status = 'interrupted' AND error_code = 'app_restarted'
-            AND execution_engine = 'noema'
+          WHERE id = ? AND execution_engine = 'noema'
+            AND ((status = 'interrupted' AND error_code = 'app_restarted')
+              OR (status = 'failed' AND error_code = 'provider_unavailable'))
         `)
         .get(taskId);
       if (!task) throw new Error('这项任务当前不能从检查点继续。');
+      if (!this.getSocialWorkTask(taskId).canResume) {
+        throw new Error(
+          '检查点不满足安全续接条件；请检查工作区后重新提交任务。',
+        );
+      }
       const active = this.db
         .prepare(`
           SELECT 1 FROM social_work_tasks
@@ -2247,7 +2264,9 @@ export class SocialChatStore {
           UPDATE social_work_tasks
           SET status = 'starting', phase = 'starting', error_code = NULL,
               error_message = NULL, completed_at = NULL, updated_at = ?
-          WHERE id = ? AND status = 'interrupted' AND error_code = 'app_restarted'
+          WHERE id = ? AND execution_engine = 'noema'
+            AND ((status = 'interrupted' AND error_code = 'app_restarted')
+              OR (status = 'failed' AND error_code = 'provider_unavailable'))
         `)
         .run(now, taskId).changes;
       if (changed !== 1) throw new Error('任务状态已变化，请刷新后重试。');

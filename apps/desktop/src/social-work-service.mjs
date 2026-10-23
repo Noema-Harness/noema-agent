@@ -512,7 +512,7 @@ export class SocialWorkService {
     const checkpoint = this.store.getSocialWorkRuntimeCheckpoint(taskId);
     if (
       !checkpoint ||
-      checkpoint.phase !== 'interrupted' ||
+      !['interrupted', 'failed'].includes(checkpoint.phase) ||
       checkpoint.resumePhase !== 'ready_for_model'
     ) {
       throw new Error('检查点不在可安全续接的模型边界。');
@@ -685,9 +685,15 @@ export class SocialWorkService {
             ? this.store.getSocialWorkRuntimeCheckpoint(taskId)
             : null;
         if (persistedCheckpoint) {
+          const resumableProviderFailure =
+            outcome.status === 'failed' &&
+            outcome.errorCode === 'provider_unavailable' &&
+            persistedCheckpoint.phase === 'ready_for_model' &&
+            persistedCheckpoint.resumePhase === 'ready_for_model';
           this.store.saveSocialWorkRuntimeCheckpoint(taskId, {
             ...persistedCheckpoint,
             phase: outcome.status,
+            resumePhase: resumableProviderFailure ? 'ready_for_model' : null,
           });
         }
         if (typeof outcome.result === 'string' && outcome.result.trim()) {
