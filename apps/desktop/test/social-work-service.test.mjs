@@ -228,6 +228,7 @@ test('social work keeps the stable friend and only includes the issuing room con
       },
     }),
     secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'free-router',
     chooseWorkspace: async () => workspace,
     emit: (event) => events.push(event),
   });
@@ -264,7 +265,8 @@ test('social work keeps the stable friend and only includes the issuing room con
     assert.match(seen[0].task, /群标记-海盐/);
     assert.match(seen[0].task, /面向用户的最终说明使用简体中文/);
     assert.doesNotMatch(seen[0].task, /私有标记-松果/);
-    assert.equal(seen[0].model, 'auto:noema-free');
+    assert.equal(seen[0].model, 'free-router');
+    assert.equal(task.model, 'free-router');
     assert.equal(seen[0].sessionId, null);
     assert.equal(
       events.some((event) => event.type === 'project-work-updated'),
@@ -289,6 +291,36 @@ test('social work keeps the stable friend and only includes the issuing room con
     assert.equal(room.workTasks.length, 1);
     assert.equal(room.workTasks[0].runtimeSessionId, undefined);
     assert.equal(room.workTasks[0].workspacePath, workspace);
+  } finally {
+    await service.shutdown();
+    db.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('legacy DSH project execution keeps its pinned route when another model is selected', async () => {
+  const directory = mkdtempSync(
+    path.join(tmpdir(), 'noema-dsh-route-contract-'),
+  );
+  const { db, store } = makeStore();
+  const adapter = Object.assign(makeAdapter(), { executionEngine: 'dsh' });
+  const service = new SocialWorkService({
+    store,
+    adapter,
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'free-router',
+    chooseWorkspace: async () => directory,
+  });
+  try {
+    const accepted = await service.startTask({
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      prompt: '使用现有 DSH 兼容路由。',
+    });
+    const task = await service.waitForTask(accepted.taskId);
+    assert.equal(task.status, 'completed');
+    assert.equal(task.model, 'auto:noema-free');
+    assert.equal(task.executionEngine, 'dsh');
   } finally {
     await service.shutdown();
     db.close();

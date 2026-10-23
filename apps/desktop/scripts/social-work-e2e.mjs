@@ -47,6 +47,7 @@ const dshUserDataPath = path.join(e2eDirectory, 'dsh-home');
 const resultPath = path.join(e2eDirectory, 'result.json');
 const marker = `NOEMA-SOCIAL-WORK-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 const syntheticAdapter = process.argv.includes('--synthetic');
+const liveModel = process.env.NOEMA_E2E_MODEL ?? 'auto:noema-free';
 const livePractice = process.argv.includes('--live-practice');
 const liveEpisodes = process.argv.includes('--live-episodes');
 const caseOnly = process.argv.includes('--case-only');
@@ -59,6 +60,9 @@ if (
   throw new Error(
     'Use one compatible E2E mode: synthetic, live-practice, live-episodes, or synthetic --case-only.',
   );
+}
+if (!/^[\w./:-]{1,200}$/u.test(liveModel)) {
+  throw new Error('NOEMA_E2E_MODEL must be a valid model route ID.');
 }
 const relativePath = 'NOEMA-E2E-RESULT.txt';
 const verificationChecks = [
@@ -128,7 +132,8 @@ if (
   throw new Error('Could not independently verify the room-A case fixture.');
 }
 const seedDatabase = new Database(databasePath);
-new RootStore(seedDatabase);
+const seedRootStore = new RootStore(seedDatabase);
+seedRootStore.setSelectedModel(liveModel);
 const seedSocialStore = createSocialTestStore(seedDatabase);
 if (!liveEpisodes) {
   seedSocialStore.createSocialWorkTask({
@@ -226,7 +231,7 @@ seedSocialStore.createSocialWorkTask({
     .replaceAll('/', '\\')
     .toLocaleLowerCase('en-US'),
   taskPrompt: '[NOEMA E2E] 读取后模型中断的恢复状态演练。',
-  model: 'auto:noema-free',
+  model: liveModel,
   executionEngine: 'noema',
 });
 const recoveryStepId = 'e2e-room-c-read-files';
@@ -320,6 +325,7 @@ const summary = {
   errorMessage: result.task?.errorMessage ?? result.errorMessage ?? null,
   toolCallCount: result.task?.toolCallCount ?? 0,
   executionEngine: result.task?.executionEngine ?? null,
+  model: result.task?.model ?? liveModel,
   caseSnapshot: result.task?.caseSnapshot ?? null,
   practiceSnapshot: result.task?.practiceSnapshot ?? null,
   practiceCandidateStatus: result.task?.practiceCandidateStatus ?? null,

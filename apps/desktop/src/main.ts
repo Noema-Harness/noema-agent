@@ -3700,6 +3700,8 @@ async function startNoema() {
     const practiceConfirmationEvidence: Array<Record<string, unknown>> = [];
     socialWorkService = new SocialWorkService({
       store: socialChatStore,
+      getSelectedModel: () =>
+        rootStore?.getSelectedModel() ?? 'auto:noema-free',
       assertWorkAllowed: (roomId: string) =>
         socialProjectStore?.assertWorkAllowed(roomId),
       adapter: syntheticSocialWorkAdapter ?? noemaProjectExecutor,

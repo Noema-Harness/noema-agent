@@ -238,16 +238,17 @@ function buildTaskPrompt({
 
 /**
  * Owns room-scoped project work while treating the executor as an adapter.
- * @param {{store:import('./social-chat-store.mjs').SocialChatStore,adapter:{executionEngine?:string,startTask:(input:any)=>any}|null,secretStore:{isConfigured:()=>boolean},practiceProvider?:import('./freellmapi-client.mjs').FreeLLMAPIClient|null,chooseWorkspace:(options?:{reuseCase?:boolean,prompt?:string})=>Promise<string|null>,confirmPracticeCandidate?:(input:{candidate:{sourceTaskId:string,basisTaskId:string,basisRoomTitle:string,basisTaskPrompt:string,roomTitle:string,trigger:string,action:string,limits:string},taskPrompt:string,caseSnapshot:{taskId:string,taskPrompt:string}|null})=>Promise<'trial'|'case'|'cancel'>,assertWorkAllowed?:(roomId:string)=>void,emit?:(event:object)=>void}} options
+ * @param {{store:import('./social-chat-store.mjs').SocialChatStore,adapter:{executionEngine?:string,startTask:(input:any)=>any}|null,secretStore:{isConfigured:()=>boolean},getSelectedModel?:()=>string|null,practiceProvider?:import('./freellmapi-client.mjs').FreeLLMAPIClient|null,chooseWorkspace:(options?:{reuseCase?:boolean,prompt?:string})=>Promise<string|null>,confirmPracticeCandidate?:(input:{candidate:{sourceTaskId:string,basisTaskId:string,basisRoomTitle:string,basisTaskPrompt:string,roomTitle:string,trigger:string,action:string,limits:string},taskPrompt:string,caseSnapshot:{taskId:string,taskPrompt:string}|null})=>Promise<'trial'|'case'|'cancel'>,assertWorkAllowed?:(roomId:string)=>void,emit?:(event:object)=>void}} options
  */
 export class SocialWorkService {
   /**
-   * @param {{store:import('./social-chat-store.mjs').SocialChatStore,adapter:{executionEngine?:string,startTask:(input:any)=>any}|null,secretStore:{isConfigured:()=>boolean},practiceProvider?:import('./freellmapi-client.mjs').FreeLLMAPIClient|null,chooseWorkspace:(options?:{reuseCase?:boolean,prompt?:string})=>Promise<string|null>,confirmPracticeCandidate?:(input:{candidate:{sourceTaskId:string,basisTaskId:string,basisRoomTitle:string,basisTaskPrompt:string,roomTitle:string,trigger:string,action:string,limits:string},taskPrompt:string,caseSnapshot:{taskId:string,taskPrompt:string}|null})=>Promise<'trial'|'case'|'cancel'>,defaultVerificationChecks?:unknown,delayImpl?:(milliseconds:number,signal:AbortSignal)=>Promise<boolean>,assertWorkAllowed?:(roomId:string)=>void,emit?:(event:object)=>void}} options
+   * @param {{store:import('./social-chat-store.mjs').SocialChatStore,adapter:{executionEngine?:string,startTask:(input:any)=>any}|null,secretStore:{isConfigured:()=>boolean},getSelectedModel?:()=>string|null,practiceProvider?:import('./freellmapi-client.mjs').FreeLLMAPIClient|null,chooseWorkspace:(options?:{reuseCase?:boolean,prompt?:string})=>Promise<string|null>,confirmPracticeCandidate?:(input:{candidate:{sourceTaskId:string,basisTaskId:string,basisRoomTitle:string,basisTaskPrompt:string,roomTitle:string,trigger:string,action:string,limits:string},taskPrompt:string,caseSnapshot:{taskId:string,taskPrompt:string}|null})=>Promise<'trial'|'case'|'cancel'>,defaultVerificationChecks?:unknown,delayImpl?:(milliseconds:number,signal:AbortSignal)=>Promise<boolean>,assertWorkAllowed?:(roomId:string)=>void,emit?:(event:object)=>void}} options
    */
   constructor({
     store,
     adapter,
     secretStore,
+    getSelectedModel = () => null,
     practiceProvider = null,
     chooseWorkspace,
     confirmPracticeCandidate = null,
@@ -259,6 +260,7 @@ export class SocialWorkService {
     this.store = store;
     this.adapter = adapter;
     this.secretStore = secretStore;
+    this.getSelectedModel = getSelectedModel;
     this.practiceProvider = practiceProvider;
     this.chooseWorkspace = chooseWorkspace;
     this.confirmPracticeCandidate = confirmPracticeCandidate;
@@ -418,7 +420,11 @@ export class SocialWorkService {
     signal?.throwIfAborted();
     this.assertWorkAllowed(roomId);
     const id = randomUUID();
-    const model = 'auto:noema-free';
+    const executionEngine = this.adapter.executionEngine ?? 'noema';
+    const model =
+      executionEngine === 'dsh'
+        ? 'auto:noema-free'
+        : this.getSelectedModel() || 'auto:noema-free';
     const saveTask = dispatchFromNoema
       ? this.store.createNoemaDispatchedSocialWorkTask.bind(this.store)
       : this.store.createSocialWorkTask.bind(this.store);
@@ -431,7 +437,7 @@ export class SocialWorkService {
       workspaceKey,
       taskPrompt: prompt,
       model,
-      executionEngine: this.adapter.executionEngine ?? 'noema',
+      executionEngine,
       verificationChecks: normalizedChecks,
       caseReuseRequested: reuseCase === true,
       caseSnapshot,
