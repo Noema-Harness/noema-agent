@@ -580,6 +580,10 @@ export interface NoemaQuickCaptureShortcutStatus {
 }
 
 export interface NoemaBridge {
+  controlWindow(
+    action: 'minimize' | 'maximize' | 'close' | 'state',
+  ): Promise<boolean>;
+  onWindowStateChanged(listener: (maximized: boolean) => void): () => void;
   appVersion: string;
   getRootState(): Promise<NoemaRootState>;
   getSocialState(): Promise<NoemaSocialState>;

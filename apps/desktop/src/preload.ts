@@ -12,6 +12,15 @@ import type {
 } from './noema-bridge.d.ts';
 
 const bridge = {
+  controlWindow: (
+    action: 'minimize' | 'maximize' | 'close' | 'state',
+  ): Promise<boolean> => ipcRenderer.invoke('noema:window-control', action),
+  onWindowStateChanged: (listener: (maximized: boolean) => void) => {
+    const handle = (_event: Electron.IpcRendererEvent, maximized: boolean) =>
+      listener(maximized);
+    ipcRenderer.on('noema:window-state', handle);
+    return () => ipcRenderer.removeListener('noema:window-state', handle);
+  },
   appVersion: process.env.npm_package_version ?? '0.1.0',
   getRootState: (): Promise<NoemaRootState> =>
     ipcRenderer.invoke('noema:root-state'),

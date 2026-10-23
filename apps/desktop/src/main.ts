@@ -298,8 +298,22 @@ const isSquirrelLifecycleEvent = process.argv.some((argument) =>
 );
 const hasSingleInstanceLock =
   process.env.NOEMA_SMOKE_TEST === '1' ||
+  (!app.isPackaged && Boolean(testDataArgument)) ||
   isSquirrelLifecycleEvent ||
   app.requestSingleInstanceLock();
+
+ipcMain.handle('noema:window-control', (event, action: unknown) => {
+  const target = BrowserWindow.fromWebContents(event.sender);
+  if (!target || target !== mainWindow)
+    throw new Error('Window is unavailable');
+  if (action === 'minimize') target.minimize();
+  else if (action === 'maximize') {
+    if (target.isMaximized()) target.unmaximize();
+    else target.maximize();
+  } else if (action === 'close') target.close();
+  else if (action !== 'state') throw new Error('Unknown window action');
+  return !target.isDestroyed() && target.isMaximized();
+});
 
 const createWindow = () => {
   quickCaptureRendererReady = false;
@@ -307,11 +321,24 @@ const createWindow = () => {
   const windowSize = resolveInitialWindowSize(display.workAreaSize);
   mainWindow = new BrowserWindow({
     ...windowSize,
-    backgroundColor: '#f1f3f0',
+    title: 'Noema',
+    frame: false,
+    autoHideMenuBar: true,
+    backgroundColor: '#fcfcfc',
     webPreferences: createWindowPreferences(
       path.join(__dirname, 'preload.cjs'),
     ),
   });
+  mainWindow.setMenuBarVisibility(false);
+  const publishWindowState = () => {
+    if (mainWindow && !mainWindow.webContents.isDestroyed())
+      mainWindow.webContents.send(
+        'noema:window-state',
+        mainWindow.isMaximized(),
+      );
+  };
+  mainWindow.on('maximize', publishWindowState);
+  mainWindow.on('unmaximize', publishWindowState);
   initialWindowFitsWorkArea = fitsWithinWorkArea(
     mainWindow.getBounds(),
     display.workArea,
@@ -2972,7 +2999,7 @@ async function captureSocialAgentCreationE2e() {
     if (!projectMemberOption) throw new Error('已创建的专业联系人没有出现在项目成员列表中');
     projectMemberOption.querySelector('input')?.click();
     document.querySelector('.project-dialog button[type="submit"]')?.click();
-    await waitFor(() => document.querySelector('.room-header h2')?.textContent?.trim() === 'E2E 定价追踪', '项目群聊');
+    await waitFor(() => document.querySelector('.project-workspace h2')?.textContent?.trim() === 'E2E 定价追踪' && document.querySelector('.room-header h2')?.textContent?.trim() === 'Noema', 'Noema 主聊旁的项目工作区');
     const projectCreatedState = await waitFor(async () => {
       const state = await window.noema.getSocialState();
       const project = state.projects.find((candidate) => candidate.title === 'E2E 定价追踪');
@@ -2982,7 +3009,7 @@ async function captureSocialAgentCreationE2e() {
       .find((item) => item.querySelector('strong')?.textContent?.trim() === 'E2E 定价追踪');
     const projectNotDuplicatedInOtherChats = ![...document.querySelectorAll('.conversation-list .room-list-item')]
       .some((item) => item.querySelector('.room-list-title')?.textContent?.includes('E2E 定价追踪'));
-    const projectBannerVisible = Boolean(document.querySelector('.project-context-strip')?.textContent?.includes('比较平台价格并记录变化'));
+    const projectBannerVisible = Boolean(document.querySelector('.project-workspace-brief')?.textContent?.includes('比较平台价格并记录变化'));
     const projectMemberSession = projectCreatedState.project.members.find((member) => member.agentId === createdState.agent.id);
     const projectGroup = await window.noema.getSocialRoom(projectCreatedState.project.groupRoomId);
     const projectPrivateDmUnchanged = !(await window.noema.getSocialRoom(directRoom.room.id)).messages.some((message) => message.content.includes('比较平台价格并记录变化'));
@@ -3006,9 +3033,9 @@ async function captureSocialAgentCreationE2e() {
       const project = state.projects.find((candidate) => candidate.id === projectCreatedState.project.id);
       return project?.status === 'active' ? state : null;
     }, '项目恢复状态');
-    await waitFor(() => document.querySelector('.room-header h2')?.textContent?.trim() === 'E2E 定价追踪', '恢复后的原项目空间');
-    const openMemberSession = [...document.querySelectorAll('.project-session-actions button')]
-      .find((button) => button.textContent?.includes('打开 ' + name + ' 的项目会话'));
+    await waitFor(() => document.querySelector('.project-workspace h2')?.textContent?.trim() === 'E2E 定价追踪', '恢复后的原项目工作区');
+    const openMemberSession = [...document.querySelectorAll('.project-workspace .project-member-open')]
+      .find((button) => button.parentElement?.textContent?.includes(name));
     if (!openMemberSession) throw new Error('项目群没有提供成员独立会话入口');
     openMemberSession.click();
     await waitFor(() => document.querySelector('.room-header h2')?.textContent?.trim() === name, '成员项目会话');

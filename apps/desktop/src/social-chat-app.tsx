@@ -20,7 +20,6 @@ import {
 } from './social-work-presentation.mjs';
 import type {
   NoemaSocialAgent,
-  NoemaInteractionAdjustment,
   NoemaInteractionAdjustmentSnapshot,
   NoemaSocialEvent,
   NoemaSocialHistorySource,
@@ -62,6 +61,13 @@ function timeLabel(value: string | null | undefined) {
   }).format(date);
 }
 
+function dayLabel(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.valueOf())) return '';
+  const today = new Date().toDateString() === date.toDateString();
+  return `${today ? '今天 · ' : ''}${date.getMonth() + 1} 月 ${date.getDate()} 日`;
+}
+
 function Icon({
   name,
   ...props
@@ -73,7 +79,13 @@ function Icon({
     | 'search'
     | 'send'
     | 'settings'
+    | 'noema'
+    | 'project'
+    | 'archive'
+    | 'attach'
+    | 'arrow'
     | 'back'
+    | 'menu'
     | 'close'
     | 'stop';
 }) {
@@ -98,7 +110,24 @@ function Icon({
         <path d="m15.4 15.4 4.1 4.1" />
       </>
     ),
-    send: <path d="m21 3-7.1 18-3.9-7.9L2 9.2 21 3Zm0 0L10 13.1" />,
+    send: <path d="M12 5v14M6 11l6-6 6 6" />,
+    noema: <path d="M5 18V9a5 5 0 0 1 10 0v9M9 18V9m10 9V6" />,
+    project: (
+      <>
+        <rect x="4" y="5" width="16" height="15" rx="2" />
+        <path d="M8 3v4m8-4v4M4 11h16m-11 4h6" />
+      </>
+    ),
+    archive: (
+      <>
+        <rect x="3" y="4" width="18" height="4" rx="1" />
+        <path d="M5 8v12h14V8m-10 5h6" />
+      </>
+    ),
+    attach: (
+      <path d="m8 12 6-6a3 3 0 0 1 4 4l-8 8a5 5 0 0 1-7-7l8-8m-3 9 6-6" />
+    ),
+    arrow: <path d="M5 12h14m-5-5 5 5-5 5" />,
     settings: (
       <>
         <circle cx="12" cy="12" r="3" />
@@ -106,6 +135,12 @@ function Icon({
       </>
     ),
     back: <path d="m15 18-6-6 6-6M9 12h11" />,
+    menu: (
+      <>
+        <rect x="3" y="4" width="18" height="16" rx="2" />
+        <path d="M9 4v16" />
+      </>
+    ),
     close: <path d="m6 6 12 12M18 6 6 18" />,
     stop: <rect x="6" y="6" width="12" height="12" rx="2" />,
   };
@@ -134,10 +169,14 @@ function AgentMark({
 }) {
   return (
     <span
-      className={`agent-mark ${agent.kind === 'core' ? 'agent-mark-core' : 'agent-mark-specialist'} ${small ? 'agent-mark-small' : ''}`}
+      className={`portrait agent-mark ${agent.kind === 'core' ? 'core' : 'specialist'} ${small ? 'agent-mark-small' : ''}`}
       aria-hidden="true"
     >
-      {agent.kind === 'core' ? 'N' : agent.name.trim().slice(0, 1)}
+      {agent.kind === 'core' ? (
+        <Icon name="noema" />
+      ) : (
+        agent.name.trim().slice(0, 1)
+      )}
     </span>
   );
 }
@@ -145,6 +184,19 @@ function AgentMark({
 function SocialChatApp() {
   const [state, setState] = useState<NoemaSocialState | null>(null);
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
+  const [projectWorkspaceId, setProjectWorkspaceId] = useState<string | null>(
+    null,
+  );
+  const [agentWorkspaceId, setAgentWorkspaceId] = useState<string | null>(null);
+  const [projectTab, setProjectTab] = useState<
+    'delivery' | 'group' | 'members'
+  >('delivery');
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
+  const [windowMaximized, setWindowMaximized] = useState(false);
+  useEffect(() => {
+    void window.noema.controlWindow?.('state').then(setWindowMaximized);
+    return window.noema.onWindowStateChanged?.(setWindowMaximized);
+  }, []);
   const [roomState, setRoomState] = useState<NoemaSocialRoomState | null>(null);
   const [selectedAgentId, setSelectedAgentId] = useState('noema');
   const [draftsByRoom, setDraftsByRoom] = useState<Record<string, string>>({});
@@ -213,6 +265,7 @@ function SocialChatApp() {
   const [switchingModel, setSwitchingModel] = useState(false);
   const conversationRef = useRef<HTMLDivElement>(null);
   const draftRef = useRef<HTMLTextAreaElement>(null);
+  const groupDraftRef = useRef<HTMLInputElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const searchRequestRef = useRef(0);
   const dialogRef = useRef<HTMLFormElement>(null);
@@ -227,6 +280,21 @@ function SocialChatApp() {
   const loadSequenceRef = useRef(0);
 
   const draft = activeRoomId ? (draftsByRoom[activeRoomId] ?? '') : '';
+  useLayoutEffect(() => setShowJumpToLatest(false), [activeRoomId]);
+  useLayoutEffect(() => {
+    const input = draftRef.current;
+    if (!input) return;
+    input.style.height = 'auto';
+    input.style.height = `${Math.min(input.scrollHeight, 180)}px`;
+  }, [
+    draft,
+    activeRoomId,
+    roomState?.room.id,
+    projectTab,
+    projectWorkspaceId,
+    agentWorkspaceId,
+    archivedProjectsOpen,
+  ]);
   const setRoomDraft = (roomId: string, value: string) => {
     setDraftsByRoom((current) => {
       const next = { ...current };
@@ -618,8 +686,7 @@ function SocialChatApp() {
     (agent) => !agent.archivedAt && agent.capabilities.includes('project-work'),
   );
   const showProjectModeSwitch =
-    roomCanWork &&
-    (currentRoom?.id !== 'room-noema' || composerMode === 'project');
+    roomCanWork && currentRoom?.id !== noemaRoom?.id;
   const forwardableRooms = rooms.filter(
     (room) =>
       room.id !== currentRoom?.id &&
@@ -651,8 +718,24 @@ function SocialChatApp() {
   const projectRoomIds = new Set(
     projects.map((project) => project.groupRoomId),
   );
+  const projectSessionRoomIds = new Set(
+    projects.flatMap((project) =>
+      project.members.flatMap((member) =>
+        member.sessionRoomId ? [member.sessionRoomId] : [],
+      ),
+    ),
+  );
   const otherRooms = filteredRooms.filter(
-    (room) => room.id !== noemaRoom?.id && !projectRoomIds.has(room.id),
+    (room) =>
+      room.id !== noemaRoom?.id &&
+      !projectRoomIds.has(room.id) &&
+      !projectSessionRoomIds.has(room.id),
+  );
+  const memberRooms = otherRooms.filter(
+    (room) => room.kind === 'direct' && !room.parentRoomId,
+  );
+  const otherConversationRooms = otherRooms.filter(
+    (room) => room.kind !== 'direct' || Boolean(room.parentRoomId),
   );
   const projectQuery = search.trim().toLocaleLowerCase();
   const visibleProjects = projects.filter((project) => {
@@ -671,6 +754,13 @@ function SocialChatApp() {
   const activeProject =
     projects.find((project) => project.groupRoomId === currentRoom?.id) ??
     projects.find((project) => project.id === activeProjectSession?.projectId);
+  const projectWorkspace =
+    projects.find((project) => project.id === projectWorkspaceId) ?? null;
+  const projectGroupRoom = projectWorkspace
+    ? (rooms.find((room) => room.id === projectWorkspace.groupRoomId) ?? null)
+    : null;
+  const agentWorkspace =
+    agents.find((agent) => agent.id === agentWorkspaceId) ?? null;
   const viewingProjectSession = Boolean(
     activeProjectSession &&
     activeProjectSession.roomId === currentRoom?.id &&
@@ -679,61 +769,48 @@ function SocialChatApp() {
   const visibleMessageSearchResults =
     messageSearchResultQuery === search.trim() ? messageSearchResults : [];
 
-  const renderRoomListItem = (room: NoemaSocialRoom, extraClassName = '') => {
-    const firstAgent = messageAgent.get(room.memberIds[0] ?? '');
-    const selected = room.id === activeRoomId;
-    const preview = room.preview;
-    const memberNames = room.memberIds
-      .map((id) => messageAgent.get(id)?.name)
-      .filter(Boolean)
-      .join('、');
+  const renderRoomListItem = (room: NoemaSocialRoom) => {
+    const agent = messageAgent.get(room.memberIds[0] ?? '');
+    const selected =
+      !projectWorkspaceId &&
+      !agentWorkspaceId &&
+      !archivedProjectsOpen &&
+      room.id === activeRoomId;
     return (
       <button
         key={room.id}
         type="button"
-        className={`room-list-item ${extraClassName} ${selected ? 'is-selected' : ''}`}
+        className={`index-item room-list-item ${selected ? 'selected' : ''}`}
         aria-current={selected ? 'page' : undefined}
         onClick={() => selectRoom(room)}
       >
-        <span className="room-list-copy">
-          <span className="room-list-title-line">
-            <span className="room-list-title">{room.title}</span>
-            {room.parentRoomId ? (
-              <span className="continuation-room-mark">主题</span>
-            ) : null}
-            {room.closedAt ? (
-              <span className="continuation-room-mark">已结束</span>
-            ) : null}
-            {room.memberIds.some(
-              (agentId) => messageAgent.get(agentId)?.archivedAt,
-            ) ? (
-              <span className="room-archived-mark">已归档联系人</span>
-            ) : null}
-            {preview ? (
-              <time dateTime={preview.createdAt}>
-                {timeLabel(preview.createdAt)}
-              </time>
-            ) : null}
+        {room.kind === 'direct' && agent ? (
+          <AgentMark agent={agent} />
+        ) : (
+          <span className="portrait">
+            <Icon name="users" />
           </span>
-          <span className="room-preview">
-            {preview ? (
-              <>
-                {preview.sender ? <b>{preview.sender}：</b> : null}
-                {preview.text}
-              </>
-            ) : room.kind === 'group' ? (
-              memberNames
-            ) : (
-              firstAgent?.headline
-            )}
-          </span>
+        )}
+        <span>
+          <span className="item-title">{room.title}</span>
+          <small>
+            {room.kind === 'direct'
+              ? agent?.kind === 'core'
+                ? '你的个人伙伴'
+                : agent?.headline || '常驻私聊'
+              : room.preview?.text || '独立的群聊记录'}
+          </small>
         </span>
       </button>
     );
   };
 
   const selectRoom = (room: NoemaSocialRoom) => {
+    setShowJumpToLatest(false);
+    setArchivedProjectsOpen(false);
     setActiveProjectSession(null);
+    setProjectWorkspaceId(null);
+    setAgentWorkspaceId(null);
     shouldFollowRef.current = true;
     setActiveRoomId(room.id);
     setSelectedAgentId(room.memberIds[0] ?? 'noema');
@@ -744,6 +821,23 @@ function SocialChatApp() {
     setSelectedForwardMessageIds([]);
     setShowRoomList(false);
     setNotice('');
+  };
+
+  const openAgentWorkspace = (agentId: string) => {
+    setArchivedProjectsOpen(false);
+    setProjectWorkspaceId(null);
+    setAgentWorkspaceId(agentId);
+    setActiveProjectSession(null);
+    setSelectedAgentId('noema');
+    setComposerMode('chat');
+    setReplyTarget(null);
+    setForwardSelectionActive(false);
+    setSelectedForwardMessageIds([]);
+    setActiveRoomId('room-noema');
+    setShowRoomList(false);
+    shouldFollowRef.current = true;
+    const homeRoom = rooms.find((room) => room.id === 'room-noema');
+    if (homeRoom) void loadRoom(homeRoom.id);
   };
 
   const openMessageSearchResult = (result: NoemaSocialSearchResult) => {
@@ -798,7 +892,7 @@ function SocialChatApp() {
       );
     } finally {
       setBusy(false);
-      draftRef.current?.focus();
+      (draftRef.current ?? groupDraftRef.current)?.focus();
     }
   };
 
@@ -1141,14 +1235,17 @@ function SocialChatApp() {
       });
       closeProjectDialog();
       const next = await refreshState();
-      setActiveRoomId(project.groupRoomId);
+      setProjectWorkspaceId(project.id);
+      setAgentWorkspaceId(null);
+      setActiveProjectSession(null);
+      setActiveRoomId('room-noema');
       setShowRoomList(false);
-      const groupRoom = next.rooms.find(
-        (room) => room.id === project.groupRoomId,
-      );
-      if (groupRoom) selectRoom(groupRoom);
-      else await loadRoom(project.groupRoomId);
-      requestAnimationFrame(() => draftRef.current?.focus());
+      const homeRoom = next.rooms.find((room) => room.id === 'room-noema');
+      if (homeRoom) {
+        setSelectedAgentId('noema');
+        setComposerMode('chat');
+        void loadRoom(homeRoom.id);
+      }
     } catch (error) {
       setNotice(error instanceof Error ? error.message : '项目没有创建成功。');
     } finally {
@@ -1163,14 +1260,19 @@ function SocialChatApp() {
         await window.noema.restoreSocialProject(project.id);
       }
       const next = await refreshState();
-      const groupRoom = next.rooms.find(
-        (room) => room.id === project.groupRoomId,
-      );
-      if (groupRoom) selectRoom(groupRoom);
-      else {
-        setActiveRoomId(project.groupRoomId);
-        await loadRoom(project.groupRoomId);
-      }
+      setProjectWorkspaceId(project.id);
+      setArchivedProjectsOpen(false);
+      setProjectTab('delivery');
+      setAgentWorkspaceId(null);
+      setActiveProjectSession(null);
+      setSelectedAgentId('noema');
+      setComposerMode('chat');
+      setReplyTarget(null);
+      setActiveRoomId(project.groupRoomId);
+      setShowRoomList(false);
+      shouldFollowRef.current = true;
+      if (next.rooms.some((room) => room.id === project.groupRoomId))
+        void loadRoom(project.groupRoomId);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : '无法打开这个项目。');
     }
@@ -1192,6 +1294,8 @@ function SocialChatApp() {
         agentId,
         roomId: session.room.room.id,
       });
+      setProjectWorkspaceId(null);
+      setAgentWorkspaceId(null);
       setRoomState(session.room);
       setActiveRoomId(session.room.room.id);
       setSelectedAgentId(agentId);
@@ -1207,22 +1311,15 @@ function SocialChatApp() {
     }
   };
 
-  const returnToProjectGroup = () => {
-    if (!activeProject) return;
-    const room = rooms.find(
-      (candidate) => candidate.id === activeProject.groupRoomId,
-    );
-    if (room) selectRoom(room);
-  };
-
-  const archiveCurrentProject = async () => {
-    if (!activeProject || projectStatusBusy) return;
+  const archiveCurrentProject = async (project = activeProject) => {
+    if (!project || projectStatusBusy) return;
     setProjectStatusBusy(true);
     setNotice('');
     try {
-      await window.noema.archiveSocialProject(activeProject.id);
+      await window.noema.archiveSocialProject(project.id);
       await refreshState();
-      setActiveRoomId('room-noema');
+      setProjectWorkspaceId(null);
+      if (activeProject?.id === project.id) setActiveRoomId('room-noema');
     } catch (error) {
       setNotice(error instanceof Error ? error.message : '项目尚不能归档。');
     } finally {
@@ -1397,12 +1494,6 @@ function SocialChatApp() {
     }
   };
 
-  const avatarAgent =
-    currentRoom?.kind === 'group'
-      ? null
-      : currentRoom?.kind === 'direct'
-        ? members[0]
-        : (currentRecipient ?? members[0]);
   const modelOptions = state?.models ?? [];
   const activeModel = state?.selectedModel ?? '';
   const activeRoute = modelOptions.find((model) => model.name === activeModel);
@@ -1492,272 +1583,624 @@ function SocialChatApp() {
     />
   );
 
-  return (
-    <main className="social-shell" ref={shellRef}>
-      <div
-        ref={navigation.containerRef}
-        className={`social-body ${showRoomList ? '' : 'room-open'}${navigation.collapsed ? ' navigation-collapsed' : ''}${navigation.dragging ? ' navigation-resizing' : ''}`}
-        style={navigation.style}
-      >
-        <aside
-          id="conversation-navigation"
-          className="conversation-sidebar"
-          aria-label="聊天列表"
-          inert={navigation.narrow ? !showRoomList : navigation.collapsed}
+  const turnDate = (turn: (typeof conversationTurns)[number] | undefined) => {
+    const first = turn?.items[0];
+    return first
+      ? first.kind === 'message'
+        ? first.message.createdAt
+        : first.task.createdAt
+      : '';
+  };
+
+  const navigationHidden = navigation.narrow
+    ? !showRoomList
+    : navigation.collapsed;
+  const workspaceOpen = Boolean(
+    projectWorkspace || agentWorkspace || archivedProjectsOpen,
+  );
+  const composerDisabled =
+    !composerReady ||
+    Boolean(currentRoom?.closedAt) ||
+    forwardSelectionActive ||
+    !currentRecipient ||
+    currentRecipientArchived ||
+    Boolean(activeReply) ||
+    workBusy ||
+    (composerMode === 'project' && !currentRecipientCanWork);
+  const sendDisabled = composerDisabled || !draft.trim() || busy;
+  const conversationContent =
+    currentRoom && roomState?.room.id === currentRoom.id ? (
+      <>
+        <div
+          className={`${currentRoom.id === noemaRoom?.id ? 'chat-scroll' : 'session-scroll'} message-thread`}
+          data-room-id={currentRoom.id}
+          ref={conversationRef}
+          onScroll={(event) => {
+            const element = event.currentTarget;
+            shouldFollowRef.current =
+              element.scrollHeight - element.scrollTop - element.clientHeight <
+              60;
+            setShowJumpToLatest(!shouldFollowRef.current);
+          }}
+          aria-live="polite"
+          aria-relevant="additions text"
         >
-          <div className="sidebar-heading">
-            <h1>Noema</h1>
-            <button
-              className="icon-button navigation-collapse"
-              type="button"
-              aria-label="收起导航"
-              title="收起导航"
-              onClick={() => {
-                if (navigation.narrow) setShowRoomList(false);
-                else navigation.collapse();
-                requestAnimationFrame(() =>
-                  document
-                    .querySelector<HTMLButtonElement>('.navigation-reveal')
-                    ?.focus(),
-                );
-              }}
-            >
-              <Icon name="back" />
-            </button>
-            <div className="sidebar-create-actions">
-              <button
-                className="sidebar-create-action new-agent-button"
-                ref={agentTriggerRef}
-                type="button"
-                aria-label="创建专业联系人"
-                title="创建专业联系人"
-                onClick={() => setCreateAgentOpen(true)}
-              >
-                <span className="sidebar-create-mark" aria-hidden="true">
-                  ＋
-                </span>
-                <span className="sidebar-create-label">联系人</span>
-              </button>
-              <button
-                className="sidebar-create-action new-group-button"
-                ref={groupTriggerRef}
-                type="button"
-                aria-label="新建群聊"
-                title="新建群聊"
-                onClick={() => setCreateGroupOpen(true)}
-              >
-                <span className="sidebar-create-mark" aria-hidden="true">
-                  ＋
-                </span>
-                <span className="sidebar-create-label">群聊</span>
-              </button>
-              <button
-                className="sidebar-create-action new-project-button"
-                ref={projectTriggerRef}
-                type="button"
-                aria-label="新建项目"
-                title="创建有独立成员会话的项目空间"
-                onClick={() => setCreateProjectOpen(true)}
-              >
-                <span className="sidebar-create-mark" aria-hidden="true">
-                  ＋
-                </span>
-                <span className="sidebar-create-label">项目</span>
-              </button>
+          {currentRoom.id !== noemaRoom?.id &&
+          members[0]?.kind === 'specialist' ? (
+            <div className="session-label">
+              {viewingProjectSession
+                ? `${activeProject?.title ?? '项目'} / 此成员的项目工作会话`
+                : '日常私聊 / 与项目工作会话分开'}
             </div>
-          </div>
-
-          <label className="chat-search">
-            <Icon name="search" />
-            <input
-              type="search"
-              ref={searchRef}
-              placeholder="搜索聊天和消息"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              aria-label="搜索联系人、聊天和消息"
-            />
-            <kbd>Ctrl K</kbd>
-          </label>
-
-          <div className="primary-conversation-heading">主聊</div>
-          {noemaRoom ? (
-            <nav className="primary-conversation-nav" aria-label="Noema 主聊">
-              {renderRoomListItem(noemaRoom, 'noema-primary-item')}
-            </nav>
           ) : null}
-
-          <div className="conversation-list-heading">
-            <span>其他聊天</span>
-            <span>{otherRooms.length}</span>
-          </div>
-
-          <nav className="conversation-list" aria-label="其他聊天">
-            {otherRooms.map((room) => renderRoomListItem(room))}
-            <section className="project-navigation" aria-label="项目">
-              <div className="conversation-list-heading project-list-heading">
-                <span>项目</span>
-                <span>{activeProjects.length}</span>
+          {!messages.some((message) => message.role !== 'system') &&
+          workTasks.length === 0 ? (
+            <div className="empty-chat" aria-label="空对话">
+              <span className="room-empty-rule" aria-hidden="true" />
+              <span>
+                {currentRoom.kind === 'group'
+                  ? '群聊记录从这里开始'
+                  : `${currentRoom.title} · 新对话`}
+              </span>
+            </div>
+          ) : (
+            <div
+              className={`${currentRoom.id === noemaRoom?.id ? 'chat-body' : 'session-body'} message-sequence`}
+              data-room-kind={currentRoom.kind}
+            >
+              {conversationTurns.map((turn, turnIndex) => (
+                <section
+                  className="conversation-turn"
+                  data-conversation-turn={turn.id}
+                  key={turn.id}
+                >
+                  {dayLabel(turnDate(turn)) !==
+                  dayLabel(turnDate(conversationTurns[turnIndex - 1])) ? (
+                    <div className="dayline">{dayLabel(turnDate(turn))}</div>
+                  ) : null}
+                  {turn.items.map((item) =>
+                    item.kind === 'message' ? (
+                      <React.Fragment key={item.id}>
+                        <ChatMessage
+                          message={item.message}
+                          continuationOrigin={Boolean(
+                            currentRoom.parentRoomId &&
+                            item.message.forwardedSources.some(
+                              (source) =>
+                                source.id === currentRoom.originMessageId,
+                            ),
+                          )}
+                          roomClosed={Boolean(currentRoom.closedAt)}
+                          agent={
+                            item.message.agentId
+                              ? (messageAgent.get(item.message.agentId) ?? null)
+                              : null
+                          }
+                          onRetry={handleRetry}
+                          onOpenHistorySource={openHistorySource}
+                          forwardSelectionActive={forwardSelectionActive}
+                          forwardSelected={selectedForwardMessageIds.includes(
+                            item.message.id,
+                          )}
+                          onReply={() => {
+                            const forwardedText = item.message.forwardedSources
+                              .map(
+                                (source) =>
+                                  `${source.sender}：${source.content}`,
+                              )
+                              .join('\n');
+                            setReplyTarget({
+                              id: item.message.id,
+                              roomId: currentRoom.id,
+                              role: item.message.role as 'user' | 'assistant',
+                              sender:
+                                item.message.role === 'user'
+                                  ? '你'
+                                  : (messageAgent.get(
+                                      item.message.agentId ?? '',
+                                    )?.name ?? '联系人'),
+                              createdAt: item.message.createdAt,
+                              content: forwardedText || item.message.content,
+                            });
+                            draftRef.current?.focus();
+                          }}
+                          onForward={() => beginForwardSelection(item.message)}
+                          continuationThreads={childThreads.filter(
+                            (thread) =>
+                              thread.originMessageId === item.message.id,
+                          )}
+                          onOpenContinuation={(thread) => selectRoom(thread)}
+                          onToggleForward={() =>
+                            toggleForwardMessage(item.message)
+                          }
+                        />
+                        {item.tasks.map(renderProjectWorkCard)}
+                      </React.Fragment>
+                    ) : (
+                      renderProjectWorkCard(item.task)
+                    ),
+                  )}
+                </section>
+              ))}
+            </div>
+          )}
+        </div>
+        <button
+          className="jump-latest"
+          type="button"
+          hidden={!showJumpToLatest}
+          onClick={() => {
+            const scroll = conversationRef.current;
+            if (scroll) {
+              shouldFollowRef.current = true;
+              scroll.scrollTop = scroll.scrollHeight;
+            }
+            setShowJumpToLatest(false);
+          }}
+        >
+          回到最新消息 ↓
+        </button>
+        <form
+          className="composer message-composer"
+          onSubmit={(event) =>
+            void (composerMode === 'project'
+              ? handleStartProjectWork(event)
+              : handleSend(event))
+          }
+        >
+          <div className="composer-inner">
+            {notice ? (
+              <div className="inline-notice" role="status">
+                <span>{notice}</span>
+                <button
+                  type="button"
+                  onClick={() => setNotice('')}
+                  aria-label="关闭提示"
+                >
+                  <Icon name="close" />
+                </button>
               </div>
-              {activeProjects.map((project) => {
-                const room = rooms.find(
-                  (candidate) => candidate.id === project.groupRoomId,
-                );
-                const selected = activeRoomId === project.groupRoomId;
-                const activeMembers = project.members.filter(
-                  (member) => member.status === 'active',
-                );
-                return (
-                  <button
-                    className={`project-list-item ${selected ? 'is-selected' : ''}`}
-                    key={project.id}
-                    type="button"
-                    aria-current={selected ? 'page' : undefined}
-                    onClick={() =>
-                      room ? selectRoom(room) : void openProject(project)
-                    }
-                  >
-                    <span className="project-list-title">
-                      <span
-                        className="project-list-marker"
-                        aria-hidden="true"
-                      />
-                      <strong>{project.title}</strong>
-                      {project.status === 'awaiting_user' ? (
-                        <span className="project-review-mark">待反馈</span>
-                      ) : null}
-                    </span>
-                    <span className="project-list-meta">
-                      {activeMembers.map((member) => member.name).join(' · ')}
-                    </span>
-                  </button>
-                );
-              })}
-              {activeProjects.length === 0 && !search.trim() ? (
-                <p className="project-list-empty">
-                  项目需要时再建，不必预先安排。
-                </p>
-              ) : null}
-              {projects.some((project) => project.status === 'archived') ? (
-                <>
-                  <button
-                    className="archived-project-toggle"
-                    type="button"
-                    aria-expanded={archivedProjectsOpen}
-                    onClick={() => setArchivedProjectsOpen((open) => !open)}
-                  >
-                    <span>{archivedProjectsOpen ? '▾' : '›'}</span>
-                    已归档项目
-                    <span>{archivedProjects.length}</span>
-                  </button>
-                  {archivedProjectsOpen
-                    ? archivedProjects.map((project) => (
-                        <button
-                          className="project-list-item archived-project-item"
-                          key={project.id}
-                          type="button"
-                          onClick={() => void openProject(project)}
-                        >
-                          <span className="project-list-title">
-                            <span
-                              className="project-list-marker"
-                              aria-hidden="true"
-                            />
-                            <strong>{project.title}</strong>
-                          </span>
-                          <span className="project-list-meta">
-                            点击恢复原项目空间
-                          </span>
-                        </button>
-                      ))
-                    : null}
-                </>
-              ) : null}
-            </section>
-            {otherRooms.length === 0 &&
-            activeProjects.length === 0 &&
-            !messageSearchLoading &&
-            messageSearchResultQuery === search.trim() &&
-            !messageSearchError &&
-            visibleMessageSearchResults.length === 0 ? (
-              <p className="no-search-results">
-                {search
-                  ? '没有找到匹配的聊天或消息。'
-                  : '专业联系人和群聊会显示在这里。'}
-              </p>
             ) : null}
-            {search.trim() ? (
-              <section
-                className="message-search-results"
-                aria-label="消息搜索结果"
-                aria-live="polite"
-                data-search-query={messageSearchResultQuery}
-                data-search-state={
-                  messageSearchLoading
-                    ? 'loading'
-                    : messageSearchError
-                      ? 'error'
-                      : 'complete'
-                }
+
+            {currentRoom.kind === 'direct' && members[0]?.archivedAt ? (
+              <div className="archived-agent-notice" role="status">
+                <span>
+                  {members[0].name}
+                  已归档。历史记录仍可查看；恢复后才能继续聊天。
+                </span>
+              </div>
+            ) : null}
+
+            {composerMode === 'chat' && !providerReady ? (
+              <div className="provider-warning" role="status">
+                <span>{providerWarning}</span>
+                <button type="button" onClick={() => setSettingsOpen(true)}>
+                  {state?.providerConfigured ? '检查设置' : '连接模型'}
+                </button>
+              </div>
+            ) : null}
+
+            {currentRoom.kind === 'group' ? (
+              <div
+                className="reply-routing"
+                role="group"
+                aria-label="选择本轮回应者"
               >
-                <h3>消息</h3>
-                {messageSearchLoading &&
-                visibleMessageSearchResults.length === 0 ? (
-                  <p className="message-search-state">正在搜索历史消息…</p>
-                ) : null}
-                {messageSearchError ? (
-                  <p className="message-search-state" role="status">
-                    {messageSearchError}
-                  </p>
-                ) : null}
-                {visibleMessageSearchResults.map((result) => (
+                <span>
+                  {composerMode === 'project' ? '工作交给' : '本条由'}
+                </span>
+                {members.map((member) => (
                   <button
-                    className="message-search-result"
-                    data-message-id={result.id}
-                    key={`${result.roomId}:${result.id}`}
+                    key={member.id}
                     type="button"
-                    onClick={() => openMessageSearchResult(result)}
+                    className={
+                      member.id === currentRecipient?.id ? 'is-chosen' : ''
+                    }
+                    aria-pressed={member.id === currentRecipient?.id}
+                    disabled={Boolean(member.archivedAt)}
+                    title={member.archivedAt ? '联系人已归档' : undefined}
+                    onClick={() => setSelectedAgentId(member.id)}
                   >
-                    <span className="message-search-result-heading">
-                      <strong>{result.roomTitle}</strong>
-                      <span>{timeLabel(result.createdAt)}</span>
-                    </span>
-                    <span className="message-search-result-meta">
-                      {result.sender}
-                      {result.forwarded ? ' · 转发内容' : ''}
-                    </span>
-                    <span className="message-search-result-excerpt">
-                      {result.content}
-                    </span>
+                    {member.name}
+                    {member.archivedAt ? ' · 已归档' : ''}
                   </button>
                 ))}
-              </section>
+                <span>{composerMode === 'project' ? '执行' : '回应'}</span>
+              </div>
             ) : null}
-          </nav>
 
-          <div className="sidebar-bottom">
-            <div className="sidebar-self-copy">
-              <strong>本地对话</strong>
-              <span>记录保存在这台设备</span>
+            {forwardSelectionActive ? (
+              <div className="forward-selection-toolbar" role="status">
+                <span>
+                  已选 {selectedForwardMessageIds.length} 条消息
+                  <small>按时间顺序合并转发</small>
+                </span>
+                <button type="button" onClick={cancelForward}>
+                  取消
+                </button>
+                <button
+                  type="button"
+                  ref={threadTriggerRef}
+                  className="secondary-action"
+                  onClick={openThreadDialog}
+                  disabled={
+                    !selectedForwardMessageIds.length ||
+                    currentRoom.kind !== 'direct' ||
+                    currentRoom.memberIds[0] !== 'noema' ||
+                    Boolean(currentRoom.parentRoomId)
+                  }
+                  title="把选中的消息作为来源，在 Noema 私聊下开一条主题聊天"
+                >
+                  开主题
+                </button>
+                <button
+                  type="button"
+                  className="primary-action"
+                  onClick={openForwardDialog}
+                  disabled={!selectedForwardMessageIds.length}
+                >
+                  选择目标聊天
+                </button>
+              </div>
+            ) : null}
+
+            {showProjectModeSwitch ? (
+              <div
+                className="composer-mode-switch"
+                role="group"
+                aria-label="选择聊天方式"
+              >
+                <button
+                  type="button"
+                  className={composerMode === 'chat' ? 'is-selected' : ''}
+                  aria-pressed={composerMode === 'chat'}
+                  onClick={() => setComposerMode('chat')}
+                >
+                  聊天
+                </button>
+                <button
+                  type="button"
+                  className={composerMode === 'project' ? 'is-selected' : ''}
+                  aria-pressed={composerMode === 'project'}
+                  onClick={() => {
+                    setReplyTarget(null);
+                    cancelForward();
+                    setComposerMode('project');
+                  }}
+                  disabled={!state?.projectWork.available}
+                  title={state?.projectWork.reason ?? undefined}
+                >
+                  项目工作
+                </button>
+                {composerMode === 'project' ? (
+                  <span className="composer-mode-explainer">
+                    选择文件夹后，由工程搭档在这里处理
+                  </span>
+                ) : null}
+                {!state?.projectWork.available ? (
+                  <span className="composer-mode-unavailable" role="status">
+                    {state?.projectWork.reason ?? '项目工作暂不可用。'}
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
+
+            {composerMode === 'project' ? (
+              <label className="case-reuse-control">
+                <input
+                  type="checkbox"
+                  checked={reuseCase}
+                  onChange={(event) => setReuseCase(event.target.checked)}
+                  disabled={workBusy}
+                />
+                <span>
+                  <strong>参考同项目的已核验经验</strong>
+                  <small>
+                    若有候选，选定文件夹后会展示触发条件、做法、边界和来源；默认只带入已核验案例。不会复制原聊天。核验后，Noema
+                    可能再用当前免费路由整理一条可撤回的候选做法。
+                  </small>
+                </span>
+              </label>
+            ) : null}
+
+            {replyTarget && composerMode === 'chat' ? (
+              <div className="draft-quote">
+                <span>
+                  引用 {replyTarget.sender}：
+                  {replyTarget.content.replace(/\s+/gu, ' ').slice(0, 150)}
+                </span>
+                <button
+                  type="button"
+                  aria-label="取消引用"
+                  onClick={() => {
+                    setReplyTarget(null);
+                    requestAnimationFrame(() => draftRef.current?.focus());
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+            ) : null}
+
+            <div className="composer-field">
+              <label className="visually-hidden" htmlFor="social-message-input">
+                给{currentRecipient?.name ?? '联系人'}发送消息
+              </label>
+              <textarea
+                id="social-message-input"
+                ref={draftRef}
+                value={draft}
+                rows={2}
+                placeholder={
+                  composerMode === 'project'
+                    ? '描述希望在项目中完成什么…'
+                    : currentRoom.id === noemaRoom?.id
+                      ? `和${currentRecipient?.name ?? 'Noema'}说点什么…`
+                      : `发给${currentRecipient?.name ?? '联系人'}…`
+                }
+                onChange={(event) => {
+                  setDraft(event.target.value);
+                  event.currentTarget.style.height = 'auto';
+                  event.currentTarget.style.height = `${Math.min(event.currentTarget.scrollHeight, 180)}px`;
+                }}
+                onKeyDown={handleComposerKeyDown}
+                disabled={composerDisabled}
+              />
+              <button
+                className="icon-button attach-button"
+                type="button"
+                aria-label="添加附件（尚未接入）"
+                title="附件尚未接入，当前可发送文字"
+                disabled
+              >
+                <Icon name="attach" />
+              </button>
+              {activeReply && composerMode === 'chat' ? (
+                <button
+                  className="send stop-reply-button"
+                  type="button"
+                  aria-label="停止回复"
+                  title="停止回复"
+                  onClick={() => void handleStop()}
+                >
+                  <Icon name="stop" />
+                </button>
+              ) : (
+                <button
+                  className="send send-message-button"
+                  type="submit"
+                  aria-label={
+                    composerMode === 'project' ? '选择项目并启动' : '发送消息'
+                  }
+                  title={
+                    composerMode === 'project' ? '选择项目并启动' : '发送消息'
+                  }
+                  disabled={sendDisabled}
+                >
+                  <Icon name="send" />
+                </button>
+              )}
             </div>
+            <div className="composer-hint">
+              <span>Enter 发送 · Shift + Enter 换行</span>
+              <span>{activeRoute?.label || activeModel || '尚未连接模型'}</span>
+            </div>
+          </div>
+        </form>
+      </>
+    ) : (
+      <div className="empty-chat" role="status">
+        正在打开聊天…
+      </div>
+    );
+
+  return (
+    <main
+      className={`social-shell app layout-c${workspaceOpen ? ' has-workspace' : ''}${navigationHidden ? ' index-closed' : ''}${navigation.narrow ? ' narrow-shell' : ''}${navigation.dragging ? ' resizing' : ''}`}
+      ref={shellRef}
+    >
+      <header className="window-head social-topbar" aria-label="应用导航">
+        <div className="wordmark">
+          <button
+            className="index-toggle navigation-reveal"
+            type="button"
+            aria-controls="conversation-navigation"
+            aria-label={navigationHidden ? '展开导航' : '收起导航'}
+            aria-expanded={!navigationHidden}
+            onClick={() => {
+              if (navigation.narrow) setShowRoomList((open) => !open);
+              else if (navigation.collapsed) navigation.reveal();
+              else navigation.collapse();
+            }}
+          >
+            <Icon name="menu" />
+          </button>
+          <span className="logo">
+            <Icon name="noema" />
+          </span>
+          <span>noema</span>
+        </div>
+        <div className="window-tools">
+          <div className="window-controls" aria-label="窗口控件">
             <button
-              className="icon-button settings-button sidebar-settings-button"
-              ref={settingsTriggerRef}
+              className="window-control"
               type="button"
-              aria-label="连接与模型设置"
-              title="连接与模型设置"
-              onClick={(event) => {
-                settingsTriggerRef.current = event.currentTarget;
-                setSettingsOpen(true);
-              }}
+              title="最小化"
+              aria-label="最小化"
+              onClick={() => void window.noema.controlWindow('minimize')}
             >
-              <Icon name="settings" />
+              <svg viewBox="0 0 16 16">
+                <path d="M3 8h10" />
+              </svg>
+            </button>
+            <button
+              className="window-control"
+              type="button"
+              title={windowMaximized ? '还原窗口' : '最大化'}
+              aria-label={windowMaximized ? '还原窗口' : '最大化'}
+              onClick={() =>
+                void window.noema
+                  .controlWindow('maximize')
+                  .then(setWindowMaximized)
+              }
+            >
+              <svg viewBox="0 0 16 16">
+                {windowMaximized ? (
+                  <path d="M5 3h8v8M3 5h8v8H3Z" />
+                ) : (
+                  <rect x="3" y="3" width="10" height="10" />
+                )}
+              </svg>
+            </button>
+            <button
+              className="window-control close-control"
+              type="button"
+              title="关闭窗口"
+              aria-label="关闭窗口"
+              onClick={() => void window.noema.controlWindow('close')}
+            >
+              <svg viewBox="0 0 16 16">
+                <path d="m3 3 10 10M13 3 3 13" />
+              </svg>
             </button>
           </div>
+        </div>
+      </header>
+      <div
+        ref={navigation.containerRef}
+        className={`shell social-body${navigation.collapsed ? ' navigation-collapsed' : ''}${navigation.dragging ? ' navigation-resizing' : ''}`}
+        style={
+          {
+            ...navigation.style,
+            '--index-width': `${navigation.width}px`,
+          } as React.CSSProperties
+        }
+      >
+        <button
+          className="index-shade"
+          type="button"
+          aria-label="收起导航"
+          onClick={() => setShowRoomList(false)}
+        />
+        <aside
+          className="index conversation-sidebar"
+          id="conversation-navigation"
+          aria-label="成员和项目索引"
+          inert={navigationHidden}
+        >
+          <label className="index-search chat-search">
+            <Icon name="search" />
+            <input
+              ref={searchRef}
+              type="search"
+              value={search}
+              aria-label="搜索联系人、聊天和消息"
+              placeholder="搜索成员或项目"
+              onChange={(event) => setSearch(event.target.value)}
+            />
+          </label>
+          <div className="section-title">与你对话</div>
+          {noemaRoom ? renderRoomListItem(noemaRoom) : null}
+          <div className="section-title">
+            <span>成员</span>
+            <span>{memberRooms.length}</span>
+          </div>
+          <nav aria-label="成员">
+            {memberRooms.map((room) => renderRoomListItem(room))}
+          </nav>
+          {otherConversationRooms.length ? (
+            <>
+              <div className="section-title">
+                <span>其他聊天</span>
+              </div>
+              <nav aria-label="其他聊天">
+                {otherConversationRooms.map((room) => renderRoomListItem(room))}
+              </nav>
+            </>
+          ) : null}
+          <div className="section-title">
+            <span>项目</span>
+            <span>{activeProjects.length}</span>
+          </div>
+          <nav aria-label="项目">
+            {activeProjects.map((project) => (
+              <button
+                type="button"
+                className={`index-item project-list-item ${projectWorkspaceId === project.id ? 'selected' : ''}`}
+                key={project.id}
+                aria-current={
+                  projectWorkspaceId === project.id ? 'page' : undefined
+                }
+                onClick={() => void openProject(project)}
+              >
+                <span className="project-icon">
+                  <Icon name="project" />
+                </span>
+                <span>
+                  <span className="item-title">{project.title}</span>
+                  <small>
+                    {project.status === 'awaiting_user'
+                      ? '等待你的评审'
+                      : '进行中'}
+                  </small>
+                </span>
+              </button>
+            ))}
+          </nav>
+          {!activeProjects.length ? (
+            <div className="index-empty-state">当前没有活跃项目</div>
+          ) : null}
+          <button
+            type="button"
+            className="bottom-link"
+            onClick={() => {
+              setArchivedProjectsOpen(true);
+              setProjectWorkspaceId(null);
+              setAgentWorkspaceId(null);
+              setShowRoomList(false);
+            }}
+          >
+            <Icon name="archive" />{' '}
+            <span>已归档项目 · {archivedProjects.length}</span>
+          </button>
+          {search.trim() ? (
+            <section
+              className="message-search-results"
+              aria-label="消息搜索结果"
+              aria-live="polite"
+              data-search-query={messageSearchResultQuery}
+            >
+              <h3>消息</h3>
+              {messageSearchLoading ? <p>正在搜索历史消息…</p> : null}
+              {messageSearchError ? (
+                <p role="status">{messageSearchError}</p>
+              ) : null}
+              {visibleMessageSearchResults.map((result) => (
+                <button
+                  className="message-search-result"
+                  type="button"
+                  key={`${result.roomId}:${result.id}`}
+                  onClick={() => openMessageSearchResult(result)}
+                >
+                  <strong>{result.roomTitle}</strong>
+                  <span>{result.content}</span>
+                </button>
+              ))}
+            </section>
+          ) : null}
+          <div className="section-title">个人</div>
+          <button
+            className="bottom-link sidebar-settings-button"
+            ref={settingsTriggerRef}
+            type="button"
+            aria-label="连接与模型设置"
+            onClick={() => setSettingsOpen(true)}
+          >
+            伙伴设置
+          </button>
         </aside>
-
         <div
-          className="navigation-resize-handle"
+          className="index-resizer navigation-resize-handle"
           role="separator"
           tabIndex={navigation.narrow || navigation.collapsed ? -1 : 0}
           aria-label="调整导航宽度"
@@ -1768,640 +2211,592 @@ function SocialChatApp() {
           aria-valuenow={
             navigation.collapsed ? 0 : Math.round(navigation.width)
           }
-          aria-valuetext={
-            navigation.collapsed
-              ? '导航已收起'
-              : `导航宽度 ${Math.round(navigation.width)} 像素`
-          }
-          title="拖动调整宽度；拖至左侧收起；方向键调整，Home 收起，End 最宽"
           {...navigation.separatorProps}
         />
-
         <section
-          className="conversation-panel"
+          className="chat conversation-panel"
           aria-label="当前聊天"
           inert={navigation.narrow && showRoomList}
         >
-          {currentRoom && roomState?.room.id === currentRoom.id ? (
-            <>
-              <header className="room-header">
+          <header
+            className={`${currentRoom?.id === noemaRoom?.id ? 'pane-head' : 'work-head'} room-header`}
+          >
+            <div
+              className={
+                currentRoom?.id === noemaRoom?.id ? 'identity' : 'work-title'
+              }
+            >
+              {currentRoom?.id !== noemaRoom?.id ? (
                 <button
+                  className="icon-button"
                   type="button"
-                  className="icon-button navigation-reveal"
-                  aria-label="展开导航"
-                  title="展开导航"
-                  aria-expanded={
-                    navigation.narrow ? showRoomList : !navigation.collapsed
+                  aria-label={
+                    viewingProjectSession ? '返回项目空间' : '返回 Noema 主聊'
                   }
-                  aria-controls="conversation-navigation"
                   onClick={() => {
-                    navigation.reveal();
-                    setShowRoomList(true);
-                    requestAnimationFrame(() => searchRef.current?.focus());
+                    if (viewingProjectSession && activeProject) {
+                      void openProject(activeProject).then(() =>
+                        setProjectTab('members'),
+                      );
+                    } else if (noemaRoom) selectRoom(noemaRoom);
                   }}
                 >
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    aria-hidden="true"
-                  >
-                    <rect x="3" y="4" width="18" height="16" rx="2" />
-                    <path d="M9 4v16" />
-                  </svg>
+                  <Icon name="back" />
                 </button>
-                {currentRoom.parentRoomId ? (
+              ) : null}
+              {members[0] && currentRoom?.id === noemaRoom?.id ? (
+                <AgentMark agent={members[0]} />
+              ) : null}
+              <div className="chat-header-title">
+                <strong>
+                  {viewingProjectSession
+                    ? members[0]?.name
+                    : currentRoom?.title || 'Noema'}
+                </strong>
+                <small>
+                  {viewingProjectSession
+                    ? `${activeProject?.title ?? '项目'} · 项目会话`
+                    : currentRoom?.kind === 'group'
+                      ? `${members.map((member) => member.name).join(' · ')} 与你`
+                      : currentRoom?.id === noemaRoom?.id
+                        ? '与你的持续对话'
+                        : '常驻私聊'}
+                </small>
+              </div>
+            </div>
+            <div className="pane-actions">
+              <button
+                className="icon-button"
+                type="button"
+                aria-label="搜索聊天和消息"
+                title="查找当前对话"
+                onClick={() => {
+                  navigation.reveal();
+                  setShowRoomList(true);
+                  requestAnimationFrame(() => searchRef.current?.focus());
+                }}
+              >
+                <Icon name="search" />
+              </button>
+              {members[0]?.kind === 'specialist' ? (
+                <button
+                  className="quiet"
+                  type="button"
+                  aria-label="成员资料"
+                  title="成员资料"
+                  onClick={() => openAgentWorkspace(members[0].id)}
+                >
+                  资料
+                </button>
+              ) : null}
+            </div>
+          </header>
+          {currentRoom?.parentRoomId ? (
+            <div className="note-row">
+              <button
+                type="button"
+                className="quiet"
+                onClick={() => {
+                  const parent = rooms.find(
+                    (room) => room.id === currentRoom.parentRoomId,
+                  );
+                  if (parent) {
+                    selectRoom(parent);
+                    setPendingScrollMessageId(currentRoom.originMessageId);
+                  }
+                }}
+              >
+                回到来源消息
+              </button>{' '}
+              · {currentRoom.closedAt ? '已结束' : '持续主题'}{' '}
+              <button
+                type="button"
+                className="quiet"
+                onClick={() => void handleThreadStatus(!currentRoom.closedAt)}
+                disabled={threadStatusBusy}
+              >
+                {currentRoom.closedAt ? '重新打开' : '结束主题'}
+              </button>
+              <button
+                type="button"
+                className="quiet"
+                onClick={() => void handleDeleteThread()}
+                disabled={threadStatusBusy}
+              >
+                删除
+              </button>
+            </div>
+          ) : null}
+          {!workspaceOpen ? (
+            currentRoom?.id === noemaRoom?.id ? (
+              conversationContent
+            ) : (
+              <div className="session-content">{conversationContent}</div>
+            )
+          ) : null}
+        </section>
+        <section
+          className="workspace"
+          aria-label="当前工作内容"
+          inert={navigation.narrow && showRoomList}
+        >
+          {projectWorkspace ? (
+            <>
+              <header className="work-head">
+                <div className="work-title">
                   <button
-                    className="continuation-parent-link"
+                    className="icon-button"
                     type="button"
+                    aria-label="返回 Noema 主聊"
                     onClick={() => {
-                      const parent = rooms.find(
-                        (room) => room.id === currentRoom.parentRoomId,
-                      );
-                      if (!parent) return;
-                      selectRoom(parent);
-                      setPendingScrollMessageId(currentRoom.originMessageId);
+                      if (noemaRoom) selectRoom(noemaRoom);
                     }}
-                    title="回到来源消息"
                   >
-                    ← 来源
+                    <Icon name="back" />
                   </button>
-                ) : null}
-                <div className="room-header-copy">
-                  <h2>{currentRoom.title}</h2>
-                  {currentRoom.kind === 'group' ? (
-                    <p>
-                      {members.map((member) => member.name).join(' · ')} 与你
-                    </p>
-                  ) : members[0]?.kind === 'specialist' ? (
-                    <p>{members[0]?.headline ?? '持续对话'}</p>
-                  ) : null}
-                </div>
-                <div className="room-header-meta">
-                  {currentRoom.parentRoomId ? (
-                    <>
-                      <span className="continuation-status">
-                        {currentRoom.closedAt ? '已结束' : '持续主题'}
-                      </span>
-                      <button
-                        className="agent-archive-button"
-                        type="button"
-                        onClick={() =>
-                          void handleThreadStatus(!currentRoom.closedAt)
-                        }
-                        disabled={threadStatusBusy}
-                      >
-                        {threadStatusBusy
-                          ? '更新中…'
-                          : currentRoom.closedAt
-                            ? '重新打开'
-                            : '结束主题'}
-                      </button>
-                      <button
-                        className="agent-archive-button"
-                        type="button"
-                        onClick={() => void handleDeleteThread()}
-                        disabled={threadStatusBusy}
-                        title="删除此主题聊天及其消息"
-                      >
-                        删除
-                      </button>
-                    </>
-                  ) : currentRoom.kind === 'group' ? (
-                    <span className="member-count">
-                      {members.length + 1} 位参与者
-                    </span>
-                  ) : members[0]?.kind === 'specialist' ? (
-                    <div className="agent-header-actions">
-                      <button
-                        className="agent-edit-profile-button"
-                        ref={editAgentTriggerRef}
-                        type="button"
-                        aria-label={`编辑${members[0].name}的资料`}
-                        title="编辑联系人资料"
-                        onClick={() => openAgentProfileEditor(members[0])}
-                      >
-                        编辑资料
-                      </button>
-                      <label
-                        className="agent-project-capability"
-                        title="此联系人是否可在你明确选择项目目录后承接文件任务"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={members[0].capabilities.includes(
-                            'project-work',
-                          )}
-                          disabled={
-                            Boolean(members[0].archivedAt) ||
-                            updatingAgentId === members[0].id
-                          }
-                          onChange={() =>
-                            void handleToggleAgentProjectWork(members[0])
-                          }
-                        />
-                        项目工作
-                      </label>
-                      <button
-                        className="agent-archive-button"
-                        type="button"
-                        onClick={() =>
-                          void handleToggleAgentArchive(members[0])
-                        }
-                        disabled={updatingAgentId === members[0].id}
-                      >
-                        {updatingAgentId === members[0].id
-                          ? '更新中…'
-                          : members[0].archivedAt
-                            ? '恢复'
-                            : '归档'}
-                      </button>
-                    </div>
-                  ) : null}
+                  <div>
+                    <strong>{projectWorkspace.title}</strong>
+                    <small>
+                      项目空间 ·{' '}
+                      {projectWorkspace.status === 'awaiting_user'
+                        ? '等待你的评审'
+                        : projectWorkspace.status === 'archived'
+                          ? '已归档'
+                          : '进行中'}
+                    </small>
+                  </div>
                 </div>
               </header>
-
-              {activeProject ? (
-                <section
-                  className="project-context-strip"
-                  aria-label="项目状态"
+              <nav className="work-tabs" aria-label="项目视图">
+                {(['delivery', 'group', 'members'] as const).map(
+                  (tab, index) => (
+                    <button
+                      type="button"
+                      key={tab}
+                      className={projectTab === tab ? 'active' : ''}
+                      aria-pressed={projectTab === tab}
+                      onClick={() => setProjectTab(tab)}
+                    >
+                      {
+                        [
+                          '交付',
+                          '共同讨论',
+                          `成员 · ${projectWorkspace.members.length}`,
+                        ][index]
+                      }
+                    </button>
+                  ),
+                )}
+              </nav>
+              {projectTab === 'group' ? (
+                <div
+                  className="work-content"
+                  ref={conversationRef}
+                  data-room-id={currentRoom?.id}
+                  onScroll={(event) => {
+                    const scroll = event.currentTarget;
+                    shouldFollowRef.current =
+                      scroll.scrollHeight -
+                        scroll.scrollTop -
+                        scroll.clientHeight <
+                      60;
+                  }}
                 >
-                  <div className="project-context-copy">
-                    <span className="project-context-kicker">
-                      {viewingProjectSession
-                        ? `项目成员会话 · ${members[0]?.name ?? '成员'}`
-                        : activeProject.status === 'awaiting_user'
-                          ? '等待你的反馈'
-                          : '项目空间'}
-                    </span>
-                    <p>{activeProject.brief}</p>
-                    {viewingProjectSession ? (
-                      <div className="project-session-actions">
-                        <span>仅此成员与本项目的独立记录</span>
-                        <button type="button" onClick={returnToProjectGroup}>
-                          返回项目群
+                  <div className="discussion">
+                    <p className="lead">
+                      共同讨论与项目决定在这里；成员的完整执行过程在各自的工作会话中。
+                    </p>
+                    {messages.map((message) => (
+                      <GroupMessage
+                        key={message.id}
+                        message={message}
+                        agent={
+                          message.agentId
+                            ? (messageAgent.get(message.agentId) ?? null)
+                            : null
+                        }
+                        onRetry={handleRetry}
+                      />
+                    ))}
+                    {notice ? (
+                      <div className="note-row" role="status">
+                        {notice}
+                        <button
+                          type="button"
+                          className="quiet"
+                          onClick={() => setNotice('')}
+                        >
+                          关闭
                         </button>
                       </div>
-                    ) : (
-                      <div className="project-session-actions">
-                        {activeProject.members
-                          .filter(
-                            (member) =>
-                              member.status === 'active' &&
-                              Boolean(member.sessionRoomId) &&
-                              member.agentId !== 'noema',
-                          )
-                          .map((member) => (
+                    ) : null}
+                    <div className="note-row">
+                      {providerReady
+                        ? `本条由 ${currentRecipient?.name ?? 'Noema'} 回应。`
+                        : providerWarning}
+                      {!providerReady ? (
+                        <button
+                          className="quiet"
+                          type="button"
+                          onClick={() => setSettingsOpen(true)}
+                        >
+                          连接模型
+                        </button>
+                      ) : null}
+                    </div>
+                    <form
+                      className="group-form"
+                      onSubmit={(event) => void handleSend(event)}
+                    >
+                      <input
+                        ref={groupDraftRef}
+                        aria-label="在项目群中发消息"
+                        placeholder="在项目群中发消息"
+                        value={draft}
+                        onChange={(event) => setDraft(event.target.value)}
+                        disabled={composerDisabled}
+                      />
+                      {activeReply ? (
+                        <button
+                          className="secondary"
+                          type="button"
+                          onClick={() => void handleStop()}
+                        >
+                          停止回复
+                        </button>
+                      ) : (
+                        <button
+                          className="primary"
+                          type="submit"
+                          disabled={sendDisabled}
+                        >
+                          发送
+                        </button>
+                      )}
+                    </form>
+                  </div>
+                </div>
+              ) : (
+                <div className="work-content">
+                  {projectTab === 'members' ? (
+                    <>
+                      <h2>这次项目的成员</h2>
+                      <p className="lead">
+                        同一位持续存在的成员，在这里拥有独立的项目工作会话。
+                      </p>
+                      <div className="member-list">
+                        {projectWorkspace.members.map((member) => {
+                          const agent = agents.find(
+                            (candidate) => candidate.id === member.agentId,
+                          );
+                          return (
                             <button
-                              key={member.agentId}
                               type="button"
-                              disabled={Boolean(member.agentArchivedAt)}
-                              onClick={() =>
-                                void openProjectMemberSession(
-                                  activeProject,
-                                  member.agentId,
-                                )
+                              className="member-row"
+                              key={member.agentId}
+                              disabled={
+                                member.status !== 'active' ||
+                                Boolean(member.agentArchivedAt)
                               }
+                              onClick={() => {
+                                if (member.agentId === 'noema') {
+                                  if (noemaRoom) selectRoom(noemaRoom);
+                                } else
+                                  void openProjectMemberSession(
+                                    projectWorkspace,
+                                    member.agentId,
+                                  );
+                              }}
                             >
-                              打开 {member.name} 的项目会话
+                              {agent ? (
+                                <AgentMark agent={agent} />
+                              ) : (
+                                <span className="portrait">
+                                  {member.name.slice(0, 1)}
+                                </span>
+                              )}
+                              <span className="member-name">
+                                <strong>{member.name}</strong>
+                                <small>
+                                  {member.agentId === 'noema'
+                                    ? '协调与阶段把关'
+                                    : agent?.headline || '项目成员'}
+                                </small>
+                              </span>
+                              <span className="status">
+                                {member.status === 'active'
+                                  ? '打开工作会话'
+                                  : '已退出'}
+                              </span>
+                              <Icon name="arrow" />
                             </button>
-                          ))}
+                          );
+                        })}
                       </div>
-                    )}
-                  </div>
-                  {!viewingProjectSession ? (
-                    <button
-                      className="project-archive-action"
-                      type="button"
-                      disabled={
-                        projectStatusBusy ||
-                        activeProject.status === 'awaiting_user'
-                      }
-                      title={
-                        activeProject.status === 'awaiting_user'
-                          ? '先在 Noema 主聊完成待反馈事项'
-                          : '从活动列表归档，保留项目和成员会话'
-                      }
-                      onClick={() => void archiveCurrentProject()}
-                    >
-                      {projectStatusBusy ? '正在归档…' : '归档项目'}
-                    </button>
-                  ) : null}
-                </section>
-              ) : null}
-
-              <div
-                className="message-thread"
-                ref={conversationRef}
-                onScroll={(event) => {
-                  const element = event.currentTarget;
-                  shouldFollowRef.current =
-                    element.scrollHeight -
-                      element.scrollTop -
-                      element.clientHeight <
-                    96;
-                }}
-                aria-live="polite"
-                aria-relevant="additions text"
-              >
-                {!messages.some((message) => message.role !== 'system') &&
-                workTasks.length === 0 ? (
-                  <div className="room-empty-state">
-                    <h3>
-                      {currentRoom.kind === 'group'
-                        ? '在这里一起聊'
-                        : '从这里开始'}
-                    </h3>
-                    <p>
-                      {currentRoom.kind === 'direct'
-                        ? `这是你和${avatarAgent?.name ?? '联系人'}的私聊。${avatarAgent?.description ?? '把正在想的事直接说出来就好。'}`
-                        : '这个群聊有独立记录。发送前，可以指定由哪位联系人回应。'}
-                    </p>
-                  </div>
-                ) : (
-                  <div
-                    className="message-sequence"
-                    data-room-kind={currentRoom.kind}
-                  >
-                    {conversationTurns.map((turn) => (
-                      <section
-                        className="conversation-turn"
-                        data-conversation-turn={turn.id}
-                        key={turn.id}
-                      >
-                        {turn.items.map((item) =>
-                          item.kind === 'message' ? (
-                            <React.Fragment key={item.id}>
-                              <ChatMessage
-                                message={item.message}
-                                continuationOrigin={Boolean(
-                                  currentRoom.parentRoomId &&
-                                  item.message.forwardedSources.some(
-                                    (source) =>
-                                      source.id === currentRoom.originMessageId,
-                                  ),
-                                )}
-                                roomClosed={Boolean(currentRoom.closedAt)}
-                                hideSenderMetadata={false}
-                                agent={
-                                  item.message.agentId
-                                    ? (messageAgent.get(item.message.agentId) ??
-                                      null)
-                                    : null
-                                }
-                                canManageInteractionAdjustment={
-                                  currentRoom.kind === 'direct' &&
-                                  currentRoom.memberIds.length === 1 &&
-                                  currentRoom.memberIds[0] === 'noema'
-                                }
-                                interactionAdjustment={
-                                  state?.interactionAdjustments.find(
-                                    (adjustment) =>
-                                      adjustment.sourceSurface === 'social' &&
-                                      adjustment.sourceRoomId ===
-                                        currentRoom.id &&
-                                      adjustment.sourceTurnId ===
-                                        item.message.turnId,
-                                  ) ?? null
-                                }
-                                onRetry={handleRetry}
-                                onOpenHistorySource={openHistorySource}
-                                forwardSelectionActive={forwardSelectionActive}
-                                forwardSelected={selectedForwardMessageIds.includes(
-                                  item.message.id,
-                                )}
-                                onReply={() => {
-                                  const forwardedText =
-                                    item.message.forwardedSources
-                                      .map(
-                                        (source) =>
-                                          `${source.sender}：${source.content}`,
-                                      )
-                                      .join('\n');
-                                  setReplyTarget({
-                                    id: item.message.id,
-                                    roomId: currentRoom.id,
-                                    role: item.message.role as
-                                      | 'user'
-                                      | 'assistant',
-                                    sender:
-                                      item.message.role === 'user'
-                                        ? '你'
-                                        : (messageAgent.get(
-                                            item.message.agentId ?? '',
-                                          )?.name ?? '联系人'),
-                                    createdAt: item.message.createdAt,
-                                    content:
-                                      forwardedText || item.message.content,
-                                  });
-                                  draftRef.current?.focus();
-                                }}
-                                onForward={() =>
-                                  beginForwardSelection(item.message)
-                                }
-                                continuationThreads={childThreads.filter(
-                                  (thread) =>
-                                    thread.originMessageId === item.message.id,
-                                )}
-                                onOpenContinuation={(thread) =>
-                                  selectRoom(thread)
-                                }
-                                onToggleForward={() =>
-                                  toggleForwardMessage(item.message)
-                                }
-                              />
-                              {item.tasks.map(renderProjectWorkCard)}
-                            </React.Fragment>
-                          ) : (
-                            renderProjectWorkCard(item.task)
-                          ),
-                        )}
-                      </section>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {notice ? (
-                <div className="inline-notice" role="status">
-                  <span>{notice}</span>
-                  <button
-                    type="button"
-                    onClick={() => setNotice('')}
-                    aria-label="关闭提示"
-                  >
-                    <Icon name="close" />
-                  </button>
-                </div>
-              ) : null}
-
-              {currentRoom.kind === 'direct' && members[0]?.archivedAt ? (
-                <div className="archived-agent-notice" role="status">
-                  <span>
-                    {members[0].name}
-                    已归档。历史记录仍可查看；恢复后才能继续聊天。
-                  </span>
-                </div>
-              ) : null}
-
-              {composerMode === 'chat' && !providerReady ? (
-                <div className="provider-warning" role="status">
-                  <span>{providerWarning}</span>
-                  <button type="button" onClick={() => setSettingsOpen(true)}>
-                    {state?.providerConfigured ? '检查设置' : '连接模型'}
-                  </button>
-                </div>
-              ) : null}
-
-              {currentRoom.kind === 'group' ? (
-                <div
-                  className="reply-routing"
-                  role="group"
-                  aria-label="选择本轮回应者"
-                >
-                  <span>
-                    {composerMode === 'project' ? '工作交给' : '本条由'}
-                  </span>
-                  {members.map((member) => (
-                    <button
-                      key={member.id}
-                      type="button"
-                      className={
-                        member.id === currentRecipient?.id ? 'is-chosen' : ''
-                      }
-                      aria-pressed={member.id === currentRecipient?.id}
-                      disabled={Boolean(member.archivedAt)}
-                      title={member.archivedAt ? '联系人已归档' : undefined}
-                      onClick={() => setSelectedAgentId(member.id)}
-                    >
-                      {member.name}
-                      {member.archivedAt ? ' · 已归档' : ''}
-                    </button>
-                  ))}
-                  <span>{composerMode === 'project' ? '执行' : '回应'}</span>
-                </div>
-              ) : null}
-
-              {forwardSelectionActive ? (
-                <div className="forward-selection-toolbar" role="status">
-                  <span>
-                    已选 {selectedForwardMessageIds.length} 条消息
-                    <small>按时间顺序合并转发</small>
-                  </span>
-                  <button type="button" onClick={cancelForward}>
-                    取消
-                  </button>
-                  <button
-                    type="button"
-                    ref={threadTriggerRef}
-                    className="secondary-action"
-                    onClick={openThreadDialog}
-                    disabled={
-                      !selectedForwardMessageIds.length ||
-                      currentRoom.kind !== 'direct' ||
-                      currentRoom.memberIds[0] !== 'noema' ||
-                      Boolean(currentRoom.parentRoomId)
-                    }
-                    title="把选中的消息作为来源，在 Noema 私聊下开一条主题聊天"
-                  >
-                    开主题
-                  </button>
-                  <button
-                    type="button"
-                    className="primary-action"
-                    onClick={openForwardDialog}
-                    disabled={!selectedForwardMessageIds.length}
-                  >
-                    选择目标聊天
-                  </button>
-                </div>
-              ) : null}
-
-              {showProjectModeSwitch ? (
-                <div
-                  className="composer-mode-switch"
-                  role="group"
-                  aria-label="选择聊天方式"
-                >
-                  <button
-                    type="button"
-                    className={composerMode === 'chat' ? 'is-selected' : ''}
-                    aria-pressed={composerMode === 'chat'}
-                    onClick={() => setComposerMode('chat')}
-                  >
-                    聊天
-                  </button>
-                  <button
-                    type="button"
-                    className={composerMode === 'project' ? 'is-selected' : ''}
-                    aria-pressed={composerMode === 'project'}
-                    onClick={() => {
-                      setReplyTarget(null);
-                      cancelForward();
-                      setComposerMode('project');
-                    }}
-                    disabled={!state?.projectWork.available}
-                    title={state?.projectWork.reason ?? undefined}
-                  >
-                    项目工作
-                  </button>
-                  {composerMode === 'project' ? (
-                    <span className="composer-mode-explainer">
-                      选择文件夹后，由工程搭档在这里处理
-                    </span>
-                  ) : null}
-                  {!state?.projectWork.available ? (
-                    <span className="composer-mode-unavailable" role="status">
-                      {state?.projectWork.reason ?? '项目工作暂不可用。'}
-                    </span>
-                  ) : null}
-                </div>
-              ) : null}
-
-              {composerMode === 'project' ? (
-                <label className="case-reuse-control">
-                  <input
-                    type="checkbox"
-                    checked={reuseCase}
-                    onChange={(event) => setReuseCase(event.target.checked)}
-                    disabled={workBusy}
-                  />
-                  <span>
-                    <strong>参考同项目的已核验经验</strong>
-                    <small>
-                      若有候选，选定文件夹后会展示触发条件、做法、边界和来源；默认只带入已核验案例。不会复制原聊天。核验后，Noema
-                      可能再用当前免费路由整理一条可撤回的候选做法。
-                    </small>
-                  </span>
-                </label>
-              ) : null}
-
-              {replyTarget && composerMode === 'chat' ? (
-                <div className="reply-composer-preview">
-                  <div>
-                    <strong>回复 {replyTarget.sender}</strong>
-                    <span>
-                      {replyTarget.content.replace(/\s+/gu, ' ').slice(0, 150)}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    aria-label="取消回复引用"
-                    onClick={() => {
-                      setReplyTarget(null);
-                      requestAnimationFrame(() => draftRef.current?.focus());
-                    }}
-                  >
-                    <Icon name="close" />
-                  </button>
-                </div>
-              ) : null}
-
-              <form
-                className="message-composer"
-                onSubmit={(event) =>
-                  void (composerMode === 'project'
-                    ? handleStartProjectWork(event)
-                    : handleSend(event))
-                }
-              >
-                <label
-                  className="visually-hidden"
-                  htmlFor="social-message-input"
-                >
-                  {composerMode === 'project'
-                    ? `交给${currentRecipient?.name ?? '联系人'}的项目任务`
-                    : `给${currentRecipient?.name ?? '联系人'}发送消息`}
-                </label>
-                <textarea
-                  id="social-message-input"
-                  ref={draftRef}
-                  value={draft}
-                  placeholder={
-                    composerMode === 'project'
-                      ? '描述希望工程搭档在项目中完成什么…'
-                      : '写下你正在想的事…'
-                  }
-                  rows={1}
-                  onChange={(event) => {
-                    setDraft(event.target.value);
-                    event.currentTarget.style.height = 'auto';
-                    event.currentTarget.style.height = `${Math.min(event.currentTarget.scrollHeight, 180)}px`;
-                  }}
-                  onKeyDown={handleComposerKeyDown}
-                  disabled={
-                    !composerReady ||
-                    Boolean(currentRoom.closedAt) ||
-                    forwardSelectionActive ||
-                    !currentRecipient ||
-                    currentRecipientArchived ||
-                    Boolean(activeReply) ||
-                    workBusy ||
-                    (composerMode === 'project' && !currentRecipientCanWork)
-                  }
-                />
-                <div className="composer-footer">
-                  <span>
-                    {composerMode === 'project'
-                      ? currentRecipientCanWork
-                        ? '选择项目文件夹后启动 · 你可以继续聊天'
-                        : '在群聊中选择工程搭档后才能启动项目工作'
-                      : 'Enter 发送 · Shift + Enter 换行'}
-                  </span>
-                  {activeReply && composerMode === 'chat' ? (
-                    <button
-                      className="stop-reply-button"
-                      type="button"
-                      onClick={() => void handleStop()}
-                    >
-                      <Icon name="stop" />
-                      停止回复
-                    </button>
+                    </>
                   ) : (
-                    <button
-                      className="send-message-button"
-                      type="submit"
-                      disabled={
-                        !composerReady ||
-                        Boolean(currentRoom.closedAt) ||
-                        forwardSelectionActive ||
-                        !draft.trim() ||
-                        !currentRecipient ||
-                        currentRecipientArchived ||
-                        busy ||
-                        workBusy ||
-                        (composerMode === 'project' &&
-                          (!currentRecipientCanWork || Boolean(activeReply)))
-                      }
-                    >
-                      {composerMode === 'project'
-                        ? workBusy
-                          ? '启动中…'
-                          : '选择项目并启动'
-                        : '发送'}
-                      <Icon name="send" />
-                    </button>
+                    <>
+                      <div className="project-stage">
+                        <span
+                          className={`state-mark ${projectWorkspace.status === 'awaiting_user' ? '' : 'running'}`}
+                        />
+                        {projectWorkspace.status === 'awaiting_user'
+                          ? '等待你的反馈'
+                          : '项目进行中'}
+                      </div>
+                      <h2>{projectWorkspace.title}</h2>
+                      <p className="lead">{projectWorkspace.brief}</p>
+                      {workTasks.length ? (
+                        workTasks.map(renderProjectWorkCard)
+                      ) : (
+                        <div className="project-summary">
+                          <section>
+                            <h3>当前阶段</h3>
+                            <p>
+                              {projectWorkspace.status === 'awaiting_user'
+                                ? '等待你的评审，相关工作暂停。'
+                                : '项目进行中。'}
+                            </p>
+                          </section>
+                          <section>
+                            <h3>最近进展</h3>
+                            <p>
+                              {projectGroupRoom?.preview?.text ||
+                                '还没有阶段交付。成员的讨论会保留在共同讨论中。'}
+                            </p>
+                          </section>
+                        </div>
+                      )}
+                      <div className="real-project-actions">
+                        <button
+                          className="secondary"
+                          type="button"
+                          onClick={() => setProjectTab('group')}
+                        >
+                          查看共同讨论
+                        </button>
+                        <button
+                          className="quiet"
+                          type="button"
+                          disabled={
+                            projectStatusBusy ||
+                            projectWorkspace.status === 'awaiting_user'
+                          }
+                          title={
+                            projectWorkspace.status === 'awaiting_user'
+                              ? '先在 Noema 主聊完成待反馈事项'
+                              : '归档后保留项目和成员会话'
+                          }
+                          onClick={() =>
+                            void archiveCurrentProject(projectWorkspace)
+                          }
+                        >
+                          {projectStatusBusy ? '正在归档…' : '归档项目'}
+                        </button>
+                      </div>
+                    </>
                   )}
                 </div>
-              </form>
-              <p className="data-flow-note">
-                {composerMode === 'project'
-                  ? '项目工作会留在当前聊天，并带入当前联系人的专业资料。启动前会选择文件夹并显示数据范围；Noema 会区分 DSH 结束与独立核验结果。'
-                  : replyTarget
-                    ? '回复只关联当前聊天中的这条消息；发送后双方都能看到引用。'
-                    : '发送后，本轮对话与联系人的专业资料会交给当前模型处理；聊天记录保存在本机。'}
-              </p>
+              )}
+              {projectWorkspace.status === 'awaiting_user' ? (
+                <div className="review-dock">
+                  <div>
+                    Noema 正在等你的评审
+                    <small>请求保留在与 Noema 的对话中</small>
+                  </div>
+                  <div className="dock-actions">
+                    <button
+                      className="review-jump"
+                      type="button"
+                      onClick={() => {
+                        if (noemaRoom) selectRoom(noemaRoom);
+                      }}
+                    >
+                      回到 Noema 主聊 <Icon name="arrow" />
+                    </button>
+                  </div>
+                </div>
+              ) : null}
             </>
-          ) : (
-            <div className="room-loading" aria-live="polite">
-              <span className="loading-mark" />
-              <span>正在打开聊天…</span>
-            </div>
-          )}
+          ) : agentWorkspace ? (
+            <>
+              <header className="work-head">
+                <div className="work-title">
+                  <button
+                    className="icon-button"
+                    type="button"
+                    aria-label="返回成员会话"
+                    onClick={() => {
+                      const room = rooms.find(
+                        (candidate) =>
+                          candidate.kind === 'direct' &&
+                          !candidate.parentRoomId &&
+                          candidate.memberIds.length === 1 &&
+                          candidate.memberIds[0] === agentWorkspace.id,
+                      );
+                      if (room) selectRoom(room);
+                      else setAgentWorkspaceId(null);
+                    }}
+                  >
+                    <Icon name="back" />
+                  </button>
+                  <div>
+                    <strong>{agentWorkspace.name}</strong>
+                    <small>成员资料</small>
+                  </div>
+                </div>
+              </header>
+              <div className="work-content">
+                <div className="profile-hero">
+                  <AgentMark agent={agentWorkspace} />
+                  <div>
+                    <h2>{agentWorkspace.name}</h2>
+                    <p>{agentWorkspace.headline}</p>
+                  </div>
+                </div>
+                <div className="profile-detail">
+                  <p>{agentWorkspace.description}</p>
+                  <div className="profile-links">
+                    <button
+                      className="primary"
+                      type="button"
+                      onClick={() => {
+                        const room = rooms.find(
+                          (candidate) =>
+                            candidate.kind === 'direct' &&
+                            !candidate.parentRoomId &&
+                            candidate.memberIds.length === 1 &&
+                            candidate.memberIds[0] === agentWorkspace.id,
+                        );
+                        if (room) selectRoom(room);
+                      }}
+                    >
+                      打开常驻私聊
+                    </button>
+                    <button
+                      className="secondary"
+                      type="button"
+                      onClick={() => openAgentProfileEditor(agentWorkspace)}
+                    >
+                      编辑资料
+                    </button>
+                  </div>
+                  <h3>参与过的工作</h3>
+                  {projects
+                    .filter((project) =>
+                      project.members.some(
+                        (member) => member.agentId === agentWorkspace.id,
+                      ),
+                    )
+                    .map((project) => (
+                      <button
+                        type="button"
+                        className="history-item"
+                        key={project.id}
+                        onClick={() => void openProject(project)}
+                      >
+                        <strong>{project.title}</strong>
+                        <small>
+                          {project.status === 'archived' ? '已归档' : '进行中'}
+                        </small>
+                      </button>
+                    ))}
+                  {!projects.some((project) =>
+                    project.members.some(
+                      (member) => member.agentId === agentWorkspace.id,
+                    ),
+                  ) ? (
+                    <p>还没有项目经历。</p>
+                  ) : null}
+                  <h3>自己的能力与工作方式</h3>
+                  <p>{agentWorkspace.headline || '尚未填写专业方向'}</p>
+                  <div className="asset-row">
+                    <span>文件项目工作</span>
+                    <button
+                      className="quiet"
+                      type="button"
+                      disabled={updatingAgentId === agentWorkspace.id}
+                      onClick={() =>
+                        void handleToggleAgentProjectWork(agentWorkspace)
+                      }
+                    >
+                      {agentWorkspace.capabilities.includes('project-work')
+                        ? '已启用 · 关闭'
+                        : '未启用 · 开启'}
+                    </button>
+                  </div>
+                  <div className="profile-links">
+                    <button
+                      className="quiet"
+                      type="button"
+                      disabled={updatingAgentId === agentWorkspace.id}
+                      onClick={() =>
+                        void handleToggleAgentArchive(agentWorkspace)
+                      }
+                    >
+                      {agentWorkspace.archivedAt ? '恢复联系人' : '归档联系人'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </>
+          ) : archivedProjectsOpen ? (
+            <>
+              <header className="work-head">
+                <div className="work-title">
+                  <button
+                    className="icon-button"
+                    type="button"
+                    aria-label="返回 Noema 主聊"
+                    onClick={() => {
+                      if (noemaRoom) selectRoom(noemaRoom);
+                    }}
+                  >
+                    <Icon name="back" />
+                  </button>
+                  <div>
+                    <strong>已归档项目</strong>
+                    <small>归档保留记录，恢复沿用原项目会话</small>
+                  </div>
+                </div>
+              </header>
+              <div className="work-content">
+                <h2>可以续接的工作</h2>
+                <p className="lead">
+                  新的需求属于原项目时，从这里恢复；Noema
+                  也可以在对话中替你找到它。
+                </p>
+                {archivedProjects.map((project) => (
+                  <button
+                    type="button"
+                    className="project-link"
+                    key={project.id}
+                    onClick={() => void openProject(project)}
+                  >
+                    <Icon name="archive" />
+                    <span className="link-copy">
+                      <strong>{project.title}</strong>
+                      <small>
+                        已归档 ·{' '}
+                        {
+                          project.members.filter(
+                            (member) => member.agentId !== 'noema',
+                          ).length
+                        }{' '}
+                        位成员的项目会话保留
+                      </small>
+                    </span>
+                    <Icon name="arrow" />
+                  </button>
+                ))}
+                {!archivedProjects.length ? (
+                  <p className="lead">还没有已归档项目。</p>
+                ) : null}
+              </div>
+            </>
+          ) : null}
         </section>
       </div>
-
       {forwardDialogOpen ? (
         <div
           className="dialog-backdrop"
@@ -2936,6 +3331,38 @@ function SocialChatApp() {
                 <Icon name="close" />
               </button>
             </div>
+            <div className="settings-administration">
+              <button
+                type="button"
+                ref={agentTriggerRef}
+                onClick={() => {
+                  setSettingsOpen(false);
+                  setCreateAgentOpen(true);
+                }}
+              >
+                创建联系人
+              </button>
+              <button
+                type="button"
+                ref={groupTriggerRef}
+                onClick={() => {
+                  setSettingsOpen(false);
+                  setCreateGroupOpen(true);
+                }}
+              >
+                新建群聊
+              </button>
+              <button
+                type="button"
+                ref={projectTriggerRef}
+                onClick={() => {
+                  setSettingsOpen(false);
+                  setCreateProjectOpen(true);
+                }}
+              >
+                新建项目
+              </button>
+            </div>
             {state?.providerConfigured && !editProviderConfig ? (
               <div className="connection-summary">
                 <span>
@@ -3071,10 +3498,7 @@ function ChatMessage({
   message,
   continuationOrigin,
   roomClosed,
-  hideSenderMetadata,
   agent,
-  canManageInteractionAdjustment,
-  interactionAdjustment,
   onRetry,
   onOpenHistorySource,
   forwardSelectionActive,
@@ -3088,10 +3512,7 @@ function ChatMessage({
   message: NoemaSocialMessage;
   continuationOrigin: boolean;
   roomClosed: boolean;
-  hideSenderMetadata: boolean;
   agent: NoemaSocialAgent | null;
-  canManageInteractionAdjustment: boolean;
-  interactionAdjustment: NoemaInteractionAdjustment | null;
   onRetry: (message: NoemaSocialMessage) => void;
   onOpenHistorySource: (source: NoemaSocialHistorySource) => void;
   forwardSelectionActive: boolean;
@@ -3102,198 +3523,51 @@ function ChatMessage({
   continuationThreads: NoemaSocialRoom[];
   onOpenContinuation: (room: NoemaSocialRoom) => void;
 }) {
-  const adjustmentEditorRef = useRef<HTMLFormElement>(null);
-  const [adjustmentEditorOpen, setAdjustmentEditorOpen] = useState(false);
-  const [adjustmentScope, setAdjustmentScope] = useState<
-    'conversation' | 'coding' | 'both'
-  >('conversation');
-  const [adjustmentSituation, setAdjustmentSituation] = useState('');
-  const [adjustmentBehavior, setAdjustmentBehavior] = useState('');
-  const [adjustmentQuote, setAdjustmentQuote] = useState('');
-  const [adjustmentSaving, setAdjustmentSaving] = useState(false);
-  const [adjustmentError, setAdjustmentError] = useState('');
-
-  useLayoutEffect(() => {
-    if (!adjustmentEditorOpen || !adjustmentEditorRef.current) return;
-    const observedThread =
-      adjustmentEditorRef.current.closest('.message-thread');
-    const keepEditorVisible = () => {
-      const editor = adjustmentEditorRef.current;
-      const thread = editor?.closest('.message-thread');
-      if (!editor || !thread) return;
-      editor.style.maxHeight = `${Math.max(180, thread.clientHeight - 28)}px`;
-      editor.style.overflowY = 'auto';
-      const editorBounds = editor.getBoundingClientRect();
-      const threadBounds = thread.getBoundingClientRect();
-      if (editorBounds.bottom > threadBounds.bottom) {
-        thread.scrollTop +=
-          Math.ceil(editorBounds.bottom - threadBounds.bottom) + 1;
-      } else if (editorBounds.top < threadBounds.top) {
-        thread.scrollTop -= Math.ceil(threadBounds.top - editorBounds.top) + 1;
-      }
-    };
-    keepEditorVisible();
-    adjustmentEditorRef.current.querySelector('input')?.focus({
-      preventScroll: true,
-    });
-    const resizeObserver = observedThread
-      ? new ResizeObserver(keepEditorVisible)
-      : null;
-    if (observedThread) resizeObserver?.observe(observedThread);
-    window.addEventListener('resize', keepEditorVisible);
-    return () => {
-      resizeObserver?.disconnect();
-      window.removeEventListener('resize', keepEditorVisible);
-    };
-  }, [adjustmentEditorOpen]);
-
-  const openAdjustmentEditor = () => {
-    setAdjustmentScope(interactionAdjustment?.scope ?? 'conversation');
-    setAdjustmentSituation(interactionAdjustment?.situation ?? '');
-    setAdjustmentBehavior(interactionAdjustment?.behavior ?? '');
-    setAdjustmentQuote(
-      interactionAdjustment?.sourceQuote ?? message.content.slice(0, 240),
-    );
-    setAdjustmentError('');
-    setAdjustmentEditorOpen(true);
-  };
-
-  const saveInteractionAdjustment = async (event: FormEvent) => {
-    event.preventDefault();
-    if (
-      !message.content.includes(adjustmentQuote) ||
-      !adjustmentQuote.trim() ||
-      adjustmentQuote.length > 240
-    ) {
-      setAdjustmentError('引用必须是这条消息中的连续原文，且不超过 240 字。');
-      return;
-    }
-    setAdjustmentSaving(true);
-    setAdjustmentError('');
-    try {
-      if (interactionAdjustment?.status === 'active') {
-        await window.noema.updateInteractionAdjustment({
-          id: interactionAdjustment.id,
-          scope: adjustmentScope,
-          situation: adjustmentSituation.trim(),
-          behavior: adjustmentBehavior.trim(),
-        });
-      } else {
-        await window.noema.addSocialInteractionAdjustment({
-          sourceTurnId: message.turnId,
-          sourceRoomId: message.roomId,
-          scope: adjustmentScope,
-          situation: adjustmentSituation.trim(),
-          behavior: adjustmentBehavior.trim(),
-          sourceQuote: adjustmentQuote.trim(),
-        });
-      }
-      setAdjustmentEditorOpen(false);
-    } catch (error) {
-      setAdjustmentError(
-        error instanceof Error ? error.message : '互动约定没有保存。',
-      );
-    } finally {
-      setAdjustmentSaving(false);
-    }
-  };
-
-  const withdrawInteractionAdjustment = async () => {
-    if (!interactionAdjustment || interactionAdjustment.status !== 'active') {
-      return;
-    }
-    setAdjustmentSaving(true);
-    setAdjustmentError('');
-    try {
-      await window.noema.withdrawInteractionAdjustment(
-        interactionAdjustment.id,
-      );
-      setAdjustmentEditorOpen(false);
-    } catch (error) {
-      setAdjustmentError(
-        error instanceof Error ? error.message : '互动约定没有撤回。',
-      );
-    } finally {
-      setAdjustmentSaving(false);
-    }
-  };
-
-  if (message.role === 'system') {
+  const [copyState, setCopyState] = useState<'ready' | 'copied' | 'error'>(
+    'ready',
+  );
+  if (message.role === 'system')
     return (
-      <div className="system-message">
-        <span className="system-message-rule" />
-        <p>{message.content}</p>
-        <time dateTime={message.createdAt}>{timeLabel(message.createdAt)}</time>
-      </div>
+      <div className="session-label system-message">{message.content}</div>
     );
-  }
-
-  const canActOnMessage = message.status === 'complete' && !roomClosed;
-  const actions = canActOnMessage ? (
-    <div className="message-actions">
-      {forwardSelectionActive ? (
-        <button
-          type="button"
-          className={forwardSelected ? 'is-selected' : ''}
-          aria-pressed={forwardSelected}
-          onClick={onToggleForward}
-        >
-          {forwardSelected ? '已选择' : '选择转发'}
-        </button>
-      ) : (
-        <>
-          <button type="button" onClick={onReply}>
-            回复
-          </button>
-          {canManageInteractionAdjustment && message.role === 'user' ? (
-            <button
-              type="button"
-              onClick={openAdjustmentEditor}
-              disabled={interactionAdjustment?.status === 'withdrawn'}
-              title="只在 Noema 私聊中为这条用户原话显式保存互动约定"
-            >
-              {interactionAdjustment?.status === 'active'
-                ? '互动约定'
-                : interactionAdjustment?.status === 'withdrawn'
-                  ? '已撤回'
-                  : '设为约定'}
-            </button>
-          ) : null}
-          <button type="button" onClick={onForward}>
-            转发
-          </button>
-        </>
-      )}
-    </div>
-  ) : null;
-
-  const replyPreview = message.replyTo ? (
-    <div className="message-reply-reference">
-      <strong>{message.replyTo.sender}</strong>
-      <span>{message.replyTo.content}</span>
-    </div>
-  ) : null;
-  const forwardCard =
-    message.forwardedSources.length > 0 ? (
-      <div className="forwarded-message-card">
-        <strong>
-          {continuationOrigin
-            ? '来源消息'
-            : message.forwardedSources.length > 1
-              ? '合并转发'
-              : '转发消息'}
-        </strong>
-        <span className="forwarded-message-source">
-          来自「{message.forwardedSources[0].roomTitle}」
-        </span>
-        <div className="forwarded-message-items">
+  const user = message.role === 'user';
+  const failed =
+    message.status === 'failed' || message.status === 'interrupted';
+  return (
+    <article
+      className={`message ${user ? 'user user-message' : 'assistant agent-message'} chat-message${forwardSelected ? ' is-forward-selected' : ''}`}
+      data-message-id={message.id}
+    >
+      {!user ? (
+        <div className="byline">
+          <strong>{agent?.name ?? 'Noema'}</strong>
+          <span>{timeLabel(message.createdAt)}</span>
+        </div>
+      ) : null}
+      {message.replyTo ? (
+        <div className="message-quote">
+          <strong>{message.replyTo.sender}</strong>：{message.replyTo.content}
+        </div>
+      ) : null}
+      {message.forwardedSources.length ? (
+        <div className="forwarded-message-card">
+          <strong>
+            {continuationOrigin
+              ? '来源消息'
+              : message.forwardedSources.length > 1
+                ? '合并转发'
+                : '转发消息'}
+          </strong>
+          <span className="forwarded-message-source">
+            来自「{message.forwardedSources[0].roomTitle}」
+          </span>
           {message.forwardedSources.map((source) => (
             <div
               className="forwarded-message-item"
               key={`${source.roomId}:${source.id}`}
             >
               <div>
-                <b>{source.sender}</b>
+                <strong>{source.sender}</strong>
                 <time dateTime={source.createdAt}>
                   {timeLabel(source.createdAt)}
                 </time>
@@ -3302,233 +3576,148 @@ function ChatMessage({
             </div>
           ))}
         </div>
-      </div>
-    ) : null;
-
-  if (message.role === 'user') {
-    return (
-      <article
-        className={`chat-message user-message ${forwardSelectionActive ? 'is-forward-selecting' : ''} ${forwardSelected ? 'is-forward-selected' : ''}`}
-        data-message-id={message.id}
-      >
-        <div
-          className={`message-author ${hideSenderMetadata ? 'visually-hidden' : ''}`}
+      ) : null}
+      {message.content ? (
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          components={markdownComponents}
         >
-          <strong>你</strong>
-          <time dateTime={message.createdAt}>
-            {timeLabel(message.createdAt)}
-          </time>
+          {message.content}
+        </ReactMarkdown>
+      ) : message.status === 'streaming' ? (
+        <span className="typing-state">
+          <i />
+          <i />
+          <i />
+          <span>正在回复</span>
+        </span>
+      ) : null}
+      {failed ? (
+        <div className="message-failure" role="status">
+          <span>{message.errorMessage ?? '这条回复没有完成。'}</span>
+          <button
+            type="button"
+            onClick={() => onRetry(message)}
+            disabled={roomClosed}
+          >
+            重试
+          </button>
         </div>
-        <div className="message-body">
-          {replyPreview}
-          {forwardCard}
-          {message.content ? (
-            <div className="message-bubble">
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                components={markdownComponents}
-              >
-                {message.content}
-              </ReactMarkdown>
-            </div>
-          ) : null}
-        </div>
-        <div className="message-details">
-          {actions}
-          {continuationThreads.map((thread) => (
+      ) : null}
+      {!user ? (
+        <>
+          <InteractionAdjustmentTrace
+            snapshots={message.interactionAdjustmentSnapshots}
+            attempts={message.interactionAdjustmentAttempts}
+            currentAttempt={message.attempt}
+            kind="conversation"
+          />
+          <SocialHistoryRecallTrace
+            message={message}
+            onOpenSource={onOpenHistorySource}
+          />
+        </>
+      ) : null}
+      {message.status === 'complete' && !roomClosed ? (
+        <div className="message-actions">
+          {forwardSelectionActive ? (
             <button
-              className="message-continuation-link"
               type="button"
-              key={thread.id}
-              onClick={() => onOpenContinuation(thread)}
+              className={forwardSelected ? 'is-selected' : ''}
+              aria-pressed={forwardSelected}
+              onClick={onToggleForward}
             >
-              ↳ 继续：{thread.title}
-              {thread.closedAt ? ' · 已结束' : ''}
+              {forwardSelected ? '已选择' : '选择转发'}
             </button>
-          ))}
-          {adjustmentEditorOpen && canManageInteractionAdjustment ? (
-            <form
-              ref={adjustmentEditorRef}
-              className="interaction-adjustment-editor"
-              onSubmit={(event) => void saveInteractionAdjustment(event)}
-            >
-              <div className="interaction-adjustment-editor-heading">
-                <strong>
-                  {interactionAdjustment?.status === 'active'
-                    ? '修改互动约定'
-                    : '保存为互动约定'}
-                </strong>
-                <button
-                  type="button"
-                  className="interaction-adjustment-close"
-                  onClick={() => setAdjustmentEditorOpen(false)}
-                  aria-label="关闭互动约定编辑"
-                  disabled={adjustmentSaving}
-                >
-                  ×
-                </button>
-              </div>
-              <label>
-                <span>遇到什么情况？</span>
-                <input
-                  value={adjustmentSituation}
-                  onChange={(event) =>
-                    setAdjustmentSituation(event.target.value)
-                  }
-                  maxLength={180}
-                  required
-                  placeholder="例如：我在分享一段不愉快的经历时"
-                />
-              </label>
-              <label>
-                <span>希望 Noema 怎么做？</span>
-                <textarea
-                  value={adjustmentBehavior}
-                  onChange={(event) =>
-                    setAdjustmentBehavior(event.target.value)
-                  }
-                  maxLength={240}
-                  required
-                  rows={2}
-                  placeholder="写下你希望它未来如何回应"
-                />
-              </label>
-              <label>
-                <span>适用范围</span>
-                <select
-                  value={adjustmentScope}
-                  onChange={(event) =>
-                    setAdjustmentScope(
-                      event.target.value as 'conversation' | 'coding' | 'both',
-                    )
-                  }
-                >
-                  <option value="conversation">Noema 日常对话</option>
-                  <option value="coding">项目工作</option>
-                  <option value="both">对话和项目工作</option>
-                </select>
-              </label>
-              {interactionAdjustment?.status !== 'active' ? (
-                <label>
-                  <span>来源原话（需为连续原文）</span>
-                  <textarea
-                    value={adjustmentQuote}
-                    onChange={(event) => setAdjustmentQuote(event.target.value)}
-                    maxLength={240}
-                    required
-                    rows={2}
-                  />
-                </label>
-              ) : (
-                <p className="interaction-adjustment-source">
-                  来源原话：{interactionAdjustment.sourceQuote}
-                </p>
-              )}
-              <p className="interaction-adjustment-note">
-                只保存你明确写下的偏好，不会自动从聊天中提取；撤回会停止后续带入，不会改写过去的请求。
-              </p>
-              {adjustmentError ? (
-                <p className="interaction-adjustment-error" role="alert">
-                  {adjustmentError}
-                </p>
-              ) : null}
-              <div className="interaction-adjustment-actions">
-                {interactionAdjustment?.status === 'active' ? (
-                  <button
-                    type="button"
-                    className="interaction-adjustment-withdraw"
-                    onClick={() => void withdrawInteractionAdjustment()}
-                    disabled={adjustmentSaving}
-                  >
-                    撤回
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={() => setAdjustmentEditorOpen(false)}
-                  disabled={adjustmentSaving}
-                >
-                  取消
-                </button>
-                <button type="submit" disabled={adjustmentSaving}>
-                  {adjustmentSaving ? '保存中…' : '保存约定'}
-                </button>
-              </div>
-            </form>
-          ) : null}
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() =>
+                  void navigator.clipboard
+                    .writeText(message.content)
+                    .then(() => setCopyState('copied'))
+                    .catch(() => setCopyState('error'))
+                }
+              >
+                {copyState === 'copied'
+                  ? '已复制'
+                  : copyState === 'error'
+                    ? '复制失败，重试'
+                    : '复制'}
+              </button>
+              <button type="button" onClick={onReply}>
+                引用
+              </button>
+              <button type="button" onClick={onForward}>
+                转发
+              </button>
+            </>
+          )}
         </div>
-      </article>
-    );
-  }
+      ) : null}
+      {continuationThreads.map((thread) => (
+        <button
+          className="message-continuation-link"
+          type="button"
+          key={thread.id}
+          onClick={() => onOpenContinuation(thread)}
+        >
+          ↳ 继续：{thread.title}
+          {thread.closedAt ? ' · 已结束' : ''}
+        </button>
+      ))}
+    </article>
+  );
+}
 
-  const running = message.status === 'streaming';
-  const failed =
-    message.status === 'failed' || message.status === 'interrupted';
+function GroupMessage({
+  message,
+  agent,
+  onRetry,
+}: {
+  message: NoemaSocialMessage;
+  agent: NoemaSocialAgent | null;
+  onRetry: (message: NoemaSocialMessage) => void;
+}) {
+  if (message.role === 'system')
+    return <div className="note-row">{message.content}</div>;
+  const user = message.role === 'user';
   return (
-    <article
-      className={`chat-message agent-message ${running ? 'is-running' : ''} ${forwardSelectionActive ? 'is-forward-selecting' : ''} ${forwardSelected ? 'is-forward-selected' : ''}`}
-      data-message-id={message.id}
-    >
-      <div className="message-author">
-        <strong>{agent?.name ?? 'Noema'}</strong>
-        <time dateTime={message.createdAt}>{timeLabel(message.createdAt)}</time>
-      </div>
-      <div className="message-body">
-        {replyPreview}
-        {forwardCard}
-        <div className="message-bubble">
-          {message.content ? (
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={markdownComponents}
-            >
-              {message.content}
-            </ReactMarkdown>
-          ) : running ? (
-            <span className="typing-state">
-              <i />
-              <i />
-              <i />
-              <span>正在回复</span>
-            </span>
-          ) : null}
-        </div>
-      </div>
-      <div className="message-details">
-        {failed ? (
+    <article className="group-msg" data-message-id={message.id}>
+      {agent ? (
+        <AgentMark agent={agent} />
+      ) : (
+        <span className="portrait">你</span>
+      )}
+      <div className="msg-text">
+        <header>
+          <strong>{user ? '你' : (agent?.name ?? 'Noema')}</strong>
+          <span>{timeLabel(message.createdAt)}</span>
+        </header>
+        {message.replyTo ? (
+          <div className="message-quote">
+            {message.replyTo.sender}：{message.replyTo.content}
+          </div>
+        ) : null}
+        {message.content ? (
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={markdownComponents}
+          >
+            {message.content}
+          </ReactMarkdown>
+        ) : message.status === 'streaming' ? (
+          <span className="typing-state">正在回复…</span>
+        ) : null}
+        {['failed', 'interrupted'].includes(message.status) ? (
           <div className="message-failure" role="status">
             <span>{message.errorMessage ?? '这条回复没有完成。'}</span>
-            <button
-              type="button"
-              onClick={() => onRetry(message)}
-              disabled={roomClosed}
-            >
+            <button type="button" onClick={() => onRetry(message)}>
               重试
             </button>
           </div>
         ) : null}
-        <InteractionAdjustmentTrace
-          snapshots={message.interactionAdjustmentSnapshots}
-          attempts={message.interactionAdjustmentAttempts}
-          currentAttempt={message.attempt}
-          kind="conversation"
-        />
-        <SocialHistoryRecallTrace
-          message={message}
-          onOpenSource={onOpenHistorySource}
-        />
-        {actions}
-        {continuationThreads.map((thread) => (
-          <button
-            className="message-continuation-link"
-            type="button"
-            key={thread.id}
-            onClick={() => onOpenContinuation(thread)}
-          >
-            ↳ 继续：{thread.title}
-            {thread.closedAt ? ' · 已结束' : ''}
-          </button>
-        ))}
       </div>
     </article>
   );
@@ -3671,213 +3860,89 @@ function ProjectWorkCard({
   onWithdrawPractice: () => void;
 }) {
   const active = ['starting', 'running', 'verifying'].includes(task.status);
-  const executionSteps = task.executionSteps ?? [];
   const recovery = ['failed', 'interrupted'].includes(task.status)
     ? socialWorkRecoveryPresentation(task)
     : null;
-  const title = socialWorkCardTitle(task);
-  const verificationLabel =
-    task.verificationStatus === 'verified'
-      ? '文件条件已由 Noema 独立确认'
-      : task.verificationStatus === 'failed'
-        ? '文件条件未通过'
-        : task.verificationStatus === 'unavailable'
-          ? '无法完成独立核验'
-          : '没有设置可自动核对的文件条件';
-  const toolLabels: Record<string, string> = {
-    read: '读取',
-    search: '搜索',
-    write: '写入',
-    edit: '编辑',
-    command: '命令',
-    other: '其他操作',
-  };
-  const toolSummary = Object.entries(
-    task.toolActionCategories.reduce<Record<string, number>>((counts, item) => {
-      counts[item] = (counts[item] ?? 0) + 1;
-      return counts;
-    }, {}),
-  )
-    .map(([category, count]) => `${toolLabels[category] ?? '操作'} ${count}`)
-    .join(' · ');
+  const verification = {
+    not_planned: '本次没有设置独立核验条件。',
+    pending: '正在核验文件结果。',
+    verified: '列出的文件条件已通过核验。',
+    failed: '列出的文件条件未通过核验。',
+    unavailable: '本次无法独立核验文件结果。',
+  }[task.verificationStatus];
   return (
-    <article
-      className={`project-work-card project-work-${task.status}`}
-      aria-label={`${agent?.name ?? '工程搭档'}：${title}`}
-      aria-live={active ? 'polite' : undefined}
+    <section
+      className={`work-request project-work-card project-work-${task.status}`}
+      aria-label={task.taskPrompt}
+      data-task-id={task.id}
     >
-      <header className="project-work-header">
-        <span className="project-work-status-mark" aria-hidden="true" />
-        <strong>
-          {agent?.name ?? '工程搭档'} · {title}
-        </strong>
-        <time dateTime={task.updatedAt}>{timeLabel(task.updatedAt)}</time>
-      </header>
-      {task.sourceMessageId ? (
-        <details className="project-work-task-detail">
-          <summary>查看交给执行者的完整任务文本</summary>
-          <p className="project-work-request">{task.taskPrompt}</p>
-        </details>
-      ) : (
-        <p className="project-work-request">{task.taskPrompt}</p>
-      )}
-      <InteractionAdjustmentTrace
-        snapshots={task.interactionAdjustmentSnapshots}
-        kind="project"
-      />
-      {task.practiceSnapshot ? (
-        <details className="project-work-case project-work-practice">
-          <summary>本轮试用了一条跨房间候选做法</summary>
-          <p>
-            候选来自「{task.practiceSnapshot.roomTitle}」中的已核验工作；
-            基础案例：
-            {task.practiceSnapshot.basisTaskPrompt ||
-              task.practiceSnapshot.basisTaskId}
-          </p>
-          <p>
-            <strong>做法：</strong>
-            {task.practiceSnapshot.action}
-          </p>
-          <p>
-            <strong>边界：</strong>
-            {task.practiceSnapshot.limits}
-          </p>
-          <p className="project-work-case-empty">
-            这是一次候选试用；下方 Noema
-            核验只检查当前文件条件，不证明做法导致了结果。
-          </p>
-        </details>
-      ) : task.caseSnapshot ? (
-        <details className="project-work-case">
-          <summary>
-            本轮引用了「{task.caseSnapshot.roomTitle}」中的已核验案例
-          </summary>
-          <p>来源任务：{task.caseSnapshot.taskPrompt || '（任务摘要为空）'}</p>
-          {task.caseSnapshot.resultText ? (
-            <p>当时结果：{task.caseSnapshot.resultText}</p>
-          ) : null}
-          <p>
-            来源任务的文件条件曾通过 Noema
-            核验；这只说明当时条件通过，不代表本轮应照搬或已因此成功。
-          </p>
-        </details>
-      ) : task.caseReuseRequested ? (
-        <p className="project-work-case-empty">
-          本轮没有找到同一项目、来自其他聊天且通过核验的案例或候选做法。
+      <h3>{task.taskPrompt.split('\n')[0].slice(0, 72) || '项目工作'}</h3>
+      <p role="status">{socialWorkCardTitle(task)}</p>
+      <dl>
+        <dt>执行者</dt>
+        <dd>{agent?.name ?? '执行成员'}</dd>
+        <dt>范围</dt>
+        <dd>
+          <code title={task.workspacePath}>{task.workspacePath}</code>
+        </dd>
+        <dt>本次请求</dt>
+        <dd>{task.taskPrompt}</dd>
+      </dl>
+      {task.errorMessage ? (
+        <p className="request-explanation" role="status">
+          {task.errorMessage}
         </p>
       ) : null}
-      {task.practiceCandidateStatus === 'pending' ? (
-        <p className="project-work-case-empty" role="status">
-          Noema 正在整理一条候选做法；项目验收状态不受影响。
+      {recovery ? (
+        <p className="request-explanation" role="status">
+          {recovery.message}
         </p>
       ) : null}
-      {task.practiceCandidate ? (
-        <details className="project-work-case project-work-practice">
-          <summary>
-            {task.practiceCandidateStatus === 'available'
-              ? 'Noema 提出一条可试用的候选做法'
-              : task.practiceCandidateStatus === 'trialing'
-                ? '候选做法已交给另一房间的任务试用'
-                : task.practiceCandidateStatus === 'trialed'
-                  ? '候选做法已试用一次'
-                  : '候选做法已撤回'}
-          </summary>
-          <p>
-            <strong>触发条件：</strong>
-            {task.practiceCandidate.trigger}
-          </p>
-          <p>
-            <strong>候选做法：</strong>
-            {task.practiceCandidate.action}
-          </p>
-          <p>
-            <strong>适用边界：</strong>
-            {task.practiceCandidate.limits}
-          </p>
-          <p className="project-work-case-empty">
-            来源案例：
-            {task.practiceBasisTaskId ?? task.practiceCandidate.basisTaskId}
-            。候选不是永久技能；试用通过也不能单独证明方法导致了结果。
-          </p>
-          {task.practiceTrialTaskId ? (
-            <p className="project-work-case-empty">
-              试用结果：
-              {task.practiceTrialVerificationStatus === 'verified'
-                ? '列出的文件条件通过'
-                : task.practiceTrialVerificationStatus === 'failed'
-                  ? '文件条件未通过'
-                  : task.practiceTrialVerificationStatus === 'unavailable'
-                    ? '无法独立核验'
-                    : '未设置核验条件'}
-              （任务 {task.practiceTrialTaskStatus ?? '进行中'}
-              ）。这只记录本次结果，不证明候选做法造成了结果。
-            </p>
-          ) : null}
-          {['available', 'trialing', 'trialed'].includes(
-            task.practiceCandidateStatus,
-          ) ? (
-            <div className="project-work-case-footer">
-              <span>仅在同一好友、同一项目的另一个聊天中试用一次</span>
-              <button type="button" onClick={onWithdrawPractice}>
-                撤回候选
-              </button>
-            </div>
-          ) : null}
-        </details>
-      ) : null}
-      {task.practiceCandidateStatus === 'failed' ? (
-        <p className="project-work-case-empty" role="status">
-          Noema 没有生成候选做法；项目工作结果不受影响。
+      <div className="request-actions">
+        {active ? (
+          <button className="secondary" type="button" onClick={onStop}>
+            停止这项执行
+          </button>
+        ) : null}
+        {recovery ? (
+          <button className="primary" type="button" onClick={onRepeat}>
+            再次编辑并执行
+          </button>
+        ) : null}
+      </div>
+      {active || recovery ? (
+        <p className="request-explanation">
+          停止不会撤销已经产生的文件修改。
+          {recovery ? '再次执行会创建新任务，不会续接刚才的会话。' : ''}
         </p>
       ) : null}
-      {task.caseReuseRequested &&
-      task.caseSnapshot &&
-      task.verificationStatus === 'verified' &&
-      task.practiceCandidateStatus === 'none' ? (
-        <p className="project-work-case-empty" role="status">
-          Noema 没有找到适合迁移的做法；已核验案例仍可单独引用。
-        </p>
-      ) : null}
-      {active ? (
-        <div className="project-work-progress">
-          <span>
-            {task.phase === 'verifying'
-              ? '正在检查文件结果'
-              : '项目工作仍在进行'}
-          </span>
-          {task.toolCallCount > 0 ? (
-            <span>{toolSummary || `已进行 ${task.toolCallCount} 次操作`}</span>
-          ) : null}
-        </div>
-      ) : null}
-      {executionSteps.length > 0 ? (
-        <details className="project-work-task-detail project-work-execution-steps">
-          <summary>查看执行记录（{executionSteps.length}）</summary>
+      <details>
+        <summary>
+          查看执行记录
+          {task.executionSteps.length ? ` · ${task.executionSteps.length}` : ''}
+        </summary>
+        {task.executionSteps.length ? (
           <ol>
-            {executionSteps.map((step) => {
-              const presentation = socialWorkExecutionStepPresentation(step);
+            {task.executionSteps.map((step) => {
+              const view = socialWorkExecutionStepPresentation(step);
               return (
                 <li key={step.id}>
-                  <span>
-                    {presentation.categoryLabel} · {presentation.statusLabel}
-                  </span>
-                  {presentation.effectLabel ? (
-                    <small>{presentation.effectLabel}</small>
-                  ) : null}
+                  {view.categoryLabel} — {view.statusLabel}
+                  {view.effectLabel ? ` · ${view.effectLabel}` : ''}
                 </li>
               );
             })}
           </ol>
-          <small>记录工具类别与状态，不包含工具参数或文件内容。</small>
-        </details>
-      ) : null}
-      <details className="project-work-location">
-        <summary>查看项目范围</summary>
-        <code title={task.workspacePath}>{task.workspacePath}</code>
+        ) : (
+          <p className="request-explanation">还没有可展示的工具执行记录。</p>
+        )}
+        <p className="request-explanation">
+          记录工具类别与状态，不包含工具参数或文件内容。
+        </p>
       </details>
       {task.resultText ? (
-        <div className="project-work-result">
-          <span className="project-work-result-label">工程搭档回报</span>
+        <div className="work-result">
+          <h4>执行结果</h4>
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             components={markdownComponents}
@@ -3886,60 +3951,56 @@ function ProjectWorkCard({
           </ReactMarkdown>
         </div>
       ) : null}
-      {!active ? (
-        <p
-          className={`project-work-verification is-${task.verificationStatus}`}
-        >
-          {verificationLabel}
-        </p>
+      {!active ? <p className="request-explanation">{verification}</p> : null}
+      {task.caseSnapshot || task.practiceSnapshot || task.practiceCandidate ? (
+        <details>
+          <summary>本次经验引用与候选</summary>
+          {task.caseSnapshot ? (
+            <p>
+              引用案例：{task.caseSnapshot.taskPrompt}（
+              {task.caseSnapshot.roomTitle}）
+            </p>
+          ) : null}
+          {task.practiceSnapshot ? (
+            <p>试用做法：{task.practiceSnapshot.action}</p>
+          ) : null}
+          {task.practiceCandidate ? (
+            <>
+              <p>{task.practiceCandidate.trigger}</p>
+              <p>{task.practiceCandidate.action}</p>
+              <p className="request-explanation">
+                {task.practiceCandidate.limits}
+              </p>
+              {['available', 'trialing', 'trialed'].includes(
+                task.practiceCandidateStatus,
+              ) ? (
+                <button
+                  className="quiet"
+                  type="button"
+                  onClick={onWithdrawPractice}
+                >
+                  撤回候选做法
+                </button>
+              ) : null}
+            </>
+          ) : null}
+          <p className="request-explanation">候选做法不等于已经掌握的能力。</p>
+        </details>
       ) : null}
-      {task.errorMessage ? (
-        <p className="project-work-error" role="status">
-          {task.errorMessage}
-        </p>
-      ) : null}
-      {recovery ? (
-        <p
-          className={`project-work-recovery is-${recovery.kind}`}
-          role="status"
-        >
-          {recovery.message}
-        </p>
-      ) : null}
-      {recovery ? (
-        <footer className="project-work-footer">
-          <span>重新执行会创建新任务，不会续接刚才的会话。</span>
-          <button type="button" onClick={onRepeat}>
-            再次编辑并执行
-          </button>
-        </footer>
-      ) : null}
-      {!active &&
-      task.status === 'completed' &&
+      {task.status === 'completed' &&
       task.verificationStatus === 'verified' &&
       task.caseEligible ? (
-        <footer className="project-work-case-footer">
-          <span>这项工作可作为同项目后续任务的案例</span>
-          <button type="button" onClick={onDisableCase}>
+        <details>
+          <summary>案例引用设置</summary>
+          <p className="request-explanation">
+            这项工作的文件条件通过了核验，可供同项目后续工作参考。
+          </p>
+          <button type="button" className="quiet" onClick={onDisableCase}>
             不再引用此案例
           </button>
-        </footer>
+        </details>
       ) : null}
-      {!task.caseEligible &&
-      task.status === 'completed' &&
-      task.verificationStatus === 'verified' ? (
-        <p className="project-work-case-retired">已从后续案例中撤回</p>
-      ) : null}
-      {active ? (
-        <footer className="project-work-footer">
-          <span>停止不会撤销已经产生的文件改动</span>
-          <button type="button" onClick={onStop}>
-            <Icon name="stop" />
-            停止工作
-          </button>
-        </footer>
-      ) : null}
-    </article>
+    </section>
   );
 }
 

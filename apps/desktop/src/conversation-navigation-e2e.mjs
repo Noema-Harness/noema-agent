@@ -29,7 +29,7 @@ export async function verifyConversationNavigation(window) {
       sidebarOverflow: sidebar.scrollWidth > sidebar.clientWidth,
       dragging: document.querySelector('.social-body').classList.contains('navigation-resizing'),
       overflow: document.documentElement.scrollWidth > innerWidth,
-      preference: JSON.parse(localStorage.getItem('noema.conversation-navigation.v1')),
+      preference: JSON.parse(localStorage.getItem('noema.conversation-navigation.v3')),
     };
   })()`);
   const check = (condition, label, state) => {
@@ -140,10 +140,6 @@ export async function verifyConversationNavigation(window) {
 
   window.setSize(680, 560);
   await settle();
-  await contents.executeJavaScript(
-    `document.querySelector('.navigation-reveal').click()`,
-  );
-  await settle();
   state = await inspect();
   check(
     state.panelInert &&
@@ -164,6 +160,16 @@ export async function verifyConversationNavigation(window) {
       state.panelVisible &&
       !state.overflow,
     'Narrow Escape returns to chat',
+    state,
+  );
+  await contents.executeJavaScript(
+    `document.querySelector('.navigation-reveal').click()`,
+  );
+  await settle();
+  state = await inspect();
+  check(
+    state.panelInert && !state.sidebarInert && state.settings === 1,
+    'Narrow toolbar opens navigation',
     state,
   );
   window.setSize(1280, 800);

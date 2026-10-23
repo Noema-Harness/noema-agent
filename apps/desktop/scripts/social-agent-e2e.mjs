@@ -167,6 +167,7 @@ const child = spawn(process.execPath, ['scripts/start.mjs'], {
       .filter(Boolean)
       .join(path.delimiter),
     NOEMA_SMOKE_TEST: '1',
+    NOEMA_SMOKE_USER_DATA_DIR: path.join(e2eDirectory, 'electron-home'),
     NOEMA_E2E_DATABASE_PATH: databasePath,
     NOEMA_E2E_DSH_USER_DATA_PATH: dshUserDataPath,
     NOEMA_E2E_SOCIAL_AGENT_WORKFLOW: '1',

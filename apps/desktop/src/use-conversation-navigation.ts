@@ -8,7 +8,7 @@ import {
   useState,
 } from 'react';
 
-const preferenceKey = 'noema.conversation-navigation.v1';
+const preferenceKey = 'noema.conversation-navigation.v3';
 const minimumWidth = 224;
 const maximumWidth = 400;
 const collapseThreshold = 96;
@@ -20,11 +20,11 @@ function readPreference(): { width: number; collapsed: boolean } {
       width:
         Number.isFinite(value?.width) && value.width >= minimumWidth
           ? Math.min(value.width, maximumWidth)
-          : 264,
+          : 232,
       collapsed: value?.collapsed === true,
     };
   } catch {
-    return { width: 264, collapsed: false };
+    return { width: 232, collapsed: false };
   }
 }
 
