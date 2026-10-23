@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {
+  existsSync,
   mkdtempSync,
   mkdirSync,
   readFileSync,
@@ -93,6 +94,115 @@ test('Noema executor performs a bounded multi-step tool loop in the selected wor
       finalCheckpoint.messages.filter((message) => message.role === 'tool')
         .length,
       2,
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('Noema executor applies an exact edit without rewriting unrelated file content', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'noema-project-edit-'));
+  const workspace = path.join(directory, 'workspace');
+  mkdirSync(workspace);
+  const targetPath = path.join(workspace, 'notes.txt');
+  writeFileSync(
+    targetPath,
+    'keep this line\nchange old value\nkeep the ending\n',
+  );
+  const provider = makeProvider([
+    {
+      calls: [
+        toolCall('edit-1', 'edit_file', {
+          path: 'notes.txt',
+          oldText: 'change old value',
+          newText: 'change new value',
+        }),
+      ],
+    },
+    { text: '只修改了指定行。' },
+  ]);
+  const events = [];
+  try {
+    const executor = new NoemaProjectExecutor({ provider });
+    const handle = await executor.startTask({
+      workspacePath: workspace,
+      task: '只替换指定内容',
+      model: 'auto:noema-free',
+      onEvent: (event) => events.push(event),
+    });
+    const outcome = await handle.done;
+    assert.equal(outcome.status, 'completed');
+    assert.equal(
+      readFileSync(targetPath, 'utf8'),
+      'keep this line\nchange new value\nkeep the ending\n',
+    );
+    assert.equal(
+      events.find((event) => event.type === 'tool-call')?.category,
+      'edit',
+    );
+    assert.equal(
+      events.find((event) => event.type === 'tool-result')?.effectStatus,
+      'applied',
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('Noema executor rejects missing, ambiguous, and invalid-UTF8 edit targets without mutation', async () => {
+  const directory = mkdtempSync(
+    path.join(tmpdir(), 'noema-project-edit-reject-'),
+  );
+  const workspace = path.join(directory, 'workspace');
+  mkdirSync(workspace);
+  const targetPath = path.join(workspace, 'notes.txt');
+  const original = 'same line\nsame line\n';
+  writeFileSync(targetPath, original);
+  const provider = makeProvider([
+    {
+      calls: [
+        toolCall('edit-missing', 'edit_file', {
+          path: 'notes.txt',
+          oldText: 'not present',
+          newText: 'replacement',
+        }),
+      ],
+    },
+    {
+      calls: [
+        toolCall('edit-ambiguous', 'edit_file', {
+          path: 'notes.txt',
+          oldText: 'same line',
+          newText: 'replacement',
+        }),
+      ],
+    },
+    {
+      calls: [
+        toolCall('edit-invalid-utf8', 'edit_file', {
+          path: 'invalid.txt',
+          oldText: 'valid',
+          newText: 'replacement',
+        }),
+      ],
+    },
+    { text: '无效编辑均未改动文件。' },
+  ]);
+  writeFileSync(path.join(workspace, 'invalid.txt'), Buffer.from([0xc3, 0x28]));
+  try {
+    const executor = new NoemaProjectExecutor({ provider });
+    const handle = await executor.startTask({
+      workspacePath: workspace,
+      task: '拒绝无法唯一定位的文本编辑',
+      model: 'auto:noema-free',
+    });
+    const outcome = await handle.done;
+    assert.equal(outcome.status, 'completed');
+    assert.equal(provider.callCount, 4);
+    assert.equal(readFileSync(targetPath, 'utf8'), original);
+    assert.deepEqual(
+      readFileSync(path.join(workspace, 'invalid.txt')),
+      Buffer.from([0xc3, 0x28]),
     );
   } finally {
     rmSync(directory, { recursive: true, force: true });
@@ -206,6 +316,69 @@ test('Noema executor does not repeat a side-effecting command with a new call ID
   }
 });
 
+test('stopping a running command waits for the child tree and marks its effects unknown', async () => {
+  const directory = mkdtempSync(
+    path.join(tmpdir(), 'noema-project-stop-command-'),
+  );
+  const workspace = path.join(directory, 'workspace');
+  mkdirSync(workspace);
+  const markerPath = path.join(workspace, 'marker.txt');
+  const provider = makeProvider([
+    {
+      calls: [
+        toolCall('command-stop', 'run_command', {
+          command:
+            'echo started> marker.txt & ping -n 30 127.0.0.1 >nul & echo finished>> marker.txt',
+        }),
+      ],
+    },
+    { text: '不应在被停止后发起第二轮。' },
+  ]);
+  let stepStartedResolve;
+  const stepStarted = new Promise((resolve) => {
+    stepStartedResolve = resolve;
+  });
+  let handle;
+  try {
+    const events = [];
+    const executor = new NoemaProjectExecutor({ provider });
+    handle = await executor.startTask({
+      workspacePath: workspace,
+      task: '运行后等待停止',
+      model: 'auto:noema-free',
+      onEvent: (event) => {
+        events.push(event);
+        if (event.type === 'tool-call') stepStartedResolve();
+      },
+    });
+    await stepStarted;
+    const deadline = Date.now() + 5_000;
+    while (!existsSync(markerPath) && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    assert.equal(
+      existsSync(markerPath),
+      true,
+      'command started in the workspace',
+    );
+
+    handle.stop();
+    const outcome = await handle.done;
+    assert.equal(outcome.status, 'interrupted');
+    assert.equal(outcome.toolCallCount, 1);
+    assert.equal(provider.callCount, 1);
+    assert.match(
+      events.find((event) => event.type === 'tool-result')?.effectStatus ?? '',
+      /^unknown$/u,
+    );
+    assert.doesNotMatch(readFileSync(markerPath, 'utf8'), /finished/u);
+  } finally {
+    handle?.stop();
+    await handle?.done;
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('Noema executor resumes only after a completed tool result and blocks repeating its side effect', async () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'noema-project-resume-'));
   const workspace = path.join(directory, 'workspace');
@@ -260,6 +433,59 @@ test('Noema executor resumes only after a completed tool result and blocks repea
     assert.equal(outcome.status, 'completed');
     assert.equal(provider.callCount, 2);
     assert.equal(readFileSync(targetPath, 'utf8'), 'must not run twice');
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('Noema executor does not repeat a completed edit after resuming its checkpoint', async () => {
+  const directory = mkdtempSync(
+    path.join(tmpdir(), 'noema-project-edit-resume-'),
+  );
+  const workspace = path.join(directory, 'workspace');
+  mkdirSync(workspace);
+  const targetPath = path.join(workspace, 'result.txt');
+  const edit = {
+    path: 'result.txt',
+    oldText: 'before',
+    newText: 'after',
+  };
+  writeFileSync(targetPath, 'after');
+  const provider = makeProvider([
+    { calls: [toolCall('edit-new-id', 'edit_file', edit)] },
+    { text: '已沿检查点继续，未重复编辑。' },
+  ]);
+  try {
+    const executor = new NoemaProjectExecutor({ provider });
+    const handle = await executor.startTask({
+      workspacePath: workspace,
+      task: '原始编辑任务',
+      model: 'auto:noema-free',
+      checkpoint: {
+        phase: 'interrupted',
+        resumePhase: 'ready_for_model',
+        round: 1,
+        toolCallCount: 1,
+        messages: [
+          { role: 'system', content: 'system' },
+          { role: 'user', content: 'task' },
+          {
+            role: 'assistant',
+            content: null,
+            tool_calls: [toolCall('edit-old-id', 'edit_file', edit)],
+          },
+          {
+            role: 'tool',
+            tool_call_id: 'edit-old-id',
+            content: JSON.stringify({ result: '已完成一次精确替换。' }),
+          },
+        ],
+      },
+    });
+    const outcome = await handle.done;
+    assert.equal(outcome.status, 'completed');
+    assert.equal(provider.callCount, 2);
+    assert.equal(readFileSync(targetPath, 'utf8'), 'after');
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
