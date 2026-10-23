@@ -241,8 +241,19 @@ function executeFileTool(workspacePath, name, args) {
     const stat = fs.statSync(target);
     if (!stat.isFile()) throw new Error('指定路径不是普通文件。');
     if (stat.size > MAX_FILE_BYTES) throw new Error('文件超过 1 MB 读取上限。');
+    let content;
+    try {
+      content = new TextDecoder('utf-8', { fatal: true }).decode(
+        fs.readFileSync(target),
+      );
+    } catch (error) {
+      if (error instanceof TypeError) {
+        throw new Error('文件不是有效 UTF-8 文本，未读取内容。');
+      }
+      throw error;
+    }
     return {
-      output: truncate(fs.readFileSync(target, 'utf8')),
+      output: truncate(content),
       effectStatus: 'none',
     };
   }

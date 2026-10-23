@@ -219,6 +219,42 @@ test('Noema executor rejects missing, ambiguous, and invalid-UTF8 edit targets w
   }
 });
 
+test('Noema executor refuses to pass invalid UTF-8 files to the model as replacement text', async () => {
+  const directory = mkdtempSync(
+    path.join(tmpdir(), 'noema-project-read-invalid-utf8-'),
+  );
+  const workspace = path.join(directory, 'workspace');
+  mkdirSync(workspace);
+  writeFileSync(path.join(workspace, 'invalid.txt'), Buffer.from([0xc3, 0x28]));
+  const events = [];
+  const provider = makeProvider([
+    {
+      calls: [
+        toolCall('read-invalid-utf8', 'read_file', { path: 'invalid.txt' }),
+      ],
+    },
+    { text: '检测到文件编码不受支持。' },
+  ]);
+  try {
+    const executor = new NoemaProjectExecutor({ provider });
+    const handle = await executor.startTask({
+      workspacePath: workspace,
+      task: '读取文件',
+      model: 'auto:noema-free',
+      onEvent: (event) => events.push(event),
+    });
+    const outcome = await handle.done;
+    assert.equal(outcome.status, 'completed');
+    const result = events.find((event) => event.type === 'tool-result');
+    assert.equal(result.status, 'error');
+    assert.equal(result.effectStatus, 'none');
+    assert.match(result.resultContent, /不是有效 UTF-8/u);
+    assert.doesNotMatch(result.resultContent, /�/u);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('Noema executor rejects workspace traversal and does not repeat side effects after a tool error', async () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'noema-project-executor-'));
   const workspace = path.join(directory, 'workspace');
