@@ -1,6 +1,12 @@
 import { createSocialTestStore } from '../test-support/social-team.mjs';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -962,6 +968,85 @@ test('a restarted Noema task resumes from durable model-boundary messages', asyn
       await service.shutdown();
     }
   } finally {
+    db.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('output budget failure is persisted as non-resumable with no attempted write', async () => {
+  const directory = mkdtempSync(
+    path.join(tmpdir(), 'noema-output-budget-task-'),
+  );
+  const workspace = path.join(directory, 'workspace');
+  mkdirSync(workspace);
+  writeFileSync(path.join(workspace, 'first.txt'), 'x'.repeat(24_000));
+  writeFileSync(path.join(workspace, 'second.txt'), 'y'.repeat(24_000));
+  const targetPath = path.join(workspace, 'must-not-write.txt');
+  const { db, store } = makeStore();
+  const provider = {
+    async *streamChat({ onToolCalls }) {
+      onToolCalls([
+        {
+          id: 'service-budget-read-1',
+          type: 'function',
+          function: {
+            name: 'read_file',
+            arguments: JSON.stringify({ path: 'first.txt' }),
+          },
+        },
+        {
+          id: 'service-budget-read-2',
+          type: 'function',
+          function: {
+            name: 'read_file',
+            arguments: JSON.stringify({ path: 'second.txt' }),
+          },
+        },
+        {
+          id: 'service-budget-write',
+          type: 'function',
+          function: {
+            name: 'write_file',
+            arguments: JSON.stringify({
+              path: 'must-not-write.txt',
+              content: 'not executed',
+            }),
+          },
+        },
+      ]);
+      yield* [];
+    },
+  };
+  const service = new SocialWorkService({
+    store,
+    adapter: new NoemaProjectExecutor({ provider }),
+    secretStore: { isConfigured: () => true },
+    chooseWorkspace: async () => workspace,
+  });
+  try {
+    const accepted = await service.startTask({
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      prompt: '读取资料并安全处理结果。',
+    });
+    const task = await service.waitForTask(accepted.taskId);
+    assert.equal(task.status, 'failed');
+    assert.equal(task.errorCode, 'tool_output_budget');
+    assert.equal(task.canResume, false);
+    assert.equal(existsSync(targetPath), false);
+    assert.deepEqual(
+      task.executionSteps.map((step) => [step.status, step.effectStatus]),
+      [
+        ['succeeded', 'none'],
+        ['succeeded', 'none'],
+        ['failed', 'not_applied'],
+      ],
+    );
+    const checkpoint = store.getSocialWorkRuntimeCheckpoint(accepted.taskId);
+    assert.equal(checkpoint.phase, 'failed');
+    assert.equal(checkpoint.resumePhase, null);
+  } finally {
+    await service.shutdown();
     db.close();
     rmSync(directory, { recursive: true, force: true });
   }
