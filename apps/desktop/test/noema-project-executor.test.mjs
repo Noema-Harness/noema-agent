@@ -1,5 +1,11 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import {
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -195,6 +201,65 @@ test('Noema executor does not repeat a side-effecting command with a new call ID
       events.filter((event) => event.type === 'tool-call').length,
       1,
     );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('Noema executor resumes only after a completed tool result and blocks repeating its side effect', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'noema-project-resume-'));
+  const workspace = path.join(directory, 'workspace');
+  mkdirSync(workspace);
+  const targetPath = path.join(workspace, 'result.txt');
+  writeFileSync(targetPath, 'must not run twice');
+  const provider = makeProvider([
+    {
+      calls: [
+        toolCall('new-write-id', 'write_file', {
+          path: 'result.txt',
+          content: 'must not run twice',
+        }),
+      ],
+    },
+    { text: '已从检查点继续并保留原有写入。' },
+  ]);
+  try {
+    const executor = new NoemaProjectExecutor({ provider });
+    const handle = await executor.startTask({
+      workspacePath: workspace,
+      task: '原始任务',
+      model: 'auto:noema-free',
+      taskId: 'task-resume',
+      checkpoint: {
+        phase: 'interrupted',
+        resumePhase: 'ready_for_model',
+        round: 1,
+        toolCallCount: 1,
+        messages: [
+          { role: 'system', content: 'system' },
+          { role: 'user', content: 'task' },
+          {
+            role: 'assistant',
+            content: null,
+            tool_calls: [
+              toolCall('old-write-id', 'write_file', {
+                path: 'result.txt',
+                content: 'must not run twice',
+              }),
+            ],
+          },
+          {
+            role: 'tool',
+            tool_call_id: 'old-write-id',
+            content: JSON.stringify({ result: '写入完成。' }),
+          },
+        ],
+      },
+    });
+    const outcome = await handle.done;
+    assert.equal(outcome.status, 'completed');
+    assert.equal(provider.callCount, 2);
+    assert.equal(readFileSync(targetPath, 'utf8'), 'must not run twice');
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

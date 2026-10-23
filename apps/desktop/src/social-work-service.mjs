@@ -493,6 +493,61 @@ export class SocialWorkService {
     );
   }
 
+  async resumeTask(taskId) {
+    if (this.shuttingDown)
+      throw new Error('Noema 正在关闭，暂不能恢复项目工作。');
+    if (this.runs.has(taskId)) throw new Error('这项任务已经在运行。');
+    const readiness = this.getReadiness();
+    if (!readiness.available) throw new Error(readiness.reason);
+    const task = this.store.getSocialWorkTask(taskId);
+    if (!task.canResume) {
+      throw new Error('检查点不满足安全续接条件；请检查工作区后重新提交任务。');
+    }
+    const checkpoint = this.store.getSocialWorkRuntimeCheckpoint(taskId);
+    if (
+      !checkpoint ||
+      checkpoint.phase !== 'interrupted' ||
+      checkpoint.resumePhase !== 'ready_for_model'
+    ) {
+      throw new Error('检查点不在可安全续接的模型边界。');
+    }
+    this.assertWorkAllowed(task.roomId);
+    let realWorkspacePath;
+    try {
+      realWorkspacePath = fs.realpathSync(task.workspacePath);
+      if (!fs.statSync(realWorkspacePath).isDirectory()) throw new Error();
+    } catch {
+      throw new Error('原工作区已不存在或不可访问；请重新选择后提交任务。');
+    }
+    if (
+      path.normalize(realWorkspacePath).toLowerCase() !==
+      path.normalize(task.workspacePath).toLowerCase()
+    ) {
+      throw new Error('原工作区路径已指向其他位置；请重新检查后提交任务。');
+    }
+
+    this.store.resumeSocialWorkTask(taskId);
+    const run = {
+      handle: null,
+      retryWaitController: null,
+      stopRequested: false,
+      completion: null,
+    };
+    this.runs.set(taskId, run);
+    this.publish(this.store.getSocialWorkTask(taskId));
+    run.completion = this.executeTask({
+      taskId,
+      workspacePath: realWorkspacePath,
+      task: task.taskPrompt,
+      model: task.model,
+      sessionId: task.runtimeSessionId,
+      verificationChecks: task.verificationChecks,
+      checkpoint,
+      run,
+    });
+    return { accepted: true, taskId, roomId: task.roomId };
+  }
+
   async executeTask({
     taskId,
     workspacePath,
@@ -500,6 +555,7 @@ export class SocialWorkService {
     model,
     sessionId,
     verificationChecks,
+    checkpoint = null,
     run,
   }) {
     let runtimeSessionId = sessionId;
@@ -542,6 +598,7 @@ export class SocialWorkService {
               ? taskId
               : `${taskId}-resume-${verificationAttempts}`,
           sessionId: runtimeSessionId,
+          checkpoint,
           onEvent: (event) => {
             if (
               event.type === 'session' &&
@@ -579,7 +636,10 @@ export class SocialWorkService {
                 phase: 'tool_call',
                 toolCallCount: toolCallOffset + currentRunCount,
               });
-            } else if (event.type === 'runtime-checkpoint') {
+            } else if (
+              event.type === 'runtime-checkpoint' &&
+              typeof this.store.saveSocialWorkRuntimeCheckpoint === 'function'
+            ) {
               this.store.saveSocialWorkRuntimeCheckpoint(taskId, {
                 messages: event.messages,
                 round: event.round,
@@ -614,10 +674,13 @@ export class SocialWorkService {
         outcome = await handle.done;
         run.handle = null;
         runtimeSessionId = outcome.sessionId ?? runtimeSessionId;
-        const checkpoint = this.store.getSocialWorkRuntimeCheckpoint(taskId);
-        if (checkpoint) {
+        const persistedCheckpoint =
+          typeof this.store.getSocialWorkRuntimeCheckpoint === 'function'
+            ? this.store.getSocialWorkRuntimeCheckpoint(taskId)
+            : null;
+        if (persistedCheckpoint) {
           this.store.saveSocialWorkRuntimeCheckpoint(taskId, {
-            ...checkpoint,
+            ...persistedCheckpoint,
             phase: outcome.status,
           });
         }

@@ -49,6 +49,7 @@ const CHANNELS = Object.freeze({
   socialStop: 'noema:social-stop',
   socialRetry: 'noema:social-retry',
   socialWorkStop: 'noema:social-work-stop',
+  socialWorkResume: 'noema:social-work-resume',
   socialWorkCaseEligible: 'noema:social-work-case-eligible',
   socialPracticeWithdraw: 'noema:social-practice-withdraw',
 });
@@ -171,6 +172,9 @@ export function registerRootIpc({
   if (socialWorkService) {
     register(CHANNELS.socialWorkStop, (taskId) =>
       socialWorkService.stopTask(taskId),
+    );
+    register(CHANNELS.socialWorkResume, (taskId) =>
+      socialWorkService.resumeTask(taskId),
     );
     register(CHANNELS.socialWorkCaseEligible, (taskId, eligible) =>
       socialWorkService.setCaseEligible(taskId, eligible),

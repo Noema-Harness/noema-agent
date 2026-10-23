@@ -166,6 +166,36 @@ function parseArguments(call) {
   return { name, args };
 }
 
+function restoreCallLedger(messages) {
+  const toolResults = new Map(
+    messages
+      .filter((message) => message.role === 'tool')
+      .map((message) => [message.tool_call_id, message.content]),
+  );
+  const executedCalls = new Map();
+  const sideEffectCalls = new Set();
+  for (const message of messages) {
+    if (message.role !== 'assistant' || !Array.isArray(message.tool_calls))
+      continue;
+    for (const call of message.tool_calls) {
+      if (!toolResults.has(call.id))
+        throw new Error('检查点含有未完成的工具调用；不能安全续接。');
+      let parsed;
+      try {
+        parsed = parseArguments(call);
+      } catch {
+        continue;
+      }
+      const fingerprint = JSON.stringify([parsed.name, parsed.args]);
+      const content = toolResults.get(call.id);
+      executedCalls.set(call.id, { fingerprint, content });
+      if (['write_file', 'run_command'].includes(parsed.name))
+        sideEffectCalls.add(fingerprint);
+    }
+  }
+  return { executedCalls, sideEffectCalls };
+}
+
 function executeFileTool(workspacePath, name, args) {
   if (name === 'list_files') {
     const { target } = resolveWorkspacePath(workspacePath, args.path, {
@@ -324,19 +354,30 @@ export class NoemaProjectExecutor {
     model,
     taskId = randomUUID(),
     onEvent = () => {},
+    checkpoint = null,
   }) {
     const workspace = fs.realpathSync(workspacePath);
     if (!fs.statSync(workspace).isDirectory())
       throw new Error('所选工作区不可用。');
+    if (
+      checkpoint &&
+      (checkpoint.phase !== 'interrupted' ||
+        checkpoint.resumePhase !== 'ready_for_model' ||
+        !Array.isArray(checkpoint.messages) ||
+        !Number.isInteger(checkpoint.round) ||
+        !Number.isInteger(checkpoint.toolCallCount))
+    ) {
+      throw new Error('当前检查点不在可安全恢复的模型边界。');
+    }
     const sessionId = `noema-${taskId}`;
     const controller = new AbortController();
     let currentChild = null;
     let stopped = false;
-    let callCount = 0;
+    let callCount = checkpoint?.toolCallCount ?? 0;
     const started = Promise.resolve({ sessionId });
     onEvent({ type: 'session', sessionId });
     const done = (async () => {
-      const messages = [
+      const messages = checkpoint?.messages ?? [
         {
           role: 'system',
           content: [
@@ -351,10 +392,16 @@ export class NoemaProjectExecutor {
         { role: 'user', content: task },
       ];
       let finalText = '';
-      let toolOutputCharacters = 0;
-      let toolCallCount = 0;
-      const executedCalls = new Map();
-      const sideEffectCalls = new Set();
+      let toolOutputCharacters = messages
+        .filter((message) => message.role === 'tool')
+        .reduce(
+          (total, message) => total + String(message.content ?? '').length,
+          0,
+        );
+      let toolCallCount = checkpoint?.toolCallCount ?? 0;
+      const restoredLedger = checkpoint ? restoreCallLedger(messages) : null;
+      const executedCalls = restoredLedger?.executedCalls ?? new Map();
+      const sideEffectCalls = restoredLedger?.sideEffectCalls ?? new Set();
       const saveCheckpoint = (round, phase) => {
         onEvent({
           type: 'runtime-checkpoint',
@@ -366,7 +413,11 @@ export class NoemaProjectExecutor {
       };
       try {
         onEvent({ type: 'status', phase: 'working' });
-        for (let round = 0; round < this.maxToolRounds; round += 1) {
+        for (
+          let round = checkpoint?.round ?? 0;
+          round < this.maxToolRounds;
+          round += 1
+        ) {
           if (stopped || controller.signal.aborted) {
             return {
               status: 'interrupted',

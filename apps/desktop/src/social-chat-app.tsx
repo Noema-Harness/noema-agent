@@ -1356,6 +1356,17 @@ function SocialChatApp() {
     }
   };
 
+  const handleResumeProjectWork = async (task: NoemaSocialWorkTask) => {
+    try {
+      await window.noema.resumeSocialWorkTask(task.id);
+      await loadRoom(task.roomId);
+    } catch (error) {
+      setNotice(
+        error instanceof Error ? error.message : '任务无法从检查点继续。',
+      );
+    }
+  };
+
   const handleDisableCaseReuse = async (task: NoemaSocialWorkTask) => {
     try {
       await window.noema.setSocialWorkCaseEligible(task.id, false);
@@ -1781,6 +1792,7 @@ function SocialChatApp() {
       task={task}
       agent={messageAgent.get(task.agentId) ?? null}
       onStop={() => void handleStopProjectWork(task)}
+      onResume={() => void handleResumeProjectWork(task)}
       onDisableCase={() => void handleDisableCaseReuse(task)}
       onWithdrawPractice={() => void handleWithdrawPracticeCandidate(task)}
       onRepeat={() => {
@@ -4238,6 +4250,7 @@ function ProjectWorkCard({
   task,
   agent,
   onStop,
+  onResume,
   onRepeat,
   onDisableCase,
   onWithdrawPractice,
@@ -4245,6 +4258,7 @@ function ProjectWorkCard({
   task: NoemaSocialWorkTask;
   agent: NoemaSocialAgent | null;
   onStop: () => void;
+  onResume: () => void;
   onRepeat: () => void;
   onDisableCase: () => void;
   onWithdrawPractice: () => void;
@@ -4295,15 +4309,30 @@ function ProjectWorkCard({
           </button>
         ) : null}
         {recovery ? (
-          <button className="primary" type="button" onClick={onRepeat}>
-            再次编辑并执行
-          </button>
+          <>
+            {task.canResume ? (
+              <button className="primary" type="button" onClick={onResume}>
+                从检查点继续
+              </button>
+            ) : null}
+            <button
+              className={task.canResume ? 'secondary' : 'primary'}
+              type="button"
+              onClick={onRepeat}
+            >
+              再次编辑并执行
+            </button>
+          </>
         ) : null}
       </div>
       {active || recovery ? (
         <p className="request-explanation">
           停止不会撤销已经产生的文件修改。
-          {recovery ? '再次执行会创建新任务，不会续接刚才的会话。' : ''}
+          {recovery
+            ? task.canResume
+              ? '“从检查点继续”沿用已保存的工具结果；再次编辑会创建新任务。'
+              : '再次执行会创建新任务，不会续接刚才的会话。'
+            : ''}
         </p>
       ) : null}
       <details>

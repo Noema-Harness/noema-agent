@@ -294,6 +294,7 @@ export interface NoemaSocialWorkTask {
   sourceMessageId: string | null;
   workspacePath: string;
   executionEngine: string;
+  canResume: boolean;
   taskPrompt: string;
   status:
     | 'starting'
@@ -676,6 +677,9 @@ export interface NoemaBridge {
     messageId: string;
   }>;
   stopSocialWorkTask(taskId: string): Promise<boolean>;
+  resumeSocialWorkTask(
+    taskId: string,
+  ): Promise<{ accepted: boolean; taskId: string; roomId: string }>;
   setSocialWorkCaseEligible(
     taskId: string,
     eligible: boolean,

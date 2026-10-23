@@ -56,6 +56,7 @@ const narrowScreenshotPath = path.join(
 );
 const marker = `NOEMA-SOCIAL-WORK-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 const syntheticAdapter = process.argv.includes('--synthetic');
+const serviceOnly = process.argv.includes('--service-only');
 const livePractice = process.argv.includes('--live-practice');
 const liveEpisodes = process.argv.includes('--live-episodes');
 const caseOnly = process.argv.includes('--case-only');
@@ -307,7 +308,7 @@ const child = spawn(process.execPath, ['scripts/start.mjs'], {
     NOEMA_E2E_SOCIAL_WORK_WORKSPACE: workspacePath,
     NOEMA_E2E_SOCIAL_WORK_RESULT_PATH: resultPath,
     NOEMA_E2E_SOCIAL_WORK_CHECKS: JSON.stringify(verificationChecks),
-    NOEMA_E2E_SOCIAL_WORK_CAPTURE_UI: '1',
+    ...(serviceOnly ? {} : { NOEMA_E2E_SOCIAL_WORK_CAPTURE_UI: '1' }),
     ...(syntheticAdapter ? { NOEMA_E2E_SOCIAL_WORK_SYNTHETIC: '1' } : {}),
     ...(livePractice
       ? {

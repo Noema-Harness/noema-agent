@@ -290,6 +290,47 @@ test('an app restart interrupts a running social project task without replaying 
   }
 });
 
+test('only a model-boundary Noema checkpoint can be explicitly resumed', () => {
+  const { db, social } = makeStores();
+  try {
+    social.createSocialWorkTask({
+      id: 'task-safe-resume',
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      workspacePath: 'C:\\scratch\\project',
+      workspaceKey: 'c:\\scratch\\project',
+      taskPrompt: '继续已保存的模型轮次。',
+      model: 'auto:noema-free',
+      executionEngine: 'noema',
+    });
+    social.setSocialWorkTaskSession('task-safe-resume', 'session-safe');
+    social.saveSocialWorkRuntimeCheckpoint('task-safe-resume', {
+      messages: [
+        { role: 'system', content: 'system' },
+        { role: 'user', content: 'task' },
+      ],
+      round: 0,
+      toolCallCount: 0,
+      phase: 'ready_for_model',
+    });
+
+    new SocialChatStore(db);
+    const interrupted = social.getSocialWorkTask('task-safe-resume');
+    assert.equal(interrupted.status, 'interrupted');
+    assert.equal(interrupted.canResume, true);
+
+    const resumed = social.resumeSocialWorkTask('task-safe-resume');
+    assert.equal(resumed.status, 'starting');
+    assert.equal(resumed.canResume, false);
+    assert.throws(
+      () => social.resumeSocialWorkTask('task-safe-resume'),
+      /不能从检查点继续/u,
+    );
+  } finally {
+    db.close();
+  }
+});
+
 test('project work records safe tool outcomes and marks in-flight writes unknown after restart', () => {
   const { db, social } = makeStores();
   try {
@@ -364,6 +405,7 @@ test('project work records safe tool outcomes and marks in-flight writes unknown
 
     const task = social.getSocialWorkTask('task-step-recovery');
     assert.equal(task.status, 'interrupted');
+    assert.equal(task.canResume, false);
     assert.deepEqual(
       task.executionSteps.map(({ category, status, effectStatus }) => ({
         category,

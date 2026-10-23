@@ -122,11 +122,25 @@ function hydrateMessage(row) {
   };
 }
 
-function hydrateSocialWorkTask(row, executionSteps = []) {
+function hydrateSocialWorkTask(row, executionSteps = [], checkpoint = null) {
   if (!row) return null;
+  const canResume = Boolean(
+    row.status === 'interrupted' &&
+    row.errorCode === 'app_restarted' &&
+    row.executionEngine === 'noema' &&
+    checkpoint?.phase === 'interrupted' &&
+    checkpoint.resumePhase === 'ready_for_model' &&
+    checkpoint.round < 16 &&
+    !executionSteps.some(
+      (step) =>
+        ['running', 'outcome_unknown'].includes(step.status) ||
+        ['pending', 'unknown'].includes(step.effectStatus),
+    ),
+  );
   return {
     ...row,
     executionSteps,
+    canResume,
     toolActionCategories: JSON.parse(row.toolActionCategoriesJson ?? '[]'),
     verificationChecks: JSON.parse(row.verificationChecksJson ?? '[]'),
     verificationResults: JSON.parse(row.verificationResultsJson ?? '[]'),
@@ -1336,7 +1350,9 @@ export class SocialChatStore {
         agentId: task.agentId,
         sourceMessageId: task.sourceMessageId,
         workspacePath: task.workspacePath,
+        executionEngine: task.executionEngine,
         taskPrompt: task.taskPrompt,
+        canResume: task.canResume,
         status: task.status,
         phase: task.phase,
         toolCallCount: task.toolCallCount,
@@ -1954,6 +1970,7 @@ export class SocialChatStore {
     return hydrateSocialWorkTask(
       row,
       this.listSocialWorkExecutionSteps(row.id),
+      this.getSocialWorkRuntimeCheckpoint(row.id),
     );
   }
 
@@ -2013,7 +2030,11 @@ export class SocialChatStore {
       byTask.set(step.taskId, list);
     }
     return rows.map((row) =>
-      hydrateSocialWorkTask(row, byTask.get(row.id) ?? []),
+      hydrateSocialWorkTask(
+        row,
+        byTask.get(row.id) ?? [],
+        this.getSocialWorkRuntimeCheckpoint(row.id),
+      ),
     );
   }
 
@@ -2199,6 +2220,40 @@ export class SocialChatStore {
       `)
       .run(runtimeSessionId, now, taskId);
     return this.getSocialWorkTask(taskId);
+  }
+
+  resumeSocialWorkTask(taskId) {
+    const now = isoNow();
+    const resume = this.db.transaction(() => {
+      const task = this.db
+        .prepare(`
+          SELECT workspace_key AS workspaceKey FROM social_work_tasks
+          WHERE id = ? AND status = 'interrupted' AND error_code = 'app_restarted'
+            AND execution_engine = 'noema'
+        `)
+        .get(taskId);
+      if (!task) throw new Error('这项任务当前不能从检查点继续。');
+      const active = this.db
+        .prepare(`
+          SELECT 1 FROM social_work_tasks
+          WHERE workspace_key = ? AND id <> ?
+            AND status IN ('starting', 'running', 'verifying')
+          LIMIT 1
+        `)
+        .get(task.workspaceKey, taskId);
+      if (active) throw new Error('这个工作区已有其他任务正在运行。');
+      const changed = this.db
+        .prepare(`
+          UPDATE social_work_tasks
+          SET status = 'starting', phase = 'starting', error_code = NULL,
+              error_message = NULL, completed_at = NULL, updated_at = ?
+          WHERE id = ? AND status = 'interrupted' AND error_code = 'app_restarted'
+        `)
+        .run(now, taskId).changes;
+      if (changed !== 1) throw new Error('任务状态已变化，请刷新后重试。');
+      return this.getSocialWorkTask(taskId);
+    });
+    return resume();
   }
 
   findReusableCase({ agentId, workspaceKey, excludeRoomId }) {

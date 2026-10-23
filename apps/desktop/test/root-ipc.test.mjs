@@ -317,6 +317,10 @@ test('file requests use ordinary social messages; only task controls retain dire
     retryReply: () => ({ accepted: true }),
   };
   const socialWorkService = {
+    resumeTask: (taskId) => {
+      calls.push(['resume', taskId]);
+      return { accepted: true, taskId };
+    },
     stopTask: (taskId) => {
       calls.push(['stop', taskId]);
       return true;
@@ -335,6 +339,7 @@ test('file requests use ordinary social messages; only task controls retain dire
   });
   assert.equal(harness.handlers.has('noema:social-work-start'), false);
   assert.equal(harness.handlers.has(CHANNELS.socialWorkStop), true);
+  assert.equal(harness.handlers.has(CHANNELS.socialWorkResume), true);
   assert.equal(harness.handlers.has(CHANNELS.socialWorkCaseEligible), true);
   assert.equal(harness.handlers.has(CHANNELS.socialCreateAgent), true);
   assert.equal(harness.handlers.has(CHANNELS.socialAgentProjectWork), true);
@@ -357,6 +362,13 @@ test('file requests use ordinary social messages; only task controls retain dire
       'task-1',
     ),
     true,
+  );
+  assert.deepEqual(
+    await harness.handlers.get(CHANNELS.socialWorkResume)(
+      { sender: trustedSender },
+      'task-1',
+    ),
+    { accepted: true, taskId: 'task-1' },
   );
   assert.deepEqual(
     await harness.handlers.get(CHANNELS.socialWorkCaseEligible)(
@@ -396,6 +408,7 @@ test('file requests use ordinary social messages; only task controls retain dire
   );
   assert.deepEqual(calls, [
     ['stop', 'task-1'],
+    ['resume', 'task-1'],
     ['case-eligible', 'task-1', false],
   ]);
   await assert.rejects(

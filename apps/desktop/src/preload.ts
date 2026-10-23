@@ -96,6 +96,8 @@ const bridge = {
     ipcRenderer.invoke('noema:social-retry', messageId),
   stopSocialWorkTask: (taskId: string) =>
     ipcRenderer.invoke('noema:social-work-stop', taskId),
+  resumeSocialWorkTask: (taskId: string) =>
+    ipcRenderer.invoke('noema:social-work-resume', taskId),
   setSocialWorkCaseEligible: (taskId: string, eligible: boolean) =>
     ipcRenderer.invoke('noema:social-work-case-eligible', taskId, eligible),
   withdrawSocialPracticeCandidate: (taskId: string) =>

@@ -8,6 +8,7 @@ import Database from 'better-sqlite3';
 import { RootStore } from '../src/root-store.mjs';
 import { SocialWorkService } from '../src/social-work-service.mjs';
 import { SocialChatService } from '../src/social-chat-service.mjs';
+import { NoemaProjectExecutor } from '../src/noema-project-executor.mjs';
 
 function makeStore() {
   const db = new Database(':memory:');
@@ -800,6 +801,111 @@ test('stopping project work records interruption without claiming rollback', asy
     );
   } finally {
     await service.shutdown();
+    db.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('a restarted Noema task resumes from durable model-boundary messages', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'noema-explicit-resume-'));
+  const { db, store } = makeStore();
+  try {
+    store.createSocialWorkTask({
+      id: 'resume-project-task',
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      workspacePath: directory,
+      workspaceKey: directory.toLowerCase(),
+      taskPrompt: '继续原有项目任务。',
+      model: 'test-model',
+      executionEngine: 'noema',
+    });
+    store.setSocialWorkTaskSession(
+      'resume-project-task',
+      'noema-resume-project-task',
+    );
+    store.startSocialWorkExecutionStep('resume-project-task', {
+      id: 'completed-write',
+      externalCallId: 'write-once',
+      arguments: JSON.stringify({
+        path: 'result.txt',
+        content: 'written once',
+      }),
+      toolName: 'write_file',
+      category: 'write',
+      hasSideEffect: true,
+    });
+    store.finishSocialWorkExecutionStep(
+      'resume-project-task',
+      'completed-write',
+      {
+        status: 'succeeded',
+        effectStatus: 'applied',
+        resultContent: JSON.stringify({ result: '已写入 result.txt。' }),
+      },
+    );
+    store.saveSocialWorkRuntimeCheckpoint('resume-project-task', {
+      messages: [
+        { role: 'system', content: 'system prompt' },
+        { role: 'user', content: '完整执行请求和上下文' },
+        {
+          role: 'assistant',
+          content: null,
+          tool_calls: [
+            {
+              id: 'write-once',
+              type: 'function',
+              function: {
+                name: 'write_file',
+                arguments: JSON.stringify({
+                  path: 'result.txt',
+                  content: 'written once',
+                }),
+              },
+            },
+          ],
+        },
+        {
+          role: 'tool',
+          tool_call_id: 'write-once',
+          content: JSON.stringify({ result: '已写入 result.txt。' }),
+        },
+      ],
+      round: 1,
+      toolCallCount: 1,
+      phase: 'ready_for_model',
+    });
+    new store.constructor(db);
+
+    let receivedMessages;
+    const provider = {
+      async *streamChat({ messages }) {
+        receivedMessages = messages;
+        yield '已检查已有结果，任务继续完成。';
+      },
+    };
+    const service = new SocialWorkService({
+      store,
+      adapter: new NoemaProjectExecutor({ provider }),
+      secretStore: { isConfigured: () => true },
+      chooseWorkspace: async () => directory,
+    });
+    try {
+      const resumed = await service.resumeTask('resume-project-task');
+      assert.equal(resumed.accepted, true);
+      const task = await service.waitForTask('resume-project-task');
+      assert.equal(task.status, 'completed');
+      assert.equal(task.toolCallCount, 1);
+      assert.equal(task.resultText, '已检查已有结果，任务继续完成。');
+      assert.deepEqual(receivedMessages.at(-2), {
+        role: 'tool',
+        tool_call_id: 'write-once',
+        content: JSON.stringify({ result: '已写入 result.txt。' }),
+      });
+    } finally {
+      await service.shutdown();
+    }
+  } finally {
     db.close();
     rmSync(directory, { recursive: true, force: true });
   }
