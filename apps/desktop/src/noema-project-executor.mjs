@@ -340,7 +340,13 @@ function executeFileTool(workspacePath, name, args) {
   };
 }
 
-function runCommand(command, workspacePath, signal, onChild) {
+function runCommand(
+  command,
+  workspacePath,
+  signal,
+  onChild,
+  timeoutMs = COMMAND_TIMEOUT_MS,
+) {
   if (
     typeof command !== 'string' ||
     !command.trim() ||
@@ -370,7 +376,7 @@ function runCommand(command, workspacePath, signal, onChild) {
     const timeout = setTimeout(() => {
       timedOut = true;
       terminateProcessTree(child);
-    }, COMMAND_TIMEOUT_MS);
+    }, timeoutMs);
     const append = (target, chunk) =>
       truncate(target + chunk.toString('utf8'), MAX_TOOL_OUTPUT_CHARS);
     child.stdout?.on('data', (chunk) => {
@@ -399,6 +405,8 @@ function runCommand(command, workspacePath, signal, onChild) {
         output: truncate(
           [
             `退出码：${code ?? killedSignal ?? 'unknown'}`,
+            timedOut &&
+              `执行超时：已达到 ${timeoutMs} 毫秒上限；命令副作用状态需要核对。`,
             stdout,
             stderr && `错误输出：\n${stderr}`,
           ]
@@ -439,11 +447,20 @@ function terminateProcessTree(child) {
 
 /** Runs a bounded FreeLLMAPI tool loop and exposes the existing task event contract. */
 export class NoemaProjectExecutor {
-  constructor({ provider, maxToolRounds = MAX_TOOL_ROUNDS }) {
+  constructor({
+    provider,
+    maxToolRounds = MAX_TOOL_ROUNDS,
+    commandTimeoutMs = COMMAND_TIMEOUT_MS,
+  }) {
     if (!provider?.streamChat)
       throw new TypeError('Noema project executor needs a chat provider.');
+    if (!Number.isSafeInteger(commandTimeoutMs) || commandTimeoutMs < 1)
+      throw new TypeError(
+        'Project command timeout must be a positive integer.',
+      );
     this.provider = provider;
     this.maxToolRounds = maxToolRounds;
+    this.commandTimeoutMs = commandTimeoutMs;
   }
 
   async startTask({
@@ -665,6 +682,7 @@ export class NoemaProjectExecutor {
                   (child) => {
                     currentChild = child;
                   },
+                  this.commandTimeoutMs,
                 );
               } else {
                 result = executeFileTool(workspace, parsed.name, parsed.args);

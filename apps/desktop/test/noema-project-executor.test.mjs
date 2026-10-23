@@ -483,6 +483,54 @@ test('stopping a running command waits for the child tree and marks its effects 
   }
 });
 
+test('a command timeout terminates its process tree and reports uncertain effects', async () => {
+  const directory = mkdtempSync(
+    path.join(tmpdir(), 'noema-project-command-timeout-'),
+  );
+  const workspace = path.join(directory, 'workspace');
+  mkdirSync(workspace);
+  const markerPath = path.join(workspace, 'timeout-marker.txt');
+  const commandScript = path.join(workspace, 'timeout-command.js');
+  writeFileSync(
+    commandScript,
+    "const fs = require('node:fs'); fs.writeFileSync('timeout-marker.txt', 'started'); setTimeout(() => fs.appendFileSync('timeout-marker.txt', 'finished'), 30000);",
+  );
+  const provider = makeProvider([
+    {
+      calls: [
+        toolCall('command-timeout', 'run_command', {
+          command: `${process.execPath} ${commandScript}`,
+        }),
+      ],
+    },
+    { text: '命令超时，副作用需要检查。' },
+  ]);
+  const events = [];
+  try {
+    const executor = new NoemaProjectExecutor({
+      provider,
+      commandTimeoutMs: 500,
+    });
+    const handle = await executor.startTask({
+      workspacePath: workspace,
+      task: '验证命令超时处理',
+      model: 'auto:noema-free',
+      onEvent: (event) => events.push(event),
+    });
+    const outcome = await handle.done;
+    const toolResult = events.find((event) => event.type === 'tool-result');
+    assert.equal(outcome.status, 'completed');
+    assert.equal(provider.callCount, 2);
+    assert.equal(toolResult.status, 'error');
+    assert.equal(toolResult.effectStatus, 'unknown');
+    assert.match(toolResult.resultContent, /执行超时/u);
+    assert.match(readFileSync(markerPath, 'utf8'), /^started/u);
+    assert.doesNotMatch(readFileSync(markerPath, 'utf8'), /finished/u);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('Noema executor resumes only after a completed tool result and blocks repeating its side effect', async () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'noema-project-resume-'));
   const workspace = path.join(directory, 'workspace');
