@@ -30,6 +30,7 @@ if (
 
 const configuredE2eRoot = process.env.NOEMA_E2E_ROOT_DIR ?? tmpdir();
 const liveProviderE2e = process.argv.includes('--live');
+const attachmentsOnly = process.argv.includes('--attachments-only');
 const liveModel = 'auto:noema-free';
 if (!path.isAbsolute(configuredE2eRoot) || !existsSync(configuredE2eRoot)) {
   throw new Error('The isolated E2E root directory must already exist.');
@@ -182,6 +183,7 @@ const child = spawn(process.execPath, ['scripts/start.mjs'], {
     NOEMA_E2E_DATABASE_PATH: databasePath,
     NOEMA_E2E_DSH_USER_DATA_PATH: dshUserDataPath,
     NOEMA_E2E_SOCIAL_AGENT_WORKFLOW: '1',
+    NOEMA_E2E_SOCIAL_ATTACHMENTS_ONLY: attachmentsOnly ? '1' : '0',
     NOEMA_E2E_SOCIAL_AGENT_LIVE: liveProviderE2e ? '1' : '0',
     NOEMA_E2E_SOCIAL_AGENT_LIVE_MODEL: liveProviderE2e ? liveModel : '',
     NOEMA_SMOKE_REFRESH_MODELS: liveProviderE2e ? '1' : '0',
@@ -246,6 +248,7 @@ const result = JSON.parse(readFileSync(resultPath, 'utf8'));
 const summary = {
   ...result,
   liveProviderE2e,
+  attachmentsOnly,
   childExitCode: exit.code,
   childSignal: exit.signal,
   scratchDirectory: e2eDirectory,
@@ -273,7 +276,23 @@ const summary = {
 };
 console.log(JSON.stringify(summary, null, 2));
 
-if (
+if (attachmentsOnly) {
+  if (
+    result.outcome !== 'passed' ||
+    !result.workflow?.textAttachments?.messagePersisted ||
+    !result.workflow?.textAttachments?.modelReceivedAttachment ||
+    !result.workflow?.textAttachments?.singleModelRequest ||
+    !result.workflow?.textAttachments?.attachmentDraftCleared ||
+    result.workflow?.textAttachments?.desktop?.width < 700 ||
+    result.workflow?.textAttachments?.narrow?.width > 700 ||
+    !result.workflow?.textAttachments?.narrow?.documentNoOverflow ||
+    !existsSync(attachmentDesktopScreenshotPath) ||
+    !existsSync(attachmentNarrowScreenshotPath) ||
+    exit.code !== 0
+  ) {
+    process.exitCode = 1;
+  }
+} else if (
   result.outcome !== 'passed' ||
   !result.workflow?.cancelReturnedFocus ||
   !result.workflow?.initialDirectIsEmpty ||

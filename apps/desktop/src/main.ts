@@ -149,6 +149,8 @@ const testSocialWorkEpisodeBChecks =
   process.env.NOEMA_E2E_SOCIAL_WORK_EPISODE_B_CHECKS ?? null;
 const testSocialAgentWorkflow =
   process.env.NOEMA_E2E_SOCIAL_AGENT_WORKFLOW === '1';
+const testSocialAttachmentsOnly =
+  process.env.NOEMA_E2E_SOCIAL_ATTACHMENTS_ONLY === '1';
 const testSocialAgentLiveE2e = process.env.NOEMA_E2E_SOCIAL_AGENT_LIVE === '1';
 const testSocialAgentLiveModel =
   process.env.NOEMA_E2E_SOCIAL_AGENT_LIVE_MODEL ?? null;
@@ -275,6 +277,7 @@ delete process.env.NOEMA_E2E_SOCIAL_WORK_EPISODE_A_PROMPT;
 delete process.env.NOEMA_E2E_SOCIAL_WORK_EPISODE_A_CHECKS;
 delete process.env.NOEMA_E2E_SOCIAL_WORK_EPISODE_B_CHECKS;
 delete process.env.NOEMA_E2E_SOCIAL_AGENT_WORKFLOW;
+delete process.env.NOEMA_E2E_SOCIAL_ATTACHMENTS_ONLY;
 delete process.env.NOEMA_E2E_SOCIAL_AGENT_LIVE;
 delete process.env.NOEMA_E2E_SOCIAL_AGENT_LIVE_MODEL;
 delete process.env.NOEMA_E2E_SOCIAL_AGENT_RESULT_PATH;
@@ -3101,10 +3104,18 @@ async function captureSocialTextAttachmentsE2e() {
     };
     await waitFor(() => document.querySelector('.room-list-item'), '聊天列表初始化');
     const noema = [...document.querySelectorAll('.room-list-item')]
-      .find((item) => item.querySelector('.room-list-title')?.textContent?.trim() === 'Noema');
-    if (!noema) throw new Error('找不到 Noema 主聊天。');
+      .find((item) => item.querySelector('.item-title')?.textContent?.trim() === 'Noema');
+    if (!noema) {
+      const state = await window.noema.getSocialState();
+      return {
+        missingNoema: true,
+        rooms: state.rooms.map((room) => ({ id: room.id, title: room.title })),
+        roomListTitles: [...document.querySelectorAll('.item-title')].map((item) => item.textContent?.trim()),
+        visibleText: document.body.innerText.slice(0, 1200),
+      };
+    }
     noema.click();
-    await waitFor(() => document.querySelector('.room-header h2')?.textContent?.trim() === 'Noema', 'Noema 主聊');
+    await waitFor(() => document.querySelector('.chat-header-title strong')?.textContent?.trim() === 'Noema', 'Noema 主聊');
 
     const choose = (file) => {
       const input = document.querySelector('input[aria-label="选择附件"]');
@@ -3141,6 +3152,15 @@ async function captureSocialTextAttachmentsE2e() {
     return { unsupportedNotice, desktop };
   })()`);
 
+  if (ui.missingNoema) {
+    if (socialTextAttachmentDesktopScreenshotPath) {
+      writeSmokeScreenshot(
+        socialTextAttachmentDesktopScreenshotPath,
+        await mainWindow.capturePage(),
+      );
+    }
+    throw new Error(`附件 E2E 未找到 Noema：${JSON.stringify(ui)}`);
+  }
   if (
     !ui.desktop?.sendEnabled ||
     !ui.desktop?.chipVisible ||
@@ -4017,7 +4037,11 @@ async function startNoema() {
             }
             contents.once('did-finish-load', () => resolve());
           });
-          const workflow = await captureSocialAgentCreationE2e();
+          const workflow = testSocialAttachmentsOnly
+            ? {
+                textAttachments: await captureSocialTextAttachmentsE2e(),
+              }
+            : await captureSocialAgentCreationE2e();
           fs.writeFileSync(
             resultPath,
             JSON.stringify({ outcome: 'passed', workflow }, null, 2),
