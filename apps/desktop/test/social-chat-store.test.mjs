@@ -101,7 +101,7 @@ test('an explicit team fixture keeps one agent across independent rooms', () => 
       db
         .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
         .get().version,
-      15,
+      16,
     );
   } finally {
     db.close();
@@ -303,9 +303,17 @@ test('project work records safe tool outcomes and marks in-flight writes unknown
       model: 'auto:noema-free',
     });
     social.setSocialWorkTaskSession('task-step-recovery', 'session-step');
+    assert.throws(
+      () =>
+        social.saveSocialWorkRuntimeCheckpoint('task-step-recovery', {
+          messages: [{ role: 'user', content: 'x'.repeat(1_000_001) }],
+        }),
+      /1 MB/u,
+    );
     social.startSocialWorkExecutionStep('task-step-recovery', {
       id: 'step-read',
       externalCallId: 'call-read',
+      arguments: JSON.stringify({ path: 'notes.md' }),
       toolName: 'read_file',
       category: 'read',
       hasSideEffect: false,
@@ -313,10 +321,40 @@ test('project work records safe tool outcomes and marks in-flight writes unknown
     social.finishSocialWorkExecutionStep('task-step-recovery', 'step-read', {
       status: 'succeeded',
       effectStatus: 'none',
+      resultContent: JSON.stringify({ result: 'persisted note contents' }),
+    });
+    social.saveSocialWorkRuntimeCheckpoint('task-step-recovery', {
+      messages: [
+        { role: 'system', content: 'bounded system context' },
+        { role: 'user', content: 'read notes.md' },
+        {
+          role: 'assistant',
+          content: null,
+          tool_calls: [
+            {
+              id: 'call-read',
+              type: 'function',
+              function: {
+                name: 'read_file',
+                arguments: JSON.stringify({ path: 'notes.md' }),
+              },
+            },
+          ],
+        },
+        {
+          role: 'tool',
+          tool_call_id: 'call-read',
+          content: JSON.stringify({ result: 'persisted note contents' }),
+        },
+      ],
+      round: 1,
+      toolCallCount: 1,
+      phase: 'ready_for_model',
     });
     social.startSocialWorkExecutionStep('task-step-recovery', {
       id: 'step-write',
       externalCallId: 'call-write',
+      arguments: JSON.stringify({ path: 'out.txt', content: 'pending' }),
       toolName: 'write',
       category: 'write',
       hasSideEffect: true,
@@ -354,6 +392,24 @@ test('project work records safe tool outcomes and marks in-flight writes unknown
       'taskId',
       'toolName',
     ]);
+    const checkpoint =
+      social.getSocialWorkRuntimeCheckpoint('task-step-recovery');
+    assert.equal(checkpoint.phase, 'interrupted');
+    assert.equal(checkpoint.resumePhase, 'ready_for_model');
+    assert.equal(checkpoint.round, 1);
+    assert.deepEqual(checkpoint.messages.at(-1), {
+      role: 'tool',
+      tool_call_id: 'call-read',
+      content: JSON.stringify({ result: 'persisted note contents' }),
+    });
+    assert.equal(
+      db
+        .prepare(
+          'SELECT result_json FROM social_work_execution_steps WHERE id = ?',
+        )
+        .get('step-read').result_json,
+      JSON.stringify({ result: 'persisted note contents' }),
+    );
     assert.deepEqual(
       social.getRoomSnapshot('room-engineering-partner').workTasks[0]
         .executionSteps,
@@ -376,6 +432,8 @@ test('social chat schema v1 upgrades additively to project-work state', () => {
     social.appendAssistantDelta(message.assistantMessageId, '已保存。');
     social.completeReply(message.assistantMessageId);
     db.exec(`
+      DROP TABLE social_work_runtime_checkpoints;
+      DELETE FROM social_schema_migrations WHERE version = 16;
       DROP TABLE social_project_reviews;
       DELETE FROM social_schema_migrations WHERE version = 15;
       DROP TABLE social_project_sessions;
@@ -426,7 +484,7 @@ test('social chat schema v1 upgrades additively to project-work state', () => {
       db
         .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
         .get().version,
-      15,
+      16,
     );
     assert.equal(
       db
@@ -465,6 +523,8 @@ test('social schema v7 adds retry snapshots without rewriting the last known att
     });
     social.failReply(turn.assistantMessageId, 'test_failure', '重试前失败');
     db.exec(`
+      DROP TABLE social_work_runtime_checkpoints;
+      DELETE FROM social_schema_migrations WHERE version = 16;
       DROP TABLE social_work_execution_steps;
       DELETE FROM social_schema_migrations WHERE version = 14;
       DELETE FROM social_schema_migrations WHERE version = 13;

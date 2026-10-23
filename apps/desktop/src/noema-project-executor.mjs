@@ -355,6 +355,15 @@ export class NoemaProjectExecutor {
       let toolCallCount = 0;
       const executedCalls = new Map();
       const sideEffectCalls = new Set();
+      const saveCheckpoint = (round, phase) => {
+        onEvent({
+          type: 'runtime-checkpoint',
+          messages: structuredClone(messages),
+          round,
+          toolCallCount,
+          phase,
+        });
+      };
       try {
         onEvent({ type: 'status', phase: 'working' });
         for (let round = 0; round < this.maxToolRounds; round += 1) {
@@ -370,6 +379,7 @@ export class NoemaProjectExecutor {
           }
           const calls = [];
           let responseText = '';
+          saveCheckpoint(round, 'ready_for_model');
           for await (const delta of this.provider.streamChat({
             model,
             messages,
@@ -395,6 +405,8 @@ export class NoemaProjectExecutor {
             if (responseText) finalText = truncate(responseText, 100_000);
             if (!finalText.trim())
               throw new Error('模型没有返回最终说明或工具调用。');
+            messages.push({ role: 'assistant', content: finalText });
+            saveCheckpoint(round + 1, 'completed');
             return {
               status: 'completed',
               sessionId,
@@ -420,7 +432,15 @@ export class NoemaProjectExecutor {
             content: responseText || null,
             tool_calls: calls,
           });
-          for (const call of calls) {
+          saveCheckpoint(round, 'tool_pending');
+          for (const [callIndex, call] of calls.entries()) {
+            const checkpointAfterTool = () =>
+              saveCheckpoint(
+                callIndex === calls.length - 1 ? round + 1 : round,
+                callIndex === calls.length - 1
+                  ? 'ready_for_model'
+                  : 'tool_pending',
+              );
             toolCallCount += 1;
             callCount = toolCallCount;
             let parsed;
@@ -432,6 +452,7 @@ export class NoemaProjectExecutor {
                 tool_call_id: call.id,
                 content: JSON.stringify({ error: error.message }),
               });
+              checkpointAfterTool();
               continue;
             }
             const sideEffect = ['write_file', 'run_command'].includes(
@@ -450,6 +471,7 @@ export class NoemaProjectExecutor {
                 tool_call_id: call.id,
                 content: previousCall.content,
               });
+              checkpointAfterTool();
               continue;
             }
             if (sideEffect && sideEffectCalls.has(fingerprint)) {
@@ -461,6 +483,7 @@ export class NoemaProjectExecutor {
                     '相同副作用调用已经执行过一次。请检查上次结果，不要重复提交。',
                 }),
               });
+              checkpointAfterTool();
               continue;
             }
             const stepId = randomUUID();
@@ -469,6 +492,7 @@ export class NoemaProjectExecutor {
               count: callCount,
               stepId,
               externalCallId: call.id,
+              arguments: call.function.arguments,
               tool: parsed.name,
               category:
                 parsed.name === 'write_file'
@@ -493,21 +517,13 @@ export class NoemaProjectExecutor {
                 result = executeFileTool(workspace, parsed.name, parsed.args);
               }
               const interrupted = result.interrupted || stopped;
-              onEvent({
-                type: 'tool-result',
-                stepId,
-                status: interrupted
-                  ? 'interrupted'
-                  : result.timedOut
-                    ? 'error'
-                    : 'completed',
-                effectStatus: sideEffect
-                  ? interrupted
-                    ? 'unknown'
-                    : result.effectStatus
-                  : 'none',
-              });
-              if (interrupted)
+              if (interrupted) {
+                onEvent({
+                  type: 'tool-result',
+                  stepId,
+                  status: 'interrupted',
+                  effectStatus: sideEffect ? 'unknown' : 'none',
+                });
                 return {
                   status: 'interrupted',
                   errorCode: 'worker_interrupted',
@@ -516,6 +532,7 @@ export class NoemaProjectExecutor {
                   result: finalText,
                   toolCallCount: callCount,
                 };
+              }
               const remainingOutput = Math.max(
                 0,
                 MAX_TOOL_CONTEXT_CHARS - toolOutputCharacters,
@@ -532,17 +549,25 @@ export class NoemaProjectExecutor {
                 tool_call_id: call.id,
                 content: toolContent,
               });
-            } catch (error) {
-              const interrupted = stopped || controller.signal.aborted;
               onEvent({
                 type: 'tool-result',
                 stepId,
-                status: interrupted ? 'interrupted' : 'error',
-                effectStatus: sideEffect
-                  ? (error?.effectStatus ?? 'not_applied')
-                  : 'none',
+                status: result.timedOut ? 'error' : 'completed',
+                effectStatus: sideEffect ? result.effectStatus : 'none',
+                resultContent: toolContent,
               });
-              if (interrupted)
+              checkpointAfterTool();
+            } catch (error) {
+              const interrupted = stopped || controller.signal.aborted;
+              if (interrupted) {
+                onEvent({
+                  type: 'tool-result',
+                  stepId,
+                  status: 'interrupted',
+                  effectStatus: sideEffect
+                    ? (error?.effectStatus ?? 'unknown')
+                    : 'none',
+                });
                 return {
                   status: 'interrupted',
                   errorCode: 'worker_interrupted',
@@ -551,6 +576,7 @@ export class NoemaProjectExecutor {
                   result: finalText,
                   toolCallCount: callCount,
                 };
+              }
               const toolContent = JSON.stringify({
                 error: safeToolError(error),
               });
@@ -561,6 +587,16 @@ export class NoemaProjectExecutor {
                 tool_call_id: call.id,
                 content: toolContent,
               });
+              onEvent({
+                type: 'tool-result',
+                stepId,
+                status: 'error',
+                effectStatus: sideEffect
+                  ? (error?.effectStatus ?? 'not_applied')
+                  : 'none',
+                resultContent: toolContent,
+              });
+              checkpointAfterTool();
             }
           }
         }

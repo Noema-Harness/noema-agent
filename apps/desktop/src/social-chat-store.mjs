@@ -561,6 +561,31 @@ export class SocialChatStore {
         `);
       })();
     }
+    if (current < 16) {
+      this.db.transaction(() => {
+        this.db.exec(`
+          CREATE TABLE social_work_runtime_checkpoints (
+            task_id TEXT PRIMARY KEY
+              REFERENCES social_work_tasks(id) ON DELETE CASCADE,
+            messages_json TEXT NOT NULL,
+            round INTEGER NOT NULL CHECK (round >= 0),
+            tool_call_count INTEGER NOT NULL CHECK (tool_call_count >= 0),
+            phase TEXT NOT NULL CHECK (
+              phase IN ('ready_for_model', 'tool_pending', 'completed', 'failed', 'interrupted')
+            ),
+            resume_phase TEXT CHECK (
+              resume_phase IS NULL OR resume_phase = 'ready_for_model'
+            ),
+            updated_at TEXT NOT NULL
+          );
+          ALTER TABLE social_work_execution_steps
+            ADD COLUMN arguments_json TEXT NOT NULL DEFAULT 'null';
+          ALTER TABLE social_work_execution_steps ADD COLUMN result_json TEXT;
+          INSERT INTO social_schema_migrations (version, applied_at)
+          VALUES (16, '${isoNow()}');
+        `);
+      })();
+    }
   }
 
   seedInitialSocialModel() {
@@ -2007,6 +2032,71 @@ export class SocialChatStore {
       .map((step) => ({ ...step, hasSideEffect: Boolean(step.hasSideEffect) }));
   }
 
+  saveSocialWorkRuntimeCheckpoint(taskId, checkpoint) {
+    if (!checkpoint || typeof checkpoint !== 'object') {
+      throw new TypeError('执行检查点无效。');
+    }
+    const messagesJson = JSON.stringify(checkpoint.messages);
+    if (
+      !Array.isArray(checkpoint.messages) ||
+      messagesJson.length > 1_000_000
+    ) {
+      throw new Error(
+        '执行上下文超过 1 MB 持久化上限；为避免丢失续接状态，任务已停止。',
+      );
+    }
+    const round = Number.isInteger(checkpoint.round) ? checkpoint.round : 0;
+    const toolCallCount = Number.isInteger(checkpoint.toolCallCount)
+      ? checkpoint.toolCallCount
+      : 0;
+    const phase = [
+      'ready_for_model',
+      'tool_pending',
+      'completed',
+      'failed',
+      'interrupted',
+    ].includes(checkpoint.phase)
+      ? checkpoint.phase
+      : 'ready_for_model';
+    this.db
+      .prepare(`
+        INSERT INTO social_work_runtime_checkpoints
+          (task_id, messages_json, round, tool_call_count, phase, resume_phase, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(task_id) DO UPDATE SET
+          messages_json = excluded.messages_json,
+          round = excluded.round,
+          tool_call_count = excluded.tool_call_count,
+          phase = excluded.phase,
+          resume_phase = excluded.resume_phase,
+          updated_at = excluded.updated_at
+      `)
+      .run(
+        taskId,
+        messagesJson,
+        round,
+        toolCallCount,
+        phase,
+        phase === 'ready_for_model' ? 'ready_for_model' : null,
+        isoNow(),
+      );
+    return this.getSocialWorkRuntimeCheckpoint(taskId);
+  }
+
+  getSocialWorkRuntimeCheckpoint(taskId) {
+    const row = this.db
+      .prepare(`
+        SELECT task_id AS taskId, messages_json AS messagesJson,
+               round, tool_call_count AS toolCallCount, phase,
+               resume_phase AS resumePhase,
+               updated_at AS updatedAt
+        FROM social_work_runtime_checkpoints WHERE task_id = ?
+      `)
+      .get(requireText(taskId, '任务 ID', 200));
+    if (!row) return null;
+    return { ...row, messages: JSON.parse(row.messagesJson) };
+  }
+
   startSocialWorkExecutionStep(taskId, step) {
     if (!step || typeof step !== 'object') {
       throw new TypeError('项目工具步骤无效。');
@@ -2038,9 +2128,9 @@ export class SocialChatStore {
       this.db
         .prepare(`
           INSERT INTO social_work_execution_steps
-            (id, task_id, ordinal, external_call_id, tool_name, category,
+            (id, task_id, ordinal, external_call_id, arguments_json, tool_name, category,
              has_side_effect, status, effect_status, started_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, 'running', ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?)
         `)
         .run(
           id,
@@ -2049,6 +2139,9 @@ export class SocialChatStore {
           typeof step.externalCallId === 'string'
             ? step.externalCallId.slice(0, 200)
             : null,
+          typeof step.arguments === 'string'
+            ? step.arguments.slice(0, 32_000)
+            : 'null',
           requireText(step.toolName || 'unknown', '工具名称', 100),
           category,
           hasSideEffect ? 1 : 0,
@@ -2076,10 +2169,19 @@ export class SocialChatStore {
     this.db
       .prepare(`
         UPDATE social_work_execution_steps
-        SET status = ?, effect_status = ?, completed_at = ?
+        SET status = ?, effect_status = ?, result_json = ?, completed_at = ?
         WHERE task_id = ? AND id = ? AND status = 'running'
       `)
-      .run(status, effectStatus, now, taskId, stepId);
+      .run(
+        status,
+        effectStatus,
+        typeof outcome?.resultContent === 'string'
+          ? outcome.resultContent.slice(0, 100_000)
+          : null,
+        now,
+        taskId,
+        stepId,
+      );
     return (
       this.listSocialWorkExecutionSteps(taskId).find(
         (entry) => entry.id === stepId,
@@ -2537,6 +2639,15 @@ export class SocialChatStore {
           SELECT id FROM social_work_tasks WHERE error_code = 'app_restarted'
         )
       `)
+        .run(now);
+      this.db
+        .prepare(`
+          UPDATE social_work_runtime_checkpoints
+          SET phase = 'interrupted', updated_at = ?
+          WHERE task_id IN (
+            SELECT id FROM social_work_tasks WHERE error_code = 'app_restarted'
+          )
+        `)
         .run(now);
       return taskCount;
     });

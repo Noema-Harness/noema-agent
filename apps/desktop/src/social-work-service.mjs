@@ -562,6 +562,7 @@ export class SocialWorkService {
                 this.store.startSocialWorkExecutionStep(taskId, {
                   id: event.stepId,
                   externalCallId: event.externalCallId,
+                  arguments: event.arguments,
                   toolName:
                     typeof event.tool === 'string'
                       ? event.tool.slice(0, 100)
@@ -578,6 +579,13 @@ export class SocialWorkService {
                 phase: 'tool_call',
                 toolCallCount: toolCallOffset + currentRunCount,
               });
+            } else if (event.type === 'runtime-checkpoint') {
+              this.store.saveSocialWorkRuntimeCheckpoint(taskId, {
+                messages: event.messages,
+                round: event.round,
+                toolCallCount: event.toolCallCount,
+                phase: event.phase,
+              });
             } else if (
               event.type === 'tool-result' &&
               typeof event.stepId === 'string'
@@ -590,6 +598,7 @@ export class SocialWorkService {
                       ? 'failed'
                       : 'interrupted',
                 effectStatus: event.effectStatus,
+                resultContent: event.resultContent,
               });
             }
             this.publish(this.store.getSocialWorkTask(taskId));
@@ -605,6 +614,13 @@ export class SocialWorkService {
         outcome = await handle.done;
         run.handle = null;
         runtimeSessionId = outcome.sessionId ?? runtimeSessionId;
+        const checkpoint = this.store.getSocialWorkRuntimeCheckpoint(taskId);
+        if (checkpoint) {
+          this.store.saveSocialWorkRuntimeCheckpoint(taskId, {
+            ...checkpoint,
+            phase: outcome.status,
+          });
+        }
         if (typeof outcome.result === 'string' && outcome.result.trim()) {
           resultParts.push(outcome.result.slice(0, MAX_RESULT_CHARS));
         }

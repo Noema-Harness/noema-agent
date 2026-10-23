@@ -74,6 +74,20 @@ test('Noema executor performs a bounded multi-step tool loop in the selected wor
         .map((event) => event.effectStatus),
       ['none', 'applied'],
     );
+    const finalCheckpoint = events
+      .filter((event) => event.type === 'runtime-checkpoint')
+      .at(-1);
+    assert.equal(finalCheckpoint.phase, 'completed');
+    assert.equal(finalCheckpoint.toolCallCount, 2);
+    assert.deepEqual(finalCheckpoint.messages.at(-1), {
+      role: 'assistant',
+      content: '已创建 notes/result.txt。',
+    });
+    assert.equal(
+      finalCheckpoint.messages.filter((message) => message.role === 'tool')
+        .length,
+      2,
+    );
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
