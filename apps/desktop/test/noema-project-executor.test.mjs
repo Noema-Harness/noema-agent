@@ -110,6 +110,87 @@ test('Noema executor performs a bounded multi-step tool loop in the selected wor
   }
 });
 
+test('read_file can page through a file using one-based line references', async () => {
+  const directory = mkdtempSync(
+    path.join(tmpdir(), 'noema-project-read-page-'),
+  );
+  const workspace = path.join(directory, 'workspace');
+  mkdirSync(workspace);
+  writeFileSync(
+    path.join(workspace, 'notes.txt'),
+    'first\r\nsecond\r\nthird\r\nfourth\r\n',
+  );
+  const requests = [];
+  const provider = makeProvider(
+    [
+      {
+        calls: [
+          toolCall('read-middle-page', 'read_file', {
+            path: 'notes.txt',
+            offset: 2,
+            limit: 2,
+          }),
+        ],
+      },
+      { text: '读取了指定范围。' },
+    ],
+    requests,
+  );
+  try {
+    const handle = await new NoemaProjectExecutor({ provider }).startTask({
+      workspacePath: workspace,
+      task: '读取第二、三行',
+      model: 'auto:noema-free',
+    });
+    const outcome = await handle.done;
+    assert.equal(outcome.status, 'completed');
+    const result = JSON.parse(requests[1].messages.at(-1).content).result;
+    assert.match(result, /文件行 2-3 \/ 4/u);
+    assert.match(result, /2: second\n3: third/u);
+    assert.doesNotMatch(result, /1: first|4: fourth/u);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('read_file rejects invalid page bounds', async () => {
+  const directory = mkdtempSync(
+    path.join(tmpdir(), 'noema-project-read-page-invalid-'),
+  );
+  const workspace = path.join(directory, 'workspace');
+  mkdirSync(workspace);
+  writeFileSync(path.join(workspace, 'notes.txt'), 'one\ntwo\n');
+  const provider = makeProvider([
+    {
+      calls: [
+        toolCall('read-invalid-page', 'read_file', {
+          path: 'notes.txt',
+          offset: 0,
+          limit: 2_001,
+        }),
+      ],
+    },
+    { text: '分页参数无效，未读取文件。' },
+  ]);
+  const events = [];
+  try {
+    const handle = await new NoemaProjectExecutor({ provider }).startTask({
+      workspacePath: workspace,
+      task: '验证读取参数',
+      model: 'auto:noema-free',
+      onEvent: (event) => events.push(event),
+    });
+    const outcome = await handle.done;
+    assert.equal(outcome.status, 'completed');
+    assert.equal(provider.callCount, 2);
+    const toolResult = events.find((event) => event.type === 'tool-result');
+    assert.equal(toolResult.status, 'error');
+    assert.match(toolResult.resultContent, /分页参数无效/u);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('Noema executor applies an exact edit without rewriting unrelated file content', async () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'noema-project-edit-'));
   const workspace = path.join(directory, 'workspace');
