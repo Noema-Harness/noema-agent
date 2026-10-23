@@ -344,6 +344,62 @@ test('Noema internal dispatch stores project work in the source room with a capa
   }
 });
 
+test('a workspace admits only one active project execution across chats', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'noema-workspace-lock-'));
+  const { db, store } = makeStore();
+  let finishExecution;
+  const pendingExecution = new Promise((resolve) => {
+    finishExecution = resolve;
+  });
+  const launches = [];
+  const service = new SocialWorkService({
+    store,
+    adapter: {
+      async startTask(input) {
+        launches.push(input);
+        return {
+          started: Promise.resolve({ sessionId: 'workspace-lock-session' }),
+          done: pendingExecution,
+          stop: () => true,
+        };
+      },
+    },
+    secretStore: { isConfigured: () => true },
+    chooseWorkspace: async () => directory,
+  });
+
+  try {
+    const first = await service.startTask({
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      prompt: '第一项工作。',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await assert.rejects(
+      service.startTask({
+        roomId: 'room-engineering-collaboration',
+        agentId: 'engineering-partner',
+        prompt: '同时启动的第二项工作。',
+      }),
+      /项目已有一项工作在运行/u,
+    );
+    assert.equal(launches.length, 1);
+    assert.equal(store.getSocialWorkTask(first.taskId).status, 'running');
+  } finally {
+    finishExecution({
+      status: 'interrupted',
+      errorCode: 'worker_interrupted',
+      errorMessage: '测试结束。',
+      sessionId: 'workspace-lock-session',
+      result: '',
+      toolCallCount: 0,
+    });
+    await service.shutdown();
+    db.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('project tasks include only active coding adjustments and persist the exact input snapshot', async () => {
   const directory = mkdtempSync(
     path.join(tmpdir(), 'noema-social-adjustments-'),
