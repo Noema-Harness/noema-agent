@@ -317,6 +317,33 @@ test('rejects a stream that closes without FreeLLMAPI terminal marker', async ()
   assert.deepEqual(partial, ['部分回复']);
 });
 
+test('classifies a body transport failure without exposing the underlying error', async () => {
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.error(new TypeError('terminated: private transport details'));
+    },
+  });
+  const client = new FreeLLMAPIClient({
+    getApiKey: () => 'test-key',
+    fetchImpl: async () => new Response(stream, { status: 200 }),
+  });
+
+  await assert.rejects(
+    async () => {
+      for await (const _delta of client.streamChat({
+        model: 'nvidia/nemotron-3.5-lightning',
+        messages: [{ role: 'user', content: '检查流连接错误分类' }],
+        signal: new AbortController().signal,
+      })) {
+        /* no stream delta expected */
+      }
+    },
+    (error) =>
+      error.code === 'provider_unavailable' &&
+      !/private transport details|test-key/.test(error.message),
+  );
+});
+
 test('rejects non-local endpoints before attaching the API key', async () => {
   assert.throws(
     () => normalizeBaseUrl('https://models.example.test/v1'),

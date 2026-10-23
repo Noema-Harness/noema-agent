@@ -330,6 +330,13 @@ export class FreeLLMAPIClient {
       if (toolCalls.size) onToolCalls(finalizeToolCalls(toolCalls));
     } catch (error) {
       if (signal.aborted || error?.name === 'AbortError') throw error;
+      if (error instanceof FreeLLMAPIError) throw error;
+      if (error instanceof TypeError || error?.name === 'NetworkError') {
+        throw new FreeLLMAPIError(
+          'provider_unavailable',
+          '免费模型的回复流连接中断。已收到的内容会保留；是否安全重试由当前会话决定。',
+        );
+      }
       throw error;
     } finally {
       try {
