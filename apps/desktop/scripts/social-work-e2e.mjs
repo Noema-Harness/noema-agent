@@ -1,3 +1,4 @@
+import { createSocialTestStore } from '../test-support/social-team.mjs';
 import { spawn } from 'node:child_process';
 import Database from 'better-sqlite3';
 import {
@@ -13,7 +14,6 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { verifyWorkspaceChecks } from '../src/workspace-verifier.mjs';
 import { RootStore } from '../src/root-store.mjs';
-import { SocialChatStore } from '../src/social-chat-store.mjs';
 import { configureElectronRuntime } from './electron-runtime.mjs';
 
 configureElectronRuntime();
@@ -138,7 +138,7 @@ if (
 }
 const seedDatabase = new Database(databasePath);
 const seedRootStore = new RootStore(seedDatabase);
-const seedSocialStore = new SocialChatStore(seedDatabase);
+const seedSocialStore = createSocialTestStore(seedDatabase);
 const interactionAdjustmentId = 'e2e-social-coding-adjustment';
 const interactionSource = seedSocialStore.beginTurn({
   roomId: 'room-noema',

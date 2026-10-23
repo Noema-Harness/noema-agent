@@ -1,3 +1,4 @@
+import { createSocialTestStore } from '../test-support/social-team.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import Database from 'better-sqlite3';
@@ -8,7 +9,7 @@ import { SocialChatStore } from '../src/social-chat-store.mjs';
 test('social chat sends only the selected room transcript and persists the real streamed response', async () => {
   const db = new Database(':memory:');
   new RootStore(db);
-  const store = new SocialChatStore(db);
+  const store = createSocialTestStore(db);
   const seenRequests = [];
   const events = [];
   const provider = {
@@ -88,7 +89,7 @@ test('social chat sends only the selected room transcript and persists the real 
 test('Noema retrieves bounded, redacted history from its own threads only when the user refers to it', async () => {
   const db = new Database(':memory:');
   new RootStore(db);
-  const store = new SocialChatStore(db);
+  const store = createSocialTestStore(db);
   const requests = [];
   const provider = {
     async *streamChat(input) {
@@ -227,7 +228,7 @@ test('Noema retrieves bounded, redacted history from its own threads only when t
 test('Noema can start existing project work from an explicit request while other turns stay ordinary chat', async () => {
   const db = new Database(':memory:');
   new RootStore(db);
-  const store = new SocialChatStore(db);
+  const store = createSocialTestStore(db);
   const requests = [];
   const started = [];
   const provider = {
@@ -321,7 +322,7 @@ test('Noema can start existing project work from an explicit request while other
 test('Noema delegates a bounded task to one active specialist and shows the real result in the source message', async () => {
   const db = new Database(':memory:');
   new RootStore(db);
-  const store = new SocialChatStore(db);
+  const store = createSocialTestStore(db);
   const requests = [];
   const provider = {
     async *streamChat(input) {
@@ -403,7 +404,7 @@ test('Noema delegates a bounded task to one active specialist and shows the real
 test('Noema chat injects only conversation-scoped adjustments and snapshots them per reply', async () => {
   const db = new Database(':memory:');
   const root = new RootStore(db);
-  const store = new SocialChatStore(db);
+  const store = createSocialTestStore(db);
   const source = store.beginTurn({
     roomId: 'room-noema',
     agentId: 'noema',
@@ -517,7 +518,7 @@ test('Noema chat injects only conversation-scoped adjustments and snapshots them
 test('a user-created specialist receives only messages explicitly forwarded into the target room', async () => {
   const db = new Database(':memory:');
   new RootStore(db);
-  const store = new SocialChatStore(db);
+  const store = createSocialTestStore(db);
   const created = store.createAgent({
     name: '游戏工程观察员',
     headline: '长期研究游戏项目结构与迭代验证',
@@ -701,7 +702,7 @@ test('a user-created specialist receives only messages explicitly forwarded into
 test('stop signal interrupts a live room reply and preserves partial text', async () => {
   const db = new Database(':memory:');
   new RootStore(db);
-  const store = new SocialChatStore(db);
+  const store = createSocialTestStore(db);
   let release;
   const events = [];
   const provider = {
@@ -756,7 +757,7 @@ test('stop signal interrupts a live room reply and preserves partial text', asyn
 test('social state does not expose the legacy root transcript to the social renderer', async () => {
   const db = new Database(':memory:');
   new RootStore(db);
-  const store = new SocialChatStore(db);
+  const store = createSocialTestStore(db);
   const service = new SocialChatService({
     store,
     provider: { async *streamChat() {} },

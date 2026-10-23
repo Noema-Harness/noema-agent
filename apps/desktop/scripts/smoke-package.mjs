@@ -146,6 +146,12 @@ child.on('exit', (code, signal) => {
     return;
   }
 
+  if (
+    loaded.socialChat?.agentIds?.join(',') !== 'noema' ||
+    loaded.socialChat?.roomIds?.join(',') !== 'room-noema'
+  ) {
+    throw new Error('Packaged Noema starts with an unexpected demo team.');
+  }
   cleanSmokeDirectory();
   console.log(
     `Packaged desktop startup smoke test passed: ${loaded.title} renderer loaded at ${loaded.url}.`,

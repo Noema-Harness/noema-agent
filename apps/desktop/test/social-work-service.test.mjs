@@ -1,3 +1,4 @@
+import { createSocialTestStore } from '../test-support/social-team.mjs';
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -5,13 +6,12 @@ import path from 'node:path';
 import test from 'node:test';
 import Database from 'better-sqlite3';
 import { RootStore } from '../src/root-store.mjs';
-import { SocialChatStore } from '../src/social-chat-store.mjs';
 import { SocialWorkService } from '../src/social-work-service.mjs';
 
 function makeStore() {
   const db = new Database(':memory:');
   new RootStore(db);
-  return { db, store: new SocialChatStore(db) };
+  return { db, store: createSocialTestStore(db) };
 }
 
 function addCompletedMessage(store, { roomId, agentId, text }) {

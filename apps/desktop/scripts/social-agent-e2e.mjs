@@ -1,3 +1,4 @@
+import { createSocialTestStore } from '../test-support/social-team.mjs';
 import { spawn } from 'node:child_process';
 import Database from 'better-sqlite3';
 import {
@@ -11,7 +12,6 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { RootStore } from '../src/root-store.mjs';
-import { SocialChatStore } from '../src/social-chat-store.mjs';
 import { configureElectronRuntime } from './electron-runtime.mjs';
 
 configureElectronRuntime();
@@ -117,7 +117,7 @@ mkdirSync(dshUserDataPath, { recursive: true });
 const seedDatabase = new Database(databasePath);
 const seedRoot = new RootStore(seedDatabase);
 if (liveProviderE2e) seedRoot.setSelectedModel(liveModel);
-const seedSocial = new SocialChatStore(seedDatabase);
+const seedSocial = createSocialTestStore(seedDatabase);
 const sourceTurn = seedSocial.beginTurn({
   roomId: 'room-engineering-partner',
   agentId: 'engineering-partner',

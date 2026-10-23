@@ -399,6 +399,10 @@ const createWindow = () => {
           socialChat: {
             agentCount: socialState.agents.length,
             roomCount: socialState.rooms.length,
+            agentIds: socialState.agents.map(
+              (agent: { id: string }) => agent.id,
+            ),
+            roomIds: socialState.rooms.map((room: { id: string }) => room.id),
             firstRoomOpened: true,
           },
           providerConfigured: Boolean(bridgeState.providerConfigured),

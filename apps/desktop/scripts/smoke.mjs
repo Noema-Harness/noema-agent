@@ -239,6 +239,16 @@ child.on('exit', (code, signal) => {
       process.exitCode = 1;
       return;
     }
+    if (
+      loaded.socialChat?.agentIds?.join(',') !== 'noema' ||
+      loaded.socialChat?.roomIds?.join(',') !== 'room-noema'
+    ) {
+      console.error(
+        'Fresh Noema must start with its main conversation only, without a demo team.',
+      );
+      process.exitCode = 1;
+      return;
+    }
     if (typeof loaded.url !== 'string' || !loaded.url) {
       console.error(
         'Desktop smoke marker did not contain the loaded renderer URL.',

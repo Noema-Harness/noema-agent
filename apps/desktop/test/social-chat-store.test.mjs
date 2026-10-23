@@ -1,3 +1,4 @@
+import { createSocialTestStore } from '../test-support/social-team.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import Database from 'better-sqlite3';
@@ -7,7 +8,7 @@ import { SocialChatStore } from '../src/social-chat-store.mjs';
 function makeStores() {
   const db = new Database(':memory:');
   new RootStore(db);
-  const social = new SocialChatStore(db);
+  const social = createSocialTestStore(db);
   return { db, social };
 }
 
@@ -27,7 +28,57 @@ function insertLegacyMessage(db, { id, text, role = 'user' }) {
   `).run(id, turnId, role, text, now, now);
 }
 
-test('social schema seeds stable identities and keeps one agent across independent rooms', () => {
+test('a fresh installation starts with only the real Noema conversation', () => {
+  const db = new Database(':memory:');
+  new RootStore(db);
+  try {
+    const store = new SocialChatStore(db);
+    assert.deepEqual(
+      store.listAgents().map((agent) => agent.id),
+      ['noema'],
+    );
+    assert.deepEqual(
+      store.listRooms().map((room) => room.id),
+      ['room-noema'],
+    );
+    assert.deepEqual(store.getRoomSnapshot('room-noema').messages, []);
+    const reopened = new SocialChatStore(db);
+    assert.equal(reopened.listAgents().length, 1);
+    assert.equal(reopened.listRooms().length, 1);
+  } finally {
+    db.close();
+  }
+});
+
+test('legacy demo contacts and history survive without restoring revoked capabilities', () => {
+  const { db, social } = makeStores();
+  try {
+    social.setAgentProjectWork('engineering-partner', false);
+    const turn = social.beginTurn({
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      text: '升级时保留真实历史。',
+      model: 'test-model',
+    });
+    social.appendAssistantDelta(turn.assistantMessageId, '这条记录应保留。');
+    social.completeReply(turn.assistantMessageId);
+    const reopened = new SocialChatStore(db);
+    assert.deepEqual(reopened.getAgent('engineering-partner').capabilities, []);
+    assert.ok(
+      reopened
+        .getRoomSnapshot('room-engineering-partner')
+        .messages.some((message) => message.content === '这条记录应保留。'),
+    );
+    assert.equal(
+      reopened.getRoomSnapshot('room-engineering-collaboration').members.length,
+      2,
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test('an explicit team fixture keeps one agent across independent rooms', () => {
   const { db, social } = makeStores();
   try {
     const { agents, rooms } = social.getSnapshot();
@@ -393,7 +444,7 @@ test('legacy root messages are copied once into Noema DM without changing source
     const before = db
       .prepare('SELECT COUNT(*) AS count FROM root_messages')
       .get().count;
-    const social = new SocialChatStore(db);
+    const social = createSocialTestStore(db);
     const noemaRoom = social.getRoomSnapshot('room-noema');
     assert.equal(noemaRoom.messages.length, 2);
     assert.equal(noemaRoom.messages[0].content, '旧对话标记：山茶花');

@@ -1,3 +1,4 @@
+import { createSocialTestStore } from '../test-support/social-team.mjs';
 import assert from 'node:assert/strict';
 import Database from 'better-sqlite3';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -5,7 +6,6 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { RootStore } from '../src/root-store.mjs';
-import { SocialChatStore } from '../src/social-chat-store.mjs';
 
 function memoryStore() {
   return new RootStore(':memory:');
@@ -707,7 +707,7 @@ test('interaction adjustments require a quoted user correction and stay scoped',
 test('social interaction adjustments require a completed exact quote from the Noema direct message', () => {
   const db = new Database(':memory:');
   const root = new RootStore(db);
-  const social = new SocialChatStore(db);
+  const social = createSocialTestStore(db);
   const direct = social.beginTurn({
     roomId: 'room-noema',
     agentId: 'noema',

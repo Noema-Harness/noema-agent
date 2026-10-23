@@ -181,10 +181,7 @@ function SocialChatApp() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [editProviderConfig, setEditProviderConfig] = useState(false);
   const [groupTitle, setGroupTitle] = useState('');
-  const [groupAgentIds, setGroupAgentIds] = useState<string[]>([
-    'noema',
-    'engineering-partner',
-  ]);
+  const [groupAgentIds, setGroupAgentIds] = useState<string[]>(['noema']);
   const [agentName, setAgentName] = useState('');
   const [agentHeadline, setAgentHeadline] = useState('');
   const [agentDescription, setAgentDescription] = useState('');
