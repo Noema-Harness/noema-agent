@@ -1490,6 +1490,59 @@
   width: 17px;
   height: 17px;
 }
+.social-shell .conversation-search-dialog {
+  width: min(570px, calc(100vw - 30px));
+  border-color: var(--line);
+  border-radius: 6px;
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: 0 20px 80px #122d3b22;
+}
+.social-shell .conversation-search-field input {
+  height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0 10px;
+  color: var(--ink);
+  background: white;
+}
+.social-shell .conversation-search-results {
+  display: grid;
+  gap: 0;
+  max-height: min(48dvh, 360px);
+  overflow: auto;
+  border-top: 1px solid var(--line);
+}
+.social-shell .conversation-search-results > p {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+.social-shell .conversation-search-result {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 5px 12px;
+  padding: 11px 3px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+.social-shell .conversation-search-result strong,
+.social-shell .conversation-search-result time {
+  color: var(--muted);
+  font-size: 11px;
+}
+.social-shell .conversation-search-result span {
+  grid-column: 1 / -1;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.65;
+  text-overflow: ellipsis;
+}
+.social-shell .conversation-search-result:hover {
+  background: #eef2f4;
+}
 .social-shell .send:disabled {
   background: #dfe5e8;
   color: #9aa5ad;
@@ -1895,12 +1948,6 @@
 .social-shell .composer .stop-reply-button {
   padding: 0;
   border: 0;
-}
-.social-shell .composer-mode-switch,
-.social-shell .reply-routing,
-.social-shell .case-reuse-control {
-  width: 100%;
-  margin: 0 0 8px;
 }
 .social-shell .chat .inline-notice {
   margin: 0;

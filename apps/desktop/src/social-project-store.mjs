@@ -89,6 +89,11 @@ export class SocialProjectStore {
       .all(project.id);
     return {
       ...project,
+      pendingReview:
+        this.db
+          .prepare(`SELECT id, request_message_id AS requestMessageId, room_id AS roomId
+                  FROM social_project_reviews WHERE project_id = ? AND status = 'pending'`)
+          .get(project.id) ?? null,
       ...(includeGroup
         ? { group: this.socialChatStore.getRoomSnapshot(project.groupRoomId) }
         : {}),
@@ -129,17 +134,18 @@ export class SocialProjectStore {
   }
 
   getProjectSessionContext(roomId, agentId) {
-    requireText(roomId, '项目会话 ID', 200);
+    requireText(roomId, '聊天空间 ID', 200);
     requireText(agentId, '成员 ID', 200);
     const row = this.db
       .prepare(`
         SELECT p.id AS projectId, p.title, p.brief, p.status AS projectStatus,
-               ps.agent_id AS agentId, ps.status AS membershipStatus
+               ps.agent_id AS agentId, ps.room_id AS sessionRoomId,
+               ps.status AS membershipStatus
         FROM social_project_sessions AS ps
         JOIN social_projects AS p ON p.id = ps.project_id
-        WHERE ps.room_id = ?
+        WHERE ps.room_id = ? OR (p.group_room_id = ? AND ps.agent_id = ?)
       `)
-      .get(roomId);
+      .get(roomId, roomId, agentId);
     if (!row) return null;
     if (row.agentId !== agentId) {
       throw new Error('这个项目会话只属于其指定成员。');
@@ -156,7 +162,7 @@ export class SocialProjectStore {
       brief: row.brief,
       status: row.projectStatus,
       agentId: row.agentId,
-      roomId,
+      roomId: row.sessionRoomId,
     };
   }
 
@@ -408,12 +414,143 @@ export class SocialProjectStore {
     return this.getProject(projectId);
   }
 
+  getReview(reviewId) {
+    requireText(reviewId, '评审请求 ID', 200);
+    const review = this.db
+      .prepare(`
+      SELECT r.id, r.project_id AS projectId, p.title AS projectTitle,
+             r.room_id AS roomId, r.request_message_id AS requestMessageId,
+             r.question, r.status, r.feedback, r.feedback_message_id AS feedbackMessageId,
+             r.created_at AS createdAt, r.responded_at AS respondedAt
+      FROM social_project_reviews AS r JOIN social_projects AS p ON p.id = r.project_id
+      WHERE r.id = ?
+    `)
+      .get(reviewId);
+    if (!review) throw new Error('找不到这条评审请求。');
+    return review;
+  }
+
+  listReviewsForRoom(roomId) {
+    requireText(roomId, '聊天 ID', 200);
+    return this.db
+      .prepare(
+        'SELECT id FROM social_project_reviews WHERE room_id = ? ORDER BY created_at, id',
+      )
+      .all(roomId)
+      .map(({ id }) => this.getReview(id));
+  }
+
+  requestReview({ projectId, messageId, question }) {
+    const normalizedQuestion = requireText(question, '评审问题', 8_000);
+    requireText(messageId, '评审消息 ID', 200);
+    return this.db.transaction(() => {
+      const project = this.getProject(projectId);
+      const message = this.socialChatStore.getSocialMessage(messageId);
+      if (
+        !message ||
+        message.role !== 'assistant' ||
+        message.agentId !== 'noema' ||
+        message.roomId !== project.originRoomId ||
+        !['streaming', 'complete'].includes(message.status)
+      ) {
+        throw new Error('评审请求必须来自项目所属 Noema 主聊中的有效消息。');
+      }
+      const existing = this.db
+        .prepare(
+          'SELECT id FROM social_project_reviews WHERE request_message_id = ?',
+        )
+        .get(messageId);
+      if (existing) {
+        const review = this.getReview(existing.id);
+        if (review.projectId !== projectId)
+          throw new Error('这条消息已关联另一个项目的评审。');
+        if (message.status === 'streaming')
+          this.socialChatStore.completeReply(messageId);
+        return review;
+      }
+      if (project.status === 'archived')
+        throw new Error('请先恢复项目，再发起评审。');
+      if (project.pendingReview)
+        throw new Error('该项目已有待回复的评审请求。');
+      const active = this.db
+        .prepare(`
+        SELECT 1 FROM social_work_tasks WHERE status IN ('starting', 'running', 'verifying')
+          AND (room_id = ? OR room_id IN (SELECT room_id FROM social_project_sessions WHERE project_id = ?)) LIMIT 1
+      `)
+        .get(project.groupRoomId, projectId);
+      if (active)
+        throw new Error('项目仍有执行在进行，请在阶段结束后发起评审。');
+      const id = randomUUID();
+      const now = isoNow();
+      this.db
+        .prepare(`INSERT INTO social_project_reviews
+        (id, project_id, room_id, request_message_id, question, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)`)
+        .run(
+          id,
+          projectId,
+          project.originRoomId,
+          messageId,
+          normalizedQuestion,
+          now,
+        );
+      this.db
+        .prepare(
+          "UPDATE social_projects SET status = 'awaiting_user', updated_at = ? WHERE id = ?",
+        )
+        .run(now, projectId);
+      if (message.status === 'streaming')
+        this.socialChatStore.completeReply(messageId);
+      return this.getReview(id);
+    })();
+  }
+
+  submitReview({ reviewId, roomId, feedback, beginTurn }) {
+    const normalizedFeedback = requireText(feedback, '评审反馈', 40_000);
+    return this.db.transaction(() => {
+      const review = this.getReview(reviewId);
+      if (review.roomId !== roomId)
+        throw new Error('请在对应 Noema 主聊中回复评审。');
+      if (review.status !== 'pending')
+        throw new Error('这条评审已经提交，请勿重复提交。');
+      if (this.getProject(review.projectId).status !== 'awaiting_user')
+        throw new Error('项目已不处于待评审状态，请刷新后检查。');
+      const turn = beginTurn(review, normalizedFeedback);
+      const now = isoNow();
+      this.db
+        .prepare(`UPDATE social_project_reviews SET status = 'answered', feedback = ?,
+        feedback_message_id = ?, responded_at = ? WHERE id = ? AND status = 'pending'`)
+        .run(normalizedFeedback, turn.userMessageId, now, reviewId);
+      this.db
+        .prepare(
+          "UPDATE social_projects SET status = 'active', updated_at = ? WHERE id = ?",
+        )
+        .run(now, review.projectId);
+      return { turn, review: this.getReview(reviewId) };
+    })();
+  }
+
+  assertWorkAllowed(roomId) {
+    const project = this.db
+      .prepare(`
+      SELECT p.status FROM social_projects AS p
+      WHERE p.group_room_id = ? OR p.id IN (SELECT project_id FROM social_project_sessions WHERE room_id = ?)
+    `)
+      .get(roomId, roomId);
+    if (project?.status === 'awaiting_user')
+      throw new Error('项目正在等待用户评审，明确反馈后才能继续执行。');
+    if (project?.status === 'archived')
+      throw new Error('请先恢复项目，再继续执行。');
+  }
+
   setAwaitingUser(projectId, awaitingUser) {
     requireText(projectId, '项目 ID', 200);
     if (typeof awaitingUser !== 'boolean') {
       throw new TypeError('项目等待状态必须是布尔值。');
     }
     const project = this.getProject(projectId);
+    if (!awaitingUser && project.pendingReview)
+      throw new Error('请通过对应评审请求提交明确反馈。');
     if (project.status === 'archived')
       throw new Error('请先恢复项目，再修改项目状态。');
     this.db

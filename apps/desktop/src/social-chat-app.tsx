@@ -13,6 +13,8 @@ import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useConversationNavigation } from './use-conversation-navigation';
 import { useScrollActivity } from './use-scroll-activity';
+import { resolveGroupRecipient } from './group-mentions.mjs';
+import { ProjectReviewCard } from './project-review-card';
 import {
   socialWorkCardTitle,
   socialWorkExecutionStepPresentation,
@@ -20,15 +22,15 @@ import {
 } from './social-work-presentation.mjs';
 import type {
   NoemaSocialAgent,
-  NoemaInteractionAdjustmentSnapshot,
   NoemaSocialEvent,
   NoemaSocialHistorySource,
   NoemaSocialMessage,
   NoemaSocialProject,
+  NoemaSocialProjectSession,
+  NoemaSocialProjectReview,
   NoemaSocialReplySource,
   NoemaSocialRoom,
   NoemaSocialRoomState,
-  NoemaSocialSearchResult,
   NoemaSocialState,
   NoemaSocialWorkTask,
 } from './noema-bridge.d.ts';
@@ -46,6 +48,21 @@ const markdownComponents: Components = {
       </a>
     ) : null,
   pre: ({ children }) => <pre className="social-code-block">{children}</pre>,
+};
+
+type QueuedMessage = {
+  id: string;
+  roomId: string;
+  agentId: string;
+  text: string;
+  replyToMessageId: string | null;
+  error: string | null;
+};
+
+type ProjectSessionsState = {
+  loading: boolean;
+  error: string | null;
+  sessions: NoemaSocialProjectSession[];
 };
 
 function timeLabel(value: string | null | undefined) {
@@ -198,10 +215,16 @@ function SocialChatApp() {
     return window.noema.onWindowStateChanged?.(setWindowMaximized);
   }, []);
   const [roomState, setRoomState] = useState<NoemaSocialRoomState | null>(null);
-  const [selectedAgentId, setSelectedAgentId] = useState('noema');
   const [draftsByRoom, setDraftsByRoom] = useState<Record<string, string>>({});
-  const [composerMode, setComposerMode] = useState<'chat' | 'project'>('chat');
-  const [reuseCase, setReuseCase] = useState(false);
+  const [queuedMessagesByRoom, setQueuedMessagesByRoom] = useState<
+    Record<string, QueuedMessage[]>
+  >({});
+  const [projectSessionsById, setProjectSessionsById] = useState<
+    Record<string, ProjectSessionsState>
+  >({});
+  const [queueResumedAfterByRoom, setQueueResumedAfterByRoom] = useState<
+    Record<string, string>
+  >({});
   const [replyTarget, setReplyTarget] = useState<NoemaSocialReplySource | null>(
     null,
   );
@@ -219,16 +242,14 @@ function SocialChatApp() {
   const [pendingScrollMessageId, setPendingScrollMessageId] = useState<
     string | null
   >(null);
-  const [search, setSearch] = useState('');
-  const [messageSearchResults, setMessageSearchResults] = useState<
-    NoemaSocialSearchResult[]
-  >([]);
-  const [messageSearchResultQuery, setMessageSearchResultQuery] = useState('');
-  const [messageSearchLoading, setMessageSearchLoading] = useState(false);
-  const [messageSearchError, setMessageSearchError] = useState('');
+  const [navigationSearch, setNavigationSearch] = useState('');
+  const [conversationSearchOpen, setConversationSearchOpen] = useState(false);
+  const [conversationSearchQuery, setConversationSearchQuery] = useState('');
   const [notice, setNotice] = useState('');
+  const [draftAttachmentsByRoom, setDraftAttachmentsByRoom] = useState<
+    Record<string, File[]>
+  >({});
   const [busy, setBusy] = useState(false);
-  const [workBusy, setWorkBusy] = useState(false);
   const [showRoomList, setShowRoomList] = useState(false);
   const navigation = useConversationNavigation();
   const shellRef = useRef<HTMLElement>(null);
@@ -265,10 +286,12 @@ function SocialChatApp() {
   const [switchingModel, setSwitchingModel] = useState(false);
   const conversationRef = useRef<HTMLDivElement>(null);
   const draftRef = useRef<HTMLTextAreaElement>(null);
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
   const groupDraftRef = useRef<HTMLInputElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
-  const searchRequestRef = useRef(0);
+  const conversationSearchRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLFormElement>(null);
+  const searchTriggerRef = useRef<HTMLButtonElement>(null);
   const forwardOriginMessageId = useRef<string | null>(null);
   const threadTriggerRef = useRef<HTMLButtonElement>(null);
   const groupTriggerRef = useRef<HTMLButtonElement>(null);
@@ -278,8 +301,12 @@ function SocialChatApp() {
   const settingsTriggerRef = useRef<HTMLButtonElement>(null);
   const shouldFollowRef = useRef(true);
   const loadSequenceRef = useRef(0);
+  const queueDispatchingRef = useRef<string | null>(null);
 
   const draft = activeRoomId ? (draftsByRoom[activeRoomId] ?? '') : '';
+  const draftAttachments = activeRoomId
+    ? (draftAttachmentsByRoom[activeRoomId] ?? [])
+    : [];
   useLayoutEffect(() => setShowJumpToLatest(false), [activeRoomId]);
   useLayoutEffect(() => {
     const input = draftRef.current;
@@ -305,6 +332,74 @@ function SocialChatApp() {
   };
   const setDraft = (value: string) => {
     if (activeRoomId) setRoomDraft(activeRoomId, value);
+  };
+
+  const addDraftAttachments = (files: FileList | null) => {
+    if (!activeRoomId || !files?.length) return;
+    const acceptedTypes = new Set([
+      'text/plain',
+      'text/markdown',
+      'text/csv',
+      'application/pdf',
+      'image/png',
+      'image/jpeg',
+      'image/webp',
+    ]);
+    const selected = Array.from(files);
+    const roomFiles = draftAttachmentsByRoom[activeRoomId] ?? [];
+    const valid = selected.filter((file) => {
+      const extension = file.name.split('.').pop()?.toLowerCase();
+      const supported =
+        acceptedTypes.has(file.type) ||
+        ['txt', 'md', 'csv', 'pdf', 'png', 'jpg', 'jpeg', 'webp'].includes(
+          extension ?? '',
+        );
+      if (!supported) {
+        setNotice(`${file.name}：只支持图片、文本、CSV 或 PDF。`);
+        return false;
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        setNotice(`${file.name}：单个附件不能超过 10 MB。`);
+        return false;
+      }
+      return !roomFiles.some(
+        (existing) =>
+          existing.name === file.name &&
+          existing.size === file.size &&
+          existing.lastModified === file.lastModified,
+      );
+    });
+    const remaining = Math.max(0, 5 - roomFiles.length);
+    const added = valid.slice(0, remaining);
+    if (valid.length > remaining) {
+      setNotice('每条消息最多添加 5 个附件；其余文件未加入。');
+    } else if (added.length) {
+      setNotice('附件仅保留在本机预览；当前不会上传或发送给模型。');
+    }
+    if (added.length) {
+      setDraftAttachmentsByRoom((current) => ({
+        ...current,
+        [activeRoomId]: [...(current[activeRoomId] ?? []), ...added],
+      }));
+    }
+  };
+
+  const removeDraftAttachment = (index: number) => {
+    if (!activeRoomId) return;
+    if (
+      draftAttachments.length === 1 &&
+      notice === '附件仅保留在本机预览；当前不会上传或发送给模型。'
+    ) {
+      setNotice('');
+    }
+    setDraftAttachmentsByRoom((current) => {
+      const nextFiles = [...(current[activeRoomId] ?? [])];
+      nextFiles.splice(index, 1);
+      const next = { ...current };
+      if (nextFiles.length) next[activeRoomId] = nextFiles;
+      else delete next[activeRoomId];
+      return next;
+    });
   };
 
   const refreshState = useCallback(async () => {
@@ -384,21 +479,23 @@ function SocialChatApp() {
     requestAnimationFrame(() => threadTriggerRef.current?.focus());
   }, []);
 
+  const closeConversationSearch = useCallback(() => {
+    setConversationSearchOpen(false);
+    setConversationSearchQuery('');
+    requestAnimationFrame(() => searchTriggerRef.current?.focus());
+  }, []);
+
+  const openConversationSearch = () => {
+    setConversationSearchQuery('');
+    setConversationSearchOpen(true);
+  };
+
   const loadRoom = useCallback(async (roomId: string) => {
     const sequence = ++loadSequenceRef.current;
     try {
       const next = await window.noema.getSocialRoom(roomId);
       if (sequence === loadSequenceRef.current) {
         setRoomState(next);
-        setSelectedAgentId((current) =>
-          next.members.some(
-            (member) => member.id === current && !member.archivedAt,
-          )
-            ? current
-            : (next.members.find((member) => !member.archivedAt)?.id ??
-              next.members[0]?.id ??
-              'noema'),
-        );
       }
     } catch (error) {
       setNotice(error instanceof Error ? error.message : '无法打开这个聊天。');
@@ -500,44 +597,6 @@ function SocialChatApp() {
   }, [navigation.narrow, showRoomList]);
 
   useEffect(() => {
-    const query = search.trim();
-    const requestId = ++searchRequestRef.current;
-    if (!query) {
-      setMessageSearchResults([]);
-      setMessageSearchResultQuery('');
-      setMessageSearchLoading(false);
-      setMessageSearchError('');
-      return;
-    }
-    setMessageSearchResults([]);
-    setMessageSearchResultQuery('');
-    setMessageSearchLoading(true);
-    setMessageSearchError('');
-    const timeout = window.setTimeout(() => {
-      void window.noema
-        .searchSocialMessages(query)
-        .then((results) => {
-          if (requestId === searchRequestRef.current) {
-            setMessageSearchResults(results);
-            setMessageSearchResultQuery(query);
-            setMessageSearchLoading(false);
-          }
-        })
-        .catch((error: unknown) => {
-          if (requestId === searchRequestRef.current) {
-            setMessageSearchResults([]);
-            setMessageSearchResultQuery(query);
-            setMessageSearchError(
-              error instanceof Error ? error.message : '搜索历史消息失败。',
-            );
-            setMessageSearchLoading(false);
-          }
-        });
-    }, 160);
-    return () => window.clearTimeout(timeout);
-  }, [search]);
-
-  useEffect(() => {
     if (
       !createGroupOpen &&
       !createProjectOpen &&
@@ -545,7 +604,8 @@ function SocialChatApp() {
       !editingAgentId &&
       !settingsOpen &&
       !forwardDialogOpen &&
-      !threadDialogOpen
+      !threadDialogOpen &&
+      !conversationSearchOpen
     ) {
       return;
     }
@@ -571,6 +631,7 @@ function SocialChatApp() {
         else if (createAgentOpen || editingAgentId) closeAgentDialog();
         else if (forwardDialogOpen) cancelForward();
         else if (threadDialogOpen) closeThreadDialog();
+        else if (conversationSearchOpen) closeConversationSearch();
         else closeSettingsDialog();
         return;
       }
@@ -608,12 +669,14 @@ function SocialChatApp() {
     settingsOpen,
     forwardDialogOpen,
     threadDialogOpen,
+    conversationSearchOpen,
     closeGroupDialog,
     closeProjectDialog,
     closeAgentDialog,
     closeSettingsDialog,
     cancelForward,
     closeThreadDialog,
+    closeConversationSearch,
   ]);
 
   useLayoutEffect(() => {
@@ -630,11 +693,18 @@ function SocialChatApp() {
   useLayoutEffect(() => {
     if (!pendingScrollMessageId || roomState?.room.id !== activeRoomId) return;
     const frame = requestAnimationFrame(() => {
-      document
-        .querySelector<HTMLElement>(
+      const target =
+        document.querySelector<HTMLElement>(
+          `[data-review-message-id="${pendingScrollMessageId}"]`,
+        ) ??
+        document.querySelector<HTMLElement>(
           `[data-message-id="${pendingScrollMessageId}"]`,
-        )
-        ?.scrollIntoView({ block: 'center' });
+        );
+      target?.scrollIntoView({ block: 'center' });
+      const feedback = document.querySelector<HTMLElement>(
+        `[data-review-message-id="${pendingScrollMessageId}"] textarea`,
+      );
+      feedback?.focus({ preventScroll: true });
       setPendingScrollMessageId(null);
     });
     return () => cancelAnimationFrame(frame);
@@ -668,25 +738,35 @@ function SocialChatApp() {
     roomState?.room.id === activeRoomId ? roomState.messages : [];
   const workTasks =
     roomState?.room.id === activeRoomId ? roomState.workTasks : [];
+  const latestAssistantMessage = [...messages]
+    .reverse()
+    .find((message) => message.role === 'assistant');
+  const currentRoomQueue = currentRoom
+    ? (queuedMessagesByRoom[currentRoom.id] ?? [])
+    : [];
   const activeReply = messages.find(
     (message) => message.role === 'assistant' && message.status === 'streaming',
+  );
+  const currentQueuePaused = Boolean(
+    currentRoom &&
+    latestAssistantMessage &&
+    currentRoomQueue.length > 0 &&
+    !activeReply &&
+    ['failed', 'interrupted'].includes(latestAssistantMessage.status) &&
+    queueResumedAfterByRoom[currentRoom.id] !== latestAssistantMessage.id,
   );
   const messageAgent = useMemo(
     () => new Map(agents.map((agent) => [agent.id, agent])),
     [agents],
   );
   const currentRecipient =
-    members.find((agent) => agent.id === selectedAgentId) ?? members[0] ?? null;
+    (currentRoom?.kind === 'group'
+      ? members.find((agent) => agent.id === 'noema' && !agent.archivedAt)
+      : null) ??
+    members.find((agent) => !agent.archivedAt) ??
+    members[0] ??
+    null;
   const currentRecipientArchived = Boolean(currentRecipient?.archivedAt);
-  const currentRecipientCanWork = Boolean(
-    currentRecipient?.capabilities.includes('project-work') &&
-    !currentRecipientArchived,
-  );
-  const roomCanWork = members.some(
-    (agent) => !agent.archivedAt && agent.capabilities.includes('project-work'),
-  );
-  const showProjectModeSwitch =
-    roomCanWork && currentRoom?.id !== noemaRoom?.id;
   const forwardableRooms = rooms.filter(
     (room) =>
       room.id !== currentRoom?.id &&
@@ -704,7 +784,7 @@ function SocialChatApp() {
     (room) => room.parentRoomId === currentRoom?.id,
   );
   const filteredRooms = useMemo(() => {
-    const query = search.trim().toLocaleLowerCase();
+    const query = navigationSearch.trim().toLocaleLowerCase();
     if (!query) return rooms;
     return rooms.filter((room) => {
       const participants = room.memberIds
@@ -714,7 +794,7 @@ function SocialChatApp() {
         .toLocaleLowerCase()
         .includes(query);
     });
-  }, [messageAgent, rooms, search]);
+  }, [messageAgent, rooms, navigationSearch]);
   const projectRoomIds = new Set(
     projects.map((project) => project.groupRoomId),
   );
@@ -737,7 +817,7 @@ function SocialChatApp() {
   const otherConversationRooms = otherRooms.filter(
     (room) => room.kind !== 'direct' || Boolean(room.parentRoomId),
   );
-  const projectQuery = search.trim().toLocaleLowerCase();
+  const projectQuery = navigationSearch.trim().toLocaleLowerCase();
   const visibleProjects = projects.filter((project) => {
     if (!projectQuery) return true;
     const memberNames = project.members.map((member) => member.name).join(' ');
@@ -756,18 +836,113 @@ function SocialChatApp() {
     projects.find((project) => project.id === activeProjectSession?.projectId);
   const projectWorkspace =
     projects.find((project) => project.id === projectWorkspaceId) ?? null;
+  const projectWorkspaceSessionRoomIds = projectWorkspace
+    ? projectWorkspace.members
+        .filter(
+          (member) => member.status === 'active' && member.agentId !== 'noema',
+        )
+        .map((member) => member.sessionRoomId)
+        .join('|')
+    : '';
+  const loadProjectSessions = useCallback(
+    async (project: NoemaSocialProject) => {
+      const members = project.members.filter(
+        (member) => member.status === 'active' && member.agentId !== 'noema',
+      );
+      setProjectSessionsById((current) => ({
+        ...current,
+        [project.id]: {
+          loading: true,
+          error: null,
+          sessions: current[project.id]?.sessions ?? [],
+        },
+      }));
+      const results = await Promise.allSettled(
+        members.map((member) =>
+          window.noema.getSocialProjectSession(project.id, member.agentId),
+        ),
+      );
+      const sessions = results.flatMap((result) =>
+        result.status === 'fulfilled' ? [result.value] : [],
+      );
+      const failed = results.some((result) => result.status === 'rejected');
+      setProjectSessionsById((current) => ({
+        ...current,
+        [project.id]: {
+          loading: false,
+          error: failed ? '部分成员的工作记录暂时无法载入。' : null,
+          sessions,
+        },
+      }));
+    },
+    [],
+  );
+  useEffect(() => {
+    if (projectWorkspace) void loadProjectSessions(projectWorkspace);
+  }, [
+    projectWorkspace?.id,
+    projectWorkspaceSessionRoomIds,
+    loadProjectSessions,
+  ]);
+  useEffect(() => {
+    if (!projectWorkspace) return;
+    const roomIds = new Set(
+      projectWorkspaceSessionRoomIds.split('|').filter(Boolean),
+    );
+    return window.noema.onSocialEvent((event: NoemaSocialEvent) => {
+      if (
+        'roomId' in event &&
+        roomIds.has(event.roomId) &&
+        event.type !== 'chat-message-delta'
+      ) {
+        void loadProjectSessions(projectWorkspace);
+      }
+    });
+  }, [
+    projectWorkspace?.id,
+    projectWorkspaceSessionRoomIds,
+    loadProjectSessions,
+  ]);
+  const projectSessionState = projectWorkspace
+    ? projectSessionsById[projectWorkspace.id]
+    : undefined;
+  const projectSessionTasks = (projectSessionState?.sessions ?? [])
+    .flatMap((session) => session.room.workTasks)
+    .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
   const projectGroupRoom = projectWorkspace
     ? (rooms.find((room) => room.id === projectWorkspace.groupRoomId) ?? null)
     : null;
   const agentWorkspace =
     agents.find((agent) => agent.id === agentWorkspaceId) ?? null;
+  const agentWorkspaceProjects = agentWorkspace
+    ? projects
+        .filter((project) =>
+          project.members.some(
+            (member) =>
+              member.agentId === agentWorkspace.id &&
+              member.status === 'active',
+          ),
+        )
+        .sort((left, right) => {
+          const statusOrder =
+            Number(left.status === 'archived') -
+            Number(right.status === 'archived');
+          return statusOrder || right.updatedAt.localeCompare(left.updatedAt);
+        })
+    : [];
+  const agentWorkspaceProject = agentWorkspaceProjects[0] ?? null;
   const viewingProjectSession = Boolean(
     activeProjectSession &&
     activeProjectSession.roomId === currentRoom?.id &&
     activeProject?.id === activeProjectSession.projectId,
   );
-  const visibleMessageSearchResults =
-    messageSearchResultQuery === search.trim() ? messageSearchResults : [];
+  const conversationSearchResults = conversationSearchQuery.trim()
+    ? messages.filter((message) =>
+        message.content
+          .toLocaleLowerCase()
+          .includes(conversationSearchQuery.trim().toLocaleLowerCase()),
+      )
+    : [];
 
   const renderRoomListItem = (room: NoemaSocialRoom) => {
     const agent = messageAgent.get(room.memberIds[0] ?? '');
@@ -813,9 +988,6 @@ function SocialChatApp() {
     setAgentWorkspaceId(null);
     shouldFollowRef.current = true;
     setActiveRoomId(room.id);
-    setSelectedAgentId(room.memberIds[0] ?? 'noema');
-    setComposerMode('chat');
-    setReuseCase(false);
     setReplyTarget(null);
     setForwardSelectionActive(false);
     setSelectedForwardMessageIds([]);
@@ -828,8 +1000,6 @@ function SocialChatApp() {
     setProjectWorkspaceId(null);
     setAgentWorkspaceId(agentId);
     setActiveProjectSession(null);
-    setSelectedAgentId('noema');
-    setComposerMode('chat');
     setReplyTarget(null);
     setForwardSelectionActive(false);
     setSelectedForwardMessageIds([]);
@@ -838,14 +1008,6 @@ function SocialChatApp() {
     shouldFollowRef.current = true;
     const homeRoom = rooms.find((room) => room.id === 'room-noema');
     if (homeRoom) void loadRoom(homeRoom.id);
-  };
-
-  const openMessageSearchResult = (result: NoemaSocialSearchResult) => {
-    const room = rooms.find((candidate) => candidate.id === result.roomId);
-    if (!room) return;
-    setPendingScrollMessageId(result.id);
-    setSearch('');
-    selectRoom(room);
   };
 
   const openHistorySource = (source: NoemaSocialHistorySource) => {
@@ -861,24 +1023,61 @@ function SocialChatApp() {
       !currentRoom ||
       !currentRecipient ||
       !draft.trim() ||
+      draftAttachments.length > 0 ||
       busy ||
       forwardSelectionActive
     ) {
       return;
     }
-    if (currentRecipientArchived) {
+    const routing =
+      currentRoom.kind === 'group'
+        ? resolveGroupRecipient(draft, members, currentRecipient.id)
+        : { agent: currentRecipient, error: null };
+    if (routing.error) {
+      setNotice(routing.error);
+      return;
+    }
+    const recipient = routing.agent ?? currentRecipient;
+    if (recipient.archivedAt) {
       setNotice('这位联系人已归档；恢复后才能继续聊天。');
       return;
     }
     const roomId = currentRoom.id;
     const text = draft;
+    if (activeReply) {
+      if (currentRoomQueue.length >= 20) {
+        setNotice('当前聊天最多暂存 20 条待发消息。');
+        return;
+      }
+      setQueuedMessagesByRoom((current) => {
+        const queue = current[roomId] ?? [];
+        return {
+          ...current,
+          [roomId]: [
+            ...queue,
+            {
+              id: crypto.randomUUID(),
+              roomId,
+              agentId: recipient.id,
+              text,
+              replyToMessageId: replyTarget?.id ?? null,
+              error: null,
+            },
+          ],
+        };
+      });
+      setRoomDraft(roomId, '');
+      setReplyTarget(null);
+      if (draftRef.current) draftRef.current.style.height = 'auto';
+      return;
+    }
     setBusy(true);
     setNotice('');
     shouldFollowRef.current = true;
     try {
       await window.noema.sendSocialMessage({
         roomId,
-        agentId: currentRecipient.id,
+        agentId: recipient.id,
         text,
         replyToMessageId: replyTarget?.id ?? null,
       });
@@ -894,6 +1093,81 @@ function SocialChatApp() {
       setBusy(false);
       (draftRef.current ?? groupDraftRef.current)?.focus();
     }
+  };
+
+  useEffect(() => {
+    const currentRoomId = currentRoom?.id;
+    const queued = currentRoomId
+      ? queuedMessagesByRoom[currentRoomId]?.[0]
+      : null;
+    if (
+      !queued ||
+      queued.error ||
+      currentQueuePaused ||
+      activeReply ||
+      busy ||
+      queueDispatchingRef.current
+    ) {
+      return;
+    }
+    queueDispatchingRef.current = queued.id;
+    setBusy(true);
+    void window.noema
+      .sendSocialMessage({
+        roomId: queued.roomId,
+        agentId: queued.agentId,
+        text: queued.text,
+        replyToMessageId: queued.replyToMessageId,
+      })
+      .then(async () => {
+        setQueuedMessagesByRoom((current) => {
+          const remaining = (current[queued.roomId] ?? []).filter(
+            (item) => item.id !== queued.id,
+          );
+          const next = { ...current };
+          if (remaining.length) next[queued.roomId] = remaining;
+          else delete next[queued.roomId];
+          return next;
+        });
+        await Promise.all([refreshState(), loadRoom(queued.roomId)]);
+      })
+      .catch((error: unknown) => {
+        setQueuedMessagesByRoom((current) => ({
+          ...current,
+          [queued.roomId]: (current[queued.roomId] ?? []).map((item) =>
+            item.id === queued.id
+              ? {
+                  ...item,
+                  error:
+                    error instanceof Error
+                      ? error.message
+                      : '消息没有发送，请重试。',
+                }
+              : item,
+          ),
+        }));
+      })
+      .finally(() => {
+        queueDispatchingRef.current = null;
+        setBusy(false);
+      });
+  }, [
+    activeReply,
+    busy,
+    currentRoom?.id,
+    loadRoom,
+    currentQueuePaused,
+    messages,
+    queuedMessagesByRoom,
+    refreshState,
+  ]);
+
+  const resumeCurrentQueue = () => {
+    if (!currentRoom || !latestAssistantMessage) return;
+    setQueueResumedAfterByRoom((current) => ({
+      ...current,
+      [currentRoom.id]: latestAssistantMessage.id,
+    }));
   };
 
   const beginForwardSelection = (message: NoemaSocialMessage) => {
@@ -984,7 +1258,6 @@ function SocialChatApp() {
       cancelForward();
       setThreadDialogOpen(false);
       setActiveRoomId(created.room.id);
-      setSelectedAgentId('noema');
       setShowRoomList(false);
       shouldFollowRef.current = true;
       await Promise.all([refreshState(), loadRoom(created.room.id)]);
@@ -1059,11 +1332,6 @@ function SocialChatApp() {
         sourceIds: selectedForwardMessageIds,
       });
       setActiveRoomId(forwardTargetRoomId);
-      setSelectedAgentId(
-        forwardTargetRoom?.memberIds.find((id) =>
-          activeAgents.some((agent) => agent.id === id),
-        ) ?? 'noema',
-      );
       setShowRoomList(false);
       forwardOriginMessageId.current = null;
       cancelForward();
@@ -1076,50 +1344,6 @@ function SocialChatApp() {
       );
     } finally {
       setForwardBusy(false);
-    }
-  };
-
-  const handleStartProjectWork = async (event?: FormEvent) => {
-    event?.preventDefault();
-    if (!currentRoom || !currentRecipient || !draft.trim() || workBusy) return;
-    setReplyTarget(null);
-    cancelForward();
-    if (currentRecipientArchived) {
-      setNotice('这位联系人已归档；恢复后才能承接项目工作。');
-      return;
-    }
-    if (!state?.projectWork.available) {
-      setNotice(state?.projectWork.reason ?? '项目工作当前不可用。');
-      return;
-    }
-    if (!currentRecipientCanWork) {
-      setNotice('请在群聊中选择工程搭档，再把任务交给它。');
-      return;
-    }
-    const roomId = currentRoom.id;
-    setWorkBusy(true);
-    setNotice('');
-    try {
-      const result = await window.noema.startSocialWorkTask({
-        roomId,
-        agentId: currentRecipient.id,
-        prompt: draft.trim(),
-        reuseCase,
-      });
-      if (result.accepted) {
-        setRoomDraft(roomId, '');
-        setReuseCase(false);
-        if (draftRef.current) draftRef.current.style.height = 'auto';
-        setNotice('工程搭档已开始处理；你可以继续在这个聊天里说话。');
-        await Promise.all([refreshState(), loadRoom(roomId)]);
-      } else if (result.reason) {
-        setNotice(result.reason);
-      }
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : '项目工作没有启动。');
-    } finally {
-      setWorkBusy(false);
-      draftRef.current?.focus();
     }
   };
 
@@ -1159,9 +1383,7 @@ function SocialChatApp() {
       !event.nativeEvent.isComposing
     ) {
       event.preventDefault();
-      void (composerMode === 'project'
-        ? handleStartProjectWork()
-        : handleSend());
+      void handleSend();
     }
   };
 
@@ -1242,8 +1464,6 @@ function SocialChatApp() {
       setShowRoomList(false);
       const homeRoom = next.rooms.find((room) => room.id === 'room-noema');
       if (homeRoom) {
-        setSelectedAgentId('noema');
-        setComposerMode('chat');
         void loadRoom(homeRoom.id);
       }
     } catch (error) {
@@ -1265,8 +1485,6 @@ function SocialChatApp() {
       setProjectTab('delivery');
       setAgentWorkspaceId(null);
       setActiveProjectSession(null);
-      setSelectedAgentId('noema');
-      setComposerMode('chat');
       setReplyTarget(null);
       setActiveRoomId(project.groupRoomId);
       setShowRoomList(false);
@@ -1298,8 +1516,6 @@ function SocialChatApp() {
       setAgentWorkspaceId(null);
       setRoomState(session.room);
       setActiveRoomId(session.room.room.id);
-      setSelectedAgentId(agentId);
-      setComposerMode('chat');
       setReplyTarget(null);
       setForwardSelectionActive(false);
       setSelectedForwardMessageIds([]);
@@ -1401,10 +1617,9 @@ function SocialChatApp() {
       await window.noema.setSocialAgentProjectWork(agent.id, nextEnabled);
       if (activeRoomId)
         await Promise.all([refreshState(), loadRoom(activeRoomId)]);
-      if (!nextEnabled) setComposerMode('chat');
       setNotice(
         nextEnabled
-          ? `${agent.name}可以承接项目文件任务；每次仍需切换项目工作并选择目录。`
+          ? `${agent.name}可以在对话中承接文件任务；启动前会请你选择工作目录。`
           : `${agent.name}的项目文件能力已关闭；此前聊天与已启动任务不受影响。`,
       );
     } catch (error) {
@@ -1515,10 +1730,6 @@ function SocialChatApp() {
             ? '所选模型需要配置服务商密钥。可以切换其他可用模型，或检查 FreeLLMAPI 设置。'
             : '所选模型最近报告额度已耗尽。可以切换其他模型后继续。'
           : null;
-  const composerReady =
-    composerMode === 'chat'
-      ? providerReady
-      : Boolean(state?.projectWork.available);
   const messagesById = new Map(
     messages.map((message) => [message.id, message]),
   );
@@ -1573,11 +1784,19 @@ function SocialChatApp() {
       onDisableCase={() => void handleDisableCaseReuse(task)}
       onWithdrawPractice={() => void handleWithdrawPracticeCandidate(task)}
       onRepeat={() => {
-        setSelectedAgentId(task.agentId);
-        setComposerMode('project');
+        const project = projects.find((candidate) =>
+          candidate.members.some(
+            (member) => member.sessionRoomId === task.roomId,
+          ),
+        );
+        if (project) void openProjectMemberSession(project, task.agentId);
+        else {
+          const sourceRoom = rooms.find((room) => room.id === task.roomId);
+          if (sourceRoom) selectRoom(sourceRoom);
+        }
         setReplyTarget(null);
         cancelForward();
-        setDraft(task.taskPrompt);
+        setRoomDraft(task.roomId, task.taskPrompt);
         requestAnimationFrame(() => draftRef.current?.focus());
       }}
     />
@@ -1599,15 +1818,30 @@ function SocialChatApp() {
     projectWorkspace || agentWorkspace || archivedProjectsOpen,
   );
   const composerDisabled =
-    !composerReady ||
+    !providerReady ||
     Boolean(currentRoom?.closedAt) ||
     forwardSelectionActive ||
     !currentRecipient ||
-    currentRecipientArchived ||
-    Boolean(activeReply) ||
-    workBusy ||
-    (composerMode === 'project' && !currentRecipientCanWork);
-  const sendDisabled = composerDisabled || !draft.trim() || busy;
+    currentRecipientArchived;
+  const sendDisabled =
+    composerDisabled || !draft.trim() || busy || draftAttachments.length > 0;
+  const submitProjectReview = async (review: NoemaSocialProjectReview) => {
+    if (busy || activeReply)
+      throw new Error('请等待当前回复结束，再提交反馈。');
+    setBusy(true);
+    try {
+      await window.noema.sendSocialMessage({
+        roomId: review.roomId,
+        agentId: 'noema',
+        text: draftsByRoom[`review:${review.id}`] ?? '',
+        reviewRequestId: review.id,
+      });
+      setRoomDraft(`review:${review.id}`, '');
+      await Promise.all([refreshState(), loadRoom(review.roomId)]);
+    } finally {
+      setBusy(false);
+    }
+  };
   const conversationContent =
     currentRoom && roomState?.room.id === currentRoom.id ? (
       <>
@@ -1714,6 +1948,25 @@ function SocialChatApp() {
                             toggleForwardMessage(item.message)
                           }
                         />
+                        {(roomState.projectReviews ?? [])
+                          .filter(
+                            (review) =>
+                              review.requestMessageId === item.message.id,
+                          )
+                          .map((review) => (
+                            <ProjectReviewCard
+                              key={review.id}
+                              review={review}
+                              draft={draftsByRoom[`review:${review.id}`] ?? ''}
+                              onDraftChange={(value) =>
+                                setRoomDraft(`review:${review.id}`, value)
+                              }
+                              onSubmit={() => submitProjectReview(review)}
+                              disabled={
+                                !providerReady || busy || Boolean(activeReply)
+                              }
+                            />
+                          ))}
                         {item.tasks.map(renderProjectWorkCard)}
                       </React.Fragment>
                     ) : (
@@ -1742,11 +1995,7 @@ function SocialChatApp() {
         </button>
         <form
           className="composer message-composer"
-          onSubmit={(event) =>
-            void (composerMode === 'project'
-              ? handleStartProjectWork(event)
-              : handleSend(event))
-          }
+          onSubmit={(event) => void handleSend(event)}
         >
           <div className="composer-inner">
             {notice ? (
@@ -1771,41 +2020,12 @@ function SocialChatApp() {
               </div>
             ) : null}
 
-            {composerMode === 'chat' && !providerReady ? (
+            {!providerReady ? (
               <div className="provider-warning" role="status">
                 <span>{providerWarning}</span>
                 <button type="button" onClick={() => setSettingsOpen(true)}>
                   {state?.providerConfigured ? '检查设置' : '连接模型'}
                 </button>
-              </div>
-            ) : null}
-
-            {currentRoom.kind === 'group' ? (
-              <div
-                className="reply-routing"
-                role="group"
-                aria-label="选择本轮回应者"
-              >
-                <span>
-                  {composerMode === 'project' ? '工作交给' : '本条由'}
-                </span>
-                {members.map((member) => (
-                  <button
-                    key={member.id}
-                    type="button"
-                    className={
-                      member.id === currentRecipient?.id ? 'is-chosen' : ''
-                    }
-                    aria-pressed={member.id === currentRecipient?.id}
-                    disabled={Boolean(member.archivedAt)}
-                    title={member.archivedAt ? '联系人已归档' : undefined}
-                    onClick={() => setSelectedAgentId(member.id)}
-                  >
-                    {member.name}
-                    {member.archivedAt ? ' · 已归档' : ''}
-                  </button>
-                ))}
-                <span>{composerMode === 'project' ? '执行' : '回应'}</span>
               </div>
             ) : null}
 
@@ -1844,66 +2064,7 @@ function SocialChatApp() {
               </div>
             ) : null}
 
-            {showProjectModeSwitch ? (
-              <div
-                className="composer-mode-switch"
-                role="group"
-                aria-label="选择聊天方式"
-              >
-                <button
-                  type="button"
-                  className={composerMode === 'chat' ? 'is-selected' : ''}
-                  aria-pressed={composerMode === 'chat'}
-                  onClick={() => setComposerMode('chat')}
-                >
-                  聊天
-                </button>
-                <button
-                  type="button"
-                  className={composerMode === 'project' ? 'is-selected' : ''}
-                  aria-pressed={composerMode === 'project'}
-                  onClick={() => {
-                    setReplyTarget(null);
-                    cancelForward();
-                    setComposerMode('project');
-                  }}
-                  disabled={!state?.projectWork.available}
-                  title={state?.projectWork.reason ?? undefined}
-                >
-                  项目工作
-                </button>
-                {composerMode === 'project' ? (
-                  <span className="composer-mode-explainer">
-                    选择文件夹后，由工程搭档在这里处理
-                  </span>
-                ) : null}
-                {!state?.projectWork.available ? (
-                  <span className="composer-mode-unavailable" role="status">
-                    {state?.projectWork.reason ?? '项目工作暂不可用。'}
-                  </span>
-                ) : null}
-              </div>
-            ) : null}
-
-            {composerMode === 'project' ? (
-              <label className="case-reuse-control">
-                <input
-                  type="checkbox"
-                  checked={reuseCase}
-                  onChange={(event) => setReuseCase(event.target.checked)}
-                  disabled={workBusy}
-                />
-                <span>
-                  <strong>参考同项目的已核验经验</strong>
-                  <small>
-                    若有候选，选定文件夹后会展示触发条件、做法、边界和来源；默认只带入已核验案例。不会复制原聊天。核验后，Noema
-                    可能再用当前免费路由整理一条可撤回的候选做法。
-                  </small>
-                </span>
-              </label>
-            ) : null}
-
-            {replyTarget && composerMode === 'chat' ? (
+            {replyTarget ? (
               <div className="draft-quote">
                 <span>
                   引用 {replyTarget.sender}：
@@ -1922,9 +2083,115 @@ function SocialChatApp() {
               </div>
             ) : null}
 
+            {activeReply || currentQueuePaused ? (
+              <div className="runtime-status" role="status">
+                <span>
+                  {currentQueuePaused
+                    ? `队列已暂停 · ${currentRoomQueue.length} 条未发送`
+                    : `正在回复 · ${messageAgent.get(activeReply?.agentId ?? '')?.name ?? 'Noema'}`}
+                </span>
+                {currentQueuePaused ? (
+                  <button type="button" onClick={resumeCurrentQueue}>
+                    继续队列
+                  </button>
+                ) : (
+                  <button type="button" onClick={() => void handleStop()}>
+                    停止回复
+                  </button>
+                )}
+              </div>
+            ) : null}
+            {currentRoomQueue.length ? (
+              <div className="queue-list" aria-label="当前对话的待发消息">
+                {currentRoomQueue.map((queued) => (
+                  <div className="queue-row" key={queued.id}>
+                    <div className="queue-text">
+                      {queued.text}
+                      <small>
+                        {queued.error
+                          ? `发送失败：${queued.error}`
+                          : '尚未发送 · 只属于当前对话'}
+                      </small>
+                    </div>
+                    <div className="queue-actions">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRoomDraft(currentRoom!.id, queued.text);
+                          setReplyTarget(null);
+                          setQueuedMessagesByRoom((current) => {
+                            const remaining = (
+                              current[queued.roomId] ?? []
+                            ).filter((item) => item.id !== queued.id);
+                            const next = { ...current };
+                            if (remaining.length)
+                              next[queued.roomId] = remaining;
+                            else delete next[queued.roomId];
+                            return next;
+                          });
+                          requestAnimationFrame(() =>
+                            (currentRoom?.kind === 'group'
+                              ? groupDraftRef.current
+                              : draftRef.current
+                            )?.focus(),
+                          );
+                        }}
+                      >
+                        撤回到输入框
+                      </button>
+                      {queued.error ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setQueuedMessagesByRoom((current) => ({
+                              ...current,
+                              [queued.roomId]: (
+                                current[queued.roomId] ?? []
+                              ).map((item) =>
+                                item.id === queued.id
+                                  ? { ...item, error: null }
+                                  : item,
+                              ),
+                            }));
+                            resumeCurrentQueue();
+                          }}
+                        >
+                          重试
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            {draftAttachments.length ? (
+              <div className="composer-files" aria-label="本地附件预览">
+                {draftAttachments.map((file, index) => (
+                  <span
+                    className="attachment-chip"
+                    key={`${file.name}-${file.lastModified}-${index}`}
+                  >
+                    <span className="file-name" title={file.name}>
+                      {file.name}
+                    </span>
+                    <button
+                      type="button"
+                      aria-label={`移除附件 ${file.name}`}
+                      onClick={() => removeDraftAttachment(index)}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            ) : null}
+
             <div className="composer-field">
               <label className="visually-hidden" htmlFor="social-message-input">
-                给{currentRecipient?.name ?? '联系人'}发送消息
+                {currentRoom.kind === 'group'
+                  ? '在群聊中发送消息'
+                  : `给${currentRecipient?.name ?? '联系人'}发送消息`}
               </label>
               <textarea
                 id="social-message-input"
@@ -1932,8 +2199,8 @@ function SocialChatApp() {
                 value={draft}
                 rows={2}
                 placeholder={
-                  composerMode === 'project'
-                    ? '描述希望在项目中完成什么…'
+                  currentRoom.kind === 'group'
+                    ? `发到群聊；输入 @成员名 指定回应`
                     : currentRoom.id === noemaRoom?.id
                       ? `和${currentRecipient?.name ?? 'Noema'}说点什么…`
                       : `发给${currentRecipient?.name ?? '联系人'}…`
@@ -1946,43 +2213,44 @@ function SocialChatApp() {
                 onKeyDown={handleComposerKeyDown}
                 disabled={composerDisabled}
               />
+              <input
+                ref={attachmentInputRef}
+                className="visually-hidden"
+                type="file"
+                multiple
+                accept=".txt,.md,.csv,.pdf,.png,.jpg,.jpeg,.webp"
+                aria-label="选择附件"
+                onChange={(event) => {
+                  addDraftAttachments(event.currentTarget.files);
+                  event.currentTarget.value = '';
+                }}
+              />
               <button
                 className="icon-button attach-button"
                 type="button"
-                aria-label="添加附件（尚未接入）"
-                title="附件尚未接入，当前可发送文字"
-                disabled
+                aria-label="添加附件"
+                title="图片、文本、CSV 或 PDF；每条最多 5 个，单个不超过 10 MB，仅本机预览"
+                disabled={composerDisabled}
+                onClick={() => attachmentInputRef.current?.click()}
               >
                 <Icon name="attach" />
               </button>
-              {activeReply && composerMode === 'chat' ? (
-                <button
-                  className="send stop-reply-button"
-                  type="button"
-                  aria-label="停止回复"
-                  title="停止回复"
-                  onClick={() => void handleStop()}
-                >
-                  <Icon name="stop" />
-                </button>
-              ) : (
-                <button
-                  className="send send-message-button"
-                  type="submit"
-                  aria-label={
-                    composerMode === 'project' ? '选择项目并启动' : '发送消息'
-                  }
-                  title={
-                    composerMode === 'project' ? '选择项目并启动' : '发送消息'
-                  }
-                  disabled={sendDisabled}
-                >
-                  <Icon name="send" />
-                </button>
-              )}
+              <button
+                className="send send-message-button"
+                type="submit"
+                aria-label={activeReply ? '加入发送队列' : '发送消息'}
+                title={activeReply ? '加入当前对话的发送队列' : '发送消息'}
+                disabled={sendDisabled}
+              >
+                <Icon name="send" />
+              </button>
             </div>
             <div className="composer-hint">
-              <span>Enter 发送 · Shift + Enter 换行</span>
+              <span>
+                {draftAttachments.length
+                  ? '附件仅本地预览；移除后可发送文字'
+                  : 'Enter 发送 · Shift + Enter 换行'}
+              </span>
               <span>{activeRoute?.label || activeModel || '尚未连接模型'}</span>
             </div>
           </div>
@@ -2093,10 +2361,10 @@ function SocialChatApp() {
             <input
               ref={searchRef}
               type="search"
-              value={search}
-              aria-label="搜索联系人、聊天和消息"
+              value={navigationSearch}
+              aria-label="搜索成员或项目"
               placeholder="搜索成员或项目"
-              onChange={(event) => setSearch(event.target.value)}
+              onChange={(event) => setNavigationSearch(event.target.value)}
             />
           </label>
           <div className="section-title">与你对话</div>
@@ -2163,31 +2431,6 @@ function SocialChatApp() {
             <Icon name="archive" />{' '}
             <span>已归档项目 · {archivedProjects.length}</span>
           </button>
-          {search.trim() ? (
-            <section
-              className="message-search-results"
-              aria-label="消息搜索结果"
-              aria-live="polite"
-              data-search-query={messageSearchResultQuery}
-            >
-              <h3>消息</h3>
-              {messageSearchLoading ? <p>正在搜索历史消息…</p> : null}
-              {messageSearchError ? (
-                <p role="status">{messageSearchError}</p>
-              ) : null}
-              {visibleMessageSearchResults.map((result) => (
-                <button
-                  className="message-search-result"
-                  type="button"
-                  key={`${result.roomId}:${result.id}`}
-                  onClick={() => openMessageSearchResult(result)}
-                >
-                  <strong>{result.roomTitle}</strong>
-                  <span>{result.content}</span>
-                </button>
-              ))}
-            </section>
-          ) : null}
           <div className="section-title">个人</div>
           <button
             className="bottom-link sidebar-settings-button"
@@ -2268,13 +2511,10 @@ function SocialChatApp() {
               <button
                 className="icon-button"
                 type="button"
-                aria-label="搜索聊天和消息"
+                ref={searchTriggerRef}
+                aria-label="查找当前对话"
                 title="查找当前对话"
-                onClick={() => {
-                  navigation.reveal();
-                  setShowRoomList(true);
-                  requestAnimationFrame(() => searchRef.current?.focus());
-                }}
+                onClick={openConversationSearch}
               >
                 <Icon name="search" />
               </button>
@@ -2432,7 +2672,7 @@ function SocialChatApp() {
                     ) : null}
                     <div className="note-row">
                       {providerReady
-                        ? `本条由 ${currentRecipient?.name ?? 'Noema'} 回应。`
+                        ? `群消息对成员可见；@成员名可指定回应者，默认由 ${currentRecipient?.name ?? '当前成员'} 回应。`
                         : providerWarning}
                       {!providerReady ? (
                         <button
@@ -2444,6 +2684,89 @@ function SocialChatApp() {
                         </button>
                       ) : null}
                     </div>
+                    {activeReply || currentQueuePaused ? (
+                      <div className="runtime-status" role="status">
+                        <span>
+                          {currentQueuePaused
+                            ? `队列已暂停 · ${currentRoomQueue.length} 条未发送`
+                            : `正在回复 · ${messageAgent.get(activeReply?.agentId ?? '')?.name ?? 'Noema'}`}
+                        </span>
+                        {currentQueuePaused ? (
+                          <button type="button" onClick={resumeCurrentQueue}>
+                            继续队列
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => void handleStop()}
+                          >
+                            停止回复
+                          </button>
+                        )}
+                      </div>
+                    ) : null}
+                    {currentRoomQueue.length ? (
+                      <div
+                        className="queue-list"
+                        aria-label="当前对话的待发消息"
+                      >
+                        {currentRoomQueue.map((queued) => (
+                          <div className="queue-row" key={queued.id}>
+                            <div className="queue-text">
+                              {queued.text}
+                              <small>
+                                {queued.error
+                                  ? `发送失败：${queued.error}`
+                                  : '尚未发送 · 只属于当前对话'}
+                              </small>
+                            </div>
+                            <div className="queue-actions">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setRoomDraft(queued.roomId, queued.text);
+                                  setQueuedMessagesByRoom((current) => {
+                                    const remaining = (
+                                      current[queued.roomId] ?? []
+                                    ).filter((item) => item.id !== queued.id);
+                                    const next = { ...current };
+                                    if (remaining.length)
+                                      next[queued.roomId] = remaining;
+                                    else delete next[queued.roomId];
+                                    return next;
+                                  });
+                                  requestAnimationFrame(() =>
+                                    groupDraftRef.current?.focus(),
+                                  );
+                                }}
+                              >
+                                撤回到输入框
+                              </button>
+                              {queued.error ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setQueuedMessagesByRoom((current) => ({
+                                      ...current,
+                                      [queued.roomId]: (
+                                        current[queued.roomId] ?? []
+                                      ).map((item) =>
+                                        item.id === queued.id
+                                          ? { ...item, error: null }
+                                          : item,
+                                      ),
+                                    }));
+                                    resumeCurrentQueue();
+                                  }}
+                                >
+                                  重试
+                                </button>
+                              ) : null}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
                     <form
                       className="group-form"
                       onSubmit={(event) => void handleSend(event)}
@@ -2451,28 +2774,18 @@ function SocialChatApp() {
                       <input
                         ref={groupDraftRef}
                         aria-label="在项目群中发消息"
-                        placeholder="在项目群中发消息"
+                        placeholder="发到项目群；输入 @成员名 指定回应"
                         value={draft}
                         onChange={(event) => setDraft(event.target.value)}
                         disabled={composerDisabled}
                       />
-                      {activeReply ? (
-                        <button
-                          className="secondary"
-                          type="button"
-                          onClick={() => void handleStop()}
-                        >
-                          停止回复
-                        </button>
-                      ) : (
-                        <button
-                          className="primary"
-                          type="submit"
-                          disabled={sendDisabled}
-                        >
-                          发送
-                        </button>
-                      )}
+                      <button
+                        className="primary"
+                        type="submit"
+                        disabled={sendDisabled}
+                      >
+                        {activeReply ? '加入队列' : '发送'}
+                      </button>
                     </form>
                   </div>
                 </div>
@@ -2546,27 +2859,59 @@ function SocialChatApp() {
                       </div>
                       <h2>{projectWorkspace.title}</h2>
                       <p className="lead">{projectWorkspace.brief}</p>
-                      {workTasks.length ? (
-                        workTasks.map(renderProjectWorkCard)
+                      {projectSessionTasks.length ? (
+                        projectSessionTasks.map(renderProjectWorkCard)
                       ) : (
                         <div className="project-summary">
                           <section>
                             <h3>当前阶段</h3>
                             <p>
                               {projectWorkspace.status === 'awaiting_user'
-                                ? '等待你的评审，相关工作暂停。'
+                                ? '项目标记为等待你的反馈。'
                                 : '项目进行中。'}
                             </p>
                           </section>
                           <section>
-                            <h3>最近进展</h3>
+                            <h3>最近共同讨论</h3>
                             <p>
                               {projectGroupRoom?.preview?.text ||
-                                '还没有阶段交付。成员的讨论会保留在共同讨论中。'}
+                                '还没有共同讨论记录。'}
                             </p>
                           </section>
                         </div>
                       )}
+                      {projectSessionState?.loading ||
+                      projectSessionState?.error ||
+                      !projectSessionTasks.length ? (
+                        <section
+                          className="project-output-empty"
+                          aria-live="polite"
+                        >
+                          <strong>
+                            {projectSessionState?.loading
+                              ? '正在读取成员工作记录…'
+                              : projectSessionState?.error
+                                ? projectSessionState.error
+                                : '尚无文件任务记录。'}
+                          </strong>
+                          <p>
+                            {projectSessionState?.loading
+                              ? '读取各成员独立的项目会话。'
+                              : '成员的交流记录可在各自的项目会话中查看。'}
+                          </p>
+                          {projectSessionState?.error && projectWorkspace ? (
+                            <button
+                              className="secondary"
+                              type="button"
+                              onClick={() =>
+                                void loadProjectSessions(projectWorkspace)
+                              }
+                            >
+                              重试读取
+                            </button>
+                          ) : null}
+                        </section>
+                      ) : null}
                       <div className="real-project-actions">
                         <button
                           className="secondary"
@@ -2609,10 +2954,22 @@ function SocialChatApp() {
                       className="review-jump"
                       type="button"
                       onClick={() => {
-                        if (noemaRoom) selectRoom(noemaRoom);
+                        const pending = projectWorkspace.pendingReview;
+                        const room =
+                          rooms.find(
+                            (candidate) => candidate.id === pending?.roomId,
+                          ) ?? noemaRoom;
+                        if (room) {
+                          selectRoom(room);
+                          if (pending)
+                            setPendingScrollMessageId(pending.requestMessageId);
+                        }
                       }}
                     >
-                      回到 Noema 主聊 <Icon name="arrow" />
+                      {projectWorkspace.pendingReview
+                        ? '回到评审请求'
+                        : '回到 Noema 主聊'}{' '}
+                      <Icon name="arrow" />
                     </button>
                   </div>
                 </div>
@@ -2676,9 +3033,21 @@ function SocialChatApp() {
                     <button
                       className="secondary"
                       type="button"
-                      onClick={() => openAgentProfileEditor(agentWorkspace)}
+                      disabled={!agentWorkspaceProject}
+                      title={
+                        agentWorkspaceProject
+                          ? `打开${agentWorkspaceProject.title}中的工作会话`
+                          : '该成员还没有加入项目'
+                      }
+                      onClick={() => {
+                        if (agentWorkspaceProject)
+                          void openProjectMemberSession(
+                            agentWorkspaceProject,
+                            agentWorkspace.id,
+                          );
+                      }}
                     >
-                      编辑资料
+                      打开项目工作会话
                     </button>
                   </div>
                   <h3>参与过的工作</h3>
@@ -2726,6 +3095,13 @@ function SocialChatApp() {
                     </button>
                   </div>
                   <div className="profile-links">
+                    <button
+                      className="quiet"
+                      type="button"
+                      onClick={() => openAgentProfileEditor(agentWorkspace)}
+                    >
+                      编辑资料
+                    </button>
                     <button
                       className="quiet"
                       type="button"
@@ -2797,6 +3173,91 @@ function SocialChatApp() {
           ) : null}
         </section>
       </div>
+      {conversationSearchOpen ? (
+        <div
+          className="dialog-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closeConversationSearch();
+          }}
+        >
+          <form
+            ref={dialogRef}
+            className="social-dialog conversation-search-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="conversation-search-title"
+            onSubmit={(event) => event.preventDefault()}
+          >
+            <div className="dialog-heading">
+              <div>
+                <h2 id="conversation-search-title">查找当前对话</h2>
+                <p>
+                  仅搜索「{currentRoom?.title ?? '当前聊天'}
+                  」，不会搜索其他聊天。
+                </p>
+              </div>
+              <button
+                className="icon-button"
+                type="button"
+                aria-label="关闭搜索"
+                onClick={closeConversationSearch}
+              >
+                <Icon name="close" />
+              </button>
+            </div>
+            <label className="dialog-field conversation-search-field">
+              <span>关键词</span>
+              <input
+                ref={conversationSearchRef}
+                data-dialog-initial-focus
+                type="search"
+                aria-label="搜索当前聊天"
+                placeholder="输入要查找的内容"
+                value={conversationSearchQuery}
+                onChange={(event) =>
+                  setConversationSearchQuery(event.target.value)
+                }
+              />
+            </label>
+            <div
+              className="conversation-search-results"
+              aria-live="polite"
+              aria-label="当前对话搜索结果"
+            >
+              {!conversationSearchQuery.trim() ? (
+                <p>仅搜索当前聊天，不会把其他私聊交给 Noema。</p>
+              ) : conversationSearchResults.length ? (
+                conversationSearchResults.map((message) => (
+                  <button
+                    className="conversation-search-result"
+                    type="button"
+                    key={message.id}
+                    onClick={() => {
+                      setPendingScrollMessageId(message.id);
+                      closeConversationSearch();
+                    }}
+                  >
+                    <strong>
+                      {message.role === 'user'
+                        ? '你'
+                        : (messageAgent.get(message.agentId ?? '')?.name ??
+                          '联系人')}
+                    </strong>
+                    <time dateTime={message.createdAt}>
+                      {timeLabel(message.createdAt)}
+                    </time>
+                    <span>
+                      {message.content.replace(/\s+/gu, ' ').slice(0, 220)}
+                    </span>
+                  </button>
+                ))
+              ) : (
+                <p>当前对话中没有找到匹配消息。</p>
+              )}
+            </div>
+          </form>
+        </div>
+      ) : null}
       {forwardDialogOpen ? (
         <div
           className="dialog-backdrop"
@@ -3054,8 +3515,7 @@ function SocialChatApp() {
                 <span>
                   <strong>允许它承接项目文件任务</strong>
                   <small>
-                    默认关闭。开启后，它可在你明确切到项目工作并选择目录后，通过现有
-                    DSH 流程操作项目文件；不会因为普通聊天自动执行。
+                    默认关闭。开启后，你可以在对话中委托文件任务，启动前会请你选择工作目录。
                   </small>
                 </span>
               </label>
@@ -3606,12 +4066,6 @@ function ChatMessage({
       ) : null}
       {!user ? (
         <>
-          <InteractionAdjustmentTrace
-            snapshots={message.interactionAdjustmentSnapshots}
-            attempts={message.interactionAdjustmentAttempts}
-            currentAttempt={message.attempt}
-            kind="conversation"
-          />
           <SocialHistoryRecallTrace
             message={message}
             onOpenSource={onOpenHistorySource}
@@ -3776,70 +4230,6 @@ function SocialHistoryRecallTrace({
           未返回接受响应；无法确认是否送达上游。
         </p>
       ) : null}
-    </details>
-  );
-}
-
-function InteractionAdjustmentTrace({
-  snapshots,
-  attempts = [],
-  currentAttempt = 1,
-  kind,
-}: {
-  snapshots: NoemaInteractionAdjustmentSnapshot[];
-  attempts?: NoemaSocialMessage['interactionAdjustmentAttempts'];
-  currentAttempt?: number;
-  kind: 'conversation' | 'project';
-}) {
-  const history =
-    attempts.length > 0
-      ? attempts
-      : snapshots.length > 0
-        ? [
-            {
-              attempt: currentAttempt,
-              interactionAdjustmentIds: snapshots.map(
-                (snapshot) => snapshot.id,
-              ),
-              interactionAdjustmentSnapshots: snapshots,
-            },
-          ]
-        : [];
-  if (!history.some((entry) => entry.interactionAdjustmentSnapshots.length)) {
-    return null;
-  }
-  return (
-    <details className="interaction-adjustment-trace">
-      <summary>
-        {history.length > 1 ? `查看 ${history.length} 次回复尝试` : '本轮带入'}
-        {kind === 'project' ? '编码协作' : '互动'}约定
-      </summary>
-      {history.map((entry) => (
-        <section className="interaction-adjustment-attempt" key={entry.attempt}>
-          {history.length > 1 ? <strong>第 {entry.attempt} 次</strong> : null}
-          {entry.interactionAdjustmentSnapshots.length ? (
-            <ul>
-              {entry.interactionAdjustmentSnapshots.map((snapshot) => (
-                <li key={snapshot.id}>
-                  <strong>{snapshot.situation}</strong>
-                  <span>{snapshot.behavior}</span>
-                  <small>
-                    来源：
-                    {snapshot.sourceSurface === 'social'
-                      ? 'Noema 聊天'
-                      : '旧根对话'}
-                    · 原话「
-                    {snapshot.sourceQuote}」
-                  </small>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p>这次尝试没有带入互动约定。</p>
-          )}
-        </section>
-      ))}
-      <p>这只表示 Noema 组装上下文时带入了它们，不证明上游收到或模型遵循。</p>
     </details>
   );
 }

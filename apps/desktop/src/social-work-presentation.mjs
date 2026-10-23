@@ -69,11 +69,27 @@ export function socialWorkRecoveryPresentation(task) {
       step.hasSideEffect === true ||
       ['write', 'edit', 'command'].includes(step.category),
   );
-  if (toolCallCount > steps.length) {
+  if (
+    !Number.isSafeInteger(task.toolCallCount) ||
+    toolCallCount !== steps.length
+  ) {
     return {
       kind: 'unknown',
       message:
         '执行记录不完整，无法确认所有操作是否影响了工作区；请先检查工作区，再决定是否重新执行。',
+    };
+  }
+
+  const unclassifiedSteps = steps.filter(
+    (step) =>
+      !['read', 'search', 'write', 'edit', 'command'].includes(step.category) &&
+      step.hasSideEffect !== false,
+  );
+  if (unclassifiedSteps.length) {
+    return {
+      kind: 'unknown',
+      message:
+        '执行记录包含无法识别的操作类型；请先检查工作区，再决定是否重新执行。',
     };
   }
 

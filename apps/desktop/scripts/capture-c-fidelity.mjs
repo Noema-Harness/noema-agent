@@ -43,7 +43,12 @@ const people = [
   ],
 ];
 const ids = people.map(([name, headline, description], index) => {
-  const created = social.createAgent({ name, headline, description });
+  const created = social.createAgent({
+    name,
+    headline,
+    description,
+    projectWork: index === 2,
+  });
   const date = `2026-10-22T0${9 - index}:00:00.000Z`;
   db.prepare(
     'UPDATE social_rooms SET created_at=?,updated_at=? WHERE id=?',
@@ -59,9 +64,6 @@ const project = projects.createProject({
   brief: '本轮先完成价格比较与变化记录的第一版，需要你判断阅读顺序和整体观感。',
   agentIds: ['noema', ...ids],
 });
-db.prepare("UPDATE social_projects SET status='awaiting_user' WHERE id=?").run(
-  project.id,
-);
 const messages = [
   ['assistant', '上次说到想换工作，这几天有新的想法吗？', '09:18', 'initial'],
   [
@@ -132,6 +134,8 @@ for (const [index, [agentId, text, time]] of [
     created,
   );
 }
+const reviewQuestion =
+  '请检查第一版的阅读顺序与整体观感，建议优先展示价格变化。';
 db.close();
 
 const referenceScript = path.join(scratch, 'reference.cjs');
@@ -143,8 +147,27 @@ fs.writeFileSync(
 const environment = { ...process.env };
 delete environment.ELECTRON_RUN_AS_NODE;
 await runReference();
-const server = http.createServer((_request, response) => {
+const server = http.createServer((request, response) => {
   response.writeHead(200, { 'content-type': 'application/json' });
+  if (request.url?.includes('/chat/completions')) {
+    response.end(
+      JSON.stringify({
+        id: 'fixture-review-response',
+        model: 'fixture',
+        choices: [
+          {
+            index: 0,
+            finish_reason: 'stop',
+            message: {
+              role: 'assistant',
+              content: '已收到这份评审反馈，后续安排将围绕你的判断处理。',
+            },
+          },
+        ],
+      }),
+    );
+    return;
+  }
   response.end(
     JSON.stringify({
       data: [
@@ -229,6 +252,78 @@ try {
     path.join(scratch, 'production-metrics.json'),
     JSON.stringify(production, null, 2),
   );
+  const attachmentButtonEnabled = await evaluate(
+    `Boolean(document.querySelector('.attach-button') && !document.querySelector('.attach-button').disabled)`,
+  );
+  await evaluate(`(() => {
+    const input = document.querySelector('input[type="file"][aria-label="选择附件"]');
+    const files = new DataTransfer();
+    files.items.add(new File(['fixture'], '本地预览.txt', { type: 'text/plain' }));
+    input.files = files.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  })()`);
+  await settleUntil(
+    `Boolean(document.querySelector('.attachment-chip') && document.querySelector('.send-message-button').disabled)`,
+  );
+  const attachmentPreview = await evaluate(`(() => {
+    const chip = document.querySelector('.attachment-chip');
+    const notice = document.querySelector('.inline-notice');
+    const safe = Boolean(chip && chip.textContent.includes('本地预览.txt') &&
+      notice?.textContent.includes('不会上传或发送给模型'));
+    chip?.querySelector('button')?.click();
+    return safe;
+  })()`);
+  await settleUntil(`!document.querySelector('.attachment-chip')`);
+  await evaluate(
+    `document.querySelector('[aria-label="查找当前对话"]').click()`,
+  );
+  await settleUntil(
+    `Boolean(document.querySelector('[role="dialog"][aria-labelledby="conversation-search-title"]'))`,
+  );
+  await evaluate(`(() => {
+    const input = document.querySelector('[aria-label="搜索当前聊天"]');
+    const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    setValue.call(input, '下班后还在接着想项目');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    return true;
+  })()`);
+  await settleUntil(
+    `document.querySelectorAll('.conversation-search-result').length === 1`,
+  );
+  await capture('C-current-search.png');
+  const conversationSearchScope = await evaluate(`(() => {
+    const dialog = document.querySelector('.conversation-search-dialog');
+    const results = [...(dialog?.querySelectorAll('.conversation-search-result') ?? [])];
+    const scoped = results.length === 1 && results[0].textContent.includes('下班后还在接着想项目') &&
+      dialog.textContent.includes('仅搜索「Noema」') &&
+      !document.querySelector('.message-search-results');
+    results[0]?.click();
+    return scoped;
+  })()`);
+  await settleUntil(
+    `!document.querySelector('[aria-labelledby="conversation-search-title"]')`,
+  );
+  await evaluate(`(() => {
+    const input = document.querySelector('.chat-search input');
+    const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    setValue.call(input, '新闻观察者');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    return true;
+  })()`);
+  await settleUntil(
+    `document.querySelector('nav[aria-label="成员"]')?.querySelectorAll('.room-list-item').length === 1`,
+  );
+  const navigationSearchScope = await evaluate(`(() => {
+    const matches = document.querySelector('nav[aria-label="成员"]')?.querySelectorAll('.room-list-item') ?? [];
+    const scoped = matches.length === 1 && matches[0].textContent.includes('新闻观察者') &&
+      !document.querySelector('.message-search-results');
+    const input = document.querySelector('.chat-search input');
+    const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    setValue.call(input, '');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    return scoped;
+  })()`);
   const reference = JSON.parse(
     fs.readFileSync(path.join(scratch, 'reference-metrics.json'), 'utf8'),
   );
@@ -262,9 +357,69 @@ try {
     deviceScaleFactor: 1,
     mobile: false,
   });
+  // Keep the daily-chat comparison content identical; seed the review scenario
+  // only after measuring the baseline, in this disposable database alone.
+  const reviewDb = new Database(database);
+  let projectReview;
+  try {
+    const reviewChat = new SocialChatStore(reviewDb);
+    const reviewProjects = new SocialProjectStore({
+      db: reviewDb,
+      socialChatStore: reviewChat,
+    });
+    reviewDb
+      .prepare('UPDATE social_messages SET content = content || ? WHERE id = ?')
+      .run(`\n\n请评审「${project.title}」：${reviewQuestion}`, 'c-fixture-4');
+    projectReview = reviewProjects.requestReview({
+      projectId: project.id,
+      messageId: 'c-fixture-4',
+      question: reviewQuestion,
+    });
+  } finally {
+    reviewDb.close();
+  }
+  await cdp.call('Page.reload');
+  await settleUntil(`Boolean(document.querySelector('.project-list-item'))`);
   await evaluate(`document.querySelector('.project-list-item').click()`);
   await settleUntil(`Boolean(document.querySelector('.workspace .work-tabs'))`);
   await capture('C-project-delivery.png');
+  await evaluate(`document.querySelector('.review-jump').click()`);
+  await settleUntil(
+    `Boolean(document.querySelector('[data-project-review="${projectReview.id}"] textarea'))`,
+  );
+  const reviewJump = await evaluate(`(() => {
+    const input = document.querySelector('[data-project-review="${projectReview.id}"] textarea');
+    const bounds = input.getBoundingClientRect();
+    return document.activeElement === input && bounds.top >= 0 && bounds.bottom <= innerHeight;
+  })()`);
+  await capture('C-review-request.png');
+  await evaluate(`(() => {
+    const input = document.querySelector('[data-project-review="${projectReview.id}"] textarea');
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(input, '先展示价格变化，缩短说明。');
+    input.dispatchEvent(new Event('input', {bubbles: true}));
+    return true;
+  })()`);
+  await settleUntil(
+    `!document.querySelector('[data-project-review="${projectReview.id}"] [type="submit"]').disabled`,
+  );
+  await evaluate(
+    `document.querySelector('[data-project-review="${projectReview.id}"] [type="submit"]').click()`,
+  );
+  await settleUntil(
+    `Boolean(document.querySelector('[data-project-review="${projectReview.id}"] .review-receipt'))`,
+  );
+  const reviewFeedback = await evaluate(
+    `(async () => {
+    const room = await window.noema.getSocialRoom('room-noema');
+    const state = await window.noema.getSocialState();
+    return room.projectReviews.find(review => review.id === ${JSON.stringify(projectReview.id)})?.feedback === '先展示价格变化，缩短说明。' &&
+      state.projects.find(project => project.id === ${JSON.stringify(project.id)})?.status === 'active';
+  })()`,
+    true,
+  );
+  await capture('C-review-receipt.png');
+  await evaluate(`document.querySelector('.project-list-item').click()`);
+  await settleUntil(`Boolean(document.querySelector('.workspace .work-tabs'))`);
   await evaluate(`document.querySelectorAll('.work-tabs button')[1].click()`);
   await settleUntil(
     `Boolean(document.querySelector('.workspace .discussion .group-msg'))`,
@@ -274,19 +429,45 @@ try {
     `document.querySelector('.workspace [data-room-id]').dataset.roomId===${JSON.stringify(project.groupRoomId)}`,
   );
   await evaluate(`document.querySelectorAll('.work-tabs button')[2].click()`);
+  await settleUntil(
+    `[...document.querySelectorAll('.workspace .member-row')].some(button => button.textContent.includes('应用工程师'))`,
+  );
   await capture('C-project-members.png');
   await evaluate(
-    `document.querySelectorAll('.workspace .member-row')[1].click()`,
+    `[...document.querySelectorAll('.workspace .member-row')].find(button => button.textContent.includes('应用工程师')).click()`,
   );
   await settleUntil(`Boolean(document.querySelector('.session-scroll'))`);
   const expectedSession = await evaluate(
-    `window.noema.getSocialProjectSession(${JSON.stringify(project.id)},${JSON.stringify(ids[0])})`,
+    `window.noema.getSocialProjectSession(${JSON.stringify(project.id)},${JSON.stringify(ids[2])})`,
     true,
   );
   const memberRoute = await evaluate(
     `document.querySelector('.session-scroll').dataset.roomId===${JSON.stringify(expectedSession.room.room.id)}`,
   );
+  const unifiedComposer = await evaluate(`(() => {
+    const form = document.querySelector('.message-composer');
+    return Boolean(form && form.querySelector('textarea') &&
+      form.querySelector('.attach-button') &&
+      !form.querySelector('.composer-mode-switch,.case-reuse-control') &&
+      form.querySelector('[type="submit"]').getAttribute('aria-label') === '发送消息');
+  })()`);
   await capture('C-member-session.png');
+  await cdp.call('Emulation.setDeviceMetricsOverride', {
+    width: 600,
+    height: 760,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  await capture('C-member-session-narrow.png');
+  const memberNoOverflow = await evaluate(
+    `document.documentElement.scrollWidth <= innerWidth`,
+  );
+  await cdp.call('Emulation.setDeviceMetricsOverride', {
+    width: 1264,
+    height: 760,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
   await evaluate(`document.querySelector('[aria-label="成员资料"]').click()`);
   await settleUntil(`Boolean(document.querySelector('.profile-hero'))`);
   await capture('C-member-profile.png');
@@ -351,8 +532,16 @@ try {
   if (
     narrow.overflow ||
     !narrow.inputVisible ||
+    !attachmentButtonEnabled ||
+    !attachmentPreview ||
+    !conversationSearchScope ||
+    !navigationSearchScope ||
+    !reviewJump ||
+    !reviewFeedback ||
     !groupRoute ||
     !memberRoute ||
+    !unifiedComposer ||
+    !memberNoOverflow ||
     !quote ||
     !archiveRestored ||
     !maximized ||
@@ -369,6 +558,14 @@ try {
         interactions: {
           groupRoute,
           memberRoute,
+          unifiedComposer,
+          attachmentButtonEnabled,
+          attachmentPreview,
+          conversationSearchScope,
+          navigationSearchScope,
+          reviewJump,
+          reviewFeedback,
+          memberNoOverflow,
           quote,
           archiveRestored,
           windowControls: maximized === true && restored === false,
@@ -410,7 +607,7 @@ async function capture(name) {
   );
 }
 function metricsExpression() {
-  return `(()=>{const selectors={titlebar:'.window-head',navigation:'.index',header:'.pane-head',scroll:'.chat-scroll',transcript:'.chat-body',composer:'.composer',input:'.composer textarea',send:'.send'};return Object.fromEntries(Object.entries(selectors).map(([k,s])=>{const e=document.querySelector(s);if(!e)return[k,null];const r=e.getBoundingClientRect();return[k,{x:r.x,y:r.y,width:r.width,height:r.height}]}))})()`;
+  return `(()=>{const selectors={titlebar:'.window-head',navigation:'.index',header:'.pane-head',scroll:'.chat-scroll',transcript:'.chat-body',composer:'.composer',input:'.composer textarea',attachment:'.attach-button',send:'.send'};return Object.fromEntries(Object.entries(selectors).map(([k,s])=>{const e=document.querySelector(s);if(!e)return[k,null];const r=e.getBoundingClientRect();return[k,{x:r.x,y:r.y,width:r.width,height:r.height}]}))})()`;
 }
 async function settleUntil(expression) {
   for (let attempt = 0; attempt < 40; attempt++) {
@@ -444,11 +641,21 @@ async function connect(url) {
   });
   let id = 0;
   const pending = new Map();
+  socket.addEventListener('close', () => {
+    for (const entry of pending.values()) {
+      clearTimeout(entry.timer);
+      entry.reject(
+        new Error('Electron debugger disconnected before the check completed'),
+      );
+    }
+    pending.clear();
+  });
   socket.addEventListener('message', (event) => {
     const data = JSON.parse(event.data);
     const p = pending.get(data.id);
     if (p) {
       pending.delete(data.id);
+      clearTimeout(p.timer);
       if (data.error) p.reject(new Error(data.error.message));
       else p.resolve(data.result);
     }
@@ -457,7 +664,11 @@ async function connect(url) {
     call(method, params = {}) {
       return new Promise((resolve, reject) => {
         const key = ++id;
-        pending.set(key, { resolve, reject });
+        const timer = setTimeout(() => {
+          pending.delete(key);
+          reject(new Error(`Electron debugger timed out: ${method}`));
+        }, 15_000);
+        pending.set(key, { resolve, reject, timer });
         socket.send(JSON.stringify({ id: key, method, params }));
       });
     },

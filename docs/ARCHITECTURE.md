@@ -24,7 +24,7 @@ Noema 持有 agent 的稳定 identity、专业范围、用户关系偏好和当�
 
 ### Agent Runtime
 
-目标是应用自有、可替换的模型/工具执行循环，单会话一次一个活动循环，记录执行意图、取消代际、实际结果与恢复点。当前聊天使用直接模型，文件任务仍使用 DSH adapter；外部 harness 不再是产品永久依赖。执行进度不能被伪装成后台已经完成。
+目标是应用自有、可替换的模型/工具执行循环，单会话一次一个活动循环，记录执行意图、取消代际、实际结果与恢复点。当前聊天使用直接模型，正式文件任务由 `NoemaProjectExecutor` 执行有界工具循环，DSH adapter 仅保留在 legacy worker 路径。执行进度不能被伪装成后台已经完成。
 
 ### Room-scoped Actions
 
@@ -50,12 +50,12 @@ Noema 私聊是默认入口。普通交流、探索、写作和一般计划留�
 ## 当前代码的实现边界
 
 - 桌面主入口读取 `social_agents`、`social_rooms`、`social_room_members` 与 `social_messages`；用户可显式创建 specialist identity，创建只写入本机且默认无工具能力；归档保留身份与历史但停止新回复/新任务。旧 root/worker 功能仍可从 `#legacy` 打开，不再决定主界面结构。
-- 社交表使用独立的 `social_schema_migrations` 版本线（当前 v12，版本常量在 `social-chat-schema.mjs`），与旧根对话 schema 分离。待升级前用 SQLite backup API 创建版本快照，校验内容与版本、封成无 WAL 依赖的独立文件，再原子发布；首轮原有 `noema-before-social-chat-v1.sqlite3` 保留。备份失败不继续迁移，不完整旧快照保留诊断副本后重建。旧 root messages 以 `legacy_source_id` 幂等复制，原始行不改写或删除。
+- 社交表使用独立的 `social_schema_migrations` 版本线（当前 v15，版本常量在 `social-chat-schema.mjs`），与旧根对话 schema 分离。待升级前用 SQLite backup API 创建版本快照，校验内容与版本、封成无 WAL 依赖的独立文件，再原子发布；首轮原有 `noema-before-social-chat-v1.sqlite3` 保留。备份失败不继续迁移，不完整旧快照保留诊断副本后重建。旧 root messages 以 `legacy_source_id` 幂等复制，原始行不改写或删除。
 - 新安装仅初始化 `noema` 与 `room-noema`；旧安装中的工程搭档、群和历史保留，关闭的能力不会在启动时重新启用。工程团队样例只在 `test-support/social-team.mjs` 显式生成。当前每次模型请求组装房间最近 40 条已完成消息及必要 profile；此硬上限是待演进实现，不是完整上下文工程方案。system event 与其他房间原文不自动注入。
-- `social_projects` 和 `social_project_sessions` 持久化项目来源、共享群、成员项目会话、等待反馈、归档与恢复；成员项目会话不列入普通私聊。当前 store 已支持新建、加/移除成员、复用会话、阻止活动中归档和恢复旧项目；这些 API 尚未接到 renderer、Noema 协调循环或执行 runtime，项目说明目前由显式调用方单独传给会话上下文。旧群不会自动迁移成项目。
+- `social_projects` 和 `social_project_sessions` 持久化项目来源、共享群、成员项目会话、等待反馈、归档与恢复；成员项目会话不列入普通私聊。renderer 已接真实项目与成员会话，群路由附入指定成员的有界项目上下文。`social_project_reviews` 关联项目和 Noema 主聊请求：待评请求与主聊消息完成原子保存，明确反馈与解除等待原子保存；普通聊天不解除等待。项目执行在授权前后重新检查待评状态。完整团队调度仍未实现，不能把解除等待等同于已续派。见 [ADR 0031](decisions/0031-project-review-requests.md)。旧群不会自动迁移成项目。
 - 社交 renderer 的 IPC 状态只暴露联系人、房间与模型连接信息，不把旧 root transcript、captures、后台任务记录随新社交 UI 一并发送。
-- 群聊消息必须带本轮 `agentId`，一个房间一次只允许一条生成中的回复；运行时支持停止、失败消息保留及失败/中断后原位重试。Noema 主体与专业好友现在共享已选择的 FreeLLMAPI 路由；未连接可用模型时不伪造回复。当前 renderer 仍保留联系人与模式选择；这是待按 ADR 0026 逐步收敛的实现状态，不是目标交互。
-- 已实现专业成员创建/改资料/归档、显式项目文件能力、带来源转发、搜索、Noema 范围内有界历史查找与明确互动约定；已有一次知识子委派和受限 DSH 项目核验/经验试用。它们不等于自有工具循环、多成员项目调度、通用长期记忆或成员自有资产成长。captures、旧 workers 和 Codex 导入仍可从 legacy 访问。旧主题会话保留兼容，目标方向不再新增独立 Noema 主上下文。
+- 群聊消息必须带本轮 `agentId`，一个房间一次只允许一条生成中的回复；运行时支持停止、失败消息保留及失败/中断后原位重试。Noema 主体与专业好友共享已选择的 FreeLLMAPI 路由；未连接可用模型时不伪造回复。正式 renderer 统一通过消息 IPC 发送请求，已撤掉手动文件任务启动 IPC 和聊天/执行模式；有文件能力的专业成员可请求同一执行工具，Noema 私聊沿用内部委派路径。旧任务的经验/核验快照保留为历史记录，不将内部案例试用包装成每轮必选的用户流程。
+- 已实现专业成员创建/改资料/归档、显式项目文件能力、带来源转发、搜索与 Noema 范围内有界历史查找；已有一次知识子委派和受限项目核验/经验试用。它们不等于自有工具循环、多成员项目调度、通用长期记忆或成员自有资产成长。逐轮“互动约定”自动注入已从当前聊天和项目任务路径撤下；旧记录仍在本机数据库中，但不会再进入新请求。captures、旧 workers 和 Codex 导入仍可从 legacy 访问。旧主题会话保留兼容，目标方向不再新增独立 Noema 主上下文。
 - 首次迁移的备份与复制都在用户设备本地。聊天消息会通过本机 FreeLLMAPI 发送到所选模型/路由；Noema 的当前房间隔离不是上游服务数据隔离。
 
 ## 记忆演化边界

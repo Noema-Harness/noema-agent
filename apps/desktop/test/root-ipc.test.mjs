@@ -293,7 +293,7 @@ test('Codex import sends nothing until transmission consent and remains revocabl
   assert.equal(sends, 2);
 });
 
-test('room-scoped project work requires the trusted app window and does not use root task IPC', async () => {
+test('file requests use ordinary social messages; only task controls retain direct trusted IPC', async () => {
   const harness = createIpcHarness();
   const trustedSender = {};
   const calls = [];
@@ -317,10 +317,6 @@ test('room-scoped project work requires the trusted app window and does not use 
     retryReply: () => ({ accepted: true }),
   };
   const socialWorkService = {
-    startTask: async (input) => {
-      calls.push(['start', input]);
-      return { accepted: true, taskId: 'task-1' };
-    },
     stopTask: (taskId) => {
       calls.push(['stop', taskId]);
       return true;
@@ -337,7 +333,7 @@ test('room-scoped project work requires the trusted app window and does not use 
     socialWorkService,
     isTrustedSender: (sender) => sender === trustedSender,
   });
-  assert.equal(harness.handlers.has(CHANNELS.socialWorkStart), true);
+  assert.equal(harness.handlers.has('noema:social-work-start'), false);
   assert.equal(harness.handlers.has(CHANNELS.socialWorkStop), true);
   assert.equal(harness.handlers.has(CHANNELS.socialWorkCaseEligible), true);
   assert.equal(harness.handlers.has(CHANNELS.socialCreateAgent), true);
@@ -346,14 +342,14 @@ test('room-scoped project work requires the trusted app window and does not use 
   const input = {
     roomId: 'room-engineering-collaboration',
     agentId: 'engineering-partner',
-    prompt: '写一个明确的小改动。',
+    text: '写一个明确的小改动。',
   };
   assert.deepEqual(
-    await harness.handlers.get(CHANNELS.socialWorkStart)(
+    await harness.handlers.get(CHANNELS.socialSend)(
       { sender: trustedSender },
       input,
     ),
-    { accepted: true, taskId: 'task-1' },
+    input,
   );
   assert.equal(
     await harness.handlers.get(CHANNELS.socialWorkStop)(
@@ -399,12 +395,11 @@ test('room-scoped project work requires the trusted app window and does not use 
     { id: 'agent-created', capabilities: ['project-work'] },
   );
   assert.deepEqual(calls, [
-    ['start', input],
     ['stop', 'task-1'],
     ['case-eligible', 'task-1', false],
   ]);
   await assert.rejects(
-    harness.handlers.get(CHANNELS.socialWorkStart)({ sender: {} }, input),
+    harness.handlers.get(CHANNELS.socialWorkStop)({ sender: {} }, 'task-1'),
     /未授权/,
   );
 });

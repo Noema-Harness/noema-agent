@@ -190,6 +190,98 @@ test('project member replies and retries preserve project scope and user-context
   }
 });
 
+test('a project-group mention uses only that member project session plus public group context', async () => {
+  const db = new Database(':memory:');
+  new RootStore(db);
+  const store = createSocialTestStore(db);
+  const projectStore = new SocialProjectStore({ db, socialChatStore: store });
+  const researcher = store.createAgent({
+    name: '研究员',
+    headline: '资料研究',
+    description: '核对项目资料与来源。',
+  });
+  const project = projectStore.createProject({
+    title: '群聊上下文隔离检查',
+    brief: '在群里 @ 成员后，继续它自己的项目工作上下文。',
+    agentIds: ['noema', 'engineering-partner', researcher.members[0].id],
+  });
+  const target = projectStore.getProjectSession(
+    project.id,
+    'engineering-partner',
+  );
+  const other = projectStore.getProjectSession(
+    project.id,
+    researcher.members[0].id,
+  );
+  const priorTurns = [
+    store.beginTurn({
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      text: '目标成员的常驻私聊：不应混入项目。',
+      model: 'test-model',
+    }),
+    store.beginTurn({
+      roomId: target.room.room.id,
+      agentId: 'engineering-partner',
+      text: '目标成员的项目记录：保留价格来源。',
+      model: 'test-model',
+    }),
+    store.beginTurn({
+      roomId: other.room.room.id,
+      agentId: researcher.members[0].id,
+      text: '其他成员的私有项目记录：不应泄露。',
+      model: 'test-model',
+    }),
+    store.beginTurn({
+      roomId: project.groupRoomId,
+      agentId: 'noema',
+      text: '群里的公开决定：保留原币种。',
+      model: 'test-model',
+    }),
+  ];
+  for (const turn of priorTurns) {
+    store.appendAssistantDelta(turn.assistantMessageId, '已记录。');
+    store.completeReply(turn.assistantMessageId);
+  }
+  const seenRequests = [];
+  const service = new SocialChatService({
+    store,
+    provider: {
+      async *streamChat(input) {
+        seenRequests.push(input);
+        yield '我会按群里的决定继续核对。';
+      },
+    },
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'test-model',
+    getRootState: async () => ({
+      connected: true,
+      selectedModel: 'test-model',
+    }),
+    getProjectSessionContext: (roomId, agentId) =>
+      projectStore.getProjectSessionContext(roomId, agentId),
+  });
+
+  try {
+    service.sendMessage({
+      roomId: project.groupRoomId,
+      agentId: 'engineering-partner',
+      text: '@工程搭档 请继续核对。',
+    });
+    await service.active.get(project.groupRoomId)?.done;
+
+    const prompt = JSON.stringify(seenRequests[0]?.messages ?? []);
+    assert.match(prompt, /目标成员的项目记录：保留价格来源/);
+    assert.match(prompt, /群里的公开决定：保留原币种/);
+    assert.match(prompt, /@工程搭档 请继续核对/);
+    assert.doesNotMatch(prompt, /其他成员的私有项目记录/);
+    assert.doesNotMatch(prompt, /目标成员的常驻私聊/);
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});
+
 test('Noema retrieves bounded, redacted history from its own threads only when the user refers to it', async () => {
   const db = new Database(':memory:');
   new RootStore(db);
@@ -367,7 +459,7 @@ test('Noema can start existing project work from an explicit request while other
       selectedModel: 'test-model',
     }),
     getProjectWorkReadiness: () => ({ available: true, reason: null }),
-    startProjectWorkFromNoema: async (input) => {
+    startProjectWork: async (input) => {
       started.push(input);
       return { accepted: true, taskId: 'work-1' };
     },
@@ -389,6 +481,7 @@ test('Noema can start existing project work from an explicit request while other
     assert.deepEqual(started, [
       {
         roomId: 'room-noema',
+        agentId: 'noema',
         prompt: '检查本地项目的依赖配置并修复可复现的问题。',
         sourceMessageId: store
           .getRoomSnapshot('room-noema')
@@ -423,11 +516,85 @@ test('Noema can start existing project work from an explicit request while other
   }
 });
 
+test('specialists use file tools through ordinary messages, and revoked capabilities cannot dispatch work', async () => {
+  const db = new Database(':memory:');
+  new RootStore(db);
+  const store = createSocialTestStore(db);
+  const dispatched = [];
+  const requests = [];
+  const service = new SocialChatService({
+    store,
+    provider: {
+      async *streamChat(input) {
+        requests.push(input);
+        input.onToolCalls?.([
+          {
+            id: 'call-file-work',
+            function: {
+              name: 'start_project_work',
+              arguments: JSON.stringify({ task: '检查项目中的依赖配置。' }),
+            },
+          },
+        ]);
+        if (!input.tools) yield '可以先讨论需求。';
+      },
+    },
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'test-model',
+    getRootState: async () => ({
+      connected: true,
+      selectedModel: 'test-model',
+    }),
+    getProjectWorkReadiness: () => ({ available: true, reason: null }),
+    startProjectWork: async (input, signal) => {
+      assert.equal(signal.aborted, false);
+      dispatched.push(input);
+      return { accepted: true, taskId: 'specialist-file-work' };
+    },
+  });
+  try {
+    const first = service.sendMessage({
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      text: '帮我检查一下项目的依赖。',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await service.active.get('room-engineering-partner')?.done;
+    assert.deepEqual(
+      requests[0].tools.map((tool) => tool.function.name),
+      ['start_project_work'],
+    );
+    assert.equal(dispatched.length, 1);
+    assert.equal(dispatched[0].agentId, 'engineering-partner');
+    assert.equal(dispatched[0].roomId, 'room-engineering-partner');
+    assert.equal(
+      store.getSocialMessage(dispatched[0].sourceMessageId).role,
+      'user',
+    );
+    assert.equal(store.getSocialMessage(first.messageId).status, 'complete');
+
+    store.setAgentProjectWork('engineering-partner', false);
+    service.sendMessage({
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      text: '继续谈谈刚才的方案。',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await service.active.get('room-engineering-partner')?.done;
+    assert.equal(requests[1].tools, undefined);
+    assert.equal(dispatched.length, 1);
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});
+
 test('Noema receives a bounded specialist report and writes its own final reply', async () => {
   const db = new Database(':memory:');
   new RootStore(db);
   const store = createSocialTestStore(db);
   const requests = [];
+  const visibleDeltas = [];
   const provider = {
     async *streamChat(input) {
       requests.push({ ...input, messages: [...input.messages] });
@@ -461,6 +628,9 @@ test('Noema receives a bounded specialist report and writes its own final reply'
       connected: true,
       selectedModel: 'test-model',
     }),
+    emit: (event) => {
+      if (event.type === 'chat-message-delta') visibleDeltas.push(event.delta);
+    },
   });
 
   try {
@@ -512,6 +682,8 @@ test('Noema receives a bounded specialist report and writes its own final reply'
       .messages.find((message) => message.id === sent.messageId);
     assert.match(reply?.content ?? '', /我参考了工程搭档的报告/u);
     assert.match(reply?.content ?? '', /建议采用方案 A/u);
+    assert.equal(reply?.content, '我参考了工程搭档的报告，建议采用方案 A。');
+    assert.equal(visibleDeltas.join(''), reply.content);
     assert.equal(reply?.content.includes('主聊天机密'), false);
     assert.equal(reply?.status, 'complete');
   } finally {
@@ -520,7 +692,7 @@ test('Noema receives a bounded specialist report and writes its own final reply'
   }
 });
 
-test('Noema chat injects only conversation-scoped adjustments and snapshots them per reply', async () => {
+test('saved interaction notes are not injected as a separate system layer into ordinary chat', async () => {
   const db = new Database(':memory:');
   const root = new RootStore(db);
   const store = createSocialTestStore(db);
@@ -532,7 +704,7 @@ test('Noema chat injects only conversation-scoped adjustments and snapshots them
   });
   store.appendAssistantDelta(source.assistantMessageId, '明白。');
   store.completeReply(source.assistantMessageId);
-  const conversationAdjustment = root.addInteractionAdjustment({
+  root.addInteractionAdjustment({
     id: 'conversation-adjustment',
     sourceSurface: 'social',
     sourceRoomId: 'room-noema',
@@ -575,7 +747,6 @@ test('Noema chat injects only conversation-scoped adjustments and snapshots them
       connected: true,
       selectedModel: 'test-model',
     }),
-    getInteractionAdjustments: () => root.getInteractionAdjustments(),
   });
 
   try {
@@ -587,12 +758,12 @@ test('Noema chat injects only conversation-scoped adjustments and snapshots them
     await new Promise((resolve) => setImmediate(resolve));
     await service.active.get('room-noema')?.done;
 
-    const adjustmentContext = requests[0].messages.find((message) =>
-      message.content.includes('用户明确保存给 Noema 的互动约定'),
+    assert.equal(
+      requests[0].messages.some((message) =>
+        message.content.includes('互动约定'),
+      ),
+      false,
     );
-    assert.ok(adjustmentContext);
-    assert.match(adjustmentContext.content, /先回应当下感受/);
-    assert.doesNotMatch(adjustmentContext.content, /明确可独立检查的验收项/);
     const reply = store
       .getRoomSnapshot('room-noema')
       .messages.find(
@@ -600,13 +771,14 @@ test('Noema chat injects only conversation-scoped adjustments and snapshots them
           message.role === 'assistant' &&
           message.content === '先聊这件事本身。',
       );
-    assert.deepEqual(reply?.interactionAdjustmentIds, [
-      conversationAdjustment.id,
+    assert.deepEqual(reply?.interactionAdjustmentIds, []);
+    assert.deepEqual(reply?.interactionAdjustmentAttempts, [
+      {
+        attempt: 1,
+        interactionAdjustmentIds: [],
+        interactionAdjustmentSnapshots: [],
+      },
     ]);
-    assert.deepEqual(
-      reply?.interactionAdjustmentAttempts[0].interactionAdjustmentIds,
-      [conversationAdjustment.id],
-    );
 
     service.sendMessage({
       roomId: 'room-engineering-partner',
@@ -622,12 +794,7 @@ test('Noema chat injects only conversation-scoped adjustments and snapshots them
       false,
     );
     const socialState = await service.getUiState();
-    assert.equal(
-      socialState.interactionAdjustments.some(
-        (adjustment) => adjustment.id === conversationAdjustment.id,
-      ),
-      true,
-    );
+    assert.equal('interactionAdjustments' in socialState, false);
   } finally {
     await service.shutdown();
     db.close();

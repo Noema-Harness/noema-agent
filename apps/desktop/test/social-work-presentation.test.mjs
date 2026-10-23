@@ -65,6 +65,13 @@ test('failed task recovery distinguishes safe replay from possible workspace cha
     }).kind,
     'unknown',
   );
+  assert.equal(
+    result({
+      toolCallCount: 1,
+      executionSteps: [{ category: 'future_tool', effectStatus: 'none' }],
+    }).kind,
+    'unknown',
+  );
 });
 
 test('legacy or incomplete execution records do not imply that replay is safe', () => {
@@ -79,6 +86,14 @@ test('legacy or incomplete execution records do not imply that replay is safe', 
   assert.equal(
     socialWorkRecoveryPresentation({
       toolCallCount: 2,
+      executionSteps: [
+        { category: 'read', hasSideEffect: false, effectStatus: 'none' },
+      ],
+    }).kind,
+    'unknown',
+  );
+  assert.equal(
+    socialWorkRecoveryPresentation({
       executionSteps: [
         { category: 'read', hasSideEffect: false, effectStatus: 'none' },
       ],

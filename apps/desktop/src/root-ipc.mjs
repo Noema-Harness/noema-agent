@@ -48,7 +48,6 @@ const CHANNELS = Object.freeze({
   socialForward: 'noema:social-forward',
   socialStop: 'noema:social-stop',
   socialRetry: 'noema:social-retry',
-  socialWorkStart: 'noema:social-work-start',
   socialWorkStop: 'noema:social-work-stop',
   socialWorkCaseEligible: 'noema:social-work-case-eligible',
   socialPracticeWithdraw: 'noema:social-practice-withdraw',
@@ -87,9 +86,10 @@ export function registerRootIpc({
       projects:
         socialProjectStore?.listProjects({ includeArchived: true }) ?? [],
     }));
-    register(CHANNELS.socialRoom, (roomId) =>
-      socialChatService.store.getRoomSnapshot(roomId),
-    );
+    register(CHANNELS.socialRoom, (roomId) => ({
+      ...socialChatService.store.getRoomSnapshot(roomId),
+      projectReviews: socialProjectStore?.listReviewsForRoom(roomId) ?? [],
+    }));
     register(CHANNELS.socialSearchMessages, (query) =>
       socialChatService.store.searchMessages(query),
     );
@@ -169,9 +169,6 @@ export function registerRootIpc({
     );
   }
   if (socialWorkService) {
-    register(CHANNELS.socialWorkStart, (input) =>
-      socialWorkService.startTask(input),
-    );
     register(CHANNELS.socialWorkStop, (taskId) =>
       socialWorkService.stopTask(taskId),
     );

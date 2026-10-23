@@ -7,6 +7,7 @@ import test from 'node:test';
 import Database from 'better-sqlite3';
 import { RootStore } from '../src/root-store.mjs';
 import { SocialWorkService } from '../src/social-work-service.mjs';
+import { SocialChatService } from '../src/social-chat-service.mjs';
 
 function makeStore() {
   const db = new Database(':memory:');
@@ -65,6 +66,131 @@ function makeAdapter({
     },
   };
 }
+
+test('a project paused while its workspace picker is open cannot start file work', async () => {
+  const { db, store } = makeStore();
+  let paused = false;
+  const launches = [];
+  const service = new SocialWorkService({
+    store,
+    adapter: makeAdapter({ onStart: (input) => launches.push(input) }),
+    secretStore: { isConfigured: () => true },
+    assertWorkAllowed: () => {
+      if (paused) throw new Error('项目等待用户评审');
+    },
+    chooseWorkspace: async () => {
+      paused = true;
+      return tmpdir();
+    },
+  });
+  try {
+    await assert.rejects(
+      service.startTask({
+        roomId: 'room-engineering-partner',
+        agentId: 'engineering-partner',
+        prompt: '修改说明。',
+      }),
+      /等待用户评审/,
+    );
+    assert.equal(launches.length, 0);
+    assert.equal(store.listRoomWorkTasks('room-engineering-partner').length, 0);
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});
+
+test('an ordinary specialist message reaches the real work lifecycle without a separate execution mode', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'noema-natural-work-'));
+  const { db, store } = makeStore();
+  const launches = [];
+  const work = new SocialWorkService({
+    store,
+    adapter: makeAdapter({ onStart: (input) => launches.push(input) }),
+    secretStore: { isConfigured: () => true },
+    chooseWorkspace: async () => directory,
+  });
+  const chat = new SocialChatService({
+    store,
+    provider: {
+      async *streamChat(input) {
+        input.onToolCalls([
+          {
+            id: 'call-work',
+            function: {
+              name: 'start_project_work',
+              arguments: JSON.stringify({ task: '检查项目依赖并报告问题。' }),
+            },
+          },
+        ]);
+        yield* [];
+      },
+    },
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'test-model',
+    getRootState: async () => ({
+      connected: true,
+      selectedModel: 'test-model',
+    }),
+    getProjectWorkReadiness: () => work.getReadiness(),
+    startProjectWork: (input, signal) => work.startTask({ ...input, signal }),
+  });
+  try {
+    const sent = chat.sendMessage({
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      text: '帮我检查这个项目的依赖。',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await chat.active.get('room-engineering-partner')?.done;
+    const [task] = store.listRoomWorkTasks('room-engineering-partner');
+    assert.ok(task);
+    await work.waitForTask(task.id);
+    assert.equal(task.agentId, 'engineering-partner');
+    assert.equal(task.taskPrompt, '检查项目依赖并报告问题。');
+    assert.equal(store.getSocialMessage(task.sourceMessageId).role, 'user');
+    assert.equal(task.caseReuseRequested, false);
+    assert.equal(launches.length, 1);
+    assert.equal(store.getSocialMessage(sent.messageId).status, 'complete');
+  } finally {
+    await chat.shutdown();
+    await work.shutdown();
+    db.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('stopping a conversation while choosing its workspace prevents a late file task from starting', async () => {
+  const { db, store } = makeStore();
+  const controller = new AbortController();
+  let releasePicker;
+  const launches = [];
+  const service = new SocialWorkService({
+    store,
+    adapter: makeAdapter({ onStart: (input) => launches.push(input) }),
+    secretStore: { isConfigured: () => true },
+    chooseWorkspace: () =>
+      new Promise((resolve) => {
+        releasePicker = resolve;
+      }),
+  });
+  try {
+    const pending = service.startTask({
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      prompt: '检查项目依赖。',
+      signal: controller.signal,
+    });
+    controller.abort();
+    releasePicker(tmpdir());
+    await assert.rejects(pending, { name: 'AbortError' });
+    assert.equal(launches.length, 0);
+    assert.equal(store.listRoomWorkTasks('room-engineering-partner').length, 0);
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});
 
 test('social work keeps the stable friend and only includes the issuing room context', async () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'noema-social-work-'));
@@ -225,52 +351,10 @@ test('project tasks include only active coding adjustments and persist the exact
   mkdirSync(workspace);
   const { db, store } = makeStore();
   const seen = [];
-  const adjustments = [
-    {
-      id: 'coding-adjustment',
-      sourceSurface: 'social',
-      sourceRoomId: 'room-noema',
-      sourceTurnId: 'turn-coding',
-      scope: 'coding',
-      situation: '任务阶段性结束但仍可推进',
-      behavior: '继续到验收完成，只有阻塞或用户决策才停。',
-      sourceQuote: '继续到验收完成',
-      status: 'active',
-      userEdited: false,
-      editedAt: null,
-    },
-    {
-      id: 'conversation-adjustment',
-      sourceSurface: 'social',
-      sourceRoomId: 'room-noema',
-      sourceTurnId: 'turn-chat',
-      scope: 'conversation',
-      situation: '用户分享不愉快经历',
-      behavior: '先回应当下，再问细节。',
-      sourceQuote: '先回应当下',
-      status: 'active',
-      userEdited: false,
-      editedAt: null,
-    },
-    {
-      id: 'withdrawn-adjustment',
-      sourceSurface: 'root',
-      sourceRoomId: null,
-      sourceTurnId: 'turn-withdrawn',
-      scope: 'both',
-      situation: '已撤回',
-      behavior: '不得发送。',
-      sourceQuote: '已撤回',
-      status: 'withdrawn',
-      userEdited: false,
-      editedAt: null,
-    },
-  ];
   const service = new SocialWorkService({
     store,
     adapter: makeAdapter({ onStart: (input) => seen.push(input) }),
     secretStore: { isConfigured: () => true },
-    getCodingInteractionAdjustments: () => adjustments,
     chooseWorkspace: async () => workspace,
   });
 
@@ -285,12 +369,9 @@ test('project tasks include only active coding adjustments and persist the exact
     await service.runs.get(accepted.taskId)?.completion;
 
     const task = store.getSocialWorkTask(accepted.taskId);
-    assert.deepEqual(task.interactionAdjustmentIds, ['coding-adjustment']);
-    assert.deepEqual(
-      task.interactionAdjustmentSnapshots.map((item) => item.id),
-      ['coding-adjustment'],
-    );
-    assert.match(seen[0].task, /继续到验收完成/);
+    assert.deepEqual(task.interactionAdjustmentIds, []);
+    assert.deepEqual(task.interactionAdjustmentSnapshots, []);
+    assert.doesNotMatch(seen[0].task, /互动约定/);
     assert.doesNotMatch(seen[0].task, /先回应当下/);
     assert.doesNotMatch(seen[0].task, /不得发送/);
     assert.doesNotMatch(seen[0].task, /引用标记/);

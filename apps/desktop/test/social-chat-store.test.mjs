@@ -101,7 +101,7 @@ test('an explicit team fixture keeps one agent across independent rooms', () => 
       db
         .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
         .get().version,
-      14,
+      15,
     );
   } finally {
     db.close();
@@ -376,6 +376,8 @@ test('social chat schema v1 upgrades additively to project-work state', () => {
     social.appendAssistantDelta(message.assistantMessageId, '已保存。');
     social.completeReply(message.assistantMessageId);
     db.exec(`
+      DROP TABLE social_project_reviews;
+      DELETE FROM social_schema_migrations WHERE version = 15;
       DROP TABLE social_project_sessions;
       DROP TABLE social_projects;
       DELETE FROM social_schema_migrations WHERE version = 12;
@@ -424,7 +426,7 @@ test('social chat schema v1 upgrades additively to project-work state', () => {
       db
         .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
         .get().version,
-      14,
+      15,
     );
     assert.equal(
       db
@@ -467,6 +469,8 @@ test('social schema v7 adds retry snapshots without rewriting the last known att
       DELETE FROM social_schema_migrations WHERE version = 14;
       DELETE FROM social_schema_migrations WHERE version = 13;
       ALTER TABLE social_work_tasks DROP COLUMN execution_engine;
+      DROP TABLE social_project_reviews;
+      DELETE FROM social_schema_migrations WHERE version = 15;
       DROP TABLE social_project_sessions;
       DROP TABLE social_projects;
       DELETE FROM social_schema_migrations WHERE version = 12;

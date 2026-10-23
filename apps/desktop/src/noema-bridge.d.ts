@@ -249,6 +249,11 @@ export interface NoemaSocialProject {
   updatedAt: string;
   archivedAt: string | null;
   lastActivityAt: string;
+  pendingReview: {
+    id: string;
+    requestMessageId: string;
+    roomId: string;
+  } | null;
   members: Array<{
     agentId: string;
     sessionRoomId: string;
@@ -260,6 +265,20 @@ export interface NoemaSocialProject {
     kind: 'noema' | 'specialist';
     agentArchivedAt: string | null;
   }>;
+}
+
+export interface NoemaSocialProjectReview {
+  id: string;
+  projectId: string;
+  projectTitle: string;
+  roomId: string;
+  requestMessageId: string;
+  question: string;
+  status: 'pending' | 'answered';
+  feedback: string | null;
+  feedbackMessageId: string | null;
+  createdAt: string;
+  respondedAt: string | null;
 }
 
 export interface NoemaSocialProjectSession {
@@ -390,6 +409,7 @@ export interface NoemaSocialRoomState {
   >;
   members: NoemaSocialAgent[];
   messages: NoemaSocialMessage[];
+  projectReviews?: NoemaSocialProjectReview[];
   workTasks: NoemaSocialWorkTask[];
 }
 
@@ -643,6 +663,7 @@ export interface NoemaBridge {
     agentId: string;
     text: string;
     replyToMessageId?: string | null;
+    reviewRequestId?: string | null;
   }): Promise<{ turnId: string; messageId: string }>;
   forwardSocialMessages(input: {
     targetRoomId: string;
@@ -653,17 +674,6 @@ export interface NoemaBridge {
   retrySocialReply(messageId: string): Promise<{
     turnId: string;
     messageId: string;
-  }>;
-  startSocialWorkTask(input: {
-    roomId: string;
-    agentId: string;
-    prompt: string;
-    reuseCase: boolean;
-  }): Promise<{
-    accepted: boolean;
-    taskId?: string;
-    roomId?: string;
-    reason?: string;
   }>;
   stopSocialWorkTask(taskId: string): Promise<boolean>;
   setSocialWorkCaseEligible(

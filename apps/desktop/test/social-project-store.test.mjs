@@ -111,6 +111,27 @@ test('project session lookup is tied to one active member and excludes archived 
         roomId: sessionRoomId,
       },
     );
+    assert.deepEqual(
+      stores.socialProjectStore.getProjectSessionContext(
+        project.groupRoomId,
+        member.agentId,
+      ),
+      {
+        projectId: project.id,
+        title: project.title,
+        brief: project.brief,
+        status: 'active',
+        agentId: member.agentId,
+        roomId: sessionRoomId,
+      },
+    );
+    assert.equal(
+      stores.socialProjectStore.getProjectSessionContext(
+        project.groupRoomId,
+        'noema',
+      ),
+      null,
+    );
     assert.throws(
       () =>
         stores.socialProjectStore.getProjectSessionContext(
@@ -308,6 +329,8 @@ test('schema v11 upgrades without deleting existing chats or re-enabling revoked
       DELETE FROM social_schema_migrations WHERE version = 14;
       DELETE FROM social_schema_migrations WHERE version = 13;
       ALTER TABLE social_work_tasks DROP COLUMN execution_engine;
+      DROP TABLE social_project_reviews;
+      DELETE FROM social_schema_migrations WHERE version = 15;
       DROP TABLE social_project_sessions;
       DROP TABLE social_projects;
       DELETE FROM social_schema_migrations WHERE version = 12;
@@ -317,7 +340,7 @@ test('schema v11 upgrades without deleting existing chats or re-enabling revoked
       db
         .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
         .get().version,
-      14,
+      15,
     );
     assert.deepEqual(
       upgradedStore

@@ -8,7 +8,11 @@ const MAX_CONTEXT_HISTORY_CHARACTERS = 12_000;
 const MAX_FORWARDED_MESSAGES = 20;
 const MAX_FORWARDED_CONTENT_LENGTH = 40_000;
 
-function boundContextHistory(entries, threadAnchorMessageId) {
+function boundContextHistory(
+  entries,
+  threadAnchorMessageId,
+  maxCharacters = MAX_CONTEXT_HISTORY_CHARACTERS,
+) {
   const groups = new Map();
   for (const entry of entries) {
     const groupId = entry.contextGroupId ?? entry.id ?? entry.order;
@@ -39,7 +43,7 @@ function boundContextHistory(entries, threadAnchorMessageId) {
   let historyCharacters = 0;
   for (const group of orderedGroups.toReversed()) {
     if (required.has(group.id)) continue;
-    if (historyCharacters + group.characters > MAX_CONTEXT_HISTORY_CHARACTERS) {
+    if (historyCharacters + group.characters > maxCharacters) {
       break;
     }
     selected.add(group.id);
@@ -534,6 +538,29 @@ export class SocialChatStore {
         `);
       })();
     }
+    if (current < 15) {
+      this.db.transaction(() => {
+        this.db.exec(`
+          CREATE TABLE social_project_reviews (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL REFERENCES social_projects(id) ON DELETE CASCADE,
+            room_id TEXT NOT NULL REFERENCES social_rooms(id) ON DELETE RESTRICT,
+            request_message_id TEXT NOT NULL UNIQUE REFERENCES social_messages(id) ON DELETE RESTRICT,
+            question TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'answered')),
+            feedback TEXT,
+            feedback_message_id TEXT REFERENCES social_messages(id) ON DELETE RESTRICT,
+            created_at TEXT NOT NULL,
+            responded_at TEXT,
+            CHECK ((status = 'answered') = (feedback_message_id IS NOT NULL AND feedback IS NOT NULL AND responded_at IS NOT NULL))
+          );
+          CREATE UNIQUE INDEX social_project_reviews_one_pending
+            ON social_project_reviews(project_id) WHERE status = 'pending';
+          CREATE INDEX social_project_reviews_room ON social_project_reviews(room_id, created_at);
+          INSERT INTO social_schema_migrations (version, applied_at) VALUES (15, '${isoNow()}');
+        `);
+      })();
+    }
   }
 
   seedInitialSocialModel() {
@@ -767,6 +794,10 @@ export class SocialChatStore {
       throw new TypeError('请至少选择一位联系人加入群聊。');
     }
     const uniqueAgentIds = [...new Set(agentIds)];
+    const defaultResponderId = uniqueAgentIds.includes('noema')
+      ? 'noema'
+      : uniqueAgentIds[0];
+    const defaultResponder = this.getAgent(defaultResponderId);
     for (const agentId of uniqueAgentIds) {
       if (this.getAgent(agentId).archivedAt) {
         throw new Error('已归档联系人不能加入新群聊。');
@@ -801,7 +832,7 @@ export class SocialChatStore {
           systemMessageId,
           id,
           systemTurnId,
-          `群聊已创建。每条消息都可以选择由谁回应。`,
+          `群聊消息对成员可见；不 @ 成员时由 ${defaultResponder.name} 回应，输入 @成员名 可指定回应者。`,
           now,
           now,
         );
@@ -2704,7 +2735,22 @@ export class SocialChatStore {
     };
   }
 
-  getContext(roomId, { beforeMessageId = null } = {}) {
+  getContext(
+    roomId,
+    {
+      beforeMessageId = null,
+      maxMessages = MAX_CONTEXT_MESSAGES,
+      maxCharacters = MAX_CONTEXT_HISTORY_CHARACTERS,
+    } = {},
+  ) {
+    const messageLimit =
+      Number.isInteger(maxMessages) && maxMessages > 0
+        ? Math.max(2, Math.min(maxMessages, MAX_CONTEXT_MESSAGES))
+        : MAX_CONTEXT_MESSAGES;
+    const characterLimit =
+      Number.isInteger(maxCharacters) && maxCharacters > 0
+        ? Math.min(maxCharacters, MAX_CONTEXT_HISTORY_CHARACTERS)
+        : MAX_CONTEXT_HISTORY_CHARACTERS;
     const rows = this.db
       .prepare(`
         SELECT id, turn_id AS turnId, role, agent_id AS agentId, content, status,
@@ -2717,7 +2763,7 @@ export class SocialChatStore {
           AND (? IS NULL OR seq < (SELECT seq FROM social_messages WHERE id = ?))
         ORDER BY seq DESC LIMIT ?
       `)
-      .all(roomId, beforeMessageId, beforeMessageId, MAX_CONTEXT_MESSAGES)
+      .all(roomId, beforeMessageId, beforeMessageId, messageLimit)
       .reverse();
     const roomLineage = this.db
       .prepare(`
@@ -2739,7 +2785,7 @@ export class SocialChatStore {
         .get(roomId);
       if (openingMessage && !rows.some((row) => row.id === openingMessage.id)) {
         rows.unshift(openingMessage);
-        if (rows.length > MAX_CONTEXT_MESSAGES) rows.splice(1, 1);
+        if (rows.length > messageLimit) rows.splice(1, 1);
       }
       threadAnchorMessageId = openingMessage?.id ?? null;
     }
@@ -2827,6 +2873,7 @@ export class SocialChatStore {
     const budgetedEntries = boundContextHistory(
       orderedEntries,
       threadAnchorMessageId,
+      characterLimit,
     );
     if (threadAnchorMessageId) {
       const anchor = budgetedEntries.find(
@@ -2835,14 +2882,14 @@ export class SocialChatStore {
       if (anchor) {
         const recent = budgetedEntries
           .filter((entry) => entry.id !== threadAnchorMessageId)
-          .slice(-(MAX_CONTEXT_MESSAGES - 1));
+          .slice(-(messageLimit - 1));
         return [anchor, ...recent]
           .sort((left, right) => left.order.localeCompare(right.order))
           .map(({ role, content }) => ({ role, content }));
       }
     }
     return budgetedEntries
-      .slice(-MAX_CONTEXT_MESSAGES)
+      .slice(-messageLimit)
       .map(({ role, content }) => ({ role, content }));
   }
 

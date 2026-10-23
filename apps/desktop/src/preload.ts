@@ -83,6 +83,7 @@ const bridge = {
     agentId: string;
     text: string;
     replyToMessageId?: string | null;
+    reviewRequestId?: string | null;
   }) => ipcRenderer.invoke('noema:social-send', input),
   forwardSocialMessages: (input: {
     targetRoomId: string;
@@ -93,12 +94,6 @@ const bridge = {
     ipcRenderer.invoke('noema:social-stop', messageId),
   retrySocialReply: (messageId: string) =>
     ipcRenderer.invoke('noema:social-retry', messageId),
-  startSocialWorkTask: (input: {
-    roomId: string;
-    agentId: string;
-    prompt: string;
-    reuseCase: boolean;
-  }) => ipcRenderer.invoke('noema:social-work-start', input),
   stopSocialWorkTask: (taskId: string) =>
     ipcRenderer.invoke('noema:social-work-stop', taskId),
   setSocialWorkCaseEligible: (taskId: string, eligible: boolean) =>
