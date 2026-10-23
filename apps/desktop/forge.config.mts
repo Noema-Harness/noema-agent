@@ -1,5 +1,6 @@
 import type { ForgeConfig } from '@electron-forge/shared-types';
 import fs from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { MakerSquirrel } from '@electron-forge/maker-squirrel';
@@ -11,10 +12,13 @@ import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
 
 const appRoot = path.dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
+const electronChecksums = require('electron/checksums.json');
 
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
+    download: { checksums: electronChecksums },
     afterCopy: [
       async ({ buildPath }) => {
         const sourceCandidates = [

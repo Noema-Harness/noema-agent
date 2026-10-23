@@ -423,17 +423,19 @@ test('Noema can start existing project work from an explicit request while other
   }
 });
 
-test('Noema delegates a bounded task to one active specialist and shows the real result in the source message', async () => {
+test('Noema receives a bounded specialist report and writes its own final reply', async () => {
   const db = new Database(':memory:');
   new RootStore(db);
   const store = createSocialTestStore(db);
   const requests = [];
   const provider = {
     async *streamChat(input) {
-      requests.push(input);
+      requests.push({ ...input, messages: [...input.messages] });
       if (requests.length === 1) {
         input.onToolCalls([
           {
+            id: 'call-specialist-1',
+            type: 'function',
             function: {
               name: 'delegate_to_specialist',
               arguments: JSON.stringify({
@@ -443,9 +445,11 @@ test('Noema delegates a bounded task to one active specialist and shows the real
             },
           },
         ]);
-        return;
+      } else if (requests.length === 2) {
+        yield '方案 A 更易维护，因为变更边界更小。';
+      } else {
+        yield '我参考了工程搭档的报告，建议采用方案 A。';
       }
-      yield '方案 A 更易维护，因为变更边界更小。';
     },
   };
   const service = new SocialChatService({
@@ -468,7 +472,7 @@ test('Noema delegates a bounded task to one active specialist and shows the real
     await new Promise((resolve) => setImmediate(resolve));
     await service.active.get('room-noema')?.done;
 
-    assert.equal(requests.length, 2);
+    assert.equal(requests.length, 3);
     const specialistTool = requests[0].tools?.find(
       (tool) => tool.function.name === 'delegate_to_specialist',
     );
@@ -492,12 +496,23 @@ test('Noema delegates a bounded task to one active specialist and shows the real
       requests[1].messages.at(-1).content,
       '比较这两个方案的维护成本。',
     );
+    const returnedReport = requests[2].messages.find(
+      (message) => message.role === 'tool',
+    );
+    assert.equal(returnedReport?.tool_call_id, 'call-specialist-1');
+    assert.match(returnedReport?.content ?? '', /方案 A 更易维护/u);
+    assert.ok(
+      requests[2].messages.some((message) =>
+        message.content?.includes('主聊天机密'),
+      ),
+      'the internal report returns to Noema with its original room context',
+    );
     const reply = store
       .getRoomSnapshot('room-noema')
       .messages.find((message) => message.id === sent.messageId);
-    assert.match(reply?.content ?? '', /工程搭档的协助/u);
-    assert.match(reply?.content ?? '', /比较这两个方案的维护成本/u);
-    assert.match(reply?.content ?? '', /方案 A 更易维护/u);
+    assert.match(reply?.content ?? '', /我参考了工程搭档的报告/u);
+    assert.match(reply?.content ?? '', /建议采用方案 A/u);
+    assert.equal(reply?.content.includes('主聊天机密'), false);
     assert.equal(reply?.status, 'complete');
   } finally {
     await service.shutdown();
