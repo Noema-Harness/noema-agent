@@ -30,9 +30,9 @@ Noema 持有 agent 的稳定 identity、专业范围、用户关系偏好和当�
 
 Noema 私聊是默认入口。普通交流、探索、写作和一般计划留在聊天；只有实际存在且适配的能力才形成独立执行状态。模型不能直接操作文件，文件工作必须经过本机服务的权限检查和用户工作区选择。`social_work_tasks` 是当前项目执行状态的唯一来源，记录来源 room、真实执行者、原始范围、workspace、runtime/session、结果和独立核验；它不复用 legacy root 的 `background_tasks`，也不把 DSH session 当作好友身份。任务卡贴近来源请求呈现执行者、范围、状态、失败/停止和核验；普通讨论不会制造任务状态。交互基线见 [ADR 0026](decisions/0026-noema-first-chat-and-visible-actions.md)。
 
-首轮使用已有 DSH Headless adapter：新任务使用干净 session，只有受限限流续接才复用该任务的 session；不同任务和 room 不共用 DSH transcript。当前服务仅对明确传入的文件条件调用 `workspace-verifier`，不把 DSH final 当作核验通过。应用关闭会停止受管进程，仍在执行的任务在下次启动时记为中断，不自动重跑。
+当前项目工作由 Noema 自有 `NoemaProjectExecutor` 运行有界的模型/工具循环；新任务固定创建时选中的模型路由与工作区，检查点恢复复用原任务和已记账工具结果。DSH adapter 仅保留在 legacy worker 路径，不是当前项目执行依赖。服务仅对明确传入的文件条件调用 `workspace-verifier`，不把模型 final 当作核验通过。应用关闭会停止受管进程，仍在执行的任务在下次启动时记为中断，不自动重跑。详见 [ADR 0032](decisions/0032-durable-project-execution-checkpoints.md)。
 
-运行时关闭 web、subagent 与 background jobs；前台 PowerShell 使用 DSH 自带 workspace-write sandbox，以支持工程项目检查。该沙箱的边界主要是文件写入，不能限制网络或进程可见性，并不完整隔离 Windows 上的读取。选择目录前必须显示这一事实、第三方模型数据流与停止不回滚提醒；首条真实 E2E 仅操作 scratch workspace。不得将当前实现宣传成安全沙箱或作为访问含密钥/私人文件目录的理由。持久取舍见 [ADR 0016](decisions/0016-room-scoped-project-work.md)。
+当前 `list_files`、`read_file`、`edit_file`、`write_file` 由 Noema 服务检查真实路径并限制在所选工作区；`run_command` 则以当前 Windows 桌面用户身份启动任意前台命令，限制工作目录、环境变量、时长和输出，但没有操作系统级文件/网络沙箱。命令因此仍能访问工作区之外的数据和网络；选择工作区不是 OS 隔离边界。选择目录前明确披露该限制、第三方模型数据流和停止不回滚提醒；不得将当前实现宣传成安全沙箱或作为访问含密钥/私人文件目录的理由。权限加固方案仍在评估中。项目执行的历史边界与迁移见 [ADR 0016](decisions/0016-room-scoped-project-work.md)。
 
 ### Experience 与 Practice
 
