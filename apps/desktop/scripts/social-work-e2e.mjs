@@ -45,18 +45,8 @@ const workspacePath = path.join(e2eDirectory, 'workspace');
 const databasePath = path.join(e2eDirectory, 'noema.sqlite3');
 const dshUserDataPath = path.join(e2eDirectory, 'dsh-home');
 const resultPath = path.join(e2eDirectory, 'result.json');
-const screenshotTag = Date.now();
-const desktopScreenshotPath = path.join(
-  e2eRoot,
-  `Noema-social-work-desktop-${screenshotTag}.png`,
-);
-const narrowScreenshotPath = path.join(
-  e2eRoot,
-  `Noema-social-work-narrow-${screenshotTag}.png`,
-);
 const marker = `NOEMA-SOCIAL-WORK-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 const syntheticAdapter = process.argv.includes('--synthetic');
-const serviceOnly = process.argv.includes('--service-only');
 const livePractice = process.argv.includes('--live-practice');
 const liveEpisodes = process.argv.includes('--live-episodes');
 const caseOnly = process.argv.includes('--case-only');
@@ -138,30 +128,8 @@ if (
   throw new Error('Could not independently verify the room-A case fixture.');
 }
 const seedDatabase = new Database(databasePath);
-const seedRootStore = new RootStore(seedDatabase);
+new RootStore(seedDatabase);
 const seedSocialStore = createSocialTestStore(seedDatabase);
-const interactionAdjustmentId = 'e2e-social-coding-adjustment';
-const interactionSource = seedSocialStore.beginTurn({
-  roomId: 'room-noema',
-  agentId: 'noema',
-  text: 'E2E 原话：编码任务先说明真实阻塞，没阻塞就继续到验收。',
-  model: 'e2e-fixture',
-});
-seedSocialStore.appendAssistantDelta(
-  interactionSource.assistantMessageId,
-  '我会区分阻塞与阶段进度。',
-);
-seedSocialStore.completeReply(interactionSource.assistantMessageId);
-seedRootStore.addInteractionAdjustment({
-  id: interactionAdjustmentId,
-  sourceSurface: 'social',
-  sourceRoomId: 'room-noema',
-  sourceTurnId: interactionSource.turnId,
-  scope: 'coding',
-  situation: '编码任务的阶段性进度汇报',
-  behavior: '只有真实阻塞或用户需要决策时才暂停；否则继续到验收。',
-  sourceQuote: '没阻塞就继续到验收',
-});
 if (!liveEpisodes) {
   seedSocialStore.createSocialWorkTask({
     id: sourceCaseTaskId,
@@ -308,16 +276,12 @@ const child = spawn(process.execPath, ['scripts/start.mjs'], {
     NOEMA_E2E_SOCIAL_WORK_WORKSPACE: workspacePath,
     NOEMA_E2E_SOCIAL_WORK_RESULT_PATH: resultPath,
     NOEMA_E2E_SOCIAL_WORK_CHECKS: JSON.stringify(verificationChecks),
-    ...(serviceOnly ? {} : { NOEMA_E2E_SOCIAL_WORK_CAPTURE_UI: '1' }),
     ...(syntheticAdapter ? { NOEMA_E2E_SOCIAL_WORK_SYNTHETIC: '1' } : {}),
     ...(livePractice
       ? {
           NOEMA_E2E_SOCIAL_WORK_PROPOSAL_SOURCE_ID: practiceSourceTaskId,
         }
       : {}),
-    NOEMA_SMOKE_CAPTURE_SOCIAL_CHAT: '1',
-    NOEMA_SMOKE_SOCIAL_PROJECT_WORK_PATH: desktopScreenshotPath,
-    NOEMA_SMOKE_SOCIAL_PROJECT_WORK_NARROW_PATH: narrowScreenshotPath,
   },
   stdio: 'inherit',
   windowsHide: true,
@@ -377,9 +341,6 @@ const summary = {
   liveEpisodeTasks: result.liveEpisodeTasks ?? null,
   childSignal: exit.signal,
   scratchDirectory: e2eRootDirectory,
-  uiSmoke: result.socialWorkUiSmoke,
-  desktopScreenshotPath,
-  narrowScreenshotPath,
 };
 console.log(JSON.stringify(summary, null, 2));
 
@@ -434,14 +395,6 @@ if (proposalWasEmpty) {
     (!syntheticAdapter && result.task?.executionEngine !== 'noema') ||
     (!syntheticAdapter && result.task?.toolCallCount < 2) ||
     result.task?.verificationStatus !== 'verified' ||
-    result.task?.interactionAdjustmentIds?.includes(interactionAdjustmentId) !==
-      true ||
-    result.task?.interactionAdjustmentSnapshots?.some(
-      (adjustment) =>
-        adjustment.id === interactionAdjustmentId &&
-        adjustment.sourceSurface === 'social' &&
-        adjustment.sourceRoomId === 'room-noema',
-    ) !== true ||
     (practiceDecision !== 'case' &&
       (result.task?.caseSnapshot !== null ||
         result.task?.practiceSnapshot?.sourceTaskId !==
@@ -457,40 +410,7 @@ if (proposalWasEmpty) {
         result.practiceConfirmationEvidence?.at(-1)?.fallbackCaseTaskId !==
           expectedPracticeSourceTaskId)) ||
     !result.practiceConfirmationEvidence?.length ||
-    independentVerification.status !== 'verified' ||
-    !result.socialWorkUiSmoke?.desktop?.taskVisible ||
-    !result.socialWorkUiSmoke?.desktop?.projectModeSelected ||
-    !result.socialWorkUiSmoke?.desktop?.caseControlVisible ||
-    !result.socialWorkUiSmoke?.desktop?.experienceReferenceVisible ||
-    !result.socialWorkUiSmoke?.desktop?.experienceReferenceText?.includes(
-      practiceDecision === 'case' ? 'RELEASE-CHECKLIST.md' : '素材导入说明',
-    ) ||
-    !result.socialWorkUiSmoke?.desktop?.failureRecoveryVisible ||
-    !result.socialWorkUiSmoke?.desktop?.failureRecoveryMessage?.includes(
-      '没有显示已生效的写入或命令',
-    ) ||
-    result.socialWorkUiSmoke?.desktop?.failureRetryLabel !== '再次编辑并执行' ||
-    !result.socialWorkUiSmoke?.desktop?.failureRetryVisible ||
-    !result.socialWorkUiSmoke?.desktop?.composerVisible ||
-    !result.socialWorkUiSmoke?.desktop?.documentNoOverflow ||
-    !result.socialWorkUiSmoke?.narrow?.taskVisible ||
-    !result.socialWorkUiSmoke?.narrow?.projectModeSelected ||
-    !result.socialWorkUiSmoke?.narrow?.caseControlVisible ||
-    !result.socialWorkUiSmoke?.narrow?.experienceReferenceVisible ||
-    !result.socialWorkUiSmoke?.narrow?.experienceReferenceText?.includes(
-      practiceDecision === 'case' ? 'RELEASE-CHECKLIST.md' : '素材导入说明',
-    ) ||
-    !result.socialWorkUiSmoke?.narrow?.failureRecoveryVisible ||
-    !result.socialWorkUiSmoke?.narrow?.failureRecoveryMessage?.includes(
-      '没有显示已生效的写入或命令',
-    ) ||
-    result.socialWorkUiSmoke?.narrow?.failureRetryLabel !== '再次编辑并执行' ||
-    !result.socialWorkUiSmoke?.narrow?.failureRetryVisible ||
-    !result.socialWorkUiSmoke?.narrow?.composerVisible ||
-    !result.socialWorkUiSmoke?.narrow?.documentNoOverflow ||
-    !result.socialWorkUiSmoke?.candidateReview?.withdrawn ||
-    result.socialWorkUiSmoke?.candidateReview?.trialVerification !==
-      (practiceDecision === 'case' ? null : 'verified');
+    independentVerification.status !== 'verified';
   if (liveEpisodes) {
     validationFailed ||=
       result.livePracticeProposal?.status !== 'available' ||

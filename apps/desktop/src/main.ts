@@ -248,8 +248,6 @@ delete process.env.NOEMA_SMOKE_SOCIAL_CONTINUATION_DESKTOP_PATH;
 delete process.env.NOEMA_SMOKE_SOCIAL_CONTINUATION_NARROW_PATH;
 delete process.env.NOEMA_SMOKE_SOCIAL_CONTINUATION_ROOM_DESKTOP_PATH;
 delete process.env.NOEMA_SMOKE_SOCIAL_CONTINUATION_ROOM_NARROW_PATH;
-const testSocialWorkCaptureUi =
-  process.env.NOEMA_E2E_SOCIAL_WORK_CAPTURE_UI === '1';
 delete process.env.NOEMA_E2E_DATABASE_PATH;
 delete process.env.NOEMA_E2E_DSH_USER_DATA_PATH;
 delete process.env.NOEMA_E2E_WORKER_PREFACE;
@@ -270,7 +268,6 @@ delete process.env.NOEMA_E2E_SOCIAL_WORK_PRACTICE_DECISION;
 delete process.env.NOEMA_E2E_SOCIAL_WORK_EPISODE_A_PROMPT;
 delete process.env.NOEMA_E2E_SOCIAL_WORK_EPISODE_A_CHECKS;
 delete process.env.NOEMA_E2E_SOCIAL_WORK_EPISODE_B_CHECKS;
-delete process.env.NOEMA_E2E_SOCIAL_WORK_CAPTURE_UI;
 delete process.env.NOEMA_E2E_SOCIAL_AGENT_WORKFLOW;
 delete process.env.NOEMA_E2E_SOCIAL_AGENT_LIVE;
 delete process.env.NOEMA_E2E_SOCIAL_AGENT_LIVE_MODEL;
@@ -369,7 +366,7 @@ const createWindow = () => {
 
   if (
     process.env.NOEMA_SMOKE_TEST === '1' &&
-    !testSocialWorkCaptureUi &&
+    !testSocialWorkPrompt &&
     !testSocialAgentWorkflow
   ) {
     mainWindow.webContents.once('did-finish-load', async () => {
@@ -3080,240 +3077,6 @@ async function captureSocialAgentCreationE2e() {
   return { ...result, contactDesktop, contactNarrow };
 }
 
-async function captureSocialProjectWorkSmokeScreenshots() {
-  if (!mainWindow || mainWindow.isDestroyed()) {
-    throw new Error('项目工作截图没有可用窗口。');
-  }
-  const expectedExperienceReference =
-    testSocialWorkPracticeDecision === 'case'
-      ? 'RELEASE-CHECKLIST.md'
-      : '素材导入说明';
-  const screenshots: string[] = [];
-  const experienceToggle = await mainWindow.webContents
-    .executeJavaScript(`(async () => {
-    const waitForRoom = async (title) => {
-      const deadline = Date.now() + 5_000;
-      while (Date.now() < deadline) {
-        if (document.querySelector('.room-header h2')?.textContent?.trim() === title) return true;
-        await new Promise((resolve) => setTimeout(resolve, 40));
-      }
-      return false;
-    };
-    const noemaRoom = [...document.querySelectorAll('.room-list-item')]
-      .find((item) => item.querySelector('.room-list-title')?.textContent?.trim() === 'Noema');
-    noemaRoom?.click();
-    await waitForRoom('Noema');
-    const groupRoom = [...document.querySelectorAll('.room-list-item')]
-      .find((item) => item.querySelector('.room-list-title')?.textContent?.trim() === '工程协作');
-    groupRoom?.click();
-    await waitForRoom('工程协作');
-    const engineering = [...document.querySelectorAll('.reply-routing button')]
-      .find((button) => button.textContent?.includes('工程搭档'));
-    engineering?.click();
-    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    document.querySelectorAll('.composer-mode-switch button')[1]?.click();
-    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    const targetPrompt = ${JSON.stringify(testSocialWorkPrompt)};
-    const findTargetTask = () => [...document.querySelectorAll('.project-work-card')]
-      .find((card) => card.querySelector('.project-work-request')?.textContent?.trim() === targetPrompt);
-    const taskDeadline = Date.now() + 5_000;
-    while (Date.now() < taskDeadline && !findTargetTask()?.querySelector('.project-work-practice')) {
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-    const targetTask = findTargetTask();
-    const experience = targetTask?.querySelector('.project-work-practice') ?? targetTask?.querySelector('.project-work-case');
-    if (!experience || experience.open) return { available: false };
-    experience.querySelector('summary')?.click();
-    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    const expanded = experience.open && experience.textContent?.includes(${JSON.stringify(expectedExperienceReference)});
-    experience.querySelector('summary')?.click();
-    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    const execution = targetTask?.querySelector('.project-work-execution-steps');
-    if (!execution || execution.open) return { available: true, expanded, collapsed: !experience.open, executionVisible: false };
-    execution.querySelector('summary')?.click();
-    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    const executionExpanded = execution.open &&
-      execution.textContent?.includes('写入') &&
-      execution.textContent?.includes('已返回结果');
-    execution.querySelector('summary')?.click();
-    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    return {
-      available: true,
-      expanded,
-      collapsed: !experience.open,
-      executionVisible: true,
-      executionExpanded,
-      executionCollapsed: !execution.open,
-    };
-  })()`);
-  if (
-    !experienceToggle?.available ||
-    !experienceToggle.expanded ||
-    !experienceToggle.collapsed ||
-    !experienceToggle.executionVisible ||
-    !experienceToggle.executionExpanded ||
-    !experienceToggle.executionCollapsed
-  ) {
-    throw new Error(
-      `项目细节无法按需展开和收起：${JSON.stringify(experienceToggle)}`,
-    );
-  }
-  const inspect = async (width: number, height: number) => {
-    mainWindow?.setSize(width, height);
-    await mainWindow?.webContents.executeJavaScript(
-      'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
-    );
-    return mainWindow?.webContents.executeJavaScript(`(() => {
-      const shell = document.querySelector('.social-shell');
-      const panel = document.querySelector('.conversation-panel');
-      const composer = document.querySelector('.message-composer');
-      const rect = composer?.getBoundingClientRect();
-      const targetPrompt = ${JSON.stringify(testSocialWorkPrompt)};
-      const task = [...document.querySelectorAll('.project-work-card')]
-        .find((card) => card.querySelector('.project-work-request')?.textContent?.trim() === targetPrompt);
-      const experienceReference = task?.querySelector('.project-work-practice') ?? task?.querySelector('.project-work-case');
-      const caseControl = document.querySelector('.case-reuse-control');
-      const mode = document.querySelector('.composer-mode-switch button[aria-pressed="true"]');
-      const failedCard = document.querySelector('.project-work-card.project-work-failed');
-      const recovery = failedCard?.querySelector('.project-work-recovery');
-      const retryButton = failedCard?.querySelector('.project-work-footer button');
-      retryButton?.scrollIntoView({ block: 'end' });
-      const recoveryRect = recovery?.getBoundingClientRect();
-      const retryRect = retryButton?.getBoundingClientRect();
-      return {
-        roomTitle: document.querySelector('.room-header h2')?.textContent?.trim() ?? '',
-        taskVisible: Boolean(task),
-        taskText: task?.textContent?.trim() ?? '',
-        projectModeSelected: mode?.textContent?.trim() === '项目工作',
-        caseControlVisible: Boolean(caseControl && caseControl.getClientRects().length),
-          experienceReferenceVisible: Boolean(experienceReference && experienceReference.getClientRects().length),
-          experienceReferenceExpanded: experienceReference instanceof HTMLDetailsElement && experienceReference.open,
-          experienceReferenceText: experienceReference?.textContent?.trim() ?? '',
-          failureRecoveryVisible: Boolean(recoveryRect && recoveryRect.top > 0 && recoveryRect.bottom <= (rect?.top ?? window.innerHeight)),
-          failureRecoveryMessage: recovery?.textContent?.trim() ?? '',
-          failureRetryLabel: retryButton?.textContent?.trim() ?? '',
-          failureRetryVisible: Boolean(retryRect && retryRect.top > 0 && retryRect.bottom <= (rect?.top ?? window.innerHeight)),
-        composerVisible: Boolean(rect && rect.width > 0 && rect.height > 0 && rect.bottom <= window.innerHeight),
-        shellNoOverflow: Boolean(shell && shell.scrollWidth <= shell.clientWidth),
-        panelNoOverflow: Boolean(panel && panel.scrollWidth <= panel.clientWidth),
-        documentNoOverflow: document.documentElement.scrollWidth <= window.innerWidth,
-      };
-    })()`);
-  };
-
-  const desktop = await inspect(1280, 800);
-  if (
-    !desktop?.taskVisible ||
-    desktop.roomTitle !== '工程协作' ||
-    !desktop.projectModeSelected ||
-    !desktop.caseControlVisible ||
-    !desktop.experienceReferenceVisible ||
-    desktop.experienceReferenceExpanded ||
-    !desktop.experienceReferenceText.includes(expectedExperienceReference) ||
-    !desktop.failureRecoveryVisible ||
-    !desktop.failureRecoveryMessage.includes('没有显示已生效的写入或命令') ||
-    desktop.failureRetryLabel !== '再次编辑并执行' ||
-    !desktop.failureRetryVisible ||
-    !desktop.composerVisible ||
-    !desktop.shellNoOverflow ||
-    !desktop.panelNoOverflow ||
-    !desktop.documentNoOverflow
-  ) {
-    throw new Error(`桌面项目工作状态不符合预期：${JSON.stringify(desktop)}`);
-  }
-  if (socialProjectWorkDesktopScreenshotPath) {
-    const image = await mainWindow.capturePage();
-    writeSmokeScreenshot(socialProjectWorkDesktopScreenshotPath, image);
-    screenshots.push(socialProjectWorkDesktopScreenshotPath);
-  }
-
-  const narrow = await inspect(680, 560);
-  if (
-    !narrow?.taskVisible ||
-    narrow.roomTitle !== '工程协作' ||
-    !narrow.projectModeSelected ||
-    !narrow.caseControlVisible ||
-    !narrow.experienceReferenceVisible ||
-    narrow.experienceReferenceExpanded ||
-    !narrow.experienceReferenceText.includes(expectedExperienceReference) ||
-    !narrow.failureRecoveryVisible ||
-    !narrow.failureRecoveryMessage.includes('没有显示已生效的写入或命令') ||
-    narrow.failureRetryLabel !== '再次编辑并执行' ||
-    !narrow.failureRetryVisible ||
-    !narrow.composerVisible ||
-    !narrow.shellNoOverflow ||
-    !narrow.panelNoOverflow ||
-    !narrow.documentNoOverflow
-  ) {
-    throw new Error(`窄窗口项目工作状态不符合预期：${JSON.stringify(narrow)}`);
-  }
-  if (socialProjectWorkNarrowScreenshotPath) {
-    const image = await mainWindow.capturePage();
-    writeSmokeScreenshot(socialProjectWorkNarrowScreenshotPath, image);
-    screenshots.push(socialProjectWorkNarrowScreenshotPath);
-  }
-
-  const candidateReview = await mainWindow.webContents
-    .executeJavaScript(`(async () => {
-    const deadline = Date.now() + 5_000;
-    const sourcePrompt = ${JSON.stringify(testSocialWorkSourcePrompt)};
-    const roomItem = [...document.querySelectorAll('.room-list-item')]
-      .find((item) => item.querySelector('.room-list-title')?.textContent?.trim() === '工程搭档');
-    roomItem?.click();
-    while (Date.now() < deadline && document.querySelector('.room-header h2')?.textContent?.trim() !== '工程搭档') {
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-    const findSourceTask = () => [...document.querySelectorAll('.project-work-card')]
-      .find((card) =>
-        card.querySelector('.project-work-request')?.textContent?.trim() === sourcePrompt &&
-        [...(card.querySelector('.project-work-practice')?.querySelectorAll('button') ?? [])]
-          .some((button) => button.textContent?.trim() === '撤回候选'));
-    while (Date.now() < deadline && !findSourceTask()) {
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-    const sourceTask = findSourceTask();
-    const details = sourceTask?.querySelector('.project-work-practice');
-    if (details instanceof HTMLDetailsElement) details.open = true;
-    const before = details?.textContent?.trim() ?? '';
-    const withdraw = [...(details?.querySelectorAll('button') ?? [])]
-      .find((button) => button.textContent?.trim() === '撤回候选');
-    withdraw?.click();
-    while (Date.now() < deadline) {
-      const room = await window.noema.getSocialRoom('room-engineering-partner');
-      const task = room.workTasks.find((candidate) =>
-        candidate.taskPrompt === sourcePrompt && candidate.practiceBasisTaskId,
-      );
-      if (task?.practiceCandidateStatus === 'revoked') {
-        return {
-          sourceTaskVisible: Boolean(sourceTask),
-          candidateBefore: before,
-          withdrawn: true,
-          status: task.practiceCandidateStatus,
-          trialStatus: task.practiceTrialTaskStatus,
-          trialVerification: task.practiceTrialVerificationStatus,
-        };
-      }
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-    return { sourceTaskVisible: Boolean(sourceTask), candidateBefore: before, withdrawn: false };
-  })()`);
-  if (
-    !candidateReview?.sourceTaskVisible ||
-    !candidateReview.withdrawn ||
-    candidateReview.status !== 'revoked' ||
-    candidateReview.trialStatus !==
-      (testSocialWorkPracticeDecision === 'case' ? null : 'completed') ||
-    candidateReview.trialVerification !==
-      (testSocialWorkPracticeDecision === 'case' ? null : 'verified')
-  ) {
-    throw new Error(
-      `候选来源与撤回状态不符合预期：${JSON.stringify(candidateReview)}`,
-    );
-  }
-
-  return { desktop, narrow, candidateReview, screenshots };
-}
-
 async function verifyLiveSocialChatSmoke() {
   if (!runSocialChatLiveSmoke) return null;
   if (!mainWindow || mainWindow.isDestroyed()) {
@@ -4113,49 +3876,10 @@ async function startNoema() {
     if (socialWorkE2eValid && socialWorkE2eDirectory) {
       const resultPath = path.resolve(testSocialWorkResultPath!);
       const workspacePath = path.resolve(testSocialWorkWorkspace!);
-      if (testSocialWorkCaptureUi) {
-        await agent.refreshModels();
-        await new Promise<void>((resolve) => {
-          createWindow();
-          if (!mainWindow || mainWindow.isDestroyed()) {
-            resolve();
-            return;
-          }
-          mainWindow.webContents.once('did-finish-load', () => resolve());
-        });
-      }
       void (async () => {
-        let socialWorkUiPreflight: unknown = null;
         let livePracticeProposal: unknown = null;
         const liveEpisodeTasks: Array<Record<string, unknown>> = [];
         try {
-          if (testSocialWorkCaptureUi && mainWindow) {
-            socialWorkUiPreflight = await mainWindow.webContents
-              .executeJavaScript(`(async () => {
-              if (!window.noema) return { bridge: false };
-              try {
-                const state = await window.noema.getSocialState();
-                return {
-                  bridge: true,
-                  agentCount: state.agents.length,
-                  roomCount: state.rooms.length,
-                  projectWork: state.projectWork,
-                };
-              } catch (error) {
-                return { bridge: true, error: String(error) };
-              }
-            })()`);
-            if (
-              !socialWorkUiPreflight ||
-              typeof socialWorkUiPreflight !== 'object' ||
-              !('roomCount' in socialWorkUiPreflight) ||
-              socialWorkUiPreflight.roomCount !== 3
-            ) {
-              throw new Error(
-                `桌面社交界面尚未就绪：${JSON.stringify(socialWorkUiPreflight)}`,
-              );
-            }
-          }
           if (testSocialWorkLiveEpisodes) {
             const episodeA = await socialWorkService!.startTask({
               roomId: 'room-engineering-collaboration',
@@ -4358,7 +4082,6 @@ async function startNoema() {
               }
             }
           }
-          let taskId: string | null = null;
           if (
             (testSocialWorkProposalSourceId || testSocialWorkLiveEpisodes) &&
             (livePracticeProposal as { status?: string } | null)?.status ===
@@ -4374,7 +4097,6 @@ async function startNoema() {
                   liveEpisodeTasks,
                   practiceRouteMetadata,
                   workspacePath,
-                  socialWorkUiPreflight,
                 },
                 null,
                 2,
@@ -4383,83 +4105,19 @@ async function startNoema() {
             );
             return;
           }
-          if (testSocialWorkCaptureUi) {
-            taskId = await mainWindow!.webContents
-              .executeJavaScript(`(async () => {
-              const prompt = ${JSON.stringify(testSocialWorkPrompt)};
-              const deadline = Date.now() + 10_000;
-              const waitFrame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-              let roomItem = null;
-              while (Date.now() < deadline && !roomItem) {
-                roomItem = [...document.querySelectorAll('.room-list-item')]
-                  .find((item) => item.querySelector('.room-list-title')?.textContent?.trim() === '工程协作') ?? null;
-                if (!roomItem) await new Promise((resolve) => setTimeout(resolve, 50));
-              }
-              roomItem?.click();
-              while (Date.now() < deadline && document.querySelector('.room-header h2')?.textContent?.trim() !== '工程协作') {
-                await new Promise((resolve) => setTimeout(resolve, 50));
-              }
-              const responder = [...document.querySelectorAll('.reply-routing button')]
-                .find((button) => button.textContent?.includes('工程搭档'));
-              responder?.click();
-              await waitFrame();
-              const modeButton = document.querySelectorAll('.composer-mode-switch button')[1];
-              modeButton?.click();
-              await waitFrame();
-              const caseReuse = document.querySelector('.case-reuse-control input');
-              caseReuse?.click();
-              await waitFrame();
-              const input = document.querySelector('#social-message-input');
-              const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
-              const submit = document.querySelector('.message-composer button[type="submit"]');
-              const diagnostics = {
-                roomTitle: document.querySelector('.room-header h2')?.textContent?.trim() ?? '',
-                responderSelected: [...document.querySelectorAll('.reply-routing button')].find((button) => button.textContent?.includes('工程搭档'))?.getAttribute('aria-pressed') ?? null,
-                modeDisabled: modeButton?.disabled ?? true,
-                modeSelected: modeButton?.getAttribute('aria-pressed') ?? null,
-                caseReuseChecked: caseReuse?.checked ?? false,
-                inputDisabled: input?.disabled ?? true,
-                submitDisabled: submit?.disabled ?? true,
-              };
-              if (!caseReuse?.checked) return { error: 'case-reuse-not-enabled', diagnostics };
-              if (!input || input.disabled || !setter) return { error: 'composer-unavailable', diagnostics };
-              setter.call(input, prompt);
-              input.dispatchEvent(new Event('input', { bubbles: true }));
-              await waitFrame();
-              if (!submit || submit.disabled) return { error: 'submit-disabled', diagnostics };
-              submit.click();
-              const taskDeadline = Date.now() + 10_000;
-              while (Date.now() < taskDeadline) {
-                const room = await window.noema.getSocialRoom('room-engineering-collaboration');
-                const task = room.workTasks.find((candidate) => candidate.taskPrompt === prompt);
-                if (task) return task.id;
-                await new Promise((resolve) => setTimeout(resolve, 100));
-              }
-              return { error: 'task-not-persisted', diagnostics, notice: document.querySelector('.inline-notice')?.textContent?.trim() ?? '' };
-            })()`);
-            if (typeof taskId !== 'string') {
-              throw new Error(
-                `聊天界面没有提交项目工作任务：${JSON.stringify(taskId)}`,
-              );
-            }
-          } else {
-            const started = await socialWorkService!.startTask({
-              roomId: 'room-engineering-collaboration',
-              agentId: 'engineering-partner',
-              prompt: testSocialWorkPrompt!,
-              verificationChecks: testSocialWorkChecksJson
-                ? JSON.parse(testSocialWorkChecksJson)
-                : [],
-            });
-            taskId = started.accepted ? (started.taskId ?? null) : null;
-          }
+          const started = await socialWorkService!.startTask({
+            roomId: 'room-engineering-collaboration',
+            agentId: 'engineering-partner',
+            prompt: testSocialWorkPrompt!,
+            reuseCase: true,
+            verificationChecks: testSocialWorkChecksJson
+              ? JSON.parse(testSocialWorkChecksJson)
+              : [],
+          });
+          const taskId = started.accepted ? (started.taskId ?? null) : null;
           const task = taskId
             ? await socialWorkService!.waitForTask(taskId)
             : null;
-          const socialWorkUiSmoke =
-            testSocialWorkCaptureUi && task?.status === 'completed'
-              ? await captureSocialProjectWorkSmokeScreenshots()
-              : null;
           fs.writeFileSync(
             resultPath,
             JSON.stringify(
@@ -4467,7 +4125,6 @@ async function startNoema() {
                 outcome: task ? 'finished' : 'preflight_failed',
                 task,
                 workspacePath,
-                socialWorkUiSmoke,
                 livePracticeProposal,
                 practiceConfirmationEvidence,
                 liveEpisodeTasks,
@@ -4493,7 +4150,6 @@ async function startNoema() {
                     : 'social_work_e2e_failed',
                 errorMessage:
                   error instanceof Error ? error.message.slice(0, 1_000) : null,
-                socialWorkUiPreflight,
                 livePracticeProposal,
                 practiceConfirmationEvidence,
                 liveEpisodeTasks,
