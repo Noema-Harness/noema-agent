@@ -672,6 +672,34 @@ export class NoemaProjectExecutor {
                       : 'read',
               hasSideEffect: sideEffect,
             });
+            if (toolOutputCharacters >= MAX_TOOL_CONTEXT_CHARS) {
+              const toolContent = JSON.stringify({
+                error:
+                  '项目工具输出预算已耗尽；本次工具调用未执行，工作区状态未因此改变。',
+              });
+              messages.push({
+                role: 'tool',
+                tool_call_id: call.id,
+                content: toolContent,
+              });
+              onEvent({
+                type: 'tool-result',
+                stepId,
+                status: 'error',
+                effectStatus: sideEffect ? 'not_applied' : 'none',
+                resultContent: toolContent,
+              });
+              checkpointAfterTool();
+              return {
+                status: 'failed',
+                errorCode: 'tool_output_budget',
+                errorMessage:
+                  '项目工具输出预算已耗尽；最后一次工具调用没有执行。请拆分任务或缩小读取范围后重试。',
+                sessionId,
+                result: finalText,
+                toolCallCount: callCount,
+              };
+            }
             let result;
             try {
               if (parsed.name === 'run_command') {

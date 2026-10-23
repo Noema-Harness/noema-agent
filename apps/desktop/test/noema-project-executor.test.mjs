@@ -308,6 +308,52 @@ test('Noema executor redacts recognized credentials before checkpointing tool ou
   }
 });
 
+test('tool output budget exhaustion stops before executing another side effect', async () => {
+  const directory = mkdtempSync(
+    path.join(tmpdir(), 'noema-project-output-budget-'),
+  );
+  const workspace = path.join(directory, 'workspace');
+  mkdirSync(workspace);
+  writeFileSync(path.join(workspace, 'first.txt'), 'x'.repeat(24_000));
+  writeFileSync(path.join(workspace, 'second.txt'), 'y'.repeat(24_000));
+  const targetPath = path.join(workspace, 'must-not-write.txt');
+  const provider = makeProvider([
+    {
+      calls: [
+        toolCall('budget-read-first', 'read_file', { path: 'first.txt' }),
+        toolCall('budget-read-second', 'read_file', { path: 'second.txt' }),
+        toolCall('budget-write', 'write_file', {
+          path: 'must-not-write.txt',
+          content: 'not executed',
+        }),
+      ],
+    },
+  ]);
+  const events = [];
+  try {
+    const executor = new NoemaProjectExecutor({ provider });
+    const handle = await executor.startTask({
+      workspacePath: workspace,
+      task: '读取两个大文件后尝试写入',
+      model: 'auto:noema-free',
+      onEvent: (event) => events.push(event),
+    });
+    const outcome = await handle.done;
+    assert.equal(outcome.status, 'failed');
+    assert.equal(outcome.errorCode, 'tool_output_budget');
+    assert.equal(provider.callCount, 1);
+    assert.equal(existsSync(targetPath), false);
+    const toolResults = events.filter((event) => event.type === 'tool-result');
+    assert.deepEqual(
+      toolResults.map((event) => event.effectStatus),
+      ['none', 'none', 'not_applied'],
+    );
+    assert.match(toolResults.at(-1).resultContent, /预算已耗尽/u);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('Noema executor rejects workspace traversal and does not repeat side effects after a tool error', async () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'noema-project-executor-'));
   const workspace = path.join(directory, 'workspace');
