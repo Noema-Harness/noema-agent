@@ -399,6 +399,51 @@ export class SocialChatStore {
         `);
       })();
     }
+    if (current < 12) {
+      this.db.transaction(() => {
+        this.db.exec(`
+          CREATE TABLE social_projects (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            brief TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'active'
+              CHECK (status IN ('active', 'awaiting_user', 'archived')),
+            origin_room_id TEXT REFERENCES social_rooms(id) ON DELETE SET NULL,
+            source_message_id TEXT REFERENCES social_messages(id) ON DELETE SET NULL,
+            group_room_id TEXT NOT NULL UNIQUE
+              REFERENCES social_rooms(id) ON DELETE RESTRICT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            archived_at TEXT,
+            CHECK ((status = 'archived') = (archived_at IS NOT NULL))
+          );
+
+          CREATE INDEX social_projects_status_updated
+            ON social_projects(status, updated_at DESC);
+
+          CREATE TABLE social_project_sessions (
+            project_id TEXT NOT NULL
+              REFERENCES social_projects(id) ON DELETE CASCADE,
+            agent_id TEXT NOT NULL
+              REFERENCES social_agents(id) ON DELETE RESTRICT,
+            room_id TEXT NOT NULL UNIQUE
+              REFERENCES social_rooms(id) ON DELETE RESTRICT,
+            status TEXT NOT NULL DEFAULT 'active'
+              CHECK (status IN ('active', 'removed')),
+            joined_at TEXT NOT NULL,
+            removed_at TEXT,
+            PRIMARY KEY (project_id, agent_id),
+            CHECK ((status = 'removed') = (removed_at IS NOT NULL))
+          );
+
+          CREATE INDEX social_project_sessions_agent_status
+            ON social_project_sessions(agent_id, status, project_id);
+
+          INSERT INTO social_schema_migrations (version, applied_at)
+          VALUES (12, '${isoNow()}');
+        `);
+      })();
+    }
   }
 
   seedInitialSocialModel() {
@@ -534,6 +579,13 @@ export class SocialChatStore {
         FROM social_rooms AS r
         LEFT JOIN social_room_members AS rm ON rm.room_id = r.id
         LEFT JOIN social_agents AS a ON a.id = rm.agent_id
+        WHERE NOT EXISTS (
+          SELECT 1 FROM social_project_sessions AS ps WHERE ps.room_id = r.id
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM social_projects AS p
+          WHERE p.group_room_id = r.id AND p.status = 'archived'
+        )
         GROUP BY r.id
         ORDER BY MAX(
           COALESCE((SELECT MAX(m.created_at) FROM social_messages AS m

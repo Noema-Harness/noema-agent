@@ -50,8 +50,9 @@ Noema 私聊是默认入口。普通交流、探索、写作和一般计划留�
 ## 当前代码的实现边界
 
 - 桌面主入口读取 `social_agents`、`social_rooms`、`social_room_members` 与 `social_messages`；用户可显式创建 specialist identity，创建只写入本机且默认无工具能力；归档保留身份与历史但停止新回复/新任务。旧 root/worker 功能仍可从 `#legacy` 打开，不再决定主界面结构。
-- 社交表使用独立的 `social_schema_migrations` 版本线（当前 v11，版本常量在 `social-chat-schema.mjs`），与旧根对话 schema 分离。待升级前用 SQLite backup API 创建版本快照，校验内容与版本、封成无 WAL 依赖的独立文件，再原子发布；首轮原有 `noema-before-social-chat-v1.sqlite3` 保留。备份失败不继续迁移，不完整旧快照保留诊断副本后重建。旧 root messages 以 `legacy_source_id` 幂等复制，原始行不改写或删除。
+- 社交表使用独立的 `social_schema_migrations` 版本线（当前 v12，版本常量在 `social-chat-schema.mjs`），与旧根对话 schema 分离。待升级前用 SQLite backup API 创建版本快照，校验内容与版本、封成无 WAL 依赖的独立文件，再原子发布；首轮原有 `noema-before-social-chat-v1.sqlite3` 保留。备份失败不继续迁移，不完整旧快照保留诊断副本后重建。旧 root messages 以 `legacy_source_id` 幂等复制，原始行不改写或删除。
 - 新安装仅初始化 `noema` 与 `room-noema`；旧安装中的工程搭档、群和历史保留，关闭的能力不会在启动时重新启用。工程团队样例只在 `test-support/social-team.mjs` 显式生成。当前每次模型请求组装房间最近 40 条已完成消息及必要 profile；此硬上限是待演进实现，不是完整上下文工程方案。system event 与其他房间原文不自动注入。
+- `social_projects` 和 `social_project_sessions` 持久化项目来源、共享群、成员项目会话、等待反馈、归档与恢复；成员项目会话不列入普通私聊。当前 store 已支持新建、加/移除成员、复用会话、阻止活动中归档和恢复旧项目；这些 API 尚未接到 renderer、Noema 协调循环或执行 runtime，项目说明目前由显式调用方单独传给会话上下文。旧群不会自动迁移成项目。
 - 社交 renderer 的 IPC 状态只暴露联系人、房间与模型连接信息，不把旧 root transcript、captures、后台任务记录随新社交 UI 一并发送。
 - 群聊消息必须带本轮 `agentId`，一个房间一次只允许一条生成中的回复；运行时支持停止、失败消息保留及失败/中断后原位重试。Noema 主体与专业好友现在共享已选择的 FreeLLMAPI 路由；未连接可用模型时不伪造回复。当前 renderer 仍保留联系人与模式选择；这是待按 ADR 0026 逐步收敛的实现状态，不是目标交互。
 - 已实现专业成员创建/改资料/归档、显式项目文件能力、带来源转发、搜索、Noema 范围内有界历史查找与明确互动约定；已有一次知识子委派和受限 DSH 项目核验/经验试用。它们不等于自有工具循环、多成员项目调度、通用长期记忆或成员自有资产成长。captures、旧 workers 和 Codex 导入仍可从 legacy 访问。旧主题会话保留兼容，目标方向不再新增独立 Noema 主上下文。
