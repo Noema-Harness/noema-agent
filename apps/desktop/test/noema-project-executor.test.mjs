@@ -255,6 +255,59 @@ test('Noema executor refuses to pass invalid UTF-8 files to the model as replace
   }
 });
 
+test('Noema executor redacts recognized credentials before checkpointing tool output', async () => {
+  const directory = mkdtempSync(
+    path.join(tmpdir(), 'noema-project-redacted-output-'),
+  );
+  const workspace = path.join(directory, 'workspace');
+  mkdirSync(workspace);
+  const secret = 'fla_1234567890abcdefghijklmnopqrst';
+  const jsonSecret = 'noema-local-password-value';
+  writeFileSync(
+    path.join(workspace, 'settings.txt'),
+    `FreeLLMAPI API Key: ${secret}\n{"PASSWORD":"${jsonSecret}"}`,
+  );
+  const events = [];
+  const requests = [];
+  const provider = makeProvider(
+    [
+      {
+        calls: [
+          toolCall('read-secret-output', 'read_file', { path: 'settings.txt' }),
+        ],
+      },
+      { text: '凭据值已遮蔽。' },
+    ],
+    requests,
+  );
+  try {
+    const executor = new NoemaProjectExecutor({ provider });
+    const handle = await executor.startTask({
+      workspacePath: workspace,
+      task: '读取设置文件',
+      model: 'auto:noema-free',
+      onEvent: (event) => events.push(event),
+    });
+    const outcome = await handle.done;
+    assert.equal(outcome.status, 'completed');
+    const toolResult = events.find((event) => event.type === 'tool-result');
+    const serializedContext = JSON.stringify(requests[1].messages);
+    assert.match(toolResult.resultContent, /已隐藏疑似凭据/u);
+    assert.doesNotMatch(toolResult.resultContent, /fla_1234567890/u);
+    assert.doesNotMatch(toolResult.resultContent, /noema-local-password/u);
+    assert.match(serializedContext, /已隐藏疑似凭据/u);
+    assert.doesNotMatch(serializedContext, /fla_1234567890/u);
+    assert.doesNotMatch(serializedContext, /noema-local-password/u);
+    assert.ok(
+      readFileSync(path.join(workspace, 'settings.txt'), 'utf8').includes(
+        secret,
+      ),
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('Noema executor rejects workspace traversal and does not repeat side effects after a tool error', async () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'noema-project-executor-'));
   const workspace = path.join(directory, 'workspace');
@@ -369,12 +422,17 @@ test('stopping a running command waits for the child tree and marks its effects 
   const workspace = path.join(directory, 'workspace');
   mkdirSync(workspace);
   const markerPath = path.join(workspace, 'marker.txt');
+  const commandScript = path.join(workspace, 'wait-command.js');
+  writeFileSync(
+    commandScript,
+    "const fs = require('node:fs'); fs.writeFileSync('marker.txt', 'started'); setTimeout(() => fs.appendFileSync('marker.txt', 'finished'), 30000);",
+  );
+  const command = `${process.execPath} ${commandScript}`;
   const provider = makeProvider([
     {
       calls: [
         toolCall('command-stop', 'run_command', {
-          command:
-            'echo started> marker.txt & ping -n 30 127.0.0.1 >nul & echo finished>> marker.txt',
+          command,
         }),
       ],
     },
@@ -405,7 +463,7 @@ test('stopping a running command waits for the child tree and marks its effects 
     assert.equal(
       existsSync(markerPath),
       true,
-      'command started in the workspace',
+      `command started in the workspace: ${JSON.stringify(events.filter((event) => event.type === 'tool-result'))}`,
     );
 
     handle.stop();

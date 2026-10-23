@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { redactSensitiveText } from './sensitive-text.mjs';
 
 const MAX_TOOL_ROUNDS = 16;
 const MAX_TOOL_CALLS = 24;
@@ -689,8 +690,9 @@ export class NoemaProjectExecutor {
                 0,
                 MAX_TOOL_CONTEXT_CHARS - toolOutputCharacters,
               );
+              const sanitizedOutput = redactSensitiveText(result.output);
               const boundedOutput = remainingOutput
-                ? truncate(result.output, remainingOutput)
+                ? truncate(sanitizedOutput.snippet, remainingOutput)
                 : 'Noema 项目工具输出预算已用完；不要继续读取大段内容，可在最终答复中说明未完成。';
               toolOutputCharacters += boundedOutput.length;
               const toolContent = JSON.stringify({ result: boundedOutput });
