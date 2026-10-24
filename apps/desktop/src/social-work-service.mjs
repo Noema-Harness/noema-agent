@@ -656,7 +656,7 @@ export class SocialWorkService {
               event.type === 'tool-result' &&
               typeof event.stepId === 'string'
             ) {
-              this.store.finishSocialWorkExecutionStep(taskId, event.stepId, {
+              const outcome = {
                 status:
                   event.status === 'completed'
                     ? 'succeeded'
@@ -665,7 +665,25 @@ export class SocialWorkService {
                       : 'interrupted',
                 effectStatus: event.effectStatus,
                 resultContent: event.resultContent,
-              });
+              };
+              if (
+                event.checkpoint &&
+                typeof this.store
+                  .finishSocialWorkExecutionStepWithCheckpoint === 'function'
+              ) {
+                this.store.finishSocialWorkExecutionStepWithCheckpoint(
+                  taskId,
+                  event.stepId,
+                  outcome,
+                  event.checkpoint,
+                );
+              } else {
+                this.store.finishSocialWorkExecutionStep(
+                  taskId,
+                  event.stepId,
+                  outcome,
+                );
+              }
             }
             this.publish(this.store.getSocialWorkTask(taskId));
           },

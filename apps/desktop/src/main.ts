@@ -3422,7 +3422,51 @@ async function startNoema() {
       baseUrl: configuredBaseUrl,
       getApiKey: () => providerSecretStore?.get() ?? null,
     });
-    const noemaProjectExecutor = new NoemaProjectExecutor({ provider });
+    const noemaProjectExecutor = new NoemaProjectExecutor({
+      provider,
+      authorizeAdditionalAccess: async ({
+        command,
+        path: requestedPath,
+        access,
+        reason,
+      }) => {
+        if (!mainWindow || mainWindow.isDestroyed()) return false;
+        const response = await dialog.showMessageBox(mainWindow, {
+          type: 'question',
+          title: '项目命令请求访问工作区外的路径',
+          message: `仅为本次命令${access === 'write' ? '读取并修改' : '读取'}此路径？`,
+          detail: [
+            `路径：${requestedPath}`,
+            `用途：${reason}`,
+            `命令：${command.slice(0, 1_600)}${command.length > 1_600 ? '\n……（命令已截断）' : ''}`,
+            '授权只用于当前这一条命令，命令退出后 Noema 会撤销沙箱路径授权。拒绝不会运行该命令。',
+          ].join('\n\n'),
+          buttons: ['本次允许', '拒绝'],
+          defaultId: 1,
+          cancelId: 1,
+          noLink: true,
+        });
+        return response.response === 0;
+      },
+      authorizeNetwork: async ({ command, host, port }) => {
+        if (!mainWindow || mainWindow.isDestroyed()) return false;
+        const response = await dialog.showMessageBox(mainWindow, {
+          type: 'question',
+          title: '项目命令请求联网',
+          message: `仅为本次命令连接 ${host}:${port}？`,
+          detail: [
+            `目标主机：${host}:${port}`,
+            `命令：${command.slice(0, 1_600)}${command.length > 1_600 ? '\n……（命令已截断）' : ''}`,
+            '拒绝后该连接会被沙箱阻断；允许仅对当前命令有效。',
+          ].join('\n\n'),
+          buttons: ['本次允许', '拒绝'],
+          defaultId: 1,
+          cancelId: 1,
+          noLink: true,
+        });
+        return response.response === 0;
+      },
+    });
     const codexAdapter = new CodexAppServerAdapter({
       executable: resolveCodexExecutable(),
     });
@@ -3720,7 +3764,7 @@ async function startNoema() {
           title: '检查项目工作并选择文件夹',
           message: [
             `Noema 准备在你选择的工作区执行项目任务：\n${prompt}`,
-            'Noema 会读取/修改项目文件，并可运行前台项目命令。当前没有操作系统级命令沙箱，命令可能访问工作区之外的数据或网络。项目内容可能通过 FreeLLMAPI 发往当前第三方免费模型路由。不要选择含不应发送的密钥或隐私资料的目录。停止任务不会自动撤销已经发生的改动。',
+            'Noema 会读取/修改项目文件，并在操作系统沙箱中运行前台项目命令。默认读写范围是你选定的工作区，网络和工作区外路径默认受限；需要越界时会展示具体命令与目标，逐项询问是否仅对该命令开放。Windows 首次使用需要一次管理员确认来创建独立沙箱账户和出站过滤规则；不会授权读取整个用户目录。项目内容仍可能通过 FreeLLMAPI 发往当前第三方免费模型路由。不要选择含不应发送的密钥或隐私资料的目录。停止任务不会自动撤销已经发生的项目改动。',
             reuseCase
               ? '本轮还会检查同一位工程搭档在同一项目的其他聊天中，是否有一项通过 Noema 文件条件核验的工作；若找到，会把一份过滤常见凭据样式的限长摘要随本任务发送给模型，不会发送原聊天记录。若本任务也通过 Noema 核验，Noema 还可能用同一免费路由对两项任务的摘要和核验结果做一次额外分析，提出一条候选做法；候选不会自动升级为技能，可在任务卡撤回。若已有候选，选定目录后还会先展示候选正文，供你决定本轮是否试用；普通经验复用勾选不会自动授权使用某条候选。过滤无法保证识别所有敏感信息。'
               : '本轮不会从其他聊天带入项目案例。',
@@ -3728,7 +3772,59 @@ async function startNoema() {
           properties: ['openDirectory'],
           buttonLabel: '允许并继续',
         });
-        return selection.canceled ? null : (selection.filePaths[0] ?? null);
+        if (selection.canceled || !selection.filePaths[0]) return null;
+        if (process.platform === 'win32') {
+          const sandbox = await import('@anthropic-ai/sandbox-runtime');
+          const srtWin = sandbox.resolveSrtWin({
+            path: sandbox.VENDORED_SRT_WIN_EXE,
+          });
+          const status = await sandbox.getWindowsSandboxUserStatusAsync({
+            srtWin,
+          });
+          if (!status.provisioned) {
+            const installationChoice = await dialog.showMessageBox(mainWindow, {
+              type: 'question',
+              title: '启用项目命令沙箱',
+              message: 'Noema 需要先安装本机命令隔离组件。',
+              detail: [
+                '安装会请求一次 Windows 管理员确认，创建独立的 srt-sandbox 本地账户并添加只匹配该账户的出站过滤规则。',
+                'Noema 会跳过整个用户目录的读取授权；命令仅额外读取所需的系统/工具运行目录、所选工作区，以及你逐次批准的路径。Windows 支持目前仍是上游 alpha。',
+                '账户安装后，真正的 ACL 与出站隔离探针会在命令执行器授予本次运行所需的精确 helper 与工作区路径后执行。若验证失败，命令不会改用当前 Windows 账户运行。',
+              ].join('\n\n'),
+              buttons: ['安装并继续', '取消'],
+              defaultId: 0,
+              cancelId: 1,
+              noLink: true,
+            });
+            if (installationChoice.response !== 0) return null;
+            try {
+              const installed = await sandbox.installWindowsSandboxAsync({
+                skipProfileGrant: true,
+                srtWin,
+              });
+              if (installed.cancelled) return null;
+              const verified = await sandbox.getWindowsSandboxUserStatusAsync({
+                srtWin,
+              });
+              if (!verified.provisioned || !verified.credPresent) {
+                throw new Error(
+                  'Windows 命令沙箱安装后未通过状态核验；命令未执行。',
+                );
+              }
+            } catch (error) {
+              await dialog.showMessageBox(mainWindow, {
+                type: 'error',
+                title: 'Windows 命令沙箱安装未完成',
+                message: '安装或账户状态检查未通过，项目命令未执行。',
+                detail: error instanceof Error ? error.message : String(error),
+                buttons: ['返回'],
+                noLink: true,
+              });
+              return null;
+            }
+          }
+        }
+        return selection.filePaths[0];
       },
       confirmPracticeCandidate: async ({
         candidate,

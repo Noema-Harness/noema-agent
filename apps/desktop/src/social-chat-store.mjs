@@ -2221,6 +2221,31 @@ export class SocialChatStore {
     );
   }
 
+  finishSocialWorkExecutionStepWithCheckpoint(
+    taskId,
+    stepId,
+    outcome,
+    checkpoint,
+  ) {
+    const persist = this.db.transaction(() => {
+      const step = this.db
+        .prepare(
+          `SELECT status FROM social_work_execution_steps
+           WHERE task_id = ? AND id = ?`,
+        )
+        .get(taskId, stepId);
+      if (!step || step.status !== 'running') {
+        throw new Error('项目工具步骤已变化，不能提交恢复检查点。');
+      }
+      this.finishSocialWorkExecutionStep(taskId, stepId, outcome);
+      this.saveSocialWorkRuntimeCheckpoint(taskId, checkpoint);
+      return this.listSocialWorkExecutionSteps(taskId).find(
+        (entry) => entry.id === stepId,
+      );
+    });
+    return persist();
+  }
+
   setSocialWorkTaskSession(taskId, runtimeSessionId) {
     const now = isoNow();
     this.db

@@ -17,7 +17,10 @@ const electronChecksums = require('electron/checksums.json');
 
 const config: ForgeConfig = {
   packagerConfig: {
-    asar: true,
+    extraResource: [path.join(appRoot, 'vendor', 'srt-win')],
+    asar: {
+      unpack: '**/node_modules/@anthropic-ai/sandbox-runtime/vendor/srt-win/**',
+    },
     download: { checksums: electronChecksums },
     afterCopy: [
       async ({ buildPath }) => {
@@ -42,6 +45,47 @@ const config: ForgeConfig = {
           );
         }
         await fs.cp(source, target, { recursive: true, force: true });
+
+        const repositoryModules = path.resolve(
+          appRoot,
+          '..',
+          '..',
+          'node_modules',
+        );
+        const desktopModules = path.join(appRoot, 'node_modules');
+        for (const packageName of [
+          '@anthropic-ai/sandbox-runtime',
+          '@pondwader/socks5-server',
+          'commander',
+          'node-forge',
+          'zod',
+        ]) {
+          const candidates =
+            packageName === 'zod'
+              ? [desktopModules, repositoryModules]
+              : [repositoryModules, desktopModules];
+          let packageSource: string | undefined;
+          for (const base of candidates) {
+            const candidate = path.join(base, packageName);
+            try {
+              await fs.access(path.join(candidate, 'package.json'));
+              packageSource = candidate;
+              break;
+            } catch {
+              // Continue to the next workspace installation location.
+            }
+          }
+          if (!packageSource) {
+            throw new Error(
+              `${packageName} is required to package the project command sandbox. Run npm ci before packaging.`,
+            );
+          }
+          await fs.cp(
+            packageSource,
+            path.join(buildPath, 'node_modules', packageName),
+            { recursive: true, force: true },
+          );
+        }
       },
     ],
   },

@@ -518,6 +518,88 @@ test('project work records safe tool outcomes and marks in-flight writes unknown
   }
 });
 
+test('tool outcome and resumable checkpoint commit atomically', () => {
+  const { db, social } = makeStores();
+  try {
+    social.createSocialWorkTask({
+      id: 'task-atomic-checkpoint',
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      workspacePath: 'C:\\scratch\\project',
+      workspaceKey: 'c:\\scratch\\project',
+      taskPrompt: '工具结果与恢复状态必须一起保存。',
+      model: 'test-model',
+    });
+    social.setSocialWorkTaskSession('task-atomic-checkpoint', 'session-atomic');
+    social.startSocialWorkExecutionStep('task-atomic-checkpoint', {
+      id: 'step-atomic',
+      externalCallId: 'call-atomic',
+      arguments: '{}',
+      toolName: 'read_file',
+      category: 'read',
+      hasSideEffect: false,
+    });
+
+    const outcome = {
+      status: 'succeeded',
+      effectStatus: 'none',
+      resultContent: '{"result":"read"}',
+    };
+    assert.throws(
+      () =>
+        social.finishSocialWorkExecutionStepWithCheckpoint(
+          'task-atomic-checkpoint',
+          'step-atomic',
+          outcome,
+          { messages: 'invalid' },
+        ),
+      /1 MB/u,
+    );
+    assert.equal(
+      social.listSocialWorkExecutionSteps('task-atomic-checkpoint')[0].status,
+      'running',
+    );
+    assert.equal(
+      social.getSocialWorkRuntimeCheckpoint('task-atomic-checkpoint'),
+      null,
+    );
+
+    social.finishSocialWorkExecutionStepWithCheckpoint(
+      'task-atomic-checkpoint',
+      'step-atomic',
+      outcome,
+      {
+        messages: [
+          { role: 'user', content: 'read file' },
+          {
+            role: 'assistant',
+            content: null,
+            tool_calls: [{ id: 'call-atomic' }],
+          },
+          {
+            role: 'tool',
+            tool_call_id: 'call-atomic',
+            content: '{"result":"read"}',
+          },
+        ],
+        round: 1,
+        toolCallCount: 1,
+        phase: 'ready_for_model',
+      },
+    );
+    assert.equal(
+      social.listSocialWorkExecutionSteps('task-atomic-checkpoint')[0].status,
+      'succeeded',
+    );
+    assert.equal(
+      social.getSocialWorkRuntimeCheckpoint('task-atomic-checkpoint').phase,
+      'ready_for_model',
+    );
+  } finally {
+    db.close();
+  }
+});
+
 test('social chat schema v1 upgrades additively to project-work state', () => {
   const { db, social } = makeStores();
   try {

@@ -14,6 +14,8 @@ test('project work cards name the recoverable failure instead of hiding it in ge
     ['dsh_tool_loop', 'failed', '重复操作过多，已停止'],
     ['tool_round_limit', 'failed', '工具步骤达到上限'],
     ['tool_output_budget', 'failed', '工具输出达到上限'],
+    ['tool_context_budget', 'failed', '工具上下文达到上限'],
+    ['command_sandbox_unavailable', 'failed', '项目命令沙箱不可用'],
     ['model_unavailable', 'failed', '所选免费模型当前不可用'],
     ['provider_unavailable', 'failed', '模型没有返回结果'],
     ['verification_failed', 'failed', '文件验收未通过'],

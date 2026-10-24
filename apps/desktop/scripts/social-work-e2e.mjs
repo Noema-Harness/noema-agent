@@ -16,6 +16,22 @@ import { verifyWorkspaceChecks } from '../src/workspace-verifier.mjs';
 import { RootStore } from '../src/root-store.mjs';
 import { configureElectronRuntime } from './electron-runtime.mjs';
 
+const usage = `Noema project-work end-to-end check
+
+Usage:
+  node scripts/social-work-e2e.mjs [--synthetic | --case-only | --live-practice | --live-episodes]
+
+Default mode sends a synthetic project request to the selected live model route
+and may consume upstream quota. Use --synthetic for an offline fixture run.
+Use --case-only only with --synthetic. The live-practice and live-episodes
+modes perform additional model-backed experience checks.
+`;
+
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  console.log(usage);
+  process.exit(0);
+}
+
 configureElectronRuntime();
 
 if (process.platform !== 'win32') {

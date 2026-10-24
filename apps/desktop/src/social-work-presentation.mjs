@@ -18,6 +18,8 @@ export function socialWorkCardTitle(task) {
     dsh_tool_loop: '重复操作过多，已停止',
     tool_round_limit: '工具步骤达到上限',
     tool_output_budget: '工具输出达到上限',
+    tool_context_budget: '工具上下文达到上限',
+    command_sandbox_unavailable: '项目命令沙箱不可用',
     model_unavailable: '所选免费模型当前不可用',
     verification_failed: '文件验收未通过',
     provider_unavailable: '模型没有返回结果',
