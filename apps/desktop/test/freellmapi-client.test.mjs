@@ -515,3 +515,35 @@ test('maps provider exhaustion into an actionable but non-leaking message', asyn
       !/private provider diagnostics/.test(error.message),
   );
 });
+
+test('classifies an oversized model request without exposing gateway diagnostics', async () => {
+  const client = new FreeLLMAPIClient({
+    getApiKey: () => 'test-key',
+    fetchImpl: async () =>
+      new Response(
+        JSON.stringify({
+          error: {
+            message: 'private TPM diagnostic: requested 20449 tokens',
+          },
+        }),
+        { status: 413 },
+      ),
+  });
+
+  await assert.rejects(
+    async () => {
+      for await (const _delta of client.streamChat({
+        model: 'free-router',
+        messages: [{ role: 'user', content: 'a large project task' }],
+        signal: new AbortController().signal,
+      })) {
+        /* no stream expected */
+      }
+    },
+    (error) =>
+      error.code === 'request_too_large' &&
+      error.status === 413 &&
+      /缩小委托内容/u.test(error.message) &&
+      !/private TPM diagnostic|20449|test-key/u.test(error.message),
+  );
+});

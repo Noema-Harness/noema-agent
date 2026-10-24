@@ -549,6 +549,12 @@ async function mapHttpError(response) {
         'FreeLLMAPI 免费模型额度暂时受限。稍后重试，或切换到其他免费模型。',
         response.status,
       );
+    case 413:
+      return new FreeLLMAPIError(
+        'request_too_large',
+        '当前 FreeLLMAPI 或模型路由拒绝了过大的请求（例如上下文或路由速率预算超限）。请缩小委托内容，或等待额度恢复后再试；已完成的工作仍会保留。',
+        response.status,
+      );
     case 502:
     case 503:
       return new FreeLLMAPIError(
