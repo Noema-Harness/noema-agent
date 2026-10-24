@@ -333,6 +333,103 @@ test('rejects a stream that closes without FreeLLMAPI terminal marker', async ()
   assert.deepEqual(partial, ['部分回复']);
 });
 
+test('bounds streamed response bytes and cancels before accepting tool calls', async () => {
+  let canceled = false;
+  const oversizedEvent = `data: {"choices":[{"delta":{"content":"${'a'.repeat(1_000_000)}"}}]}\n\n`;
+  const body = new ReadableStream({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode(oversizedEvent));
+    },
+    cancel() {
+      canceled = true;
+    },
+  });
+  const client = new FreeLLMAPIClient({
+    getApiKey: () => 'test-key',
+    fetchImpl: async () => new Response(body, { status: 200 }),
+  });
+  let receivedCalls = false;
+
+  await assert.rejects(
+    async () => {
+      for await (const _delta of client.streamChat({
+        model: 'nvidia/nemotron-3.5-lightning',
+        messages: [{ role: 'user', content: 'bounded response test' }],
+        signal: new AbortController().signal,
+        onToolCalls: () => {
+          receivedCalls = true;
+        },
+      })) {
+        /* no over-budget response should be yielded */
+      }
+    },
+    (error) => error.code === 'response_too_large',
+  );
+
+  assert.equal(receivedCalls, false);
+  assert.equal(canceled, true);
+});
+
+test('cancels the provider body when the consumer stops reading a stream', async () => {
+  let canceled = false;
+  const body = new ReadableStream({
+    start(controller) {
+      controller.enqueue(
+        new TextEncoder().encode(
+          'data: {"choices":[{"delta":{"content":"first"}}]}\n\n',
+        ),
+      );
+    },
+    cancel() {
+      canceled = true;
+    },
+  });
+  const client = new FreeLLMAPIClient({
+    getApiKey: () => 'test-key',
+    fetchImpl: async () => new Response(body, { status: 200 }),
+  });
+
+  for await (const _delta of client.streamChat({
+    model: 'nvidia/nemotron-3.5-lightning',
+    messages: [{ role: 'user', content: 'stop after first chunk' }],
+    signal: new AbortController().signal,
+  })) {
+    break;
+  }
+
+  assert.equal(canceled, true);
+});
+
+test('bounds buffered router responses while preserving the size error', async () => {
+  let canceled = false;
+  const body = new ReadableStream({
+    start(controller) {
+      controller.enqueue(new Uint8Array(1_000_001));
+    },
+    cancel() {
+      canceled = true;
+    },
+  });
+  const client = new FreeLLMAPIClient({
+    getApiKey: () => 'test-key',
+    fetchImpl: async () => new Response(body, { status: 200 }),
+  });
+
+  await assert.rejects(
+    async () => {
+      for await (const _delta of client.streamChat({
+        model: 'free-router',
+        messages: [{ role: 'user', content: 'bounded router response test' }],
+        signal: new AbortController().signal,
+      })) {
+        /* buffered replies yield only after complete validation */
+      }
+    },
+    (error) => error.code === 'response_too_large',
+  );
+  assert.equal(canceled, true);
+});
+
 test('classifies a body transport failure without exposing the underlying error', async () => {
   const stream = new ReadableStream({
     start(controller) {

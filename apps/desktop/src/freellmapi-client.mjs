@@ -2,6 +2,9 @@ const DEFAULT_BASE_URL = 'http://127.0.0.1:3001/v1';
 // Keep routine turns within a modest free-route output budget; callers may
 // explicitly raise it for work that needs a longer response.
 const DEFAULT_MAX_OUTPUT_TOKENS = 1024;
+// Bound both streamed deltas and buffered router replies if a gateway ignores
+// max_tokens or never sends the terminal SSE marker.
+const MAX_MODEL_RESPONSE_BYTES = 1_000_000;
 
 const VERIFIED_FREE_MODELS = new Map([
   [
@@ -262,8 +265,9 @@ export class FreeLLMAPIClient {
     if (useBufferedRouterResponse) {
       let body;
       try {
-        body = await response.json();
-      } catch {
+        body = JSON.parse(await readBoundedResponseText(response));
+      } catch (error) {
+        if (error instanceof FreeLLMAPIError) throw error;
         throw new FreeLLMAPIError(
           'invalid_response',
           'FreeLLMAPI 返回了无法读取的完整回复。消息已保留，可以重试。',
@@ -297,10 +301,20 @@ export class FreeLLMAPIClient {
     const decoder = new TextDecoder();
     let pending = '';
     let sawDone = false;
+    let totalBytes = 0;
     const toolCalls = new Map();
     try {
       while (true) {
         const { value, done } = await reader.read();
+        if (value) {
+          totalBytes += value.byteLength;
+          if (totalBytes > MAX_MODEL_RESPONSE_BYTES) {
+            throw new FreeLLMAPIError(
+              'response_too_large',
+              '模型回复超过安全读取上限；没有执行其中的工具调用。',
+            );
+          }
+        }
         pending += decoder.decode(value, { stream: !done });
         const lines = pending.split('\n');
         pending = lines.pop() ?? '';
@@ -347,6 +361,13 @@ export class FreeLLMAPIClient {
       }
       throw error;
     } finally {
+      if (!sawDone) {
+        try {
+          await reader.cancel();
+        } catch {
+          /* the transport may already be closed */
+        }
+      }
       try {
         reader.releaseLock();
       } catch {
@@ -464,6 +485,46 @@ function finalizeToolCalls(toolCalls) {
       }
       return call;
     });
+}
+
+async function readBoundedResponseText(response) {
+  const reader = response.body.getReader();
+  const chunks = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > MAX_MODEL_RESPONSE_BYTES) {
+        throw new FreeLLMAPIError(
+          'response_too_large',
+          '模型回复超过安全读取上限；没有执行其中的工具调用。',
+        );
+      }
+      chunks.push(value);
+    }
+    const bytes = new Uint8Array(totalBytes);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return new TextDecoder().decode(bytes);
+  } catch (error) {
+    try {
+      await reader.cancel();
+    } catch {
+      /* the transport may already be closed */
+    }
+    throw error;
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch {
+      /* the stream may already have released its lock */
+    }
+  }
 }
 
 /** @param {Response} response */
