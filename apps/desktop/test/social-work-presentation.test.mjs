@@ -10,6 +10,7 @@ test('project work cards name the recoverable failure instead of hiding it in ge
   const cases = [
     ['app_restarted', 'interrupted', '应用重启后已停止'],
     ['dsh_rate_limited', 'failed', '模型请求被限流'],
+    ['rate_limited', 'failed', '模型请求被限流'],
     ['dsh_task_timeout', 'failed', '执行超时'],
     ['dsh_tool_loop', 'failed', '重复操作过多，已停止'],
     ['tool_round_limit', 'failed', '工具步骤达到上限'],

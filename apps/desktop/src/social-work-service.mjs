@@ -705,7 +705,9 @@ export class SocialWorkService {
         if (persistedCheckpoint) {
           const resumableProviderFailure =
             outcome.status === 'failed' &&
-            outcome.errorCode === 'provider_unavailable' &&
+            ['provider_unavailable', 'rate_limited'].includes(
+              outcome.errorCode,
+            ) &&
             persistedCheckpoint.phase === 'ready_for_model' &&
             persistedCheckpoint.resumePhase === 'ready_for_model';
           this.store.saveSocialWorkRuntimeCheckpoint(taskId, {

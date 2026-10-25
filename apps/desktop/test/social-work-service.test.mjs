@@ -1078,6 +1078,73 @@ test('an unavailable provider can be resumed explicitly without replaying tools'
   }
 });
 
+test('a rate-limited provider can be resumed without replaying tools', async () => {
+  const directory = mkdtempSync(
+    path.join(tmpdir(), 'noema-rate-limit-resume-'),
+  );
+  const { db, store } = makeStore();
+  let providerCalls = 0;
+  let resumedMessages;
+  const provider = {
+    async *streamChat({ messages, onToolCalls }) {
+      providerCalls += 1;
+      if (providerCalls === 1) {
+        onToolCalls([
+          {
+            id: 'read-before-rate-limit',
+            type: 'function',
+            function: {
+              name: 'list_files',
+              arguments: JSON.stringify({ path: '.' }),
+            },
+          },
+        ]);
+        return;
+      }
+      if (providerCalls === 2) {
+        const error = new Error('provider is rate limited');
+        error.code = 'rate_limited';
+        throw error;
+      }
+      resumedMessages = messages;
+      yield '已沿用已完成的读取继续任务。';
+    },
+  };
+  const service = new SocialWorkService({
+    store,
+    adapter: new NoemaProjectExecutor({ provider }),
+    secretStore: { isConfigured: () => true },
+    chooseWorkspace: async () => directory,
+  });
+  try {
+    const accepted = await service.startTask({
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      prompt: '先检查项目目录，再继续处理。',
+    });
+    const failed = await service.waitForTask(accepted.taskId);
+    assert.equal(failed.errorCode, 'rate_limited');
+    assert.equal(failed.canResume, true);
+    assert.equal(
+      store.getSocialWorkRuntimeCheckpoint(accepted.taskId).resumePhase,
+      'ready_for_model',
+    );
+
+    await service.resumeTask(accepted.taskId);
+    const completed = await service.waitForTask(accepted.taskId);
+    assert.equal(completed.status, 'completed');
+    assert.equal(completed.toolCallCount, 1);
+    assert.equal(completed.executionSteps.length, 1);
+    assert.equal(providerCalls, 3);
+    assert.equal(resumedMessages.at(-2).role, 'tool');
+    assert.equal(resumedMessages.at(-2).tool_call_id, 'read-before-rate-limit');
+  } finally {
+    await service.shutdown();
+    db.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('output budget failure is persisted as non-resumable with no attempted write', async () => {
   const directory = mkdtempSync(
     path.join(tmpdir(), 'noema-output-budget-task-'),

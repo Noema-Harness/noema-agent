@@ -14,6 +14,7 @@ export function socialWorkCardTitle(task) {
   const failureTitles = {
     app_restarted: '应用重启后已停止',
     dsh_rate_limited: '模型请求被限流',
+    rate_limited: '模型请求被限流',
     dsh_task_timeout: '执行超时',
     dsh_tool_loop: '重复操作过多，已停止',
     tool_round_limit: '工具步骤达到上限',
