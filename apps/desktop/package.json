@@ -30,6 +30,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sandbox-runtime": "0.0.81",
+    "@vscode/ripgrep": "1.18.0",
     "better-sqlite3": "^13.0.3",
     "electron-squirrel-startup": "^1.0.1",
     "react": "^19.0.0",

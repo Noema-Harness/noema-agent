@@ -19,11 +19,12 @@ const config: ForgeConfig = {
   packagerConfig: {
     extraResource: [path.join(appRoot, 'vendor', 'srt-win')],
     asar: {
-      unpack: '**/node_modules/@anthropic-ai/sandbox-runtime/vendor/srt-win/**',
+      unpack:
+        '**/node_modules/{@anthropic-ai/sandbox-runtime/vendor/srt-win/**,@vscode/ripgrep-*/bin/**}',
     },
     download: { checksums: electronChecksums },
     afterCopy: [
-      async ({ buildPath }) => {
+      async ({ buildPath, platform, arch }) => {
         const sourceCandidates = [
           path.join(appRoot, 'node_modules', 'better-sqlite3'),
           path.resolve(appRoot, '..', '..', 'node_modules', 'better-sqlite3'),
@@ -59,6 +60,8 @@ const config: ForgeConfig = {
           'commander',
           'node-forge',
           'zod',
+          '@vscode/ripgrep',
+          `@vscode/ripgrep-${platform}-${arch}`,
         ]) {
           const candidates =
             packageName === 'zod'

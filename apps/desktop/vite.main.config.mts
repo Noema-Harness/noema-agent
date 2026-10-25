@@ -4,7 +4,11 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   build: {
     rollupOptions: {
-      external: ['better-sqlite3', '@anthropic-ai/sandbox-runtime'],
+      external: [
+        'better-sqlite3',
+        '@anthropic-ai/sandbox-runtime',
+        '@vscode/ripgrep',
+      ],
     },
   },
 });
