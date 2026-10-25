@@ -66,12 +66,13 @@ const VERIFIED_FREE_MODELS = new Map([
 ]);
 
 export class FreeLLMAPIError extends Error {
-  /** @param {string} code @param {string} message @param {number|null} [status] */
-  constructor(code, message, status = null) {
+  /** @param {string} code @param {string} message @param {number|null} [status] @param {number|null} [retryAfterSeconds] */
+  constructor(code, message, status = null, retryAfterSeconds = null) {
     super(message);
     this.name = 'FreeLLMAPIError';
     this.code = code;
     this.status = status;
+    this.retryAfterSeconds = retryAfterSeconds;
   }
 }
 
@@ -548,6 +549,7 @@ async function mapHttpError(response) {
         'rate_limited',
         'FreeLLMAPI 免费模型额度暂时受限。稍后重试，或切换到其他免费模型。',
         response.status,
+        parseRetryAfterSeconds(response.headers.get('retry-after')),
       );
     case 413:
       return new FreeLLMAPIError(
@@ -569,6 +571,16 @@ async function mapHttpError(response) {
         response.status,
       );
   }
+}
+
+function parseRetryAfterSeconds(value, now = Date.now()) {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const seconds = /^\d+$/u.test(value.trim())
+    ? Number(value.trim())
+    : Math.ceil((Date.parse(value) - now) / 1_000);
+  return Number.isSafeInteger(seconds) && seconds > 0 && seconds <= 120
+    ? seconds
+    : null;
 }
 
 export { DEFAULT_BASE_URL, VERIFIED_FREE_MODELS };

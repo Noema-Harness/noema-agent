@@ -516,6 +516,54 @@ test('maps provider exhaustion into an actionable but non-leaking message', asyn
   );
 });
 
+test('preserves a bounded HTTP Retry-After hint for safe project recovery', async () => {
+  const client = new FreeLLMAPIClient({
+    getApiKey: () => 'test-key',
+    fetchImpl: async () =>
+      new Response(null, {
+        status: 429,
+        headers: { 'retry-after': '3' },
+      }),
+  });
+  await assert.rejects(
+    async () => {
+      for await (const _delta of client.streamChat({
+        model: 'free-router',
+        messages: [{ role: 'user', content: 'retry-after contract' }],
+        signal: new AbortController().signal,
+      })) {
+        /* no response expected */
+      }
+    },
+    (error) =>
+      error.code === 'rate_limited' &&
+      error.status === 429 &&
+      error.retryAfterSeconds === 3,
+  );
+
+  const longDelayClient = new FreeLLMAPIClient({
+    getApiKey: () => 'test-key',
+    fetchImpl: async () =>
+      new Response(null, {
+        status: 429,
+        headers: { 'retry-after': '3600' },
+      }),
+  });
+  await assert.rejects(
+    async () => {
+      for await (const _delta of longDelayClient.streamChat({
+        model: 'free-router',
+        messages: [{ role: 'user', content: 'long retry-after contract' }],
+        signal: new AbortController().signal,
+      })) {
+        /* no response expected */
+      }
+    },
+    (error) =>
+      error.code === 'rate_limited' && error.retryAfterSeconds === null,
+  );
+});
+
 test('classifies an oversized model request without exposing gateway diagnostics', async () => {
   const client = new FreeLLMAPIClient({
     getApiKey: () => 'test-key',

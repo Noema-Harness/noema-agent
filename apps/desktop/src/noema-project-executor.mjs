@@ -1037,6 +1037,9 @@ export class NoemaProjectExecutor {
           status: 'failed',
           errorCode: error?.code ?? 'noema_executor_failed',
           errorMessage: safeToolError(error),
+          retryAfterSeconds: Number.isInteger(error?.retryAfterSeconds)
+            ? error.retryAfterSeconds
+            : null,
           sessionId,
           result: finalText,
           toolCallCount: callCount,

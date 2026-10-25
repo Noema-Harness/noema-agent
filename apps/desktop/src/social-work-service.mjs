@@ -586,7 +586,10 @@ export class SocialWorkService {
           };
           break;
         }
-        const toolCallOffset = toolCallCount;
+        const toolCallOffset =
+          checkpoint && (this.adapter?.executionEngine ?? 'noema') === 'noema'
+            ? 0
+            : toolCallCount;
         const runPrompt =
           verificationAttempts === 0
             ? task
@@ -702,6 +705,7 @@ export class SocialWorkService {
           typeof this.store.getSocialWorkRuntimeCheckpoint === 'function'
             ? this.store.getSocialWorkRuntimeCheckpoint(taskId)
             : null;
+        let resumableCheckpoint = null;
         if (persistedCheckpoint) {
           const resumableProviderFailure =
             outcome.status === 'failed' &&
@@ -710,11 +714,15 @@ export class SocialWorkService {
             ) &&
             persistedCheckpoint.phase === 'ready_for_model' &&
             persistedCheckpoint.resumePhase === 'ready_for_model';
-          this.store.saveSocialWorkRuntimeCheckpoint(taskId, {
+          resumableCheckpoint = {
             ...persistedCheckpoint,
             phase: outcome.status,
             resumePhase: resumableProviderFailure ? 'ready_for_model' : null,
-          });
+          };
+          this.store.saveSocialWorkRuntimeCheckpoint(
+            taskId,
+            resumableCheckpoint,
+          );
         }
         if (typeof outcome.result === 'string' && outcome.result.trim()) {
           resultParts.push(outcome.result.slice(0, MAX_RESULT_CHARS));
@@ -746,15 +754,20 @@ export class SocialWorkService {
           !run.stopRequested &&
           !this.shuttingDown &&
           outcome.status === 'failed' &&
-          outcome.errorCode === 'dsh_rate_limited' &&
+          ['dsh_rate_limited', 'rate_limited'].includes(outcome.errorCode) &&
           Number.isInteger(outcome.retryAfterSeconds) &&
           verificationStatus === 'verified' &&
           Boolean(runtimeSessionId) &&
           verificationChecks.length > 0 &&
-          verificationAttempts < 1;
+          verificationAttempts < 1 &&
+          (outcome.errorCode !== 'rate_limited' ||
+            resumableCheckpoint?.resumePhase === 'ready_for_model');
         if (!mayContinueAfterRateLimit) break;
 
         verificationAttempts += 1;
+        if (outcome.errorCode === 'rate_limited') {
+          checkpoint = resumableCheckpoint;
+        }
         this.store.updateSocialWorkTaskProgress(taskId, {
           phase: 'retry_waiting_rate_limit',
           toolCallCount,
@@ -763,7 +776,12 @@ export class SocialWorkService {
         const retryWaitController = new AbortController();
         run.retryWaitController = retryWaitController;
         const cooldownElapsed = await this.delayImpl(
-          Math.min((outcome.retryAfterSeconds + 1) * 1_000, 120_000),
+          Math.min(
+            (outcome.retryAfterSeconds +
+              (outcome.errorCode === 'dsh_rate_limited' ? 1 : 0)) *
+              1_000,
+            120_000,
+          ),
           retryWaitController.signal,
         );
         if (run.retryWaitController === retryWaitController) {
