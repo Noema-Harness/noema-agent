@@ -766,7 +766,7 @@ test('Noema executor rejects workspace traversal and does not repeat side effect
   }
 });
 
-test('Noema executor ends the delegation when its command sandbox is unavailable', async () => {
+test('Noema executor hides unavailable commands and fails closed if the model still requests one', async () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'noema-project-executor-'));
   const workspace = path.join(directory, 'workspace');
   mkdirSync(workspace);
@@ -782,9 +782,21 @@ test('Noema executor ends the delegation when its command sandbox is unavailable
   ]);
   const events = [];
   let commandAttempts = 0;
+  const requests = [];
+  const checkedProvider = {
+    ...provider,
+    async *streamChat(request) {
+      requests.push(request);
+      yield* provider.streamChat(request);
+    },
+  };
   try {
     const executor = new NoemaProjectExecutor({
-      provider,
+      provider: checkedProvider,
+      commandSupport: {
+        supported: false,
+        reason: '当前系统暂不支持安全的项目命令执行。',
+      },
       commandRunner: async () => {
         commandAttempts += 1;
         const error = new Error('Windows 命令沙箱不可用。');
@@ -802,10 +814,15 @@ test('Noema executor ends the delegation when its command sandbox is unavailable
     const outcome = await handle.done;
     assert.equal(outcome.status, 'failed');
     assert.equal(outcome.errorCode, 'command_sandbox_unavailable');
-    assert.equal(outcome.errorMessage, 'Windows 命令沙箱不可用。');
+    assert.equal(outcome.errorMessage, '当前系统暂不支持安全的项目命令执行。');
     assert.equal(outcome.toolCallCount, 1);
     assert.equal(provider.callCount, 1);
-    assert.equal(commandAttempts, 1);
+    assert.equal(commandAttempts, 0);
+    assert.equal(
+      requests[0].tools.some((tool) => tool.function.name === 'run_command'),
+      false,
+    );
+    assert.match(requests[0].messages[0].content, /不能运行系统命令/u);
     assert.equal(
       events.find((event) => event.type === 'tool-result')?.effectStatus,
       'not_applied',
@@ -860,6 +877,7 @@ test('Noema executor does not repeat a side-effecting command with a new call ID
   try {
     const executor = new NoemaProjectExecutor({
       provider,
+      commandSupport: { supported: true },
       commandRunner: runRawCommandForTest,
     });
     const handle = await executor.startTask({
@@ -915,6 +933,7 @@ test('stopping a running command waits for the child tree and marks its effects 
     const events = [];
     const executor = new NoemaProjectExecutor({
       provider,
+      commandSupport: { supported: true },
       commandRunner: runRawCommandForTest,
     });
     handle = await executor.startTask({
@@ -981,6 +1000,7 @@ test('a command timeout terminates its process tree and reports uncertain effect
     const executor = new NoemaProjectExecutor({
       provider,
       commandTimeoutMs: 500,
+      commandSupport: { supported: true },
       commandRunner: runRawCommandForTest,
     });
     const handle = await executor.startTask({
