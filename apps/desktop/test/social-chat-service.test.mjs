@@ -87,6 +87,333 @@ test('social chat sends only the selected room transcript and persists the real 
   }
 });
 
+test('busy project @ delivery is durable and starts only after the member turn finishes', async () => {
+  const db = new Database(':memory:');
+  new RootStore(db);
+  const store = createSocialTestStore(db);
+  const projectStore = new SocialProjectStore({ db, socialChatStore: store });
+  const project = projectStore.createProject({
+    title: '延迟交付测试',
+    brief: '验证忙碌成员队列。',
+    agentIds: ['noema', 'engineering-partner'],
+  });
+  const requests = [];
+  let releaseFirst;
+  const firstGate = new Promise((resolve) => {
+    releaseFirst = resolve;
+  });
+  const provider = {
+    async *streamChat(input) {
+      requests.push(input);
+      if (requests.length === 1) {
+        yield '第一条先完成。';
+        await firstGate;
+      } else {
+        yield '第' + requests.length + '条排队消息已处理。';
+      }
+    },
+  };
+  const service = new SocialChatService({
+    store,
+    provider,
+    projectStore,
+    getProjectSessionContext: (roomId, agentId) =>
+      projectStore.getProjectSessionContext(roomId, agentId),
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'test-model',
+    getRootState: async () => ({
+      connected: true,
+      selectedModel: 'test-model',
+    }),
+  });
+
+  try {
+    service.sendMessage({
+      roomId: project.groupRoomId,
+      agentId: 'engineering-partner',
+      text: '先处理这一条。',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    const firstRun = service.active.get(project.groupRoomId);
+    assert.ok(firstRun);
+    assert.equal(requests.length, 1);
+
+    const queued = service.sendMessage({
+      roomId: project.groupRoomId,
+      agentId: 'engineering-partner',
+      text: '第二条等你空闲后处理。',
+    });
+    const queuedAfter = service.sendMessage({
+      roomId: project.groupRoomId,
+      agentId: 'engineering-partner',
+      text: '第三条排在第二条之后。',
+    });
+    assert.equal(queued.queued, true);
+    assert.equal(queuedAfter.queued, true);
+    assert.equal(requests.length, 1, 'a busy member must not be interrupted');
+    assert.equal(
+      requests[0].messages.some((message) =>
+        message.content.includes('第二条等你空闲'),
+      ),
+      false,
+      'a response must not see later queued group messages',
+    );
+
+    const persistedGroupMessage = new SocialChatStore(db)
+      .getRoomSnapshot(project.groupRoomId)
+      .messages.find((message) => message.id === queued.messageId);
+    const projectSessionRoomId = projectStore.getProjectSession(
+      project.id,
+      'engineering-partner',
+    ).room.room.id;
+    const queuedSessionMessage = new SocialChatStore(db)
+      .getRoomSnapshot(projectSessionRoomId)
+      .messages.find((message) => message.turnId === queued.turnId);
+    assert.equal(persistedGroupMessage?.deliveryStatus, 'queued');
+    assert.equal(persistedGroupMessage?.deliveryAgentId, 'engineering-partner');
+    assert.equal(
+      queuedSessionMessage,
+      undefined,
+      'the member session should not see a message before delivery',
+    );
+    assert.equal(store.listProjectGroupInbox(project.groupRoomId).length, 2);
+
+    releaseFirst();
+    await firstRun.done;
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+      const completedReplies = store
+        .getRoomSnapshot(project.groupRoomId)
+        .messages.filter(
+          (message) =>
+            [queued.turnId, queuedAfter.turnId].includes(message.turnId) &&
+            message.role === 'assistant' &&
+            message.status === 'complete',
+        ).length;
+      if (completedReplies === 2) break;
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    assert.equal(requests.length, 3);
+    assert.equal(
+      requests[1].messages.at(-1)?.content,
+      '第二条等你空闲后处理。',
+    );
+    assert.equal(
+      requests[2].messages.at(-1)?.content,
+      '第三条排在第二条之后。',
+    );
+    assert.equal(
+      requests[1].messages.some((message) =>
+        message.content.includes('第三条排在第二条之后'),
+      ),
+      false,
+      'later queued messages must not leak into earlier context',
+    );
+    const finalGroup = store.getRoomSnapshot(project.groupRoomId);
+    assert.equal(
+      finalGroup.messages.find((message) => message.id === queued.messageId)
+        ?.deliveryStatus,
+      undefined,
+    );
+    assert.equal(
+      finalGroup.messages.find(
+        (message) =>
+          message.turnId === queued.turnId && message.role === 'assistant',
+      )?.status,
+      'complete',
+    );
+    assert.equal(
+      store
+        .getRoomSnapshot(projectSessionRoomId)
+        .messages.find(
+          (message) =>
+            message.turnId === queued.turnId && message.role === 'user',
+        )?.content,
+      '第二条等你空闲后处理。',
+    );
+    assert.equal(store.listProjectGroupInbox(project.groupRoomId).length, 0);
+  } finally {
+    releaseFirst();
+    await service.shutdown();
+    db.close();
+  }
+});
+
+test('a queued project @ message survives restart and resumes once the UI service is ready', async () => {
+  const db = new Database(':memory:');
+  new RootStore(db);
+  let store = createSocialTestStore(db);
+  let projectStore = new SocialProjectStore({ db, socialChatStore: store });
+  const project = projectStore.createProject({
+    title: '重启后续投递',
+    brief: '队列只保存尚未开始执行的用户消息。',
+    agentIds: ['noema', 'engineering-partner'],
+  });
+  let releaseFirst;
+  const firstGate = new Promise((resolve) => {
+    releaseFirst = resolve;
+  });
+  const interruptedProvider = {
+    async *streamChat({ signal }) {
+      yield '执行中';
+      await Promise.race([
+        firstGate,
+        new Promise((_, reject) => {
+          signal.addEventListener(
+            'abort',
+            () => reject(new DOMException('Stopped', 'AbortError')),
+            { once: true },
+          );
+        }),
+      ]);
+    },
+  };
+  let service = new SocialChatService({
+    store,
+    provider: interruptedProvider,
+    projectStore,
+    getProjectSessionContext: (roomId, agentId) =>
+      projectStore.getProjectSessionContext(roomId, agentId),
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'test-model',
+    getRootState: async () => ({
+      connected: true,
+      providerConfigured: true,
+      selectedModel: 'test-model',
+    }),
+  });
+
+  try {
+    service.sendMessage({
+      roomId: project.groupRoomId,
+      agentId: 'engineering-partner',
+      text: '先开始这一条。',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    const activeRun = service.active.get(project.groupRoomId);
+    const queued = service.sendMessage({
+      roomId: project.groupRoomId,
+      agentId: 'engineering-partner',
+      text: '重启后继续投递。',
+    });
+    assert.equal(queued.queued, true);
+
+    await service.shutdown();
+    await activeRun?.done;
+    assert.equal(store.listProjectGroupInbox(project.groupRoomId).length, 1);
+
+    store = new SocialChatStore(db);
+    projectStore = new SocialProjectStore({ db, socialChatStore: store });
+    let resumedCalls = 0;
+    service = new SocialChatService({
+      store,
+      provider: {
+        async *streamChat(input) {
+          resumedCalls += 1;
+          assert.equal(input.messages.at(-1)?.content, '重启后继续投递。');
+          yield '重启后已完成。';
+        },
+      },
+      projectStore,
+      getProjectSessionContext: (roomId, agentId) =>
+        projectStore.getProjectSessionContext(roomId, agentId),
+      secretStore: { isConfigured: () => true },
+      getSelectedModel: () => 'test-model',
+      getRootState: async () => ({
+        connected: true,
+        providerConfigured: true,
+        selectedModel: 'test-model',
+      }),
+    });
+    await service.getUiState();
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      const reply = store
+        .getRoomSnapshot(project.groupRoomId)
+        .messages.find(
+          (message) =>
+            message.turnId === queued.turnId && message.role === 'assistant',
+        );
+      if (reply?.status === 'complete') break;
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    assert.equal(resumedCalls, 1);
+    assert.equal(store.listProjectGroupInbox(project.groupRoomId).length, 0);
+    assert.equal(
+      store
+        .getRoomSnapshot(project.groupRoomId)
+        .messages.filter(
+          (message) =>
+            message.turnId === queued.turnId && message.role === 'user',
+        ).length,
+      1,
+    );
+  } finally {
+    releaseFirst();
+    await service.shutdown();
+    db.close();
+  }
+});
+
+test('Noema does not overtake a queued public group message with an internal assignment', async () => {
+  const db = new Database(':memory:');
+  new RootStore(db);
+  const store = createSocialTestStore(db);
+  const projectStore = new SocialProjectStore({ db, socialChatStore: store });
+  const project = projectStore.createProject({
+    title: '群消息顺序',
+    brief: '用户群消息先于之后的内部交办。',
+    agentIds: ['noema', 'engineering-partner'],
+  });
+  const queued = store.enqueueProjectGroupMessage({
+    roomId: project.groupRoomId,
+    agentId: 'engineering-partner',
+    text: '先处理用户排队的问题。',
+  });
+  let providerCalls = 0;
+  const service = new SocialChatService({
+    store,
+    provider: {
+      async *streamChat() {
+        providerCalls += 1;
+        yield '已处理。';
+      },
+    },
+    projectStore,
+    getProjectSessionContext: (roomId, agentId) =>
+      projectStore.getProjectSessionContext(roomId, agentId),
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'test-model',
+    getRootState: async () => ({
+      connected: true,
+      selectedModel: 'test-model',
+    }),
+  });
+
+  try {
+    const result = await service.sendInternalProjectMessage(
+      {
+        roomId: project.groupRoomId,
+        agentId: 'engineering-partner',
+        text: '然后执行 Noema 的后续分工。',
+      },
+      new AbortController().signal,
+    );
+    assert.equal(result.delivered, false);
+    assert.equal(result.status, 'busy');
+    assert.equal(providerCalls, 0);
+    assert.equal(store.listProjectGroupInbox(project.groupRoomId).length, 1);
+    assert.equal(
+      store
+        .getRoomSnapshot(project.groupRoomId)
+        .messages.find((message) => message.id === queued.userMessageId)
+        ?.deliveryStatus,
+      'queued',
+    );
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});
+
 test('project member replies and retries preserve project scope and user-context authority', async () => {
   const db = new Database(':memory:');
   new RootStore(db);

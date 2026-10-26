@@ -617,6 +617,26 @@ export class SocialChatStore {
         `);
       })();
     }
+    if (current < 18) {
+      this.db.transaction(() => {
+        this.db.exec(`
+          CREATE TABLE social_project_group_inbox (
+            turn_id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL REFERENCES social_projects(id) ON DELETE CASCADE,
+            group_room_id TEXT NOT NULL REFERENCES social_rooms(id) ON DELETE CASCADE,
+            agent_id TEXT NOT NULL REFERENCES social_agents(id) ON DELETE RESTRICT,
+            session_room_id TEXT NOT NULL REFERENCES social_rooms(id) ON DELETE RESTRICT,
+            group_user_message_id TEXT NOT NULL UNIQUE
+              REFERENCES social_messages(id) ON DELETE CASCADE,
+            queued_at TEXT NOT NULL
+          );
+          CREATE INDEX social_project_group_inbox_order
+            ON social_project_group_inbox(group_room_id, queued_at, turn_id);
+          INSERT INTO social_schema_migrations (version, applied_at)
+          VALUES (18, '${isoNow()}');
+        `);
+      })();
+    }
   }
 
   seedInitialSocialModel() {
@@ -1355,9 +1375,24 @@ export class SocialChatStore {
       });
       historiesByAssistant.set(source.assistantMessageId, history);
     }
+    const pendingMessages = this.db
+      .prepare(`
+        SELECT group_user_message_id AS messageId, agent_id AS agentId
+        FROM social_project_group_inbox WHERE group_room_id = ?
+      `)
+      .all(roomId);
+    const pendingByMessage = new Map(
+      pendingMessages.map((item) => [item.messageId, item.agentId]),
+    );
     const messages = rows.map((row) =>
       hydrateMessage({
         ...row,
+        ...(pendingByMessage.has(row.id)
+          ? {
+              deliveryStatus: 'queued',
+              deliveryAgentId: pendingByMessage.get(row.id),
+            }
+          : {}),
         historySources: historiesByAssistant.get(row.id) ?? [],
       }),
     );
@@ -3091,6 +3126,264 @@ export class SocialChatStore {
     })();
   }
 
+  enqueueProjectGroupMessage({
+    roomId,
+    agentId,
+    text,
+    replyTo = null,
+    maxPending = 20,
+  }) {
+    const normalizedText = requireText(text, '消息', 100_000);
+    this.assertRoomOpen(roomId);
+    if (!this.isMember(roomId, agentId) || agentId === 'noema') {
+      throw new Error('排队消息必须 @ 项目群中的专业成员。');
+    }
+    if (this.getAgent(agentId).archivedAt) {
+      throw new Error('这个联系人已归档；请先恢复后再发送消息。');
+    }
+    if (
+      replyTo &&
+      (typeof replyTo.id !== 'string' ||
+        replyTo.roomId !== roomId ||
+        typeof replyTo.content !== 'string' ||
+        typeof replyTo.sender !== 'string' ||
+        !['user', 'assistant'].includes(replyTo.role) ||
+        typeof replyTo.createdAt !== 'string')
+    ) {
+      throw new TypeError('当前聊天的回复对象无效。');
+    }
+    const membership = this.db
+      .prepare(`
+        SELECT p.id AS projectId, ps.room_id AS sessionRoomId
+        FROM social_projects AS p
+        JOIN social_project_sessions AS ps ON ps.project_id = p.id
+        WHERE p.group_room_id = ? AND p.status = 'active'
+          AND ps.agent_id = ? AND ps.status = 'active'
+        LIMIT 1
+      `)
+      .get(roomId, agentId);
+    if (!membership) {
+      throw new Error('项目成员没有可用的项目会话，消息未排队。');
+    }
+    this.assertRoomOpen(membership.sessionRoomId);
+    const pendingCount = this.db
+      .prepare(
+        'SELECT COUNT(*) AS count FROM social_project_group_inbox WHERE group_room_id = ?',
+      )
+      .get(roomId).count;
+    if (pendingCount >= maxPending) {
+      throw new Error('项目群待处理消息已满；请等待成员完成后再发送。');
+    }
+
+    const turnId = randomUUID();
+    const groupUserMessageId = randomUUID();
+    const now = isoNow();
+    this.db.transaction(() => {
+      this.db
+        .prepare(`
+        INSERT INTO social_messages
+          (id, room_id, turn_id, role, content, status, runtime,
+           reply_to_message_id, reply_to_json, created_at, updated_at)
+        VALUES (?, ?, ?, 'user', ?, 'complete', 'freellmapi', ?, ?, ?, ?)
+      `)
+        .run(
+          groupUserMessageId,
+          roomId,
+          turnId,
+          normalizedText,
+          replyTo?.id ?? null,
+          JSON.stringify(replyTo),
+          now,
+          now,
+        );
+      this.db
+        .prepare(`
+          INSERT INTO social_project_group_inbox
+            (turn_id, project_id, group_room_id, agent_id, session_room_id,
+             group_user_message_id, queued_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `)
+        .run(
+          turnId,
+          membership.projectId,
+          roomId,
+          agentId,
+          membership.sessionRoomId,
+          groupUserMessageId,
+          now,
+        );
+      this.db
+        .prepare('UPDATE social_rooms SET updated_at = ? WHERE id = ?')
+        .run(now, roomId);
+    })();
+    return {
+      turnId,
+      roomId,
+      agentId,
+      projectId: membership.projectId,
+      sessionRoomId: membership.sessionRoomId,
+      userMessageId: groupUserMessageId,
+      queued: true,
+    };
+  }
+
+  listProjectGroupInbox(roomId = null) {
+    const rows = this.db
+      .prepare(`
+        SELECT i.turn_id AS turnId, i.project_id AS projectId,
+               i.group_room_id AS roomId, i.agent_id AS agentId,
+               i.session_room_id AS sessionRoomId,
+               i.group_user_message_id AS userMessageId,
+               group_message.content AS text,
+               group_message.reply_to_json AS replyToJson,
+               i.queued_at AS queuedAt
+        FROM social_project_group_inbox AS i
+        JOIN social_messages AS group_message
+          ON group_message.id = i.group_user_message_id
+        WHERE (? IS NULL OR i.group_room_id = ?)
+        ORDER BY i.queued_at, i.turn_id
+      `)
+      .all(roomId, roomId);
+    return rows.map((row) => ({
+      ...row,
+      replyTo: JSON.parse(row.replyToJson ?? 'null'),
+    }));
+  }
+
+  hasPendingProjectGroupMessages(roomId) {
+    return Boolean(
+      this.db
+        .prepare(
+          'SELECT 1 FROM social_project_group_inbox WHERE group_room_id = ? LIMIT 1',
+        )
+        .get(roomId),
+    );
+  }
+
+  claimProjectGroupMessage(turnId, model) {
+    const normalizedTurnId = requireText(turnId, '本轮 ID', 200);
+    const normalizedModel = requireText(model, '模型路由', 200);
+    return this.db.transaction(() => {
+      const pendingRow = this.db
+        .prepare(`
+          SELECT i.turn_id AS turnId, i.project_id AS projectId,
+                 i.group_room_id AS roomId, i.agent_id AS agentId,
+                 i.session_room_id AS sessionRoomId,
+                 i.group_user_message_id AS userMessageId,
+                 group_message.content AS text,
+                 group_message.reply_to_json AS replyToJson,
+                 i.queued_at AS queuedAt
+          FROM social_project_group_inbox AS i
+          JOIN social_messages AS group_message
+            ON group_message.id = i.group_user_message_id
+          WHERE i.turn_id = ?
+        `)
+        .get(normalizedTurnId);
+      const pending = pendingRow
+        ? {
+            ...pendingRow,
+            replyTo: JSON.parse(pendingRow.replyToJson ?? 'null'),
+          }
+        : null;
+      if (!pending) return null;
+      this.assertRoomOpen(pending.roomId);
+      const project = this.db
+        .prepare(`
+          SELECT 1 FROM social_projects
+          WHERE id = ? AND group_room_id = ? AND status = 'active'
+        `)
+        .get(pending.projectId, pending.roomId);
+      const session = this.db
+        .prepare(`
+          SELECT 1 FROM social_project_sessions
+          WHERE project_id = ? AND agent_id = ? AND room_id = ? AND status = 'active'
+        `)
+        .get(pending.projectId, pending.agentId, pending.sessionRoomId);
+      if (!project || !session || this.getAgent(pending.agentId).archivedAt) {
+        return null;
+      }
+      if (
+        this.hasStreamingReply(pending.roomId) ||
+        this.hasStreamingReply(pending.sessionRoomId)
+      ) {
+        return null;
+      }
+      const groupUser = this.db
+        .prepare(`
+          SELECT 1 FROM social_messages
+          WHERE id = ? AND room_id = ? AND turn_id = ? AND role = 'user'
+        `)
+        .get(pending.userMessageId, pending.roomId, pending.turnId);
+      if (!groupUser) {
+        throw new Error('群消息记录缺失，不能启动排队任务。');
+      }
+      this.assertRoomOpen(pending.sessionRoomId);
+      const mirrorUserMessageId = randomUUID();
+      const assistantMessageId = randomUUID();
+      const mirrorAssistantMessageId = randomUUID();
+      const now = isoNow();
+      this.db
+        .prepare(`
+          INSERT INTO social_messages
+            (id, room_id, turn_id, role, content, status, runtime,
+             created_at, updated_at)
+          VALUES (?, ?, ?, 'user', ?, 'complete', 'freellmapi', ?, ?)
+        `)
+        .run(
+          mirrorUserMessageId,
+          pending.sessionRoomId,
+          pending.turnId,
+          pending.text,
+          now,
+          now,
+        );
+      const insertAssistant = this.db.prepare(`
+        INSERT INTO social_messages
+          (id, room_id, turn_id, role, agent_id, content, status, attempt,
+           model, runtime, forwarded_sources_json, reply_to_json,
+           interaction_adjustment_ids_json,
+           interaction_adjustment_snapshots_json,
+           interaction_adjustment_attempts_json, created_at, updated_at)
+        VALUES (?, ?, ?, 'assistant', ?, '', 'streaming', 1, ?, 'freellmapi',
+                '[]', 'null', '[]', '[]', '[]', ?, ?)
+      `);
+      insertAssistant.run(
+        assistantMessageId,
+        pending.roomId,
+        pending.turnId,
+        pending.agentId,
+        normalizedModel,
+        now,
+        now,
+      );
+      insertAssistant.run(
+        mirrorAssistantMessageId,
+        pending.sessionRoomId,
+        pending.turnId,
+        pending.agentId,
+        normalizedModel,
+        now,
+        now,
+      );
+      this.db
+        .prepare('DELETE FROM social_project_group_inbox WHERE turn_id = ?')
+        .run(pending.turnId);
+      this.db
+        .prepare('UPDATE social_rooms SET updated_at = ? WHERE id IN (?, ?)')
+        .run(now, pending.roomId, pending.sessionRoomId);
+      return {
+        ...pending,
+        mirrorUserMessageId,
+        assistantMessageId,
+        mirrorAssistantMessageId,
+        model: normalizedModel,
+        forwardedSources: [],
+        interactionAdjustmentIds: [],
+        interactionAdjustmentSnapshots: [],
+      };
+    })();
+  }
+
   getTurnAssistantMessage(roomId, turnId, agentId) {
     return (
       this.db
@@ -3150,6 +3443,7 @@ export class SocialChatStore {
     roomId,
     {
       beforeMessageId = null,
+      throughMessageId = null,
       maxMessages = MAX_CONTEXT_MESSAGES,
       maxCharacters = MAX_CONTEXT_HISTORY_CHARACTERS,
       excludeSharedRoomId = null,
@@ -3174,6 +3468,7 @@ export class SocialChatStore {
         WHERE room_id = ? AND role IN ('user', 'assistant')
           AND status = 'complete'
           AND (? IS NULL OR seq < (SELECT seq FROM social_messages WHERE id = ?))
+          AND (? IS NULL OR seq <= (SELECT seq FROM social_messages WHERE id = ?))
           AND (
             ? IS NULL OR NOT EXISTS (
               SELECT 1 FROM social_messages AS shared
@@ -3187,6 +3482,8 @@ export class SocialChatStore {
         roomId,
         beforeMessageId,
         beforeMessageId,
+        throughMessageId,
+        throughMessageId,
         excludeSharedRoomId,
         excludeSharedRoomId,
         messageLimit,

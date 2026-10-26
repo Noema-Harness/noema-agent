@@ -259,6 +259,7 @@ export class SocialChatService {
     this.getProjectWorkReadiness = getProjectWorkReadiness;
     this.emit = emit;
     this.active = new Map();
+    this.projectGroupInboxDrains = new Map();
     this.shuttingDown = false;
   }
 
@@ -267,6 +268,9 @@ export class SocialChatService {
       this.getRootState(),
       Promise.resolve(this.store.getSnapshot()),
     ]);
+    if (root.providerConfigured && root.selectedModel) {
+      this.schedulePendingProjectGroupInboxes();
+    }
     return {
       connected: root.connected,
       checking: root.checking,
@@ -367,6 +371,33 @@ export class SocialChatService {
     if (projectContext?.groupRoomId === roomId) {
       this.projectStore?.assertWorkAllowed(roomId);
     }
+    if (projectContext?.groupRoomId === roomId && agentId !== 'noema') {
+      const memberBusy =
+        this.active.has(projectContext.roomId) ||
+        this.store.hasStreamingReply(projectContext.roomId);
+      const groupBusy =
+        this.active.has(roomId) || this.store.hasStreamingReply(roomId);
+      const alreadyQueued = this.store.hasPendingProjectGroupMessages(roomId);
+      if (memberBusy || groupBusy || alreadyQueued) {
+        const queued = this.store.enqueueProjectGroupMessage({
+          roomId,
+          agentId,
+          text,
+          replyTo,
+        });
+        this.emit({ type: 'chat-state-updated', roomId });
+        this.emit({
+          type: 'chat-state-updated',
+          roomId: queued.sessionRoomId,
+        });
+        this.scheduleProjectGroupInboxDrain(roomId);
+        return {
+          turnId: queued.turnId,
+          messageId: queued.userMessageId,
+          queued: true,
+        };
+      }
+    }
     const turn = review
       ? this.projectStore.submitReview({
           reviewId: review.id,
@@ -436,6 +467,13 @@ export class SocialChatService {
         delivered: false,
         status: 'busy',
         report: '项目群正有回复生成；本次分工未投递。',
+      };
+    }
+    if (this.store.hasPendingProjectGroupMessages(roomId)) {
+      return {
+        delivered: false,
+        status: 'busy',
+        report: '项目群有用户消息排队；本次分工让出顺序，未投递。',
       };
     }
     this.projectStore.assertWorkAllowed(roomId);
@@ -810,6 +848,94 @@ export class SocialChatService {
       parentSignal.removeEventListener('abort', abortWithParent);
       if (this.active.get(roomId) === run) this.active.delete(roomId);
       this.emit({ type: 'chat-state-updated', roomId });
+      this.schedulePendingProjectGroupInboxes();
+    }
+  }
+
+  schedulePendingProjectGroupInboxes() {
+    if (this.shuttingDown) return;
+    const roomIds = new Set(
+      this.store.listProjectGroupInbox().map((message) => message.roomId),
+    );
+    for (const roomId of roomIds) this.scheduleProjectGroupInboxDrain(roomId);
+  }
+
+  scheduleProjectGroupInboxDrain(roomId) {
+    if (this.shuttingDown || this.projectGroupInboxDrains.has(roomId)) return;
+    const drain = this.drainProjectGroupInbox(roomId).catch(() => {
+      this.emit({ type: 'chat-state-updated', roomId });
+    });
+    this.projectGroupInboxDrains.set(roomId, drain);
+    void drain.finally(() => {
+      if (this.projectGroupInboxDrains.get(roomId) === drain) {
+        this.projectGroupInboxDrains.delete(roomId);
+      }
+    });
+  }
+
+  async drainProjectGroupInbox(roomId) {
+    while (!this.shuttingDown) {
+      // Noema coordinates project work from its continuous main conversation.
+      // Let that turn finish before dispatching another queued group request.
+      if (this.active.has('room-noema')) return;
+      const pending = this.store.listProjectGroupInbox(roomId)[0];
+      if (!pending) return;
+      if (
+        this.active.has(roomId) ||
+        this.active.has(pending.sessionRoomId) ||
+        this.store.hasStreamingReply(roomId) ||
+        this.store.hasStreamingReply(pending.sessionRoomId)
+      ) {
+        return;
+      }
+      let model;
+      let projectContext;
+      try {
+        model = this.requireReadyModel();
+        projectContext = this.getProjectSessionContext(roomId, pending.agentId);
+      } catch {
+        return;
+      }
+      if (!projectContext) return;
+      const turn = this.store.claimProjectGroupMessage(pending.turnId, model);
+      if (!turn) return;
+      const controller = new AbortController();
+      const run = {
+        ...turn,
+        roomId,
+        agentId: turn.agentId,
+        model,
+        controller,
+        text: turn.text,
+        replyTo: turn.replyTo,
+        projectContext,
+        mirrorRoomId: turn.sessionRoomId,
+        mirrorUserMessageId: turn.mirrorUserMessageId,
+        mirrorAssistantMessageId: turn.mirrorAssistantMessageId,
+        done: null,
+      };
+      this.active.set(roomId, run);
+      this.active.set(run.mirrorRoomId, run);
+      this.emit({
+        type: 'chat-turn-started',
+        turnId: turn.turnId,
+        userMessageId: turn.userMessageId,
+        assistantMessageId: turn.assistantMessageId,
+        roomId,
+        agentId: turn.agentId,
+        model,
+      });
+      this.emit({
+        type: 'chat-turn-started',
+        turnId: turn.turnId,
+        userMessageId: turn.mirrorUserMessageId,
+        assistantMessageId: turn.mirrorAssistantMessageId,
+        roomId: run.mirrorRoomId,
+        agentId: turn.agentId,
+        model,
+      });
+      run.done = this.runTurn(run);
+      await run.done;
     }
   }
 
@@ -832,7 +958,12 @@ export class SocialChatService {
         : [];
       const roomHistory = this.store.getContext(
         roomId,
-        isProjectGroupRoute ? PROJECT_GROUP_SHARED_CONTEXT : undefined,
+        isProjectGroupRoute
+          ? {
+              ...PROJECT_GROUP_SHARED_CONTEXT,
+              throughMessageId: run.userMessageId ?? null,
+            }
+          : undefined,
       );
       const specialistAgents =
         agentId === 'noema'
@@ -1617,6 +1748,7 @@ export class SocialChatService {
           this.active.delete(run.mirrorRoomId);
         this.emit({ type: 'chat-state-updated', roomId: run.mirrorRoomId });
       }
+      this.schedulePendingProjectGroupInboxes();
     }
   }
 

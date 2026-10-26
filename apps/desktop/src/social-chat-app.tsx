@@ -1056,7 +1056,15 @@ function SocialChatApp() {
     }
     const roomId = currentRoom.id;
     const text = draft;
-    if (activeReply && currentRoomQueue.length >= 20) {
+    const persistentProjectQueue =
+      currentRoom.kind === 'group' &&
+      activeProject?.groupRoomId === roomId &&
+      recipient.id !== 'noema';
+    if (
+      activeReply &&
+      !persistentProjectQueue &&
+      currentRoomQueue.length >= 20
+    ) {
       setNotice('当前聊天最多暂存 20 条待发消息。');
       return;
     }
@@ -1071,7 +1079,7 @@ function SocialChatApp() {
             maxCharacters: MAX_CHAT_ATTACHMENT_CHARACTERS,
           }),
       });
-      if (activeReply) {
+      if (activeReply && !persistentProjectQueue) {
         setQueuedMessagesByRoom((current) => {
           const queue = current[roomId] ?? [];
           return {
@@ -1097,7 +1105,7 @@ function SocialChatApp() {
         return;
       }
       shouldFollowRef.current = true;
-      await window.noema.sendSocialMessage({
+      const sent = await window.noema.sendSocialMessage({
         roomId,
         agentId: recipient.id,
         text: messageText,
@@ -1107,6 +1115,11 @@ function SocialChatApp() {
       clearDraftAttachments(roomId);
       setReplyTarget(null);
       if (draftRef.current) draftRef.current.style.height = 'auto';
+      if (sent.queued) {
+        setNotice(
+          '已排队，' + recipient.name + '完成当前回复后会收到这条消息。',
+        );
+      }
       await Promise.all([refreshState(), loadRoom(roomId)]);
     } catch (error) {
       setNotice(
@@ -2689,6 +2702,12 @@ function SocialChatApp() {
                       <GroupMessage
                         key={message.id}
                         message={message}
+                        queuedAgentName={
+                          message.deliveryAgentId
+                            ? (messageAgent.get(message.deliveryAgentId)
+                                ?.name ?? '成员')
+                            : null
+                        }
                         agent={
                           (message.senderAgentId ?? message.agentId)
                             ? (messageAgent.get(
@@ -4176,10 +4195,12 @@ function ChatMessage({
 function GroupMessage({
   message,
   agent,
+  queuedAgentName,
   onRetry,
 }: {
   message: NoemaSocialMessage;
   agent: NoemaSocialAgent | null;
+  queuedAgentName: string | null;
   onRetry: (message: NoemaSocialMessage) => void;
 }) {
   if (message.role === 'system')
@@ -4199,7 +4220,11 @@ function GroupMessage({
           <strong>
             {fromNoema ? 'Noema' : user ? '你' : (agent?.name ?? 'Noema')}
           </strong>
-          <span>{timeLabel(message.createdAt)}</span>
+          <span>
+            {message.deliveryStatus === 'queued'
+              ? '等待' + (queuedAgentName ?? '成员') + '空闲'
+              : timeLabel(message.createdAt)}
+          </span>
         </header>
         {message.replyTo ? (
           <div className="message-quote">

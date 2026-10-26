@@ -176,6 +176,8 @@ export interface NoemaSocialMessage {
   historySources: NoemaSocialHistorySource[];
   historySearchStatus: 'not_searched' | 'found' | 'no_match';
   historySourcesIncluded: boolean;
+  deliveryStatus?: 'queued';
+  deliveryAgentId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -666,7 +668,7 @@ export interface NoemaBridge {
     text: string;
     replyToMessageId?: string | null;
     reviewRequestId?: string | null;
-  }): Promise<{ turnId: string; messageId: string }>;
+  }): Promise<{ turnId: string; messageId: string; queued?: boolean }>;
   forwardSocialMessages(input: {
     targetRoomId: string;
     sourceRoomId: string;
