@@ -7,6 +7,7 @@ import {
   safeStorage,
   shell,
   screen,
+  Notification,
 } from 'electron';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
@@ -55,6 +56,7 @@ import {
   finishQuickCaptureWindow,
   registerQuickCaptureShortcut,
 } from './quick-capture-shortcut.mjs';
+import { createSocialReplyNotificationHandler } from './desktop-notifications.mjs';
 
 function writeSmokeLog(step: string, details: Record<string, unknown> = {}) {
   const logFile = process.env.NOEMA_SMOKE_LOG_FILE;
@@ -492,6 +494,15 @@ const createWindow = () => {
     });
   }
 };
+
+const notifySocialReply = createSocialReplyNotificationHandler({
+  NotificationClass: Notification,
+  getWindow: () => mainWindow,
+  openMainWindow: () => {
+    if (!mainWindow || mainWindow.isDestroyed()) createWindow();
+    focusPrimaryWindow(mainWindow);
+  },
+});
 
 function dispatchQuickCaptureRequest() {
   if (!mainWindow || mainWindow.isDestroyed() || !quickCaptureRendererReady) {
@@ -4029,6 +4040,7 @@ async function startNoema() {
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send(CHANNELS.socialEvent, payload);
         }
+        notifySocialReply(payload);
       },
     });
     unregisterRootIpc = registerRootIpc({
