@@ -288,6 +288,15 @@ test('Noema internal assignments are attributed and persist in the agent residen
         { role: 'assistant', content: '[工程搭档] 接口边界已整理。' },
       ],
     );
+    assert.deepEqual(
+      social
+        .getContext(roomId, { ownAgentId: 'engineering-partner' })
+        .map(({ role, content }) => ({ role, content })),
+      [
+        { role: 'user', content: '[Noema] 核对这个接口的边界。' },
+        { role: 'assistant', content: '接口边界已整理。' },
+      ],
+    );
     assert.equal(
       social.listRooms().find((room) => room.id === roomId).preview.sender,
       '工程搭档',

@@ -3851,6 +3851,7 @@ export class SocialChatStore {
       maxMessages = MAX_CONTEXT_MESSAGES,
       maxCharacters = MAX_CONTEXT_HISTORY_CHARACTERS,
       excludeSharedRoomId = null,
+      ownAgentId = null,
     } = {},
   ) {
     const messageLimit =
@@ -3954,7 +3955,7 @@ export class SocialChatStore {
         order: `${row.createdAt}:message:${String(row.timelineOrder).padStart(16, '0')}`,
         role: row.role === 'assistant' ? 'assistant' : 'user',
         content:
-          row.role === 'assistant' && row.agentId
+          row.role === 'assistant' && row.agentId && row.agentId !== ownAgentId
             ? `[${this.getAgent(row.agentId).name}] ${attached}`
             : row.senderAgentId
               ? `[${this.getAgent(row.senderAgentId).name}] ${attached}`

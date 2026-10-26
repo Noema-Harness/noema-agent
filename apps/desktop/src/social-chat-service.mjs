@@ -327,7 +327,7 @@ function noemaActionGuidance(
 ) {
   return [
     '分享、倾诉、快乐、烦恼和漫谈本身就有意义。自然参与当下交流，不默认把一个想法当成隐含需求，也不把所有讨论转为需求澄清。只有实际形成委托时才组织工作。',
-    '你在当前聊天中回应用户。聊天、探索、计划、写作和建议直接在对话中完成，不创建执行状态。',
+    '用用户此刻的意图和你承担的责任区分交流与受托工作，不按产物是文字还是代码分类。交流、共创和判断可以留在主聊；用户明确交付需要查证、持续推进或独立专业贡献的工作后，组织合适执行者。不要用一份直接生成的文字冒充实际调查；未查证的受众、价格和成本判断必须保留为假设。',
     projectWorkAvailable
       ? '仅当用户明确要求对本地项目文件进行检查、修改、构建或验证时，才可调用 start_project_work。调用会打开本机工作区授权与数据流披露；用户选择工作区后任务才会被创建。不得因用户提到代码、项目或未来想法就启动。'
       : '当前没有可用的项目文件执行能力。不要声称能在本机项目中检查或修改文件。',
@@ -1104,7 +1104,7 @@ export class SocialChatService {
           content:
             'Noema 已在你和它的常驻私聊中交办当前任务。该私聊中标记为 [Noema] 的历史消息来自 Noema，而不是人类用户；此前人类与您的对话仍是有效背景。Noema 主聊没有提供给你。完成后直接给 Noema 可核对的结论，并保留不确定性。',
         },
-        ...this.store.getContext(roomId),
+        ...this.store.getContext(roomId, { ownAgentId: specialist.id }),
       ];
       for await (const delta of this.provider.streamChat({
         model,
@@ -1400,6 +1400,7 @@ export class SocialChatService {
             ...PROJECT_GROUP_SESSION_CONTEXT,
             beforeMessageId: run.mirrorUserMessageId ?? null,
             excludeSharedRoomId: run.projectContext.groupRoomId,
+            ownAgentId: agentId,
           })
         : [];
       const roomHistory = this.store.getContext(
@@ -1409,7 +1410,7 @@ export class SocialChatService {
               ...PROJECT_GROUP_SHARED_CONTEXT,
               throughMessageId: run.userMessageId ?? null,
             }
-          : undefined,
+          : { ownAgentId: agentId },
       );
       const specialistAgents =
         agentId === 'noema'

@@ -11,6 +11,7 @@ import { RootStore } from '../src/root-store.mjs';
 import { SocialChatStore } from '../src/social-chat-store.mjs';
 import { SocialProjectStore } from '../src/social-project-store.mjs';
 import { configureElectronRuntime } from './electron-runtime.mjs';
+import { connect } from './electron-cdp.mjs';
 
 // Isolated, visibly labeled UI fixture. No provider calls or real profile writes.
 configureElectronRuntime();
@@ -172,8 +173,11 @@ try {
   assert.equal(projects.plans.get(project.id).revision, current.revision + 1);
   await click('载入最新计划');
   await click('取消编辑');
+  await evaluate('window.__noemaPlanBeforeReload = true');
   await cdp.call('Page.reload');
-  await wait(`document.querySelector('.project-list-item')`);
+  await wait(
+    `!window.__noemaPlanBeforeReload && Array.from(document.querySelectorAll('.project-list-item')).some(n=>n.textContent.includes('共享计划界面验收样例'))`,
+  );
   await evaluate(
     `Array.from(document.querySelectorAll('.project-list-item')).find(n=>n.textContent.includes('共享计划界面验收样例')).click()`,
   );
@@ -245,45 +249,4 @@ async function screenshot(filename) {
     path.join(scratch, filename),
     Buffer.from(image.data, 'base64'),
   );
-}
-async function connect(url) {
-  const socket = new WebSocket(url);
-  await new Promise((resolve, reject) => {
-    socket.addEventListener('open', resolve, { once: true });
-    socket.addEventListener('error', reject, { once: true });
-  });
-  let id = 0;
-  const pending = new Map();
-  socket.addEventListener('message', (event) => {
-    const data = JSON.parse(event.data);
-    const entry = pending.get(data.id);
-    if (!entry) return;
-    pending.delete(data.id);
-    clearTimeout(entry.timer);
-    if (data.error) entry.reject(new Error(data.error.message));
-    else entry.resolve(data.result);
-  });
-  socket.addEventListener('close', () => {
-    for (const entry of pending.values()) {
-      clearTimeout(entry.timer);
-      entry.reject(new Error('Client debugger disconnected'));
-    }
-    pending.clear();
-  });
-  return {
-    call(method, params = {}) {
-      return new Promise((resolve, reject) => {
-        const key = ++id;
-        const timer = setTimeout(() => {
-          pending.delete(key);
-          reject(new Error(`Debugger timeout: ${method}`));
-        }, 15000);
-        pending.set(key, { resolve, reject, timer });
-        socket.send(JSON.stringify({ id: key, method, params }));
-      });
-    },
-    close() {
-      socket.close();
-    },
-  };
 }
