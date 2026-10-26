@@ -761,6 +761,59 @@ export class SocialChatStore {
         `);
       })();
     }
+    if (current < 22) {
+      this.db.transaction(() => {
+        this.db.exec(`
+          ALTER TABLE social_project_group_inbox RENAME TO social_project_group_inbox_v21;
+          DROP INDEX social_project_group_inbox_order;
+          CREATE TABLE social_project_group_inbox (
+            turn_id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL REFERENCES social_projects(id) ON DELETE CASCADE,
+            group_room_id TEXT NOT NULL REFERENCES social_rooms(id) ON DELETE CASCADE,
+            agent_id TEXT NOT NULL REFERENCES social_agents(id) ON DELETE RESTRICT,
+            session_room_id TEXT NOT NULL REFERENCES social_rooms(id) ON DELETE RESTRICT,
+            group_user_message_id TEXT NOT NULL REFERENCES social_messages(id) ON DELETE CASCADE,
+            queued_at TEXT NOT NULL,
+            root_id TEXT,
+            depth INTEGER NOT NULL DEFAULT 0,
+            trigger_kind TEXT NOT NULL DEFAULT 'mention',
+            plan_item_id TEXT
+          );
+          INSERT INTO social_project_group_inbox
+            (turn_id, project_id, group_room_id, agent_id, session_room_id, group_user_message_id, queued_at)
+            SELECT turn_id, project_id, group_room_id, agent_id, session_room_id, group_user_message_id, queued_at
+            FROM social_project_group_inbox_v21;
+          DROP TABLE social_project_group_inbox_v21;
+          CREATE INDEX social_project_group_inbox_order ON social_project_group_inbox(group_room_id, queued_at, turn_id);
+          CREATE TABLE social_project_dispatch_log (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL REFERENCES social_projects(id) ON DELETE CASCADE,
+            source_message_id TEXT NOT NULL REFERENCES social_messages(id) ON DELETE CASCADE,
+            agent_id TEXT NOT NULL REFERENCES social_agents(id) ON DELETE RESTRICT,
+            root_id TEXT NOT NULL,
+            depth INTEGER NOT NULL,
+            trigger_kind TEXT NOT NULL,
+            plan_item_id TEXT,
+            assistant_message_id TEXT REFERENCES social_messages(id) ON DELETE SET NULL,
+            created_at TEXT NOT NULL,
+            UNIQUE(source_message_id, agent_id)
+          );
+          CREATE INDEX social_project_dispatch_root ON social_project_dispatch_log(root_id);
+          CREATE TABLE social_project_read_cursors (
+            project_id TEXT NOT NULL REFERENCES social_projects(id) ON DELETE CASCADE,
+            agent_id TEXT NOT NULL REFERENCES social_agents(id) ON DELETE CASCADE,
+            last_seq INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY(project_id, agent_id)
+          );
+          CREATE TABLE social_project_publications (
+            event_key TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL REFERENCES social_projects(id) ON DELETE CASCADE,
+            message_id TEXT NOT NULL UNIQUE REFERENCES social_messages(id) ON DELETE CASCADE
+          );
+          INSERT INTO social_schema_migrations(version, applied_at) VALUES (22, '${isoNow()}');
+        `);
+      })();
+    }
   }
 
   seedInitialSocialModel() {
@@ -1518,16 +1571,20 @@ export class SocialChatStore {
         FROM social_project_group_inbox WHERE group_room_id = ?
       `)
       .all(roomId);
-    const pendingByMessage = new Map(
-      pendingMessages.map((item) => [item.messageId, item.agentId]),
-    );
+    const pendingByMessage = new Map();
+    for (const item of pendingMessages)
+      pendingByMessage.set(item.messageId, [
+        ...(pendingByMessage.get(item.messageId) ?? []),
+        item.agentId,
+      ]);
     const messages = rows.map((row) =>
       hydrateMessage({
         ...row,
         ...(pendingByMessage.has(row.id)
           ? {
               deliveryStatus: 'queued',
-              deliveryAgentId: pendingByMessage.get(row.id),
+              deliveryAgentId: pendingByMessage.get(row.id)[0],
+              deliveryAgentIds: pendingByMessage.get(row.id),
             }
           : {}),
         historySources: historiesByAssistant.get(row.id) ?? [],
@@ -3503,156 +3560,6 @@ export class SocialChatStore {
     };
   }
 
-  beginProjectGroupTurn({
-    roomId,
-    agentId,
-    text,
-    model,
-    senderAgentId = null,
-    replyTo = null,
-  }) {
-    const projectMember = this.db
-      .prepare(`
-        SELECT ps.room_id AS sessionRoomId
-        FROM social_projects AS p
-        JOIN social_project_sessions AS ps ON ps.project_id = p.id
-        WHERE p.group_room_id = ? AND p.status = 'active'
-          AND ps.agent_id = ? AND ps.status = 'active'
-        LIMIT 1
-      `)
-      .get(roomId, agentId);
-    if (!projectMember) {
-      throw new Error('项目群中的执行者必须拥有有效的成员项目会话。');
-    }
-    const turnId = randomUUID();
-    return this.db.transaction(() => {
-      const publicTurn = this.beginTurn({
-        roomId,
-        agentId,
-        text,
-        model,
-        turnId,
-        senderAgentId,
-        replyTo,
-      });
-      const sessionTurn = this.beginTurn({
-        roomId: projectMember.sessionRoomId,
-        agentId,
-        text,
-        model,
-        turnId,
-        senderAgentId,
-      });
-      return {
-        ...publicTurn,
-        mirrorRoomId: projectMember.sessionRoomId,
-        mirrorUserMessageId: sessionTurn.userMessageId,
-        mirrorAssistantMessageId: sessionTurn.assistantMessageId,
-      };
-    })();
-  }
-
-  enqueueProjectGroupMessage({
-    roomId,
-    agentId,
-    text,
-    replyTo = null,
-    maxPending = 20,
-  }) {
-    const normalizedText = requireText(text, '消息', 100_000);
-    this.assertRoomOpen(roomId);
-    if (!this.isMember(roomId, agentId) || agentId === 'noema') {
-      throw new Error('排队消息必须 @ 项目群中的专业成员。');
-    }
-    if (this.getAgent(agentId).archivedAt) {
-      throw new Error('这个联系人已归档；请先恢复后再发送消息。');
-    }
-    if (
-      replyTo &&
-      (typeof replyTo.id !== 'string' ||
-        replyTo.roomId !== roomId ||
-        typeof replyTo.content !== 'string' ||
-        typeof replyTo.sender !== 'string' ||
-        !['user', 'assistant'].includes(replyTo.role) ||
-        typeof replyTo.createdAt !== 'string')
-    ) {
-      throw new TypeError('当前聊天的回复对象无效。');
-    }
-    const membership = this.db
-      .prepare(`
-        SELECT p.id AS projectId, ps.room_id AS sessionRoomId
-        FROM social_projects AS p
-        JOIN social_project_sessions AS ps ON ps.project_id = p.id
-        WHERE p.group_room_id = ? AND p.status = 'active'
-          AND ps.agent_id = ? AND ps.status = 'active'
-        LIMIT 1
-      `)
-      .get(roomId, agentId);
-    if (!membership) {
-      throw new Error('项目成员没有可用的项目会话，消息未排队。');
-    }
-    this.assertRoomOpen(membership.sessionRoomId);
-    const pendingCount = this.db
-      .prepare(
-        'SELECT COUNT(*) AS count FROM social_project_group_inbox WHERE group_room_id = ?',
-      )
-      .get(roomId).count;
-    if (pendingCount >= maxPending) {
-      throw new Error('项目群待处理消息已满；请等待成员完成后再发送。');
-    }
-
-    const turnId = randomUUID();
-    const groupUserMessageId = randomUUID();
-    const now = isoNow();
-    this.db.transaction(() => {
-      this.db
-        .prepare(`
-        INSERT INTO social_messages
-          (id, room_id, turn_id, role, content, status, runtime,
-           reply_to_message_id, reply_to_json, created_at, updated_at)
-        VALUES (?, ?, ?, 'user', ?, 'complete', 'freellmapi', ?, ?, ?, ?)
-      `)
-        .run(
-          groupUserMessageId,
-          roomId,
-          turnId,
-          normalizedText,
-          replyTo?.id ?? null,
-          JSON.stringify(replyTo),
-          now,
-          now,
-        );
-      this.db
-        .prepare(`
-          INSERT INTO social_project_group_inbox
-            (turn_id, project_id, group_room_id, agent_id, session_room_id,
-             group_user_message_id, queued_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
-        `)
-        .run(
-          turnId,
-          membership.projectId,
-          roomId,
-          agentId,
-          membership.sessionRoomId,
-          groupUserMessageId,
-          now,
-        );
-      this.db
-        .prepare('UPDATE social_rooms SET updated_at = ? WHERE id = ?')
-        .run(now, roomId);
-    })();
-    return {
-      turnId,
-      roomId,
-      agentId,
-      projectId: membership.projectId,
-      sessionRoomId: membership.sessionRoomId,
-      userMessageId: groupUserMessageId,
-      queued: true,
-    };
-  }
-
   listProjectGroupInbox(roomId = null) {
     const rows = this.db
       .prepare(`
@@ -3661,7 +3568,8 @@ export class SocialChatStore {
                i.session_room_id AS sessionRoomId,
                i.group_user_message_id AS userMessageId,
                group_message.content AS text,
-               group_message.sender_agent_id AS senderAgentId,
+               COALESCE(group_message.sender_agent_id, group_message.agent_id) AS senderAgentId,
+               i.root_id AS rootId, i.depth, i.trigger_kind AS triggerKind, i.plan_item_id AS planItemId,
                group_message.reply_to_json AS replyToJson,
                i.queued_at AS queuedAt
         FROM social_project_group_inbox AS i
@@ -3677,16 +3585,6 @@ export class SocialChatStore {
     }));
   }
 
-  hasPendingProjectGroupMessages(roomId) {
-    return Boolean(
-      this.db
-        .prepare(
-          'SELECT 1 FROM social_project_group_inbox WHERE group_room_id = ? LIMIT 1',
-        )
-        .get(roomId),
-    );
-  }
-
   claimProjectGroupMessage(turnId, model) {
     const normalizedTurnId = requireText(turnId, '本轮 ID', 200);
     const normalizedModel = requireText(model, '模型路由', 200);
@@ -3698,7 +3596,8 @@ export class SocialChatStore {
                  i.session_room_id AS sessionRoomId,
                  i.group_user_message_id AS userMessageId,
                  group_message.content AS text,
-                 group_message.sender_agent_id AS senderAgentId,
+                 COALESCE(group_message.sender_agent_id, group_message.agent_id) AS senderAgentId,
+                 i.root_id AS rootId, i.depth, i.trigger_kind AS triggerKind, i.plan_item_id AS planItemId,
                  group_message.reply_to_json AS replyToJson,
                  i.queued_at AS queuedAt
           FROM social_project_group_inbox AS i
@@ -3739,9 +3638,9 @@ export class SocialChatStore {
       const groupUser = this.db
         .prepare(`
           SELECT 1 FROM social_messages
-          WHERE id = ? AND room_id = ? AND turn_id = ? AND role = 'user'
+          WHERE id = ? AND room_id = ? AND status = 'complete'
         `)
-        .get(pending.userMessageId, pending.roomId, pending.turnId);
+        .get(pending.userMessageId, pending.roomId);
       if (!groupUser) {
         throw new Error('群消息记录缺失，不能启动排队任务。');
       }
@@ -3753,15 +3652,16 @@ export class SocialChatStore {
       this.db
         .prepare(`
           INSERT INTO social_messages
-            (id, room_id, turn_id, role, content, status, runtime,
+            (id, room_id, turn_id, role, content, sender_agent_id, status, runtime,
              created_at, updated_at)
-          VALUES (?, ?, ?, 'user', ?, 'complete', 'freellmapi', ?, ?)
+          VALUES (?, ?, ?, 'user', ?, ?, 'complete', 'freellmapi', ?, ?)
         `)
         .run(
           mirrorUserMessageId,
           pending.sessionRoomId,
           pending.turnId,
           pending.text,
+          pending.senderAgentId,
           now,
           now,
         );
@@ -3796,6 +3696,22 @@ export class SocialChatStore {
       this.db
         .prepare('DELETE FROM social_project_group_inbox WHERE turn_id = ?')
         .run(pending.turnId);
+      const readSeq = this.db
+        .prepare('SELECT seq FROM social_messages WHERE id=?')
+        .get(pending.userMessageId).seq;
+      this.db
+        .prepare(
+          `INSERT INTO social_project_read_cursors(project_id,agent_id,last_seq) VALUES(?,?,?) ON CONFLICT(project_id,agent_id) DO UPDATE SET last_seq=MAX(last_seq,excluded.last_seq)`,
+        )
+        .run(pending.projectId, pending.agentId, readSeq);
+      this.db
+        .prepare(
+          'UPDATE social_project_dispatch_log SET assistant_message_id=? WHERE id=?',
+        )
+        .run(assistantMessageId, pending.turnId);
+      this.db
+        .prepare('UPDATE social_messages SET reply_to_message_id=? WHERE id=?')
+        .run(pending.userMessageId, assistantMessageId);
       this.db
         .prepare('UPDATE social_rooms SET updated_at = ? WHERE id IN (?, ?)')
         .run(now, pending.roomId, pending.sessionRoomId);
@@ -3809,7 +3725,7 @@ export class SocialChatStore {
         interactionAdjustmentIds: [],
         interactionAdjustmentSnapshots: [],
         projectReport:
-          pending.senderAgentId === null
+          pending.senderAgentId === null && !pending.rootId
             ? {
                 projectId: pending.projectId,
                 sourceTurnId: pending.turnId,

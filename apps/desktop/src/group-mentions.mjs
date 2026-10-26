@@ -2,8 +2,12 @@ function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 }
 
-/** Route a public group message to its sole explicitly mentioned member. */
-export function resolveGroupRecipient(text, members, defaultAgentId) {
+/** Public visibility is independent from explicit delivery targets. */
+export function resolveGroupRecipients(
+  text,
+  members,
+  { allowEveryone = false } = {},
+) {
   const matches = new Map();
   const candidates = [...members]
     .filter((member) => member?.id && member?.name)
@@ -17,7 +21,23 @@ export function resolveGroupRecipient(text, members, defaultAgentId) {
     if (mention.test(text)) matches.set(member.id, member);
   }
 
-  if (matches.size > 1) {
+  const everyone = /(^|[^\p{L}\p{N}_])@所有人(?![\p{L}\p{N}_])/u.test(text);
+  if (everyone && !allowEveryone)
+    return { agents: [], everyone, error: '只有用户或 Noema 可以 @所有人。' };
+  return {
+    agents: everyone
+      ? candidates.filter((member) => !member.archivedAt)
+      : [...matches.values()],
+    everyone,
+    error: null,
+  };
+}
+
+/** Non-project groups retain their single responder convention. */
+export function resolveGroupRecipient(text, members, defaultAgentId) {
+  const route = resolveGroupRecipients(text, members);
+  if (route.error) return { agent: null, error: route.error };
+  if (route.agents.length > 1) {
     return {
       agent: null,
       error: '一条群消息只能指定一位回应成员；请拆成多条消息。',
@@ -25,7 +45,7 @@ export function resolveGroupRecipient(text, members, defaultAgentId) {
   }
   return {
     agent:
-      matches.values().next().value ??
+      route.agents[0] ??
       members.find((member) => member.id === defaultAgentId) ??
       null,
     error: null,

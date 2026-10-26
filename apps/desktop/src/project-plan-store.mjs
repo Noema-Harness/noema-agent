@@ -26,7 +26,7 @@ const planSchema = z.object({
 const { $schema: _schema, ...parameters } = z.toJSONSchema(planSchema);
 export const projectPlanParameters = parameters;
 const transitions = {
-  pending: ['in_progress', 'blocked', 'canceled'],
+  pending: ['in_progress', 'submitted', 'blocked', 'canceled'],
   in_progress: ['pending', 'blocked', 'submitted'],
   blocked: ['pending', 'in_progress', 'canceled'],
   submitted: ['in_progress', 'blocked', 'done'],
@@ -240,6 +240,7 @@ export class ProjectPlanStore {
         explanation,
         new Date().toISOString(),
       );
+    this.onChange?.(projectId, { sourceTurnId });
     return this.get(projectId);
   }
 

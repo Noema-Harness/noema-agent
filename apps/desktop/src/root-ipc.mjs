@@ -123,6 +123,7 @@ export function registerRootIpc({
       return socialProjectStore.plans.get(projectId);
     });
     const planChanged = (plan) => {
+      socialChatService.onProjectPlanChanged?.(plan.projectId);
       const project = socialProjectStore.getProject(plan.projectId);
       socialChatService.emit({
         type: 'project-updated',

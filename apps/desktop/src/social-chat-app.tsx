@@ -1040,7 +1040,8 @@ function SocialChatApp() {
       return;
     }
     const routing =
-      currentRoom.kind === 'group'
+      currentRoom.kind === 'group' &&
+      activeProject?.groupRoomId !== currentRoom.id
         ? resolveGroupRecipient(draft, members, currentRecipient.id)
         : { agent: currentRecipient, error: null };
     if (routing.error) {
@@ -1055,9 +1056,7 @@ function SocialChatApp() {
     const roomId = currentRoom.id;
     const text = draft;
     const persistentProjectQueue =
-      currentRoom.kind === 'group' &&
-      activeProject?.groupRoomId === roomId &&
-      recipient.id !== 'noema';
+      currentRoom.kind === 'group' && activeProject?.groupRoomId === roomId;
     if (
       activeReply &&
       !persistentProjectQueue &&
@@ -1114,9 +1113,7 @@ function SocialChatApp() {
       setReplyTarget(null);
       if (draftRef.current) draftRef.current.style.height = 'auto';
       if (sent.queued) {
-        setNotice(
-          '已排队，' + recipient.name + '完成当前回复后会收到这条消息。',
-        );
+        setNotice('群消息已保存；点名成员会在当前工作边界收到。');
       }
       await Promise.all([refreshState(), loadRoom(roomId)]);
     } catch (error) {
@@ -2709,10 +2706,16 @@ function SocialChatApp() {
                         key={message.id}
                         message={message}
                         queuedAgentName={
-                          message.deliveryAgentId
-                            ? (messageAgent.get(message.deliveryAgentId)
-                                ?.name ?? '成员')
-                            : null
+                          message.deliveryAgentIds?.length
+                            ? message.deliveryAgentIds
+                                .map(
+                                  (id) => messageAgent.get(id)?.name ?? '成员',
+                                )
+                                .join('、')
+                            : message.deliveryAgentId
+                              ? (messageAgent.get(message.deliveryAgentId)
+                                  ?.name ?? '成员')
+                              : null
                         }
                         agent={
                           (message.senderAgentId ?? message.agentId)
@@ -4213,7 +4216,7 @@ function GroupMessage({
           </strong>
           <span>
             {message.deliveryStatus === 'queued'
-              ? '等待' + (queuedAgentName ?? '成员') + '空闲'
+              ? '待处理 · ' + (queuedAgentName ?? '成员')
               : timeLabel(message.createdAt)}
           </span>
         </header>

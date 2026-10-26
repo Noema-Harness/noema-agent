@@ -108,6 +108,9 @@ test('Noema reads then writes a versioned plan in one turn; members cannot forge
       },
     },
   });
+  // Isolate plan-tool authorization; automatic delivery is covered by project-collaboration tests.
+  projects.plans.onChange = null;
+  service.onProjectPlanChanged = () => {};
   try {
     const root = service.sendMessage({
       roomId: 'room-noema',
@@ -136,7 +139,8 @@ test('Noema reads then writes a versioned plan in one turn; members cannot forge
       agentId: 'noema',
       text: '@Noema 查看项目计划。',
     });
-    await service.active.get(project.groupRoomId)?.done;
+    for (let i = 0; i < 30 && (service.active.size || service.projectReportDrain || service.projectGroupInboxDrains.size); i++)
+      await new Promise((resolve) => setImmediate(resolve));
     assert.equal(store.getSocialMessage(group.messageId).status, 'complete');
     assert.equal(requests.length, 6);
   } finally {

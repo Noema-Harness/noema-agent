@@ -178,6 +178,7 @@ export interface NoemaSocialMessage {
   historySourcesIncluded: boolean;
   deliveryStatus?: 'queued';
   deliveryAgentId?: string;
+  deliveryAgentIds?: string[];
   createdAt: string;
   updatedAt: string;
 }

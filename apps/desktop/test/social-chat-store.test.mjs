@@ -101,7 +101,7 @@ test('an explicit team fixture keeps one agent across independent rooms', () => 
       db
         .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
         .get().version,
-      21,
+      22,
     );
   } finally {
     db.close();
@@ -808,9 +808,11 @@ test('social chat schema v1 upgrades additively to project-work state', () => {
     social.appendAssistantDelta(message.assistantMessageId, '已保存。');
     social.completeReply(message.assistantMessageId);
     db.exec(`
+      DROP TABLE IF EXISTS social_project_dispatch_log;
+      DROP TABLE IF EXISTS social_project_publications;
+      DROP TABLE IF EXISTS social_project_read_cursors;
+      DELETE FROM social_schema_migrations WHERE version = 22;
       DROP TABLE social_project_plan_revisions;
-      DELETE FROM social_schema_migrations WHERE version = 21;
-      DROP TABLE IF EXISTS social_project_plan_revisions;
       DELETE FROM social_schema_migrations WHERE version = 21;
       DROP TABLE social_agent_asset_revisions;
       DELETE FROM social_schema_migrations WHERE version = 20;
@@ -872,7 +874,7 @@ test('social chat schema v1 upgrades additively to project-work state', () => {
       db
         .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
         .get().version,
-      21,
+      22,
     );
     assert.equal(
       db
@@ -911,6 +913,10 @@ test('social schema v7 adds retry snapshots without rewriting the last known att
     });
     social.failReply(turn.assistantMessageId, 'test_failure', '重试前失败');
     db.exec(`
+      DROP TABLE IF EXISTS social_project_dispatch_log;
+      DROP TABLE IF EXISTS social_project_publications;
+      DROP TABLE IF EXISTS social_project_read_cursors;
+      DELETE FROM social_schema_migrations WHERE version = 22;
       DROP TABLE IF EXISTS social_project_plan_revisions;
       DELETE FROM social_schema_migrations WHERE version = 21;
       DROP TABLE social_agent_asset_revisions;
