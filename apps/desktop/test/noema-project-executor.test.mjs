@@ -248,6 +248,90 @@ test('search_files uses bounded ripgrep results and respects workspace ignores',
   }
 });
 
+test('search_files returns invalid regex diagnostics through the tool loop', async () => {
+  const directory = mkdtempSync(
+    path.join(tmpdir(), 'noema-project-search-invalid-pattern-'),
+  );
+  const workspace = path.join(directory, 'workspace');
+  mkdirSync(workspace);
+  writeFileSync(path.join(workspace, 'source.txt'), 'workspace content\n');
+  const requests = [];
+  const provider = makeProvider(
+    [
+      {
+        calls: [
+          toolCall('search-invalid-pattern', 'search_files', {
+            pattern: '(',
+          }),
+        ],
+      },
+      { text: '搜索表达式需要修正。' },
+    ],
+    requests,
+  );
+  try {
+    const executor = new NoemaProjectExecutor({ provider });
+    const handle = await executor.startTask({
+      workspacePath: workspace,
+      task: '搜索一个无效表达式',
+      model: 'auto:noema-free',
+      taskId: 'invalid-search-test',
+    });
+    assert.equal((await handle.done).status, 'completed');
+    const toolResult = JSON.parse(
+      requests[1].messages.find((message) => message.role === 'tool').content,
+    ).error;
+    assert.match(toolResult, /无效的正则表达式/u);
+    assert.match(toolResult, /unclosed group/u);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('search_files cannot escape the selected workspace', async () => {
+  const directory = mkdtempSync(
+    path.join(tmpdir(), 'noema-project-search-boundary-'),
+  );
+  const workspace = path.join(directory, 'workspace');
+  const outside = path.join(directory, 'outside');
+  mkdirSync(workspace);
+  mkdirSync(outside);
+  writeFileSync(path.join(outside, 'private.txt'), 'private sentinel\n');
+  const requests = [];
+  const provider = makeProvider(
+    [
+      {
+        calls: [
+          toolCall('search-outside-workspace', 'search_files', {
+            pattern: 'private',
+            path: '../outside',
+            literal: true,
+          }),
+        ],
+      },
+      { text: '搜索范围被拒绝。' },
+    ],
+    requests,
+  );
+  try {
+    const executor = new NoemaProjectExecutor({ provider });
+    const handle = await executor.startTask({
+      workspacePath: workspace,
+      task: '搜索工作区外的文件',
+      model: 'auto:noema-free',
+      taskId: 'search-boundary-test',
+    });
+    assert.equal((await handle.done).status, 'completed');
+    const toolResult = JSON.parse(
+      requests[1].messages.find((message) => message.role === 'tool').content,
+    ).error;
+    assert.match(toolResult, /路径不能离开所选工作区/u);
+    assert.doesNotMatch(toolResult, /private sentinel/u);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('read_file can page through a file using one-based line references', async () => {
   const directory = mkdtempSync(
     path.join(tmpdir(), 'noema-project-read-page-'),
