@@ -2929,8 +2929,25 @@ export class SocialChatStore {
       if (senderAgentId !== 'noema' || agentId === 'noema') {
         throw new Error('内部交办的发送者或接收者无效。');
       }
-      if (this.getAgentResidentRoomId(agentId) !== roomId) {
-        throw new Error('Noema 只能在联系人的常驻私聊中发送内部交办。');
+      const room = this.db
+        .prepare('SELECT kind FROM social_rooms WHERE id = ?')
+        .get(roomId);
+      if (room.kind === 'direct') {
+        if (this.getAgentResidentRoomId(agentId) !== roomId) {
+          throw new Error('Noema 只能在联系人的常驻私聊中发送内部交办。');
+        }
+      } else if (room.kind === 'group') {
+        const projectGroup = this.db
+          .prepare(`
+            SELECT 1 FROM social_projects
+            WHERE group_room_id = ? AND status = 'active'
+          `)
+          .get(roomId);
+        if (!projectGroup || !this.isMember(roomId, 'noema')) {
+          throw new Error('Noema 只能在活跃项目群中发出公开内部交办。');
+        }
+      } else {
+        throw new Error('Noema 内部交办只能发到常驻私聊或项目群。');
       }
     }
     if (this.getAgent(agentId).archivedAt) {

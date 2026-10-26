@@ -416,7 +416,7 @@ export interface NoemaSocialRoomState {
 }
 
 export type NoemaSocialEvent =
-  | { type: 'chat-room-created'; roomId: string }
+  | { type: 'chat-room-created'; roomId: string; navigate?: boolean }
   | { type: 'project-updated'; projectId: string; groupRoomId: string }
   | { type: 'agent-state-updated'; agentId: string }
   | {

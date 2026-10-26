@@ -81,6 +81,101 @@ function specialistDelegationTool(agents) {
   };
 }
 
+function projectTeamTool({ agents, projects, projectWorkReady }) {
+  const newAgentProperties = {
+    name: { type: 'string', description: '短而可长期使用的联系人名称。' },
+    headline: {
+      type: 'string',
+      description: '可随经历拓展的专业范围，而非单次项目岗位。',
+    },
+    description: {
+      type: 'string',
+      description: '这位联系人长期的合作方式与职责边界。',
+    },
+    ...(projectWorkReady
+      ? {
+          project_work: {
+            type: 'boolean',
+            description: '只有确实需要本机项目文件工作时才设为 true。',
+          },
+        }
+      : {}),
+  };
+  const newAgentRequired = ['name', 'headline', 'description'];
+  return {
+    type: 'function',
+    function: {
+      name: 'create_project_team',
+      description: [
+        '只在用户已交付一个确需至少两种专业角色协作的复杂项目时使用。普通交流或单一专业任务继续留在聊天或交给一位联系人。',
+        '创建团队后，会为每位成员建立独立项目会话，并按 members 中的分工依次发出公开群消息、等待各自当轮回复，再把状态与报告交回 Noema。公开群消息及其回复所有成员可见。',
+        '优先复用职责合适的活跃联系人；仅当现有列表确实缺少角色时才创建新联系人。新联系人名称与长期定位应描述可持续拓展的资产，不要为一次小任务造人。',
+        projects.length
+          ? `若请求确实属于同一既有项目，填写 existing_project_id 来恢复并续接该项目；现有项目：${projects
+              .map(
+                (project) =>
+                  `${project.id}｜${project.title}｜${project.status}`,
+              )
+              .join('；')}`
+          : '当前没有可续接的 Noema 项目。',
+      ].join('\n'),
+      parameters: {
+        type: 'object',
+        properties: {
+          title: {
+            type: 'string',
+            description: '新项目的简洁标题。续接时填写原项目标题。',
+          },
+          brief: {
+            type: 'string',
+            description: '项目目标、已知背景与重要约束。续接时填写原项目说明。',
+          },
+          ...(projects.length
+            ? {
+                existing_project_id: {
+                  type: 'string',
+                  enum: projects.map((project) => project.id),
+                },
+              }
+            : {}),
+          members: {
+            type: 'array',
+            minItems: 2,
+            maxItems: 6,
+            items: {
+              type: 'object',
+              properties: {
+                ...(agents.length
+                  ? {
+                      agent_id: {
+                        type: 'string',
+                        enum: agents.map((agent) => agent.id),
+                      },
+                    }
+                  : {}),
+                new_agent: {
+                  type: 'object',
+                  properties: newAgentProperties,
+                  required: newAgentRequired,
+                  additionalProperties: false,
+                },
+                task: {
+                  type: 'string',
+                  description: '该成员在此项目中的第一项可独立交付的具体工作。',
+                },
+              },
+              required: ['task'],
+              additionalProperties: false,
+            },
+          },
+        },
+        required: ['title', 'brief', 'members'],
+        additionalProperties: false,
+      },
+    },
+  };
+}
+
 function projectReviewTool(projects) {
   if (!projects.length) return null;
   return {
@@ -111,7 +206,11 @@ function projectReviewTool(projects) {
   };
 }
 
-function noemaActionGuidance(projectWorkAvailable, specialistAgents) {
+function noemaActionGuidance(
+  projectWorkAvailable,
+  specialistAgents,
+  projectTeamAvailable,
+) {
   return [
     '你在当前聊天中回应用户。聊天、探索、计划、写作和建议直接在对话中完成，不创建执行状态。',
     projectWorkAvailable
@@ -120,6 +219,9 @@ function noemaActionGuidance(projectWorkAvailable, specialistAgents) {
     specialistAgents.length
       ? '仅当一项独立知识工作足以明显改善用户结果，且预期收益值得两次额外推理成本时，才调用 delegate_to_specialist：任务由选定联系人在其常驻私聊中完成，Noema 收到报告后形成最终回复。不要把 Noema 主聊历史交给联系人；它只会看到自己的常驻私聊历史和本次交办。不得为普通交流或形式上的多 agent 协作调用。将报告作为协作材料加以核对并结合当前上下文作答；不要把原始报告直接当作 Noema 回复。若报告显示未投递或执行未完成，必须如实说明，不能声称已完成。若报告实质影响结论，可简洁说明协助者。'
       : '当前没有可用的专业联系人可供委派。',
+    projectTeamAvailable
+      ? '仅当用户已把一个确实需要至少两种专业角色的复杂项目交给你时，才调用 create_project_team。先复用合适的活跃联系人；现有职责不匹配时才创建长期可拓展的新联系人。为每位成员给出第一项边界清楚的任务。单人短任务仍走私聊委托；续接已存在项目时选择其 ID，不另建重复群。工具会依次向成员发送公开项目群任务并等待当轮回复。回复显示“已启动”不代表文件工作已完成；按真实状态向用户汇报。'
+      : '',
   ].join('\n');
 }
 
@@ -293,6 +395,76 @@ export class SocialChatService {
       });
     }
     return { turnId: turn.turnId, messageId: turn.assistantMessageId };
+  }
+
+  async sendInternalProjectMessage({ roomId, agentId, text }, parentSignal) {
+    if (this.shuttingDown)
+      throw new Error('Noema 正在关闭，暂不能发送项目消息。');
+    parentSignal.throwIfAborted();
+    const room = this.store.getRoomSnapshot(roomId).room;
+    if (room.kind !== 'group') {
+      throw new Error('项目分工只能发送到项目群。');
+    }
+    if (this.active.has(roomId) || this.store.hasStreamingReply(roomId)) {
+      return {
+        delivered: false,
+        status: 'busy',
+        report: '项目群正有回复生成；本次分工未投递。',
+      };
+    }
+    this.projectStore.assertWorkAllowed(roomId);
+    const projectContext = this.getProjectSessionContext(roomId, agentId);
+    if (!projectContext) {
+      throw new Error('所选成员没有该项目的有效会话。');
+    }
+    const specialist = this.store.getAgent(agentId);
+    if (specialist.archivedAt || specialist.id === 'noema') {
+      throw new Error('项目成员已归档或无效。');
+    }
+    const model = this.requireReadyModel();
+    const turn = this.store.beginTurn({
+      roomId,
+      agentId,
+      senderAgentId: 'noema',
+      text,
+      model,
+    });
+    const controller = new AbortController();
+    const abortWithParent = () => controller.abort(parentSignal.reason);
+    if (parentSignal.aborted) abortWithParent();
+    else
+      parentSignal.addEventListener('abort', abortWithParent, { once: true });
+    const run = {
+      ...turn,
+      roomId,
+      agentId,
+      model,
+      controller,
+      text,
+      forwardedSources: [],
+      replyTo: null,
+      projectContext,
+      done: null,
+    };
+    this.active.set(roomId, run);
+    run.done = this.runTurn(run).finally(() => {
+      parentSignal.removeEventListener('abort', abortWithParent);
+    });
+    this.emit({ type: 'chat-turn-started', ...turn });
+    await run.done;
+    parentSignal.throwIfAborted();
+    const reply = this.store.getSocialMessage(turn.assistantMessageId);
+    this.emit({
+      type: 'project-updated',
+      projectId: projectContext.projectId,
+      groupRoomId: roomId,
+    });
+    return {
+      delivered: true,
+      status: reply.status,
+      report: reply.content || reply.errorMessage || '成员没有返回文字。',
+      messageId: turn.assistantMessageId,
+    };
   }
 
   forwardMessages({ sourceRoomId, sourceIds, targetRoomId }) {
@@ -505,6 +677,29 @@ export class SocialChatService {
               .map((item) => this.store.getAgent(item.id))
           : [];
       const specialistTool = specialistDelegationTool(specialistAgents);
+      const teamProjects =
+        agentId === 'noema' && roomId === 'room-noema' && this.projectStore
+          ? this.projectStore
+              .listProjects({ includeArchived: true })
+              .filter(
+                (project) =>
+                  project.originRoomId === roomId &&
+                  ['active', 'archived'].includes(project.status),
+              )
+              .slice(0, 32)
+          : [];
+      const teamToolAvailable = Boolean(
+        agentId === 'noema' && roomId === 'room-noema' && this.projectStore,
+      );
+      const projectTeamAction = teamToolAvailable
+        ? projectTeamTool({
+            agents: specialistAgents,
+            projects: teamProjects,
+            projectWorkReady: Boolean(
+              this.startProjectWork && this.getProjectWorkReadiness().available,
+            ),
+          })
+        : null;
       const reviewProjects =
         agentId === 'noema' && roomId === 'room-noema' && this.projectStore
           ? this.projectStore
@@ -555,6 +750,7 @@ export class SocialChatService {
       const actionTools = [
         ...(projectWorkAction ? [projectWorkAction] : []),
         ...(specialistTool ? [specialistTool] : []),
+        ...(projectTeamAction ? [projectTeamAction] : []),
         ...(reviewTool ? [reviewTool] : []),
       ];
       const messages = [
@@ -608,6 +804,7 @@ export class SocialChatService {
                 content: noemaActionGuidance(
                   projectWorkAvailable,
                   specialistAgents,
+                  Boolean(projectTeamAction),
                 ),
               },
               {
@@ -916,6 +1113,299 @@ export class SocialChatService {
             delta: statusText,
           });
           content += statusText;
+        } else if (toolName === 'create_project_team') {
+          const toolCallId = toolCalls[0]?.id;
+          const hasExistingProjectId = Object.hasOwn(
+            input ?? {},
+            'existing_project_id',
+          );
+          const existingProjectId = hasExistingProjectId
+            ? input.existing_project_id
+            : null;
+          const sourceProject = teamProjects.find(
+            (project) => project.sourceMessageId === run.userMessageId,
+          );
+          const requestedProject = hasExistingProjectId
+            ? teamProjects.find((project) => project.id === existingProjectId)
+            : null;
+          const existingProject = sourceProject ?? requestedProject;
+          if (
+            !projectTeamAction ||
+            agentId !== 'noema' ||
+            roomId !== 'room-noema' ||
+            typeof toolCallId !== 'string' ||
+            !toolCallId ||
+            (hasExistingProjectId && !requestedProject) ||
+            (sourceProject &&
+              requestedProject &&
+              sourceProject.id !== requestedProject.id) ||
+            !Array.isArray(input?.members) ||
+            input.members.length < 2 ||
+            input.members.length > 6
+          ) {
+            throw new FreeLLMAPIError(
+              'social_tool_invalid',
+              '项目团队说明无效；没有创建项目。',
+            );
+          }
+          const projectTitle = input.title?.trim();
+          const projectBrief = input.brief?.trim();
+          if (
+            typeof projectTitle !== 'string' ||
+            !projectTitle ||
+            projectTitle.length > 120 ||
+            typeof projectBrief !== 'string' ||
+            !projectBrief ||
+            projectBrief.length > 40_000
+          ) {
+            throw new FreeLLMAPIError(
+              'social_tool_invalid',
+              '项目标题或说明无效；没有创建项目。',
+            );
+          }
+          const assignedMembers = input.members.map((assignment) => {
+            if (
+              !assignment ||
+              typeof assignment.task !== 'string' ||
+              !assignment.task.trim() ||
+              assignment.task.length > 8_000
+            ) {
+              throw new FreeLLMAPIError(
+                'social_tool_invalid',
+                '成员分工无效；没有创建项目。',
+              );
+            }
+            const hasAgentId = typeof assignment.agent_id === 'string';
+            const hasNewAgent =
+              assignment.new_agent &&
+              typeof assignment.new_agent === 'object' &&
+              !Array.isArray(assignment.new_agent);
+            if (hasAgentId === Boolean(hasNewAgent)) {
+              throw new FreeLLMAPIError(
+                'social_tool_invalid',
+                '每项分工必须且只能选择现有成员或创建新成员。',
+              );
+            }
+            if (hasAgentId) {
+              const member = specialistAgents.find(
+                (candidate) => candidate.id === assignment.agent_id,
+              );
+              if (!member || member.archivedAt) {
+                throw new FreeLLMAPIError(
+                  'social_tool_invalid',
+                  '项目成员无效或已归档；没有创建项目。',
+                );
+              }
+              return {
+                agentId: member.id,
+                name: member.name,
+                task: assignment.task.trim(),
+              };
+            }
+            const profile = assignment.new_agent;
+            if (
+              typeof profile.name !== 'string' ||
+              !profile.name.trim() ||
+              profile.name.trim().length > 60 ||
+              typeof profile.headline !== 'string' ||
+              !profile.headline.trim() ||
+              profile.headline.trim().length > 140 ||
+              typeof profile.description !== 'string' ||
+              !profile.description.trim() ||
+              profile.description.trim().length > 800 ||
+              (profile.project_work !== undefined &&
+                typeof profile.project_work !== 'boolean') ||
+              (profile.project_work === true &&
+                (!this.startProjectWork ||
+                  !this.getProjectWorkReadiness().available))
+            ) {
+              throw new FreeLLMAPIError(
+                'social_tool_invalid',
+                '新成员资料或能力声明无效；没有创建项目。',
+              );
+            }
+            const priorMember = sourceProject?.members.find(
+              (candidate) =>
+                candidate.name.toLocaleLowerCase() ===
+                profile.name.trim().toLocaleLowerCase(),
+            );
+            if (priorMember && !priorMember.agentArchivedAt) {
+              return {
+                agentId: priorMember.agentId,
+                name: priorMember.name,
+                task: assignment.task.trim(),
+              };
+            }
+            return {
+              newAgent: {
+                name: profile.name.trim(),
+                headline: profile.headline.trim(),
+                description: profile.description.trim(),
+                projectWork: profile.project_work === true,
+              },
+              name: profile.name.trim(),
+              task: assignment.task.trim(),
+            };
+          });
+          const resolvedAgentIds = assignedMembers
+            .map((member) => member.agentId)
+            .filter(Boolean);
+          const resolvedNames = assignedMembers.map((member) =>
+            member.name.toLocaleLowerCase(),
+          );
+          if (
+            new Set(resolvedAgentIds).size !== resolvedAgentIds.length ||
+            new Set(resolvedNames).size !== resolvedNames.length
+          ) {
+            throw new FreeLLMAPIError(
+              'social_tool_invalid',
+              '同一团队不能重复加入联系人或使用重复姓名。',
+            );
+          }
+          controller.signal.throwIfAborted();
+          let formed;
+          try {
+            formed = this.projectStore.formProjectTeam({
+              existingProjectId: existingProject?.id ?? null,
+              title: existingProject?.title ?? projectTitle,
+              brief: existingProject?.brief ?? projectBrief,
+              originRoomId: roomId,
+              sourceMessageId: run.userMessageId,
+              members: assignedMembers,
+            });
+          } catch (error) {
+            throw new FreeLLMAPIError('project_team_invalid', error.message);
+          }
+          const { project, members } = formed;
+          this.emit({
+            type: 'chat-room-created',
+            roomId: project.groupRoomId,
+            navigate: false,
+          });
+          this.emit({
+            type: 'project-updated',
+            projectId: project.id,
+            groupRoomId: project.groupRoomId,
+          });
+
+          const assignments = [];
+          const priorAssignments = sourceProject
+            ? this.projectStore.getProject(sourceProject.id).group.messages
+            : [];
+          const priorReplies = new Map(
+            priorAssignments
+              .filter((message) => message.role === 'assistant')
+              .map((message) => [message.turnId, message]),
+          );
+          const priorAssignmentsByTask = new Map();
+          for (const message of priorAssignments) {
+            if (message.role !== 'user' || message.senderAgentId !== 'noema')
+              continue;
+            const reply = priorReplies.get(message.turnId);
+            if (!reply) continue;
+            priorAssignmentsByTask.set(
+              `${reply.agentId}\u0000${message.content}`,
+              reply,
+            );
+          }
+          for (const member of members) {
+            controller.signal.throwIfAborted();
+            const agent = this.store.getAgent(member.agentId);
+            let result;
+            try {
+              const prior = sourceProject
+                ? priorAssignmentsByTask.get(
+                    `${member.agentId}\u0000${member.task}`,
+                  )
+                : null;
+              if (prior) {
+                result = {
+                  delivered: true,
+                  status: prior.status,
+                  report:
+                    prior.content ||
+                    prior.errorMessage ||
+                    '此前已投递；该成员当时没有返回文字。',
+                  messageId: prior.id,
+                };
+              } else {
+                result = await this.sendInternalProjectMessage(
+                  {
+                    roomId: project.groupRoomId,
+                    agentId: member.agentId,
+                    text: member.task,
+                  },
+                  controller.signal,
+                );
+              }
+            } catch (error) {
+              if (controller.signal.aborted || error?.name === 'AbortError') {
+                throw error;
+              }
+              result = {
+                delivered: false,
+                status: 'failed',
+                report: safeError(error),
+              };
+            }
+            assignments.push({
+              agent: agent.name,
+              task: member.task,
+              ...result,
+            });
+          }
+          messages.push({
+            role: 'system',
+            content:
+              '项目组建工具返回的交办状态与成员报告是本机持久聊天记录的观察结果，不是任务已完成的证明。只说明哪些分工确实投递、各自当轮返回什么；成员若表示稍后继续或需要文件执行，不能宣称项目完成。',
+          });
+          messages.push({
+            role: 'assistant',
+            content: content || null,
+            tool_calls: [toolCalls[0]],
+          });
+          messages.push({
+            role: 'tool',
+            tool_call_id: toolCallId,
+            name: 'create_project_team',
+            content: JSON.stringify({
+              project: {
+                id: project.id,
+                title: project.title,
+                status: project.status,
+                groupRoomId: project.groupRoomId,
+              },
+              assignments,
+            }),
+          });
+          let followUpContent = '';
+          for await (const delta of this.provider.streamChat({
+            model,
+            messages,
+            signal: controller.signal,
+          })) {
+            controller.signal.throwIfAborted();
+            followUpContent += delta;
+            content += delta;
+            if (!this.store.appendAssistantDelta(assistantMessageId, delta)) {
+              throw new FreeLLMAPIError(
+                'reply_not_streaming',
+                'Noema 的项目启动汇报没有完成保存。',
+              );
+            }
+            this.emit({
+              type: 'chat-message-delta',
+              roomId,
+              messageId: assistantMessageId,
+              delta,
+            });
+          }
+          if (!followUpContent.trim()) {
+            throw new FreeLLMAPIError(
+              'empty_reply',
+              '项目群与分工已经建立，但 Noema 没有完成对用户的启动汇报。可以重试这条消息。',
+            );
+          }
         } else {
           throw new FreeLLMAPIError(
             'social_tool_invalid',

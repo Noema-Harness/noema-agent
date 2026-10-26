@@ -551,7 +551,7 @@ function SocialChatApp() {
         if (event.type === 'agent-state-updated' && activeRoomId) {
           void loadRoom(activeRoomId);
         }
-        if (event.type === 'chat-room-created') {
+        if (event.type === 'chat-room-created' && event.navigate !== false) {
           setActiveRoomId(event.roomId);
           setShowRoomList(false);
         }
@@ -2690,8 +2690,10 @@ function SocialChatApp() {
                         key={message.id}
                         message={message}
                         agent={
-                          message.agentId
-                            ? (messageAgent.get(message.agentId) ?? null)
+                          (message.senderAgentId ?? message.agentId)
+                            ? (messageAgent.get(
+                                message.senderAgentId ?? message.agentId ?? '',
+                              ) ?? null)
                             : null
                         }
                         onRetry={handleRetry}
@@ -4182,7 +4184,9 @@ function GroupMessage({
 }) {
   if (message.role === 'system')
     return <div className="note-row">{message.content}</div>;
-  const user = message.role === 'user';
+  const fromNoema =
+    message.role === 'user' && message.senderAgentId === 'noema';
+  const user = message.role === 'user' && !fromNoema;
   return (
     <article className="group-msg" data-message-id={message.id}>
       {agent ? (
@@ -4192,7 +4196,9 @@ function GroupMessage({
       )}
       <div className="msg-text">
         <header>
-          <strong>{user ? '你' : (agent?.name ?? 'Noema')}</strong>
+          <strong>
+            {fromNoema ? 'Noema' : user ? '你' : (agent?.name ?? 'Noema')}
+          </strong>
           <span>{timeLabel(message.createdAt)}</span>
         </header>
         {message.replyTo ? (

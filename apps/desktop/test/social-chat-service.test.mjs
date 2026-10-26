@@ -739,6 +739,359 @@ test('Noema receives a bounded specialist report and writes its own final reply'
   }
 });
 
+test('Noema forms a project team, assigns visible group work, and reviews member reports', async () => {
+  const db = new Database(':memory:');
+  new RootStore(db);
+  const store = createSocialTestStore(db);
+  const projectStore = new SocialProjectStore({ db, socialChatStore: store });
+  const requests = [];
+  const events = [];
+  const service = new SocialChatService({
+    store,
+    provider: {
+      async *streamChat(input) {
+        requests.push({ ...input, messages: [...input.messages] });
+        if (requests.length === 1) {
+          input.onToolCalls?.([
+            {
+              id: 'call-create-price-team',
+              type: 'function',
+              function: {
+                name: 'create_project_team',
+                arguments: JSON.stringify({
+                  title: '模型价格追踪',
+                  brief: '跟踪主要模型 API 价格、计价单位与官方来源。',
+                  members: [
+                    {
+                      agent_id: 'engineering-partner',
+                      task: '核对现有价格追踪工具的技术与数据来源。',
+                    },
+                    {
+                      new_agent: {
+                        name: '价格研究员',
+                        headline: 'AI 平台价格与计费口径研究',
+                        description: '核对官方价格页、计价单位及变更时间。',
+                      },
+                      task: '整理当前平台的官方模型价格与计价单位。',
+                    },
+                  ],
+                }),
+              },
+            },
+          ]);
+        } else if (requests.length === 2) {
+          yield '工程搭档报告：已确认抓取和数据结构方向。';
+        } else if (requests.length === 3) {
+          yield '价格研究员报告：来源为各平台官方价格页。';
+        } else {
+          yield '团队已启动，两个成员已在项目群提交首轮报告。';
+        }
+      },
+    },
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'test-model',
+    getRootState: async () => ({
+      connected: true,
+      selectedModel: 'test-model',
+    }),
+    projectStore,
+    getProjectSessionContext: (roomId, agentId) =>
+      projectStore.getProjectSessionContext(roomId, agentId),
+    emit: (event) => events.push(event),
+  });
+
+  try {
+    const sent = service.sendMessage({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '请启动一个跟踪 AI 平台模型价格的项目。',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await service.active.get('room-noema')?.done;
+
+    assert.equal(requests.length, 4);
+    const teamTool = requests[0].tools?.find(
+      (tool) => tool.function.name === 'create_project_team',
+    );
+    assert.ok(teamTool);
+    assert.deepEqual(
+      teamTool.function.parameters.properties.members.items.properties.agent_id
+        .enum,
+      ['engineering-partner'],
+    );
+    assert.match(requests[1].messages[0].content, /工程搭档/u);
+    assert.match(requests[2].messages[0].content, /价格研究员/u);
+    assert.ok(
+      requests[2].messages.some((message) =>
+        message.content.includes('模型价格追踪'),
+      ),
+    );
+    assert.ok(
+      requests[2].messages.some((message) =>
+        message.content.includes('公开群消息'),
+      ),
+    );
+
+    const project = projectStore.listProjects({ includeArchived: false })[0];
+    assert.equal(project.title, '模型价格追踪');
+    assert.equal(project.members.length, 2);
+    const group = store.getRoomSnapshot(project.groupRoomId);
+    const assignments = group.messages.filter(
+      (message) => message.role === 'user' && message.senderAgentId === 'noema',
+    );
+    assert.equal(assignments.length, 2);
+    assert.deepEqual(
+      assignments.map((message) => message.content),
+      [
+        '核对现有价格追踪工具的技术与数据来源。',
+        '整理当前平台的官方模型价格与计价单位。',
+      ],
+    );
+    assert.ok(
+      group.messages.some(
+        (message) =>
+          message.role === 'assistant' &&
+          message.agentId === 'engineering-partner' &&
+          message.content.includes('已确认抓取和数据结构方向'),
+      ),
+    );
+    assert.ok(
+      group.messages.some(
+        (message) =>
+          message.role === 'assistant' &&
+          message.agentId ===
+            project.members.find((item) => item.name === '价格研究员')
+              ?.agentId &&
+          message.content.includes('官方价格页'),
+      ),
+    );
+    const userReply = store.getSocialMessage(sent.messageId);
+    assert.match(userReply.content, /两个成员已在项目群提交首轮报告/u);
+    const toolReport = requests[3].messages.find(
+      (message) =>
+        message.role === 'tool' && message.name === 'create_project_team',
+    );
+    assert.match(toolReport?.content ?? '', /已确认抓取/u);
+    assert.match(toolReport?.content ?? '', /官方价格页/u);
+    assert.ok(
+      events.some(
+        (event) =>
+          event.type === 'chat-room-created' &&
+          event.roomId === project.groupRoomId &&
+          event.navigate === false,
+      ),
+    );
+    assert.ok(
+      events.some(
+        (event) =>
+          event.type === 'project-updated' && event.projectId === project.id,
+      ),
+    );
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});
+
+test('project team launch preserves failed member status instead of claiming success', async () => {
+  const db = new Database(':memory:');
+  new RootStore(db);
+  const store = createSocialTestStore(db);
+  const projectStore = new SocialProjectStore({ db, socialChatStore: store });
+  const requests = [];
+  const service = new SocialChatService({
+    store,
+    provider: {
+      async *streamChat(input) {
+        requests.push({ ...input, messages: [...input.messages] });
+        if (requests.length === 1) {
+          input.onToolCalls?.([
+            {
+              id: 'call-create-failing-team',
+              type: 'function',
+              function: {
+                name: 'create_project_team',
+                arguments: JSON.stringify({
+                  title: '需要两类核对的项目',
+                  brief: '对照文档，并评估工程实现。',
+                  members: [
+                    {
+                      agent_id: 'engineering-partner',
+                      task: '检查实现风险。',
+                    },
+                    {
+                      new_agent: {
+                        name: '资料核对员',
+                        headline: '官方资料核验',
+                        description: '核实外部官方资料并保留来源。',
+                      },
+                      task: '核验官方资料。',
+                    },
+                  ],
+                }),
+              },
+            },
+          ]);
+        } else if (requests.length === 2) {
+          throw new Error('simulated provider interruption');
+        } else if (requests.length === 3) {
+          yield '第二位成员已完成资料核验。';
+        } else {
+          yield '一项分工失败，另一项已返回资料核验结果。';
+        }
+      },
+    },
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'test-model',
+    getRootState: async () => ({
+      connected: true,
+      selectedModel: 'test-model',
+    }),
+    projectStore,
+    getProjectSessionContext: (roomId, agentId) =>
+      projectStore.getProjectSessionContext(roomId, agentId),
+  });
+
+  try {
+    const sent = service.sendMessage({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '建立一个需要工程与资料核验的项目。',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await service.active.get('room-noema')?.done;
+
+    const project = projectStore.listProjects({ includeArchived: false })[0];
+    const group = store.getRoomSnapshot(project.groupRoomId);
+    const failedReply = group.messages.find(
+      (message) =>
+        message.role === 'assistant' &&
+        message.agentId === 'engineering-partner',
+    );
+    assert.equal(failedReply?.status, 'failed');
+    const teamReport = requests[3].messages.find(
+      (message) =>
+        message.role === 'tool' && message.name === 'create_project_team',
+    );
+    const result = JSON.parse(teamReport.content);
+    assert.equal(result.assignments[0].status, 'failed');
+    assert.equal(result.assignments[0].delivered, true);
+    assert.equal(result.assignments[1].status, 'complete');
+    assert.match(
+      store.getSocialMessage(sent.messageId).content,
+      /一项分工失败/u,
+    );
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});
+
+test('retrying an interrupted team launch resumes its project without duplicating public assignments', async () => {
+  const db = new Database(':memory:');
+  new RootStore(db);
+  const store = createSocialTestStore(db);
+  const projectStore = new SocialProjectStore({ db, socialChatStore: store });
+  const requests = [];
+  const toolCall = {
+    id: 'call-retry-team',
+    type: 'function',
+    function: {
+      name: 'create_project_team',
+      arguments: JSON.stringify({
+        title: '价格调查',
+        brief: '比较主要模型平台的官方价格。',
+        members: [
+          { agent_id: 'engineering-partner', task: '评估数据采集方式。' },
+          {
+            new_agent: {
+              name: '价格研究员',
+              headline: '模型平台价格研究',
+              description: '核对官方价格与计价单位。',
+            },
+            task: '查找官方价格来源。',
+          },
+        ],
+      }),
+    },
+  };
+  const service = new SocialChatService({
+    store,
+    provider: {
+      async *streamChat(input) {
+        requests.push({ ...input, messages: [...input.messages] });
+        if (requests.length === 1 || requests.length === 4) {
+          input.onToolCalls?.([toolCall]);
+        } else if (requests.length === 2) {
+          yield '采集方向已分析。';
+        } else if (requests.length === 3) {
+          await new Promise((resolve) =>
+            input.signal.addEventListener('abort', resolve, { once: true }),
+          );
+          input.signal.throwIfAborted();
+        } else {
+          yield '恢复了原项目，没有重复发布首轮任务。';
+        }
+      },
+    },
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'test-model',
+    getRootState: async () => ({
+      connected: true,
+      selectedModel: 'test-model',
+    }),
+    projectStore,
+    getProjectSessionContext: (roomId, agentId) =>
+      projectStore.getProjectSessionContext(roomId, agentId),
+  });
+
+  try {
+    const sent = service.sendMessage({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '启动价格调查项目。',
+    });
+    for (let attempt = 0; attempt < 20 && requests.length < 3; attempt += 1) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    assert.equal(requests.length, 3);
+    assert.equal(service.stopReply(sent.messageId), true);
+    await service.active.get('room-noema')?.done;
+    assert.equal(store.getSocialMessage(sent.messageId).status, 'interrupted');
+
+    service.retryReply(sent.messageId);
+    for (let attempt = 0; attempt < 20 && requests.length < 5; attempt += 1) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    await service.active.get('room-noema')?.done;
+
+    assert.equal(requests.length, 5);
+    const projects = projectStore.listProjects({ includeArchived: true });
+    assert.equal(projects.length, 1);
+    const project = projectStore.getProject(projects[0].id);
+    const assignments = project.group.messages.filter(
+      (message) => message.role === 'user' && message.senderAgentId === 'noema',
+    );
+    assert.equal(assignments.length, 2);
+    const toolReport = requests[4].messages.find(
+      (message) =>
+        message.role === 'tool' && message.name === 'create_project_team',
+    );
+    const result = JSON.parse(toolReport.content);
+    assert.deepEqual(
+      result.assignments.map((assignment) => assignment.status),
+      ['complete', 'interrupted'],
+    );
+    assert.match(
+      store.getSocialMessage(sent.messageId).content,
+      /没有重复发布/u,
+    );
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});
+
 test('Noema does not overlap a busy specialist resident conversation', async () => {
   const db = new Database(':memory:');
   new RootStore(db);

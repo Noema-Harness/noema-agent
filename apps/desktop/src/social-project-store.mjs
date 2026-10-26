@@ -305,6 +305,120 @@ export class SocialProjectStore {
     return this.getProject(projectId);
   }
 
+  formProjectTeam({
+    existingProjectId = null,
+    title,
+    brief,
+    originRoomId = 'room-noema',
+    sourceMessageId = null,
+    members,
+  }) {
+    requireText(originRoomId, '来源聊天 ID', 200);
+    if (!Array.isArray(members) || members.length < 2 || members.length > 6) {
+      throw new TypeError('项目团队需要 2 至 6 位专业成员。');
+    }
+    const preparedMembers = members.map((member) => {
+      if (!member || typeof member !== 'object') {
+        throw new TypeError('项目成员说明无效。');
+      }
+      const task = requireText(member.task, '成员分工', 8_000);
+      const hasAgentId = typeof member.agentId === 'string';
+      const hasNewAgent =
+        member.newAgent && typeof member.newAgent === 'object';
+      if (hasAgentId === Boolean(hasNewAgent)) {
+        throw new TypeError('每项分工必须选择现有成员或创建新成员。');
+      }
+      if (hasAgentId) {
+        const agentId = requireText(member.agentId, '成员 ID', 200);
+        const agent = this.socialChatStore.getAgent(agentId);
+        if (
+          agent.id === 'noema' ||
+          agent.kind !== 'specialist' ||
+          agent.archivedAt
+        ) {
+          throw new Error('项目只能选择未归档的专业成员。');
+        }
+        return { agentId, task };
+      }
+      const newAgent = {
+        name: requireText(member.newAgent.name, '新成员名称', 60),
+        headline: requireText(member.newAgent.headline, '新成员专业范围', 140),
+        description: requireText(
+          member.newAgent.description,
+          '新成员合作方式',
+          800,
+        ),
+        projectWork: member.newAgent.projectWork ?? false,
+      };
+      if (typeof newAgent.projectWork !== 'boolean') {
+        throw new TypeError('新成员的项目工作能力必须是布尔值。');
+      }
+      return { newAgent, task };
+    });
+    const selectedIds = preparedMembers
+      .filter((member) => member.agentId)
+      .map((member) => member.agentId);
+    if (new Set(selectedIds).size !== selectedIds.length) {
+      throw new Error('项目团队不能重复加入同一联系人。');
+    }
+    const newNames = preparedMembers
+      .filter((member) => member.newAgent)
+      .map((member) => member.newAgent.name);
+    if (
+      new Set(newNames.map((name) => name.toLocaleLowerCase())).size !==
+      newNames.length
+    ) {
+      throw new Error('新成员名称不能重复。');
+    }
+    for (const name of newNames) {
+      if (
+        this.db
+          .prepare(
+            'SELECT 1 FROM social_agents WHERE name = ? COLLATE NOCASE LIMIT 1',
+          )
+          .get(name)
+      ) {
+        throw new Error(`已有联系人使用名称「${name}」。`);
+      }
+    }
+
+    return this.db.transaction(() => {
+      const resolvedMembers = preparedMembers.map((member) => {
+        if (member.agentId) return member;
+        const room = this.socialChatStore.createAgent(member.newAgent);
+        return {
+          agentId: room.members[0].id,
+          task: member.task,
+        };
+      });
+      let project;
+      if (existingProjectId) {
+        const id = requireText(existingProjectId, '项目 ID', 200);
+        project = this.getProject(id);
+        if (project.originRoomId !== originRoomId) {
+          throw new Error('只能续接来自当前 Noema 主聊的项目。');
+        }
+        if (project.status === 'archived') project = this.restoreProject(id);
+        for (const member of resolvedMembers) {
+          project = this.addProjectMember(id, member.agentId);
+        }
+      } else {
+        const agentIds = [
+          'noema',
+          ...resolvedMembers.map((member) => member.agentId),
+        ];
+        project = this.createProject({
+          title,
+          brief,
+          originRoomId,
+          sourceMessageId,
+          agentIds,
+        });
+      }
+      return { project, members: resolvedMembers };
+    })();
+  }
+
   addProjectMember(projectId, agentId) {
     requireText(projectId, '项目 ID', 200);
     requireText(agentId, '成员 ID', 200);

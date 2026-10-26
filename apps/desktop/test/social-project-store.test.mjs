@@ -91,6 +91,126 @@ test('a project creates one shared room and separate hidden member sessions', ()
   }
 });
 
+test('forming a project team atomically creates missing members and their project sessions', () => {
+  const stores = makeStores();
+  const existing = createMember(stores.socialChatStore, '研究员');
+  try {
+    const source = stores.socialChatStore.beginTurn({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '建立价格追踪项目。',
+      model: 'test-model',
+    });
+    stores.socialChatStore.completeReply(source.assistantMessageId);
+    const formed = stores.socialProjectStore.formProjectTeam({
+      title: '价格追踪器',
+      brief: '持续核对模型 API 价格与来源。',
+      sourceMessageId: source.userMessageId,
+      members: [
+        { agentId: existing.agentId, task: '核对价格来源。' },
+        {
+          newAgent: {
+            name: '成本分析师',
+            headline: '模型成本比较',
+            description: '对比模型 API 的定价口径并注明来源。',
+          },
+          task: '整理各平台的计价单位。',
+        },
+      ],
+    });
+
+    assert.equal(formed.project.sourceMessageId, source.userMessageId);
+    assert.deepEqual(
+      formed.project.group.members.map((agent) => agent.id),
+      ['noema', existing.agentId, formed.members[1].agentId],
+    );
+    assert.equal(
+      stores.socialChatStore.getAgent(formed.members[1].agentId).name,
+      '成本分析师',
+    );
+    assert.equal(
+      stores.socialProjectStore.getProjectSession(
+        formed.project.id,
+        formed.members[1].agentId,
+      ).room.members[0].id,
+      formed.members[1].agentId,
+    );
+    assert.notEqual(
+      stores.socialChatStore.getAgentResidentRoomId(formed.members[1].agentId),
+      stores.socialProjectStore.getProjectSession(
+        formed.project.id,
+        formed.members[1].agentId,
+      ).room.room.id,
+      'a member keeps its resident chat separate from its project session',
+    );
+
+    assert.throws(
+      () =>
+        stores.socialProjectStore.formProjectTeam({
+          title: '',
+          brief: '事务失败时回滚新成员。',
+          members: [
+            { agentId: existing.agentId, task: '有效任务。' },
+            {
+              newAgent: {
+                name: '不应留下的成员',
+                headline: '临时角色',
+                description: '用于验证事务回滚。',
+              },
+              task: '另一个有效任务。',
+            },
+          ],
+        }),
+      /项目名称/,
+    );
+    assert.equal(
+      stores.socialChatStore
+        .listAgents()
+        .some((agent) => agent.name === '不应留下的成员'),
+      false,
+      'member creation rolls back with the project transaction',
+    );
+  } finally {
+    stores.db.close();
+  }
+});
+
+test('forming a team for an archived project restores its group and reuses member sessions', () => {
+  const stores = makeStores();
+  const existing = createMember(stores.socialChatStore, '研究员');
+  const added = createMember(stores.socialChatStore, '工程师');
+  try {
+    const original = createProject(stores, existing);
+    const originalSessionId = original.members[0].sessionRoomId;
+    stores.socialProjectStore.archiveProject(original.id);
+    const resumed = stores.socialProjectStore.formProjectTeam({
+      existingProjectId: original.id,
+      title: original.title,
+      brief: original.brief,
+      members: [
+        { agentId: existing.agentId, task: '续接研究资料。' },
+        { agentId: added.agentId, task: '补充实现评估。' },
+      ],
+    });
+
+    assert.equal(resumed.project.id, original.id);
+    assert.equal(resumed.project.groupRoomId, original.groupRoomId);
+    assert.equal(resumed.project.status, 'active');
+    assert.equal(resumed.project.members.length, 2);
+    assert.equal(
+      resumed.project.members.find(
+        (member) => member.agentId === existing.agentId,
+      )?.sessionRoomId,
+      originalSessionId,
+    );
+    assert.ok(
+      stores.socialProjectStore.getProjectSession(original.id, added.agentId),
+    );
+  } finally {
+    stores.db.close();
+  }
+});
+
 test('project session lookup is tied to one active member and excludes archived work', () => {
   const stores = makeStores();
   const member = createMember(stores.socialChatStore);
