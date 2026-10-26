@@ -1919,13 +1919,21 @@ function SocialChatApp() {
           ) : null}
           {!messages.some((message) => message.role !== 'system') &&
           workTasks.length === 0 ? (
-            <div className="empty-chat" aria-label="空对话">
-              <span className="room-empty-rule" aria-hidden="true" />
-              <span>
-                {currentRoom.kind === 'group'
-                  ? '群聊记录从这里开始'
-                  : `${currentRoom.title} · 新对话`}
-              </span>
+            <div
+              className={`empty-chat${currentRoom.id === noemaRoom?.id ? ' noema-start-message' : ''}`}
+              aria-label="空对话"
+            >
+              {currentRoom.id === noemaRoom?.id ? (
+                <p>
+                  从你正在想的事开始，不必先写成完整指令。先把问题聊清楚，再决定下一步。
+                </p>
+              ) : (
+                <span>
+                  {currentRoom.kind === 'group'
+                    ? '群聊记录从这里开始'
+                    : `${currentRoom.title} · 新对话`}
+                </span>
+              )}
             </div>
           ) : (
             <div
@@ -2254,7 +2262,7 @@ function SocialChatApp() {
                   currentRoom.kind === 'group'
                     ? `发到群聊；输入 @成员名 指定回应`
                     : currentRoom.id === noemaRoom?.id
-                      ? `和${currentRecipient?.name ?? 'Noema'}说点什么…`
+                      ? '说说你正在想的事…'
                       : `发给${currentRecipient?.name ?? '联系人'}…`
                 }
                 onChange={(event) => {

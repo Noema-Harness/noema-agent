@@ -1926,6 +1926,23 @@
   color: #8b949a;
   font-size: 12px;
 }
+.social-shell .empty-chat.noema-start-message {
+  max-width: 700px;
+  margin: 0 auto;
+  padding: 38px 0 22px;
+  color: #344650;
+  font-size: 16px;
+  line-height: 1.75;
+}
+.social-shell .noema-start-message p {
+  max-width: 470px;
+}
+@media (max-width: 800px) {
+  .social-shell .empty-chat.noema-start-message {
+    padding-top: 24px;
+    font-size: 15px;
+  }
+}
 .social-shell .composer {
   margin: 0;
   width: 100%;
