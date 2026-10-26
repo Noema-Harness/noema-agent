@@ -87,6 +87,109 @@ test('social chat sends only the selected room transcript and persists the real 
   }
 });
 
+test('specialists can version only their own assets and reload them next turn', async () => {
+  const db = new Database(':memory:');
+  new RootStore(db);
+  const store = createSocialTestStore(db);
+  const requests = [];
+  const service = new SocialChatService({
+    store,
+    provider: {
+      async *streamChat(input) {
+        requests.push(input);
+        if (requests.length === 1) {
+          input.onToolCalls?.([
+            {
+              id: 'call-member-asset-write',
+              type: 'function',
+              function: {
+                name: 'manage_member_assets',
+                arguments: JSON.stringify({
+                  operation: 'write',
+                  path: 'instructions.md',
+                  content: '先区分已验证事实与待验证假设。',
+                  reason: '多次研究任务中该区分能避免结论过度确定。',
+                }),
+              },
+            },
+          ]);
+          return;
+        }
+        if (requests.length === 2) {
+          assert.equal(input.tools, undefined);
+          assert.ok(
+            input.messages.some(
+              (message) =>
+                message.role === 'tool' &&
+                message.content.includes('"revision":1'),
+            ),
+          );
+          yield '已记录这条可复用的工作原则。';
+          return;
+        }
+        yield '我会先核对证据。';
+      },
+    },
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'test-model',
+    getRootState: async () => ({
+      connected: true,
+      selectedModel: 'test-model',
+    }),
+  });
+
+  try {
+    const first = service.sendMessage({
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      text: '请复盘刚才的研究方式。',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await service.active.get('room-engineering-partner')?.done;
+
+    assert.deepEqual(
+      requests[0].tools.map((tool) => tool.function.name),
+      ['manage_member_assets'],
+    );
+    assert.equal(store.getSocialMessage(first.messageId).status, 'complete');
+    const saved = store.getAgentAsset('engineering-partner', 'instructions.md');
+    assert.equal(saved.revision, 1);
+    assert.ok(saved.sourceTurnId);
+
+    service.sendMessage({
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      text: '这次研究应该如何开始？',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await service.active.get('room-engineering-partner')?.done;
+    assert.ok(
+      requests[2].messages.some(
+        (message) =>
+          message.role === 'user' &&
+          message.content.includes('先区分已验证事实与待验证假设'),
+      ),
+    );
+
+    service.sendMessage({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '普通主聊不会获得成员资产管理工具。',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await service.active.get('room-noema')?.done;
+    assert.equal(
+      requests[3].tools?.some(
+        (tool) => tool.function.name === 'manage_member_assets',
+      ),
+      false,
+    );
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});
+
 test('busy project @ delivery is durable and starts only after the member turn finishes', async () => {
   const db = new Database(':memory:');
   new RootStore(db);

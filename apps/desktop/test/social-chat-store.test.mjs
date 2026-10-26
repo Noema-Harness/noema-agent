@@ -101,7 +101,162 @@ test('an explicit team fixture keeps one agent across independent rooms', () => 
       db
         .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
         .get().version,
-      19,
+      20,
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test('member-owned assets keep immutable revisions, provenance, and rollback', () => {
+  const { db, social } = makeStores();
+  try {
+    const first = social.writeAgentAsset({
+      agentId: 'engineering-partner',
+      path: 'identity.md',
+      content: '我擅长研究与工程协作。',
+      reason: '两次项目经历都包含跨领域研究。',
+      sourceTurnId: 'experience-turn-1',
+      sourceProjectId: 'project-alpha',
+    });
+    assert.equal(first.revision, 1);
+    assert.equal(first.sourceProjectId, 'project-alpha');
+    assert.deepEqual(social.listAgentAssets('engineering-partner'), [
+      {
+        path: 'identity.md',
+        revision: 1,
+        characters: 11,
+        reason: '两次项目经历都包含跨领域研究。',
+        sourceTurnId: 'experience-turn-1',
+        sourceProjectId: 'project-alpha',
+        createdAt: first.createdAt,
+      },
+    ]);
+    assert.match(
+      social.getAgentAssetsForPrompt('engineering-partner'),
+      /我擅长研究与工程协作/u,
+    );
+
+    const repeated = social.writeAgentAsset({
+      agentId: 'engineering-partner',
+      path: 'identity.md',
+      content: '我擅长研究与工程协作。',
+      reason: '两次项目经历都包含跨领域研究。',
+      sourceTurnId: 'experience-turn-1',
+      sourceProjectId: 'project-alpha',
+    });
+    assert.equal(repeated.id, first.id);
+
+    const second = social.writeAgentAsset({
+      agentId: 'engineering-partner',
+      path: 'identity.md',
+      content: '我以研究为主，也能协助工程验证。',
+      reason: '近期经历补充了稳定的工程验证能力。',
+      sourceTurnId: 'experience-turn-2',
+      sourceProjectId: 'project-beta',
+    });
+    assert.equal(second.revision, 2);
+    assert.throws(
+      () =>
+        social.restoreAgentAsset({
+          agentId: 'engineering-partner',
+          path: 'identity.md',
+          revision: 1,
+          expectedRevision: 1,
+          reason: '不应覆盖更新版本。',
+          sourceTurnId: 'rollback-stale',
+        }),
+      /版本已变化/u,
+    );
+
+    const restored = social.restoreAgentAsset({
+      agentId: 'engineering-partner',
+      path: 'identity.md',
+      revision: 1,
+      expectedRevision: 2,
+      reason: '新描述尚未有足够证据。',
+      sourceTurnId: 'rollback-turn',
+    });
+    assert.equal(restored.revision, 3);
+    assert.equal(
+      social.getAgentAsset('engineering-partner', 'identity.md').content,
+      first.content,
+    );
+    assert.equal(
+      social.listAgentAssetRevisions('engineering-partner', 'identity.md')
+        .length,
+      3,
+    );
+    const deleted = social.deleteAgentAsset({
+      agentId: 'engineering-partner',
+      path: 'identity.md',
+      expectedRevision: 3,
+      reason: '该定位已不再适用。',
+      sourceTurnId: 'delete-turn',
+    });
+    assert.equal(deleted.revision, 4);
+    assert.equal(
+      social.getAgentAsset('engineering-partner', 'identity.md'),
+      null,
+    );
+    const restoredDeleted = social.restoreAgentAsset({
+      agentId: 'engineering-partner',
+      path: 'identity.md',
+      revision: 2,
+      expectedRevision: 0,
+      reason: '恢复仍适用的历史定位。',
+      sourceTurnId: 'restore-deleted-turn',
+    });
+    assert.equal(restoredDeleted.revision, 5);
+    assert.equal(
+      social.listAgentAssetRevisions('engineering-partner', 'identity.md')[1]
+        .isDeleted,
+      1,
+    );
+
+    assert.throws(
+      () =>
+        social.writeAgentAsset({
+          agentId: 'noema',
+          path: 'memory.md',
+          content: '不允许核心助手借此写成员资产。',
+          reason: '权限边界测试。',
+        }),
+      /只有专业成员/u,
+    );
+    assert.throws(
+      () => social.getAgentAsset('engineering-partner', '../memory.md'),
+      /资产路径/u,
+    );
+
+    const reopened = new SocialChatStore(db);
+    assert.equal(
+      reopened.getAgentAsset('engineering-partner', 'identity.md').revision,
+      5,
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test('member skill index loads compact metadata and leaves full skill on demand', () => {
+  const { db, social } = makeStores();
+  try {
+    social.writeAgentAsset({
+      agentId: 'engineering-partner',
+      path: 'skills/research/SKILL.md',
+      content:
+        '---\nname: Research\ndescription: Compare evidence and identify uncertainty.\n---\n\nFull skill instructions.',
+      reason: '两次来源核对任务都复用了该流程。',
+      sourceTurnId: 'skill-turn',
+    });
+    const prompt = social.getAgentAssetsForPrompt('engineering-partner');
+    assert.match(prompt, /Compare evidence and identify uncertainty/u);
+    assert.doesNotMatch(prompt, /Full skill instructions/u);
+    assert.match(
+      social.getAgentAsset('engineering-partner', 'skills/research/SKILL.md')
+        .content,
+      /Full skill instructions/u,
     );
   } finally {
     db.close();
@@ -653,6 +808,8 @@ test('social chat schema v1 upgrades additively to project-work state', () => {
     social.appendAssistantDelta(message.assistantMessageId, '已保存。');
     social.completeReply(message.assistantMessageId);
     db.exec(`
+      DROP TABLE social_agent_asset_revisions;
+      DELETE FROM social_schema_migrations WHERE version = 20;
       DROP TABLE social_project_group_inbox;
       DROP TABLE social_project_reports;
       DELETE FROM social_schema_migrations WHERE version = 19;
@@ -711,7 +868,7 @@ test('social chat schema v1 upgrades additively to project-work state', () => {
       db
         .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
         .get().version,
-      19,
+      20,
     );
     assert.equal(
       db
@@ -750,6 +907,8 @@ test('social schema v7 adds retry snapshots without rewriting the last known att
     });
     social.failReply(turn.assistantMessageId, 'test_failure', '重试前失败');
     db.exec(`
+      DROP TABLE social_agent_asset_revisions;
+      DELETE FROM social_schema_migrations WHERE version = 20;
       DROP TABLE social_project_group_inbox;
       DROP TABLE social_project_reports;
       DELETE FROM social_schema_migrations WHERE version = 19;

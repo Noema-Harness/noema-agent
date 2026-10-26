@@ -439,7 +439,7 @@ test('a removed member can rejoin the same project session without losing its hi
   }
 });
 
-test('schema v11 upgrades to v17 without deleting chats or re-enabling revoked capabilities', () => {
+test('schema v11 upgrades to the current schema without deleting chats or re-enabling revoked capabilities', () => {
   const db = new Database(':memory:');
   new RootStore(db);
   const oldStore = createSocialTestStore(db);
@@ -447,6 +447,12 @@ test('schema v11 upgrades to v17 without deleting chats or re-enabling revoked c
   const roomBefore = oldStore.getRoomSnapshot('room-engineering-collaboration');
   try {
     db.exec(`
+      DROP TABLE social_agent_asset_revisions;
+      DELETE FROM social_schema_migrations WHERE version = 20;
+      DROP TABLE social_project_reports;
+      DELETE FROM social_schema_migrations WHERE version = 19;
+      DROP TABLE social_project_group_inbox;
+      DELETE FROM social_schema_migrations WHERE version = 18;
       DROP TABLE social_work_runtime_checkpoints;
       DELETE FROM social_schema_migrations WHERE version = 17;
       ALTER TABLE social_messages DROP COLUMN sender_agent_id;
@@ -466,7 +472,7 @@ test('schema v11 upgrades to v17 without deleting chats or re-enabling revoked c
       db
         .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
         .get().version,
-      17,
+      20,
     );
     assert.deepEqual(
       upgradedStore
