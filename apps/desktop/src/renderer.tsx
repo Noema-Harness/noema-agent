@@ -573,7 +573,7 @@ function DesktopApp() {
       await window.noema.refreshModels();
       await refreshRoot();
     } catch {
-      setNotice('刷新失败。请检查 FreeLLMAPI 是否正在本机运行。');
+      setNotice('刷新失败。请检查模型服务地址与网络连接。');
     } finally {
       setRefreshing(false);
     }
@@ -586,9 +586,7 @@ function DesktopApp() {
       await window.noema.selectModel(model);
       await refreshRoot();
     } catch (error) {
-      setNotice(
-        error instanceof Error ? error.message : '无法选择这个免费模型。',
-      );
+      setNotice(error instanceof Error ? error.message : '无法选择这个模型。');
       await refreshRoot();
     }
   };
@@ -615,10 +613,10 @@ function DesktopApp() {
       });
       await refreshRoot();
       closeModelSettings();
-      setNotice('FreeLLMAPI 设置已加密保存。');
+      setNotice('模型服务设置已加密保存。');
     } catch (error) {
       setNotice(
-        error instanceof Error ? error.message : 'FreeLLMAPI 设置没有保存。',
+        error instanceof Error ? error.message : '模型服务设置没有保存。',
       );
     } finally {
       setProviderApiKey('');
@@ -1139,11 +1137,11 @@ function DesktopApp() {
           <label className="model-control">
             <span>回复模型</span>
             <select
-              aria-label="选择免费回复模型"
+              aria-label="选择回复模型"
               title={
                 selectedModelState?.routeKind === 'router'
                   ? selectedModelState.executionStatus
-                    ? 'FreeLLMAPI 最近一次检查报告路由可用；自动选择的上游仍可能变化，每条回复会记录实际提供方。'
+                    ? '最近一次检查报告路由可用；自动选择的上游仍可能变化，每条回复会记录实际提供方。'
                     : '自动链路的实时上游状态无法从模型目录项判断；每条回复会记录实际提供方。'
                   : undefined
               }
@@ -1160,7 +1158,7 @@ function DesktopApp() {
                   {root?.selectedModel}（当前不可用）
                 </option>
               )}
-              {!root?.selectedModel && <option value="">选择免费模型</option>}
+              {!root?.selectedModel && <option value="">选择模型</option>}
               {root?.models.map((model) => (
                 <option
                   key={model.name}
@@ -1171,9 +1169,9 @@ function DesktopApp() {
                   }
                   title={
                     model.executionStatus === 'exhausted'
-                      ? 'FreeLLMAPI 当前报告该模型不可服务；刷新后状态可能变化。'
+                      ? '模型服务当前报告该模型不可服务；刷新后状态可能变化。'
                       : model.executionStatus === 'ready'
-                        ? 'FreeLLMAPI 最近一次检查报告该模型可用；发送时仍可能遇到限流或超时。'
+                        ? '最近一次检查报告该模型可用；发送时仍可能遇到限流或超时。'
                         : undefined
                   }
                 >
@@ -1190,9 +1188,9 @@ function DesktopApp() {
                   selectedModelState.executionStatus === null
                     ? '自动链路没有逐模型就绪状态；真实提供方以回复来源或请求错误为准。'
                     : selectedModelState?.executionStatus === 'ready'
-                      ? 'FreeLLMAPI 最近一次检查报告可用；发送时仍可能遇到限流或超时。'
+                      ? '最近一次检查报告可用；发送时仍可能遇到限流或超时。'
                       : selectedModelState?.executionStatus === 'exhausted'
-                        ? 'FreeLLMAPI 当前报告该直连模型的密钥暂时无法服务。刷新后状态可能变化。'
+                        ? '模型服务当前报告该模型的密钥暂时无法服务。刷新后状态可能变化。'
                         : undefined
                 }
               >
@@ -1206,12 +1204,12 @@ function DesktopApp() {
             <span className="connection-symbol" aria-hidden="true" />
             <span>
               {!root || root.checking
-                ? '正在检查 FreeLLMAPI'
+                ? '正在检查模型服务'
                 : root.connected
                   ? root.models.length
-                    ? 'FreeLLMAPI 网关已连接'
-                    : '暂无可用免费模型'
-                  : 'FreeLLMAPI 未连接'}
+                    ? `${root.providerName} 已连接`
+                    : '服务端未列出可用模型'
+                  : `${root.providerName} 未连接`}
             </span>
           </div>
           <button
@@ -1254,8 +1252,7 @@ function DesktopApp() {
               )}
             </div>
             <p>
-              对话保存在本机；回复会经 FreeLLMAPI
-              发送给第三方免费模型，部分供应商可能将请求用于训练。
+              对话保存在本机；回复会发送到当前配置的模型服务商。请按服务商条款评估数据处理方式。
             </p>
           </div>
         </div>
@@ -1265,12 +1262,12 @@ function DesktopApp() {
             <div>
               <strong>
                 {root.providerConfigured
-                  ? 'FreeLLMAPI 暂不可用'
-                  : '还没有连接 FreeLLMAPI'}
+                  ? `${root.providerName} 暂不可用`
+                  : '还没有连接模型服务'}
               </strong>
               <p>
                 {root.error ??
-                  '连接本机 FreeLLMAPI 后，已发送的消息会保留，可恢复后重试。'}
+                  '配置模型服务后即可开始；已发送的消息会保留，可恢复后重试。'}
               </p>
             </div>
             <button
@@ -1296,8 +1293,8 @@ function DesktopApp() {
               <strong>所选模型当前不可用</strong>
               <p>
                 {selectedModelState?.executionStatus === 'exhausted'
-                  ? 'FreeLLMAPI 报告该直连模型的密钥暂时无法服务（例如处于限流冷却）。可切换到自动路由，或稍后刷新。'
-                  : 'FreeLLMAPI 当前的模型列表中没有这个直连模型。刷新状态，或选择其他免费路由。'}
+                  ? '模型服务报告该模型的凭据暂时无法服务（例如处于限流冷却）。可切换模型或稍后刷新。'
+                  : '当前模型服务没有列出这个模型。刷新状态或选择其他模型。'}
               </p>
             </div>
             <button
@@ -1312,7 +1309,7 @@ function DesktopApp() {
         {root?.connected && !root.checking && root.models.length === 0 && (
           <section className="connection-notice" role="status">
             <div>
-              <strong>FreeLLMAPI 暂无可用免费模型</strong>
+              <strong>模型服务暂无可用模型</strong>
               <p>
                 检查网关中的免费供应商与模型状态后刷新。Noema
                 不会回退到本机模型。
@@ -1434,13 +1431,13 @@ function DesktopApp() {
                   {!root || root.checking
                     ? '正在检查本机模型连接。'
                     : !root.connected
-                      ? '连接本机 FreeLLMAPI 后即可开始；对话会保存在本机。'
+                      ? '配置模型服务后即可开始；对话会保存在本机。'
                       : root.models.length === 0
-                        ? 'FreeLLMAPI 已连接，但当前没有可用免费模型。检查供应商状态后刷新。'
+                        ? '模型服务已连接，但当前没有可用模型。检查服务商状态后刷新。'
                         : selectedModelMissing
-                          ? '当前选中的模型暂不可用；可在顶部切换其他免费路由。'
+                          ? '当前选中的模型暂不可用；可在顶部切换其他模型。'
                           : !root.selectedModel
-                            ? '先在顶部选择免费模型，再从这里开始。'
+                            ? '先在顶部选择模型，再从这里开始。'
                             : '直接从这里开始；对话会一直留在本机。若你明确纠正 Noema 的交流或协作方式，它可能会记录为互动调整，你可以查看来源、修改或撤回。'}
                 </p>
               </div>
@@ -1524,7 +1521,7 @@ function DesktopApp() {
                             }
                           >
                             {context.consentedAt
-                              ? '已授权：这份快照会随 Noema 后续对话发送到 FreeLLMAPI，直到移除。'
+                              ? '已授权：这份快照会随 Noema 后续对话发送到当前模型服务，直到移除。'
                               : '仅保存在本机；下次发送时会先说明数据去向并征求同意。'}
                           </p>
                           <div className="context-card-footnote">
@@ -2873,7 +2870,7 @@ function DesktopApp() {
             <div className="settings-heading">
               <div>
                 <p className="settings-eyebrow">模型连接</p>
-                <h2 id="model-settings-title">连接 FreeLLMAPI</h2>
+                <h2 id="model-settings-title">配置模型服务</h2>
               </div>
               <button
                 className="modal-close"
@@ -2885,22 +2882,22 @@ function DesktopApp() {
               </button>
             </div>
             <p className="settings-description" id="model-settings-description">
-              Noema 通过本机 FreeLLMAPI 使用免费模型。API Key
-              只保存在这台设备，并由系统安全存储加密；不会发送到所选模型。
+              填入兼容 OpenAI Chat Completions 的模型服务地址与 API
+              Key。凭据只保存在这台设备，并由系统安全存储加密；请求会发送至你填写的服务地址。
             </p>
             <label className="settings-field">
-              <span>FreeLLMAPI 地址</span>
+              <span>模型服务地址</span>
               <input
                 type="url"
                 value={providerBaseUrl}
                 onChange={(event) => setProviderBaseUrl(event.target.value)}
                 autoComplete="url"
                 spellCheck={false}
-                placeholder="http://127.0.0.1:3001/v1"
+                placeholder="https://api.deepseek.com/v1 或本机兼容接口"
               />
             </label>
             <label className="settings-field">
-              <span>统一 API Key</span>
+              <span>API Key</span>
               <input
                 type="password"
                 autoFocus
@@ -2911,12 +2908,12 @@ function DesktopApp() {
                 }}
                 autoComplete="off"
                 spellCheck={false}
-                placeholder="从 FreeLLMAPI 的 Keys 页面或托盘菜单复制"
+                placeholder="粘贴服务商提供的 API Key"
               />
             </label>
             <p className="settings-footnote">
-              仅接受本机地址。当前只列出 Noema
-              已确认的免费路由，不会自动切换到本地模型或付费模型。
+              远程服务必须使用 HTTPS。Noema
+              不会自动切换模型或服务商；费用与数据处理规则由你填写的服务商决定。
             </p>
             <div className="settings-actions">
               <button

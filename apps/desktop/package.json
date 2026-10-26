@@ -20,6 +20,7 @@
     "capture:c": "node scripts/capture-c-fidelity.mjs",
     "pretest": "node scripts/assert-node-version.mjs",
     "test": "node --test",
+    "e2e:r0-first-use": "node scripts/r0-first-use-e2e.mjs",
     "smoke": "node scripts/smoke.mjs",
     "smoke:package": "node scripts/smoke-package.mjs",
     "e2e:sandbox": "node scripts/sandbox-e2e.mjs",

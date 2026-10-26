@@ -60,3 +60,44 @@ test('refuses to persist a key when operating-system encryption is unavailable',
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('reads a legacy provider credential until a separate provider is configured', () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'noema-provider-store-'));
+  const safeStorage = {
+    isEncryptionAvailable: () => true,
+    encryptString: (value) => Buffer.from(`sealed:${value}`).toString('base64'),
+    decryptString: (value) =>
+      Buffer.from(value.toString(), 'base64')
+        .toString()
+        .replace(/^sealed:/, ''),
+  };
+  const legacy = new EncryptedSecretStore({
+    safeStorage,
+    filePath: path.join(directory, 'freellmapi.key'),
+  });
+  const current = new EncryptedSecretStore({
+    safeStorage,
+    filePath: path.join(directory, 'model-provider.key'),
+    fallbackStores: [legacy],
+  });
+
+  try {
+    legacy.setConfiguration({
+      apiKey: 'legacy-secret',
+      baseUrl: 'http://127.0.0.1:31415/v1',
+    });
+    assert.equal(current.isConfigured(), true);
+    assert.equal(current.get(), 'legacy-secret');
+    assert.equal(current.getBaseUrl(), 'http://127.0.0.1:31415/v1');
+
+    current.setConfiguration({
+      apiKey: 'new-provider-secret',
+      baseUrl: 'https://api.deepseek.com/v1',
+    });
+    assert.equal(current.get(), 'new-provider-secret');
+    assert.equal(current.getBaseUrl(), 'https://api.deepseek.com/v1');
+    assert.equal(legacy.get(), 'legacy-secret');
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

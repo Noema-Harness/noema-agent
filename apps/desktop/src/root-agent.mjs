@@ -2,10 +2,11 @@ import { randomUUID } from 'node:crypto';
 import { statSync } from 'node:fs';
 import path from 'node:path';
 import {
-  DEFAULT_BASE_URL,
-  FreeLLMAPIError,
+  DEFAULT_MODEL_BASE_URL,
+  ModelProviderError,
+  getProviderName,
   normalizeBaseUrl,
-} from './freellmapi-client.mjs';
+} from './openai-compatible-client.mjs';
 import { DSH_FREE_MODEL } from './dsh-headless-adapter.mjs';
 import {
   normalizeWorkspaceVerificationChecks,
@@ -272,7 +273,7 @@ function incompleteWorkerResponse(event) {
 }
 
 export class RootAgent {
-  /** @param {{store:import('./root-store.mjs').RootStore,provider:import('./freellmapi-client.mjs').FreeLLMAPIClient,secretStore:{get:()=>string|null,getBaseUrl:()=>string|null,isConfigured:()=>boolean,set:(value:string)=>void,setConfiguration:(input:{apiKey:string,baseUrl:string})=>void,clear:()=>void},dshAdapter?:import('./dsh-headless-adapter.mjs').DshHeadlessAdapter|null,dshRuntimeError?:string|null,codexAdapter?:import('./codex-app-server-adapter.mjs').CodexAppServerAdapter|null,allowRootActions?:boolean,allowHistorySearch?:boolean,emit?:(event:object)=>void}} options */
+  /** @param {{store:import('./root-store.mjs').RootStore,provider:import('./openai-compatible-client.mjs').OpenAICompatibleClient,secretStore:{get:()=>string|null,getBaseUrl:()=>string|null,isConfigured:()=>boolean,set:(value:string)=>void,setConfiguration:(input:{apiKey:string,baseUrl:string})=>void,clear:()=>void},dshAdapter?:import('./dsh-headless-adapter.mjs').DshHeadlessAdapter|null,dshRuntimeError?:string|null,codexAdapter?:import('./codex-app-server-adapter.mjs').CodexAppServerAdapter|null,allowRootActions?:boolean,allowHistorySearch?:boolean,emit?:(event:object)=>void}} options */
   constructor({
     store,
     provider,
@@ -316,9 +317,11 @@ export class RootAgent {
       ...this.store.getSnapshot(),
       ...this.modelState,
       selectedModel: this.store.getSelectedModel(),
-      providerBaseUrl: this.provider.baseUrl ?? DEFAULT_BASE_URL,
+      providerBaseUrl: this.provider.baseUrl ?? DEFAULT_MODEL_BASE_URL,
       providerConfigured: this.secretStore.isConfigured(),
-      providerName: 'FreeLLMAPI',
+      providerName: getProviderName(
+        this.provider.baseUrl ?? DEFAULT_MODEL_BASE_URL,
+      ),
       workspaceDirectory,
       dshAvailable: Boolean(this.dshAdapter),
       dshWorkerAvailable: this.canDelegateToDsh(),
@@ -441,15 +444,15 @@ export class RootAgent {
         connected: true,
         models,
         error:
-          models.length === 0
-            ? 'FreeLLMAPI 已连接，但当前没有可用的免费模型。'
-            : null,
+          models.length === 0 ? '模型服务已连接，但没有返回可用模型。' : null,
         checking: false,
       };
       const selectedModel = this.store.getSelectedModel();
       if (!selectedModel && models.length > 0) {
         const defaultModel =
-          models.find((model) => model.name === 'auto:noema-free') ?? models[0];
+          models.find((model) => model.name === 'deepseek-flash') ??
+          models.find((model) => model.name === 'auto:noema-free') ??
+          models[0];
         this.store.setSelectedModel(defaultModel.name);
       }
     } catch (error) {
@@ -457,8 +460,7 @@ export class RootAgent {
         connected: false,
         models: [],
         error:
-          error?.message ||
-          '无法连接本机 FreeLLMAPI。请启动 FreeLLMAPI 后重试。',
+          error?.message || '无法连接模型服务。请检查地址、网络和凭据后重试。',
         checking: false,
       };
     }
@@ -470,15 +472,15 @@ export class RootAgent {
       ...this.modelState,
       selectedModel: this.store.getSelectedModel(),
       providerConfigured: this.secretStore.isConfigured(),
-      providerBaseUrl: this.provider.baseUrl ?? DEFAULT_BASE_URL,
+      providerBaseUrl: this.provider.baseUrl ?? DEFAULT_MODEL_BASE_URL,
     };
   }
 
   async configureProvider({ baseUrl, apiKey }) {
     if (typeof apiKey !== 'string' || !apiKey.trim()) {
-      throw new FreeLLMAPIError(
+      throw new ModelProviderError(
         'credentials_missing',
-        '请粘贴 FreeLLMAPI 的统一 API Key。',
+        '请粘贴模型服务 API Key。',
       );
     }
     const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
@@ -491,12 +493,12 @@ export class RootAgent {
 
   async setModel(name) {
     if (typeof name !== 'string' || !name.trim())
-      throw new TypeError('请选择一个 FreeLLMAPI 免费模型');
+      throw new TypeError('请选择一个可用模型');
     const { models } = await this.refreshModels();
     if (!models.some((model) => model.name === name)) {
-      throw new FreeLLMAPIError(
+      throw new ModelProviderError(
         'model_unavailable',
-        '这个免费模型当前不可用。刷新列表并选择其他免费模型。',
+        '这个模型当前不可用。刷新列表并选择其他模型。',
         404,
       );
     }
@@ -612,7 +614,7 @@ export class RootAgent {
       throw new Error('这项任务没有可续接的 DSH 会话；目前只能重新发起。');
     }
     if (!this.dshAdapter || !this.secretStore.isConfigured()) {
-      throw new Error('FreeLLMAPI 或 DSH 当前不可用，暂时无法续接。');
+      throw new Error('模型服务或 DSH 当前不可用，暂时无法续接。');
     }
     const prompt = [
       '继续此前的任务。先检查当前工作区状态和已完成的操作，不要重放已成功的文件改动；从现有进度继续，若工作已完成则核实后简要报告。',
@@ -702,16 +704,16 @@ export class RootAgent {
       let providerStreamEmittedText = false;
       try {
         if (!turn.model) {
-          throw new FreeLLMAPIError(
+          throw new ModelProviderError(
             'model_not_selected',
-            '还没有可用的 FreeLLMAPI 免费模型。连接 FreeLLMAPI 并刷新模型列表后，可以重试这条消息。',
+            '模型服务没有可用模型。检查连接并刷新模型列表后，可以重试这条消息。',
           );
         }
         const models = await this.provider.listModels();
         if (!models.some((model) => model.name === turn.model)) {
-          throw new FreeLLMAPIError(
+          throw new ModelProviderError(
             'model_unavailable',
-            '所选免费模型当前不可用。刷新模型列表并选择其他免费模型后，可以重试。',
+            '所选模型当前不可用。刷新模型列表并选择其他模型后，可以重试。',
             404,
           );
         }
@@ -820,7 +822,7 @@ export class RootAgent {
 
         if (toolCalls.length) {
           if (tools.length === 0) {
-            throw new FreeLLMAPIError(
+            throw new ModelProviderError(
               'root_tool_call_invalid',
               '这轮没有开放工具；模型请求的操作没有执行。',
             );
@@ -864,7 +866,7 @@ export class RootAgent {
         const code =
           typeof error?.code === 'string' ? error.code : 'agent_error';
         const message =
-          error instanceof FreeLLMAPIError
+          error instanceof ModelProviderError
             ? error.message
             : '本轮回复没有完成。部分内容已保留，你可以重试。';
         this.store.failTurn(turn.id, turn.attempt, code, message);
@@ -898,7 +900,7 @@ export class RootAgent {
       toolCalls.length < 1 ||
       toolCalls.length > 2
     ) {
-      throw new FreeLLMAPIError(
+      throw new ModelProviderError(
         'worker_tool_call_invalid',
         '这轮请求包含无法处理的操作组合；没有执行后台操作。',
       );
@@ -920,7 +922,7 @@ export class RootAgent {
           !['delegate_task', 'record_interaction_adjustment'].includes(name),
       )
     ) {
-      throw new FreeLLMAPIError(
+      throw new ModelProviderError(
         'worker_tool_call_invalid',
         '模型请求了未开放的操作；这轮请求没有执行。',
       );
@@ -930,7 +932,7 @@ export class RootAgent {
       try {
         input = JSON.parse(call.function.arguments);
       } catch {
-        throw new FreeLLMAPIError(
+        throw new ModelProviderError(
           'worker_tool_call_invalid',
           '模型给出的操作内容无法读取，这轮请求没有执行。',
         );
@@ -946,7 +948,7 @@ export class RootAgent {
           typeof input.behavior !== 'string' ||
           !['conversation', 'coding', 'both'].includes(input.scope)
         ) {
-          throw new FreeLLMAPIError(
+          throw new ModelProviderError(
             'interaction_adjustment_invalid',
             '互动调整内容不完整；没有保存。',
           );
@@ -958,7 +960,7 @@ export class RootAgent {
         input.task.length > 40_000 ||
         !this.canDelegateToDsh()
       ) {
-        throw new FreeLLMAPIError(
+        throw new ModelProviderError(
           'worker_tool_call_invalid',
           '后台任务缺少明确内容、超出长度限制或当前不可用；没有执行。',
         );
@@ -969,7 +971,7 @@ export class RootAgent {
               input.verificationChecks ?? [],
             );
         } catch (error) {
-          throw new FreeLLMAPIError(
+          throw new ModelProviderError(
             'verification_plan_invalid',
             error instanceof Error
               ? `Noema 无法执行模型提出的验收计划：${error.message}`
@@ -1062,7 +1064,7 @@ export class RootAgent {
     ) {
       return {
         accepted: false,
-        errorMessage: '请先连接 FreeLLMAPI 并选择工作区。',
+        errorMessage: '请先连接模型服务并选择工作区。',
       };
     }
     const taskId = randomUUID();
@@ -1587,7 +1589,7 @@ export class RootAgent {
     if (!model) {
       return {
         accepted: false,
-        errorMessage: '请先选择一个可用的 FreeLLMAPI 免费模型。',
+        errorMessage: '请先选择一个可用模型。',
       };
     }
     let availableModels;
@@ -1596,13 +1598,13 @@ export class RootAgent {
     } catch {
       return {
         accepted: false,
-        errorMessage: 'FreeLLMAPI 暂时不可用；后台结果仍已保留。',
+        errorMessage: '模型服务暂时不可用；后台结果仍已保留。',
       };
     }
     if (!availableModels.some((candidate) => candidate.name === model)) {
       return {
         accepted: false,
-        errorMessage: '当前选择的免费模型暂不可用；请刷新模型列表后重试。',
+        errorMessage: '当前选择的模型暂不可用；请刷新模型列表后重试。',
       };
     }
     if (!this.store.beginBackgroundEventResponse(event.id, model)) {
@@ -1680,7 +1682,7 @@ export class RootAgent {
       } catch (error) {
         const status = controller.signal.aborted ? 'interrupted' : 'failed';
         const message =
-          error instanceof FreeLLMAPIError
+          error instanceof ModelProviderError
             ? error.message
             : 'Noema 暂时无法整理这条后台结果；结果仍已保留。';
         this.store.interruptBackgroundEventResponse(event.id, status, message);

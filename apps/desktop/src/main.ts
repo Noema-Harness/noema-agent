@@ -15,7 +15,10 @@ import path from 'node:path';
 import { EncryptedSecretStore } from './encrypted-secret-store.mjs';
 import { verifyConversationNavigation } from './conversation-navigation-e2e.mjs';
 import { runIsolatedWorkerE2E } from './isolated-worker-e2e.mjs';
-import { DEFAULT_BASE_URL, FreeLLMAPIClient } from './freellmapi-client.mjs';
+import {
+  DEFAULT_MODEL_BASE_URL,
+  OpenAICompatibleClient,
+} from './openai-compatible-client.mjs';
 import {
   createImportAwareSendMessage,
   registerRootIpc,
@@ -93,7 +96,6 @@ if (
   fs.mkdirSync(smokeUserData, { recursive: true });
   app.setPath('userData', smokeUserData);
 }
-
 let mainWindow: BrowserWindow | null = null;
 let initialWindowFitsWorkArea = false;
 let rootStore: RootStore | null = null;
@@ -156,6 +158,9 @@ const testSocialAttachmentsOnly =
 const testSocialAgentLiveE2e = process.env.NOEMA_E2E_SOCIAL_AGENT_LIVE === '1';
 const testSocialAgentLiveModel =
   process.env.NOEMA_E2E_SOCIAL_AGENT_LIVE_MODEL ?? null;
+const testSocialAgentR0FirstUse =
+  process.env.NOEMA_E2E_SOCIAL_R0_FIRST_USE === '1';
+const testSocialAgentKeepOpen = process.env.NOEMA_E2E_KEEP_OPEN === '1';
 const socialAgentE2eResultPath =
   process.env.NOEMA_E2E_SOCIAL_AGENT_RESULT_PATH ?? null;
 const socialAgentForwardDesktopScreenshotPath =
@@ -282,6 +287,8 @@ delete process.env.NOEMA_E2E_SOCIAL_AGENT_WORKFLOW;
 delete process.env.NOEMA_E2E_SOCIAL_ATTACHMENTS_ONLY;
 delete process.env.NOEMA_E2E_SOCIAL_AGENT_LIVE;
 delete process.env.NOEMA_E2E_SOCIAL_AGENT_LIVE_MODEL;
+delete process.env.NOEMA_E2E_SOCIAL_R0_FIRST_USE;
+delete process.env.NOEMA_E2E_KEEP_OPEN;
 delete process.env.NOEMA_E2E_SOCIAL_AGENT_RESULT_PATH;
 delete process.env.NOEMA_SMOKE_CAPTURE_QUICK_CAPTURE;
 delete process.env.NOEMA_SMOKE_CAPTURE_HISTORY_TRACE;
@@ -423,6 +430,7 @@ const createWindow = () => {
           {
             connected: Boolean(bridgeState.connected),
             providerConfigured: Boolean(bridgeState.providerConfigured),
+            providerName: bridgeState.providerName,
           },
         );
         const socialChatSmoke = await captureSocialChatSmokeScreenshots();
@@ -885,7 +893,11 @@ async function inspectModelAvailabilitySmoke(
     executionStatus: 'ready' | 'needsKey' | 'exhausted' | null;
   }>,
   selectedModel: string | null,
-  providerState: { connected: boolean; providerConfigured: boolean },
+  providerState: {
+    connected: boolean;
+    providerConfigured: boolean;
+    providerName: string;
+  },
 ) {
   if (!testCaptureModelAvailability && models.length === 0) return null;
   if (!mainWindow || mainWindow.isDestroyed()) {
@@ -960,14 +972,14 @@ async function inspectModelAvailabilitySmoke(
     }
     const expectedConnectionSummary = providerState.providerConfigured
       ? providerState.connected
-        ? '本机 FreeLLMAPI 已连接'
-        : 'FreeLLMAPI 已配置，当前连接不可用'
+        ? `${providerState.providerName} 已连接`
+        : `${providerState.providerName} 已配置，当前连接不可用`
       : '';
     if (
       expectedConnectionSummary &&
       !socialState.connectionSummary.includes(expectedConnectionSummary)
     ) {
-      throw new Error('连接设置没有显示本机 FreeLLMAPI 的真实连接状态。');
+      throw new Error('连接设置没有显示当前模型服务的真实连接状态。');
     }
     if (providerReady === socialState.composerDisabled) {
       throw new Error('所选模型状态与聊天输入框的可用状态不一致。');
@@ -1229,7 +1241,7 @@ async function captureSocialChatSmokeScreenshots() {
     }
     await mainWindow.webContents.executeJavaScript(`(() => {
       const mainChat = [...document.querySelectorAll('.room-list-item')]
-        .find((item) => item.querySelector('.room-list-title')?.textContent?.trim() === 'Noema');
+        .find((item) => item.querySelector('.item-title')?.textContent?.trim() === 'Noema');
       mainChat?.click();
     })()`);
     await mainWindow.webContents.executeJavaScript(
@@ -1499,7 +1511,7 @@ async function captureSocialAgentCreationE2e() {
     };
     const selectRoom = async (title) => {
       const row = [...document.querySelectorAll('.room-list-item')]
-        .find((item) => item.querySelector('.room-list-title')?.textContent?.trim() === title);
+        .find((item) => item.querySelector('.item-title')?.textContent?.trim() === title);
       if (!row) throw new Error('找不到聊天：' + title);
       row.click();
       await waitFor(() => document.querySelector('.room-header h2')?.textContent?.trim() === title, title + ' 聊天');
@@ -1544,7 +1556,7 @@ async function captureSocialAgentCreationE2e() {
     };
     await waitFor(() => document.querySelector('.room-list-item'), '联系人和聊天列表初始化');
     const sourceRoomItem = [...document.querySelectorAll('.room-list-item')]
-      .find((item) => item.querySelector('.room-list-title')?.textContent?.trim() === '工程搭档');
+      .find((item) => item.querySelector('.item-title')?.textContent?.trim() === '工程搭档');
     if (!sourceRoomItem) throw new Error('找不到工程搭档私聊');
     sourceRoomItem.click();
     await waitFor(() => document.querySelector('.room-header h2')?.textContent?.trim() === '工程搭档', '工程搭档私聊');
@@ -1799,7 +1811,7 @@ async function captureSocialAgentCreationE2e() {
         throw new Error('等待超时：' + label);
       };
       const noemaRoomItem = [...document.querySelectorAll('.room-list-item')]
-        .find((item) => item.querySelector('.room-list-title')?.textContent?.trim() === 'Noema');
+        .find((item) => item.querySelector('.item-title')?.textContent?.trim() === 'Noema');
       noemaRoomItem?.click();
       await waitFor(() => document.querySelector('.room-header h2')?.textContent?.trim() === 'Noema', '返回 Noema 主聊');
       const before = await window.noema.getSocialState();
@@ -2117,7 +2129,7 @@ async function captureSocialAgentCreationE2e() {
         throw new Error('等待超时：' + label);
       };
       const noemaRoomItem = [...document.querySelectorAll('.room-list-item')]
-        .find((item) => item.querySelector('.room-list-title')?.textContent?.trim() === 'Noema');
+        .find((item) => item.querySelector('.item-title')?.textContent?.trim() === 'Noema');
       noemaRoomItem?.click();
       await waitFor(() => document.querySelector('.room-header h2')?.textContent?.trim() === 'Noema', '返回 Noema 主聊');
       const input = document.querySelector('#social-message-input');
@@ -2260,7 +2272,7 @@ async function captureSocialAgentCreationE2e() {
       element.dispatchEvent(new Event('input', { bubbles: true }));
     };
     const noemaRoom = [...document.querySelectorAll('.room-list-item')]
-      .find((item) => item.querySelector('.room-list-title')?.textContent?.trim() === 'Noema');
+      .find((item) => item.querySelector('.item-title')?.textContent?.trim() === 'Noema');
     if (!noemaRoom) throw new Error('找不到 Noema 主聊天');
     noemaRoom.click();
     await waitFor(() => document.querySelector('.room-header h2')?.textContent?.trim() === 'Noema', 'Noema 主聊天');
@@ -2757,7 +2769,7 @@ async function captureSocialAgentCreationE2e() {
     const projectSidebarEntry = [...document.querySelectorAll('.project-list-item')]
       .find((item) => item.querySelector('strong')?.textContent?.trim() === 'E2E 定价追踪');
     const projectNotDuplicatedInOtherChats = ![...document.querySelectorAll('.conversation-list .room-list-item')]
-      .some((item) => item.querySelector('.room-list-title')?.textContent?.includes('E2E 定价追踪'));
+      .some((item) => item.querySelector('.item-title')?.textContent?.includes('E2E 定价追踪'));
     const projectBannerVisible = Boolean(document.querySelector('.project-workspace-brief')?.textContent?.includes('比较平台价格并记录变化'));
     const projectMemberSession = projectCreatedState.project.members.find((member) => member.agentId === createdState.agent.id);
     const projectGroup = await window.noema.getSocialRoom(projectCreatedState.project.groupRoomId);
@@ -2933,7 +2945,7 @@ async function captureSocialAgentCreationE2e() {
     await waitFor(() => !document.querySelector('.social-body')?.classList.contains('room-open'), '打开移动端聊天列表');
     const expectedAgentName = ${JSON.stringify(result.agentProfileEdit?.name ?? '')};
     const row = [...document.querySelectorAll('.room-list-item')]
-      .find((item) => item.querySelector('.room-list-title')?.textContent?.trim() === expectedAgentName);
+      .find((item) => item.querySelector('.item-title')?.textContent?.trim() === expectedAgentName);
     if (!row) throw new Error('找不到专业联系人的常驻私聊列表项');
     row?.click();
     await waitFor(
@@ -3316,6 +3328,171 @@ async function captureSocialTextAttachmentsE2e() {
   return result;
 }
 
+async function captureSocialR0FirstUseE2e() {
+  if (!mainWindow || mainWindow.isDestroyed() || !testSocialAgentLiveE2e) {
+    throw new Error('R0 首次使用路径需要隔离的真实模型和桌面窗口。');
+  }
+  const prompt =
+    '我有一个摄影工作坊的小副业想法：面向本地新手，周末做半天实操课，家里已有场地，单次试办预算上限 3000 元。我想判断需求、课程设计、运营和预算是否可行，最后形成一页试办方案与关键风险。请先判断是否需要组织不同专业角色协作；如果需要，就创建合适的成员并完成首轮分析，把结果整理回这条主聊。不要替我决定是否上线；没有可靠本地数据的地方请标明待核实。';
+  const sendPrompt = async (text: string, phase: string) => {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      throw new Error('发送 R0 主聊消息前，桌面窗口已关闭。');
+    }
+    writeSmokeLog(`${phase}-send-started`);
+    let sendTimeout: NodeJS.Timeout | null = null;
+    const sent = await Promise.race([
+      mainWindow.webContents.executeJavaScript(
+        `window.noema.sendSocialMessage(${JSON.stringify({
+          roomId: 'room-noema',
+          agentId: 'noema',
+          text,
+        })})`,
+      ),
+      new Promise<never>((_, reject) => {
+        sendTimeout = setTimeout(
+          () => reject(new Error('等待主聊接受 R0 消息超过 30 秒。')),
+          30_000,
+        );
+      }),
+    ]).finally(() => {
+      if (sendTimeout) clearTimeout(sendTimeout);
+    });
+    writeSmokeLog(`${phase}-send-accepted`, { turnId: sent.turnId });
+    return sent;
+  };
+  const waitForReply = async (sent: { turnId: string; messageId: string }) =>
+    mainWindow!.webContents.executeJavaScript(`(async () => {
+      const deadline = Date.now() + 7 * 60_000;
+      const sent = ${JSON.stringify(sent)};
+      while (Date.now() < deadline) {
+        const [state, mainRoom] = await Promise.all([
+          window.noema.getSocialState(),
+          window.noema.getSocialRoom('room-noema'),
+        ]);
+        const userMessage = mainRoom.messages.find((message) => message.turnId === sent.turnId && message.role === 'user');
+        const mainReply = userMessage
+          ? mainRoom.messages.find((message) => message.turnId === userMessage.turnId && message.role === 'assistant')
+          : null;
+        const project = userMessage
+          ? state.projects.find((item) => item.sourceMessageId === userMessage.id)
+          : null;
+        let memberReplies = [];
+        if (project) {
+          const group = await window.noema.getSocialRoom(project.groupRoomId);
+          memberReplies = group.messages.filter((message) =>
+            message.role === 'assistant' && message.senderAgentId !== 'noema' && message.status === 'complete'
+          );
+        }
+        if (mainReply?.status === 'failed' || mainReply?.status === 'interrupted') {
+          return {
+            outcome: 'reply_failed', sent, replyStatus: mainReply.status,
+            errorCode: mainReply.errorCode, errorMessage: mainReply.errorMessage,
+            project: project ? { id: project.id, title: project.title, status: project.status, members: project.members.map(({ agentId, name, headline }) => ({ agentId, name, headline })) } : null,
+            memberReplyCount: memberReplies.length, mainReply: mainReply.content,
+          };
+        }
+        if (mainReply?.status === 'complete') {
+          return {
+            outcome: 'reply_complete', sent,
+            project: project ? { id: project.id, title: project.title, status: project.status, members: project.members.map(({ agentId, name, headline }) => ({ agentId, name, headline })) } : null,
+            memberReplyCount: memberReplies.length, mainReply: mainReply.content,
+            memberReplySummaries: memberReplies.map((message) => ({ senderAgentId: message.senderAgentId, contentLength: message.content.length, tail: message.content.slice(-120) })),
+            model: mainReply.model,
+          };
+        }
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+      const room = await window.noema.getSocialRoom('room-noema');
+      const state = await window.noema.getSocialState();
+      const userMessage = room.messages.find((message) => message.turnId === sent.turnId && message.role === 'user');
+      const project = userMessage
+        ? state.projects.find((item) => item.sourceMessageId === userMessage.id)
+        : null;
+      const mainReply = userMessage
+        ? room.messages.find((message) => message.turnId === userMessage.turnId && message.role === 'assistant')
+        : null;
+      return {
+        outcome: 'timed_out', sent,
+        replyStatus: mainReply?.status ?? null,
+        errorCode: mainReply?.errorCode ?? null,
+        errorMessage: mainReply?.errorMessage ?? null,
+        project: project ? { id: project.id, title: project.title, status: project.status, members: project.members.map(({ agentId, name, headline }) => ({ agentId, name, headline })) } : null,
+      };
+    })()`);
+  const sent = await sendPrompt(prompt, 'r0-initial');
+  const firstTurn = await waitForReply(sent);
+  const followupPrompt =
+    '先按二线城市、每期 4–6 人、预算 3000 元、有现成场地、我会基础摄影但没有教学经验作为工作假设。现在请实际推进首轮分析：组织两位不同专业成员，一位评估本地需求与竞品验证方法，一位设计半天新手课程和材料清单。让他们各自给建议，再由你汇总并标出待核实的信息。不要替我决定是否开课，也不必再追问，先按假设完成这一轮。';
+  let result = firstTurn;
+  if (firstTurn.outcome === 'reply_complete' && !firstTurn.project) {
+    const followupSent = await sendPrompt(followupPrompt, 'r0-followup');
+    result = await waitForReply(followupSent);
+    result.firstTurn = {
+      status: firstTurn.outcome,
+      model: firstTurn.model,
+      reply: firstTurn.mainReply,
+    };
+    result.followupPrompt = followupPrompt;
+  }
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    throw new Error('R0 首次使用结果返回前，桌面窗口已关闭。');
+  }
+  result.modelCallCount = socialAgentE2eModelRequests.length;
+  result.prompt = prompt;
+  if (
+    result.outcome !== 'reply_complete' ||
+    !result.project ||
+    result.project.members.filter(
+      (member: { agentId: string }) => member.agentId !== 'noema',
+    ).length < 2 ||
+    result.memberReplyCount < 2
+  ) {
+    writeSmokeLog('r0-result-incomplete', {
+      outcome: result.outcome,
+      modelCallCount: result.modelCallCount,
+      projectCreated: Boolean(result.project),
+      memberReplyCount: result.memberReplyCount ?? 0,
+      replyStatus: result.replyStatus ?? null,
+      errorCode: result.errorCode ?? null,
+    });
+    throw new Error(`R0 首次真实组队闭环未完成：${JSON.stringify(result)}`);
+  }
+  if (socialAgentE2eResultPath) {
+    const renderedReplyComplete = await mainWindow.webContents
+      .executeJavaScript(`(async () => {
+      const deadline = Date.now() + 5_000;
+      const messageId = ${JSON.stringify(result.sent.messageId)};
+      while (Date.now() < deadline) {
+        const message = document.querySelector('[data-message-id="' + CSS.escape(messageId) + '"]');
+        if (message?.querySelector('.message-actions') && !document.querySelector('.runtime-status')) {
+          await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          return true;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      return false;
+    })()`);
+    if (!renderedReplyComplete) {
+      throw new Error(
+        '主聊回复已持久化完成，但桌面界面仍显示生成中；不保存未稳定截图。',
+      );
+    }
+    const screenshotPath = path.join(
+      path.dirname(socialAgentE2eResultPath),
+      'r0-first-use.png',
+    );
+    writeSmokeScreenshot(screenshotPath, await mainWindow.capturePage());
+    result.screenshotPath = screenshotPath;
+  }
+  writeSmokeLog('r0-result-complete', {
+    projectCreated: true,
+    memberCount: result.project.members.length,
+    memberReplyCount: result.memberReplyCount,
+    modelCallCount: result.modelCallCount,
+  });
+  return result;
+}
+
 async function verifyLiveSocialChatSmoke() {
   if (!runSocialChatLiveSmoke) return null;
   if (!mainWindow || mainWindow.isDestroyed()) {
@@ -3326,14 +3503,28 @@ async function verifyLiveSocialChatSmoke() {
     const roomDeadline = Date.now() + 5000;
     while (Date.now() < roomDeadline) {
       const noemaRoom = [...document.querySelectorAll('.room-list-item')]
-        .find((item) => item.querySelector('.room-list-title')?.textContent?.trim() === 'Noema');
+        .find((item) => item.querySelector('.item-title')?.textContent?.trim() === 'Noema');
       noemaRoom?.click();
       if (document.querySelector('.room-header h2')?.textContent?.trim() === 'Noema') break;
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
     const input = document.querySelector('#social-message-input');
     const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
-    if (!input || input.disabled || !setter) return { verified: false, status: 'composer_unavailable' };
+    if (!input || input.disabled || !setter) {
+      const state = await window.noema.getSocialState();
+      return {
+        verified: false,
+        status: 'composer_unavailable',
+        inputFound: Boolean(input),
+        inputDisabled: Boolean(input?.disabled),
+        activeRoom: document.querySelector('.room-header h2')?.textContent?.trim() ?? null,
+        selectedModel: state.selectedModel ?? null,
+        connected: Boolean(state.connected),
+        providerConfigured: Boolean(state.providerConfigured),
+        modelCount: state.models?.length ?? 0,
+        providerWarning: document.querySelector('.provider-warning')?.textContent?.trim() ?? '',
+      };
+    }
     setter.call(input, '[NOEMA synthetic chat smoke] 请只回复这个标记，不要添加其它内容：' + expected);
     input.dispatchEvent(new Event('input', { bubbles: true }));
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -3387,7 +3578,7 @@ function discoverFreeLLMAPIBaseUrl(appDataPath: string) {
   } catch {
     // Use FreeLLMAPI's documented default when the desktop configuration is absent.
   }
-  return DEFAULT_BASE_URL;
+  return DEFAULT_MODEL_BASE_URL;
 }
 
 function isPathWithin(directory: string, candidate: string) {
@@ -3440,7 +3631,7 @@ async function startNoema() {
     });
     rootStore = new RootStore(databasePath);
     writeSmokeLog('store-opened');
-    providerSecretStore = new EncryptedSecretStore({
+    const legacyFreeLlmApiSecretStore = new EncryptedSecretStore({
       safeStorage,
       filePath: path.join(
         app.getPath('userData'),
@@ -3448,15 +3639,41 @@ async function startNoema() {
         'freellmapi.key',
       ),
     });
+    providerSecretStore = new EncryptedSecretStore({
+      safeStorage,
+      filePath: path.join(
+        app.getPath('userData'),
+        'credentials',
+        'model-provider.key',
+      ),
+      fallbackStores: [legacyFreeLlmApiSecretStore],
+    });
+    const envModelBaseUrl = process.env.NOEMA_MODEL_BASE_URL;
+    const injectedModelApiKey = process.env.NOEMA_MODEL_API_KEY;
+    const allowIsolatedModelCredential = Boolean(
+      testSocialAgentR0FirstUse && testDatabasePath,
+    );
+    writeSmokeLog('model-provider-credential-source', {
+      isolatedCredentialProvided: Boolean(injectedModelApiKey),
+      isolatedModelTestEnabled: allowIsolatedModelCredential,
+    });
+    if (injectedModelApiKey && allowIsolatedModelCredential) {
+      providerSecretStore.setConfiguration({
+        apiKey: injectedModelApiKey,
+        baseUrl: envModelBaseUrl ?? 'https://api.deepseek.com',
+      });
+    }
+    delete process.env.NOEMA_MODEL_API_KEY;
+    delete process.env.NOEMA_MODEL_BASE_URL;
     if (process.env.NOEMA_FREELLMAPI_API_KEY) {
-      providerSecretStore.set(process.env.NOEMA_FREELLMAPI_API_KEY);
+      legacyFreeLlmApiSecretStore.set(process.env.NOEMA_FREELLMAPI_API_KEY);
       delete process.env.NOEMA_FREELLMAPI_API_KEY;
     }
     const configuredBaseUrl =
       providerSecretStore.getBaseUrl() ??
       process.env.NOEMA_FREELLMAPI_BASE_URL ??
       discoverFreeLLMAPIBaseUrl(app.getPath('appData'));
-    const provider = new FreeLLMAPIClient({
+    const provider = new OpenAICompatibleClient({
       baseUrl: configuredBaseUrl,
       getApiKey: () => providerSecretStore?.get() ?? null,
     });
@@ -3606,6 +3823,7 @@ async function startNoema() {
     const socialAgentE2eValid = Boolean(
       !app.isPackaged &&
       testSocialAgentWorkflow &&
+      (!testSocialAgentR0FirstUse || testSocialAgentLiveE2e) &&
       !testWorkerPrompt &&
       !testSocialWorkPrompt &&
       typeof testDatabasePath === 'string' &&
@@ -3681,7 +3899,7 @@ async function startNoema() {
                 },
               });
             },
-          } as unknown as FreeLLMAPIClient)
+          } as unknown as OpenAICompatibleClient)
         : provider;
     const syntheticSocialWorkAdapter = (useSyntheticSocialWork
       ? {
@@ -4042,7 +4260,7 @@ async function startNoema() {
     socialChatService = new SocialChatService({
       store: socialChatStore,
       projectStore: socialProjectStore,
-      provider: socialChatProvider as FreeLLMAPIClient,
+      provider: socialChatProvider as OpenAICompatibleClient,
       secretStore:
         socialAgentE2eValid && !testSocialAgentLiveE2e
           ? { isConfigured: () => true }
@@ -4127,7 +4345,34 @@ async function startNoema() {
     if (socialAgentE2eValid && socialAgentE2eDirectory) {
       const resultPath = path.resolve(socialAgentE2eResultPath!);
       if (testSocialAgentLiveE2e) {
-        await agent.refreshModels();
+        writeSmokeLog('social-agent-live-preflight-started');
+        let catalogTimer: NodeJS.Timeout | null = null;
+        const catalogResult = await Promise.race([
+          agent.refreshModels().then(() => 'ready' as const),
+          new Promise<'timeout'>((resolve) => {
+            catalogTimer = setTimeout(() => resolve('timeout'), 25_000);
+          }),
+        ]).finally(() => {
+          if (catalogTimer) clearTimeout(catalogTimer);
+        });
+        if (catalogResult === 'timeout') {
+          writeSmokeLog('social-agent-live-preflight-timeout');
+          fs.writeFileSync(
+            resultPath,
+            JSON.stringify(
+              {
+                outcome: 'preflight_timeout',
+                stage: 'refresh-model-catalog',
+              },
+              null,
+              2,
+            ),
+            { encoding: 'utf8', flag: 'wx' },
+          );
+          app.quit();
+          return;
+        }
+        writeSmokeLog('social-agent-live-preflight-completed');
         const providerState = await agent.getUiState();
         const availableModels = providerState.models as Array<{
           name: string;
@@ -4157,6 +4402,7 @@ async function startNoema() {
                 connected: Boolean(providerState.connected),
                 modelSelected: Boolean(providerState.selectedModel),
                 selectedRouteReady: selectedRouteAvailable,
+                availableModels: availableModels.map(({ name, routeKind, executionStatus }) => ({ name, routeKind, executionStatus })),
               },
               null,
               2,
@@ -4169,13 +4415,41 @@ async function startNoema() {
       }
       void (async () => {
         try {
-          await new Promise<void>((resolve) => {
+          await new Promise<void>((resolve, reject) => {
             createWindow();
             if (!mainWindow || mainWindow.isDestroyed()) {
               resolve();
               return;
             }
             const contents = mainWindow.webContents;
+            if (testSocialAgentR0FirstUse) {
+              void (async () => {
+                try {
+                  const deadline = Date.now() + 20_000;
+                  while (Date.now() < deadline) {
+                    const ready = await contents.executeJavaScript(
+                      "document.readyState !== 'loading' && Boolean(window.noema?.sendSocialMessage && window.noema?.getSocialState)",
+                    );
+                    if (ready) {
+                      writeSmokeLog('r0-renderer-ready');
+                      resolve();
+                      return;
+                    }
+                    await new Promise((wait) => setTimeout(wait, 100));
+                  }
+                  throw new Error('R0 renderer bridge did not become ready');
+                } catch (error) {
+                  writeSmokeLog('r0-renderer-wait-failed', {
+                    error:
+                      error instanceof Error
+                        ? error.message.slice(0, 500)
+                        : null,
+                  });
+                  reject(error);
+                }
+              })();
+              return;
+            }
             if (!contents.isLoadingMainFrame() && contents.getURL()) {
               resolve();
               return;
@@ -4186,7 +4460,9 @@ async function startNoema() {
             ? {
                 textAttachments: await captureSocialTextAttachmentsE2e(),
               }
-            : await captureSocialAgentCreationE2e();
+            : testSocialAgentR0FirstUse
+              ? await captureSocialR0FirstUseE2e()
+              : await captureSocialAgentCreationE2e();
           fs.writeFileSync(
             resultPath,
             JSON.stringify({ outcome: 'passed', workflow }, null, 2),
@@ -4210,7 +4486,7 @@ async function startNoema() {
             { encoding: 'utf8', flag: 'wx' },
           );
         } finally {
-          app.quit();
+          if (!testSocialAgentKeepOpen) app.quit();
         }
       })();
       return;

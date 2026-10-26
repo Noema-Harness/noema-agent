@@ -1769,12 +1769,12 @@ function SocialChatApp() {
   const providerWarning = state?.checking
     ? '正在检查本机模型服务…'
     : !state?.providerConfigured
-      ? '连接本机 FreeLLMAPI 后即可开始聊天。'
+      ? '配置模型服务后即可开始聊天。'
       : !state?.connected || modelOptions.length === 0
         ? (state?.error ?? '当前没有可用模型。')
         : activeRouteUnavailable
           ? activeRoute?.executionStatus === 'needsKey'
-            ? '所选模型需要配置服务商密钥。可以切换其他可用模型，或检查 FreeLLMAPI 设置。'
+            ? '所选模型需要配置服务商密钥。可以切换其他可用模型，或检查模型服务设置。'
             : '所选模型最近报告额度已耗尽。可以切换其他模型后继续。'
           : null;
   const messagesById = new Map(
@@ -3902,8 +3902,8 @@ function SocialChatApp() {
                 <span>
                   <i className={state.connected ? 'is-connected' : ''} />
                   {state.connected
-                    ? '本机 FreeLLMAPI 已连接'
-                    : 'FreeLLMAPI 已配置，当前连接不可用'}
+                    ? `${state.providerName} 已连接`
+                    : `${state.providerName} 已配置，当前连接不可用`}
                 </span>
                 <button
                   type="button"
@@ -3918,18 +3918,18 @@ function SocialChatApp() {
             ) : (
               <>
                 <label className="dialog-field">
-                  <span>本机 FreeLLMAPI 地址</span>
+                  <span>模型服务地址</span>
                   <input
                     autoFocus
                     data-dialog-initial-focus
                     value={providerBaseUrl}
                     onChange={(event) => setProviderBaseUrl(event.target.value)}
-                    placeholder="http://127.0.0.1:31415/v1"
+                    placeholder="https://api.deepseek.com/v1 或本机兼容接口"
                     required
                   />
                 </label>
                 <label className="dialog-field">
-                  <span>统一 API Key</span>
+                  <span>API Key</span>
                   <input
                     type="password"
                     autoComplete="new-password"
@@ -3937,8 +3937,8 @@ function SocialChatApp() {
                     onChange={(event) => setProviderApiKey(event.target.value)}
                     placeholder={
                       state?.providerConfigured
-                        ? '输入新 Key 以替换本机凭据'
-                        : '粘贴 FreeLLMAPI Key'
+                        ? '输入新 Key 以替换当前凭据'
+                        : '粘贴服务商提供的 API Key'
                     }
                     required
                   />

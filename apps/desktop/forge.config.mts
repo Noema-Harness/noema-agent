@@ -83,11 +83,15 @@ const config: ForgeConfig = {
               `${packageName} is required to package the project command sandbox. Run npm ci before packaging.`,
             );
           }
-          await fs.cp(
-            packageSource,
-            path.join(buildPath, 'node_modules', packageName),
-            { recursive: true, force: true },
+          const packageTarget = path.join(
+            buildPath,
+            'node_modules',
+            packageName,
           );
+          await fs.cp(packageSource, packageTarget, {
+            recursive: true,
+            force: true,
+          });
         }
       },
     ],

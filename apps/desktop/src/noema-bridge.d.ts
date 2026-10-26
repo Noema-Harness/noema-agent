@@ -112,7 +112,7 @@ export interface NoemaRootState {
   error: string | null;
   providerConfigured: boolean;
   providerBaseUrl: string;
-  providerName: 'FreeLLMAPI';
+  providerName: string;
   workspaceDirectory: string | null;
   dshAvailable: boolean;
   dshWorkerAvailable: boolean;

@@ -1,10 +1,11 @@
-import { FreeLLMAPIError } from './freellmapi-client.mjs';
+import { ModelProviderError } from './openai-compatible-client.mjs';
 import { userReferencesPastNoemaContext } from './transcript-search.mjs';
+import { resolveGroupRecipient } from './group-mentions.mjs';
 
 /** @typedef {Omit<Pick<import('./noema-bridge.d.ts').NoemaRootState,'connected'|'checking'|'models'|'selectedModel'|'error'|'providerConfigured'|'providerBaseUrl'|'providerName'>,'providerName'> & {providerName:string}} SocialProviderState */
 
 function safeError(error) {
-  if (error instanceof FreeLLMAPIError) return error.message;
+  if (error instanceof ModelProviderError) return error.message;
   if (error?.name === 'AbortError') return '已停止生成；已有内容已保留。';
   return '本轮回复没有完成。消息已保留，你可以重试。';
 }
@@ -108,7 +109,7 @@ function projectTeamTool({ agents, projects, projectWorkReady }) {
       name: 'create_project_team',
       description: [
         '只在用户已交付一个确需至少两种专业角色协作的复杂项目时使用。普通交流或单一专业任务继续留在聊天或交给一位联系人。',
-        '创建团队后，会为每位成员建立独立项目会话，并按 members 中的分工依次发出公开群消息、等待各自当轮回复，再把状态与报告交回 Noema。公开群消息及其回复所有成员可见。',
+        '创建团队后，会为每位成员建立独立项目会话，并按 members 中的分工依次发出显式 @该成员的公开群消息、等待各自当轮回复，再把状态与报告交回 Noema。公开群消息及其回复所有成员可见；接收者由消息中的 @ 决定。',
         '优先复用职责合适的活跃联系人；仅当现有列表确实缺少角色时才创建新联系人。新联系人名称与长期定位应描述可持续拓展的资产，不要为一次小任务造人。',
         projects.length
           ? `若请求确实属于同一既有项目，填写 existing_project_id 来恢复并续接该项目；现有项目：${projects
@@ -161,7 +162,8 @@ function projectTeamTool({ agents, projects, projectWorkReady }) {
                 },
                 task: {
                   type: 'string',
-                  description: '该成员在此项目中的第一项可独立交付的具体工作。',
+                  description:
+                    '该成员在此项目中的第一项可独立交付的具体工作；将作为 @该成员 的公开群消息发送，不要在同条任务中 @其他成员。',
                 },
               },
               required: ['task'],
@@ -260,11 +262,11 @@ function noemaActionGuidance(
 
 /**
  * Sends room-scoped turns to a replaceable chat provider.
- * @param {{store:import('./social-chat-store.mjs').SocialChatStore,provider:import('./freellmapi-client.mjs').FreeLLMAPIClient,secretStore:{isConfigured:()=>boolean},getSelectedModel:()=>string|null,getRootState:()=>Promise<SocialProviderState>,projectStore?:import('./social-project-store.mjs').SocialProjectStore|null,getProjectSessionContext?:(roomId:string,agentId:string)=>{projectId:string,title:string,brief:string,status:string,agentId:string,roomId:string}|null,getProjectWorkReadiness?:()=>{available:boolean,reason:string|null},startProjectWork?:(input:{roomId:string,agentId:string,dispatchFromNoema:boolean,prompt:string,sourceMessageId:string},signal:AbortSignal)=>Promise<{accepted:boolean,taskId?:string,reason?:string}>,emit?:(event:object)=>void}} options
+ * @param {{store:import('./social-chat-store.mjs').SocialChatStore,provider:import('./openai-compatible-client.mjs').OpenAICompatibleClient,secretStore:{isConfigured:()=>boolean},getSelectedModel:()=>string|null,getRootState:()=>Promise<SocialProviderState>,projectStore?:import('./social-project-store.mjs').SocialProjectStore|null,getProjectSessionContext?:(roomId:string,agentId:string)=>{projectId:string,title:string,brief:string,status:string,agentId:string,roomId:string}|null,getProjectWorkReadiness?:()=>{available:boolean,reason:string|null},startProjectWork?:(input:{roomId:string,agentId:string,dispatchFromNoema:boolean,prompt:string,sourceMessageId:string},signal:AbortSignal)=>Promise<{accepted:boolean,taskId?:string,reason?:string}>,emit?:(event:object)=>void}} options
  */
 export class SocialChatService {
   /**
-   * @param {{store:import('./social-chat-store.mjs').SocialChatStore,provider:import('./freellmapi-client.mjs').FreeLLMAPIClient,secretStore:{isConfigured:()=>boolean},getSelectedModel:()=>string|null,getRootState:()=>Promise<SocialProviderState>,projectStore?:import('./social-project-store.mjs').SocialProjectStore|null,getProjectSessionContext?:(roomId:string,agentId:string)=>{projectId:string,title:string,brief:string,status:string,agentId:string,roomId:string}|null,getProjectWorkReadiness?:()=>{available:boolean,reason:string|null},startProjectWork?:(input:{roomId:string,agentId:string,dispatchFromNoema:boolean,prompt:string,sourceMessageId:string},signal:AbortSignal)=>Promise<{accepted:boolean,taskId?:string,reason?:string}>,emit?:(event:object)=>void}} options
+   * @param {{store:import('./social-chat-store.mjs').SocialChatStore,provider:import('./openai-compatible-client.mjs').OpenAICompatibleClient,secretStore:{isConfigured:()=>boolean},getSelectedModel:()=>string|null,getRootState:()=>Promise<SocialProviderState>,projectStore?:import('./social-project-store.mjs').SocialProjectStore|null,getProjectSessionContext?:(roomId:string,agentId:string)=>{projectId:string,title:string,brief:string,status:string,agentId:string,roomId:string}|null,getProjectWorkReadiness?:()=>{available:boolean,reason:string|null},startProjectWork?:(input:{roomId:string,agentId:string,dispatchFromNoema:boolean,prompt:string,sourceMessageId:string},signal:AbortSignal)=>Promise<{accepted:boolean,taskId?:string,reason?:string}>,emit?:(event:object)=>void}} options
    */
   constructor({
     store,
@@ -314,7 +316,7 @@ export class SocialChatService {
       error: root.error,
       providerConfigured: root.providerConfigured,
       providerBaseUrl: root.providerBaseUrl,
-      providerName: 'FreeLLMAPI',
+      providerName: root.providerName,
       projectWork: this.getProjectWorkReadiness(),
       ...social,
     };
@@ -378,6 +380,17 @@ export class SocialChatService {
     reviewRequestId = null,
   }) {
     if (this.shuttingDown) throw new Error('Noema 正在关闭，暂不能发送消息。');
+    const snapshot = this.store.getRoomSnapshot(roomId);
+    if (snapshot.room.kind === 'group') {
+      const fallback =
+        snapshot.members.find(
+          (member) => member.id === 'noema' && !member.archivedAt,
+        ) ?? snapshot.members.find((member) => !member.archivedAt);
+      const route = resolveGroupRecipient(text, snapshot.members, fallback?.id);
+      if (route.error || !route.agent)
+        throw new Error(route.error || '群里没有可回应的成员。');
+      agentId = route.agent.id;
+    }
     const model = this.requireReadyModel();
     const projectContext = this.getProjectSessionContext(roomId, agentId);
     const review = reviewRequestId
@@ -403,7 +416,7 @@ export class SocialChatService {
         model,
         replyTo,
       });
-    if (projectContext?.groupRoomId === roomId) {
+    if (snapshot.room.kind === 'group') {
       this.projectStore?.assertWorkAllowed(roomId);
     }
     if (projectContext?.groupRoomId === roomId && agentId !== 'noema') {
@@ -501,14 +514,18 @@ export class SocialChatService {
     return { turnId: turn.turnId, messageId: turn.assistantMessageId };
   }
 
-  async sendInternalProjectMessage({ roomId, agentId, text }, parentSignal) {
+  async sendInternalProjectMessage({ roomId, text }, parentSignal) {
     if (this.shuttingDown)
       throw new Error('Noema 正在关闭，暂不能发送项目消息。');
     parentSignal.throwIfAborted();
-    const room = this.store.getRoomSnapshot(roomId).room;
+    const { room, members } = this.store.getRoomSnapshot(roomId);
     if (room.kind !== 'group') {
       throw new Error('项目分工只能发送到项目群。');
     }
+    const route = resolveGroupRecipient(text, members, null);
+    if (route.error || !route.agent)
+      throw new Error(route.error || '项目群交办必须在消息中 @ 一位成员。');
+    const agentId = route.agent.id;
     if (this.active.has(roomId) || this.store.hasStreamingReply(roomId)) {
       return {
         delivered: false,
@@ -735,14 +752,14 @@ export class SocialChatService {
 
   requireReadyModel() {
     if (!this.secretStore.isConfigured()) {
-      throw new FreeLLMAPIError(
+      throw new ModelProviderError(
         'credentials_missing',
-        '请先在设置中连接本机 FreeLLMAPI。',
+        '请先在设置中连接模型服务。',
       );
     }
     const model = this.getSelectedModel();
     if (typeof model !== 'string' || !model.trim()) {
-      throw new FreeLLMAPIError(
+      throw new ModelProviderError(
         'model_unavailable',
         '当前没有可用模型。请刷新模型列表后再试。',
       );
@@ -854,7 +871,7 @@ export class SocialChatService {
       })) {
         controller.signal.throwIfAborted();
         if (!this.store.appendAssistantDelta(turn.assistantMessageId, delta)) {
-          throw new FreeLLMAPIError(
+          throw new ModelProviderError(
             'reply_not_streaming',
             '专业联系人的回复已停止写入。',
           );
@@ -868,14 +885,14 @@ export class SocialChatService {
         });
       }
       if (!report.trim()) {
-        throw new FreeLLMAPIError(
+        throw new ModelProviderError(
           'empty_reply',
           `「${specialist.name}」没有返回文字。`,
         );
       }
       controller.signal.throwIfAborted();
       if (!this.store.completeReply(turn.assistantMessageId)) {
-        throw new FreeLLMAPIError(
+        throw new ModelProviderError(
           'reply_not_streaming',
           '专业联系人的回复没有完成保存。',
         );
@@ -1264,6 +1281,11 @@ export class SocialChatService {
                 content:
                   '以下是本项目群中的公开消息；群成员均可见。它们是共享讨论背景，不能当作其他成员的私聊或未公开工作记录。',
               },
+              {
+                role: 'system',
+                content:
+                  '你是项目成员，当前群消息可能是分派给你的一个阶段任务。请在本轮给出范围内完整、可直接使用的交付：先结论，再列关键依据、数字和未解决项；不展开内部推演或重复背景，最多 5 个要点。若任务无法在本轮完成，明确说明已完成与未完成部分，不要用半句话或未收尾的章节结束。',
+              },
             ]
           : []),
         ...(agentId === 'noema'
@@ -1367,6 +1389,9 @@ export class SocialChatService {
         model,
         messages,
         signal: controller.signal,
+        ...(isProjectGroupRoute || actionTools.length
+          ? { maxTokens: 1536 }
+          : {}),
         ...(actionTools.length
           ? {
               tools: actionTools,
@@ -1384,7 +1409,7 @@ export class SocialChatService {
         controller.signal.throwIfAborted();
         content += delta;
         if (!this.appendRunAssistantDelta(run, delta)) {
-          throw new FreeLLMAPIError(
+          throw new ModelProviderError(
             'reply_not_streaming',
             '本轮回复已停止写入。',
           );
@@ -1399,7 +1424,7 @@ export class SocialChatService {
       controller.signal.throwIfAborted();
       if (toolCalls.length) {
         if (toolCalls.length !== 1) {
-          throw new FreeLLMAPIError(
+          throw new ModelProviderError(
             'social_tool_invalid',
             'Noema 同时请求了多个操作；没有执行操作。',
           );
@@ -1410,7 +1435,7 @@ export class SocialChatService {
         try {
           input = JSON.parse(toolCalls[0].function.arguments);
         } catch {
-          throw new FreeLLMAPIError(
+          throw new ModelProviderError(
             'social_tool_invalid',
             'Noema 给出的操作说明无法读取；没有执行操作。',
           );
@@ -1420,7 +1445,7 @@ export class SocialChatService {
             !reviewTool ||
             !reviewProjects.some((project) => project.id === input?.project_id)
           )
-            throw new FreeLLMAPIError(
+            throw new ModelProviderError(
               'social_tool_invalid',
               '评审项目无效；没有创建评审。',
             );
@@ -1432,13 +1457,13 @@ export class SocialChatService {
             !input.question.trim() ||
             input.question.length > 8_000
           )
-            throw new FreeLLMAPIError(
+            throw new ModelProviderError(
               'social_tool_invalid',
               '评审问题无效；没有创建评审。',
             );
           const delta = `${content.trim() ? '\n\n' : ''}请评审「${projectInfo.title}」：\n${input.question.trim()}`;
           if (!this.appendRunAssistantDelta(run, delta))
-            throw new FreeLLMAPIError(
+            throw new ModelProviderError(
               'reply_not_streaming',
               '本轮回复已停止写入。',
             );
@@ -1451,7 +1476,10 @@ export class SocialChatService {
               completeMessage: !run.isProjectReportTurn,
             });
           } catch (error) {
-            throw new FreeLLMAPIError('review_request_invalid', error.message);
+            throw new ModelProviderError(
+              'review_request_invalid',
+              error.message,
+            );
           }
           this.emit({
             type: 'chat-message-delta',
@@ -1469,7 +1497,7 @@ export class SocialChatService {
             run.isProjectReportTurn &&
             !this.setRunReplyStatus(run, 'complete')
           ) {
-            throw new FreeLLMAPIError(
+            throw new ModelProviderError(
               'reply_not_streaming',
               '评审请求已保存，但 Noema 的成员报告状态未能完成保存。',
             );
@@ -1497,7 +1525,7 @@ export class SocialChatService {
             !input.task.trim() ||
             input.task.length > 8_000
           ) {
-            throw new FreeLLMAPIError(
+            throw new ModelProviderError(
               'social_tool_invalid',
               '专业联系人或委托内容无效；没有执行委派。',
             );
@@ -1547,7 +1575,7 @@ export class SocialChatService {
             followUpContent += delta;
             content += delta;
             if (!this.appendRunAssistantDelta(run, delta)) {
-              throw new FreeLLMAPIError(
+              throw new ModelProviderError(
                 'reply_not_streaming',
                 '本轮回复已停止写入。',
               );
@@ -1560,7 +1588,7 @@ export class SocialChatService {
             });
           }
           if (!followUpContent.trim()) {
-            throw new FreeLLMAPIError(
+            throw new ModelProviderError(
               'empty_reply',
               `Noema 收到「${specialist.name}」的报告，但没有生成最终答复。可以重试这条消息。`,
             );
@@ -1577,7 +1605,7 @@ export class SocialChatService {
             !projectWorkAvailable ||
             !this.getProjectWorkReadiness().available
           ) {
-            throw new FreeLLMAPIError(
+            throw new ModelProviderError(
               'social_tool_invalid',
               '项目工作说明无效或当前不可用；没有启动任务。',
             );
@@ -1587,7 +1615,7 @@ export class SocialChatService {
             executor.archivedAt ||
             !executor.capabilities.includes('project-work')
           ) {
-            throw new FreeLLMAPIError(
+            throw new ModelProviderError(
               'social_tool_invalid',
               '执行成员已归档或已失去项目工作能力；没有启动任务。',
             );
@@ -1609,7 +1637,7 @@ export class SocialChatService {
             ? '已从这条对话启动项目工作。执行者、工作区和结果会显示在原请求附近。'
             : result.reason || '没有启动项目工作。';
           if (!this.appendRunAssistantDelta(run, statusText)) {
-            throw new FreeLLMAPIError(
+            throw new ModelProviderError(
               'reply_not_streaming',
               '本轮回复已停止写入。',
             );
@@ -1651,7 +1679,7 @@ export class SocialChatService {
             input.members.length < 2 ||
             input.members.length > 6
           ) {
-            throw new FreeLLMAPIError(
+            throw new ModelProviderError(
               'social_tool_invalid',
               '项目团队说明无效；没有创建项目。',
             );
@@ -1666,7 +1694,7 @@ export class SocialChatService {
             !projectBrief ||
             projectBrief.length > 40_000
           ) {
-            throw new FreeLLMAPIError(
+            throw new ModelProviderError(
               'social_tool_invalid',
               '项目标题或说明无效；没有创建项目。',
             );
@@ -1678,7 +1706,7 @@ export class SocialChatService {
               !assignment.task.trim() ||
               assignment.task.length > 8_000
             ) {
-              throw new FreeLLMAPIError(
+              throw new ModelProviderError(
                 'social_tool_invalid',
                 '成员分工无效；没有创建项目。',
               );
@@ -1689,7 +1717,7 @@ export class SocialChatService {
               typeof assignment.new_agent === 'object' &&
               !Array.isArray(assignment.new_agent);
             if (hasAgentId === Boolean(hasNewAgent)) {
-              throw new FreeLLMAPIError(
+              throw new ModelProviderError(
                 'social_tool_invalid',
                 '每项分工必须且只能选择现有成员或创建新成员。',
               );
@@ -1699,7 +1727,7 @@ export class SocialChatService {
                 (candidate) => candidate.id === assignment.agent_id,
               );
               if (!member || member.archivedAt) {
-                throw new FreeLLMAPIError(
+                throw new ModelProviderError(
                   'social_tool_invalid',
                   '项目成员无效或已归档；没有创建项目。',
                 );
@@ -1727,7 +1755,7 @@ export class SocialChatService {
                 (!this.startProjectWork ||
                   !this.getProjectWorkReadiness().available))
             ) {
-              throw new FreeLLMAPIError(
+              throw new ModelProviderError(
                 'social_tool_invalid',
                 '新成员资料或能力声明无效；没有创建项目。',
               );
@@ -1765,7 +1793,7 @@ export class SocialChatService {
             new Set(resolvedAgentIds).size !== resolvedAgentIds.length ||
             new Set(resolvedNames).size !== resolvedNames.length
           ) {
-            throw new FreeLLMAPIError(
+            throw new ModelProviderError(
               'social_tool_invalid',
               '同一团队不能重复加入联系人或使用重复姓名。',
             );
@@ -1782,7 +1810,7 @@ export class SocialChatService {
               members: assignedMembers,
             });
           } catch (error) {
-            throw new FreeLLMAPIError('project_team_invalid', error.message);
+            throw new ModelProviderError('project_team_invalid', error.message);
           }
           const { project, members } = formed;
           this.emit({
@@ -1819,12 +1847,22 @@ export class SocialChatService {
           for (const member of members) {
             controller.signal.throwIfAborted();
             const agent = this.store.getAgent(member.agentId);
+            const taskMessage = resolveGroupRecipient(
+              member.task,
+              [agent],
+              null,
+            ).agent
+              ? member.task
+              : `@${agent.name} ${member.task}`;
             let result;
             try {
               const prior = sourceProject
-                ? priorAssignmentsByTask.get(
+                ? (priorAssignmentsByTask.get(
+                    `${member.agentId}\u0000${taskMessage}`,
+                  ) ??
+                  priorAssignmentsByTask.get(
                     `${member.agentId}\u0000${member.task}`,
-                  )
+                  ))
                 : null;
               if (prior) {
                 result = {
@@ -1840,8 +1878,7 @@ export class SocialChatService {
                 result = await this.sendInternalProjectMessage(
                   {
                     roomId: project.groupRoomId,
-                    agentId: member.agentId,
-                    text: member.task,
+                    text: taskMessage,
                   },
                   controller.signal,
                 );
@@ -1865,7 +1902,7 @@ export class SocialChatService {
           messages.push({
             role: 'system',
             content:
-              '项目组建工具返回的交办状态与成员报告是本机持久聊天记录的观察结果，不是任务已完成的证明。只说明哪些分工确实投递、各自当轮返回什么；成员若表示稍后继续或需要文件执行，不能宣称项目完成。',
+              '项目组建工具返回的交办状态与成员报告是本机持久聊天记录的观察结果，不是任务已完成的证明。只说明哪些分工确实投递、各自当轮返回什么；成员若表示稍后继续或需要文件执行，不能宣称项目完成。面向用户的首轮汇总应直接满足原请求的交付形式；用户要一页方案时，整合需求、方案、关键数字、主要风险和待核实项，删去成员报告中的推演过程与重复细节，避免多级长清单。',
           });
           messages.push({
             role: 'assistant',
@@ -1891,12 +1928,13 @@ export class SocialChatService {
             model,
             messages,
             signal: controller.signal,
+            maxTokens: 1536,
           })) {
             controller.signal.throwIfAborted();
             followUpContent += delta;
             content += delta;
             if (!this.appendRunAssistantDelta(run, delta)) {
-              throw new FreeLLMAPIError(
+              throw new ModelProviderError(
                 'reply_not_streaming',
                 'Noema 的项目启动汇报没有完成保存。',
               );
@@ -1909,7 +1947,7 @@ export class SocialChatService {
             });
           }
           if (!followUpContent.trim()) {
-            throw new FreeLLMAPIError(
+            throw new ModelProviderError(
               'empty_reply',
               '项目群与分工已经建立，但 Noema 没有完成对用户的启动汇报。可以重试这条消息。',
             );
@@ -1917,7 +1955,7 @@ export class SocialChatService {
         } else if (toolName === 'manage_member_assets') {
           const callId = toolCalls[0]?.id;
           if (agent.kind !== 'specialist' || agent.archivedAt || !callId) {
-            throw new FreeLLMAPIError(
+            throw new ModelProviderError(
               'member_asset_invalid',
               '当前成员不能维护成员资产；没有执行操作。',
             );
@@ -2042,7 +2080,7 @@ export class SocialChatService {
                 throw new Error('未知的成员资产操作。');
             }
           } catch (error) {
-            throw new FreeLLMAPIError('member_asset_invalid', error.message);
+            throw new ModelProviderError('member_asset_invalid', error.message);
           }
           messages.push({
             role: 'system',
@@ -2070,7 +2108,7 @@ export class SocialChatService {
             followUpContent += delta;
             content += delta;
             if (!this.appendRunAssistantDelta(run, delta)) {
-              throw new FreeLLMAPIError(
+              throw new ModelProviderError(
                 'reply_not_streaming',
                 '成员资产已处理，但本轮说明没有完成保存。',
               );
@@ -2083,20 +2121,20 @@ export class SocialChatService {
             });
           }
           if (!followUpContent.trim()) {
-            throw new FreeLLMAPIError(
+            throw new ModelProviderError(
               'empty_reply',
               '成员资产操作已处理，但没有生成说明。可以重试这条消息。',
             );
           }
         } else {
-          throw new FreeLLMAPIError(
+          throw new ModelProviderError(
             'social_tool_invalid',
             'Noema 请求了无法处理的操作；没有执行操作。',
           );
         }
       }
       if (!content.trim()) {
-        throw new FreeLLMAPIError(
+        throw new ModelProviderError(
           'empty_reply',
           '模型没有返回文字。这条消息已保留，可以重试。',
         );

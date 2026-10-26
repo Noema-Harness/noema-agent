@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
 import {
   mkdtempSync,
+  linkSync,
   mkdirSync,
+  readFileSync,
   realpathSync,
   rmSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -15,7 +18,73 @@ import {
   runProjectCommandInSandbox,
   resolveNoemaSrtWinExecutable,
   resolveRequestedCommandAccess,
+  windowsCommandSandboxSupport,
 } from '../src/project-command-sandbox.mjs';
+
+test('Windows commands stay disabled until a backend preserves Noema network boundaries', () => {
+  const win10 = windowsCommandSandboxSupport('win32', '10.0.19045');
+  assert.equal(win10.supported, false);
+  assert.match(win10.reason, /工作区边界绕过/u);
+  assert.equal(win10.build, 19045);
+  for (const release of ['10.0.26100', '10.0.26200']) {
+    const support = windowsCommandSandboxSupport('win32', release);
+    assert.equal(support.supported, false);
+    assert.match(support.reason, /身份绑定/u);
+    assert.equal(support.build, Number(release.split('.').at(-1)));
+  }
+  assert.equal(
+    windowsCommandSandboxSupport('win32', '10.0.22631').supported,
+    false,
+  );
+  assert.deepEqual(windowsCommandSandboxSupport('linux', '6.8.0'), {
+    supported: true,
+  });
+  assert.equal(
+    windowsCommandSandboxSupport('win32', 'unknown').supported,
+    false,
+  );
+});
+
+test('unsupported Windows commands fail closed before prompts or sandbox initialization', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'noema-command-win10-'));
+  const workspace = path.join(directory, 'workspace');
+  mkdirSync(workspace);
+  try {
+    for (const osRelease of ['10.0.19045', '10.0.22631', '10.0.26100']) {
+      const harness = makeSandboxHarness();
+      let permissionPrompts = 0;
+      await assert.rejects(
+        runProjectCommandInSandbox({
+          ...sandboxTestOptions(workspace, harness),
+          platform: 'win32',
+          osRelease,
+          supportCheck: windowsCommandSandboxSupport,
+          additionalAccess: [
+            { path: 'C:\\external', access: 'read', reason: 'test' },
+          ],
+          authorizeAdditionalAccess: async () => {
+            permissionPrompts += 1;
+            return true;
+          },
+          authorizeNetwork: async () => {
+            permissionPrompts += 1;
+            return true;
+          },
+        }),
+        (error) =>
+          error.code === 'command_sandbox_unavailable' &&
+          error.effectStatus === 'not_applied' &&
+          error.message.includes(osRelease.split('.').at(-1)),
+      );
+      assert.equal(permissionPrompts, 0);
+      assert.equal(harness.state.runtimeLoads, 0);
+      assert.equal(harness.state.resetCalls, 0);
+      assert.equal(harness.state.wrappedCommands.length, 0);
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
 
 test('Windows uses the patched helper from packaged resources', () => {
   assert.equal(
@@ -140,8 +209,65 @@ function sandboxTestOptions(
     timeoutMs: 10_000,
     runtimeLoader: harness.runtimeLoader,
     clearWriteGrants: harness.clearWriteGrants,
+    ensureAmbientProtection: async () => {},
+    supportCheck: () => ({ supported: true }),
+    osRelease: '10.0.22631',
   };
 }
+
+test('Windows requires ambient volume protection before sandbox initialization', async (t) => {
+  if (process.platform !== 'win32') return t.skip('Windows volume protection');
+
+  const directory = mkdtempSync(path.join(tmpdir(), 'noema-command-ambient-'));
+  const workspace = path.join(directory, 'workspace');
+  mkdirSync(workspace);
+  const harness = makeSandboxHarness();
+  const events = [];
+  const runtimeLoader = async () => {
+    const runtime = await harness.runtimeLoader();
+    return {
+      ...runtime,
+      SandboxManager: {
+        ...runtime.SandboxManager,
+        async initialize(configuration, askForNetwork) {
+          events.push('initialize');
+          return runtime.SandboxManager.initialize(
+            configuration,
+            askForNetwork,
+          );
+        },
+      },
+    };
+  };
+  try {
+    await runProjectCommandInSandbox({
+      ...sandboxTestOptions(workspace, harness),
+      runtimeLoader,
+      ensureAmbientProtection: async ({ exe }) => {
+        assert.equal(exe, process.execPath);
+        events.push('ambient');
+      },
+    });
+    assert.deepEqual(events, ['ambient', 'initialize']);
+
+    const blockedHarness = makeSandboxHarness();
+    await assert.rejects(
+      runProjectCommandInSandbox({
+        ...sandboxTestOptions(workspace, blockedHarness),
+        ensureAmbientProtection: async () => {
+          throw new Error('administrator repair cancelled');
+        },
+      }),
+      (error) =>
+        /administrator repair cancelled/u.test(error.message) &&
+        error.effectStatus === 'not_applied',
+    );
+    assert.equal(blockedHarness.state.resetCalls, 0);
+    assert.equal(blockedHarness.state.wrappedCommands.length, 0);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
 
 test('filesystem policy grants only explicit reads and writes without machine-root ACL denies', () => {
   const policy = buildFilesystemPolicy({
@@ -244,6 +370,59 @@ test('denying an external path stops before loading or initializing the sandbox'
     );
     assert.equal(harness.state.runtimeLoads, 0);
     assert.equal(harness.state.resetCalls, 0);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('Windows refuses write grants that would expose an existing hardlink', async (t) => {
+  if (process.platform !== 'win32')
+    return t.skip('Windows ACL identity semantics');
+
+  const directory = mkdtempSync(path.join(tmpdir(), 'noema-command-hardlink-'));
+  const workspace = path.join(directory, 'workspace');
+  const external = path.join(directory, 'external');
+  const outside = path.join(directory, 'outside');
+  mkdirSync(workspace);
+  mkdirSync(external);
+  mkdirSync(outside);
+  const linked = path.join(workspace, 'linked-sentinel.txt');
+  const outsideOriginal = path.join(outside, 'sentinel.txt');
+  writeFileSync(outsideOriginal, 'unchanged');
+  linkSync(outsideOriginal, linked);
+  const harness = makeSandboxHarness();
+  try {
+    await assert.rejects(
+      runProjectCommandInSandbox(sandboxTestOptions(workspace, harness)),
+      (error) =>
+        error.code === 'workspace_hardlink_refused' &&
+        error.effectStatus === 'not_applied' &&
+        error.message.includes(linked),
+    );
+    assert.equal(readFileSync(outsideOriginal, 'utf8'), 'unchanged');
+    assert.equal(harness.state.runtimeLoads, 0);
+    assert.equal(harness.state.resetCalls, 0);
+
+    unlinkSync(linked);
+    const approvedAlias = path.join(external, 'approved-alias.txt');
+    linkSync(outsideOriginal, approvedAlias);
+    const approvedHarness = makeSandboxHarness();
+    await assert.rejects(
+      runProjectCommandInSandbox({
+        ...sandboxTestOptions(workspace, approvedHarness),
+        additionalAccess: [
+          { path: external, access: 'write', reason: '修改获批目录' },
+        ],
+        authorizeAdditionalAccess: async () => true,
+      }),
+      (error) =>
+        error.code === 'workspace_hardlink_refused' &&
+        error.effectStatus === 'not_applied' &&
+        error.message.includes(approvedAlias),
+    );
+    assert.equal(readFileSync(outsideOriginal, 'utf8'), 'unchanged');
+    assert.equal(approvedHarness.state.runtimeLoads, 0);
+    assert.equal(approvedHarness.state.resetCalls, 0);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

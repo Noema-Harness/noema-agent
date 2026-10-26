@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  FreeLLMAPIClient,
-  FreeLLMAPIError,
+  OpenAICompatibleClient,
+  ModelProviderError,
   normalizeBaseUrl,
-} from '../src/freellmapi-client.mjs';
+} from '../src/openai-compatible-client.mjs';
 
 test('lists only the explicitly verified free routes from available models', async () => {
-  const client = new FreeLLMAPIClient({
+  const client = new OpenAICompatibleClient({
     baseUrl: 'http://127.0.0.1:31415',
     getApiKey: () => 'test-key',
     fetchImpl: async (url, init) => {
@@ -89,7 +89,7 @@ test('lists only the explicitly verified free routes from available models', asy
 });
 
 test('keeps optional free routes hidden while FreeLLMAPI marks them unavailable', async () => {
-  const client = new FreeLLMAPIClient({
+  const client = new OpenAICompatibleClient({
     baseUrl: 'http://127.0.0.1:31415',
     getApiKey: () => 'test-key',
     fetchImpl: async () =>
@@ -108,7 +108,7 @@ test('keeps optional free routes hidden while FreeLLMAPI marks them unavailable'
 test('buffers automatic router replies so FreeLLMAPI can fail over before delivery', async () => {
   let requestBody;
   let receivedRoute;
-  const client = new FreeLLMAPIClient({
+  const client = new OpenAICompatibleClient({
     getApiKey: () => 'test-key',
     fetchImpl: async (_url, init) => {
       requestBody = JSON.parse(init.body);
@@ -146,7 +146,7 @@ test('buffers automatic router replies so FreeLLMAPI can fail over before delive
 test('preserves tool calls for buffered automatic router replies', async () => {
   let receivedCalls;
   let requestBody;
-  const client = new FreeLLMAPIClient({
+  const client = new OpenAICompatibleClient({
     getApiKey: () => 'test-key',
     fetchImpl: async (_url, init) => {
       requestBody = JSON.parse(init.body);
@@ -217,7 +217,7 @@ test('assembles streamed FreeLLMAPI tool-call deltas without exposing arguments 
   let requestBody;
   let receivedCalls;
   let receivedRoute;
-  const client = new FreeLLMAPIClient({
+  const client = new OpenAICompatibleClient({
     getApiKey: () => 'test-key',
     fetchImpl: async (_url, init) => {
       requestBody = JSON.parse(init.body);
@@ -272,7 +272,7 @@ test('streams OpenAI-compatible SSE across arbitrary network chunk boundaries', 
       controller.close();
     },
   });
-  const client = new FreeLLMAPIClient({
+  const client = new OpenAICompatibleClient({
     baseUrl: 'http://localhost:31415/v1',
     getApiKey: () => 'test-key',
     fetchImpl: async (url, init) => {
@@ -313,7 +313,7 @@ test('rejects a stream that closes without FreeLLMAPI terminal marker', async ()
       controller.close();
     },
   });
-  const client = new FreeLLMAPIClient({
+  const client = new OpenAICompatibleClient({
     getApiKey: () => 'test-key',
     fetchImpl: async () => new Response(stream, { status: 200 }),
   });
@@ -344,7 +344,7 @@ test('bounds streamed response bytes and cancels before accepting tool calls', a
       canceled = true;
     },
   });
-  const client = new FreeLLMAPIClient({
+  const client = new OpenAICompatibleClient({
     getApiKey: () => 'test-key',
     fetchImpl: async () => new Response(body, { status: 200 }),
   });
@@ -384,7 +384,7 @@ test('cancels the provider body when the consumer stops reading a stream', async
       canceled = true;
     },
   });
-  const client = new FreeLLMAPIClient({
+  const client = new OpenAICompatibleClient({
     getApiKey: () => 'test-key',
     fetchImpl: async () => new Response(body, { status: 200 }),
   });
@@ -410,7 +410,7 @@ test('bounds buffered router responses while preserving the size error', async (
       canceled = true;
     },
   });
-  const client = new FreeLLMAPIClient({
+  const client = new OpenAICompatibleClient({
     getApiKey: () => 'test-key',
     fetchImpl: async () => new Response(body, { status: 200 }),
   });
@@ -436,7 +436,7 @@ test('classifies a body transport failure without exposing the underlying error'
       controller.error(new TypeError('terminated: private transport details'));
     },
   });
-  const client = new FreeLLMAPIClient({
+  const client = new OpenAICompatibleClient({
     getApiKey: () => 'test-key',
     fetchImpl: async () => new Response(stream, { status: 200 }),
   });
@@ -457,11 +457,16 @@ test('classifies a body transport failure without exposing the underlying error'
   );
 });
 
-test('rejects non-local endpoints before attaching the API key', async () => {
+test('allows HTTPS model providers and limits cleartext HTTP to localhost', async () => {
   assert.throws(
-    () => normalizeBaseUrl('https://models.example.test/v1'),
+    () => normalizeBaseUrl('http://models.example.test/v1'),
     (error) =>
-      error instanceof FreeLLMAPIError && error.code === 'non_local_base_url',
+      error instanceof ModelProviderError &&
+      error.code === 'insecure_transport',
+  );
+  assert.equal(
+    normalizeBaseUrl('https://api.deepseek.com'),
+    'https://api.deepseek.com/v1',
   );
   assert.equal(
     normalizeBaseUrl('http://127.0.0.1:31415'),
@@ -469,8 +474,65 @@ test('rejects non-local endpoints before attaching the API key', async () => {
   );
 });
 
+test('exposes the configured provider model catalog outside FreeLLMAPI routes', async () => {
+  const client = new OpenAICompatibleClient({
+    baseUrl: 'https://api.deepseek.com',
+    getApiKey: () => 'test-key',
+    fetchImpl: async (url) => {
+      assert.equal(url, 'https://api.deepseek.com/v1/models?available=true');
+      return Response.json({
+        data: [{ id: 'deepseek-flash' }, { id: 'deepseek-v4-pro' }],
+      });
+    },
+  });
+
+  assert.deepEqual(await client.listModels(), [
+    {
+      name: 'deepseek-flash',
+      label: 'deepseek-flash',
+      routeKind: 'direct',
+      executionStatus: 'ready',
+    },
+    {
+      name: 'deepseek-v4-pro',
+      label: 'deepseek-v4-pro',
+      routeKind: 'direct',
+      executionStatus: 'ready',
+    },
+  ]);
+});
+
+test('disables DeepSeek thinking by default to avoid unneeded reasoning tokens', async () => {
+  let requestBody;
+  const client = new OpenAICompatibleClient({
+    baseUrl: 'https://api.deepseek.com',
+    getApiKey: () => 'test-key',
+    fetchImpl: async (_url, init) => {
+      requestBody = JSON.parse(init.body);
+      return new Response(
+        'data: {"choices":[{"delta":{"content":"OK"}}]}\n\ndata: [DONE]\n',
+        { headers: { 'content-type': 'text/event-stream' } },
+      );
+    },
+  });
+
+  const chunks = [];
+  for await (const chunk of client.streamChat({
+    model: 'deepseek-flash',
+    messages: [{ role: 'user', content: 'test' }],
+    signal: new AbortController().signal,
+    maxTokens: 32,
+  })) {
+    chunks.push(chunk);
+  }
+
+  assert.equal(requestBody.thinking.type, 'disabled');
+  assert.equal(requestBody.max_tokens, 32);
+  assert.deepEqual(chunks, ['OK']);
+});
+
 test('reports unavailable gateway without exposing provider response bodies', async () => {
-  const client = new FreeLLMAPIClient({
+  const client = new OpenAICompatibleClient({
     getApiKey: () => 'test-key',
     fetchImpl: async () => {
       throw new TypeError('socket closed');
@@ -484,7 +546,7 @@ test('reports unavailable gateway without exposing provider response bodies', as
 });
 
 test('requires credentials before making a request', async () => {
-  const client = new FreeLLMAPIClient({ getApiKey: () => null });
+  const client = new OpenAICompatibleClient({ getApiKey: () => null });
   await assert.rejects(
     client.listModels(),
     (error) => error.code === 'credentials_missing',
@@ -492,7 +554,7 @@ test('requires credentials before making a request', async () => {
 });
 
 test('maps provider exhaustion into an actionable but non-leaking message', async () => {
-  const client = new FreeLLMAPIClient({
+  const client = new OpenAICompatibleClient({
     getApiKey: () => 'test-key',
     fetchImpl: async () =>
       new Response(
@@ -517,7 +579,7 @@ test('maps provider exhaustion into an actionable but non-leaking message', asyn
 });
 
 test('preserves a bounded HTTP Retry-After hint for safe project recovery', async () => {
-  const client = new FreeLLMAPIClient({
+  const client = new OpenAICompatibleClient({
     getApiKey: () => 'test-key',
     fetchImpl: async () =>
       new Response(null, {
@@ -541,7 +603,7 @@ test('preserves a bounded HTTP Retry-After hint for safe project recovery', asyn
       error.retryAfterSeconds === 3,
   );
 
-  const longDelayClient = new FreeLLMAPIClient({
+  const longDelayClient = new OpenAICompatibleClient({
     getApiKey: () => 'test-key',
     fetchImpl: async () =>
       new Response(null, {
@@ -565,7 +627,7 @@ test('preserves a bounded HTTP Retry-After hint for safe project recovery', asyn
 });
 
 test('classifies an oversized model request without exposing gateway diagnostics', async () => {
-  const client = new FreeLLMAPIClient({
+  const client = new OpenAICompatibleClient({
     getApiKey: () => 'test-key',
     fetchImpl: async () =>
       new Response(

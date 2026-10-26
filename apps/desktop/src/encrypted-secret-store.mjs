@@ -2,18 +2,26 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 export class EncryptedSecretStore {
-  /** @param {{safeStorage:{isEncryptionAvailable:()=>boolean,encryptString:(value:string)=>Buffer,decryptString:(value:Buffer)=>string},filePath:string}} options */
-  constructor({ safeStorage, filePath }) {
+  /** @param {{safeStorage:{isEncryptionAvailable:()=>boolean,encryptString:(value:string)=>Buffer,decryptString:(value:Buffer)=>string},filePath:string,fallbackStores?:EncryptedSecretStore[]}} options */
+  constructor({ safeStorage, filePath, fallbackStores = [] }) {
     this.safeStorage = safeStorage;
     this.filePath = filePath;
+    this.fallbackStores = fallbackStores;
   }
 
   isConfigured() {
-    return fs.existsSync(this.filePath);
+    return (
+      fs.existsSync(this.filePath) ||
+      this.fallbackStores.some((store) => store.isConfigured())
+    );
   }
 
   get() {
-    if (!this.isConfigured()) return null;
+    if (!fs.existsSync(this.filePath)) {
+      return (
+        this.fallbackStores.find((store) => store.isConfigured())?.get() ?? null
+      );
+    }
     if (!this.safeStorage.isEncryptionAvailable()) {
       throw new Error('当前系统没有可用的安全凭据存储。');
     }
@@ -32,7 +40,13 @@ export class EncryptedSecretStore {
   }
 
   getBaseUrl() {
-    if (!this.isConfigured()) return null;
+    if (!fs.existsSync(this.filePath)) {
+      return (
+        this.fallbackStores
+          .find((store) => store.isConfigured())
+          ?.getBaseUrl() ?? null
+      );
+    }
     if (!this.safeStorage.isEncryptionAvailable()) {
       throw new Error('当前系统没有可用的安全凭据存储。');
     }
@@ -74,7 +88,7 @@ export class EncryptedSecretStore {
       !baseUrl.trim() ||
       baseUrl.length > 2_000
     ) {
-      throw new TypeError('FreeLLMAPI 凭据配置无效。');
+      throw new TypeError('模型服务凭据配置无效。');
     }
     if (!this.safeStorage.isEncryptionAvailable()) {
       throw new Error('当前系统没有可用的安全凭据存储，未保存 API Key。');

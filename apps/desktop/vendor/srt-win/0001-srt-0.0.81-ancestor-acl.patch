@@ -78,7 +78,7 @@ index e4e5fcf..f656ead 100644
 @@ -537,4 +589,4 @@ finally {
    & $Exe uninstall --sublayer-guid $Sublayer 2>&1 | Out-Null
  }
-
+ 
 -Write-Host 'smoke-aces: PASS (A2/A2(reg)/A4/A5/A13/A28/A29/A30/A31)'
 +Write-Host 'smoke-aces: PASS (A2/A2(reg)/A4/A5/A13/A28/A29/A30/A31/A32/A33)'
 diff --git a/vendor/srt-win-src/src/acl.rs b/vendor/srt-win-src/src/acl.rs
@@ -104,7 +104,7 @@ index fe3aca6..3153102 100644
  use crate::sid::LocalPsid;
  use crate::util::{OwnedSd, pcwstr, win32_ok, wstr};
 @@ -97,6 +101,14 @@ impl Mask {
-
+ 
      // File/dir-specific.
      pub const FILE_DELETE_CHILD: Self = Self(0x0000_0040);
 +    pub const FILE_READ_ATTRIBUTES: Self = Self(0x0000_0080);
@@ -205,7 +205,7 @@ index fe3aca6..3153102 100644
 +        Ok(out)
 +    }
  }
-
+ 
  /// The ACE types that deny: plain, object, callback, callback-object.
 @@ -1244,6 +1288,306 @@ fn apply_sandbox_aces_how(
          .with_context(|| format!("recompose '{canonical_path}'"))
@@ -809,7 +809,7 @@ index 53613c0..10c12c5 100644
 @@ -966,6 +966,51 @@ fn merge_ace_targets(
      merged
  }
-
+ 
 +/// Grant only FILE_READ_ATTRIBUTES|SYNCHRONIZE on ancestors which the
 +/// dedicated sandbox user cannot stat. The state database refcounts
 +/// these non-inheritable ACEs with ordinary grants and restores them
@@ -944,7 +944,7 @@ index 428b635..1c9e384 100644
 +    acl::apply_read_attrs_over(canon, sandbox_sid, set, group.as_deref())
          .with_context(|| format!("recompose '{canon}' ({set:?})"))
  }
-
+ 
 @@ -1679,7 +1680,7 @@ fn release_hold(
          }
          // The ALLOW ACE travels with a moved object: chase it by

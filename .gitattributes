@@ -3,3 +3,4 @@
 *.jpg binary
 *.jpeg binary
 *.webp binary
+apps/desktop/vendor/srt-win/*.patch whitespace=-blank-at-eol

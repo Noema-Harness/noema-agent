@@ -1,10 +1,24 @@
-const DEFAULT_BASE_URL = 'http://127.0.0.1:3001/v1';
+const DEFAULT_MODEL_BASE_URL = 'http://127.0.0.1:3001/v1';
 // Keep routine turns within a modest free-route output budget; callers may
 // explicitly raise it for work that needs a longer response.
 const DEFAULT_MAX_OUTPUT_TOKENS = 1024;
 // Bound both streamed deltas and buffered router replies if a gateway ignores
 // max_tokens or never sends the terminal SSE marker.
 const MAX_MODEL_RESPONSE_BYTES = 1_000_000;
+
+/** @param {string} baseUrl */
+export function getProviderName(baseUrl) {
+  try {
+    const hostname = new URL(baseUrl).hostname;
+    if (hostname === 'api.deepseek.com') return 'DeepSeek';
+    if (['127.0.0.1', 'localhost', '[::1]', '::1'].includes(hostname)) {
+      return '本机模型服务';
+    }
+  } catch {
+    // The configured endpoint will be reported as unavailable by the client.
+  }
+  return 'OpenAI 兼容服务';
+}
 
 const VERIFIED_FREE_MODELS = new Map([
   [
@@ -65,11 +79,11 @@ const VERIFIED_FREE_MODELS = new Map([
   ],
 ]);
 
-export class FreeLLMAPIError extends Error {
+export class ModelProviderError extends Error {
   /** @param {string} code @param {string} message @param {number|null} [status] @param {number|null} [retryAfterSeconds] */
   constructor(code, message, status = null, retryAfterSeconds = null) {
     super(message);
-    this.name = 'FreeLLMAPIError';
+    this.name = 'ModelProviderError';
     this.code = code;
     this.status = status;
     this.retryAfterSeconds = retryAfterSeconds;
@@ -82,21 +96,30 @@ export function normalizeBaseUrl(value) {
   try {
     url = new URL(value.trim());
   } catch {
-    throw new FreeLLMAPIError(
+    throw new ModelProviderError(
       'invalid_base_url',
-      'FreeLLMAPI 地址格式不正确。',
+      '模型服务地址格式不正确。',
     );
   }
   if (!['http:', 'https:'].includes(url.protocol)) {
-    throw new FreeLLMAPIError(
+    throw new ModelProviderError(
       'invalid_base_url',
-      'FreeLLMAPI 地址必须使用 HTTP 或 HTTPS。',
+      '模型服务地址必须使用 HTTP 或 HTTPS。',
     );
   }
-  if (!['127.0.0.1', 'localhost', '[::1]', '::1'].includes(url.hostname)) {
-    throw new FreeLLMAPIError(
-      'non_local_base_url',
-      'Noema 目前只接受本机 FreeLLMAPI 地址，避免把 API Key 发往外部服务器。',
+  if (url.username || url.password) {
+    throw new ModelProviderError(
+      'invalid_base_url',
+      '请勿将凭据写入模型服务地址。',
+    );
+  }
+  const localHost = ['127.0.0.1', 'localhost', '[::1]', '::1'].includes(
+    url.hostname,
+  );
+  if (url.protocol === 'http:' && !localHost) {
+    throw new ModelProviderError(
+      'insecure_transport',
+      '远程模型服务必须使用 HTTPS；HTTP 仅允许本机服务。',
     );
   }
   const basePath = url.pathname.replace(/\/+$/, '');
@@ -106,11 +129,15 @@ export function normalizeBaseUrl(value) {
   return url.toString().replace(/\/$/, '');
 }
 
-export class FreeLLMAPIClient {
+export class OpenAICompatibleClient {
   /** @param {{baseUrl?:string,getApiKey:()=>string|null,fetchImpl?:typeof fetch}} options */
-  constructor({ baseUrl = DEFAULT_BASE_URL, getApiKey, fetchImpl = fetch }) {
+  constructor({
+    baseUrl = DEFAULT_MODEL_BASE_URL,
+    getApiKey,
+    fetchImpl = fetch,
+  }) {
     if (typeof getApiKey !== 'function') {
-      throw new TypeError('FreeLLMAPI requires an API key provider');
+      throw new TypeError('The model provider requires an API key provider');
     }
     this.baseUrl = normalizeBaseUrl(baseUrl);
     this.getApiKey = getApiKey;
@@ -144,14 +171,14 @@ export class FreeLLMAPIClient {
       });
     } catch (error) {
       if (error?.name === 'TimeoutError') {
-        throw new FreeLLMAPIError(
+        throw new ModelProviderError(
           'gateway_timeout',
-          '连接 FreeLLMAPI 超时。请确认桌面应用已启动。',
+          '连接模型服务超时。请确认服务正在运行。',
         );
       }
-      throw new FreeLLMAPIError(
+      throw new ModelProviderError(
         'gateway_unavailable',
-        '无法连接本机 FreeLLMAPI。请启动 FreeLLMAPI 后重试。',
+        '无法连接模型服务。请检查地址、网络与凭据后重试。',
       );
     }
     if (!response.ok) throw await mapHttpError(response);
@@ -160,15 +187,15 @@ export class FreeLLMAPIClient {
     try {
       body = await response.json();
     } catch {
-      throw new FreeLLMAPIError(
+      throw new ModelProviderError(
         'invalid_response',
-        'FreeLLMAPI 返回的模型列表无法读取。',
+        '模型服务返回的模型列表无法读取。',
       );
     }
     if (!Array.isArray(body?.data)) {
-      throw new FreeLLMAPIError(
+      throw new ModelProviderError(
         'invalid_response',
-        'FreeLLMAPI 返回的模型列表格式不正确。',
+        '模型服务返回的模型列表格式不正确。',
       );
     }
 
@@ -179,7 +206,7 @@ export class FreeLLMAPIClient {
         )
         .map((model) => [model.id, model]),
     );
-    return [...VERIFIED_FREE_MODELS.entries()]
+    const verifiedFreeModels = [...VERIFIED_FREE_MODELS.entries()]
       .filter(([catalogId]) => available.has(catalogId))
       .map(([catalogId, model]) => {
         const status = available.get(catalogId)?.execution_status;
@@ -190,10 +217,30 @@ export class FreeLLMAPIClient {
           : null;
         return { ...model, executionStatus };
       });
+    if (
+      verifiedFreeModels.length > 0 ||
+      body.data.some(
+        (model) =>
+          model?.available === false ||
+          typeof model?.execution_status === 'string',
+      )
+    ) {
+      return verifiedFreeModels;
+    }
+
+    // A standard OpenAI-compatible provider exposes its own model catalog.
+    // Preserve those provider IDs instead of filtering them through Noema's
+    // FreeLLMAPI-specific free-route allowlist.
+    return [...available.values()].map((model) => ({
+      name: model.id,
+      label: model.id,
+      routeKind: 'direct',
+      executionStatus: 'ready',
+    }));
   }
 
   /**
-   * Streams text deltas from FreeLLMAPI's OpenAI-compatible chat endpoint.
+   * Streams text deltas from an OpenAI-compatible chat endpoint.
    * @param {{model:string,messages:Array<object>,signal:AbortSignal,maxTokens?:number,tools?:Array<object>,onToolCalls?:(calls:Array<object>)=>void,onRouteMetadata?:(route:string|null)=>void}} input
    * @returns {AsyncGenerator<string,void,void>}
    */
@@ -227,6 +274,9 @@ export class FreeLLMAPIClient {
           messages,
           stream: !useBufferedRouterResponse,
           max_tokens: maxTokens,
+          ...(new URL(this.baseUrl).hostname === 'api.deepseek.com'
+            ? { thinking: { type: 'disabled' } }
+            : {}),
           ...(tools?.length ? { tools, tool_choice: 'auto' } : {}),
         }),
         signal,
@@ -234,21 +284,21 @@ export class FreeLLMAPIClient {
     } catch (error) {
       if (signal.aborted || error?.name === 'AbortError') throw error;
       if (error?.name === 'TimeoutError') {
-        throw new FreeLLMAPIError(
+        throw new ModelProviderError(
           'request_timeout',
-          'FreeLLMAPI 请求超时。消息已保留，可以重试。',
+          '模型服务请求超时。消息已保留，可以重试。',
         );
       }
-      throw new FreeLLMAPIError(
+      throw new ModelProviderError(
         'gateway_unavailable',
-        '无法连接本机 FreeLLMAPI。消息已保留，可以重试。',
+        '无法连接模型服务。消息已保留，可以重试。',
       );
     }
     if (!response.ok) throw await mapHttpError(response);
     if (!response.body) {
-      throw new FreeLLMAPIError(
+      throw new ModelProviderError(
         'invalid_response',
-        'FreeLLMAPI 没有返回可读取的回复流。',
+        '模型服务没有返回可读取的回复流。',
       );
     }
 
@@ -268,16 +318,16 @@ export class FreeLLMAPIClient {
       try {
         body = JSON.parse(await readBoundedResponseText(response));
       } catch (error) {
-        if (error instanceof FreeLLMAPIError) throw error;
-        throw new FreeLLMAPIError(
+        if (error instanceof ModelProviderError) throw error;
+        throw new ModelProviderError(
           'invalid_response',
-          'FreeLLMAPI 返回了无法读取的完整回复。消息已保留，可以重试。',
+          '模型服务返回了无法读取的完整回复。消息已保留，可以重试。',
         );
       }
       if (body?.error) {
-        throw new FreeLLMAPIError(
+        throw new ModelProviderError(
           'provider_error',
-          'FreeLLMAPI 当前免费模型路由未能完成请求。可以稍后重试或切换免费模型。',
+          '模型服务未能完成请求。可以稍后重试或切换模型。',
         );
       }
       const choice = body?.choices?.[0];
@@ -290,9 +340,9 @@ export class FreeLLMAPIClient {
       }
       if (text) yield text;
       if (!text && (!Array.isArray(calls) || calls.length === 0)) {
-        throw new FreeLLMAPIError(
+        throw new ModelProviderError(
           'empty_reply',
-          '免费模型没有返回文字或工具调用。消息已保留，可以重试。',
+          '模型没有返回文字或工具调用。消息已保留，可以重试。',
         );
       }
       return;
@@ -310,7 +360,7 @@ export class FreeLLMAPIClient {
         if (value) {
           totalBytes += value.byteLength;
           if (totalBytes > MAX_MODEL_RESPONSE_BYTES) {
-            throw new FreeLLMAPIError(
+            throw new ModelProviderError(
               'response_too_large',
               '模型回复超过安全读取上限；没有执行其中的工具调用。',
             );
@@ -345,19 +395,19 @@ export class FreeLLMAPIClient {
         }
       }
       if (!sawDone) {
-        throw new FreeLLMAPIError(
+        throw new ModelProviderError(
           'incomplete_stream',
-          '免费模型的回复流意外中断，未收到完整结束标记。消息已保留，可以重试。',
+          '模型回复流意外中断，未收到完整结束标记。消息已保留，可以重试。',
         );
       }
       if (toolCalls.size) onToolCalls(finalizeToolCalls(toolCalls));
     } catch (error) {
       if (signal.aborted || error?.name === 'AbortError') throw error;
-      if (error instanceof FreeLLMAPIError) throw error;
+      if (error instanceof ModelProviderError) throw error;
       if (error instanceof TypeError || error?.name === 'NetworkError') {
-        throw new FreeLLMAPIError(
+        throw new ModelProviderError(
           'provider_unavailable',
-          '免费模型的回复流连接中断。已收到的内容会保留；是否安全重试由当前会话决定。',
+          '模型回复流连接中断。已收到的内容会保留；是否安全重试由当前会话决定。',
         );
       }
       throw error;
@@ -380,9 +430,9 @@ export class FreeLLMAPIClient {
   requireApiKey() {
     const key = this.getApiKey();
     if (typeof key !== 'string' || !key.trim()) {
-      throw new FreeLLMAPIError(
+      throw new ModelProviderError(
         'credentials_missing',
-        '还没有连接 FreeLLMAPI。打开模型设置并保存统一 API Key。',
+        '还没有连接模型服务。打开模型设置并保存 API Key。',
       );
     }
     return key;
@@ -400,15 +450,15 @@ function parseSseDataLine(line) {
   try {
     payload = JSON.parse(data);
   } catch {
-    throw new FreeLLMAPIError(
+    throw new ModelProviderError(
       'invalid_stream',
-      'FreeLLMAPI 返回了无法解析的回复片段。',
+      '模型服务返回了无法解析的回复片段。',
     );
   }
   if (payload?.error) {
-    throw new FreeLLMAPIError(
+    throw new ModelProviderError(
       'provider_error',
-      'FreeLLMAPI 当前免费模型路由未能完成请求。可以稍后重试或切换免费模型。',
+      '模型服务未能完成请求。可以稍后重试或切换模型。',
     );
   }
   return payload;
@@ -471,17 +521,17 @@ function finalizeToolCalls(toolCalls) {
     .sort(([left], [right]) => left - right)
     .map(([, call]) => {
       if (!call.id || !call.function.name) {
-        throw new FreeLLMAPIError(
+        throw new ModelProviderError(
           'invalid_tool_call',
-          '免费模型返回了不完整的工具调用。消息已保留，可以重试。',
+          '模型服务返回了不完整的工具调用。消息已保留，可以重试。',
         );
       }
       try {
         JSON.parse(call.function.arguments);
       } catch {
-        throw new FreeLLMAPIError(
+        throw new ModelProviderError(
           'invalid_tool_call',
-          '免费模型返回了无法解析的工具参数。消息已保留，可以重试。',
+          '模型服务返回了无法解析的工具参数。消息已保留，可以重试。',
         );
       }
       return call;
@@ -498,7 +548,7 @@ async function readBoundedResponseText(response) {
       if (done) break;
       totalBytes += value.byteLength;
       if (totalBytes > MAX_MODEL_RESPONSE_BYTES) {
-        throw new FreeLLMAPIError(
+        throw new ModelProviderError(
           'response_too_large',
           '模型回复超过安全读取上限；没有执行其中的工具调用。',
         );
@@ -533,41 +583,41 @@ async function mapHttpError(response) {
   switch (response.status) {
     case 401:
     case 403:
-      return new FreeLLMAPIError(
+      return new ModelProviderError(
         'invalid_api_key',
-        'FreeLLMAPI API Key 无效或已撤销。请在模型设置中更新。',
+        '模型服务 API Key 无效或已撤销。请在模型设置中更新。',
         response.status,
       );
     case 404:
-      return new FreeLLMAPIError(
+      return new ModelProviderError(
         'model_unavailable',
-        '所选免费模型当前不可用。刷新模型列表并选择其他免费模型。',
+        '所选模型当前不可用。刷新模型列表并选择其他模型。',
         response.status,
       );
     case 429:
-      return new FreeLLMAPIError(
+      return new ModelProviderError(
         'rate_limited',
-        'FreeLLMAPI 免费模型额度暂时受限。稍后重试，或切换到其他免费模型。',
+        '模型服务额度暂时受限。稍后重试，或切换其他模型。',
         response.status,
         parseRetryAfterSeconds(response.headers.get('retry-after')),
       );
     case 413:
-      return new FreeLLMAPIError(
+      return new ModelProviderError(
         'request_too_large',
-        '当前 FreeLLMAPI 或模型路由拒绝了过大的请求（例如上下文或路由速率预算超限）。请缩小委托内容，或等待额度恢复后再试；已完成的工作仍会保留。',
+        '模型服务拒绝了过大的请求（例如上下文或速率预算超限）。请缩小委托内容，或等待额度恢复后再试；已完成的工作仍会保留。',
         response.status,
       );
     case 502:
     case 503:
-      return new FreeLLMAPIError(
+      return new ModelProviderError(
         'provider_unavailable',
-        'FreeLLMAPI 已收到请求，但当前免费模型供应商没有返回结果。稍后重试或切换免费模型。',
+        '模型服务已收到请求，但没有返回结果。稍后重试或切换模型。',
         response.status,
       );
     default:
-      return new FreeLLMAPIError(
+      return new ModelProviderError(
         'gateway_http_error',
-        `FreeLLMAPI 返回 HTTP ${response.status}。消息已保留，可以重试。`,
+        `模型服务返回 HTTP ${response.status}。消息已保留，可以重试。`,
         response.status,
       );
   }
@@ -583,4 +633,4 @@ function parseRetryAfterSeconds(value, now = Date.now()) {
     : null;
 }
 
-export { DEFAULT_BASE_URL, VERIFIED_FREE_MODELS };
+export { DEFAULT_MODEL_BASE_URL, VERIFIED_FREE_MODELS };

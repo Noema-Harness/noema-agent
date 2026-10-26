@@ -133,7 +133,7 @@ export async function verifyConversationNavigation(window) {
   await settle();
   state = await inspect();
   check(
-    !state.collapsed && state.focusedLabel === '搜索联系人、聊天和消息',
+    !state.collapsed && state.focusedLabel === '搜索成员或项目',
     'Search reveals navigation',
     state,
   );

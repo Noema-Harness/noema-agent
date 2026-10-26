@@ -234,7 +234,7 @@ test('busy project @ delivery is durable and starts only after the member turn f
     service.sendMessage({
       roomId: project.groupRoomId,
       agentId: 'engineering-partner',
-      text: '先处理这一条。',
+      text: '@工程搭档 先处理这一条。',
     });
     await new Promise((resolve) => setImmediate(resolve));
     const firstRun = service.active.get(project.groupRoomId);
@@ -245,12 +245,12 @@ test('busy project @ delivery is durable and starts only after the member turn f
     const queued = service.sendMessage({
       roomId: project.groupRoomId,
       agentId: 'engineering-partner',
-      text: '第二条等你空闲后处理。',
+      text: '@工程搭档 第二条等你空闲后处理。',
     });
     const queuedAfter = service.sendMessage({
       roomId: project.groupRoomId,
       agentId: 'engineering-partner',
-      text: '第三条排在第二条之后。',
+      text: '@工程搭档 第三条排在第二条之后。',
     });
     assert.equal(queued.queued, true);
     assert.equal(queuedAfter.queued, true);
@@ -337,11 +337,11 @@ test('busy project @ delivery is durable and starts only after the member turn f
     );
     assert.equal(
       requests[1].messages.at(-1)?.content,
-      '第二条等你空闲后处理。',
+      '@工程搭档 第二条等你空闲后处理。',
     );
     assert.equal(
       requests[2].messages.at(-1)?.content,
-      '第三条排在第二条之后。',
+      '@工程搭档 第三条排在第二条之后。',
     );
     assert.equal(
       requests[1].messages.some((message) =>
@@ -370,7 +370,7 @@ test('busy project @ delivery is durable and starts only after the member turn f
           (message) =>
             message.turnId === queued.turnId && message.role === 'user',
         )?.content,
-      '第二条等你空闲后处理。',
+      '@工程搭档 第二条等你空闲后处理。',
     );
     assert.equal(store.listProjectGroupInbox(project.groupRoomId).length, 0);
     assert.equal(
@@ -445,14 +445,14 @@ test('a queued project @ message survives restart and resumes once the UI servic
     service.sendMessage({
       roomId: project.groupRoomId,
       agentId: 'engineering-partner',
-      text: '先开始这一条。',
+      text: '@工程搭档 先开始这一条。',
     });
     await new Promise((resolve) => setImmediate(resolve));
     const activeRun = service.active.get(project.groupRoomId);
     const queued = service.sendMessage({
       roomId: project.groupRoomId,
       agentId: 'engineering-partner',
-      text: '重启后继续投递。',
+      text: '@工程搭档 重启后继续投递。',
     });
     assert.equal(queued.queued, true);
 
@@ -475,7 +475,10 @@ test('a queued project @ message survives restart and resumes once the UI servic
             assert.match(report.content, /重启后继续投递/u);
             yield 'Noema 已收到成员报告。';
           } else {
-            assert.equal(input.messages.at(-1)?.content, '重启后继续投递。');
+            assert.equal(
+              input.messages.at(-1)?.content,
+              '@工程搭档 重启后继续投递。',
+            );
             yield '重启后已完成。';
           }
         },
@@ -765,6 +768,68 @@ test('a necessary project review pauses continuation until explicit feedback', a
   }
 });
 
+test('group recipients follow visible mentions rather than a hidden caller-selected agent', async () => {
+  const db = new Database(':memory:');
+  new RootStore(db);
+  const store = createSocialTestStore(db);
+  const service = new SocialChatService({
+    store,
+    provider: {
+      async *streamChat() {
+        yield '已回复。';
+      },
+    },
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'test-model',
+    getRootState: async () => ({
+      connected: true,
+      selectedModel: 'test-model',
+    }),
+  });
+  const roomId = 'room-engineering-collaboration';
+  try {
+    const directed = service.sendMessage({
+      roomId,
+      agentId: 'noema',
+      text: '@工程搭档 请检查。',
+    });
+    await service.active.get(roomId)?.done;
+    assert.equal(
+      store.getSocialMessage(directed.messageId).agentId,
+      'engineering-partner',
+    );
+    const ordinary = service.sendMessage({
+      roomId,
+      agentId: 'engineering-partner',
+      text: '大家看看。',
+    });
+    await service.active.get(roomId)?.done;
+    assert.equal(store.getSocialMessage(ordinary.messageId).agentId, 'noema');
+    const count = store.getRoomSnapshot(roomId).messages.length;
+    assert.throws(
+      () =>
+        service.sendMessage({
+          roomId,
+          agentId: 'noema',
+          text: '@Noema @工程搭档 请看。',
+        }),
+      /只能指定一位/u,
+    );
+    assert.equal(store.getRoomSnapshot(roomId).messages.length, count);
+    await assert.rejects(
+      service.sendInternalProjectMessage(
+        { roomId, agentId: 'engineering-partner', text: '没有显式点名。' },
+        new AbortController().signal,
+      ),
+      /必须在消息中 @/u,
+    );
+    assert.equal(store.getRoomSnapshot(roomId).messages.length, count);
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});
+
 test('Noema does not overtake a queued public group message with an internal assignment', async () => {
   const db = new Database(':memory:');
   new RootStore(db);
@@ -804,8 +869,7 @@ test('Noema does not overtake a queued public group message with an internal ass
     const result = await service.sendInternalProjectMessage(
       {
         roomId: project.groupRoomId,
-        agentId: 'engineering-partner',
-        text: '然后执行 Noema 的后续分工。',
+        text: '@工程搭档 然后执行 Noema 的后续分工。',
       },
       new AbortController().signal,
     );
@@ -1747,8 +1811,8 @@ test('Noema forms a project team, assigns visible group work, and reviews member
     assert.deepEqual(
       assignments.map((message) => message.content),
       [
-        '核对现有价格追踪工具的技术与数据来源。',
-        '整理当前平台的官方模型价格与计价单位。',
+        '@工程搭档 核对现有价格追踪工具的技术与数据来源。',
+        '@价格研究员 整理当前平台的官方模型价格与计价单位。',
       ],
     );
     assert.ok(
@@ -1796,6 +1860,170 @@ test('Noema forms a project team, assigns visible group work, and reviews member
         (event) =>
           event.type === 'project-updated' && event.projectId === project.id,
       ),
+    );
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});
+
+test('Noema can start a first project team when the user has no specialists yet', async () => {
+  const db = new Database(':memory:');
+  new RootStore(db);
+  const store = new SocialChatStore(db);
+  const projectStore = new SocialProjectStore({ db, socialChatStore: store });
+  const requests = [];
+  const service = new SocialChatService({
+    store,
+    provider: {
+      async *streamChat(input) {
+        requests.push({ ...input, messages: [...input.messages] });
+        if (requests.length === 1) {
+          input.onToolCalls?.([
+            {
+              id: 'call-create-first-team',
+              type: 'function',
+              function: {
+                name: 'create_project_team',
+                arguments: JSON.stringify({
+                  title: '摄影工作坊首轮验证',
+                  brief: '评估本地需求并设计首场半日新手摄影课。',
+                  members: [
+                    {
+                      new_agent: {
+                        name: '市场研究员',
+                        headline: '本地需求与竞品研究',
+                        description: '用公开可验证的来源分析小型本地活动需求。',
+                      },
+                      task: '提出低成本验证本地需求的方法和待核实信息。',
+                    },
+                    {
+                      new_agent: {
+                        name: '课程设计师',
+                        headline: '新手摄影课程设计',
+                        description: '把摄影知识组织成可执行的半日实操课。',
+                      },
+                      task: '设计半日新手课程结构和基础材料清单。',
+                    },
+                  ],
+                }),
+              },
+            },
+          ]);
+        } else if (requests.length === 2) {
+          yield '建议先用一次小规模预报名验证本地需求。';
+        } else if (requests.length === 3) {
+          yield '课程可从曝光三要素和室内实拍练习开始。';
+        } else {
+          yield '首轮分析已返回；本地需求和场地条件仍待核实。';
+        }
+      },
+    },
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'test-model',
+    getRootState: async () => ({
+      connected: true,
+      selectedModel: 'test-model',
+    }),
+    projectStore,
+    getProjectSessionContext: (roomId, agentId) =>
+      projectStore.getProjectSessionContext(roomId, agentId),
+  });
+
+  try {
+    const sent = service.sendMessage({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '评估一个本地新手摄影工作坊，并组织首轮需求和课程分析。',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await service.active.get('room-noema')?.done;
+
+    const projects = projectStore.listProjects({ includeArchived: false });
+    assert.equal(requests.length, 4);
+    assert.equal(projects.length, 1);
+    const project = projects[0];
+    assert.equal(project.members.length, 2, 'both specialists are new');
+    assert.deepEqual(
+      project.members
+        .filter((member) => member.agentId !== 'noema')
+        .map((member) => member.name),
+      ['市场研究员', '课程设计师'],
+    );
+    const assignments = projectStore
+      .getProject(project.id)
+      .group.messages.filter(
+        (message) =>
+          message.role === 'user' && message.senderAgentId === 'noema',
+      );
+    assert.equal(assignments.length, 2);
+    assert.match(
+      store.getSocialMessage(sent.messageId).content,
+      /首轮分析已返回/u,
+    );
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});
+
+test('main-chat provider failures retry in place without duplicating the user turn', async () => {
+  const db = new Database(':memory:');
+  new RootStore(db);
+  const store = new SocialChatStore(db);
+  const requests = [];
+  const service = new SocialChatService({
+    store,
+    provider: {
+      async *streamChat(input) {
+        requests.push(input);
+        if (requests.length === 1) {
+          const error = new Error('simulated provider_unavailable');
+          error.code = 'provider_unavailable';
+          throw error;
+        }
+        yield '服务恢复后，回答回到原主聊消息。';
+      },
+    },
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'test-model',
+    getRootState: async () => ({
+      connected: true,
+      selectedModel: 'test-model',
+    }),
+  });
+
+  try {
+    const sent = service.sendMessage({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '保留这一条主聊消息并在恢复后重试。',
+    });
+    await service.active.get('room-noema')?.done;
+
+    const failed = store.getSocialMessage(sent.messageId);
+    assert.equal(failed.status, 'failed');
+    assert.equal(failed.errorCode, 'provider_unavailable');
+    assert.equal(failed.attempt, 1);
+
+    service.retryReply(sent.messageId);
+    await service.active.get('room-noema')?.done;
+
+    const recovered = store.getSocialMessage(sent.messageId);
+    assert.equal(requests.length, 2);
+    assert.equal(recovered.status, 'complete');
+    assert.equal(recovered.errorCode, null);
+    assert.equal(recovered.attempt, 2);
+    assert.equal(recovered.content, '服务恢复后，回答回到原主聊消息。');
+    assert.equal(
+      store
+        .getRoomSnapshot('room-noema')
+        .messages.filter(
+          (message) =>
+            message.role === 'user' &&
+            message.content === '保留这一条主聊消息并在恢复后重试。',
+        ).length,
+      1,
     );
   } finally {
     await service.shutdown();
@@ -2279,7 +2507,7 @@ test('a user-created specialist receives only messages explicitly forwarded into
     service.sendMessage({
       roomId: group.room.id,
       agentId,
-      text: '你怎么看这条记录？',
+      text: '@游戏工程观察员 你怎么看这条记录？',
     });
     await new Promise((resolve) => setImmediate(resolve));
     await service.active.get(group.room.id)?.done;

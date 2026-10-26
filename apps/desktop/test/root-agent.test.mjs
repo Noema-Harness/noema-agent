@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { FreeLLMAPIError } from '../src/freellmapi-client.mjs';
+import { ModelProviderError } from '../src/openai-compatible-client.mjs';
 import { RootAgent } from '../src/root-agent.mjs';
 import { RootStore } from '../src/root-store.mjs';
 
@@ -719,7 +719,7 @@ test('preserves a user turn on free-provider rate limits without changing routes
     async *streamChat({ model }) {
       requestedModel = model;
       yield await Promise.reject(
-        new FreeLLMAPIError(
+        new ModelProviderError(
           'rate_limited',
           'FreeLLMAPI 免费模型额度暂时受限。稍后重试。',
           429,
@@ -771,7 +771,7 @@ test('retries one committed FreeLLMAPI provider error without losing the user tu
         input.onRouteMetadata(route);
         if (calls === 1) {
           yield '上一次只返回了部分内容。';
-          throw new FreeLLMAPIError(
+          throw new ModelProviderError(
             'provider_error',
             'FreeLLMAPI 流式响应中途失败。',
           );
@@ -831,7 +831,7 @@ test('retries one pre-response FreeLLMAPI provider_unavailable on the same selec
         calls += 1;
         requestedModels.push(input.model);
         if (calls === 1) {
-          throw new FreeLLMAPIError(
+          throw new ModelProviderError(
             'provider_unavailable',
             'FreeLLMAPI 上游暂时不可用。',
             503,
@@ -889,7 +889,7 @@ test('does not retry provider_unavailable after text was already streamed', asyn
       async *streamChat() {
         calls += 1;
         yield '已提交的部分文本。';
-        throw new FreeLLMAPIError(
+        throw new ModelProviderError(
           'provider_unavailable',
           '此状态不应重放已发出的文本。',
           503,
@@ -927,7 +927,7 @@ test('stops after one automatic root retry when the stream fails twice', async (
       async *streamChat() {
         calls += 1;
         yield `第 ${calls} 次的未完成片段。`;
-        throw new FreeLLMAPIError(
+        throw new ModelProviderError(
           'provider_error',
           'FreeLLMAPI 流式响应中途失败。',
         );
@@ -2106,7 +2106,7 @@ test('retries a failed Noema event summary without restarting the completed DSH 
     async *streamChat() {
       modelCalls += 1;
       if (modelCalls === 1) {
-        throw new FreeLLMAPIError(
+        throw new ModelProviderError(
           'provider_unavailable',
           '合成测试：上游没有返回结果。',
         );

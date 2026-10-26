@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
 let sandboxManagerPromise;
@@ -37,6 +38,26 @@ export function resolveNoemaSrtWinExecutable({
 
 export function buildWindowsWriteGrantCleanupArgs(pid = process.pid) {
   return ['acl', 'forget', '--all', '--unless-held-by-others', String(pid)];
+}
+
+export function windowsCommandSandboxSupport(platform, release) {
+  if (platform !== 'win32') return { supported: true };
+  const match = /^(\d+)\.(\d+)\.(\d+)(?:\.|$)/u.exec(release);
+  const build = match ? Number(match[3]) : null;
+  if (build !== null && build >= 26100) {
+    return {
+      supported: false,
+      build,
+      reason: `Windows build ${build} 的 ProcessContainer 候选后端需要身份绑定的代理；当前代理没有可供系统绑定的应用身份。身份less 代理需要更宽的私有网络/回环入站权限，Noema 尚未证明符合默认网络边界；命令未启动。`,
+    };
+  }
+  return {
+    supported: false,
+    build,
+    reason: match
+      ? `Windows build ${build} 暂不支持项目命令；当前后端存在已复现的工作区边界绕过，Noema 尚未接入可证明严格隔离的替代后端。命令未启动。`
+      : '无法确认当前 Windows 版本的项目命令沙箱边界；命令未启动。',
+  };
 }
 
 async function getSandboxRuntime() {
@@ -138,14 +159,66 @@ function normalizedAccess(workspacePath, accessRequests) {
   return result;
 }
 
+function rejectPreexistingHardlinks(writeRoots) {
+  const pending = [...writeRoots];
+  while (pending.length > 0) {
+    const current = pending.pop();
+    let stats;
+    try {
+      stats = fs.lstatSync(current);
+    } catch (error) {
+      const failure = new Error(
+        `无法确认写入授权路径是否包含硬链接，已阻止命令启动：${current}`,
+        {
+          cause: error,
+        },
+      );
+      failure.code = 'workspace_link_check_failed';
+      failure.effectStatus = 'not_applied';
+      throw failure;
+    }
+
+    // Never follow reparse points during the preflight. SRT applies its ACL
+    // policy to the canonical roots and separately constrains junctions.
+    if (stats.isSymbolicLink()) continue;
+    if (stats.isFile() && stats.nlink > 1) {
+      const failure = new Error(
+        `写入授权路径包含硬链接，沙箱无法保证授权仅作用于此路径；请先将该文件替换为独立副本：${current}`,
+      );
+      failure.code = 'workspace_hardlink_refused';
+      failure.effectStatus = 'not_applied';
+      throw failure;
+    }
+    if (!stats.isDirectory()) continue;
+
+    let entries;
+    try {
+      entries = fs.readdirSync(current, { withFileTypes: true });
+    } catch (error) {
+      const failure = new Error(
+        `无法枚举写入授权目录，已阻止命令启动：${current}`,
+        {
+          cause: error,
+        },
+      );
+      failure.code = 'workspace_link_check_failed';
+      failure.effectStatus = 'not_applied';
+      throw failure;
+    }
+    for (const entry of entries) {
+      if (entry.isSymbolicLink()) continue;
+      pending.push(path.join(current, entry.name));
+    }
+  }
+}
+
 export function buildFilesystemPolicy({ readRoots, writeRoots }) {
   return {
     allowRead: [...readRoots],
     allowWrite: [...writeRoots],
-    // On Windows the dedicated sandbox SID has no default access to the
-    // caller's private files. Do not try to stamp deny ACEs onto whole volume
-    // roots: ordinary users cannot change protected machine-root DACLs.
-    // SRT's write-restricted token limits writes to allowWrite roots.
+    // Ambient write-deny ACEs on broadly writable volume roots are managed by
+    // `srt-win ambient ensure` before initialization. This per-command policy
+    // still grants only the exact roots needed by this command.
     denyRead: [],
     denyWrite: [],
   };
@@ -289,6 +362,97 @@ function terminateProcessTree(child) {
   }
 }
 
+function ensureWindowsAmbientProtection(srtWin, { signal } = {}) {
+  if (process.platform !== 'win32') return Promise.resolve();
+  throwIfAborted(signal);
+  return new Promise((resolve, reject) => {
+    let stdout = '';
+    let stderr = '';
+    let settled = false;
+    const child = spawn(
+      srtWin.exe,
+      [...srtWin.prependArgs, 'ambient', 'ensure'],
+      {
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    );
+    const finish = (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      signal?.removeEventListener('abort', abort);
+      if (error) reject(error);
+      else resolve();
+    };
+    const abort = () => {
+      terminateProcessTree(child);
+      const error = new Error('用户已取消命令执行前的磁盘保护检查。');
+      error.name = 'AbortError';
+      error.effectStatus = 'not_applied';
+      finish(error);
+    };
+    const timeout = setTimeout(() => {
+      terminateProcessTree(child);
+      const error = new Error(
+        '命令执行前的磁盘保护检查超时；命令尚未启动，请检查管理员授权窗口后重试。',
+      );
+      error.effectStatus = 'not_applied';
+      finish(error);
+    }, 120_000);
+    child.stdout?.on('data', (chunk) => {
+      stdout = `${stdout}${chunk}`.slice(-4_000);
+    });
+    child.stderr?.on('data', (chunk) => {
+      stderr = `${stderr}${chunk}`.slice(-4_000);
+    });
+    child.once('error', (cause) => {
+      const error = new Error(`无法运行磁盘保护检查：${cause.message}`, {
+        cause,
+      });
+      error.effectStatus = 'not_applied';
+      finish(error);
+    });
+    child.once('close', (code, signalName) => {
+      if (settled) return;
+      if (code !== 0) {
+        const error = new Error(
+          [
+            `磁盘保护检查未完成（退出码：${code ?? signalName ?? 'unknown'}）。`,
+            stderr.trim(),
+            stdout.trim(),
+          ]
+            .filter(Boolean)
+            .join('\n'),
+        );
+        error.effectStatus = 'not_applied';
+        finish(error);
+        return;
+      }
+      const result = stdout
+        .trim()
+        .split(/\r?\n/)
+        .map((line) => {
+          try {
+            return JSON.parse(line);
+          } catch {
+            return undefined;
+          }
+        })
+        .find((value) => value?.state === 'complete');
+      if (!result) {
+        const error = new Error('磁盘保护检查未返回完成状态，命令尚未启动。');
+        error.effectStatus = 'not_applied';
+        finish(error);
+        return;
+      }
+      finish();
+    });
+    if (signal?.aborted) abort();
+    else signal?.addEventListener('abort', abort, { once: true });
+  });
+}
+
 /** Run one command under a fresh, least-privilege OS sandbox session. */
 export function runProjectCommandInSandbox({
   command,
@@ -301,6 +465,10 @@ export function runProjectCommandInSandbox({
   authorizeNetwork = async () => false,
   runtimeLoader = getSandboxRuntime,
   clearWriteGrants = forgetWindowsWriteGrants,
+  ensureAmbientProtection = ensureWindowsAmbientProtection,
+  supportCheck = windowsCommandSandboxSupport,
+  platform = process.platform,
+  osRelease = os.release(),
 }) {
   return serialized(async () => {
     if (
@@ -314,6 +482,13 @@ export function runProjectCommandInSandbox({
     }
     if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) {
       const error = new Error('命令超时配置无效。');
+      error.effectStatus = 'not_applied';
+      throw error;
+    }
+    const hostSupport = supportCheck(platform, osRelease);
+    if (!hostSupport.supported) {
+      const error = new Error(hostSupport.reason);
+      error.code = 'command_sandbox_unavailable';
       error.effectStatus = 'not_applied';
       throw error;
     }
@@ -333,6 +508,15 @@ export function runProjectCommandInSandbox({
       }
     }
 
+    if (platform === 'win32') {
+      rejectPreexistingHardlinks([
+        workspace,
+        ...approvedAccess
+          .filter((item) => item.access === 'write')
+          .map((item) => item.path),
+      ]);
+    }
+
     let sandboxRuntime;
     try {
       sandboxRuntime = await runtimeLoader();
@@ -343,7 +527,7 @@ export function runProjectCommandInSandbox({
     const { SandboxManager, resolveSrtWin, VENDORED_SRT_WIN_EXE } =
       sandboxRuntime;
     const srtWin =
-      process.platform === 'win32'
+      platform === 'win32'
         ? (() => {
             try {
               return resolveSrtWin({ path: VENDORED_SRT_WIN_EXE });
@@ -352,6 +536,14 @@ export function runProjectCommandInSandbox({
             }
           })()
         : null;
+    if (srtWin) {
+      try {
+        await ensureAmbientProtection(srtWin, { signal });
+      } catch (error) {
+        throw markSandboxUnavailable(error, 'not_applied');
+      }
+      throwIfAborted(signal);
+    }
     const commandId = randomBytes(16).toString('base64url');
     const approvedHosts = new Set();
     const readRoots = new Set([workspace]);
@@ -413,9 +605,7 @@ export function runProjectCommandInSandbox({
       throwIfAborted(signal);
       const wrapped = await SandboxManager.wrapWithSandboxArgv(
         command,
-        process.platform === 'win32'
-          ? 'cmd.exe'
-          : process.env.SHELL || '/bin/sh',
+        platform === 'win32' ? 'cmd.exe' : process.env.SHELL || '/bin/sh',
         undefined,
         signal,
         workspace,
