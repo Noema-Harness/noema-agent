@@ -49,14 +49,13 @@
 
 Project：[`Noema 开发`](https://github.com/users/c3115644151/projects/6)（私有）
 
-- [执行看板](https://github.com/users/c3115644151/projects/6/views/9)：聚焦 Todo/In Progress/In Review/Blocked，按 Workstream 分组、按 Status 分列。
-- [收件箱](https://github.com/users/c3115644151/projects/6/views/5)：新建 Issue/PR 进入此处，尚未分诊。
-- [候选工作](https://github.com/users/c3115644151/projects/6/views/6)：已有问题与范围，但还不应投入当前执行。
-- [待启动](https://github.com/users/c3115644151/projects/6/views/3)：达到 Definition of Ready、可以开工的队列。
-- [已交付](https://github.com/users/c3115644151/projects/6/views/4)：已关闭的交付记录。
-- [工作总览](https://github.com/users/c3115644151/projects/6/views/1)：全量字段表，用于检查优先级、工作流、父子项与 PR 关联。
-- [已取消](https://github.com/users/c3115644151/projects/6/views/8)：已关闭但未交付的事项，保留取消原因。
-- [全流程看板](https://github.com/users/c3115644151/projects/6/views/7)：包含收件、候选、执行与终态的全状态视图。
+生命周期路线与阶段门：[#109 — Noema 产品开发总规划](https://github.com/c3115644151/noema-agent/issues/109)。阶段范围与退出证据只在该 Issue 和对应交付 Issue 维护。
+
+- [01 阶段路线 · R0—R5](https://github.com/users/c3115644151/projects/6/views/1)：只显示开放产品 Issue，按阶段/模块手动排列；标题直接标识阶段，Milestone 显示阶段全名。
+- [02 当前执行](https://github.com/users/c3115644151/projects/6/views/4)：只显示 Todo/In Progress/In Review/Blocked 的开放产品 Issue。
+- [03 集成评审](https://github.com/users/c3115644151/projects/6/views/9)：只显示开放 PR，集成顺序与产品阶段分别呈现。
+
+交付 Issue 的标题采用 `[R阶段-模块 职责] 用户结果`；PR 采用 `[集成-编号 职责] 变更`。阶段沿用 Milestone，不再增加重复的阶段字段。总计划 #109 作为入口索引，其 Project 卡片归档以免遮住子项；Issue 本身保持可访问。终态历史从 Project 的 Archived 项目查找，仓库 Issue/PR 记录仍保留。
 
 ## 状态流转
 
@@ -69,7 +68,7 @@ Project：[`Noema 开发`](https://github.com/users/c3115644151/projects/6)（�
 | Inbox | 自动纳入的新 Issue/PR；还没有分诊。 |
 | Backlog | 问题和候选价值已整理，但范围、时机或依赖仍未满足开工条件。 |
 | Todo | 已达到 Definition of Ready，排入近期工作。 |
-| In Progress | 当前正在实施；个人项目默认同时只推进少量高优先级事项。 |
+| In Progress | 当前正在实施；默认只保留一个执行 Issue，评审中的 PR 可以继续流转，不计入执行 WIP。 |
 | In Review | 实施已结束，正在核对验收、测试、数据影响或用户可见结果。 |
 | Blocked | 有明确外部依赖或待裁决事项；Issue 需链接 GitHub 原生 `blocked by` 依赖并写明解除条件。 |
 | Done | 所有验收条件均有证据，结果与必要文档已记录。设为 Done 会自动关闭 Issue；关闭 Issue 也会将 Status 设为 Done。 |
