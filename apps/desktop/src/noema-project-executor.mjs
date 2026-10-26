@@ -165,7 +165,7 @@ function compactModelHistory(messages) {
   if (messages.length < 2 || messages[0]?.role !== 'system') return messages;
 
   const groups = [];
-  for (let index = 2; index < messages.length; ) {
+  for (let index = 2; index < messages.length;) {
     const message = messages[index];
     if (message?.role !== 'assistant' || !Array.isArray(message.tool_calls)) {
       groups.push({ messages: [message], toolNames: [], compactable: false });
