@@ -263,12 +263,12 @@ test('real service tool requests review; ordinary chat cannot resume it; failed 
   }
 });
 
-test('v14 to v16 migrations preserve projects and old messages', () => {
+test('v14 to v17 migrations preserve projects and old messages', () => {
   const f = fixture();
   try {
     const before = f.store.getRoomSnapshot(f.project.groupRoomId).messages;
     f.db.exec(
-      'DROP TABLE social_work_runtime_checkpoints; DELETE FROM social_schema_migrations WHERE version = 16; ALTER TABLE social_work_execution_steps DROP COLUMN arguments_json; ALTER TABLE social_work_execution_steps DROP COLUMN result_json; DROP TABLE social_project_reviews; DELETE FROM social_schema_migrations WHERE version = 15;',
+      'DROP TABLE social_work_runtime_checkpoints; DELETE FROM social_schema_migrations WHERE version = 17; ALTER TABLE social_messages DROP COLUMN sender_agent_id; DELETE FROM social_schema_migrations WHERE version = 16; ALTER TABLE social_work_execution_steps DROP COLUMN arguments_json; ALTER TABLE social_work_execution_steps DROP COLUMN result_json; DROP TABLE social_project_reviews; DELETE FROM social_schema_migrations WHERE version = 15;',
     );
     const store = new SocialChatStore(f.db);
     const projects = new SocialProjectStore({

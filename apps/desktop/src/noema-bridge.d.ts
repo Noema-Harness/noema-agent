@@ -155,6 +155,7 @@ export interface NoemaSocialMessage {
   turnId: string;
   role: 'user' | 'assistant' | 'system';
   agentId: string | null;
+  senderAgentId: string | null;
   content: string;
   status: 'complete' | 'streaming' | 'interrupted' | 'failed';
   attempt: number;

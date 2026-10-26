@@ -118,7 +118,7 @@ function noemaActionGuidance(projectWorkAvailable, specialistAgents) {
       ? '仅当用户明确要求对本地项目文件进行检查、修改、构建或验证时，才可调用 start_project_work。调用会打开本机工作区授权与数据流披露；用户选择工作区后任务才会被创建。不得因用户提到代码、项目或未来想法就启动。'
       : '当前没有可用的项目文件执行能力。不要声称能在本机项目中检查或修改文件。',
     specialistAgents.length
-      ? '仅当一项独立知识工作足以明显改善用户结果，且预期收益值得两次额外推理成本时，才调用 delegate_to_specialist：专业联系人完成工作一次，Noema 收到报告并形成最终回复一次。只向专业联系人发送工具中的 task，不发送完整聊天记录。不得为普通交流或形式上的多 agent 协作调用。将报告作为协作材料加以核对并结合当前上下文作答；不要把原始报告直接当作 Noema 回复。若报告实质影响结论，可简洁说明协助者。'
+      ? '仅当一项独立知识工作足以明显改善用户结果，且预期收益值得两次额外推理成本时，才调用 delegate_to_specialist：任务由选定联系人在其常驻私聊中完成，Noema 收到报告后形成最终回复。不要把 Noema 主聊历史交给联系人；它只会看到自己的常驻私聊历史和本次交办。不得为普通交流或形式上的多 agent 协作调用。将报告作为协作材料加以核对并结合当前上下文作答；不要把原始报告直接当作 Noema 回复。若报告显示未投递或执行未完成，必须如实说明，不能声称已完成。若报告实质影响结论，可简洁说明协助者。'
       : '当前没有可用的专业联系人可供委派。',
   ].join('\n');
 }
@@ -354,6 +354,121 @@ export class SocialChatService {
       );
     }
     return model;
+  }
+
+  async delegateToSpecialist({ specialist, task, model, parentSignal }) {
+    const roomId = this.store.getAgentResidentRoomId(specialist.id);
+    if (this.active.has(roomId) || this.store.hasStreamingReply(roomId)) {
+      return {
+        delivered: false,
+        status: 'busy',
+        report: '联系人常驻私聊正在回复；本次交办未投递。',
+      };
+    }
+
+    const turn = this.store.beginTurn({
+      roomId,
+      agentId: specialist.id,
+      senderAgentId: 'noema',
+      text: task,
+      model,
+    });
+    const controller = new AbortController();
+    const abortWithParent = () => controller.abort(parentSignal.reason);
+    if (parentSignal.aborted) abortWithParent();
+    else
+      parentSignal.addEventListener('abort', abortWithParent, { once: true });
+    const run = { ...turn, roomId, agentId: specialist.id, controller };
+    this.active.set(roomId, run);
+    this.emit({ type: 'chat-turn-started', ...turn });
+
+    let report = '';
+    try {
+      const messages = [
+        { role: 'system', content: specialist.systemPrompt },
+        {
+          role: 'system',
+          content:
+            'Noema 已在你和它的常驻私聊中交办当前任务。该私聊中标记为 [Noema] 的历史消息来自 Noema，而不是人类用户；此前人类与您的对话仍是有效背景。Noema 主聊没有提供给你。完成后直接给 Noema 可核对的结论，并保留不确定性。',
+        },
+        ...this.store.getContext(roomId),
+      ];
+      for await (const delta of this.provider.streamChat({
+        model,
+        messages,
+        signal: controller.signal,
+      })) {
+        controller.signal.throwIfAborted();
+        if (!this.store.appendAssistantDelta(turn.assistantMessageId, delta)) {
+          throw new FreeLLMAPIError(
+            'reply_not_streaming',
+            '专业联系人的回复已停止写入。',
+          );
+        }
+        report += delta;
+        this.emit({
+          type: 'chat-message-delta',
+          roomId,
+          messageId: turn.assistantMessageId,
+          delta,
+        });
+      }
+      if (!report.trim()) {
+        throw new FreeLLMAPIError(
+          'empty_reply',
+          `「${specialist.name}」没有返回文字。`,
+        );
+      }
+      controller.signal.throwIfAborted();
+      if (!this.store.completeReply(turn.assistantMessageId)) {
+        throw new FreeLLMAPIError(
+          'reply_not_streaming',
+          '专业联系人的回复没有完成保存。',
+        );
+      }
+      this.emit({
+        type: 'chat-turn-completed',
+        roomId,
+        messageId: turn.assistantMessageId,
+        empty: false,
+      });
+      return { delivered: true, status: 'completed', report };
+    } catch (error) {
+      const interrupted =
+        controller.signal.aborted || error?.name === 'AbortError';
+      const message = safeError(error);
+      if (interrupted) {
+        if (this.store.interruptReply(turn.assistantMessageId)) {
+          this.emit({
+            type: 'chat-turn-interrupted',
+            roomId,
+            messageId: turn.assistantMessageId,
+            message,
+          });
+        }
+      } else {
+        const code =
+          typeof error?.code === 'string' ? error.code : 'chat_error';
+        this.store.failReply(turn.assistantMessageId, code, message);
+        this.emit({
+          type: 'chat-turn-failed',
+          roomId,
+          messageId: turn.assistantMessageId,
+          code,
+          message,
+        });
+      }
+      if (parentSignal.aborted) throw error;
+      return {
+        delivered: true,
+        status: interrupted ? 'interrupted' : 'failed',
+        report: message,
+      };
+    } finally {
+      parentSignal.removeEventListener('abort', abortWithParent);
+      if (this.active.get(roomId) === run) this.active.delete(roomId);
+      this.emit({ type: 'chat-state-updated', roomId });
+    }
   }
 
   async runTurn(run) {
@@ -684,29 +799,12 @@ export class SocialChatService {
           }
           const task = input.task.trim();
           controller.signal.throwIfAborted();
-          let specialistReply = '';
-          for await (const delta of this.provider.streamChat({
+          const specialistResult = await this.delegateToSpecialist({
+            specialist,
+            task,
             model,
-            messages: [
-              { role: 'system', content: specialist.systemPrompt },
-              {
-                role: 'system',
-                content:
-                  'Noema 将一项独立知识工作委托给你。只依据下面的任务完成工作，不声称看过主聊天或其它资料；如缺少必要背景，说明缺少什么。请给出可直接供用户阅读的结果。',
-              },
-              { role: 'user', content: task },
-            ],
-            signal: controller.signal,
-          })) {
-            controller.signal.throwIfAborted();
-            specialistReply += delta;
-          }
-          if (!specialistReply.trim()) {
-            throw new FreeLLMAPIError(
-              'empty_reply',
-              `「${specialist.name}」没有返回文字。原消息已保留，可以重试。`,
-            );
-          }
+            parentSignal: controller.signal,
+          });
           messages.push({
             role: 'system',
             content:
@@ -724,7 +822,9 @@ export class SocialChatService {
             content: JSON.stringify({
               agent: specialist.name,
               task,
-              report: specialistReply,
+              delivered: specialistResult.delivered,
+              status: specialistResult.status,
+              report: specialistResult.report,
             }),
           });
           let followUpContent = '';

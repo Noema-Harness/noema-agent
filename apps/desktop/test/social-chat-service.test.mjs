@@ -653,7 +653,12 @@ test('Noema receives a bounded specialist report and writes its own final reply'
       selectedModel: 'test-model',
     }),
     emit: (event) => {
-      if (event.type === 'chat-message-delta') visibleDeltas.push(event.delta);
+      if (
+        event.type === 'chat-message-delta' &&
+        event.roomId === 'room-noema'
+      ) {
+        visibleDeltas.push(event.delta);
+      }
     },
   });
 
@@ -688,7 +693,7 @@ test('Noema receives a bounded specialist report and writes its own final reply'
     );
     assert.equal(
       requests[1].messages.at(-1).content,
-      '比较这两个方案的维护成本。',
+      '[Noema] 比较这两个方案的维护成本。',
     );
     const returnedReport = requests[2].messages.find(
       (message) => message.role === 'tool',
@@ -710,6 +715,101 @@ test('Noema receives a bounded specialist report and writes its own final reply'
     assert.equal(visibleDeltas.join(''), reply.content);
     assert.equal(reply?.content.includes('主聊天机密'), false);
     assert.equal(reply?.status, 'complete');
+
+    const specialistMessages = store.getRoomSnapshot(
+      'room-engineering-partner',
+    ).messages;
+    assert.equal(specialistMessages.at(-2).senderAgentId, 'noema');
+    assert.equal(
+      specialistMessages.at(-2).content,
+      '比较这两个方案的维护成本。',
+    );
+    assert.equal(
+      specialistMessages.at(-1).content,
+      '方案 A 更易维护，因为变更边界更小。',
+    );
+    assert.equal(
+      specialistMessages.at(-1).status,
+      'complete',
+      'the specialist result is a completed message in its resident chat',
+    );
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});
+
+test('Noema does not overlap a busy specialist resident conversation', async () => {
+  const db = new Database(':memory:');
+  new RootStore(db);
+  const store = createSocialTestStore(db);
+  const residentRoomId = store.getAgentResidentRoomId('engineering-partner');
+  store.beginTurn({
+    roomId: residentRoomId,
+    agentId: 'engineering-partner',
+    text: '用户已经在这个私聊中开始另一项工作。',
+    model: 'test-model',
+  });
+  const requests = [];
+  const provider = {
+    async *streamChat(input) {
+      requests.push({ ...input, messages: [...input.messages] });
+      if (requests.length === 1) {
+        input.onToolCalls([
+          {
+            id: 'call-busy-specialist',
+            type: 'function',
+            function: {
+              name: 'delegate_to_specialist',
+              arguments: JSON.stringify({
+                agent_id: 'engineering-partner',
+                task: '再检查一项独立问题。',
+              }),
+            },
+          },
+        ]);
+      } else {
+        yield '该联系人正在回复另一条消息，本次没有投递。';
+      }
+    },
+  };
+  const service = new SocialChatService({
+    store,
+    provider,
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'test-model',
+    getRootState: async () => ({
+      connected: true,
+      selectedModel: 'test-model',
+    }),
+  });
+
+  try {
+    service.sendMessage({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '请把这个问题交给工程搭档。',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await service.active.get('room-noema')?.done;
+
+    assert.equal(
+      requests.length,
+      2,
+      'no second provider request reaches the busy agent',
+    );
+    const report = requests[1].messages.find(
+      (message) => message.role === 'tool',
+    );
+    assert.match(report?.content ?? '', /"delivered":false/u);
+    assert.match(report?.content ?? '', /本次交办未投递/u);
+    const roomMessages = store.getRoomSnapshot(residentRoomId).messages;
+    assert.equal(
+      roomMessages.some(
+        (message) => message.content === '再检查一项独立问题。',
+      ),
+      false,
+    );
   } finally {
     await service.shutdown();
     db.close();

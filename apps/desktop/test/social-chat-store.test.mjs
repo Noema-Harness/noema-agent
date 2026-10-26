@@ -101,8 +101,49 @@ test('an explicit team fixture keeps one agent across independent rooms', () => 
       db
         .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
         .get().version,
-      16,
+      17,
     );
+  } finally {
+    db.close();
+  }
+});
+
+test('Noema internal assignments are attributed and persist in the agent resident chat', () => {
+  const { db, social } = makeStores();
+  try {
+    const roomId = social.getAgentResidentRoomId('engineering-partner');
+    const turn = social.beginTurn({
+      roomId,
+      agentId: 'engineering-partner',
+      senderAgentId: 'noema',
+      text: '核对这个接口的边界。',
+      model: 'test-model',
+    });
+    social.appendAssistantDelta(turn.assistantMessageId, '接口边界已整理。');
+    social.completeReply(turn.assistantMessageId);
+
+    const messages = social.getRoomSnapshot(roomId).messages;
+    assert.equal(messages.at(-2).role, 'user');
+    assert.equal(messages.at(-2).senderAgentId, 'noema');
+    assert.equal(messages.at(-1).agentId, 'engineering-partner');
+    assert.deepEqual(
+      social.getContext(roomId).map(({ role, content }) => ({ role, content })),
+      [
+        { role: 'user', content: '[Noema] 核对这个接口的边界。' },
+        { role: 'assistant', content: '[工程搭档] 接口边界已整理。' },
+      ],
+    );
+    assert.equal(
+      social.listRooms().find((room) => room.id === roomId).preview.sender,
+      '工程搭档',
+    );
+
+    const reopened = new SocialChatStore(db);
+    assert.equal(
+      reopened.getRoomSnapshot(roomId).messages.at(-2).senderAgentId,
+      'noema',
+    );
+    assert.match(reopened.getContext(roomId).at(-2).content, /^\[Noema\]/u);
   } finally {
     db.close();
   }
@@ -613,6 +654,8 @@ test('social chat schema v1 upgrades additively to project-work state', () => {
     social.completeReply(message.assistantMessageId);
     db.exec(`
       DROP TABLE social_work_runtime_checkpoints;
+      DELETE FROM social_schema_migrations WHERE version = 17;
+      ALTER TABLE social_messages DROP COLUMN sender_agent_id;
       DELETE FROM social_schema_migrations WHERE version = 16;
       DROP TABLE social_project_reviews;
       DELETE FROM social_schema_migrations WHERE version = 15;
@@ -664,7 +707,7 @@ test('social chat schema v1 upgrades additively to project-work state', () => {
       db
         .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
         .get().version,
-      16,
+      17,
     );
     assert.equal(
       db
@@ -704,6 +747,8 @@ test('social schema v7 adds retry snapshots without rewriting the last known att
     social.failReply(turn.assistantMessageId, 'test_failure', '重试前失败');
     db.exec(`
       DROP TABLE social_work_runtime_checkpoints;
+      DELETE FROM social_schema_migrations WHERE version = 17;
+      ALTER TABLE social_messages DROP COLUMN sender_agent_id;
       DELETE FROM social_schema_migrations WHERE version = 16;
       DROP TABLE social_work_execution_steps;
       DELETE FROM social_schema_migrations WHERE version = 14;

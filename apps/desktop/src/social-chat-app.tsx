@@ -1964,8 +1964,10 @@ function SocialChatApp() {
                               id: item.message.id,
                               roomId: currentRoom.id,
                               role: item.message.role as 'user' | 'assistant',
-                              sender:
-                                item.message.role === 'user'
+                              sender: item.message.senderAgentId
+                                ? (messageAgent.get(item.message.senderAgentId)
+                                    ?.name ?? 'Noema')
+                                : item.message.role === 'user'
                                   ? '你'
                                   : (messageAgent.get(
                                       item.message.agentId ?? '',
@@ -3275,10 +3277,13 @@ function SocialChatApp() {
                     }}
                   >
                     <strong>
-                      {message.role === 'user'
-                        ? '你'
-                        : (messageAgent.get(message.agentId ?? '')?.name ??
-                          '联系人')}
+                      {message.senderAgentId
+                        ? (messageAgent.get(message.senderAgentId)?.name ??
+                          'Noema')
+                        : message.role === 'user'
+                          ? '你'
+                          : (messageAgent.get(message.agentId ?? '')?.name ??
+                            '联系人')}
                     </strong>
                     <time dateTime={message.createdAt}>
                       {timeLabel(message.createdAt)}
@@ -3331,10 +3336,13 @@ function SocialChatApp() {
               {selectedForwardMessages.map((message) => (
                 <article key={message.id}>
                   <strong>
-                    {message.role === 'user'
-                      ? '你'
-                      : (messageAgent.get(message.agentId ?? '')?.name ??
-                        '联系人')}
+                    {message.senderAgentId
+                      ? (messageAgent.get(message.senderAgentId)?.name ??
+                        'Noema')
+                      : message.role === 'user'
+                        ? '你'
+                        : (messageAgent.get(message.agentId ?? '')?.name ??
+                          '联系人')}
                   </strong>
                   <time dateTime={message.createdAt}>
                     {timeLabel(message.createdAt)}
@@ -4027,7 +4035,8 @@ function ChatMessage({
     return (
       <div className="session-label system-message">{message.content}</div>
     );
-  const user = message.role === 'user';
+  const fromNoema = message.senderAgentId === 'noema';
+  const user = message.role === 'user' && !fromNoema;
   const failed =
     message.status === 'failed' || message.status === 'interrupted';
   return (
@@ -4037,7 +4046,7 @@ function ChatMessage({
     >
       {!user ? (
         <div className="byline">
-          <strong>{agent?.name ?? 'Noema'}</strong>
+          <strong>{fromNoema ? 'Noema' : (agent?.name ?? 'Noema')}</strong>
           <span>{timeLabel(message.createdAt)}</span>
         </div>
       ) : null}
