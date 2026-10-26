@@ -108,6 +108,8 @@ Issue 从候选工作进入 Todo 前，需要满足：
 
 ## Git、CI 与平台边界
 
+更新多行 Issue 正文使用 `node scripts/set-github-issue-body.mjs <编号> <Markdown文件>`；脚本用参数数组上传并通过 JSON 逐字回读核对。不要将 `gh --jq .body` 的多行 shell 输出当作单一字符串再写回，这会丢失 Markdown 换行。
+
 - 重要的多文件/架构变更默认从分支提交 PR，以 CI 结果和 Issue 验收为合并依据；机械改动可直接提交。
 - `.github/workflows/desktop-checks.yml` 在 push 与 PR 上验证 Windows 环境：干净安装、lint、类型检查、安全测试、开发态桌面 smoke、生产打包后的真实 Electron 启动 smoke、Electron 构建目录与 Squirrel 安装器。Forge/Vite 的打包过滤仅保留 `.vite` 构建；`better-sqlite3` 是主进程外置的 native runtime，必须经 `packagerConfig.afterCopy` 显式放入 app 包。该 hook 兼容 npm workspace 的 hoisted 根目录布局和 workspace-local 布局，生产启动 smoke 检查包内模块并实际打开 renderer。
 - 若 Actions job 未拿到 runner，且 GitHub annotation 明确指出付款失败或 spending limit 阻断，不要把它记成代码测试失败，也不要重复制造同因 run。源码仍需同步：当前工作流只监听 main 的 push、PR 和手动运行，可将已提交代码推送到没有关联 PR 的集成分支；创建 PR 前重新检查触发条件和外部阻断。Issue checkpoint 记录该远端分支/SHA、未提交实验与本机验证版本。集成分支上传不代表合入或 CI 通过；账户额度恢复后再执行必要检查。助手不更改付款方式或支出预算。
