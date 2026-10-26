@@ -3136,8 +3136,29 @@ async function captureSocialTextAttachmentsE2e() {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'files')?.set?.call(input, transfer.files);
       input.dispatchEvent(new Event('change', { bubbles: true }));
     };
-    choose(new File(['unsupported'], 'scan.pdf', { type: 'application/pdf' }));
-    await waitFor(() => document.querySelector('.inline-notice')?.textContent?.includes('PDF 与图片暂不支持'), '不支持格式提示');
+    const makePdf = () => {
+      const stream = 'BT /F1 12 Tf 72 720 Td (Noema PDF marker: amber harbor) Tj ET';
+      const objects = [
+        '<< /Type /Catalog /Pages 2 0 R >>',
+        '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+        '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
+        '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+        '<< /Length ' + stream.length + ' >>\\nstream\\n' + stream + '\\nendstream',
+      ];
+      let pdf = '%PDF-1.4\\n';
+      const offsets = [0];
+      for (const [index, object] of objects.entries()) {
+        offsets.push(new TextEncoder().encode(pdf).byteLength);
+        pdf += String(index + 1) + ' 0 obj\\n' + object + '\\nendobj\\n';
+      }
+      const xrefOffset = new TextEncoder().encode(pdf).byteLength;
+      pdf += 'xref\\n0 ' + (objects.length + 1) + '\\n0000000000 65535 f \\n';
+      pdf += offsets.slice(1).map((offset) => String(offset).padStart(10, '0') + ' 00000 n \\n').join('');
+      pdf += 'trailer\\n<< /Size ' + (objects.length + 1) + ' /Root 1 0 R >>\\nstartxref\\n' + xrefOffset + '\\n%%EOF';
+      return new File([pdf], 'brief.pdf', { type: 'application/pdf' });
+    };
+    choose(new File(['unsupported'], 'photo.png', { type: 'image/png' }));
+    await waitFor(() => document.querySelector('.inline-notice')?.textContent?.includes('图片暂不支持'), '不支持格式提示');
     const unsupportedNotice = document.querySelector('.inline-notice')?.textContent?.trim() ?? '';
 
     const input = document.querySelector('#social-message-input');
@@ -3152,6 +3173,8 @@ async function captureSocialTextAttachmentsE2e() {
     const draftPreservedAfterRemoval = input.value === '请概括这个文件。';
     choose(new File(['附件正文标记：琥珀海岸'], 'brief.txt', { type: 'text/plain' }));
     await waitFor(() => document.querySelector('.attachment-chip')?.textContent?.includes('brief.txt'), '附件预览');
+    choose(makePdf());
+    await waitFor(() => [...document.querySelectorAll('.attachment-chip')].some((chip) => chip.textContent?.includes('brief.pdf')), 'PDF 附件预览');
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     const desktop = (() => {
       const shell = document.querySelector('.social-shell');
@@ -3237,7 +3260,7 @@ async function captureSocialTextAttachmentsE2e() {
     return waitFor(async () => {
       const room = await window.noema.getSocialRoom('room-noema');
       const user = [...room.messages].reverse().find((message) =>
-        message.role === 'user' && message.content.includes('附件正文标记：琥珀海岸'),
+        message.role === 'user' && message.content.includes('Noema PDF marker: amber harbor'),
       );
       const assistant = user
         ? room.messages.find((message) => message.turnId === user.turnId && message.role === 'assistant')
@@ -3266,17 +3289,21 @@ async function captureSocialTextAttachmentsE2e() {
     narrow,
     messagePersisted:
       sent.messageContent.includes('附件文件："brief.txt"') &&
-      sent.messageContent.includes('附件正文标记：琥珀海岸'),
+      sent.messageContent.includes('附件正文标记：琥珀海岸') &&
+      sent.messageContent.includes('附件文件："brief.pdf"') &&
+      sent.messageContent.includes('Noema PDF marker: amber harbor'),
     replyCompleted: sent.replyStatus === 'complete',
     modelReceivedAttachment:
       modelInput.includes('附件文件："brief.txt"') &&
-      modelInput.includes('附件正文标记：琥珀海岸'),
+      modelInput.includes('附件正文标记：琥珀海岸') &&
+      modelInput.includes('附件文件："brief.pdf"') &&
+      modelInput.includes('Noema PDF marker: amber harbor'),
     singleModelRequest:
       socialAgentE2eModelRequests.length === requestCountBefore + 1,
     attachmentDraftCleared: sent.remainingAttachmentChips === 0,
   };
   if (
-    !result.unsupportedNotice.includes('PDF 与图片暂不支持') ||
+    !result.unsupportedNotice.includes('图片暂不支持') ||
     !result.draftPreservedAfterRemoval ||
     !result.messagePersisted ||
     !result.replyCompleted ||

@@ -11,15 +11,20 @@ import React, {
 } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import * as pdfjs from 'pdfjs-dist';
+import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { useConversationNavigation } from './use-conversation-navigation';
 import { useScrollActivity } from './use-scroll-activity';
 import { resolveGroupRecipient } from './group-mentions.mjs';
 import {
-  isSupportedChatTextAttachment,
-  MAX_CHAT_ATTACHMENT_BYTES,
+  isSupportedChatAttachment,
+  MAX_CHAT_ATTACHMENT_CHARACTERS,
   MAX_CHAT_ATTACHMENT_COUNT,
+  MAX_CHAT_PDF_ATTACHMENT_BYTES,
+  maxChatAttachmentBytes,
   prepareChatMessage,
 } from './chat-text-attachments.mjs';
+import { extractChatPdfText } from './chat-pdf-extraction.mjs';
 import { ProjectReviewCard } from './project-review-card';
 import {
   socialWorkCardTitle,
@@ -351,14 +356,19 @@ function SocialChatApp() {
     );
     const rejected: string[] = [];
     const valid = selected.filter((file) => {
-      if (!isSupportedChatTextAttachment(file)) {
+      if (!isSupportedChatAttachment(file)) {
         rejected.push(
-          `${file.name}：当前只支持 TXT、Markdown 和 CSV 文本；PDF 与图片暂不支持。`,
+          `${file.name}：当前只支持 TXT、Markdown、CSV 和 PDF；图片暂不支持。`,
         );
         return false;
       }
-      if (file.size > MAX_CHAT_ATTACHMENT_BYTES) {
-        rejected.push(`${file.name}：单个文本附件不能超过 256 KiB。`);
+      const sizeLimit = maxChatAttachmentBytes(file);
+      if (file.size > sizeLimit) {
+        rejected.push(
+          file.name.toLowerCase().endsWith('.pdf')
+            ? `${file.name}：PDF 附件不能超过 2 MiB。`
+            : `${file.name}：单个文本附件不能超过 256 KiB。`,
+        );
         return false;
       }
       const key = `${file.name}\u0000${file.size}\u0000${file.lastModified}`;
@@ -1053,7 +1063,14 @@ function SocialChatApp() {
     setBusy(true);
     setNotice('');
     try {
-      const messageText = await prepareChatMessage(text, draftAttachments);
+      const messageText = await prepareChatMessage(text, draftAttachments, {
+        extractPdfText: (file) =>
+          extractChatPdfText(file, {
+            pdfjs,
+            workerSrc: pdfWorkerUrl,
+            maxCharacters: MAX_CHAT_ATTACHMENT_CHARACTERS,
+          }),
+      });
       if (activeReply) {
         setQueuedMessagesByRoom((current) => {
           const queue = current[roomId] ?? [];
@@ -2249,7 +2266,7 @@ function SocialChatApp() {
                 className="icon-button attach-button"
                 type="button"
                 aria-label="添加附件"
-                title="发送 UTF-8 TXT、Markdown 或 CSV；每条最多 5 个，每个不超过 256 KiB。PDF 与图片暂不支持发送。"
+                title={`发送 TXT、Markdown 或 CSV（每个 256 KiB 内），或文字 PDF（${Math.round(MAX_CHAT_PDF_ATTACHMENT_BYTES / 1024 / 1024)} MiB、40 页、提取文字不超过 ${MAX_CHAT_ATTACHMENT_CHARACTERS.toLocaleString('zh-CN')} 字）；扫描件和图片暂不支持。每条最多 5 个。`}
                 disabled={composerDisabled}
                 onClick={() => attachmentInputRef.current?.click()}
               >

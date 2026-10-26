@@ -1,17 +1,31 @@
+import { MAX_CHAT_PDF_ATTACHMENT_BYTES } from './chat-pdf-extraction.mjs';
+
 export const MAX_CHAT_ATTACHMENT_COUNT = 5;
 export const MAX_CHAT_ATTACHMENT_BYTES = 256 * 1024;
+export { MAX_CHAT_PDF_ATTACHMENT_BYTES };
 export const MAX_CHAT_ATTACHMENT_CHARACTERS = 12_000;
 export const MAX_CHAT_MESSAGE_CHARACTERS = 100_000;
 
-const SUPPORTED_EXTENSIONS = new Set(['txt', 'md', 'csv']);
+const TEXT_EXTENSIONS = new Set(['txt', 'md', 'csv']);
 
 /** @param {{name?:string}} file */
-export function isSupportedChatTextAttachment(file) {
+export function isSupportedChatAttachment(file) {
   const extension = String(file?.name ?? '')
     .split('.')
     .pop()
     ?.toLowerCase();
-  return SUPPORTED_EXTENSIONS.has(extension ?? '');
+  return TEXT_EXTENSIONS.has(extension ?? '') || extension === 'pdf';
+}
+
+/** @param {{name?:string}} file */
+export function maxChatAttachmentBytes(file) {
+  const extension = String(file?.name ?? '')
+    .split('.')
+    .pop()
+    ?.toLowerCase();
+  return extension === 'pdf'
+    ? MAX_CHAT_PDF_ATTACHMENT_BYTES
+    : MAX_CHAT_ATTACHMENT_BYTES;
 }
 
 /**
@@ -21,8 +35,9 @@ export function isSupportedChatTextAttachment(file) {
  *
  * @param {string} text
  * @param {Array<{name:string,size:number,arrayBuffer:()=>Promise<ArrayBuffer>}>} files
+ * @param {{extractPdfText?:(file:File)=>Promise<string>}} options
  */
-export async function prepareChatMessage(text, files) {
+export async function prepareChatMessage(text, files, { extractPdfText } = {}) {
   if (!Array.isArray(files) || files.length === 0) return text;
   if (files.length > MAX_CHAT_ATTACHMENT_COUNT) {
     throw new RangeError(
@@ -38,19 +53,37 @@ export async function prepareChatMessage(text, files) {
       })
         .join('')
         .slice(0, 200);
-      if (!isSupportedChatTextAttachment(file)) {
+      const extension = name.split('.').pop()?.toLowerCase();
+      if (!isSupportedChatAttachment(file)) {
         throw new TypeError(
-          `${name}：当前只支持 TXT、Markdown 和 CSV 文本文件。`,
+          `${name}：当前只支持 TXT、Markdown、CSV 和 PDF 文件。`,
         );
       }
       if (
         !Number.isInteger(file.size) ||
-        file.size > MAX_CHAT_ATTACHMENT_BYTES
+        file.size > maxChatAttachmentBytes(file)
       ) {
-        throw new RangeError(`${name}：单个文本附件不能超过 256 KiB。`);
+        throw new RangeError(
+          extension === 'pdf'
+            ? `${name}：PDF 附件不能超过 2 MiB。`
+            : `${name}：单个文本附件不能超过 256 KiB。`,
+        );
       }
       if (file.size === 0)
         throw new TypeError(`${name}：空文件没有可发送的内容。`);
+
+      if (extension === 'pdf') {
+        if (!extractPdfText) {
+          throw new TypeError(`${name}：PDF 阅读器尚未就绪，请重试。`);
+        }
+        try {
+          return { name, content: await extractPdfText(file) };
+        } catch (error) {
+          const detail =
+            error instanceof Error ? error.message : 'PDF 无法读取。';
+          throw new TypeError(`${name}：${detail}`);
+        }
+      }
 
       let bytes;
       try {

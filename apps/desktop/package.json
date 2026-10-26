@@ -33,6 +33,7 @@
     "@vscode/ripgrep": "1.18.0",
     "better-sqlite3": "^13.0.3",
     "electron-squirrel-startup": "^1.0.1",
+    "pdfjs-dist": "6.4.299",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-markdown": "^10.1.0",
