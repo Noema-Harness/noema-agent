@@ -126,7 +126,10 @@ test('an ordinary specialist message reaches the real work lifecycle without a s
             id: 'call-work',
             function: {
               name: 'start_project_work',
-              arguments: JSON.stringify({ task: '检查项目依赖并报告问题。' }),
+              arguments: JSON.stringify({
+                agent_id: 'engineering-partner',
+                task: '检查项目依赖并报告问题。',
+              }),
             },
           },
         ]);
@@ -353,6 +356,7 @@ test('Noema internal dispatch stores project work in the source room with a capa
     });
     const accepted = await service.startTaskFromNoema({
       roomId: 'room-noema',
+      agentId: 'engineering-partner',
       prompt: '检查并修复项目配置。',
       sourceMessageId: source.userMessageId,
     });
@@ -375,6 +379,68 @@ test('Noema internal dispatch stores project work in the source room with a capa
       }),
       /不在当前聊天空间/u,
     );
+  } finally {
+    await service.shutdown();
+    db.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('Noema project dispatch requires an explicit active capable executor before asking for a workspace', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'noema-internal-worker-'));
+  const workspace = path.join(directory, 'workspace');
+  mkdirSync(workspace);
+  const { db, store } = makeStore();
+  const authorizationPrompts = [];
+  const service = new SocialWorkService({
+    store,
+    adapter: makeAdapter(),
+    secretStore: { isConfigured: () => true },
+    chooseWorkspace: async () => {
+      authorizationPrompts.push('opened');
+      return workspace;
+    },
+  });
+
+  try {
+    const source = store.beginTurn({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '请修改项目。',
+      model: 'test-model',
+    });
+    await assert.rejects(
+      service.startTaskFromNoema({
+        roomId: 'room-noema',
+        prompt: '修改项目。',
+        sourceMessageId: source.userMessageId,
+      }),
+      /必须明确选择一位/u,
+    );
+
+    store.setAgentProjectWork('engineering-partner', false);
+    await assert.rejects(
+      service.startTaskFromNoema({
+        roomId: 'room-noema',
+        agentId: 'engineering-partner',
+        prompt: '修改项目。',
+        sourceMessageId: source.userMessageId,
+      }),
+      /没有项目工作能力/u,
+    );
+
+    store.setAgentProjectWork('engineering-partner', true);
+    store.setAgentArchived('engineering-partner', true);
+    await assert.rejects(
+      service.startTaskFromNoema({
+        roomId: 'room-noema',
+        agentId: 'engineering-partner',
+        prompt: '修改项目。',
+        sourceMessageId: source.userMessageId,
+      }),
+      /已归档/u,
+    );
+    assert.deepEqual(authorizationPrompts, []);
   } finally {
     await service.shutdown();
     db.close();

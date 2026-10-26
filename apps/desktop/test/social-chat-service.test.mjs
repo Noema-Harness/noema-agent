@@ -425,6 +425,16 @@ test('Noema can start existing project work from an explicit request while other
   const db = new Database(':memory:');
   new RootStore(db);
   const store = createSocialTestStore(db);
+  store.createAgent({
+    name: '软件审阅员',
+    headline: '软件变更与回归验证',
+    description: '优先检查实现差异、风险和回归行为。',
+    projectWork: true,
+  });
+  const selectedExecutor = store
+    .listAgents()
+    .find((agent) => agent.name === '软件审阅员');
+  assert.ok(selectedExecutor);
   const requests = [];
   const started = [];
   const provider = {
@@ -439,6 +449,7 @@ test('Noema can start existing project work from an explicit request while other
             function: {
               name: 'start_project_work',
               arguments: JSON.stringify({
+                agent_id: selectedExecutor.id,
                 task: '检查本地项目的依赖配置并修复可复现的问题。',
               }),
             },
@@ -478,10 +489,19 @@ test('Noema can start existing project work from an explicit request while other
       requests[0].tools?.map((tool) => tool.function.name),
       ['start_project_work', 'delegate_to_specialist'],
     );
+    const workTool = requests[0].tools?.find(
+      (tool) => tool.function.name === 'start_project_work',
+    );
+    assert.deepEqual(workTool?.function.parameters.properties.agent_id.enum, [
+      'engineering-partner',
+      selectedExecutor.id,
+    ]);
+    assert.match(workTool?.function.description ?? '', /软件变更与回归验证/u);
     assert.deepEqual(started, [
       {
         roomId: 'room-noema',
-        agentId: 'noema',
+        agentId: selectedExecutor.id,
+        dispatchFromNoema: true,
         prompt: '检查本地项目的依赖配置并修复可复现的问题。',
         sourceMessageId: store
           .getRoomSnapshot('room-noema')
@@ -532,7 +552,10 @@ test('specialists use file tools through ordinary messages, and revoked capabili
             id: 'call-file-work',
             function: {
               name: 'start_project_work',
-              arguments: JSON.stringify({ task: '检查项目中的依赖配置。' }),
+              arguments: JSON.stringify({
+                agent_id: 'engineering-partner',
+                task: '检查项目中的依赖配置。',
+              }),
             },
           },
         ]);
@@ -566,6 +589,7 @@ test('specialists use file tools through ordinary messages, and revoked capabili
     );
     assert.equal(dispatched.length, 1);
     assert.equal(dispatched[0].agentId, 'engineering-partner');
+    assert.equal(dispatched[0].dispatchFromNoema, false);
     assert.equal(dispatched[0].roomId, 'room-engineering-partner');
     assert.equal(
       store.getSocialMessage(dispatched[0].sourceMessageId).role,

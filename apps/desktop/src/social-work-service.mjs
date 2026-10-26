@@ -463,8 +463,14 @@ export class SocialWorkService {
     return { accepted: true, taskId: id, roomId };
   }
 
-  /** @param {{roomId:string,prompt:string,sourceMessageId:string,signal?:AbortSignal|null}} input */
-  async startTaskFromNoema({ roomId, prompt, sourceMessageId, signal = null }) {
+  /** @param {{roomId:string,agentId:string,prompt:string,sourceMessageId:string,signal?:AbortSignal|null}} input */
+  async startTaskFromNoema({
+    roomId,
+    agentId,
+    prompt,
+    sourceMessageId,
+    signal = null,
+  }) {
     const room = this.store.getRoomSnapshot(roomId);
     if (
       room.room.kind !== 'direct' ||
@@ -477,16 +483,16 @@ export class SocialWorkService {
     if (sourceMessage?.role !== 'user' || sourceMessage.roomId !== roomId) {
       throw new Error('项目工作的来源必须是当前聊天中的用户消息。');
     }
-    const candidates = this.store
-      .listAgents()
-      .filter(
-        (agent) =>
-          !agent.archivedAt && agent.capabilities.includes('project-work'),
-      );
-    const executor =
-      candidates.find((agent) => agent.id === 'engineering-partner') ??
-      candidates[0];
-    if (!executor) throw new Error('当前没有可承接项目工作的协作者。');
+    if (typeof agentId !== 'string' || !agentId.trim()) {
+      throw new Error('Noema 必须明确选择一位项目执行成员。');
+    }
+    const executor = this.store.getAgent(agentId);
+    if (executor.archivedAt) {
+      throw new Error('所选执行成员已归档；没有启动项目工作。');
+    }
+    if (!executor.capabilities.includes('project-work')) {
+      throw new Error('所选成员当前没有项目工作能力；没有启动项目工作。');
+    }
     return this.startTaskInternal(
       {
         roomId,

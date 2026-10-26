@@ -18,26 +18,39 @@ const PROJECT_GROUP_SHARED_CONTEXT = Object.freeze({
   maxCharacters: 8_000,
 });
 
-const PROJECT_WORK_TOOL = {
-  type: 'function',
-  function: {
-    name: 'start_project_work',
-    description:
-      'Start project-file work when the user asks to inspect, modify, build, or verify local files. The app asks for the workspace before starting. Do not call for discussion, advice, planning, code examples, or brainstorming.',
-    parameters: {
-      type: 'object',
-      properties: {
-        task: {
-          type: 'string',
-          description:
-            'A bounded project task preserving the user’s requested outcome and constraints.',
+function projectWorkTool(agents) {
+  if (!agents.length) return null;
+  const roster = agents
+    .map((agent) => `- ${agent.name} (${agent.id}): ${agent.headline}`)
+    .join('\n');
+  return {
+    type: 'function',
+    function: {
+      name: 'start_project_work',
+      description:
+        'Start project-file work only when the user explicitly asks you to inspect, modify, build, or verify local files. Select exactly one existing member whose professional scope fits the task. Do not default to a familiar member; if no listed member fits, explain that there is no suitable executor. The app asks for the workspace before starting. Do not use for discussion, advice, planning, code examples, or brainstorming. Eligible members:\n' +
+        roster,
+      parameters: {
+        type: 'object',
+        properties: {
+          agent_id: {
+            type: 'string',
+            enum: agents.map((agent) => agent.id),
+            description:
+              'The existing eligible executor selected for this task.',
+          },
+          task: {
+            type: 'string',
+            description:
+              'A bounded project task preserving the user’s requested outcome and constraints.',
+          },
         },
+        required: ['agent_id', 'task'],
+        additionalProperties: false,
       },
-      required: ['task'],
-      additionalProperties: false,
     },
-  },
-};
+  };
+}
 
 function specialistDelegationTool(agents) {
   if (!agents.length) return null;
@@ -112,11 +125,11 @@ function noemaActionGuidance(projectWorkAvailable, specialistAgents) {
 
 /**
  * Sends room-scoped turns to a replaceable chat provider.
- * @param {{store:import('./social-chat-store.mjs').SocialChatStore,provider:import('./freellmapi-client.mjs').FreeLLMAPIClient,secretStore:{isConfigured:()=>boolean},getSelectedModel:()=>string|null,getRootState:()=>Promise<SocialProviderState>,projectStore?:import('./social-project-store.mjs').SocialProjectStore|null,getProjectSessionContext?:(roomId:string,agentId:string)=>{projectId:string,title:string,brief:string,status:string,agentId:string,roomId:string}|null,getProjectWorkReadiness?:()=>{available:boolean,reason:string|null},startProjectWork?:(input:{roomId:string,agentId:string,prompt:string,sourceMessageId:string},signal:AbortSignal)=>Promise<{accepted:boolean,taskId?:string,reason?:string}>,emit?:(event:object)=>void}} options
+ * @param {{store:import('./social-chat-store.mjs').SocialChatStore,provider:import('./freellmapi-client.mjs').FreeLLMAPIClient,secretStore:{isConfigured:()=>boolean},getSelectedModel:()=>string|null,getRootState:()=>Promise<SocialProviderState>,projectStore?:import('./social-project-store.mjs').SocialProjectStore|null,getProjectSessionContext?:(roomId:string,agentId:string)=>{projectId:string,title:string,brief:string,status:string,agentId:string,roomId:string}|null,getProjectWorkReadiness?:()=>{available:boolean,reason:string|null},startProjectWork?:(input:{roomId:string,agentId:string,dispatchFromNoema:boolean,prompt:string,sourceMessageId:string},signal:AbortSignal)=>Promise<{accepted:boolean,taskId?:string,reason?:string}>,emit?:(event:object)=>void}} options
  */
 export class SocialChatService {
   /**
-   * @param {{store:import('./social-chat-store.mjs').SocialChatStore,provider:import('./freellmapi-client.mjs').FreeLLMAPIClient,secretStore:{isConfigured:()=>boolean},getSelectedModel:()=>string|null,getRootState:()=>Promise<SocialProviderState>,projectStore?:import('./social-project-store.mjs').SocialProjectStore|null,getProjectSessionContext?:(roomId:string,agentId:string)=>{projectId:string,title:string,brief:string,status:string,agentId:string,roomId:string}|null,getProjectWorkReadiness?:()=>{available:boolean,reason:string|null},startProjectWork?:(input:{roomId:string,agentId:string,prompt:string,sourceMessageId:string},signal:AbortSignal)=>Promise<{accepted:boolean,taskId?:string,reason?:string}>,emit?:(event:object)=>void}} options
+   * @param {{store:import('./social-chat-store.mjs').SocialChatStore,provider:import('./freellmapi-client.mjs').FreeLLMAPIClient,secretStore:{isConfigured:()=>boolean},getSelectedModel:()=>string|null,getRootState:()=>Promise<SocialProviderState>,projectStore?:import('./social-project-store.mjs').SocialProjectStore|null,getProjectSessionContext?:(roomId:string,agentId:string)=>{projectId:string,title:string,brief:string,status:string,agentId:string,roomId:string}|null,getProjectWorkReadiness?:()=>{available:boolean,reason:string|null},startProjectWork?:(input:{roomId:string,agentId:string,dispatchFromNoema:boolean,prompt:string,sourceMessageId:string},signal:AbortSignal)=>Promise<{accepted:boolean,taskId?:string,reason?:string}>,emit?:(event:object)=>void}} options
    */
   constructor({
     store,
@@ -404,19 +417,28 @@ export class SocialChatService {
           historySources,
         );
       }
+      const projectWorkAgents =
+        agentId === 'noema'
+          ? this.store.isNoemaHistoryRoom(roomId)
+            ? specialistAgents.filter((item) =>
+                item.capabilities.includes('project-work'),
+              )
+            : []
+          : agent.capabilities.includes('project-work')
+            ? [agent]
+            : [];
       const projectWorkAvailable = Boolean(
         this.startProjectWork &&
         run.projectContext?.status !== 'awaiting_user' &&
         this.getProjectWorkReadiness().available &&
-        (agentId === 'noema'
-          ? this.store.isNoemaHistoryRoom(roomId) &&
-            specialistAgents.some((item) =>
-              item.capabilities.includes('project-work'),
-            )
-          : agent.capabilities.includes('project-work')),
+        projectWorkAgents.length,
       );
+      const projectWorkAction =
+        projectWorkAvailable && projectWorkAgents.length
+          ? projectWorkTool(projectWorkAgents)
+          : null;
       const actionTools = [
-        ...(projectWorkAvailable ? [PROJECT_WORK_TOOL] : []),
+        ...(projectWorkAction ? [projectWorkAction] : []),
         ...(specialistTool ? [specialistTool] : []),
         ...(reviewTool ? [reviewTool] : []),
       ];
@@ -743,6 +765,10 @@ export class SocialChatService {
             typeof input?.task !== 'string' ||
             !input.task.trim() ||
             input.task.length > 40_000 ||
+            typeof input?.agent_id !== 'string' ||
+            !projectWorkAgents.some(
+              (candidate) => candidate.id === input.agent_id,
+            ) ||
             !projectWorkAvailable ||
             !this.getProjectWorkReadiness().available
           ) {
@@ -751,11 +777,22 @@ export class SocialChatService {
               '项目工作说明无效或当前不可用；没有启动任务。',
             );
           }
+          const executor = this.store.getAgent(input.agent_id);
+          if (
+            executor.archivedAt ||
+            !executor.capabilities.includes('project-work')
+          ) {
+            throw new FreeLLMAPIError(
+              'social_tool_invalid',
+              '执行成员已归档或已失去项目工作能力；没有启动任务。',
+            );
+          }
           controller.signal.throwIfAborted();
           const result = await this.startProjectWork(
             {
               roomId,
-              agentId,
+              agentId: executor.id,
+              dispatchFromNoema: agentId === 'noema',
               prompt: input.task.trim(),
               sourceMessageId: run.userMessageId,
             },

@@ -4059,10 +4059,10 @@ async function startNoema() {
         },
       getProjectSessionContext: (roomId, agentId) =>
         socialProjectStore?.getProjectSessionContext(roomId, agentId) ?? null,
-      startProjectWork: ({ agentId, ...input }, signal) =>
-        agentId === 'noema'
+      startProjectWork: ({ dispatchFromNoema, ...input }, signal) =>
+        dispatchFromNoema
           ? socialWorkService!.startTaskFromNoema({ ...input, signal })
-          : socialWorkService!.startTask({ ...input, agentId, signal }),
+          : socialWorkService!.startTask({ ...input, signal }),
       emit: (payload) => {
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send(CHANNELS.socialEvent, payload);
