@@ -1,0 +1,177 @@
+.social-shell .project-plan {
+  margin: 24px 0;
+  color: var(--ink);
+}
+.social-shell .project-plan-head,
+.social-shell .project-plan-item-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+.social-shell .project-plan h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.social-shell .project-plan-meta,
+.social-shell .project-plan-item-head > span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.social-shell .project-plan-objective {
+  margin: 14px 0;
+  white-space: pre-wrap;
+  line-height: 1.7;
+}
+.social-shell .project-plan-progress {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 20px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.social-shell .project-plan-progress strong {
+  color: var(--ink);
+  font-size: 17px;
+  font-weight: 600;
+  margin-left: 6px;
+}
+.social-shell .project-plan-progress progress {
+  width: 100%;
+  height: 4px;
+  border: 0;
+  appearance: none;
+  background: var(--line);
+}
+.social-shell .project-plan-progress progress::-webkit-progress-bar {
+  background: var(--line);
+}
+.social-shell .project-plan-progress progress::-webkit-progress-value {
+  background: var(--accent);
+}
+.social-shell .project-plan-list {
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.social-shell .project-plan-list > li {
+  padding: 16px 0;
+  border-top: 1px solid var(--line);
+}
+.social-shell .project-plan-item-head strong {
+  font-size: 14px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.social-shell .project-plan-item-head > span {
+  flex-shrink: 0;
+}
+.social-shell .project-plan-acceptance {
+  color: var(--muted);
+  line-height: 1.6;
+  margin: 7px 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.social-shell .project-plan-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 9px;
+}
+.social-shell .project-plan .quiet {
+  padding: 3px 0;
+  color: var(--accent);
+}
+.social-shell .project-plan-error {
+  color: #993f31;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.social-shell .project-plan label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.social-shell .project-plan input:not([type='checkbox']),
+.social-shell .project-plan textarea,
+.social-shell .project-plan select {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 8px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+}
+.social-shell .project-plan textarea {
+  resize: vertical;
+  min-height: 58px;
+}
+.social-shell
+  .project-plan
+  :is(input, textarea, select, button, summary):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.social-shell .project-plan-editor {
+  display: grid;
+  gap: 15px;
+  margin-top: 14px;
+}
+.social-shell .project-plan-editor fieldset {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 0;
+  padding: 12px 0 0;
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.social-shell .project-plan-editor legend {
+  color: var(--muted);
+  font-size: 12px;
+  padding-right: 8px;
+}
+.social-shell .project-plan-edit-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.social-shell .project-plan summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--muted);
+}
+.social-shell .project-plan-dependencies {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+.social-shell .project-plan-dependencies label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.social-shell .project-plan-evidence p {
+  margin: 9px 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+.social-shell .project-plan-action-form {
+  margin-top: 12px;
+}
+@media (max-width: 640px) {
+  .social-shell .project-plan-item-head {
+    flex-direction: column;
+    gap: 4px;
+  }
+  .social-shell .project-plan-edit-pair {
+    grid-template-columns: 1fr;
+  }
+}

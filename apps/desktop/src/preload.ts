@@ -9,6 +9,8 @@ import type {
   NoemaSocialSearchResult,
   NoemaSocialRoomState,
   NoemaSocialState,
+  NoemaProjectPlanWrite,
+  NoemaProjectPlanItemUpdate,
 } from './noema-bridge.d.ts';
 
 const bridge = {
@@ -47,6 +49,12 @@ const bridge = {
     ) as Promise<NoemaSocialProjectSession>,
   archiveSocialProject: (projectId: string) =>
     ipcRenderer.invoke('noema:social-archive-project', projectId),
+  getSocialProjectPlan: (projectId: string) =>
+    ipcRenderer.invoke('noema:social-project-plan', projectId),
+  replaceSocialProjectPlan: (input: NoemaProjectPlanWrite) =>
+    ipcRenderer.invoke('noema:social-replace-project-plan', input),
+  updateSocialProjectPlanItem: (input: NoemaProjectPlanItemUpdate) =>
+    ipcRenderer.invoke('noema:social-update-project-plan-item', input),
   restoreSocialProject: (projectId: string) =>
     ipcRenderer.invoke('noema:social-restore-project', projectId),
   createSocialContinuationThread: (input: {

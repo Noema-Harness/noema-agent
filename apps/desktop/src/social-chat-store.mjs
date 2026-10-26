@@ -741,6 +741,26 @@ export class SocialChatStore {
         `);
       })();
     }
+    if (current < 21) {
+      this.db.transaction(() => {
+        this.db.exec(`
+          CREATE TABLE social_project_plan_revisions (
+            project_id TEXT NOT NULL REFERENCES social_projects(id) ON DELETE CASCADE,
+            revision INTEGER NOT NULL CHECK (revision > 0),
+            stage TEXT NOT NULL,
+            objective TEXT NOT NULL,
+            items_json TEXT NOT NULL,
+            actor_agent_id TEXT REFERENCES social_agents(id) ON DELETE SET NULL,
+            source_turn_id TEXT,
+            reason TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (project_id, revision)
+          );
+          INSERT INTO social_schema_migrations (version, applied_at)
+          VALUES (21, '${isoNow()}');
+        `);
+      })();
+    }
   }
 
   seedInitialSocialModel() {

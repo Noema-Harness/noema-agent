@@ -34,6 +34,9 @@ const CHANNELS = Object.freeze({
   socialCreateGroup: 'noema:social-create-group',
   socialCreateProject: 'noema:social-create-project',
   socialProjectSession: 'noema:social-project-session',
+  socialProjectPlan: 'noema:social-project-plan',
+  socialReplaceProjectPlan: 'noema:social-replace-project-plan',
+  socialUpdateProjectPlanItem: 'noema:social-update-project-plan-item',
   socialArchiveProject: 'noema:social-archive-project',
   socialRestoreProject: 'noema:social-restore-project',
   socialCreateContinuationThread: 'noema:social-create-continuation-thread',
@@ -115,6 +118,60 @@ export function registerRootIpc({
       if (!socialProjectStore) throw new Error('项目存储尚未初始化。');
       return socialProjectStore.getProjectSession(projectId, agentId);
     });
+    register(CHANNELS.socialProjectPlan, (projectId) => {
+      if (!socialProjectStore) throw new Error('项目存储尚未初始化。');
+      return socialProjectStore.plans.get(projectId);
+    });
+    const planChanged = (plan) => {
+      const project = socialProjectStore.getProject(plan.projectId);
+      socialChatService.emit({
+        type: 'project-updated',
+        projectId: project.id,
+        groupRoomId: project.groupRoomId,
+      });
+      return plan;
+    };
+    register(
+      CHANNELS.socialReplaceProjectPlan,
+      ({ projectId, expectedRevision, reason, plan }) => {
+        if (!socialProjectStore) throw new Error('项目存储尚未初始化。');
+        return planChanged(
+          socialProjectStore.plans.replace({
+            projectId,
+            expectedRevision,
+            reason,
+            plan,
+            actorAgentId: null,
+          }),
+        );
+      },
+    );
+    register(
+      CHANNELS.socialUpdateProjectPlanItem,
+      ({
+        projectId,
+        expectedRevision,
+        reason,
+        itemId,
+        status,
+        evidence,
+        blocker,
+      }) => {
+        if (!socialProjectStore) throw new Error('项目存储尚未初始化。');
+        return planChanged(
+          socialProjectStore.plans.updateItem({
+            projectId,
+            expectedRevision,
+            reason,
+            itemId,
+            status,
+            evidence,
+            blocker,
+            actorAgentId: null,
+          }),
+        );
+      },
+    );
     register(CHANNELS.socialArchiveProject, (projectId) => {
       if (!socialProjectStore) throw new Error('项目存储尚未初始化。');
       const project = socialProjectStore.archiveProject(projectId);

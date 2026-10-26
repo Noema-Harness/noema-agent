@@ -1,6 +1,7 @@
 import { ModelProviderError } from './openai-compatible-client.mjs';
 import { userReferencesPastNoemaContext } from './transcript-search.mjs';
 import { resolveGroupRecipient } from './group-mentions.mjs';
+import { projectPlanParameters } from './project-plan-store.mjs';
 
 /** @typedef {Omit<Pick<import('./noema-bridge.d.ts').NoemaRootState,'connected'|'checking'|'models'|'selectedModel'|'error'|'providerConfigured'|'providerBaseUrl'|'providerName'>,'providerName'> & {providerName:string}} SocialProviderState */
 
@@ -235,6 +236,48 @@ function memberAssetsTool() {
   };
 }
 
+function projectPlanTool(projects) {
+  if (!projects.length) return null;
+  return {
+    type: 'function',
+    function: {
+      name: 'manage_project_plan',
+      description:
+        'Read or maintain the shared plan of an existing entrusted project. Ordinary sharing and conversation do not need a plan. Read the current revision before writing. Noema can replace scope and accept submitted deliveries; members can only update their own items, not accept them. Starting requires accepted dependencies; submission requires real delivery evidence. Plan updates never prove external work was performed. Projects: ' +
+        projects.map((p) => `${p.id}: ${p.title}`).join('; '),
+      parameters: {
+        type: 'object',
+        properties: {
+          operation: {
+            type: 'string',
+            enum: ['read', 'replace', 'update_item'],
+          },
+          project_id: { type: 'string', enum: projects.map((p) => p.id) },
+          expected_revision: { type: 'integer', minimum: 0 },
+          plan: projectPlanParameters,
+          item_id: { type: 'string' },
+          status: {
+            type: 'string',
+            enum: [
+              'pending',
+              'in_progress',
+              'blocked',
+              'submitted',
+              'done',
+              'canceled',
+            ],
+          },
+          evidence: { type: 'string' },
+          blocker: { type: 'string' },
+          reason: { type: 'string' },
+        },
+        required: ['operation', 'project_id'],
+        additionalProperties: false,
+      },
+    },
+  };
+}
+
 function requestsMemberAssetAction(text) {
   return /复盘|经历|成长|定位|记住|记忆|技能|原则|资产|经验沉淀|自我定义|更新自己的/u.test(
     text,
@@ -247,6 +290,7 @@ function noemaActionGuidance(
   projectTeamAvailable,
 ) {
   return [
+    '分享、倾诉、快乐、烦恼和漫谈本身就有意义。自然参与当下交流，不默认把一个想法当成隐含需求，也不把所有讨论转为需求澄清。只有实际形成委托时才组织工作。',
     '你在当前聊天中回应用户。聊天、探索、计划、写作和建议直接在对话中完成，不创建执行状态。',
     projectWorkAvailable
       ? '仅当用户明确要求对本地项目文件进行检查、修改、构建或验证时，才可调用 start_project_work。调用会打开本机工作区授权与数据流披露；用户选择工作区后任务才会被创建。不得因用户提到代码、项目或未来想法就启动。'
@@ -1165,6 +1209,25 @@ export class SocialChatService {
               )
               .slice(0, 32)
           : [];
+      const planProjects = !this.projectStore
+        ? []
+        : run.projectContext
+          ? [
+              {
+                id: run.projectContext.projectId,
+                title: run.projectContext.title,
+              },
+            ]
+          : agentId === 'noema'
+            ? this.projectStore
+                .listProjects({ includeArchived: true })
+                .filter(
+                  (project) =>
+                    roomId === 'room-noema' || project.groupRoomId === roomId,
+                )
+                .slice(0, 32)
+            : [];
+      const planAction = projectPlanTool(planProjects);
       const reviewTool = projectReviewTool(reviewProjects);
       const historySearchAvailable =
         agentId === 'noema' &&
@@ -1205,6 +1268,7 @@ export class SocialChatService {
         ...(specialistTool ? [specialistTool] : []),
         ...(projectTeamAction ? [projectTeamAction] : []),
         ...(reviewTool ? [reviewTool] : []),
+        ...(planAction ? [planAction] : []),
         ...(agent.kind === 'specialist' && requestsMemberAssetAction(run.text)
           ? [memberAssetsTool()]
           : []),
@@ -1264,6 +1328,11 @@ export class SocialChatService {
                   id: run.projectContext.projectId,
                   title: run.projectContext.title,
                   brief: run.projectContext.brief,
+                  plan:
+                    this.projectStore?.plans.forAgent(
+                      run.projectContext.projectId,
+                      agentId,
+                    ) ?? null,
                 }),
               },
             ]
@@ -1951,6 +2020,135 @@ export class SocialChatService {
               'empty_reply',
               '项目群与分工已经建立，但 Noema 没有完成对用户的启动汇报。可以重试这条消息。',
             );
+          }
+        } else if (toolName === 'manage_project_plan') {
+          let call = toolCalls[0];
+          let beforeCall = content;
+          for (let step = 0; step < 4; step += 1) {
+            controller.signal.throwIfAborted();
+            if (!call?.id || call.function?.name !== 'manage_project_plan')
+              throw new ModelProviderError(
+                'project_plan_invalid',
+                '计划工具调用无效。',
+              );
+            let action;
+            try {
+              action = JSON.parse(call.function.arguments);
+            } catch {
+              throw new ModelProviderError(
+                'project_plan_invalid',
+                '计划工具参数不是有效 JSON。',
+              );
+            }
+            if (
+              !planProjects.some((project) => project.id === action.project_id)
+            )
+              throw new ModelProviderError(
+                'project_plan_invalid',
+                '当前会话无权访问该项目计划。',
+              );
+            let result;
+            try {
+              const common = {
+                projectId: action.project_id,
+                expectedRevision: action.expected_revision,
+                reason: action.reason,
+                actorAgentId: agentId,
+                sourceTurnId: run.turnId,
+              };
+              if (action.operation === 'read')
+                result = this.projectStore.plans.forAgent(
+                  action.project_id,
+                  agentId,
+                  action.item_id ?? null,
+                );
+              else {
+                if (action.operation === 'replace')
+                  this.projectStore.plans.replace({
+                    ...common,
+                    plan: action.plan,
+                  });
+                else if (action.operation === 'update_item')
+                  this.projectStore.plans.updateItem({
+                    ...common,
+                    itemId: action.item_id,
+                    status: action.status,
+                    evidence: action.evidence,
+                    blocker: action.blocker,
+                  });
+                else throw new Error('未知的计划操作。');
+                result = this.projectStore.plans.forAgent(
+                  action.project_id,
+                  agentId,
+                );
+                const project = this.projectStore.getProject(action.project_id);
+                this.emit({
+                  type: 'project-updated',
+                  projectId: project.id,
+                  groupRoomId: project.groupRoomId,
+                });
+              }
+            } catch (error) {
+              // A stale revision or unmet dependency is actionable feedback, not permission to overwrite it.
+              result = {
+                error: error.message,
+                projectId: action.project_id,
+                currentRevision: this.projectStore.plans.get(action.project_id)
+                  .revision,
+              };
+            }
+            messages.push({
+              role: 'assistant',
+              content: beforeCall || null,
+              tool_calls: [call],
+            });
+            messages.push({
+              role: 'tool',
+              tool_call_id: call.id,
+              name: 'manage_project_plan',
+              content: JSON.stringify(result),
+            });
+            let segment = '',
+              nextCalls = [];
+            for await (const delta of this.provider.streamChat({
+              model,
+              messages,
+              signal: controller.signal,
+              tools: [planAction],
+              onToolCalls: (calls) => {
+                nextCalls = calls;
+              },
+            })) {
+              controller.signal.throwIfAborted();
+              segment += delta;
+              content += delta;
+              if (!this.appendRunAssistantDelta(run, delta))
+                throw new ModelProviderError(
+                  'reply_not_streaming',
+                  '计划操作已记录，但回复已停止。',
+                );
+              this.emit({
+                type: 'chat-message-delta',
+                roomId,
+                messageId: assistantMessageId,
+                delta,
+              });
+            }
+            if (!nextCalls.length) {
+              if (!segment.trim())
+                throw new ModelProviderError(
+                  'empty_reply',
+                  '计划操作已记录，但模型没有返回说明。',
+                );
+              break;
+            }
+            if (step === 3 || nextCalls.length !== 1)
+              throw new ModelProviderError(
+                'project_plan_limit',
+                '本轮计划操作达到上限；已保存的修改保留。',
+              );
+            call = nextCalls[0];
+            beforeCall = segment;
           }
         } else if (toolName === 'manage_member_assets') {
           const callId = toolCalls[0]?.id;

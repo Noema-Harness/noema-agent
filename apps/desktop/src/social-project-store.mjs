@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { ProjectPlanStore } from './project-plan-store.mjs';
 
 function isoNow() {
   return new Date().toISOString();
@@ -19,6 +20,7 @@ export class SocialProjectStore {
   constructor({ db, socialChatStore }) {
     this.db = db;
     this.socialChatStore = socialChatStore;
+    this.plans = new ProjectPlanStore(db);
   }
 
   listProjects({ includeArchived = true } = {}) {

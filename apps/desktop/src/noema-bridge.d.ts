@@ -270,6 +270,61 @@ export interface NoemaSocialProject {
   }>;
 }
 
+export type NoemaProjectPlanStatus =
+  | 'pending'
+  | 'in_progress'
+  | 'blocked'
+  | 'submitted'
+  | 'done'
+  | 'canceled';
+export interface NoemaProjectPlanItem {
+  id: string;
+  title: string;
+  ownerAgentId: string;
+  acceptance: string;
+  dependsOn: string[];
+  status: NoemaProjectPlanStatus;
+  evidence: string;
+  blocker: string;
+  ready: boolean;
+  blockedBy: string[];
+}
+export interface NoemaProjectPlan {
+  projectId: string;
+  revision: number;
+  stage: string;
+  objective: string;
+  items: NoemaProjectPlanItem[];
+  progress: {
+    done: number;
+    total: number;
+    percentage: number | null;
+    submitted: number;
+    canceled: number;
+  };
+  updatedAt: string | null;
+  reason: string | null;
+}
+export interface NoemaProjectPlanWrite {
+  projectId: string;
+  expectedRevision: number;
+  reason: string;
+  plan: {
+    stage: string;
+    objective: string;
+    items: Array<Omit<NoemaProjectPlanItem, 'ready' | 'blockedBy'>>;
+  };
+}
+export interface NoemaProjectPlanItemUpdate {
+  projectId: string;
+  expectedRevision: number;
+  itemId: string;
+  status: NoemaProjectPlanStatus;
+  evidence?: string;
+  blocker?: string;
+  reason: string;
+}
+
 export interface NoemaSocialProjectReview {
   id: string;
   projectId: string;
@@ -629,6 +684,13 @@ export interface NoemaBridge {
     agentId: string,
   ): Promise<NoemaSocialProjectSession>;
   archiveSocialProject(projectId: string): Promise<NoemaSocialProject>;
+  getSocialProjectPlan(projectId: string): Promise<NoemaProjectPlan>;
+  replaceSocialProjectPlan(
+    input: NoemaProjectPlanWrite,
+  ): Promise<NoemaProjectPlan>;
+  updateSocialProjectPlanItem(
+    input: NoemaProjectPlanItemUpdate,
+  ): Promise<NoemaProjectPlan>;
   restoreSocialProject(projectId: string): Promise<NoemaSocialProject>;
   createSocialContinuationThread(input: {
     sourceRoomId: string;

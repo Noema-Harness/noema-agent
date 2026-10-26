@@ -447,6 +447,10 @@ test('schema v11 upgrades to the current schema without deleting chats or re-ena
   const roomBefore = oldStore.getRoomSnapshot('room-engineering-collaboration');
   try {
     db.exec(`
+      DROP TABLE social_project_plan_revisions;
+      DELETE FROM social_schema_migrations WHERE version = 21;
+      DROP TABLE IF EXISTS social_project_plan_revisions;
+      DELETE FROM social_schema_migrations WHERE version = 21;
       DROP TABLE social_agent_asset_revisions;
       DELETE FROM social_schema_migrations WHERE version = 20;
       DROP TABLE social_project_reports;
@@ -472,7 +476,7 @@ test('schema v11 upgrades to the current schema without deleting chats or re-ena
       db
         .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
         .get().version,
-      20,
+      21,
     );
     assert.deepEqual(
       upgradedStore

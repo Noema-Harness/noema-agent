@@ -26,6 +26,7 @@ import {
 } from './chat-text-attachments.mjs';
 import { extractChatPdfText } from './chat-pdf-extraction.mjs';
 import { ProjectReviewCard } from './project-review-card';
+import { ProjectPlanPanel } from './project-plan-panel';
 import {
   socialWorkCardTitle,
   socialWorkExecutionStepPresentation,
@@ -922,9 +923,6 @@ function SocialChatApp() {
   const projectSessionTasks = (projectSessionState?.sessions ?? [])
     .flatMap((session) => session.room.workTasks)
     .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
-  const projectGroupRoom = projectWorkspace
-    ? (rooms.find((room) => room.id === projectWorkspace.groupRoomId) ?? null)
-    : null;
   const agentWorkspace =
     agents.find((agent) => agent.id === agentWorkspaceId) ?? null;
   const agentWorkspaceProjects = agentWorkspace
@@ -2927,30 +2925,15 @@ function SocialChatApp() {
                       </div>
                       <h2>{projectWorkspace.title}</h2>
                       <p className="lead">{projectWorkspace.brief}</p>
-                      {projectSessionTasks.length ? (
-                        projectSessionTasks.map(renderProjectWorkCard)
-                      ) : (
-                        <div className="project-summary">
-                          <section>
-                            <h3>当前阶段</h3>
-                            <p>
-                              {projectWorkspace.status === 'awaiting_user'
-                                ? '项目标记为等待你的反馈。'
-                                : '项目进行中。'}
-                            </p>
-                          </section>
-                          <section>
-                            <h3>最近共同讨论</h3>
-                            <p>
-                              {projectGroupRoom?.preview?.text ||
-                                '还没有共同讨论记录。'}
-                            </p>
-                          </section>
-                        </div>
-                      )}
+                      <ProjectPlanPanel
+                        key={projectWorkspace.id}
+                        project={projectWorkspace}
+                      />
+                      {projectSessionTasks.length
+                        ? projectSessionTasks.map(renderProjectWorkCard)
+                        : null}
                       {projectSessionState?.loading ||
-                      projectSessionState?.error ||
-                      !projectSessionTasks.length ? (
+                      projectSessionState?.error ? (
                         <section
                           className="project-output-empty"
                           aria-live="polite"
