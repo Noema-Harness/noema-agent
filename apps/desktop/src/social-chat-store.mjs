@@ -2875,6 +2875,7 @@ export class SocialChatStore {
     agentId,
     text,
     model,
+    turnId = null,
     senderAgentId = null,
     forwardedSources = [],
     replyTo = null,
@@ -2933,8 +2934,20 @@ export class SocialChatStore {
         .prepare('SELECT kind FROM social_rooms WHERE id = ?')
         .get(roomId);
       if (room.kind === 'direct') {
-        if (this.getAgentResidentRoomId(agentId) !== roomId) {
-          throw new Error('Noema 只能在联系人的常驻私聊中发送内部交办。');
+        const isResidentRoom = this.getAgentResidentRoomId(agentId) === roomId;
+        const isActiveProjectSession = this.db
+          .prepare(`
+            SELECT 1 FROM social_project_sessions AS ps
+            JOIN social_projects AS p ON p.id = ps.project_id
+            WHERE ps.room_id = ? AND ps.agent_id = ?
+              AND ps.status = 'active' AND p.status = 'active'
+            LIMIT 1
+          `)
+          .get(roomId, agentId);
+        if (!isResidentRoom && !isActiveProjectSession) {
+          throw new Error(
+            'Noema 只能在联系人的常驻私聊或活跃项目会话中发送内部交办。',
+          );
         }
       } else if (room.kind === 'group') {
         const projectGroup = this.db
@@ -2956,7 +2969,9 @@ export class SocialChatStore {
     if (this.hasStreamingReply(roomId)) {
       throw new Error('这间聊天中还有一条回复正在生成，请先停止或等待完成。');
     }
-    const turnId = randomUUID();
+    const normalizedTurnId = turnId
+      ? requireText(turnId, '本轮 ID', 200)
+      : randomUUID();
     const userMessageId = randomUUID();
     const assistantMessageId = randomUUID();
     const now = isoNow();
@@ -2972,7 +2987,7 @@ export class SocialChatStore {
         .run(
           userMessageId,
           roomId,
-          turnId,
+          normalizedTurnId,
           senderAgentId,
           normalizedText,
           JSON.stringify(forwardedSources),
@@ -2994,7 +3009,7 @@ export class SocialChatStore {
         .run(
           assistantMessageId,
           roomId,
-          turnId,
+          normalizedTurnId,
           agentId,
           model,
           JSON.stringify(adjustmentIds),
@@ -3014,7 +3029,7 @@ export class SocialChatStore {
         .run(now, roomId);
     })();
     return {
-      turnId,
+      turnId: normalizedTurnId,
       userMessageId,
       assistantMessageId,
       roomId,
@@ -3027,12 +3042,117 @@ export class SocialChatStore {
     };
   }
 
+  beginProjectGroupTurn({
+    roomId,
+    agentId,
+    text,
+    model,
+    senderAgentId = null,
+    replyTo = null,
+  }) {
+    const projectMember = this.db
+      .prepare(`
+        SELECT ps.room_id AS sessionRoomId
+        FROM social_projects AS p
+        JOIN social_project_sessions AS ps ON ps.project_id = p.id
+        WHERE p.group_room_id = ? AND p.status = 'active'
+          AND ps.agent_id = ? AND ps.status = 'active'
+        LIMIT 1
+      `)
+      .get(roomId, agentId);
+    if (!projectMember) {
+      throw new Error('项目群中的执行者必须拥有有效的成员项目会话。');
+    }
+    const turnId = randomUUID();
+    return this.db.transaction(() => {
+      const publicTurn = this.beginTurn({
+        roomId,
+        agentId,
+        text,
+        model,
+        turnId,
+        senderAgentId,
+        replyTo,
+      });
+      const sessionTurn = this.beginTurn({
+        roomId: projectMember.sessionRoomId,
+        agentId,
+        text,
+        model,
+        turnId,
+        senderAgentId,
+      });
+      return {
+        ...publicTurn,
+        mirrorRoomId: projectMember.sessionRoomId,
+        mirrorUserMessageId: sessionTurn.userMessageId,
+        mirrorAssistantMessageId: sessionTurn.assistantMessageId,
+      };
+    })();
+  }
+
+  getTurnAssistantMessage(roomId, turnId, agentId) {
+    return (
+      this.db
+        .prepare(`
+        SELECT id, room_id AS roomId, turn_id AS turnId, role,
+               agent_id AS agentId, sender_agent_id AS senderAgentId,
+               content, status, attempt, model, runtime,
+               error_code AS errorCode, error_message AS errorMessage,
+               created_at AS createdAt, updated_at AS updatedAt
+        FROM social_messages
+        WHERE room_id = ? AND turn_id = ? AND role = 'assistant'
+          AND agent_id = ?
+        LIMIT 1
+      `)
+        .get(
+          requireText(roomId, '聊天空间 ID', 200),
+          requireText(turnId, '本轮 ID', 200),
+          requireText(agentId, '成员 ID', 200),
+        ) ?? null
+    );
+  }
+
+  getTurnUserMessage(roomId, turnId) {
+    return (
+      this.db
+        .prepare(`
+        SELECT id, room_id AS roomId, turn_id AS turnId, role,
+               sender_agent_id AS senderAgentId, content, status,
+               created_at AS createdAt, updated_at AS updatedAt
+        FROM social_messages
+        WHERE room_id = ? AND turn_id = ? AND role = 'user'
+        LIMIT 1
+      `)
+        .get(
+          requireText(roomId, '聊天空间 ID', 200),
+          requireText(turnId, '本轮 ID', 200),
+        ) ?? null
+    );
+  }
+
+  retryReplies(messageIds, model) {
+    if (!Array.isArray(messageIds) || messageIds.length < 2) {
+      throw new TypeError('同步重试消息 ID 无效。');
+    }
+    const ids = [...new Set(messageIds)].map((id) =>
+      requireText(id, '回复消息 ID', 200),
+    );
+    if (ids.length !== messageIds.length) {
+      throw new TypeError('同步重试消息 ID 不能重复。');
+    }
+    return this.db.transaction(() =>
+      ids.map((id) => this.retryReply(id, model)),
+    )();
+  }
+
   getContext(
     roomId,
     {
       beforeMessageId = null,
       maxMessages = MAX_CONTEXT_MESSAGES,
       maxCharacters = MAX_CONTEXT_HISTORY_CHARACTERS,
+      excludeSharedRoomId = null,
     } = {},
   ) {
     const messageLimit =
@@ -3054,9 +3174,23 @@ export class SocialChatStore {
         WHERE room_id = ? AND role IN ('user', 'assistant')
           AND status = 'complete'
           AND (? IS NULL OR seq < (SELECT seq FROM social_messages WHERE id = ?))
+          AND (
+            ? IS NULL OR NOT EXISTS (
+              SELECT 1 FROM social_messages AS shared
+              WHERE shared.turn_id = social_messages.turn_id
+                AND shared.room_id = ? AND shared.status = 'complete'
+            )
+          )
         ORDER BY seq DESC LIMIT ?
       `)
-      .all(roomId, beforeMessageId, beforeMessageId, messageLimit)
+      .all(
+        roomId,
+        beforeMessageId,
+        beforeMessageId,
+        excludeSharedRoomId,
+        excludeSharedRoomId,
+        messageLimit,
+      )
       .reverse();
     const roomLineage = this.db
       .prepare(`
@@ -3203,6 +3337,38 @@ export class SocialChatStore {
     return result.changes > 0;
   }
 
+  appendAssistantDeltas(messageIds, delta) {
+    if (!Array.isArray(messageIds) || messageIds.length < 2) {
+      throw new TypeError('同步回复 ID 无效。');
+    }
+    if (typeof delta !== 'string' || delta.length > 100_000) {
+      throw new TypeError('回复片段无效。');
+    }
+    if (delta.length === 0) return false;
+    const ids = [...new Set(messageIds)].map((id) =>
+      requireText(id, '回复消息 ID', 200),
+    );
+    if (ids.length !== messageIds.length) {
+      throw new TypeError('同步回复 ID 不能重复。');
+    }
+    const placeholders = ids.map(() => '?').join(', ');
+    const now = isoNow();
+    return this.db.transaction(() => {
+      const streaming = this.db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM social_messages WHERE id IN (${placeholders}) AND status = 'streaming'`,
+        )
+        .get(...ids).count;
+      if (streaming !== ids.length) return false;
+      const updated = this.db
+        .prepare(
+          `UPDATE social_messages SET content = content || ?, updated_at = ? WHERE id IN (${placeholders}) AND status = 'streaming'`,
+        )
+        .run(delta, now, ...ids);
+      return updated.changes === ids.length;
+    })();
+  }
+
   completeReply(messageId) {
     const now = isoNow();
     return (
@@ -3214,6 +3380,31 @@ export class SocialChatStore {
       `)
         .run(now, messageId).changes > 0
     );
+  }
+
+  completeReplies(messageIds) {
+    const ids = [...new Set(messageIds)].map((id) =>
+      requireText(id, '回复消息 ID', 200),
+    );
+    if (!ids.length || ids.length !== messageIds.length) {
+      throw new TypeError('同步回复 ID 无效。');
+    }
+    const placeholders = ids.map(() => '?').join(', ');
+    const now = isoNow();
+    return this.db.transaction(() => {
+      const streaming = this.db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM social_messages WHERE id IN (${placeholders}) AND status = 'streaming'`,
+        )
+        .get(...ids).count;
+      if (streaming !== ids.length) return false;
+      const updated = this.db
+        .prepare(
+          `UPDATE social_messages SET status = 'complete', updated_at = ?, error_code = NULL, error_message = NULL WHERE id IN (${placeholders}) AND status = 'streaming'`,
+        )
+        .run(now, ...ids);
+      return updated.changes === ids.length;
+    })();
   }
 
   interruptReply(messageId) {
@@ -3228,6 +3419,31 @@ export class SocialChatStore {
       `)
         .run(now, messageId).changes > 0
     );
+  }
+
+  interruptReplies(messageIds) {
+    const ids = [...new Set(messageIds)].map((id) =>
+      requireText(id, '回复消息 ID', 200),
+    );
+    if (!ids.length || ids.length !== messageIds.length) {
+      throw new TypeError('同步回复 ID 无效。');
+    }
+    const placeholders = ids.map(() => '?').join(', ');
+    const now = isoNow();
+    return this.db.transaction(() => {
+      const streaming = this.db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM social_messages WHERE id IN (${placeholders}) AND status = 'streaming'`,
+        )
+        .get(...ids).count;
+      if (streaming !== ids.length) return false;
+      const updated = this.db
+        .prepare(
+          `UPDATE social_messages SET status = 'interrupted', error_code = 'interrupted', error_message = '已停止生成；已有内容已保留。', updated_at = ? WHERE id IN (${placeholders}) AND status = 'streaming'`,
+        )
+        .run(now, ...ids);
+      return updated.changes === ids.length;
+    })();
   }
 
   failReply(messageId, code, message) {
@@ -3246,6 +3462,36 @@ export class SocialChatStore {
           messageId,
         ).changes > 0
     );
+  }
+
+  failReplies(messageIds, code, message) {
+    const ids = [...new Set(messageIds)].map((id) =>
+      requireText(id, '回复消息 ID', 200),
+    );
+    if (!ids.length || ids.length !== messageIds.length) {
+      throw new TypeError('同步回复 ID 无效。');
+    }
+    const placeholders = ids.map(() => '?').join(', ');
+    const now = isoNow();
+    return this.db.transaction(() => {
+      const streaming = this.db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM social_messages WHERE id IN (${placeholders}) AND status = 'streaming'`,
+        )
+        .get(...ids).count;
+      if (streaming !== ids.length) return false;
+      const updated = this.db
+        .prepare(
+          `UPDATE social_messages SET status = 'failed', error_code = ?, error_message = ?, updated_at = ? WHERE id IN (${placeholders}) AND status = 'streaming'`,
+        )
+        .run(
+          String(code).slice(0, 100),
+          String(message).slice(0, 2_000),
+          now,
+          ...ids,
+        );
+      return updated.changes === ids.length;
+    })();
   }
 
   retryReply(messageId, model, interactionAdjustmentSnapshots = []) {

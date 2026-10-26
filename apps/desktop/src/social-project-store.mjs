@@ -139,6 +139,7 @@ export class SocialProjectStore {
     const row = this.db
       .prepare(`
         SELECT p.id AS projectId, p.title, p.brief, p.status AS projectStatus,
+               p.group_room_id AS groupRoomId,
                ps.agent_id AS agentId, ps.room_id AS sessionRoomId,
                ps.status AS membershipStatus
         FROM social_project_sessions AS ps
@@ -163,6 +164,7 @@ export class SocialProjectStore {
       status: row.projectStatus,
       agentId: row.agentId,
       roomId: row.sessionRoomId,
+      groupRoomId: row.groupRoomId,
     };
   }
 

@@ -263,7 +263,7 @@ test('a project-group mention uses only that member project session plus public 
   });
 
   try {
-    service.sendMessage({
+    const sent = service.sendMessage({
       roomId: project.groupRoomId,
       agentId: 'engineering-partner',
       text: '@工程搭档 请继续核对。',
@@ -276,6 +276,124 @@ test('a project-group mention uses only that member project session plus public 
     assert.match(prompt, /@工程搭档 请继续核对/);
     assert.doesNotMatch(prompt, /其他成员的私有项目记录/);
     assert.doesNotMatch(prompt, /目标成员的常驻私聊/);
+    const publicAssistant = store.getSocialMessage(sent.messageId);
+    const privateSession = store.getRoomSnapshot(target.room.room.id);
+    const mirroredUser = privateSession.messages.find(
+      (message) =>
+        message.turnId === publicAssistant.turnId && message.role === 'user',
+    );
+    const mirroredAssistant = privateSession.messages.find(
+      (message) =>
+        message.turnId === publicAssistant.turnId &&
+        message.role === 'assistant',
+    );
+    assert.equal(mirroredUser?.content, '@工程搭档 请继续核对。');
+    assert.equal(mirroredAssistant?.content, publicAssistant.content);
+    assert.equal(mirroredAssistant?.status, publicAssistant.status);
+    assert.equal(mirroredAssistant?.status, 'complete');
+
+    service.sendMessage({
+      roomId: project.groupRoomId,
+      agentId: 'engineering-partner',
+      text: '@工程搭档 继续提交下一步。',
+    });
+    await service.active.get(project.groupRoomId)?.done;
+    const secondPrompt = JSON.stringify(seenRequests[1]?.messages ?? []);
+    assert.equal(secondPrompt.split('@工程搭档 请继续核对。').length - 1, 1);
+    assert.equal(
+      secondPrompt.split('我会按群里的决定继续核对。').length - 1,
+      1,
+    );
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});
+
+test('project-group turns keep the group and member session retry/stop state paired', async () => {
+  const db = new Database(':memory:');
+  new RootStore(db);
+  const store = createSocialTestStore(db);
+  const projectStore = new SocialProjectStore({ db, socialChatStore: store });
+  const project = projectStore.createProject({
+    title: '成对项目记录',
+    brief: '群聊消息与成员执行上下文应共同保留。',
+    agentIds: ['noema', 'engineering-partner'],
+  });
+  const projectSession = projectStore.getProjectSession(
+    project.id,
+    'engineering-partner',
+  );
+  let requestCount = 0;
+  const service = new SocialChatService({
+    store,
+    provider: {
+      async *streamChat(input) {
+        requestCount += 1;
+        if (requestCount === 1) throw new Error('临时失败。');
+        if (requestCount === 2) {
+          yield '保留这段已生成内容。';
+          await new Promise((resolve) =>
+            input.signal.addEventListener('abort', resolve, { once: true }),
+          );
+          input.signal.throwIfAborted();
+        }
+        yield '恢复后完成。';
+      },
+    },
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'test-model',
+    getRootState: async () => ({
+      connected: true,
+      selectedModel: 'test-model',
+    }),
+    projectStore,
+    getProjectSessionContext: (roomId, agentId) =>
+      projectStore.getProjectSessionContext(roomId, agentId),
+  });
+
+  try {
+    const first = service.sendMessage({
+      roomId: project.groupRoomId,
+      agentId: 'engineering-partner',
+      text: '@工程搭档 完成这项工作。',
+    });
+    await service.active.get(project.groupRoomId)?.done;
+    const publicFailed = store.getSocialMessage(first.messageId);
+    const sessionAfterFailure = store.getRoomSnapshot(
+      projectSession.room.room.id,
+    );
+    const privateFailed = sessionAfterFailure.messages.find(
+      (message) =>
+        message.turnId === publicFailed.turnId && message.role === 'assistant',
+    );
+    assert.equal(publicFailed.status, 'failed');
+    assert.equal(privateFailed?.status, 'failed');
+    assert.equal(privateFailed?.content, publicFailed.content);
+
+    const retried = service.retryReply(privateFailed.id);
+    assert.equal(retried.messageId, privateFailed.id);
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      const privateMessage = store.getSocialMessage(privateFailed.id);
+      if (privateMessage.content) break;
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    assert.equal(service.stopReply(first.messageId), true);
+    await service.active.get(project.groupRoomId)?.done;
+    const publicStopped = store.getSocialMessage(first.messageId);
+    const privateStopped = store.getSocialMessage(privateFailed.id);
+    assert.equal(publicStopped.status, 'interrupted');
+    assert.equal(privateStopped.status, 'interrupted');
+    assert.equal(privateStopped.content, publicStopped.content);
+
+    service.retryReply(first.messageId);
+    await service.active.get(project.groupRoomId)?.done;
+    const publicComplete = store.getSocialMessage(first.messageId);
+    const privateComplete = store.getSocialMessage(privateFailed.id);
+    assert.equal(publicComplete.status, 'complete');
+    assert.equal(privateComplete.status, 'complete');
+    assert.equal(privateComplete.content, publicComplete.content);
+    assert.equal(requestCount, 3);
   } finally {
     await service.shutdown();
     db.close();
@@ -840,6 +958,42 @@ test('Noema forms a project team, assigns visible group work, and reviews member
       (message) => message.role === 'user' && message.senderAgentId === 'noema',
     );
     assert.equal(assignments.length, 2);
+    for (const member of project.members.filter(
+      (item) => item.agentId !== 'noema',
+    )) {
+      const memberId = member.agentId;
+      const session = projectStore.getProjectSession(project.id, memberId);
+      const sessionMessages = store.getRoomSnapshot(
+        session.room.room.id,
+      ).messages;
+      const mirroredAssignment = assignments.find((assignment) =>
+        sessionMessages.some(
+          (message) =>
+            message.turnId === assignment.turnId && message.role === 'user',
+        ),
+      );
+      assert.ok(mirroredAssignment);
+      const groupAssistant = group.messages.find(
+        (message) =>
+          message.role === 'assistant' &&
+          message.agentId === memberId &&
+          message.turnId === mirroredAssignment.turnId,
+      );
+      const sessionAssignment = sessionMessages.find(
+        (message) =>
+          message.role === 'user' &&
+          message.turnId === mirroredAssignment.turnId,
+      );
+      const sessionAssistant = sessionMessages.find(
+        (message) =>
+          message.role === 'assistant' &&
+          message.turnId === mirroredAssignment.turnId,
+      );
+      assert.ok(groupAssistant);
+      assert.equal(sessionAssignment?.senderAgentId, 'noema');
+      assert.equal(sessionAssistant?.content, groupAssistant?.content);
+      assert.equal(sessionAssistant?.status, groupAssistant?.status);
+    }
     assert.deepEqual(
       assignments.map((message) => message.content),
       [

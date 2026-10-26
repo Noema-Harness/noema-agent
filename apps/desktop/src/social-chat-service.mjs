@@ -364,6 +364,9 @@ export class SocialChatService {
         model,
         replyTo,
       });
+    if (projectContext?.groupRoomId === roomId) {
+      this.projectStore?.assertWorkAllowed(roomId);
+    }
     const turn = review
       ? this.projectStore.submitReview({
           reviewId: review.id,
@@ -372,7 +375,15 @@ export class SocialChatService {
           beginTurn: (current, feedback) =>
             beginTurn(`对「${current.projectTitle}」的评审反馈：\n${feedback}`),
         }).turn
-      : beginTurn(text);
+      : projectContext?.groupRoomId === roomId && agentId !== 'noema'
+        ? this.store.beginProjectGroupTurn({
+            roomId,
+            agentId,
+            text,
+            model,
+            replyTo,
+          })
+        : beginTurn(text);
     const controller = new AbortController();
     const run = {
       ...turn,
@@ -381,11 +392,26 @@ export class SocialChatService {
       forwardedSources: [],
       replyTo,
       projectContext,
+      mirrorRoomId: turn.mirrorRoomId ?? null,
+      mirrorUserMessageId: turn.mirrorUserMessageId ?? null,
+      mirrorAssistantMessageId: turn.mirrorAssistantMessageId ?? null,
       done: null,
     };
     run.done = this.runTurn(run);
     this.active.set(roomId, run);
+    if (run.mirrorRoomId) this.active.set(run.mirrorRoomId, run);
     this.emit({ type: 'chat-turn-started', ...turn });
+    if (run.mirrorRoomId) {
+      this.emit({
+        type: 'chat-turn-started',
+        turnId: turn.turnId,
+        userMessageId: turn.mirrorUserMessageId,
+        assistantMessageId: turn.mirrorAssistantMessageId,
+        roomId: run.mirrorRoomId,
+        agentId,
+        model,
+      });
+    }
     if (review) {
       const project = this.projectStore.getProject(review.projectId);
       this.emit({
@@ -421,8 +447,18 @@ export class SocialChatService {
     if (specialist.archivedAt || specialist.id === 'noema') {
       throw new Error('项目成员已归档或无效。');
     }
+    if (
+      this.active.has(projectContext.roomId) ||
+      this.store.hasStreamingReply(projectContext.roomId)
+    ) {
+      return {
+        delivered: false,
+        status: 'busy',
+        report: '该成员的项目会话正有回复生成；本次分工未投递。',
+      };
+    }
     const model = this.requireReadyModel();
-    const turn = this.store.beginTurn({
+    const turn = this.store.beginProjectGroupTurn({
       roomId,
       agentId,
       senderAgentId: 'noema',
@@ -444,13 +480,26 @@ export class SocialChatService {
       forwardedSources: [],
       replyTo: null,
       projectContext,
+      mirrorRoomId: turn.mirrorRoomId,
+      mirrorUserMessageId: turn.mirrorUserMessageId,
+      mirrorAssistantMessageId: turn.mirrorAssistantMessageId,
       done: null,
     };
     this.active.set(roomId, run);
+    this.active.set(run.mirrorRoomId, run);
     run.done = this.runTurn(run).finally(() => {
       parentSignal.removeEventListener('abort', abortWithParent);
     });
     this.emit({ type: 'chat-turn-started', ...turn });
+    this.emit({
+      type: 'chat-turn-started',
+      turnId: turn.turnId,
+      userMessageId: turn.mirrorUserMessageId,
+      assistantMessageId: turn.mirrorAssistantMessageId,
+      roomId: run.mirrorRoomId,
+      agentId,
+      model,
+    });
     await run.done;
     parentSignal.throwIfAborted();
     const reply = this.store.getSocialMessage(turn.assistantMessageId);
@@ -486,28 +535,93 @@ export class SocialChatService {
       assistant?.role === 'assistant'
         ? this.getProjectSessionContext(assistant.roomId, assistant.agentId)
         : null;
-    const turn = this.store.retryReply(messageId, model);
+    let turn;
+    let mirrorUserMessageId = null;
+    let publicRoomId = null;
+    let publicAssistantMessageId = null;
+    const projectGroupId = projectContext?.groupRoomId;
+    if (projectGroupId) {
+      const sessionRoomId = projectContext.roomId;
+      const otherRoomId =
+        assistant.roomId === projectGroupId ? sessionRoomId : projectGroupId;
+      const counterpart = this.store.getTurnAssistantMessage(
+        otherRoomId,
+        assistant.turnId,
+        assistant.agentId,
+      );
+      if (counterpart) {
+        publicRoomId = projectGroupId;
+        mirrorUserMessageId =
+          this.store.getTurnUserMessage(sessionRoomId, assistant.turnId)?.id ??
+          null;
+        const publicUserMessageId =
+          this.store.getTurnUserMessage(publicRoomId, assistant.turnId)?.id ??
+          null;
+        if (!mirrorUserMessageId || !publicUserMessageId) {
+          throw new Error(
+            '群聊与成员项目会话的用户消息记录不完整，暂不能重试。',
+          );
+        }
+        const retried = this.store.retryReplies(
+          [assistant.id, counterpart.id],
+          model,
+        );
+        turn = retried[0];
+        publicAssistantMessageId =
+          assistant.roomId === publicRoomId ? assistant.id : counterpart.id;
+        turn = {
+          ...turn,
+          roomId: publicRoomId,
+          assistantMessageId: publicAssistantMessageId,
+          userMessageId: publicUserMessageId,
+          mirrorRoomId: sessionRoomId,
+          mirrorAssistantMessageId:
+            assistant.roomId === sessionRoomId ? assistant.id : counterpart.id,
+          mirrorUserMessageId,
+        };
+      }
+    }
+    if (!publicRoomId) {
+      turn = this.store.retryReply(messageId, model);
+    }
     const controller = new AbortController();
     const run = {
       ...turn,
-      assistantMessageId: messageId,
+      assistantMessageId: turn.mirrorRoomId
+        ? turn.assistantMessageId
+        : messageId,
       controller,
       text: turn.userText,
       forwardedSources: turn.forwardedSources,
       replyTo: turn.replyTo,
       projectContext,
+      mirrorRoomId: turn.mirrorRoomId ?? null,
+      mirrorUserMessageId: turn.mirrorUserMessageId ?? null,
+      mirrorAssistantMessageId: turn.mirrorAssistantMessageId ?? null,
       done: null,
     };
     run.done = this.runTurn(run);
     this.active.set(turn.roomId, run);
+    if (run.mirrorRoomId) this.active.set(run.mirrorRoomId, run);
     this.emit({
       type: 'chat-turn-started',
       turnId: turn.turnId,
-      assistantMessageId: messageId,
+      assistantMessageId: run.assistantMessageId,
       roomId: turn.roomId,
       agentId: turn.agentId,
       model,
     });
+    if (run.mirrorRoomId) {
+      this.emit({
+        type: 'chat-turn-started',
+        turnId: turn.turnId,
+        userMessageId: run.mirrorUserMessageId,
+        assistantMessageId: run.mirrorAssistantMessageId,
+        roomId: run.mirrorRoomId,
+        agentId: turn.agentId,
+        model,
+      });
+    }
     return { turnId: turn.turnId, messageId };
   }
 
@@ -526,6 +640,62 @@ export class SocialChatService {
       );
     }
     return model;
+  }
+
+  assistantMessageIds(run) {
+    return [
+      run.assistantMessageId,
+      ...(run.mirrorAssistantMessageId ? [run.mirrorAssistantMessageId] : []),
+    ];
+  }
+
+  appendRunAssistantDelta(run, delta) {
+    const ids = this.assistantMessageIds(run);
+    const written =
+      ids.length > 1
+        ? this.store.appendAssistantDeltas(ids, delta)
+        : this.store.appendAssistantDelta(ids[0], delta);
+    if (written && run.mirrorRoomId) {
+      this.emit({
+        type: 'chat-message-delta',
+        roomId: run.mirrorRoomId,
+        messageId: run.mirrorAssistantMessageId,
+        delta,
+      });
+    }
+    return written;
+  }
+
+  setRunReplyStatus(run, status, code = null, message = null) {
+    const ids = this.assistantMessageIds(run);
+    if (ids.length > 1) {
+      if (status === 'complete') return this.store.completeReplies(ids);
+      if (status === 'interrupted') return this.store.interruptReplies(ids);
+      if (status === 'failed')
+        return this.store.failReplies(ids, code, message);
+      throw new TypeError('项目回复状态无效。');
+    }
+    if (status === 'complete') return this.store.completeReply(ids[0]);
+    if (status === 'interrupted') return this.store.interruptReply(ids[0]);
+    if (status === 'failed') return this.store.failReply(ids[0], code, message);
+    throw new TypeError('项目回复状态无效。');
+  }
+
+  emitRunEvent(run, type, payload = {}) {
+    this.emit({
+      type,
+      roomId: run.roomId,
+      messageId: run.assistantMessageId,
+      ...payload,
+    });
+    if (run.mirrorRoomId) {
+      this.emit({
+        type,
+        roomId: run.mirrorRoomId,
+        messageId: run.mirrorAssistantMessageId,
+        ...payload,
+      });
+    }
   }
 
   async delegateToSpecialist({ specialist, task, model, parentSignal }) {
@@ -654,10 +824,11 @@ export class SocialChatService {
         run.projectContext.roomId !== roomId,
       );
       const projectSessionHistory = isProjectGroupRoute
-        ? this.store.getContext(
-            run.projectContext.roomId,
-            PROJECT_GROUP_SESSION_CONTEXT,
-          )
+        ? this.store.getContext(run.projectContext.roomId, {
+            ...PROJECT_GROUP_SESSION_CONTEXT,
+            beforeMessageId: run.mirrorUserMessageId ?? null,
+            excludeSharedRoomId: run.projectContext.groupRoomId,
+          })
         : [];
       const roomHistory = this.store.getContext(
         roomId,
@@ -885,7 +1056,7 @@ export class SocialChatService {
       })) {
         controller.signal.throwIfAborted();
         content += delta;
-        if (!this.store.appendAssistantDelta(assistantMessageId, delta)) {
+        if (!this.appendRunAssistantDelta(run, delta)) {
           throw new FreeLLMAPIError(
             'reply_not_streaming',
             '本轮回复已停止写入。',
@@ -939,7 +1110,7 @@ export class SocialChatService {
               '评审问题无效；没有创建评审。',
             );
           const delta = `${content.trim() ? '\n\n' : ''}请评审「${projectInfo.title}」：\n${input.question.trim()}`;
-          if (!this.store.appendAssistantDelta(assistantMessageId, delta))
+          if (!this.appendRunAssistantDelta(run, delta))
             throw new FreeLLMAPIError(
               'reply_not_streaming',
               '本轮回复已停止写入。',
@@ -1038,7 +1209,7 @@ export class SocialChatService {
             controller.signal.throwIfAborted();
             followUpContent += delta;
             content += delta;
-            if (!this.store.appendAssistantDelta(assistantMessageId, delta)) {
+            if (!this.appendRunAssistantDelta(run, delta)) {
               throw new FreeLLMAPIError(
                 'reply_not_streaming',
                 '本轮回复已停止写入。',
@@ -1087,20 +1258,20 @@ export class SocialChatService {
           controller.signal.throwIfAborted();
           const result = await this.startProjectWork(
             {
-              roomId,
+              roomId: isProjectGroupRoute ? run.projectContext.roomId : roomId,
               agentId: executor.id,
               dispatchFromNoema: agentId === 'noema',
               prompt: input.task.trim(),
-              sourceMessageId: run.userMessageId,
+              sourceMessageId: isProjectGroupRoute
+                ? run.mirrorUserMessageId
+                : run.userMessageId,
             },
             controller.signal,
           );
           const statusText = result.accepted
             ? '已从这条对话启动项目工作。执行者、工作区和结果会显示在原请求附近。'
             : result.reason || '没有启动项目工作。';
-          if (
-            !this.store.appendAssistantDelta(assistantMessageId, statusText)
-          ) {
+          if (!this.appendRunAssistantDelta(run, statusText)) {
             throw new FreeLLMAPIError(
               'reply_not_streaming',
               '本轮回复已停止写入。',
@@ -1387,7 +1558,7 @@ export class SocialChatService {
             controller.signal.throwIfAborted();
             followUpContent += delta;
             content += delta;
-            if (!this.store.appendAssistantDelta(assistantMessageId, delta)) {
+            if (!this.appendRunAssistantDelta(run, delta)) {
               throw new FreeLLMAPIError(
                 'reply_not_streaming',
                 'Noema 的项目启动汇报没有完成保存。',
@@ -1420,11 +1591,8 @@ export class SocialChatService {
         );
       }
       controller.signal.throwIfAborted();
-      if (!this.store.completeReply(assistantMessageId)) return;
-      this.emit({
-        type: 'chat-turn-completed',
-        roomId,
-        messageId: assistantMessageId,
+      if (!this.setRunReplyStatus(run, 'complete')) return;
+      this.emitRunEvent(run, 'chat-turn-completed', {
         empty: content.trim().length === 0,
       });
     } catch (error) {
@@ -1432,44 +1600,37 @@ export class SocialChatService {
         controller.signal.aborted || error?.name === 'AbortError';
       const message = safeError(error);
       if (interrupted) {
-        if (this.store.interruptReply(assistantMessageId)) {
-          this.emit({
-            type: 'chat-turn-interrupted',
-            roomId,
-            messageId: assistantMessageId,
-            message,
-          });
+        if (this.setRunReplyStatus(run, 'interrupted')) {
+          this.emitRunEvent(run, 'chat-turn-interrupted', { message });
         }
       } else {
         const code =
           typeof error?.code === 'string' ? error.code : 'chat_error';
-        this.store.failReply(assistantMessageId, code, message);
-        this.emit({
-          type: 'chat-turn-failed',
-          roomId,
-          messageId: assistantMessageId,
-          code,
-          message,
-        });
+        this.setRunReplyStatus(run, 'failed', code, message);
+        this.emitRunEvent(run, 'chat-turn-failed', { code, message });
       }
     } finally {
       if (this.active.get(roomId) === run) this.active.delete(roomId);
       this.emit({ type: 'chat-state-updated', roomId });
+      if (run.mirrorRoomId) {
+        if (this.active.get(run.mirrorRoomId) === run)
+          this.active.delete(run.mirrorRoomId);
+        this.emit({ type: 'chat-state-updated', roomId: run.mirrorRoomId });
+      }
     }
   }
 
   stopReply(messageId) {
     for (const run of this.active.values()) {
-      if (run.assistantMessageId !== messageId) continue;
+      if (!this.assistantMessageIds(run).includes(messageId)) continue;
       run.controller.abort();
-      if (this.store.interruptReply(messageId)) {
-        this.emit({
-          type: 'chat-turn-interrupted',
-          roomId: run.roomId,
-          messageId,
+      if (this.setRunReplyStatus(run, 'interrupted')) {
+        this.emitRunEvent(run, 'chat-turn-interrupted', {
           message: '已停止生成；已有内容已保留。',
         });
         this.emit({ type: 'chat-state-updated', roomId: run.roomId });
+        if (run.mirrorRoomId)
+          this.emit({ type: 'chat-state-updated', roomId: run.mirrorRoomId });
       }
       return true;
     }

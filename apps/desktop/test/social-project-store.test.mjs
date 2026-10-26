@@ -229,6 +229,7 @@ test('project session lookup is tied to one active member and excludes archived 
         status: 'active',
         agentId: member.agentId,
         roomId: sessionRoomId,
+        groupRoomId: project.groupRoomId,
       },
     );
     assert.deepEqual(
@@ -243,6 +244,7 @@ test('project session lookup is tied to one active member and excludes archived 
         status: 'active',
         agentId: member.agentId,
         roomId: sessionRoomId,
+        groupRoomId: project.groupRoomId,
       },
     );
     assert.equal(
