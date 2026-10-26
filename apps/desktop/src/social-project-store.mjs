@@ -556,7 +556,7 @@ export class SocialProjectStore {
       .map(({ id }) => this.getReview(id));
   }
 
-  requestReview({ projectId, messageId, question }) {
+  requestReview({ projectId, messageId, question, completeMessage = true }) {
     const normalizedQuestion = requireText(question, '评审问题', 8_000);
     requireText(messageId, '评审消息 ID', 200);
     return this.db.transaction(() => {
@@ -580,7 +580,7 @@ export class SocialProjectStore {
         const review = this.getReview(existing.id);
         if (review.projectId !== projectId)
           throw new Error('这条消息已关联另一个项目的评审。');
-        if (message.status === 'streaming')
+        if (completeMessage && message.status === 'streaming')
           this.socialChatStore.completeReply(messageId);
         return review;
       }
@@ -615,7 +615,7 @@ export class SocialProjectStore {
           "UPDATE social_projects SET status = 'awaiting_user', updated_at = ? WHERE id = ?",
         )
         .run(now, projectId);
-      if (message.status === 'streaming')
+      if (completeMessage && message.status === 'streaming')
         this.socialChatStore.completeReply(messageId);
       return this.getReview(id);
     })();

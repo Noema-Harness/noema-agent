@@ -563,6 +563,105 @@ test('an interrupted Noema report waits for explicit retry and reuses its stored
   }
 });
 
+test('a necessary project review pauses continuation until explicit feedback', async () => {
+  const db = new Database(':memory:');
+  new RootStore(db);
+  const store = createSocialTestStore(db);
+  const projectStore = new SocialProjectStore({ db, socialChatStore: store });
+  const project = projectStore.createProject({
+    title: '需要用户判断的阶段',
+    brief: '选择是否接受一项有明显产品影响的改动。',
+    agentIds: ['noema', 'engineering-partner'],
+  });
+  const requests = [];
+  const service = new SocialChatService({
+    store,
+    provider: {
+      async *streamChat(input) {
+        requests.push(input);
+        if (requests.length === 1) {
+          yield '成员提交了阶段结果。';
+          return;
+        }
+        if (requests.length === 2) {
+          assert.ok(
+            input.messages.some((message) =>
+              message.content.includes('"type":"noema_project_member_report"'),
+            ),
+          );
+          input.onToolCalls?.([
+            {
+              id: 'call-review-project-stage',
+              type: 'function',
+              function: {
+                name: 'request_project_review',
+                arguments: JSON.stringify({
+                  project_id: project.id,
+                  question: '是否接受会改变核心交互的方案？',
+                }),
+              },
+            },
+          ]);
+          return;
+        }
+        yield '收到反馈，项目继续。';
+      },
+    },
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'test-model',
+    getRootState: async () => ({
+      connected: true,
+      selectedModel: 'test-model',
+    }),
+    projectStore,
+    getProjectSessionContext: (roomId, agentId) =>
+      projectStore.getProjectSessionContext(roomId, agentId),
+  });
+
+  try {
+    service.sendMessage({
+      roomId: project.groupRoomId,
+      agentId: 'engineering-partner',
+      text: '@工程搭档 完成阶段工作并指出仍需决定的问题。',
+    });
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      if (projectStore.getProject(project.id).pendingReview) break;
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    const review = projectStore.listReviewsForRoom('room-noema')[0];
+    assert.equal(projectStore.getProject(project.id).status, 'awaiting_user');
+    assert.equal(review?.status, 'pending');
+    assert.equal(
+      db.prepare('SELECT status FROM social_project_reports').get().status,
+      'completed',
+    );
+    assert.throws(
+      () =>
+        service.sendMessage({
+          roomId: project.groupRoomId,
+          agentId: 'engineering-partner',
+          text: '继续下一步',
+        }),
+      /等待用户评审/u,
+    );
+
+    const feedback = service.sendMessage({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      reviewRequestId: review.id,
+      text: '接受该方向，请继续。',
+    });
+    await service.active.get('room-noema')?.done;
+    assert.equal(projectStore.getProject(project.id).status, 'active');
+    assert.equal(projectStore.getReview(review.id).status, 'answered');
+    assert.equal(store.getSocialMessage(feedback.messageId).status, 'complete');
+    assert.equal(requests.length, 3);
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});
+
 test('Noema does not overtake a queued public group message with an internal assignment', async () => {
   const db = new Database(':memory:');
   new RootStore(db);

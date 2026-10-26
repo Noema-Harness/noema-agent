@@ -1382,6 +1382,7 @@ export class SocialChatService {
               projectId: input.project_id,
               messageId: assistantMessageId,
               question: input.question,
+              completeMessage: !run.isProjectReportTurn,
             });
           } catch (error) {
             throw new FreeLLMAPIError('review_request_invalid', error.message);
@@ -1398,6 +1399,15 @@ export class SocialChatService {
             projectId: project.id,
             groupRoomId: project.groupRoomId,
           });
+          if (
+            run.isProjectReportTurn &&
+            !this.setRunReplyStatus(run, 'complete')
+          ) {
+            throw new FreeLLMAPIError(
+              'reply_not_streaming',
+              '评审请求已保存，但 Noema 的成员报告状态未能完成保存。',
+            );
+          }
           this.emit({
             type: 'chat-turn-completed',
             roomId,
