@@ -637,6 +637,38 @@ export class SocialChatStore {
         `);
       })();
     }
+    if (current < 19) {
+      this.db.transaction(() => {
+        this.db.exec(`
+          CREATE TABLE social_project_reports (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL REFERENCES social_projects(id) ON DELETE CASCADE,
+            source_turn_id TEXT NOT NULL UNIQUE,
+            source_user_message_id TEXT NOT NULL
+              REFERENCES social_messages(id) ON DELETE RESTRICT,
+            source_group_assistant_message_id TEXT NOT NULL
+              REFERENCES social_messages(id) ON DELETE RESTRICT,
+            agent_id TEXT NOT NULL REFERENCES social_agents(id) ON DELETE RESTRICT,
+            group_room_id TEXT NOT NULL REFERENCES social_rooms(id) ON DELETE CASCADE,
+            session_room_id TEXT NOT NULL REFERENCES social_rooms(id) ON DELETE RESTRICT,
+            status TEXT NOT NULL DEFAULT 'pending'
+              CHECK (status IN ('pending', 'processing', 'completed', 'interrupted', 'failed')),
+            noema_assistant_message_id TEXT UNIQUE
+              REFERENCES social_messages(id) ON DELETE SET NULL,
+            error_code TEXT,
+            error_message TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            completed_at TEXT,
+            CHECK ((status = 'completed') = (completed_at IS NOT NULL))
+          );
+          CREATE INDEX social_project_reports_status_order
+            ON social_project_reports(status, created_at, id);
+          INSERT INTO social_schema_migrations (version, applied_at)
+          VALUES (19, '${isoNow()}');
+        `);
+      })();
+    }
   }
 
   seedInitialSocialModel() {
@@ -727,7 +759,7 @@ export class SocialChatStore {
 
   recoverInterruptedReplies() {
     const now = isoNow();
-    return this.db
+    const recovered = this.db
       .prepare(`
         UPDATE social_messages
         SET status = 'interrupted',
@@ -737,6 +769,19 @@ export class SocialChatStore {
         WHERE status = 'streaming'
       `)
       .run(now).changes;
+    this.db
+      .prepare(`
+        UPDATE social_project_reports
+        SET status = 'interrupted', updated_at = ?,
+            error_code = 'app_restarted',
+            error_message = '应用在处理成员报告前关闭；可在 Noema 回复中重试。'
+        WHERE status = 'processing'
+          AND noema_assistant_message_id IN (
+            SELECT id FROM social_messages WHERE status = 'interrupted'
+          )
+      `)
+      .run(now);
+    return recovered;
   }
 
   listAgents() {
@@ -3235,6 +3280,7 @@ export class SocialChatStore {
                i.session_room_id AS sessionRoomId,
                i.group_user_message_id AS userMessageId,
                group_message.content AS text,
+               group_message.sender_agent_id AS senderAgentId,
                group_message.reply_to_json AS replyToJson,
                i.queued_at AS queuedAt
         FROM social_project_group_inbox AS i
@@ -3271,6 +3317,7 @@ export class SocialChatStore {
                  i.session_room_id AS sessionRoomId,
                  i.group_user_message_id AS userMessageId,
                  group_message.content AS text,
+                 group_message.sender_agent_id AS senderAgentId,
                  group_message.reply_to_json AS replyToJson,
                  i.queued_at AS queuedAt
           FROM social_project_group_inbox AS i
@@ -3380,7 +3427,67 @@ export class SocialChatStore {
         forwardedSources: [],
         interactionAdjustmentIds: [],
         interactionAdjustmentSnapshots: [],
+        projectReport:
+          pending.senderAgentId === null
+            ? {
+                projectId: pending.projectId,
+                sourceTurnId: pending.turnId,
+                sourceUserMessageId: pending.userMessageId,
+                sourceGroupAssistantMessageId: assistantMessageId,
+                agentId: pending.agentId,
+                groupRoomId: pending.roomId,
+                sessionRoomId: pending.sessionRoomId,
+              }
+            : null,
       };
+    })();
+  }
+
+  getProjectReportByAssistantMessage(messageId) {
+    return (
+      this.db
+        .prepare(`
+      SELECT pr.id AS reportId, pr.project_id AS projectId,
+             p.title AS projectTitle, p.brief AS projectBrief,
+             p.source_message_id AS sourceMessageId,
+             origin.content AS sourceRequest,
+             pr.source_turn_id AS sourceTurnId,
+             pr.source_user_message_id AS sourceUserMessageId,
+             source.content AS sourceUserText,
+             pr.source_group_assistant_message_id AS sourceAssistantMessageId,
+             outcome.content AS memberReport,
+             a.name AS agentName, pr.agent_id AS agentId,
+             pr.group_room_id AS groupRoomId,
+             pr.session_room_id AS sessionRoomId,
+             pr.status
+      FROM social_project_reports AS pr
+      JOIN social_projects AS p ON p.id = pr.project_id
+      LEFT JOIN social_messages AS origin ON origin.id = p.source_message_id
+      JOIN social_messages AS source ON source.id = pr.source_user_message_id
+      JOIN social_messages AS outcome ON outcome.id = pr.source_group_assistant_message_id
+      JOIN social_agents AS a ON a.id = pr.agent_id
+      WHERE pr.noema_assistant_message_id = ?
+    `)
+        .get(requireText(messageId, '回复消息 ID', 200)) ?? null
+    );
+  }
+
+  retryProjectReport(messageId, model) {
+    return this.db.transaction(() => {
+      const turn = this.retryReply(messageId, model);
+      const now = isoNow();
+      const reopened = this.db
+        .prepare(`
+        UPDATE social_project_reports
+        SET status = 'processing', error_code = NULL, error_message = NULL,
+            updated_at = ?, completed_at = NULL
+        WHERE noema_assistant_message_id = ? AND status IN ('interrupted', 'failed')
+      `)
+        .run(now, messageId);
+      if (reopened.changes !== 1) {
+        throw new Error('成员报告状态已变化，不能重复重试。');
+      }
+      return turn;
     })();
   }
 
@@ -3679,7 +3786,7 @@ export class SocialChatStore {
     );
   }
 
-  completeReplies(messageIds) {
+  completeReplies(messageIds, projectReport = null) {
     const ids = [...new Set(messageIds)].map((id) =>
       requireText(id, '回复消息 ID', 200),
     );
@@ -3700,7 +3807,199 @@ export class SocialChatStore {
           `UPDATE social_messages SET status = 'complete', updated_at = ?, error_code = NULL, error_message = NULL WHERE id IN (${placeholders}) AND status = 'streaming'`,
         )
         .run(now, ...ids);
-      return updated.changes === ids.length;
+      if (updated.changes !== ids.length) return false;
+      if (projectReport) {
+        const report = {
+          id: randomUUID(),
+          projectId: requireText(projectReport.projectId, '项目 ID', 200),
+          sourceTurnId: requireText(
+            projectReport.sourceTurnId,
+            '来源轮次 ID',
+            200,
+          ),
+          sourceUserMessageId: requireText(
+            projectReport.sourceUserMessageId,
+            '来源消息 ID',
+            200,
+          ),
+          sourceGroupAssistantMessageId: requireText(
+            projectReport.sourceGroupAssistantMessageId,
+            '群回复 ID',
+            200,
+          ),
+          agentId: requireText(projectReport.agentId, '成员 ID', 200),
+          groupRoomId: requireText(projectReport.groupRoomId, '项目群 ID', 200),
+          sessionRoomId: requireText(
+            projectReport.sessionRoomId,
+            '项目会话 ID',
+            200,
+          ),
+        };
+        this.db
+          .prepare(`
+          INSERT OR IGNORE INTO social_project_reports
+            (id, project_id, source_turn_id, source_user_message_id,
+             source_group_assistant_message_id, agent_id, group_room_id,
+             session_room_id, status, created_at, updated_at)
+          SELECT ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?
+          WHERE EXISTS (
+            SELECT 1 FROM social_messages
+            WHERE id = ? AND turn_id = ? AND room_id = ?
+              AND role = 'user' AND sender_agent_id IS NULL
+          )
+            AND EXISTS (
+              SELECT 1 FROM social_messages
+              WHERE id = ? AND turn_id = ? AND room_id = ?
+                AND role = 'assistant' AND agent_id = ? AND status = 'complete'
+            )
+            AND EXISTS (
+              SELECT 1 FROM social_project_sessions
+              WHERE project_id = ? AND agent_id = ? AND room_id = ?
+                AND status = 'active'
+            )
+        `)
+          .run(
+            report.id,
+            report.projectId,
+            report.sourceTurnId,
+            report.sourceUserMessageId,
+            report.sourceGroupAssistantMessageId,
+            report.agentId,
+            report.groupRoomId,
+            report.sessionRoomId,
+            now,
+            now,
+            report.sourceUserMessageId,
+            report.sourceTurnId,
+            report.groupRoomId,
+            report.sourceGroupAssistantMessageId,
+            report.sourceTurnId,
+            report.groupRoomId,
+            report.agentId,
+            report.projectId,
+            report.agentId,
+            report.sessionRoomId,
+          );
+      }
+      return true;
+    })();
+  }
+
+  claimNextProjectReport(model) {
+    const normalizedModel = requireText(model, '模型路由', 200);
+    return this.db.transaction(() => {
+      const row = this.db
+        .prepare(`
+        SELECT pr.id AS reportId, pr.project_id AS projectId,
+               p.title AS projectTitle, p.brief AS projectBrief,
+               p.source_message_id AS sourceMessageId,
+               origin.content AS sourceRequest,
+               pr.source_turn_id AS sourceTurnId,
+               pr.source_user_message_id AS sourceUserMessageId,
+               source.content AS sourceUserText,
+               pr.source_group_assistant_message_id AS sourceAssistantMessageId,
+               outcome.content AS memberReport,
+               a.name AS agentName, pr.agent_id AS agentId,
+               pr.group_room_id AS groupRoomId,
+               pr.session_room_id AS sessionRoomId
+        FROM social_project_reports AS pr
+        JOIN social_projects AS p ON p.id = pr.project_id
+        LEFT JOIN social_messages AS origin ON origin.id = p.source_message_id
+        JOIN social_messages AS source ON source.id = pr.source_user_message_id
+        JOIN social_messages AS outcome ON outcome.id = pr.source_group_assistant_message_id
+        JOIN social_agents AS a ON a.id = pr.agent_id
+        WHERE pr.status = 'pending' AND p.status = 'active'
+        ORDER BY pr.created_at, pr.id LIMIT 1
+      `)
+        .get();
+      if (!row) return null;
+      if (this.hasStreamingReply('room-noema')) return null;
+      const assistantMessageId = randomUUID();
+      const now = isoNow();
+      this.db
+        .prepare(`
+        INSERT INTO social_messages
+          (id, room_id, turn_id, role, agent_id, content, status, attempt,
+           model, runtime, forwarded_sources_json, reply_to_json,
+           interaction_adjustment_ids_json,
+           interaction_adjustment_snapshots_json,
+           interaction_adjustment_attempts_json, created_at, updated_at)
+        VALUES (?, 'room-noema', ?, 'assistant', 'noema', '', 'streaming', 1,
+                ?, 'freellmapi', '[]', 'null', '[]', '[]', '[]', ?, ?)
+      `)
+        .run(assistantMessageId, row.reportId, normalizedModel, now, now);
+      const claimed = this.db
+        .prepare(`
+        UPDATE social_project_reports
+        SET status = 'processing', noema_assistant_message_id = ?,
+            error_code = NULL, error_message = NULL, updated_at = ?
+        WHERE id = ? AND status = 'pending'
+      `)
+        .run(assistantMessageId, now, row.reportId);
+      if (claimed.changes !== 1) throw new Error('成员报告已被其他流程领取。');
+      this.db
+        .prepare(`
+        UPDATE social_rooms SET updated_at = ? WHERE id = 'room-noema'
+      `)
+        .run(now);
+      return {
+        ...row,
+        turnId: row.reportId,
+        roomId: 'room-noema',
+        agentId: 'noema',
+        model: normalizedModel,
+        assistantMessageId,
+        userMessageId: row.sourceMessageId,
+        projectReport: true,
+      };
+    })();
+  }
+
+  finishProjectReport(messageId, status, code = null, message = null) {
+    if (!['complete', 'interrupted', 'failed'].includes(status)) {
+      throw new TypeError('项目报告状态无效。');
+    }
+    const reportStatus = status === 'complete' ? 'completed' : status;
+    const now = isoNow();
+    return this.db.transaction(() => {
+      const assistant = this.db
+        .prepare(`
+        SELECT id FROM social_messages WHERE id = ? AND status = 'streaming'
+      `)
+        .get(messageId);
+      if (!assistant) return false;
+      const updated = this.db
+        .prepare(`
+        UPDATE social_messages SET status = ?, updated_at = ?,
+          error_code = ?, error_message = ?
+        WHERE id = ? AND status = 'streaming'
+      `)
+        .run(
+          status,
+          now,
+          status === 'complete' ? null : code,
+          status === 'complete' ? null : message,
+          messageId,
+        );
+      if (updated.changes !== 1) return false;
+      const report = this.db
+        .prepare(`
+        UPDATE social_project_reports
+        SET status = ?, updated_at = ?, completed_at = ?,
+            error_code = ?, error_message = ?
+        WHERE noema_assistant_message_id = ? AND status = 'processing'
+      `)
+        .run(
+          reportStatus,
+          now,
+          status === 'complete' ? now : null,
+          status === 'complete' ? null : code,
+          status === 'complete' ? null : message,
+          messageId,
+        );
+      if (report.changes !== 1)
+        throw new Error('成员报告状态与 Noema 回复不一致。');
+      return true;
     })();
   }
 

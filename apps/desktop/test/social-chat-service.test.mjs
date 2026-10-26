@@ -136,6 +136,7 @@ test('busy project @ delivery is durable and starts only after the member turn f
     await new Promise((resolve) => setImmediate(resolve));
     const firstRun = service.active.get(project.groupRoomId);
     assert.ok(firstRun);
+    assert.ok(firstRun.projectReport);
     assert.equal(requests.length, 1);
 
     const queued = service.sendMessage({
@@ -159,14 +160,14 @@ test('busy project @ delivery is durable and starts only after the member turn f
       'a response must not see later queued group messages',
     );
 
-    const persistedGroupMessage = new SocialChatStore(db)
+    const persistedGroupMessage = store
       .getRoomSnapshot(project.groupRoomId)
       .messages.find((message) => message.id === queued.messageId);
     const projectSessionRoomId = projectStore.getProjectSession(
       project.id,
       'engineering-partner',
     ).room.room.id;
-    const queuedSessionMessage = new SocialChatStore(db)
+    const queuedSessionMessage = store
       .getRoomSnapshot(projectSessionRoomId)
       .messages.find((message) => message.turnId === queued.turnId);
     assert.equal(persistedGroupMessage?.deliveryStatus, 'queued');
@@ -180,6 +181,14 @@ test('busy project @ delivery is durable and starts only after the member turn f
 
     releaseFirst();
     await firstRun.done;
+    assert.equal(
+      store.getSocialMessage(firstRun.assistantMessageId).status,
+      'complete',
+      JSON.stringify({
+        report: firstRun.projectReport,
+        assistant: store.getSocialMessage(firstRun.assistantMessageId),
+      }),
+    );
     for (let attempt = 0; attempt < 80; attempt += 1) {
       const completedReplies = store
         .getRoomSnapshot(project.groupRoomId)
@@ -192,7 +201,37 @@ test('busy project @ delivery is durable and starts only after the member turn f
       if (completedReplies === 2) break;
       await new Promise((resolve) => setImmediate(resolve));
     }
-    assert.equal(requests.length, 3);
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+      const completedReports = db
+        .prepare(
+          "SELECT COUNT(*) AS count FROM social_project_reports WHERE status = 'completed'",
+        )
+        .get().count;
+      if (completedReports === 3) break;
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    assert.equal(requests.length, 6);
+    const reportRequests = requests.filter((request) =>
+      request.messages.some((message) =>
+        message.content.includes('"type":"noema_project_member_report"'),
+      ),
+    );
+    assert.equal(reportRequests.length, 3);
+    const reportPayloads = reportRequests.map((request) =>
+      JSON.parse(
+        request.messages.find((message) =>
+          message.content.includes('"type":"noema_project_member_report"'),
+        ).content,
+      ),
+    );
+    assert.deepEqual(
+      reportPayloads.map((payload) => payload.report.result).sort(),
+      [
+        '第一条先完成。',
+        '第2条排队消息已处理。',
+        '第3条排队消息已处理。',
+      ].sort(),
+    );
     assert.equal(
       requests[1].messages.at(-1)?.content,
       '第二条等你空闲后处理。',
@@ -231,6 +270,23 @@ test('busy project @ delivery is durable and starts only after the member turn f
       '第二条等你空闲后处理。',
     );
     assert.equal(store.listProjectGroupInbox(project.groupRoomId).length, 0);
+    assert.equal(
+      db.prepare('SELECT COUNT(*) AS count FROM social_project_reports').get()
+        .count,
+      3,
+    );
+    assert.equal(
+      db
+        .prepare(`
+        SELECT COUNT(*) AS count FROM social_messages AS user_message
+        JOIN social_project_reports AS report
+          ON report.id = user_message.turn_id
+        WHERE user_message.role = 'user'
+      `)
+        .get().count,
+      0,
+      'internal reports must not create synthetic user messages in Noema history',
+    );
   } finally {
     releaseFirst();
     await service.shutdown();
@@ -309,8 +365,16 @@ test('a queued project @ message survives restart and resumes once the UI servic
       provider: {
         async *streamChat(input) {
           resumedCalls += 1;
-          assert.equal(input.messages.at(-1)?.content, '重启后继续投递。');
-          yield '重启后已完成。';
+          const report = input.messages.find((message) =>
+            message.content.includes('"type":"noema_project_member_report"'),
+          );
+          if (report) {
+            assert.match(report.content, /重启后继续投递/u);
+            yield 'Noema 已收到成员报告。';
+          } else {
+            assert.equal(input.messages.at(-1)?.content, '重启后继续投递。');
+            yield '重启后已完成。';
+          }
         },
       },
       projectStore,
@@ -335,7 +399,18 @@ test('a queued project @ message survives restart and resumes once the UI servic
       if (reply?.status === 'complete') break;
       await new Promise((resolve) => setImmediate(resolve));
     }
-    assert.equal(resumedCalls, 1);
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      if (
+        db
+          .prepare(
+            "SELECT 1 FROM social_project_reports WHERE status = 'completed'",
+          )
+          .get()
+      )
+        break;
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    assert.equal(resumedCalls, 2);
     assert.equal(store.listProjectGroupInbox(project.groupRoomId).length, 0);
     assert.equal(
       store
@@ -349,6 +424,141 @@ test('a queued project @ message survives restart and resumes once the UI servic
   } finally {
     releaseFirst();
     await service.shutdown();
+    db.close();
+  }
+});
+
+test('an interrupted Noema report waits for explicit retry and reuses its stored report', async () => {
+  const db = new Database(':memory:');
+  new RootStore(db);
+  let store = createSocialTestStore(db);
+  let projectStore = new SocialProjectStore({ db, socialChatStore: store });
+  const project = projectStore.createProject({
+    title: '报告重试边界',
+    brief: 'Noema 报告中断后不得自动重复调用。',
+    agentIds: ['noema', 'engineering-partner'],
+  });
+  let releaseReport;
+  const reportGate = new Promise((resolve) => {
+    releaseReport = resolve;
+  });
+  let firstService;
+  let firstCalls = 0;
+  firstService = new SocialChatService({
+    store,
+    provider: {
+      async *streamChat(input) {
+        firstCalls += 1;
+        const report = input.messages.find((message) =>
+          message.content.includes('"type":"noema_project_member_report"'),
+        );
+        if (!report) {
+          yield '成员已完成一项阶段工作。';
+          return;
+        }
+        yield '报告处理尚未完成。';
+        await Promise.race([
+          reportGate,
+          new Promise((_, reject) => {
+            input.signal.addEventListener(
+              'abort',
+              () => reject(new DOMException('Stopped', 'AbortError')),
+              { once: true },
+            );
+          }),
+        ]);
+        input.signal.throwIfAborted();
+        yield '不应自动到达这条输出。';
+      },
+    },
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'test-model',
+    getRootState: async () => ({
+      connected: true,
+      providerConfigured: true,
+      selectedModel: 'test-model',
+    }),
+    projectStore,
+    getProjectSessionContext: (roomId, agentId) =>
+      projectStore.getProjectSessionContext(roomId, agentId),
+  });
+
+  let retryService;
+  try {
+    firstService.sendMessage({
+      roomId: project.groupRoomId,
+      agentId: 'engineering-partner',
+      text: '@工程搭档 完成一项阶段工作。',
+    });
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      if (firstService.active.has('room-noema')) break;
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    const reportRun = firstService.active.get('room-noema');
+    assert.ok(reportRun?.isProjectReportTurn);
+    const reportMessageId = reportRun.assistantMessageId;
+    await firstService.shutdown();
+    releaseReport();
+    assert.equal(
+      store.getProjectReportByAssistantMessage(reportMessageId).status,
+      'interrupted',
+    );
+    assert.equal(firstCalls, 2);
+
+    store = new SocialChatStore(db);
+    projectStore = new SocialProjectStore({ db, socialChatStore: store });
+    let retryCalls = 0;
+    retryService = new SocialChatService({
+      store,
+      provider: {
+        async *streamChat(input) {
+          retryCalls += 1;
+          assert.ok(
+            input.messages.some((message) =>
+              message.content.includes('"type":"noema_project_member_report"'),
+            ),
+          );
+          yield 'Noema 已核对这份报告。';
+        },
+      },
+      secretStore: { isConfigured: () => true },
+      getSelectedModel: () => 'test-model',
+      getRootState: async () => ({
+        connected: true,
+        providerConfigured: true,
+        selectedModel: 'test-model',
+      }),
+      projectStore,
+      getProjectSessionContext: (roomId, agentId) =>
+        projectStore.getProjectSessionContext(roomId, agentId),
+    });
+    await retryService.getUiState();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(
+      retryCalls,
+      0,
+      'restart must not replay the report automatically',
+    );
+    retryService.retryReply(reportMessageId);
+    await retryService.active.get('room-noema')?.done;
+    assert.equal(retryCalls, 1);
+    assert.equal(
+      store.getProjectReportByAssistantMessage(reportMessageId).status,
+      'completed',
+    );
+    assert.equal(
+      store
+        .getRoomSnapshot('room-noema')
+        .messages.some(
+          (message) =>
+            message.turnId === reportRun.turnId && message.role === 'user',
+        ),
+      false,
+    );
+  } finally {
+    releaseReport();
+    await firstService.shutdown();
+    await retryService?.shutdown();
     db.close();
   }
 });
@@ -720,7 +930,18 @@ test('project-group turns keep the group and member session retry/stop state pai
     assert.equal(publicComplete.status, 'complete');
     assert.equal(privateComplete.status, 'complete');
     assert.equal(privateComplete.content, publicComplete.content);
-    assert.equal(requestCount, 3);
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      if (
+        db
+          .prepare(
+            "SELECT 1 FROM social_project_reports WHERE status = 'completed'",
+          )
+          .get()
+      )
+        break;
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    assert.equal(requestCount, 4);
   } finally {
     await service.shutdown();
     db.close();
@@ -1354,6 +1575,12 @@ test('Noema forms a project team, assigns visible group work, and reviews member
     );
     assert.match(toolReport?.content ?? '', /已确认抓取/u);
     assert.match(toolReport?.content ?? '', /官方价格页/u);
+    assert.equal(
+      db.prepare('SELECT COUNT(*) AS count FROM social_project_reports').get()
+        .count,
+      0,
+      'Noema already consumes its own synchronous team result; do not bill a duplicate report turn',
+    );
     assert.ok(
       events.some(
         (event) =>
