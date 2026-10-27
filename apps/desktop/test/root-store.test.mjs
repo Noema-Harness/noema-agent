@@ -18,7 +18,7 @@ test('root store migrates idempotently and persists the selected model', () => {
     store.db
       .prepare('SELECT MAX(version) AS version FROM schema_migrations')
       .get().version,
-    14,
+    15,
   );
   store.setSelectedModel('free-router');
   assert.equal(store.getSelectedModel(), 'free-router');
@@ -91,6 +91,42 @@ test('captures persist across a database reopen', () => {
     const reopened = new RootStore(databasePath);
     assert.equal(reopened.getCapture(capture.id).content, capture.content);
     assert.equal(reopened.getSnapshot().captures.length, 1);
+    reopened.close();
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('external source snapshots stay attached to their assistant attempt after restart', () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'noema-web-source-store-'));
+  const databasePath = path.join(directory, 'root.sqlite3');
+  const source = {
+    id: 'web-source-1',
+    title: '来源标题',
+    url: 'https://example.com/article',
+    fetchedAt: '2026-10-27T00:00:00.000Z',
+    excerpt: '已读取的原文摘录。',
+    truncated: false,
+  };
+  try {
+    const first = new RootStore(databasePath);
+    const turn = first.beginTurn({
+      id: 'web-source-turn',
+      text: '请读取 https://example.com/article',
+      model: 'test-model',
+    });
+    first.setTurnExternalSources(turn.id, turn.attempt, [source]);
+    first.markTurnExternalSourcesIncluded(turn.id, turn.attempt);
+    first.close();
+
+    const reopened = new RootStore(databasePath);
+    const assistant = reopened
+      .getSnapshot()
+      .messages.find(
+        (message) => message.turnId === turn.id && message.role === 'assistant',
+      );
+    assert.deepEqual(assistant.externalSources, [source]);
+    assert.equal(assistant.externalSourcesIncluded, true);
     reopened.close();
   } finally {
     rmSync(directory, { recursive: true, force: true });
@@ -211,7 +247,7 @@ test('schema-v12 databases add history delivery status without rewriting prior s
   assert.equal(
     db.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()
       .version,
-    14,
+    15,
   );
   assert.equal(
     db
@@ -260,7 +296,7 @@ test('a schema-v4 database upgrades through interaction and verification state',
     store.db
       .prepare('SELECT MAX(version) AS version FROM schema_migrations')
       .get().version,
-    14,
+    15,
   );
   assert.equal(
     store.db
@@ -381,7 +417,7 @@ test('schema-v9 migration snapshots existing adjustments without guessing older 
   assert.equal(
     db.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()
       .version,
-    14,
+    15,
   );
   assert.deepEqual(readSnapshots('root_messages', 'assistant-2'), expected);
   assert.deepEqual(readSnapshots('root_messages', 'assistant-1'), []);
@@ -442,7 +478,7 @@ test('schema-v9 migration backfills only the latest root attempt and task snapsh
   assert.equal(
     db.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()
       .version,
-    14,
+    15,
   );
   assert.deepEqual(JSON.parse(latestAttempt.snapshots), [
     {

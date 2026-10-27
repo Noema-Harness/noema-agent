@@ -213,6 +213,61 @@ function parseHistorySourceSnapshots(sourcesJson) {
   }
 }
 
+const MAX_EXTERNAL_SOURCES_PER_MESSAGE = 3;
+const MAX_EXTERNAL_SOURCE_EXCERPT_LENGTH = 8_000;
+
+function normalizeExternalSourceSnapshots(sources) {
+  if (sources === undefined || sources === null) return [];
+  if (
+    !Array.isArray(sources) ||
+    sources.length > MAX_EXTERNAL_SOURCES_PER_MESSAGE
+  ) {
+    throw new TypeError('外部来源列表无效。');
+  }
+  const seen = new Set();
+  return sources.map((source) => {
+    if (!source || typeof source !== 'object') {
+      throw new TypeError('外部来源无效。');
+    }
+    const { id, title, url, fetchedAt, excerpt, truncated = false } = source;
+    requireText(id, 'external source id', 200);
+    requireText(title, 'external source title', 500);
+    requireText(url, 'external source URL', 4_000);
+    requireText(fetchedAt, 'external source fetch date', 100);
+    requireText(
+      excerpt,
+      'external source excerpt',
+      MAX_EXTERNAL_SOURCE_EXCERPT_LENGTH,
+    );
+    let parsedUrl;
+    try {
+      parsedUrl = new URL(url);
+    } catch {
+      throw new TypeError('外部来源链接无效。');
+    }
+    if (
+      !['http:', 'https:'].includes(parsedUrl.protocol) ||
+      parsedUrl.username ||
+      parsedUrl.password ||
+      !excerpt.trim() ||
+      typeof truncated !== 'boolean' ||
+      seen.has(id)
+    ) {
+      throw new TypeError('外部来源内容无效。');
+    }
+    seen.add(id);
+    return { id, title, url: parsedUrl.href, fetchedAt, excerpt, truncated };
+  });
+}
+
+function parseExternalSourceSnapshots(sourcesJson) {
+  try {
+    return normalizeExternalSourceSnapshots(JSON.parse(sourcesJson ?? '[]'));
+  } catch {
+    return [];
+  }
+}
+
 function nowIso() {
   return new Date().toISOString();
 }
@@ -686,7 +741,20 @@ export class RootStore {
       });
       applyInteractionAdjustmentSourceSchema();
     }
-    if (currentVersion > 14)
+    if (currentVersion < 15) {
+      const applyExternalSourceSnapshotsSchema = this.db.transaction(() => {
+        this.db.exec(`
+          ALTER TABLE root_messages
+            ADD COLUMN external_sources_json TEXT NOT NULL DEFAULT '[]';
+          ALTER TABLE root_messages
+            ADD COLUMN external_sources_included INTEGER NOT NULL DEFAULT 0
+              CHECK (external_sources_included IN (0, 1));
+          INSERT INTO schema_migrations (version, applied_at) VALUES (15, '${nowIso()}');
+        `);
+      });
+      applyExternalSourceSnapshotsSchema();
+    }
+    if (currentVersion > 15)
       throw new Error(
         `Database schema ${currentVersion} is newer than this Noema build supports`,
       );
@@ -1029,6 +1097,8 @@ export class RootStore {
              m.interaction_adjustment_ids_json AS interactionAdjustmentIdsJson,
              m.interaction_adjustment_snapshots_json AS interactionAdjustmentSnapshotsJson,
              m.history_sources_json AS historySourcesJson,
+             m.external_sources_json AS externalSourcesJson,
+             m.external_sources_included AS externalSourcesIncluded,
              m.history_search_status AS historySearchStatus,
              m.history_sources_included AS historySourcesIncluded,
              t.error_code AS errorCode, t.error_message AS errorMessage
@@ -1042,6 +1112,7 @@ export class RootStore {
           interactionAdjustmentIdsJson,
           interactionAdjustmentSnapshotsJson,
           historySourcesJson,
+          externalSourcesJson,
           routedViaJson,
           ...hydratedMessage
         } = message;
@@ -1069,6 +1140,8 @@ export class RootStore {
               interactionAdjustmentSnapshotsJson,
             ),
             historySources: parseHistorySourceSnapshots(historySourcesJson),
+            externalSources: parseExternalSourceSnapshots(externalSourcesJson),
+            externalSourcesIncluded: Boolean(message.externalSourcesIncluded),
             historySearchStatus: ['not_searched', 'found', 'no_match'].includes(
               message.historySearchStatus,
             )
@@ -1088,6 +1161,8 @@ export class RootStore {
               interactionAdjustmentSnapshotsJson,
             ),
             historySources: [],
+            externalSources: [],
+            externalSourcesIncluded: false,
             historySearchStatus: 'not_searched',
             historySourcesIncluded: false,
           };
@@ -2240,6 +2315,35 @@ export class RootStore {
         WHERE turn_id = ? AND role = 'assistant' AND attempt = ?
           AND status = 'streaming' AND history_search_status = 'found'
           AND history_sources_json != '[]'
+      `)
+      .run(nowIso(), turnId, attempt);
+    return result.changes === 1;
+  }
+
+  /** @param {string} turnId @param {number} attempt @param {unknown} sources */
+  setTurnExternalSources(turnId, attempt, sources) {
+    const snapshots = normalizeExternalSourceSnapshots(sources);
+    const result = this.db
+      .prepare(`
+        UPDATE root_messages
+        SET external_sources_json = ?, external_sources_included = 0, updated_at = ?
+        WHERE turn_id = ? AND role = 'assistant' AND attempt = ?
+          AND status = 'streaming'
+      `)
+      .run(JSON.stringify(snapshots), nowIso(), turnId, attempt);
+    if (result.changes !== 1)
+      throw new Error('The active assistant attempt was not found');
+    return snapshots;
+  }
+
+  /** @param {string} turnId @param {number} attempt */
+  markTurnExternalSourcesIncluded(turnId, attempt) {
+    const result = this.db
+      .prepare(`
+        UPDATE root_messages
+        SET external_sources_included = 1, updated_at = ?
+        WHERE turn_id = ? AND role = 'assistant' AND attempt = ?
+          AND status = 'streaming' AND external_sources_json != '[]'
       `)
       .run(nowIso(), turnId, attempt);
     return result.changes === 1;

@@ -2347,6 +2347,40 @@ function DesktopApp() {
                                 )}
                               </details>
                             )}
+                            {message.externalSources.length > 0 && (
+                              <details className="history-recall-trace external-source-trace">
+                                <summary>
+                                  本轮读取 {message.externalSources.length}{' '}
+                                  个网页来源
+                                </summary>
+                                <ul>
+                                  {message.externalSources.map((source) => (
+                                    <li key={source.id}>
+                                      <div className="history-source-heading">
+                                        <a
+                                          href={source.url}
+                                          target="_blank"
+                                          rel="noreferrer noopener"
+                                        >
+                                          {source.title}
+                                        </a>
+                                        <span>
+                                          {message.externalSourcesIncluded
+                                            ? '已随本轮请求发送'
+                                            : '模型是否收到无法确认'}
+                                          {source.truncated && ' · 摘录已截短'}
+                                        </span>
+                                      </div>
+                                      <blockquote>{source.excerpt}</blockquote>
+                                    </li>
+                                  ))}
+                                </ul>
+                                <p className="history-recall-caveat">
+                                  这记录 Noema
+                                  成功读取并尝试提供给模型的原文；不证明模型实际使用或理解了它，也不代表来源内容已独立核实。
+                                </p>
+                              </details>
+                            )}
                             {isLatestAttempt &&
                               message.interactionAdjustmentIds.length > 0 && (
                                 <details className="adjustment-application-trace root-adjustment-trace">

@@ -587,6 +587,155 @@ test('Noema exposes local arithmetic even when background actions are disabled',
   store.close();
 });
 
+test('Noema reads only a user-provided URL and persists the source with its answer', async () => {
+  const store = new RootStore(':memory:');
+  store.setSelectedModel('test-model');
+  let callCount = 0;
+  let fetchCount = 0;
+  let firstRequest;
+  const source = {
+    id: 'source-1',
+    title: '项目文档',
+    url: 'https://example.com/docs',
+    fetchedAt: '2026-10-27T00:00:00.000Z',
+    excerpt: '项目文档的原文摘录。',
+    truncated: false,
+  };
+  const agent = new RootAgent({
+    store,
+    provider: {
+      baseUrl: 'http://127.0.0.1:31415/v1',
+      listModels: async () => [{ name: 'test-model', label: 'Test' }],
+      async *streamChat(input) {
+        callCount += 1;
+        if (callCount === 1) {
+          firstRequest = input;
+          input.onToolCalls([
+            {
+              id: 'call-fetch',
+              type: 'function',
+              function: {
+                name: 'fetch_web_page',
+                arguments: JSON.stringify({ url: source.url }),
+              },
+            },
+          ]);
+        } else {
+          input.onRouteMetadata('test-route');
+          assert.match(input.messages.at(-1).content, /项目文档的原文摘录/u);
+          yield '文档说明了项目目标。';
+        }
+      },
+    },
+    secretStore: createSecretStore(),
+    fetchWebSourceImpl: async (url) => {
+      fetchCount += 1;
+      assert.equal(url, source.url);
+      return { source, content: source.excerpt };
+    },
+  });
+
+  const { turnId } = agent.sendMessage({
+    text: `请阅读这个链接并概括重点：${source.url}`,
+  });
+  await agent.active.done;
+  const assistant = store
+    .getSnapshot()
+    .messages.find(
+      (message) => message.turnId === turnId && message.role === 'assistant',
+    );
+  assert.deepEqual(
+    firstRequest.tools.find((tool) => tool.function.name === 'fetch_web_page')
+      .function.parameters.properties.url.enum,
+    [source.url],
+  );
+  assert.deepEqual(assistant.externalSources, [source]);
+  assert.equal(assistant.externalSourcesIncluded, true);
+  assert.match(assistant.content, /项目目标/u);
+  assert.equal(fetchCount, 1);
+  await agent.shutdown();
+  store.close();
+});
+
+test('Noema does not expose web fetching for chats without an explicit URL', async () => {
+  const store = new RootStore(':memory:');
+  store.setSelectedModel('test-model');
+  let tools = [];
+  const agent = new RootAgent({
+    store,
+    provider: {
+      baseUrl: 'http://127.0.0.1:31415/v1',
+      listModels: async () => [{ name: 'test-model', label: 'Test' }],
+      async *streamChat(input) {
+        tools = input.tools;
+        yield '我暂时没有读取网页的入口。';
+      },
+    },
+    secretStore: createSecretStore(),
+  });
+  agent.sendMessage({ text: '请告诉我这个领域最近有哪些变化。' });
+  await agent.active.done;
+  assert.equal(
+    tools.some((tool) => tool.function.name === 'fetch_web_page'),
+    false,
+  );
+  await agent.shutdown();
+  store.close();
+});
+
+test('a failed webpage read is visible after the model response', async () => {
+  const store = new RootStore(':memory:');
+  store.setSelectedModel('test-model');
+  let callCount = 0;
+  const agent = new RootAgent({
+    store,
+    provider: {
+      baseUrl: 'http://127.0.0.1:31415/v1',
+      listModels: async () => [{ name: 'test-model', label: 'Test' }],
+      async *streamChat(input) {
+        callCount += 1;
+        if (callCount === 1) {
+          input.onToolCalls([
+            {
+              id: 'call-fetch-failure',
+              type: 'function',
+              function: {
+                name: 'fetch_web_page',
+                arguments: JSON.stringify({ url: 'https://example.com/docs' }),
+              },
+            },
+          ]);
+          return;
+        }
+        assert.match(input.messages.at(-1).content, /fetched.*false/u);
+        yield '以下是基于现有知识的概括。';
+      },
+    },
+    secretStore: createSecretStore(),
+    fetchWebSourceImpl: async () => {
+      throw new Error('该链接解析到非公开网络地址，已拒绝读取。');
+    },
+  });
+
+  const { turnId } = agent.sendMessage({
+    text: '请阅读这个链接并概括重点：https://example.com/docs',
+  });
+  await agent.active.done;
+  const assistant = store
+    .getSnapshot()
+    .messages.find(
+      (message) => message.turnId === turnId && message.role === 'assistant',
+    );
+  assert.match(assistant.content, /以下是基于现有知识的概括/u);
+  assert.match(
+    assistant.content,
+    /网页读取失败（以下回答不是基于该链接）\*\*：该链接解析到非公开网络地址/u,
+  );
+  assert.equal(assistant.externalSources.length, 0);
+  await agent.shutdown();
+  store.close();
+});
+
 test('RootAgent emits a state refresh when the user revises an interaction adjustment', async () => {
   const store = new RootStore(':memory:');
   const turn = store.beginTurn({

@@ -13,6 +13,15 @@ export interface NoemaHistorySource {
   redacted: boolean;
 }
 
+export interface NoemaExternalSource {
+  id: string;
+  title: string;
+  url: string;
+  fetchedAt: string;
+  excerpt: string;
+  truncated: boolean;
+}
+
 export interface NoemaRootMessage {
   id: string;
   turnId: string;
@@ -35,6 +44,8 @@ export interface NoemaRootMessage {
   historySources: NoemaSocialHistorySource[];
   historySearchStatus: 'not_searched' | 'found' | 'no_match';
   historySourcesIncluded: boolean;
+  externalSources: NoemaExternalSource[];
+  externalSourcesIncluded: boolean;
   errorCode: string | null;
   errorMessage: string | null;
 }
