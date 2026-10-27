@@ -587,6 +587,51 @@ test('Noema exposes local arithmetic even when background actions are disabled',
   store.close();
 });
 
+test('reports tool-result recovery accurately when the final model response is empty', async () => {
+  const store = new RootStore(':memory:');
+  store.setSelectedModel('test-model');
+  let callCount = 0;
+  const agent = new RootAgent({
+    store,
+    provider: {
+      listModels: async () => [{ name: 'test-model', label: 'Test' }],
+      async *streamChat(input) {
+        callCount += 1;
+        if (callCount === 1) {
+          input.onToolCalls([
+            {
+              id: 'call-calculate-empty-follow-up',
+              type: 'function',
+              function: {
+                name: 'calculate_expression',
+                arguments: JSON.stringify({ expression: '19 * 23' }),
+              },
+            },
+          ]);
+        } else {
+          yield '';
+        }
+      },
+    },
+    secretStore: createSecretStore(),
+    allowRootActions: false,
+  });
+
+  try {
+    const { turnId } = agent.sendMessage({ text: '计算 19 乘以 23' });
+    await agent.active.done;
+    const turn = store.getTurn(turnId);
+    assert.equal(turn.status, 'failed');
+    assert.match(turn.errorMessage, /重试会重新处理原请求/u);
+    assert.match(turn.errorMessage, /已成功执行的操作不会自动撤回/u);
+    assert.doesNotMatch(turn.errorMessage, /操作结果已保留/u);
+    assert.equal(callCount, 2);
+  } finally {
+    await agent.shutdown();
+    store.close();
+  }
+});
+
 test('Noema reads only a user-provided URL and persists the source with its answer', async () => {
   const store = new RootStore(':memory:');
   store.setSelectedModel('test-model');

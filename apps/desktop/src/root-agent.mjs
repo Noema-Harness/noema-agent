@@ -1031,6 +1031,8 @@ export class RootAgent {
               controller.signal,
             );
             lastToolResult = result;
+            const recoveryHint =
+              '重试会重新处理原请求；已读取的网页来源（如有）会保留，已成功执行的操作不会自动撤回。';
             if (result.sources?.length) {
               this.store.setTurnExternalSources(
                 turn.id,
@@ -1149,7 +1151,7 @@ export class RootAgent {
               if (continuationTools.length === 0) {
                 throw new ModelProviderError(
                   'root_tool_call_invalid',
-                  '模型在工具预算用尽后仍请求操作；本轮操作结果已保留，请重试。',
+                  `模型在工具预算用尽后仍请求操作，本轮答复未完成。${recoveryHint}`,
                 );
               }
               pendingToolCalls = followUpToolCalls;
@@ -1160,7 +1162,7 @@ export class RootAgent {
             if (!followUpText.trim()) {
               throw new ModelProviderError(
                 'root_tool_call_invalid',
-                '模型未能根据工具结果完成答复；本轮操作结果已保留，请重试。',
+                `模型未能根据工具结果完成答复。${recoveryHint}`,
               );
             }
             pendingToolCalls = [];
