@@ -1615,13 +1615,12 @@ test('project completion reviews members in project sessions and delivers their 
       )
       .get(project.id)?.id;
     assert.ok(batchId);
-    const memberRoomId = projects.getProjectSession(
-      project.id,
-      'engineering-partner',
-    ).room.room.id;
+    const memberRoomId =
+      projects.getProjectGrowthBatch(batchId).members[0].sessionRoomId;
     for (let i = 0; i < 100; i++) {
       if (
         projects.getProjectGrowthBatch(batchId).status === 'completed' &&
+        projects.getProject(project.id).status === 'archived' &&
         !service.active.has(memberRoomId)
       )
         break;
@@ -1633,6 +1632,8 @@ test('project completion reviews members in project sessions and delivers their 
       'completed',
       `${JSON.stringify(batch)}; provider=${providerFailure?.stack ?? 'none'}`,
     );
+    assert.equal(projects.getProject(project.id).status, 'archived');
+    assert.ok(projects.getProject(project.id).growthBatch.finalizedAt);
     assert.equal(batch.members[0].status, 'completed');
     assert.match(batch.members[0].brief, /闭环验证/u);
     assert.equal(

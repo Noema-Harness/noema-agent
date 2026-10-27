@@ -272,6 +272,25 @@ export interface NoemaSocialProject {
     requestMessageId: string;
     roomId: string;
   } | null;
+  growthBatch: {
+    id: string;
+    planRevision: number;
+    status: 'running' | 'completed';
+    completedAt: string | null;
+    finalizedAt: string | null;
+    members: Array<{
+      agentId: string;
+      agentName: string;
+      status:
+        | 'pending'
+        | 'running'
+        | 'completed'
+        | 'no_change'
+        | 'interrupted'
+        | 'failed';
+      errorMessage: string | null;
+    }>;
+  } | null;
   members: Array<{
     agentId: string;
     sessionRoomId: string;
@@ -490,6 +509,12 @@ export interface NoemaSocialRoomState {
 export type NoemaSocialEvent =
   | { type: 'chat-room-created'; roomId: string; navigate?: boolean }
   | { type: 'project-updated'; projectId: string; groupRoomId: string }
+  | {
+      type: 'project-growth-archived';
+      projectId: string;
+      groupRoomId: string;
+      title: string;
+    }
   | { type: 'agent-state-updated'; agentId: string }
   | {
       type: 'chat-turn-started';
@@ -707,6 +732,10 @@ export interface NoemaBridge {
     input: NoemaProjectPlanItemUpdate,
   ): Promise<NoemaProjectPlan>;
   restoreSocialProject(projectId: string): Promise<NoemaSocialProject>;
+  retrySocialProjectGrowthMember(
+    batchId: string,
+    agentId: string,
+  ): Promise<NoemaSocialProject['growthBatch']>;
   createSocialContinuationThread(input: {
     sourceRoomId: string;
     sourceIds: string[];

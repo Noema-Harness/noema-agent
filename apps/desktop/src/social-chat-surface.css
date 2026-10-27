@@ -692,6 +692,52 @@
   color: #526574;
   margin-bottom: 9px;
 }
+.social-shell .project-growth-status {
+  margin: 0 0 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: #f7f9f8;
+  color: var(--ink);
+  font-size: 12px;
+}
+.social-shell .project-growth-status.needs-attention {
+  border-color: #d9b48b;
+  background: #fffaf3;
+}
+.social-shell .project-growth-status header,
+.social-shell .project-growth-status li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.social-shell .project-growth-status header > span,
+.social-shell .project-growth-status li > span:nth-child(2) {
+  color: #65747c;
+}
+.social-shell .project-growth-status ul {
+  display: grid;
+  gap: 7px;
+  list-style: none;
+  padding: 0;
+  margin: 10px 0 0;
+}
+.social-shell .project-growth-status li > span:first-child {
+  min-width: 88px;
+  font-weight: 600;
+}
+.social-shell .project-growth-status li > span:nth-child(2) {
+  flex: 1;
+}
+.social-shell .project-growth-status .growth-check {
+  color: #356752;
+  white-space: nowrap;
+}
+.social-shell .project-growth-status > p {
+  margin: 10px 0 0;
+  color: #526574;
+}
 .social-shell .work-content h2 {
   font-size: 21px;
   line-height: 1.5;

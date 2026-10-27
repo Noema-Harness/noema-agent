@@ -126,6 +126,10 @@ test('project growth is keyed to accepted plan revisions and settles each member
     );
     assert.equal(batch.status, 'running');
     assert.equal(batch.planRevision, 1);
+    assert.throws(
+      () => stores.socialProjectStore.archiveProject(project.id),
+      /成员经历整理尚未全部完成/u,
+    );
     assert.deepEqual(
       new Set(batch.members.map((member) => member.agentId)),
       new Set([first.agentId, second.agentId]),
@@ -194,6 +198,90 @@ test('project growth is keyed to accepted plan revisions and settles each member
       stores.socialProjectStore.createProjectGrowthBatch(project.id).id,
       batch.id,
       'a completed revision cannot replay completed member reviews',
+    );
+  } finally {
+    stores.db.close();
+  }
+});
+
+test('completed growth archives the project once and survives a later restore', () => {
+  const stores = makeStores();
+  const member = createMember(stores.socialChatStore, '复盘成员');
+  try {
+    const project = createProject(stores, member);
+    stores.socialProjectStore.plans.replace({
+      projectId: project.id,
+      expectedRevision: 0,
+      actorAgentId: 'noema',
+      reason: '已验收交付。',
+      plan: {
+        stage: '交付',
+        objective: '完成并归档项目。',
+        items: [
+          {
+            id: 'done',
+            title: '完成交付',
+            ownerAgentId: member.agentId,
+            acceptance: '交付已核验。',
+            dependsOn: [],
+            status: 'done',
+            evidence: '验收记录已保存。',
+            blocker: '',
+          },
+        ],
+      },
+    });
+    const batch = stores.socialProjectStore.createProjectGrowthBatch(
+      project.id,
+    );
+    const claimed = stores.socialProjectStore.claimNextProjectGrowthMember(
+      batch.id,
+    );
+    stores.socialProjectStore.bindProjectGrowthTurn(
+      batch.id,
+      member.agentId,
+      'archive-growth-turn',
+    );
+    stores.socialProjectStore.finishProjectGrowthMember(
+      batch.id,
+      member.agentId,
+      {
+        status: 'no_change',
+        brief: '本次复盘没有产生需要固化的变化。',
+      },
+    );
+
+    const finalized =
+      stores.socialProjectStore.archiveCompletedProjectGrowthBatch(batch.id);
+    assert.equal(finalized.archived, true);
+    assert.equal(finalized.project.status, 'archived');
+    assert.ok(finalized.project.archivedAt);
+    assert.ok(finalized.project.growthBatch.finalizedAt);
+    assert.equal(
+      stores.socialProjectStore.listUnfinalizedCompletedProjectGrowthBatches()
+        .length,
+      0,
+    );
+    assert.equal(
+      stores.socialProjectStore.archiveCompletedProjectGrowthBatch(batch.id)
+        .archived,
+      false,
+      'reconciliation must be idempotent',
+    );
+
+    const restored = stores.socialProjectStore.restoreProject(project.id);
+    assert.equal(restored.status, 'active');
+    assert.equal(restored.groupRoomId, project.groupRoomId);
+    assert.equal(
+      stores.socialProjectStore.getProjectSession(project.id, member.agentId)
+        .room.room.id,
+      claimed.sessionRoomId,
+    );
+    assert.equal(
+      stores.socialProjectStore.listUnfinalizedCompletedProjectGrowthBatches()
+        .length,
+      0,
+      'a restored project must not be re-archived from an old completion event',
     );
   } finally {
     stores.db.close();
@@ -807,6 +895,7 @@ test('schema v11 upgrades to the current schema without deleting chats or re-ena
     db.exec(`
       DROP TABLE IF EXISTS social_project_growth_members;
       DROP TABLE IF EXISTS social_project_growth_batches;
+      DELETE FROM social_schema_migrations WHERE version = 24;
       DELETE FROM social_schema_migrations WHERE version = 23;
       DROP TABLE IF EXISTS social_project_dispatch_log;
       DROP TABLE IF EXISTS social_project_publications;
@@ -839,7 +928,7 @@ test('schema v11 upgrades to the current schema without deleting chats or re-ena
       db
         .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
         .get().version,
-      23,
+      24,
     );
     assert.deepEqual(
       upgradedStore

@@ -41,6 +41,7 @@ const CHANNELS = Object.freeze({
   socialUpdateProjectPlanItem: 'noema:social-update-project-plan-item',
   socialArchiveProject: 'noema:social-archive-project',
   socialRestoreProject: 'noema:social-restore-project',
+  socialRetryProjectGrowthMember: 'noema:social-retry-project-growth-member',
   socialCreateContinuationThread: 'noema:social-create-continuation-thread',
   socialSetContinuationThreadClosed:
     'noema:social-set-continuation-thread-closed',
@@ -195,6 +196,9 @@ export function registerRootIpc({
       });
       return project;
     });
+    register(CHANNELS.socialRetryProjectGrowthMember, (batchId, agentId) =>
+      socialChatService.retryProjectGrowthMember(batchId, agentId),
+    );
     register(CHANNELS.socialCreateContinuationThread, (input) =>
       socialChatService.createContinuationThread(input),
     );

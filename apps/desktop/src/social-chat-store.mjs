@@ -855,6 +855,16 @@ export class SocialChatStore {
         `);
       })();
     }
+    if (current < 24) {
+      this.db.transaction(() => {
+        this.db.exec(`
+          ALTER TABLE social_project_growth_batches
+            ADD COLUMN finalized_at TEXT;
+          INSERT INTO social_schema_migrations(version, applied_at)
+          VALUES (24, '${isoNow()}');
+        `);
+      })();
+    }
   }
 
   seedInitialSocialModel() {

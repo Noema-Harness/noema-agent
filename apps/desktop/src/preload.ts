@@ -57,6 +57,12 @@ const bridge = {
     ipcRenderer.invoke('noema:social-update-project-plan-item', input),
   restoreSocialProject: (projectId: string) =>
     ipcRenderer.invoke('noema:social-restore-project', projectId),
+  retrySocialProjectGrowthMember: (batchId: string, agentId: string) =>
+    ipcRenderer.invoke(
+      'noema:social-retry-project-growth-member',
+      batchId,
+      agentId,
+    ),
   createSocialContinuationThread: (input: {
     sourceRoomId: string;
     sourceIds: string[];

@@ -90,8 +90,30 @@ export class SocialProjectStore {
         WHERE ps.project_id = ? ORDER BY ps.joined_at, a.name
       `)
       .all(project.id);
+    const growthBatch = this.db
+      .prepare(`
+        SELECT id, plan_revision AS planRevision, status,
+               completed_at AS completedAt, finalized_at AS finalizedAt
+        FROM social_project_growth_batches
+        WHERE project_id = ? ORDER BY created_at DESC, id DESC LIMIT 1
+      `)
+      .get(project.id);
+    const growthMembers = growthBatch
+      ? this.db
+          .prepare(`
+            SELECT gm.agent_id AS agentId, a.name AS agentName, gm.status,
+                   gm.error_message AS errorMessage
+            FROM social_project_growth_members AS gm
+            JOIN social_agents AS a ON a.id = gm.agent_id
+            WHERE gm.batch_id = ? ORDER BY gm.created_at, gm.agent_id
+          `)
+          .all(growthBatch.id)
+      : [];
     return {
       ...project,
+      growthBatch: growthBatch
+        ? { ...growthBatch, members: growthMembers }
+        : null,
       pendingReview:
         this.db
           .prepare(`SELECT id, request_message_id AS requestMessageId, room_id AS roomId
@@ -110,7 +132,7 @@ export class SocialProjectStore {
       .prepare(`
         SELECT id, project_id AS projectId, plan_revision AS planRevision,
                status, created_at AS createdAt, updated_at AS updatedAt,
-               completed_at AS completedAt
+               completed_at AS completedAt, finalized_at AS finalizedAt
         FROM social_project_growth_batches WHERE id = ?
       `)
       .get(batchId);
@@ -399,6 +421,50 @@ export class SocialProjectStore {
       `)
       .all()
       .map(({ id }) => this.getProjectGrowthBatch(id));
+  }
+
+  listUnfinalizedCompletedProjectGrowthBatches() {
+    return this.db
+      .prepare(`
+        SELECT id FROM social_project_growth_batches
+        WHERE status = 'completed' AND finalized_at IS NULL
+        ORDER BY completed_at, id
+      `)
+      .all()
+      .map(({ id }) => this.getProjectGrowthBatch(id));
+  }
+
+  archiveCompletedProjectGrowthBatch(batchId) {
+    requireText(batchId, '成长批次 ID', 200);
+    return this.db.transaction(() => {
+      const batch = this.db
+        .prepare(`
+          SELECT project_id AS projectId, status, finalized_at AS finalizedAt
+          FROM social_project_growth_batches WHERE id = ?
+        `)
+        .get(batchId);
+      if (!batch) throw new Error('找不到这个成长批次。');
+      if (batch.status !== 'completed')
+        throw new Error('成员经历整理尚未全部完成。');
+      if (batch.finalizedAt) {
+        return { project: this.getProject(batch.projectId), archived: false };
+      }
+      const project = this.getProject(batch.projectId);
+      if (project.status === 'active') this.archiveProject(project.id);
+      else if (project.status !== 'archived') {
+        throw new Error('项目正在等待用户评审，不能完成归档。');
+      }
+      this.db
+        .prepare(`
+          UPDATE social_project_growth_batches SET finalized_at = ?, updated_at = ?
+          WHERE id = ? AND finalized_at IS NULL
+        `)
+        .run(isoNow(), isoNow(), batchId);
+      return {
+        project: this.getProject(batch.projectId),
+        archived: project.status !== 'archived',
+      };
+    })();
   }
 
   getPendingProjectGrowthBriefs(agentId, maxCharacters = 2_000) {
@@ -1097,6 +1163,16 @@ export class SocialProjectStore {
     if (project.status === 'archived') return project;
     if (project.status === 'awaiting_user') {
       throw new Error('项目仍在等待用户反馈，不能归档。');
+    }
+    if (
+      this.db
+        .prepare(`
+          SELECT 1 FROM social_project_growth_batches
+          WHERE project_id = ? AND status = 'running' LIMIT 1
+        `)
+        .get(projectId)
+    ) {
+      throw new Error('成员经历整理尚未全部完成，不能归档。');
     }
     const active = this.db
       .prepare(`

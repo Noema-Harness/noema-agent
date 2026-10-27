@@ -425,6 +425,7 @@ export class SocialChatService {
 
   async getUiState() {
     const root = await this.getRootState();
+    this.finalizeCompletedProjectGrowthBatches();
     if (root.providerConfigured && root.selectedModel) {
       for (const project of this.projectStore?.listProjects({
         includeArchived: false,
@@ -1088,7 +1089,7 @@ export class SocialChatService {
             .get(run.agentId, run.projectContext.projectId, run.turnId),
         );
         try {
-          this.projectStore.finishProjectGrowthMember(
+          const batch = this.projectStore.finishProjectGrowthMember(
             run.projectGrowthBatchId,
             run.agentId,
             {
@@ -1096,6 +1097,9 @@ export class SocialChatService {
               brief: reply.content,
             },
           );
+          if (batch.status === 'completed') {
+            this.finalizeCompletedProjectGrowthBatches();
+          }
         } catch (error) {
           this.projectStore.failProjectGrowthMember(
             run.projectGrowthBatchId,
@@ -1400,6 +1404,32 @@ export class SocialChatService {
     }
   }
 
+  finalizeCompletedProjectGrowthBatches() {
+    if (this.shuttingDown || !this.projectStore) return;
+    for (const batch of this.projectStore.listUnfinalizedCompletedProjectGrowthBatches()) {
+      try {
+        const result = this.projectStore.archiveCompletedProjectGrowthBatch(
+          batch.id,
+        );
+        this.emit({
+          type: 'project-updated',
+          projectId: result.project.id,
+          groupRoomId: result.project.groupRoomId,
+        });
+        if (result.archived) {
+          this.emit({
+            type: 'project-growth-archived',
+            projectId: result.project.id,
+            groupRoomId: result.project.groupRoomId,
+            title: result.project.title,
+          });
+        }
+      } catch {
+        // Leave the completion unfinalized; startup/state refresh can retry safely.
+      }
+    }
+  }
+
   retryProjectGrowthMember(batchId, agentId) {
     if (this.shuttingDown)
       throw new Error('Noema 正在关闭，暂不能续接成员复盘。');
@@ -1524,6 +1554,12 @@ export class SocialChatService {
       this.emit({ type: 'chat-turn-started', ...turn });
       run.done = this.runTurn(run);
       await run.done;
+      this.emit({
+        type: 'project-updated',
+        projectId: project.id,
+        groupRoomId: project.groupRoomId,
+      });
+      this.finalizeCompletedProjectGrowthBatches();
     }
   }
 

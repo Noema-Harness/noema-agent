@@ -576,6 +576,9 @@ function SocialChatApp() {
           return;
         }
         void refreshState().catch(() => {});
+        if (event.type === 'project-growth-archived') {
+          setNotice(`「${event.title}」已完成成员经历整理，并归档到历史项目。`);
+        }
         if ('roomId' in event && event.roomId === activeRoomId) {
           void loadRoom(event.roomId);
         }
@@ -1686,6 +1689,26 @@ function SocialChatApp() {
     }
   };
 
+  const retryProjectGrowthMember = async (
+    project: NoemaSocialProject,
+    agentId: string,
+  ) => {
+    const batch = project.growthBatch;
+    if (!batch || projectStatusBusy) return;
+    setProjectStatusBusy(true);
+    setNotice('');
+    try {
+      await window.noema.retrySocialProjectGrowthMember(batch.id, agentId);
+      await refreshState();
+    } catch (error) {
+      setNotice(
+        error instanceof Error ? error.message : '成员经历整理未能重试。',
+      );
+    } finally {
+      setProjectStatusBusy(false);
+    }
+  };
+
   const handleCreateAgent = async (event: FormEvent) => {
     event.preventDefault();
     setCreatingAgent(true);
@@ -2618,7 +2641,9 @@ function SocialChatApp() {
                   <small>
                     {project.status === 'awaiting_user'
                       ? '等待你的评审'
-                      : '进行中'}
+                      : project.growthBatch?.status === 'running'
+                        ? `整理经历 ${project.growthBatch.members.filter((member) => ['completed', 'no_change'].includes(member.status)).length}/${project.growthBatch.members.length}`
+                        : '进行中'}
                   </small>
                 </span>
               </button>
@@ -3086,6 +3111,110 @@ function SocialChatApp() {
                       </div>
                       <h2>{projectWorkspace.title}</h2>
                       <p className="lead">{projectWorkspace.brief}</p>
+                      {projectWorkspace.growthBatch ? (
+                        <section
+                          className={`project-growth-status ${projectWorkspace.growthBatch.members.some((member) => ['failed', 'interrupted'].includes(member.status)) ? 'needs-attention' : ''}`}
+                          aria-live="polite"
+                        >
+                          <header>
+                            <strong>
+                              {projectWorkspace.growthBatch.status ===
+                              'completed'
+                                ? '成员经历整理已完成'
+                                : projectWorkspace.growthBatch.members.some(
+                                      (member) =>
+                                        ['failed', 'interrupted'].includes(
+                                          member.status,
+                                        ),
+                                    )
+                                  ? '成员经历整理需要处理'
+                                  : '正在整理成员经历'}
+                            </strong>
+                            <span>
+                              {
+                                projectWorkspace.growthBatch.members.filter(
+                                  (member) =>
+                                    ['completed', 'no_change'].includes(
+                                      member.status,
+                                    ),
+                                ).length
+                              }
+                              /{projectWorkspace.growthBatch.members.length}{' '}
+                              位成员
+                            </span>
+                          </header>
+                          <ul>
+                            {projectWorkspace.growthBatch.members.map(
+                              (member) => {
+                                const settled = [
+                                  'completed',
+                                  'no_change',
+                                ].includes(member.status);
+                                const failed = [
+                                  'failed',
+                                  'interrupted',
+                                ].includes(member.status);
+                                return (
+                                  <li key={member.agentId}>
+                                    <span>{member.agentName}</span>
+                                    <span>
+                                      {member.status === 'completed'
+                                        ? '已复盘并更新资产'
+                                        : member.status === 'no_change'
+                                          ? '已复盘，无需改动'
+                                          : member.status === 'running'
+                                            ? '正在复盘'
+                                            : member.status === 'pending'
+                                              ? '等待处理'
+                                              : (member.errorMessage ??
+                                                '复盘中断')}
+                                    </span>
+                                    {failed ? (
+                                      <button
+                                        className="quiet"
+                                        type="button"
+                                        disabled={
+                                          projectStatusBusy ||
+                                          !state?.providerConfigured ||
+                                          !state.selectedModel
+                                        }
+                                        title={
+                                          !state?.providerConfigured ||
+                                          !state.selectedModel
+                                            ? '先连接模型服务再重试'
+                                            : undefined
+                                        }
+                                        onClick={() =>
+                                          void retryProjectGrowthMember(
+                                            projectWorkspace,
+                                            member.agentId,
+                                          )
+                                        }
+                                      >
+                                        重试
+                                      </button>
+                                    ) : null}
+                                    {settled ? (
+                                      <span
+                                        className="growth-check"
+                                        aria-label="完成"
+                                      >
+                                        完成
+                                      </span>
+                                    ) : null}
+                                  </li>
+                                );
+                              },
+                            )}
+                          </ul>
+                          {projectWorkspace.growthBatch.status ===
+                          'completed' ? (
+                            <p>
+                              项目已归档；群聊、计划和成员项目会话仍保留，可从“已归档项目”恢复。
+                            </p>
+                          ) : null}
+                        </section>
+                      ) : null}
                       <ProjectPlanPanel
                         key={projectWorkspace.id}
                         project={projectWorkspace}
@@ -3137,14 +3266,21 @@ function SocialChatApp() {
                           type="button"
                           disabled={
                             projectStatusBusy ||
-                            projectWorkspace.status === 'awaiting_user'
+                            projectWorkspace.status === 'awaiting_user' ||
+                            (projectWorkspace.status !== 'archived' &&
+                              projectWorkspace.growthBatch?.status ===
+                                'running')
                           }
                           title={
                             projectWorkspace.status === 'awaiting_user'
                               ? '先在 Noema 主聊完成待反馈事项'
-                              : projectWorkspace.status === 'archived'
-                                ? '恢复后可继续项目工作'
-                                : '归档后保留项目和成员会话'
+                              : projectWorkspace.status !== 'archived' &&
+                                  projectWorkspace.growthBatch?.status ===
+                                    'running'
+                                ? '成员经历整理完成后才能归档'
+                                : projectWorkspace.status === 'archived'
+                                  ? '恢复后可继续项目工作'
+                                  : '归档后保留项目和成员会话'
                           }
                           onClick={() =>
                             projectWorkspace.status === 'archived'
