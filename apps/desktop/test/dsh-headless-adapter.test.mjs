@@ -220,6 +220,41 @@ test('worker process streams safe status events and reports the final result', a
   }
 });
 
+test('a worker deadline stops the DSH process and reports a bounded timeout', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'noema-dsh-timeout-'));
+  const child = new FakeChild();
+  try {
+    const adapter = new DshHeadlessAdapter({
+      runtime: { nodeExecutable: 'node.exe', dshBin: 'dsh/lib/bin.js' },
+      userDataPath: path.join(directory, 'user-data'),
+      providerBaseUrl: 'http://127.0.0.1:31415/v1',
+      getApiKey: () => 'test-free-key',
+      spawnImpl: () => child,
+    });
+    const handle = await adapter.startTask({
+      taskId: 'task-timeout',
+      workspacePath: path.join(directory, 'workspace'),
+      task: 'Complete a bounded task.',
+      model: routerModel,
+      timeoutMs: 10,
+    });
+    child.stdout.write('{"type":"session","sessionId":"session-timeout"}\n');
+    await handle.started;
+    child.stdout.write(
+      '{"type":"tool_call","callId":"write-timeout","tool":"write","input":{"path":"README.md"}}\n',
+    );
+
+    const result = await handle.done;
+    assert.equal(child.killed, true);
+    assert.equal(result.status, 'interrupted');
+    assert.equal(result.errorCode, 'dsh_task_timeout');
+    assert.match(result.errorMessage, /超过允许的运行时间/u);
+    assert.equal(result.workspaceMutationStatus, 'unknown');
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('provider 4xx failures are classified as non-retryable request rejections', async () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'noema-dsh-rejected-'));
   const workspace = path.join(directory, 'workspace');

@@ -3122,6 +3122,67 @@ test('does not automatically retry a rejected DSH model request', async () => {
   }
 });
 
+test('does not replay a timed-out DSH task after a workspace mutation may have started', async () => {
+  const store = new RootStore(':memory:');
+  const workspace = mkdtempSync(path.join(tmpdir(), 'noema-worker-timeout-'));
+  const turn = store.beginTurn({ text: '更新 README。', model: 'free-router' });
+  store.setSelectedModel('free-router');
+  let workerStarts = 0;
+  const agent = new RootAgent({
+    store,
+    provider: {
+      baseUrl: 'http://127.0.0.1:31415/v1',
+      listModels: async () => [
+        { name: 'free-router', label: 'FreeLLMAPI 免费路由' },
+      ],
+      async *streamChat() {
+        yield '后台任务已超时；请先检查工作区，再决定如何继续。';
+      },
+    },
+    secretStore: createSecretStore(),
+    dshAdapter: {
+      async startTask() {
+        workerStarts += 1;
+        return {
+          started: Promise.resolve({ sessionId: 'session-timeout-test' }),
+          done: Promise.resolve({
+            status: 'interrupted',
+            sessionId: 'session-timeout-test',
+            result: '',
+            errorCode: 'dsh_task_timeout',
+            errorMessage: '后台 DSH 任务超过允许的运行时间，已停止。',
+            toolCallCount: 1,
+            workspaceMutationStatus: 'unknown',
+          }),
+          stop: () => true,
+        };
+      },
+    },
+  });
+
+  try {
+    const started = await agent.startBackgroundTask({
+      sourceTurnId: turn.id,
+      prompt: '更新工作区中的 README。',
+      workspacePath: workspace,
+    });
+    assert.equal(started.accepted, true);
+    await started.completion;
+
+    const task = store.getBackgroundTask(started.taskId);
+    assert.equal(workerStarts, 1);
+    assert.equal(task.status, 'interrupted');
+    assert.equal(task.errorCode, 'dsh_task_timeout');
+    assert.equal(task.toolCallCount, 1);
+    assert.equal(task.eventStatus, 'delivered');
+    assert.match(task.noemaResponse, /已停止/u);
+  } finally {
+    await agent.shutdown();
+    store.close();
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
 test('retries a failed Noema event summary without restarting the completed DSH worker', async () => {
   const store = new RootStore(':memory:');
   store.setSelectedModel('free-router');
