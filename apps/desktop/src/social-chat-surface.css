@@ -692,46 +692,120 @@
   color: #526574;
   margin-bottom: 9px;
 }
-.social-shell .project-stage.needs-attention {
-  color: #8b5b31;
-}
-.social-shell .project-stage.needs-attention .state-mark {
-  background: #b97843;
-}
-.social-shell .project-finalization-issue {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  margin: 1px 0 22px;
-  padding: 10px 0 10px 13px;
-  border-left: 2px solid #c58b5d;
+.social-shell .project-closeout {
+  max-width: 760px;
+  margin: 1px 0 23px;
   color: var(--ink);
 }
-.social-shell .project-finalization-issue strong {
+.social-shell .project-closeout-track {
+  display: grid;
+  grid-template-columns: minmax(155px, auto) minmax(44px, 1fr) minmax(
+      190px,
+      auto
+    );
+  align-items: center;
+  max-width: 590px;
+}
+.social-shell .project-closeout-step {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+.social-shell .project-closeout-step > span {
+  display: grid;
+  width: 23px;
+  height: 23px;
+  flex: 0 0 23px;
+  place-items: center;
+  border: 1px solid #aebdc2;
+  border-radius: 50%;
+  color: #61727b;
+  font-size: 11px;
+  line-height: 1;
+}
+.social-shell .project-closeout-step.complete > span {
+  border-color: #55796c;
+  background: #55796c;
+  color: #fff;
+}
+.social-shell .project-closeout-step.current > span {
+  border-color: #547789;
+  color: #36596b;
+}
+.social-shell .project-closeout-step.attention > span {
+  border-color: #b97843;
+  color: #935c31;
+}
+.social-shell .project-closeout-step div {
+  display: grid;
+  gap: 2px;
+}
+.social-shell .project-closeout-step strong {
   font-size: 12px;
   font-weight: 600;
 }
-.social-shell .project-finalization-issue p {
-  margin: 4px 0 0;
+.social-shell .project-closeout-step small {
+  color: #78858c;
+  font-size: 11px;
+}
+.social-shell .project-closeout-connector {
+  height: 1px;
+  margin: 0 11px;
+  background: #cbd4d7;
+}
+.social-shell .project-closeout-detail {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 10px 0 0 32px;
+  padding-left: 12px;
+  border-left: 1px solid #d7dfe1;
+}
+.social-shell .project-closeout-detail p {
+  margin: 0;
   color: #6f7c85;
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.6;
 }
-.social-shell .project-finalization-actions {
+.social-shell .project-closeout-actions {
   display: flex;
   flex: 0 0 auto;
   gap: 8px;
 }
-.social-shell .project-finalization-actions .secondary {
-  min-height: 31px;
-  padding-inline: 11px;
+.social-shell .project-closeout-action {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+}
+.social-shell .project-closeout-action small {
+  color: #78858c;
+  font-size: 10px;
+}
+.social-shell .project-closeout-actions .secondary {
+  min-height: 29px;
+  padding: 0 10px;
+  font-size: 11px;
+}
+.social-shell .project-closeout.needs-attention .project-closeout-detail {
+  border-color: #c58b5d;
 }
 @media (max-width: 760px) {
-  .social-shell .project-finalization-issue {
+  .social-shell .project-closeout-track {
+    grid-template-columns: minmax(120px, auto) minmax(22px, 1fr) minmax(
+        150px,
+        auto
+      );
+  }
+  .social-shell .project-closeout-step {
+    gap: 6px;
+  }
+  .social-shell .project-closeout-detail {
     align-items: flex-start;
     flex-direction: column;
-    gap: 10px;
+    gap: 9px;
+    margin-left: 20px;
   }
 }
 .social-shell .work-content h2 {

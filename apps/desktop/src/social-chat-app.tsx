@@ -108,10 +108,18 @@ function projectHasFinalizationIssue(project: NoemaSocialProject) {
   );
 }
 
+function projectFinalizationIssueNames(project: NoemaSocialProject) {
+  return (
+    project.growthBatch?.members
+      .filter((member) => ['failed', 'interrupted'].includes(member.status))
+      .map((member) => member.agentName) ?? []
+  );
+}
+
 function projectStatusLabel(project: NoemaSocialProject) {
   if (project.status === 'awaiting_user') return '等待你的评审';
   if (project.status === 'archived') return '已归档';
-  if (projectHasFinalizationIssue(project)) return '收尾待处理';
+  if (projectHasFinalizationIssue(project)) return '归档暂缓';
   if (project.growthBatch?.status === 'running') return '正在收尾';
   return '进行中';
 }
@@ -2842,7 +2850,10 @@ function SocialChatApp() {
                   <div>
                     <strong>{projectWorkspace.title}</strong>
                     <small>
-                      项目空间 · {projectStatusLabel(projectWorkspace)}
+                      {projectWorkspace.growthBatch &&
+                      projectWorkspace.status !== 'archived'
+                        ? '项目空间'
+                        : `项目空间 · ${projectStatusLabel(projectWorkspace)}`}
                     </small>
                   </div>
                 </div>
@@ -3105,80 +3116,105 @@ function SocialChatApp() {
                     </>
                   ) : (
                     <>
-                      <div
-                        className={`project-stage ${projectHasFinalizationIssue(projectWorkspace) ? 'needs-attention' : ''}`}
-                      >
-                        <span
-                          className={`state-mark ${projectWorkspace.status === 'awaiting_user' || projectHasFinalizationIssue(projectWorkspace) ? '' : 'running'}`}
-                        />
-                        {projectWorkspace.status === 'archived'
-                          ? '已归档 · 历史记录仍可查看'
-                          : projectWorkspace.status === 'awaiting_user'
-                            ? '等待你的反馈'
-                            : projectHasFinalizationIssue(projectWorkspace)
-                              ? '项目已交付 · 收尾待处理'
-                              : projectWorkspace.growthBatch?.status ===
-                                  'running'
-                                ? '项目已交付 · 正在完成收尾'
-                                : '项目进行中'}
-                      </div>
-                      <h2>{projectWorkspace.title}</h2>
-                      <p className="lead">{projectWorkspace.brief}</p>
-                      {projectHasFinalizationIssue(projectWorkspace) ? (
+                      {projectWorkspace.status !== 'archived' &&
+                      projectWorkspace.growthBatch ? (
                         <section
-                          className="project-finalization-issue"
+                          className={`project-closeout ${projectHasFinalizationIssue(projectWorkspace) ? 'needs-attention' : ''}`}
+                          aria-label="项目交付与归档状态"
                           aria-live="polite"
                         >
-                          <div>
-                            <strong>项目已交付，归档暂缓</strong>
-                            <p>
-                              {projectWorkspace.growthBatch?.members
-                                .filter((member) =>
-                                  ['failed', 'interrupted'].includes(
-                                    member.status,
-                                  ),
-                                )
-                                .map((member) => member.agentName)
-                                .join('、')}{' '}
-                              尚未完成收尾。项目记录与工作成果均已保留。
-                            </p>
+                          <div className="project-closeout-track">
+                            <div className="project-closeout-step complete">
+                              <span aria-hidden="true">✓</span>
+                              <div>
+                                <strong>交付完成</strong>
+                                <small>计划成果已验收</small>
+                              </div>
+                            </div>
+                            <span
+                              className="project-closeout-connector"
+                              aria-hidden="true"
+                            />
+                            <div
+                              className={`project-closeout-step ${projectHasFinalizationIssue(projectWorkspace) ? 'attention' : 'current'}`}
+                            >
+                              <span aria-hidden="true">
+                                {projectHasFinalizationIssue(projectWorkspace)
+                                  ? '!'
+                                  : '…'}
+                              </span>
+                              <div>
+                                <strong>项目归档</strong>
+                                <small>
+                                  {projectHasFinalizationIssue(projectWorkspace)
+                                    ? '需要处理'
+                                    : '完成收尾后自动进行'}
+                                </small>
+                              </div>
+                            </div>
                           </div>
-                          <div className="project-finalization-actions">
-                            {projectWorkspace.growthBatch?.members
-                              .filter((member) =>
-                                ['failed', 'interrupted'].includes(
-                                  member.status,
-                                ),
-                              )
-                              .map((member) => (
-                                <button
-                                  className="secondary"
-                                  type="button"
-                                  key={member.agentId}
-                                  disabled={
-                                    projectStatusBusy ||
-                                    !state?.providerConfigured ||
-                                    !state.selectedModel
-                                  }
-                                  title={
-                                    !state?.providerConfigured ||
-                                    !state.selectedModel
-                                      ? '连接模型服务后即可继续收尾'
-                                      : undefined
-                                  }
-                                  onClick={() =>
-                                    void retryProjectGrowthMember(
-                                      projectWorkspace,
-                                      member.agentId,
-                                    )
-                                  }
-                                >
-                                  继续收尾 · {member.agentName}
-                                </button>
-                              ))}
+                          <div className="project-closeout-detail">
+                            <p>
+                              {projectHasFinalizationIssue(projectWorkspace)
+                                ? `${projectFinalizationIssueNames(projectWorkspace).join('、')}尚未完成收尾；项目记录和交付成果仍已保留。`
+                                : '团队收尾正在进行。完成后项目会自动归档，群聊、计划与交付记录仍可恢复查看。'}
+                            </p>
+                            {projectHasFinalizationIssue(projectWorkspace) ? (
+                              <div className="project-closeout-actions">
+                                {projectWorkspace.growthBatch.members
+                                  .filter((member) =>
+                                    ['failed', 'interrupted'].includes(
+                                      member.status,
+                                    ),
+                                  )
+                                  .map((member) => {
+                                    const canRetry =
+                                      state?.providerConfigured &&
+                                      Boolean(state.selectedModel);
+                                    return (
+                                      <div
+                                        className="project-closeout-action"
+                                        key={member.agentId}
+                                      >
+                                        <button
+                                          className="secondary"
+                                          type="button"
+                                          disabled={
+                                            projectStatusBusy || !canRetry
+                                          }
+                                          onClick={() =>
+                                            void retryProjectGrowthMember(
+                                              projectWorkspace,
+                                              member.agentId,
+                                            )
+                                          }
+                                        >
+                                          继续收尾 · {member.agentName}
+                                        </button>
+                                        {!canRetry ? (
+                                          <small>连接模型后可继续</small>
+                                        ) : null}
+                                      </div>
+                                    );
+                                  })}
+                              </div>
+                            ) : null}
                           </div>
                         </section>
-                      ) : null}
+                      ) : (
+                        <div className="project-stage">
+                          <span
+                            className={`state-mark ${projectWorkspace.status === 'awaiting_user' || projectWorkspace.status === 'archived' ? '' : 'running'}`}
+                          />
+                          {projectWorkspace.status === 'archived'
+                            ? '已归档 · 历史记录仍可查看'
+                            : projectWorkspace.status === 'awaiting_user'
+                              ? '等待你的反馈'
+                              : '项目进行中'}
+                        </div>
+                      )}
+                      <h2>{projectWorkspace.title}</h2>
+                      <p className="lead">{projectWorkspace.brief}</p>
                       <ProjectPlanPanel
                         key={projectWorkspace.id}
                         project={projectWorkspace}

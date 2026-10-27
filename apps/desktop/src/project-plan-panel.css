@@ -1,5 +1,7 @@
 .social-shell .project-plan {
   margin: 24px 0;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
   color: var(--ink);
 }
 .social-shell .project-plan-head,
@@ -25,25 +27,31 @@
   line-height: 1.7;
 }
 .social-shell .project-plan-progress {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 8px 20px;
+  display: grid;
+  gap: 5px;
+  max-width: 700px;
   color: var(--muted);
   font-size: 12px;
 }
+.social-shell .project-plan-progress > span:first-child {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
 .social-shell .project-plan-progress strong {
   color: var(--ink);
-  font-size: 17px;
+  font-size: 20px;
   font-weight: 600;
-  margin-left: 6px;
+  letter-spacing: -0.4px;
 }
 .social-shell .project-plan-progress progress {
   width: 100%;
-  height: 4px;
+  max-width: 700px;
+  height: 3px;
   border: 0;
   appearance: none;
   background: var(--line);
+  margin-top: 3px;
 }
 .social-shell .project-plan-progress progress::-webkit-progress-bar {
   background: var(--line);
