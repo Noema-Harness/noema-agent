@@ -50,8 +50,8 @@ type InteractionAdjustmentDraft = Pick<
 >;
 
 const markdownComponents: Components = {
-  a: ({ href, children }) => (
-    <a href={href} target="_blank" rel="noreferrer noopener">
+  a: ({ href, title, children }) => (
+    <a href={href} title={title} target="_blank" rel="noreferrer noopener">
       {children}
     </a>
   ),

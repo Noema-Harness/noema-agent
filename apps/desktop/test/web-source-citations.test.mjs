@@ -25,3 +25,21 @@ test('leaves invalid and non-web source URLs as plain markers', () => {
 
   assert.equal(rendered, '来源 [[S1]] [[S2]]');
 });
+
+test('links quoted evidence only when the exact excerpt exists in the saved page text', () => {
+  const rendered = linkWebSourceCitations(
+    '价格为12元 [[S1|单盒蓝莓售价12元]]；错误摘录 [[S1|单盒售价120元]]。',
+    [
+      {
+        citationId: 'S1',
+        url: 'https://example.com/price',
+        excerpt: '本周信息：单盒蓝莓售价12元。以页面为准。',
+      },
+    ],
+  );
+
+  assert.equal(
+    rendered,
+    '价格为12元 [S1](<https://example.com/price> "原文摘录：单盒蓝莓售价12元")；错误摘录 [[S1|单盒售价120元]]。',
+  );
+});
