@@ -729,6 +729,66 @@ test('warns when retrying a failed web-backed answer can consume search quota ag
   }
 });
 
+test('does not claim a rejected delegate task was started in retry guidance', async () => {
+  const store = new RootStore(':memory:');
+  store.setSelectedModel('test-model');
+  const workspace = mkdtempSync(
+    path.join(tmpdir(), 'noema-rejected-delegate-'),
+  );
+  store.setWorkspaceDirectory(workspace);
+  let providerCalls = 0;
+  const agent = new RootAgent({
+    store,
+    provider: {
+      listModels: async () => [{ name: 'test-model', label: 'Test' }],
+      async *streamChat(input) {
+        providerCalls += 1;
+        if (providerCalls === 1) {
+          input.onToolCalls([
+            {
+              id: 'oversized-delegate',
+              type: 'function',
+              function: {
+                name: 'delegate_task',
+                arguments: JSON.stringify({ task: 'x'.repeat(40_000) }),
+              },
+            },
+            {
+              id: 'search-after-rejected-delegate',
+              type: 'function',
+              function: {
+                name: 'search_web',
+                arguments: JSON.stringify({ query: '本周 AI 新闻' }),
+              },
+            },
+          ]);
+        } else {
+          yield '';
+        }
+      },
+    },
+    secretStore: createSecretStore(),
+    webSearchSecretStore: createSecretStore(),
+    searchWebImpl: async () => ({ results: [] }),
+    dshAdapter: { startTask: async () => assert.fail('任务不应启动') },
+  });
+
+  try {
+    const { turnId } = agent.sendMessage({ text: '请搜索本周 AI 新闻。' });
+    await agent.active.done;
+    const failed = store.getTurn(turnId);
+    assert.equal(failed.status, 'failed');
+    assert.match(failed.errorMessage, /没有已创建的后台任务/u);
+    assert.doesNotMatch(failed.errorMessage, /已启动的委派会继续/u);
+    assert.equal(store.getBackgroundTasks().length, 0);
+    assert.equal(providerCalls, 2);
+  } finally {
+    await agent.shutdown();
+    store.close();
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
 test('Noema reads only a user-provided URL and persists the source with its answer', async () => {
   const store = new RootStore(':memory:');
   store.setSelectedModel('test-model');

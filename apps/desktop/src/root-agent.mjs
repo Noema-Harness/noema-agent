@@ -1057,12 +1057,36 @@ export class RootAgent {
                 details.push('已读取的网页来源保留在这次失败的尝试中');
               }
               if (usedToolNames.has('delegate_task')) {
-                details.push(
-                  '已启动的委派会继续，同一请求重试不会再次创建任务',
-                );
+                const task = this.store.getBackgroundTaskForTurn(turn.id);
+                if (task) {
+                  const taskStatus =
+                    {
+                      starting: '正在启动',
+                      running: '正在执行',
+                      completed: '已完成',
+                      failed: '失败',
+                      interrupted: '已中断',
+                    }[task.status] ?? '状态未知';
+                  details.push(
+                    `对应后台任务${taskStatus}；重试不会再次创建任务`,
+                  );
+                } else {
+                  details.push('没有已创建的后台任务；重试会重新尝试原请求');
+                }
               }
               if (usedToolNames.has('record_interaction_adjustment')) {
-                details.push('已保存的互动调整不会自动撤回');
+                const adjustment = this.store
+                  .getInteractionAdjustments()
+                  .find(
+                    (item) =>
+                      item.sourceSurface === 'root' &&
+                      item.sourceTurnId === turn.id,
+                  );
+                details.push(
+                  adjustment?.status === 'active'
+                    ? '已保存的互动调整不会自动撤回'
+                    : '互动调整未确认保存；重试会重新处理原请求',
+                );
               }
               return `重试会重新处理原请求；${details.join('；')}。`;
             };
