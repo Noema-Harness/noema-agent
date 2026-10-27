@@ -1654,7 +1654,10 @@ export class SocialChatStore {
           AND m.role IN ('user', 'assistant')
           AND (
             instr(lower(m.content), lower(?)) > 0 OR
-            instr(lower(m.forwarded_sources_json), lower(?)) > 0
+            EXISTS (
+              SELECT 1 FROM json_each(m.forwarded_sources_json) AS source
+              WHERE instr(lower(json_extract(source.value, '$.content')), lower(?)) > 0
+            )
           )
         ORDER BY m.created_at DESC, m.seq DESC
         LIMIT ?
@@ -1664,6 +1667,15 @@ export class SocialChatStore {
       const forwardedSources = JSON.parse(row.forwardedSourcesJson ?? '[]');
       const matchingSource = forwardedSources.find((source) =>
         source.content.toLocaleLowerCase().includes(needle.toLocaleLowerCase()),
+      );
+      const content = matchingSource ? matchingSource.content : row.content;
+      const index = content
+        .toLocaleLowerCase()
+        .indexOf(needle.toLocaleLowerCase());
+      const start = Math.max(0, index - 60);
+      const end = Math.min(
+        content.length,
+        Math.max(0, index) + needle.length + 120,
       );
       return {
         id: row.id,
@@ -1675,7 +1687,7 @@ export class SocialChatStore {
           : row.role === 'user'
             ? '你'
             : (row.agentName ?? 'Noema'),
-        content: matchingSource ? matchingSource.content : row.content,
+        content: `${start ? '…' : ''}${content.slice(start, end)}${end < content.length ? '…' : ''}`,
         forwarded: Boolean(matchingSource),
         createdAt: row.createdAt,
       };

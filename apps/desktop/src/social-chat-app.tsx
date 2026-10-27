@@ -27,6 +27,7 @@ import {
 import { extractChatPdfText } from './chat-pdf-extraction.mjs';
 import { ProjectReviewCard } from './project-review-card';
 import { ProjectPlanPanel } from './project-plan-panel';
+import { GlobalSearchDialog } from './global-search-dialog';
 import {
   socialWorkCardTitle,
   socialWorkExecutionStepPresentation,
@@ -43,6 +44,7 @@ import type {
   NoemaSocialReplySource,
   NoemaSocialRoom,
   NoemaSocialRoomState,
+  NoemaSocialSearchResult,
   NoemaSocialState,
   NoemaSocialWorkTask,
 } from './noema-bridge.d.ts';
@@ -256,6 +258,10 @@ function SocialChatApp() {
   >(null);
   const [navigationSearch, setNavigationSearch] = useState('');
   const [conversationSearchOpen, setConversationSearchOpen] = useState(false);
+  const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
+  const globalSearchTriggerRef = useRef<HTMLButtonElement>(null);
+  const globalSearchReturnFocusRef = useRef<HTMLElement | null>(null);
+  const globalNavigationSequence = useRef(0);
   const [conversationSearchQuery, setConversationSearchQuery] = useState('');
   const [notice, setNotice] = useState('');
   const [draftAttachmentsByRoom, setDraftAttachmentsByRoom] = useState<
@@ -424,7 +430,9 @@ function SocialChatApp() {
       ? next.projects.some(
           (project) =>
             project.id === activeProjectSession.projectId &&
-            project.status !== 'archived',
+            project.members.some(
+              (member) => member.sessionRoomId === activeProjectSession.roomId,
+            ),
         )
       : false;
     if (activeProjectSession && !projectSessionStillActive) {
@@ -432,7 +440,8 @@ function SocialChatApp() {
     }
     setActiveRoomId((current) =>
       (current && next.rooms.some((room) => room.id === current)) ||
-      (current === activeProjectSession?.roomId && projectSessionStillActive)
+      (current === activeProjectSession?.roomId && projectSessionStillActive) ||
+      next.projects.some((project) => project.groupRoomId === current)
         ? current
         : 'room-noema',
     );
@@ -497,6 +506,25 @@ function SocialChatApp() {
     setConversationSearchOpen(false);
     setConversationSearchQuery('');
     requestAnimationFrame(() => searchTriggerRef.current?.focus());
+  }, []);
+
+  const closeGlobalSearch = useCallback((restoreFocus = true) => {
+    globalNavigationSequence.current++;
+    setGlobalSearchOpen(false);
+    if (restoreFocus)
+      requestAnimationFrame(() => {
+        const previous = globalSearchReturnFocusRef.current;
+        if (previous?.isConnected) previous.focus();
+        else globalSearchTriggerRef.current?.focus();
+      });
+  }, []);
+  const openGlobalSearch = useCallback(() => {
+    if (document.querySelector('[role="dialog"]')) return;
+    globalSearchReturnFocusRef.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    setGlobalSearchOpen(true);
   }, []);
 
   const openConversationSearch = () => {
@@ -578,15 +606,16 @@ function SocialChatApp() {
   useEffect(() => {
     const focusSearch = (event: globalThis.KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        if (event.defaultPrevented || event.isComposing) return;
         event.preventDefault();
-        navigation.reveal();
-        setShowRoomList(true);
-        requestAnimationFrame(() => searchRef.current?.focus());
+        if (globalSearchOpen)
+          document.querySelector<HTMLInputElement>('[cmdk-input]')?.focus();
+        else openGlobalSearch();
       }
     };
     window.addEventListener('keydown', focusSearch);
     return () => window.removeEventListener('keydown', focusSearch);
-  }, [navigation.reveal]);
+  }, [globalSearchOpen, openGlobalSearch]);
 
   useEffect(() => {
     if (!navigation.narrow || !showRoomList) return;
@@ -619,7 +648,8 @@ function SocialChatApp() {
       !settingsOpen &&
       !forwardDialogOpen &&
       !threadDialogOpen &&
-      !conversationSearchOpen
+      !conversationSearchOpen &&
+      !globalSearchOpen
     ) {
       return;
     }
@@ -638,9 +668,11 @@ function SocialChatApp() {
       initial?.focus();
     });
     const onDialogKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented || event.isComposing) return;
       if (event.key === 'Escape') {
         event.preventDefault();
-        if (createGroupOpen) closeGroupDialog();
+        if (globalSearchOpen) closeGlobalSearch();
+        else if (createGroupOpen) closeGroupDialog();
         else if (createProjectOpen) closeProjectDialog();
         else if (createAgentOpen || editingAgentId) closeAgentDialog();
         else if (forwardDialogOpen) cancelForward();
@@ -684,6 +716,8 @@ function SocialChatApp() {
     forwardDialogOpen,
     threadDialogOpen,
     conversationSearchOpen,
+    globalSearchOpen,
+    closeGlobalSearch,
     closeGroupDialog,
     closeProjectDialog,
     closeAgentDialog,
@@ -719,6 +753,10 @@ function SocialChatApp() {
         `[data-review-message-id="${pendingScrollMessageId}"] textarea`,
       );
       feedback?.focus({ preventScroll: true });
+      if (!feedback && target) {
+        target.tabIndex = -1;
+        target.focus({ preventScroll: true });
+      }
       setPendingScrollMessageId(null);
     });
     return () => cancelAnimationFrame(frame);
@@ -733,7 +771,7 @@ function SocialChatApp() {
   const rooms = state?.rooms ?? [];
   const noemaRoom = rooms.find((room) => room.id === 'room-noema') ?? null;
   const currentProjectSessionRoom =
-    activeProjectSession && roomState?.room.id === activeProjectSession.roomId
+    roomState?.room.id === activeRoomId
       ? {
           ...roomState.room,
           lastMessageAt: roomState.messages.at(-1)?.createdAt ?? null,
@@ -873,7 +911,18 @@ function SocialChatApp() {
       }));
       const results = await Promise.allSettled(
         members.map((member) =>
-          window.noema.getSocialProjectSession(project.id, member.agentId),
+          project.status === 'archived'
+            ? window.noema.getSocialRoom(member.sessionRoomId).then((room) => ({
+                project: {
+                  id: project.id,
+                  title: project.title,
+                  brief: project.brief,
+                  status: project.status,
+                },
+                agentId: member.agentId,
+                room,
+              }))
+            : window.noema.getSocialProjectSession(project.id, member.agentId),
         ),
       );
       const sessions = results.flatMap((result) =>
@@ -1518,10 +1567,7 @@ function SocialChatApp() {
   const openProject = async (project: NoemaSocialProject) => {
     setNotice('');
     try {
-      if (project.status === 'archived') {
-        await window.noema.restoreSocialProject(project.id);
-      }
-      const next = await refreshState();
+      await refreshState();
       setProjectWorkspaceId(project.id);
       setArchivedProjectsOpen(false);
       setProjectTab('delivery');
@@ -1531,8 +1577,7 @@ function SocialChatApp() {
       setActiveRoomId(project.groupRoomId);
       setShowRoomList(false);
       shouldFollowRef.current = true;
-      if (next.rooms.some((room) => room.id === project.groupRoomId))
-        void loadRoom(project.groupRoomId);
+      await loadRoom(project.groupRoomId);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : '无法打开这个项目。');
     }
@@ -1544,10 +1589,13 @@ function SocialChatApp() {
   ) => {
     setNotice('');
     try {
-      const session = await window.noema.getSocialProjectSession(
-        project.id,
-        agentId,
+      const membership = project.members.find(
+        (member) => member.agentId === agentId,
       );
+      const session =
+        project.status === 'archived' && membership
+          ? { room: await window.noema.getSocialRoom(membership.sessionRoomId) }
+          : await window.noema.getSocialProjectSession(project.id, agentId);
       shouldFollowRef.current = true;
       setActiveProjectSession({
         projectId: project.id,
@@ -1566,6 +1614,57 @@ function SocialChatApp() {
       setNotice(
         error instanceof Error ? error.message : '无法打开成员的项目会话。',
       );
+    }
+  };
+
+  const openGlobalSearchSource = async (
+    roomId: string,
+    message?: NoemaSocialSearchResult,
+  ) => {
+    const navigation = globalNavigationSequence.current;
+    const source = await window.noema.getSocialRoom(roomId);
+    if (navigation !== globalNavigationSequence.current)
+      throw new DOMException('搜索已关闭。', 'AbortError');
+    if (message && !source.messages.some((item) => item.id === message.id))
+      throw new Error('这条消息已移除，请重新搜索。');
+    const project = projects.find(
+      (item) =>
+        item.groupRoomId === roomId ||
+        item.members.some((member) => member.sessionRoomId === roomId),
+    );
+    const membership = project?.members.find(
+      (member) => member.sessionRoomId === roomId,
+    );
+    setProjectWorkspaceId(project?.groupRoomId === roomId ? project.id : null);
+    setActiveProjectSession(
+      project && membership
+        ? { projectId: project.id, agentId: membership.agentId, roomId }
+        : null,
+    );
+    setProjectTab('group');
+    setAgentWorkspaceId(null);
+    setArchivedProjectsOpen(false);
+    setReplyTarget(null);
+    setForwardSelectionActive(false);
+    setSelectedForwardMessageIds([]);
+    shouldFollowRef.current = !message;
+    setRoomState(source);
+    setActiveRoomId(roomId);
+    setShowRoomList(false);
+    if (message) setPendingScrollMessageId(message.id);
+    else requestAnimationFrame(() => draftRef.current?.focus());
+  };
+
+  const restoreCurrentProject = async (project: NoemaSocialProject) => {
+    if (projectStatusBusy) return;
+    setProjectStatusBusy(true);
+    try {
+      await window.noema.restoreSocialProject(project.id);
+      await refreshState();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : '恢复失败。');
+    } finally {
+      setProjectStatusBusy(false);
     }
   };
 
@@ -1862,6 +1961,14 @@ function SocialChatApp() {
   );
   const composerDisabled =
     !providerReady ||
+    Boolean(
+      activeProject &&
+      (activeProject.status === 'archived' ||
+        (activeProjectSession &&
+          activeProject.members.find(
+            (member) => member.agentId === activeProjectSession.agentId,
+          )?.status !== 'active')),
+    ) ||
     Boolean(currentRoom?.closedAt) ||
     forwardSelectionActive ||
     !currentRecipient ||
@@ -2344,6 +2451,16 @@ function SocialChatApp() {
           <span>noema</span>
         </div>
         <div className="window-tools">
+          <button
+            ref={globalSearchTriggerRef}
+            type="button"
+            className="icon-button global-search-trigger"
+            title="全局搜索 · Ctrl+K"
+            aria-label="全局搜索（Ctrl+K）"
+            onClick={openGlobalSearch}
+          >
+            <Icon name="search" />
+          </button>
           <div className="window-controls" aria-label="窗口控件">
             <button
               className="window-control"
@@ -2740,9 +2857,11 @@ function SocialChatApp() {
                       </div>
                     ) : null}
                     <div className="note-row">
-                      {providerReady
-                        ? `群消息对成员可见；@成员名可指定回应者，默认由 ${currentRecipient?.name ?? '当前成员'} 回应。`
-                        : providerWarning}
+                      {projectWorkspace.status === 'archived'
+                        ? '归档历史仅供查看；恢复项目后可继续讨论。'
+                        : providerReady
+                          ? '群消息对全体成员可见；@成员名指定回应，无 @ 的消息保留为未读背景。'
+                          : providerWarning}
                       {!providerReady ? (
                         <button
                           className="quiet"
@@ -2922,9 +3041,11 @@ function SocialChatApp() {
                         <span
                           className={`state-mark ${projectWorkspace.status === 'awaiting_user' ? '' : 'running'}`}
                         />
-                        {projectWorkspace.status === 'awaiting_user'
-                          ? '等待你的反馈'
-                          : '项目进行中'}
+                        {projectWorkspace.status === 'archived'
+                          ? '已归档 · 只读历史'
+                          : projectWorkspace.status === 'awaiting_user'
+                            ? '等待你的反馈'
+                            : '项目进行中'}
                       </div>
                       <h2>{projectWorkspace.title}</h2>
                       <p className="lead">{projectWorkspace.brief}</p>
@@ -2984,13 +3105,21 @@ function SocialChatApp() {
                           title={
                             projectWorkspace.status === 'awaiting_user'
                               ? '先在 Noema 主聊完成待反馈事项'
-                              : '归档后保留项目和成员会话'
+                              : projectWorkspace.status === 'archived'
+                                ? '恢复后可继续项目工作'
+                                : '归档后保留项目和成员会话'
                           }
                           onClick={() =>
-                            void archiveCurrentProject(projectWorkspace)
+                            projectWorkspace.status === 'archived'
+                              ? void restoreCurrentProject(projectWorkspace)
+                              : void archiveCurrentProject(projectWorkspace)
                           }
                         >
-                          {projectStatusBusy ? '正在归档…' : '归档项目'}
+                          {projectWorkspace.status === 'archived'
+                            ? '恢复项目'
+                            : projectStatusBusy
+                              ? '正在归档…'
+                              : '归档项目'}
                         </button>
                       </div>
                     </>
@@ -3227,6 +3356,31 @@ function SocialChatApp() {
           ) : null}
         </section>
       </div>
+      {globalSearchOpen ? (
+        <GlobalSearchDialog
+          dialogRef={dialogRef}
+          agents={agents}
+          projects={projects}
+          onClose={closeGlobalSearch}
+          onAgent={async (agent) => {
+            const room = rooms.find(
+              (room) =>
+                room.kind === 'direct' &&
+                !room.parentRoomId &&
+                room.memberIds.includes(agent.id),
+            );
+            if (!room) throw new Error('联系人聊天暂不可用。');
+            await openGlobalSearchSource(room.id);
+          }}
+          onProject={async (project) => {
+            await openGlobalSearchSource(project.groupRoomId);
+            setProjectTab('delivery');
+          }}
+          onMessage={async (message) => {
+            await openGlobalSearchSource(message.roomId, message);
+          }}
+        />
+      ) : null}
       {conversationSearchOpen ? (
         <div
           className="dialog-backdrop"

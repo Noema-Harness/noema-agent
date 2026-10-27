@@ -338,6 +338,18 @@ test('message search spans rooms, matches literal text and returns local navigat
       createdAt: results[0].createdAt,
     });
     assert.equal(social.searchMessages('%').length, 1);
+    const long = social.beginTurn({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '前文'.repeat(1000) + 'TAIL-MATCH' + '后文'.repeat(1000),
+      model: 'test-model',
+    });
+    social.completeReply(long.assistantMessageId);
+    const excerpt = social.searchMessages('tail-match')[0];
+    assert.equal(excerpt.id, long.userMessageId);
+    assert.match(excerpt.content, /TAIL-MATCH/);
+    assert.ok(excerpt.content.length < 210);
+    assert.ok(excerpt.content.startsWith('…') && excerpt.content.endsWith('…'));
     assert.throws(() => social.searchMessages('   '), /不能为空/);
   } finally {
     db.close();
