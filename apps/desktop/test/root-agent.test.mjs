@@ -683,6 +683,181 @@ test('Noema does not expose web fetching for chats without an explicit URL', asy
   store.close();
 });
 
+test('Noema searches only on current-source requests when configured and attaches results to the answer', async () => {
+  const store = new RootStore(':memory:');
+  store.setSelectedModel('test-model');
+  let calls = 0;
+  let firstRequest;
+  const webSearchSecretStore = createSecretStore();
+  const agent = new RootAgent({
+    store,
+    provider: {
+      baseUrl: 'http://127.0.0.1:31415/v1',
+      listModels: async () => [{ name: 'test-model', label: 'Test' }],
+      async *streamChat(input) {
+        calls += 1;
+        if (calls === 1) {
+          firstRequest = input;
+          input.onToolCalls([
+            {
+              id: 'call-search',
+              type: 'function',
+              function: {
+                name: 'search_web',
+                arguments: JSON.stringify({ query: '本周 AI 新闻' }),
+              },
+            },
+          ]);
+          return;
+        }
+        input.onRouteMetadata('test-route');
+        assert.match(input.messages.at(-1).content, /本周行业消息摘录/u);
+        yield '搜索到的来源显示本周行业有几项新消息。';
+      },
+    },
+    secretStore: createSecretStore(),
+    webSearchSecretStore,
+    searchWebImpl: async (query, key) => {
+      assert.equal(query, '本周 AI 新闻');
+      assert.equal(key, 'test-key');
+      return {
+        results: [
+          {
+            id: 'candidate-1',
+            title: '本周行业消息',
+            url: 'https://example.com/news',
+          },
+        ],
+      };
+    },
+    fetchWebSourceImpl: async (url, options) => {
+      assert.equal(url, 'https://example.com/news');
+      assert.deepEqual(options.allowedRedirectHosts, ['example.com']);
+      return {
+        source: {
+          id: 'search-source-1',
+          title: '本周行业消息',
+          url,
+          fetchedAt: '2026-10-27T00:00:00.000Z',
+          excerpt: '本周行业消息摘录',
+          truncated: false,
+        },
+        content: '本周行业消息摘录',
+      };
+    },
+  });
+
+  const { turnId } = agent.sendMessage({ text: '请搜索本周 AI 新闻。' });
+  await agent.active.done;
+  const assistant = store
+    .getSnapshot()
+    .messages.find(
+      (message) => message.turnId === turnId && message.role === 'assistant',
+    );
+  assert.ok(
+    firstRequest.tools.some((tool) => tool.function.name === 'search_web'),
+  );
+  assert.deepEqual(
+    assistant.externalSources.map((source) => source.url),
+    ['https://example.com/news'],
+  );
+  assert.equal(assistant.externalSourcesIncluded, true);
+  assert.match(assistant.content, /搜索到的来源/u);
+  assert.equal(calls, 2);
+  await agent.shutdown();
+  store.close();
+});
+
+test('Noema does not expose source search without an explicit current-information request or configured key', async () => {
+  for (const { text, configured } of [
+    { text: '聊聊我最近的生活吧。', configured: true },
+    { text: '请搜索本周 AI 新闻。', configured: false },
+  ]) {
+    const store = new RootStore(':memory:');
+    store.setSelectedModel('test-model');
+    let tools = [];
+    const agent = new RootAgent({
+      store,
+      provider: {
+        baseUrl: 'http://127.0.0.1:31415/v1',
+        listModels: async () => [{ name: 'test-model', label: 'Test' }],
+        async *streamChat(input) {
+          tools = input.tools;
+          yield '继续聊聊。';
+        },
+      },
+      secretStore: createSecretStore(),
+      webSearchSecretStore: createSecretStore(configured),
+    });
+    agent.sendMessage({ text });
+    await agent.active.done;
+    assert.equal(
+      tools.some((tool) => tool.function.name === 'search_web'),
+      false,
+    );
+    await agent.shutdown();
+    store.close();
+  }
+});
+
+test('search queries must be copied from the current user message rather than private prior context', async () => {
+  const store = new RootStore(':memory:');
+  store.setSelectedModel('test-model');
+  let searchCalls = 0;
+  const agent = new RootAgent({
+    store,
+    provider: { baseUrl: 'http://127.0.0.1:31415/v1' },
+    secretStore: createSecretStore(),
+    webSearchSecretStore: createSecretStore(),
+    searchWebImpl: async () => {
+      searchCalls += 1;
+      return { results: [] };
+    },
+  });
+  const turn = store.beginTurn({
+    text: '请搜索本周 AI 新闻。',
+    model: 'test-model',
+  });
+  await assert.rejects(
+    agent.handleRootToolCall(turn, [
+      {
+        id: 'call-search-private-query',
+        type: 'function',
+        function: {
+          name: 'search_web',
+          arguments: JSON.stringify({ query: '家庭住址与私人健康记录' }),
+        },
+      },
+    ]),
+    (error) => error.code === 'web_search_invalid',
+  );
+  assert.equal(searchCalls, 0);
+  await agent.shutdown();
+  store.close();
+});
+
+test('web-search credentials can be replaced or removed without exposing the secret in UI state', async () => {
+  const store = new RootStore(':memory:');
+  const webSearchSecretStore = createSecretStore(false);
+  const agent = new RootAgent({
+    store,
+    provider: { baseUrl: 'http://127.0.0.1:31415/v1' },
+    secretStore: createSecretStore(),
+    webSearchSecretStore,
+  });
+  agent.configureWebSearch({ apiKey: 'new-search-key' });
+  const configuredState = await agent.getUiState();
+  assert.equal(configuredState.webSearchConfigured, true);
+  assert.equal(
+    JSON.stringify(configuredState).includes('new-search-key'),
+    false,
+  );
+  agent.clearWebSearch();
+  assert.equal((await agent.getUiState()).webSearchConfigured, false);
+  await agent.shutdown();
+  store.close();
+});
+
 test('a failed webpage read is visible after the model response', async () => {
   const store = new RootStore(':memory:');
   store.setSelectedModel('test-model');

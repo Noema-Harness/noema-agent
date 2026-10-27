@@ -2350,7 +2350,7 @@ function DesktopApp() {
                             {message.externalSources.length > 0 && (
                               <details className="history-recall-trace external-source-trace">
                                 <summary>
-                                  本轮读取 {message.externalSources.length}{' '}
+                                  本轮参考 {message.externalSources.length}{' '}
                                   个网页来源
                                 </summary>
                                 <ul>
@@ -2376,8 +2376,8 @@ function DesktopApp() {
                                   ))}
                                 </ul>
                                 <p className="history-recall-caveat">
-                                  这记录 Noema
-                                  成功读取并尝试提供给模型的原文；不证明模型实际使用或理解了它，也不代表来源内容已独立核实。
+                                  这里可能是 Noema Noema
+                                  实际读取的网页正文摘录；搜索只用于发现候选页面，不保存搜索摘要。它记录了尝试提供给模型的资料，不证明模型实际使用或理解了它，也不代表来源内容已独立核实。
                                 </p>
                               </details>
                             )}

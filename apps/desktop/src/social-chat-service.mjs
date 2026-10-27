@@ -5,7 +5,7 @@ import { resolveGroupRecipient } from './group-mentions.mjs';
 import { projectPlanParameters } from './project-plan-store.mjs';
 import { ProjectCollaborationStore } from './project-collaboration-store.mjs';
 
-/** @typedef {Omit<Pick<import('./noema-bridge.d.ts').NoemaRootState,'connected'|'checking'|'models'|'selectedModel'|'error'|'providerConfigured'|'providerBaseUrl'|'providerName'>,'providerName'> & {providerName:string}} SocialProviderState */
+/** @typedef {Omit<Pick<import('./noema-bridge.d.ts').NoemaRootState,'connected'|'checking'|'models'|'selectedModel'|'error'|'providerConfigured'|'providerBaseUrl'|'providerName'|'webSearchConfigured'>,'providerName'> & {providerName:string}} SocialProviderState */
 
 function safeError(error) {
   if (error instanceof ModelProviderError) return error.message;
@@ -429,6 +429,7 @@ export class SocialChatService {
       providerConfigured: root.providerConfigured,
       providerBaseUrl: root.providerBaseUrl,
       providerName: root.providerName,
+      webSearchConfigured: root.webSearchConfigured,
       projectWork: this.getProjectWorkReadiness(),
       ...this.store.getSnapshot(),
     };

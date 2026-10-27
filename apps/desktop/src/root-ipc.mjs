@@ -2,6 +2,8 @@ const CHANNELS = Object.freeze({
   state: 'noema:root-state',
   models: 'noema:refresh-models',
   configureProvider: 'noema:configure-provider',
+  configureWebSearch: 'noema:configure-web-search',
+  clearWebSearch: 'noema:clear-web-search',
   selectModel: 'noema:select-model',
   send: 'noema:send-message',
   saveCapture: 'noema:save-capture',
@@ -245,6 +247,10 @@ export function registerRootIpc({
   register(CHANNELS.configureProvider, (configuration) =>
     rootAgent.configureProvider(configuration),
   );
+  register(CHANNELS.configureWebSearch, (configuration) =>
+    rootAgent.configureWebSearch(configuration),
+  );
+  register(CHANNELS.clearWebSearch, () => rootAgent.clearWebSearch());
   register(CHANNELS.selectModel, (model) => rootAgent.setModel(model));
   register(CHANNELS.send, (text) => sendMessage(text));
   register(CHANNELS.saveCapture, (text) => rootAgent.saveCapture(text));

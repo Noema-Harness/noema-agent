@@ -301,6 +301,8 @@ function SocialChatApp() {
   const [providerBaseUrl, setProviderBaseUrl] = useState('');
   const [providerApiKey, setProviderApiKey] = useState('');
   const [savingProvider, setSavingProvider] = useState(false);
+  const [webSearchApiKey, setWebSearchApiKey] = useState('');
+  const [savingWebSearch, setSavingWebSearch] = useState(false);
   const [switchingModel, setSwitchingModel] = useState(false);
   const conversationRef = useRef<HTMLDivElement>(null);
   const draftRef = useRef<HTMLTextAreaElement>(null);
@@ -1847,6 +1849,41 @@ function SocialChatApp() {
       );
     } finally {
       setSavingProvider(false);
+    }
+  };
+
+  const handleWebSearchSave = async () => {
+    if (!webSearchApiKey.trim()) return;
+    setSavingWebSearch(true);
+    setNotice('');
+    try {
+      await window.noema.configureWebSearch({ apiKey: webSearchApiKey });
+      setWebSearchApiKey('');
+      await refreshState();
+      setNotice('网页搜索已配置；符合本轮请求时最多搜索一次。');
+    } catch (error) {
+      setNotice(
+        error instanceof Error ? error.message : '网页搜索配置没有保存。',
+      );
+    } finally {
+      setSavingWebSearch(false);
+    }
+  };
+
+  const handleWebSearchClear = async () => {
+    setSavingWebSearch(true);
+    setNotice('');
+    try {
+      await window.noema.clearWebSearch();
+      setWebSearchApiKey('');
+      await refreshState();
+      setNotice('网页搜索凭据已从本机移除。');
+    } catch (error) {
+      setNotice(
+        error instanceof Error ? error.message : '网页搜索凭据没有移除。',
+      );
+    } finally {
+      setSavingWebSearch(false);
     }
   };
 
@@ -4128,6 +4165,64 @@ function SocialChatApp() {
             <p className="dialog-footnote">
               Noema 只接受本机地址。模型服务可能按各自政策处理请求内容。
             </p>
+            <section
+              className="settings-provider-section"
+              aria-labelledby="web-search-settings-title"
+            >
+              <div>
+                <h3 id="web-search-settings-title">网页搜索（Tavily）</h3>
+                <p>
+                  只在你问到近期信息或明确要求查找来源时使用。搜索词会发送给
+                  Tavily；每轮最多一次，使用基础搜索，最多读取 3
+                  个候选网页。成功读取的正文来源会保存在对应答复中。具体额度与费用由你的
+                  Tavily 账户方案决定；Noema 不会自动升级或重试。
+                </p>
+              </div>
+              {state?.webSearchConfigured ? (
+                <div className="connection-summary">
+                  <span>
+                    <i />
+                    Tavily 密钥已加密保存在本机
+                  </span>
+                  <button
+                    type="button"
+                    disabled={savingWebSearch}
+                    onClick={() => void handleWebSearchClear()}
+                  >
+                    移除
+                  </button>
+                </div>
+              ) : null}
+              <label className="dialog-field">
+                <span>
+                  {state?.webSearchConfigured
+                    ? '替换 API Key'
+                    : 'Tavily API Key'}
+                </span>
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  value={webSearchApiKey}
+                  onChange={(event) => setWebSearchApiKey(event.target.value)}
+                  placeholder={
+                    state?.webSearchConfigured
+                      ? '输入新 Key 以替换'
+                      : '配置后启用来源搜索'
+                  }
+                  disabled={savingWebSearch}
+                />
+              </label>
+              <div className="dialog-actions">
+                <button
+                  className="secondary-action"
+                  type="button"
+                  disabled={savingWebSearch || !webSearchApiKey.trim()}
+                  onClick={() => void handleWebSearchSave()}
+                >
+                  {savingWebSearch ? '正在保存…' : '保存搜索密钥'}
+                </button>
+              </div>
+            </section>
             {state?.error ? (
               <p className="dialog-error" role="status">
                 {state.error}

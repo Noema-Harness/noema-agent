@@ -4006,6 +4006,31 @@ select:disabled {
   white-space: nowrap;
   cursor: pointer;
 }
+.settings-provider-section {
+  display: grid;
+  gap: 12px;
+  margin-top: 20px;
+  padding-top: 17px;
+  border-top: 1px solid var(--chat-line);
+}
+.settings-provider-section h3 {
+  margin: 0 0 5px;
+  color: var(--chat-ink);
+  font-size: 12px;
+  font-weight: 680;
+}
+.settings-provider-section p {
+  margin: 0;
+  color: var(--chat-muted);
+  font-size: 10px;
+  line-height: 1.6;
+}
+.settings-provider-section .dialog-field {
+  margin: 0;
+}
+.settings-provider-section .dialog-actions {
+  margin-top: 0;
+}
 .group-agent-picker {
   display: flex;
   flex-direction: column;

@@ -113,6 +113,9 @@ const bridge = {
   refreshModels: () => ipcRenderer.invoke('noema:refresh-models'),
   configureProvider: (configuration: { baseUrl: string; apiKey: string }) =>
     ipcRenderer.invoke('noema:configure-provider', configuration),
+  configureWebSearch: (configuration: { apiKey: string }) =>
+    ipcRenderer.invoke('noema:configure-web-search', configuration),
+  clearWebSearch: () => ipcRenderer.invoke('noema:clear-web-search'),
   selectModel: (model: string) =>
     ipcRenderer.invoke('noema:select-model', model),
   sendMessage: (text: string) => ipcRenderer.invoke('noema:send-message', text),

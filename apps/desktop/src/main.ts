@@ -3648,6 +3648,14 @@ async function startNoema() {
       ),
       fallbackStores: [legacyFreeLlmApiSecretStore],
     });
+    const webSearchSecretStore = new EncryptedSecretStore({
+      safeStorage,
+      filePath: path.join(
+        app.getPath('userData'),
+        'credentials',
+        'web-search.key',
+      ),
+    });
     const envModelBaseUrl = process.env.NOEMA_MODEL_BASE_URL;
     const injectedModelApiKey = process.env.NOEMA_MODEL_API_KEY;
     const allowIsolatedModelCredential = Boolean(
@@ -3750,6 +3758,7 @@ async function startNoema() {
       store: rootStore,
       provider,
       secretStore: providerSecretStore,
+      webSearchSecretStore,
       dshAdapter,
       dshRuntimeError,
       codexAdapter: codexAdapter.available ? codexAdapter : null,
@@ -4402,7 +4411,13 @@ async function startNoema() {
                 connected: Boolean(providerState.connected),
                 modelSelected: Boolean(providerState.selectedModel),
                 selectedRouteReady: selectedRouteAvailable,
-                availableModels: availableModels.map(({ name, routeKind, executionStatus }) => ({ name, routeKind, executionStatus })),
+                availableModels: availableModels.map(
+                  ({ name, routeKind, executionStatus }) => ({
+                    name,
+                    routeKind,
+                    executionStatus,
+                  }),
+                ),
               },
               null,
               2,

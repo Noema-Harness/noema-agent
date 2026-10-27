@@ -124,6 +124,7 @@ export interface NoemaRootState {
   providerConfigured: boolean;
   providerBaseUrl: string;
   providerName: string;
+  webSearchConfigured: boolean;
   workspaceDirectory: string | null;
   dshAvailable: boolean;
   dshWorkerAvailable: boolean;
@@ -244,6 +245,7 @@ export type NoemaSocialState = Pick<
   | 'providerConfigured'
   | 'providerBaseUrl'
   | 'providerName'
+  | 'webSearchConfigured'
 > & {
   interactionAdjustments: NoemaInteractionAdjustment[];
   agents: NoemaSocialAgent[];
@@ -777,6 +779,10 @@ export interface NoemaBridge {
     baseUrl: string;
     apiKey: string;
   }): Promise<Partial<NoemaRootState>>;
+  configureWebSearch(configuration: {
+    apiKey: string;
+  }): Promise<{ webSearchConfigured: boolean }>;
+  clearWebSearch(): Promise<{ webSearchConfigured: boolean }>;
   selectModel(model: string): Promise<string>;
   sendMessage(text: string): Promise<{ turnId?: string; canceled?: boolean }>;
   saveCapture(text: string): Promise<NoemaCapture>;
