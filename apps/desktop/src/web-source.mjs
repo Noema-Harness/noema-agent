@@ -175,6 +175,32 @@ function requestOnce(url, addresses, { signal } = {}) {
   });
 }
 
+function raceWithSignal(promise, signal) {
+  if (!signal) return promise;
+  signal.throwIfAborted();
+  return new Promise((resolve, reject) => {
+    const cleanup = () => signal.removeEventListener('abort', onAbort);
+    const onAbort = () => {
+      cleanup();
+      reject(
+        signal.reason ??
+          new DOMException('The operation was aborted', 'AbortError'),
+      );
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+    Promise.resolve(promise).then(
+      (value) => {
+        cleanup();
+        resolve(value);
+      },
+      (error) => {
+        cleanup();
+        reject(error);
+      },
+    );
+  });
+}
+
 async function fetchResponse(
   url,
   redirectsLeft = MAX_REDIRECTS,
@@ -195,9 +221,12 @@ async function fetchResponse(
     !ipaddr.isValid(hostname) &&
     allowedRedirectHosts.includes(url.hostname) &&
     proxyConfiguredImpl(url.protocol);
-  const resolution = await resolvePublicAddresses(url.hostname, lookupImpl, {
-    allowProxyMapped: proxyMappedAllowed,
-  });
+  const resolution = await raceWithSignal(
+    resolvePublicAddresses(url.hostname, lookupImpl, {
+      allowProxyMapped: proxyMappedAllowed,
+    }),
+    signal,
+  );
   signal?.throwIfAborted();
   const response = await requestImpl(url, resolution.records, { signal });
   signal?.throwIfAborted();

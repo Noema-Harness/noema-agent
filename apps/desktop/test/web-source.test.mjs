@@ -82,6 +82,24 @@ test('web page fetching propagates caller cancellation through the safe reader',
   assert.equal(requestSignal.aborted, true);
 });
 
+test('cancelling during DNS resolution prevents the HTTP request', async () => {
+  const controller = new AbortController();
+  let requestCount = 0;
+  const pending = fetchWebSource('https://example.com/docs', {
+    signal: controller.signal,
+    lookupImpl: async () => new Promise(() => {}),
+    requestImpl: async () => {
+      requestCount += 1;
+      throw new Error('An aborted DNS lookup must not reach HTTP.');
+    },
+  });
+
+  await new Promise((resolve) => setImmediate(resolve));
+  controller.abort(new DOMException('Stopped by user', 'AbortError'));
+  await assert.rejects(pending, { name: 'AbortError' });
+  assert.equal(requestCount, 0);
+});
+
 test('accepts only proxy-mapped addresses for explicitly supplied hosts', async () => {
   let requestCount = 0;
   const dependencies = {
