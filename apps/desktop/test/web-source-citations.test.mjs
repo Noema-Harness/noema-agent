@@ -40,6 +40,6 @@ test('links quoted evidence only when the exact excerpt exists in the saved page
 
   assert.equal(
     rendered,
-    '价格为12元 [S1](<https://example.com/price> "原文摘录：单盒蓝莓售价12元")；错误摘录 [[S1|单盒售价120元]]。',
+    '价格为12元 [S1](<https://example.com/price> "匹配的页面原文（不等于结论已核实）：单盒蓝莓售价12元")；错误摘录 [[S1|单盒售价120元]]。',
   );
 });

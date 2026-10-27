@@ -21,7 +21,7 @@ export function linkWebSourceCitations(content, sources) {
     if (!entry) return marker;
     if (quote !== undefined) {
       if (!entry.source.excerpt?.includes(quote)) return marker;
-      const title = `原文摘录：${quote.replace(/\\/gu, '\\\\').replace(/"/gu, '\\"').replace(/\s+/gu, ' ')}`;
+      const title = `匹配的页面原文（不等于结论已核实）：${quote.replace(/\\/gu, '\\\\').replace(/"/gu, '\\"').replace(/\s+/gu, ' ')}`;
       return `[${citationId}](<${entry.url}> "${title}")`;
     }
     return `[${citationId}](<${entry.url}>)`;
