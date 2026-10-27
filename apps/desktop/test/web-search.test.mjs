@@ -104,3 +104,42 @@ test('Tavily search propagates the caller abort signal to the network request', 
   await assert.rejects(pending, { name: 'AbortError' });
   assert.equal(requestSignal.aborted, true);
 });
+
+test('Tavily search deadline reports timeouts while waiting for headers or response body', async () => {
+  await assert.rejects(
+    searchWeb('当前资料', 'key', {
+      timeoutMs: 20,
+      fetchImpl: async (_url, { signal }) =>
+        new Promise((_resolve, reject) => {
+          signal.addEventListener('abort', () => reject(signal.reason), {
+            once: true,
+          });
+        }),
+    }),
+    /网页搜索超时/u,
+  );
+
+  let requestSignal;
+  await assert.rejects(
+    searchWeb('当前资料', 'key', {
+      timeoutMs: 20,
+      fetchImpl: async (_url, { signal }) => {
+        requestSignal = signal;
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              signal.addEventListener(
+                'abort',
+                () => controller.error(signal.reason),
+                { once: true },
+              );
+            },
+          }),
+          { headers: { 'content-type': 'application/json' } },
+        );
+      },
+    }),
+    /网页搜索超时/u,
+  );
+  assert.equal(requestSignal.aborted, true);
+});

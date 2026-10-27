@@ -70,7 +70,7 @@ async function readLimitedBody(response) {
 export async function searchWeb(
   query,
   apiKey,
-  { fetchImpl = fetch, signal } = {},
+  { fetchImpl = fetch, signal, timeoutMs = REQUEST_TIMEOUT_MS } = {},
 ) {
   if (typeof apiKey !== 'string' || !apiKey.trim()) {
     throw new Error('网页搜索服务尚未配置。');
@@ -84,7 +84,7 @@ export async function searchWeb(
   }
 
   let response;
-  const timeoutSignal = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
   const requestSignal = signal
     ? AbortSignal.any([signal, timeoutSignal])
     : timeoutSignal;
@@ -108,7 +108,7 @@ export async function searchWeb(
   } catch (error) {
     if (signal?.aborted) throw error;
     throw new Error(
-      error?.name === 'TimeoutError'
+      timeoutSignal.aborted || error?.name === 'TimeoutError'
         ? '网页搜索超时。'
         : '网页搜索服务暂时不可用。',
     );
@@ -122,6 +122,8 @@ export async function searchWeb(
   try {
     text = await readLimitedBody(response);
   } catch (error) {
+    if (signal?.aborted) throw error;
+    if (timeoutSignal.aborted) throw new Error('网页搜索超时。');
     if (
       error instanceof Error &&
       error.message === '网页搜索响应超过大小限制。'

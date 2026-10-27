@@ -309,11 +309,22 @@ export function extractUserUrls(text) {
 }
 export async function fetchWebSource(value, dependencies = {}) {
   const requestedUrl = validateUrl(value);
-  const response = await fetchResponse(
-    requestedUrl,
-    MAX_REDIRECTS,
-    dependencies,
-  );
+  const { signal, timeoutMs = REQUEST_TIMEOUT_MS } = dependencies;
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  const requestSignal = signal
+    ? AbortSignal.any([signal, timeoutSignal])
+    : timeoutSignal;
+  let response;
+  try {
+    response = await fetchResponse(requestedUrl, MAX_REDIRECTS, {
+      ...dependencies,
+      signal: requestSignal,
+    });
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    if (timeoutSignal.aborted) throw new Error('网页读取超时。');
+    throw error;
+  }
   const html = decodeBody(response.body, response.headers['content-type']);
   const page = extractPage(html, response.finalUrl, response.contentType);
   if (!page.text) throw new Error('网页中没有可读取的正文。');

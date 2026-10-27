@@ -100,6 +100,22 @@ test('cancelling during DNS resolution prevents the HTTP request', async () => {
   assert.equal(requestCount, 0);
 });
 
+test('web source applies one timeout across DNS resolution before opening HTTP', async () => {
+  let requestCount = 0;
+  await assert.rejects(
+    fetchWebSource('https://example.com/docs', {
+      timeoutMs: 20,
+      lookupImpl: async () => new Promise(() => {}),
+      requestImpl: async () => {
+        requestCount += 1;
+        throw new Error('HTTP must not start after the deadline.');
+      },
+    }),
+    /网页读取超时/u,
+  );
+  assert.equal(requestCount, 0);
+});
+
 test('accepts only proxy-mapped addresses for explicitly supplied hosts', async () => {
   let requestCount = 0;
   const dependencies = {
