@@ -3270,9 +3270,12 @@ test('retries a failed Noema event summary without restarting the completed DSH 
   }
 });
 
-test('continues an interrupted worker in the same DSH session and original workspace', async () => {
-  const store = new RootStore(':memory:');
-  const workspace = mkdtempSync(path.join(tmpdir(), 'noema-worker-resume-'));
+test('recovers and resumes a persisted worker in the same DSH session after restart', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'noema-worker-resume-'));
+  const workspace = path.join(directory, 'workspace');
+  mkdirSync(workspace);
+  const databasePath = path.join(directory, 'root.sqlite3');
+  let store = new RootStore(databasePath);
   store.setSelectedModel('auto:noema-free');
   const turn = store.beginTurn({
     text: '请修正 README。',
@@ -3292,12 +3295,8 @@ test('continues an interrupted worker in the same DSH session and original works
     prompt: '修正 README 的安装说明。',
   });
   store.setBackgroundTaskSession(previous.id, 'session-resume-test');
-  store.finishBackgroundTask(previous.id, {
-    status: 'interrupted',
-    resultText: '已读取 README。',
-    sessionId: 'session-resume-test',
-    toolCallCount: 1,
-  });
+  store.close();
+  store = new RootStore(databasePath);
 
   let resumeInput;
   const agent = new RootAgent({
@@ -3327,6 +3326,10 @@ test('continues an interrupted worker in the same DSH session and original works
   });
 
   try {
+    const recovered = store.getBackgroundTask(previous.id);
+    assert.equal(recovered.status, 'interrupted');
+    assert.equal(recovered.eventStatus, 'pending');
+    assert.equal(recovered.sessionId, 'session-resume-test');
     const result = await agent.resumeBackgroundTask(previous.id);
     assert.equal(result.accepted, true, JSON.stringify(result));
     assert.equal(resumeInput.sessionId, 'session-resume-test');
@@ -3337,7 +3340,7 @@ test('continues an interrupted worker in the same DSH session and original works
     assert.equal(store.getBackgroundTask(result.taskId).sourceTurnId, turn.id);
   } finally {
     store.close();
-    rmSync(workspace, { recursive: true, force: true });
+    rmSync(directory, { recursive: true, force: true });
   }
 });
 
