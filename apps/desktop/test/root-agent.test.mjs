@@ -1953,7 +1953,6 @@ test('a root request cannot start a second DSH task when its failed turn is retr
       },
     },
   });
-
   try {
     const first = await agent.startBackgroundTask({
       sourceTurnId: turn.id,
@@ -1993,6 +1992,139 @@ test('a root request cannot start a second DSH task when its failed turn is retr
     assert.equal(retryAfterCompletion.existingTask.status, 'completed');
     assert.equal(workerStarts, 1);
   } finally {
+    await agent.shutdown();
+    store.close();
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('retrying a failed root turn reports the completed task instead of redispatching it', async () => {
+  const store = new RootStore(':memory:');
+  store.setSelectedModel('test-model');
+  const workspace = mkdtempSync(
+    path.join(tmpdir(), 'noema-root-retry-completed-task-'),
+  );
+  store.setWorkspaceDirectory(workspace);
+  let providerCalls = 0;
+  let workerStarts = 0;
+  let finishWorker;
+  let workerFinished = false;
+  let turnId;
+  const workerDone = new Promise((resolve) => {
+    finishWorker = resolve;
+  });
+  const agent = new RootAgent({
+    store,
+    provider: {
+      listModels: async () => [{ name: 'test-model', label: 'Test' }],
+      async *streamChat(input) {
+        providerCalls += 1;
+        if ([1, 3].includes(providerCalls)) {
+          input.onToolCalls([
+            {
+              id: `delegate-${providerCalls}`,
+              type: 'function',
+              function: {
+                name: 'delegate_task',
+                arguments: JSON.stringify({
+                  task: '整理一份本周 AI 新闻简报。',
+                }),
+              },
+            },
+            ...(providerCalls === 1
+              ? [
+                  {
+                    id: 'search-before-failure',
+                    type: 'function',
+                    function: {
+                      name: 'search_web',
+                      arguments: JSON.stringify({ query: '本周 AI 新闻' }),
+                    },
+                  },
+                ]
+              : []),
+          ]);
+        } else {
+          yield '';
+        }
+      },
+    },
+    secretStore: createSecretStore(),
+    webSearchSecretStore: createSecretStore(),
+    searchWebImpl: async () => ({ results: [] }),
+    dshAdapter: {
+      async startTask() {
+        workerStarts += 1;
+        return {
+          started: Promise.resolve({ sessionId: 'root-retry-session' }),
+          done: workerDone,
+          stop: () => true,
+        };
+      },
+    },
+  });
+  agent.processPendingWorkerEvent = async () => {};
+
+  try {
+    ({ turnId } = agent.sendMessage({
+      text: '请搜索本周 AI 新闻，并交给后台整理。',
+    }));
+    await agent.active.done;
+    assert.equal(store.getTurn(turnId).status, 'failed');
+    const [originalTask] = store.getBackgroundTasks();
+    assert.equal(originalTask.status, 'running');
+    assert.equal(workerStarts, 1);
+
+    workerFinished = true;
+    finishWorker({
+      status: 'completed',
+      sessionId: 'root-retry-session',
+      result: '本周 AI 新闻简报已整理。',
+      errorCode: null,
+      errorMessage: null,
+      toolCallCount: 0,
+    });
+    await new Promise((resolve, reject) => {
+      let attempts = 0;
+      const waitForCompletion = () => {
+        if (store.getBackgroundTask(originalTask.id).status === 'completed') {
+          resolve();
+        } else if (++attempts >= 100) {
+          reject(new Error('后台任务未在测试期限内完成。'));
+        } else {
+          setTimeout(waitForCompletion, 5);
+        }
+      };
+      waitForCompletion();
+    });
+
+    agent.retryTurn({ turnId, model: 'test-model' });
+    await agent.active.done;
+    assert.equal(store.getTurn(turnId).status, 'completed');
+    assert.equal(workerStarts, 1);
+    assert.equal(store.getBackgroundTasks().length, 1);
+    const retryMessage = store
+      .getSnapshot()
+      .messages.find(
+        (message) =>
+          message.turnId === turnId &&
+          message.role === 'assistant' &&
+          message.attempt === 2,
+      );
+    assert.equal(providerCalls, 3);
+    assert.match(retryMessage.content, /后台任务（已完成）/u);
+    assert.match(retryMessage.content, /没有再次启动/u);
+  } finally {
+    if (!workerFinished) {
+      finishWorker({
+        status: 'interrupted',
+        sessionId: 'root-retry-session',
+        result: '',
+        errorCode: 'test_cleanup',
+        errorMessage: 'test cleanup',
+        toolCallCount: 0,
+      });
+    }
     await agent.shutdown();
     store.close();
     rmSync(workspace, { recursive: true, force: true });
