@@ -39,6 +39,7 @@ const CHANNELS = Object.freeze({
   socialProjectPlan: 'noema:social-project-plan',
   socialReplaceProjectPlan: 'noema:social-replace-project-plan',
   socialUpdateProjectPlanItem: 'noema:social-update-project-plan-item',
+  socialUpdateProjectPlanPhase: 'noema:social-update-project-plan-phase',
   socialArchiveProject: 'noema:social-archive-project',
   socialRestoreProject: 'noema:social-restore-project',
   socialRetryProjectGrowthMember: 'noema:social-retry-project-growth-member',
@@ -171,6 +172,23 @@ export function registerRootIpc({
             status,
             evidence,
             blocker,
+            actorAgentId: null,
+          }),
+        );
+      },
+    );
+    register(
+      CHANNELS.socialUpdateProjectPlanPhase,
+      ({ projectId, expectedRevision, reason, phaseId, evidence, status }) => {
+        if (!socialProjectStore) throw new Error('项目存储尚未初始化。');
+        return planChanged(
+          socialProjectStore.plans.updatePhase({
+            projectId,
+            expectedRevision,
+            reason,
+            phaseId,
+            evidence,
+            status,
             actorAgentId: null,
           }),
         );

@@ -11,6 +11,7 @@ import type {
   NoemaSocialState,
   NoemaProjectPlanWrite,
   NoemaProjectPlanItemUpdate,
+  NoemaProjectPlanPhaseUpdate,
 } from './noema-bridge.d.ts';
 
 const bridge = {
@@ -55,6 +56,8 @@ const bridge = {
     ipcRenderer.invoke('noema:social-replace-project-plan', input),
   updateSocialProjectPlanItem: (input: NoemaProjectPlanItemUpdate) =>
     ipcRenderer.invoke('noema:social-update-project-plan-item', input),
+  updateSocialProjectPlanPhase: (input: NoemaProjectPlanPhaseUpdate) =>
+    ipcRenderer.invoke('noema:social-update-project-plan-phase', input),
   restoreSocialProject: (projectId: string) =>
     ipcRenderer.invoke('noema:social-restore-project', projectId),
   retrySocialProjectGrowthMember: (batchId: string, agentId: string) =>

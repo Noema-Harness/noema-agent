@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { resolveGroupRecipients } from './group-mentions.mjs';
+import { parseProjectPlanRevision } from './project-plan-store.mjs';
 
 const MAX_CHAIN_DISPATCHES = 24;
 const MAX_CHAIN_DEPTH = 8;
@@ -256,46 +257,64 @@ export class ProjectCollaborationStore {
     if (!plan.revision) return;
     const revisions = this.db
       .prepare(
-        'SELECT revision, items_json AS items FROM social_project_plan_revisions WHERE project_id=? ORDER BY revision DESC',
+        'SELECT revision, stage, objective, items_json FROM social_project_plan_revisions WHERE project_id=? ORDER BY revision DESC',
       )
       .all(projectId);
-    const previous = revisions[1] ? JSON.parse(revisions[1].items) : [];
+    const previous = revisions[1]
+      ? parseProjectPlanRevision(revisions[1])
+      : { objective: '', phases: [] };
+    const previousItems = previous.phases.flatMap((phase) => phase.workItems);
     return this.db.transaction(() => {
-      const scope = (items) =>
-        items.map(({ id, title, ownerAgentId, acceptance, dependsOn }) => ({
-          id,
-          title,
-          ownerAgentId,
-          acceptance,
-          dependsOn,
-        }));
-      const priorStage = this.db
-        .prepare(
-          'SELECT stage,objective FROM social_project_plan_revisions WHERE project_id=? AND revision=?',
-        )
-        .get(projectId, plan.revision - 1);
+      const scope = (snapshot) => ({
+        objective: snapshot.objective,
+        phases: snapshot.phases.map(
+          ({
+            id,
+            title,
+            outcome,
+            exitCriteria,
+            dependsOn,
+            status,
+            workItems,
+          }) => ({
+            id,
+            title,
+            outcome,
+            exitCriteria,
+            dependsOn,
+            status,
+            workItems: workItems.map(
+              ({ id, title, ownerAgentId, acceptance, dependsOn }) => ({
+                id,
+                title,
+                ownerAgentId,
+                acceptance,
+                dependsOn,
+              }),
+            ),
+          }),
+        ),
+      });
       if (
-        !priorStage ||
-        priorStage.stage !== plan.stage ||
-        priorStage.objective !== plan.objective ||
-        JSON.stringify(scope(previous)) !== JSON.stringify(scope(plan.items))
+        !revisions[1] ||
+        JSON.stringify(scope(previous)) !== JSON.stringify(scope(plan))
       )
         this.publish({
           projectId,
           system: true,
           eventKey: `plan:${projectId}:${plan.revision}`,
-          text: `当前阶段：${plan.stage}\n${plan.objective}\n${plan.items.length} 项交付，责任和依赖见项目计划。${plan.reason}`,
+          text: `项目目标：${plan.objective}\n${plan.phases.length} 个阶段、${plan.items.length} 项团队工作，阶段成果、退出条件、责任和依赖见共享计划。${plan.reason}`,
           rootId,
           depth,
         });
       for (const item of plan.items) {
-        const old = previous.find((entry) => entry.id === item.id);
+        const old = previousItems.find((entry) => entry.id === item.id);
         if (item.ready) {
           let token = plan.revision;
           for (const row of revisions) {
-            const prior = JSON.parse(row.items).find(
-              (entry) => entry.id === item.id,
-            );
+            const prior = parseProjectPlanRevision(row)
+              .phases.flatMap((phase) => phase.workItems)
+              .find((entry) => entry.id === item.id);
             if (prior?.status !== 'pending') break;
             token = row.revision;
           }
@@ -307,7 +326,7 @@ export class ProjectCollaborationStore {
               projectId,
               system: true,
               eventKey: `ready:${projectId}:${item.id}:${item.ownerAgentId}:${token}`,
-              text: `@${member.name} 交付「${item.title}」已具备开始条件。请先读取最新计划，核对职责和完成条件再推进；有问题可公开求助。`,
+              text: `@${member.name} 「${item.phaseTitle}」阶段的工作项「${item.title}」已具备开始条件。请先读取最新计划，核对阶段成果、退出条件、职责和完成条件再推进；有问题可公开求助。`,
               rootId,
               depth,
               triggerKind: 'plan_ready',
@@ -331,20 +350,19 @@ export class ProjectCollaborationStore {
           });
         }
       }
-      if (
-        plan.progress.total &&
-        plan.progress.percentage === 100 &&
-        previous.some((item) => !['done', 'canceled'].includes(item.status))
-      )
-        this.publish({
-          projectId,
-          system: true,
-          eventKey: `stage:${projectId}:${plan.revision}`,
-          text: `@Noema 阶段「${plan.stage}」的 ${plan.progress.total} 项交付均已验收。请核对整体结果，决定下一阶段或必要用户评审。`,
-          rootId,
-          depth,
-          triggerKind: 'checkpoint',
-        });
+      for (const phase of plan.phases) {
+        const old = previous.phases.find((entry) => entry.id === phase.id);
+        if (phase.status === 'done' && old?.status !== 'done')
+          this.publish({
+            projectId,
+            system: true,
+            eventKey: `phase:${projectId}:${plan.revision}:${phase.id}`,
+            text: `@Noema 阶段「${phase.title}」已完成验收。阶段成果：${phase.outcome}\n退出依据：${phase.evidence}\n请核对后续阶段是否具备开始条件，或是否需要用户判断。`,
+            rootId,
+            depth,
+            triggerKind: 'checkpoint',
+          });
+      }
     })();
   }
 

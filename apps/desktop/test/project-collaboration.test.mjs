@@ -381,7 +381,7 @@ test('plan submission triggers Noema review; acceptance unlocks and dispatches t
           "SELECT COUNT(*) AS n FROM social_project_reports WHERE status='completed'",
         )
         .get().n,
-      3,
+      2,
     );
   } finally {
     await f.service.shutdown();

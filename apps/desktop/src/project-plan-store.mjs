@@ -1,30 +1,42 @@
 import { z } from 'zod';
 
 const text = (max) => z.string().trim().min(1).max(max);
-const itemSchema = z.object({
+const statusSchema = z.enum([
+  'pending',
+  'in_progress',
+  'blocked',
+  'submitted',
+  'done',
+  'canceled',
+]);
+const workItemSchema = z.object({
   id: text(80).regex(/^[\w-]+$/u),
   title: text(160),
   ownerAgentId: text(200),
   acceptance: text(2000),
   dependsOn: z.array(text(80)).max(100).default([]),
-  status: z.enum([
-    'pending',
-    'in_progress',
-    'blocked',
-    'submitted',
-    'done',
-    'canceled',
-  ]),
+  status: statusSchema,
   evidence: z.string().trim().max(8000).default(''),
   blocker: z.string().trim().max(2000).default(''),
 });
+const phaseSchema = z.object({
+  id: text(80).regex(/^[\w-]+$/u),
+  title: text(160),
+  outcome: text(2000),
+  exitCriteria: text(2000),
+  dependsOn: z.array(text(80)).max(30).default([]),
+  status: z.enum(['pending', 'done', 'canceled']).default('pending'),
+  evidence: z.string().trim().max(8000).default(''),
+  workItems: z.array(workItemSchema).max(100),
+});
 const planSchema = z.object({
-  stage: text(120),
   objective: text(4000),
-  items: z.array(itemSchema).max(100),
+  phases: z.array(phaseSchema).min(1).max(30),
 });
 const { $schema: _schema, ...parameters } = z.toJSONSchema(planSchema);
 export const projectPlanParameters = parameters;
+export const projectPlanPhaseStatuses = ['pending', 'done', 'canceled'];
+
 const transitions = {
   pending: ['in_progress', 'submitted', 'blocked', 'canceled'],
   in_progress: ['pending', 'blocked', 'submitted'],
@@ -33,6 +45,79 @@ const transitions = {
   done: ['in_progress'],
   canceled: ['pending'],
 };
+
+function phaseState(phase, phaseById, workItems) {
+  const active = workItems.filter((item) => item.status !== 'canceled');
+  const done = active.filter((item) => item.status === 'done').length;
+  const waitingForPhases = phase.dependsOn.filter(
+    (id) => phaseById.get(id)?.status !== 'done',
+  );
+  if (phase.status === 'canceled') return 'canceled';
+  if (phase.status === 'done') return 'done';
+  if (phase.status === 'pending' && waitingForPhases.length) return 'waiting';
+  if (active.some((item) => item.status === 'blocked')) return 'blocked';
+  if (active.length && done === active.length) return 'awaiting_review';
+  if (
+    active.some((item) =>
+      ['in_progress', 'submitted', 'done'].includes(item.status),
+    )
+  )
+    return 'in_progress';
+  if (active.some((item) => item.ready)) return 'ready';
+  return active.length ? 'pending' : 'needs_breakdown';
+}
+
+export function parseProjectPlanRevision(row) {
+  const stored = JSON.parse(row.items_json);
+  if (!Array.isArray(stored)) {
+    return planSchema.parse({
+      objective: row.objective,
+      phases: stored.phases,
+    });
+  }
+  const phaseId = 'legacy-stage';
+  return planSchema.parse({
+    objective: row.objective,
+    phases: [
+      {
+        id: phaseId,
+        title: row.stage || '既有阶段',
+        outcome: row.objective,
+        exitCriteria: '本阶段全部有效交付项通过验收，并核对阶段目标。',
+        dependsOn: [],
+        status: 'pending',
+        evidence: '',
+        workItems: stored,
+      },
+    ],
+  });
+}
+
+function flatten(phases) {
+  return phases.flatMap((phase) =>
+    phase.workItems.map((item) => ({ ...item, phaseId: phase.id })),
+  );
+}
+
+function normalizePlanInput(input) {
+  if (!input || Array.isArray(input.phases) || !Array.isArray(input.items))
+    return input;
+  return {
+    objective: input.objective,
+    phases: [
+      {
+        id: 'legacy-stage',
+        title: input.stage || '现阶段',
+        outcome: input.objective,
+        exitCriteria: '本阶段全部有效交付项通过验收，并核对阶段目标。',
+        dependsOn: [],
+        status: 'pending',
+        evidence: '',
+        workItems: input.items,
+      },
+    ],
+  };
+}
 
 /** Project-owned, append-only plans. Model actor identity is supplied by the runtime. */
 export class ProjectPlanStore {
@@ -55,32 +140,100 @@ export class ProjectPlanStore {
         'SELECT * FROM social_project_plan_revisions WHERE project_id = ? ORDER BY revision DESC LIMIT 1',
       )
       .get(projectId);
-    const items = row ? JSON.parse(row.items_json) : [];
-    const byId = new Map(items.map((item) => [item.id, item]));
-    const active = items.filter((item) => item.status !== 'canceled');
-    const done = active.filter((item) => item.status === 'done').length;
+    const base = row
+      ? parseProjectPlanRevision(row)
+      : { objective: '', phases: [] };
+    const rawItems = flatten(base.phases);
+    const byId = new Map(rawItems.map((item) => [item.id, item]));
+    const phaseById = new Map(base.phases.map((phase) => [phase.id, phase]));
+    const items = rawItems.map((item) => {
+      const phase = phaseById.get(item.phaseId);
+      const waitingForPhases = phase.dependsOn.filter(
+        (id) => phaseById.get(id)?.status !== 'done',
+      );
+      const blockedBy = item.dependsOn.filter(
+        (id) => byId.get(id)?.status !== 'done',
+      );
+      return {
+        ...item,
+        ready:
+          phase.status === 'pending' &&
+          waitingForPhases.length === 0 &&
+          item.status === 'pending' &&
+          blockedBy.length === 0,
+        canResume:
+          phase.status === 'pending' &&
+          waitingForPhases.length === 0 &&
+          item.status === 'blocked' &&
+          blockedBy.length === 0,
+        blockedBy,
+        waitingForPhases,
+        phaseTitle: phase.title,
+      };
+    });
+    const enrichedById = new Map(items.map((item) => [item.id, item]));
+    const phases = base.phases.map((phase) => {
+      const phaseItems = phase.workItems.map((item) =>
+        enrichedById.get(item.id),
+      );
+      const active = phaseItems.filter((item) => item.status !== 'canceled');
+      const done = active.filter((item) => item.status === 'done').length;
+      const submitted = active.filter(
+        (item) => item.status === 'submitted',
+      ).length;
+      const canceled = phaseItems.length - active.length;
+      const waitingForPhases = phase.dependsOn.filter(
+        (id) => phaseById.get(id)?.status !== 'done',
+      );
+      return {
+        ...phase,
+        workItems: phaseItems,
+        waitingForPhases,
+        state: phaseState(phase, phaseById, phaseItems),
+        progress: {
+          done,
+          total: active.length,
+          percentage: active.length
+            ? Math.round((done / active.length) * 100)
+            : null,
+          submitted,
+          canceled,
+        },
+      };
+    });
+    const activeItems = items.filter((item) => item.status !== 'canceled');
+    const done = activeItems.filter((item) => item.status === 'done').length;
+    const activePhases = phases.filter((phase) => phase.status !== 'canceled');
+    const donePhases = activePhases.filter(
+      (phase) => phase.status === 'done',
+    ).length;
+    const currentPhase = phases.find(
+      (phase) => !['done', 'canceled'].includes(phase.status),
+    );
     return {
       projectId,
       revision: row?.revision ?? 0,
-      stage: row?.stage ?? '',
-      objective: row?.objective ?? '',
-      items: items.map((item) => ({
-        ...item,
-        ready:
-          item.status === 'pending' &&
-          item.dependsOn.every((id) => byId.get(id)?.status === 'done'),
-        blockedBy: item.dependsOn.filter(
-          (id) => byId.get(id)?.status !== 'done',
-        ),
-      })),
+      stage: currentPhase?.title ?? '',
+      objective: base.objective,
+      phases,
+      items,
+      phaseProgress: {
+        done: donePhases,
+        total: activePhases.length,
+        percentage: activePhases.length
+          ? Math.round((donePhases / activePhases.length) * 100)
+          : null,
+        canceled: phases.length - activePhases.length,
+      },
       progress: {
         done,
-        total: active.length,
-        percentage: active.length
-          ? Math.round((done / active.length) * 100)
+        total: activeItems.length,
+        percentage: activeItems.length
+          ? Math.round((done / activeItems.length) * 100)
           : null,
-        submitted: active.filter((item) => item.status === 'submitted').length,
-        canceled: items.length - active.length,
+        submitted: activeItems.filter((item) => item.status === 'submitted')
+          .length,
+        canceled: items.length - activeItems.length,
       },
       updatedAt: row?.created_at ?? null,
       reason: row?.reason ?? null,
@@ -101,11 +254,12 @@ export class ProjectPlanStore {
     if (itemId) {
       const item = plan.items.find((item) => item.id === itemId);
       if (!item) throw new Error('交付项不存在。');
+      const phase = plan.phases.find((phase) => phase.id === item.phaseId);
       return {
         projectId,
         revision: plan.revision,
-        stage: plan.stage,
         objective: plan.objective,
+        phase,
         item,
       };
     }
@@ -131,19 +285,33 @@ export class ProjectPlanStore {
       items.push(bounded);
       length += size;
     }
+    const includedPhases = plan.phases.map((phase) => ({
+      id: phase.id,
+      title: phase.title,
+      outcome: phase.outcome,
+      exitCriteria: phase.exitCriteria,
+      dependsOn: phase.dependsOn,
+      status: phase.status,
+      state: phase.state,
+      waitingForPhases: phase.waitingForPhases,
+      progress: phase.progress,
+      evidence: phase.evidence.slice(0, 500),
+    }));
     return {
       projectId,
       revision: plan.revision,
-      stage: plan.stage,
       objective: plan.objective,
+      stage: plan.stage,
       progress: plan.progress,
+      phaseProgress: plan.phaseProgress,
+      phases: includedPhases,
       items,
       omittedItems: plan.items.length - items.length,
     };
   }
 
   validate(projectId, input) {
-    const plan = planSchema.parse(input);
+    const plan = planSchema.parse(normalizePlanInput(input));
     const membership = this.db
       .prepare(
         `SELECT ps.agent_id AS id, ps.status, a.archived_at AS archivedAt FROM social_project_sessions ps JOIN social_agents a ON a.id = ps.agent_id WHERE ps.project_id = ?`,
@@ -155,51 +323,117 @@ export class ProjectPlanStore {
         .filter((m) => m.status === 'active' && !m.archivedAt)
         .map((m) => m.id),
     );
+    const phaseById = new Map();
     const byId = new Map();
-    for (const item of plan.items) {
-      if (byId.has(item.id)) throw new Error('计划中不能重复使用交付项 ID。');
-      if (
-        !(
-          item.status === 'done' || item.status === 'canceled' ? known : members
-        ).has(item.ownerAgentId)
-      )
-        throw new Error(
-          '交付项负责人必须是项目中的活跃执行成员；历史已结束项保留原归属。',
-        );
-      if (new Set(item.dependsOn).size !== item.dependsOn.length)
-        throw new Error('依赖不能重复。');
-      if (['submitted', 'done'].includes(item.status) && !item.evidence)
-        throw new Error('提交或验收前必须提供成果依据。');
-      if (item.status === 'blocked' && !item.blocker)
-        throw new Error('阻塞事项必须说明原因。');
-      byId.set(item.id, item);
+    let itemCount = 0;
+    for (const phase of plan.phases) {
+      if (phaseById.has(phase.id)) throw new Error('阶段 ID 不能重复。');
+      phaseById.set(phase.id, phase);
+      for (const item of phase.workItems) {
+        itemCount += 1;
+        if (byId.has(item.id)) throw new Error('交付项 ID 不能重复。');
+        if (
+          !(
+            item.status === 'done' || item.status === 'canceled'
+              ? known
+              : members
+          ).has(item.ownerAgentId)
+        )
+          throw new Error(
+            '交付项负责人必须是项目中的活跃执行成员；历史已结束项保留原归属。',
+          );
+        if (new Set(item.dependsOn).size !== item.dependsOn.length)
+          throw new Error('交付项依赖不能重复。');
+        if (['submitted', 'done'].includes(item.status) && !item.evidence)
+          throw new Error('提交或验收前必须提供成果依据。');
+        if (item.status === 'blocked' && !item.blocker)
+          throw new Error('阻塞事项必须说明原因。');
+        byId.set(item.id, { ...item, phaseId: phase.id });
+      }
+      if (phase.status === 'done' && !phase.evidence)
+        throw new Error('阶段验收必须提供成果依据。');
     }
-    const visited = new Set(),
-      visiting = new Set();
-    const visit = (item) => {
-      if (visiting.has(item.id)) throw new Error('计划依赖不能形成循环。');
-      if (visited.has(item.id)) return;
-      visiting.add(item.id);
-      for (const id of item.dependsOn) {
-        const dependency = byId.get(id);
-        if (!dependency) throw new Error('计划包含不存在的依赖。');
-        if (item.status !== 'canceled' && dependency.status === 'canceled')
+    if (itemCount > 100) throw new Error('共享计划最多包含 100 项工作。');
+
+    const validateGraph = (entries, getDependencies, getId, missingMessage) => {
+      const visited = new Set();
+      const visiting = new Set();
+      const visit = (entry) => {
+        const id = getId(entry);
+        if (visiting.has(id)) throw new Error('计划依赖不能形成循环。');
+        if (visited.has(id)) return;
+        visiting.add(id);
+        for (const dependencyId of getDependencies(entry)) {
+          const dependency = entries.get(dependencyId);
+          if (!dependency) throw new Error(missingMessage);
+          visit(dependency);
+        }
+        visiting.delete(id);
+        visited.add(id);
+      };
+      for (const entry of entries.values()) visit(entry);
+    };
+    validateGraph(
+      phaseById,
+      (phase) => phase.dependsOn,
+      (phase) => phase.id,
+      '阶段包含不存在的前置阶段。',
+    );
+    validateGraph(
+      byId,
+      (item) => item.dependsOn,
+      (item) => item.id,
+      '计划包含不存在的依赖（交付项依赖）。',
+    );
+    for (const phase of plan.phases) {
+      for (const dependencyId of phase.dependsOn) {
+        if (
+          phaseById.get(dependencyId).status !== 'done' &&
+          phase.status === 'done'
+        )
+          throw new Error('前置阶段尚未验收，不能完成后续阶段。');
+      }
+      const phaseItems = phase.workItems;
+      const active = phaseItems.filter((item) => item.status !== 'canceled');
+      if (phase.status === 'done') {
+        if (!active.length || active.some((item) => item.status !== 'done'))
+          throw new Error('阶段工作项未全部验收，不能完成阶段。');
+      }
+      if (phase.status === 'canceled' && active.length)
+        throw new Error('取消阶段前必须先取消其中所有未完成工作项。');
+      for (const item of phaseItems) {
+        const phasePrerequisitesDone = phase.dependsOn.every(
+          (id) => phaseById.get(id)?.status === 'done',
+        );
+        if (
+          ['in_progress', 'submitted', 'done'].includes(item.status) &&
+          !phasePrerequisitesDone
+        )
+          throw new Error('前置阶段尚未验收，不能启动或验收后续工作。');
+        if (
+          phase.status !== 'canceled' &&
+          item.status !== 'canceled' &&
+          item.dependsOn.some((id) => byId.get(id).status === 'canceled')
+        )
           throw new Error('未取消的交付项不能依赖已取消事项。');
         if (
           ['in_progress', 'submitted', 'done'].includes(item.status) &&
-          dependency.status !== 'done'
+          item.dependsOn.some((id) => byId.get(id).status !== 'done')
         )
           throw new Error('前置交付尚未验收，不能启动或完成后续工作。');
-        visit(dependency);
+        if (
+          item.dependsOn.some(
+            (id) =>
+              byId.get(id).phaseId !== phase.id &&
+              !phase.dependsOn.includes(byId.get(id).phaseId),
+          )
+        )
+          throw new Error('跨阶段工作项依赖必须同时声明对应的前置阶段。');
       }
-      visiting.delete(item.id);
-      visited.add(item.id);
-    };
-    plan.items.forEach(visit);
+    }
     const working = new Set();
-    for (const item of plan.items.filter(
-      (item) => item.status === 'in_progress',
-    )) {
+    for (const item of byId.values()) {
+      if (item.status !== 'in_progress') continue;
       if (working.has(item.ownerAgentId))
         throw new Error('同一成员在本项目中只能同时推进一项计划工作。');
       working.add(item.ownerAgentId);
@@ -225,6 +459,8 @@ export class ProjectPlanStore {
     if (current.revision !== expectedRevision)
       throw new Error('计划已被更新，请重新读取最新版本后再提交。');
     const validated = this.validate(projectId, plan);
+    const stage =
+      validated.phases.find((phase) => phase.status === 'pending')?.title ?? '';
     this.db
       .prepare(`INSERT INTO social_project_plan_revisions
       (project_id, revision, stage, objective, items_json, actor_agent_id, source_turn_id, reason, created_at)
@@ -232,9 +468,9 @@ export class ProjectPlanStore {
       .run(
         projectId,
         expectedRevision + 1,
-        validated.stage,
+        stage,
         validated.objective,
-        JSON.stringify(validated.items),
+        JSON.stringify({ schemaVersion: 2, phases: validated.phases }),
         actorAgentId,
         sourceTurnId,
         explanation,
@@ -255,10 +491,15 @@ export class ProjectPlanStore {
       const current = this.get(input.projectId);
       const item = current.items.find((item) => item.id === input.itemId);
       if (!item) throw new Error('交付项不存在。');
+      const phase = current.phases.find((phase) => phase.id === item.phaseId);
+      if (phase?.status === 'done' && input.status !== 'done')
+        throw new Error(
+          '工作项所属阶段已验收；请通过计划修订调整范围并重开相关阶段。',
+        );
       const coordinator = !input.actorAgentId || input.actorAgentId === 'noema';
       if (!coordinator && input.actorAgentId !== item.ownerAgentId)
         throw new Error('成员只能更新自己负责的交付项。');
-      const status = itemSchema.shape.status.parse(input.status);
+      const status = statusSchema.parse(input.status);
       if (
         !coordinator &&
         (['done', 'canceled'].includes(status) ||
@@ -276,9 +517,77 @@ export class ProjectPlanStore {
       return this.write({
         ...input,
         plan: {
-          ...current,
-          items: current.items.map((entry) =>
-            entry.id === item.id ? updated : entry,
+          objective: current.objective,
+          phases: current.phases.map((phase) => ({
+            ...phase,
+            workItems: phase.workItems.map((entry) =>
+              entry.id === item.id ? updated : entry,
+            ),
+          })),
+        },
+      });
+    })();
+  }
+
+  updatePhase(input) {
+    return this.db.transaction(() => {
+      const current = this.get(input.projectId);
+      const phase = current.phases.find((phase) => phase.id === input.phaseId);
+      if (!phase) throw new Error('阶段不存在。');
+      if (input.actorAgentId && input.actorAgentId !== 'noema')
+        throw new Error('只有用户或 Noema 可以验收阶段。');
+      if (current.revision !== input.expectedRevision)
+        throw new Error('计划已被更新，请重新读取最新版本后再提交。');
+      if (input.status === 'done' && phase.status !== 'done') {
+        if (!input.evidence?.trim())
+          throw new Error('阶段验收必须提供阶段成果依据。');
+        const active = phase.workItems.filter(
+          (item) => item.status !== 'canceled',
+        );
+        if (!active.length || active.some((item) => item.status !== 'done'))
+          throw new Error('阶段工作项未全部验收，不能完成阶段。');
+        if (
+          phase.dependsOn.some(
+            (id) =>
+              !current.phases.some(
+                (entry) => entry.id === id && entry.status === 'done',
+              ),
+          )
+        )
+          throw new Error('前置阶段尚未验收，不能完成后续阶段。');
+      } else if (input.status === 'canceled' && phase.status !== 'canceled') {
+        if (
+          phase.workItems.some((item) => item.status !== 'canceled') ||
+          current.phases.some(
+            (entry) =>
+              entry.dependsOn.includes(phase.id) &&
+              !['pending', 'canceled'].includes(entry.status),
+          )
+        )
+          throw new Error(
+            '取消阶段前须取消其中工作项，并确认没有已启动的后续阶段。',
+          );
+      } else if (input.status === 'pending') {
+        if (phase.status === 'done')
+          throw new Error('已验收阶段不能直接退回；请通过新计划修订调整范围。');
+        if (phase.status === 'canceled')
+          throw new Error('已取消阶段不能直接恢复；请通过新计划修订调整范围。');
+      } else if (input.status !== phase.status) {
+        throw new Error('阶段状态无效。');
+      }
+      return this.write({
+        ...input,
+        plan: {
+          objective: current.objective,
+          phases: current.phases.map((entry) =>
+            entry.id === phase.id
+              ? {
+                  ...entry,
+                  status: input.status,
+                  evidence:
+                    input.status === 'done' ? input.evidence.trim() : '',
+                }
+              : entry,
           ),
         },
       });

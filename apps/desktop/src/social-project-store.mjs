@@ -173,13 +173,20 @@ export class SocialProjectStore {
       if (project.pendingReview) {
         throw new Error('项目仍在等待用户评审，不能开始成长整理。');
       }
-      if (!plan.revision || !plan.items.length) {
+      if (!plan.revision || !plan.items.length || !plan.phases.length) {
         throw new Error('项目尚无可验收的共享计划，不能开始成长整理。');
       }
       if (
         plan.items.some((item) => !['done', 'canceled'].includes(item.status))
       ) {
         throw new Error('共享计划仍有未验收或阻塞事项，不能开始成长整理。');
+      }
+      if (
+        plan.phases.some(
+          (phase) => !['done', 'canceled'].includes(phase.status),
+        )
+      ) {
+        throw new Error('共享计划仍有阶段未完成验收，不能开始成长整理。');
       }
       if (!plan.items.some((item) => item.status === 'done')) {
         throw new Error('共享计划没有已验收的交付，不能启动成员成长整理。');

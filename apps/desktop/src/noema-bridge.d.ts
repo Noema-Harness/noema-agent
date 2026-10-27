@@ -320,15 +320,56 @@ export interface NoemaProjectPlanItem {
   status: NoemaProjectPlanStatus;
   evidence: string;
   blocker: string;
+  phaseId: string;
+  phaseTitle: string;
   ready: boolean;
+  canResume?: boolean;
   blockedBy: string[];
+  waitingForPhases: string[];
+}
+export type NoemaProjectPlanPhaseStatus = 'pending' | 'done' | 'canceled';
+export type NoemaProjectPlanPhaseState =
+  | 'needs_breakdown'
+  | 'waiting'
+  | 'ready'
+  | 'pending'
+  | 'in_progress'
+  | 'blocked'
+  | 'awaiting_review'
+  | 'done'
+  | 'canceled';
+export interface NoemaProjectPlanPhase {
+  id: string;
+  title: string;
+  outcome: string;
+  exitCriteria: string;
+  dependsOn: string[];
+  status: NoemaProjectPlanPhaseStatus;
+  evidence: string;
+  workItems: NoemaProjectPlanItem[];
+  waitingForPhases: string[];
+  state: NoemaProjectPlanPhaseState;
+  progress: {
+    done: number;
+    total: number;
+    percentage: number | null;
+    submitted: number;
+    canceled: number;
+  };
 }
 export interface NoemaProjectPlan {
   projectId: string;
   revision: number;
   stage: string;
   objective: string;
+  phases: NoemaProjectPlanPhase[];
   items: NoemaProjectPlanItem[];
+  phaseProgress: {
+    done: number;
+    total: number;
+    percentage: number | null;
+    canceled: number;
+  };
   progress: {
     done: number;
     total: number;
@@ -344,9 +385,22 @@ export interface NoemaProjectPlanWrite {
   expectedRevision: number;
   reason: string;
   plan: {
-    stage: string;
     objective: string;
-    items: Array<Omit<NoemaProjectPlanItem, 'ready' | 'blockedBy'>>;
+    phases: Array<{
+      id: string;
+      title: string;
+      outcome: string;
+      exitCriteria: string;
+      dependsOn: string[];
+      status: NoemaProjectPlanPhaseStatus;
+      evidence: string;
+      workItems: Array<
+        Omit<
+          NoemaProjectPlanItem,
+          'phaseId' | 'phaseTitle' | 'ready' | 'blockedBy' | 'waitingForPhases'
+        >
+      >;
+    }>;
   };
 }
 export interface NoemaProjectPlanItemUpdate {
@@ -356,6 +410,14 @@ export interface NoemaProjectPlanItemUpdate {
   status: NoemaProjectPlanStatus;
   evidence?: string;
   blocker?: string;
+  reason: string;
+}
+export interface NoemaProjectPlanPhaseUpdate {
+  projectId: string;
+  expectedRevision: number;
+  phaseId: string;
+  status: NoemaProjectPlanPhaseStatus;
+  evidence?: string;
   reason: string;
 }
 
@@ -730,6 +792,9 @@ export interface NoemaBridge {
   ): Promise<NoemaProjectPlan>;
   updateSocialProjectPlanItem(
     input: NoemaProjectPlanItemUpdate,
+  ): Promise<NoemaProjectPlan>;
+  updateSocialProjectPlanPhase(
+    input: NoemaProjectPlanPhaseUpdate,
   ): Promise<NoemaProjectPlan>;
   restoreSocialProject(projectId: string): Promise<NoemaSocialProject>;
   retrySocialProjectGrowthMember(

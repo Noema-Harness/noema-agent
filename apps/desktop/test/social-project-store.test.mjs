@@ -33,6 +33,19 @@ function createProject(stores, member, extra = {}) {
   });
 }
 
+function acceptLegacyStage(stores, projectId) {
+  const plan = stores.socialProjectStore.plans.get(projectId);
+  return stores.socialProjectStore.plans.updatePhase({
+    projectId,
+    expectedRevision: plan.revision,
+    phaseId: 'legacy-stage',
+    actorAgentId: 'noema',
+    status: 'done',
+    evidence: '阶段成果与退出条件已核验。',
+    reason: '更新兼容旧计划的显式阶段验收。',
+  });
+}
+
 test('a project creates one shared room and separate hidden member sessions', () => {
   const stores = makeStores();
   const member = createMember(stores.socialChatStore);
@@ -121,11 +134,12 @@ test('project growth is keyed to accepted plan revisions and settles each member
       },
     });
 
+    acceptLegacyStage(stores, project.id);
     const batch = stores.socialProjectStore.createProjectGrowthBatch(
       project.id,
     );
     assert.equal(batch.status, 'running');
-    assert.equal(batch.planRevision, 1);
+    assert.equal(batch.planRevision, 2);
     assert.throws(
       () => stores.socialProjectStore.archiveProject(project.id),
       /成员经历整理尚未全部完成/u,
@@ -231,6 +245,7 @@ test('completed growth archives the project once and survives a later restore', 
         ],
       },
     });
+    acceptLegacyStage(stores, project.id);
     const batch = stores.socialProjectStore.createProjectGrowthBatch(
       project.id,
     );
@@ -345,6 +360,7 @@ test('growth cannot start before the shared plan is accepted or while project wo
         ],
       },
     });
+    acceptLegacyStage(stores, project.id);
     const turn = stores.socialChatStore.beginTurn({
       roomId: project.groupRoomId,
       agentId: 'noema',
@@ -390,6 +406,7 @@ test('growth recovery preserves settled members and marks an in-flight member in
         ],
       },
     });
+    acceptLegacyStage(stores, project.id);
     const batch = stores.socialProjectStore.createProjectGrowthBatch(
       project.id,
     );
@@ -494,6 +511,7 @@ test('growth retry refuses to replay a failed turn after it changed member asset
         ],
       },
     });
+    acceptLegacyStage(stores, project.id);
     const batch = stores.socialProjectStore.createProjectGrowthBatch(
       project.id,
     );

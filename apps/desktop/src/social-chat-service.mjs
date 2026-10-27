@@ -2,7 +2,10 @@ import { ModelProviderError } from './openai-compatible-client.mjs';
 import { createHash, randomUUID } from 'node:crypto';
 import { userReferencesPastNoemaContext } from './transcript-search.mjs';
 import { resolveGroupRecipient } from './group-mentions.mjs';
-import { projectPlanParameters } from './project-plan-store.mjs';
+import {
+  projectPlanParameters,
+  projectPlanPhaseStatuses,
+} from './project-plan-store.mjs';
 import { ProjectCollaborationStore } from './project-collaboration-store.mjs';
 
 /** @typedef {Omit<Pick<import('./noema-bridge.d.ts').NoemaRootState,'connected'|'checking'|'models'|'selectedModel'|'error'|'providerConfigured'|'providerBaseUrl'|'providerName'|'webSearchConfigured'>,'providerName'> & {providerName:string}} SocialProviderState */
@@ -266,14 +269,14 @@ function projectPlanTool(projects) {
     function: {
       name: 'manage_project_plan',
       description:
-        'Read or maintain a shared project plan. Use the supplied snapshot or read for expected_revision. update_item requires item_id, status, expected_revision and reason; submitted also requires evidence. A ready delivery is marked in_progress when the runtime starts it; completed work may also go pending→submitted directly. Members update only their own execution state; Noema/user accept it as done. Evidence should give a concise result and public message reference, not repeat long publications. State changes do not prove external work. Projects: ' +
+        'Read or maintain a shared project plan organized as project objective → phases → owned work items. Each phase has an outcome, exit criteria, dependencies and an acceptance gate; planned work may remain coarse. Each work item has an owner, acceptance, dependencies, status and evidence. A ready work item is marked in_progress when the runtime starts it. Members update only their own work items; only Noema/user may accept items and phases. A phase can be accepted only when its work items and dependencies are complete and evidence is supplied. Keep near-term phases detailed and distant phases coarse. Do not invent dates, effort or completion forecasts. Projects: ' +
         projects.map((p) => `${p.id}: ${p.title}`).join('; '),
       parameters: {
         type: 'object',
         properties: {
           operation: {
             type: 'string',
-            enum: ['read', 'replace', 'update_item'],
+            enum: ['read', 'replace', 'update_item', 'update_phase'],
           },
           project_id: { type: 'string', enum: projects.map((p) => p.id) },
           expected_revision: {
@@ -283,6 +286,7 @@ function projectPlanTool(projects) {
           },
           plan: projectPlanParameters,
           item_id: { type: 'string' },
+          phase_id: { type: 'string' },
           status: {
             type: 'string',
             enum: [
@@ -296,6 +300,7 @@ function projectPlanTool(projects) {
           },
           evidence: { type: 'string' },
           blocker: { type: 'string' },
+          phase_status: { type: 'string', enum: projectPlanPhaseStatuses },
           reason: {
             type: 'string',
             description: 'Required nonempty explanation for every write.',
@@ -356,7 +361,7 @@ function noemaActionGuidance(
       ? '仅当一项独立知识工作足以明显改善用户结果，且预期收益值得两次额外推理成本时，才调用 delegate_to_specialist：任务由选定联系人在其常驻私聊中完成，Noema 收到报告后形成最终回复。不要把 Noema 主聊历史交给联系人；它只会看到自己的常驻私聊历史和本次交办。不得为普通交流或形式上的多 agent 协作调用。将报告作为协作材料加以核对并结合当前上下文作答；不要把原始报告直接当作 Noema 回复。若报告显示未投递或执行未完成，必须如实说明，不能声称已完成。若报告实质影响结论，可简洁说明协助者。'
       : '当前没有可用的专业联系人可供委派。',
     projectTeamAvailable
-      ? '仅当用户已把一个确实需要至少两种专业角色的复杂项目交给你时，才调用 create_project_team。先复用合适联系人；缺位时才创建长期可拓展的成员。工具只建立共同背景和初步职责，不等待成员回答。先形成可核验的阶段计划，再通过公开消息显式 @ 推进；需要多方共同了解时可 @所有人，但不要求轮流确认。单人短任务走私聊委托；同一项目续接不重复建群。只有共享计划至少有一项已验收交付、所有未取消事项均已验收、没有待用户评审且没有运行中的工作时，调用 complete_project 启动成员各自在项目会话中的一次经历自审；不要把成员自审或批次启动说成项目归档。'
+      ? '仅当用户已把一个确实需要至少两种专业角色的复杂项目交给你时，才调用 create_project_team。先复用合适联系人；缺位时才创建长期可拓展的成员。工具只建立共同背景和初步职责，不等待成员回答。共享计划按“项目结果→阶段成果与退出条件→有负责人的团队工作项”组织；近期阶段拆细，远期阶段保留粗粒度。阶段依赖和工作项依赖都必须明确；工作项完成不自动等于阶段通过，阶段出口须有可核验依据后由你或用户验收。通过公开消息显式 @ 推进；需要多方共同了解时可 @所有人，但不要求轮流确认。单人短任务走私聊委托；同一项目续接不重复建群。只有所有未取消工作项均已验收、所有未取消阶段均已验收、至少有一个真实交付、没有待用户评审且没有运行中的工作时，调用 complete_project 启动成员各自在项目会话中的一次经历自审；不要把成员自审或批次启动说成项目归档。'
       : '',
   ].join('\n');
 }
@@ -632,6 +637,13 @@ export class SocialChatService {
                     status: input.status,
                     evidence: input.evidence,
                     blocker: input.blocker,
+                  });
+                else if (input.operation === 'update_phase')
+                  this.projectStore.plans.updatePhase({
+                    ...common,
+                    phaseId: input.phase_id,
+                    status: input.phase_status,
+                    evidence: input.evidence,
                   });
                 else throw new Error('未知计划操作。');
                 this.onProjectPlanChanged(project.id, run);
@@ -1866,7 +1878,7 @@ export class SocialChatService {
                 role: 'system',
                 content: run.isProjectGrowthTurn
                   ? '当前不是项目执行任务。共享计划和公开记录仅作为回顾经历的证据；不要修改计划、继续工作或发送群消息。'
-                  : '共享计划是团队当前工作依据：核对自己的就绪交付与依赖，实际开展本轮能完成的工作，并用 manage_project_plan 提交真实成果依据；提交不等于验收。不要只把状态改为进行中便停止，也不要声称其他成员已经看过、同意或完成。缺信息或遇阻时说明具体缺口并记录阻塞。专业成员可以公开交流和交接，非必要不 @Noema。',
+                  : '共享计划是团队当前工作依据：先核对项目结果、当前阶段成果和退出条件，再处理自己负责且已满足阶段/工作项依赖的工作。实际开展本轮能完成的工作，并用 manage_project_plan 提交真实成果依据；提交不等于验收，工作项都验收后仍须核对并验收阶段出口，才会解锁后续阶段。不要只把状态改为进行中便停止，也不要声称其他成员已经看过、同意或完成。缺信息或遇阻时说明具体缺口并记录阻塞。专业成员可以公开交流和交接，非必要不 @Noema。',
               },
               {
                 role: 'user',

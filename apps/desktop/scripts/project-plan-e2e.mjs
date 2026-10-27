@@ -41,6 +41,69 @@ const project = projects.createProject({
     '合成场景：先核对需求证据，再依据已验收成果形成预算；不代表真实项目进展。',
   agentIds: ['noema', ...ids],
 });
+projects.plans.replace({
+  projectId: project.id,
+  expectedRevision: 0,
+  reason: '展示项目结果、分阶段交付、阶段出口与后续工作。',
+  plan: {
+    objective: '核实摄影工作坊的实际需求，在约束内完成一次可复盘的小规模试办。',
+    phases: [
+      {
+        id: 'research',
+        title: '预研究与可行性判断',
+        outcome: '得到有来源支撑的需求判断，明确预算和现场试办仍有哪些未知。',
+        exitCriteria:
+          '来源可复核；事实、推断和未核实事项分开；是否试办有清楚依据。',
+        dependsOn: [],
+        status: 'done',
+        evidence: '两份原始来源、访谈记录和未核实事项已由 Noema 复核。',
+        workItems: [
+          {
+            id: 'demand-evidence',
+            title: '汇总需求证据与未核实项',
+            ownerAgentId: ids[0],
+            acceptance: '保留原始来源，区分事实与推断，并列出未核实项。',
+            dependsOn: [],
+            status: 'done',
+            evidence: '两份原始来源及访谈记录已存档；场租仍需核价。',
+            blocker: '',
+          },
+        ],
+      },
+      {
+        id: 'pilot',
+        title: '试办筹备与现场验证',
+        outcome: '在小规模、明确预算上限内完成试办，并记录真实成本和反馈。',
+        exitCriteria: '完成现场交付；费用有依据；参与者反馈与偏差进入复盘。',
+        dependsOn: ['research'],
+        status: 'pending',
+        evidence: '',
+        workItems: [
+          {
+            id: 'venue-budget',
+            title: '核实场地报价并形成试办预算',
+            ownerAgentId: ids[1],
+            acceptance: '预算逐项对应需求证据，注明报价来源和仍待确认的费用。',
+            dependsOn: [],
+            status: 'blocked',
+            evidence: '',
+            blocker: '等待场地方提供含设备和清洁费的正式报价。',
+          },
+        ],
+      },
+      {
+        id: 'review',
+        title: '结果复盘与后续决策',
+        outcome: '根据实际试办结果决定继续、调整或结束。',
+        exitCriteria: '形成可复核的实际成本、反馈和建议；后续决定说明依据。',
+        dependsOn: ['pilot'],
+        status: 'pending',
+        evidence: '',
+        workItems: [],
+      },
+    ],
+  },
+});
 const probe = http.createServer();
 await new Promise((resolve) => probe.listen(0, '127.0.0.1', resolve));
 const port = probe.address().port;
@@ -92,81 +155,71 @@ try {
     `Array.from(document.querySelectorAll('.project-list-item')).find(n=>n.textContent.includes('共享计划界面验收样例')).click()`,
   );
   await wait(
-    `document.querySelector('.project-plan') && document.querySelector('.project-plan').textContent.includes('建立计划')`,
+    `document.querySelector('.project-plan-phase-overview')?.textContent.includes('33%')`,
   );
-  assert.equal(
-    await evaluate(`Boolean(document.querySelector('.project-plan progress'))`),
-    false,
-  );
-  await click('建立计划');
-  await set('当前阶段', '可行性预研究');
-  await set('本阶段目标', '判断摄影工作坊是否值得进入小规模试办。');
-  for (let i = 0; i < 2; i++) {
-    await click('＋ 添加交付项');
-    const scope = `.project-plan-editor fieldset:nth-of-type(${i + 1})`;
-    await set('交付成果', i ? '试办预算草案' : '需求与定价证据', scope);
-    await set('负责人', ids[i], scope);
-    await set(
-      '完成条件',
-      i
-        ? '列出固定成本、单人成本和待核实项，依据已验收的研究结论。'
-        : '提供原始来源、事实与推断，明确无法核实的部分。',
-      scope,
-    );
-  }
-  await evaluate(
-    `document.querySelectorAll('.project-plan-editor fieldset')[1].querySelector('details').open=true; document.querySelectorAll('.project-plan-editor fieldset')[1].querySelector('input[type=checkbox]').click()`,
-  );
-  await set('本次调整的原因', '建立本轮研究范围；预算依赖研究结论。');
-  await screenshot('editor.png');
-  await click('保存计划');
-  await wait(`document.querySelectorAll('.project-plan-list > li').length===2`);
-  assert.equal(projects.plans.get(project.id).revision, 1);
+  assert.equal(projects.plans.get(project.id).phaseProgress.percentage, 33);
   assert.equal(
     await evaluate(
-      `document.querySelectorAll('.project-plan-list > li')[1].textContent.includes('前置尚未验收') && document.querySelectorAll('.project-plan-list > li')[1].querySelector('button').disabled`,
+      `document.querySelectorAll('.project-plan-phases > li').length`,
+    ),
+    3,
+  );
+  assert.equal(
+    await evaluate(
+      `Array.from(document.querySelectorAll('.project-plan-phase')).find(n=>n.textContent.includes('结果复盘与后续决策')).textContent.includes('等待前置阶段')`,
     ),
     true,
   );
-  await click('开始', '.project-plan-list > li:first-child');
+  await screenshot('three-phase-plan.png');
+  await click('继续工作', '[data-plan-item-id="venue-budget"]');
   await wait(
-    `document.querySelector('.project-plan-list > li').textContent.includes('进行中')`,
+    `document.querySelector('[data-plan-item-id="venue-budget"]')?.textContent.includes('进行中')`,
   );
-  await click('提交成果', '.project-plan-list > li:first-child');
+  await click('提交成果', '[data-plan-item-id="venue-budget"]');
   await set(
-    '成果与核验依据',
-    '样例资料：记录两份原始来源及访谈要点；场租尚未核实。',
+    '本次交付的结果与可核验依据',
+    '合成验收记录：已取得正式报价并列出包含设备、清洁费的总价。',
     '.project-plan-action-form',
   );
   await click('保存', '.project-plan-action-form');
   await wait(
-    `document.querySelector('.project-plan-list > li').textContent.includes('待验收')`,
+    `document.querySelector('[data-plan-item-id="venue-budget"]')?.textContent.includes('待验收')`,
   );
-  assert.equal(projects.plans.get(project.id).progress.percentage, 0);
-  await screenshot('submitted.png');
-  await click('验收通过', '.project-plan-list > li:first-child');
+  await screenshot('submitted-evidence.png');
+  await click('验收工作项', '[data-plan-item-id="venue-budget"]');
+  await click('核验阶段出口', '[data-plan-phase-id="pilot"]');
+  await set(
+    '阶段成果与出口核验依据',
+    '合成阶段验收：正式报价覆盖退出条件要求，试办预算有可复核来源。',
+    '[data-plan-phase-id="pilot"]',
+  );
+  await click('验收阶段并解锁后续工作', '[data-plan-phase-id="pilot"]');
   await wait(
-    `document.querySelector('.project-plan-progress').textContent.includes('50%')`,
+    `document.querySelector('.project-plan-phase-overview')?.textContent.includes('67%')`,
   );
-  await click('开始', '.project-plan-list > li:nth-child(2)');
-  await wait(
-    `document.querySelectorAll('.project-plan-list > li')[1].textContent.includes('进行中')`,
-  );
-  await screenshot('accepted.png');
+  assert.equal(projects.plans.get(project.id).phaseProgress.percentage, 67);
+  await screenshot('phase-gate-opened.png');
   // An editor opened before another actor writes must not overwrite that actor.
-  await click('编辑计划');
+  await click('调整计划');
   const current = projects.plans.get(project.id);
-  projects.plans.updateItem({
+  projects.plans.replace({
     projectId: project.id,
     expectedRevision: current.revision,
-    itemId: current.items[1].id,
-    status: 'blocked',
-    blocker: '样例：等待场租报价。',
-    actorAgentId: ids[1],
-    reason: '记录成本核实阻塞。',
+    reason: '另一个规划者补充了复盘阶段的验收细节。',
+    plan: {
+      objective: current.objective,
+      phases: current.phases.map((phase) =>
+        phase.id === 'review'
+          ? {
+              ...phase,
+              outcome: `${phase.outcome} 后续仅在真实试办结果可复核时作出决策。`,
+            }
+          : phase,
+      ),
+    },
   });
-  await set('本次调整的原因', '验证陈旧版本保护。');
-  await click('保存计划');
+  await set('本次计划调整的原因', '验证陈旧版本保护。');
+  await click('保存计划修订');
   await wait(
     `document.querySelector('[role=alert]')?.textContent.includes('计划已被更新')`,
   );
@@ -182,7 +235,7 @@ try {
     `Array.from(document.querySelectorAll('.project-list-item')).find(n=>n.textContent.includes('共享计划界面验收样例')).click()`,
   );
   await wait(
-    `document.querySelector('.project-plan')?.textContent.includes('等待场租报价')`,
+    `document.querySelector('.project-plan')?.textContent.includes('后续仅在真实试办结果可复核时作出决策')`,
   );
   await screenshot('persisted.png');
   await cdp.call('Emulation.setDeviceMetricsOverride', {

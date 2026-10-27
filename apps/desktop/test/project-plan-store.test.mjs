@@ -127,6 +127,188 @@ test('only accepted deliveries advance progress and unlock dependent work across
   }
 });
 
+test('phases form explicit delivery gates and project progress aggregates accepted phases', () => {
+  const { db, projects, project, a, b } = setup();
+  try {
+    const initial = projects.plans.replace({
+      projectId: project.id,
+      expectedRevision: 0,
+      reason: '把项目分成预研究和试办两个结果阶段。',
+      plan: {
+        objective: '判断摄影工作坊是否值得试办，并形成可执行方案。',
+        phases: [
+          {
+            id: 'research',
+            title: '预研究',
+            outcome: '形成有来源依据的需求与成本判断。',
+            exitCriteria: '研究结论可复核，关键未知明确标出。',
+            dependsOn: [],
+            status: 'pending',
+            evidence: '',
+            workItems: [
+              {
+                id: 'market',
+                title: '核对需求证据',
+                ownerAgentId: a,
+                acceptance: '记录来源、发现和未核实项。',
+                dependsOn: [],
+                status: 'pending',
+                evidence: '',
+                blocker: '',
+              },
+            ],
+          },
+          {
+            id: 'pilot',
+            title: '小规模试办',
+            outcome: '在限定预算下完成一次试办。',
+            exitCriteria: '交付现场结果、成本记录和复盘。',
+            dependsOn: ['research'],
+            status: 'pending',
+            evidence: '',
+            workItems: [
+              {
+                id: 'budget',
+                title: '制定试办预算',
+                ownerAgentId: b,
+                acceptance: '预算与需求证据相互对应。',
+                dependsOn: [],
+                status: 'pending',
+                evidence: '',
+                blocker: '',
+              },
+            ],
+          },
+        ],
+      },
+    });
+    assert.equal(initial.phaseProgress.percentage, 0);
+    assert.equal(initial.phaseProgress.total, 2);
+    assert.equal(initial.phases[1].workItems[0].ready, false);
+    assert.deepEqual(initial.phases[1].workItems[0].waitingForPhases, [
+      'research',
+    ]);
+    assert.throws(
+      () =>
+        projects.plans.updatePhase({
+          projectId: project.id,
+          expectedRevision: initial.revision,
+          phaseId: 'research',
+          actorAgentId: 'noema',
+          status: 'done',
+          evidence: '研究结果已复核。',
+          reason: '尝试越过未验收工作项。',
+        }),
+      /工作项未全部验收/u,
+    );
+    const startedResearch = projects.plans.updateItem({
+      projectId: project.id,
+      expectedRevision: initial.revision,
+      itemId: 'market',
+      actorAgentId: a,
+      status: 'in_progress',
+      reason: '开始核对市场需求。',
+    });
+    const submittedResearch = projects.plans.updateItem({
+      projectId: project.id,
+      expectedRevision: startedResearch.revision,
+      itemId: 'market',
+      actorAgentId: a,
+      status: 'submitted',
+      evidence: '两份原始来源与采访记录。',
+      reason: '提交需求证据。',
+    });
+    const acceptedWork = projects.plans.updateItem({
+      projectId: project.id,
+      expectedRevision: submittedResearch.revision,
+      itemId: 'market',
+      actorAgentId: 'noema',
+      status: 'done',
+      reason: '核验需求证据。',
+    });
+    const acceptedResearch = projects.plans.updatePhase({
+      projectId: project.id,
+      expectedRevision: acceptedWork.revision,
+      phaseId: 'research',
+      actorAgentId: 'noema',
+      status: 'done',
+      evidence: '研究结论和未核实项已复核。',
+      reason: '验收预研究阶段。',
+    });
+    assert.equal(acceptedResearch.phaseProgress.percentage, 50);
+    assert.equal(acceptedResearch.phases[1].workItems[0].ready, true);
+    assert.equal(acceptedResearch.progress.percentage, 50);
+    const next = projects.plans.updateItem({
+      projectId: project.id,
+      expectedRevision: acceptedResearch.revision,
+      itemId: 'budget',
+      actorAgentId: b,
+      status: 'in_progress',
+      reason: '进入试办阶段。',
+    });
+    assert.equal(next.phaseProgress.percentage, 50);
+    assert.equal(next.phases[1].state, 'in_progress');
+    const done = projects.plans.updateItem({
+      projectId: project.id,
+      expectedRevision: next.revision,
+      itemId: 'budget',
+      actorAgentId: b,
+      status: 'submitted',
+      evidence: '预算与研究结果逐项对应。',
+      reason: '提交预算草案。',
+    });
+    const acceptedBudget = projects.plans.updateItem({
+      projectId: project.id,
+      expectedRevision: done.revision,
+      itemId: 'budget',
+      actorAgentId: 'noema',
+      status: 'done',
+      reason: '核验预算交付。',
+    });
+    const final = projects.plans.updatePhase({
+      projectId: project.id,
+      expectedRevision: acceptedBudget.revision,
+      phaseId: 'pilot',
+      actorAgentId: 'noema',
+      status: 'done',
+      evidence: '预算已通过核验，试办条件齐备。',
+      reason: '验收试办阶段计划成果。',
+    });
+    assert.deepEqual(final.phaseProgress, {
+      done: 2,
+      total: 2,
+      percentage: 100,
+      canceled: 0,
+    });
+  } finally {
+    db.close();
+  }
+});
+
+test('pre-hierarchy plan rows upgrade into one preserved legacy phase', () => {
+  const { db, projects, project, a, plan } = setup();
+  try {
+    projects.plans.replace({
+      projectId: project.id,
+      expectedRevision: 0,
+      reason: '建立旧版扁平计划。',
+      plan,
+    });
+    db.prepare(
+      'UPDATE social_project_plan_revisions SET items_json = ? WHERE project_id = ?',
+    ).run(JSON.stringify(plan.items), project.id);
+    const upgraded = projects.plans.get(project.id);
+    assert.equal(upgraded.phases.length, 1);
+    assert.equal(upgraded.phases[0].id, 'legacy-stage');
+    assert.equal(upgraded.phases[0].title, plan.stage);
+    assert.equal(upgraded.phases[0].workItems[0].ownerAgentId, a);
+    assert.equal(upgraded.phases[0].workItems.length, plan.items.length);
+    assert.equal(upgraded.phaseProgress.percentage, 0);
+  } finally {
+    db.close();
+  }
+});
+
 test('invalid shared plans and unauthorized writes leave the prior revision unchanged', () => {
   const { db, projects, project, a, b, plan } = setup();
   try {
