@@ -2,6 +2,10 @@ import { randomUUID } from 'node:crypto';
 import { normalizeInteractionAdjustmentSnapshots } from './root-store.mjs';
 import { searchTranscriptHistory } from './transcript-search.mjs';
 import { SOCIAL_SCHEMA_VERSION } from './social-chat-schema.mjs';
+import {
+  FIRST_MEETING_VERSION,
+  firstMeetingContext,
+} from './first-meeting.mjs';
 
 const MAX_CONTEXT_MESSAGES = 40;
 const MAX_CONTEXT_HISTORY_CHARACTERS = 12_000;
@@ -1100,7 +1104,64 @@ export class SocialChatStore {
   }
 
   getSnapshot() {
-    return { agents: this.listAgents(), rooms: this.listRooms() };
+    return {
+      agents: this.listAgents(),
+      rooms: this.listRooms(),
+      firstMeeting: this.getFirstMeetingState(),
+    };
+  }
+
+  getFirstMeetingState() {
+    const saved = this.db
+      .prepare("SELECT value FROM app_settings WHERE key = 'first_meeting'")
+      .get();
+    if (saved) return JSON.parse(saved.value);
+    // Existing conversations are never placed behind a new onboarding gate.
+    const hasHistory = Boolean(
+      this.db
+        .prepare("SELECT 1 FROM social_messages WHERE role = 'user' LIMIT 1")
+        .get(),
+    );
+    return {
+      version: FIRST_MEETING_VERSION,
+      stage: hasHistory ? 'complete' : 'letter',
+      introducedAt: null,
+      enteredAt: null,
+    };
+  }
+
+  advanceFirstMeeting(action) {
+    if (!['read', 'enter'].includes(action))
+      throw new TypeError('无法识别的首次相遇操作。');
+    const current = this.getFirstMeetingState();
+    const next = {
+      ...current,
+      introducedAt: current.introducedAt ?? isoNow(),
+      stage:
+        action === 'enter' || current.stage === 'complete'
+          ? 'complete'
+          : 'encounter',
+      enteredAt:
+        action === 'enter'
+          ? (current.enteredAt ?? isoNow())
+          : current.enteredAt,
+    };
+    this.db
+      .prepare(`
+      INSERT INTO app_settings(key, value, updated_at) VALUES('first_meeting', ?, ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+    `)
+      .run(JSON.stringify(next), isoNow());
+    return next;
+  }
+
+  getFirstMeetingContext() {
+    const count = this.db
+      .prepare(
+        "SELECT COUNT(*) AS count FROM social_messages WHERE room_id = 'room-noema' AND role IN ('user', 'assistant')",
+      )
+      .get().count;
+    return firstMeetingContext(this.getFirstMeetingState(), count);
   }
 
   createGroup({ title, agentIds }) {

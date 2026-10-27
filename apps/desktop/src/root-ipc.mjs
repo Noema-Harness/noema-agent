@@ -31,6 +31,7 @@ const CHANNELS = Object.freeze({
   event: 'noema:root-event',
   socialEvent: 'noema:social-event',
   socialState: 'noema:social-state',
+  firstMeetingProgress: 'noema:first-meeting-progress',
   socialRoom: 'noema:social-room',
   socialSearchMessages: 'noema:social-search-messages',
   socialCreateGroup: 'noema:social-create-group',
@@ -89,6 +90,9 @@ export function registerRootIpc({
 
   register(CHANNELS.state, () => rootAgent.getUiState());
   if (socialChatService) {
+    register(CHANNELS.firstMeetingProgress, (action) =>
+      socialChatService.store.advanceFirstMeeting(action),
+    );
     register(CHANNELS.socialState, async () => ({
       ...(await socialChatService.getUiState()),
       projects:

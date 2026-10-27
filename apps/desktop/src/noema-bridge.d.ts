@@ -236,6 +236,13 @@ export interface NoemaSocialReplySource {
   content: string;
 }
 
+export interface NoemaFirstMeetingState {
+  version: number;
+  stage: 'letter' | 'encounter' | 'complete';
+  introducedAt: string | null;
+  enteredAt: string | null;
+}
+
 export type NoemaSocialState = Pick<
   NoemaRootState,
   | 'connected'
@@ -248,6 +255,7 @@ export type NoemaSocialState = Pick<
   | 'providerName'
   | 'webSearchConfigured'
 > & {
+  firstMeeting: NoemaFirstMeetingState;
   interactionAdjustments: NoemaInteractionAdjustment[];
   agents: NoemaSocialAgent[];
   rooms: NoemaSocialRoom[];
@@ -788,6 +796,9 @@ export interface NoemaBridge {
   appVersion: string;
   getRootState(): Promise<NoemaRootState>;
   getSocialState(): Promise<NoemaSocialState>;
+  advanceFirstMeeting(
+    action: 'read' | 'enter',
+  ): Promise<NoemaFirstMeetingState>;
   getSocialRoom(roomId: string): Promise<NoemaSocialRoomState>;
   searchSocialMessages(query: string): Promise<NoemaSocialSearchResult[]>;
   createSocialGroup(input: {

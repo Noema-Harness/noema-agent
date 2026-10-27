@@ -29,6 +29,8 @@ const bridge = {
     ipcRenderer.invoke('noema:root-state'),
   getSocialState: (): Promise<NoemaSocialState> =>
     ipcRenderer.invoke('noema:social-state'),
+  advanceFirstMeeting: (action: 'read' | 'enter') =>
+    ipcRenderer.invoke('noema:first-meeting-progress', action),
   getSocialRoom: (roomId: string): Promise<NoemaSocialRoomState> =>
     ipcRenderer.invoke('noema:social-room', roomId),
   searchSocialMessages: (query: string): Promise<NoemaSocialSearchResult[]> =>

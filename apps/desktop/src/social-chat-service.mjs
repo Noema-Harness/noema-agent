@@ -1892,6 +1892,9 @@ export class SocialChatService {
           role: 'system',
           content: [
             agent.systemPrompt,
+            agentId === 'noema' && roomId === 'room-noema'
+              ? (this.store.getFirstMeetingContext?.() ?? '')
+              : '',
             ...(run.isProjectGrowthTurn
               ? [
                   '这是系统安排的内部经历复核回合。只评估你实际参与的项目经历；允许的唯一工具是 manage_member_assets。不要继续项目任务、改共享计划、群发消息、创建工作或要求用户判断。简报是写给未来常驻会话的事实材料，不是面向用户的总结。',

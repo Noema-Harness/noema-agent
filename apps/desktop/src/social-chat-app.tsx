@@ -28,6 +28,7 @@ import { extractChatPdfText } from './chat-pdf-extraction.mjs';
 import { ProjectReviewCard } from './project-review-card';
 import { ProjectPlanPanel } from './project-plan-panel';
 import { GlobalSearchDialog } from './global-search-dialog';
+import { FirstMeeting } from './first-meeting-screen';
 import {
   socialWorkCardTitle,
   socialWorkExecutionStepPresentation,
@@ -313,6 +314,10 @@ function SocialChatApp() {
   const [createAgentOpen, setCreateAgentOpen] = useState(false);
   const [editingAgentId, setEditingAgentId] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [firstMeetingReplay, setFirstMeetingReplay] = useState(false);
+  const firstMeetingVisible =
+    firstMeetingReplay ||
+    Boolean(state?.firstMeeting && state.firstMeeting.stage !== 'complete');
   const [editProviderConfig, setEditProviderConfig] = useState(false);
   const [groupTitle, setGroupTitle] = useState('');
   const [groupAgentIds, setGroupAgentIds] = useState<string[]>(['noema']);
@@ -504,8 +509,14 @@ function SocialChatApp() {
   const closeSettingsDialog = useCallback(() => {
     setSettingsOpen(false);
     setEditProviderConfig(false);
-    requestAnimationFrame(() => settingsTriggerRef.current?.focus());
-  }, []);
+    requestAnimationFrame(() => {
+      if (firstMeetingVisible)
+        document
+          .querySelector<HTMLButtonElement>('.meeting-connection button')
+          ?.focus();
+      else settingsTriggerRef.current?.focus();
+    });
+  }, [firstMeetingVisible]);
 
   const cancelForward = useCallback(() => {
     const originMessageId = forwardOriginMessageId.current;
@@ -635,6 +646,7 @@ function SocialChatApp() {
 
   useEffect(() => {
     const focusSearch = (event: globalThis.KeyboardEvent) => {
+      if (firstMeetingVisible) return;
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
         if (event.defaultPrevented || event.isComposing) return;
         event.preventDefault();
@@ -645,7 +657,7 @@ function SocialChatApp() {
     };
     window.addEventListener('keydown', focusSearch);
     return () => window.removeEventListener('keydown', focusSearch);
-  }, [globalSearchOpen, openGlobalSearch]);
+  }, [globalSearchOpen, openGlobalSearch, firstMeetingVisible]);
 
   useEffect(() => {
     if (!navigation.narrow || !showRoomList) return;
@@ -2112,7 +2124,9 @@ function SocialChatApp() {
             >
               {currentRoom.id === noemaRoom?.id ? (
                 <p>
-                  从你正在想的事开始，不必先写成完整指令。先把问题聊清楚，再决定下一步。
+                  {state?.firstMeeting?.introducedAt
+                    ? '你与 Noema 的对话'
+                    : '从你正在想的事开始，不必先写成完整指令。先把问题聊清楚，再决定下一步。'}
                 </p>
               ) : (
                 <span>
@@ -2511,7 +2525,7 @@ function SocialChatApp() {
 
   return (
     <main
-      className={`social-shell app layout-c${workspaceOpen ? ' has-workspace' : ''}${navigationHidden ? ' index-closed' : ''}${navigation.narrow ? ' narrow-shell' : ''}${navigation.dragging ? ' resizing' : ''}`}
+      className={`social-shell app layout-c${firstMeetingVisible ? ' is-first-meeting' : ''}${workspaceOpen ? ' has-workspace' : ''}${navigationHidden ? ' index-closed' : ''}${navigation.narrow ? ' narrow-shell' : ''}${navigation.dragging ? ' resizing' : ''}`}
       ref={shellRef}
     >
       <header className="window-head social-topbar" aria-label="应用导航">
@@ -2591,8 +2605,57 @@ function SocialChatApp() {
           </div>
         </div>
       </header>
+      {firstMeetingVisible ? (
+        <FirstMeeting
+          initialStep={
+            firstMeetingReplay || state?.firstMeeting?.stage === 'letter'
+              ? 'letter'
+              : 'encounter'
+          }
+          connected={providerReady}
+          onRead={async () => {
+            const progress = await window.noema.advanceFirstMeeting('read');
+            setState((current) =>
+              current ? { ...current, firstMeeting: progress } : current,
+            );
+          }}
+          onEnter={async (text) => {
+            if (busy) return;
+            setBusy(true);
+            try {
+              const progress = await window.noema.advanceFirstMeeting('enter');
+              if (text)
+                await window.noema.sendSocialMessage({
+                  roomId: 'room-noema',
+                  agentId: 'noema',
+                  text,
+                });
+              setActiveRoomId('room-noema');
+              setProjectWorkspaceId(null);
+              setAgentWorkspaceId(null);
+              setArchivedProjectsOpen(false);
+              setFirstMeetingReplay(false);
+              setState((current) =>
+                current ? { ...current, firstMeeting: progress } : current,
+              );
+              await Promise.all([refreshState(), loadRoom('room-noema')]);
+              requestAnimationFrame(() => draftRef.current?.focus());
+            } catch (error) {
+              setFirstMeetingReplay(true);
+              throw error;
+            } finally {
+              setBusy(false);
+            }
+          }}
+          onConnect={() => setSettingsOpen(true)}
+          onReturn={
+            firstMeetingReplay ? () => setFirstMeetingReplay(false) : undefined
+          }
+        />
+      ) : null}
       <div
         ref={navigation.containerRef}
+        inert={firstMeetingVisible}
         className={`shell social-body${navigation.collapsed ? ' navigation-collapsed' : ''}${navigation.dragging ? ' navigation-resizing' : ''}`}
         style={
           {
@@ -4172,6 +4235,15 @@ function SocialChatApp() {
               </button>
             </div>
             <div className="settings-administration">
+              <button
+                type="button"
+                onClick={() => {
+                  setSettingsOpen(false);
+                  setFirstMeetingReplay(true);
+                }}
+              >
+                重看初次相遇
+              </button>
               <button
                 type="button"
                 ref={agentTriggerRef}
