@@ -846,7 +846,7 @@ test('Noema continues through bounded search, reading, and calculation before an
         }
         assert.deepEqual(input.tools, []);
         assert.match(input.messages.at(-1).content, /"value":"144"/u);
-        yield '按搜索到的单盒价格计算，12 盒共 144 元（12 × 12）。价格来源：[[S1]]';
+        yield '按搜索到的单盒价格计算，12 盒共 144 元（12 × 12）。单盒售价：[[S1|单盒蓝莓售价12元]]';
       },
     },
     secretStore: createSecretStore(),
