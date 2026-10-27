@@ -2279,10 +2279,13 @@ test('independently verifies worker files and gives one bounded repair before ac
 
     const task = store.getBackgroundTask(started.taskId);
     assert.equal(task.status, 'completed');
+    assert.equal(task.model, 'free-router');
     assert.equal(task.verificationStatus, 'verified');
     assert.equal(task.verificationAttempts, 1);
     assert.equal(task.verificationResults[0].status, 'verified');
     assert.equal(dshInputs.length, 2);
+    assert.equal(dshInputs[0].model, 'free-router');
+    assert.equal(dshInputs[1].model, 'free-router');
     assert.equal(dshInputs[1].sessionId, 'session-verify-test');
     assert.match(dshInputs[1].task, /工作区内做了独立文件核验/);
     assert.equal(task.toolCallCount, 2);
@@ -3046,6 +3049,72 @@ test('independently checks existing artifacts after a DSH process fails', async 
     assert.match(task.noemaResponse, /文件条件目前都满足/);
     assert.equal(task.noemaResponse.includes('任务已经完整完成'), false);
     assert.equal(summaryModelCalls, 0);
+  } finally {
+    await agent.shutdown();
+    store.close();
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('does not automatically retry a rejected DSH model request', async () => {
+  const store = new RootStore(':memory:');
+  const workspace = mkdtempSync(path.join(tmpdir(), 'noema-worker-rejected-'));
+  const turn = store.beginTurn({ text: '创建 README。', model: 'free-router' });
+  store.setSelectedModel('free-router');
+  let workerStarts = 0;
+  const provider = {
+    baseUrl: 'http://127.0.0.1:31415/v1',
+    listModels: async () => [
+      { name: 'free-router', label: 'FreeLLMAPI 免费路由' },
+    ],
+    async *streamChat() {
+      yield '模型服务拒绝了执行请求，没有自动重复调用。';
+    },
+  };
+  const agent = new RootAgent({
+    store,
+    provider,
+    secretStore: createSecretStore(),
+    dshAdapter: {
+      async startTask() {
+        workerStarts += 1;
+        return {
+          started: Promise.resolve({ sessionId: 'session-rejected-test' }),
+          done: Promise.resolve({
+            status: 'failed',
+            sessionId: 'session-rejected-test',
+            result: '',
+            errorCode: 'dsh_provider_rejected',
+            errorMessage: '模型服务拒绝请求（HTTP 404）；不会自动重试。',
+            toolCallCount: 0,
+          }),
+          stop: () => true,
+        };
+      },
+    },
+  });
+
+  try {
+    const started = await agent.startBackgroundTask({
+      sourceTurnId: turn.id,
+      prompt: '在工作区创建 README.md。',
+      workspacePath: workspace,
+      verificationChecks: [
+        {
+          kind: 'file_contains',
+          path: 'README.md',
+          text: 'NOEMA-EXPECTED-CONTENT',
+        },
+      ],
+    });
+    assert.equal(started.accepted, true);
+    await started.completion;
+
+    const task = store.getBackgroundTask(started.taskId);
+    assert.equal(workerStarts, 1);
+    assert.equal(task.status, 'failed');
+    assert.equal(task.errorCode, 'dsh_provider_rejected');
+    assert.equal(task.verificationAttempts, 0);
   } finally {
     await agent.shutdown();
     store.close();

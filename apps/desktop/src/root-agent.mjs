@@ -7,7 +7,6 @@ import {
   getProviderName,
   normalizeBaseUrl,
 } from './openai-compatible-client.mjs';
-import { DSH_FREE_MODEL } from './dsh-headless-adapter.mjs';
 import {
   normalizeWorkspaceVerificationChecks,
   verifyWorkspaceChecks,
@@ -1763,6 +1762,17 @@ export class RootAgent {
         errorMessage: '请先连接模型服务并选择工作区。',
       };
     }
+    const sourceModel = this.store.getTurn(sourceTurnId)?.model;
+    const model =
+      typeof sourceModel === 'string' && sourceModel.trim()
+        ? sourceModel
+        : this.store.getSelectedModel();
+    if (typeof model !== 'string' || !model.trim() || model.length > 200) {
+      return {
+        accepted: false,
+        errorMessage: '无法确定本次委托使用的模型；没有启动后台任务。',
+      };
+    }
     const taskId = randomUUID();
     const interactionAdjustments = sessionId
       ? []
@@ -1832,7 +1842,7 @@ export class RootAgent {
       id: taskId,
       sourceTurnId,
       workspacePath,
-      model: DSH_FREE_MODEL,
+      model,
       prompt: taskPrompt,
       verificationChecks: checks,
       interactionAdjustmentIds,
@@ -1860,6 +1870,7 @@ export class RootAgent {
       taskId,
       workspacePath,
       taskPrompt,
+      model,
       verificationChecks: checks,
       sessionId,
       runControl,
@@ -1891,6 +1902,7 @@ export class RootAgent {
     taskId,
     workspacePath,
     taskPrompt,
+    model,
     verificationChecks,
     sessionId: initialSessionId,
     runControl,
@@ -1963,7 +1975,7 @@ export class RootAgent {
           taskId: runId,
           workspacePath,
           task: repairPrompt,
-          model: DSH_FREE_MODEL,
+          model,
           sessionId: currentSessionId,
           onEvent: (event) =>
             this.onDshEvent({

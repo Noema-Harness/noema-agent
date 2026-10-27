@@ -12,7 +12,6 @@ const MAX_TOOL_CALLS = 12;
 const MAX_REPEAT_TOOL_CALLS = 3;
 const INVALID_ARGUMENT_REPAIR_THRESHOLD = MAX_REPEAT_TOOL_CALLS - 1;
 const DSH_WORKER_MAX_TOKENS = 8_192;
-export const DSH_FREE_MODEL = 'auto:noema-free';
 
 export class DshHeadlessError extends Error {
   /** @param {string} code @param {string} message */
@@ -196,31 +195,52 @@ export function parseDshRateLimitRetryAfterSeconds(stderr) {
 }
 
 /**
- * This worker profile uses DSH's file tools only. Model names are JSON-quoted
- * YAML scalars so punctuation in a FreeLLMAPI model id cannot change the patch.
+ * This worker profile uses DSH's file tools only. Route values are JSON-quoted
+ * YAML scalars so a local gateway URL cannot change the patch structure.
  * @param {string} model
+ * @param {string} baseURL
  */
-export function makeNoemaDshWorkerPatch(model) {
+export function makeNoemaDshWorkerPatch(model, baseURL) {
   if (typeof model !== 'string' || !model.trim() || model.length > 200) {
     throw new TypeError('DSH worker model must be a non-empty model name');
   }
-  if (model !== DSH_FREE_MODEL) {
+  let parsedBaseUrl;
+  try {
+    parsedBaseUrl = new URL(baseURL);
+  } catch {
     throw new DshHeadlessError(
-      'dsh_model_not_allowlisted',
-      '后台 agent 只能使用 Noema 已核验的 FreeLLMAPI 免费链。',
+      'model_provider_base_url_invalid',
+      '模型服务地址无效，不能启动后台 agent。',
+    );
+  }
+  if (
+    !baseURL.endsWith('/v1') ||
+    !['http:', 'https:'].includes(parsedBaseUrl.protocol)
+  ) {
+    throw new DshHeadlessError(
+      'model_provider_base_url_invalid',
+      '模型服务地址无效，不能启动后台 agent。',
     );
   }
   const modelScalar = JSON.stringify(model);
+  const baseUrlScalar = JSON.stringify(baseURL);
   return [
     '- id: agent-default-model',
     '  config:',
-    '    provider: deepseek-official',
+    '    provider: noema-model',
     `    model: ${modelScalar}`,
-    '- id: llm-deepseek',
+    '- id: llm-pi-ai',
     '  config:',
-    // DSH's provider default is 256k output tokens; cap worker calls so a
-    // gateway model with a smaller context window can still receive the task.
-    `    maxTokens: ${DSH_WORKER_MAX_TOKENS}`,
+    '    providers:',
+    '      noema-model:',
+    '        displayName: Noema model provider',
+    '        apiKeyEnv: NOEMA_MODEL_API_KEY',
+    '        api: openai-completions',
+    `        baseURL: ${baseUrlScalar}`,
+    '        defaultContextWindow: 131072',
+    `        defaultMaxTokens: ${DSH_WORKER_MAX_TOKENS}`,
+    '        models:',
+    `          - id: ${modelScalar}`,
     // dsh-base provides the sandbox-consuming PowerShell executor on Windows;
     // keep command execution available for project checks but never expose jobs.
     '- id: tool-pwsh',
@@ -321,8 +341,8 @@ export class DshHeadlessAdapter {
     const apiKey = this.getApiKey?.();
     if (typeof apiKey !== 'string' || !apiKey.trim()) {
       throw new DshHeadlessError(
-        'freellmapi_credentials_missing',
-        'FreeLLMAPI 尚未连接，不能启动后台 agent。',
+        'model_provider_credentials_missing',
+        '模型服务凭据尚未配置，不能启动后台 agent。',
       );
     }
     if (
@@ -330,24 +350,27 @@ export class DshHeadlessAdapter {
       !this.providerBaseUrl.endsWith('/v1')
     ) {
       throw new DshHeadlessError(
-        'freellmapi_base_url_invalid',
-        'FreeLLMAPI 地址无效，不能启动后台 agent。',
+        'model_provider_base_url_invalid',
+        '模型服务地址无效，不能启动后台 agent。',
       );
     }
 
     const patchDirectory = path.join(this.userDataPath, 'dsh-worker-patches');
     await mkdir(patchDirectory, { recursive: true });
     const patchPath = path.join(patchDirectory, `${taskId}.cordis.patch.yml`);
-    await writeFile(patchPath, makeNoemaDshWorkerPatch(model), {
-      encoding: 'utf8',
-      flag: 'wx',
-    });
+    await writeFile(
+      patchPath,
+      makeNoemaDshWorkerPatch(model, this.providerBaseUrl),
+      {
+        encoding: 'utf8',
+        flag: 'wx',
+      },
+    );
 
     const processEnv = makeLocalWorkerEnvironment({
       parent: this.env,
       userDataPath: this.userDataPath,
       apiKey,
-      baseUrl: this.providerBaseUrl,
     });
     const args = [
       this.runtime.dshBin,
@@ -378,8 +401,8 @@ export class DshHeadlessAdapter {
   }
 }
 
-/** @param {{parent:NodeJS.ProcessEnv,userDataPath:string,apiKey:string,baseUrl:string}} options */
-function makeLocalWorkerEnvironment({ parent, userDataPath, apiKey, baseUrl }) {
+/** @param {{parent:NodeJS.ProcessEnv,userDataPath:string,apiKey:string}} options */
+function makeLocalWorkerEnvironment({ parent, userDataPath, apiKey }) {
   const allowedNames = [
     'APPDATA',
     'COMSPEC',
@@ -404,8 +427,7 @@ function makeLocalWorkerEnvironment({ parent, userDataPath, apiKey, baseUrl }) {
   }
   env.DSH_HOME = path.join(userDataPath, 'dsh-home');
   env.DSH_PERMISSION_MODE = 'workspace-write';
-  env.DEEPSEEK_API_KEY = apiKey;
-  env.DEEPSEEK_BASE_URL = baseUrl;
+  env.NOEMA_MODEL_API_KEY = apiKey;
   env.NO_PROXY = '127.0.0.1,localhost,::1';
   env.no_proxy = '127.0.0.1,localhost,::1';
   return env;
@@ -750,6 +772,14 @@ function createRunHandle({
         : 'failed';
     const safeStderr = safeStderrTail().trim();
     const rateLimited = /\bRATE_LIMIT\b/i.test(safeStderr);
+    const rejectedStatus =
+      /\bHTTP[_ ](4\d{2})\b|\bINVALID_REQUEST:\s*(4\d{2})\b/i
+        .exec(safeStderr)
+        ?.slice(1)
+        .find(Boolean);
+    const providerRejected = Boolean(
+      rejectedStatus && rejectedStatus !== '408' && rejectedStatus !== '429',
+    );
     const retryAfterSeconds = parseDshRateLimitRetryAfterSeconds(safeStderr);
     resolveDone({
       status,
@@ -761,19 +791,23 @@ function createRunHandle({
         lineError?.code ??
         (rateLimited
           ? 'dsh_rate_limited'
-          : status === 'failed'
-            ? 'dsh_process_failed'
-            : null),
+          : providerRejected
+            ? 'dsh_provider_rejected'
+            : status === 'failed'
+              ? 'dsh_process_failed'
+              : null),
       errorMessage:
         lineError?.message ??
         (rateLimited
           ? retryAfterSeconds
             ? `DSH 免费模型池限流；最早约 ${retryAfterSeconds} 秒后可续做。`
             : 'DSH 免费模型池仍在限流，但没有可安全采用的短时冷却窗口。'
-          : status === 'failed'
-            ? safeStderr.slice(-1_000) ||
-              `DSH 任务未完成（退出码 ${code ?? 'unknown'}）。`
-            : null),
+          : providerRejected
+            ? `模型服务拒绝请求（HTTP ${rejectedStatus}）；不会自动重试，以免重复消耗额度。`
+            : status === 'failed'
+              ? safeStderr.slice(-1_000) ||
+                `DSH 任务未完成（退出码 ${code ?? 'unknown'}）。`
+              : null),
       retryAfterSeconds,
       toolCallCount,
       workspaceMutationStatus: getWorkspaceMutationStatus(),

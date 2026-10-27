@@ -8,12 +8,13 @@ import test from 'node:test';
 import {
   DshHeadlessAdapter,
   DshHeadlessError,
-  DSH_FREE_MODEL,
   makeNoemaDshWorkerPatch,
   parseDshHeadlessEvent,
   parseDshRateLimitRetryAfterSeconds,
   resolveDshHeadlessRuntime,
 } from '../src/dsh-headless-adapter.mjs';
+
+const routerModel = 'auto:noema-free';
 
 class FakeChild extends EventEmitter {
   stdout = new PassThrough();
@@ -28,18 +29,37 @@ class FakeChild extends EventEmitter {
   }
 }
 
-test('worker patch pins the free model and enables only foreground sandboxed project commands', () => {
-  const model = DSH_FREE_MODEL;
-  const patch = makeNoemaDshWorkerPatch(model);
+test('worker patch uses the selected model through a generic compatible provider', () => {
+  const model = routerModel;
+  const patch = makeNoemaDshWorkerPatch(model, 'http://127.0.0.1:31415/v1');
+  assert.match(patch, /provider: noema-model/);
   assert.match(patch, /model: "auto:noema-free"/);
+  assert.match(patch, /- id: llm-pi-ai[\s\S]*api: openai-completions/);
+  assert.match(patch, /baseURL: "http:\/\/127\.0\.0\.1:31415\/v1"/);
+  assert.match(patch, /defaultMaxTokens: 8192/);
+  assert.doesNotMatch(patch, /provider: deepseek-official/);
+  const selectedModelPatch = makeNoemaDshWorkerPatch(
+    'deepseek-flash',
+    'http://127.0.0.1:31415/v1',
+  );
+  assert.match(selectedModelPatch, /provider: noema-model/);
+  assert.match(selectedModelPatch, /model: "deepseek-flash"/);
+  assert.match(selectedModelPatch, /id: "deepseek-flash"/);
   assert.match(patch, /- id: tool-pwsh\n  disabled: false/);
   assert.match(patch, /- id: tool-jobs\n  disabled: true/);
   assert.match(patch, /- id: tool-web\n  disabled: true/);
   assert.match(patch, /- id: tool-subagent\n  disabled: true/);
-  assert.throws(() => makeNoemaDshWorkerPatch(''), TypeError);
   assert.throws(
-    () => makeNoemaDshWorkerPatch('free-router'),
-    (error) => error.code === 'dsh_model_not_allowlisted',
+    () => makeNoemaDshWorkerPatch('', 'http://127.0.0.1:31415/v1'),
+    TypeError,
+  );
+  assert.match(
+    makeNoemaDshWorkerPatch('free-router', 'http://127.0.0.1:31415/v1'),
+    /model: "free-router"/,
+  );
+  assert.throws(
+    () => makeNoemaDshWorkerPatch(model, 'not a URL'),
+    (error) => error.code === 'model_provider_base_url_invalid',
   );
 });
 
@@ -134,16 +154,13 @@ test('worker process streams safe status events and reports the final result', a
       taskId: 'task-test',
       workspacePath: workspace,
       task: 'Create one file in the workspace.',
-      model: DSH_FREE_MODEL,
+      model: routerModel,
       onEvent: (event) => observed.push(event),
     });
     assert.equal(launch.options.cwd, workspace);
     assert.equal(launch.options.env.DSH_HOME, path.join(userData, 'dsh-home'));
-    assert.equal(launch.options.env.DEEPSEEK_API_KEY, 'test-free-key');
-    assert.equal(
-      launch.options.env.DEEPSEEK_BASE_URL,
-      'http://127.0.0.1:31415/v1',
-    );
+    assert.equal(launch.options.env.NOEMA_MODEL_API_KEY, 'test-free-key');
+    assert.equal(launch.options.env.DEEPSEEK_API_KEY, undefined);
     assert.equal(launch.options.env.OPENAI_API_KEY, undefined);
     assert.equal(
       launch.args.some((argument) => argument.includes('test-free-key')),
@@ -152,7 +169,9 @@ test('worker process streams safe status events and reports the final result', a
     assert.equal(launch.args.includes('--json'), true);
     const patchArg = launch.args[launch.args.indexOf('--patch') + 1];
     const patch = readFileSync(patchArg, 'utf8');
-    assert.match(patch, /- id: llm-deepseek[\s\S]*maxTokens: 8192/);
+    assert.match(patch, /- id: llm-pi-ai[\s\S]*defaultMaxTokens: 8192/);
+    assert.match(patch, /apiKeyEnv: NOEMA_MODEL_API_KEY/);
+    assert.match(patch, /baseURL: "http:\/\/127\.0\.0\.1:31415\/v1"/);
     assert.match(patch, /tool-pwsh/);
 
     child.stdout.write(
@@ -201,7 +220,42 @@ test('worker process streams safe status events and reports the final result', a
   }
 });
 
-test('redacts the FreeLLMAPI key from DSH diagnostics', async () => {
+test('provider 4xx failures are classified as non-retryable request rejections', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'noema-dsh-rejected-'));
+  const workspace = path.join(directory, 'workspace');
+  const userData = path.join(directory, 'user-data');
+  const child = new FakeChild();
+  try {
+    const adapter = new DshHeadlessAdapter({
+      runtime: { nodeExecutable: 'node.exe', dshBin: 'dsh/lib/bin.js' },
+      userDataPath: userData,
+      providerBaseUrl: 'http://127.0.0.1:31415/v1',
+      getApiKey: () => 'test-free-key',
+      spawnImpl: () => child,
+    });
+    const handle = await adapter.startTask({
+      taskId: 'task-rejected',
+      workspacePath: workspace,
+      task: 'Create a file.',
+      model: routerModel,
+      onEvent: () => {},
+    });
+    child.stdout.write('{"type":"session","sessionId":"session-rejected"}\n');
+    await handle.started;
+    child.stderr.write('INVALID_REQUEST: 400: provider rejected model route');
+    child.emit('close', 1, null);
+
+    const result = await handle.done;
+    assert.equal(result.status, 'failed');
+    assert.equal(result.errorCode, 'dsh_provider_rejected');
+    assert.match(result.errorMessage, /HTTP 400/);
+    assert.doesNotMatch(result.errorMessage, /provider rejected model route/);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('redacts the model provider key from DSH diagnostics', async () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'noema-dsh-redaction-'));
   const child = new FakeChild();
   try {
@@ -216,7 +270,7 @@ test('redacts the FreeLLMAPI key from DSH diagnostics', async () => {
       taskId: 'task-redaction',
       workspacePath: path.join(directory, 'workspace'),
       task: 'Inspect README.',
-      model: DSH_FREE_MODEL,
+      model: routerModel,
     });
     child.stdout.write('{"type":"session","sessionId":"session-redaction"}\n');
     await handle.started;
@@ -246,7 +300,7 @@ test('classifies only bounded explicit DSH cooldown hints as retryable', async (
       taskId: 'task-rate-limit',
       workspacePath: path.join(directory, 'workspace'),
       task: 'Finish the missing files.',
-      model: DSH_FREE_MODEL,
+      model: routerModel,
     });
     child.stdout.write('{"type":"session","sessionId":"session-rate-limit"}\n');
     await handle.started;
@@ -281,7 +335,7 @@ test('does not retry a DSH rate limit whose cooldown exceeds the safe wait windo
       taskId: 'task-long-cooldown',
       workspacePath: path.join(directory, 'workspace'),
       task: 'Finish the missing files.',
-      model: DSH_FREE_MODEL,
+      model: routerModel,
     });
     child.stdout.write(
       '{"type":"session","sessionId":"session-long-cooldown"}\n',
@@ -300,7 +354,7 @@ test('does not retry a DSH rate limit whose cooldown exceeds the safe wait windo
   }
 });
 
-test('refuses to start a worker without a FreeLLMAPI key', async () => {
+test('refuses to start a worker without a model provider key', async () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'noema-dsh-no-key-'));
   let spawned = false;
   try {
@@ -320,7 +374,7 @@ test('refuses to start a worker without a FreeLLMAPI key', async () => {
         task: 'Run a small task.',
         model: 'free-router',
       }),
-      (error) => error.code === 'freellmapi_credentials_missing',
+      (error) => error.code === 'model_provider_credentials_missing',
     );
     assert.equal(spawned, false);
   } finally {
@@ -343,7 +397,7 @@ test('repeated identical tool calls stop a looping DSH run', async () => {
       taskId: 'task-loop',
       workspacePath: path.join(directory, 'workspace'),
       task: 'Inspect one file.',
-      model: DSH_FREE_MODEL,
+      model: routerModel,
     });
     child.stdout.write('{"type":"session","sessionId":"session-loop"}\n');
     await handle.started;
@@ -380,7 +434,7 @@ test('identifies a repeated file edit loop rejected before workspace mutation', 
       taskId: 'task-invalid-args-loop',
       workspacePath: path.join(directory, 'workspace'),
       task: 'Create README.md.',
-      model: DSH_FREE_MODEL,
+      model: routerModel,
     });
     child.stdout.write(
       '{"type":"session","sessionId":"session-invalid-args-loop"}\n',
