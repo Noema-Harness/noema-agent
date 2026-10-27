@@ -81,3 +81,26 @@ test('Tavily search rejects invalid queries before making a request', async () =
   );
   assert.equal(called, false);
 });
+
+test('Tavily search propagates the caller abort signal to the network request', async () => {
+  const controller = new AbortController();
+  let requestSignal;
+  const pending = searchWeb('当前资料', 'key', {
+    signal: controller.signal,
+    fetchImpl: async (_url, options) => {
+      requestSignal = options.signal;
+      return new Promise((_resolve, reject) => {
+        options.signal.addEventListener(
+          'abort',
+          () => reject(options.signal.reason),
+          { once: true },
+        );
+      });
+    },
+  });
+
+  await new Promise((resolve) => setImmediate(resolve));
+  controller.abort(new DOMException('Stopped by user', 'AbortError'));
+  await assert.rejects(pending, { name: 'AbortError' });
+  assert.equal(requestSignal.aborted, true);
+});

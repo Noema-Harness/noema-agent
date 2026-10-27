@@ -112,8 +112,9 @@ function validateUrl(value) {
   return url;
 }
 
-function requestOnce(url, addresses) {
+function requestOnce(url, addresses, { signal } = {}) {
   const transport = url.protocol === 'https:' ? https : http;
+  if (signal?.aborted) signal.throwIfAborted();
   const agent = new transport.Agent({
     keepAlive: false,
     lookup(hostname, options, callback) {
@@ -159,8 +160,17 @@ function requestOnce(url, addresses) {
     request.setTimeout(REQUEST_TIMEOUT_MS, () =>
       request.destroy(new Error('读取网页超时。')),
     );
+    const abortRequest = () =>
+      request.destroy(
+        signal.reason ??
+          new DOMException('The operation was aborted', 'AbortError'),
+      );
+    signal?.addEventListener('abort', abortRequest, { once: true });
     request.on('error', reject);
-    request.on('close', () => agent.destroy());
+    request.on('close', () => {
+      signal?.removeEventListener('abort', abortRequest);
+      agent.destroy();
+    });
     request.end();
   });
 }
@@ -173,8 +183,10 @@ async function fetchResponse(
     requestImpl = requestOnce,
     proxyConfiguredImpl = hasConfiguredProxy,
     allowedRedirectHosts = [],
+    signal,
   } = {},
 ) {
+  signal?.throwIfAborted();
   const hostname =
     url.hostname.startsWith('[') && url.hostname.endsWith(']')
       ? url.hostname.slice(1, -1)
@@ -186,7 +198,9 @@ async function fetchResponse(
   const resolution = await resolvePublicAddresses(url.hostname, lookupImpl, {
     allowProxyMapped: proxyMappedAllowed,
   });
-  const response = await requestImpl(url, resolution.records);
+  signal?.throwIfAborted();
+  const response = await requestImpl(url, resolution.records, { signal });
+  signal?.throwIfAborted();
   if (REDIRECT_CODES.has(response.statusCode)) {
     if (redirectsLeft <= 0 || typeof response.headers.location !== 'string') {
       throw new Error('网页重定向过多或缺少目标地址。');
@@ -197,6 +211,7 @@ async function fetchResponse(
       requestImpl,
       proxyConfiguredImpl,
       allowedRedirectHosts,
+      signal,
     });
   }
   if (response.statusCode < 200 || response.statusCode >= 300) {

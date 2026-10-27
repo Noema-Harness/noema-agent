@@ -1028,6 +1028,7 @@ export class RootAgent {
             const result = await this.handleRootToolCall(
               turn,
               pendingToolCalls,
+              controller.signal,
             );
             lastToolResult = result;
             if (result.sources?.length) {
@@ -1236,7 +1237,7 @@ export class RootAgent {
     );
   }
 
-  async handleRootToolCall(turn, toolCalls) {
+  async handleRootToolCall(turn, toolCalls, signal) {
     if (
       !Array.isArray(toolCalls) ||
       toolCalls.length < 1 ||
@@ -1407,6 +1408,7 @@ export class RootAgent {
         Number(left.name === 'record_interaction_adjustment'),
     );
     for (const { id, name, input } of orderedCalls) {
+      signal?.throwIfAborted();
       if (name === 'calculate_expression') {
         if (
           typeof id !== 'string' ||
@@ -1458,7 +1460,9 @@ export class RootAgent {
           );
           const result = await this.fetchWebSourceImpl(input.url, {
             allowedRedirectHosts,
+            signal,
           });
+          signal?.throwIfAborted();
           const citedSource = {
             ...result.source,
             citationId: `S${externalSources.length + 1}`,
@@ -1481,6 +1485,7 @@ export class RootAgent {
             }),
           });
         } catch (error) {
+          if (signal?.aborted) throw error;
           responseMessages.push(
             '**网页读取失败（以下回答不是基于该链接）**：' +
               (error instanceof Error ? error.message : '未知读取错误。'),
@@ -1501,6 +1506,7 @@ export class RootAgent {
           const discovery = await this.searchWebImpl(
             input.query,
             this.webSearchSecretStore.get(),
+            { signal },
           );
           const allowedRedirectHosts = discovery.results.flatMap((item) => {
             try {
@@ -1523,9 +1529,11 @@ export class RootAgent {
                   candidate,
                   ...(await this.fetchWebSourceImpl(candidate.url, {
                     allowedRedirectHosts,
+                    signal,
                   })),
                 };
               } catch (error) {
+                if (signal?.aborted) throw error;
                 return {
                   candidate,
                   error:
@@ -1545,6 +1553,7 @@ export class RootAgent {
                 citationId: `S${externalSources.length + index + 1}`,
               },
             }));
+          signal?.throwIfAborted();
           externalSources.push(...fetched.map((item) => item.source));
           if (discovery.results.length === 0) {
             responseMessages.push(
@@ -1579,6 +1588,7 @@ export class RootAgent {
             }),
           });
         } catch (error) {
+          if (signal?.aborted) throw error;
           const message =
             error instanceof Error ? error.message : '网页搜索失败。';
           responseMessages.push(`**网页搜索失败**：${message}`);

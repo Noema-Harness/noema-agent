@@ -773,6 +773,58 @@ test('Noema searches only on current-source requests when configured and attache
   store.close();
 });
 
+test('stopping during web search aborts the request and does not continue the model loop', async () => {
+  const store = new RootStore(':memory:');
+  store.setSelectedModel('test-model');
+  let providerCalls = 0;
+  let searchSignal;
+  let resolveSearchStarted;
+  const searchStarted = new Promise((resolve) => {
+    resolveSearchStarted = resolve;
+  });
+  const agent = new RootAgent({
+    store,
+    provider: {
+      baseUrl: 'http://127.0.0.1:31415/v1',
+      listModels: async () => [{ name: 'test-model', label: 'Test' }],
+      async *streamChat(input) {
+        providerCalls += 1;
+        input.onToolCalls([
+          {
+            id: 'call-search-to-stop',
+            type: 'function',
+            function: {
+              name: 'search_web',
+              arguments: JSON.stringify({ query: '本周 AI 新闻' }),
+            },
+          },
+        ]);
+        yield '';
+      },
+    },
+    secretStore: createSecretStore(),
+    webSearchSecretStore: createSecretStore(),
+    searchWebImpl: async (_query, _key, { signal }) => {
+      searchSignal = signal;
+      resolveSearchStarted();
+      return new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason), {
+          once: true,
+        });
+      });
+    },
+  });
+
+  const { turnId } = agent.sendMessage({ text: '请搜索本周 AI 新闻。' });
+  await searchStarted;
+  assert.equal(await agent.stopTurn(turnId), true);
+  assert.equal(searchSignal.aborted, true);
+  assert.equal(store.getTurn(turnId).status, 'interrupted');
+  assert.equal(providerCalls, 1);
+  await agent.shutdown();
+  store.close();
+});
+
 test('Noema continues through bounded search, reading, and calculation before answering', async () => {
   const store = new RootStore(':memory:');
   store.setSelectedModel('test-model');

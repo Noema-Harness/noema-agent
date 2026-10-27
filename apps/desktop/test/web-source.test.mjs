@@ -60,6 +60,28 @@ test('rejects local addresses before making an HTTP request', async () => {
   assert.equal(requestCount, 0);
 });
 
+test('web page fetching propagates caller cancellation through the safe reader', async () => {
+  const controller = new AbortController();
+  let requestSignal;
+  const pending = fetchWebSource('https://example.com/docs', {
+    signal: controller.signal,
+    lookupImpl: publicLookup,
+    requestImpl: async (_url, _addresses, { signal }) => {
+      requestSignal = signal;
+      return new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason), {
+          once: true,
+        });
+      });
+    },
+  });
+
+  await new Promise((resolve) => setImmediate(resolve));
+  controller.abort(new DOMException('Stopped by user', 'AbortError'));
+  await assert.rejects(pending, { name: 'AbortError' });
+  assert.equal(requestSignal.aborted, true);
+});
+
 test('accepts only proxy-mapped addresses for explicitly supplied hosts', async () => {
   let requestCount = 0;
   const dependencies = {

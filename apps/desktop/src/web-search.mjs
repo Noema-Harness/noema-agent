@@ -67,7 +67,11 @@ async function readLimitedBody(response) {
   return Buffer.concat(chunks).toString('utf8');
 }
 
-export async function searchWeb(query, apiKey, { fetchImpl = fetch } = {}) {
+export async function searchWeb(
+  query,
+  apiKey,
+  { fetchImpl = fetch, signal } = {},
+) {
   if (typeof apiKey !== 'string' || !apiKey.trim()) {
     throw new Error('网页搜索服务尚未配置。');
   }
@@ -80,6 +84,10 @@ export async function searchWeb(query, apiKey, { fetchImpl = fetch } = {}) {
   }
 
   let response;
+  const timeoutSignal = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+  const requestSignal = signal
+    ? AbortSignal.any([signal, timeoutSignal])
+    : timeoutSignal;
   try {
     response = await fetchImpl(SEARCH_ENDPOINT, {
       method: 'POST',
@@ -95,9 +103,10 @@ export async function searchWeb(query, apiKey, { fetchImpl = fetch } = {}) {
         include_answer: false,
         include_raw_content: false,
       }),
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      signal: requestSignal,
     });
   } catch (error) {
+    if (signal?.aborted) throw error;
     throw new Error(
       error?.name === 'TimeoutError'
         ? '网页搜索超时。'
