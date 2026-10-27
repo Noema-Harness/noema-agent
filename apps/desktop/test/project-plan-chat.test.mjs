@@ -46,6 +46,7 @@ test('Noema reads then writes a versioned plan in one turn; members cannot forge
           invoke(input, 'read-plan', {
             operation: 'read',
             project_id: project.id,
+            reason: '读取当前计划以确定初始版本。',
           });
         else if (requests.length === 2) {
           const read = JSON.parse(input.messages.at(-1).content);
@@ -107,6 +108,11 @@ test('Noema reads then writes a versioned plan in one turn; members cannot forge
             tool.function.parameters.properties.project_id.enum,
             [project.id],
           );
+          assert.deepEqual(tool.function.parameters.required, [
+            'operation',
+            'project_id',
+            'reason',
+          ]);
           assert.match(
             tool.function.description,
             /工程搭档 \(engineering-partner\)/u,

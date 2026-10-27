@@ -301,7 +301,7 @@ function projectPlanTool(projects) {
     function: {
       name: 'manage_project_plan',
       description:
-        'Read or maintain a shared project plan organized as project objective → phases → nested structural groups → executable leaf work packages. Groups only organize children and never block or count as work; work packages require an active specialist owner and acceptance criteria. Each phase has an outcome, exit criteria, blocking dependencies and an acceptance gate; planned work may remain coarse. Work packages have blocking dependsOn links and optional relatedTo links (context only; never block readiness). Use parentId only to place a node under a structural group in the same phase. Use dependsOn only when work cannot start before another package is accepted. New packages must use one of that project’s listed active work-item owners; groups leave ownerAgentId empty. Noema is the coordinator and is not an owner unless explicitly listed. A ready work package is marked in_progress when the runtime starts it. The system records submittedByAgentId from the actor that submits each result; Noema cannot submit on a member’s behalf. Check this field before judging who delivered a work package; never infer authorship from a relayed group message. Members update only their own package status and evidence; only Noema/user may accept packages/phases or change plan structure. Use item_patch to revise one work package’s title, owner, acceptance, parent, blocking links or related links without replacing the entire plan. A phase can be accepted only when its leaf packages and dependencies are complete and evidence is supplied. Keep near-term phases detailed and distant phases coarse. Do not invent dates, effort or completion forecasts. Projects and valid owners: ' +
+        'Read or maintain a shared project plan organized as project objective → phases → nested structural groups → executable leaf work packages. Groups only organize children and never block or count as work; work packages require an active specialist owner and acceptance criteria. Each phase has an outcome, exit criteria, blocking dependencies and an acceptance gate; planned work may remain coarse. Work packages have blocking dependsOn links and optional relatedTo links (context only; never block readiness). Use parentId only to place a node under a structural group in the same phase. Use dependsOn only when work cannot start before another package is accepted. New packages must use one of that project’s listed active work-item owners; groups leave ownerAgentId empty. Noema is the coordinator and is not an owner unless explicitly listed. A ready work package is marked in_progress when the runtime starts it. The system records submittedByAgentId from the actor that submits each result; Noema cannot submit on a member’s behalf. Check this field before judging who delivered a work package; never infer authorship from a relayed group message. Members update only their own package status and evidence; only Noema/user may accept packages/phases or change plan structure. Use item_patch to revise one work package’s title, owner, acceptance, parent, blocking links or related links without replacing the entire plan. A phase can be accepted only when its leaf packages and dependencies are complete and evidence is supplied. Every call must include reason: for reads, state what you are checking; for writes, state the evidence or basis for the change. Keep near-term phases detailed and distant phases coarse. Do not invent dates, effort or completion forecasts. Projects and valid owners: ' +
         projectOwners,
       parameters: {
         type: 'object',
@@ -360,10 +360,11 @@ function projectPlanTool(projects) {
           phase_status: { type: 'string', enum: projectPlanPhaseStatuses },
           reason: {
             type: 'string',
-            description: 'Required nonempty explanation for every write.',
+            description:
+              'Required on every call. For reads, state the purpose; for writes, explain the evidence or basis for the change.',
           },
         },
-        required: ['operation', 'project_id'],
+        required: ['operation', 'project_id', 'reason'],
         additionalProperties: false,
       },
     },

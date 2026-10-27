@@ -1069,7 +1069,10 @@ export class SocialProjectStore {
           "SELECT 1 FROM social_project_reports WHERE project_id = ? AND status = 'pending' LIMIT 1",
         )
         .get(projectId);
-      if (pendingReport)
+      const readyForUserReview = this.plans
+        .get(projectId)
+        .phases.some((phase) => phase.state === 'awaiting_review');
+      if (pendingReport && !readyForUserReview)
         throw new Error(
           '仍有项目成员报告待 Noema 处理，处理完后再请求用户评审。',
         );

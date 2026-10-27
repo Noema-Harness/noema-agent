@@ -78,7 +78,8 @@ if (!process.versions.electron) {
       2,
     ),
   );
-  if (code !== 0 || result.outcome !== 'passed') process.exitCode = 1;
+  if (code !== 0 || !['passed', 'awaiting_review'].includes(result.outcome))
+    process.exitCode = 1;
 } else {
   const { app, safeStorage } = await import('electron');
   const scratch = process.env.NOEMA_COLLABORATION_LIVE_DIRECTORY;

@@ -168,6 +168,77 @@ test('review cannot pause a project while a member report is queued for Noema', 
   }
 });
 
+test('review can pause at an accepted phase gate while a member report is queued', () => {
+  const f = fixture();
+  try {
+    const memberId = f.member.members[0].id;
+    const member = f.project.members.find(
+      (entry) => entry.agentId === memberId,
+    );
+    f.projects.plans.replace({
+      projectId: f.project.id,
+      expectedRevision: 0,
+      reason: '两项交付已验收，阶段到达用户评审门。',
+      plan: {
+        objective: '基于证据完成一个阶段，并在需要时交用户判断。',
+        phases: [
+          {
+            id: 'phase-one',
+            title: '阶段一',
+            outcome: '工作项已完成。',
+            exitCriteria: '工作成果有可核验依据。',
+            dependsOn: [],
+            status: 'pending',
+            evidence: '',
+            workItems: [
+              {
+                id: 'deliverable',
+                title: '交付成果',
+                ownerAgentId: memberId,
+                acceptance: '提供可核验的成果。',
+                dependsOn: [],
+                status: 'done',
+                evidence: '成果依据已经 Noema 核验并记录。',
+                blocker: '',
+              },
+            ],
+          },
+        ],
+      },
+    });
+    const turn = f.store.beginTurn({
+      roomId: f.project.groupRoomId,
+      agentId: memberId,
+      text: '交付后补充一条说明。',
+      model: 'test',
+    });
+    f.store.appendAssistantDelta(turn.assistantMessageId, '这是补充报告。');
+    f.store.completeReplies([turn.assistantMessageId], {
+      projectId: f.project.id,
+      sourceTurnId: turn.turnId,
+      sourceUserMessageId: turn.userMessageId,
+      sourceGroupAssistantMessageId: turn.assistantMessageId,
+      agentId: memberId,
+      groupRoomId: f.project.groupRoomId,
+      sessionRoomId: member.sessionRoomId,
+    });
+
+    const { review } = request(f);
+    assert.equal(review.projectId, f.project.id);
+    assert.equal(f.projects.getProject(f.project.id).status, 'awaiting_user');
+    assert.equal(
+      f.db
+        .prepare(
+          'SELECT status FROM social_project_reports WHERE project_id = ?',
+        )
+        .get(f.project.id).status,
+      'pending',
+    );
+  } finally {
+    f.db.close();
+  }
+});
+
 test('pending review survives reopening with its original project and message identity', () => {
   const f = fixture();
   let copy;
