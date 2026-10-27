@@ -49,7 +49,9 @@ const historyReplyMarker = `NOEMA-HISTORY-${Date.now()}-${Math.random().toString
 mkdirSync(e2eDirectory);
 mkdirSync(workspacePath);
 const historyRecall = process.argv.includes('--history-recall');
-const rootOnly = process.argv.includes('--root-only') || historyRecall;
+const calculatorProbe = process.argv.includes('--calculator-probe');
+const rootOnly =
+  process.argv.includes('--root-only') || historyRecall || calculatorProbe;
 const directWorker = process.argv.includes('--direct-worker');
 const withCorrection = process.argv.includes('--with-correction');
 const withoutCorrection = process.argv.includes('--without-correction');
@@ -78,6 +80,7 @@ if (directWorker && (rootOnly || captureOwnerCorrection)) {
 const requestedModel = process.env.NOEMA_E2E_MODEL ?? 'auto:noema-free';
 const allowedModels = new Set([
   'auto:noema-free',
+  'deepseek-flash',
   'free-router',
   'nvidia/nemotron-3-super-120b-a12b:free',
   'nvidia/nemotron-3.5-lightning',
@@ -137,31 +140,37 @@ const prompt = historyRecall
       '请回忆我之前给出的测试标记是什么；必须依据旧对话原文，不要猜。',
       '不要委派后台任务。',
     ].join('\n')
-  : rootOnly
+  : calculatorProbe
     ? [
-        '[NOEMA E2E] This is a synthetic root-chat transport check only.',
-        `Reply with exactly this text and nothing else: ${rootReplyMarker}`,
-        'Do not call tools, delegate work, or modify files.',
+        '[NOEMA E2E] 只核算下列收入减支出；不讨论其他项目，也不要调用后台任务。',
+        '4 位参与者每人收入 200 元，材料支出 120 元，场地支出 600 元。',
+        '请核算 4 × 200 − 120 − 600，并明确说明结果是结余还是亏损。',
       ].join('\n')
-    : directWorker
+    : rootOnly
       ? [
-          '[NOEMA E2E] 仅在当前隔离工作区完成这组双文件交付。',
-          '请为 Noema 的“本机速记 → 用户选择后再讨论”切片写两份彼此匹配的文档：',
-          '- DESIGN.md：明确说明本机保存、显式讨论和删除边界。',
-          '- README.md：写清本机速记、显式讨论和删除的实际操作。',
-          `两个文件都必须包含同一个验收标记：${marker}`,
-          `Noema 独立核验条件：${JSON.stringify(expectedVerifierChecks)}`,
-          '这是两个都必须完成的交付项；不要在第一个文件后停止或报告完成。仅使用可用的文件工具，不要尝试 shell/网络操作。',
+          '[NOEMA E2E] This is a synthetic root-chat transport check only.',
+          `Reply with exactly this text and nothing else: ${rootReplyMarker}`,
+          'Do not call tools, delegate work, or modify files.',
         ].join('\n')
-      : [
-          '[NOEMA E2E] 仅在当前隔离工作区内完成这个小型 Node 功能；不要改工作区外的内容。',
-          '实现一个 `toSlug` 文本规范化函数，并交付完整的小功能，而不只是先写一个文件：',
-          '- `src/slug.mjs`：导出 `toSlug`，将输入首尾空白去除、转小写、连续空白变成连字符、去掉 ASCII 标点，并保留中文字符；源码要实际实现行为，不要只写验收标记。',
-          '- `test/slug.test.mjs`：使用 `node:test` 和 `assert.equal`，至少覆盖 `Hello, 世界!` 转换为 `hello-世界`。不要声称已运行测试，因为后台只开放文件工具。',
-          '- `README.md`：说明 `toSlug` 的导入路径和 `hello-世界` 示例，不要只放标记。',
-          `三个文件都必须包含这个验收标记：${marker}`,
-          `请把实现、测试和说明全部交给后台 DSH agent。Noema 的独立验收条件必须完整包含：${JSON.stringify(expectedVerifierChecks)}。不要只设置“文件存在”或“包含标记”检查。不要只完成一个阶段后汇报。`,
-        ].join('\n');
+      : directWorker
+        ? [
+            '[NOEMA E2E] 仅在当前隔离工作区完成这组双文件交付。',
+            '请为 Noema 的“本机速记 → 用户选择后再讨论”切片写两份彼此匹配的文档：',
+            '- DESIGN.md：明确说明本机保存、显式讨论和删除边界。',
+            '- README.md：写清本机速记、显式讨论和删除的实际操作。',
+            `两个文件都必须包含同一个验收标记：${marker}`,
+            `Noema 独立核验条件：${JSON.stringify(expectedVerifierChecks)}`,
+            '这是两个都必须完成的交付项；不要在第一个文件后停止或报告完成。仅使用可用的文件工具，不要尝试 shell/网络操作。',
+          ].join('\n')
+        : [
+            '[NOEMA E2E] 仅在当前隔离工作区内完成这个小型 Node 功能；不要改工作区外的内容。',
+            '实现一个 `toSlug` 文本规范化函数，并交付完整的小功能，而不只是先写一个文件：',
+            '- `src/slug.mjs`：导出 `toSlug`，将输入首尾空白去除、转小写、连续空白变成连字符、去掉 ASCII 标点，并保留中文字符；源码要实际实现行为，不要只写验收标记。',
+            '- `test/slug.test.mjs`：使用 `node:test` 和 `assert.equal`，至少覆盖 `Hello, 世界!` 转换为 `hello-世界`。不要声称已运行测试，因为后台只开放文件工具。',
+            '- `README.md`：说明 `toSlug` 的导入路径和 `hello-世界` 示例，不要只放标记。',
+            `三个文件都必须包含这个验收标记：${marker}`,
+            `请把实现、测试和说明全部交给后台 DSH agent。Noema 的独立验收条件必须完整包含：${JSON.stringify(expectedVerifierChecks)}。不要只设置“文件存在”或“包含标记”检查。不要只完成一个阶段后汇报。`,
+          ].join('\n');
 
 const store = new RootStore(databasePath);
 store.setSelectedModel(requestedModel);
@@ -332,11 +341,13 @@ const verifierCoveredContentContract = expectedVerifierChecks.every(
 const summary = {
   mode: historyRecall
     ? 'history-recall'
-    : rootOnly
-      ? 'root-only'
-      : directWorker
-        ? 'direct-worker'
-        : 'worker',
+    : calculatorProbe
+      ? 'calculator-probe'
+      : rootOnly
+        ? 'root-only'
+        : directWorker
+          ? 'direct-worker'
+          : 'worker',
   historyRecall,
   syntheticHistorySourceId: historySourceMessageId,
   correctionInjected: includeCorrection && !captureOwnerCorrection,
@@ -404,6 +415,15 @@ const historyRecallPassed =
   rootResult.historySourcesIncluded === true &&
   rootResult.rootRouteMetadata?.status === 'reported' &&
   exit.code === 0;
+const arithmeticReply = rootResult.assistantText?.replaceAll(/\s/gu, '') ?? '';
+const calculatorProbePassed =
+  calculatorProbe &&
+  rootResult.rootOnly === true &&
+  rootResult.outcome === 'no_worker_dispatched' &&
+  rootResult.turnStatus === 'completed' &&
+  /(?:\+80|80元)/u.test(arithmeticReply) &&
+  /(?:结余|盈余|剩余|正数|多出)/u.test(arithmeticReply) &&
+  exit.code === 0;
 const directWorkerPassed =
   directWorker &&
   rootResult.outcome === 'worker_direct_finished' &&
@@ -416,19 +436,21 @@ const directWorkerPassed =
 if (
   historyRecall
     ? !historyRecallPassed
-    : rootOnly
-      ? !rootChatPassed
-      : directWorker
-        ? !directWorkerPassed
-        : rootResult.outcome !== 'worker_finished' ||
-          rootResult.task?.status !== 'completed' ||
-          rootResult.task?.eventStatus !== 'delivered' ||
-          rootResult.task?.noemaResponseStatus !== 'complete' ||
-          rootResult.task?.verificationStatus !== 'verified' ||
-          (captureOwnerCorrection && !ownerCorrectionUsedByTask) ||
-          !allArtifactsMatchContentContract ||
-          !verifierCoveredContentContract ||
-          exit.code !== 0
+    : calculatorProbe
+      ? !calculatorProbePassed
+      : rootOnly
+        ? !rootChatPassed
+        : directWorker
+          ? !directWorkerPassed
+          : rootResult.outcome !== 'worker_finished' ||
+            rootResult.task?.status !== 'completed' ||
+            rootResult.task?.eventStatus !== 'delivered' ||
+            rootResult.task?.noemaResponseStatus !== 'complete' ||
+            rootResult.task?.verificationStatus !== 'verified' ||
+            (captureOwnerCorrection && !ownerCorrectionUsedByTask) ||
+            !allArtifactsMatchContentContract ||
+            !verifierCoveredContentContract ||
+            exit.code !== 0
 ) {
   process.exitCode = 1;
 }
