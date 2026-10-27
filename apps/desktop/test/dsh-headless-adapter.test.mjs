@@ -255,6 +255,38 @@ test('a worker deadline stops the DSH process and reports a bounded timeout', as
   }
 });
 
+test('stopping a running DSH worker terminates it and returns an interruption', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'noema-dsh-stop-'));
+  const child = new FakeChild();
+  try {
+    const adapter = new DshHeadlessAdapter({
+      runtime: { nodeExecutable: 'node.exe', dshBin: 'dsh/lib/bin.js' },
+      userDataPath: path.join(directory, 'user-data'),
+      providerBaseUrl: 'http://127.0.0.1:31415/v1',
+      getApiKey: () => 'test-free-key',
+      spawnImpl: () => child,
+    });
+    const handle = await adapter.startTask({
+      taskId: 'task-stop',
+      workspacePath: path.join(directory, 'workspace'),
+      task: 'Wait for a stop request.',
+      model: routerModel,
+      timeoutMs: 10_000,
+    });
+    child.stdout.write('{"type":"session","sessionId":"session-stop"}\n');
+    await handle.started;
+
+    assert.equal(handle.stop(), true);
+    const result = await handle.done;
+    assert.equal(child.killed, true);
+    assert.equal(result.status, 'interrupted');
+    assert.equal(result.errorCode, null);
+    assert.equal(result.workspaceMutationStatus, 'none');
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('provider 4xx failures are classified as non-retryable request rejections', async () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'noema-dsh-rejected-'));
   const workspace = path.join(directory, 'workspace');
