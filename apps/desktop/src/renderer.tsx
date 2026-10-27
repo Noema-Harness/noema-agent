@@ -2376,7 +2376,7 @@ function DesktopApp() {
                                   ))}
                                 </ul>
                                 <p className="history-recall-caveat">
-                                  这里可能是 Noema Noema
+                                  这里展示的是 Noema
                                   实际读取的网页正文摘录；搜索只用于发现候选页面，不保存搜索摘要。它记录了尝试提供给模型的资料，不证明模型实际使用或理解了它，也不代表来源内容已独立核实。
                                 </p>
                               </details>
