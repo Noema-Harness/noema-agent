@@ -36,6 +36,7 @@
     "@vscode/ripgrep": "1.18.0",
     "better-sqlite3": "^13.0.3",
     "cmdk": "1.1.1",
+    "decimal.js": "10.6.0",
     "electron-squirrel-startup": "^1.0.1",
     "pdfjs-dist": "6.4.299",
     "react": "^19.0.0",
@@ -68,4 +69,3 @@
     "vite": "^8.3.4"
   }
 }
-

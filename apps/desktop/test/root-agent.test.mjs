@@ -523,6 +523,70 @@ test('records a direct interaction correction and carries it across root turns',
   store.close();
 });
 
+test('Noema exposes local arithmetic even when background actions are disabled', async () => {
+  const store = new RootStore(':memory:');
+  store.setSelectedModel('test-model');
+  let request;
+  let callCount = 0;
+  const provider = {
+    baseUrl: 'http://127.0.0.1:31415/v1',
+    listModels: async () => [{ name: 'test-model', label: 'Test' }],
+    async *streamChat(input) {
+      callCount += 1;
+      if (callCount === 1) {
+        request = input;
+        input.onToolCalls([
+          {
+            id: 'call-calculate',
+            type: 'function',
+            function: {
+              name: 'calculate_expression',
+              arguments: JSON.stringify({
+                expression: '4 * 200 - 4 * 30 - 600',
+              }),
+            },
+          },
+        ]);
+      } else {
+        assert.deepEqual(input.tools, []);
+        assert.deepEqual(
+          input.messages.slice(-2).map((message) => message.role),
+          ['assistant', 'tool'],
+        );
+        assert.match(input.messages.at(-1).content, /"value":"80"/u);
+        yield '4 × 200 − 4 × 30 − 600 = 80；这个结果只核验运算，不核验输入金额。';
+      }
+    },
+  };
+  const agent = new RootAgent({
+    store,
+    provider,
+    secretStore: createSecretStore(),
+    allowRootActions: false,
+  });
+  const sent = agent.sendMessage({ text: '帮我核算四人试办的收支差。' });
+  await agent.active.done;
+  const calculator = request.tools.find(
+    (tool) => tool.function.name === 'calculate_expression',
+  );
+  assert.ok(calculator);
+  assert.deepEqual(
+    request.tools.map((tool) => tool.function.name),
+    ['calculate_expression'],
+  );
+  const assistant = store
+    .getSnapshot()
+    .messages.find(
+      (message) =>
+        message.turnId === sent.turnId && message.role === 'assistant',
+    );
+  assert.match(assistant.content, /4 × 200 − 4 × 30 − 600 = 80/u);
+  assert.match(assistant.content, /不核验输入金额/u);
+  assert.equal(callCount, 2);
+  await agent.shutdown();
+  store.close();
+});
+
 test('RootAgent emits a state refresh when the user revises an interaction adjustment', async () => {
   const store = new RootStore(':memory:');
   const turn = store.beginTurn({
