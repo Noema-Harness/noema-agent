@@ -773,6 +773,132 @@ test('Noema searches only on current-source requests when configured and attache
   store.close();
 });
 
+test('Noema continues through bounded search, reading, and calculation before answering', async () => {
+  const store = new RootStore(':memory:');
+  store.setSelectedModel('test-model');
+  let calls = 0;
+  const webSearchSecretStore = createSecretStore();
+  const agent = new RootAgent({
+    store,
+    provider: {
+      baseUrl: 'http://127.0.0.1:31415/v1',
+      listModels: async () => [{ name: 'test-model', label: 'Test' }],
+      async *streamChat(input) {
+        calls += 1;
+        if (calls === 1) {
+          assert.ok(
+            input.tools.some((tool) => tool.function.name === 'search_web'),
+          );
+          assert.ok(
+            input.tools.some(
+              (tool) => tool.function.name === 'calculate_expression',
+            ),
+          );
+          input.onToolCalls([
+            {
+              id: 'call-search-price',
+              type: 'function',
+              function: {
+                name: 'search_web',
+                arguments: JSON.stringify({ query: '本月蓝莓单价' }),
+              },
+            },
+          ]);
+          return;
+        }
+        if (calls === 2) {
+          assert.match(input.messages.at(-1).content, /单盒蓝莓售价12元/u);
+          assert.deepEqual(
+            input.tools.map((tool) => tool.function.name).sort(),
+            ['calculate_expression', 'fetch_web_page'],
+          );
+          input.onToolCalls([
+            {
+              id: 'call-fetch-terms',
+              type: 'function',
+              function: {
+                name: 'fetch_web_page',
+                arguments: JSON.stringify({
+                  url: 'https://example.com/terms',
+                }),
+              },
+            },
+          ]);
+          return;
+        }
+        if (calls === 3) {
+          assert.match(input.messages.at(-1).content, /退货规则为签收后七日/u);
+          assert.deepEqual(
+            input.tools.map((tool) => tool.function.name),
+            ['calculate_expression'],
+          );
+          input.onToolCalls([
+            {
+              id: 'call-calculate-total',
+              type: 'function',
+              function: {
+                name: 'calculate_expression',
+                arguments: JSON.stringify({ expression: '12 * 12' }),
+              },
+            },
+          ]);
+          return;
+        }
+        assert.deepEqual(input.tools, []);
+        assert.match(input.messages.at(-1).content, /"value":"144"/u);
+        yield '按搜索到的单盒价格计算，12 盒共 144 元（12 × 12）。价格来源：[[S1]]';
+      },
+    },
+    secretStore: createSecretStore(),
+    webSearchSecretStore,
+    searchWebImpl: async (query, key) => {
+      assert.equal(query, '本月蓝莓单价');
+      assert.equal(key, 'test-key');
+      return {
+        results: [
+          {
+            id: 'blueberry-price',
+            title: '蓝莓售价信息',
+            url: 'https://example.com/blueberries',
+          },
+        ],
+      };
+    },
+    fetchWebSourceImpl: async (url) => ({
+      source: {
+        id: url.endsWith('/terms') ? 'terms-source' : 'blueberry-source',
+        title: url.endsWith('/terms') ? '退货条款' : '蓝莓售价信息',
+        url,
+        fetchedAt: '2026-10-27T00:00:00.000Z',
+        excerpt: url.endsWith('/terms')
+          ? '退货规则为签收后七日'
+          : '单盒蓝莓售价12元',
+        truncated: false,
+      },
+      content: url.endsWith('/terms')
+        ? '退货规则为签收后七日'
+        : '单盒蓝莓售价12元',
+    }),
+  });
+
+  const { turnId } = agent.sendMessage({
+    text: '请搜索本月蓝莓单价，阅读 https://example.com/terms 并计算12盒的总价。',
+  });
+  await agent.active.done;
+  const assistant = store
+    .getSnapshot()
+    .messages.find(
+      (message) => message.turnId === turnId && message.role === 'assistant',
+    );
+  assert.equal(calls, 4);
+  assert.equal(assistant.externalSources[0].citationId, 'S1');
+  assert.equal(assistant.externalSources[1].citationId, 'S2');
+  assert.equal(assistant.externalSourcesIncluded, true);
+  assert.match(assistant.content, /12 × 12/u);
+  await agent.shutdown();
+  store.close();
+});
+
 test('Noema does not expose source search without an explicit current-information request or configured key', async () => {
   for (const { text, configured } of [
     { text: '聊聊我最近的生活吧。', configured: true },
