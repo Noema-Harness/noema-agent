@@ -1479,6 +1479,15 @@ export class RootStore {
     return hydrateBackgroundTask(row);
   }
 
+  getBackgroundTaskForTurn(turnId) {
+    const row = this.db
+      .prepare(
+        'SELECT id FROM background_tasks WHERE source_turn_id = ? ORDER BY seq DESC LIMIT 1',
+      )
+      .get(turnId);
+    return row ? this.getBackgroundTask(row.id) : null;
+  }
+
   getBackgroundTasks(limit = 50) {
     return this.db
       .prepare(`

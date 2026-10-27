@@ -1031,8 +1031,41 @@ export class RootAgent {
               controller.signal,
             );
             lastToolResult = result;
-            const recoveryHint =
-              '重试会重新处理原请求；已读取的网页来源（如有）会保留，已成功执行的操作不会自动撤回。';
+            const recoveryHint = () => {
+              const details = [];
+              if (usedToolNames.has('search_web')) {
+                details.push(
+                  '网页搜索可能再次调用，按次计额的搜索服务可能再次消耗额度',
+                );
+              }
+              if (usedToolNames.has('fetch_web_page')) {
+                details.push('网页读取可能重新执行');
+              }
+              if (usedToolNames.has('calculate_expression')) {
+                details.push('计算会重新执行');
+              }
+              const savedSources =
+                this.store
+                  .getSnapshot()
+                  .messages.find(
+                    (message) =>
+                      message.turnId === turn.id &&
+                      message.role === 'assistant' &&
+                      message.attempt === turn.attempt,
+                  )?.externalSources ?? [];
+              if (savedSources.length) {
+                details.push('已读取的网页来源保留在这次失败的尝试中');
+              }
+              if (usedToolNames.has('delegate_task')) {
+                details.push(
+                  '已启动的委派会继续，同一请求重试不会再次创建任务',
+                );
+              }
+              if (usedToolNames.has('record_interaction_adjustment')) {
+                details.push('已保存的互动调整不会自动撤回');
+              }
+              return `重试会重新处理原请求；${details.join('；')}。`;
+            };
             if (result.sources?.length) {
               this.store.setTurnExternalSources(
                 turn.id,
@@ -1151,7 +1184,7 @@ export class RootAgent {
               if (continuationTools.length === 0) {
                 throw new ModelProviderError(
                   'root_tool_call_invalid',
-                  `模型在工具预算用尽后仍请求操作，本轮答复未完成。${recoveryHint}`,
+                  `模型在工具预算用尽后仍请求操作，本轮答复未完成。${recoveryHint()}`,
                 );
               }
               pendingToolCalls = followUpToolCalls;
@@ -1162,7 +1195,7 @@ export class RootAgent {
             if (!followUpText.trim()) {
               throw new ModelProviderError(
                 'root_tool_call_invalid',
-                `模型未能根据工具结果完成答复。${recoveryHint}`,
+                `模型未能根据工具结果完成答复。${recoveryHint()}`,
               );
             }
             pendingToolCalls = [];
@@ -1635,6 +1668,20 @@ export class RootAgent {
         verificationChecks: input.normalizedVerificationChecks,
       });
       if (!result.accepted) {
+        if (result.existingTask) {
+          const taskStatus =
+            {
+              starting: '正在启动',
+              running: '正在执行',
+              completed: '已完成',
+              failed: '失败',
+              interrupted: '已中断',
+            }[result.existingTask.status] ?? '状态未知';
+          responseMessages.push(
+            `这条请求已有一项后台任务（${taskStatus}）。为避免重复执行，我没有再次启动；如需重新执行，请发送新的消息。`,
+          );
+          continue;
+        }
         responseMessages.push(`我没有成功启动后台任务：${result.errorMessage}`);
         continue;
       }
@@ -1660,6 +1707,12 @@ export class RootAgent {
     inheritedAdjustmentIds = [],
     inheritedAdjustmentSnapshots = [],
   }) {
+    if (!sessionId) {
+      const existingTask = this.store.getBackgroundTaskForTurn(sourceTurnId);
+      if (existingTask) {
+        return { accepted: false, existingTask };
+      }
+    }
     let checks;
     try {
       checks = normalizeWorkspaceVerificationChecks(verificationChecks);

@@ -623,9 +623,106 @@ test('reports tool-result recovery accurately when the final model response is e
     const turn = store.getTurn(turnId);
     assert.equal(turn.status, 'failed');
     assert.match(turn.errorMessage, /重试会重新处理原请求/u);
-    assert.match(turn.errorMessage, /已成功执行的操作不会自动撤回/u);
+    assert.match(turn.errorMessage, /计算会重新执行/u);
     assert.doesNotMatch(turn.errorMessage, /操作结果已保留/u);
     assert.equal(callCount, 2);
+  } finally {
+    await agent.shutdown();
+    store.close();
+  }
+});
+
+test('warns when retrying a failed web-backed answer can consume search quota again', async () => {
+  const store = new RootStore(':memory:');
+  store.setSelectedModel('test-model');
+  let providerCalls = 0;
+  let searchCalls = 0;
+  let fetchCalls = 0;
+  const agent = new RootAgent({
+    store,
+    provider: {
+      listModels: async () => [{ name: 'test-model', label: 'Test' }],
+      async *streamChat(input) {
+        providerCalls += 1;
+        if ([1, 3].includes(providerCalls)) {
+          input.onToolCalls([
+            {
+              id: `search-${providerCalls}`,
+              type: 'function',
+              function: {
+                name: 'search_web',
+                arguments: JSON.stringify({ query: '本周 AI 新闻' }),
+              },
+            },
+          ]);
+        } else if (providerCalls === 2) {
+          yield '';
+        } else {
+          yield '本周来源显示了相关动态。';
+        }
+      },
+    },
+    secretStore: createSecretStore(),
+    webSearchSecretStore: createSecretStore(),
+    searchWebImpl: async () => {
+      searchCalls += 1;
+      return {
+        results: [
+          {
+            id: `news-${searchCalls}`,
+            title: '本周行业消息',
+            url: `https://example.com/news/${searchCalls}`,
+          },
+        ],
+      };
+    },
+    fetchWebSourceImpl: async (url) => {
+      fetchCalls += 1;
+      return {
+        source: {
+          id: `source-${fetchCalls}`,
+          title: '本周行业消息',
+          url,
+          fetchedAt: '2026-10-27T00:00:00.000Z',
+          excerpt: '本周行业消息摘录',
+          truncated: false,
+        },
+        content: '本周行业消息摘录',
+      };
+    },
+  });
+
+  try {
+    const { turnId } = agent.sendMessage({ text: '请搜索本周 AI 新闻。' });
+    await agent.active.done;
+    const failed = store.getTurn(turnId);
+    assert.equal(failed.status, 'failed');
+    assert.match(failed.errorMessage, /可能再次消耗额度/u);
+    assert.match(failed.errorMessage, /保留在这次失败的尝试中/u);
+    assert.equal(searchCalls, 1);
+    assert.equal(fetchCalls, 1);
+    const failedAssistant = store
+      .getSnapshot()
+      .messages.find(
+        (message) => message.turnId === turnId && message.role === 'assistant',
+      );
+    assert.equal(failedAssistant.externalSources.length, 1);
+
+    agent.retryTurn({ turnId, model: 'test-model' });
+    await agent.active.done;
+    assert.equal(store.getTurn(turnId).status, 'completed');
+    assert.equal(searchCalls, 2);
+    assert.equal(fetchCalls, 2);
+    const attempts = store
+      .getSnapshot()
+      .messages.filter(
+        (message) => message.turnId === turnId && message.role === 'assistant',
+      );
+    assert.equal(attempts.length, 2);
+    assert.equal(attempts[0].status, 'failed');
+    assert.equal(attempts[0].externalSources.length, 1);
+    assert.equal(attempts[1].status, 'complete');
+    assert.equal(attempts[1].externalSources.length, 1);
   } finally {
     await agent.shutdown();
     store.close();
@@ -1756,6 +1853,87 @@ test('dispatches one DSH worker on the explicit free chain and returns its resul
     assert.equal(agent.clearWorkspaceDirectory(), null);
     assert.equal(store.getWorkspaceDirectory(), null);
   } finally {
+    store.close();
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('a root request cannot start a second DSH task when its failed turn is retried', async () => {
+  const store = new RootStore(':memory:');
+  const workspace = mkdtempSync(
+    path.join(tmpdir(), 'noema-idempotent-delegate-'),
+  );
+  store.setWorkspaceDirectory(workspace);
+  const turn = store.beginTurn({
+    text: '请把这一项交给后台处理。',
+    model: 'test-model',
+  });
+  let workerStarts = 0;
+  let finishWorker;
+  const workerDone = new Promise((resolve) => {
+    finishWorker = resolve;
+  });
+  const agent = new RootAgent({
+    store,
+    provider: {
+      listModels: async () => [{ name: 'test-model', label: 'Test' }],
+      async *streamChat() {
+        yield '事件已整理。';
+      },
+    },
+    secretStore: createSecretStore(),
+    dshAdapter: {
+      async startTask() {
+        workerStarts += 1;
+        return {
+          started: Promise.resolve({ sessionId: 'idempotent-session' }),
+          done: workerDone,
+          stop: () => true,
+        };
+      },
+    },
+  });
+
+  try {
+    const first = await agent.startBackgroundTask({
+      sourceTurnId: turn.id,
+      prompt: '执行一次会修改工作区的任务。',
+      workspacePath: workspace,
+    });
+    assert.equal(first.accepted, true);
+    assert.equal(workerStarts, 1);
+
+    const duplicate = await agent.startBackgroundTask({
+      sourceTurnId: turn.id,
+      prompt: '重试同一用户请求。',
+      workspacePath: workspace,
+    });
+    assert.equal(duplicate.accepted, false);
+    assert.equal(duplicate.existingTask.id, first.taskId);
+    assert.equal(duplicate.existingTask.status, 'running');
+    assert.equal(workerStarts, 1);
+
+    finishWorker({
+      status: 'completed',
+      sessionId: 'idempotent-session',
+      result: '原任务已完成。',
+      errorCode: null,
+      errorMessage: null,
+      toolCallCount: 0,
+    });
+    await first.completion;
+
+    const retryAfterCompletion = await agent.startBackgroundTask({
+      sourceTurnId: turn.id,
+      prompt: '再次重试同一用户请求。',
+      workspacePath: workspace,
+    });
+    assert.equal(retryAfterCompletion.accepted, false);
+    assert.equal(retryAfterCompletion.existingTask.id, first.taskId);
+    assert.equal(retryAfterCompletion.existingTask.status, 'completed');
+    assert.equal(workerStarts, 1);
+  } finally {
+    await agent.shutdown();
     store.close();
     rmSync(workspace, { recursive: true, force: true });
   }
