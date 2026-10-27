@@ -10,6 +10,7 @@ import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { createRoot } from 'react-dom/client';
 import { findTranscriptMatches } from './transcript-search.mjs';
+import { linkWebSourceCitations } from './web-source-citations.mjs';
 import { QuickCaptureDialog } from './quick-capture-dialog';
 import { SocialChatApp } from './social-chat-app';
 import type {
@@ -2362,6 +2363,8 @@ function DesktopApp() {
                                           target="_blank"
                                           rel="noreferrer noopener"
                                         >
+                                          {source.citationId &&
+                                            `[${source.citationId}] `}
                                           {source.title}
                                         </a>
                                         <span>
@@ -2432,7 +2435,10 @@ function DesktopApp() {
                                   remarkPlugins={[remarkGfm]}
                                   components={markdownComponents}
                                 >
-                                  {message.content}
+                                  {linkWebSourceCitations(
+                                    message.content,
+                                    message.externalSources,
+                                  )}
                                 </ReactMarkdown>
                                 {isStreaming && (
                                   <span

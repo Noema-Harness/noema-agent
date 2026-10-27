@@ -15,6 +15,7 @@ export interface NoemaHistorySource {
 
 export interface NoemaExternalSource {
   id: string;
+  citationId?: string;
   title: string;
   url: string;
   fetchedAt: string;

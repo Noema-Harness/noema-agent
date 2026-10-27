@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { normalizeWorkspaceVerificationChecks } from './workspace-verifier.mjs';
+import { MAX_EXTERNAL_SOURCES_PER_MESSAGE } from './web-source.mjs';
 
 const MAX_MESSAGE_LENGTH = 100_000;
 const MAX_ACTIVE_INTERACTION_ADJUSTMENTS = 12;
@@ -213,7 +214,6 @@ function parseHistorySourceSnapshots(sourcesJson) {
   }
 }
 
-const MAX_EXTERNAL_SOURCES_PER_MESSAGE = 3;
 const MAX_EXTERNAL_SOURCE_EXCERPT_LENGTH = 8_000;
 
 function normalizeExternalSourceSnapshots(sources) {
@@ -225,11 +225,20 @@ function normalizeExternalSourceSnapshots(sources) {
     throw new TypeError('外部来源列表无效。');
   }
   const seen = new Set();
+  const seenCitationIds = new Set();
   return sources.map((source) => {
     if (!source || typeof source !== 'object') {
       throw new TypeError('外部来源无效。');
     }
-    const { id, title, url, fetchedAt, excerpt, truncated = false } = source;
+    const {
+      id,
+      citationId,
+      title,
+      url,
+      fetchedAt,
+      excerpt,
+      truncated = false,
+    } = source;
     requireText(id, 'external source id', 200);
     requireText(title, 'external source title', 500);
     requireText(url, 'external source URL', 4_000);
@@ -251,12 +260,25 @@ function normalizeExternalSourceSnapshots(sources) {
       parsedUrl.password ||
       !excerpt.trim() ||
       typeof truncated !== 'boolean' ||
-      seen.has(id)
+      seen.has(id) ||
+      (citationId !== undefined &&
+        (typeof citationId !== 'string' ||
+          !/^S[1-9]\d?$/u.test(citationId) ||
+          seenCitationIds.has(citationId)))
     ) {
       throw new TypeError('外部来源内容无效。');
     }
     seen.add(id);
-    return { id, title, url: parsedUrl.href, fetchedAt, excerpt, truncated };
+    if (citationId) seenCitationIds.add(citationId);
+    return {
+      id,
+      ...(citationId ? { citationId } : {}),
+      title,
+      url: parsedUrl.href,
+      fetchedAt,
+      excerpt,
+      truncated,
+    };
   });
 }
 

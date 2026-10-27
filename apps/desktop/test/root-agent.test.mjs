@@ -623,6 +623,7 @@ test('Noema reads only a user-provided URL and persists the source with its answ
         } else {
           input.onRouteMetadata('test-route');
           assert.match(input.messages.at(-1).content, /项目文档的原文摘录/u);
+          assert.match(input.messages.at(-1).content, /"citationId":"S1"/u);
           yield '文档说明了项目目标。';
         }
       },
@@ -649,7 +650,9 @@ test('Noema reads only a user-provided URL and persists the source with its answ
       .function.parameters.properties.url.enum,
     [source.url],
   );
-  assert.deepEqual(assistant.externalSources, [source]);
+  assert.deepEqual(assistant.externalSources, [
+    { ...source, citationId: 'S1' },
+  ]);
   assert.equal(assistant.externalSourcesIncluded, true);
   assert.match(assistant.content, /项目目标/u);
   assert.equal(fetchCount, 1);
@@ -712,6 +715,7 @@ test('Noema searches only on current-source requests when configured and attache
         }
         input.onRouteMetadata('test-route');
         assert.match(input.messages.at(-1).content, /本周行业消息摘录/u);
+        assert.match(input.messages.at(-1).content, /"citationId":"S1"/u);
         yield '搜索到的来源显示本周行业有几项新消息。';
       },
     },
@@ -761,6 +765,7 @@ test('Noema searches only on current-source requests when configured and attache
     assistant.externalSources.map((source) => source.url),
     ['https://example.com/news'],
   );
+  assert.equal(assistant.externalSources[0].citationId, 'S1');
   assert.equal(assistant.externalSourcesIncluded, true);
   assert.match(assistant.content, /搜索到的来源/u);
   assert.equal(calls, 2);

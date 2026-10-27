@@ -102,6 +102,7 @@ test('external source snapshots stay attached to their assistant attempt after r
   const databasePath = path.join(directory, 'root.sqlite3');
   const source = {
     id: 'web-source-1',
+    citationId: 'S1',
     title: '来源标题',
     url: 'https://example.com/article',
     fetchedAt: '2026-10-27T00:00:00.000Z',
@@ -127,6 +128,14 @@ test('external source snapshots stay attached to their assistant attempt after r
       );
     assert.deepEqual(assistant.externalSources, [source]);
     assert.equal(assistant.externalSourcesIncluded, true);
+    assert.throws(
+      () =>
+        reopened.setTurnExternalSources(turn.id, turn.attempt, [
+          source,
+          { ...source, id: 'web-source-2' },
+        ]),
+      /外部来源内容无效/u,
+    );
     reopened.close();
   } finally {
     rmSync(directory, { recursive: true, force: true });

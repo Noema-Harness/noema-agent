@@ -6,6 +6,7 @@ import ipaddr from 'ipaddr.js';
 import { JSDOM } from 'jsdom';
 import { Readability } from '@mozilla/readability';
 
+export const MAX_EXTERNAL_SOURCES_PER_MESSAGE = 3;
 const MAX_REDIRECTS = 3;
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 const MAX_EXCERPT_LENGTH = 8_000;
