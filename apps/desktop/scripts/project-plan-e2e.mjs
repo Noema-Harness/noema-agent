@@ -121,7 +121,8 @@ const child = spawn(
   {
     cwd: appDirectory,
     env: environment,
-    windowsHide: true,
+    detached: process.env.NOEMA_E2E_KEEP_OPEN === '1',
+    windowsHide: process.env.NOEMA_E2E_KEEP_OPEN !== '1',
     stdio: ['ignore', 'pipe', 'pipe'],
   },
 );
@@ -249,6 +250,16 @@ try {
     await evaluate(`document.documentElement.scrollWidth <= innerWidth`),
     true,
   );
+  if (process.env.NOEMA_E2E_KEEP_OPEN === '1') {
+    await cdp.call('Emulation.setDeviceMetricsOverride', {
+      width: 1264,
+      height: 950,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    await evaluate(`document.querySelector('.work-content')?.scrollTo(0, 0)`);
+    await screenshot('review-open.png');
+  }
   console.log(
     JSON.stringify({
       result: 'passed',
@@ -261,7 +272,13 @@ try {
 } finally {
   cdp?.close();
   db.close();
-  child.kill();
+  if (process.env.NOEMA_E2E_KEEP_OPEN === '1') {
+    child.unref();
+    child.stdout?.destroy();
+    child.stderr?.destroy();
+  } else {
+    child.kill();
+  }
 }
 
 async function evaluate(expression) {
