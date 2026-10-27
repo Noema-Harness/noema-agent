@@ -692,51 +692,47 @@
   color: #526574;
   margin-bottom: 9px;
 }
-.social-shell .project-growth-status {
-  margin: 0 0 18px;
-  padding: 12px 14px;
-  border: 1px solid var(--line);
-  border-radius: 5px;
-  background: #f7f9f8;
-  color: var(--ink);
-  font-size: 12px;
+.social-shell .project-stage.needs-attention {
+  color: #8b5b31;
 }
-.social-shell .project-growth-status.needs-attention {
-  border-color: #d9b48b;
-  background: #fffaf3;
+.social-shell .project-stage.needs-attention .state-mark {
+  background: #b97843;
 }
-.social-shell .project-growth-status header,
-.social-shell .project-growth-status li {
+.social-shell .project-finalization-issue {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 24px;
+  margin: 1px 0 22px;
+  padding: 10px 0 10px 13px;
+  border-left: 2px solid #c58b5d;
+  color: var(--ink);
 }
-.social-shell .project-growth-status header > span,
-.social-shell .project-growth-status li > span:nth-child(2) {
-  color: #65747c;
-}
-.social-shell .project-growth-status ul {
-  display: grid;
-  gap: 7px;
-  list-style: none;
-  padding: 0;
-  margin: 10px 0 0;
-}
-.social-shell .project-growth-status li > span:first-child {
-  min-width: 88px;
+.social-shell .project-finalization-issue strong {
+  font-size: 12px;
   font-weight: 600;
 }
-.social-shell .project-growth-status li > span:nth-child(2) {
-  flex: 1;
+.social-shell .project-finalization-issue p {
+  margin: 4px 0 0;
+  color: #6f7c85;
+  font-size: 12px;
+  line-height: 1.6;
 }
-.social-shell .project-growth-status .growth-check {
-  color: #356752;
-  white-space: nowrap;
+.social-shell .project-finalization-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
 }
-.social-shell .project-growth-status > p {
-  margin: 10px 0 0;
-  color: #526574;
+.social-shell .project-finalization-actions .secondary {
+  min-height: 31px;
+  padding-inline: 11px;
+}
+@media (max-width: 760px) {
+  .social-shell .project-finalization-issue {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
 }
 .social-shell .work-content h2 {
   font-size: 21px;
