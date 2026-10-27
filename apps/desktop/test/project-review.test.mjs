@@ -134,6 +134,40 @@ test('review rejects wrong provenance and a failed response transaction leaves i
   }
 });
 
+test('review cannot pause a project while a member report is queued for Noema', () => {
+  const f = fixture();
+  try {
+    const memberId = f.member.members[0].id;
+    const member = f.project.members.find(
+      (entry) => entry.agentId === memberId,
+    );
+    const turn = f.store.beginTurn({
+      roomId: f.project.groupRoomId,
+      agentId: memberId,
+      text: '阶段成果已提交，请核对。',
+      model: 'test',
+    });
+    f.store.appendAssistantDelta(
+      turn.assistantMessageId,
+      '这是成员的阶段报告。',
+    );
+    f.store.completeReplies([turn.assistantMessageId], {
+      projectId: f.project.id,
+      sourceTurnId: turn.turnId,
+      sourceUserMessageId: turn.userMessageId,
+      sourceGroupAssistantMessageId: turn.assistantMessageId,
+      agentId: memberId,
+      groupRoomId: f.project.groupRoomId,
+      sessionRoomId: member.sessionRoomId,
+    });
+    assert.throws(() => request(f), /成员报告待 Noema 处理/u);
+    assert.equal(f.projects.getProject(f.project.id).status, 'active');
+    assert.equal(f.projects.getProject(f.project.id).pendingReview, null);
+  } finally {
+    f.db.close();
+  }
+});
+
 test('pending review survives reopening with its original project and message identity', () => {
   const f = fixture();
   let copy;

@@ -50,19 +50,25 @@ function draftFromPlan(plan: NoemaProjectPlan): Draft {
       workItems: phase.workItems.map(
         ({
           id,
+          kind,
+          parentId,
           title,
           ownerAgentId,
           acceptance,
           dependsOn,
+          relatedTo,
           status,
           evidence,
           blocker,
         }) => ({
           id,
+          kind,
+          parentId,
           title,
           ownerAgentId,
           acceptance,
           dependsOn,
+          relatedTo,
           status,
           evidence,
           blocker,
@@ -121,7 +127,9 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
   const editable = project.status === 'active';
   const members = project.members;
   const name = (id: string) =>
-    members.find((member) => member.agentId === id)?.name ?? '原项目成员';
+    id === 'user'
+      ? '用户'
+      : (members.find((member) => member.agentId === id)?.name ?? '原项目成员');
   const savedIds = new Set(plan?.items.map((item) => item.id) ?? []);
   const write = async (fn: () => Promise<NoemaProjectPlan>) => {
     setBusy(true);
@@ -187,6 +195,35 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
           }
         : null,
     );
+  const updateRelated = (itemId: string, relatedId: string, enabled: boolean) =>
+    setEditor((current) =>
+      current
+        ? {
+            ...current,
+            draft: {
+              ...current.draft,
+              phases: current.draft.phases.map((phase) => ({
+                ...phase,
+                workItems: phase.workItems.map((item) => {
+                  const otherId =
+                    item.id === itemId
+                      ? relatedId
+                      : item.id === relatedId
+                        ? itemId
+                        : null;
+                  if (!otherId) return item;
+                  return {
+                    ...item,
+                    relatedTo: enabled
+                      ? [...new Set([...item.relatedTo, otherId])]
+                      : item.relatedTo.filter((id) => id !== otherId),
+                  };
+                }),
+              })),
+            },
+          }
+        : null,
+    );
   const addPhase = () =>
     setEditor((current) => {
       if (!current || current.draft.phases.length >= 30) return current;
@@ -205,7 +242,7 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
         draft: { ...current.draft, phases: [...current.draft.phases, phase] },
       };
     });
-  const addItem = (phaseId: string) =>
+  const addItem = (phaseId: string, parentId: string | null = null) =>
     setEditor((current) => {
       if (!current) return current;
       const count = current.draft.phases.reduce(
@@ -215,6 +252,8 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
       if (count >= 100) return current;
       const item: DraftItem = {
         id: crypto.randomUUID(),
+        kind: 'work_package',
+        parentId,
         title: '',
         ownerAgentId:
           members.find(
@@ -222,6 +261,40 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
           )?.agentId ?? '',
         acceptance: '',
         dependsOn: [],
+        relatedTo: [],
+        status: 'pending',
+        evidence: '',
+        blocker: '',
+      };
+      return {
+        ...current,
+        draft: {
+          ...current.draft,
+          phases: current.draft.phases.map((phase) =>
+            phase.id === phaseId
+              ? { ...phase, workItems: [...phase.workItems, item] }
+              : phase,
+          ),
+        },
+      };
+    });
+  const addGroup = (phaseId: string, parentId: string | null = null) =>
+    setEditor((current) => {
+      if (!current) return current;
+      const count = current.draft.phases.reduce(
+        (total, phase) => total + phase.workItems.length,
+        0,
+      );
+      if (count >= 100) return current;
+      const item: DraftItem = {
+        id: crypto.randomUUID(),
+        kind: 'group',
+        parentId,
+        title: '',
+        ownerAgentId: '',
+        acceptance: '',
+        dependsOn: [],
+        relatedTo: [],
         status: 'pending',
         evidence: '',
         blocker: '',
@@ -254,6 +327,7 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                   .map((item) => ({
                     ...item,
                     dependsOn: item.dependsOn.filter((id) => id !== itemId),
+                    relatedTo: item.relatedTo.filter((id) => id !== itemId),
                   })),
               })),
             },
@@ -306,6 +380,31 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
         phaseTitle: phase.title || '未命名阶段',
       })),
     ) ?? [];
+  const isDescendantOf = (itemId: string, ancestorId: string) => {
+    let parentId = flattenedDraftItems.find(
+      (item) => item.id === itemId,
+    )?.parentId;
+    while (parentId) {
+      if (parentId === ancestorId) return true;
+      parentId =
+        flattenedDraftItems.find((item) => item.id === parentId)?.parentId ??
+        null;
+    }
+    return false;
+  };
+  const depthOf = (itemId: string) => {
+    let depth = 0;
+    let parentId = flattenedDraftItems.find(
+      (item) => item.id === itemId,
+    )?.parentId;
+    while (parentId && depth < 100) {
+      depth += 1;
+      parentId =
+        flattenedDraftItems.find((item) => item.id === parentId)?.parentId ??
+        null;
+    }
+    return depth;
+  };
 
   return (
     <section
@@ -446,11 +545,19 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                 ) : null}
                 <ol className="project-plan-edit-items">
                   {phase.workItems.map((item, itemIndex) => (
-                    <li key={item.id}>
+                    <li
+                      key={item.id}
+                      style={{
+                        marginInlineStart: `${depthOf(item.id) * 18}px`,
+                      }}
+                    >
                       <fieldset className="project-plan-edit-item">
-                        <legend>工作项 {itemIndex + 1}</legend>
+                        <legend>
+                          {item.kind === 'group' ? '工作分组' : '工作包'}{' '}
+                          {itemIndex + 1}
+                        </legend>
                         <label>
-                          交付内容
+                          {item.kind === 'group' ? '分组名称' : '工作包名称'}
                           <input
                             required
                             maxLength={160}
@@ -460,135 +567,236 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                             }
                           />
                         </label>
-                        <div className="project-plan-edit-pair">
-                          <label>
-                            负责人
-                            <select
-                              value={item.ownerAgentId}
-                              onChange={(event) =>
-                                updateItem(item.id, {
-                                  ownerAgentId: event.target.value,
-                                })
-                              }
-                              required
-                            >
-                              <option value="">选择项目成员</option>
-                              {members.map((member) => (
-                                <option
-                                  key={member.agentId}
-                                  value={member.agentId}
-                                  disabled={
-                                    member.status !== 'active' ||
-                                    Boolean(member.agentArchivedAt)
-                                  }
-                                >
-                                  {member.name}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                          <label>
-                            工作状态
-                            <select
-                              value={item.status}
-                              onChange={(event) =>
-                                updateItem(item.id, {
-                                  status: event.target
-                                    .value as NoemaProjectPlanStatus,
-                                })
-                              }
-                            >
-                              {Object.entries(itemLabels).map(
-                                ([value, label]) => (
-                                  <option value={value} key={value}>
-                                    {label}
-                                  </option>
-                                ),
-                              )}
-                            </select>
-                          </label>
-                        </div>
                         <label>
-                          完成条件
-                          <textarea
-                            required
-                            rows={2}
-                            maxLength={2000}
-                            value={item.acceptance}
+                          所属分组
+                          <select
+                            value={item.parentId ?? ''}
                             onChange={(event) =>
                               updateItem(item.id, {
-                                acceptance: event.target.value,
+                                parentId: event.target.value || null,
                               })
                             }
-                          />
+                          >
+                            <option value="">阶段下</option>
+                            {flattenedDraftItems
+                              .filter(
+                                (other) =>
+                                  other.kind === 'group' &&
+                                  other.id !== item.id &&
+                                  !isDescendantOf(other.id, item.id),
+                              )
+                              .map((other) => (
+                                <option key={other.id} value={other.id}>
+                                  {other.title || '未命名分组'}
+                                </option>
+                              ))}
+                          </select>
                         </label>
-                        {['submitted', 'done'].includes(item.status) ? (
-                          <label>
-                            成果依据
-                            <textarea
-                              required
-                              maxLength={8000}
-                              value={item.evidence}
-                              onChange={(event) =>
-                                updateItem(item.id, {
-                                  evidence: event.target.value,
-                                })
-                              }
-                            />
-                          </label>
-                        ) : null}
-                        {item.status === 'blocked' ? (
-                          <label>
-                            阻塞原因
-                            <input
-                              required
-                              maxLength={2000}
-                              value={item.blocker}
-                              onChange={(event) =>
-                                updateItem(item.id, {
-                                  blocker: event.target.value,
-                                })
-                              }
-                            />
-                          </label>
-                        ) : null}
-                        {flattenedDraftItems.length > 1 ? (
-                          <details className="project-plan-dependency-editor">
-                            <summary>
-                              前置工作项 · {item.dependsOn.length} 项
-                            </summary>
-                            <div className="project-plan-dependencies">
-                              {flattenedDraftItems
-                                .filter((other) => other.id !== item.id)
-                                .map((other) => (
-                                  <label key={other.id}>
-                                    <input
-                                      type="checkbox"
-                                      checked={item.dependsOn.includes(
-                                        other.id,
-                                      )}
-                                      onChange={(event) =>
-                                        updateItem(item.id, {
-                                          dependsOn: event.target.checked
-                                            ? [...item.dependsOn, other.id]
-                                            : item.dependsOn.filter(
-                                                (id) => id !== other.id,
-                                              ),
-                                        })
-                                      }
-                                    />
-                                    {other.phaseTitle} ·{' '}
-                                    {other.title || '未命名工作项'}
-                                  </label>
-                                ))}
+                        {item.kind === 'group' ? (
+                          <>
+                            <p className="project-plan-meta">
+                              仅用于归组；子工作包决定进度，不产生额外完成率。
+                            </p>
+                            <div className="project-plan-actions">
+                              <button
+                                type="button"
+                                className="quiet"
+                                disabled={
+                                  busy || flattenedDraftItems.length >= 100
+                                }
+                                onClick={() => addGroup(phase.id, item.id)}
+                              >
+                                ＋ 添加子分组
+                              </button>
+                              <button
+                                type="button"
+                                className="quiet"
+                                disabled={
+                                  busy || flattenedDraftItems.length >= 100
+                                }
+                                onClick={() => addItem(phase.id, item.id)}
+                              >
+                                ＋ 添加工作包
+                              </button>
                             </div>
-                          </details>
-                        ) : null}
+                          </>
+                        ) : (
+                          <>
+                            <div className="project-plan-edit-pair">
+                              <label>
+                                负责人
+                                <select
+                                  value={item.ownerAgentId}
+                                  onChange={(event) =>
+                                    updateItem(item.id, {
+                                      ownerAgentId: event.target.value,
+                                    })
+                                  }
+                                  required
+                                >
+                                  <option value="">选择项目成员</option>
+                                  {members.map((member) => (
+                                    <option
+                                      key={member.agentId}
+                                      value={member.agentId}
+                                      disabled={
+                                        member.status !== 'active' ||
+                                        Boolean(member.agentArchivedAt)
+                                      }
+                                    >
+                                      {member.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label>
+                                工作状态
+                                <select
+                                  value={item.status}
+                                  onChange={(event) =>
+                                    updateItem(item.id, {
+                                      status: event.target
+                                        .value as NoemaProjectPlanStatus,
+                                    })
+                                  }
+                                >
+                                  {Object.entries(itemLabels).map(
+                                    ([value, label]) => (
+                                      <option value={value} key={value}>
+                                        {label}
+                                      </option>
+                                    ),
+                                  )}
+                                </select>
+                              </label>
+                            </div>
+                            <label>
+                              完成条件
+                              <textarea
+                                required
+                                rows={2}
+                                maxLength={2000}
+                                value={item.acceptance}
+                                onChange={(event) =>
+                                  updateItem(item.id, {
+                                    acceptance: event.target.value,
+                                  })
+                                }
+                              />
+                            </label>
+                            {['submitted', 'done'].includes(item.status) ? (
+                              <label>
+                                成果依据
+                                <textarea
+                                  required
+                                  maxLength={8000}
+                                  value={item.evidence}
+                                  onChange={(event) =>
+                                    updateItem(item.id, {
+                                      evidence: event.target.value,
+                                    })
+                                  }
+                                />
+                              </label>
+                            ) : null}
+                            {item.status === 'blocked' ? (
+                              <label>
+                                阻塞原因
+                                <input
+                                  required
+                                  maxLength={2000}
+                                  value={item.blocker}
+                                  onChange={(event) =>
+                                    updateItem(item.id, {
+                                      blocker: event.target.value,
+                                    })
+                                  }
+                                />
+                              </label>
+                            ) : null}
+                            {flattenedDraftItems.length > 1 ? (
+                              <details className="project-plan-dependency-editor">
+                                <summary>
+                                  前置工作项 · {item.dependsOn.length} 项
+                                </summary>
+                                <div className="project-plan-dependencies">
+                                  {flattenedDraftItems
+                                    .filter(
+                                      (other) =>
+                                        other.kind === 'work_package' &&
+                                        other.id !== item.id,
+                                    )
+                                    .map((other) => (
+                                      <label key={other.id}>
+                                        <input
+                                          type="checkbox"
+                                          checked={item.dependsOn.includes(
+                                            other.id,
+                                          )}
+                                          onChange={(event) =>
+                                            updateItem(item.id, {
+                                              dependsOn: event.target.checked
+                                                ? [...item.dependsOn, other.id]
+                                                : item.dependsOn.filter(
+                                                    (id) => id !== other.id,
+                                                  ),
+                                            })
+                                          }
+                                        />
+                                        {other.phaseTitle} ·{' '}
+                                        {other.title || '未命名工作项'}
+                                      </label>
+                                    ))}
+                                </div>
+                              </details>
+                            ) : null}
+                            {flattenedDraftItems.length > 1 ? (
+                              <details className="project-plan-dependency-editor">
+                                <summary>
+                                  相关工作项 · {item.relatedTo.length}{' '}
+                                  项（不阻塞开始）
+                                </summary>
+                                <div className="project-plan-dependencies">
+                                  {flattenedDraftItems
+                                    .filter(
+                                      (other) =>
+                                        other.kind === 'work_package' &&
+                                        other.id !== item.id,
+                                    )
+                                    .map((other) => (
+                                      <label key={other.id}>
+                                        <input
+                                          type="checkbox"
+                                          checked={item.relatedTo.includes(
+                                            other.id,
+                                          )}
+                                          onChange={(event) =>
+                                            updateRelated(
+                                              item.id,
+                                              other.id,
+                                              event.target.checked,
+                                            )
+                                          }
+                                        />
+                                        {other.phaseTitle} ·{' '}
+                                        {other.title || '未命名工作项'}
+                                      </label>
+                                    ))}
+                                </div>
+                              </details>
+                            ) : null}
+                          </>
+                        )}
                         {!savedIds.has(item.id) ? (
                           <button
                             type="button"
                             className="quiet"
-                            disabled={busy}
+                            disabled={
+                              busy ||
+                              flattenedDraftItems.some(
+                                (candidate) => candidate.parentId === item.id,
+                              )
+                            }
                             onClick={() => removeNewItem(phase.id, item.id)}
                           >
                             撤销新增
@@ -607,9 +815,17 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                   type="button"
                   className="quiet"
                   disabled={busy || flattenedDraftItems.length >= 100}
+                  onClick={() => addGroup(phase.id)}
+                >
+                  ＋ 添加分组
+                </button>
+                <button
+                  type="button"
+                  className="quiet"
+                  disabled={busy || flattenedDraftItems.length >= 100}
                   onClick={() => addItem(phase.id)}
                 >
-                  ＋ 添加工作项
+                  ＋ 添加工作包
                 </button>
                 {!plan.phases.some((saved) => saved.id === phase.id) ? (
                   <button
@@ -793,7 +1009,11 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                     className="quiet project-plan-cancel-phase"
                     disabled={
                       busy ||
-                      phase.workItems.some((item) => item.status !== 'canceled')
+                      phase.workItems.some(
+                        (item) =>
+                          item.kind === 'work_package' &&
+                          item.status !== 'canceled',
+                      )
                     }
                     title="先取消本阶段所有工作项；若后续阶段已启动，则不能取消本阶段。"
                     onClick={() => void changePhase(phase, 'canceled')}
@@ -869,17 +1089,38 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                     <li
                       key={item.id}
                       data-plan-item-id={item.id}
-                      className={`plan-item-status-${item.status}`}
+                      className={`plan-item-status-${item.status} ${item.kind === 'group' ? 'project-plan-group-node' : ''}`}
+                      style={{
+                        marginInlineStart: `${Math.min(item.depth ?? 0, 8) * 18}px`,
+                      }}
                     >
                       <div className="project-plan-item-head">
                         <strong>{item.title}</strong>
-                        <span>
-                          {name(item.ownerAgentId)} · {itemLabels[item.status]}
-                        </span>
+                        {item.kind === 'group' ? (
+                          <span>
+                            分组 · {item.childCount ?? 0} 个子项
+                            {!item.childCount ? ' · 待细化' : null}
+                            {item.childCount &&
+                            item.childProgress?.percentage !== null &&
+                            item.childProgress?.percentage !== undefined
+                              ? ` · ${item.childProgress.percentage}%`
+                              : ''}
+                          </span>
+                        ) : (
+                          <span>
+                            {name(item.ownerAgentId)} ·{' '}
+                            {itemLabels[item.status]}
+                            {item.submittedByAgentId
+                              ? ` · 提交者：${name(item.submittedByAgentId)}`
+                              : ''}
+                          </span>
+                        )}
                       </div>
-                      <p className="project-plan-acceptance">
-                        <span>完成条件</span> {item.acceptance}
-                      </p>
+                      {item.kind === 'work_package' ? (
+                        <p className="project-plan-acceptance">
+                          <span>完成条件</span> {item.acceptance}
+                        </p>
+                      ) : null}
                       {item.dependsOn.length ? (
                         <p className="project-plan-meta">
                           前置工作：
@@ -891,6 +1132,15 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                             )
                             .join('、')}
                           {item.blockedBy.length ? ' · 尚未验收' : ''}
+                        </p>
+                      ) : null}
+                      {item.relatedItems?.length ? (
+                        <p className="project-plan-meta">
+                          相关工作：
+                          {item.relatedItems
+                            .map((related) => related.title)
+                            .join('、')}
+                          {' · 不影响开始条件'}
                         </p>
                       ) : null}
                       {item.waitingForPhases.length ? (
@@ -907,7 +1157,7 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                           <p>{item.evidence}</p>
                         </details>
                       ) : null}
-                      {editable ? (
+                      {editable && item.kind === 'work_package' ? (
                         <div className="project-plan-actions">
                           {item.status === 'pending' ||
                           item.status === 'blocked' ? (

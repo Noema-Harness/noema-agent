@@ -50,6 +50,10 @@ test('Noema reads then writes a versioned plan in one turn; members cannot forge
         else if (requests.length === 2) {
           const read = JSON.parse(input.messages.at(-1).content);
           assert.equal(read.revision, 0);
+          assert.deepEqual(
+            read.activeMembers.map((member) => member.agentId),
+            ['engineering-partner'],
+          );
           invoke(input, 'write-plan', {
             operation: 'replace',
             project_id: project.id,
@@ -103,6 +107,16 @@ test('Noema reads then writes a versioned plan in one turn; members cannot forge
             tool.function.parameters.properties.project_id.enum,
             [project.id],
           );
+          assert.match(
+            tool.function.description,
+            /工程搭档 \(engineering-partner\)/u,
+          );
+          assert.match(tool.function.description, /Noema is the coordinator/u);
+          assert.deepEqual(
+            tool.function.parameters.properties.plan.properties.phases.items
+              .properties.workItems.items.properties.ownerAgentId.enum,
+            ['engineering-partner'],
+          );
           yield '可以在项目群里查看和维护当前计划。';
         }
       },
@@ -139,7 +153,14 @@ test('Noema reads then writes a versioned plan in one turn; members cannot forge
       agentId: 'noema',
       text: '@Noema 查看项目计划。',
     });
-    for (let i = 0; i < 30 && (service.active.size || service.projectReportDrain || service.projectGroupInboxDrains.size); i++)
+    for (
+      let i = 0;
+      i < 30 &&
+      (service.active.size ||
+        service.projectReportDrain ||
+        service.projectGroupInboxDrains.size);
+      i++
+    )
       await new Promise((resolve) => setImmediate(resolve));
     assert.equal(store.getSocialMessage(group.messageId).status, 'complete');
     assert.equal(requests.length, 6);

@@ -81,13 +81,28 @@ test('only accepted deliveries advance progress and unlock dependent work across
     assert.throws(() => update('budget', 'in_progress', b), /前置交付/u);
     update('research', 'in_progress', a);
     assert.throws(() => update('research', 'submitted', a), /成果依据/u);
+    assert.throws(
+      () =>
+        update('research', 'submitted', 'noema', {
+          evidence: '未经负责人提交。',
+        }),
+      /不能代替负责人提交/u,
+    );
     const submitted = update('research', 'submitted', a, {
       evidence: '调研记录与两份原始来源，价格尚待核实。',
     });
+    assert.equal(
+      submitted.items.find((item) => item.id === 'research').submittedByAgentId,
+      a,
+    );
     assert.equal(submitted.progress.percentage, 0);
     assert.equal(submitted.progress.submitted, 1);
     assert.throws(() => update('research', 'done', a), /不能自行验收/u);
     const accepted = update('research', 'done', 'noema');
+    assert.equal(
+      accepted.items.find((item) => item.id === 'research').submittedByAgentId,
+      a,
+    );
     assert.equal(accepted.progress.percentage, 50);
     assert.equal(
       accepted.items.find((item) => item.id === 'budget').ready,
@@ -188,6 +203,20 @@ test('phases form explicit delivery gates and project progress aggregates accept
     assert.deepEqual(initial.phases[1].workItems[0].waitingForPhases, [
       'research',
     ]);
+    const scopedPhase = projects.plans.forAgent(project.id, a, null, 'pilot');
+    assert.equal(scopedPhase.phase.id, 'pilot');
+    assert.deepEqual(
+      scopedPhase.prerequisitePhases.map((phase) => phase.id),
+      ['research'],
+    );
+    assert.deepEqual(
+      scopedPhase.phase.workItems.map((item) => item.id),
+      ['budget'],
+    );
+    assert.throws(
+      () => projects.plans.forAgent(project.id, a, 'budget', 'pilot'),
+      /只能读取一个具体工作范围/u,
+    );
     assert.throws(
       () =>
         projects.plans.updatePhase({
@@ -304,6 +333,223 @@ test('pre-hierarchy plan rows upgrade into one preserved legacy phase', () => {
     assert.equal(upgraded.phases[0].workItems[0].ownerAgentId, a);
     assert.equal(upgraded.phases[0].workItems.length, plan.items.length);
     assert.equal(upgraded.phaseProgress.percentage, 0);
+  } finally {
+    db.close();
+  }
+});
+
+test('related work links provide context without blocking readiness', () => {
+  const { db, projects, project, plan } = setup();
+  try {
+    const relatedPlan = structuredClone(plan);
+    relatedPlan.items[1].dependsOn = [];
+    relatedPlan.items[1].relatedTo = ['research'];
+    const result = projects.plans.replace({
+      projectId: project.id,
+      expectedRevision: 0,
+      reason: '标记相关但不互相阻塞的工作。',
+      plan: relatedPlan,
+    });
+    const budget = result.items.find((item) => item.id === 'budget');
+    assert.equal(budget.ready, true);
+    assert.deepEqual(budget.relatedItems, [
+      { id: 'research', title: '需求证据', status: 'pending' },
+    ]);
+    assert.deepEqual(
+      result.items.find((item) => item.id === 'research').relatedTo,
+      ['budget'],
+    );
+
+    const missing = structuredClone(relatedPlan);
+    missing.items[1].relatedTo = ['absent'];
+    assert.throws(
+      () =>
+        projects.plans.replace({
+          projectId: project.id,
+          expectedRevision: 1,
+          reason: '检查关系目标存在性。',
+          plan: missing,
+        }),
+      /不存在的相关工作项/u,
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test('nested groups organize leaf packages without inflating project progress', () => {
+  const { db, projects, project, a, b } = setup();
+  try {
+    const result = projects.plans.replace({
+      projectId: project.id,
+      expectedRevision: 0,
+      reason: '按可执行结果拆分近期工作。',
+      plan: {
+        objective: '交付可核验的试办判断。',
+        phases: [
+          {
+            id: 'research',
+            title: '预研究',
+            outcome: '形成证据与结论。',
+            exitCriteria: '结论可追溯且未知明确。',
+            dependsOn: [],
+            status: 'pending',
+            evidence: '',
+            workItems: [
+              {
+                id: 'research-group',
+                kind: 'group',
+                parentId: null,
+                title: '需求与供给',
+                status: 'pending',
+              },
+              {
+                id: 'market-group',
+                kind: 'group',
+                parentId: 'research-group',
+                title: '需求核验',
+                status: 'pending',
+              },
+              {
+                id: 'market',
+                kind: 'work_package',
+                parentId: 'market-group',
+                title: '访谈目标用户',
+                ownerAgentId: a,
+                acceptance: '提交原始记录与来源。',
+                dependsOn: [],
+                relatedTo: ['supply'],
+                status: 'pending',
+                evidence: '',
+                blocker: '',
+              },
+              {
+                id: 'supply',
+                kind: 'work_package',
+                parentId: 'research-group',
+                title: '核验场地供给',
+                ownerAgentId: b,
+                acceptance: '提交可联系的来源与价格范围。',
+                dependsOn: [],
+                relatedTo: [],
+                status: 'pending',
+                evidence: '',
+                blocker: '',
+              },
+            ],
+          },
+        ],
+      },
+    });
+    assert.equal(result.progress.total, 2);
+    assert.equal(result.phases[0].progress.total, 2);
+    assert.equal(
+      result.items.find((item) => item.id === 'research-group').ready,
+      false,
+    );
+    assert.deepEqual(
+      result.items.find((item) => item.id === 'research-group').childProgress,
+      {
+        done: 0,
+        total: 2,
+        percentage: 0,
+      },
+    );
+    assert.equal(result.items.find((item) => item.id === 'market').depth, 2);
+    assert.equal(
+      projects.plans.forAgent(project.id, a, 'research-group').descendants
+        .length,
+      3,
+    );
+    const started = projects.plans.updateItem({
+      projectId: project.id,
+      expectedRevision: result.revision,
+      itemId: 'market',
+      actorAgentId: a,
+      status: 'in_progress',
+      reason: '开始访谈。',
+    });
+    const submitted = projects.plans.updateItem({
+      projectId: project.id,
+      expectedRevision: started.revision,
+      itemId: 'market',
+      actorAgentId: a,
+      status: 'submitted',
+      evidence: '访谈记录。',
+      reason: '提交访谈记录。',
+    });
+    const accepted = projects.plans.updateItem({
+      projectId: project.id,
+      expectedRevision: submitted.revision,
+      itemId: 'market',
+      actorAgentId: 'noema',
+      status: 'done',
+      reason: '核验访谈交付。',
+    });
+    assert.deepEqual(
+      accepted.items.find((item) => item.id === 'research-group').childProgress,
+      { done: 1, total: 2, percentage: 50 },
+    );
+    const revised = projects.plans.updateItem({
+      projectId: project.id,
+      expectedRevision: accepted.revision,
+      itemId: 'market',
+      actorAgentId: 'noema',
+      patch: {
+        title: '访谈用户并提交核验记录',
+        parentId: 'research-group',
+        relatedTo: [],
+      },
+      reason: '根据结构评审调整叶工作包名称与归属。',
+    });
+    assert.equal(
+      revised.items.find((item) => item.id === 'market').title,
+      '访谈用户并提交核验记录',
+    );
+    assert.equal(revised.items.find((item) => item.id === 'market').depth, 1);
+    assert.deepEqual(
+      revised.items.find((item) => item.id === 'supply').relatedTo,
+      [],
+    );
+    assert.equal(revised.progress.total, 2);
+    assert.throws(
+      () =>
+        projects.plans.updateItem({
+          projectId: project.id,
+          expectedRevision: revised.revision,
+          itemId: 'research-group',
+          actorAgentId: 'noema',
+          status: 'done',
+          reason: '分组不应作为执行项。',
+        }),
+      /结构分组不能推进状态/u,
+    );
+    assert.throws(
+      () =>
+        projects.plans.updateItem({
+          projectId: project.id,
+          expectedRevision: revised.revision,
+          itemId: 'supply',
+          actorAgentId: b,
+          patch: { title: '越权修改' },
+          reason: '成员不应重写计划结构。',
+        }),
+      /只有用户或 Noema/u,
+    );
+    const cyclic = structuredClone(result);
+    cyclic.phases[0].workItems.find(
+      (item) => item.id === 'research-group',
+    ).parentId = 'market-group';
+    assert.throws(
+      () =>
+        projects.plans.replace({
+          projectId: project.id,
+          expectedRevision: revised.revision,
+          reason: '检查父子循环。',
+          plan: cyclic,
+        }),
+      /父子层级不能形成循环/u,
+    );
   } finally {
     db.close();
   }

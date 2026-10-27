@@ -1064,6 +1064,15 @@ export class SocialProjectStore {
         throw new Error('请先恢复项目，再发起评审。');
       if (project.pendingReview)
         throw new Error('该项目已有待回复的评审请求。');
+      const pendingReport = this.db
+        .prepare(
+          "SELECT 1 FROM social_project_reports WHERE project_id = ? AND status = 'pending' LIMIT 1",
+        )
+        .get(projectId);
+      if (pendingReport)
+        throw new Error(
+          '仍有项目成员报告待 Noema 处理，处理完后再请求用户评审。',
+        );
       const active = this.db
         .prepare(`
         SELECT 1 FROM social_work_tasks WHERE status IN ('starting', 'running', 'verifying')

@@ -313,12 +313,24 @@ export type NoemaProjectPlanStatus =
   | 'canceled';
 export interface NoemaProjectPlanItem {
   id: string;
+  kind: 'group' | 'work_package';
+  parentId: string | null;
+  depth?: number;
+  childCount?: number;
+  childProgress?: { done: number; total: number; percentage: number | null };
   title: string;
   ownerAgentId: string;
   acceptance: string;
   dependsOn: string[];
+  relatedTo: string[];
+  relatedItems?: Array<{
+    id: string;
+    title: string;
+    status: NoemaProjectPlanStatus;
+  }>;
   status: NoemaProjectPlanStatus;
   evidence: string;
+  submittedByAgentId?: string | null;
   blocker: string;
   phaseId: string;
   phaseTitle: string;
@@ -410,6 +422,14 @@ export interface NoemaProjectPlanItemUpdate {
   status: NoemaProjectPlanStatus;
   evidence?: string;
   blocker?: string;
+  patch?: {
+    title?: string;
+    ownerAgentId?: string;
+    acceptance?: string;
+    parentId?: string | null;
+    dependsOn?: string[];
+    relatedTo?: string[];
+  };
   reason: string;
 }
 export interface NoemaProjectPlanPhaseUpdate {

@@ -264,13 +264,45 @@ function memberAssetsTool() {
 
 function projectPlanTool(projects) {
   if (!projects.length) return null;
+  const ownerIds = [
+    ...new Set(
+      projects.flatMap((project) =>
+        project.members
+          .filter(
+            (member) =>
+              member.status === 'active' &&
+              !member.agentArchivedAt &&
+              member.kind === 'specialist',
+          )
+          .map((member) => member.agentId),
+      ),
+    ),
+  ];
+  const projectOwners = projects
+    .map((project) => {
+      const owners = project.members
+        .filter(
+          (member) =>
+            member.status === 'active' &&
+            !member.agentArchivedAt &&
+            member.kind === 'specialist',
+        )
+        .map((member) => `${member.name} (${member.agentId})`);
+      return `${project.id}: ${project.title}; active work-item owners: ${owners.join(', ') || 'none'}`;
+    })
+    .join('; ');
+  const parameters = structuredClone(projectPlanParameters);
+  if (ownerIds.length) {
+    parameters.properties.phases.items.properties.workItems.items.properties.ownerAgentId.enum =
+      ['', ...ownerIds];
+  }
   return {
     type: 'function',
     function: {
       name: 'manage_project_plan',
       description:
-        'Read or maintain a shared project plan organized as project objective → phases → owned work items. Each phase has an outcome, exit criteria, dependencies and an acceptance gate; planned work may remain coarse. Each work item has an owner, acceptance, dependencies, status and evidence. A ready work item is marked in_progress when the runtime starts it. Members update only their own work items; only Noema/user may accept items and phases. A phase can be accepted only when its work items and dependencies are complete and evidence is supplied. Keep near-term phases detailed and distant phases coarse. Do not invent dates, effort or completion forecasts. Projects: ' +
-        projects.map((p) => `${p.id}: ${p.title}`).join('; '),
+        'Read or maintain a shared project plan organized as project objective → phases → nested structural groups → executable leaf work packages. Groups only organize children and never block or count as work; work packages require an active specialist owner and acceptance criteria. Each phase has an outcome, exit criteria, blocking dependencies and an acceptance gate; planned work may remain coarse. Work packages have blocking dependsOn links and optional relatedTo links (context only; never block readiness). Use parentId only to place a node under a structural group in the same phase. Use dependsOn only when work cannot start before another package is accepted. New packages must use one of that project’s listed active work-item owners; groups leave ownerAgentId empty. Noema is the coordinator and is not an owner unless explicitly listed. A ready work package is marked in_progress when the runtime starts it. The system records submittedByAgentId from the actor that submits each result; Noema cannot submit on a member’s behalf. Check this field before judging who delivered a work package; never infer authorship from a relayed group message. Members update only their own package status and evidence; only Noema/user may accept packages/phases or change plan structure. Use item_patch to revise one work package’s title, owner, acceptance, parent, blocking links or related links without replacing the entire plan. A phase can be accepted only when its leaf packages and dependencies are complete and evidence is supplied. Keep near-term phases detailed and distant phases coarse. Do not invent dates, effort or completion forecasts. Projects and valid owners: ' +
+        projectOwners,
       parameters: {
         type: 'object',
         properties: {
@@ -284,9 +316,34 @@ function projectPlanTool(projects) {
             minimum: 0,
             description: 'Required for writes; use current plan revision.',
           },
-          plan: projectPlanParameters,
+          plan: parameters,
           item_id: { type: 'string' },
           phase_id: { type: 'string' },
+          item_patch: {
+            type: 'object',
+            properties: {
+              title: { type: 'string', minLength: 1, maxLength: 160 },
+              ownerAgentId: {
+                type: 'string',
+                ...(ownerIds.length ? { enum: ownerIds } : {}),
+              },
+              acceptance: { type: 'string', minLength: 1, maxLength: 2000 },
+              parentId: {
+                anyOf: [{ type: 'string', maxLength: 80 }, { type: 'null' }],
+              },
+              dependsOn: {
+                type: 'array',
+                maxItems: 100,
+                items: { type: 'string', minLength: 1, maxLength: 80 },
+              },
+              relatedTo: {
+                type: 'array',
+                maxItems: 100,
+                items: { type: 'string', minLength: 1, maxLength: 80 },
+              },
+            },
+            additionalProperties: false,
+          },
           status: {
             type: 'string',
             enum: [
@@ -614,11 +671,27 @@ export class SocialChatService {
                 sourceTurnId: run.turnId,
               };
               if (input.operation === 'read') {
-                result = this.projectStore.plans.forAgent(
+                const plan = this.projectStore.plans.forAgent(
                   project.id,
                   run.agentId,
                   input.item_id ?? null,
+                  input.phase_id ?? null,
                 );
+                result = {
+                  ...plan,
+                  activeMembers: project.members
+                    .filter(
+                      (member) =>
+                        member.status === 'active' &&
+                        !member.agentArchivedAt &&
+                        member.kind === 'specialist',
+                    )
+                    .map(({ agentId, name, headline }) => ({
+                      agentId,
+                      name,
+                      headline,
+                    })),
+                };
               } else {
                 this.projectStore.assertWorkAllowed(project.groupRoomId);
                 if (typeof input.reason !== 'string' || !input.reason.trim())
@@ -634,6 +707,7 @@ export class SocialChatService {
                   this.projectStore.plans.updateItem({
                     ...common,
                     itemId: input.item_id,
+                    patch: input.item_patch,
                     status: input.status,
                     evidence: input.evidence,
                     blocker: input.blocker,
@@ -685,7 +759,8 @@ export class SocialChatService {
         model: run.model,
         messages,
         signal: run.controller.signal,
-        maxTokens: 1536,
+        // Allow enough output for structured project-plan tool arguments.
+        maxTokens: 4096,
         tools: [
           ...this.projectTools(run),
           ...(run.agentId === 'noema' && run.roomId === 'room-noema'
@@ -2075,7 +2150,7 @@ export class SocialChatService {
         messages,
         signal: controller.signal,
         ...(isProjectGroupRoute || actionTools.length
-          ? { maxTokens: 1536 }
+          ? { maxTokens: 4096 }
           : {}),
         ...(actionTools.length
           ? {

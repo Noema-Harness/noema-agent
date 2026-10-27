@@ -186,6 +186,13 @@
 .social-shell .project-plan-work-list > li:last-child {
   border-bottom: 0;
 }
+.social-shell .project-plan-work-list > li.project-plan-group-node {
+  border-left: 2px solid var(--line-strong);
+}
+.social-shell .project-plan-group-node .project-plan-item-head > span {
+  color: var(--muted);
+  font-size: 11px;
+}
 .social-shell .project-plan-work-list > li::before {
   position: absolute;
   top: 20px;

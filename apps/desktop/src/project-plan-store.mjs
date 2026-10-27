@@ -11,12 +11,16 @@ const statusSchema = z.enum([
 ]);
 const workItemSchema = z.object({
   id: text(80).regex(/^[\w-]+$/u),
+  kind: z.enum(['group', 'work_package']).default('work_package'),
+  parentId: z.string().trim().max(80).nullable().default(null),
   title: text(160),
-  ownerAgentId: text(200),
-  acceptance: text(2000),
+  ownerAgentId: z.string().trim().max(200).default(''),
+  acceptance: z.string().trim().max(2000).default(''),
   dependsOn: z.array(text(80)).max(100).default([]),
+  relatedTo: z.array(text(80)).max(100).default([]),
   status: statusSchema,
   evidence: z.string().trim().max(8000).default(''),
+  submittedByAgentId: z.string().trim().max(200).nullable().optional(),
   blocker: z.string().trim().max(2000).default(''),
 });
 const phaseSchema = z.object({
@@ -33,6 +37,16 @@ const planSchema = z.object({
   objective: text(4000),
   phases: z.array(phaseSchema).min(1).max(30),
 });
+const itemPatchSchema = z
+  .object({
+    title: text(160).optional(),
+    ownerAgentId: z.string().trim().max(200).optional(),
+    acceptance: z.string().trim().max(2000).optional(),
+    parentId: z.string().trim().max(80).nullable().optional(),
+    dependsOn: z.array(text(80)).max(100).optional(),
+    relatedTo: z.array(text(80)).max(100).optional(),
+  })
+  .strict();
 const { $schema: _schema, ...parameters } = z.toJSONSchema(planSchema);
 export const projectPlanParameters = parameters;
 export const projectPlanPhaseStatuses = ['pending', 'done', 'canceled'];
@@ -47,7 +61,9 @@ const transitions = {
 };
 
 function phaseState(phase, phaseById, workItems) {
-  const active = workItems.filter((item) => item.status !== 'canceled');
+  const active = workItems.filter(
+    (item) => item.kind === 'work_package' && item.status !== 'canceled',
+  );
   const done = active.filter((item) => item.status === 'done').length;
   const waitingForPhases = phase.dependsOn.filter(
     (id) => phaseById.get(id)?.status !== 'done',
@@ -154,6 +170,15 @@ export class ProjectPlanStore {
       const blockedBy = item.dependsOn.filter(
         (id) => byId.get(id)?.status !== 'done',
       );
+      if (item.kind === 'group')
+        return {
+          ...item,
+          ready: false,
+          canResume: false,
+          blockedBy: [],
+          waitingForPhases,
+          phaseTitle: phase.title,
+        };
       return {
         ...item,
         ready:
@@ -172,22 +197,89 @@ export class ProjectPlanStore {
       };
     });
     const enrichedById = new Map(items.map((item) => [item.id, item]));
+    const childrenByParent = new Map();
+    for (const item of items) {
+      if (!item.parentId) continue;
+      const children = childrenByParent.get(item.parentId) ?? [];
+      children.push(item);
+      childrenByParent.set(item.parentId, children);
+    }
+    for (const item of items) {
+      let depth = 0;
+      let parentId = item.parentId;
+      while (parentId && depth < 100) {
+        depth += 1;
+        parentId = enrichedById.get(parentId)?.parentId ?? null;
+      }
+      item.depth = depth;
+      item.childCount = childrenByParent.get(item.id)?.length ?? 0;
+    }
+    const descendantPackages = (groupId) => {
+      const descendants = [];
+      const visit = (parentId) => {
+        for (const child of childrenByParent.get(parentId) ?? []) {
+          if (child.kind === 'work_package') descendants.push(child);
+          else visit(child.id);
+        }
+      };
+      visit(groupId);
+      return descendants;
+    };
+    for (const item of items) {
+      item.relatedItems = item.relatedTo
+        .map((id) => enrichedById.get(id))
+        .filter(Boolean)
+        .map(({ id, title, status }) => ({ id, title, status }));
+      if (item.kind === 'group') {
+        const leaves = descendantPackages(item.id);
+        const activeLeaves = leaves.filter(
+          (entry) => entry.status !== 'canceled',
+        );
+        const doneLeaves = activeLeaves.filter(
+          (entry) => entry.status === 'done',
+        ).length;
+        item.childProgress = {
+          done: doneLeaves,
+          total: activeLeaves.length,
+          percentage: activeLeaves.length
+            ? Math.round((doneLeaves / activeLeaves.length) * 100)
+            : null,
+        };
+      }
+    }
     const phases = base.phases.map((phase) => {
       const phaseItems = phase.workItems.map((item) =>
         enrichedById.get(item.id),
       );
-      const active = phaseItems.filter((item) => item.status !== 'canceled');
+      const orderedItems = [];
+      const orderedIds = new Set();
+      const appendTree = (item) => {
+        if (orderedIds.has(item.id)) return;
+        orderedIds.add(item.id);
+        orderedItems.push(item);
+        for (const child of childrenByParent.get(item.id) ?? [])
+          appendTree(child);
+      };
+      for (const item of phaseItems) {
+        if (!item.parentId) appendTree(item);
+      }
+      for (const item of phaseItems) appendTree(item);
+      const active = phaseItems.filter(
+        (item) => item.kind === 'work_package' && item.status !== 'canceled',
+      );
       const done = active.filter((item) => item.status === 'done').length;
       const submitted = active.filter(
         (item) => item.status === 'submitted',
       ).length;
-      const canceled = phaseItems.length - active.length;
+      const canceled = phaseItems.filter(
+        (item) => item.kind === 'work_package' && item.status === 'canceled',
+      ).length;
       const waitingForPhases = phase.dependsOn.filter(
         (id) => phaseById.get(id)?.status !== 'done',
       );
       return {
         ...phase,
-        workItems: phaseItems,
+        workItems: orderedItems,
         waitingForPhases,
         state: phaseState(phase, phaseById, phaseItems),
         progress: {
@@ -201,7 +293,9 @@ export class ProjectPlanStore {
         },
       };
     });
-    const activeItems = items.filter((item) => item.status !== 'canceled');
+    const activeItems = items.filter(
+      (item) => item.kind === 'work_package' && item.status !== 'canceled',
+    );
     const done = activeItems.filter((item) => item.status === 'done').length;
     const activePhases = phases.filter((phase) => phase.status !== 'canceled');
     const donePhases = activePhases.filter(
@@ -233,7 +327,9 @@ export class ProjectPlanStore {
           : null,
         submitted: activeItems.filter((item) => item.status === 'submitted')
           .length,
-        canceled: items.length - activeItems.length,
+        canceled: items.filter(
+          (item) => item.kind === 'work_package' && item.status === 'canceled',
+        ).length,
       },
       updatedAt: row?.created_at ?? null,
       reason: row?.reason ?? null,
@@ -249,25 +345,89 @@ export class ProjectPlanStore {
       .all(projectId);
   }
 
-  forAgent(projectId, agentId, itemId = null) {
+  forAgent(projectId, agentId, itemId = null, phaseId = null) {
+    if (itemId && phaseId) throw new Error('一次只能读取一个具体工作范围。');
     const plan = this.get(projectId);
+    const itemsById = new Map(plan.items.map((item) => [item.id, item]));
+    if (phaseId) {
+      const phase = plan.phases.find((entry) => entry.id === phaseId);
+      if (!phase) throw new Error('阶段不存在。');
+      const prerequisitePhases = phase.dependsOn.map((id) => {
+        const prerequisite = plan.phases.find((entry) => entry.id === id);
+        return {
+          id: prerequisite.id,
+          title: prerequisite.title,
+          outcome: prerequisite.outcome,
+          status: prerequisite.status,
+          evidence: prerequisite.evidence.slice(0, 500),
+        };
+      });
+      return {
+        projectId,
+        revision: plan.revision,
+        objective: plan.objective,
+        phase: {
+          ...phase,
+          evidence: phase.evidence.slice(0, 500),
+          workItems: phase.workItems.map((item) => ({
+            ...item,
+            acceptance: item.acceptance.slice(0, 400),
+            evidence: item.evidence.slice(0, 500),
+            blocker: item.blocker.slice(0, 300),
+          })),
+        },
+        prerequisitePhases,
+        dependencyItems: plan.items
+          .filter((item) =>
+            phase.workItems.some((workItem) =>
+              workItem.dependsOn.includes(item.id),
+            ),
+          )
+          .map((item) => ({
+            id: item.id,
+            title: item.title,
+            status: item.status,
+            evidence: item.evidence.slice(0, 500),
+          })),
+      };
+    }
     if (itemId) {
       const item = plan.items.find((item) => item.id === itemId);
       if (!item) throw new Error('交付项不存在。');
       const phase = plan.phases.find((phase) => phase.id === item.phaseId);
+      const descendants =
+        item.kind === 'group'
+          ? plan.items.filter((candidate) => {
+              let parentId = candidate.parentId;
+              while (parentId) {
+                if (parentId === item.id) return true;
+                parentId = itemsById.get(parentId)?.parentId ?? null;
+              }
+              return false;
+            })
+          : [];
       return {
         projectId,
         revision: plan.revision,
         objective: plan.objective,
         phase,
         item,
+        ...(item.kind === 'group' ? { descendants } : {}),
       };
     }
-    const own = new Set(
-      plan.items
-        .filter((item) => item.ownerAgentId === agentId)
-        .flatMap((item) => [item.id, ...item.dependsOn]),
-    );
+    const own = new Set();
+    for (const item of plan.items) {
+      if (item.kind !== 'work_package' || item.ownerAgentId !== agentId)
+        continue;
+      own.add(item.id);
+      item.dependsOn.forEach((id) => own.add(id));
+      item.relatedTo.forEach((id) => own.add(id));
+      let parentId = item.parentId;
+      while (parentId) {
+        own.add(parentId);
+        parentId = itemsById.get(parentId)?.parentId ?? null;
+      }
+    }
     const candidates = [...plan.items].sort(
       (a, b) => Number(own.has(b.id)) - Number(own.has(a.id)),
     );
@@ -325,6 +485,7 @@ export class ProjectPlanStore {
     );
     const phaseById = new Map();
     const byId = new Map();
+    const sourceItems = new Map();
     let itemCount = 0;
     for (const phase of plan.phases) {
       if (phaseById.has(phase.id)) throw new Error('阶段 ID 不能重复。');
@@ -332,28 +493,72 @@ export class ProjectPlanStore {
       for (const item of phase.workItems) {
         itemCount += 1;
         if (byId.has(item.id)) throw new Error('交付项 ID 不能重复。');
-        if (
-          !(
-            item.status === 'done' || item.status === 'canceled'
-              ? known
-              : members
-          ).has(item.ownerAgentId)
-        )
-          throw new Error(
-            '交付项负责人必须是项目中的活跃执行成员；历史已结束项保留原归属。',
-          );
+        if (item.kind === 'group') {
+          if (
+            item.ownerAgentId ||
+            item.acceptance ||
+            item.dependsOn.length ||
+            item.relatedTo.length ||
+            item.status !== 'pending' ||
+            item.evidence ||
+            item.blocker
+          )
+            throw new Error('结构分组不能设置执行状态、负责人或工作关系。');
+        } else {
+          if (!item.ownerAgentId || !item.acceptance)
+            throw new Error('可执行工作包必须包含负责人和验收条件。');
+          if (
+            !(
+              item.status === 'done' || item.status === 'canceled'
+                ? known
+                : members
+            ).has(item.ownerAgentId)
+          )
+            throw new Error(
+              '交付项负责人必须是项目中的活跃执行成员；历史已结束项保留原归属。',
+            );
+        }
         if (new Set(item.dependsOn).size !== item.dependsOn.length)
           throw new Error('交付项依赖不能重复。');
+        if (new Set(item.relatedTo).size !== item.relatedTo.length)
+          throw new Error('相关工作项不能重复。');
+        if (item.relatedTo.includes(item.id))
+          throw new Error('工作项不能关联自身。');
         if (['submitted', 'done'].includes(item.status) && !item.evidence)
           throw new Error('提交或验收前必须提供成果依据。');
         if (item.status === 'blocked' && !item.blocker)
           throw new Error('阻塞事项必须说明原因。');
         byId.set(item.id, { ...item, phaseId: phase.id });
+        sourceItems.set(item.id, item);
       }
       if (phase.status === 'done' && !phase.evidence)
         throw new Error('阶段验收必须提供成果依据。');
     }
     if (itemCount > 100) throw new Error('共享计划最多包含 100 项工作。');
+
+    const parentEntries = new Map();
+    for (const phase of plan.phases) {
+      for (const item of phase.workItems) {
+        if (!item.parentId) continue;
+        const parent = byId.get(item.parentId);
+        if (!parent || parent.phaseId !== phase.id || parent.kind !== 'group')
+          throw new Error('工作包只能归入同阶段的结构分组。');
+        parentEntries.set(item.id, parent);
+      }
+    }
+    const visitedParents = new Set();
+    const visitingParents = new Set();
+    const visitParent = (id) => {
+      if (visitingParents.has(id))
+        throw new Error('计划父子层级不能形成循环。');
+      if (visitedParents.has(id)) return;
+      visitingParents.add(id);
+      const parent = parentEntries.get(id);
+      if (parent) visitParent(parent.id);
+      visitingParents.delete(id);
+      visitedParents.add(id);
+    };
+    for (const item of byId.values()) visitParent(item.id);
 
     const validateGraph = (entries, getDependencies, getId, missingMessage) => {
       const visited = new Set();
@@ -385,6 +590,28 @@ export class ProjectPlanStore {
       (item) => item.id,
       '计划包含不存在的依赖（交付项依赖）。',
     );
+    for (const item of byId.values()) {
+      if (item.kind === 'group') continue;
+      if (item.relatedTo.some((id) => !byId.has(id)))
+        throw new Error('计划包含不存在的相关工作项。');
+      if (
+        [...item.dependsOn, ...item.relatedTo].some(
+          (id) => byId.get(id)?.kind !== 'work_package',
+        )
+      )
+        throw new Error('工作包关系只能指向可执行工作包。');
+    }
+    for (const [itemId, item] of sourceItems) {
+      for (const relatedId of item.relatedTo) {
+        if (
+          item.dependsOn.includes(relatedId) ||
+          byId.get(relatedId).dependsOn.includes(itemId)
+        )
+          throw new Error('同一对工作项不能同时标记为相关和阻塞依赖。');
+        const related = sourceItems.get(relatedId);
+        if (!related.relatedTo.includes(itemId)) related.relatedTo.push(itemId);
+      }
+    }
     for (const phase of plan.phases) {
       for (const dependencyId of phase.dependsOn) {
         if (
@@ -394,7 +621,9 @@ export class ProjectPlanStore {
           throw new Error('前置阶段尚未验收，不能完成后续阶段。');
       }
       const phaseItems = phase.workItems;
-      const active = phaseItems.filter((item) => item.status !== 'canceled');
+      const active = phaseItems.filter(
+        (item) => item.kind === 'work_package' && item.status !== 'canceled',
+      );
       if (phase.status === 'done') {
         if (!active.length || active.some((item) => item.status !== 'done'))
           throw new Error('阶段工作项未全部验收，不能完成阶段。');
@@ -402,6 +631,7 @@ export class ProjectPlanStore {
       if (phase.status === 'canceled' && active.length)
         throw new Error('取消阶段前必须先取消其中所有未完成工作项。');
       for (const item of phaseItems) {
+        if (item.kind === 'group') continue;
         const phasePrerequisitesDone = phase.dependsOn.every(
           (id) => phaseById.get(id)?.status === 'done',
         );
@@ -433,6 +663,7 @@ export class ProjectPlanStore {
     }
     const working = new Set();
     for (const item of byId.values()) {
+      if (item.kind === 'group') continue;
       if (item.status !== 'in_progress') continue;
       if (working.has(item.ownerAgentId))
         throw new Error('同一成员在本项目中只能同时推进一项计划工作。');
@@ -483,7 +714,28 @@ export class ProjectPlanStore {
   replace(input) {
     if (input.actorAgentId && input.actorAgentId !== 'noema')
       throw new Error('成员可提出规划建议；共享范围仅由用户或 Noema 修改。');
-    return this.db.transaction(() => this.write(input))();
+    return this.db.transaction(() => {
+      const current = this.get(input.projectId);
+      const normalizedPlan = normalizePlanInput(input.plan);
+      const priorSubmitters = new Map(
+        current.items.map((item) => [item.id, item.submittedByAgentId ?? null]),
+      );
+      const plan = Array.isArray(normalizedPlan?.phases)
+        ? {
+            ...normalizedPlan,
+            phases: normalizedPlan.phases.map((phase) => ({
+              ...phase,
+              workItems: Array.isArray(phase.workItems)
+                ? phase.workItems.map((item) => ({
+                    ...item,
+                    submittedByAgentId: priorSubmitters.get(item.id) ?? null,
+                  }))
+                : phase.workItems,
+            })),
+          }
+        : normalizedPlan;
+      return this.write({ ...input, plan });
+    })();
   }
 
   updateItem(input) {
@@ -491,15 +743,26 @@ export class ProjectPlanStore {
       const current = this.get(input.projectId);
       const item = current.items.find((item) => item.id === input.itemId);
       if (!item) throw new Error('交付项不存在。');
+      if (item.kind !== 'work_package')
+        throw new Error('结构分组不能推进状态；请更新其中的叶工作包。');
       const phase = current.phases.find((phase) => phase.id === item.phaseId);
       if (phase?.status === 'done' && input.status !== 'done')
         throw new Error(
           '工作项所属阶段已验收；请通过计划修订调整范围并重开相关阶段。',
         );
       const coordinator = !input.actorAgentId || input.actorAgentId === 'noema';
+      const patch = itemPatchSchema.parse(input.patch ?? {});
+      if (Object.keys(patch).length && !coordinator)
+        throw new Error('只有用户或 Noema 可以修改工作包结构与范围。');
       if (!coordinator && input.actorAgentId !== item.ownerAgentId)
         throw new Error('成员只能更新自己负责的交付项。');
-      const status = statusSchema.parse(input.status);
+      const status = statusSchema.parse(input.status ?? item.status);
+      if (
+        status === 'submitted' &&
+        item.status !== 'submitted' &&
+        input.actorAgentId === 'noema'
+      )
+        throw new Error('Noema 不能代替负责人提交成果。');
       if (
         !coordinator &&
         (['done', 'canceled'].includes(status) ||
@@ -510,7 +773,16 @@ export class ProjectPlanStore {
         throw new Error('交付项状态转换无效。');
       const updated = {
         ...item,
+        ...patch,
         status,
+        submittedByAgentId:
+          status === 'submitted'
+            ? item.status === 'submitted'
+              ? item.submittedByAgentId
+              : (input.actorAgentId ?? 'user')
+            : status === 'done'
+              ? item.submittedByAgentId
+              : null,
         evidence: input.evidence ?? item.evidence,
         blocker: input.blocker ?? item.blocker,
       };
@@ -521,7 +793,19 @@ export class ProjectPlanStore {
           phases: current.phases.map((phase) => ({
             ...phase,
             workItems: phase.workItems.map((entry) =>
-              entry.id === item.id ? updated : entry,
+              entry.id === item.id
+                ? updated
+                : patch.relatedTo
+                  ? {
+                      ...entry,
+                      relatedTo: patch.relatedTo.includes(entry.id)
+                        ? [
+                            ...entry.relatedTo.filter((id) => id !== item.id),
+                            item.id,
+                          ]
+                        : entry.relatedTo.filter((id) => id !== item.id),
+                    }
+                  : entry,
             ),
           })),
         },
@@ -542,7 +826,7 @@ export class ProjectPlanStore {
         if (!input.evidence?.trim())
           throw new Error('阶段验收必须提供阶段成果依据。');
         const active = phase.workItems.filter(
-          (item) => item.status !== 'canceled',
+          (item) => item.kind === 'work_package' && item.status !== 'canceled',
         );
         if (!active.length || active.some((item) => item.status !== 'done'))
           throw new Error('阶段工作项未全部验收，不能完成阶段。');
@@ -557,7 +841,10 @@ export class ProjectPlanStore {
           throw new Error('前置阶段尚未验收，不能完成后续阶段。');
       } else if (input.status === 'canceled' && phase.status !== 'canceled') {
         if (
-          phase.workItems.some((item) => item.status !== 'canceled') ||
+          phase.workItems.some(
+            (item) =>
+              item.kind === 'work_package' && item.status !== 'canceled',
+          ) ||
           current.phases.some(
             (entry) =>
               entry.dependsOn.includes(phase.id) &&

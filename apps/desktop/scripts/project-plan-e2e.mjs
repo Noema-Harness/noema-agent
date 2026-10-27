@@ -186,6 +186,12 @@ try {
   await wait(
     `document.querySelector('[data-plan-item-id="venue-budget"]')?.textContent.includes('待验收')`,
   );
+  assert.equal(
+    await evaluate(
+      `document.querySelector('[data-plan-item-id="venue-budget"]')?.textContent.includes('提交者：用户')`,
+    ),
+    true,
+  );
   await screenshot('submitted-evidence.png');
   await click('验收工作项', '[data-plan-item-id="venue-budget"]');
   await click('核验阶段出口', '[data-plan-phase-id="pilot"]');
