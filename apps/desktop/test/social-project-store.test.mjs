@@ -91,6 +91,364 @@ test('a project creates one shared room and separate hidden member sessions', ()
   }
 });
 
+test('project growth is keyed to accepted plan revisions and settles each member once', () => {
+  const stores = makeStores();
+  const first = createMember(stores.socialChatStore, '研究员');
+  const second = createMember(stores.socialChatStore, '审阅员');
+  try {
+    const project = createProject(stores, first);
+    stores.socialProjectStore.addProjectMember(project.id, second.agentId);
+    stores.socialProjectStore.plans.replace({
+      projectId: project.id,
+      expectedRevision: 0,
+      actorAgentId: 'noema',
+      reason: '项目成果已核验。',
+      plan: {
+        stage: '交付',
+        objective: '形成可追溯的价格追踪方案。',
+        items: [
+          {
+            id: 'deliver',
+            title: '提交核验后的结果',
+            ownerAgentId: first.agentId,
+            acceptance: '有来源且可复核。',
+            dependsOn: [],
+            status: 'done',
+            evidence: '结果与来源已核对。',
+            blocker: '',
+          },
+        ],
+      },
+    });
+
+    const batch = stores.socialProjectStore.createProjectGrowthBatch(
+      project.id,
+    );
+    assert.equal(batch.status, 'running');
+    assert.equal(batch.planRevision, 1);
+    assert.deepEqual(
+      new Set(batch.members.map((member) => member.agentId)),
+      new Set([first.agentId, second.agentId]),
+    );
+    assert.equal(
+      stores.socialProjectStore.createProjectGrowthBatch(project.id).id,
+      batch.id,
+      'retrying the same accepted plan revision must not create another batch',
+    );
+
+    const firstClaim = stores.socialProjectStore.claimNextProjectGrowthMember(
+      batch.id,
+    );
+    assert.equal(firstClaim.agentId, batch.members[0].agentId);
+    stores.socialProjectStore.bindProjectGrowthTurn(
+      batch.id,
+      firstClaim.agentId,
+      'growth-turn-first',
+    );
+    let state = stores.socialProjectStore.finishProjectGrowthMember(
+      batch.id,
+      firstClaim.agentId,
+      { status: 'no_change', brief: '本次没有形成新的可复用方法。' },
+    );
+    assert.equal(state.status, 'running');
+    const secondClaim = stores.socialProjectStore.claimNextProjectGrowthMember(
+      batch.id,
+    );
+    assert.equal(secondClaim.agentId, batch.members[1].agentId);
+    state = stores.socialProjectStore.finishProjectGrowthMember(
+      batch.id,
+      secondClaim.agentId,
+      { status: 'completed', brief: '本次核验方法已记录为经历。' },
+    );
+    assert.equal(state.status, 'completed');
+    assert.deepEqual(
+      state.members.map((member) => member.status),
+      ['no_change', 'completed'],
+    );
+    const firstBriefs = stores.socialProjectStore.getPendingProjectGrowthBriefs(
+      firstClaim.agentId,
+    );
+    assert.equal(firstBriefs.length, 1);
+    assert.equal(firstBriefs[0].text, '本次没有形成新的可复用方法。');
+    assert.equal(
+      stores.socialProjectStore.markProjectGrowthBriefsSeen(
+        firstClaim.agentId,
+        [batch.id],
+      ),
+      1,
+    );
+    assert.deepEqual(
+      stores.socialProjectStore.getPendingProjectGrowthBriefs(
+        firstClaim.agentId,
+      ),
+      [],
+    );
+    assert.equal(
+      stores.socialProjectStore.getPendingProjectGrowthBriefs(
+        secondClaim.agentId,
+      ).length,
+      1,
+      'one member reading a brief must not mark another member’s brief as seen',
+    );
+    assert.equal(
+      stores.socialProjectStore.createProjectGrowthBatch(project.id).id,
+      batch.id,
+      'a completed revision cannot replay completed member reviews',
+    );
+  } finally {
+    stores.db.close();
+  }
+});
+
+test('growth cannot start before the shared plan is accepted or while project work is active', () => {
+  const stores = makeStores();
+  const member = createMember(stores.socialChatStore);
+  try {
+    const project = createProject(stores, member);
+    assert.throws(
+      () => stores.socialProjectStore.createProjectGrowthBatch(project.id),
+      /尚无可验收的共享计划/,
+    );
+    stores.socialProjectStore.plans.replace({
+      projectId: project.id,
+      expectedRevision: 0,
+      actorAgentId: 'noema',
+      reason: '建立交付计划。',
+      plan: {
+        stage: '交付',
+        objective: '完成并核验结果。',
+        items: [
+          {
+            id: 'deliver',
+            title: '完成交付',
+            ownerAgentId: member.agentId,
+            acceptance: '结果可复核。',
+            dependsOn: [],
+            status: 'pending',
+            evidence: '',
+            blocker: '',
+          },
+        ],
+      },
+    });
+    assert.throws(
+      () => stores.socialProjectStore.createProjectGrowthBatch(project.id),
+      /仍有未验收或阻塞事项/,
+    );
+    stores.socialProjectStore.plans.replace({
+      projectId: project.id,
+      expectedRevision: 1,
+      actorAgentId: 'noema',
+      reason: '接受已核验交付。',
+      plan: {
+        stage: '交付',
+        objective: '完成并核验结果。',
+        items: [
+          {
+            id: 'deliver',
+            title: '完成交付',
+            ownerAgentId: member.agentId,
+            acceptance: '结果可复核。',
+            dependsOn: [],
+            status: 'done',
+            evidence: '已核对结果。',
+            blocker: '',
+          },
+        ],
+      },
+    });
+    const turn = stores.socialChatStore.beginTurn({
+      roomId: project.groupRoomId,
+      agentId: 'noema',
+      text: '还有回复正在生成。',
+      model: 'test-model',
+    });
+    assert.throws(
+      () => stores.socialProjectStore.createProjectGrowthBatch(project.id),
+      /仍有对话、待处理群消息或执行在进行/,
+    );
+    stores.socialChatStore.interruptReply(turn.assistantMessageId);
+  } finally {
+    stores.db.close();
+  }
+});
+
+test('growth recovery preserves settled members and marks an in-flight member interrupted', () => {
+  const stores = makeStores();
+  const first = createMember(stores.socialChatStore, '研究员');
+  const second = createMember(stores.socialChatStore, '审阅员');
+  try {
+    const project = createProject(stores, first);
+    stores.socialProjectStore.addProjectMember(project.id, second.agentId);
+    stores.socialProjectStore.plans.replace({
+      projectId: project.id,
+      expectedRevision: 0,
+      actorAgentId: 'noema',
+      reason: '交付已验证。',
+      plan: {
+        stage: '交付',
+        objective: '记录成员的真实项目经历。',
+        items: [
+          {
+            id: 'deliver',
+            title: '交付已验证结果',
+            ownerAgentId: first.agentId,
+            acceptance: '可复核。',
+            dependsOn: [],
+            status: 'done',
+            evidence: '已检查结果。',
+            blocker: '',
+          },
+        ],
+      },
+    });
+    const batch = stores.socialProjectStore.createProjectGrowthBatch(
+      project.id,
+    );
+    const firstGrowth = stores.socialProjectStore.claimNextProjectGrowthMember(
+      batch.id,
+    );
+    const firstTurn = stores.socialChatStore.beginTurn({
+      roomId: firstGrowth.sessionRoomId,
+      agentId: firstGrowth.agentId,
+      senderAgentId: 'noema',
+      text: '复盘第一项工作。',
+      model: 'test-model',
+    });
+    stores.socialProjectStore.bindProjectGrowthTurn(
+      batch.id,
+      firstGrowth.agentId,
+      firstTurn.turnId,
+    );
+    stores.socialChatStore.writeAgentAsset({
+      agentId: firstGrowth.agentId,
+      path: 'experiences/delivery.md',
+      content: '有证据的经历。',
+      reason: '验证恢复时能识别已完成资产写入。',
+      sourceTurnId: firstTurn.turnId,
+      sourceProjectId: project.id,
+    });
+    stores.socialChatStore.appendAssistantDelta(
+      firstTurn.assistantMessageId,
+      '第一位成员完成了自审并保存了经历。',
+    );
+    stores.socialChatStore.completeReply(firstTurn.assistantMessageId);
+
+    const secondGrowth = stores.socialProjectStore.claimNextProjectGrowthMember(
+      batch.id,
+    );
+    const secondTurn = stores.socialChatStore.beginTurn({
+      roomId: secondGrowth.sessionRoomId,
+      agentId: secondGrowth.agentId,
+      senderAgentId: 'noema',
+      text: '复盘第二项工作。',
+      model: 'test-model',
+    });
+    stores.socialProjectStore.bindProjectGrowthTurn(
+      batch.id,
+      secondGrowth.agentId,
+      secondTurn.turnId,
+    );
+
+    const recovered = new SocialProjectStore({
+      db: stores.db,
+      socialChatStore: stores.socialChatStore,
+    }).getProjectGrowthBatch(batch.id);
+    assert.equal(recovered.status, 'running');
+    assert.deepEqual(
+      recovered.members.map((member) => member.status),
+      ['completed', 'interrupted'],
+    );
+    assert.equal(recovered.members[0].turnId, firstTurn.turnId);
+    assert.match(recovered.members[0].brief, /第一位成员完成/u);
+    assert.equal(
+      stores.socialProjectStore.getPendingProjectGrowthBriefs(
+        firstGrowth.agentId,
+      ).length,
+      1,
+    );
+    assert.equal(
+      stores.socialProjectStore
+        .retryProjectGrowthMember(batch.id, secondGrowth.agentId)
+        .members.find((member) => member.agentId === secondGrowth.agentId)
+        .status,
+      'pending',
+    );
+  } finally {
+    stores.db.close();
+  }
+});
+
+test('growth retry refuses to replay a failed turn after it changed member assets', () => {
+  const stores = makeStores();
+  const member = createMember(stores.socialChatStore);
+  try {
+    const project = createProject(stores, member);
+    stores.socialProjectStore.plans.replace({
+      projectId: project.id,
+      expectedRevision: 0,
+      actorAgentId: 'noema',
+      reason: '交付已核验。',
+      plan: {
+        stage: '交付',
+        objective: '完成后整理成员经历。',
+        items: [
+          {
+            id: 'done',
+            title: '交付结果',
+            ownerAgentId: member.agentId,
+            acceptance: '已核验。',
+            dependsOn: [],
+            status: 'done',
+            evidence: '完成。',
+            blocker: '',
+          },
+        ],
+      },
+    });
+    const batch = stores.socialProjectStore.createProjectGrowthBatch(
+      project.id,
+    );
+    const claimed = stores.socialProjectStore.claimNextProjectGrowthMember(
+      batch.id,
+    );
+    stores.socialProjectStore.bindProjectGrowthTurn(
+      batch.id,
+      member.agentId,
+      'failed-after-asset-write',
+    );
+    stores.socialProjectStore.failProjectGrowthMember(
+      batch.id,
+      member.agentId,
+      { status: 'failed', code: 'provider_timeout', message: '中断' },
+    );
+    stores.socialChatStore.writeAgentAsset({
+      agentId: member.agentId,
+      path: 'memory.md',
+      content: '已有本轮资产副作用。',
+      reason: '验证失败后不盲目重放。',
+      sourceTurnId: 'failed-after-asset-write',
+      sourceProjectId: project.id,
+    });
+    assert.equal(claimed.agentId, member.agentId);
+    assert.throws(
+      () =>
+        stores.socialProjectStore.retryProjectGrowthMember(
+          batch.id,
+          member.agentId,
+        ),
+      /已写入成员资产/u,
+    );
+    assert.equal(
+      stores.socialProjectStore.getProjectGrowthBatch(batch.id).members[0]
+        .status,
+      'failed',
+    );
+  } finally {
+    stores.db.close();
+  }
+});
+
 test('forming a project team atomically creates missing members and their project sessions', () => {
   const stores = makeStores();
   const existing = createMember(stores.socialChatStore, '研究员');
@@ -447,6 +805,9 @@ test('schema v11 upgrades to the current schema without deleting chats or re-ena
   const roomBefore = oldStore.getRoomSnapshot('room-engineering-collaboration');
   try {
     db.exec(`
+      DROP TABLE IF EXISTS social_project_growth_members;
+      DROP TABLE IF EXISTS social_project_growth_batches;
+      DELETE FROM social_schema_migrations WHERE version = 23;
       DROP TABLE IF EXISTS social_project_dispatch_log;
       DROP TABLE IF EXISTS social_project_publications;
       DROP TABLE IF EXISTS social_project_read_cursors;
@@ -478,7 +839,7 @@ test('schema v11 upgrades to the current schema without deleting chats or re-ena
       db
         .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
         .get().version,
-      22,
+      23,
     );
     assert.deepEqual(
       upgradedStore

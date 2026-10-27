@@ -1464,3 +1464,229 @@ test('social state does not expose the legacy root transcript to the social rend
     db.close();
   }
 });
+
+test('project completion reviews members in project sessions and delivers their brief to the resident chat', async () => {
+  const db = new Database(':memory:');
+  new RootStore(db);
+  const store = createSocialTestStore(db);
+  const projects = new SocialProjectStore({ db, socialChatStore: store });
+  const project = projects.createProject({
+    id: 'growth-service-project',
+    title: '成长闭环验证',
+    brief: '验证成员项目经历与常驻会话之间的交接。',
+    agentIds: ['noema', 'engineering-partner'],
+  });
+  projects.plans.replace({
+    projectId: project.id,
+    expectedRevision: 0,
+    actorAgentId: 'noema',
+    reason: '交付已通过核验。',
+    plan: {
+      stage: '交付',
+      objective: '确认成员自审能完成并被常驻会话读取。',
+      items: [
+        {
+          id: 'verified',
+          title: '验证完整成长交接',
+          ownerAgentId: 'engineering-partner',
+          acceptance: '项目会话留下简报，常驻会话收到一次。',
+          dependsOn: [],
+          status: 'done',
+          evidence: '服务集成测试覆盖完成。',
+          blocker: '',
+        },
+      ],
+    },
+  });
+  const requests = [];
+  let providerFailure = null;
+  const provider = {
+    async *streamChat(input) {
+      requests.push(input);
+      try {
+        const messages = input.messages;
+        if (
+          input.tools?.some(
+            (tool) => tool.function?.name === 'complete_project',
+          )
+        ) {
+          input.onToolCalls?.([
+            {
+              id: 'complete-growth-project',
+              type: 'function',
+              function: {
+                name: 'complete_project',
+                arguments: JSON.stringify({ project_id: project.id }),
+              },
+            },
+          ]);
+          return;
+        }
+        if (
+          messages.some((message) =>
+            message.content?.includes('noema_member_project_experience_briefs'),
+          )
+        ) {
+          assert.equal(
+            messages.some(
+              (message) =>
+                message.role === 'system' &&
+                message.content.includes('它们是有限的历史材料'),
+            ),
+            true,
+          );
+          yield '我收到了项目经历简报。';
+          return;
+        }
+        if (
+          messages.some(
+            (message) =>
+              message.role === 'tool' &&
+              message.name === 'manage_member_assets',
+          )
+        ) {
+          yield '我在项目中负责闭环验证；本次结果支持保留经历简报交接记录。';
+          return;
+        }
+        const growthSystem = messages.find(
+          (message) =>
+            message.role === 'system' &&
+            message.content.includes('这是系统安排的内部经历复核回合'),
+        );
+        if (growthSystem) {
+          const names = input.tools?.map((tool) => tool.function.name) ?? [];
+          assert.deepEqual(names, ['manage_member_assets']);
+          assert.equal(
+            messages.some((message) =>
+              message.content?.includes(
+                '项目「成长闭环验证」已完成当前共享计划',
+              ),
+            ),
+            true,
+          );
+          input.onToolCalls?.([
+            {
+              id: 'growth-asset-write',
+              type: 'function',
+              function: {
+                name: 'manage_member_assets',
+                arguments: JSON.stringify({
+                  operation: 'write',
+                  path: 'experiences/project-growth.md',
+                  content: '本次项目确认了简报交接路径。',
+                  reason: '端到端验证确认该机制可运行。',
+                }),
+              },
+            },
+          ]);
+          return;
+        }
+        yield '成员自审已经开始。';
+      } catch (error) {
+        providerFailure = error;
+        throw error;
+      }
+    },
+  };
+  const service = new SocialChatService({
+    store,
+    projectStore: projects,
+    getProjectSessionContext: (roomId, agentId) =>
+      projects.getProjectSessionContext(roomId, agentId),
+    provider,
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'test-model',
+    getRootState: async () => ({
+      connected: true,
+      selectedModel: 'test-model',
+    }),
+  });
+
+  try {
+    const rootTurn = service.sendMessage({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '验收已经完成，请完成项目。',
+    });
+    await service.active.get('room-noema')?.done;
+    const batchId = db
+      .prepare(
+        'SELECT id FROM social_project_growth_batches WHERE project_id = ?',
+      )
+      .get(project.id)?.id;
+    assert.ok(batchId);
+    const memberRoomId = projects.getProjectSession(
+      project.id,
+      'engineering-partner',
+    ).room.room.id;
+    for (let i = 0; i < 100; i++) {
+      if (
+        projects.getProjectGrowthBatch(batchId).status === 'completed' &&
+        !service.active.has(memberRoomId)
+      )
+        break;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    const batch = projects.getProjectGrowthBatch(batchId);
+    assert.equal(
+      batch.status,
+      'completed',
+      `${JSON.stringify(batch)}; provider=${providerFailure?.stack ?? 'none'}`,
+    );
+    assert.equal(batch.members[0].status, 'completed');
+    assert.match(batch.members[0].brief, /闭环验证/u);
+    assert.equal(
+      store.getAgentAsset(
+        'engineering-partner',
+        'experiences/project-growth.md',
+      )?.sourceProjectId,
+      project.id,
+    );
+    assert.ok(
+      requests.some((request) =>
+        request.messages.some((message) =>
+          message.content?.includes('noema_member_assets'),
+        ),
+      ),
+    );
+
+    const residentRoomId = store.getAgentResidentRoomId('engineering-partner');
+    assert.equal(store.getRoomSnapshot(residentRoomId).room.kind, 'direct');
+    assert.equal(
+      store.getAgentResidentRoomId('engineering-partner'),
+      residentRoomId,
+    );
+    assert.equal(
+      projects.getPendingProjectGrowthBriefs('engineering-partner').length,
+      1,
+      JSON.stringify(batch),
+    );
+    const residentTurn = service.sendMessage({
+      roomId: residentRoomId,
+      agentId: 'engineering-partner',
+      text: '最近有值得回顾的项目经历吗？',
+    });
+    await service.active.get(residentRoomId)?.done;
+    const residentRequest = requests.at(-1);
+    const injected = residentRequest.messages.find((message) =>
+      message.content?.includes('noema_member_project_experience_briefs'),
+    );
+    assert.ok(injected, JSON.stringify(residentRequest.messages));
+    assert.equal(injected.content.includes('成长闭环验证'), true);
+    assert.deepEqual(
+      projects.getPendingProjectGrowthBriefs('engineering-partner'),
+      [],
+    );
+    assert.equal(
+      store.getSocialMessage(residentTurn.messageId)?.status,
+      'complete',
+    );
+    assert.equal(
+      store.getSocialMessage(rootTurn.messageId)?.status,
+      'complete',
+    );
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});

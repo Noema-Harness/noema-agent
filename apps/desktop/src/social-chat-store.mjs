@@ -702,6 +702,7 @@ export class SocialChatStore {
               REFERENCES social_messages(id) ON DELETE SET NULL,
             error_code TEXT,
             error_message TEXT,
+            resident_seen_at TEXT,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             completed_at TEXT,
@@ -811,6 +812,46 @@ export class SocialChatStore {
             message_id TEXT NOT NULL UNIQUE REFERENCES social_messages(id) ON DELETE CASCADE
           );
           INSERT INTO social_schema_migrations(version, applied_at) VALUES (22, '${isoNow()}');
+        `);
+      })();
+    }
+    if (current < 23) {
+      this.db.transaction(() => {
+        this.db.exec(`
+          CREATE TABLE social_project_growth_batches (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL REFERENCES social_projects(id) ON DELETE CASCADE,
+            plan_revision INTEGER NOT NULL CHECK (plan_revision > 0),
+            status TEXT NOT NULL DEFAULT 'running'
+              CHECK (status IN ('running', 'completed')),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            completed_at TEXT,
+            UNIQUE (project_id, plan_revision),
+            CHECK ((status = 'completed') = (completed_at IS NOT NULL))
+          );
+          CREATE TABLE social_project_growth_members (
+            batch_id TEXT NOT NULL REFERENCES social_project_growth_batches(id) ON DELETE CASCADE,
+            agent_id TEXT NOT NULL REFERENCES social_agents(id) ON DELETE RESTRICT,
+            session_room_id TEXT NOT NULL REFERENCES social_rooms(id) ON DELETE RESTRICT,
+            status TEXT NOT NULL DEFAULT 'pending'
+              CHECK (status IN ('pending', 'running', 'completed', 'no_change', 'interrupted', 'failed')),
+            turn_id TEXT UNIQUE,
+            brief TEXT,
+            error_code TEXT,
+            error_message TEXT,
+            resident_seen_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            completed_at TEXT,
+            PRIMARY KEY (batch_id, agent_id),
+            CHECK ((status IN ('completed', 'no_change')) = (completed_at IS NOT NULL)),
+            CHECK ((status IN ('completed', 'no_change')) = (brief IS NOT NULL))
+          );
+          CREATE INDEX social_project_growth_members_status
+            ON social_project_growth_members(batch_id, status, created_at);
+          INSERT INTO social_schema_migrations(version, applied_at)
+          VALUES (23, '${isoNow()}');
         `);
       })();
     }

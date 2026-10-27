@@ -21,6 +21,7 @@ export class SocialProjectStore {
     this.db = db;
     this.socialChatStore = socialChatStore;
     this.plans = new ProjectPlanStore(db);
+    this.recoverProjectGrowthMembers();
   }
 
   listProjects({ includeArchived = true } = {}) {
@@ -101,6 +102,406 @@ export class SocialProjectStore {
         : {}),
       members,
     };
+  }
+
+  getProjectGrowthBatch(batchId) {
+    requireText(batchId, '成长批次 ID', 200);
+    const batch = this.db
+      .prepare(`
+        SELECT id, project_id AS projectId, plan_revision AS planRevision,
+               status, created_at AS createdAt, updated_at AS updatedAt,
+               completed_at AS completedAt
+        FROM social_project_growth_batches WHERE id = ?
+      `)
+      .get(batchId);
+    if (!batch) return null;
+    const members = this.db
+      .prepare(`
+        SELECT gm.agent_id AS agentId, a.name AS agentName,
+               gm.session_room_id AS sessionRoomId, gm.status,
+               gm.turn_id AS turnId, gm.brief, gm.error_code AS errorCode,
+               gm.error_message AS errorMessage,
+               gm.created_at AS createdAt, gm.updated_at AS updatedAt,
+               gm.completed_at AS completedAt
+        FROM social_project_growth_members AS gm
+        JOIN social_agents AS a ON a.id = gm.agent_id
+        WHERE gm.batch_id = ? ORDER BY gm.created_at, gm.agent_id
+      `)
+      .all(batchId);
+    return { ...batch, members };
+  }
+
+  createProjectGrowthBatch(projectId) {
+    requireText(projectId, '项目 ID', 200);
+    return this.db.transaction(() => {
+      const project = this.getProject(projectId);
+      const plan = this.plans.get(projectId);
+      const existing = plan.revision
+        ? this.db
+            .prepare(`
+              SELECT id FROM social_project_growth_batches
+              WHERE project_id = ? AND plan_revision = ?
+            `)
+            .get(projectId, plan.revision)
+        : null;
+      if (existing) return this.getProjectGrowthBatch(existing.id);
+      if (project.status !== 'active') {
+        throw new Error('只有进行中的项目可以开始成长整理。');
+      }
+      if (project.pendingReview) {
+        throw new Error('项目仍在等待用户评审，不能开始成长整理。');
+      }
+      if (!plan.revision || !plan.items.length) {
+        throw new Error('项目尚无可验收的共享计划，不能开始成长整理。');
+      }
+      if (
+        plan.items.some((item) => !['done', 'canceled'].includes(item.status))
+      ) {
+        throw new Error('共享计划仍有未验收或阻塞事项，不能开始成长整理。');
+      }
+      if (!plan.items.some((item) => item.status === 'done')) {
+        throw new Error('共享计划没有已验收的交付，不能启动成员成长整理。');
+      }
+      const activeWork = this.db
+        .prepare(`
+          SELECT 1 FROM social_work_tasks
+          WHERE status IN ('starting', 'running', 'verifying')
+            AND (room_id = ? OR room_id IN (
+              SELECT room_id FROM social_project_sessions WHERE project_id = ?
+            ))
+          UNION ALL
+          SELECT 1 FROM social_messages
+          WHERE status = 'streaming' AND (room_id = ? OR room_id IN (
+            SELECT room_id FROM social_project_sessions WHERE project_id = ?
+          ))
+          UNION ALL
+          SELECT 1 FROM social_project_group_inbox WHERE project_id = ?
+          UNION ALL
+          SELECT 1 FROM social_project_reports
+          WHERE project_id = ? AND status IN ('pending', 'processing')
+          LIMIT 1
+        `)
+        .get(
+          project.groupRoomId,
+          projectId,
+          project.groupRoomId,
+          projectId,
+          projectId,
+          projectId,
+        );
+      if (activeWork) {
+        throw new Error('项目仍有对话、待处理群消息或执行在进行。');
+      }
+      const members = this.db
+        .prepare(`
+          SELECT ps.agent_id AS agentId, ps.room_id AS sessionRoomId
+          FROM social_project_sessions AS ps
+          JOIN social_agents AS a ON a.id = ps.agent_id
+          WHERE ps.project_id = ? AND ps.status = 'active'
+            AND a.archived_at IS NULL AND a.kind = 'specialist'
+          ORDER BY ps.joined_at, ps.agent_id
+        `)
+        .all(projectId);
+      if (!members.length) throw new Error('项目没有可复盘的活跃专业成员。');
+
+      const id = randomUUID();
+      const now = isoNow();
+      this.db
+        .prepare(`
+          INSERT INTO social_project_growth_batches
+            (id, project_id, plan_revision, status, created_at, updated_at)
+          VALUES (?, ?, ?, 'running', ?, ?)
+        `)
+        .run(id, projectId, plan.revision, now, now);
+      const insertMember = this.db.prepare(`
+        INSERT INTO social_project_growth_members
+          (batch_id, agent_id, session_room_id, status, created_at, updated_at)
+        VALUES (?, ?, ?, 'pending', ?, ?)
+      `);
+      for (const member of members) {
+        insertMember.run(id, member.agentId, member.sessionRoomId, now, now);
+      }
+      return this.getProjectGrowthBatch(id);
+    })();
+  }
+
+  claimNextProjectGrowthMember(batchId) {
+    requireText(batchId, '成长批次 ID', 200);
+    return this.db.transaction(() => {
+      const row = this.db
+        .prepare(`
+          SELECT gm.agent_id AS agentId, gm.session_room_id AS sessionRoomId,
+                 gm.status, b.project_id AS projectId, b.plan_revision AS planRevision
+          FROM social_project_growth_members AS gm
+          JOIN social_project_growth_batches AS b ON b.id = gm.batch_id
+          WHERE gm.batch_id = ? AND gm.status = 'pending' AND b.status = 'running'
+          ORDER BY gm.created_at, gm.agent_id LIMIT 1
+        `)
+        .get(batchId);
+      if (!row) return null;
+      const now = isoNow();
+      const claimed = this.db
+        .prepare(`
+          UPDATE social_project_growth_members SET status = 'running',
+            error_code = NULL, error_message = NULL, updated_at = ?
+          WHERE batch_id = ? AND agent_id = ? AND status = 'pending'
+        `)
+        .run(now, batchId, row.agentId);
+      if (claimed.changes !== 1) return null;
+      return { ...row, status: 'running' };
+    })();
+  }
+
+  bindProjectGrowthTurn(batchId, agentId, turnId) {
+    const id = requireText(batchId, '成长批次 ID', 200);
+    const member = requireText(agentId, '成员 ID', 200);
+    const turn = requireText(turnId, '成长轮次 ID', 200);
+    const now = isoNow();
+    const updated = this.db
+      .prepare(`
+        UPDATE social_project_growth_members SET turn_id = ?, updated_at = ?
+        WHERE batch_id = ? AND agent_id = ? AND status = 'running'
+          AND (turn_id IS NULL OR turn_id = ?)
+      `)
+      .run(turn, now, id, member, turn);
+    if (updated.changes !== 1) throw new Error('成长轮次无法绑定到当前成员。');
+    return this.getProjectGrowthBatch(id);
+  }
+
+  finishProjectGrowthMember(batchId, agentId, { status, brief }) {
+    if (!['completed', 'no_change'].includes(status)) {
+      throw new TypeError('成员成长结果状态无效。');
+    }
+    const normalizedBrief = requireText(brief, '经历简报', 4_000);
+    const now = isoNow();
+    return this.db.transaction(() => {
+      const existing = this.db
+        .prepare(`
+          SELECT status, brief FROM social_project_growth_members
+          WHERE batch_id = ? AND agent_id = ?
+        `)
+        .get(batchId, agentId);
+      if (!existing) throw new Error('找不到该成员的成长任务。');
+      if (['completed', 'no_change'].includes(existing.status)) {
+        if (existing.status === status && existing.brief === normalizedBrief)
+          return this.getProjectGrowthBatch(batchId);
+        throw new Error('该成员的成长结果已提交，不能覆盖。');
+      }
+      if (existing.status !== 'running') {
+        throw new Error('该成员的成长任务尚未运行或已结束。');
+      }
+      this.db
+        .prepare(`
+          UPDATE social_project_growth_members
+          SET status = ?, brief = ?, error_code = NULL, error_message = NULL,
+              updated_at = ?, completed_at = ?
+          WHERE batch_id = ? AND agent_id = ? AND status = 'running'
+        `)
+        .run(status, normalizedBrief, now, now, batchId, agentId);
+      const remaining = this.db
+        .prepare(`
+          SELECT 1 FROM social_project_growth_members
+          WHERE batch_id = ? AND status NOT IN ('completed', 'no_change') LIMIT 1
+        `)
+        .get(batchId);
+      if (!remaining) {
+        this.db
+          .prepare(`
+            UPDATE social_project_growth_batches
+            SET status = 'completed', updated_at = ?, completed_at = ?
+            WHERE id = ? AND status = 'running'
+          `)
+          .run(now, now, batchId);
+      }
+      return this.getProjectGrowthBatch(batchId);
+    })();
+  }
+
+  failProjectGrowthMember(batchId, agentId, { status, code, message }) {
+    if (!['interrupted', 'failed'].includes(status)) {
+      throw new TypeError('成员成长失败状态无效。');
+    }
+    const now = isoNow();
+    const updated = this.db
+      .prepare(`
+        UPDATE social_project_growth_members
+        SET status = ?, error_code = ?, error_message = ?, updated_at = ?
+        WHERE batch_id = ? AND agent_id = ? AND status = 'running'
+      `)
+      .run(
+        status,
+        typeof code === 'string' ? code.slice(0, 100) : null,
+        typeof message === 'string' ? message.slice(0, 500) : null,
+        now,
+        batchId,
+        agentId,
+      );
+    if (updated.changes !== 1) throw new Error('该成员的成长任务状态已变化。');
+    this.db
+      .prepare(`
+        UPDATE social_project_growth_batches SET updated_at = ?
+        WHERE id = ? AND status = 'running'
+      `)
+      .run(now, batchId);
+    return this.getProjectGrowthBatch(batchId);
+  }
+
+  retryProjectGrowthMember(batchId, agentId) {
+    const existing = this.db
+      .prepare(`
+        SELECT turn_id AS turnId, status FROM social_project_growth_members
+        WHERE batch_id = ? AND agent_id = ?
+      `)
+      .get(batchId, agentId);
+    if (!existing) throw new Error('找不到该成员的成长任务。');
+    if (!['interrupted', 'failed'].includes(existing.status)) {
+      throw new Error('该成员的成长任务当前不能重试。');
+    }
+    if (
+      existing.turnId &&
+      this.db
+        .prepare(`
+          SELECT 1 FROM social_agent_asset_revisions
+          WHERE agent_id = ? AND source_turn_id = ? LIMIT 1
+        `)
+        .get(agentId, existing.turnId)
+    ) {
+      throw new Error(
+        '该轮已写入成员资产；为避免重复写入，请先核对资产修订再决定如何续接。',
+      );
+    }
+    const now = isoNow();
+    const updated = this.db
+      .prepare(`
+        UPDATE social_project_growth_members
+        SET status = 'pending', turn_id = NULL, error_code = NULL,
+            error_message = NULL, updated_at = ?, completed_at = NULL
+        WHERE batch_id = ? AND agent_id = ? AND status IN ('interrupted', 'failed')
+      `)
+      .run(now, batchId, agentId);
+    if (updated.changes !== 1)
+      throw new Error('该成员的成长任务当前不能重试。');
+    this.db
+      .prepare(`
+        UPDATE social_project_growth_batches
+        SET status = 'running', completed_at = NULL, updated_at = ?
+        WHERE id = ?
+      `)
+      .run(now, batchId);
+    return this.getProjectGrowthBatch(batchId);
+  }
+
+  listRunningProjectGrowthBatches() {
+    return this.db
+      .prepare(`
+        SELECT id FROM social_project_growth_batches
+        WHERE status = 'running' ORDER BY created_at, id
+      `)
+      .all()
+      .map(({ id }) => this.getProjectGrowthBatch(id));
+  }
+
+  getPendingProjectGrowthBriefs(agentId, maxCharacters = 2_000) {
+    requireText(agentId, '成员 ID', 200);
+    if (!Number.isInteger(maxCharacters) || maxCharacters < 200) {
+      throw new TypeError('成长简报上下文预算无效。');
+    }
+    const rows = this.db
+      .prepare(`
+        SELECT gm.batch_id AS batchId, gm.brief,
+               p.title AS projectTitle, gm.completed_at AS completedAt
+        FROM social_project_growth_members AS gm
+        JOIN social_project_growth_batches AS b ON b.id = gm.batch_id
+        JOIN social_projects AS p ON p.id = b.project_id
+        WHERE gm.agent_id = ? AND gm.status IN ('completed', 'no_change')
+          AND gm.resident_seen_at IS NULL
+        ORDER BY gm.completed_at DESC, gm.batch_id DESC
+      `)
+      .all(agentId);
+    const briefs = [];
+    let characters = 0;
+    for (const row of rows) {
+      const brief = {
+        batchId: row.batchId,
+        projectTitle: row.projectTitle,
+        completedAt: row.completedAt,
+        text: row.brief.slice(0, 1_200),
+      };
+      const size = JSON.stringify(brief).length;
+      if (characters + size > maxCharacters) break;
+      briefs.push(brief);
+      characters += size;
+    }
+    return briefs;
+  }
+
+  markProjectGrowthBriefsSeen(agentId, batchIds) {
+    requireText(agentId, '成员 ID', 200);
+    if (!Array.isArray(batchIds) || batchIds.length > 20) {
+      throw new TypeError('成长简报列表无效。');
+    }
+    const ids = [...new Set(batchIds)].map((id) =>
+      requireText(id, '成长批次 ID', 200),
+    );
+    if (!ids.length) return 0;
+    const now = isoNow();
+    return this.db
+      .prepare(`
+        UPDATE social_project_growth_members SET resident_seen_at = ?, updated_at = ?
+        WHERE agent_id = ? AND batch_id IN (${ids.map(() => '?').join(', ')})
+          AND status IN ('completed', 'no_change') AND resident_seen_at IS NULL
+      `)
+      .run(now, now, agentId, ...ids).changes;
+  }
+
+  recoverProjectGrowthMembers() {
+    const interrupted = this.db
+      .prepare(`
+        SELECT gm.batch_id AS batchId, gm.agent_id AS agentId,
+               gm.session_room_id AS sessionRoomId, gm.turn_id AS turnId,
+               b.project_id AS projectId
+        FROM social_project_growth_members AS gm
+        JOIN social_project_growth_batches AS b ON b.id = gm.batch_id
+        WHERE gm.status = 'running'
+      `)
+      .all();
+    for (const member of interrupted) {
+      if (!member.turnId) {
+        this.db
+          .prepare(`
+            UPDATE social_project_growth_members SET status = 'pending', updated_at = ?
+            WHERE batch_id = ? AND agent_id = ? AND status = 'running'
+          `)
+          .run(isoNow(), member.batchId, member.agentId);
+        continue;
+      }
+      const assistant = this.socialChatStore.getTurnAssistantMessage(
+        member.sessionRoomId,
+        member.turnId,
+        member.agentId,
+      );
+      if (assistant?.status === 'complete' && assistant.content.trim()) {
+        const hasAssetChange = this.db
+          .prepare(`
+            SELECT 1 FROM social_agent_asset_revisions
+            WHERE agent_id = ? AND source_project_id = ? AND source_turn_id = ?
+            LIMIT 1
+          `)
+          .get(member.agentId, member.projectId, member.turnId);
+        this.finishProjectGrowthMember(member.batchId, member.agentId, {
+          status: hasAssetChange ? 'completed' : 'no_change',
+          brief: assistant.content,
+        });
+      } else {
+        const failed = assistant?.status === 'failed';
+        this.failProjectGrowthMember(member.batchId, member.agentId, {
+          status: failed ? 'failed' : 'interrupted',
+          code: assistant?.errorCode ?? 'app_restarted',
+          message: assistant?.errorMessage ?? '应用在成员成长回合完成前关闭。',
+        });
+      }
+    }
+    return interrupted.length;
   }
 
   getProjectSession(projectId, agentId) {
@@ -651,7 +1052,7 @@ export class SocialProjectStore {
   assertWorkAllowed(roomId) {
     const project = this.db
       .prepare(`
-      SELECT p.status FROM social_projects AS p
+      SELECT p.id, p.status FROM social_projects AS p
       WHERE p.group_room_id = ? OR p.id IN (SELECT project_id FROM social_project_sessions WHERE room_id = ?)
     `)
       .get(roomId, roomId);
@@ -659,6 +1060,17 @@ export class SocialProjectStore {
       throw new Error('项目正在等待用户评审，明确反馈后才能继续执行。');
     if (project?.status === 'archived')
       throw new Error('请先恢复项目，再继续执行。');
+    if (
+      project &&
+      this.db
+        .prepare(`
+          SELECT 1 FROM social_project_growth_batches
+          WHERE project_id = ? AND status = 'running' LIMIT 1
+        `)
+        .get(project.id)
+    ) {
+      throw new Error('项目成员正在整理经历；完成后再恢复项目交流。');
+    }
   }
 
   setAwaitingUser(projectId, awaitingUser) {
