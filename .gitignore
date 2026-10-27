@@ -5,6 +5,7 @@ dist/
 release/
 .vite/
 coverage/
+/apps/browser/default-stylesheet.css
 
 # Local configuration, credentials, and personal data
 .env

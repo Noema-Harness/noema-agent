@@ -14,6 +14,10 @@ import { FuseV1Options, FuseVersion } from '@electron/fuses';
 const appRoot = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 const electronChecksums = require('electron/checksums.json');
+const jsdomStylesheet = path.resolve(
+  path.dirname(require.resolve('jsdom')),
+  'jsdom/browser/default-stylesheet.css',
+);
 
 const config: ForgeConfig = {
   packagerConfig: {
@@ -25,6 +29,17 @@ const config: ForgeConfig = {
     download: { checksums: electronChecksums },
     afterCopy: [
       async ({ buildPath, platform, arch }) => {
+        const browserResourceDirectory = path.resolve(
+          buildPath,
+          '..',
+          'browser',
+        );
+        await fs.mkdir(browserResourceDirectory, { recursive: true });
+        await fs.copyFile(
+          jsdomStylesheet,
+          path.join(browserResourceDirectory, 'default-stylesheet.css'),
+        );
+
         const sourceCandidates = [
           path.join(appRoot, 'node_modules', 'better-sqlite3'),
           path.resolve(appRoot, '..', '..', 'node_modules', 'better-sqlite3'),
