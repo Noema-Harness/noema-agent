@@ -376,6 +376,7 @@ const summary = {
     status: 'unknown',
     routedVia: [],
   },
+  rootToolCallNames: rootResult.rootToolCallNames ?? [],
   taskStatus: rootResult.task?.status ?? null,
   eventStatus: rootResult.task?.eventStatus ?? null,
   noemaResponseStatus: rootResult.task?.noemaResponseStatus ?? null,
@@ -394,7 +395,6 @@ const summary = {
   childExitCode: exit.code,
   childSignal: exit.signal,
 };
-console.log(JSON.stringify(summary, null, 2));
 const rootChatPassed =
   rootResult.rootOnly === true &&
   rootResult.outcome === 'no_worker_dispatched' &&
@@ -421,6 +421,9 @@ const calculatorProbePassed =
   rootResult.rootOnly === true &&
   rootResult.outcome === 'no_worker_dispatched' &&
   rootResult.turnStatus === 'completed' &&
+  rootResult.rootToolCallNames?.filter(
+    (name) => name === 'calculate_expression',
+  ).length === 1 &&
   /(?:\+80|80元)/u.test(arithmeticReply) &&
   /(?:结余|盈余|剩余|正数|多出)/u.test(arithmeticReply) &&
   exit.code === 0;
@@ -433,6 +436,27 @@ const directWorkerPassed =
   allArtifactsMatchContentContract &&
   verifierCoveredContentContract &&
   exit.code === 0;
+console.log(
+  JSON.stringify(
+    calculatorProbe
+      ? {
+          mode: 'calculator-probe',
+          requestedModel,
+          outcome: rootResult.outcome,
+          turnStatus: rootResult.turnStatus,
+          calculatorToolCalls: rootResult.rootToolCallNames?.filter(
+            (name) => name === 'calculate_expression',
+          ).length ?? 0,
+          assistantText: rootResult.assistantText,
+          passed: calculatorProbePassed,
+          resultFile,
+          childExitCode: exit.code,
+        }
+      : summary,
+    null,
+    2,
+  ),
+);
 if (
   historyRecall
     ? !historyRecallPassed
