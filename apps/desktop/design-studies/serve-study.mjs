@@ -1,10 +1,13 @@
-// node apps/desktop/design-studies/serve-study.mjs [port]
+// node apps/desktop/design-studies/serve-study.mjs [port] [study.html]
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 const port = Number(process.argv[2] || 3924);
 if (!Number.isInteger(port) || port < 0 || port > 65535)
   throw new Error('Invalid port');
-const document = new URL('./noema-continuity-structures.html', import.meta.url);
+const study = process.argv[3] || 'noema-continuity-structures.html';
+if (!['noema-continuity-structures.html', 'noema-visual-language.html'].includes(study))
+  throw new Error('Unknown study');
+const document = new URL(`./${study}`, import.meta.url);
 const server = http.createServer(async (request, response) => {
   if (!['GET', 'HEAD'].includes(request.method)) {
     response.writeHead(405, { Allow: 'GET, HEAD' });
@@ -12,7 +15,7 @@ const server = http.createServer(async (request, response) => {
     return;
   }
   const pathname = new URL(request.url, 'http://localhost').pathname;
-  if (!['/', '/noema-continuity-structures.html'].includes(pathname)) {
+  if (!['/', `/${study}`].includes(pathname)) {
     response.writeHead(404);
     response.end();
     return;

@@ -1,47 +1,56 @@
 ---
 name: noema-interface-quality
-description: Design or materially change user-visible Noema screens, flows, or components. Use before UI implementation and again for visual verification; not for backend-only changes or copy-only edits.
+description: 设计或明显修改 Noema 用户可见的界面与流程，形成并维护其内部设计语言；用于视觉提案、原型和实际界面评审，不用于纯后端修改。
 ---
 
-# Noema Interface Quality
+# Noema 内部产品语言与界面判断
 
-## Establish the design question
+本文件是创作和评审的共同依据，不是面向用户的宣传稿，也不说明下述能力均已实现。恢复工作时核对当前 Issue、最新用户讨论和相关产品记录；按需读取产品章程、架构决定与 `docs/design/chat-redesign-brief.md`，检查旧记录是否仍然适用。通用方法使用用户级 `visual-judgment`，这里保留 Noema 的具体方向。后续证据可以使本文件被修订或删减。
 
-Read the active Issue, `docs/design/chat-redesign-brief.md` and only the product/architecture records relevant to this change. Check whether the work is exploring a product direction, defining a visual language, or improving an accepted flow. These need different evidence.
+## 用户与商业理由
 
-Noema is a basic demo. Its current screens and features document implementation, not a finished product or a source of proven differentiation. Start product proposals from a concrete user situation, current alternatives and an intended improvement. Use the demo later to estimate reuse, gaps and removal cost. Do not turn context isolation into a selling point, rebrand prompt-based memory as a novel relationship model, or infer that another existing feature must contain the answer when a proposal is rejected.
+已确认优先面向经常使用 AI agent、希望它长期参与工作与生活的人。高信息密度、成熟操作和长期可用性是重要预期；不能仅凭这个行为特征就声称商业画像已经完整。
 
-Develop product purpose, interaction and visual identity together while using distinct evidence to judge each. For an immature product, surface missing user outcomes and capabilities rather than designing only around existing screens. Tie composition, density and character to expected use; visual studies can expose product gaps. Familiar functionality can have distinctive visual language, but aesthetic success does not establish product fit or value. Compare alternatives on the same user problem and outcome, not an engineering invariant against a feature.
+“拥有并逐步塑造自己的长期 AI，以实际能力证明它值得拥有”是已获框架认可的组织方向，尚不是经验证的购买理由。持续经营创作、研究、独立项目、副业或学习，已投入 AI 订阅、API 或配置时间等，是商业画像的工作假设。迁移触发点、配置负担、总支出、获客方式及付费理由仍需研究。连续使用是否带来专业能力和陪伴价值，需要分别检验；两者不能互相充当证据。
 
-## Form a concrete proposal
+## Noema 的整体关系与能力
 
-For open-ended redesign, or after feedback rejects a structure as generic, do not start a polished screen. First locate the failure in the user problem, capability lifecycle, interaction structure, information hierarchy or visual language; retire the rejected composition. Compare a few materially different low-cost arrangements against one real use sequence, including what each lets the user understand and control. Record the sequence, alternatives, chosen structure and tradeoff in the active Issue before writing prototype UI. Do not create a side document for this checkpoint.
+Noema 是用户拥有的个人 agent 应用，身份、连续性与长期状态不应依附某个模型或外部 harness。用户可以与它讨论、倾诉、分享、创作和办事；交流不必隐含可执行需求。编程只是使用情境之一。
 
-When feedback says a screen feels AI-generated or generic, inspect the rendered composition as well as its colors and fonts. Name the familiar layout grammar and component patterns that create the effect; do not treat a new palette, typeface, icon set or spacing scale as a new direction. Derive a visual premise from Noema's actual relationship with the user and the information the screen must carry, then sketch at least two compositions that materially depart from the rejected grammar while preserving the useful communication conventions. State what the premise changes in hierarchy, density, typography and message/action presentation before choosing components. If the premise cannot be expressed without a new capability or unsupported product claim, return to product/interaction design instead of decorating the uncertainty.
+Noema 是持续的主要交谈对象，也能组织专业 agent 处理需要执行或协作的事。专业成员可以保留身份、能力资产与经验，在多次工作中发展。它们是产品的重要能力来源，但委派、群聊和项目管理不能代替整个产品的价值解释。会话持续不等于能力增长，经历数量不证明专业程度；需要有真实成果和后续行为支持成长判断。
 
-Communication apps such as WeChat and Telegram inform navigation, reading, input and recovery conventions. SillyTavern may inform conversation mechanisms; it is not a roleplay or visual target for Noema. These references do not prescribe an exact messenger layout, agent roster, permanent room structure or brand.
+用户希望得到的是办事能力、陪伴与情绪价值，以及塑造和扩展个人 AI 的可能。它们可以共同存在，但不是三句现成的营销承诺。聊天、记忆、搜索或设置等普通能力不因换一种说法就成为独特卖点。
 
-Before choosing components, decide what the whole screen should make prominent and what can recede. Treat inherited layouts and navigation as hypotheses, not requirements; preserve familiar actions without assuming their usual arrangement.
+## 个体发展与用户控制
 
-Before turning a new capability into a visible screen element, trace its real lifecycle: who owns its source, what event creates or changes it, whether it persists, what model/tool work and recurring cost it requires, how stale or failed results are corrected, and what control the user needs. Then decide whether the capability belongs in ordinary conversation, an on-demand detail, or only in internal execution. If those choices are unknown, do not invent an always-on card, timeline, status, or generated message that makes the mechanism look settled. A concept prototype may expose the open question, but must not imply a working or chosen lifecycle.
+已确认的产品方向允许 Noema 依据经历主动检视并调整自己，也允许发展自己的兴趣、创作和探索。用户可以直接定制，日常改变则主要期待由 Noema 自行察觉和实践；不把每次反馈自动视作改写长期特征的命令。行为目标不证明主观需要或意识已经产生。
 
-Use relevant design references to understand how their choices work together, rather than collecting attractive components. Develop a coherent visual idea across composition, typography, graphics, wording, states and narrow layouts; judge populated screens as a whole. A large illustration, unusual color or hidden sidebar is a choice with costs, not a reusable recipe. Tools and catalogs support this judgment; they do not supply it.
+当前认可的设计取向是给它可持续投入的事情和选择空间，让请求有具体来源。例如分享作品、请求意见或提出探索建议，应能关联实际关注与行动；不能用定时生成的成长台词证明个体性。不必禁止情绪表达，也不预设依赖、孤独或被关掉的恐惧来制造关系。个体性如何稳定形成仍是未解决的问题。
 
-Before asking for a directional decision, show a realistic user sequence or prototype, its intended benefit and strongest alternative. State what is existing, proposed and unknown. Evaluate feedback against the brief and observed behavior: distinguish taste and explicit direction from factual or causal claims, and retain what remains supported. Narrow a correction to the premise that failed; do not turn criticism into an opposite prohibition. If the user rejects a prototype, remove it from active candidates and update the durable checkpoint before exploring a replacement. Review gates do not replace this judgment.
+自主探索的调用和资源成本由用户承担，必须在知情且许可的范围内发生。许可可针对单次，也可覆盖约定范围、期限与预算内的持续活动；安装应用或认可个体性不等于授权后台消耗。用户应理解目的、可获得的费用信息和消耗上限，能查看实际消耗、暂停与撤销；估算不确定时如实说明。由系统约束范围与额度，覆盖委派和重试，达到限制后停止等待调整。文案与视觉要使这些控制清楚平实，不以情绪推动追加支出。
 
-Keep the user's requested feedback gates. Ordinary reversible component and implementation choices stay autonomous. New state or architecture follows `noema-architecture-review` when its trigger applies.
+## 作者当前的审美立场：待视觉验收
 
-## Stable quality floor
+以文字与实际作品形成视觉主体。日常短句、专业长答、执行过程和待判断事项，应有适合各自内容的比例和阅读节奏；能够密集呈现信息，也允许短暂、轻松的交流自然存在。具体用气泡、稿面还是其他形式，须在实际内容和交互中比较。
 
-- The primary activity, participants, context and actual state are clear.
-- Familiar actions have consistent affordances, feedback, keyboard access and visible focus.
-- Claims match implementation; demo data and simulated behavior are labeled.
-- Empty, loading, active, interrupted, failed and recovered states are covered where relevant.
-- Contrast, zoom, reduced motion, narrow windows and overflow work in the rendered app.
-- Runtime details appear only when they help the user understand or control what is happening.
+空间与工具追求精确：明确的对齐、紧凑一致的操作尺度、可读的状态和克制的层级。同时给字形、图形、色彩、材料感、身份呈现和动势留下有个性的表达。原创审美不要求新功能作为理由，熟悉的操作也不决定唯一外观。视觉精度与个人表达共同成立，不能以专业为由只做工程后台，也不能用亲近感掩盖操作粗糙。
 
-## Delivery
+品牌笔触应能从初见延续到长对话、协作、成果和设置，并承受长期使用。背景、插画、大字或动画都可探索，其价值在于整套表现是否适合受众。当前没有获验收的视觉母题、字体组合或色板；欢迎页的一次局部处理不能被当成品牌已经成立。
 
-Use populated, representative content and a complete interaction rather than a polished empty screen. Match prototype fidelity to the question; it is not accepted design or real model behavior merely because it runs.
+这套立场的风险是过于理性、缺少活力；需要用非任务交流、真实创作及专业工作共同检验。所谓“精致、亲近、有主见”必须在具体作品中被辨认，不能靠这些词替设计辩护。用户认可了形成语言的方法，不等于已经认可上述审美选择。
 
-Inspect the running application at desktop and narrow sizes, exercise primary actions and keyboard paths, and fix visible defects before reporting visual delivery. Keep usability checks, observed product benefit and user aesthetic feedback distinct. Preserve durable decisions and evidence in their existing project records; remove superseded prototypes instead of accumulating candidates.
+## 在每个设计选择中校准领域与创造
+
+工程和审美内部都存在可复用的基础与 Noema 自己的选择。输入法、附件、搜索、导航、授权、通知和失败恢复等，应研究成熟产品的实际契约与必要源码；其比例、字体、控件与反馈仍须自主设计。持续成员、委派和协作等结构差异也可以使用成熟交互。先查明对象、范围与作用，再合并或删除入口。
+
+通信应用帮助校准阅读与交流惯例；成熟 agent 应用帮助校准行动、成本与恢复；展示型前端和其他媒介用于拓展构图、字形、素材和运动的可能。参考作品的受众、内容、约束与减法过程同样值得研究。AI 酒馆不是产品定位，不据此排除陪伴；任何一个成熟产品或展示作品都不能独自给出 Noema 的审美答案。
+
+重要提案同时说明行为结果与品牌审美影响，附具体参照、自主选择、代价及未决假设。方向未定时使用同样的真实内容比较有实质差别的候选。新状态与机制应先查明来源、所有者、生命周期、成本和用户控制，再决定进入对话、按需详情还是内部执行；不为视觉概念虚构系统行为。涉及持久状态、自治行为或重要依赖时按需使用架构评审技能。
+
+## 评审范围与退出条件
+
+本版语言足以指导下一轮设计研究和候选制作，不足以证明商业需求、个体成长或视觉风格已经成立。下一份视觉证据应覆盖非任务交流、内容较多的专业工作，以及协作或自主活动的真实状态。成本授权与异常状态使用成熟标准检查；尚未实现的行为可标为概念，但不以编排好的模型表现证明架构。
+
+在运行界面检查相关尺寸、键盘、层级、密度及空白、加载、失败、停止和恢复。截图、实际操作和源码各自回答对应问题，只有检查过的范围才报告完成。用户保留产品与审美验收，助手完成常规可逆选择。
+
+每轮讨论先说清要决定什么、为什么现在需要决定、什么证据能结束讨论。方向与主要取舍足以支持下一份可审阅产物时，说明结论与下一动作并转场；审美分歧用作品检验，机制分歧用流程或运行结果检验。当前 Issue 记录主要进展、证据和续接点，不另建重复路线图。已否决候选退出当前方案，同时保留仍有效的约束。
