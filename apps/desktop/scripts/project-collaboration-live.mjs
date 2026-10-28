@@ -14,10 +14,38 @@ if (!process.versions.electron) {
     projectIdIndex >= 0 ? process.argv[projectIdIndex + 1] : null;
   configureElectronRuntime();
   const require = createRequire(import.meta.url);
-  const scratch = fs.mkdtempSync(
-    path.join(os.tmpdir(), 'Noema-collaboration-live-'),
-  );
+  const resumeIndex = process.argv.indexOf('--resume-directory');
+  const resumeDirectory =
+    resumeIndex >= 0 ? process.argv[resumeIndex + 1] : null;
+  if (resumeIndex >= 0 && (!resumeDirectory || existingProjectId))
+    throw Error(
+      'Resume requires a directory and cannot clone a production project.',
+    );
+  const scratch = resumeDirectory
+    ? path.resolve(resumeDirectory)
+    : fs.mkdtempSync(path.join(os.tmpdir(), 'Noema-collaboration-live-'));
+  if (
+    resumeDirectory &&
+    (!path.basename(scratch).startsWith('Noema-collaboration-live-') ||
+      !fs.existsSync(path.join(scratch, 'result.json')))
+  )
+    throw Error('Resume requires an existing isolated observation directory.');
   const env = { ...process.env, NOEMA_COLLABORATION_LIVE_DIRECTORY: scratch };
+  if (process.argv.includes('--natural') || resumeDirectory)
+    env.NOEMA_COLLABORATION_LIVE_NATURAL = '1';
+  const messageIndex = process.argv.indexOf('--message-file');
+  if (messageIndex >= 0) {
+    if (!env.NOEMA_COLLABORATION_LIVE_NATURAL)
+      throw Error('Custom messages require --natural or --resume-directory.');
+    if (!process.argv[messageIndex + 1]) throw Error('Message file required.');
+    env.NOEMA_COLLABORATION_LIVE_MESSAGE = fs
+      .readFileSync(process.argv[messageIndex + 1], 'utf8')
+      .trim();
+    if (!env.NOEMA_COLLABORATION_LIVE_MESSAGE)
+      throw Error('Message cannot be empty.');
+  }
+  if (resumeDirectory && !env.NOEMA_COLLABORATION_LIVE_MESSAGE)
+    throw Error('Resume requires a new natural-language message.');
   if (existingProjectId) {
     const Database = require('better-sqlite3');
     const source = new Database(
@@ -31,7 +59,7 @@ if (!process.versions.electron) {
   delete env.ELECTRON_RUN_AS_NODE;
   const bootstrap = path.join(scratch, 'bootstrap.cjs');
   const home = path.join(scratch, 'home');
-  fs.mkdirSync(home);
+  fs.mkdirSync(home, { recursive: true });
   const localState = path.join(process.env.APPDATA, 'Noema', 'Local State');
   if (fs.existsSync(localState))
     fs.copyFileSync(localState, path.join(home, 'Local State'));
@@ -65,6 +93,7 @@ if (!process.versions.electron) {
         error: result.error,
         model: result.model,
         calls: result.calls,
+        projectCount: result.projects?.length,
         progress: result.plan?.progress,
         projectId: result.projectId,
         plan: result.plan,
@@ -78,7 +107,10 @@ if (!process.versions.electron) {
       2,
     ),
   );
-  if (code !== 0 || !['passed', 'awaiting_review'].includes(result.outcome))
+  if (
+    code !== 0 ||
+    !['passed', 'awaiting_review', 'observed'].includes(result.outcome)
+  )
     process.exitCode = 1;
 } else {
   const { app, safeStorage } = await import('electron');
@@ -140,6 +172,7 @@ if (!process.versions.electron) {
       socialChatStore: store,
     });
     const existingProjectId = process.env.NOEMA_COLLABORATION_LIVE_PROJECT_ID;
+    const natural = process.env.NOEMA_COLLABORATION_LIVE_NATURAL === '1';
     let a, b, project;
     if (existingProjectId) {
       project = projects.getProject(existingProjectId);
@@ -154,7 +187,7 @@ if (!process.versions.electron) {
           member.agentId === 'agent-7dd140f1-48f7-4878-bfd9-1dab37a869ec',
       )?.agentId;
       if (!a || !b) throw Error('真实项目缺少预期的两个活跃成员。');
-    } else {
+    } else if (!natural) {
       a = store.createAgent({
         name: '方案研究员',
         headline: '方案与约束分析',
@@ -174,8 +207,11 @@ if (!process.versions.electron) {
       getApiKey: () => secrets.get(),
       fetchImpl: async (url, options) => {
         calls++;
-        if (calls > 48) throw Error('Live test request limit reached.');
+        if (calls > (natural ? 16 : 48))
+          throw Error('Live test request limit reached.');
         requestCharacters += options.body?.length ?? 0;
+        if (natural && requestCharacters > 300_000)
+          throw Error('Natural observation input budget reached.');
         const request = JSON.parse(options.body);
         const last = request.messages.at(-1);
         steps.push({
@@ -200,135 +236,192 @@ if (!process.versions.electron) {
       getProjectSessionContext: (roomId, agentId) =>
         projects.getProjectSessionContext(roomId, agentId),
     });
-    if (!existingProjectId) {
-      project = projects.createProject({
-        title: '摄影试办 · 真实协作验收',
-        brief:
-          '隔离合成需求，真实模型执行：半天摄影入门活动，最多10人，每人收费200元，场地600元，材料每人30元，固定预算上限3000元。仅使用这些事实，不访问外网、不操作文件。研究员先提两种课程方案；预算员依据已验收方案核算盈亏。Noema 按明确完成条件审查，未知写清。',
-        agentIds: ['noema', a, b],
+    if (natural) {
+      const task =
+        process.env.NOEMA_COLLABORATION_LIVE_MESSAGE ||
+        '我想给 Noema 的共享计划补上可靠的成果核对。现在完成依据主要是一段文字，成员说做完了，我还得自己去找文件、消息和执行结果，换个人接手又要重查。希望以后能从工作项直接找到依据，知道谁提交、谁检查过，也能看出依据变更后哪些结论要重新核对。旧项目不能因此丢记录，也要考虑失败、文件变动和不同成员交接。先帮我把这件事梳理成能持续跟进的项目计划，拿不准的地方可以问我；先不要改代码或操作生产数据。';
+      service.sendMessage({
+        roomId: 'room-noema',
+        agentId: 'noema',
+        text: task,
       });
-      service.collaboration.publish({
-        projectId: project.id,
-        senderAgentId: 'noema',
-        text: `项目共同背景\n${project.brief}\n方案研究员负责课程取舍与未知项；预算分析员负责依赖方案的收支核算。成果和问题在群内公开；不需要轮流确认。`,
-        eventKey: 'live-kickoff',
-      });
-    }
-    const userTask = existingProjectId
-      ? `只处理已存在项目 ${project.id}，不新建项目或成员，不改代码。先读取计划和活跃成员，再写入并回读。objective：让 Noema 计划支持复杂委托的分层工作、真实依赖、负责人和可核验证据。阶段一“源码与成熟模型审计”：两个并行工作项，工程搭档 ${a} 核实现有结构；计划语义设计 ${b} 对照 OpenProject/Linear 的层级和关系。阶段二“计划系统实现与闭环”，依赖阶段一：两项分别由上述成员负责计划数据/Agent读写契约、真实客户端界面/闭环验收。每项写清验收条件和证据；代码现状未知，不要声称已检查。不要追问，直接执行。`
-      : `请在刚创建的摄影试办项目中实际建立共享计划，不要新建项目或成员，也不要操作文件。先读取计划，再按结果写入一阶段、两个工作项：课程方案由 ${a} 负责，预算核算由 ${b} 负责，预算项依赖课程方案项验收。计划只使用已知条件（半天、最多10人、每人200元、场地600元、材料每人30元），验收条件要能核对计算并明确未知。写入后读取确认。`;
-    const planRequest = service.sendMessage({
-      roomId: 'room-noema',
-      agentId: 'noema',
-      text: userTask,
-    });
-    await service.active.get('room-noema')?.done;
-    const initialPlan = projects.plans.get(project.id);
-    const [firstPhase, secondPhase] = initialPlan.phases;
-    const firstPhaseItemIds = new Set(
-      firstPhase?.workItems.map((item) => item.id) ?? [],
-    );
-    const existingPlanStructureValid =
-      !existingProjectId ||
-      (initialPlan.phases.length === 2 &&
-        firstPhase.workItems.length === 2 &&
-        firstPhase.workItems.every((item) => item.dependsOn.length === 0) &&
-        secondPhase.workItems.length === 2 &&
-        secondPhase.dependsOn.includes(firstPhase.id) &&
-        secondPhase.workItems.every(
-          (item) =>
-            item.dependsOn.length > 0 &&
-            item.dependsOn.every((id) => firstPhaseItemIds.has(id)),
-        ));
-    if (
-      !planRequest.messageId ||
-      initialPlan.revision < 1 ||
-      (existingProjectId
-        ? initialPlan.phases.length < 2 || initialPlan.items.length < 4
-        : initialPlan.items.length !== 2) ||
-      initialPlan.items.some((item) => ![a, b].includes(item.ownerAgentId)) ||
-      !existingPlanStructureValid ||
-      (!existingProjectId &&
-        initialPlan.items.find((item) => item.ownerAgentId === b)?.dependsOn
-          .length !== 1)
-    ) {
-      throw Error('真实模型未能为项目创建带合法负责人与依赖的共享计划。');
-    }
-    if (existingProjectId) {
-      result = {
-        outcome: 'passed',
-        model: 'deepseek-flash',
-        calls,
-        balanceBefore: before,
-        balanceAfter: await balance(),
-        projectId: project.id,
-        plan: initialPlan,
-      };
-    } else {
-      service.schedulePendingProjectGroupInboxes();
-      const deadline = Date.now() + 5 * 60_000;
-      while (Date.now() < deadline) {
+      await service.active.get('room-noema')?.done;
+      const deadline = Date.now() + 4 * 60_000;
+      while (
+        Date.now() < deadline &&
+        (service.active.size ||
+          service.projectGroupInboxDrains.size ||
+          service.projectReportDrain)
+      )
         await new Promise((resolve) => setTimeout(resolve, 200));
-        if (
-          !service.active.size &&
-          !service.projectGroupInboxDrains.size &&
-          !service.projectReportDrain
-        )
-          break;
-      }
-      if (service.active.size) await service.shutdown();
-      const plan = projects.plans.get(project.id);
-      const finalProject = projects.getProject(project.id);
-      const messages = store.getRoomSnapshot(project.groupRoomId).messages;
-      const failed = root.db
-        .prepare(
-          "SELECT id,status,error_message AS error FROM social_messages WHERE status IN ('failed','interrupted')",
-        )
-        .all();
-      const unfinishedReports = root.db
-        .prepare(
-          "SELECT COUNT(*) AS n FROM social_project_reports WHERE status<>'completed'",
-        )
-        .get().n;
-      const after = await balance();
+      await service.shutdown();
       result = {
-        outcome:
-          plan.progress.percentage === 100 &&
-          !failed.length &&
-          (plan.phases.every((phase) => phase.status === 'done') &&
-          !unfinishedReports
-            ? 'passed'
-            : finalProject.status === 'awaiting_user' &&
-                finalProject.pendingReview &&
-                plan.phases.every(
-                  (phase) =>
-                    phase.status === 'done' ||
-                    phase.state === 'awaiting_review',
-                )
-              ? 'awaiting_review'
-              : 'incomplete'),
+        outcome: 'observed',
         model: 'deepseek-flash',
         calls,
         requestCharacters,
+        task,
         steps,
         balanceBefore: before,
-        balanceAfter: after,
-        projectId: project.id,
-        projectStatus: finalProject.status,
-        pendingReview: finalProject.pendingReview,
-        unfinishedReports,
-        plan,
-        failed,
-        publicMessages: messages.map(
-          ({ id, role, agentId, content, status }) => ({
-            id,
-            role,
-            agentId,
-            content,
-            status,
-          }),
-        ),
+        balanceAfter: await balance(),
+        latestReply: store
+          .getRoomSnapshot('room-noema')
+          .messages.findLast((message) => message.role === 'assistant'),
+        projects: root.db
+          .prepare('SELECT id FROM social_projects')
+          .all()
+          .map(({ id }) => ({
+            ...projects.getProject(id),
+            plan: projects.plans.get(id),
+            history: projects.plans.history(id),
+            publicMessages: store.getRoomSnapshot(
+              projects.getProject(id).groupRoomId,
+            ).messages,
+          })),
+        mainMessages: store.getRoomSnapshot('room-noema').messages,
+        failed: root.db
+          .prepare(
+            "SELECT status,error_message AS error FROM social_messages WHERE status IN ('failed','interrupted')",
+          )
+          .all(),
+        review:
+          'Observed real model behavior only; no prescribed team, plan shape, workflow sequence or automatic product pass.',
       };
+      fs.writeFileSync(
+        path.join(scratch, `observation-${Date.now()}.json`),
+        JSON.stringify(result, null, 2),
+      );
+    } else {
+      if (!existingProjectId) {
+        project = projects.createProject({
+          title: '摄影试办 · 真实协作验收',
+          brief:
+            '隔离合成需求，真实模型执行：半天摄影入门活动，最多10人，每人收费200元，场地600元，材料每人30元，固定预算上限3000元。仅使用这些事实，不访问外网、不操作文件。研究员先提两种课程方案；预算员依据已验收方案核算盈亏。Noema 按明确完成条件审查，未知写清。',
+          agentIds: ['noema', a, b],
+        });
+        service.collaboration.publish({
+          projectId: project.id,
+          senderAgentId: 'noema',
+          text: `项目共同背景\n${project.brief}\n方案研究员负责课程取舍与未知项；预算分析员负责依赖方案的收支核算。成果和问题在群内公开；不需要轮流确认。`,
+          eventKey: 'live-kickoff',
+        });
+      }
+      const userTask = existingProjectId
+        ? `只处理已存在项目 ${project.id}，不新建项目或成员，不改代码。先读取计划和活跃成员，再写入并回读。objective：让 Noema 计划支持复杂委托的分层工作、真实依赖、负责人和可核验证据。阶段一“源码与成熟模型审计”：两个并行工作项，工程搭档 ${a} 核实现有结构；计划语义设计 ${b} 对照 OpenProject/Linear 的层级和关系。阶段二“计划系统实现与闭环”，依赖阶段一：两项分别由上述成员负责计划数据/Agent读写契约、真实客户端界面/闭环验收。每项写清验收条件和证据；代码现状未知，不要声称已检查。不要追问，直接执行。`
+        : `请在刚创建的摄影试办项目中实际建立共享计划，不要新建项目或成员，也不要操作文件。先读取计划，再按结果写入一阶段、两个工作项：课程方案由 ${a} 负责，预算核算由 ${b} 负责，预算项依赖课程方案项验收。计划只使用已知条件（半天、最多10人、每人200元、场地600元、材料每人30元），验收条件要能核对计算并明确未知。写入后读取确认。`;
+      const planRequest = service.sendMessage({
+        roomId: 'room-noema',
+        agentId: 'noema',
+        text: userTask,
+      });
+      await service.active.get('room-noema')?.done;
+      const initialPlan = projects.plans.get(project.id);
+      const [firstPhase, secondPhase] = initialPlan.phases;
+      const firstPhaseItemIds = new Set(
+        firstPhase?.workItems.map((item) => item.id) ?? [],
+      );
+      const existingPlanStructureValid =
+        !existingProjectId ||
+        (initialPlan.phases.length === 2 &&
+          firstPhase.workItems.length === 2 &&
+          firstPhase.workItems.every((item) => item.dependsOn.length === 0) &&
+          secondPhase.workItems.length === 2 &&
+          secondPhase.dependsOn.includes(firstPhase.id) &&
+          secondPhase.workItems.every(
+            (item) =>
+              item.dependsOn.length > 0 &&
+              item.dependsOn.every((id) => firstPhaseItemIds.has(id)),
+          ));
+      if (
+        !planRequest.messageId ||
+        initialPlan.revision < 1 ||
+        (existingProjectId
+          ? initialPlan.phases.length < 2 || initialPlan.items.length < 4
+          : initialPlan.items.length !== 2) ||
+        initialPlan.items.some((item) => ![a, b].includes(item.ownerAgentId)) ||
+        !existingPlanStructureValid ||
+        (!existingProjectId &&
+          initialPlan.items.find((item) => item.ownerAgentId === b)?.dependsOn
+            .length !== 1)
+      ) {
+        throw Error('真实模型未能为项目创建带合法负责人与依赖的共享计划。');
+      }
+      if (existingProjectId) {
+        result = {
+          outcome: 'passed',
+          model: 'deepseek-flash',
+          calls,
+          balanceBefore: before,
+          balanceAfter: await balance(),
+          projectId: project.id,
+          plan: initialPlan,
+        };
+      } else {
+        service.schedulePendingProjectGroupInboxes();
+        const deadline = Date.now() + 5 * 60_000;
+        while (Date.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, 200));
+          if (
+            !service.active.size &&
+            !service.projectGroupInboxDrains.size &&
+            !service.projectReportDrain
+          )
+            break;
+        }
+        if (service.active.size) await service.shutdown();
+        const plan = projects.plans.get(project.id);
+        const finalProject = projects.getProject(project.id);
+        const messages = store.getRoomSnapshot(project.groupRoomId).messages;
+        const failed = root.db
+          .prepare(
+            "SELECT id,status,error_message AS error FROM social_messages WHERE status IN ('failed','interrupted')",
+          )
+          .all();
+        const unfinishedReports = root.db
+          .prepare(
+            "SELECT COUNT(*) AS n FROM social_project_reports WHERE status<>'completed'",
+          )
+          .get().n;
+        const after = await balance();
+        result = {
+          outcome:
+            plan.progress.percentage === 100 &&
+            !failed.length &&
+            (plan.phases.every((phase) => phase.status === 'done') &&
+            !unfinishedReports
+              ? 'passed'
+              : finalProject.status === 'awaiting_user' &&
+                  finalProject.pendingReview &&
+                  plan.phases.every(
+                    (phase) =>
+                      phase.status === 'done' ||
+                      phase.state === 'awaiting_review',
+                  )
+                ? 'awaiting_review'
+                : 'incomplete'),
+          model: 'deepseek-flash',
+          calls,
+          requestCharacters,
+          steps,
+          balanceBefore: before,
+          balanceAfter: after,
+          projectId: project.id,
+          projectStatus: finalProject.status,
+          pendingReview: finalProject.pendingReview,
+          unfinishedReports,
+          plan,
+          failed,
+          publicMessages: messages.map(
+            ({ id, role, agentId, content, status }) => ({
+              id,
+              role,
+              agentId,
+              content,
+              status,
+            }),
+          ),
+        };
+      }
     }
   } catch (error) {
     result = { outcome: 'failed', error: error.message, calls };
@@ -339,6 +432,10 @@ if (!process.versions.electron) {
       path.join(scratch, 'result.json'),
       JSON.stringify(result, null, 2),
     );
-    app.exit(['passed', 'awaiting_review'].includes(result?.outcome) ? 0 : 1);
+    app.exit(
+      ['passed', 'awaiting_review', 'observed'].includes(result?.outcome)
+        ? 0
+        : 1,
+    );
   }
 }

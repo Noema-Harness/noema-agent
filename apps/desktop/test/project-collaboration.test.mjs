@@ -389,6 +389,61 @@ test('plan submission triggers Noema review; acceptance unlocks and dispatches t
   }
 });
 
+test('first launch exposes team creation despite having no specialists', async () => {
+  const db = new Database(':memory:');
+  new RootStore(db);
+  const store = new SocialChatStore(db);
+  const projects = new SocialProjectStore({ db, socialChatStore: store });
+  let observed = false;
+  const service = new SocialChatService({
+    store,
+    projectStore: projects,
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'fixture',
+    getRootState: async () => ({
+      providerConfigured: true,
+      selectedModel: 'fixture',
+    }),
+    provider: {
+      async *streamChat(input) {
+        observed = true;
+        const team = input.tools.find(
+          (entry) => entry.function.name === 'create_project_team',
+        );
+        assert.ok(team);
+        assert.ok(
+          team.function.parameters.properties.members.items.properties
+            .new_agent,
+        );
+        assert.equal(
+          input.tools.some(
+            (entry) => entry.function.name === 'delegate_to_specialist',
+          ),
+          false,
+        );
+        const instructions = input.messages
+          .filter((message) => message.role === 'system')
+          .map((message) => message.content)
+          .join('\n');
+        assert.match(instructions, /这不妨碍.*create_project_team/u);
+        yield '先确认影响范围。';
+      },
+    },
+  });
+  try {
+    service.sendMessage({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '我想规划一个跨多个专业的项目。',
+    });
+    await settle(service);
+    assert.equal(observed, true);
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});
+
 test('forming a team publishes common background without sequential consultations and exposes follow-up tools', async () => {
   let calls = 0;
   const f = setup({
