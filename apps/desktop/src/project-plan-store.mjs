@@ -35,6 +35,8 @@ const workItemSchema = z.object({
     .nullable()
     .default(null),
   submittedByAgentId: z.string().trim().max(200).nullable().optional(),
+  submittedAt: text(100).nullable().default(null),
+  submissionRevision: z.number().int().min(1).nullable().default(null),
   blocker: z.string().trim().max(2000).default(''),
 });
 const phaseSchema = z.object({
@@ -68,9 +70,22 @@ delete projectPlanParameters.properties.phases.items.properties.workItems.items
   .properties.evidenceRefs;
 delete projectPlanParameters.properties.phases.items.properties.workItems.items
   .properties.evidenceReview;
+delete projectPlanParameters.properties.phases.items.properties.workItems.items
+  .properties.submittedByAgentId;
+delete projectPlanParameters.properties.phases.items.properties.workItems.items
+  .properties.submittedAt;
+delete projectPlanParameters.properties.phases.items.properties.workItems.items
+  .properties.submissionRevision;
 projectPlanParameters.properties.phases.items.properties.workItems.items.required =
   projectPlanParameters.properties.phases.items.properties.workItems.items.required.filter(
-    (key) => !['evidenceRefs', 'evidenceReview'].includes(key),
+    (key) =>
+      ![
+        'evidenceRefs',
+        'evidenceReview',
+        'submittedByAgentId',
+        'submittedAt',
+        'submissionRevision',
+      ].includes(key),
   );
 export const projectPlanPhaseStatuses = ['pending', 'done', 'canceled'];
 
@@ -83,17 +98,50 @@ const transitions = {
   canceled: ['pending'],
 };
 
+function acceptanceRecorded(item) {
+  return Boolean(
+    item.status === 'done' &&
+    item.submittedByAgentId &&
+    item.evidenceReview?.actorId &&
+    item.evidenceReview.actorId !== item.submittedByAgentId,
+  );
+}
+
+function phaseAcceptanceRecorded(phase, workItems) {
+  if (!phase) return false;
+  const active = workItems.filter(
+    (item) => item.kind === 'work_package' && item.status !== 'canceled',
+  );
+  return Boolean(
+    phase.status === 'done' &&
+    phase.evidence &&
+    active.length &&
+    active.every(acceptanceRecorded),
+  );
+}
+
 function phaseState(phase, phaseById, workItems) {
   const active = workItems.filter(
     (item) => item.kind === 'work_package' && item.status !== 'canceled',
   );
-  const done = active.filter((item) => item.status === 'done').length;
-  const waitingForPhases = phase.dependsOn.filter(
-    (id) => phaseById.get(id)?.status !== 'done',
-  );
+  const done = active.filter(acceptanceRecorded).length;
+  const waitingForPhases = phase.dependsOn.filter((id) => {
+    const prerequisite = phaseById.get(id);
+    return !phaseAcceptanceRecorded(
+      prerequisite,
+      prerequisite?.workItems ?? [],
+    );
+  });
   if (phase.status === 'canceled') return 'canceled';
-  if (phase.status === 'done') return 'done';
+  if (phase.status === 'done')
+    return phaseAcceptanceRecorded(phase, workItems)
+      ? 'done'
+      : 'awaiting_review';
   if (phase.status === 'pending' && waitingForPhases.length) return 'waiting';
+  if (
+    active.some((item) => item.status === 'done' && !acceptanceRecorded(item))
+  )
+    return 'awaiting_review';
   if (active.some((item) => item.status === 'blocked')) return 'blocked';
   if (active.length && done === active.length) return 'awaiting_review';
   if (
@@ -272,15 +320,20 @@ export class ProjectPlanStore {
     const phaseById = new Map(base.phases.map((phase) => [phase.id, phase]));
     const items = rawItems.map((item) => {
       const phase = phaseById.get(item.phaseId);
-      const waitingForPhases = phase.dependsOn.filter(
-        (id) => phaseById.get(id)?.status !== 'done',
-      );
+      const waitingForPhases = phase.dependsOn.filter((id) => {
+        const prerequisite = phaseById.get(id);
+        return !phaseAcceptanceRecorded(
+          prerequisite,
+          prerequisite?.workItems ?? [],
+        );
+      });
       const blockedBy = item.dependsOn.filter(
-        (id) => byId.get(id)?.status !== 'done',
+        (id) => !acceptanceRecorded(byId.get(id)),
       );
       if (item.kind === 'group')
         return {
           ...item,
+          acceptanceRecorded: false,
           ready: false,
           canResume: false,
           blockedBy: [],
@@ -289,6 +342,7 @@ export class ProjectPlanStore {
         };
       return {
         ...item,
+        acceptanceRecorded: acceptanceRecorded(item),
         ready:
           phase.status === 'pending' &&
           waitingForPhases.length === 0 &&
@@ -343,9 +397,7 @@ export class ProjectPlanStore {
         const activeLeaves = leaves.filter(
           (entry) => entry.status !== 'canceled',
         );
-        const doneLeaves = activeLeaves.filter(
-          (entry) => entry.status === 'done',
-        ).length;
+        const doneLeaves = activeLeaves.filter(acceptanceRecorded).length;
         item.childProgress = {
           done: doneLeaves,
           total: activeLeaves.length,
@@ -375,16 +427,20 @@ export class ProjectPlanStore {
       const active = phaseItems.filter(
         (item) => item.kind === 'work_package' && item.status !== 'canceled',
       );
-      const done = active.filter((item) => item.status === 'done').length;
+      const done = active.filter(acceptanceRecorded).length;
       const submitted = active.filter(
         (item) => item.status === 'submitted',
       ).length;
       const canceled = phaseItems.filter(
         (item) => item.kind === 'work_package' && item.status === 'canceled',
       ).length;
-      const waitingForPhases = phase.dependsOn.filter(
-        (id) => phaseById.get(id)?.status !== 'done',
-      );
+      const waitingForPhases = phase.dependsOn.filter((id) => {
+        const prerequisite = phaseById.get(id);
+        return !phaseAcceptanceRecorded(
+          prerequisite,
+          prerequisite?.workItems ?? [],
+        );
+      });
       return {
         ...phase,
         workItems: orderedItems,
@@ -404,13 +460,15 @@ export class ProjectPlanStore {
     const activeItems = items.filter(
       (item) => item.kind === 'work_package' && item.status !== 'canceled',
     );
-    const done = activeItems.filter((item) => item.status === 'done').length;
+    const done = activeItems.filter(acceptanceRecorded).length;
     const activePhases = phases.filter((phase) => phase.status !== 'canceled');
-    const donePhases = activePhases.filter(
-      (phase) => phase.status === 'done',
+    const donePhases = activePhases.filter((phase) =>
+      phaseAcceptanceRecorded(phase, phase.workItems),
     ).length;
     const currentPhase = phases.find(
-      (phase) => !['done', 'canceled'].includes(phase.status),
+      (phase) =>
+        phase.status !== 'canceled' &&
+        !phaseAcceptanceRecorded(phase, phase.workItems),
     );
     return {
       projectId,
@@ -835,7 +893,10 @@ export class ProjectPlanStore {
     for (const phase of plan.phases) {
       for (const dependencyId of phase.dependsOn) {
         if (
-          phaseById.get(dependencyId).status !== 'done' &&
+          !phaseAcceptanceRecorded(
+            phaseById.get(dependencyId),
+            phaseById.get(dependencyId).workItems,
+          ) &&
           phase.status === 'done'
         )
           throw new Error('前置阶段尚未验收，不能完成后续阶段。');
@@ -845,15 +906,18 @@ export class ProjectPlanStore {
         (item) => item.kind === 'work_package' && item.status !== 'canceled',
       );
       if (phase.status === 'done') {
-        if (!active.length || active.some((item) => item.status !== 'done'))
+        if (!active.length || active.some((item) => !acceptanceRecorded(item)))
           throw new Error('阶段工作项未全部验收，不能完成阶段。');
       }
       if (phase.status === 'canceled' && active.length)
         throw new Error('取消阶段前必须先取消其中所有未完成工作项。');
       for (const item of phaseItems) {
         if (item.kind === 'group') continue;
-        const phasePrerequisitesDone = phase.dependsOn.every(
-          (id) => phaseById.get(id)?.status === 'done',
+        const phasePrerequisitesDone = phase.dependsOn.every((id) =>
+          phaseAcceptanceRecorded(
+            phaseById.get(id),
+            phaseById.get(id)?.workItems ?? [],
+          ),
         );
         if (
           ['in_progress', 'submitted', 'done'].includes(item.status) &&
@@ -868,7 +932,7 @@ export class ProjectPlanStore {
           throw new Error('未取消的交付项不能依赖已取消事项。');
         if (
           ['in_progress', 'submitted', 'done'].includes(item.status) &&
-          item.dependsOn.some((id) => byId.get(id).status !== 'done')
+          item.dependsOn.some((id) => !acceptanceRecorded(byId.get(id)))
         )
           throw new Error('前置交付尚未验收，不能启动或完成后续工作。');
         if (
@@ -946,13 +1010,34 @@ export class ProjectPlanStore {
     return this.db.transaction(() => {
       const current = this.get(input.projectId);
       const normalizedPlan = normalizePlanInput(input.plan);
+      // Report malformed plan structure before workflow-transition errors so
+      // callers can correct the underlying plan rather than seeing a masking
+      // status error first.
+      this.validate(input.projectId, normalizedPlan);
+      const priorPhases = new Map(
+        current.phases.map((phase) => [phase.id, phase]),
+      );
       const priorSubmitters = new Map(
         current.items.map((item) => [item.id, item.submittedByAgentId ?? null]),
       );
       const priorItems = new Map(current.items.map((item) => [item.id, item]));
       for (const phase of normalizedPlan?.phases ?? [])
+        if (phase.status !== (priorPhases.get(phase.id)?.status ?? 'pending'))
+          throw Error('计划编辑不能改变阶段验收状态；请使用阶段验收操作。');
+      for (const phase of normalizedPlan?.phases ?? [])
         for (const item of phase.workItems ?? []) {
           const prior = priorItems.get(item.id);
+          if (
+            (!prior && item.status !== 'pending') ||
+            (prior &&
+              ['submitted', 'done'].includes(prior.status) &&
+              item.status !== prior.status) ||
+            (['submitted', 'done'].includes(item.status) &&
+              item.status !== prior?.status)
+          )
+            throw Error(
+              '计划编辑不能跳过工作项提交/验收；请使用对应的状态操作。',
+            );
           if (
             prior?.evidenceReview &&
             item.status === 'done' &&
@@ -971,6 +1056,9 @@ export class ProjectPlanStore {
                 ? phase.workItems.map((item) => ({
                     ...item,
                     submittedByAgentId: priorSubmitters.get(item.id) ?? null,
+                    submittedAt: priorItems.get(item.id)?.submittedAt ?? null,
+                    submissionRevision:
+                      priorItems.get(item.id)?.submissionRevision ?? null,
                     evidenceRefs: priorItems.get(item.id)?.evidenceRefs ?? [],
                     evidenceReview:
                       item.status === 'done'
@@ -994,7 +1082,11 @@ export class ProjectPlanStore {
       if (item.kind !== 'work_package')
         throw new Error('结构分组不能推进状态；请更新其中的叶工作包。');
       const phase = current.phases.find((phase) => phase.id === item.phaseId);
-      if (phase?.status === 'done' && input.status !== 'done')
+      if (
+        phase?.status === 'done' &&
+        phaseAcceptanceRecorded(phase, phase.workItems) &&
+        input.status !== 'done'
+      )
         throw new Error(
           '工作项所属阶段已验收；请通过计划修订调整范围并重开相关阶段。',
         );
@@ -1005,10 +1097,26 @@ export class ProjectPlanStore {
       if (!coordinator && input.actorAgentId !== item.ownerAgentId)
         throw new Error('成员只能更新自己负责的交付项。');
       const status = statusSchema.parse(input.status ?? item.status);
+      const reviewerId = input.actorAgentId ?? 'user';
+      if (
+        status === 'submitted' &&
+        item.status !== 'submitted' &&
+        input.actorAgentId === 'noema'
+      )
+        throw new Error('Noema 不能代替负责人提交成果。');
+      const accepting = status === 'done' && item.status === 'submitted';
+      const remainsAccepted =
+        status === 'done' && item.status === 'done' && acceptanceRecorded(item);
+      if (status === 'done' && !accepting && !remainsAccepted)
+        throw new Error('必须先由负责人提交成果，再由另一方验收。');
+      if (accepting && !item.submittedByAgentId)
+        throw new Error('提交记录缺少提交者；请由负责人重新提交成果。');
+      if (accepting && reviewerId === item.submittedByAgentId)
+        throw new Error('提交者不能验收自己的成果。');
       if (
         item.status === 'done' &&
         status === 'done' &&
-        input.evidenceSources !== undefined
+        (input.evidenceSources !== undefined || input.evidence !== undefined)
       )
         throw Error('已验收成果的依据不能直接改写；请先重开工作项。');
       if (
@@ -1038,12 +1146,6 @@ export class ProjectPlanStore {
       )
         throw Error('成果来源已变化或不可用，请重新核对并由负责人重提交。');
       if (
-        status === 'submitted' &&
-        item.status !== 'submitted' &&
-        input.actorAgentId === 'noema'
-      )
-        throw new Error('Noema 不能代替负责人提交成果。');
-      if (
         !coordinator &&
         (['done', 'canceled'].includes(status) ||
           ['done', 'canceled'].includes(item.status))
@@ -1063,6 +1165,22 @@ export class ProjectPlanStore {
             : status === 'done'
               ? item.submittedByAgentId
               : null,
+        submittedAt:
+          status === 'submitted'
+            ? item.status === 'submitted'
+              ? item.submittedAt
+              : new Date().toISOString()
+            : status === 'done'
+              ? item.submittedAt
+              : null,
+        submissionRevision:
+          status === 'submitted'
+            ? item.status === 'submitted'
+              ? item.submissionRevision
+              : current.revision + 1
+            : status === 'done'
+              ? item.submissionRevision
+              : null,
         evidence: input.evidence ?? item.evidence,
         evidenceRefs,
         evidenceReview:
@@ -1070,9 +1188,9 @@ export class ProjectPlanStore {
             ? ((input.evidence !== undefined && input.evidence !== item.evidence
                 ? null
                 : item.evidenceReview) ?? {
-                actorId: input.actorAgentId ?? 'user',
+                actorId: reviewerId,
                 reviewedAt: new Date().toISOString(),
-                submissionRevision: current.revision,
+                submissionRevision: item.submissionRevision ?? current.revision,
               })
             : null,
         blocker: input.blocker ?? item.blocker,
@@ -1121,7 +1239,7 @@ export class ProjectPlanStore {
         const active = phase.workItems.filter(
           (item) => item.kind === 'work_package' && item.status !== 'canceled',
         );
-        if (!active.length || active.some((item) => item.status !== 'done'))
+        if (!active.length || active.some((item) => !acceptanceRecorded(item)))
           throw new Error('阶段工作项未全部验收，不能完成阶段。');
         if (
           active.some((item) =>
@@ -1135,7 +1253,7 @@ export class ProjectPlanStore {
           phase.dependsOn.some(
             (id) =>
               !current.phases.some(
-                (entry) => entry.id === id && entry.status === 'done',
+                (entry) => entry.id === id && entry.state === 'done',
               ),
           )
         )

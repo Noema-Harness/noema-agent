@@ -24,6 +24,13 @@ const itemLabels: Record<NoemaProjectPlanStatus, string> = {
   done: '已验收',
   canceled: '已取消',
 };
+function itemStatusLabel(
+  item: Pick<NoemaProjectPlanItem, 'status' | 'acceptanceRecorded'>,
+) {
+  return item.status === 'done' && !item.acceptanceRecorded
+    ? '验收记录不完整'
+    : itemLabels[item.status];
+}
 const phaseLabels: Record<NoemaProjectPlanPhaseState, string> = {
   needs_breakdown: '待细化',
   waiting: '等待前置阶段',
@@ -656,26 +663,37 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                                   ))}
                                 </select>
                               </label>
-                              <label>
-                                工作状态
-                                <select
-                                  value={item.status}
-                                  onChange={(event) =>
-                                    updateItem(item.id, {
-                                      status: event.target
-                                        .value as NoemaProjectPlanStatus,
-                                    })
-                                  }
-                                >
-                                  {Object.entries(itemLabels).map(
-                                    ([value, label]) => (
-                                      <option value={value} key={value}>
-                                        {label}
-                                      </option>
-                                    ),
-                                  )}
-                                </select>
-                              </label>
+                              {['submitted', 'done'].includes(item.status) ? (
+                                <p className="project-plan-meta">
+                                  工作状态 · {itemStatusLabel(item)}
+                                </p>
+                              ) : (
+                                <label>
+                                  工作状态
+                                  <select
+                                    value={item.status}
+                                    onChange={(event) =>
+                                      updateItem(item.id, {
+                                        status: event.target
+                                          .value as NoemaProjectPlanStatus,
+                                      })
+                                    }
+                                  >
+                                    {Object.entries(itemLabels)
+                                      .filter(
+                                        ([value]) =>
+                                          !['submitted', 'done'].includes(
+                                            value,
+                                          ),
+                                      )
+                                      .map(([value, label]) => (
+                                        <option value={value} key={value}>
+                                          {label}
+                                        </option>
+                                      ))}
+                                  </select>
+                                </label>
+                              )}
                             </div>
                             <label>
                               完成条件
@@ -1115,8 +1133,7 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                           </span>
                         ) : (
                           <span>
-                            {name(item.ownerAgentId)} ·{' '}
-                            {itemLabels[item.status]}
+                            {name(item.ownerAgentId)} · {itemStatusLabel(item)}
                             {item.submittedByAgentId
                               ? ` · 提交者：${name(item.submittedByAgentId)}`
                               : ''}
@@ -1163,9 +1180,14 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                           <summary>工作成果依据</summary>
                           <p>{item.evidence}</p>
                           <p>
+                            {item.submittedByAgentId
+                              ? `提交者：${name(item.submittedByAgentId)}${item.submissionRevision ? ` · 提交版本 ${item.submissionRevision}` : ''}`
+                              : '缺少独立提交记录'}
+                          </p>
+                          <p>
                             {item.evidenceReview
-                              ? `核验者：${name(item.evidenceReview.actorId)} · 依据计划版本 ${item.evidenceReview.submissionRevision}`
-                              : '尚无版本核验记录'}
+                              ? `验收者：${name(item.evidenceReview.actorId)} · 核验提交版本 ${item.evidenceReview.submissionRevision}`
+                              : '尚无独立验收记录'}
                           </p>
                           <button
                             type="button"
@@ -1356,6 +1378,20 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                                 退回完善
                               </button>
                             </>
+                          ) : null}
+                          {item.status === 'done' &&
+                          !item.acceptanceRecorded ? (
+                            <button
+                              className="quiet"
+                              type="button"
+                              disabled={busy}
+                              title="这条旧记录缺少独立提交与验收凭据；退回负责人重新提交，再由另一方验收。"
+                              onClick={() =>
+                                void changeItem(item, 'in_progress')
+                              }
+                            >
+                              退回补齐验收
+                            </button>
                           ) : null}
                         </div>
                       ) : null}

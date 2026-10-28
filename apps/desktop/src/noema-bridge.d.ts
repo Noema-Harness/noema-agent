@@ -355,6 +355,9 @@ export interface NoemaProjectPlanItem {
     submissionRevision: number;
   } | null;
   submittedByAgentId?: string | null;
+  submittedAt?: string | null;
+  submissionRevision?: number | null;
+  acceptanceRecorded?: boolean;
   blocker: string;
   phaseId: string;
   phaseTitle: string;

@@ -95,13 +95,32 @@ test('only accepted deliveries advance progress and unlock dependent work across
       submitted.items.find((item) => item.id === 'research').submittedByAgentId,
       a,
     );
+    assert.ok(
+      submitted.items.find((item) => item.id === 'research').submittedAt,
+    );
+    assert.equal(
+      submitted.items.find((item) => item.id === 'research').submissionRevision,
+      submitted.revision,
+    );
     assert.equal(submitted.progress.percentage, 0);
     assert.equal(submitted.progress.submitted, 1);
-    assert.throws(() => update('research', 'done', a), /不能自行验收/u);
+    assert.throws(
+      () => update('research', 'done', a),
+      /提交者不能验收自己的成果/u,
+    );
     const accepted = update('research', 'done', 'noema');
     assert.equal(
       accepted.items.find((item) => item.id === 'research').submittedByAgentId,
       a,
+    );
+    assert.equal(
+      accepted.items.find((item) => item.id === 'research').acceptanceRecorded,
+      true,
+    );
+    assert.equal(
+      accepted.items.find((item) => item.id === 'research').evidenceReview
+        .submissionRevision,
+      submitted.items.find((item) => item.id === 'research').submissionRevision,
     );
     assert.equal(accepted.progress.percentage, 50);
     assert.equal(
@@ -139,6 +158,135 @@ test('only accepted deliveries advance progress and unlock dependent work across
     if (db.open) db.close();
     reopened?.close();
     fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('plan edits cannot skip submission, and legacy done without two-party records is not accepted', () => {
+  const { db, projects, project, a, plan } = setup();
+  try {
+    const directDone = structuredClone(plan);
+    directDone.items[0].status = 'done';
+    directDone.items[0].evidence = '代码已检查。';
+    assert.throws(
+      () =>
+        projects.plans.replace({
+          projectId: project.id,
+          expectedRevision: 0,
+          reason: '尝试在计划编辑中直接验收。',
+          plan: directDone,
+        }),
+      /不能跳过工作项提交\/验收/u,
+    );
+
+    const initial = projects.plans.replace({
+      projectId: project.id,
+      expectedRevision: 0,
+      reason: '建立计划。',
+      plan,
+    });
+    const started = projects.plans.updateItem({
+      projectId: project.id,
+      expectedRevision: initial.revision,
+      itemId: 'research',
+      status: 'in_progress',
+      actorAgentId: a,
+      reason: '开始取证。',
+    });
+    assert.throws(
+      () =>
+        projects.plans.updateItem({
+          projectId: project.id,
+          expectedRevision: started.revision,
+          itemId: 'research',
+          status: 'submitted',
+          actorAgentId: 'noema',
+          evidence: '替负责人提交。',
+          reason: '测试不允许代提交。',
+        }),
+      /Noema 不能代替负责人提交/u,
+    );
+    const submitted = projects.plans.updateItem({
+      projectId: project.id,
+      expectedRevision: started.revision,
+      itemId: 'research',
+      status: 'submitted',
+      actorAgentId: a,
+      evidence: '带依据的交付。',
+      reason: '负责人提交。',
+    });
+    assert.throws(
+      () =>
+        projects.plans.updateItem({
+          projectId: project.id,
+          expectedRevision: submitted.revision,
+          itemId: 'research',
+          status: 'done',
+          actorAgentId: a,
+          reason: '提交者尝试验收自己。',
+        }),
+      /提交者不能验收自己的成果/u,
+    );
+
+    const saved = db
+      .prepare(
+        'SELECT items_json FROM social_project_plan_revisions WHERE project_id = ? AND revision = ?',
+      )
+      .get(project.id, submitted.revision);
+    const snapshot = JSON.parse(saved.items_json);
+    const item = snapshot.phases[0].workItems.find(
+      (entry) => entry.id === 'research',
+    );
+    item.status = 'done';
+    item.submittedByAgentId = null;
+    item.submittedAt = null;
+    item.submissionRevision = null;
+    item.evidenceReview = null;
+    db.prepare(
+      'UPDATE social_project_plan_revisions SET items_json = ? WHERE project_id = ? AND revision = ?',
+    ).run(JSON.stringify(snapshot), project.id, submitted.revision);
+
+    const legacy = projects.plans.get(project.id);
+    const unverified = legacy.items.find((entry) => entry.id === 'research');
+    assert.equal(unverified.status, 'done');
+    assert.equal(unverified.acceptanceRecorded, false);
+    assert.equal(legacy.progress.done, 0);
+    assert.equal(legacy.progress.percentage, 0);
+    assert.equal(legacy.phases[0].state, 'awaiting_review');
+    assert.deepEqual(
+      legacy.items.find((entry) => entry.id === 'budget').blockedBy,
+      ['research'],
+    );
+    const reopened = projects.plans.updateItem({
+      projectId: project.id,
+      expectedRevision: legacy.revision,
+      itemId: 'research',
+      status: 'in_progress',
+      actorAgentId: 'noema',
+      reason: '旧记录缺少独立验收凭据，退回补交。',
+    });
+    assert.equal(reopened.items[0].status, 'in_progress');
+    assert.equal(reopened.items[0].submittedByAgentId, null);
+    const resubmitted = projects.plans.updateItem({
+      projectId: project.id,
+      expectedRevision: reopened.revision,
+      itemId: 'research',
+      status: 'submitted',
+      actorAgentId: a,
+      evidence: '重新提交的工作成果。',
+      reason: '负责人重新提交。',
+    });
+    const reaccepted = projects.plans.updateItem({
+      projectId: project.id,
+      expectedRevision: resubmitted.revision,
+      itemId: 'research',
+      status: 'done',
+      actorAgentId: 'noema',
+      reason: '独立验收重新提交的成果。',
+    });
+    assert.equal(reaccepted.items[0].acceptanceRecorded, true);
+    assert.equal(reaccepted.progress.percentage, 50);
+  } finally {
+    db.close();
   }
 });
 
@@ -831,7 +979,7 @@ test('relation journals include both endpoints and old snapshots remain readable
   }
 });
 
-test('a stale submission cannot ignore changed upstream evidence', () => {
+test('accepted work cannot replace its evidence without reopening and resubmitting', () => {
   const { db, projects, project, a, b, plan } = setup();
   try {
     projects.plans.replace({
@@ -853,21 +1001,15 @@ test('a stale submission cannot ignore changed upstream evidence', () => {
     update(1, 'research', a, 'submitted', '第一份来源。');
     update(2, 'research', 'noema', 'done');
     update(3, 'budget', b, 'in_progress');
-    update(4, 'research', 'noema', 'done', '核查后更正的来源。');
     assert.throws(
-      () => update(4, 'budget', b, 'submitted', '仍按第一份来源估算。'),
-      (error) =>
-        error.code === 'PLAN_CONFLICT' &&
-        error.conflicts.some(
-          (change) =>
-            change.entity === 'item:research' &&
-            change.fields.includes('evidence'),
-        ),
+      () => update(4, 'research', 'noema', 'done', '核查后更正的来源。'),
+      /已验收成果的依据不能直接改写/u,
     );
     assert.equal(
-      projects.plans.get(project.id).items.find((item) => item.id === 'budget')
-        .status,
-      'in_progress',
+      projects.plans
+        .get(project.id)
+        .items.find((item) => item.id === 'research').evidence,
+      '第一份来源。',
     );
   } finally {
     db.close();
