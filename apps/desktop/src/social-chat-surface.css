@@ -4,16 +4,16 @@
 .social-shell {
   font-family:
     'Segoe UI Variable', 'Segoe UI', 'Microsoft YaHei UI', sans-serif;
-  color: #1e3031;
-  background: #eee9df;
+  color: #20282d;
+  background: #e9ecee;
   font-size: 14px;
   font-synthesis: none;
-  --ink: #1e3031;
-  --muted: #68716d;
-  --line: #e2ddd3;
-  --accent: #a44c3d;
-  --soft: #f0ece3;
-  --paper: #fbf9f3;
+  --ink: #20282d;
+  --muted: #68727b;
+  --line: #e3e7e9;
+  --accent: #28556a;
+  --soft: #eef3f5;
+  --paper: #fcfcfc;
 }
 .social-shell * {
   box-sizing: border-box;
