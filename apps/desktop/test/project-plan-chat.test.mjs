@@ -6,6 +6,141 @@ import { SocialProjectStore } from '../src/social-project-store.mjs';
 import { SocialChatService } from '../src/social-chat-service.mjs';
 import { createSocialTestStore } from '../test-support/social-team.mjs';
 
+test('Noema reads full work-item evidence before accepting a truncated summary', async () => {
+  const db = new Database(':memory:');
+  new RootStore(db);
+  const store = createSocialTestStore(db);
+  const projects = new SocialProjectStore({ db, socialChatStore: store });
+  const project = projects.createProject({
+    title: '长成果核验',
+    brief: '摘要长度不得改变验收判断。',
+    agentIds: ['noema', 'engineering-partner'],
+  });
+  const evidence = '逐项核验依据。'.repeat(180);
+  projects.plans.replace({
+    projectId: project.id,
+    expectedRevision: 0,
+    reason: '建立一项有较长成果依据的工作。',
+    plan: {
+      objective: '确认 Noema 能按需读取完整成果。',
+      phases: [
+        {
+          id: 'review',
+          title: '成果核验',
+          outcome: '完整读取并核验负责人提交的依据。',
+          exitCriteria: '提交与验收分别记录。',
+          dependsOn: [],
+          status: 'pending',
+          evidence: '',
+          workItems: [
+            {
+              id: 'long-evidence',
+              title: '提交完整依据',
+              ownerAgentId: 'engineering-partner',
+              acceptance: '逐条核对成果依据后独立验收。',
+              dependsOn: [],
+              status: 'pending',
+              evidence: '',
+              blocker: '',
+            },
+          ],
+        },
+      ],
+    },
+  });
+  projects.plans.updateItem({
+    projectId: project.id,
+    expectedRevision: 1,
+    itemId: 'long-evidence',
+    actorAgentId: 'engineering-partner',
+    status: 'submitted',
+    evidence,
+    reason: '负责人提交完整成果依据。',
+  });
+  const requests = [];
+  const invoke = (input, id, args) =>
+    input.onToolCalls?.([
+      {
+        id,
+        type: 'function',
+        function: {
+          name: 'manage_project_plan',
+          arguments: JSON.stringify(args),
+        },
+      },
+    ]);
+  const service = new SocialChatService({
+    store,
+    projectStore: projects,
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'test-model',
+    getRootState: async () => ({
+      connected: true,
+      selectedModel: 'test-model',
+    }),
+    provider: {
+      async *streamChat(input) {
+        requests.push(input);
+        if (requests.length === 1) {
+          const planTool = input.tools.find(
+            (tool) => tool.function.name === 'manage_project_plan',
+          );
+          assert.match(planTool.function.description, /Truncated flag/u);
+          invoke(input, 'summary', {
+            operation: 'read',
+            project_id: project.id,
+            reason: '定位已提交的验收依据。',
+          });
+        } else if (requests.length === 2) {
+          const summary = JSON.parse(input.messages.at(-1).content);
+          assert.equal(
+            summary.items.find((item) => item.id === 'long-evidence')
+              .evidenceTruncated,
+            true,
+          );
+          invoke(input, 'detail', {
+            operation: 'read',
+            project_id: project.id,
+            item_id: 'long-evidence',
+            reason: '摘要已截断，读取完整成果后再判断。',
+          });
+        } else if (requests.length === 3) {
+          const detail = JSON.parse(input.messages.at(-1).content);
+          assert.equal(detail.item.evidence, evidence);
+          invoke(input, 'accept', {
+            operation: 'update_item',
+            project_id: project.id,
+            expected_revision: 2,
+            item_id: 'long-evidence',
+            status: 'done',
+            reason: '已读取完整依据并完成独立核验。',
+          });
+        } else yield '已读取完整依据并完成验收。';
+      },
+    },
+  });
+  projects.plans.onChange = null;
+  service.onProjectPlanChanged = () => {};
+  try {
+    const turn = service.sendMessage({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '核验这项已提交的工作。',
+    });
+    await service.active.get('room-noema')?.done;
+    assert.equal(store.getSocialMessage(turn.messageId).status, 'complete');
+    assert.equal(projects.plans.get(project.id).revision, 3);
+    assert.equal(
+      projects.plans.get(project.id).items[0].evidenceReview.actorId,
+      'noema',
+    );
+    assert.equal(requests.length, 4);
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});
+
 test('model evidence inspection uses the persisted source and returns stale-version detail', async () => {
   const db = new Database(':memory:');
   new RootStore(db);

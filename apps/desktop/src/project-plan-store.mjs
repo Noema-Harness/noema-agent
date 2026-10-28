@@ -120,6 +120,16 @@ function phaseAcceptanceRecorded(phase, workItems) {
   );
 }
 
+function boundedTextFields(value, limits) {
+  const result = { ...value };
+  for (const [field, maxLength] of Object.entries(limits)) {
+    const original = typeof value[field] === 'string' ? value[field] : '';
+    result[field] = original.slice(0, maxLength);
+    result[`${field}Truncated`] = original.length > maxLength;
+  }
+  return result;
+}
+
 function evidenceImpact(plan, itemId) {
   const byId = new Map(plan.items.map((item) => [item.id, item]));
   const affectedItems = new Set([itemId]);
@@ -738,28 +748,34 @@ export class ProjectPlanStore {
       if (!phase) throw new Error('阶段不存在。');
       const prerequisitePhases = phase.dependsOn.map((id) => {
         const prerequisite = plan.phases.find((entry) => entry.id === id);
-        return {
-          id: prerequisite.id,
-          title: prerequisite.title,
-          outcome: prerequisite.outcome,
-          status: prerequisite.status,
-          evidence: prerequisite.evidence.slice(0, 500),
-        };
+        return boundedTextFields(
+          {
+            id: prerequisite.id,
+            title: prerequisite.title,
+            outcome: prerequisite.outcome,
+            status: prerequisite.status,
+            evidence: prerequisite.evidence,
+          },
+          { evidence: 500 },
+        );
       });
       return {
         projectId,
         revision: plan.revision,
         objective: plan.objective,
-        phase: {
-          ...phase,
-          evidence: phase.evidence.slice(0, 500),
-          workItems: phase.workItems.map((item) => ({
-            ...item,
-            acceptance: item.acceptance.slice(0, 400),
-            evidence: item.evidence.slice(0, 500),
-            blocker: item.blocker.slice(0, 300),
-          })),
-        },
+        phase: boundedTextFields(
+          {
+            ...phase,
+            workItems: phase.workItems.map((item) =>
+              boundedTextFields(item, {
+                acceptance: 400,
+                evidence: 500,
+                blocker: 300,
+              }),
+            ),
+          },
+          { evidence: 500 },
+        ),
         prerequisitePhases,
         dependencyItems: plan.items
           .filter((item) =>
@@ -767,12 +783,17 @@ export class ProjectPlanStore {
               workItem.dependsOn.includes(item.id),
             ),
           )
-          .map((item) => ({
-            id: item.id,
-            title: item.title,
-            status: item.status,
-            evidence: item.evidence.slice(0, 500),
-          })),
+          .map((item) =>
+            boundedTextFields(
+              {
+                id: item.id,
+                title: item.title,
+                status: item.status,
+                evidence: item.evidence,
+              },
+              { evidence: 500 },
+            ),
+          ),
       };
     }
     if (itemId) {
@@ -818,29 +839,33 @@ export class ProjectPlanStore {
     const items = [];
     let length = 0;
     for (const item of candidates) {
-      const bounded = {
-        ...item,
-        acceptance: item.acceptance.slice(0, 400),
-        evidence: item.evidence.slice(0, 500),
-        blocker: item.blocker.slice(0, 300),
-      };
+      const bounded = boundedTextFields(item, {
+        acceptance: 400,
+        evidence: 500,
+        blocker: 300,
+      });
       const size = JSON.stringify(bounded).length;
       if (length + size > 12_000) break;
       items.push(bounded);
       length += size;
     }
-    const includedPhases = plan.phases.map((phase) => ({
-      id: phase.id,
-      title: phase.title,
-      outcome: phase.outcome,
-      exitCriteria: phase.exitCriteria,
-      dependsOn: phase.dependsOn,
-      status: phase.status,
-      state: phase.state,
-      waitingForPhases: phase.waitingForPhases,
-      progress: phase.progress,
-      evidence: phase.evidence.slice(0, 500),
-    }));
+    const includedPhases = plan.phases.map((phase) =>
+      boundedTextFields(
+        {
+          id: phase.id,
+          title: phase.title,
+          outcome: phase.outcome,
+          exitCriteria: phase.exitCriteria,
+          dependsOn: phase.dependsOn,
+          status: phase.status,
+          state: phase.state,
+          waitingForPhases: phase.waitingForPhases,
+          progress: phase.progress,
+          evidence: phase.evidence,
+        },
+        { evidence: 500 },
+      ),
+    );
     return {
       projectId,
       revision: plan.revision,

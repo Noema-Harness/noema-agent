@@ -1015,3 +1015,41 @@ test('accepted work cannot replace its evidence without reopening and resubmitti
     db.close();
   }
 });
+
+test('plan summaries mark bounded text and item reads return the complete text', () => {
+  const { db, projects, project, a, plan } = setup();
+  try {
+    const acceptance = '验收条件'.repeat(150);
+    const evidence = '成果依据'.repeat(300);
+    plan.items[0].acceptance = acceptance;
+    projects.plans.replace({
+      projectId: project.id,
+      expectedRevision: 0,
+      reason: '建立长文本交付项。',
+      plan,
+    });
+    projects.plans.updateItem({
+      projectId: project.id,
+      expectedRevision: 1,
+      itemId: 'research',
+      actorAgentId: a,
+      status: 'submitted',
+      evidence,
+      reason: '记录一份较长的成果依据。',
+    });
+
+    const summary = projects.plans.forAgent(project.id, a);
+    const itemSummary = summary.items.find((item) => item.id === 'research');
+    assert.equal(itemSummary.acceptance.length, 400);
+    assert.equal(itemSummary.acceptanceTruncated, true);
+    assert.equal(itemSummary.evidence.length, 500);
+    assert.equal(itemSummary.evidenceTruncated, true);
+    assert.equal(itemSummary.blockerTruncated, false);
+
+    const detail = projects.plans.forAgent(project.id, a, 'research');
+    assert.equal(detail.item.acceptance, acceptance);
+    assert.equal(detail.item.evidence, evidence);
+  } finally {
+    db.close();
+  }
+});
