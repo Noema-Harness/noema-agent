@@ -61,28 +61,46 @@ function projectWorkTool(agents) {
 }
 
 function specialistDelegationTool(agents) {
-  if (!agents.length) return null;
+  const properties = {
+    task: {
+      type: 'string',
+      description:
+        'The minimum self-contained task needed for the work. Do not include unrelated room history or private details.',
+    },
+    new_agent: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: '短而可长期使用的联系人名称。' },
+        headline: {
+          type: 'string',
+          description: '可随经历拓展的专业范围，不是一次任务岗位。',
+        },
+        description: {
+          type: 'string',
+          description: '长期合作方式与职责边界。',
+        },
+      },
+      required: ['name', 'headline', 'description'],
+      additionalProperties: false,
+    },
+  };
+  if (agents.length) {
+    properties.agent_id = {
+      type: 'string',
+      enum: agents.map((agent) => agent.id),
+      description: 'An existing active specialist whose scope fits the task.',
+    };
+  }
   return {
     type: 'function',
     function: {
       name: 'delegate_to_specialist',
       description:
-        'Delegate a self-contained knowledge subtask to one existing specialist when its stated scope materially improves the answer enough to justify two additional inferences: one by the specialist and one by Noema to review and synthesize the report. The specialist report returns internally to Noema, not directly to the user. Do not use for ordinary conversation or when you can answer well yourself.',
+        'Delegate one bounded knowledge task when a single specialist materially improves the result enough to justify two additional model calls. If the entrusted result needs multiple independent disciplines and a shared, trackable deliverable (including a decision-ready research or implementation plan), use create_project_team instead of splitting work into private handoffs. Use an existing matching contact when available; otherwise provide new_agent to create a persistent specialist and delegate in its resident private chat in this same operation. Create one only for an explicitly entrusted task, never for ordinary conversation or an uncommitted idea. The specialist report returns internally to Noema, not directly to the user. Provide exactly one of agent_id or new_agent.',
       parameters: {
         type: 'object',
-        properties: {
-          agent_id: {
-            type: 'string',
-            enum: agents.map((agent) => agent.id),
-            description: 'The existing active specialist to receive the task.',
-          },
-          task: {
-            type: 'string',
-            description:
-              'The minimum self-contained task needed for the work. Do not include unrelated room history or private details.',
-          },
-        },
-        required: ['agent_id', 'task'],
+        properties,
+        required: ['task'],
         additionalProperties: false,
       },
     },
@@ -115,7 +133,7 @@ function projectTeamTool({ agents, projects, projectWorkReady }) {
     function: {
       name: 'create_project_team',
       description: [
-        '只在用户已交付一个确需至少两种专业角色协作的复杂项目时使用。普通交流或单一专业任务继续留在聊天或交给一位联系人。',
+        '当用户已明确交付的工作确需至少两种独立专业分工，并要求形成共同、可跟踪的交付物时使用；交付物可以是决策型研究或实施计划，不必等到开始写代码。复杂度取决于工作流是否需要不同专业判断，不取决于最终文档长短。不要把跨专业且需要跟踪的委托压成一个专家私聊、再由 Noema 临时拼答案。普通交流或单一专业意见继续留在聊天或交给一位联系人。若用户已允许带假设推进，不再把可标注、可核实的未知资料设成开工前提；将其记入项目范围和计划并开始可逆工作。',
         '仅建立项目、成员独立会话及共同启动公告。公告说明共同背景、约束和初步职责，不立即让成员轮流回答。随后独立使用计划工具和公开群消息工具协调；不要把建组成功说成工作已完成。',
         '优先复用职责合适的活跃联系人；仅当现有列表确实缺少角色时才创建新联系人。新联系人名称与长期定位应描述可持续拓展的资产，不要为一次小任务造人。',
         projects.length
@@ -441,19 +459,19 @@ function noemaActionGuidance(
 ) {
   return [
     '分享、倾诉、快乐、烦恼和漫谈本身就有意义。自然参与当下交流，不默认把一个想法当成隐含需求，也不把所有讨论转为需求澄清。只有实际形成委托时才组织工作。',
-    '用用户此刻的意图和你承担的责任区分交流与受托工作，不按产物是文字还是代码分类。交流、共创和判断可以留在主聊；用户明确交付需要查证、持续推进或独立专业贡献的工作后，组织合适执行者。不要用一份直接生成的文字冒充实际调查；未查证的受众、价格和成本判断必须保留为假设。',
+    '用用户此刻的意图和你承担的责任区分交流与受托工作，不按产物是文字还是代码分类。交流、共创和判断可以留在主聊；用户明确交付需要查证、持续推进或独立专业贡献的工作后，组织合适执行者。缺少细节时，先判断能否带着明确假设开展安全、可逆的工作；用户已允许按假设继续，就把未知项保留在工作计划中并实际推进，不再重复索取这些资料。只有答案会改变目标、授权范围或重大不可逆代价时，才先等用户决定。不要用一份直接生成的文字冒充实际调查；未查证的受众、价格和成本判断必须保留为假设。',
     projectWorkAvailable
       ? '仅当用户明确要求对本地项目文件进行检查、修改、构建或验证时，才可调用 start_project_work。调用会打开本机工作区授权与数据流披露；用户选择工作区后任务才会被创建。不得因用户提到代码、项目或未来想法就启动。'
       : projectTeamAvailable && projectFileEngineAvailable
         ? '项目文件执行器已就绪，但还没有可选的文件执行成员。复杂项目确需组队时，可在 create_project_team 创建成员并赋予 project_work；创建完成前不要声称已检查文件。'
         : '当前没有可用的项目文件执行能力。不要声称能在本机项目中检查或修改文件。',
     specialistAgents.length
-      ? '仅当一项独立知识工作足以明显改善用户结果，且预期收益值得两次额外推理成本时，才调用 delegate_to_specialist：任务由选定联系人在其常驻私聊中完成，Noema 收到报告后形成最终回复。不要把 Noema 主聊历史交给联系人；它只会看到自己的常驻私聊历史和本次交办。不得为普通交流或形式上的多 agent 协作调用。将报告作为协作材料加以核对并结合当前上下文作答；不要把原始报告直接当作 Noema 回复。若报告显示未投递或执行未完成，必须如实说明，不能声称已完成。若报告实质影响结论，可简洁说明协助者。'
+      ? '仅当一项边界清晰的独立知识工作适合由一位联系人完成，且预期收益值得两次额外推理成本时，才调用 delegate_to_specialist。若委托需要多个独立专业工作流及共同、可跟踪的交付物（包括决策型研究或实施计划），改用 create_project_team，不能由一个联系人包办后让 Noema 临时汇总。任务由选定联系人在其常驻私聊中完成，Noema 收到报告后形成最终回复。不要把 Noema 主聊历史交给联系人；它只会看到自己的常驻私聊历史和本次交办。不得为普通交流或形式上的多 agent 协作调用。将报告作为协作材料加以核对并结合当前上下文作答；不要把原始报告直接当作 Noema 回复。若报告显示未投递或执行未完成，必须如实说明，不能声称已完成。若报告实质影响结论，可简洁说明协助者。'
       : projectTeamAvailable
-        ? '当前联系人列表为空，不能直接进行单人委派；这不妨碍在复杂项目确需多专业协作时，使用 create_project_team 创建缺位成员。不要把尚无联系人说成无法创建团队。'
-        : '当前没有可用的专业联系人可供委派。',
+        ? '当前联系人列表为空。明确委托的单专业知识任务可通过 delegate_to_specialist 创建长期可拓展的联系人并在同一操作中交办；需要多个独立专业工作流和共同计划的委托才使用 create_project_team。'
+        : '当前联系人列表为空。明确委托的单专业知识任务可通过 delegate_to_specialist 创建长期可拓展的联系人并在同一操作中交办；需要多个独立专业工作流和共同计划的委托需要团队能力。',
     projectTeamAvailable
-      ? '仅当用户已把一个确实需要至少两种专业角色的复杂项目交给你时，才调用 create_project_team。先复用合适联系人；缺位时才创建长期可拓展的成员。工具只建立共同背景和初步职责，不等待成员回答。共享计划按“项目结果→阶段成果与退出条件→有负责人的团队工作项”组织；近期阶段拆细，远期阶段保留粗粒度。阶段依赖和工作项依赖都必须明确；工作项完成不自动等于阶段通过，阶段出口须有可核验依据后由你或用户验收。通过公开消息显式 @ 推进；需要多方共同了解时可 @所有人，但不要求轮流确认。单人短任务走私聊委托；同一项目续接不重复建群。只有所有未取消工作项均已验收、所有未取消阶段均已验收、至少有一个真实交付、没有待用户评审且没有运行中的工作时，调用 complete_project 启动成员各自在项目会话中的一次经历自审；不要把成员自审或批次启动说成项目归档。'
+      ? '当已委托工作包含彼此独立、都影响交付质量的专业工作流，并要求形成共同、可跟踪的交付物时，才调用 create_project_team；交付物可以是决策型研究或实施计划，不必等到开始开发，且不能先压成一个专家私聊再由你临时拼答案。判断依据是专业分工，而非最终产物长度。先复用合适联系人；缺位时才创建长期可拓展的成员。若用户允许按假设推进，把未知项写入项目范围与计划并开展可逆工作，不重复追问。工具只建立共同背景和初步职责，不等待成员回答。共享计划按“项目结果→阶段成果与退出条件→有负责人的团队工作项”组织；近期阶段拆细，远期阶段保留粗粒度。阶段依赖和工作项依赖都必须明确；工作项完成不自动等于阶段通过，阶段出口须有可核验依据后由你或用户验收。通过公开消息显式 @ 推进；需要多方共同了解时可 @所有人，但不要求轮流确认。单人短任务走私聊委托；同一项目续接不重复建群。只有所有未取消工作项均已验收、所有未取消阶段均已验收、至少有一个真实交付、没有待用户评审且没有运行中的工作时，调用 complete_project 启动成员各自在项目会话中的一次经历自审；不要把成员自审或批次启动说成项目归档。'
       : '',
   ].join('\n');
 }
@@ -1939,7 +1957,10 @@ export class SocialChatService {
               .slice(0, 32)
               .map((item) => this.store.getAgent(item.id))
           : [];
-      const specialistTool = specialistDelegationTool(specialistAgents);
+      const specialistTool =
+        agentId === 'noema' && roomId === 'room-noema'
+          ? specialistDelegationTool(specialistAgents)
+          : null;
       const teamProjects =
         agentId === 'noema' && roomId === 'room-noema' && this.projectStore
           ? this.projectStore
@@ -2358,6 +2379,24 @@ export class SocialChatService {
       }
       controller.signal.throwIfAborted();
       if (toolCalls.length) {
+        const teamCall = toolCalls.find(
+          (call) => call.function?.name === 'create_project_team',
+        );
+        if (
+          teamCall &&
+          toolCalls.length > 1 &&
+          toolCalls.every((call) =>
+            ['create_project_team', 'delegate_to_specialist'].includes(
+              call.function?.name,
+            ),
+          )
+        ) {
+          // Team assignments already represent the delegated work. If the model
+          // redundantly asks for private handoffs in parallel, keep the single
+          // durable team action and let its members receive their assigned work
+          // through the project plan instead of failing the user's whole turn.
+          toolCalls = [teamCall];
+        }
         if (
           toolCalls.length !== 1 &&
           !toolCalls.every((call) =>
@@ -2540,15 +2579,18 @@ export class SocialChatService {
             );
           }
         } else if (toolName === 'delegate_to_specialist') {
-          const specialistSnapshot = specialistAgents.find(
-            (item) => item.id === input?.agent_id,
-          );
-          const specialist = specialistSnapshot
-            ? this.store.getAgent(specialistSnapshot.id)
-            : null;
+          const hasAgentId = typeof input?.agent_id === 'string';
+          const hasNewAgent =
+            input?.new_agent &&
+            typeof input.new_agent === 'object' &&
+            !Array.isArray(input.new_agent);
+          if (hasAgentId === Boolean(hasNewAgent)) {
+            throw new ModelProviderError(
+              'social_tool_invalid',
+              '请且只能指定一个现有联系人或新建联系人；尚未执行委派。',
+            );
+          }
           if (
-            !specialist ||
-            specialist.archivedAt ||
             typeof toolCalls[0]?.id !== 'string' ||
             !toolCalls[0].id ||
             typeof input?.task !== 'string' ||
@@ -2557,10 +2599,42 @@ export class SocialChatService {
           ) {
             throw new ModelProviderError(
               'social_tool_invalid',
-              '专业联系人或委托内容无效；没有执行委派。',
+              '专业委托内容无效；尚未创建联系人或执行委派。',
             );
           }
           const task = input.task.trim();
+          controller.signal.throwIfAborted();
+          let specialist;
+          if (hasNewAgent) {
+            if (
+              typeof input?.new_agent?.name !== 'string' ||
+              typeof input?.new_agent?.headline !== 'string' ||
+              typeof input?.new_agent?.description !== 'string'
+            ) {
+              throw new ModelProviderError(
+                'social_tool_invalid',
+                '新联系人的名称、长期范围与合作方式不完整；尚未创建。',
+              );
+            }
+            const created = this.createAgent({
+              ...input.new_agent,
+              projectWork: false,
+            });
+            specialist = this.store.getAgent(created.members[0].id);
+          } else {
+            const specialistSnapshot = specialistAgents.find(
+              (item) => item.id === input.agent_id,
+            );
+            specialist = specialistSnapshot
+              ? this.store.getAgent(specialistSnapshot.id)
+              : null;
+          }
+          if (!specialist || specialist.archivedAt) {
+            throw new ModelProviderError(
+              'social_tool_invalid',
+              '专业联系人或委托内容无效；没有执行委派。',
+            );
+          }
           controller.signal.throwIfAborted();
           const specialistResult = await this.delegateToSpecialist({
             specialist,

@@ -111,7 +111,7 @@ try {
   db = new Database(database, { readonly: true });
   await send(
     'sharing',
-    '最近在想，周末也许可以办一场摄影小聚。只是一个念头，还没想好，也担心把休息时间填满。',
+    '最近几家 AI 平台的价格变来变去，我总是发现得很晚。要是有个地方能把它们放在一起看就好了，不过做这个又像个大坑，我也不确定有没有人真需要。',
   );
   assert.equal(
     phases[0].projects.length,
@@ -120,7 +120,7 @@ try {
   );
   await send(
     'clarification',
-    '更倾向于让六到十个零基础朋友轻松体验半天，而不是做正式培训。我自己有相机，可以借到一个场地，场地费六百元。每个人的材料大约三十元。我最多能拿三千元出来，还没决定是否要做，也不确定收费两百元是否合适；先一起分析怎样才不会挤掉我的休息。',
+    '我主要是想比较自己常用的 AI 服务 API 成本，也许之后能给小团队用。最好能看价格历史、按用量估算月成本。数据从哪里来我还没摸清，先不接触平台账号。我每周最多能拿两个晚上做这件事。',
   );
   assert.equal(
     phases[1].projects.length,
@@ -129,12 +129,12 @@ try {
   );
   await send(
     'entrusted_research',
-    '这件事我确实想往前推进。请先研究小规模试办可行性，形成一页供我决定是否试办的方案：受众真正需要什么、半天怎样安排、招生与退款怎么处理，以及收支和未知成本。资料不够的明确标记待核实，可以先用现有信息推进；不要替我对外联系、报名、发布或支出。',
+    '我想认真看看这个工具值不值得做，也希望把它推进成可以开始开发的方案。请先查清首批平台的价格数据能否可靠获取、各自的更新频率和许可边界，再定最小产品范围、价格历史与月成本估算的技术方案，以及后续维护成本和分阶段交付。资料不足的标为待核实；可以先按明确假设开展可逆工作，不要注册账号、联系平台或花钱。',
   );
   const projects = readProjects();
   assert.ok(
     projects.length > 0,
-    'an explicit request to research a feasibility proposal should create a project',
+    'an explicitly entrusted multi-discipline product investigation should create a project',
   );
   assert.ok(
     projects.some(

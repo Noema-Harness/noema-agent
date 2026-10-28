@@ -411,6 +411,10 @@ test('first launch exposes team creation despite having no specialists', async (
           (entry) => entry.function.name === 'create_project_team',
         );
         assert.ok(team);
+        assert.match(team.function.description, /独立专业分工.*工作流/u);
+        assert.match(team.function.description, /共同、可跟踪的交付物/u);
+        assert.match(team.function.description, /决策型研究或实施计划/u);
+        assert.match(team.function.description, /用户已允许带假设推进/u);
         assert.ok(
           team.function.parameters.properties.members.items.properties
             .new_agent,
@@ -426,6 +430,7 @@ test('first launch exposes team creation despite having no specialists', async (
           .map((message) => message.content)
           .join('\n');
         assert.match(instructions, /这不妨碍.*create_project_team/u);
+        assert.match(instructions, /已允许按假设继续/u);
         yield '先确认影响范围。';
       },
     },
@@ -498,6 +503,97 @@ test('forming a team publishes common background without sequential consultation
         .getRoomSnapshot(project.members[0].sessionRoomId)
         .messages.filter((m) => m.role === 'user').length,
       0,
+    );
+  } finally {
+    await f.service.shutdown();
+    f.db.close();
+  }
+});
+
+test('team formation takes precedence over duplicate parallel specialist handoffs', async () => {
+  let calls = 0;
+  const f = setup({
+    async *streamChat(input) {
+      calls++;
+      if (calls === 1) {
+        const team = input.tools.find(
+          (entry) => entry.function.name === 'create_project_team',
+        );
+        const delegation = input.tools.find(
+          (entry) => entry.function.name === 'delegate_to_specialist',
+        );
+        assert.ok(team);
+        assert.ok(delegation);
+        input.onToolCalls([
+          {
+            id: 'call-team',
+            type: 'function',
+            function: {
+              name: 'create_project_team',
+              arguments: JSON.stringify({
+                title: '平台价格追踪方案',
+                brief: '比较价格数据来源、产品范围和维护方案。',
+                members: [
+                  { agent_id: f.a, task: '研究数据来源与更新约束。' },
+                  {
+                    new_agent: {
+                      name: '成本分析员',
+                      headline: '产品成本与用量分析',
+                      description: '拆解成本模型并明确未核实的假设。',
+                    },
+                    task: '设计价格历史和月成本估算模型。',
+                  },
+                ],
+              }),
+            },
+          },
+          {
+            id: 'call-duplicate-handoff',
+            type: 'function',
+            function: {
+              name: 'delegate_to_specialist',
+              arguments: JSON.stringify({
+                agent_id: f.a,
+                task: '研究数据来源与更新约束。',
+              }),
+            },
+          },
+        ]);
+      } else {
+        const assistantCall = input.messages.findLast(
+          (message) => message.role === 'assistant' && message.tool_calls,
+        );
+        assert.deepEqual(
+          assistantCall.tool_calls.map((call) => call.function.name),
+          ['create_project_team'],
+        );
+        yield '团队已建立，尚未开始执行。';
+      }
+    },
+  });
+  try {
+    const sent = f.service.sendMessage({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '请分析平台价格追踪方案。',
+    });
+    await settle(f.service);
+    assert.equal(calls, 2);
+    const project = f.projects
+      .listProjects()
+      .find((item) => item.title === '平台价格追踪方案');
+    assert.ok(project);
+    assert.equal(project.members.length, 2);
+    assert.equal(f.store.getSocialMessage(sent.messageId).status, 'complete');
+    assert.equal(
+      f.store
+        .getRoomSnapshot(f.store.getAgentResidentRoomId(f.a))
+        .messages.some(
+          (message) =>
+            message.role === 'user' &&
+            message.content.includes('研究数据来源与更新约束'),
+        ),
+      false,
     );
   } finally {
     await f.service.shutdown();

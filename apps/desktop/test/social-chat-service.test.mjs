@@ -1003,6 +1003,143 @@ test('main-chat provider failures retry in place without duplicating the user tu
   }
 });
 
+test('Noema creates a persistent specialist and delegates in its resident private chat', async () => {
+  const db = new Database(':memory:');
+  new RootStore(db);
+  const store = new SocialChatStore(db);
+  const requests = [];
+  const provider = {
+    async *streamChat(input) {
+      requests.push({ ...input, messages: [...input.messages] });
+      if (requests.length === 1) {
+        const tool = input.tools.find(
+          (entry) => entry.function.name === 'delegate_to_specialist',
+        );
+        assert.ok(tool);
+        assert.ok(tool.function.parameters.properties.new_agent);
+        assert.equal(tool.function.parameters.properties.agent_id, undefined);
+        input.onToolCalls([
+          {
+            id: 'call-create-and-delegate',
+            type: 'function',
+            function: {
+              name: 'delegate_to_specialist',
+              arguments: JSON.stringify({
+                new_agent: {
+                  name: '活动研究员',
+                  headline: '小型线下活动的需求与成本研究',
+                  description: '以来源和假设区分事实，提供精简可核对的分析。',
+                },
+                task: '核查小型摄影体验活动的成本结构，并标出未知成本。',
+              }),
+            },
+          },
+        ]);
+      } else if (requests.length === 2) {
+        yield '固定成本 600 元，材料为每人 30 元；本地需求尚无来源，需标待核实。';
+      } else {
+        yield '活动研究员完成了成本核对；本地需求仍待核实。';
+      }
+    },
+  };
+  const service = new SocialChatService({
+    store,
+    provider,
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'test-model',
+    getRootState: async () => ({
+      connected: true,
+      selectedModel: 'test-model',
+    }),
+  });
+
+  try {
+    service.sendMessage({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '请查核小型活动的成本。',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await service.active.get('room-noema')?.done;
+
+    const created = store
+      .listAgents()
+      .find((agent) => agent.name === '活动研究员');
+    assert.ok(created);
+    assert.equal(created.kind, 'specialist');
+    const residentRoomId = store.getAgentResidentRoomId(created.id);
+    const residentMessages = store.getRoomSnapshot(residentRoomId).messages;
+    assert.equal(residentMessages.at(-2).senderAgentId, 'noema');
+    assert.equal(
+      residentMessages.at(-2).content,
+      '核查小型摄影体验活动的成本结构，并标出未知成本。',
+    );
+    assert.equal(
+      residentMessages.at(-1).content,
+      '固定成本 600 元，材料为每人 30 元；本地需求尚无来源，需标待核实。',
+    );
+    assert.equal(requests.length, 3);
+    assert.deepEqual(
+      requests[1].messages.map((message) => message.role),
+      ['system', 'system', 'user'],
+    );
+    assert.equal(
+      requests[1].messages.at(-1).content,
+      '[Noema] 核查小型摄影体验活动的成本结构，并标出未知成本。',
+    );
+    const reply = store
+      .getRoomSnapshot('room-noema')
+      .messages.find((message) => message.role === 'assistant');
+    assert.equal(reply.status, 'complete');
+    assert.match(reply.content, /本地需求仍待核实/u);
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});
+
+test('an uncommitted idea does not create a specialist even though delegation is available', async () => {
+  const db = new Database(':memory:');
+  new RootStore(db);
+  const store = new SocialChatStore(db);
+  const service = new SocialChatService({
+    store,
+    provider: {
+      async *streamChat(input) {
+        assert.ok(
+          input.tools.some(
+            (entry) => entry.function.name === 'delegate_to_specialist',
+          ),
+        );
+        yield '先把这个念头放着也可以。';
+      },
+    },
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'test-model',
+    getRootState: async () => ({
+      connected: true,
+      selectedModel: 'test-model',
+    }),
+  });
+
+  try {
+    service.sendMessage({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '我最近在想办场摄影小聚，但还没决定。',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await service.active.get('room-noema')?.done;
+    assert.deepEqual(
+      store.listAgents().map((agent) => agent.id),
+      ['noema'],
+    );
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});
+
 test('Noema does not overlap a busy specialist resident conversation', async () => {
   const db = new Database(':memory:');
   new RootStore(db);
