@@ -1,0 +1,106 @@
+/* Semantic control roles. Values stay local until the visual direction is accepted. */
+.noema-button {
+  --button-bg: transparent;
+  --button-fg: var(--ui-ink);
+  --button-border: var(--ui-border);
+  --button-hover-bg: var(--ui-surface-muted);
+  --button-hover-fg: var(--ui-ink);
+  --button-focus: var(--ui-focus);
+  min-height: 40px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid var(--button-border);
+  border-radius: 3px;
+  background: var(--button-bg);
+  color: var(--button-fg);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease,
+    border-color 120ms ease;
+}
+
+.noema-button:hover:not(:disabled) {
+  color: var(--button-hover-fg);
+  background: var(--button-hover-bg);
+}
+
+.noema-button:focus-visible {
+  outline: 3px solid var(--button-focus);
+  outline-offset: 3px;
+}
+
+.noema-button:disabled {
+  color: var(--ui-ink-muted);
+  border-color: var(--ui-border-subtle);
+  background: var(--ui-surface-muted);
+  cursor: not-allowed;
+}
+
+.noema-button--small {
+  min-height: 32px;
+  padding-inline: 10px;
+  font-size: 12px;
+}
+.noema-button--medium {
+  min-height: 40px;
+}
+.noema-button--icon {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+}
+
+.noema-button--primary {
+  --button-bg: var(--ui-control-primary-bg);
+  --button-fg: var(--ui-control-primary-fg);
+  --button-border: var(--ui-control-primary-border);
+  --button-hover-bg: var(--ui-control-primary-hover-bg);
+  --button-hover-fg: var(--ui-control-primary-hover-fg);
+  --button-focus: var(--ui-focus);
+}
+
+.noema-button--secondary {
+  --button-bg: var(--ui-control-secondary-bg);
+  --button-fg: var(--ui-control-secondary-fg);
+  --button-border: var(--ui-control-secondary-border);
+  --button-hover-bg: var(--ui-control-secondary-hover-bg);
+  --button-hover-fg: var(--ui-control-secondary-hover-fg);
+  --button-focus: var(--ui-focus);
+}
+
+.noema-button--quiet {
+  --button-bg: var(--ui-control-quiet-bg);
+  --button-fg: var(--ui-control-quiet-fg);
+  --button-border: var(--ui-control-quiet-border);
+  --button-hover-bg: var(--ui-control-quiet-hover-bg);
+  --button-hover-fg: var(--ui-control-quiet-hover-fg);
+}
+
+.noema-button--danger {
+  --button-bg: var(--ui-control-danger-bg);
+  --button-fg: var(--ui-control-danger-fg);
+  --button-border: var(--ui-control-danger-border);
+  --button-hover-bg: var(--ui-control-danger-hover-bg);
+  --button-hover-fg: var(--ui-control-danger-hover-fg);
+  --button-focus: var(--ui-danger);
+}
+
+.workbench-surface--dark .noema-button:disabled {
+  color: var(--ui-workbench-dark-disabled-fg);
+  border-color: var(--ui-workbench-dark-disabled-border);
+  background: var(--ui-workbench-dark-disabled-bg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .noema-button {
+    transition: none;
+  }
+}

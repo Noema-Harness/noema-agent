@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Command } from 'cmdk';
+import { IconButton } from './ui/button';
 import type {
   NoemaSocialAgent,
   NoemaSocialProject,
@@ -129,14 +130,14 @@ export function GlobalSearchDialog({
             <h2 id="global-search-title">全局搜索</h2>
             <p>查找成员、项目和所有聊天中的消息。</p>
           </div>
-          <button
+          <IconButton
             type="button"
             className="icon-button"
-            aria-label="关闭全局搜索"
+            label="关闭全局搜索"
             onClick={() => onClose()}
           >
             ×
-          </button>
+          </IconButton>
         </div>
         <Command
           shouldFilter={false}

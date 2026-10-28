@@ -1,0 +1,57 @@
+/* Semantic UI tokens; values remain a working palette, not approved brand colors. */
+:root {
+  --ui-canvas: #f1f3f0;
+  --ui-surface: #fffef9;
+  --ui-surface-muted: #e5e9e7;
+  --ui-surface-inverse: #18212c;
+  --ui-ink: #1e272b;
+  --ui-ink-muted: #46545a;
+  --ui-ink-on-inverse: #fffdf4;
+  --ui-border: #687477;
+  --ui-border-subtle: #c4ccca;
+  --ui-focus: #315e74;
+  --ui-danger: #8b302b;
+  --ui-control-primary-bg: var(--ui-surface-inverse);
+  --ui-control-primary-fg: var(--ui-ink-on-inverse);
+  --ui-control-primary-border: var(--ui-surface-inverse);
+  --ui-control-primary-hover-bg: #293d52;
+  --ui-control-primary-hover-fg: #fffdf4;
+  --ui-control-secondary-bg: #fffdf6;
+  --ui-control-secondary-fg: #252a2c;
+  --ui-control-secondary-border: #727a7b;
+  --ui-control-secondary-hover-bg: #e8e8df;
+  --ui-control-secondary-hover-fg: var(--ui-ink);
+  --ui-control-quiet-bg: transparent;
+  --ui-control-quiet-fg: var(--ui-ink-muted);
+  --ui-control-quiet-border: transparent;
+  --ui-control-quiet-hover-bg: #e7e9e6;
+  --ui-control-quiet-hover-fg: var(--ui-ink);
+  --ui-control-danger-bg: var(--ui-danger);
+  --ui-control-danger-fg: #ffffff;
+  --ui-control-danger-border: var(--ui-danger);
+  --ui-control-danger-hover-bg: #70231f;
+  --ui-control-danger-hover-fg: #ffffff;
+  --ui-workbench-note: #374348;
+  --ui-workbench-dark-border: #343d47;
+  --ui-workbench-dark-disabled-fg: #d1d7d8;
+  --ui-workbench-dark-disabled-border: #59646d;
+  --ui-workbench-dark-disabled-bg: #303a44;
+}
+
+.workbench-surface--dark {
+  --ui-control-primary-bg: #d8e884;
+  --ui-control-primary-fg: #18212c;
+  --ui-control-primary-border: #d8e884;
+  --ui-control-primary-hover-bg: #e6f1aa;
+  --ui-control-primary-hover-fg: #18212c;
+  --ui-control-secondary-bg: transparent;
+  --ui-control-secondary-fg: #fffdf4;
+  --ui-control-secondary-border: #aeb8bd;
+  --ui-control-secondary-hover-bg: #34414e;
+  --ui-control-secondary-hover-fg: #fffdf4;
+  --ui-control-quiet-bg: transparent;
+  --ui-control-quiet-fg: #fffdf4;
+  --ui-control-quiet-border: transparent;
+  --ui-control-quiet-hover-bg: #34414e;
+  --ui-control-quiet-hover-fg: #fffdf4;
+}

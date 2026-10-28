@@ -1,0 +1,103 @@
+.component-workbench {
+  --wb-ink: var(--ui-ink);
+  --wb-muted: var(--ui-ink-muted);
+  --wb-line: var(--ui-border-subtle);
+  min-height: 100dvh;
+  overflow: auto;
+  padding: 32px clamp(20px, 5vw, 72px) 64px;
+  background: var(--ui-canvas);
+  color: var(--wb-ink);
+  font-family:
+    'Segoe UI Variable', 'Segoe UI', 'Microsoft YaHei UI', sans-serif;
+}
+
+.workbench-heading,
+.workbench-section-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.workbench-heading {
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--wb-line);
+}
+.workbench-heading p {
+  margin: 0 0 8px;
+  color: var(--wb-muted);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+}
+.workbench-heading h1 {
+  margin: 0;
+  font-size: 27px;
+  font-weight: 560;
+}
+.workbench-heading > span {
+  color: var(--wb-muted);
+  font-size: 12px;
+}
+.workbench-note {
+  max-width: 780px;
+  margin: 20px 0 24px;
+  color: var(--ui-workbench-note);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.workbench-section {
+  margin: 0 0 24px;
+}
+.workbench-section-heading {
+  margin-bottom: 9px;
+}
+.workbench-section-heading h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 650;
+}
+.workbench-section-heading code {
+  color: var(--wb-muted);
+  font-size: 11px;
+}
+.workbench-surface {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 18px;
+}
+.workbench-surface--light {
+  border: 1px solid var(--ui-border-subtle);
+  background: var(--ui-surface);
+}
+.workbench-surface--dark {
+  margin-top: 6px;
+  border: 1px solid var(--ui-workbench-dark-border);
+  background: var(--ui-surface-inverse);
+}
+
+.workbench-conversation {
+  overflow: hidden;
+  border: 1px solid #d1c9b7;
+  background: #f3efdf;
+}
+
+.workbench-conversation .social-shell.app {
+  height: auto;
+  min-height: 0;
+}
+
+.workbench-conversation .message.assistant {
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.workbench-conversation .chat-scroll {
+  padding: 28px clamp(20px, 5vw, 56px);
+  overflow: visible;
+}
+
+.workbench-conversation .message-bubble {
+  font-size: 13px;
+}

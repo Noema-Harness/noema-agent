@@ -1,40 +1,41 @@
-/* Noema's visual language: a lived-in paper ground, quiet ink, and one
-   vermilion thread. Structure comes from the conversation, not ornament. */
+/* A warm reading surface with a dark workspace rail and a restrained signal
+   color. Interface meaning should come from conversation and work state. */
 .social-shell {
-  --ink: #203234;
-  --muted: #747a74;
-  --line: #e0dbd1;
-  --accent: #a44c3d;
-  --soft: #eee9df;
-  --paper: #fbf9f3;
-  --chat-line-strong: #c9c1b4;
-  --chat-paper-alt: #f0ece3;
-  --chat-accent-deep: #763c34;
-  --chat-accent-soft: #eee2d8;
+  --ink: #171b27;
+  --muted: #6c6c68;
+  --line: #d8d1be;
+  --accent: #c8e94f;
+  --soft: #e9e5d5;
+  --paper: #f3efdf;
+  --chat-line-strong: #bbb29d;
+  --chat-paper-alt: #e9e5d5;
+  --chat-accent-deep: #111725;
+  --chat-accent-soft: #e8f0b7;
   font-family:
     'Segoe UI Variable', 'Segoe UI', 'Microsoft YaHei UI', sans-serif;
   color: var(--ink);
-  background: #eee9df;
+  background: #111725;
 }
 
 .social-shell.app {
   background: var(--paper);
-  --chat-ground: #f4f0e8;
+  --chat-ground: #f7f3e6;
   --chat-error: #a04438;
-  --chat-success: #5b7666;
-  --chat-warning: #946b3d;
+  --chat-success: #4f6945;
+  --chat-warning: #88632e;
 }
 
 .social-shell .window-head {
   height: 42px;
   padding: 0 18px 0 20px;
-  background: #eee9df;
-  border-bottom-color: #d9d1c5;
+  color: #efecd9;
+  background: #101522;
+  border-bottom-color: #252c3a;
 }
 
 .social-shell .wordmark {
   gap: 8px;
-  color: #263638;
+  color: #efecd9;
   font-family: 'Palatino Linotype', 'Book Antiqua', Georgia, serif;
   font-size: 15px;
   font-weight: 500;
@@ -42,7 +43,7 @@
 }
 
 .social-shell .logo svg {
-  stroke: #a44c3d;
+  stroke: #c8e94f;
   stroke-width: 1.45;
 }
 
@@ -51,17 +52,18 @@
 }
 
 .social-shell .window-tools .icon-button {
-  color: #747a74;
+  color: #bec2b9;
 }
 
 .social-shell .window-control:hover {
-  background: #e1dbd0;
-  color: #203234;
+  background: #232b3b;
+  color: #eaf37a;
 }
 
 .social-shell .index {
-  background: #f0ece4;
-  border-right-color: #dfd8cd;
+  color: #efecd9;
+  background: #111725;
+  border-right-color: #292f3d;
   padding: 17px 11px 14px;
 }
 
@@ -69,25 +71,25 @@
   min-height: 34px;
   margin: 0 5px 22px;
   padding: 0 9px;
-  color: #777c75;
-  border: 1px solid #dcd5ca;
+  color: #c3c5bd;
+  border: 1px solid #353b49;
   border-radius: 2px;
-  background: #f7f4ed;
+  background: #171e2d;
 }
 
 .social-shell .index-search:focus-within {
-  border-color: #b98f81;
-  background: #fbf9f3;
+  border-color: #c8e94f;
+  background: #1a2232;
 }
 
 .social-shell .index-search input {
-  color: #263638;
+  color: #f3efdf;
   font-size: 12px;
 }
 
 .social-shell .index .section-title {
   margin: 19px 11px 7px;
-  color: #8c877d;
+  color: #a9ada8;
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.08em;
@@ -100,18 +102,18 @@
   gap: 10px;
   border: 1px solid transparent;
   border-radius: 2px;
-  color: #33403d;
+  color: #e4e1d4;
 }
 
 .social-shell .index .index-item:hover {
-  background: #e9e4da;
+  background: #1a2232;
 }
 
 .social-shell .index .index-item.selected {
   position: relative;
-  color: #243535;
-  background: #e6dfd3;
-  border-color: #e1d8cb;
+  color: #f5f0dd;
+  background: #20293b;
+  border-color: #2c3546;
 }
 
 .social-shell .index .index-item.selected::before {
@@ -119,7 +121,7 @@
   inset: 7px auto 7px -1px;
   width: 2px;
   content: '';
-  background: #a44c3d;
+  background: #c8e94f;
 }
 
 .social-shell .index-item .item-title {
@@ -129,38 +131,38 @@
 
 .social-shell .index-item small {
   margin-top: 2px;
-  color: #85857d;
+  color: #aeb1a8;
   font-size: 10px;
 }
 
 .social-shell .index-item .project-icon {
   width: 27px;
   height: 27px;
-  color: #6a7770;
-  border-color: #d5cec2;
-  border-radius: 2px;
-  background: #f4f0e8;
+  color: #d2ee64;
+  border-color: #394253;
+  border-radius: 1px;
+  background: #1c2435;
 }
 
 .social-shell .index .bottom-link {
-  color: #777970;
+  color: #c0c1b7;
   font-size: 11px;
 }
 
 .social-shell .index .bottom-link:hover {
-  color: #8f4337;
+  color: #e0f36a;
 }
 
 .social-shell .chat {
-  background: #fbf9f3;
+  background: #f3efdf;
 }
 
 .social-shell .pane-head {
   height: 63px;
   min-height: 63px;
   padding: 0 clamp(22px, 4vw, 48px);
-  border-bottom-color: #e6e0d6;
-  background: #fbf9f3;
+  border-bottom-color: #dbd4c2;
+  background: #f3efdf;
 }
 
 .social-shell .identity {
@@ -168,7 +170,7 @@
 }
 
 .social-shell .identity strong {
-  color: #263636;
+  color: #171b27;
   font-family: 'Palatino Linotype', 'Book Antiqua', Georgia, serif;
   font-size: 16px;
   font-weight: 500;
@@ -176,7 +178,7 @@
 }
 
 .social-shell .identity small {
-  color: #82837b;
+  color: #77776f;
   font-size: 10px;
   letter-spacing: 0.025em;
 }
@@ -184,9 +186,9 @@
 .social-shell .portrait.core {
   width: 31px;
   height: 31px;
-  color: #a44c3d;
-  background: transparent;
-  border: 1px solid #d4b9ab;
+  color: #17202d;
+  background: #d8ed67;
+  border: 1px solid #c8e94f;
   border-radius: 50%;
 }
 
@@ -196,21 +198,21 @@
 }
 
 .social-shell .icon-button {
-  color: #777b74;
+  color: #565b59;
   border-radius: 2px;
 }
 
 .social-shell .icon-button:hover {
-  color: #8f4337;
-  background: #f0ece3;
+  color: #17202d;
+  background: #e5e0ce;
 }
 
 .social-shell .chat-scroll {
   padding: clamp(24px, 4vh, 38px) clamp(22px, 5vw, 60px) 24px;
   background:
-    linear-gradient(90deg, #e9e3d8 0, #e9e3d8 1px, transparent 1px) 0 0 / 100%
+    linear-gradient(90deg, #d4cdbb 0, #d4cdbb 1px, transparent 1px) 0 0 / 100%
       100% no-repeat,
-    #fbf9f3;
+    #f3efdf;
 }
 
 .social-shell .chat-body {
@@ -229,20 +231,20 @@
 
 .social-shell .message {
   margin-bottom: 22px;
-  color: #303a38;
+  color: #222634;
   font-size: 14px;
   line-height: 1.85;
 }
 
 .social-shell .message .byline {
   margin-bottom: 5px;
-  color: #8a8880;
+  color: #77766f;
   font-size: 10px;
   letter-spacing: 0.035em;
 }
 
 .social-shell .message .byline strong {
-  color: #5d6962;
+  color: #202638;
   font-family: 'Palatino Linotype', 'Book Antiqua', Georgia, serif;
   font-size: 12px;
   font-weight: 600;
@@ -251,48 +253,77 @@
 .social-shell .message.user {
   max-width: min(82%, 640px);
   padding: 10px 15px 10px 14px;
-  color: #3e4742;
-  background: #f0ece3;
-  border-left: 2px solid #b35a46;
-  border-radius: 0 3px 3px 0;
+  color: #171b27;
+  background: #d8ed67;
+  border-left: 0;
+  border-radius: 0;
   line-height: 1.8;
 }
 
 .social-shell .message.assistant {
   padding: 0 0 0 16px;
-  border-left: 1px solid #ddd5c9;
+  border-left: 1px solid #c9c1ac;
 }
 
 .social-shell .message .source-line {
-  color: #85847c;
+  color: #717269;
 }
 
 .social-shell .message .source-line button,
 .social-shell .message .inline-person,
 .social-shell .message-bubble a {
-  color: #984b3d;
+  color: #344673;
 }
 
 .social-shell .message .inline-person {
-  border-bottom-color: #cda69a;
+  border-bottom-color: #9a9f77;
 }
 
 .social-shell .message-bubble blockquote {
-  border-left-color: #b55d49;
-  color: #6e7169;
+  border-left-color: #9c9a7e;
+  color: #4d5260;
 }
 
 .social-shell .message-bubble :not(pre) > code {
-  color: #463c36;
-  background: #eee8dd;
+  color: #222638;
+  background: #e7e1ce;
   border-radius: 2px;
+}
+
+.social-shell .message-bubble :is(h1, h2, h3, h4) {
+  color: #202638;
+  font-family:
+    'Segoe UI Variable', 'Segoe UI', 'Microsoft YaHei UI', sans-serif;
+  font-weight: 620;
+}
+
+.social-shell .message-bubble h2 {
+  padding-bottom: 0.28em;
+  border-bottom: 1px solid #d9d2c1;
+}
+
+.social-shell .message-bubble table {
+  border-color: #d1c9b7;
+  background: #f8f5e9;
+}
+
+.social-shell .message-bubble :is(th, td) {
+  border-color: #d8d0be;
+}
+
+.social-shell .message-bubble th {
+  background: #e9e4d3;
+}
+
+.social-shell .message-bubble hr {
+  background: #d1c9b7;
 }
 
 .social-shell .empty-chat.noema-start-message {
   max-width: 760px;
   padding: clamp(76px, 15vh, 148px) 0 26px 16px;
-  color: #3e4944;
-  border-left: 1px solid #ddd5c9;
+  color: #26304b;
+  border-left: 3px solid #c8e94f;
   font-family: 'Palatino Linotype', 'Book Antiqua', Georgia, serif;
   font-size: 21px;
   line-height: 1.65;
@@ -304,8 +335,8 @@
 
 .social-shell .composer {
   padding: 14px clamp(22px, 5vw, 60px) 15px;
-  background: #f7f4ed;
-  border-top-color: #e1dbd1;
+  background: #ebe7d8;
+  border-top-color: #d3ccb9;
 }
 
 .social-shell .composer-inner {
@@ -315,45 +346,47 @@
 .social-shell .composer textarea {
   min-height: 74px;
   padding: 12px 48px 12px 14px;
-  color: #263636;
-  background: #fbf9f3;
-  border: 1px solid #d8d1c5;
-  border-radius: 2px;
+  color: #171b27;
+  background: #faf7e9;
+  border: 1px solid #c8c0ad;
+  border-radius: 1px;
   font-size: 13px;
   line-height: 1.7;
 }
 
 .social-shell .composer textarea:focus {
-  border-color: #b88e80;
-  outline-color: #a44c3d;
+  border-color: #6f763f;
+  outline-color: #c8e94f;
 }
 
 .social-shell .composer textarea::placeholder {
-  color: #929087;
+  color: #77766d;
 }
 
 .social-shell .composer .send {
-  background: #243b3b;
-  border-radius: 2px;
+  color: #f1eedc;
+  background: #151c2c;
+  border-radius: 1px;
 }
 
 .social-shell .composer .send:hover:not(:disabled) {
-  background: #a44c3d;
+  color: #151c2c;
+  background: #d8ed67;
 }
 
 .social-shell .composer .send:disabled {
-  color: #a9a89f;
-  background: #e6e0d5;
+  color: #7d8075;
+  background: #dcd6c4;
 }
 
 .social-shell .composer-hint {
   margin-top: 8px;
-  color: #8b887e;
+  color: #77766d;
   font-size: 10px;
 }
 
 .social-shell .composer-hint span:last-child {
-  color: #777c73;
+  color: #5e625c;
 }
 
 .social-shell .index-resizer::after {
@@ -363,7 +396,7 @@
 .social-shell .index-resizer:hover::after,
 .social-shell .index-resizer:focus-visible::after,
 .social-shell.resizing .index-resizer::after {
-  background: #b45a46;
+  background: #c8e94f;
 }
 
 @media (max-width: 700px) {

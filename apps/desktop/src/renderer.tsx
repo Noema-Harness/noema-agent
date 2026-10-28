@@ -13,6 +13,7 @@ import { findTranscriptMatches } from './transcript-search.mjs';
 import { linkWebSourceCitations } from './web-source-citations.mjs';
 import { QuickCaptureDialog } from './quick-capture-dialog';
 import { SocialChatApp } from './social-chat-app';
+import { ComponentWorkbench } from './ui/component-workbench';
 import type {
   NoemaBackgroundTask,
   NoemaCapture,
@@ -2979,8 +2980,13 @@ function DesktopApp() {
   );
 }
 
+const rootView = new URLSearchParams(window.location.search).get('view');
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <App />
+    {import.meta.env.DEV && rootView === 'components' ? (
+      <ComponentWorkbench />
+    ) : (
+      <App />
+    )}
   </React.StrictMode>,
 );
