@@ -29,7 +29,6 @@ import { ProjectReviewCard } from './project-review-card';
 import { ProjectPlanPanel } from './project-plan-panel';
 import { GlobalSearchDialog } from './global-search-dialog';
 import { FirstMeeting } from './first-meeting-screen';
-import { IconButton } from './ui/button';
 import {
   socialWorkCardTitle,
   socialWorkExecutionStepPresentation,
@@ -63,11 +62,6 @@ const markdownComponents: Components = {
         查看图片{alt ? `：${alt}` : '链接'}
       </a>
     ) : null,
-  table: ({ children }) => (
-    <div className="social-table-scroll">
-      <table>{children}</table>
-    </div>
-  ),
   pre: ({ children }) => <pre className="social-code-block">{children}</pre>,
 };
 
@@ -2493,25 +2487,25 @@ function SocialChatApp() {
                   event.currentTarget.value = '';
                 }}
               />
-              <IconButton
+              <button
                 className="icon-button attach-button"
                 type="button"
-                label="添加附件"
+                aria-label="添加附件"
                 title={`发送 TXT、Markdown 或 CSV（每个 256 KiB 内），或文字 PDF（${Math.round(MAX_CHAT_PDF_ATTACHMENT_BYTES / 1024 / 1024)} MiB、40 页、提取文字不超过 ${MAX_CHAT_ATTACHMENT_CHARACTERS.toLocaleString('zh-CN')} 字）；扫描件和图片暂不支持。每条最多 5 个。`}
                 disabled={composerDisabled}
                 onClick={() => attachmentInputRef.current?.click()}
               >
                 <Icon name="attach" />
-              </IconButton>
-              <IconButton
+              </button>
+              <button
                 className="send send-message-button"
                 type="submit"
-                label={activeReply ? '加入发送队列' : '发送消息'}
+                aria-label={activeReply ? '加入发送队列' : '发送消息'}
                 title={activeReply ? '加入当前对话的发送队列' : '发送消息'}
                 disabled={sendDisabled}
               >
                 <Icon name="send" />
-              </IconButton>
+              </button>
             </div>
             <div className="composer-hint">
               <span>
@@ -2614,6 +2608,12 @@ function SocialChatApp() {
       </header>
       {firstMeetingVisible ? (
         <FirstMeeting
+          onRead={async () => {
+            const progress = await window.noema.advanceFirstMeeting('read');
+            setState((current) =>
+              current ? { ...current, firstMeeting: progress } : current,
+            );
+          }}
           onEnter={async () => {
             if (busy) return;
             setBusy(true);
