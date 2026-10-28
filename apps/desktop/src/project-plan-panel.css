@@ -376,6 +376,15 @@
   padding-top: 12px;
   border-top: 1px solid var(--line);
 }
+.social-shell .project-plan-evidence code {
+  overflow-wrap: anywhere;
+}
+.social-shell .project-plan-evidence pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 240px;
+  overflow: auto;
+}
 @media (max-width: 640px) {
   .social-shell .project-plan-phase-head {
     flex-direction: column;

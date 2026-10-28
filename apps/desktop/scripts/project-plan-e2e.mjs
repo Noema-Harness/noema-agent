@@ -104,6 +104,25 @@ projects.plans.replace({
     ],
   },
 });
+// This is a real persisted source in the isolated fixture, never production data.
+const sourceTime = new Date().toISOString();
+db.prepare(`INSERT INTO social_messages
+  (id,room_id,turn_id,role,agent_id,content,status,runtime,created_at,updated_at)
+  VALUES ('plan-evidence-ui',?,'evidence-ui','assistant',?,'界面样例来源：场地报价包含清洁费。','complete','local',?,?)`).run(
+  project.groupRoomId,
+  ids[1],
+  sourceTime,
+  sourceTime,
+);
+projects.plans.updateItem({
+  projectId: project.id,
+  itemId: 'venue-budget',
+  expectedRevision: projects.plans.get(project.id).revision,
+  actorAgentId: ids[1],
+  evidence: '报价来源保留在项目群记录。',
+  evidenceSources: [{ kind: 'message', messageId: 'plan-evidence-ui' }],
+  reason: '为界面回归加入可读取的持久来源。',
+});
 const probe = http.createServer();
 await new Promise((resolve) => probe.listen(0, '127.0.0.1', resolve));
 const port = probe.address().port;
@@ -151,7 +170,16 @@ try {
     deviceScaleFactor: 1,
     mobile: false,
   });
-  await wait(`document.querySelector('.project-list-item')`);
+  await wait(
+    `document.querySelector('.arrival-enter') || document.querySelector('.project-list-item')`,
+  );
+  if (await evaluate(`Boolean(document.querySelector('.arrival-enter'))`)) {
+    await click('进入聊天', '.first-meeting');
+    await wait(`!document.querySelector('.first-meeting')`);
+  }
+  await wait(
+    `document.querySelector('.project-list-item') && !document.querySelector('.first-meeting')`,
+  );
   await evaluate(
     `Array.from(document.querySelectorAll('.project-list-item')).find(n=>n.textContent.includes('共享计划界面验收样例')).click()`,
   );
@@ -172,6 +200,30 @@ try {
     true,
   );
   await screenshot('three-phase-plan.png');
+  await evaluate(
+    `document.querySelector('[data-plan-item-id="venue-budget"] .project-plan-evidence').open=true`,
+  );
+  await click('核对来源版本', '[data-plan-item-id="venue-budget"]');
+  await wait(
+    `document.querySelector('[data-plan-item-id="venue-budget"]')?.textContent.includes('来源版本一致')`,
+  );
+  await evaluate(
+    `document.querySelector('[data-plan-item-id="venue-budget"] .project-plan-evidence details').open=true; document.querySelector('[data-plan-item-id="venue-budget"] .project-plan-evidence').scrollIntoView({block:'center'})`,
+  );
+  assert.equal(
+    await evaluate(
+      `document.querySelector('[data-plan-item-id="venue-budget"]')?.textContent.includes('场地报价包含清洁费')`,
+    ),
+    true,
+  );
+  const evidenceScreenshot = await cdp.call('Page.captureScreenshot', {
+    format: 'png',
+    captureBeyondViewport: false,
+  });
+  fs.writeFileSync(
+    path.join(scratch, 'source-inspection.png'),
+    Buffer.from(evidenceScreenshot.data, 'base64'),
+  );
   await click('继续工作', '[data-plan-item-id="venue-budget"]');
   await wait(
     `document.querySelector('[data-plan-item-id="venue-budget"]')?.textContent.includes('进行中')`,

@@ -79,6 +79,13 @@ function draftFromPlan(plan: NoemaProjectPlan): Draft {
 }
 
 export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
+  const [evidenceChecks, setEvidenceChecks] = useState<
+    Record<
+      string,
+      Awaited<ReturnType<typeof window.noema.inspectSocialProjectPlanEvidence>>
+    >
+  >({});
+  const [checkingEvidence, setCheckingEvidence] = useState<string | null>(null);
   const [plan, setPlan] = useState<NoemaProjectPlan | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -1151,10 +1158,122 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                       {item.blocker && item.status === 'blocked' ? (
                         <p className="project-plan-error">{item.blocker}</p>
                       ) : null}
-                      {item.evidence ? (
+                      {item.evidence || item.evidenceRefs?.length ? (
                         <details className="project-plan-evidence">
                           <summary>工作成果依据</summary>
                           <p>{item.evidence}</p>
+                          <p>
+                            {item.evidenceReview
+                              ? `核验者：${name(item.evidenceReview.actorId)} · 依据计划版本 ${item.evidenceReview.submissionRevision}`
+                              : '尚无版本核验记录'}
+                          </p>
+                          <button
+                            type="button"
+                            className="quiet"
+                            disabled={checkingEvidence !== null}
+                            onClick={async () => {
+                              setCheckingEvidence(item.id);
+                              try {
+                                const check =
+                                  await window.noema.inspectSocialProjectPlanEvidence(
+                                    project.id,
+                                    item.id,
+                                  );
+                                setEvidenceChecks((current) => ({
+                                  ...current,
+                                  [item.id]: check,
+                                }));
+                              } catch (e) {
+                                setError(
+                                  e instanceof Error
+                                    ? e.message
+                                    : '依据读取失败。',
+                                );
+                              } finally {
+                                setCheckingEvidence(null);
+                              }
+                            }}
+                          >
+                            {checkingEvidence === item.id
+                              ? '正在读取来源…'
+                              : '核对来源版本'}
+                          </button>
+                          {evidenceChecks[item.id]?.projectId === project.id &&
+                          evidenceChecks[item.id]?.revision ===
+                            plan.revision ? (
+                            <div aria-live="polite">
+                              <p>
+                                {evidenceChecks[item.id].state === 'unlinked'
+                                  ? '仅有文字说明，尚未关联可核对来源。'
+                                  : `核对时间：${new Date(evidenceChecks[item.id].checkedAt).toLocaleString()}。版本一致不代表成果已通过业务验收。`}
+                              </p>
+                              {evidenceChecks[item.id].sources.map(
+                                (source, index) => (
+                                  <details key={index}>
+                                    <summary>
+                                      {source.label} ·{' '}
+                                      {source.state === 'unchanged'
+                                        ? '来源版本一致'
+                                        : source.state === 'changed'
+                                          ? '来源已变，需重核'
+                                          : '来源不可用'}
+                                    </summary>
+                                    <p>
+                                      采集：
+                                      {new Date(
+                                        source.observedAt,
+                                      ).toLocaleString()}{' '}
+                                      · 来源关联成员：
+                                      {source.sourceAuthorId
+                                        ? name(source.sourceAuthorId)
+                                        : '用户/系统'}{' '}
+                                      · 采集时状态：
+                                      {(
+                                        {
+                                          complete: '已完成',
+                                          completed: '已完成',
+                                          failed: '失败',
+                                          interrupted: '已中断',
+                                          captured: '文件快照',
+                                        } as Record<string, string>
+                                      )[source.sourceStatus] ??
+                                        source.sourceStatus}
+                                    </p>
+                                    <details>
+                                      <summary>来源标识与指纹</summary>
+                                      <code>
+                                        {JSON.stringify(source.source)}
+                                        <br />
+                                        SHA-256：{source.fingerprint}
+                                      </code>
+                                    </details>
+                                    {source.excerpt ? (
+                                      <pre>{source.excerpt}</pre>
+                                    ) : null}
+                                    {source.excerptTruncated ? (
+                                      <p>
+                                        仅显示前 4000
+                                        字，完整内容仍保留在来源记录。
+                                      </p>
+                                    ) : null}
+                                    {source.error ? (
+                                      <p className="project-plan-error">
+                                        {source.error}
+                                      </p>
+                                    ) : null}
+                                  </details>
+                                ),
+                              )}
+                              {evidenceChecks[item.id].affectedItems.length ? (
+                                <p className="project-plan-error">
+                                  需重核的工作项：
+                                  {evidenceChecks[item.id].affectedItems
+                                    .map((entry) => entry.title)
+                                    .join('、')}
+                                </p>
+                              ) : null}
+                            </div>
+                          ) : null}
                         </details>
                       ) : null}
                       {editable && item.kind === 'work_package' ? (

@@ -54,6 +54,8 @@ const bridge = {
     ipcRenderer.invoke('noema:social-archive-project', projectId),
   getSocialProjectPlan: (projectId: string) =>
     ipcRenderer.invoke('noema:social-project-plan', projectId),
+  inspectSocialProjectPlanEvidence: (projectId: string, itemId: string) =>
+    ipcRenderer.invoke('noema:social-project-plan-evidence', projectId, itemId),
   replaceSocialProjectPlan: (input: NoemaProjectPlanWrite) =>
     ipcRenderer.invoke('noema:social-replace-project-plan', input),
   updateSocialProjectPlanItem: (input: NoemaProjectPlanItemUpdate) =>

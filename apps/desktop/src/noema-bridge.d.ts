@@ -338,6 +338,22 @@ export interface NoemaProjectPlanItem {
   }>;
   status: NoemaProjectPlanStatus;
   evidence: string;
+  evidenceRefs?: Array<{
+    source:
+      | { kind: 'message'; messageId: string }
+      | { kind: 'execution'; taskId: string }
+      | { kind: 'file'; taskId: string; path: string };
+    fingerprint: string;
+    observedAt: string;
+    label: string;
+    sourceAuthorId: string | null;
+    sourceStatus: string;
+  }>;
+  evidenceReview?: {
+    actorId: string;
+    reviewedAt: string;
+    submissionRevision: number;
+  } | null;
   submittedByAgentId?: string | null;
   blocker: string;
   phaseId: string;
@@ -429,6 +445,9 @@ export interface NoemaProjectPlanItemUpdate {
   itemId: string;
   status: NoemaProjectPlanStatus;
   evidence?: string;
+  evidenceSources?: Array<
+    NonNullable<NoemaProjectPlanItem['evidenceRefs']>[number]['source']
+  >;
   blocker?: string;
   patch?: {
     title?: string;
@@ -818,6 +837,26 @@ export interface NoemaBridge {
   ): Promise<NoemaSocialProjectSession>;
   archiveSocialProject(projectId: string): Promise<NoemaSocialProject>;
   getSocialProjectPlan(projectId: string): Promise<NoemaProjectPlan>;
+  inspectSocialProjectPlanEvidence(
+    projectId: string,
+    itemId: string,
+  ): Promise<{
+    projectId: string;
+    itemId: string;
+    revision: number;
+    checkedAt: string;
+    state: 'unlinked' | 'needs_review' | 'unchanged';
+    evidenceReview: NoemaProjectPlanItem['evidenceReview'];
+    sources: Array<
+      NonNullable<NoemaProjectPlanItem['evidenceRefs']>[number] & {
+        state: 'unchanged' | 'changed' | 'unavailable';
+        excerpt?: string | null;
+        excerptTruncated?: boolean;
+        error?: string;
+      }
+    >;
+    affectedItems: Array<{ id: string; title: string }>;
+  }>;
   replaceSocialProjectPlan(
     input: NoemaProjectPlanWrite,
   ): Promise<NoemaProjectPlan>;

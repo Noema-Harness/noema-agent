@@ -38,6 +38,7 @@ const CHANNELS = Object.freeze({
   socialCreateProject: 'noema:social-create-project',
   socialProjectSession: 'noema:social-project-session',
   socialProjectPlan: 'noema:social-project-plan',
+  socialProjectPlanEvidence: 'noema:social-project-plan-evidence',
   socialReplaceProjectPlan: 'noema:social-replace-project-plan',
   socialUpdateProjectPlanItem: 'noema:social-update-project-plan-item',
   socialUpdateProjectPlanPhase: 'noema:social-update-project-plan-phase',
@@ -130,6 +131,10 @@ export function registerRootIpc({
       if (!socialProjectStore) throw new Error('项目存储尚未初始化。');
       return socialProjectStore.plans.get(projectId);
     });
+    register(CHANNELS.socialProjectPlanEvidence, (projectId, itemId) => {
+      if (!socialProjectStore) throw new Error('项目存储尚未初始化。');
+      return socialProjectStore.plans.inspectEvidence(projectId, itemId);
+    });
     const planChanged = (plan) => {
       socialChatService.onProjectPlanChanged?.(plan.projectId);
       const project = socialProjectStore.getProject(plan.projectId);
@@ -164,6 +169,7 @@ export function registerRootIpc({
         itemId,
         status,
         evidence,
+        evidenceSources,
         blocker,
       }) => {
         if (!socialProjectStore) throw new Error('项目存储尚未初始化。');
@@ -175,6 +181,7 @@ export function registerRootIpc({
             itemId,
             status,
             evidence,
+            evidenceSources,
             blocker,
             actorAgentId: null,
           }),

@@ -6,6 +6,120 @@ import { SocialProjectStore } from '../src/social-project-store.mjs';
 import { SocialChatService } from '../src/social-chat-service.mjs';
 import { createSocialTestStore } from '../test-support/social-team.mjs';
 
+test('model evidence inspection uses the persisted source and returns stale-version detail', async () => {
+  const db = new Database(':memory:');
+  new RootStore(db);
+  const store = createSocialTestStore(db);
+  const projects = new SocialProjectStore({ db, socialChatStore: store });
+  const project = projects.createProject({
+    title: '来源核对',
+    brief: '查看实际来源。',
+    agentIds: ['noema', 'engineering-partner'],
+  });
+  projects.plans.onChange = null;
+  const now = new Date().toISOString();
+  db.prepare(`INSERT INTO social_messages (id,room_id,turn_id,role,content,status,runtime,created_at,updated_at)
+    VALUES ('evidence-message',?,'source-turn','user','原始结果','complete','local',?,?)`).run(
+    project.groupRoomId,
+    now,
+    now,
+  );
+  projects.plans.replace({
+    projectId: project.id,
+    expectedRevision: 0,
+    reason: '建立范围。',
+    plan: {
+      objective: '核对实际来源。',
+      items: [
+        {
+          id: 'work',
+          title: '交付',
+          ownerAgentId: 'engineering-partner',
+          acceptance: '有来源。',
+          status: 'pending',
+          dependsOn: [],
+        },
+      ],
+    },
+  });
+  projects.plans.updateItem({
+    projectId: project.id,
+    expectedRevision: 1,
+    itemId: 'work',
+    actorAgentId: 'engineering-partner',
+    status: 'submitted',
+    evidence: '引用群记录。',
+    evidenceSources: [{ kind: 'message', messageId: 'evidence-message' }],
+    reason: '提交。',
+  });
+  db.prepare(
+    "UPDATE social_messages SET content='新结果' WHERE id='evidence-message'",
+  ).run();
+  let calls = 0;
+  const service = new SocialChatService({
+    store,
+    projectStore: projects,
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'fixture',
+    getRootState: async () => ({
+      providerConfigured: true,
+      selectedModel: 'fixture',
+    }),
+    provider: {
+      async *streamChat(input) {
+        calls++;
+        if (calls === 1) {
+          const tool = input.tools.find(
+            (entry) => entry.function.name === 'manage_project_plan',
+          );
+          assert.ok(
+            tool.function.parameters.properties.operation.enum.includes(
+              'inspect_evidence',
+            ),
+          );
+          assert.ok(tool.function.parameters.properties.evidence_sources);
+          assert.match(tool.function.description, /untrusted material/u);
+          input.onToolCalls([
+            {
+              id: 'inspect',
+              type: 'function',
+              function: {
+                name: 'manage_project_plan',
+                arguments: JSON.stringify({
+                  operation: 'inspect_evidence',
+                  project_id: project.id,
+                  item_id: 'work',
+                  reason: '核对来源版本。',
+                }),
+              },
+            },
+          ]);
+        } else {
+          const result = JSON.parse(input.messages.at(-1).content);
+          assert.equal(result.state, 'needs_review');
+          assert.equal(result.sources[0].excerpt, '新结果');
+          assert.equal(result.sources[0].state, 'changed');
+          yield '来源已变，需要重核。';
+        }
+      },
+    },
+  });
+  service.onProjectPlanChanged = () => {};
+  try {
+    service.sendMessage({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '请检查这个项目的成果来源有没有变。',
+    });
+    await service.active.get('room-noema')?.done;
+    assert.equal(calls, 2);
+    assert.equal(projects.plans.get(project.id).revision, 2);
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});
+
 test('plan tools return actionable conflict fields and on-demand revision values', async () => {
   const db = new Database(':memory:');
   new RootStore(db);
