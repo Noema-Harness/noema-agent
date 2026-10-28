@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { FIRST_MEETING_LETTER } from './first-meeting.mjs';
-import './first-meeting.css';
+import arrivalArtwork from './noema-arrival-art.svg?url';
 
 type Props = {
   onRead: () => Promise<void>;
@@ -47,6 +47,11 @@ export function FirstMeeting({ onRead, onEnter, onReturn }: Props) {
       className={`first-meeting arrival${letterOpen ? ' letter-open' : ''}`}
       aria-labelledby="arrival-title"
     >
+      {!letterOpen ? (
+        <div className="arrival-art" aria-hidden="true">
+          <img src={arrivalArtwork} alt="" />
+        </div>
+      ) : null}
       <div className="arrival-inner">
         <div className="arrival-identity">
           <div className="arrival-name">
