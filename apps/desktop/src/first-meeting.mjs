@@ -28,7 +28,7 @@ export function firstMeetingContext(state, messageCount) {
   if (!state.introducedAt)
     return [
       orientation,
-      `实际相遇背景：用户于 ${state.enteredAt} 进入 Noema。抵达页只显示产品名称、定位、进入按钮与可选创作者说明；没有要求用户回答问题，没有产生任何聊天消息。用户未打开创作者说明，不得假定他读过、同意或作出过承诺。以当前真实对话为准。`,
+      `实际相遇背景：用户于 ${state.enteredAt} 进入 Noema。当前记录显示用户未打开应用内创作者说明；进入操作本身没有创建聊天消息。不要据此推断用户看到了某种特定页面、读过或同意产品愿景、作出过承诺。以当前真实对话为准。`,
     ].join('\n\n');
   const letter =
     state.version === 1 ? LEGACY_FIRST_MEETING_LETTER : FIRST_MEETING_LETTER;
