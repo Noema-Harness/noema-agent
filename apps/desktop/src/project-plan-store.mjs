@@ -120,6 +120,47 @@ function phaseAcceptanceRecorded(phase, workItems) {
   );
 }
 
+function evidenceImpact(plan, itemId) {
+  const byId = new Map(plan.items.map((item) => [item.id, item]));
+  const affectedItems = new Set([itemId]);
+  const affectedPhases = new Set();
+  for (let changed = true; changed;) {
+    changed = false;
+    for (const candidate of plan.items) {
+      if (
+        candidate.kind === 'work_package' &&
+        candidate.status !== 'canceled' &&
+        !affectedItems.has(candidate.id) &&
+        candidate.dependsOn.some((id) => affectedItems.has(id))
+      ) {
+        affectedItems.add(candidate.id);
+        changed = true;
+      }
+    }
+    for (const id of affectedItems) {
+      const phaseId = byId.get(id)?.phaseId;
+      if (phaseId && !affectedPhases.has(phaseId)) {
+        affectedPhases.add(phaseId);
+        changed = true;
+      }
+    }
+    for (const phase of plan.phases) {
+      if (
+        phase.status !== 'canceled' &&
+        !affectedPhases.has(phase.id) &&
+        phase.dependsOn.some((id) => affectedPhases.has(id))
+      ) {
+        affectedPhases.add(phase.id);
+        for (const item of phase.workItems)
+          if (item.kind === 'work_package' && item.status !== 'canceled')
+            affectedItems.add(item.id);
+        changed = true;
+      }
+    }
+  }
+  return { affectedItems, affectedPhases };
+}
+
 function phaseState(phase, phaseById, workItems) {
   const active = workItems.filter(
     (item) => item.kind === 'work_package' && item.status !== 'canceled',
@@ -266,18 +307,9 @@ export class ProjectPlanStore {
     if (!item) throw Error('交付项不存在。');
     const sources = this.evidence.inspect(projectId, item.evidenceRefs);
     const stale = sources.some((entry) => entry.state !== 'unchanged');
-    const affected = new Set(stale ? [itemId] : []);
-    for (let changed = true; changed;) {
-      changed = false;
-      for (const candidate of plan.items)
-        if (
-          !affected.has(candidate.id) &&
-          candidate.dependsOn.some((id) => affected.has(id))
-        ) {
-          affected.add(candidate.id);
-          changed = true;
-        }
-    }
+    const affected = stale
+      ? evidenceImpact(plan, itemId).affectedItems
+      : new Set();
     return {
       projectId,
       itemId,
@@ -294,7 +326,83 @@ export class ProjectPlanStore {
         id,
         title: plan.items.find((entry) => entry.id === id).title,
       })),
+      reopenBlockedItems: [...affected]
+        .map((id) => plan.items.find((entry) => entry.id === id))
+        .filter((entry) => entry?.status === 'in_progress')
+        .map(({ id, title }) => ({ id, title })),
     };
+  }
+
+  reopenEvidenceImpact({
+    projectId,
+    itemId,
+    expectedRevision,
+    actorAgentId = null,
+  }) {
+    return this.db.transaction(() => {
+      const current = this.get(projectId);
+      if (current.revision !== expectedRevision)
+        throw new Error('计划已被更新，请重新核对来源后再操作。');
+      if (actorAgentId && actorAgentId !== 'noema')
+        throw new Error('只有用户或 Noema 可以退回受影响工作项。');
+      const sourceItem = current.items.find((entry) => entry.id === itemId);
+      if (!sourceItem || sourceItem.kind !== 'work_package')
+        throw new Error('交付项不存在。');
+      if (sourceItem.status === 'canceled')
+        throw new Error('已取消的交付项不需要重新核对。');
+      const inspected = this.evidence.inspect(
+        projectId,
+        sourceItem.evidenceRefs,
+      );
+      if (
+        !inspected.length ||
+        inspected.every((entry) => entry.state === 'unchanged')
+      )
+        throw new Error('来源版本没有变化，无需退回重核。');
+
+      const impact = evidenceImpact(current, itemId);
+      const affected = [...impact.affectedItems]
+        .map((id) => current.items.find((entry) => entry.id === id))
+        .filter((entry) => entry && entry.status !== 'canceled');
+      const active = affected.filter((entry) => entry.status === 'in_progress');
+      if (active.length)
+        throw new Error(
+          `受影响工作仍在进行：${active.map((entry) => entry.title).join('、')}。请先停止或结束这些工作，再退回重核。`,
+        );
+
+      const plan = {
+        objective: current.objective,
+        phases: current.phases.map((phase) => ({
+          ...phase,
+          status: impact.affectedPhases.has(phase.id)
+            ? 'pending'
+            : phase.status,
+          evidence: impact.affectedPhases.has(phase.id) ? '' : phase.evidence,
+          workItems: phase.workItems.map((item) =>
+            impact.affectedItems.has(item.id) && item.status !== 'canceled'
+              ? {
+                  ...item,
+                  status: 'pending',
+                  evidence: '',
+                  evidenceRefs: [],
+                  evidenceReview: null,
+                  submittedByAgentId: null,
+                  submittedAt: null,
+                  submissionRevision: null,
+                  blocker: '',
+                }
+              : item,
+          ),
+        })),
+      };
+      return this.write({
+        projectId,
+        expectedRevision,
+        actorAgentId,
+        reason: `来源发生变化，退回 ${affected.length} 个受影响工作项和 ${impact.affectedPhases.size} 个阶段重新核对；旧验收保留在历史版本。`,
+        plan,
+      });
+    })();
   }
 
   project(projectId) {
@@ -1098,11 +1206,12 @@ export class ProjectPlanStore {
         throw new Error('成员只能更新自己负责的交付项。');
       const status = statusSchema.parse(input.status ?? item.status);
       const reviewerId = input.actorAgentId ?? 'user';
-      if (
+      const newSubmission =
         status === 'submitted' &&
-        item.status !== 'submitted' &&
-        input.actorAgentId === 'noema'
-      )
+        (item.status !== 'submitted' ||
+          input.evidence !== undefined ||
+          input.evidenceSources !== undefined);
+      if (newSubmission && input.actorAgentId === 'noema')
         throw new Error('Noema 不能代替负责人提交成果。');
       const accepting = status === 'done' && item.status === 'submitted';
       const remainsAccepted =
@@ -1159,25 +1268,25 @@ export class ProjectPlanStore {
         status,
         submittedByAgentId:
           status === 'submitted'
-            ? item.status === 'submitted'
-              ? item.submittedByAgentId
-              : (input.actorAgentId ?? 'user')
+            ? newSubmission
+              ? (input.actorAgentId ?? 'user')
+              : item.submittedByAgentId
             : status === 'done'
               ? item.submittedByAgentId
               : null,
         submittedAt:
           status === 'submitted'
-            ? item.status === 'submitted'
-              ? item.submittedAt
-              : new Date().toISOString()
+            ? newSubmission
+              ? new Date().toISOString()
+              : item.submittedAt
             : status === 'done'
               ? item.submittedAt
               : null,
         submissionRevision:
           status === 'submitted'
-            ? item.status === 'submitted'
-              ? item.submissionRevision
-              : current.revision + 1
+            ? newSubmission
+              ? current.revision + 1
+              : item.submissionRevision
             : status === 'done'
               ? item.submissionRevision
               : null,

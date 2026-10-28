@@ -9,6 +9,7 @@ import type {
   NoemaSocialSearchResult,
   NoemaSocialRoomState,
   NoemaSocialState,
+  NoemaProjectPlan,
   NoemaProjectPlanWrite,
   NoemaProjectPlanItemUpdate,
   NoemaProjectPlanPhaseUpdate,
@@ -56,6 +57,12 @@ const bridge = {
     ipcRenderer.invoke('noema:social-project-plan', projectId),
   inspectSocialProjectPlanEvidence: (projectId: string, itemId: string) =>
     ipcRenderer.invoke('noema:social-project-plan-evidence', projectId, itemId),
+  reopenSocialProjectPlanEvidence: (input: {
+    projectId: string;
+    itemId: string;
+    expectedRevision: number;
+  }): Promise<NoemaProjectPlan> =>
+    ipcRenderer.invoke('noema:social-reopen-project-plan-evidence', input),
   replaceSocialProjectPlan: (input: NoemaProjectPlanWrite) =>
     ipcRenderer.invoke('noema:social-replace-project-plan', input),
   updateSocialProjectPlanItem: (input: NoemaProjectPlanItemUpdate) =>

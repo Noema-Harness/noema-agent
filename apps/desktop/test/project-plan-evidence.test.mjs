@@ -165,6 +165,201 @@ test('runtime captures public message identity and version; changed source block
   }
 });
 
+test('changed evidence can reopen its accepted dependency chain without erasing history', () => {
+  const f = fixture();
+  try {
+    f.projects.plans.replace({
+      projectId: f.project.id,
+      expectedRevision: 1,
+      reason: '把成果交接拆成有前置阶段的两个交付。',
+      plan: {
+        objective: '验证依据变化后项目阶段能够安全重核。',
+        phases: [
+          {
+            id: 'research',
+            title: '研究',
+            outcome: '提交一份有来源的成果。',
+            exitCriteria: '成果与来源版本一致。',
+            dependsOn: [],
+            status: 'pending',
+            evidence: '',
+            workItems: [
+              {
+                id: 'produce',
+                title: '产出成果',
+                ownerAgentId: f.agent,
+                acceptance: '来源与成果匹配。',
+                dependsOn: [],
+                status: 'pending',
+                evidence: '',
+              },
+            ],
+          },
+          {
+            id: 'delivery',
+            title: '交接',
+            outcome: '基于已验收成果完成交接。',
+            exitCriteria: '交接成果独立验收。',
+            dependsOn: ['research'],
+            status: 'pending',
+            evidence: '',
+            workItems: [
+              {
+                id: 'consume',
+                title: '接手成果',
+                ownerAgentId: f.agent,
+                acceptance: '基于研究阶段结果完成交接。',
+                dependsOn: [],
+                status: 'pending',
+                evidence: '',
+              },
+            ],
+          },
+        ],
+      },
+    });
+    const update = (itemId, status, actorAgentId, extra = {}) =>
+      f.projects.plans.updateItem({
+        projectId: f.project.id,
+        itemId,
+        expectedRevision: f.projects.plans.get(f.project.id).revision,
+        actorAgentId,
+        status,
+        reason: '完成测试工作项。',
+        ...extra,
+      });
+    const submitAndAccept = (itemId, evidence, extra = {}) => {
+      update(itemId, 'in_progress', f.agent);
+      update(itemId, 'submitted', f.agent, { evidence, ...extra });
+      update(itemId, 'done', 'noema');
+    };
+    submitAndAccept('produce', '原始成果', {
+      evidenceSources: [{ kind: 'message', messageId: 'public' }],
+    });
+    let plan = f.projects.plans.get(f.project.id);
+    plan = f.projects.plans.updatePhase({
+      projectId: f.project.id,
+      expectedRevision: plan.revision,
+      phaseId: 'research',
+      status: 'done',
+      evidence: '研究成果通过独立核验。',
+      actorAgentId: 'noema',
+      reason: '验收研究阶段。',
+    });
+    submitAndAccept('consume', '按研究成果完成交接');
+    plan = f.projects.plans.get(f.project.id);
+    plan = f.projects.plans.updatePhase({
+      projectId: f.project.id,
+      expectedRevision: plan.revision,
+      phaseId: 'delivery',
+      status: 'done',
+      evidence: '交接成果通过独立核验。',
+      actorAgentId: 'noema',
+      reason: '验收交接阶段。',
+    });
+    assert.equal(plan.phaseProgress.percentage, 100);
+
+    f.db
+      .prepare(
+        "UPDATE social_messages SET content='修订后的成果' WHERE id='public'",
+      )
+      .run();
+    const check = f.projects.plans.inspectEvidence(f.project.id, 'produce');
+    assert.deepEqual(
+      check.affectedItems.map((entry) => entry.id),
+      ['produce', 'consume'],
+    );
+    const reopened = f.projects.plans.reopenEvidenceImpact({
+      projectId: f.project.id,
+      itemId: 'produce',
+      expectedRevision: plan.revision,
+      actorAgentId: null,
+    });
+    assert.deepEqual(
+      reopened.items.map((entry) => [entry.id, entry.status]),
+      [
+        ['produce', 'pending'],
+        ['consume', 'pending'],
+      ],
+    );
+    assert.deepEqual(
+      reopened.phases.map((phase) => [phase.id, phase.status, phase.evidence]),
+      [
+        ['research', 'pending', ''],
+        ['delivery', 'pending', ''],
+      ],
+    );
+    assert.equal(reopened.phaseProgress.percentage, 0);
+    assert.equal(
+      reopened.items.find((entry) => entry.id === 'produce').evidenceRefs
+        .length,
+      0,
+    );
+    const priorRevision = f.db
+      .prepare(
+        'SELECT items_json FROM social_project_plan_revisions WHERE project_id = ? AND revision = ?',
+      )
+      .get(f.project.id, plan.revision);
+    const priorSnapshot = JSON.parse(priorRevision.items_json);
+    assert.equal(priorSnapshot.phases[0].status, 'done');
+    assert.equal(
+      priorSnapshot.phases[0].workItems[0].evidenceReview.actorId,
+      'noema',
+    );
+  } finally {
+    f.close();
+  }
+});
+
+test('evidence impact cannot reopen while any affected member is working', () => {
+  const f = fixture();
+  try {
+    f.update('submitted', {
+      evidence: '成果依据。',
+      evidenceSources: [{ kind: 'message', messageId: 'public' }],
+    });
+    f.update('done', {}, 'noema');
+    f.projects.plans.updateItem({
+      projectId: f.project.id,
+      itemId: 'consume',
+      expectedRevision: f.projects.plans.get(f.project.id).revision,
+      actorAgentId: f.agent,
+      status: 'in_progress',
+      reason: '开始依赖该成果工作。',
+    });
+    f.db
+      .prepare(
+        "UPDATE social_messages SET content='修订后的成果' WHERE id='public'",
+      )
+      .run();
+    const check = f.projects.plans.inspectEvidence(f.project.id, 'produce');
+    assert.deepEqual(
+      check.reopenBlockedItems.map((entry) => entry.id),
+      ['consume'],
+    );
+    const revision = f.projects.plans.get(f.project.id).revision;
+    assert.throws(
+      () =>
+        f.projects.plans.reopenEvidenceImpact({
+          projectId: f.project.id,
+          itemId: 'produce',
+          expectedRevision: revision,
+          actorAgentId: null,
+        }),
+      /仍在进行/u,
+    );
+    assert.equal(f.projects.plans.get(f.project.id).revision, revision);
+    assert.equal(
+      f.projects.plans
+        .get(f.project.id)
+        .items.find((item) => item.id === 'produce').status,
+      'done',
+    );
+  } finally {
+    f.close();
+  }
+});
+
 test('private, absent, unfinished and duplicated sources cannot become public evidence', () => {
   const f = fixture();
   try {

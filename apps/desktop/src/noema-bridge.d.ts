@@ -859,7 +859,13 @@ export interface NoemaBridge {
       }
     >;
     affectedItems: Array<{ id: string; title: string }>;
+    reopenBlockedItems: Array<{ id: string; title: string }>;
   }>;
+  reopenSocialProjectPlanEvidence(input: {
+    projectId: string;
+    itemId: string;
+    expectedRevision: number;
+  }): Promise<NoemaProjectPlan>;
   replaceSocialProjectPlan(
     input: NoemaProjectPlanWrite,
   ): Promise<NoemaProjectPlan>;

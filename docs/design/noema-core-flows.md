@@ -296,7 +296,12 @@ flowchart TD
     SNAPSHOT --> READ[用户或 Noema 按需查看来源]
     READ --> COMPARE{当前来源与提交版本一致？}
     COMPARE -- 否或无法读取 --> STALE[显示需重核及依赖工作项；阻止本次验收]
-    STALE --> RESUBMIT[负责人核对后重新提交来源版本]
+    STALE --> REVIEW_IMPACT[用户或 Noema 查看受影响交付链]
+    REVIEW_IMPACT --> ACTIVE{受影响成员仍在执行？}
+    ACTIVE -- 是 --> HOLD_REOPEN[先停止或结束执行；不改动现有验收]
+    ACTIVE -- 否 --> REOPEN[明确确认后退回受影响工作项与阶段]
+    REOPEN --> HISTORY[旧提交与验收保留在计划历史]
+    HISTORY --> RESUBMIT[负责人重新提交受影响成果]
     RESUBMIT --> SNAPSHOT
     COMPARE -- 是 --> JUDGE[仍需判断成果是否满足完成条件]
     TEXT --> JUDGE

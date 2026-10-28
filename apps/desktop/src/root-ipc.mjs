@@ -39,6 +39,7 @@ const CHANNELS = Object.freeze({
   socialProjectSession: 'noema:social-project-session',
   socialProjectPlan: 'noema:social-project-plan',
   socialProjectPlanEvidence: 'noema:social-project-plan-evidence',
+  socialReopenProjectPlanEvidence: 'noema:social-reopen-project-plan-evidence',
   socialReplaceProjectPlan: 'noema:social-replace-project-plan',
   socialUpdateProjectPlanItem: 'noema:social-update-project-plan-item',
   socialUpdateProjectPlanPhase: 'noema:social-update-project-plan-phase',
@@ -145,6 +146,20 @@ export function registerRootIpc({
       });
       return plan;
     };
+    register(
+      CHANNELS.socialReopenProjectPlanEvidence,
+      ({ projectId, itemId, expectedRevision }) => {
+        if (!socialProjectStore) throw new Error('项目存储尚未初始化。');
+        return planChanged(
+          socialProjectStore.plans.reopenEvidenceImpact({
+            projectId,
+            itemId,
+            expectedRevision,
+            actorAgentId: null,
+          }),
+        );
+      },
+    );
     register(
       CHANNELS.socialReplaceProjectPlan,
       ({ projectId, expectedRevision, reason, plan }) => {

@@ -387,6 +387,38 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
     };
     return write(() => window.noema.updateSocialProjectPlanPhase(input));
   };
+  const reopenEvidenceImpact = async (
+    check: Awaited<
+      ReturnType<typeof window.noema.inspectSocialProjectPlanEvidence>
+    >,
+  ) => {
+    if (!plan || check.state !== 'needs_review') return;
+    const affectedNames = check.affectedItems
+      .map((entry) => entry.title)
+      .join('、');
+    if (check.reopenBlockedItems.length) {
+      setError(
+        `仍有工作正在进行，需先停止或结束：${check.reopenBlockedItems
+          .map((entry) => entry.title)
+          .join('、')}。`,
+      );
+      return;
+    }
+    if (
+      !window.confirm(
+        `来源版本已变化。将退回以下工作项并通知负责人重新处理，同时重新打开其阶段：${affectedNames}。旧验收会保留在计划历史中。继续？`,
+      )
+    )
+      return;
+    const saved = await write(() =>
+      window.noema.reopenSocialProjectPlanEvidence({
+        projectId: project.id,
+        itemId: check.itemId,
+        expectedRevision: plan.revision,
+      }),
+    );
+    if (saved) setEvidenceChecks({});
+  };
   const flattenedDraftItems =
     editor?.draft.phases.flatMap((phase) =>
       phase.workItems.map((item) => ({
@@ -1287,12 +1319,49 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                                 ),
                               )}
                               {evidenceChecks[item.id].affectedItems.length ? (
-                                <p className="project-plan-error">
-                                  需重核的工作项：
-                                  {evidenceChecks[item.id].affectedItems
-                                    .map((entry) => entry.title)
-                                    .join('、')}
-                                </p>
+                                <>
+                                  <p className="project-plan-error">
+                                    需重核的工作项：
+                                    {evidenceChecks[item.id].affectedItems
+                                      .map((entry) => entry.title)
+                                      .join('、')}
+                                  </p>
+                                  {evidenceChecks[item.id].reopenBlockedItems
+                                    .length ? (
+                                    <p className="project-plan-error">
+                                      需先停止或结束仍在进行的工作：
+                                      {evidenceChecks[
+                                        item.id
+                                      ].reopenBlockedItems
+                                        .map((entry) => entry.title)
+                                        .join('、')}
+                                    </p>
+                                  ) : null}
+                                  {editable ? (
+                                    <button
+                                      type="button"
+                                      className="quiet"
+                                      disabled={
+                                        busy ||
+                                        evidenceChecks[item.id]
+                                          .reopenBlockedItems.length > 0
+                                      }
+                                      title={
+                                        evidenceChecks[item.id]
+                                          .reopenBlockedItems.length
+                                          ? '先停止或结束仍在进行的受影响工作。'
+                                          : '重开受影响交付链；之前的验收保留在计划历史。'
+                                      }
+                                      onClick={() =>
+                                        void reopenEvidenceImpact(
+                                          evidenceChecks[item.id],
+                                        )
+                                      }
+                                    >
+                                      退回受影响工作重核
+                                    </button>
+                                  ) : null}
+                                </>
                               ) : null}
                             </div>
                           ) : null}

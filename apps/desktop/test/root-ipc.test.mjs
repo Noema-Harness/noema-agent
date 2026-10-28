@@ -443,6 +443,13 @@ test('project IPC exposes metadata and preserves lifecycle events for the render
     createProject: (input) => ({ ...project, ...input }),
     archiveProject: () => ({ ...project, status: 'archived' }),
     restoreProject: () => project,
+    getProject: () => project,
+    plans: {
+      reopenEvidenceImpact: (input) => ({
+        projectId: input.projectId,
+        revision: input.expectedRevision + 1,
+      }),
+    },
     getProjectSession: (projectId, agentId) => ({
       project: { id: projectId, title: project.title },
       agentId,
@@ -516,4 +523,16 @@ test('project IPC exposes metadata and preserves lifecycle events for the render
       groupRoomId: project.groupRoomId,
     },
   ]);
+  assert.deepEqual(
+    await harness.handlers.get(CHANNELS.socialReopenProjectPlanEvidence)(
+      { sender: trustedSender },
+      { projectId: project.id, itemId: 'source', expectedRevision: 4 },
+    ),
+    { projectId: project.id, revision: 5 },
+  );
+  assert.deepEqual(events.at(-1), {
+    type: 'project-updated',
+    projectId: project.id,
+    groupRoomId: project.groupRoomId,
+  });
 });
