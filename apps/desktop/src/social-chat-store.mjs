@@ -1136,7 +1136,13 @@ export class SocialChatStore {
     const current = this.getFirstMeetingState();
     const next = {
       ...current,
-      introducedAt: current.introducedAt ?? isoNow(),
+      version: action === 'read' ? FIRST_MEETING_VERSION : current.version,
+      introducedAt:
+        action === 'read'
+          ? current.version === FIRST_MEETING_VERSION
+            ? (current.introducedAt ?? isoNow())
+            : isoNow()
+          : current.introducedAt,
       stage:
         action === 'enter' || current.stage === 'complete'
           ? 'complete'

@@ -2124,7 +2124,8 @@ function SocialChatApp() {
             >
               {currentRoom.id === noemaRoom?.id ? (
                 <p>
-                  {state?.firstMeeting?.introducedAt
+                  {state?.firstMeeting?.enteredAt ||
+                  state?.firstMeeting?.introducedAt
                     ? '你与 Noema 的对话'
                     : '从你正在想的事开始，不必先写成完整指令。先把问题聊清楚，再决定下一步。'}
                 </p>
@@ -2607,29 +2608,17 @@ function SocialChatApp() {
       </header>
       {firstMeetingVisible ? (
         <FirstMeeting
-          initialStep={
-            firstMeetingReplay || state?.firstMeeting?.stage === 'letter'
-              ? 'letter'
-              : 'encounter'
-          }
-          connected={providerReady}
           onRead={async () => {
             const progress = await window.noema.advanceFirstMeeting('read');
             setState((current) =>
               current ? { ...current, firstMeeting: progress } : current,
             );
           }}
-          onEnter={async (text) => {
+          onEnter={async () => {
             if (busy) return;
             setBusy(true);
             try {
               const progress = await window.noema.advanceFirstMeeting('enter');
-              if (text)
-                await window.noema.sendSocialMessage({
-                  roomId: 'room-noema',
-                  agentId: 'noema',
-                  text,
-                });
               setActiveRoomId('room-noema');
               setProjectWorkspaceId(null);
               setAgentWorkspaceId(null);
@@ -2639,7 +2628,12 @@ function SocialChatApp() {
                 current ? { ...current, firstMeeting: progress } : current,
               );
               await Promise.all([refreshState(), loadRoom('room-noema')]);
-              requestAnimationFrame(() => draftRef.current?.focus());
+              requestAnimationFrame(() => {
+                const header =
+                  document.querySelector<HTMLElement>('.room-header');
+                header?.setAttribute('tabindex', '-1');
+                header?.focus();
+              });
             } catch (error) {
               setFirstMeetingReplay(true);
               throw error;
@@ -2647,7 +2641,6 @@ function SocialChatApp() {
               setBusy(false);
             }
           }}
-          onConnect={() => setSettingsOpen(true)}
           onReturn={
             firstMeetingReplay ? () => setFirstMeetingReplay(false) : undefined
           }

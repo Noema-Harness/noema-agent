@@ -3,208 +3,130 @@ import { FIRST_MEETING_LETTER } from './first-meeting.mjs';
 import './first-meeting.css';
 
 type Props = {
-  initialStep: 'letter' | 'encounter';
-  connected: boolean;
   onRead: () => Promise<void>;
-  onEnter: (message: string) => Promise<void>;
-  onConnect: () => void;
+  onEnter: () => Promise<void>;
   onReturn?: () => void;
 };
-
-export function FirstMeeting({
-  initialStep,
-  connected,
-  onRead,
-  onEnter,
-  onConnect,
-  onReturn,
-}: Props) {
-  const [step, setStep] = useState(initialStep);
-  const [message, setMessage] = useState('');
+export function FirstMeeting({ onRead, onEnter, onReturn }: Props) {
+  const [letterOpen, setLetterOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const heading = useRef<HTMLHeadingElement>(null);
-  const scroll = useRef<HTMLDivElement>(null);
+  const letterButton = useRef<HTMLButtonElement>(null);
+  const title = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
-    scroll.current?.scrollTo(0, 0);
-    heading.current?.focus();
-  }, [step]);
-
-  const move = async (text?: string) => {
+    title.current?.focus();
+  }, []);
+  const enter = async () => {
     if (busy) return;
     setBusy(true);
     setError('');
     try {
-      if (text === undefined) {
-        await onRead();
-        setStep('encounter');
-      } else await onEnter(text);
+      await onEnter();
     } catch (cause) {
       setError(
-        cause instanceof Error ? cause.message : '没有保存成功，请重试。',
+        cause instanceof Error ? cause.message : '没有打开成功，请重试。',
       );
     } finally {
       setBusy(false);
     }
   };
-
+  const toggleLetter = async () => {
+    if (letterOpen) {
+      setLetterOpen(false);
+      return;
+    }
+    setLetterOpen(true);
+    try {
+      await onRead();
+    } catch {
+      setError('创作者说明已打开，但本机阅读状态尚未保存。');
+    }
+  };
   return (
-    <div
-      className={`first-meeting first-meeting-${step}`}
-      ref={scroll}
-      aria-label="与 Noema 初次相遇"
+    <section
+      className={`first-meeting arrival${letterOpen ? ' letter-open' : ''}`}
+      aria-labelledby="arrival-title"
     >
-      <div className="meeting-page">
-        <nav className="meeting-wayfinding" aria-label="开场导航">
-          <span className="meeting-edition">
-            NOEMA <span aria-hidden="true">/</span> 初次相遇
-          </span>
+      <div className="arrival-inner">
+        <div className="arrival-identity">
+          <div className="arrival-name">
+            <svg
+              className="arrival-mark"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <path d="M5 18V9a5 5 0 0 1 10 0v9M9 18V9m10 9V6" />
+            </svg>
+            <h1 id="arrival-title" ref={title} tabIndex={-1}>
+              noema
+            </h1>
+          </div>
+          <p className="arrival-description">一个与你长期相处的 AI。</p>
+          <div className="arrival-actions">
+            <button
+              className="arrival-enter"
+              type="button"
+              disabled={busy}
+              onClick={() => void enter()}
+            >
+              {busy ? '正在打开…' : '进入 Noema'}
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 12h14m-5-5 5 5-5 5" />
+              </svg>
+            </button>
+            <button
+              className="arrival-letter-toggle"
+              type="button"
+              ref={letterButton}
+              aria-expanded={letterOpen}
+              aria-controls="arrival-letter"
+              onClick={() => void toggleLetter()}
+            >
+              创作者的话<span aria-hidden="true">{letterOpen ? '−' : '+'}</span>
+            </button>
+          </div>
           {onReturn ? (
-            <button type="button" onClick={onReturn} disabled={busy}>
-              回到对话 <span aria-hidden="true">↗</span>
+            <button className="arrival-return" type="button" onClick={onReturn}>
+              返回当前对话
             </button>
           ) : null}
-        </nav>
-        <div className="meeting-layout">
-          <aside className="meeting-margin" aria-hidden="true">
-            <span className="meeting-folio">
-              {step === 'letter' ? '01' : '02'}
-            </span>
-            <span className="meeting-margin-label">
-              {step === 'letter' ? '来自创作者' : '从你开始'}
-            </span>
-            <div className="meeting-sequence">
-              <i className={step === 'letter' ? 'current' : ''} />
-              <i className={step === 'encounter' ? 'current' : ''} />
-            </div>
-          </aside>
-          {step === 'letter' ? (
-            <article className="meeting-letter" aria-labelledby="meeting-title">
-              <p className="meeting-byline">一封写在见面前的短笺</p>
-              <h1 id="meeting-title" ref={heading} tabIndex={-1}>
-                在见面之前
-              </h1>
-              <div className="meeting-letter-body">
-                {FIRST_MEETING_LETTER.map((paragraph) => (
-                  <p key={paragraph}>{paragraph}</p>
-                ))}
-              </div>
-              <p className="meeting-signature">
-                Noema 的创作者<span>写于这个尝试的开始</span>
-              </p>
-              <div className="meeting-letter-footer">
-                <span>下一页，把话留给你。</span>
-                <button
-                  className="meeting-primary"
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void move()}
-                >
-                  {busy ? '正在打开…' : '去见 Noema'}
-                  <span aria-hidden="true">→</span>
-                </button>
-              </div>
-            </article>
-          ) : (
-            <section
-              className="meeting-encounter"
-              aria-labelledby="meeting-title"
-            >
-              <p className="meeting-byline">还没有共同的故事</p>
-              <h1 id="meeting-title" ref={heading} tabIndex={-1}>
-                第一句话，由你来。
-              </h1>
-              <p className="meeting-invitation">
-                是什么让你想认识 Noema？
-                <br />
-                也可以不回答，从此刻想说的事开始。
-              </p>
-              <form
-                className="meeting-first-message"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  if (message.trim() && connected) void move(message.trim());
+        </div>
+        {letterOpen ? (
+          <article
+            id="arrival-letter"
+            className="arrival-letter"
+            aria-label="创作者的话"
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') {
+                setLetterOpen(false);
+                letterButton.current?.focus();
+              }
+            }}
+          >
+            <div className="arrival-letter-heading">
+              <span>关于这个开始</span>
+              <button
+                type="button"
+                aria-label="收起创作者的话"
+                onClick={() => {
+                  setLetterOpen(false);
+                  letterButton.current?.focus();
                 }}
               >
-                <label
-                  className="meeting-input-label"
-                  htmlFor="meeting-message"
-                >
-                  你想对 Noema 说的话
-                </label>
-                <textarea
-                  id="meeting-message"
-                  value={message}
-                  onChange={(event) => setMessage(event.target.value)}
-                  placeholder="写在这里……"
-                  maxLength={10000}
-                  disabled={busy}
-                  onKeyDown={(event) => {
-                    if (
-                      event.key === 'Enter' &&
-                      !event.shiftKey &&
-                      !event.nativeEvent.isComposing
-                    ) {
-                      event.preventDefault();
-                      if (message.trim() && connected)
-                        void move(message.trim());
-                    }
-                  }}
-                />
-                <div className="meeting-compose-footer">
-                  <span>
-                    {connected
-                      ? '这句话会成为你们对话的开头'
-                      : '读完开场不需要连接模型'}
-                  </span>
-                  <button
-                    className="meeting-send"
-                    aria-label="发送第一句话"
-                    type="submit"
-                    disabled={busy || !message.trim() || !connected}
-                  >
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="M12 19V5m-6 6 6-6 6 6" />
-                    </svg>
-                  </button>
-                </div>
-              </form>
-              {!connected ? (
-                <div className="meeting-connection">
-                  <span>开始交谈前，需要连接一个模型服务。</span>
-                  <button type="button" onClick={onConnect}>
-                    连接模型 <span aria-hidden="true">↗</span>
-                  </button>
-                </div>
-              ) : null}
-              <p className="meeting-data-note">
-                发送后，内容会交给你配置的模型服务处理，对话记录保存在本机。
-              </p>
-              <div className="meeting-encounter-footer">
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => setStep('letter')}
-                >
-                  <span aria-hidden="true">←</span> 重读短笺
-                </button>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void move('')}
-                >
-                  暂时不写，先进去看看 <span aria-hidden="true">→</span>
-                </button>
-              </div>
-            </section>
-          )}
-        </div>
-        {error ? (
-          <p className="meeting-error" role="alert">
-            {error}
-          </p>
+                ×
+              </button>
+            </div>
+            {FIRST_MEETING_LETTER.map((paragraph) => (
+              <p key={paragraph}>{paragraph}</p>
+            ))}
+            <footer>Noema 的创作者</footer>
+          </article>
         ) : null}
       </div>
-    </div>
+      <div className="arrival-foot">
+        <span>初次见面</span>
+        {error ? <p role="alert">{error}</p> : null}
+      </div>
+    </section>
   );
 }

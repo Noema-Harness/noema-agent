@@ -61,10 +61,62 @@ test('existing user history is not gated or silently assigned a meeting', () => 
 });
 
 test('creator introduction leaves the prompt after early turns; orientation stays bounded', () => {
-  const state = { version: 1, introducedAt: '2026-10-28T00:00:00.000Z' };
+  const state = { version: 2, introducedAt: '2026-10-28T00:00:00.000Z' };
   assert.ok(firstMeetingContext(state, 2).includes(FIRST_MEETING_LETTER[0]));
   const later = firstMeetingContext(state, 9);
   assert.match(later, /理解先于有用/u);
   assert.ok(!later.includes(FIRST_MEETING_LETTER[0]));
   assert.ok(later.length < 300);
+});
+
+test('entering without opening creator note records arrival without fabricating reading', () => {
+  const db = new Database(':memory:');
+  try {
+    new RootStore(db);
+    const store = new SocialChatStore(db);
+    const entered = store.advanceFirstMeeting('enter');
+    assert.equal(entered.stage, 'complete');
+    assert.ok(entered.enteredAt);
+    assert.equal(entered.introducedAt, null);
+    assert.match(store.getFirstMeetingContext(), /用户未打开/u);
+    assert.ok(
+      !store.getFirstMeetingContext().includes(FIRST_MEETING_LETTER[0]),
+    );
+    assert.equal(store.getRoomSnapshot('room-noema').messages.length, 0);
+  } finally {
+    db.close();
+  }
+});
+
+test('old introduction exposure is not silently replaced with the new copy', () => {
+  const db = new Database(':memory:');
+  try {
+    new RootStore(db);
+    const store = new SocialChatStore(db);
+    db.prepare(
+      'INSERT INTO app_settings(key,value,updated_at) VALUES(?,?,?)',
+    ).run(
+      'first_meeting',
+      JSON.stringify({
+        version: 1,
+        stage: 'complete',
+        introducedAt: '2026-10-27T00:00:00Z',
+        enteredAt: '2026-10-27T00:00:01Z',
+      }),
+      '2026-10-27T00:00:01Z',
+    );
+    assert.match(store.getFirstMeetingContext(), /我们想试着让人与 AI/u);
+    assert.ok(
+      !store.getFirstMeetingContext().includes(FIRST_MEETING_LETTER[0]),
+    );
+    store.advanceFirstMeeting('read');
+    assert.equal(store.getFirstMeetingState().version, 2);
+    assert.ok(store.getFirstMeetingContext().includes(FIRST_MEETING_LETTER[0]));
+    assert.equal(
+      store.getFirstMeetingState().enteredAt,
+      '2026-10-27T00:00:01Z',
+    );
+  } finally {
+    db.close();
+  }
 });
