@@ -7,6 +7,7 @@ import Database from 'better-sqlite3';
 import { RootStore } from '../src/root-store.mjs';
 import { SocialChatStore } from '../src/social-chat-store.mjs';
 import { SocialProjectStore } from '../src/social-project-store.mjs';
+import { SocialChatService } from '../src/social-chat-service.mjs';
 
 function fixture() {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'noema-evidence-'));
@@ -389,5 +390,207 @@ test('file capture rejects symlink escapes and oversized sources without weakeni
   } finally {
     f.close();
     fs.rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test('project execution results survive waiting, publish once, and do not replay old tasks or wake on interruption', async () => {
+  const f = fixture();
+  const service = new SocialChatService({
+    store: new SocialChatStore(f.db),
+    projectStore: f.projects,
+    provider: {
+      async *streamChat() {
+        yield* [];
+        throw Error('This boundary check must not call a model.');
+      },
+    },
+    secretStore: { isConfigured: () => false },
+    getSelectedModel: () => null,
+    getRootState: async () => ({ providerConfigured: false }),
+  });
+  try {
+    service.syncProjectWorkResults();
+    assert.equal(
+      f.db
+        .prepare('SELECT COUNT(*) AS n FROM social_project_publications')
+        .get().n,
+      0,
+      'old tasks are not replayed',
+    );
+    f.update('in_progress');
+    const task = f.db
+      .prepare(
+        "SELECT room_id AS roomId FROM social_work_tasks WHERE id='task'",
+      )
+      .get();
+    service.trackProjectWorkResult(
+      {
+        agentId: f.agent,
+        projectContext: { projectId: f.project.id, roomId: task.roomId },
+        planItemId: 'produce',
+      },
+      'task',
+    );
+    f.db
+      .prepare("UPDATE social_projects SET status='awaiting_user' WHERE id=?")
+      .run(f.project.id);
+    service.syncProjectWorkResults();
+    assert.equal(
+      f.db
+        .prepare(
+          "SELECT project_result_pending AS pending FROM social_work_tasks WHERE id='task'",
+        )
+        .get().pending,
+      1,
+    );
+    f.db
+      .prepare("UPDATE social_projects SET status='active' WHERE id=?")
+      .run(f.project.id);
+    service.syncProjectWorkResults();
+    service.syncProjectWorkResults();
+    const publications = f.db
+      .prepare('SELECT * FROM social_project_publications')
+      .all();
+    assert.equal(publications.length, 1);
+    const message = f.db
+      .prepare('SELECT content FROM social_messages WHERE id=?')
+      .get(publications[0].message_id);
+    assert.match(message.content, /@核查员/u);
+    assert.match(message.content, /"taskId":"task"/u);
+    assert.doesNotMatch(
+      message.content,
+      /真实执行结果/u,
+      'raw tool output cannot introduce extra mentions',
+    );
+    assert.equal(
+      f.db
+        .prepare('SELECT agent_id AS agentId FROM social_project_group_inbox')
+        .get().agentId,
+      f.agent,
+    );
+    f.db
+      .prepare(
+        "UPDATE social_work_tasks SET status='interrupted',project_result_pending=1 WHERE id='task'",
+      )
+      .run();
+    service.syncProjectWorkResults();
+    assert.equal(
+      f.db
+        .prepare(
+          "SELECT project_result_pending AS pending FROM social_work_tasks WHERE id='task'",
+        )
+        .get().pending,
+      0,
+    );
+    assert.equal(
+      f.db
+        .prepare('SELECT COUNT(*) AS n FROM social_project_publications')
+        .get().n,
+      1,
+    );
+    f.db
+      .prepare(
+        "UPDATE social_work_tasks SET status='failed',error_message='@所有人 不可信输出',project_result_pending=1 WHERE id='task'",
+      )
+      .run();
+    service.syncProjectWorkResults();
+    assert.ok(
+      f.db
+        .prepare("SELECT 1 FROM social_project_reports WHERE status='pending'")
+        .get(),
+    );
+    const failure = f.db
+      .prepare(
+        "SELECT content FROM social_messages WHERE role='system' AND content LIKE '@Noema 项目执行任务%'",
+      )
+      .get();
+    assert.doesNotMatch(failure.content, /@所有人/u);
+    assert.match(failure.content, /不能盲目自动重试/u);
+  } finally {
+    await service.shutdown();
+    f.close();
+  }
+});
+
+test('schema upgrade refreshes obsolete app-owned file instructions and preserves custom text', () => {
+  const f = fixture();
+  try {
+    const obsolete =
+      '用户已开启 Noema 的项目文件任务能力。只有当用户明确切换到项目工作并选择目录后，才在该任务中通过现有 DSH 流程操作文件。普通聊天不授权文件操作；每项任务的具体范围以 Noema 显示的目录与数据确认步骤为准。';
+    f.db
+      .prepare('UPDATE social_agents SET system_prompt=? WHERE id=?')
+      .run(`保留自定义前文\n${obsolete}\n保留自定义后文`, f.agent);
+    f.db.exec(
+      'ALTER TABLE social_work_tasks DROP COLUMN project_plan_item_id; ALTER TABLE social_work_tasks DROP COLUMN project_result_pending; DELETE FROM social_schema_migrations WHERE version=25',
+    );
+    new SocialChatStore(f.db);
+    const prompt = f.db
+      .prepare('SELECT system_prompt AS text FROM social_agents WHERE id=?')
+      .get(f.agent).text;
+    assert.match(prompt, /保留自定义前文/u);
+    assert.match(prompt, /保留自定义后文/u);
+    assert.match(prompt, /start_project_work/u);
+    assert.doesNotMatch(prompt, /切换到项目工作|DSH/u);
+    assert.equal(
+      f.db
+        .prepare(
+          'SELECT project_result_pending AS pending FROM social_work_tasks',
+        )
+        .get().pending,
+      0,
+    );
+  } finally {
+    f.close();
+  }
+});
+
+test('failed execution retains bounded step evidence without changing legacy result fingerprints', () => {
+  const f = fixture();
+  try {
+    f.db
+      .prepare(
+        "UPDATE social_work_tasks SET status='failed',result_text='',error_message='预算耗尽' WHERE id='task'",
+      )
+      .run();
+    const evidence = f.projects.plans.evidence;
+    const before = evidence.readSources(f.project.id, [
+      { kind: 'execution', taskId: 'task' },
+    ])[0];
+    const syntheticCredential = `sk-${'a'.repeat(32)}`;
+    f.db
+      .prepare(`INSERT INTO social_work_execution_steps
+      (id,task_id,ordinal,tool_name,category,has_side_effect,status,effect_status,started_at,arguments_json,result_json)
+      VALUES ('step','task',1,'read_file','read',0,'succeeded','none',?,'{"path":"result.txt"}',?)`)
+      .run(
+        new Date().toISOString(),
+        JSON.stringify({
+          result: `已读取结果。测试凭据 ${syntheticCredential}`,
+        }),
+      );
+    const task = evidence.readSources(f.project.id, [
+      { kind: 'execution', taskId: 'task' },
+    ])[0];
+    assert.equal(task.fingerprint, before.fingerprint);
+    assert.equal(task.executionSteps[0].path, 'result.txt');
+    assert.equal(task.executionSteps[0].hasOutput, true);
+    const step = evidence.readSources(f.project.id, [
+      { kind: 'execution', taskId: 'task', stepId: 'step' },
+    ])[0];
+    assert.equal(step.sourceStatus, 'succeeded');
+    assert.match(step.excerpt, /已隐藏疑似凭据/u);
+    assert.equal(step.excerpt.includes(syntheticCredential), false);
+    assert.throws(
+      () =>
+        evidence.readSources(f.project.id, [
+          { kind: 'execution', taskId: 'task', stepId: 'other-task-step' },
+        ]),
+      /不属于此任务/u,
+    );
+    assert.throws(
+      () => evidence.readSources(f.project.id, undefined),
+      /evidence_sources 数组/u,
+    );
+  } finally {
+    f.close();
   }
 });

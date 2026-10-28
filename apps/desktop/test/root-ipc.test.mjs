@@ -75,6 +75,8 @@ test('registers only named root-agent actions and rejects non-window senders', a
     [
       CHANNELS.models,
       CHANNELS.configureProvider,
+      CHANNELS.configureWebSearch,
+      CHANNELS.clearWebSearch,
       CHANNELS.retry,
       CHANNELS.selectModel,
       CHANNELS.send,

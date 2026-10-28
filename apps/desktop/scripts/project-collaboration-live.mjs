@@ -1,11 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { spawn } from 'node:child_process';
+import { spawn, execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { configureElectronRuntime } from './electron-runtime.mjs';
 
-// Explicit opt-in: real low-cost model, isolated product DB, no files or commands.
+// Real low-cost model in an isolated DB. Optional --workspace-copy uses a committed
+// source snapshot and the product executor; never points it at the source checkout.
 if (!process.versions.electron) {
   if (!process.argv.includes('--live'))
     throw Error('Use --live to permit real model calls.');
@@ -46,6 +47,41 @@ if (!process.versions.electron) {
   }
   if (resumeDirectory && !env.NOEMA_COLLABORATION_LIVE_MESSAGE)
     throw Error('Resume requires a new natural-language message.');
+  const workspaceIndex = process.argv.indexOf('--workspace-copy');
+  const workspace = path.join(scratch, 'workspace');
+  if (workspaceIndex >= 0) {
+    if (
+      !env.NOEMA_COLLABORATION_LIVE_NATURAL ||
+      !process.argv[workspaceIndex + 1]
+    )
+      throw Error(
+        'Workspace copies require natural mode and a Git checkout path.',
+      );
+    const source = path.resolve(process.argv[workspaceIndex + 1]);
+    const commit = execFileSync('git', ['-C', source, 'rev-parse', 'HEAD'], {
+      encoding: 'utf8',
+      windowsHide: true,
+    }).trim();
+    const archive = execFileSync(
+      'git',
+      ['-C', source, 'archive', '--format=tar', 'HEAD'],
+      { maxBuffer: 64 * 1024 * 1024, windowsHide: true },
+    );
+    fs.mkdirSync(workspace);
+    execFileSync('tar', ['-xf', '-', '-C', workspace], {
+      input: archive,
+      windowsHide: true,
+    });
+    fs.writeFileSync(
+      path.join(scratch, 'workspace-source.json'),
+      JSON.stringify({ commit }),
+    );
+  }
+  if (
+    fs.existsSync(path.join(scratch, 'workspace-source.json')) &&
+    fs.existsSync(workspace)
+  )
+    env.NOEMA_COLLABORATION_LIVE_WORKSPACE = workspace;
   if (existingProjectId) {
     const Database = require('better-sqlite3');
     const source = new Database(
@@ -129,6 +165,7 @@ if (!process.versions.electron) {
   const { OpenAICompatibleClient } =
     await import('../src/openai-compatible-client.mjs');
   let root,
+    work,
     service,
     calls = 0,
     requestCharacters = 0;
@@ -219,10 +256,38 @@ if (!process.versions.electron) {
           lastRole: last.role,
           lastTool: last.name,
           lastContent: last.content?.slice(0, 700),
+          lastToolCalls: request.messages
+            .findLast((message) => message.tool_calls)
+            ?.tool_calls.map((call) => {
+              let argumentKeys = [];
+              try {
+                argumentKeys = Object.keys(JSON.parse(call.function.arguments));
+              } catch {}
+              return { name: call.function.name, argumentKeys };
+            }),
         });
         return fetch(url, options);
       },
     });
+    const workspace = process.env.NOEMA_COLLABORATION_LIVE_WORKSPACE;
+    if (workspace) {
+      const { SocialWorkService } =
+        await import('../src/social-work-service.mjs');
+      const { NoemaProjectExecutor } =
+        await import('../src/noema-project-executor.mjs');
+      work = new SocialWorkService({
+        store,
+        secretStore: secrets,
+        adapter: new NoemaProjectExecutor({ provider }),
+        getSelectedModel: () => 'deepseek-flash',
+        chooseWorkspace: async () => workspace,
+        assertWorkAllowed: (roomId) => projects.assertWorkAllowed(roomId),
+        emit: (event) => {
+          if (event.type === 'project-work-updated')
+            service?.onProjectWorkUpdated(event.task);
+        },
+      });
+    }
     service = new SocialChatService({
       store,
       projectStore: projects,
@@ -235,6 +300,15 @@ if (!process.versions.electron) {
       }),
       getProjectSessionContext: (roomId, agentId) =>
         projects.getProjectSessionContext(roomId, agentId),
+      ...(work
+        ? {
+            getProjectWorkReadiness: () => work.getReadiness(),
+            startProjectWork: ({ dispatchFromNoema, ...input }, signal) =>
+              dispatchFromNoema
+                ? work.startTaskFromNoema({ ...input, signal })
+                : work.startTask({ ...input, signal }),
+          }
+        : {}),
     });
     if (natural) {
       const task =
@@ -250,16 +324,31 @@ if (!process.versions.electron) {
       while (
         Date.now() < deadline &&
         (service.active.size ||
+          work?.runs.size ||
           service.projectGroupInboxDrains.size ||
           service.projectReportDrain)
       )
         await new Promise((resolve) => setTimeout(resolve, 200));
+      if (work) await work.shutdown();
       await service.shutdown();
       result = {
         outcome: 'observed',
         model: 'deepseek-flash',
         calls,
         requestCharacters,
+        workspaceSource: workspace
+          ? JSON.parse(
+              fs.readFileSync(
+                path.join(scratch, 'workspace-source.json'),
+                'utf8',
+              ),
+            )
+          : null,
+        executions: root.db
+          .prepare(
+            'SELECT id,agent_id AS agentId,status,result_text AS result,error_message AS error,verification_status AS verificationStatus FROM social_work_tasks',
+          )
+          .all(),
         task,
         steps,
         balanceBefore: before,
@@ -426,6 +515,7 @@ if (!process.versions.electron) {
   } catch (error) {
     result = { outcome: 'failed', error: error.message, calls };
   } finally {
+    if (work) await work.shutdown();
     if (service) await service.shutdown();
     root?.db.close();
     fs.writeFileSync(

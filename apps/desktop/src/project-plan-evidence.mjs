@@ -2,11 +2,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
+import { redactSensitiveText } from './sensitive-text.mjs';
 
 const id = z.string().trim().min(1).max(200);
 export const evidenceSourceSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('message'), messageId: id }).strict(),
-  z.object({ kind: z.literal('execution'), taskId: id }).strict(),
+  z
+    .object({ kind: z.literal('execution'), taskId: id, stepId: id.optional() })
+    .strict(),
   z
     .object({
       kind: z.literal('file'),
@@ -52,11 +55,11 @@ export class ProjectPlanEvidence {
         throw Error('来源消息仍在生成，不能固定为成果依据。');
       return {
         source,
-        label: `群消息 · ${message.content.replace(/\s+/gu, ' ').slice(0, 60) || message.id}`,
+        label: `群消息 · ${redactSensitiveText(message.content).snippet.replace(/\s+/gu, ' ').slice(0, 60) || message.id}`,
         sourceAuthorId: message.agent_id,
         sourceStatus: message.status,
         fingerprint: digest(JSON.stringify(message)),
-        excerpt: message.content.slice(0, 4000),
+        excerpt: redactSensitiveText(message.content).snippet.slice(0, 4000),
         excerptTruncated: message.content.length > 4000,
       };
     }
@@ -71,15 +74,52 @@ export class ProjectPlanEvidence {
       throw Error('来源任务尚未结束，不能固定为成果依据。');
     if (source.kind === 'execution') {
       const { workspace_path: _workspace, ...record } = task;
+      const steps = this.db
+        .prepare(
+          'SELECT id,tool_name,category,status,effect_status,arguments_json,result_json FROM social_work_execution_steps WHERE task_id=? ORDER BY ordinal',
+        )
+        .all(task.id);
+      const step = source.stepId
+        ? steps.find((entry) => entry.id === source.stepId)
+        : null;
+      if (source.stepId && !step)
+        throw Error('该执行步骤不属于此任务，或已不存在。');
+      const contents = step
+        ? step.result_json || ''
+        : task.result_text || task.error_message || '';
       return {
         source,
-        label: `执行记录 · ${task.task_prompt.replace(/\s+/gu, ' ').slice(0, 60)}`,
+        label: step
+          ? `执行步骤 · ${step.tool_name}`
+          : `执行记录 · ${redactSensitiveText(task.task_prompt).snippet.replace(/\s+/gu, ' ').slice(0, 60)}`,
         sourceAuthorId: task.agent_id,
-        sourceStatus: task.status,
-        fingerprint: digest(JSON.stringify(record)),
-        excerpt: (task.result_text || task.error_message || '').slice(0, 4000),
-        excerptTruncated:
-          (task.result_text || task.error_message || '').length > 4000,
+        sourceStatus: step?.status ?? task.status,
+        fingerprint: digest(JSON.stringify(step ?? record)),
+        excerpt: redactSensitiveText(contents).snippet.slice(0, 4000),
+        excerptTruncated: contents.length > 4000,
+        ...(step
+          ? {}
+          : {
+              executionSteps: steps.slice(0, 24).map((entry) => {
+                let filePath = null;
+                try {
+                  const args = JSON.parse(entry.arguments_json);
+                  filePath =
+                    typeof args?.path === 'string'
+                      ? args.path.slice(0, 500)
+                      : null;
+                } catch {}
+                return {
+                  stepId: entry.id,
+                  tool: entry.tool_name,
+                  status: entry.status,
+                  category: entry.category,
+                  path: filePath,
+                  hasOutput: entry.result_json !== null,
+                };
+              }),
+              omittedSteps: Math.max(0, steps.length - 24),
+            }),
       };
     }
     // A file reference cannot grant a new directory: it inherits a real task's workspace.
@@ -140,6 +180,19 @@ export class ProjectPlanEvidence {
     )
       throw Error('同一成果来源不能重复引用。');
     return evidenceRefsSchema.parse(captured);
+  }
+
+  readSources(projectId, sources) {
+    if (!Array.isArray(sources) || !sources.length)
+      throw Error(
+        'read_sources 必须提供 evidence_sources 数组，例如 [{"kind":"execution","taskId":"实际任务ID"}]。',
+      );
+    return z
+      .array(evidenceSourceSchema)
+      .min(1)
+      .max(10)
+      .parse(sources)
+      .map((source) => this.read(projectId, source));
   }
 
   inspect(projectId, refs) {

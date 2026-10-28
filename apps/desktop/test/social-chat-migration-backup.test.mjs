@@ -7,6 +7,7 @@ import path from 'node:path';
 import { RootStore } from '../src/root-store.mjs';
 import { SocialChatStore } from '../src/social-chat-store.mjs';
 import { backupBeforeSocialChatMigration } from '../src/social-chat-migration-backup.mjs';
+import { SOCIAL_SCHEMA_VERSION } from '../src/social-chat-schema.mjs';
 
 test('the first social migration creates one consistent local SQLite backup', async () => {
   const directory = fs.mkdtempSync(
@@ -97,7 +98,7 @@ test('a later schema upgrade gets a verified snapshot without overwriting the fi
     const next = await backupBeforeSocialChatMigration({
       db: root.db,
       databasePath,
-      targetVersion: 21,
+      targetVersion: SOCIAL_SCHEMA_VERSION + 1,
     });
     assert.equal(
       fs.readdirSync(directory).some((name) => name.includes('.partial-')),
@@ -112,7 +113,7 @@ test('a later schema upgrade gets a verified snapshot without overwriting the fi
             'SELECT MAX(version) AS version FROM social_schema_migrations',
           )
           .get().version,
-        20,
+        SOCIAL_SCHEMA_VERSION,
       );
       assert.equal(
         snapshot
@@ -130,7 +131,7 @@ test('a later schema upgrade gets a verified snapshot without overwriting the fi
       await backupBeforeSocialChatMigration({
         db: root.db,
         databasePath,
-        targetVersion: 21,
+        targetVersion: SOCIAL_SCHEMA_VERSION + 1,
       }),
       next,
     );

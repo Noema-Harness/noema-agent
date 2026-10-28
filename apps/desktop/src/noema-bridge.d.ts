@@ -341,7 +341,7 @@ export interface NoemaProjectPlanItem {
   evidenceRefs?: Array<{
     source:
       | { kind: 'message'; messageId: string }
-      | { kind: 'execution'; taskId: string }
+      | { kind: 'execution'; taskId: string; stepId?: string }
       | { kind: 'file'; taskId: string; path: string };
     fingerprint: string;
     observedAt: string;

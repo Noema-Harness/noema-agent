@@ -1498,6 +1498,15 @@ test('project completion reviews members in project sessions and delivers their 
       ],
     },
   });
+  projects.plans.updatePhase({
+    projectId: project.id,
+    expectedRevision: 1,
+    phaseId: 'legacy-stage',
+    actorAgentId: 'noema',
+    status: 'done',
+    evidence: '全部工作项已验收，阶段交付已核对。',
+    reason: '让测试夹具满足项目归档的阶段出口。',
+  });
   const requests = [];
   let providerFailure = null;
   const provider = {

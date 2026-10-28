@@ -278,6 +278,13 @@ flowchart TD
 
 ```mermaid
 flowchart TD
+    EXEC_END[项目文件执行进入终态] --> INTERRUPTED{主动中断？}
+    INTERRUPTED -- 是 --> HOLD[保留执行状态，不自动唤醒]
+    INTERRUPTED -- 否 --> EXEC_OK{执行成功？}
+    EXEC_OK -- 是 --> MEMBER_RESULT[通知原成员核查，不自动验收]
+    EXEC_OK -- 否 --> FAILURE_RESULT[通知 Noema 核查失败原因，不盲目重试]
+    MEMBER_RESULT --> RESULT
+    FAILURE_RESULT --> READ_RESULT[按需读取失败记录及已保存的步骤证据]
     RESULT[成员提交成果说明与来源标识] --> SOURCE{来源属于哪里？}
     SOURCE -- 本项目公开消息 --> MESSAGE[读取已结束的公开消息]
     SOURCE -- 本项目执行任务 --> EXECUTION[读取已结束的任务结果及核验记录]

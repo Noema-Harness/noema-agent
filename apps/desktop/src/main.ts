@@ -4165,6 +4165,12 @@ async function startNoema() {
         return decision;
       },
       emit: (payload) => {
+        if (
+          'type' in payload &&
+          payload.type === 'project-work-updated' &&
+          'task' in payload
+        )
+          socialChatService?.onProjectWorkUpdated(payload.task);
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send(CHANNELS.socialEvent, payload);
         }
