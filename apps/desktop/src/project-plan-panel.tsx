@@ -66,6 +66,11 @@ function draftFromPlan(plan: NoemaProjectPlan): Draft {
           relatedTo,
           status,
           evidence,
+          evidenceRefs,
+          evidenceReview,
+          submittedByAgentId,
+          submittedAt,
+          submissionRevision,
           blocker,
         }) => ({
           id,
@@ -78,6 +83,11 @@ function draftFromPlan(plan: NoemaProjectPlan): Draft {
           relatedTo,
           status,
           evidence,
+          evidenceRefs,
+          evidenceReview,
+          submittedByAgentId,
+          submittedAt,
+          submissionRevision,
           blocker,
         }),
       ),
@@ -94,6 +104,8 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
   >({});
   const [checkingEvidence, setCheckingEvidence] = useState<string | null>(null);
   const [plan, setPlan] = useState<NoemaProjectPlan | null>(null);
+  const [selectedPhaseId, setSelectedPhaseId] = useState<string | null>(null);
+  const [workDetailsOpen, setWorkDetailsOpen] = useState<Record<string, boolean>>({});
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [editor, setEditor] = useState<{
@@ -145,6 +157,18 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
       ? '用户'
       : (members.find((member) => member.agentId === id)?.name ?? '原项目成员');
   const savedIds = new Set(plan?.items.map((item) => item.id) ?? []);
+  const selectedPhase = plan
+    ? (plan.phases.find((phase) => phase.id === selectedPhaseId) ??
+      plan.phases.find((phase) =>
+        ['blocked', 'awaiting_review', 'in_progress'].includes(phase.state),
+      ) ??
+      plan.phases.find((phase) => phase.state === 'ready') ??
+      plan.phases[0] ??
+      null)
+    : null;
+  const selectedPhaseIndex = selectedPhase
+    ? plan?.phases.findIndex((phase) => phase.id === selectedPhase.id) ?? -1
+    : -1;
   const write = async (fn: () => Promise<NoemaProjectPlan>) => {
     setBusy(true);
     setError('');
@@ -954,56 +978,78 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
               先确定项目结果，再逐步细化阶段和工作项；未定义的远期工作不计入进度。
             </p>
           )}
-          {plan.phaseProgress.percentage !== null ? (
-            <div className="project-plan-progress project-plan-phase-overview">
-              <span>
-                阶段进度 <strong>{plan.phaseProgress.percentage}%</strong>
-              </span>
-              <span>
-                {plan.phaseProgress.done} / {plan.phaseProgress.total}{' '}
-                个阶段已验收
-              </span>
-              <progress
-                value={plan.phaseProgress.done}
-                max={plan.phaseProgress.total}
-                aria-label="阶段验收进度"
-              />
+          {plan.phases.length ? (
+            <div className="project-plan-overview" aria-label="项目阶段概览">
+              <div className="project-plan-overview-status">
+                <span>
+                  {plan.phases.some((phase) => phase.state === 'blocked')
+                    ? '有工作受阻'
+                    : plan.phases.some((phase) => phase.state === 'awaiting_review')
+                      ? '有阶段待验收'
+                      : plan.phases.every((phase) => phase.state === 'done')
+                        ? '阶段全部验收'
+                        : plan.phases.some((phase) => phase.state === 'in_progress')
+                          ? '项目正在推进'
+                          : '项目准备中'}
+                </span>
+                <span>
+                  {plan.phaseProgress.done} / {plan.phaseProgress.total} 阶段验收
+                  {plan.progress.total
+                    ? ` · ${plan.progress.done}/${plan.progress.total} 项已验收`
+                    : ''}
+                  {plan.progress.submitted ? ` · ${plan.progress.submitted} 项待验收` : ''}
+                </span>
+              </div>
+              <ol className="project-plan-phase-map" aria-label="项目阶段">
+                {plan.phases.map((phase, index) => (
+                  <li
+                    className={`project-plan-phase-stop state-${phase.state}${selectedPhase?.id === phase.id ? ' is-selected' : ''}`}
+                    key={phase.id}
+                  >
+                    <button
+                      type="button"
+                      aria-current={selectedPhase?.id === phase.id ? 'step' : undefined}
+                      aria-controls="project-plan-phase-detail"
+                      onClick={() => setSelectedPhaseId(phase.id)}
+                    >
+                      <span className="project-plan-phase-stop-index">
+                        {String(index + 1).padStart(2, '0')}
+                      </span>
+                      <span className="project-plan-phase-stop-copy">
+                        <strong>{phase.title}</strong>
+                        <small>
+                          {phaseLabels[phase.state]}
+                          {phase.progress.total ? ` · ${phase.progress.done}/${phase.progress.total}` : ''}
+                        </small>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ol>
+              {plan.progress.canceled ? (
+                <p className="project-plan-meta">
+                  {plan.progress.canceled} 项已取消，不计入当前进度。
+                </p>
+              ) : null}
             </div>
           ) : null}
-          {plan.progress.percentage !== null ? (
-            <div className="project-plan-progress">
-              <span>
-                已定义工作项验收率 <strong>{plan.progress.percentage}%</strong>
-              </span>
-              <span>
-                {plan.progress.done} / {plan.progress.total} 项已验收
-                {plan.progress.submitted
-                  ? `，${plan.progress.submitted} 项待验收`
-                  : ''}
-              </span>
-              <progress
-                value={plan.progress.done}
-                max={plan.progress.total}
-                aria-label="已定义工作项验收率"
-              />
-            </div>
-          ) : null}
-          {plan.progress.canceled ? (
-            <p className="project-plan-meta">
-              {plan.progress.canceled} 项已取消，不计入当前工作项比例。
-            </p>
-          ) : null}
-          <ol className="project-plan-phases">
-            {plan.phases.map((phase, index) => (
-              <li
+          {plan.phases
+            .filter((phase) => phase.id === selectedPhase?.id)
+            .map((phase) => (
+              <section
                 className={`project-plan-phase state-${phase.state}`}
                 key={phase.id}
                 data-plan-phase-id={phase.id}
+                id="project-plan-phase-detail"
+                aria-label={`${phase.title}阶段详情`}
               >
+                <p className="project-plan-phase-detail-label">
+                  阶段 {String(selectedPhaseIndex + 1).padStart(2, '0')} · 交付与验收
+                </p>
                 <header className="project-plan-phase-head">
                   <div className="project-plan-phase-name">
                     <span className="project-plan-phase-number">
-                      {String(index + 1).padStart(2, '0')}
+                      {String(selectedPhaseIndex + 1).padStart(2, '0')}
                     </span>
                     <div>
                       <h4>{phase.title}</h4>
@@ -1141,7 +1187,36 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                     )}
                   </div>
                 ) : null}
-                <ol className="project-plan-work-list">
+                <details
+                  className="project-plan-work-details"
+                  open={workDetailsOpen[phase.id] ?? phase.workItems.some(
+                    (item) =>
+                      item.kind === 'work_package' &&
+                      ['blocked', 'submitted'].includes(item.status),
+                  )}
+                  onToggle={(event) => {
+                    const isOpen = event.currentTarget.open;
+                    setWorkDetailsOpen((current) =>
+                      current[phase.id] === isOpen
+                        ? current
+                        : { ...current, [phase.id]: isOpen },
+                    );
+                  }}
+                >
+                  <summary>
+                    工作项 · {phase.progress.done}/{phase.progress.total} 已验收
+                    {phase.progress.submitted
+                      ? ` · ${phase.progress.submitted} 项待验收`
+                      : ''}
+                    {phase.workItems.some(
+                      (item) =>
+                        item.kind === 'work_package' &&
+                        item.status === 'blocked',
+                    )
+                      ? ' · 有阻塞'
+                      : ''}
+                  </summary>
+                  <ol className="project-plan-work-list">
                   {phase.workItems.map((item) => (
                     <li
                       key={item.id}
@@ -1519,10 +1594,10 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                       ) : null}
                     </li>
                   ))}
-                </ol>
-              </li>
+                  </ol>
+                </details>
+              </section>
             ))}
-          </ol>
           {!plan.phases.length ? (
             <p className="project-plan-meta">项目尚未形成阶段计划。</p>
           ) : null}

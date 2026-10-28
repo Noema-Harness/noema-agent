@@ -55,8 +55,8 @@ projects.plans.replace({
         exitCriteria:
           '来源可复核；事实、推断和未核实事项分开；是否试办有清楚依据。',
         dependsOn: [],
-        status: 'done',
-        evidence: '两份原始来源、访谈记录和未核实事项已由 Noema 复核。',
+        status: 'pending',
+        evidence: '',
         workItems: [
           {
             id: 'demand-evidence',
@@ -64,8 +64,8 @@ projects.plans.replace({
             ownerAgentId: ids[0],
             acceptance: '保留原始来源，区分事实与推断，并列出未核实项。',
             dependsOn: [],
-            status: 'done',
-            evidence: '两份原始来源及访谈记录已存档；场租仍需核价。',
+            status: 'pending',
+            evidence: '',
             blocker: '',
           },
         ],
@@ -85,9 +85,9 @@ projects.plans.replace({
             ownerAgentId: ids[1],
             acceptance: '预算逐项对应需求证据，注明报价来源和仍待确认的费用。',
             dependsOn: [],
-            status: 'blocked',
+            status: 'pending',
             evidence: '',
-            blocker: '等待场地方提供含设备和清洁费的正式报价。',
+            blocker: '',
           },
         ],
       },
@@ -104,6 +104,49 @@ projects.plans.replace({
     ],
   },
 });
+let seededPlan = projects.plans.get(project.id);
+seededPlan = projects.plans.updateItem({
+  projectId: project.id,
+  expectedRevision: seededPlan.revision,
+  itemId: 'demand-evidence',
+  actorAgentId: ids[0],
+  status: 'in_progress',
+  reason: '合成成员开始预研究。',
+});
+seededPlan = projects.plans.updateItem({
+  projectId: project.id,
+  expectedRevision: seededPlan.revision,
+  itemId: 'demand-evidence',
+  actorAgentId: ids[0],
+  status: 'submitted',
+  evidence: '两份原始来源及访谈记录已存档；场租仍需核价。',
+  reason: '合成成员提交预研究结果。',
+});
+seededPlan = projects.plans.updateItem({
+  projectId: project.id,
+  expectedRevision: seededPlan.revision,
+  itemId: 'demand-evidence',
+  status: 'done',
+  reason: '用户核验合成来源并验收。',
+});
+projects.plans.updatePhase({
+  projectId: project.id,
+  expectedRevision: seededPlan.revision,
+  phaseId: 'research',
+  status: 'done',
+  evidence: '两份原始来源、访谈记录和未核实事项已由 Noema 复核。',
+  reason: '用户核验阶段成果并验收。',
+});
+let currentSeed = projects.plans.get(project.id);
+currentSeed = projects.plans.updateItem({
+  projectId: project.id,
+  expectedRevision: currentSeed.revision,
+  itemId: 'venue-budget',
+  actorAgentId: ids[1],
+  status: 'blocked',
+  blocker: '等待场地方提供含设备和清洁费的正式报价。',
+  reason: '合成成员记录待外部报价的阻塞。',
+});
 // This is a real persisted source in the isolated fixture, never production data.
 const sourceTime = new Date().toISOString();
 db.prepare(`INSERT INTO social_messages
@@ -117,7 +160,7 @@ db.prepare(`INSERT INTO social_messages
 projects.plans.updateItem({
   projectId: project.id,
   itemId: 'venue-budget',
-  expectedRevision: projects.plans.get(project.id).revision,
+  expectedRevision: currentSeed.revision,
   actorAgentId: ids[1],
   evidence: '报价来源保留在项目群记录。',
   evidenceSources: [{ kind: 'message', messageId: 'plan-evidence-ui' }],
@@ -174,7 +217,7 @@ try {
     `document.querySelector('.arrival-enter') || document.querySelector('.project-list-item')`,
   );
   if (await evaluate(`Boolean(document.querySelector('.arrival-enter'))`)) {
-    await click('进入聊天', '.first-meeting');
+    await click('进入 Noema', '.first-meeting');
     await wait(`!document.querySelector('.first-meeting')`);
   }
   await wait(
@@ -184,21 +227,41 @@ try {
     `Array.from(document.querySelectorAll('.project-list-item')).find(n=>n.textContent.includes('共享计划界面验收样例')).click()`,
   );
   await wait(
-    `document.querySelector('.project-plan-phase-overview')?.textContent.includes('33%')`,
+    `document.querySelector('.project-plan-overview-status')?.textContent.includes('有工作受阻')`,
   );
   assert.equal(projects.plans.get(project.id).phaseProgress.percentage, 33);
   assert.equal(
     await evaluate(
-      `document.querySelectorAll('.project-plan-phases > li').length`,
+      `document.querySelectorAll('.project-plan-phase[data-plan-phase-id]').length`,
+    ),
+    1,
+  );
+  assert.equal(
+    await evaluate(
+      `document.querySelector('.project-plan-phase-map').querySelectorAll('li').length`,
     ),
     3,
   );
+  assert.equal(
+    await evaluate(
+      `document.querySelector('[data-plan-phase-id="pilot"]') !== null`,
+    ),
+    true,
+  );
+  await evaluate(
+    `document.querySelectorAll('.project-plan-phase-stop button')[2].click()`,
+  );
+  await wait(`document.querySelector('[data-plan-phase-id="review"]')`);
   assert.equal(
     await evaluate(
       `Array.from(document.querySelectorAll('.project-plan-phase')).find(n=>n.textContent.includes('结果复盘与后续决策')).textContent.includes('等待前置阶段')`,
     ),
     true,
   );
+  await evaluate(
+    `document.querySelectorAll('.project-plan-phase-stop button')[1].click()`,
+  );
+  await wait(`document.querySelector('[data-plan-phase-id="pilot"]')`);
   await screenshot('three-phase-plan.png');
   await evaluate(
     `document.querySelector('[data-plan-item-id="venue-budget"] .project-plan-evidence').open=true`,
@@ -245,7 +308,26 @@ try {
     true,
   );
   await screenshot('submitted-evidence.png');
-  await click('验收工作项', '[data-plan-item-id="venue-budget"]');
+  let currentPlan = projects.plans.get(project.id);
+  currentPlan = projects.plans.updateItem({
+    projectId: project.id,
+    expectedRevision: currentPlan.revision,
+    itemId: 'venue-budget',
+    actorAgentId: 'noema',
+    status: 'done',
+    reason: 'Noema 独立核验并验收用户提交的工作成果。',
+  });
+  await evaluate('window.__noemaAfterAcceptance = true');
+  await cdp.call('Page.reload');
+  await wait(
+    `!window.__noemaAfterAcceptance && Array.from(document.querySelectorAll('.project-list-item')).some(n=>n.textContent.includes('共享计划界面验收样例'))`,
+  );
+  await evaluate(
+    `Array.from(document.querySelectorAll('.project-list-item')).find(n=>n.textContent.includes('共享计划界面验收样例')).click()`,
+  );
+  await wait(
+    `document.querySelector('[data-plan-phase-id="pilot"]')?.textContent.includes('阶段待验收')`,
+  );
   await click('核验阶段出口', '[data-plan-phase-id="pilot"]');
   await set(
     '阶段成果与出口核验依据',
@@ -254,7 +336,7 @@ try {
   );
   await click('验收阶段并解锁后续工作', '[data-plan-phase-id="pilot"]');
   await wait(
-    `document.querySelector('.project-plan-phase-overview')?.textContent.includes('67%')`,
+    `document.querySelector('.project-plan-overview-status')?.textContent.includes('2 / 3 阶段验收')`,
   );
   assert.equal(projects.plans.get(project.id).phaseProgress.percentage, 67);
   await screenshot('phase-gate-opened.png');
@@ -292,6 +374,10 @@ try {
   );
   await evaluate(
     `Array.from(document.querySelectorAll('.project-list-item')).find(n=>n.textContent.includes('共享计划界面验收样例')).click()`,
+  );
+  await wait(`document.querySelector('.project-plan-phase-map')`);
+  await evaluate(
+    `document.querySelectorAll('.project-plan-phase-stop button')[2].click()`,
   );
   await wait(
     `document.querySelector('.project-plan')?.textContent.includes('后续仅在真实试办结果可复核时作出决策')`,
@@ -354,7 +440,9 @@ async function wait(expression) {
     if (await evaluate(`Boolean(${expression})`)) return;
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  throw new Error(`UI condition timed out: ${expression}`);
+  throw new Error(
+    `UI condition timed out: ${expression}${diagnostic ? `\nElectron stderr: ${diagnostic}` : ''}`,
+  );
 }
 async function click(text, scope = '.project-plan') {
   await evaluate(

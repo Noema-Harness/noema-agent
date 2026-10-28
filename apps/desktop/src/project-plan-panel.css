@@ -29,31 +29,126 @@
   font-size: 12px;
 }
 .social-shell .project-plan-objective {
-  margin: 14px 0 20px;
+  margin: 14px 0 18px;
   white-space: pre-wrap;
   line-height: 1.7;
 }
-.social-shell .project-plan-progress {
-  display: grid;
-  gap: 5px;
-  width: 100%;
-  max-width: 700px;
-  margin: 16px 0 21px;
-  color: var(--muted);
-  font-size: 12px;
+.social-shell .project-plan-overview {
+  margin: 0 0 22px;
 }
-.social-shell .project-plan-progress > span:first-child {
+.social-shell .project-plan-overview-status {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line-strong);
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
-.social-shell .project-plan-progress strong {
+.social-shell .project-plan-overview-status > span:first-child {
   color: var(--ink);
-  font-size: 20px;
   font-weight: 600;
-  letter-spacing: -0.4px;
 }
-.social-shell .project-plan-progress progress,
+.social-shell .project-plan-phase-map {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  padding: 5px 0 5px 1px;
+  margin: 0;
+  list-style: none;
+}
+.social-shell .project-plan-phase-stop {
+  position: relative;
+  min-width: 0;
+  border-left: 1px solid var(--line-strong);
+}
+.social-shell .project-plan-phase-stop:last-child {
+  border-left-color: transparent;
+}
+.social-shell .project-plan-phase-stop > button {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  width: 100%;
+  min-height: 54px;
+  padding: 7px 10px 8px 12px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+.social-shell .project-plan-phase-stop > button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.social-shell .project-plan-phase-stop-index {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin-left: -25px;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  background: var(--paper);
+  color: var(--muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.social-shell
+  .project-plan-phase-stop.state-done
+  .project-plan-phase-stop-index {
+  border-color: var(--success);
+  background: var(--success);
+  color: var(--paper);
+}
+.social-shell
+  .project-plan-phase-stop:is(.state-blocked, .state-awaiting_review)
+  .project-plan-phase-stop-index {
+  border-color: #b97843;
+  color: #8b5b31;
+}
+.social-shell
+  .project-plan-phase-stop.is-selected
+  .project-plan-phase-stop-index {
+  box-shadow:
+    0 0 0 2px var(--paper),
+    0 0 0 3px var(--accent);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.social-shell .project-plan-phase-stop-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding-top: 2px;
+}
+.social-shell .project-plan-phase-stop-copy strong {
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.social-shell .project-plan-phase-stop-copy small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.social-shell
+  .project-plan-phase-stop.is-selected
+  .project-plan-phase-stop-copy
+  small {
+  color: var(--accent);
+}
 .social-shell .project-plan-phase-progress progress {
   display: block;
   width: 100%;
@@ -62,15 +157,12 @@
   appearance: none;
   background: var(--line);
 }
-.social-shell .project-plan-progress progress::-webkit-progress-bar,
 .social-shell .project-plan-phase-progress progress::-webkit-progress-bar {
   background: var(--line);
 }
-.social-shell .project-plan-progress progress::-webkit-progress-value,
 .social-shell .project-plan-phase-progress progress::-webkit-progress-value {
   background: var(--accent);
 }
-.social-shell .project-plan-phases,
 .social-shell .project-plan-work-list,
 .social-shell .project-plan-edit-items {
   margin: 0;
@@ -80,9 +172,6 @@
 .social-shell .project-plan-phase {
   padding: 18px 0 0;
   border-top: 1px solid var(--line-strong);
-}
-.social-shell .project-plan-phase + .project-plan-phase {
-  margin-top: 18px;
 }
 .social-shell .project-plan-phase-head {
   display: flex;
@@ -113,6 +202,12 @@
   color: var(--ink-soft);
   line-height: 1.6;
   white-space: pre-wrap;
+}
+.social-shell .project-plan-phase-detail-label {
+  margin: 0 0 5px;
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.03em;
 }
 .social-shell .project-plan-phase-state {
   flex: 0 0 auto;
@@ -177,6 +272,21 @@
   margin: 0 0 0 42px;
   padding-left: 16px;
   border-left: 1px solid var(--line-strong);
+}
+.social-shell .project-plan-work-details {
+  margin: 14px 0 0 42px;
+  border-top: 1px solid var(--line);
+}
+.social-shell .project-plan-work-details > summary {
+  padding: 10px 0;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+.social-shell .project-plan-work-details[open] > summary {
+  border-bottom: 1px solid var(--line);
+}
+.social-shell .project-plan-work-details .project-plan-work-list {
+  margin: 0 0 0 0;
 }
 .social-shell .project-plan-work-list > li {
   position: relative;
@@ -386,6 +496,16 @@
   overflow: auto;
 }
 @media (max-width: 640px) {
+  .social-shell .project-plan-overview-status {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .social-shell
+    .project-plan-phase-stop.is-selected
+    .project-plan-phase-stop-copy {
+    color: var(--accent);
+  }
   .social-shell .project-plan-phase-head {
     flex-direction: column;
     gap: 7px;
@@ -396,7 +516,8 @@
     margin-left: 0;
   }
   .social-shell .project-plan-work-list,
-  .social-shell .project-plan-phase-gate {
+  .social-shell .project-plan-phase-gate,
+  .social-shell .project-plan-work-details {
     margin-left: 10px;
   }
   .social-shell .project-plan-phase > .project-plan-meta {
