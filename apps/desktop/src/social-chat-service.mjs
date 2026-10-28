@@ -301,6 +301,7 @@ function projectPlanTool(projects) {
     function: {
       name: 'manage_project_plan',
       description:
+        'Use history for compact revision summaries; supply revision and item_id to inspect actual before/after values for one node. Reuse the revision you read for update_item: unrelated changes can be preserved; PLAN_CONFLICT identifies changed context and requires rereading. ' +
         'Read or maintain a shared project plan organized as project objective → phases → nested structural groups → executable leaf work packages. Groups only organize children and never block or count as work; work packages require an active specialist owner and acceptance criteria. Each phase has an outcome, exit criteria, blocking dependencies and an acceptance gate; planned work may remain coarse. Work packages have blocking dependsOn links and optional relatedTo links (context only; never block readiness). Use parentId only to place a node under a structural group in the same phase. Use dependsOn only when work cannot start before another package is accepted. New packages must use one of that project’s listed active work-item owners; groups leave ownerAgentId empty. Noema is the coordinator and is not an owner unless explicitly listed. A ready work package is marked in_progress when the runtime starts it. The system records submittedByAgentId from the actor that submits each result; Noema cannot submit on a member’s behalf. Check this field before judging who delivered a work package; never infer authorship from a relayed group message. Members update only their own package status and evidence; only Noema/user may accept packages/phases or change plan structure. Use item_patch to revise one work package’s title, owner, acceptance, parent, blocking links or related links without replacing the entire plan. A phase can be accepted only when its leaf packages and dependencies are complete and evidence is supplied. Every call must include reason: for reads, state what you are checking; for writes, state the evidence or basis for the change. Keep near-term phases detailed and distant phases coarse. Do not invent dates, effort or completion forecasts. Projects and valid owners: ' +
         projectOwners,
       parameters: {
@@ -308,13 +309,20 @@ function projectPlanTool(projects) {
         properties: {
           operation: {
             type: 'string',
-            enum: ['read', 'replace', 'update_item', 'update_phase'],
+            enum: ['read', 'history', 'replace', 'update_item', 'update_phase'],
           },
           project_id: { type: 'string', enum: projects.map((p) => p.id) },
           expected_revision: {
             type: 'integer',
             minimum: 0,
-            description: 'Required for writes; use current plan revision.',
+            description:
+              'Required for writes; use the plan revision you read. update_item can accept independent intervening changes; relevant changes return PLAN_CONFLICT.',
+          },
+          revision: {
+            type: 'integer',
+            minimum: 1,
+            description:
+              'For history: inspect this revision. Add item_id to retrieve full before/after values for one node; otherwise returns compact field summaries.',
           },
           plan: parameters,
           item_id: { type: 'string' },
@@ -671,7 +679,40 @@ export class SocialChatService {
                 actorAgentId: run.agentId,
                 sourceTurnId: run.turnId,
               };
-              if (input.operation === 'read') {
+              if (input.operation === 'history') {
+                if (input.revision !== undefined) {
+                  const detail = this.projectStore.plans.revisionDetails(
+                    project.id,
+                    input.revision,
+                  );
+                  const changes = input.item_id
+                    ? detail.changes.filter(
+                        (entry) => entry.entity === `item:${input.item_id}`,
+                      )
+                    : detail.changes
+                        .slice(0, 20)
+                        .map(({ values: _values, ...entry }) => entry);
+                  result = {
+                    ...detail,
+                    changes,
+                    omittedChanges: input.item_id
+                      ? 0
+                      : Math.max(0, detail.changes.length - changes.length),
+                  };
+                } else {
+                  result = {
+                    projectId: project.id,
+                    history: this.projectStore.plans
+                      .history(project.id)
+                      .slice(0, 10)
+                      .map((entry) => ({
+                        ...entry,
+                        changes: entry.changes.slice(0, 20),
+                        omittedChanges: Math.max(0, entry.changes.length - 20),
+                      })),
+                  };
+                }
+              } else if (input.operation === 'read') {
                 const plan = this.projectStore.plans.forAgent(
                   project.id,
                   run.agentId,
@@ -736,6 +777,13 @@ export class SocialChatService {
           } catch (error) {
             result = {
               error: error.message,
+              ...(error.code === 'PLAN_CONFLICT'
+                ? {
+                    code: error.code,
+                    currentRevision: error.currentRevision,
+                    conflicts: error.conflicts,
+                  }
+                : {}),
               ...(project
                 ? {
                     currentPlan: this.projectStore.plans.forAgent(

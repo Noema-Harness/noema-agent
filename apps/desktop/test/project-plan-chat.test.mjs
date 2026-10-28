@@ -6,6 +6,125 @@ import { SocialProjectStore } from '../src/social-project-store.mjs';
 import { SocialChatService } from '../src/social-chat-service.mjs';
 import { createSocialTestStore } from '../test-support/social-team.mjs';
 
+test('plan tools return actionable conflict fields and on-demand revision values', async () => {
+  const db = new Database(':memory:');
+  new RootStore(db);
+  const store = createSocialTestStore(db);
+  const projects = new SocialProjectStore({ db, socialChatStore: store });
+  const project = projects.createProject({
+    title: '局部计划修改',
+    brief: '核查版本冲突。',
+    agentIds: ['noema', 'engineering-partner'],
+  });
+  projects.plans.onChange = null;
+  projects.plans.replace({
+    projectId: project.id,
+    expectedRevision: 0,
+    reason: '建立计划。',
+    plan: {
+      objective: '验证局部修改。',
+      items: [
+        {
+          id: 'sources',
+          title: '资料',
+          ownerAgentId: 'engineering-partner',
+          acceptance: '提供来源。',
+          status: 'pending',
+          dependsOn: [],
+        },
+      ],
+    },
+  });
+  projects.plans.updateItem({
+    projectId: project.id,
+    expectedRevision: 1,
+    itemId: 'sources',
+    patch: { title: '原始资料' },
+    reason: '明确资料要求。',
+    actorAgentId: 'noema',
+  });
+  let calls = 0;
+  const service = new SocialChatService({
+    store,
+    projectStore: projects,
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'test-model',
+    getRootState: async () => ({
+      connected: true,
+      selectedModel: 'test-model',
+    }),
+    provider: {
+      async *streamChat(input) {
+        calls += 1;
+        if (calls === 2) {
+          const conflict = JSON.parse(input.messages.at(-1).content);
+          assert.equal(conflict.code, 'PLAN_CONFLICT');
+          assert.equal(conflict.currentRevision, 2);
+          assert.ok(
+            conflict.conflicts.some(
+              (entry) =>
+                entry.entity === 'item:sources' &&
+                entry.fields.includes('title'),
+            ),
+          );
+        }
+        if (calls <= 2)
+          input.onToolCalls?.([
+            {
+              id: `plan-${calls}`,
+              type: 'function',
+              function: {
+                name: 'manage_project_plan',
+                arguments: JSON.stringify(
+                  calls === 1
+                    ? {
+                        operation: 'update_item',
+                        project_id: project.id,
+                        expected_revision: 1,
+                        item_id: 'sources',
+                        item_patch: { title: '旧资料' },
+                        reason: '基于过期版本。',
+                      }
+                    : {
+                        operation: 'history',
+                        project_id: project.id,
+                        revision: 2,
+                        item_id: 'sources',
+                        reason: '核对变更字段。',
+                      },
+                ),
+              },
+            },
+          ]);
+        else {
+          const detail = JSON.parse(input.messages.at(-1).content);
+          assert.equal(detail.revision, 2);
+          assert.deepEqual(detail.changes[0].values.title, {
+            before: '资料',
+            after: '原始资料',
+          });
+          yield '已找到题目变更，旧写入没有覆盖它。';
+        }
+      },
+    },
+  });
+  service.onProjectPlanChanged = () => {};
+  try {
+    const turn = service.sendMessage({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '查看这个项目计划的最近修改。',
+    });
+    await service.active.get('room-noema')?.done;
+    assert.equal(store.getSocialMessage(turn.messageId).status, 'complete');
+    assert.equal(calls, 3);
+    assert.equal(projects.plans.get(project.id).revision, 2);
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});
+
 test('Noema reads then writes a versioned plan in one turn; members cannot forge an accepting actor', async () => {
   const db = new Database(':memory:');
   new RootStore(db);

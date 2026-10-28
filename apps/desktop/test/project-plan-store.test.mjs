@@ -652,3 +652,224 @@ test('scope cancellation is explicit and traceable, and empty scope has no inven
     db.close();
   }
 });
+
+test('independent member updates retain both results and journal the actual read version', () => {
+  const { db, projects, project, a, b, plan } = setup();
+  try {
+    plan.items[1].dependsOn = [];
+    projects.plans.replace({
+      projectId: project.id,
+      expectedRevision: 0,
+      reason: '两项可以独立推进。',
+      plan,
+    });
+    projects.plans.updateItem({
+      projectId: project.id,
+      expectedRevision: 1,
+      itemId: 'research',
+      actorAgentId: a,
+      status: 'in_progress',
+      reason: '开始研究。',
+    });
+    const result = projects.plans.updateItem({
+      projectId: project.id,
+      expectedRevision: 1,
+      itemId: 'budget',
+      actorAgentId: b,
+      sourceTurnId: null,
+      status: 'in_progress',
+      reason: '开始独立预算。',
+    });
+    assert.equal(result.revision, 3);
+    assert.deepEqual(
+      result.items.map((item) => item.status),
+      ['in_progress', 'in_progress'],
+    );
+    const journal = projects.plans.revisionDetails(project.id, 3);
+    assert.equal(journal.baseRevision, 1);
+    assert.equal(journal.actorAgentId, b);
+    assert.deepEqual(journal.changes, [
+      {
+        entity: 'item:budget',
+        operation: 'updated',
+        fields: ['status'],
+        values: { status: { before: 'pending', after: 'in_progress' } },
+      },
+    ]);
+    assert.equal(
+      'values' in projects.plans.history(project.id)[0].changes[0],
+      false,
+    );
+    assert.throws(
+      () =>
+        projects.plans.updateItem({
+          projectId: project.id,
+          expectedRevision: 1,
+          itemId: 'budget',
+          actorAgentId: b,
+          status: 'blocked',
+          blocker: '旧结果覆盖。',
+          reason: '旧结果。',
+        }),
+      (error) =>
+        error.code === 'PLAN_CONFLICT' &&
+        error.conflicts.some(
+          (change) =>
+            change.entity === 'item:budget' && change.fields.includes('status'),
+        ),
+    );
+    assert.equal(projects.plans.get(project.id).revision, 3);
+  } finally {
+    db.close();
+  }
+});
+
+test('changed project scope and change-then-revert are never silently merged', () => {
+  const { db, projects, project, a, plan } = setup();
+  try {
+    projects.plans.replace({
+      projectId: project.id,
+      expectedRevision: 0,
+      reason: '建立范围。',
+      plan,
+    });
+    projects.plans.updateItem({
+      projectId: project.id,
+      expectedRevision: 1,
+      itemId: 'research',
+      patch: { title: '修改后的研究' },
+      reason: '范围变化。',
+    });
+    projects.plans.updateItem({
+      projectId: project.id,
+      expectedRevision: 2,
+      itemId: 'research',
+      patch: { title: '需求证据' },
+      reason: '恢复原题目。',
+    });
+    assert.throws(
+      () =>
+        projects.plans.updateItem({
+          projectId: project.id,
+          expectedRevision: 1,
+          itemId: 'research',
+          actorAgentId: a,
+          status: 'in_progress',
+          reason: '基于旧版本执行。',
+        }),
+      (error) => error.code === 'PLAN_CONFLICT',
+    );
+    const next = projects.plans.get(project.id);
+    projects.plans.replace({
+      projectId: project.id,
+      expectedRevision: 3,
+      reason: '修改项目目标。',
+      plan: { ...next, objective: '改成验证长期经营。' },
+    });
+    assert.throws(
+      () =>
+        projects.plans.updateItem({
+          projectId: project.id,
+          expectedRevision: 3,
+          itemId: 'research',
+          actorAgentId: a,
+          status: 'in_progress',
+          reason: '仍按旧目标执行。',
+        }),
+      (error) =>
+        error.code === 'PLAN_CONFLICT' &&
+        error.conflicts.some((change) => change.entity === 'project'),
+    );
+    assert.equal(projects.plans.get(project.id).revision, 4);
+  } finally {
+    db.close();
+  }
+});
+
+test('relation journals include both endpoints and old snapshots remain readable', () => {
+  const { db, projects, project, plan } = setup();
+  try {
+    plan.items[1].dependsOn = [];
+    projects.plans.replace({
+      projectId: project.id,
+      expectedRevision: 0,
+      reason: '建立范围。',
+      plan,
+    });
+    const row = db
+      .prepare(
+        'SELECT items_json FROM social_project_plan_revisions WHERE project_id = ? AND revision = 1',
+      )
+      .get(project.id);
+    const old = JSON.parse(row.items_json);
+    delete old.changes;
+    delete old.baseRevision;
+    db.prepare(
+      'UPDATE social_project_plan_revisions SET items_json = ? WHERE project_id = ? AND revision = 1',
+    ).run(JSON.stringify(old), project.id);
+    projects.plans.updateItem({
+      projectId: project.id,
+      expectedRevision: 1,
+      itemId: 'research',
+      patch: { relatedTo: ['budget'] },
+      reason: '两项资料互相参考，不形成新的阻塞。',
+    });
+    const detail = projects.plans.revisionDetails(project.id, 2);
+    assert.deepEqual(
+      detail.changes.map((change) => change.entity),
+      ['item:research', 'item:budget'],
+    );
+    for (const change of detail.changes)
+      assert.deepEqual(change.fields, ['relatedTo']);
+    assert.equal(projects.plans.history(project.id)[1].baseRevision, 0);
+    assert.throws(
+      () => projects.plans.revisionDetails(project.id, 999),
+      /不存在/u,
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test('a stale submission cannot ignore changed upstream evidence', () => {
+  const { db, projects, project, a, b, plan } = setup();
+  try {
+    projects.plans.replace({
+      projectId: project.id,
+      expectedRevision: 0,
+      reason: '建立有依赖的交付。',
+      plan,
+    });
+    const update = (expectedRevision, itemId, actorAgentId, status, evidence) =>
+      projects.plans.updateItem({
+        projectId: project.id,
+        expectedRevision,
+        itemId,
+        actorAgentId,
+        status,
+        evidence,
+        reason: '推进实际工作。',
+      });
+    update(1, 'research', a, 'submitted', '第一份来源。');
+    update(2, 'research', 'noema', 'done');
+    update(3, 'budget', b, 'in_progress');
+    update(4, 'research', 'noema', 'done', '核查后更正的来源。');
+    assert.throws(
+      () => update(4, 'budget', b, 'submitted', '仍按第一份来源估算。'),
+      (error) =>
+        error.code === 'PLAN_CONFLICT' &&
+        error.conflicts.some(
+          (change) =>
+            change.entity === 'item:research' &&
+            change.fields.includes('evidence'),
+        ),
+    );
+    assert.equal(
+      projects.plans.get(project.id).items.find((item) => item.id === 'budget')
+        .status,
+      'in_progress',
+    );
+  } finally {
+    db.close();
+  }
+});

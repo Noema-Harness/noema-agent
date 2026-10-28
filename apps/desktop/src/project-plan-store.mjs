@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isDeepStrictEqual } from 'node:util';
 
 const text = (max) => z.string().trim().min(1).max(max);
 const statusSchema = z.enum([
@@ -113,6 +114,53 @@ function flatten(phases) {
   return phases.flatMap((phase) =>
     phase.workItems.map((item) => ({ ...item, phaseId: phase.id })),
   );
+}
+
+// Compare persisted domain values, never derived readiness/progress fields.
+function planEntities(plan) {
+  const parsed = planSchema.parse(plan);
+  const entries = new Map([['project', { objective: parsed.objective }]]);
+  for (const phase of parsed.phases) {
+    const { workItems, ...definition } = phase;
+    entries.set(`phase:${phase.id}`, definition);
+    for (const item of workItems)
+      entries.set(`item:${item.id}`, { ...item, phaseId: phase.id });
+  }
+  return entries;
+}
+
+function planChanges(before, after) {
+  const oldEntries = before ? planEntities(before) : new Map();
+  const nextEntries = planEntities(after);
+  const changes = [];
+  for (const key of new Set([...oldEntries.keys(), ...nextEntries.keys()])) {
+    const oldValue = oldEntries.get(key);
+    const nextValue = nextEntries.get(key);
+    const fields = [
+      ...new Set([
+        ...Object.keys(oldValue ?? {}),
+        ...Object.keys(nextValue ?? {}),
+      ]),
+    ].filter(
+      (field) => !isDeepStrictEqual(oldValue?.[field], nextValue?.[field]),
+    );
+    if (fields.length)
+      changes.push({
+        entity: key,
+        operation: !oldValue ? 'added' : !nextValue ? 'removed' : 'updated',
+        fields,
+        values: Object.fromEntries(
+          fields.map((field) => [
+            field,
+            {
+              before: oldValue?.[field] ?? null,
+              after: nextValue?.[field] ?? null,
+            },
+          ]),
+        ),
+      });
+  }
+  return changes;
 }
 
 function normalizePlanInput(input) {
@@ -340,9 +388,119 @@ export class ProjectPlanStore {
     this.project(projectId);
     return this.db
       .prepare(
-        'SELECT revision, stage, reason, actor_agent_id AS actorAgentId, source_turn_id AS sourceTurnId, created_at AS createdAt FROM social_project_plan_revisions WHERE project_id = ? ORDER BY revision DESC LIMIT 30',
+        'SELECT revision, stage, reason, actor_agent_id AS actorAgentId, source_turn_id AS sourceTurnId, created_at AS createdAt, items_json FROM social_project_plan_revisions WHERE project_id = ? ORDER BY revision DESC LIMIT 30',
       )
-      .all(projectId);
+      .all(projectId)
+      .map(({ items_json, ...entry }) => {
+        const stored = JSON.parse(items_json);
+        return {
+          ...entry,
+          baseRevision: stored.baseRevision ?? entry.revision - 1,
+          changes: (
+            stored.changes ??
+            this.revisionDetails(projectId, entry.revision).changes
+          ).map(({ values: _values, ...change }) => change),
+        };
+      });
+  }
+
+  revisionDetails(projectId, revision) {
+    this.project(projectId);
+    if (!Number.isInteger(revision) || revision < 1)
+      throw new Error('必须提供有效的计划历史版本。');
+    const read = (version) =>
+      this.db
+        .prepare(
+          'SELECT * FROM social_project_plan_revisions WHERE project_id = ? AND revision = ?',
+        )
+        .get(projectId, version);
+    const row = read(revision);
+    if (!row) throw new Error('计划历史版本不存在。');
+    const prior = read(revision - 1);
+    return {
+      projectId,
+      revision,
+      baseRevision: JSON.parse(row.items_json).baseRevision ?? revision - 1,
+      actorAgentId: row.actor_agent_id,
+      sourceTurnId: row.source_turn_id,
+      reason: row.reason,
+      changes: planChanges(
+        prior ? parseProjectPlanRevision(prior) : null,
+        parseProjectPlanRevision(row),
+      ),
+    };
+  }
+
+  itemWriteRevision(input, current) {
+    const expected = input.expectedRevision;
+    if (
+      !Number.isInteger(expected) ||
+      expected < 1 ||
+      expected > current.revision
+    )
+      throw new Error('必须提供读取到的有效计划版本。');
+    if (expected === current.revision) return current.revision;
+    const row = this.db
+      .prepare(
+        'SELECT * FROM social_project_plan_revisions WHERE project_id = ? AND revision = ?',
+      )
+      .get(input.projectId, expected);
+    if (!row) throw new Error('计划基础版本不存在，请重新读取。');
+    const before = parseProjectPlanRevision(row);
+    const entries = planEntities(before);
+    const relevant = new Set(['project', `item:${input.itemId}`]);
+    const item = entries.get(`item:${input.itemId}`);
+    if (item) {
+      relevant.add(`phase:${item.phaseId}`);
+      for (const id of entries.get(`phase:${item.phaseId}`).dependsOn)
+        relevant.add(`phase:${id}`);
+      item.dependsOn.forEach((id) => relevant.add(`item:${id}`));
+      input.patch?.dependsOn?.forEach((id) => relevant.add(`item:${id}`));
+      for (let parent of [item.parentId, input.patch?.parentId]) {
+        while (parent) {
+          relevant.add(`item:${parent}`);
+          parent = entries.get(`item:${parent}`)?.parentId;
+        }
+      }
+    }
+    const conflicts = [];
+    let previous = before;
+    const revisions = this.db
+      .prepare(
+        'SELECT * FROM social_project_plan_revisions WHERE project_id = ? AND revision > ? ORDER BY revision',
+      )
+      .all(input.projectId, expected);
+    for (const revision of revisions) {
+      const stored = JSON.parse(revision.items_json);
+      const next = stored.changes ? null : parseProjectPlanRevision(revision);
+      const changes = stored.changes ?? planChanges(previous, next);
+      conflicts.push(
+        ...changes.filter((change) => relevant.has(change.entity)),
+      );
+      // New snapshots carry exact change summaries, including change/revert cycles.
+      previous = next ?? parseProjectPlanRevision(revision);
+    }
+    if (conflicts.length) {
+      const fieldsByEntity = new Map();
+      for (const change of conflicts) {
+        const fields = fieldsByEntity.get(change.entity) ?? new Set();
+        change.fields.forEach((field) => fields.add(field));
+        fieldsByEntity.set(change.entity, fields);
+      }
+      const summary = [...fieldsByEntity].map(([entity, fields]) => ({
+        entity,
+        fields: [...fields],
+      }));
+      const error = new Error(
+        '计划已被更新，请重新读取相关节点后再提交：' +
+          summary.map((c) => `${c.entity}.${c.fields.join(',')}`).join('; '),
+      );
+      error.code = 'PLAN_CONFLICT';
+      error.currentRevision = current.revision;
+      error.conflicts = summary;
+      throw error;
+    }
+    return current.revision;
   }
 
   forAgent(projectId, agentId, itemId = null, phaseId = null) {
@@ -675,6 +833,7 @@ export class ProjectPlanStore {
   write({
     projectId,
     expectedRevision,
+    baseRevision = expectedRevision,
     actorAgentId = null,
     sourceTurnId = null,
     reason,
@@ -701,7 +860,15 @@ export class ProjectPlanStore {
         expectedRevision + 1,
         stage,
         validated.objective,
-        JSON.stringify({ schemaVersion: 2, phases: validated.phases }),
+        JSON.stringify({
+          schemaVersion: 2,
+          phases: validated.phases,
+          baseRevision,
+          changes: planChanges(
+            current.revision ? current : null,
+            validated,
+          ).map(({ values: _values, ...change }) => change),
+        }),
         actorAgentId,
         sourceTurnId,
         explanation,
@@ -741,6 +908,7 @@ export class ProjectPlanStore {
   updateItem(input) {
     return this.db.transaction(() => {
       const current = this.get(input.projectId);
+      const writeRevision = this.itemWriteRevision(input, current);
       const item = current.items.find((item) => item.id === input.itemId);
       if (!item) throw new Error('交付项不存在。');
       if (item.kind !== 'work_package')
@@ -788,6 +956,8 @@ export class ProjectPlanStore {
       };
       return this.write({
         ...input,
+        expectedRevision: writeRevision,
+        baseRevision: input.expectedRevision,
         plan: {
           objective: current.objective,
           phases: current.phases.map((phase) => ({
