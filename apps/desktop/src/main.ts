@@ -120,6 +120,9 @@ let pendingQuickCaptureRequest = false;
 let shutdownStarted = false;
 let shutdownComplete = false;
 const testDatabasePath = process.env.NOEMA_E2E_DATABASE_PATH ?? null;
+const testRendererUrl = testDataArgument
+  ? (process.env.NOEMA_E2E_RENDERER_URL ?? null)
+  : null;
 const testDshUserDataPath = process.env.NOEMA_E2E_DSH_USER_DATA_PATH ?? null;
 const testWorkerPreface = process.env.NOEMA_E2E_WORKER_PREFACE ?? null;
 const testWorkerPrompt = process.env.NOEMA_E2E_WORKER_PROMPT ?? null;
@@ -360,7 +363,12 @@ const createWindow = () => {
     return { action: 'deny' };
   });
   mainWindow.webContents.on('will-navigate', (event, url) => {
-    if (!isInternalNavigation(url, MAIN_WINDOW_VITE_DEV_SERVER_URL))
+    if (
+      !isInternalNavigation(
+        url,
+        MAIN_WINDOW_VITE_DEV_SERVER_URL ?? testRendererUrl,
+      )
+    )
       event.preventDefault();
   });
   mainWindow.on('closed', () => {
@@ -376,6 +384,8 @@ const createWindow = () => {
 
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     void mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+  } else if (testRendererUrl) {
+    void mainWindow.loadURL(testRendererUrl);
   } else {
     void mainWindow.loadFile(
       path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
@@ -506,6 +516,7 @@ const createWindow = () => {
 const notifySocialReply = createSocialReplyNotificationHandler({
   NotificationClass: Notification,
   getWindow: () => mainWindow,
+  disabled: process.env.NOEMA_E2E_SILENT_NOTIFICATIONS === '1',
   openMainWindow: () => {
     if (!mainWindow || mainWindow.isDestroyed()) createWindow();
     focusPrimaryWindow(mainWindow);
@@ -4297,10 +4308,16 @@ async function startNoema() {
           ? socialWorkService!.startTaskFromNoema({ ...input, signal })
           : socialWorkService!.startTask({ ...input, signal }),
       emit: (payload) => {
+        const outgoingPayload =
+          process.env.NOEMA_E2E_SILENT_NOTIFICATIONS === '1' &&
+          'notifyUser' in payload &&
+          payload.notifyUser === true
+            ? { ...payload, notifyUser: false }
+            : payload;
         if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send(CHANNELS.socialEvent, payload);
+          mainWindow.webContents.send(CHANNELS.socialEvent, outgoingPayload);
         }
-        notifySocialReply(payload);
+        notifySocialReply(outgoingPayload);
       },
     });
     unregisterRootIpc = registerRootIpc({

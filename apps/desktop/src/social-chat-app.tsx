@@ -29,6 +29,7 @@ import { ProjectReviewCard } from './project-review-card';
 import { ProjectPlanPanel } from './project-plan-panel';
 import { GlobalSearchDialog } from './global-search-dialog';
 import { FirstMeeting } from './first-meeting-screen';
+import { createNotificationEarcon } from './notification-earcon.mjs';
 import {
   socialWorkCardTitle,
   socialWorkExecutionStepPresentation,
@@ -593,6 +594,31 @@ function SocialChatApp() {
   useEffect(() => {
     if (activeRoomId) void loadRoom(activeRoomId);
   }, [activeRoomId, loadRoom]);
+
+  useEffect(() => {
+    const AudioContextClass = window.AudioContext;
+    const earcon = createNotificationEarcon(
+      AudioContextClass ? () => new AudioContextClass() : null,
+    );
+    const unlock = () => earcon.unlock();
+    window.addEventListener('pointerdown', unlock, { passive: true });
+    window.addEventListener('keydown', unlock);
+    const unsubscribe = window.noema.onSocialEvent((event) => {
+      if (
+        event.type === 'chat-turn-completed' &&
+        event.notifyUser &&
+        !document.hasFocus()
+      ) {
+        earcon.play();
+      }
+    });
+    return () => {
+      window.removeEventListener('pointerdown', unlock);
+      window.removeEventListener('keydown', unlock);
+      unsubscribe();
+      earcon.close();
+    };
+  }, []);
 
   useEffect(() => {
     const unsubscribe = window.noema.onSocialEvent(

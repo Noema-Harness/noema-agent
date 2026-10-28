@@ -1015,6 +1015,7 @@ export class SocialChatService {
       ...turn,
       controller,
       text,
+      notifyUser: true,
       forwardedSources: [],
       replyTo,
       projectContext,
@@ -1151,6 +1152,7 @@ export class SocialChatService {
         ? turn.assistantMessageId
         : messageId,
       controller,
+      notifyUser: true,
       text: turn.userText,
       forwardedSources: turn.forwardedSources,
       replyTo: turn.replyTo,
@@ -1316,6 +1318,7 @@ export class SocialChatService {
         roomId: run.roomId,
         messageId: run.assistantMessageId,
         ...payload,
+        notifyUser: run.notifyUser === true || run.roomId === 'room-noema',
       });
     if (run.mirrorRoomId) {
       this.emit({
@@ -1323,6 +1326,7 @@ export class SocialChatService {
         roomId: run.mirrorRoomId,
         messageId: run.mirrorAssistantMessageId,
         ...payload,
+        notifyUser: false,
       });
     }
   }
@@ -2440,6 +2444,7 @@ export class SocialChatService {
             type: 'chat-turn-completed',
             roomId,
             messageId: assistantMessageId,
+            notifyUser: run.notifyUser === true || roomId === 'room-noema',
             empty: false,
           });
           return;

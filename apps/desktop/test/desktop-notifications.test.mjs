@@ -38,14 +38,21 @@ test('notifies once for a completed reply while Noema is out of focus', () => {
   });
 
   assert.equal(
-    handle({ type: 'chat-turn-completed', roomId: 'private', messageId: 'm1' }),
+    handle({
+      type: 'chat-turn-completed',
+      roomId: 'private',
+      messageId: 'm1',
+      notifyUser: true,
+    }),
     true,
   );
   assert.equal(notifications.length, 1);
   assert.equal(notifications[0].shown, true);
   assert.deepEqual(notifications[0].options, {
     title: 'Noema',
-    body: '有一条新回复，打开 Noema 查看。',
+    body: '有一条回复等你查看。',
+    groupId: 'noema-replies',
+    silent: true,
   });
 });
 
@@ -103,6 +110,13 @@ test('notification click reopens and focuses Noema through the supplied callback
   });
 
   handle({ type: 'chat-turn-completed', roomId: 'r', messageId: 'm' });
+  assert.equal(notifications.length, 0);
+  handle({
+    type: 'chat-turn-completed',
+    roomId: 'r',
+    messageId: 'm',
+    notifyUser: true,
+  });
   notifications[0].emit('click');
   assert.equal(opened, 1);
 });
@@ -123,5 +137,48 @@ test('notification API failures never break chat event delivery', () => {
     openMainWindow() {},
   });
 
-  assert.equal(handle({ type: 'chat-turn-completed' }), false);
+  assert.equal(
+    handle({ type: 'chat-turn-completed', notifyUser: true }),
+    false,
+  );
+});
+
+test('suppresses internal and duplicate completed turns', () => {
+  const { NotificationClass, notifications } = createNotificationClass();
+  const handle = createSocialReplyNotificationHandler({
+    NotificationClass,
+    getWindow: () => null,
+    openMainWindow() {},
+  });
+  const event = {
+    type: 'chat-turn-completed',
+    roomId: 'agent-session',
+    messageId: 'm1',
+    notifyUser: true,
+  };
+  assert.equal(handle({ ...event, notifyUser: false }), false);
+  assert.equal(handle(event), true);
+  assert.equal(handle(event), false);
+  assert.equal(notifications.length, 1);
+});
+
+test('silent end-to-end clients never emit operating-system banners', () => {
+  const { NotificationClass, notifications } = createNotificationClass();
+  const handle = createSocialReplyNotificationHandler({
+    NotificationClass,
+    getWindow: () => null,
+    openMainWindow() {},
+    disabled: true,
+  });
+
+  assert.equal(
+    handle({
+      type: 'chat-turn-completed',
+      roomId: 'room-noema',
+      messageId: 'e2e-reply',
+      notifyUser: true,
+    }),
+    false,
+  );
+  assert.equal(notifications.length, 0);
 });

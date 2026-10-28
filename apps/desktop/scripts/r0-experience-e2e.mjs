@@ -15,6 +15,22 @@ import { connect } from './electron-cdp.mjs';
 configureElectronRuntime();
 const require = createRequire(import.meta.url);
 const appDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const rendererUrl =
+  process.env.NOEMA_E2E_RENDERER_URL || 'http://localhost:5173';
+let rendererResponse;
+try {
+  rendererResponse = await fetch(rendererUrl, {
+    signal: AbortSignal.timeout(5000),
+  });
+} catch (error) {
+  throw Error(
+    `Start the Noema Forge dev server before this isolated-client run (${rendererUrl}): ${error.message}`,
+  );
+}
+if (!rendererResponse.ok)
+  throw Error(
+    `Noema renderer returned HTTP ${rendererResponse.status} at ${rendererUrl}`,
+  );
 const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'Noema-r0-experience-'));
 const home = path.join(scratch, 'home');
 fs.mkdirSync(path.join(home, 'credentials'), { recursive: true });
@@ -32,7 +48,12 @@ const probe = http.createServer();
 await new Promise((resolve) => probe.listen(0, '127.0.0.1', resolve));
 const port = probe.address().port;
 await new Promise((resolve) => probe.close(resolve));
-const env = { ...process.env, NOEMA_E2E_DATABASE_PATH: database };
+const env = {
+  ...process.env,
+  NOEMA_E2E_DATABASE_PATH: database,
+  NOEMA_E2E_RENDERER_URL: rendererUrl,
+  NOEMA_E2E_SILENT_NOTIFICATIONS: '1',
+};
 delete env.ELECTRON_RUN_AS_NODE;
 delete env.NOEMA_SMOKE_TEST;
 const child = spawn(
@@ -72,7 +93,18 @@ try {
   await wait(
     async () =>
       evaluate(
-        "Boolean(document.querySelector('.composer textarea')&&!document.querySelector('.composer textarea').disabled)",
+        "Boolean([...document.querySelectorAll('button')].find(button=>button.textContent.includes('进入 Noema')))",
+      ),
+    30000,
+  );
+  await capture('first-meeting.png');
+  await evaluate(
+    "[...document.querySelectorAll('button')].find(button=>button.textContent.includes('进入 Noema'))?.click()",
+  );
+  await wait(
+    async () =>
+      evaluate(
+        "Boolean(document.querySelector('#social-message-input')&&!document.querySelector('#social-message-input').disabled)",
       ),
     30000,
   );
@@ -100,18 +132,24 @@ try {
     '这件事我确实想往前推进。请先研究小规模试办可行性，形成一页供我决定是否试办的方案：受众真正需要什么、半天怎样安排、招生与退款怎么处理，以及收支和未知成本。资料不够的明确标记待核实，可以先用现有信息推进；不要替我对外联系、报名、发布或支出。',
   );
   const projects = readProjects();
-  const issues = projects
-    .filter(
+  assert.ok(
+    projects.length > 0,
+    'an explicit request to research a feasibility proposal should create a project',
+  );
+  assert.ok(
+    projects.some(
       (project) =>
-        !project.plan.revision || project.plan.progress.percentage !== 100,
-    )
-    .map((project) => ({
-      projectId: project.id,
-      status: project.status,
-      progress: project.plan.progress,
-    }));
+        project.plan.revision > 0 &&
+        project.plan.phases.length > 0 &&
+        project.plan.progress.total > 0,
+    ),
+    'the entrusted request should produce a structured plan with executable work packages',
+  );
+  const issues = projects
+    .filter((project) => !project.plan.revision || !project.plan.phases.length)
+    .map((project) => ({ projectId: project.id, status: project.status }));
   result = {
-    outcome: issues.length ? 'needs_followup' : 'observed',
+    outcome: issues.length ? 'needs_followup' : 'plan_created',
     phases,
     projects,
     issues,
@@ -148,7 +186,13 @@ try {
   await capture('noema-narrow.png');
   await cdp.call('Emulation.clearDeviceMetricsOverride');
 } catch (error) {
-  result = { outcome: 'failed', error: error.message, phases };
+  result = {
+    outcome: 'failed',
+    error: error.message,
+    phases,
+    rendererUrl,
+    diagnostics,
+  };
   process.exitCode = 1;
 } finally {
   fs.writeFileSync(
@@ -199,10 +243,19 @@ async function evaluate(expression) {
 async function wait(predicate, ms) {
   const deadline = Date.now() + ms;
   while (Date.now() < deadline) {
-    if (await predicate()) return;
+    try {
+      if (await predicate()) return;
+    } catch (error) {
+      if (
+        !String(error?.message).includes(
+          'Cannot find default execution context',
+        )
+      )
+        throw error;
+    }
     await delay(200);
   }
-  throw Error('Timed out waiting for the desktop workflow');
+  throw Error(`Timed out waiting for the desktop workflow (${ms} ms)`);
 }
 function readProjects() {
   return db
@@ -214,15 +267,36 @@ function readProjects() {
           'SELECT revision,stage,objective,items_json FROM social_project_plan_revisions WHERE project_id=? ORDER BY revision DESC LIMIT 1',
         )
         .get(project.id);
-      const items = plan ? JSON.parse(plan.items_json) : [];
-      const active = items.filter((item) => item.status !== 'canceled');
-      const done = active.filter((item) => item.status === 'done').length;
+      const document = plan ? JSON.parse(plan.items_json) : null;
+      const phases = document?.phases ?? [];
+      const items = phases.flatMap((phase) => phase.workItems ?? []);
+      const active = items.filter(
+        (item) => item.kind === 'work_package' && item.status !== 'canceled',
+      );
+      const accepted = (item) =>
+        item.status === 'done' &&
+        item.submittedByAgentId &&
+        item.evidenceReview?.actorId &&
+        item.evidenceReview.actorId !== item.submittedByAgentId;
+      const done = active.filter(accepted).length;
+      const acceptedPhases = phases.filter((phase) => {
+        const workPackages = (phase.workItems ?? []).filter(
+          (item) => item.kind === 'work_package' && item.status !== 'canceled',
+        );
+        return (
+          phase.status === 'done' &&
+          phase.evidence &&
+          workPackages.length > 0 &&
+          workPackages.every(accepted)
+        );
+      }).length;
       return {
         ...project,
         plan: {
           revision: plan?.revision ?? 0,
           stage: plan?.stage ?? '',
-          objective: plan?.objective ?? '',
+          objective: document?.objective ?? '',
+          phases,
           items,
           progress: {
             done,
@@ -230,6 +304,11 @@ function readProjects() {
             percentage: active.length
               ? Math.round((done / active.length) * 100)
               : null,
+            submitted: active.filter((item) => item.status === 'submitted')
+              .length,
+            acceptedPhases,
+            totalPhases: phases.filter((phase) => phase.status !== 'canceled')
+              .length,
           },
         },
       };
@@ -242,10 +321,12 @@ async function send(name, text) {
     )
     .get().n;
   await evaluate(
-    `(()=>{const input=document.querySelector('.composer textarea');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(input,${JSON.stringify(text)});input.dispatchEvent(new Event('input',{bubbles:true}));})()`,
+    `(()=>{const input=document.querySelector('#social-message-input');if(!input)throw Error('Main conversation composer is missing');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(input,${JSON.stringify(text)});input.dispatchEvent(new Event('input',{bubbles:true}));})()`,
   );
   await delay(100);
-  await evaluate("document.querySelector('.composer').requestSubmit()");
+  await evaluate(
+    "document.querySelector('#social-message-input').closest('form').requestSubmit()",
+  );
   await wait(
     async () =>
       db

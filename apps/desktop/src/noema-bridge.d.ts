@@ -649,6 +649,7 @@ export type NoemaSocialEvent =
         | 'chat-turn-failed';
       roomId: string;
       messageId: string;
+      notifyUser?: boolean;
       message?: string;
       code?: string;
       empty?: boolean;
