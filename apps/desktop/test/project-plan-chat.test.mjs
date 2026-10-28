@@ -316,11 +316,11 @@ test('Noema reads then writes a versioned plan in one turn; members cannot forge
               message.content.includes('"type":"noema_project_session"'),
             ).content,
           );
-          assert.equal(context.plan.revision, 1);
+          assert.equal(context.plan.revision, 2);
           invoke(input, 'bad-accept', {
             operation: 'update_item',
             project_id: project.id,
-            expected_revision: 1,
+            expected_revision: 2,
             item_id: 'sources',
             status: 'done',
             evidence: '自称完成',
@@ -330,7 +330,7 @@ test('Noema reads then writes a versioned plan in one turn; members cannot forge
         } else if (requests.length === 5) {
           assert.match(
             JSON.parse(input.messages.at(-1).content).error,
-            /不能自行验收/u,
+            /提交者不能验收自己的成果/u,
           );
           yield '我还不能自行验收自己的工作。';
         } else {
@@ -373,6 +373,15 @@ test('Noema reads then writes a versioned plan in one turn; members cannot forge
     await service.active.get('room-noema')?.done;
     assert.equal(store.getSocialMessage(root.messageId).status, 'complete');
     assert.equal(projects.plans.get(project.id).revision, 1);
+    projects.plans.updateItem({
+      projectId: project.id,
+      expectedRevision: 1,
+      itemId: 'sources',
+      actorAgentId: 'engineering-partner',
+      status: 'submitted',
+      evidence: '已整理原始资料和待核实项。',
+      reason: '建立成员本人提交记录，供后续防伪验收测试。',
+    });
     const session = projects.getProjectSession(
       project.id,
       'engineering-partner',
@@ -384,8 +393,8 @@ test('Noema reads then writes a versioned plan in one turn; members cannot forge
     });
     await service.active.get(session.room.room.id)?.done;
     assert.equal(store.getSocialMessage(member.messageId).status, 'complete');
-    assert.equal(projects.plans.get(project.id).revision, 1);
-    assert.equal(projects.plans.get(project.id).items[0].status, 'pending');
+    assert.equal(projects.plans.get(project.id).revision, 2);
+    assert.equal(projects.plans.get(project.id).items[0].status, 'submitted');
     assert.equal(requests.length, 5);
     const group = service.sendMessage({
       roomId: project.groupRoomId,

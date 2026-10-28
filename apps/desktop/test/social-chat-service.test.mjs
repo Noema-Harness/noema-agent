@@ -1491,16 +1491,33 @@ test('project completion reviews members in project sessions and delivers their 
           ownerAgentId: 'engineering-partner',
           acceptance: '项目会话留下简报，常驻会话收到一次。',
           dependsOn: [],
-          status: 'done',
-          evidence: '服务集成测试覆盖完成。',
+          status: 'pending',
+          evidence: '',
           blocker: '',
         },
       ],
     },
   });
-  projects.plans.updatePhase({
+  projects.plans.updateItem({
     projectId: project.id,
     expectedRevision: 1,
+    itemId: 'verified',
+    actorAgentId: 'engineering-partner',
+    status: 'submitted',
+    evidence: '服务集成测试覆盖完成。',
+    reason: '成员提交项目成长交接闭环的测试结果。',
+  });
+  projects.plans.updateItem({
+    projectId: project.id,
+    expectedRevision: 2,
+    itemId: 'verified',
+    actorAgentId: 'noema',
+    status: 'done',
+    reason: 'Noema 独立核验成员提交的测试证据。',
+  });
+  projects.plans.updatePhase({
+    projectId: project.id,
+    expectedRevision: 3,
     phaseId: 'legacy-stage',
     actorAgentId: 'noema',
     status: 'done',
