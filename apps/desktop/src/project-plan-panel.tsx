@@ -1289,7 +1289,7 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                 </div>
               </div>
               <div className="project-plan-flow-heading">
-                <strong>阶段关系</strong>
+                <strong>阶段路径</strong>
               </div>
               <div
                 className="project-plan-phase-flow"
