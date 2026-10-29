@@ -32,6 +32,9 @@ const probeUserDataDir = path.join(probeDirectory, 'user-data');
 const loadedMarker = path.join(smokeDir, 'renderer-loaded.json');
 const startupLog = path.join(smokeDir, 'main-started.json');
 const probeFreeLLMAPI = process.env.NOEMA_SMOKE_PROBE_FREELLMAPI === '1';
+const injectedFreeLlmApiCredential = Boolean(
+  process.env.NOEMA_FREELLMAPI_API_KEY?.trim(),
+);
 const probeQuickCapture = process.env.NOEMA_SMOKE_CAPTURE_QUICK_CAPTURE === '1';
 const probeHistoryTrace = process.env.NOEMA_SMOKE_CAPTURE_HISTORY_TRACE === '1';
 const probeTimelineSearch =
@@ -51,28 +54,30 @@ const timelineSearchScreenshotPaths = [
 ].filter((candidate) => typeof candidate === 'string' && candidate.length > 0);
 if (probeFreeLLMAPI) {
   mkdirSync(probeDirectory, { recursive: true });
-  const appDataDirectory =
-    process.platform === 'win32'
-      ? process.env.APPDATA
-      : process.platform === 'darwin'
-        ? path.join(homedir(), 'Library', 'Application Support')
-        : (process.env.XDG_CONFIG_HOME ?? path.join(homedir(), '.config'));
-  if (!appDataDirectory)
-    throw new Error('Cannot locate the Noema credential profile.');
-  const sourceProfile = path.join(appDataDirectory, 'Noema');
-  for (const relativePath of [
-    'Local State',
-    'credentials/model-provider.key',
-    'credentials/freellmapi.key',
-  ]) {
-    const source = path.join(sourceProfile, relativePath);
-    if (!existsSync(source)) continue;
-    const destination = path.join(probeUserDataDir, relativePath);
-    mkdirSync(path.dirname(destination), { recursive: true });
-    copyFileSync(source, destination);
+  if (!injectedFreeLlmApiCredential) {
+    const appDataDirectory =
+      process.platform === 'win32'
+        ? process.env.APPDATA
+        : process.platform === 'darwin'
+          ? path.join(homedir(), 'Library', 'Application Support')
+          : (process.env.XDG_CONFIG_HOME ?? path.join(homedir(), '.config'));
+    if (!appDataDirectory)
+      throw new Error('Cannot locate the Noema credential profile.');
+    const sourceProfile = path.join(appDataDirectory, 'Noema');
+    for (const relativePath of [
+      'Local State',
+      'credentials/model-provider.key',
+      'credentials/freellmapi.key',
+    ]) {
+      const source = path.join(sourceProfile, relativePath);
+      if (!existsSync(source)) continue;
+      const destination = path.join(probeUserDataDir, relativePath);
+      mkdirSync(path.dirname(destination), { recursive: true });
+      copyFileSync(source, destination);
+    }
+    if (!existsSync(path.join(probeUserDataDir, 'Local State')))
+      throw new Error('Noema credential profile has no Local State file.');
   }
-  if (!existsSync(path.join(probeUserDataDir, 'Local State')))
-    throw new Error('Noema credential profile has no Local State file.');
   const fixture = new RootStore(path.join(probeDirectory, 'root.sqlite3'));
   fixture.setSelectedModel(process.env.NOEMA_SMOKE_MODEL ?? 'auto:noema-free');
   fixture.close();
@@ -212,10 +217,13 @@ const childEnvironment = {
 if (probeFreeLLMAPI) {
   if (!process.env.NOEMA_SMOKE_MODEL_AVAILABILITY_SCREENSHOT_PATH)
     childEnvironment.NOEMA_SMOKE_HIDDEN = '1';
-  // Use the encrypted key already stored by Noema, and never let an ambient
-  // API-key/base-URL override write into the real userData during this probe.
-  delete childEnvironment.NOEMA_FREELLMAPI_API_KEY;
-  delete childEnvironment.NOEMA_FREELLMAPI_BASE_URL;
+  // The isolated profile lets Electron encrypt an explicitly injected key
+  // without touching the real userData. Otherwise, use the copied encrypted
+  // Noema credential and prevent ambient overrides from changing its route.
+  if (!injectedFreeLlmApiCredential) {
+    delete childEnvironment.NOEMA_FREELLMAPI_API_KEY;
+    delete childEnvironment.NOEMA_FREELLMAPI_BASE_URL;
+  }
   delete childEnvironment.NOEMA_E2E_WORKER_PROMPT;
 }
 const child = spawn(process.execPath, [forgeCli, 'start'], {
