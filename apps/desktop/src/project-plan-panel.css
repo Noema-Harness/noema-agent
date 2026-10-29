@@ -124,11 +124,19 @@
 .social-shell .project-plan-phase-flow {
   position: relative;
   display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: calc(33.333% - 8px);
   align-items: stretch;
   gap: 12px;
-  grid-template-columns: repeat(var(--plan-phase-columns, 1), minmax(0, 1fr));
-  overflow: visible;
-  padding: 2px 1px 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 2px 1px 12px;
+}
+.social-shell .project-plan-phase-flow.phase-lanes-1 {
+  grid-auto-columns: 100%;
+}
+.social-shell .project-plan-phase-flow.phase-lanes-2 {
+  grid-auto-columns: calc(50% - 6px);
 }
 .social-shell .project-plan-phase-links {
   position: absolute;
@@ -178,6 +186,7 @@
   display: grid;
   align-content: start;
   grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
   gap: 10px;
   margin: 0;
   padding: 0;
@@ -847,8 +856,16 @@
 
 @container plan-overview (max-width: 500px) {
   .social-shell .project-plan-phase-flow {
+    grid-auto-flow: row;
     grid-template-columns: minmax(0, 1fr);
     gap: 12px;
+    overflow-x: visible;
+    overflow-y: visible;
+  }
+  .social-shell .project-plan-phase-flow.phase-lanes-1,
+  .social-shell .project-plan-phase-flow.phase-lanes-2,
+  .social-shell .project-plan-phase-flow.phase-lanes-3 {
+    grid-auto-columns: auto;
   }
   .social-shell .project-plan-phase-lane > ol {
     grid-template-columns: minmax(0, 1fr);

@@ -1287,13 +1287,8 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                 <strong>阶段路径</strong>
               </div>
               <div
-                className="project-plan-phase-flow"
+                className={`project-plan-phase-flow phase-lanes-${Math.min(3, phaseLanes.length)}`}
                 ref={phaseFlowRef}
-                style={
-                  {
-                    '--plan-phase-columns': Math.min(3, phaseLanes.length),
-                  } as React.CSSProperties
-                }
                 aria-label="项目阶段依赖图"
                 tabIndex={0}
                 role="region"
