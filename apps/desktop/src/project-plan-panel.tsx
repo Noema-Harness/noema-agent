@@ -1298,10 +1298,6 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                 tabIndex={0}
                 role="region"
                 aria-describedby="project-plan-flow-help"
-                style={{
-                  '--phase-lane-count': phaseLanes.length,
-                  '--phase-lane-min': phaseLanes.length <= 3 ? '0px' : '210px',
-                } as React.CSSProperties}
               >
                 <svg
                   className="project-plan-phase-links"
@@ -1343,10 +1339,6 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                 </svg>
                 {phaseLanes.map((lane) => (
                   <section className="project-plan-phase-lane" key={lane.depth}>
-                    <header>
-                      <span>{lane.depth === 0 ? '起点' : `依赖层 ${String(lane.depth + 1).padStart(2, '0')}`}</span>
-                      <small>{lane.depth === 0 ? '无需前置阶段' : '前置成果通过后解锁'}</small>
-                    </header>
                     <ol>
                       {lane.phases.map((phase) => (
                         <li
@@ -1381,7 +1373,7 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                                   : phaseLabels[phase.state]}
                               </span>
                             </span>
-                            <strong>{phase.title}</strong>
+                            <strong className="project-plan-phase-stop-title">{phase.title}</strong>
                             <span className="project-plan-phase-stop-outcome">
                               {phase.outcome}
                             </span>
