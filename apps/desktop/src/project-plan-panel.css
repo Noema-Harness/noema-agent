@@ -12,7 +12,7 @@
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  gap: 12px;
+  gap: 22px;
 }
 .social-shell .project-plan-head > div {
   display: flex;
@@ -131,9 +131,9 @@
   position: relative;
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: calc(33.333% - 8px);
+  grid-auto-columns: calc(33.333% - 15px);
   align-items: stretch;
-  gap: 12px;
+  gap: 22px;
   overflow-x: auto;
   overflow-y: hidden;
   padding: 2px 1px 12px;
@@ -142,7 +142,7 @@
   grid-auto-columns: 100%;
 }
 .social-shell .project-plan-phase-flow.phase-lanes-2 {
-  grid-auto-columns: calc(50% - 6px);
+  grid-auto-columns: calc(50% - 11px);
 }
 .social-shell .project-plan-phase-links {
   position: absolute;
@@ -154,17 +154,18 @@
 }
 .social-shell .project-plan-phase-links path {
   fill: none;
-  stroke: color-mix(in srgb, var(--ink-soft) 35%, var(--line-strong));
-  stroke-width: 1.75;
+  stroke: var(--ink-soft);
+  stroke-width: 2.5;
+  stroke-linecap: round;
   vector-effect: non-scaling-stroke;
 }
 .social-shell #project-plan-arrowhead path {
-  fill: var(--line-strong);
+  fill: var(--ink-soft);
   stroke: none;
 }
 .social-shell .project-plan-phase-links path.is-active {
   stroke: var(--accent);
-  stroke-width: 2.5;
+  stroke-width: 3.25;
 }
 .social-shell #project-plan-arrowhead-active path {
   fill: var(--accent);

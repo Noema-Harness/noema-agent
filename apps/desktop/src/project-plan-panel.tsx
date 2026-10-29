@@ -405,19 +405,26 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
       const links = plan.phases.flatMap((phase) => {
         const target = centers.get(phase.id);
         if (!target) return [];
-        return phase.dependsOn.flatMap((dependencyId) => {
+        const incomingCount = phase.dependsOn.length;
+        return phase.dependsOn.flatMap((dependencyId, dependencyIndex) => {
           const source = centers.get(dependencyId);
           if (!source) return [];
-          const horizontal = target.left >= source.right + 20;
-          const bend = horizontal
-            ? Math.max(24, (target.left - source.right) * 0.48)
-            : Math.max(18, (target.top - source.bottom) * 0.48);
+          const horizontal = target.left > source.left;
+          const targetX = horizontal ? target.left - 2 : target.x;
+          const incomingOffset = horizontal
+            ? (dependencyIndex - (incomingCount - 1) / 2) * 12
+            : 0;
+          const targetY = horizontal ? target.y + incomingOffset : target.top - 2;
+          const gap = horizontal
+            ? target.left - source.right
+            : target.top - source.bottom;
+          const bend = Math.max(4, gap * 0.48);
           return [
             {
               id: `${dependencyId}-${phase.id}`,
               path: horizontal
-                ? `M ${source.right} ${source.y} C ${source.right + bend} ${source.y}, ${target.left - bend} ${target.y}, ${target.left} ${target.y}`
-                : `M ${source.x} ${source.bottom} C ${source.x} ${source.bottom + bend}, ${target.x} ${target.top - bend}, ${target.x} ${target.top}`,
+                ? `M ${source.right} ${source.y} C ${source.right + bend} ${source.y}, ${targetX - bend} ${targetY}, ${targetX} ${targetY}`
+                : `M ${source.x} ${source.bottom} C ${source.x} ${source.bottom + bend}, ${targetX} ${targetY - bend}, ${targetX} ${targetY}`,
               active:
                 phase.state === 'in_progress' ||
                 phase.state === 'awaiting_review' ||
@@ -1341,23 +1348,23 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                   <defs>
                     <marker
                       id="project-plan-arrowhead"
-                      markerWidth="7"
-                      markerHeight="7"
-                      refX="6"
-                      refY="3.5"
+                      markerWidth="10"
+                      markerHeight="10"
+                      refX="9"
+                      refY="5"
                       orient="auto"
                     >
-                      <path d="M 0 0 L 7 3.5 L 0 7 z" />
+                      <path d="M 0 0 L 8 5 L 0 10 L 2 5 z" />
                     </marker>
                     <marker
                       id="project-plan-arrowhead-active"
-                      markerWidth="7"
-                      markerHeight="7"
-                      refX="6"
-                      refY="3.5"
+                      markerWidth="10"
+                      markerHeight="10"
+                      refX="9"
+                      refY="5"
                       orient="auto"
                     >
-                      <path d="M 0 0 L 7 3.5 L 0 7 z" />
+                      <path d="M 0 0 L 8 5 L 0 10 L 2 5 z" />
                     </marker>
                   </defs>
                   {phaseLinks.map((link) => (
