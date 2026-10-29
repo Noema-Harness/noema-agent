@@ -398,8 +398,7 @@ test('project members can calculate numeric claims with the shared local decimal
 
         const result = input.messages.find(
           (message) =>
-            message.role === 'tool' &&
-            message.name === 'calculate_expression',
+            message.role === 'tool' && message.name === 'calculate_expression',
         );
         assert.deepEqual(JSON.parse(result.content), {
           expression: '800 - 120 - 600',
@@ -434,7 +433,10 @@ test('project members can calculate numeric claims with the shared local decimal
       2,
       JSON.stringify(store.getSocialMessage(sent.messageId)),
     );
-    assert.equal(store.getSocialMessage(sent.messageId)?.content, '核算结果为 80。');
+    assert.equal(
+      store.getSocialMessage(sent.messageId)?.content,
+      '核算结果为 80。',
+    );
     assert.equal(store.getSocialMessage(sent.messageId)?.status, 'complete');
   } finally {
     await service.shutdown();
@@ -742,6 +744,12 @@ test('a project-group mention uses only that member project session plus public 
     const prompt = JSON.stringify(seenRequests[0]?.messages ?? []);
     assert.match(prompt, /目标成员的项目记录：保留价格来源/);
     assert.match(prompt, /群里的公开决定：保留原币种/);
+    assert.equal(
+      seenRequests[0].tools.some(
+        (tool) => tool.function.name === 'research_public_sources',
+      ),
+      false,
+    );
     assert.match(prompt, /@工程搭档 请继续核对/);
     assert.doesNotMatch(prompt, /其他成员的私有项目记录/);
     assert.doesNotMatch(prompt, /目标成员的常驻私聊/);

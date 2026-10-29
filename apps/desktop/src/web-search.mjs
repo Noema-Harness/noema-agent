@@ -1,10 +1,34 @@
 import { randomUUID } from 'node:crypto';
+import {
+  fetchWebSource,
+  MAX_EXTERNAL_SOURCES_PER_MESSAGE,
+} from './web-source.mjs';
 
 const SEARCH_ENDPOINT = 'https://api.tavily.com/search';
 const REQUEST_TIMEOUT_MS = 10_000;
 const MAX_RESPONSE_BYTES = 1_000_000;
 const MAX_RESULTS = 3;
 const MAX_QUERY_LENGTH = 500;
+
+export const WEB_SEARCH_INTENT =
+  /(?:搜索|查找|查一下|搜一下|联网|外部(?:资料|来源|研究|调查|调研)|公开(?:资料|来源|信息)|查找(?:资料|来源)|来源|出处|核实|查证|验证事实|文献|论文|行业报告|最新|今天|本周|本月|今年|新闻|价格|汇率|天气|政策|法规|官方资料|实时|最近(?:的)?(?:新闻|变化|进展|动态|版本|价格|政策)|当前(?:的)?(?:价格|政策|版本|行情|汇率|天气|信息|新闻|进展))/u;
+
+export function needsWebSearch(text) {
+  return WEB_SEARCH_INTENT.test(text);
+}
+
+export function normalizeSearchText(value) {
+  return String(value ?? '')
+    .normalize('NFKC')
+    .replace(/[\s\p{P}\p{S}]+/gu, '')
+    .toLocaleLowerCase();
+}
+
+export function searchQueryBelongsToText(text, query) {
+  const normalizedText = normalizeSearchText(text);
+  const normalizedQuery = normalizeSearchText(query);
+  return Boolean(normalizedQuery && normalizedText.includes(normalizedQuery));
+}
 
 function safeResultUrl(value) {
   if (typeof value !== 'string' || value.length > 4_000) return null;
@@ -155,6 +179,66 @@ export async function searchWeb(
       title: result.title,
       url: result.url,
     })),
+  };
+}
+
+/**
+ * @param {string} query
+ * @param {string} apiKey
+ * @param {{searchImpl?:typeof searchWeb,fetchSourceImpl?:typeof fetchWebSource,signal?:AbortSignal,maxSources?:number}} options
+ */
+export async function searchAndReadWeb(
+  query,
+  apiKey,
+  {
+    searchImpl = searchWeb,
+    fetchSourceImpl = fetchWebSource,
+    signal,
+    maxSources = MAX_EXTERNAL_SOURCES_PER_MESSAGE,
+  } = {},
+) {
+  const discovery = await searchImpl(query, apiKey, { signal });
+  const allowedRedirectHosts = discovery.results.flatMap((item) => {
+    try {
+      return [new URL(item.url).hostname];
+    } catch {
+      return [];
+    }
+  });
+  const limit = Math.max(
+    0,
+    Math.min(MAX_EXTERNAL_SOURCES_PER_MESSAGE, Number(maxSources) || 0),
+  );
+  const readable = discovery.results.slice(0, limit);
+  const readResults = await Promise.all(
+    readable.map(async (candidate) => {
+      try {
+        const fetched = await fetchSourceImpl(candidate.url, {
+          allowedRedirectHosts,
+          signal,
+        });
+        return { candidate, status: 'read', ...fetched };
+      } catch (error) {
+        if (signal?.aborted) throw error;
+        return {
+          candidate,
+          status: 'unreadable',
+          error: error instanceof Error ? error.message : '网页正文读取失败。',
+        };
+      }
+    }),
+  );
+  return {
+    fetchedAt: discovery.fetchedAt,
+    totalCandidates: discovery.results.length,
+    results: [
+      ...readResults,
+      ...discovery.results.slice(limit).map((candidate) => ({
+        candidate,
+        status: 'not_read',
+        error: '本轮来源上限已达到。',
+      })),
+    ],
   };
 }
 

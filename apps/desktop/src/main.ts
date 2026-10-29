@@ -32,6 +32,7 @@ import { RootStore } from './root-store.mjs';
 import { SocialChatStore } from './social-chat-store.mjs';
 import { SocialProjectStore } from './social-project-store.mjs';
 import { SocialChatService } from './social-chat-service.mjs';
+import { searchAndReadWeb } from './web-search.mjs';
 import { SocialWorkService } from './social-work-service.mjs';
 import { NoemaProjectExecutor } from './noema-project-executor.mjs';
 import { backupBeforeSocialChatMigration } from './social-chat-migration-backup.mjs';
@@ -4357,6 +4358,12 @@ async function startNoema() {
         },
       getProjectSessionContext: (roomId, agentId) =>
         socialProjectStore?.getProjectSessionContext(roomId, agentId) ?? null,
+      isWebSearchConfigured: () => webSearchSecretStore.isConfigured(),
+      searchPublicSources: (query, signal, maxSources) =>
+        searchAndReadWeb(query, webSearchSecretStore.get(), {
+          signal,
+          maxSources,
+        }),
       startProjectWork: ({ dispatchFromNoema, ...input }, signal) =>
         dispatchFromNoema
           ? socialWorkService!.startTaskFromNoema({ ...input, signal })

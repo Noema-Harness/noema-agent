@@ -614,7 +614,9 @@ export class SocialProjectStore {
     requireText(agentId, '成员 ID', 200);
     const row = this.db
       .prepare(`
-        SELECT p.id AS projectId, p.title, p.brief, p.status AS projectStatus,
+        SELECT p.id AS projectId, p.title, p.brief,
+               p.source_message_id AS sourceMessageId,
+               p.status AS projectStatus,
                p.group_room_id AS groupRoomId,
                ps.agent_id AS agentId, ps.room_id AS sessionRoomId,
                ps.status AS membershipStatus
@@ -637,6 +639,7 @@ export class SocialProjectStore {
       projectId: row.projectId,
       title: row.title,
       brief: row.brief,
+      sourceMessageId: row.sourceMessageId,
       status: row.projectStatus,
       agentId: row.agentId,
       roomId: row.sessionRoomId,

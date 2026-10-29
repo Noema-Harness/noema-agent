@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { searchWeb, WEB_SEARCH_LIMITS } from '../src/web-search.mjs';
+import {
+  needsWebSearch,
+  searchAndReadWeb,
+  searchQueryBelongsToText,
+  searchWeb,
+  WEB_SEARCH_LIMITS,
+} from '../src/web-search.mjs';
 
 function response(payload, { status = 200, headers = {} } = {}) {
   return new Response(JSON.stringify(payload), {
@@ -142,4 +148,101 @@ test('Tavily search deadline reports timeouts while waiting for headers or respo
     /网页搜索超时/u,
   );
   assert.equal(requestSignal.aborted, true);
+});
+
+test('project research reads bounded candidates and distinguishes readable pages', async () => {
+  const redirectHosts = [];
+  const signal = new AbortController().signal;
+  const result = await searchAndReadWeb('公开资料研究 Noema', 'key', {
+    searchImpl: async (_query, _key, { signal }) => {
+      assert.ok(signal);
+      return {
+        fetchedAt: '2026-10-30T00:00:00.000Z',
+        results: [
+          { id: '1', title: '可读页面', url: 'https://one.example/a' },
+          { id: '2', title: '不可读页面', url: 'https://two.example/b' },
+          { id: '3', title: '未读取页面', url: 'https://three.example/c' },
+        ],
+      };
+    },
+    signal,
+    fetchSourceImpl: async (url, { allowedRedirectHosts, signal }) => {
+      redirectHosts.push(...allowedRedirectHosts);
+      assert.ok(signal);
+      if (url.endsWith('/b')) throw new Error('正文不可读');
+      return {
+        source: {
+          id: 'source-1',
+          title: '可读页面正文',
+          url,
+          fetchedAt: '2026-10-30T00:00:01.000Z',
+        },
+        content: '实际读取到的正文',
+      };
+    },
+    maxSources: 2,
+  });
+
+  assert.deepEqual(
+    result.results.map(({ status }) => status),
+    ['read', 'unreadable', 'not_read'],
+  );
+  assert.equal(result.results[0].content, '实际读取到的正文');
+  assert.equal(result.results[1].error, '正文不可读');
+  assert.equal(result.results[2].error, '本轮来源上限已达到。');
+  assert.deepEqual([...new Set(redirectHosts)].sort(), [
+    'one.example',
+    'three.example',
+    'two.example',
+  ]);
+});
+
+test('project research propagates cancellation and bounds source count', async () => {
+  let readCount = 0;
+  const controller = new AbortController();
+  const noReads = await searchAndReadWeb('sources', 'key', {
+    searchImpl: async () => ({
+      fetchedAt: 'now',
+      results: [{ title: '候选', url: 'https://example.com/a' }],
+    }),
+    fetchSourceImpl: async () => {
+      readCount += 1;
+      return { source: {}, content: 'text' };
+    },
+    signal: controller.signal,
+    maxSources: WEB_SEARCH_LIMITS.maxResults + 20,
+  });
+  assert.equal(readCount, 1);
+  assert.equal(noReads.results[0].status, 'read');
+
+  controller.abort(new DOMException('Stopped', 'AbortError'));
+  await assert.rejects(
+    searchAndReadWeb('sources', 'key', {
+      searchImpl: async (_query, _key, { signal }) => {
+        signal.throwIfAborted();
+        return { fetchedAt: 'now', results: [] };
+      },
+      signal: controller.signal,
+    }),
+    { name: 'AbortError' },
+  );
+});
+
+test('public research intent and query checks stay tied to supplied user text', () => {
+  assert.equal(needsWebSearch('请用公开资料做外部研究'), true);
+  assert.equal(needsWebSearch('帮我把这段话改得自然一些'), false);
+  assert.equal(
+    searchQueryBelongsToText(
+      '请核查 OpenAI Agents 的公开资料',
+      'OpenAI Agents',
+    ),
+    true,
+  );
+  assert.equal(
+    searchQueryBelongsToText(
+      '请核查 OpenAI Agents 的公开资料',
+      'private history',
+    ),
+    false,
+  );
 });

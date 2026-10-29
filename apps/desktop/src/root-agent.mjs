@@ -24,7 +24,12 @@ import {
   fetchWebSource,
   MAX_EXTERNAL_SOURCES_PER_MESSAGE,
 } from './web-source.mjs';
-import { searchWeb } from './web-search.mjs';
+import {
+  searchAndReadWeb,
+  searchQueryBelongsToText,
+  needsWebSearch,
+  searchWeb,
+} from './web-search.mjs';
 
 const MAX_AUTOMATIC_TASK_RETRIES = 3;
 const MAX_AUTOMATIC_RETRY_DELAY_MS = 120_000;
@@ -80,20 +85,6 @@ const SEARCH_WEB_TOOL = {
     },
   },
 };
-
-const WEB_SEARCH_INTENT =
-  /(?:搜索|查找|查一下|搜一下|联网|来源|出处|核实|查证|验证事实|最新|今天|本周|本月|今年|新闻|价格|汇率|天气|政策|法规|官方资料|实时|最近(?:的)?(?:新闻|变化|进展|动态|版本|价格|政策)|当前(?:的)?(?:价格|政策|版本|行情|汇率|天气|信息|新闻|进展))/u;
-
-function needsWebSearch(text) {
-  return WEB_SEARCH_INTENT.test(text);
-}
-
-function normalizeSearchText(value) {
-  return String(value ?? '')
-    .normalize('NFKC')
-    .replace(/[\s\p{P}\p{S}]+/gu, '')
-    .toLocaleLowerCase();
-}
 
 const DELEGATE_TASK_TOOL = {
   type: 'function',
@@ -1389,9 +1380,7 @@ export class RootAgent {
           typeof input.query !== 'string' ||
           input.query.trim().length < 2 ||
           input.query.trim().length > 500 ||
-          !normalizeSearchText(userContent).includes(
-            normalizeSearchText(input.query),
-          ) ||
+          !searchQueryBelongsToText(userContent, input.query) ||
           Object.keys(input).some((key) => key !== 'query')
         ) {
           throw new ModelProviderError(
@@ -1542,47 +1531,27 @@ export class RootAgent {
       }
       if (name === 'search_web') {
         try {
-          const discovery = await this.searchWebImpl(
+          const lookup = await searchAndReadWeb(
             input.query,
             this.webSearchSecretStore.get(),
-            { signal },
+            {
+              searchImpl: this.searchWebImpl,
+              fetchSourceImpl: this.fetchWebSourceImpl,
+              signal,
+              maxSources: Math.max(
+                0,
+                MAX_EXTERNAL_SOURCES_PER_MESSAGE - externalSources.length,
+              ),
+            },
           );
-          const allowedRedirectHosts = discovery.results.flatMap((item) => {
-            try {
-              return [new URL(item.url).hostname];
-            } catch {
-              return [];
-            }
-          });
-          const readableCandidates = discovery.results.slice(
-            0,
-            Math.max(
-              0,
-              MAX_EXTERNAL_SOURCES_PER_MESSAGE - externalSources.length,
-            ),
-          );
-          const readResults = await Promise.all(
-            readableCandidates.map(async (candidate) => {
-              try {
-                return {
-                  candidate,
-                  ...(await this.fetchWebSourceImpl(candidate.url, {
-                    allowedRedirectHosts,
-                    signal,
-                  })),
-                };
-              } catch (error) {
-                if (signal?.aborted) throw error;
-                return {
-                  candidate,
-                  error:
-                    error instanceof Error
-                      ? error.message
-                      : '网页正文读取失败。',
-                };
-              }
-            }),
-          );
+          const readResults = lookup.results
+            .filter((item) => item.status !== 'not_read')
+            .map((item) => ({
+              candidate: item.candidate,
+              ...(item.status === 'read'
+                ? { source: item.source, content: item.content }
+                : { error: item.error }),
+            }));
           const fetched = readResults
             .filter((item) => item.source)
             .map((item, index) => ({
@@ -1594,12 +1563,12 @@ export class RootAgent {
             }));
           signal?.throwIfAborted();
           externalSources.push(...fetched.map((item) => item.source));
-          if (discovery.results.length === 0) {
+          if (lookup.totalCandidates === 0) {
             responseMessages.push(
               '**搜索没有返回可读取的网页；以下回答不是基于网页来源。**',
             );
           }
-          if (fetched.length === 0 && discovery.results.length > 0) {
+          if (fetched.length === 0 && lookup.totalCandidates > 0) {
             responseMessages.push(
               '**搜索找到了候选网页，但正文都未能读取；以下回答不是基于这些网页内容。**',
             );
@@ -1622,7 +1591,7 @@ export class RootAgent {
                   url: candidate.url,
                   error,
                 })),
-              noResults: discovery.results.length === 0,
+              noResults: lookup.totalCandidates === 0,
               instruction: WEB_SOURCE_CITATION_INSTRUCTION,
             }),
           });
