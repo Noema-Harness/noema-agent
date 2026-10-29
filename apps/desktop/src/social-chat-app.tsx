@@ -1661,6 +1661,19 @@ function SocialChatApp() {
     }
   };
 
+  const openProjectEvidenceMessage = (messageId: string) => {
+    if (!projectWorkspace) return;
+    setPendingScrollMessageId(messageId);
+    setProjectTab('group');
+    setActiveProjectSession(null);
+    setReplyTarget(null);
+    setForwardSelectionActive(false);
+    setSelectedForwardMessageIds([]);
+    shouldFollowRef.current = false;
+    if (activeRoomId !== projectWorkspace.groupRoomId)
+      setActiveRoomId(projectWorkspace.groupRoomId);
+  };
+
   const openProjectMemberSession = async (
     project: NoemaSocialProject,
     agentId: string,
@@ -3279,6 +3292,7 @@ function SocialChatApp() {
                       <ProjectPlanPanel
                         key={projectWorkspace.id}
                         project={projectWorkspace}
+                        onOpenGroupMessage={openProjectEvidenceMessage}
                       />
                       {projectSessionTasks.length
                         ? projectSessionTasks.map(renderProjectWorkCard)

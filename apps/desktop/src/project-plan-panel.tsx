@@ -96,7 +96,10 @@ function draftFromPlan(plan: NoemaProjectPlan): Draft {
   };
 }
 
-export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
+export function ProjectPlanPanel({ project, onOpenGroupMessage }: {
+  project: NoemaSocialProject;
+  onOpenGroupMessage?: (messageId: string) => void;
+}) {
   const [evidenceChecks, setEvidenceChecks] = useState<
     Record<
       string,
@@ -1809,7 +1812,18 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                                   : `核对时间：${new Date(evidenceChecks[item.id].checkedAt).toLocaleString()}。版本一致不代表成果已通过业务验收。`}
                               </p>
                               {evidenceChecks[item.id].sources.map(
-                                (source, index) => (
+                                (source, index) => {
+                                  const sourceMessageId =
+                                    source.source.kind === 'message'
+                                      ? source.source.messageId
+                                      : null;
+                                  const sourceMessageAvailable =
+                                    sourceMessageId !== null &&
+                                    groupMessages.some(
+                                      (message) =>
+                                        message.id === sourceMessageId,
+                                    );
+                                  return (
                                   <details key={index}>
                                     <summary>
                                       {source.label} ·{' '}
@@ -1851,6 +1865,23 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                                     {source.excerpt ? (
                                       <pre>{source.excerpt}</pre>
                                     ) : null}
+                                    {sourceMessageId ? (
+                                      <button
+                                        type="button"
+                                        className="quiet"
+                                        disabled={
+                                          !onOpenGroupMessage ||
+                                          !sourceMessageAvailable
+                                        }
+                                        onClick={() =>
+                                          onOpenGroupMessage?.(sourceMessageId)
+                                        }
+                                      >
+                                        {sourceMessageAvailable
+                                          ? '在群聊中查看原文'
+                                          : '原消息已移除'}
+                                      </button>
+                                    ) : null}
                                     {source.excerptTruncated ? (
                                       <p>
                                         仅显示前 4000
@@ -1863,7 +1894,8 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                                       </p>
                                     ) : null}
                                   </details>
-                                ),
+                                  );
+                                },
                               )}
                               {evidenceChecks[item.id].affectedItems.length ? (
                                 <>
