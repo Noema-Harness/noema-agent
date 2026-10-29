@@ -209,6 +209,7 @@
     'index state'
     'title title'
     'outcome outcome'
+    'focus focus'
     'progress progress'
     'dependencies dependencies';
   align-items: start;
@@ -349,6 +350,43 @@
   font-size: 10px;
   line-height: 1.4;
   overflow-wrap: anywhere;
+}
+.social-shell .project-plan-phase-stop-focus {
+  grid-area: focus;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) max-content;
+  align-items: baseline;
+  gap: 3px 7px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.35;
+}
+.social-shell .project-plan-phase-stop-focus > span {
+  color: var(--muted);
+  white-space: nowrap;
+}
+.social-shell .project-plan-phase-stop-focus > strong {
+  overflow: hidden;
+  min-width: 0;
+  color: var(--ink-soft);
+  font-size: 10px;
+  font-weight: 560;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.social-shell .project-plan-phase-stop-focus > small {
+  color: var(--muted);
+  font-size: 9px;
+  white-space: nowrap;
+}
+.social-shell
+  .project-plan-phase-stop-focus:is(.state-blocked, .state-submitted)
+  > span {
+  color: #8b5b31;
+}
+.social-shell .project-plan-phase-stop-focus.state-in_progress > span {
+  color: var(--accent);
 }
 .social-shell .project-plan-phase-stop-progress {
   grid-area: progress;
@@ -900,6 +938,7 @@
       'index state'
       'title title'
       'outcome outcome'
+      'focus focus'
       'progress progress'
       'dependencies dependencies';
     gap: 8px;
@@ -912,6 +951,12 @@
   }
   .social-shell .project-plan-phase-stop-title {
     font-size: 14px;
+  }
+  .social-shell .project-plan-phase-stop-focus {
+    grid-template-columns: max-content minmax(0, 1fr);
+  }
+  .social-shell .project-plan-phase-stop-focus > small {
+    grid-column: 2;
   }
   .social-shell .project-plan-objective {
     grid-template-columns: minmax(0, 1fr);

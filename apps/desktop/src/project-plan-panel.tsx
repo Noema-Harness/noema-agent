@@ -246,11 +246,15 @@ export function ProjectPlanPanel({ project, onOpenGroupMessage }: {
     const index = plan?.phases.findIndex((phase) => phase.id === phaseId) ?? -1;
     return index < 0 ? '未知阶段' : `阶段 ${String(index + 1).padStart(2, '0')}`;
   };
-  const phaseAccessibleLabel = (phase: NoemaProjectPlanPhase) =>
+  const phaseAccessibleLabel = (
+    phase: NoemaProjectPlanPhase,
+    focus: { label: string; title: string; owner: string },
+  ) =>
     [
       phase.title,
       phaseLabels[phase.state],
       `阶段成果：${phase.outcome}`,
+      `当前焦点：${focus.label}，${focus.title}${focus.owner ? `，负责人：${focus.owner}` : ''}`,
       phase.dependsOn.length
         ? `须先验收：${phase.dependsOn.map(phaseName).join('、')}`
         : '无前置阶段',
@@ -1379,7 +1383,9 @@ export function ProjectPlanPanel({ project, onOpenGroupMessage }: {
                 {phaseLanes.map((lane) => (
                   <section className="project-plan-phase-lane" key={lane.depth}>
                     <ol>
-                      {lane.phases.map((phase) => (
+                      {lane.phases.map((phase) => {
+                        const focus = phaseOverviewFocus(phase);
+                        return (
                         <li
                           className={`project-plan-phase-stop state-${phase.state}${currentPhase?.id === phase.id ? ' is-current' : ''}${selectedPhase?.id === phase.id ? ' is-selected' : ''}`}
                           key={phase.id}
@@ -1390,7 +1396,7 @@ export function ProjectPlanPanel({ project, onOpenGroupMessage }: {
                         >
                           <button
                             type="button"
-                            aria-label={phaseAccessibleLabel(phase)}
+                            aria-label={phaseAccessibleLabel(phase, focus)}
                             aria-current={selectedPhase?.id === phase.id ? 'step' : undefined}
                             aria-controls="project-plan-phase-detail"
                             title={phase.outcome}
@@ -1420,6 +1426,14 @@ export function ProjectPlanPanel({ project, onOpenGroupMessage }: {
                               title={phase.outcome || '尚未定义阶段成果'}
                             >
                               {phase.outcome || '阶段成果待定义'}
+                            </span>
+                            <span
+                              className={`project-plan-phase-stop-focus state-${focus.state}`}
+                              title={`${focus.label}：${focus.title}${focus.owner ? ` · 负责人：${focus.owner}` : ''}`}
+                            >
+                              <span>{focus.label}</span>
+                              <strong>{focus.title}</strong>
+                              {focus.owner ? <small>负责人 · {focus.owner}</small> : null}
                             </span>
                             <span className="project-plan-phase-stop-progress">
                               {(() => {
@@ -1463,7 +1477,8 @@ export function ProjectPlanPanel({ project, onOpenGroupMessage }: {
                             </span>
                           </button>
                         </li>
-                      ))}
+                        );
+                      })}
                     </ol>
                   </section>
                 ))}
