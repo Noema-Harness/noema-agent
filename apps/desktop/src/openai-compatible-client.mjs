@@ -419,10 +419,18 @@ export class OpenAICompatibleClient {
     } catch (error) {
       if (signal.aborted || error?.name === 'AbortError') throw error;
       if (error instanceof ModelProviderError) throw error;
-      if (error instanceof TypeError || error?.name === 'NetworkError') {
+      const failure = describeTransportFailure(error);
+      if (
+        error instanceof TypeError ||
+        error?.name === 'NetworkError' ||
+        failure.code?.startsWith('ERR_')
+      ) {
         throw new ModelProviderError(
           'provider_unavailable',
           '模型回复流连接中断。已收到的内容会保留；是否安全重试由当前会话决定。',
+          null,
+          null,
+          failure.code,
         );
       }
       throw error;
@@ -654,7 +662,11 @@ function describeTransportFailure(error) {
       (candidate) =>
         typeof candidate === 'string' &&
         /^[A-Z][A-Z0-9_]{1,47}$/u.test(candidate),
-    ) ?? null;
+    ) ??
+    (typeof error?.message === 'string'
+      ? error.message.match(/(?:net::)?(ERR_[A-Z0-9_]{1,47})/u)?.[1]
+      : null) ??
+    null;
   const description = {
     ECONNRESET: '（连接被对端重置，ECONNRESET）',
     ECONNREFUSED: '（目标服务拒绝连接，ECONNREFUSED）',

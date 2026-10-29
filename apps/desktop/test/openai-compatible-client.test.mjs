@@ -457,6 +457,34 @@ test('classifies a body transport failure without exposing the underlying error'
   );
 });
 
+test('classifies Electron network errors raised while reading an SSE body', async () => {
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.error(new Error('net::ERR_CONNECTION_CLOSED'));
+    },
+  });
+  const client = new OpenAICompatibleClient({
+    getApiKey: () => 'test-key',
+    fetchImpl: async () => new Response(stream, { status: 200 }),
+  });
+
+  await assert.rejects(
+    async () => {
+      for await (const _delta of client.streamChat({
+        model: 'nvidia/nemotron-3.5-lightning',
+        messages: [{ role: 'user', content: '检查 Electron SSE 断连' }],
+        signal: new AbortController().signal,
+      })) {
+        /* no stream delta expected */
+      }
+    },
+    (error) =>
+      error.code === 'provider_unavailable' &&
+      error.transportCode === 'ERR_CONNECTION_CLOSED' &&
+      !/test-key|net::/.test(error.message),
+  );
+});
+
 test('allows HTTPS model providers and limits cleartext HTTP to localhost', async () => {
   assert.throws(
     () => normalizeBaseUrl('http://models.example.test/v1'),
