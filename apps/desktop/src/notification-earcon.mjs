@@ -1,6 +1,6 @@
 const notes = [
-  { frequency: 587.33, offset: 0, duration: 0.2, gain: 0.028 },
-  { frequency: 880, offset: 0.085, duration: 0.29, gain: 0.021 },
+  { frequency: 493.88, offset: 0, duration: 0.34, gain: 0.024 },
+  { frequency: 392, offset: 0.11, duration: 0.42, gain: 0.016 },
 ];
 
 export function createNotificationEarcon(createAudioContext) {
@@ -19,33 +19,34 @@ export function createNotificationEarcon(createAudioContext) {
     const origin = context.currentTime;
     for (const note of notes) {
       const start = origin + note.offset;
-      const oscillator = context.createOscillator();
-      const overtone = context.createOscillator();
-      const fundamentalGain = context.createGain();
-      const overtoneGain = context.createGain();
-      const fundamentalEnd = start + note.duration;
-      const overtoneEnd = start + note.duration * 0.68;
+      const partials = [
+        { ratio: 1, level: 1, duration: 1 },
+        { ratio: 2.76, level: 0.105, duration: 0.72 },
+        { ratio: 4.18, level: 0.032, duration: 0.46 },
+      ];
 
-      oscillator.type = 'sine';
-      oscillator.frequency.setValueAtTime(note.frequency, start);
-      overtone.type = 'sine';
-      overtone.frequency.setValueAtTime(note.frequency * 2.01, start);
+      for (const partial of partials) {
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+        const end = start + note.duration * partial.duration;
+        const pitch = note.frequency * partial.ratio;
+        const peak = note.gain * partial.level;
 
-      fundamentalGain.gain.setValueAtTime(0.0001, start);
-      fundamentalGain.gain.linearRampToValueAtTime(note.gain, start + 0.012);
-      fundamentalGain.gain.exponentialRampToValueAtTime(0.0001, fundamentalEnd);
-      overtoneGain.gain.setValueAtTime(0.0001, start);
-      overtoneGain.gain.linearRampToValueAtTime(note.gain * 0.16, start + 0.01);
-      overtoneGain.gain.exponentialRampToValueAtTime(0.0001, overtoneEnd);
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(pitch, start);
+        oscillator.frequency.exponentialRampToValueAtTime(
+          pitch * 0.992,
+          start + Math.min(0.16, note.duration * 0.6),
+        );
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.linearRampToValueAtTime(peak, start + 0.014);
+        gain.gain.exponentialRampToValueAtTime(0.0001, end);
 
-      oscillator.connect(fundamentalGain);
-      overtone.connect(overtoneGain);
-      fundamentalGain.connect(context.destination);
-      overtoneGain.connect(context.destination);
-      oscillator.start(start);
-      overtone.start(start);
-      oscillator.stop(fundamentalEnd + 0.015);
-      overtone.stop(overtoneEnd + 0.015);
+        oscillator.connect(gain);
+        gain.connect(context.destination);
+        oscillator.start(start);
+        oscillator.stop(end + 0.015);
+      }
     }
     return true;
   }
