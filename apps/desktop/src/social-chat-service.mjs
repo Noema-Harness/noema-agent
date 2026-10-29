@@ -606,7 +606,9 @@ export class SocialChatService {
   }
 
   projectTools(run) {
-    const projects = this.accessibleProjects(run);
+    const projects = this.accessibleProjects(run).filter(
+      (project) => project.status !== 'awaiting_user',
+    );
     const options = { projectScoped: Boolean(run.projectContext) };
     return [
       projectPlanTool(projects, options),

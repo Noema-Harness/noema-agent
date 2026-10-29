@@ -751,7 +751,21 @@ test('a report may read the plan then request user judgment; queued execution st
           project_id: f.project.id,
           question: '请查看实际成果：是否按当前预算继续试办？',
         });
-      else yield '已收到明确反馈，继续按约束推进。';
+      else {
+        const projectToolNames = input.tools
+          .map((entry) => entry.function.name)
+          .filter((name) =>
+            ['manage_project_plan', 'project_group'].includes(name),
+          );
+        if (calls === 3)
+          assert.deepEqual(projectToolNames, []);
+        else
+          assert.deepEqual(
+            projectToolNames.sort(),
+            ['manage_project_plan', 'project_group'],
+          );
+        yield '已收到明确反馈，继续按约束推进。';
+      }
     },
   });
   try {
