@@ -93,21 +93,11 @@ try {
   await wait(
     async () =>
       evaluate(
-        "Boolean([...document.querySelectorAll('button')].find(button=>button.textContent.includes('进入 Noema')))",
-      ),
-    30000,
-  );
-  await capture('first-meeting.png');
-  await evaluate(
-    "[...document.querySelectorAll('button')].find(button=>button.textContent.includes('进入 Noema'))?.click()",
-  );
-  await wait(
-    async () =>
-      evaluate(
         "Boolean(document.querySelector('#social-message-input')&&!document.querySelector('#social-message-input').disabled)",
       ),
     30000,
   );
+  await capture('first-meeting.png');
   db = new Database(database, { readonly: true });
   await send(
     'sharing',

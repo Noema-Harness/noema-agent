@@ -15,6 +15,18 @@ const appDirectory = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '..',
 );
+const rendererUrl =
+  process.env.NOEMA_E2E_RENDERER_URL || 'http://localhost:5173';
+try {
+  const response = await fetch(rendererUrl, {
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+} catch (error) {
+  throw new Error(
+    `Start the Noema Forge dev server before this preview (${rendererUrl}): ${error.message}`,
+  );
+}
 const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'Noema-first-meeting-'));
 const userData = path.join(scratch, 'home');
 const database = path.join(scratch, 'noema.sqlite3');
@@ -47,7 +59,11 @@ await new Promise((resolve) => probe.listen(0, '127.0.0.1', resolve));
 const port = probe.address().port;
 await new Promise((resolve) => probe.close(resolve));
 const require = createRequire(import.meta.url);
-const environment = { ...process.env, NOEMA_E2E_DATABASE_PATH: database };
+const environment = {
+  ...process.env,
+  NOEMA_E2E_DATABASE_PATH: database,
+  NOEMA_E2E_RENDERER_URL: rendererUrl,
+};
 delete environment.ELECTRON_RUN_AS_NODE;
 delete environment.NOEMA_SMOKE_TEST;
 const log = fs.openSync(path.join(scratch, 'client.log'), 'a');

@@ -316,9 +316,11 @@ function SocialChatApp() {
   const [editingAgentId, setEditingAgentId] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [firstMeetingReplay, setFirstMeetingReplay] = useState(false);
-  const firstMeetingVisible =
-    firstMeetingReplay ||
-    Boolean(state?.firstMeeting && state.firstMeeting.stage !== 'complete');
+  const firstMeetingEntryVisible = Boolean(
+    state?.firstMeeting &&
+    state.firstMeeting.stage !== 'complete' &&
+    !state.firstMeeting.enteredAt,
+  );
   const [editProviderConfig, setEditProviderConfig] = useState(false);
   const [groupTitle, setGroupTitle] = useState('');
   const [groupAgentIds, setGroupAgentIds] = useState<string[]>(['noema']);
@@ -510,14 +512,8 @@ function SocialChatApp() {
   const closeSettingsDialog = useCallback(() => {
     setSettingsOpen(false);
     setEditProviderConfig(false);
-    requestAnimationFrame(() => {
-      if (firstMeetingVisible)
-        document
-          .querySelector<HTMLButtonElement>('.meeting-connection button')
-          ?.focus();
-      else settingsTriggerRef.current?.focus();
-    });
-  }, [firstMeetingVisible]);
+    requestAnimationFrame(() => settingsTriggerRef.current?.focus());
+  }, []);
 
   const cancelForward = useCallback(() => {
     const originMessageId = forwardOriginMessageId.current;
@@ -672,7 +668,7 @@ function SocialChatApp() {
 
   useEffect(() => {
     const focusSearch = (event: globalThis.KeyboardEvent) => {
-      if (firstMeetingVisible) return;
+      if (firstMeetingReplay) return;
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
         if (event.defaultPrevented || event.isComposing) return;
         event.preventDefault();
@@ -683,7 +679,7 @@ function SocialChatApp() {
     };
     window.addEventListener('keydown', focusSearch);
     return () => window.removeEventListener('keydown', focusSearch);
-  }, [globalSearchOpen, openGlobalSearch, firstMeetingVisible]);
+  }, [globalSearchOpen, openGlobalSearch, firstMeetingReplay]);
 
   useEffect(() => {
     if (!navigation.narrow || !showRoomList) return;
@@ -1225,6 +1221,17 @@ function SocialChatApp() {
         text: messageText,
         replyToMessageId: replyTarget?.id ?? null,
       });
+      if (roomId === 'room-noema' && firstMeetingEntryVisible) {
+        try {
+          const progress = await window.noema.advanceFirstMeeting('enter');
+          setState((current) =>
+            current ? { ...current, firstMeeting: progress } : current,
+          );
+        } catch {
+          // A sent message must not be reported as failed if this optional
+          // first-use marker could not be saved.
+        }
+      }
       setRoomDraft(roomId, '');
       clearDraftAttachments(roomId);
       setReplyTarget(null);
@@ -1557,15 +1564,18 @@ function SocialChatApp() {
     }
   };
 
-  const handleRetry = async (message: NoemaSocialMessage) => {
-    setNotice('');
-    try {
-      await window.noema.retrySocialReply(message.id);
-      if (currentRoom) await loadRoom(currentRoom.id);
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : '重试没有启动。');
-    }
-  };
+  const handleRetry = useCallback(
+    async (message: NoemaSocialMessage) => {
+      setNotice('');
+      try {
+        await window.noema.retrySocialReply(message.id);
+        await loadRoom(message.roomId);
+      } catch (error) {
+        setNotice(error instanceof Error ? error.message : '重试没有启动。');
+      }
+    },
+    [loadRoom],
+  );
 
   const handleCreateGroup = async (event: FormEvent) => {
     event.preventDefault();
@@ -2149,12 +2159,21 @@ function SocialChatApp() {
               aria-label="空对话"
             >
               {currentRoom.id === noemaRoom?.id ? (
-                <p>
-                  {state?.firstMeeting?.enteredAt ||
-                  state?.firstMeeting?.introducedAt
-                    ? '你与 Noema 的对话'
-                    : '从你正在想的事开始，不必先写成完整指令。先把问题聊清楚，再决定下一步。'}
-                </p>
+                firstMeetingEntryVisible ? (
+                  <FirstMeeting
+                    onRead={async () => {
+                      const progress =
+                        await window.noema.advanceFirstMeeting('read');
+                      setState((current) =>
+                        current
+                          ? { ...current, firstMeeting: progress }
+                          : current,
+                      );
+                    }}
+                  />
+                ) : (
+                  <p>你与 Noema 的对话</p>
+                )
               ) : (
                 <span>
                   {currentRoom.kind === 'group'
@@ -2183,6 +2202,7 @@ function SocialChatApp() {
                       <React.Fragment key={item.id}>
                         <ChatMessage
                           message={item.message}
+                          showNoemaMark={currentRoom.id === noemaRoom?.id}
                           continuationOrigin={Boolean(
                             currentRoom.parentRoomId &&
                             item.message.forwardedSources.some(
@@ -2552,7 +2572,7 @@ function SocialChatApp() {
 
   return (
     <main
-      className={`social-shell app layout-c${firstMeetingVisible ? ' is-first-meeting' : ''}${workspaceOpen ? ' has-workspace' : ''}${navigationHidden ? ' index-closed' : ''}${navigation.narrow ? ' narrow-shell' : ''}${navigation.dragging ? ' resizing' : ''}`}
+      className={`social-shell app layout-c${workspaceOpen ? ' has-workspace' : ''}${navigationHidden ? ' index-closed' : ''}${navigation.narrow ? ' narrow-shell' : ''}${navigation.dragging ? ' resizing' : ''}`}
       ref={shellRef}
     >
       <header className="window-head social-topbar" aria-label="应用导航">
@@ -2632,49 +2652,8 @@ function SocialChatApp() {
           </div>
         </div>
       </header>
-      {firstMeetingVisible ? (
-        <FirstMeeting
-          onRead={async () => {
-            const progress = await window.noema.advanceFirstMeeting('read');
-            setState((current) =>
-              current ? { ...current, firstMeeting: progress } : current,
-            );
-          }}
-          onEnter={async () => {
-            if (busy) return;
-            setBusy(true);
-            try {
-              const progress = await window.noema.advanceFirstMeeting('enter');
-              setActiveRoomId('room-noema');
-              setProjectWorkspaceId(null);
-              setAgentWorkspaceId(null);
-              setArchivedProjectsOpen(false);
-              setFirstMeetingReplay(false);
-              setState((current) =>
-                current ? { ...current, firstMeeting: progress } : current,
-              );
-              await Promise.all([refreshState(), loadRoom('room-noema')]);
-              requestAnimationFrame(() => {
-                const header =
-                  document.querySelector<HTMLElement>('.room-header');
-                header?.setAttribute('tabindex', '-1');
-                header?.focus();
-              });
-            } catch (error) {
-              setFirstMeetingReplay(true);
-              throw error;
-            } finally {
-              setBusy(false);
-            }
-          }}
-          onReturn={
-            firstMeetingReplay ? () => setFirstMeetingReplay(false) : undefined
-          }
-        />
-      ) : null}
       <div
         ref={navigation.containerRef}
-        inert={firstMeetingVisible}
         className={`shell social-body${navigation.collapsed ? ' navigation-collapsed' : ''}${navigation.dragging ? ' navigation-resizing' : ''}`}
         style={
           {
@@ -3722,6 +3701,18 @@ function SocialChatApp() {
           </form>
         </div>
       ) : null}
+      {firstMeetingReplay ? (
+        <FirstMeeting
+          mode="replay"
+          onRead={async () => {
+            const progress = await window.noema.advanceFirstMeeting('read');
+            setState((current) =>
+              current ? { ...current, firstMeeting: progress } : current,
+            );
+          }}
+          onClose={() => setFirstMeetingReplay(false)}
+        />
+      ) : null}
       {forwardDialogOpen ? (
         <div
           className="dialog-backdrop"
@@ -4490,6 +4481,7 @@ function SocialChatApp() {
 
 function ChatMessage({
   message,
+  showNoemaMark,
   continuationOrigin,
   roomClosed,
   agent,
@@ -4504,6 +4496,7 @@ function ChatMessage({
   onOpenContinuation,
 }: {
   message: NoemaSocialMessage;
+  showNoemaMark: boolean;
   continuationOrigin: boolean;
   roomClosed: boolean;
   agent: NoemaSocialAgent | null;
@@ -4535,78 +4528,94 @@ function ChatMessage({
     >
       {!user ? (
         <div className="byline">
+          {showNoemaMark ? (
+            <span className="message-author-mark" aria-hidden="true">
+              <Icon name="noema" />
+            </span>
+          ) : null}
           <strong>{fromNoema ? 'Noema' : (agent?.name ?? 'Noema')}</strong>
           <span>{timeLabel(message.createdAt)}</span>
         </div>
       ) : null}
-      {message.replyTo ? (
-        <div className="message-quote">
-          <strong>{message.replyTo.sender}</strong>：{message.replyTo.content}
-        </div>
-      ) : null}
-      {message.forwardedSources.length ? (
-        <div className="forwarded-message-card">
-          <strong>
-            {continuationOrigin
-              ? '来源消息'
-              : message.forwardedSources.length > 1
-                ? '合并转发'
-                : '转发消息'}
-          </strong>
-          <span className="forwarded-message-source">
-            来自「{message.forwardedSources[0].roomTitle}」
-          </span>
-          {message.forwardedSources.map((source) => (
-            <div
-              className="forwarded-message-item"
-              key={`${source.roomId}:${source.id}`}
-            >
-              <div>
-                <strong>{source.sender}</strong>
-                <time dateTime={source.createdAt}>
-                  {timeLabel(source.createdAt)}
-                </time>
+      <div className="message-content">
+        {message.replyTo ? (
+          <div className="message-quote">
+            <strong>{message.replyTo.sender}</strong>：{message.replyTo.content}
+          </div>
+        ) : null}
+        {message.forwardedSources.length ? (
+          <div className="forwarded-message-card">
+            <strong>
+              {continuationOrigin
+                ? '来源消息'
+                : message.forwardedSources.length > 1
+                  ? '合并转发'
+                  : '转发消息'}
+            </strong>
+            <span className="forwarded-message-source">
+              来自「{message.forwardedSources[0].roomTitle}」
+            </span>
+            {message.forwardedSources.map((source) => (
+              <div
+                className="forwarded-message-item"
+                key={`${source.roomId}:${source.id}`}
+              >
+                <div>
+                  <strong>{source.sender}</strong>
+                  <time dateTime={source.createdAt}>
+                    {timeLabel(source.createdAt)}
+                  </time>
+                </div>
+                <p>{source.content}</p>
               </div>
-              <p>{source.content}</p>
-            </div>
-          ))}
-        </div>
-      ) : null}
-      {message.content ? (
-        <ReactMarkdown
-          remarkPlugins={[remarkGfm]}
-          components={markdownComponents}
-        >
-          {message.content}
-        </ReactMarkdown>
-      ) : message.status === 'streaming' ? (
-        <span className="typing-state">
-          <i />
-          <i />
-          <i />
-          <span>正在回复</span>
-        </span>
-      ) : null}
-      {failed ? (
-        <div className="message-failure" role="status">
-          <span>{message.errorMessage ?? '这条回复没有完成。'}</span>
-          <button
-            type="button"
-            onClick={() => onRetry(message)}
-            disabled={roomClosed}
+            ))}
+          </div>
+        ) : null}
+        {message.content ? (
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={markdownComponents}
           >
-            重试
-          </button>
-        </div>
-      ) : null}
-      {!user ? (
-        <>
+            {message.content}
+          </ReactMarkdown>
+        ) : message.status === 'streaming' ? (
+          <span className="typing-state">
+            <i />
+            <i />
+            <i />
+            <span>正在回复</span>
+          </span>
+        ) : null}
+        {failed ? (
+          <div className="message-failure" role="status">
+            <span>{message.errorMessage ?? '这条回复没有完成。'}</span>
+            <button
+              type="button"
+              onClick={() => onRetry(message)}
+              disabled={roomClosed}
+            >
+              重试
+            </button>
+          </div>
+        ) : null}
+        {!user ? (
           <SocialHistoryRecallTrace
             message={message}
             onOpenSource={onOpenHistorySource}
           />
-        </>
-      ) : null}
+        ) : null}
+        {continuationThreads.map((thread) => (
+          <button
+            className="message-continuation-link"
+            type="button"
+            key={thread.id}
+            onClick={() => onOpenContinuation(thread)}
+          >
+            ↳ 继续：{thread.title}
+            {thread.closedAt ? ' · 已结束' : ''}
+          </button>
+        ))}
+      </div>
       {message.status === 'complete' && !roomClosed ? (
         <div className="message-actions">
           {forwardSelectionActive ? (
@@ -4645,22 +4654,11 @@ function ChatMessage({
           )}
         </div>
       ) : null}
-      {continuationThreads.map((thread) => (
-        <button
-          className="message-continuation-link"
-          type="button"
-          key={thread.id}
-          onClick={() => onOpenContinuation(thread)}
-        >
-          ↳ 继续：{thread.title}
-          {thread.closedAt ? ' · 已结束' : ''}
-        </button>
-      ))}
     </article>
   );
 }
 
-function GroupMessage({
+const GroupMessage = React.memo(function GroupMessage({
   message,
   agent,
   queuedAgentName,
@@ -4720,7 +4718,7 @@ function GroupMessage({
       </div>
     </article>
   );
-}
+});
 
 function SocialHistoryRecallTrace({
   message,
