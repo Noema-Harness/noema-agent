@@ -3296,7 +3296,12 @@ function SocialChatApp() {
                         </div>
                       )}
                       <h2>{projectWorkspace.title}</h2>
-                      <p className="lead">{projectWorkspace.brief}</p>
+                      {projectWorkspace.brief.trim() ? (
+                        <details className="project-brief">
+                          <summary>项目背景与原始委托</summary>
+                          <p>{projectWorkspace.brief}</p>
+                        </details>
+                      ) : null}
                       <ProjectPlanPanel
                         key={projectWorkspace.id}
                         project={projectWorkspace}
