@@ -1247,13 +1247,13 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
         </form>
       ) : (
         <>
-          {plan.objective ? (
-            <p className="project-plan-objective">{plan.objective}</p>
-          ) : (
-            <p className="project-plan-meta">
-              先确定项目结果，再逐步细化阶段和工作项；未定义的远期工作不计入进度。
-            </p>
-          )}
+          <div className="project-plan-objective">
+            <span>项目结果</span>
+            <strong>
+              {plan.objective ||
+                '先确定项目结果，再逐步细化阶段和工作项；未定义的远期工作不计入进度。'}
+            </strong>
+          </div>
           {plan.phases.length ? (
             <div className="project-plan-overview" aria-label="项目阶段概览">
               <div className="project-plan-overview-status">
@@ -1289,6 +1289,11 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
               <div
                 className="project-plan-phase-flow"
                 ref={phaseFlowRef}
+                style={
+                  {
+                    '--plan-phase-columns': Math.min(3, phaseLanes.length),
+                  } as React.CSSProperties
+                }
                 aria-label="项目阶段依赖图"
                 tabIndex={0}
                 role="region"
@@ -1369,6 +1374,9 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                               </span>
                             </span>
                             <strong className="project-plan-phase-stop-title">{phase.title}</strong>
+                            <span className="project-plan-phase-stop-outcome">
+                              {phase.outcome}
+                            </span>
                             <span className="project-plan-phase-stop-progress">
                               {(() => {
                                 const distribution = phaseWorkStatusDistribution(phase);

@@ -30,12 +30,32 @@
   font-size: 12px;
 }
 .social-shell .project-plan-objective {
-  max-width: 78ch;
-  margin: 8px 0 12px;
+  display: grid;
+  grid-template-columns: 74px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 12px;
+  max-width: 920px;
+  margin: 8px 0 16px;
+  padding: 10px 12px;
+  border-left: 2px solid var(--accent);
+  background: var(--paper-muted);
+}
+.social-shell .project-plan-objective > span {
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.social-shell .project-plan-objective > strong {
+  display: -webkit-box;
+  overflow: hidden;
   color: var(--ink-soft);
   font-size: 12px;
-  white-space: pre-wrap;
+  font-weight: 550;
   line-height: 1.55;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 .social-shell .project-plan-overview {
   container-name: plan-overview;
@@ -104,9 +124,9 @@
 .social-shell .project-plan-phase-flow {
   position: relative;
   display: grid;
-  align-items: start;
-  gap: 18px;
-  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+  gap: 12px;
+  grid-template-columns: repeat(var(--plan-phase-columns, 1), minmax(0, 1fr));
   overflow: visible;
   padding: 2px 1px 10px;
 }
@@ -157,7 +177,7 @@
 .social-shell .project-plan-phase-lane > ol {
   display: grid;
   align-content: start;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
   margin: 0;
   padding: 0;
@@ -168,16 +188,18 @@
 }
 .social-shell .project-plan-phase-stop > button {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(160px, 0.42fr);
+  grid-template-columns: minmax(0, 1fr);
   grid-template-areas:
-    'state state'
-    'title progress'
-    'dependencies dependencies';
+    'state'
+    'title'
+    'outcome'
+    'progress'
+    'dependencies';
   align-items: start;
-  gap: 8px 18px;
+  gap: 5px;
   width: 100%;
   min-height: 0;
-  padding: 12px 14px;
+  padding: 10px 12px;
   border: 1px solid var(--line);
   border-top: 2px solid var(--line-strong);
   border-radius: 5px;
@@ -275,23 +297,34 @@
 .social-shell .project-plan-phase-stop-title {
   grid-area: title;
   align-self: center;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 620;
   line-height: 1.4;
   overflow-wrap: anywhere;
 }
+.social-shell .project-plan-phase-stop-outcome {
+  display: -webkit-box;
+  grid-area: outcome;
+  max-width: 58ch;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}
 .social-shell .project-plan-phase-stop-progress {
   grid-area: progress;
-  align-self: stretch;
   display: grid;
-  align-content: center;
-  gap: 7px;
+  align-content: start;
+  gap: 5px;
   font-variant-numeric: tabular-nums;
 }
 .social-shell .project-plan-phase-stop-meter {
   display: flex;
   gap: 3px;
-  height: 6px;
+  height: 5px;
   overflow: hidden;
   border-radius: 99px;
   background: var(--line);
@@ -826,6 +859,7 @@
     grid-template-areas:
       'state'
       'title'
+      'outcome'
       'progress'
       'dependencies';
     gap: 5px;
@@ -837,5 +871,9 @@
   }
   .social-shell .project-plan-phase-stop-title {
     font-size: 14px;
+  }
+  .social-shell .project-plan-objective {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 3px;
   }
 }
