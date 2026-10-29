@@ -254,51 +254,47 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
       item.kind === 'work_package' &&
       ['blocked', 'submitted', 'in_progress'].includes(item.status),
   );
-  const activeWorkItems =
-    plan?.items.filter(
+  const phaseWorkStatusDistribution = (phase: NoemaProjectPlanPhase) => {
+    const items = phase.workItems.filter(
       (item) => item.kind === 'work_package' && item.status !== 'canceled',
-    ) ?? [];
-  const workStatusDistribution = [
-    {
-      key: 'accepted',
-      label: '已验收',
-      count: activeWorkItems.filter(
-        (item) => item.status === 'done' && item.acceptanceRecorded,
-      ).length,
-    },
-    {
-      key: 'submitted',
-      label: '待验收',
-      count: activeWorkItems.filter((item) => item.status === 'submitted').length,
-    },
-    {
-      key: 'in-progress',
-      label: '进行中',
-      count: activeWorkItems.filter((item) => item.status === 'in_progress').length,
-    },
-    {
-      key: 'blocked',
-      label: '受阻',
-      count: activeWorkItems.filter((item) => item.status === 'blocked').length,
-    },
-    {
-      key: 'pending',
-      label: '待开始',
-      count: activeWorkItems.filter((item) => item.status === 'pending').length,
-    },
-    {
-      key: 'unverified',
-      label: '验收待补',
-      count: activeWorkItems.filter(
-        (item) => item.status === 'done' && !item.acceptanceRecorded,
-      ).length,
-    },
-  ].filter((segment) => segment.count > 0);
-  const nextPhases = currentPhase
-    ? (plan?.phases.filter((phase) =>
-        phase.dependsOn.includes(currentPhase.id),
-      ) ?? [])
-    : [];
+    );
+    return [
+      {
+        key: 'accepted',
+        label: '已验收',
+        count: items.filter(
+          (item) => item.status === 'done' && item.acceptanceRecorded,
+        ).length,
+      },
+      {
+        key: 'submitted',
+        label: '待验收',
+        count: items.filter((item) => item.status === 'submitted').length,
+      },
+      {
+        key: 'in-progress',
+        label: '进行中',
+        count: items.filter((item) => item.status === 'in_progress').length,
+      },
+      {
+        key: 'blocked',
+        label: '受阻',
+        count: items.filter((item) => item.status === 'blocked').length,
+      },
+      {
+        key: 'pending',
+        label: '待开始',
+        count: items.filter((item) => item.status === 'pending').length,
+      },
+      {
+        key: 'unverified',
+        label: '验收待补',
+        count: items.filter(
+          (item) => item.status === 'done' && !item.acceptanceRecorded,
+        ).length,
+      },
+    ].filter((segment) => segment.count > 0);
+  };
   useLayoutEffect(() => {
     const flow = phaseFlowRef.current;
     if (!flow || !plan) return;
@@ -1286,79 +1282,28 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                   ) : null}
                 </div>
               </div>
-              {plan.progress.total ? (
-                <div className="project-plan-work-distribution">
-                  <div
-                    className="project-plan-work-distribution-bar"
-                    role="img"
-                    aria-label={`工作项状态分布：${workStatusDistribution.map((segment) => `${segment.label} ${segment.count} 项`).join('，')}`}
-                  >
-                    {workStatusDistribution.map((segment) => (
-                      <span
-                        key={segment.key}
-                        className={`state-${segment.key}`}
-                        style={{ flexGrow: segment.count }}
-                      />
-                    ))}
-                  </div>
-                  <div className="project-plan-work-distribution-legend" aria-hidden="true">
-                    {workStatusDistribution.map((segment) => (
-                      <span key={segment.key} className={`state-${segment.key}`}>
-                        <i />
-                        <b>{segment.count}</b>
-                        {segment.label}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
               {currentPhase ? (
-                <div className="project-plan-glance" aria-label="项目当前进展">
-                  <section className={`project-plan-glance-current state-${currentPhase.state}`}>
-                    <span>
-                      {currentPhase.state === 'blocked'
-                        ? '受阻阶段'
-                        : currentPhase.state === 'awaiting_review'
-                          ? '待验收阶段'
-                          : currentPhase.state === 'in_progress'
-                            ? '当前阶段'
-                            : currentPhase.state === 'ready'
-                              ? '下一阶段'
-                              : '计划起点'}
-                    </span>
-                    <strong>{currentPhase.title}</strong>
-                    <small>
-                      {currentWorkItem
-                        ? `${itemStatusLabel(currentWorkItem)} · ${name(currentWorkItem.ownerAgentId)} · ${currentWorkItem.title}`
-                        : `${phaseLabels[currentPhase.state]} · ${currentPhase.outcome}`}
-                    </small>
-                  </section>
-                  <span className="project-plan-glance-arrow" aria-hidden="true">→</span>
-                  <section className="project-plan-glance-next">
-                    <span>后续阶段 · {nextPhases.length}</span>
-                    {nextPhases.length ? (
-                      <ul>
-                        {nextPhases.slice(0, 3).map((phase) => (
-                          <li key={phase.id}>
-                            <strong>{phase.title}</strong>
-                            <small>{phaseLabels[phase.state]}</small>
-                          </li>
-                        ))}
-                        {nextPhases.length > 3 ? (
-                          <li className="project-plan-glance-more">
-                            另有 {nextPhases.length - 3} 个后续阶段
-                          </li>
-                        ) : null}
-                      </ul>
-                    ) : (
-                      <small>没有直接依赖本阶段的后续阶段</small>
-                    )}
-                  </section>
+                <div
+                  className={`project-plan-current-strip state-${currentPhase.state}`}
+                  aria-label="当前阶段与当前工作"
+                >
+                  <span className="project-plan-current-strip-label">
+                    {currentPhase.state === 'ready' ? '下一阶段' : '当前阶段'}
+                  </span>
+                  <strong>{currentPhase.title}</strong>
+                  <span className="project-plan-current-strip-state">
+                    {phaseLabels[currentPhase.state]}
+                  </span>
+                  <small>
+                    {currentWorkItem
+                      ? `${name(currentWorkItem.ownerAgentId)} · ${itemStatusLabel(currentWorkItem)} · ${currentWorkItem.title}${currentWorkItem.status === 'blocked' && currentWorkItem.blocker ? ` · ${currentWorkItem.blocker}` : ''}`
+                      : currentPhase.outcome}
+                  </small>
                 </div>
               ) : null}
               <div className="project-plan-flow-heading">
                 <strong>阶段关系</strong>
-                <span>向右表示依赖层级；同层阶段满足各自前置条件后可并行推进。</span>
+                <span>颜色表示状态；连线表示前置条件，未连线的阶段可并行推进。</span>
               </div>
               <div
                 className="project-plan-phase-flow"
@@ -1434,39 +1379,42 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                               {phaseLabels[phase.state]}
                             </span>
                             <strong>{phase.title}</strong>
-                            <span className="project-plan-phase-stop-outcome">{phase.outcome}</span>
-                            {currentPhase?.id === phase.id && currentWorkItem ? (
-                              <span className="project-plan-phase-stop-focus">
-                                当前工作 · {name(currentWorkItem.ownerAgentId)} · {currentWorkItem.title}
-                              </span>
-                            ) : null}
                             <span className="project-plan-phase-stop-progress">
-                              <span>
-                                {phase.progress.total
-                                  ? `已验收 ${phase.progress.done}/${phase.progress.total}`
-                                  : '工作项待细化'}
-                              </span>
-                              {phase.progress.total ? (
-                                <progress
-                                  value={phase.progress.done}
-                                  max={phase.progress.total}
-                                  aria-label={`${phase.title}阶段工作项验收进度`}
-                                />
-                              ) : null}
+                              {(() => {
+                                const distribution = phaseWorkStatusDistribution(phase);
+                                return phase.progress.total ? (
+                                  <>
+                                    <span>
+                                      {phase.progress.done}/{phase.progress.total} 项已验收
+                                      {distribution
+                                        .filter((segment) => segment.key !== 'accepted')
+                                        .map((segment) => ` · ${segment.count} ${segment.label}`)
+                                        .join('')}
+                                    </span>
+                                    <span
+                                      className="project-plan-phase-stop-meter"
+                                      role="img"
+                                      aria-label={`${phase.title}工作项状态：${distribution.map((segment) => `${segment.label} ${segment.count} 项`).join('，')}`}
+                                    >
+                                      {distribution.map((segment) => (
+                                        <i
+                                          key={segment.key}
+                                          className={`state-${segment.key}`}
+                                          style={{ flexGrow: segment.count }}
+                                        />
+                                      ))}
+                                    </span>
+                                  </>
+                                ) : (
+                                  <span>工作包待细化</span>
+                                );
+                              })()}
                             </span>
                             <span className="project-plan-phase-dependencies">
                               {phase.dependsOn.length ? (
-                                <>
-                                  <span aria-hidden="true">←</span>
-                                  <span>需先验收</span>
-                                  {phase.dependsOn.map((id) => (
-                                    <span className="project-plan-phase-dependency" key={id}>
-                                      {plan.phases.find((entry) => entry.id === id)?.title ?? id}
-                                    </span>
-                                  ))}
-                                </>
+                                `前置阶段 ${phase.dependsOn.length} 项`
                               ) : (
-                                <span>无前置阶段</span>
+                                '无前置阶段'
                               )}
                             </span>
                           </button>
