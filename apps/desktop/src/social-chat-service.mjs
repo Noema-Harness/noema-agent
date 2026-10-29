@@ -2086,11 +2086,14 @@ export class SocialChatService {
               .map((item) => this.store.getAgent(item.id))
           : [];
       const specialistTool =
-        agentId === 'noema' && roomId === 'room-noema'
+        agentId === 'noema' && roomId === 'room-noema' && !run.reviewContext
           ? specialistDelegationTool(specialistAgents)
           : null;
       const teamProjects =
-        agentId === 'noema' && roomId === 'room-noema' && this.projectStore
+        agentId === 'noema' &&
+        roomId === 'room-noema' &&
+        this.projectStore &&
+        !run.reviewContext
           ? this.projectStore
               .listProjects({ includeArchived: true })
               .filter(
@@ -2101,7 +2104,10 @@ export class SocialChatService {
               .slice(0, 32)
           : [];
       const teamToolAvailable = Boolean(
-        agentId === 'noema' && roomId === 'room-noema' && this.projectStore,
+        agentId === 'noema' &&
+        roomId === 'room-noema' &&
+        this.projectStore &&
+        !run.reviewContext,
       );
       const projectTeamAction = teamToolAvailable
         ? projectTeamTool({
@@ -2113,7 +2119,10 @@ export class SocialChatService {
           })
         : null;
       const reviewProjects =
-        agentId === 'noema' && roomId === 'room-noema' && this.projectStore
+        agentId === 'noema' &&
+        roomId === 'room-noema' &&
+        this.projectStore &&
+        !run.reviewContext
           ? this.projectStore
               .listProjects({ includeArchived: false })
               .filter(
@@ -2126,7 +2135,10 @@ export class SocialChatService {
           : [];
       const reviewTool = projectReviewTool(reviewProjects);
       const completionProjects =
-        agentId === 'noema' && roomId === 'room-noema' && this.projectStore
+        agentId === 'noema' &&
+        roomId === 'room-noema' &&
+        this.projectStore &&
+        !run.reviewContext
           ? this.projectStore
               .listProjects({ includeArchived: false })
               .filter(
@@ -2164,6 +2176,7 @@ export class SocialChatService {
             : [];
       const projectWorkAvailable = Boolean(
         this.startProjectWork &&
+        !run.reviewContext &&
         run.projectContext?.status !== 'awaiting_user' &&
         this.getProjectWorkReadiness().available &&
         projectWorkAgents.length,

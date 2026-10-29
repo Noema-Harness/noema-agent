@@ -422,10 +422,23 @@ test('review feedback turn carries a scoped context and executes a public handof
         return;
       }
       if (calls === 2) {
+        const toolNames = input.tools.map((tool) => tool.function.name);
         const groupTool = input.tools.find(
           (tool) => tool.function.name === 'project_group',
         );
+        assert.ok(toolNames.includes('manage_project_plan'));
         assert.ok(groupTool);
+        for (const unrelatedTool of [
+          'create_project_team',
+          'request_project_review',
+          'complete_project',
+          'start_project_work',
+        ])
+          assert.equal(
+            toolNames.includes(unrelatedTool),
+            false,
+            `${unrelatedTool} should not be available in a project-bound review turn`,
+          );
         assert.equal(
           Object.hasOwn(groupTool.function.parameters.properties, 'project_id'),
           false,
