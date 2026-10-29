@@ -117,6 +117,15 @@ projects.plans.replace({
   },
 });
 let seededPlan = projects.plans.get(project.id);
+const researchSourceTime = new Date().toISOString();
+db.prepare(`INSERT INTO social_messages
+  (id,room_id,turn_id,role,agent_id,content,status,runtime,created_at,updated_at)
+  VALUES ('plan-research-ui',?,'research-ui','assistant',?,'界面样例来源：两份原始来源及访谈记录已存档；场租仍需核价。','complete','local',?,?)`).run(
+  project.groupRoomId,
+  ids[0],
+  researchSourceTime,
+  researchSourceTime,
+);
 seededPlan = projects.plans.updateItem({
   projectId: project.id,
   expectedRevision: seededPlan.revision,
@@ -132,6 +141,7 @@ seededPlan = projects.plans.updateItem({
   actorAgentId: ids[0],
   status: 'submitted',
   evidence: '两份原始来源及访谈记录已存档；场租仍需核价。',
+  evidenceSources: [{ kind: 'message', messageId: 'plan-research-ui' }],
   reason: '合成成员提交预研究结果。',
 });
 seededPlan = projects.plans.updateItem({
@@ -321,6 +331,11 @@ try {
   await set(
     '本次交付的结果与可核验依据',
     '合成验收记录：已取得正式报价并列出包含设备、清洁费的总价。',
+    '.project-plan-action-form',
+  );
+  await set(
+    '关联项目群中的成果消息',
+    'plan-evidence-ui',
     '.project-plan-action-form',
   );
   await click('保存', '.project-plan-action-form');

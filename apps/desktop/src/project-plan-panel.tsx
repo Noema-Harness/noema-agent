@@ -8,6 +8,7 @@ import type {
   NoemaProjectPlanPhaseUpdate,
   NoemaProjectPlanStatus,
   NoemaProjectPlanWrite,
+  NoemaSocialMessage,
   NoemaSocialProject,
 } from './noema-bridge.d.ts';
 import './project-plan-panel.css';
@@ -104,6 +105,8 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
   >({});
   const [checkingEvidence, setCheckingEvidence] = useState<string | null>(null);
   const [plan, setPlan] = useState<NoemaProjectPlan | null>(null);
+  const [groupMessages, setGroupMessages] = useState<NoemaSocialMessage[]>([]);
+  const [groupMessagesError, setGroupMessagesError] = useState('');
   const [selectedPhaseId, setSelectedPhaseId] = useState<string | null>(null);
   const [workDetailsOpen, setWorkDetailsOpen] = useState<Record<string, boolean>>({});
   const [error, setError] = useState('');
@@ -121,6 +124,7 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
     id: string;
     status: NoemaProjectPlanStatus;
     text: string;
+    evidenceMessageId: string;
   } | null>(null);
   const sequence = useRef(0);
   const reload = useCallback(async () => {
@@ -149,6 +153,34 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
       off();
     };
   }, [project.id, reload]);
+
+  useEffect(() => {
+    let active = true;
+    setGroupMessages([]);
+    setGroupMessagesError('');
+    void window.noema
+      .getSocialRoom(project.groupRoomId)
+      .then((room) => {
+        if (active)
+          setGroupMessages(
+            room.messages.filter(
+              (message) =>
+                message.role !== 'system' &&
+                message.status === 'complete' &&
+                message.content.trim().length > 0,
+            ),
+          );
+      })
+      .catch((e: unknown) => {
+        if (active)
+          setGroupMessagesError(
+            e instanceof Error ? e.message : '项目群消息读取失败。',
+          );
+      });
+    return () => {
+      active = false;
+    };
+  }, [project.groupRoomId]);
 
   const editable = project.status === 'active';
   const members = project.members;
@@ -376,6 +408,7 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
     item: NoemaProjectPlanItem,
     status: NoemaProjectPlanStatus,
     evidenceOrBlocker = '',
+    evidenceMessageId = '',
   ) => {
     if (!plan) return Promise.resolve(false);
     const input: NoemaProjectPlanItemUpdate = {
@@ -384,6 +417,13 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
       itemId: item.id,
       status,
       ...(status === 'submitted' ? { evidence: evidenceOrBlocker } : {}),
+      ...(status === 'submitted' && evidenceMessageId
+        ? {
+            evidenceSources: [
+              { kind: 'message' as const, messageId: evidenceMessageId },
+            ],
+          }
+        : {}),
       ...(status === 'blocked' ? { blocker: evidenceOrBlocker } : {}),
       reason:
         status === 'done'
@@ -1491,6 +1531,7 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                                     id: item.id,
                                     status: 'submitted',
                                     text: '',
+                                    evidenceMessageId: '',
                                   })
                                 }
                               >
@@ -1505,6 +1546,7 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                                     id: item.id,
                                     status: 'blocked',
                                     text: '',
+                                    evidenceMessageId: '',
                                   })
                                 }
                               >
@@ -1559,6 +1601,7 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                               item,
                               action.status,
                               action.text,
+                              action.evidenceMessageId,
                             ).then((saved) => {
                               if (saved) setAction(null);
                             });
@@ -1584,11 +1627,59 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                               }
                             />
                           </label>
+                          {action.status === 'submitted' ? (
+                            <label>
+                              关联项目群中的成果消息
+                              <select
+                                required
+                                value={action.evidenceMessageId}
+                                onChange={(event) =>
+                                  setAction({
+                                    ...action,
+                                    evidenceMessageId: event.target.value,
+                                  })
+                                }
+                              >
+                                <option value="">
+                                  {groupMessagesError
+                                    ? '项目群消息读取失败'
+                                    : groupMessages.length
+                                      ? '选择一条实际成果消息'
+                                      : '项目群还没有可关联的成果消息'}
+                                </option>
+                                {groupMessages
+                                  .slice()
+                                  .reverse()
+                                  .map((message) => {
+                                    const senderId =
+                                      message.senderAgentId ??
+                                      message.agentId ??
+                                      'user';
+                                    const preview = message.content
+                                      .replace(/\s+/g, ' ')
+                                      .trim();
+                                    return (
+                                      <option key={message.id} value={message.id}>
+                                        {`${name(senderId)} · ${new Date(message.createdAt).toLocaleString()} · ${preview.slice(0, 100)}${preview.length > 100 ? '…' : ''}`}
+                                      </option>
+                                    );
+                                  })}
+                              </select>
+                              <span className="project-plan-meta">
+                                先在项目群中留下成果，再把对应消息关联到提交记录。验收将单独记录。
+                                {groupMessagesError ? ` ${groupMessagesError}` : ''}
+                              </span>
+                            </label>
+                          ) : null}
                           <div className="project-plan-actions">
                             <button
                               className="secondary"
                               type="submit"
-                              disabled={busy}
+                              disabled={
+                                busy ||
+                                (action.status === 'submitted' &&
+                                  !action.evidenceMessageId)
+                              }
                             >
                               保存
                             </button>

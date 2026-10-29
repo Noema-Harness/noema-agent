@@ -372,7 +372,11 @@ test('changed evidence can reopen its accepted dependency chain without erasing 
       });
     const submitAndAccept = (itemId, evidence, extra = {}) => {
       update(itemId, 'in_progress', f.agent);
-      update(itemId, 'submitted', f.agent, { evidence, ...extra });
+      update(itemId, 'submitted', f.agent, {
+        evidence,
+        evidenceSources: [{ kind: 'message', messageId: 'public' }],
+        ...extra,
+      });
       update(itemId, 'done', 'noema');
     };
     submitAndAccept('produce', '原始成果', {
@@ -669,7 +673,30 @@ test('plan replacements cannot forge or erase runtime references; phase acceptan
 test('legacy text is explicitly unlinked, and deleted sources are never reported unchanged', () => {
   const f = fixture();
   try {
-    f.update('submitted', { evidence: '旧文字说明。' });
+    const current = f.projects.plans.get(f.project.id);
+    const row = f.db
+      .prepare(
+        'SELECT items_json FROM social_project_plan_revisions WHERE project_id = ? AND revision = ?',
+      )
+      .get(f.project.id, current.revision);
+    const legacySnapshot = JSON.parse(row.items_json);
+    const legacyItem = legacySnapshot.phases
+      .flatMap((phase) => phase.workItems)
+      .find((item) => item.id === 'produce');
+    Object.assign(legacyItem, {
+      status: 'submitted',
+      evidence: '旧文字说明。',
+      evidenceRefs: [],
+      evidenceReview: null,
+      submittedByAgentId: f.agent,
+      submittedAt: new Date().toISOString(),
+      submissionRevision: current.revision,
+    });
+    f.db
+      .prepare(
+        'UPDATE social_project_plan_revisions SET items_json = ? WHERE project_id = ? AND revision = ?',
+      )
+      .run(JSON.stringify(legacySnapshot), f.project.id, current.revision);
     assert.equal(
       f.projects.plans.inspectEvidence(f.project.id, 'produce').state,
       'unlinked',

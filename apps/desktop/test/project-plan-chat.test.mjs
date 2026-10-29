@@ -48,6 +48,15 @@ test('Noema reads full work-item evidence before accepting a truncated summary',
       ],
     },
   });
+  const sourceTime = new Date().toISOString();
+  db.prepare(`INSERT INTO social_messages
+    (id,room_id,turn_id,role,agent_id,content,status,runtime,created_at,updated_at)
+    VALUES ('long-evidence-source',?,'long-evidence-source','assistant','engineering-partner',?,'complete','local',?,?)`).run(
+    project.groupRoomId,
+    evidence,
+    sourceTime,
+    sourceTime,
+  );
   projects.plans.updateItem({
     projectId: project.id,
     expectedRevision: 1,
@@ -55,6 +64,7 @@ test('Noema reads full work-item evidence before accepting a truncated summary',
     actorAgentId: 'engineering-partner',
     status: 'submitted',
     evidence,
+    evidenceSources: [{ kind: 'message', messageId: 'long-evidence-source' }],
     reason: '负责人提交完整成果依据。',
   });
   const requests = [];
@@ -508,6 +518,14 @@ test('Noema reads then writes a versioned plan in one turn; members cannot forge
     await service.active.get('room-noema')?.done;
     assert.equal(store.getSocialMessage(root.messageId).status, 'complete');
     assert.equal(projects.plans.get(project.id).revision, 1);
+    const sourceTime = new Date().toISOString();
+    db.prepare(`INSERT INTO social_messages
+      (id,room_id,turn_id,role,agent_id,content,status,runtime,created_at,updated_at)
+      VALUES ('member-submission-source',?,'member-submission-source','assistant','engineering-partner','已整理原始资料和待核实项。','complete','local',?,?)`).run(
+      project.groupRoomId,
+      sourceTime,
+      sourceTime,
+    );
     projects.plans.updateItem({
       projectId: project.id,
       expectedRevision: 1,
@@ -515,6 +533,9 @@ test('Noema reads then writes a versioned plan in one turn; members cannot forge
       actorAgentId: 'engineering-partner',
       status: 'submitted',
       evidence: '已整理原始资料和待核实项。',
+      evidenceSources: [
+        { kind: 'message', messageId: 'member-submission-source' },
+      ],
       reason: '建立成员本人提交记录，供后续防伪验收测试。',
     });
     const session = projects.getProjectSession(
