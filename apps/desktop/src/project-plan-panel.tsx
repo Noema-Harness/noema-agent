@@ -311,7 +311,7 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
           : focusedItem.status === 'submitted'
             ? '待验收'
             : focusedItem.status === 'in_progress'
-              ? '正在推进'
+              ? '工作项进行中'
               : '下一项';
       return {
         state: focusedItem.status,
@@ -1329,7 +1329,7 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                       : plan.phases.every((phase) => phase.state === 'done')
                         ? '阶段全部验收'
                         : plan.phases.some((phase) => phase.state === 'in_progress')
-                          ? '项目正在推进'
+                          ? '有工作项进行中'
                           : '项目准备中'}
                 </strong>
                 <div className="project-plan-overview-metrics" aria-label="项目验收进度">
