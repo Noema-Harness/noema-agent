@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 from pathlib import Path
 import sys
 
@@ -41,7 +42,10 @@ def main() -> int:
     except Exception as exc:  # PyMuPDF exposes several format-specific exceptions.
         parser.error(f"Could not open PDF: {exc}")
 
-    title = document.metadata.get("title") or source.stem
+    metadata = document.metadata or {}
+    title = (metadata.get("title") or "").strip() or source.stem
+    author = (metadata.get("author") or "").strip()
+    digest = hashlib.sha256(source.read_bytes()).hexdigest()
     pages: list[str] = []
     extracted = 0
     for number, page in enumerate(document, start=1):
@@ -56,15 +60,22 @@ def main() -> int:
     if extracted == 0:
         parser.error("No selectable text found; this PDF may require OCR")
 
-    markdown = (
-        f"# {title}\n\n"
-        f"Source PDF: `{source.name}`\n\n"
-        f"Pages: {len(document)} · Text pages: {extracted}\n\n"
+    header = [
+        f"# {title}",
+        "",
+        f"Source PDF: `{source}`",
+        f"SHA-256: `{digest}`",
+    ]
+    if author:
+        header.append(f"PDF metadata author: {author}")
+    header.extend([
+        f"Pages: {len(document)} · Text pages: {extracted}",
+        "",
         "> Searchable reading copy. Multi-column order, tables, equations and figures "
-        "may need checking against the PDF.\n\n"
-        + "\n\n---\n\n".join(pages)
-        + "\n"
-    )
+        "may need checking against the PDF.",
+        "",
+    ])
+    markdown = "\n".join(header) + "\n\n---\n\n".join(pages) + "\n"
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(markdown, encoding="utf-8", newline="\n")
     print(f"Wrote {output} ({len(document)} pages, {extracted} with text)")
