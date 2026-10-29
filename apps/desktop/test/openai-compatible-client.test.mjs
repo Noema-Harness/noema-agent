@@ -11,7 +11,7 @@ test('lists only the explicitly verified free routes from available models', asy
     baseUrl: 'http://127.0.0.1:31415',
     getApiKey: () => 'test-key',
     fetchImpl: async (url, init) => {
-      assert.equal(url, 'http://127.0.0.1:31415/v1/models?available=true');
+      assert.equal(url, 'http://127.0.0.1:31415/v1/models');
       assert.equal(init.method, 'GET');
       assert.equal(init.headers.authorization, 'Bearer test-key');
       return Response.json({
@@ -479,7 +479,7 @@ test('exposes the configured provider model catalog outside FreeLLMAPI routes', 
     baseUrl: 'https://api.deepseek.com',
     getApiKey: () => 'test-key',
     fetchImpl: async (url) => {
-      assert.equal(url, 'https://api.deepseek.com/v1/models?available=true');
+      assert.equal(url, 'https://api.deepseek.com/v1/models');
       return Response.json({
         data: [{ id: 'deepseek-flash' }, { id: 'deepseek-v4-pro' }],
       });

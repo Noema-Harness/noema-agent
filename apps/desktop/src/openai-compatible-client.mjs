@@ -168,7 +168,7 @@ export class OpenAICompatibleClient {
     const key = this.requireApiKey();
     let response;
     try {
-      response = await this.fetch(`${this.baseUrl}/models?available=true`, {
+      response = await this.fetch(`${this.baseUrl}/models`, {
         method: 'GET',
         headers: {
           accept: 'application/json',
