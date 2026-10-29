@@ -1585,7 +1585,7 @@ export class SocialChatService {
           eventKey: `work-result:${task.id}:${task.status}:${task.completedAt ?? task.updatedAt}`,
           triggerKind: completed ? 'work_result' : 'work_failure',
           planItemId: task.planItemId,
-          text: `@${completed ? task.memberName : 'Noema'} 项目执行任务 ${task.id} ${completed ? '已结束' : '失败'}；文件条件核验状态：${task.verificationStatus}。${task.planItemId ? `关联工作包：${task.planItemId}。` : ''}使用 manage_project_plan 读取实际结果：operation="read_sources", project_id="${task.projectId}", evidence_sources=[{"kind":"execution","taskId":"${task.id}"}], reason="核查执行结果"。${completed ? '原成员核对后提交成果及 evidence_sources；任务结束本身不代表工作包通过验收。' : '请核查具体错误再协调，不能盲目自动重试或声称已完成。'}`,
+          text: `@${completed ? task.memberName : 'Noema'} 项目执行任务 ${task.id} ${completed ? '已结束' : '失败'}；文件条件核验状态：${task.verificationStatus}。${task.planItemId ? `关联工作包：${task.planItemId}。` : ''}${completed ? '在本项目会话中' : '在项目群聊中'}使用 manage_project_plan 读取实际结果：operation="read_sources",${completed ? '' : ` project_id="${task.projectId}",`} evidence_sources=[{"kind":"execution","taskId":"${task.id}"}], reason="核查执行结果"。${completed ? '项目会话已绑定目标项目，不要传 project_id。原成员核对后提交成果及 evidence_sources；任务结束本身不代表工作包通过验收。' : '请核查具体错误再协调，不能盲目自动重试或声称已完成。'}`,
         });
         this.store.db
           .prepare(

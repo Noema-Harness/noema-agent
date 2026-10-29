@@ -823,6 +823,11 @@ test('project execution results survive waiting, publish once, and do not replay
     assert.match(message.content, /"taskId":"task"/u);
     assert.doesNotMatch(
       message.content,
+      /project_id="/u,
+      'a member-bound project session omits project_id',
+    );
+    assert.doesNotMatch(
+      message.content,
       /真实执行结果/u,
       'raw tool output cannot introduce extra mentions',
     );
@@ -870,6 +875,10 @@ test('project execution results survive waiting, publish once, and do not replay
       .get();
     assert.doesNotMatch(failure.content, /@所有人/u);
     assert.match(failure.content, /不能盲目自动重试/u);
+    assert.match(
+      failure.content,
+      new RegExp(`project_id="${f.project.id}"`, 'u'),
+    );
   } finally {
     await service.shutdown();
     f.close();
