@@ -240,6 +240,24 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
         }),
       )
     : [];
+  const currentPhase =
+    plan?.phases.find((phase) => phase.state === 'blocked') ??
+    plan?.phases.find((phase) => phase.state === 'awaiting_review') ??
+    plan?.phases.find((phase) => phase.state === 'in_progress') ??
+    plan?.phases.find((phase) => phase.state === 'ready') ??
+    plan?.phases.find((phase) => phase.state === 'pending') ??
+    plan?.phases[0] ??
+    null;
+  const currentWorkItem = currentPhase?.workItems.find(
+    (item) =>
+      item.kind === 'work_package' &&
+      ['blocked', 'submitted', 'in_progress'].includes(item.status),
+  );
+  const nextPhases = currentPhase
+    ? (plan?.phases.filter((phase) =>
+        phase.dependsOn.includes(currentPhase.id),
+      ) ?? [])
+    : [];
   useLayoutEffect(() => {
     const flow = phaseFlowRef.current;
     if (!flow || !plan) return;
@@ -1227,6 +1245,50 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                   ) : null}
                 </div>
               </div>
+              {currentPhase ? (
+                <div className="project-plan-glance" aria-label="项目当前进展">
+                  <section className={`project-plan-glance-current state-${currentPhase.state}`}>
+                    <span>
+                      {currentPhase.state === 'blocked'
+                        ? '受阻阶段'
+                        : currentPhase.state === 'awaiting_review'
+                          ? '待验收阶段'
+                          : currentPhase.state === 'in_progress'
+                            ? '当前阶段'
+                            : currentPhase.state === 'ready'
+                              ? '下一阶段'
+                              : '计划起点'}
+                    </span>
+                    <strong>{currentPhase.title}</strong>
+                    <small>
+                      {currentWorkItem
+                        ? `${itemStatusLabel(currentWorkItem)} · ${currentWorkItem.title}`
+                        : `${phaseLabels[currentPhase.state]} · ${currentPhase.outcome}`}
+                    </small>
+                  </section>
+                  <span className="project-plan-glance-arrow" aria-hidden="true">→</span>
+                  <section className="project-plan-glance-next">
+                    <span>后续阶段 · {nextPhases.length}</span>
+                    {nextPhases.length ? (
+                      <ul>
+                        {nextPhases.slice(0, 3).map((phase) => (
+                          <li key={phase.id}>
+                            <strong>{phase.title}</strong>
+                            <small>{phaseLabels[phase.state]}</small>
+                          </li>
+                        ))}
+                        {nextPhases.length > 3 ? (
+                          <li className="project-plan-glance-more">
+                            另有 {nextPhases.length - 3} 个后续阶段
+                          </li>
+                        ) : null}
+                      </ul>
+                    ) : (
+                      <small>没有直接依赖本阶段的后续阶段</small>
+                    )}
+                  </section>
+                </div>
+              ) : null}
               <div className="project-plan-flow-heading">
                 <strong>阶段关系</strong>
                 <span>向右表示依赖层级；同层阶段满足各自前置条件后可并行推进。</span>

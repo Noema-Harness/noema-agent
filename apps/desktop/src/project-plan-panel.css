@@ -81,6 +81,89 @@
 .social-shell .project-plan-overview-metrics .state-blocked b {
   color: #993f31;
 }
+.social-shell .project-plan-glance {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.05fr) 28px minmax(220px, 0.95fr);
+  align-items: stretch;
+  gap: 10px;
+  margin: 12px 0 17px;
+}
+.social-shell .project-plan-glance-current,
+.social-shell .project-plan-glance-next {
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  min-width: 0;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--paper);
+}
+.social-shell .project-plan-glance-current {
+  border-left: 3px solid var(--accent);
+  background: var(--paper-muted);
+}
+.social-shell .project-plan-glance-current.state-blocked,
+.social-shell .project-plan-glance-current.state-awaiting_review {
+  border-left-color: #b97843;
+}
+.social-shell .project-plan-glance-current.state-done {
+  border-left-color: var(--success);
+}
+.social-shell .project-plan-glance :is(section > span, section > small) {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+.social-shell .project-plan-glance-current > strong {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.social-shell .project-plan-glance-current > small {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.social-shell .project-plan-glance-arrow {
+  align-self: center;
+  color: var(--line-strong);
+  font-size: 20px;
+  text-align: center;
+}
+.social-shell .project-plan-glance-next ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.social-shell .project-plan-glance-next li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  min-width: 0;
+}
+.social-shell .project-plan-glance-next li strong {
+  min-width: 0;
+  color: var(--ink-soft);
+  font-size: 11px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.social-shell .project-plan-glance-next li small,
+.social-shell .project-plan-glance-next > small {
+  color: var(--muted);
+  font-size: 10px;
+}
+.social-shell .project-plan-glance-next li.project-plan-glance-more {
+  color: var(--muted);
+  font-size: 10px;
+}
 .social-shell .project-plan-flow-heading {
   display: flex;
   align-items: baseline;
@@ -745,6 +828,14 @@
   overflow: auto;
 }
 @media (max-width: 640px) {
+  .social-shell .project-plan-glance {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 5px;
+  }
+  .social-shell .project-plan-glance-arrow {
+    transform: rotate(90deg);
+    line-height: 1;
+  }
   .social-shell .project-plan-overview-status {
     align-items: flex-start;
     flex-direction: column;
