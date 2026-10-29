@@ -765,6 +765,13 @@ test('Noema can start existing project work from an explicit request while other
       requests[0].tools?.map((tool) => tool.function.name),
       ['start_project_work', 'delegate_to_specialist'],
     );
+    assert.ok(
+      requests[0].messages.some(
+        (message) =>
+          message.role === 'system' &&
+          message.content.includes('澄清委托要像对话，不像问卷'),
+      ),
+    );
     const workTool = requests[0].tools?.find(
       (tool) => tool.function.name === 'start_project_work',
     );
