@@ -296,6 +296,7 @@
   grid-template-areas:
     'state'
     'title'
+    'outcome'
     'progress'
     'dependencies';
   align-items: start;
@@ -404,6 +405,32 @@
   font-weight: 620;
   line-height: 1.35;
   overflow-wrap: anywhere;
+}
+.social-shell .project-plan-phase-stop-outcome {
+  grid-area: outcome;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+.social-shell .project-plan-phase-stop-outcome > span:first-child {
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+.social-shell .project-plan-phase-stop-outcome > span:last-child {
+  display: -webkit-box;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.social-shell .project-plan-phase-stop.is-current > button {
+  background: var(--paper-muted);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 12%, transparent);
 }
 .social-shell .project-plan-phase-stop-progress {
   grid-area: progress;
@@ -975,6 +1002,7 @@
     grid-template-areas:
       'state'
       'title'
+      'outcome'
       'progress'
       'dependencies';
     gap: 5px;

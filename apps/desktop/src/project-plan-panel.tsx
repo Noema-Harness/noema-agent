@@ -1474,6 +1474,10 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                               </span>
                             </span>
                             <strong className="project-plan-phase-stop-title">{phase.title}</strong>
+                            <span className="project-plan-phase-stop-outcome">
+                              <span>阶段成果</span>
+                              <span>{phase.outcome || '尚未定义阶段成果'}</span>
+                            </span>
                             <span className="project-plan-phase-stop-progress">
                               {(() => {
                                 const distribution = phaseWorkStatusDistribution(phase);
