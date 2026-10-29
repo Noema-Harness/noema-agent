@@ -5,6 +5,7 @@ import { SocialChatStore } from '../src/social-chat-store.mjs';
 import { SocialProjectStore } from '../src/social-project-store.mjs';
 import { RootStore } from '../src/root-store.mjs';
 import { createSocialTestStore } from '../test-support/social-team.mjs';
+import { acceptAllProjectWorkItems } from '../test-support/project-plan-fixtures.mjs';
 
 function makeStores() {
   const db = new Database(':memory:');
@@ -34,7 +35,10 @@ function createProject(stores, member, extra = {}) {
 }
 
 function acceptLegacyStage(stores, projectId) {
-  const plan = stores.socialProjectStore.plans.get(projectId);
+  const plan = acceptAllProjectWorkItems(
+    stores.socialProjectStore.plans,
+    projectId,
+  );
   return stores.socialProjectStore.plans.updatePhase({
     projectId,
     expectedRevision: plan.revision,
@@ -126,7 +130,7 @@ test('project growth is keyed to accepted plan revisions and settles each member
             ownerAgentId: first.agentId,
             acceptance: '有来源且可复核。',
             dependsOn: [],
-            status: 'done',
+            status: 'pending',
             evidence: '结果与来源已核对。',
             blocker: '',
           },
@@ -139,7 +143,10 @@ test('project growth is keyed to accepted plan revisions and settles each member
       project.id,
     );
     assert.equal(batch.status, 'running');
-    assert.equal(batch.planRevision, 2);
+    assert.equal(
+      batch.planRevision,
+      stores.socialProjectStore.plans.get(project.id).revision,
+    );
     assert.throws(
       () => stores.socialProjectStore.archiveProject(project.id),
       /成员经历整理尚未全部完成/u,
@@ -238,7 +245,7 @@ test('completed growth archives the project once and survives a later restore', 
             ownerAgentId: member.agentId,
             acceptance: '交付已核验。',
             dependsOn: [],
-            status: 'done',
+            status: 'pending',
             evidence: '验收记录已保存。',
             blocker: '',
           },
@@ -353,7 +360,7 @@ test('growth cannot start before the shared plan is accepted or while project wo
             ownerAgentId: member.agentId,
             acceptance: '结果可复核。',
             dependsOn: [],
-            status: 'done',
+            status: 'pending',
             evidence: '已核对结果。',
             blocker: '',
           },
@@ -399,7 +406,7 @@ test('growth recovery preserves settled members and marks an in-flight member in
             ownerAgentId: first.agentId,
             acceptance: '可复核。',
             dependsOn: [],
-            status: 'done',
+            status: 'pending',
             evidence: '已检查结果。',
             blocker: '',
           },
@@ -504,7 +511,7 @@ test('growth retry refuses to replay a failed turn after it changed member asset
             ownerAgentId: member.agentId,
             acceptance: '已核验。',
             dependsOn: [],
-            status: 'done',
+            status: 'pending',
             evidence: '完成。',
             blocker: '',
           },
@@ -911,6 +918,9 @@ test('schema v11 upgrades to the current schema without deleting chats or re-ena
   const roomBefore = oldStore.getRoomSnapshot('room-engineering-collaboration');
   try {
     db.exec(`
+      ALTER TABLE social_work_tasks DROP COLUMN project_plan_item_id;
+      ALTER TABLE social_work_tasks DROP COLUMN project_result_pending;
+      DELETE FROM social_schema_migrations WHERE version = 25;
       DROP TABLE IF EXISTS social_project_growth_members;
       DROP TABLE IF EXISTS social_project_growth_batches;
       DELETE FROM social_schema_migrations WHERE version = 24;
@@ -946,7 +956,7 @@ test('schema v11 upgrades to the current schema without deleting chats or re-ena
       db
         .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
         .get().version,
-      24,
+      25,
     );
     assert.deepEqual(
       upgradedStore

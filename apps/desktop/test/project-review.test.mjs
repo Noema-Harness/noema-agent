@@ -5,6 +5,7 @@ import { RootStore } from '../src/root-store.mjs';
 import { SocialChatStore } from '../src/social-chat-store.mjs';
 import { SocialProjectStore } from '../src/social-project-store.mjs';
 import { SocialChatService } from '../src/social-chat-service.mjs';
+import { acceptAllProjectWorkItems } from '../test-support/project-plan-fixtures.mjs';
 
 function fixture() {
   const db = new Database(':memory:');
@@ -168,7 +169,7 @@ test('review cannot pause a project while a member report is queued for Noema', 
   }
 });
 
-test('review can pause at an accepted phase gate while a member report is queued', () => {
+test('review can pause at a legacy awaiting-review phase while a member report is queued', () => {
   const f = fixture();
   try {
     const memberId = f.member.members[0].id;
@@ -197,7 +198,7 @@ test('review can pause at an accepted phase gate while a member report is queued
                 ownerAgentId: memberId,
                 acceptance: '提供可核验的成果。',
                 dependsOn: [],
-                status: 'done',
+                status: 'pending',
                 evidence: '成果依据已经 Noema 核验并记录。',
                 blocker: '',
               },
@@ -206,6 +207,36 @@ test('review can pause at an accepted phase gate while a member report is queued
         ],
       },
     });
+    acceptAllProjectWorkItems(f.projects.plans, f.project.id);
+    const acceptedPlan = f.projects.plans.get(f.project.id);
+    f.projects.plans.updatePhase({
+      projectId: f.project.id,
+      expectedRevision: acceptedPlan.revision,
+      phaseId: 'phase-one',
+      actorAgentId: 'noema',
+      status: 'done',
+      evidence: '阶段交付和出口条件均已核验。',
+      reason: '测试夹具建立已验收阶段。',
+    });
+    // Simulate an older persisted "done" item whose independent review record
+    // was never written. It remains an awaiting-review gate after migration.
+    const latestPlan = f.projects.plans.get(f.project.id);
+    const latestRevision = f.db
+      .prepare(
+        'SELECT items_json FROM social_project_plan_revisions WHERE project_id = ? AND revision = ?',
+      )
+      .get(f.project.id, latestPlan.revision);
+    const legacyPlan = JSON.parse(latestRevision.items_json);
+    legacyPlan.phases[0].workItems[0].evidenceReview = null;
+    f.db
+      .prepare(
+        'UPDATE social_project_plan_revisions SET items_json = ? WHERE project_id = ? AND revision = ?',
+      )
+      .run(JSON.stringify(legacyPlan), f.project.id, latestPlan.revision);
+    assert.equal(
+      f.projects.plans.get(f.project.id).phases[0].state,
+      'awaiting_review',
+    );
     const turn = f.store.beginTurn({
       roomId: f.project.groupRoomId,
       agentId: memberId,
@@ -368,12 +399,12 @@ test('real service tool requests review; ordinary chat cannot resume it; failed 
   }
 });
 
-test('v14 to v17 migrations preserve projects and old messages', () => {
+test('v14 to current migrations preserve projects and old messages', () => {
   const f = fixture();
   try {
     const before = f.store.getRoomSnapshot(f.project.groupRoomId).messages;
     f.db.exec(
-      'DROP TABLE social_work_runtime_checkpoints; DELETE FROM social_schema_migrations WHERE version = 17; ALTER TABLE social_messages DROP COLUMN sender_agent_id; DELETE FROM social_schema_migrations WHERE version = 16; ALTER TABLE social_work_execution_steps DROP COLUMN arguments_json; ALTER TABLE social_work_execution_steps DROP COLUMN result_json; DROP TABLE social_project_reviews; DELETE FROM social_schema_migrations WHERE version = 15;',
+      'ALTER TABLE social_work_tasks DROP COLUMN project_plan_item_id; ALTER TABLE social_work_tasks DROP COLUMN project_result_pending; DELETE FROM social_schema_migrations WHERE version = 25; ALTER TABLE social_project_growth_batches DROP COLUMN finalized_at; DROP TABLE social_project_growth_members; DROP TABLE social_project_growth_batches; DELETE FROM social_schema_migrations WHERE version = 24; DELETE FROM social_schema_migrations WHERE version = 23; DROP TABLE social_project_dispatch_log; DROP TABLE social_project_publications; DROP TABLE social_project_read_cursors; DELETE FROM social_schema_migrations WHERE version = 22; DROP TABLE social_project_plan_revisions; DELETE FROM social_schema_migrations WHERE version = 21; DROP TABLE social_agent_asset_revisions; DELETE FROM social_schema_migrations WHERE version = 20; DROP TABLE social_project_reports; DELETE FROM social_schema_migrations WHERE version = 19; DROP TABLE social_project_group_inbox; DELETE FROM social_schema_migrations WHERE version = 18; DROP TABLE social_work_runtime_checkpoints; DELETE FROM social_schema_migrations WHERE version = 17; ALTER TABLE social_messages DROP COLUMN sender_agent_id; DELETE FROM social_schema_migrations WHERE version = 16; ALTER TABLE social_work_execution_steps DROP COLUMN arguments_json; ALTER TABLE social_work_execution_steps DROP COLUMN result_json; DROP TABLE social_project_reviews; DELETE FROM social_schema_migrations WHERE version = 15;',
     );
     const store = new SocialChatStore(f.db);
     const projects = new SocialProjectStore({

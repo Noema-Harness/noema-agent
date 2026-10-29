@@ -22,6 +22,18 @@ const appDirectory = path.resolve(
 );
 const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'Noema-plan-ui-'));
 const database = path.join(scratch, 'fixture.sqlite3');
+const rendererUrl =
+  process.env.NOEMA_E2E_RENDERER_URL || 'http://localhost:5173';
+try {
+  const response = await fetch(rendererUrl, {
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+} catch (error) {
+  throw new Error(
+    `Start the Noema Forge dev server before this isolated-client run (${rendererUrl}): ${error.message}`,
+  );
+}
 const db = new Database(database);
 new RootStore(db);
 const social = new SocialChatStore(db);
@@ -170,7 +182,11 @@ const probe = http.createServer();
 await new Promise((resolve) => probe.listen(0, '127.0.0.1', resolve));
 const port = probe.address().port;
 await new Promise((resolve) => probe.close(resolve));
-const environment = { ...process.env, NOEMA_E2E_DATABASE_PATH: database };
+const environment = {
+  ...process.env,
+  NOEMA_E2E_DATABASE_PATH: database,
+  NOEMA_E2E_RENDERER_URL: rendererUrl,
+};
 delete environment.ELECTRON_RUN_AS_NODE;
 delete environment.NOEMA_SMOKE_TEST;
 const child = spawn(
@@ -214,14 +230,7 @@ try {
     mobile: false,
   });
   await wait(
-    `document.querySelector('.arrival-enter') || document.querySelector('.project-list-item')`,
-  );
-  if (await evaluate(`Boolean(document.querySelector('.arrival-enter'))`)) {
-    await click('进入 Noema', '.first-meeting');
-    await wait(`!document.querySelector('.first-meeting')`);
-  }
-  await wait(
-    `document.querySelector('.project-list-item') && !document.querySelector('.first-meeting')`,
+    `document.querySelector('#social-message-input') && document.querySelector('.project-list-item')`,
   );
   await evaluate(
     `Array.from(document.querySelectorAll('.project-list-item')).find(n=>n.textContent.includes('共享计划界面验收样例')).click()`,

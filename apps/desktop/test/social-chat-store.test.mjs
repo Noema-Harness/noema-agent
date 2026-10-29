@@ -101,7 +101,7 @@ test('an explicit team fixture keeps one agent across independent rooms', () => 
       db
         .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
         .get().version,
-      22,
+      25,
     );
   } finally {
     db.close();
@@ -829,6 +829,14 @@ test('social chat schema v1 upgrades additively to project-work state', () => {
     social.appendAssistantDelta(message.assistantMessageId, '已保存。');
     social.completeReply(message.assistantMessageId);
     db.exec(`
+      ALTER TABLE social_work_tasks DROP COLUMN project_plan_item_id;
+      ALTER TABLE social_work_tasks DROP COLUMN project_result_pending;
+      DELETE FROM social_schema_migrations WHERE version = 25;
+      ALTER TABLE social_project_growth_batches DROP COLUMN finalized_at;
+      DROP TABLE social_project_growth_members;
+      DROP TABLE social_project_growth_batches;
+      DELETE FROM social_schema_migrations WHERE version = 24;
+      DELETE FROM social_schema_migrations WHERE version = 23;
       DROP TABLE IF EXISTS social_project_dispatch_log;
       DROP TABLE IF EXISTS social_project_publications;
       DROP TABLE IF EXISTS social_project_read_cursors;
@@ -895,7 +903,7 @@ test('social chat schema v1 upgrades additively to project-work state', () => {
       db
         .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
         .get().version,
-      22,
+      25,
     );
     assert.equal(
       db
@@ -934,6 +942,14 @@ test('social schema v7 adds retry snapshots without rewriting the last known att
     });
     social.failReply(turn.assistantMessageId, 'test_failure', '重试前失败');
     db.exec(`
+      ALTER TABLE social_work_tasks DROP COLUMN project_plan_item_id;
+      ALTER TABLE social_work_tasks DROP COLUMN project_result_pending;
+      DELETE FROM social_schema_migrations WHERE version = 25;
+      ALTER TABLE social_project_growth_batches DROP COLUMN finalized_at;
+      DROP TABLE social_project_growth_members;
+      DROP TABLE social_project_growth_batches;
+      DELETE FROM social_schema_migrations WHERE version = 24;
+      DELETE FROM social_schema_migrations WHERE version = 23;
       DROP TABLE IF EXISTS social_project_dispatch_log;
       DROP TABLE IF EXISTS social_project_publications;
       DROP TABLE IF EXISTS social_project_read_cursors;
@@ -1545,7 +1561,7 @@ test('a user-created specialist keeps one identity across a fresh DM, group, and
     assert.deepEqual(projectWorkEnabled.capabilities, ['project-work']);
     assert.match(
       projectWorkEnabled.systemPrompt,
-      /只有当用户明确切换到项目工作/u,
+      /你具备项目文件任务能力/u,
     );
     const projectWorkDisabled = social.setAgentProjectWork(agentId, false);
     assert.deepEqual(projectWorkDisabled.capabilities, []);
@@ -1644,7 +1660,7 @@ test('editing a specialist updates future identity across rooms without changing
     assert.equal(updated.name, 'AI 产业观察员');
     assert.match(updated.systemPrompt, /AI 平台产品、价格与政策变化/u);
     assert.match(updated.systemPrompt, /标出不确定性/u);
-    assert.match(updated.systemPrompt, /用户已开启 Noema 的项目文件任务能力/u);
+    assert.match(updated.systemPrompt, /你具备项目文件任务能力/u);
     assert.deepEqual(updated.capabilities, ['project-work']);
     assert.equal(social.getRoomSnapshot(roomId).room.title, 'AI 产业观察员');
     assert.equal(social.getRoomSnapshot(roomId).messages[0].id, firstMessage);
