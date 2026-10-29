@@ -384,7 +384,7 @@ test('plan tools return actionable conflict fields and on-demand revision values
   }
 });
 
-test('member project tool distinguishes a mistyped project ID from missing access', async () => {
+test('member project tools infer their bound project and reject a conflicting ID', async () => {
   const db = new Database(':memory:');
   new RootStore(db);
   const store = createSocialTestStore(db);
@@ -411,23 +411,54 @@ test('member project tool distinguishes a mistyped project ID from missing acces
       async *streamChat(input) {
         requests.push(input);
         if (requests.length === 1) {
-          const tool = input.tools.find(
+          const planTool = input.tools.find(
             (entry) => entry.function.name === 'manage_project_plan',
           );
-          assert.deepEqual(
-            tool.function.parameters.properties.project_id.enum,
-            [project.id],
+          const groupTool = input.tools.find(
+            (entry) => entry.function.name === 'project_group',
           );
+          assert.equal(
+            planTool.function.parameters.properties.project_id,
+            undefined,
+          );
+          assert.equal(
+            groupTool.function.parameters.properties.project_id,
+            undefined,
+          );
+          assert.deepEqual(planTool.function.parameters.required, [
+            'operation',
+            'reason',
+          ]);
+          assert.deepEqual(groupTool.function.parameters.required, [
+            'operation',
+          ]);
+          assert.match(planTool.function.description, /omit project_id/u);
           input.onToolCalls([
             {
-              id: 'mistyped-project-id',
+              id: 'read-bound-project',
+              type: 'function',
+              function: {
+                name: 'manage_project_plan',
+                arguments: JSON.stringify({
+                  operation: 'read',
+                  reason: '读取当前项目计划。',
+                }),
+              },
+            },
+          ]);
+        } else if (requests.length === 2) {
+          const result = JSON.parse(input.messages.at(-1).content);
+          assert.equal(result.projectId, project.id);
+          input.onToolCalls([
+            {
+              id: 'conflicting-project-id',
               type: 'function',
               function: {
                 name: 'manage_project_plan',
                 arguments: JSON.stringify({
                   operation: 'read',
                   project_id: `${project.id}-typo`,
-                  reason: '读取当前项目计划。',
+                  reason: '验证绑定会话不能切换到另一项目。',
                 }),
               },
             },
@@ -451,7 +482,7 @@ test('member project tool distinguishes a mistyped project ID from missing acces
     await service.active.get(session.room.room.id)?.done;
     assert.equal(store.getSocialMessage(turn.messageId).status, 'complete');
     assert.equal(projects.plans.get(project.id).revision, 0);
-    assert.equal(requests.length, 2);
+    assert.equal(requests.length, 3);
   } finally {
     await service.shutdown();
     db.close();
