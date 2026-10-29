@@ -42,7 +42,7 @@
 - **跨库索引候选**：OpenAlex、Crossref、Semantic Scholar API 可用于扩充作者/引用/版本线索；其元数据需回到出版方核验。用 DOI、arXiv ID 或 ACL Anthology ID 统一去重。
 - **下载与 Markdown**：先使用出版方或作者公开的 PDF/HTML；以 `pdftotext -layout` 或 `MarkItDown` 提取可搜索文本，同时保留 PDF 供表格、图和公式核查。Markdown 是检索副本，图表与版面细节以原 PDF 为准。遇到访问限制时记录限制并找合法作者稿，不绕过付费墙。
 - **阅读笔记最小字段**：问题、研究对象/语料、方法、比较条件、测量指标、主要发现、适用范围、我对 Noema 的推论、尚未回答的问题、原文位置与稳定链接。结论和推论分栏，防止摘要变成设计规格。
-- **本机处理现状**：Python 3.13 与 PyMuPDF 已可用；`pdftotext`、MarkItDown、pypdf 当前未安装。双栏 PDF 的纯文本抽取会扰乱阅读顺序，所以 Markdown 只作为可搜索副本；页码保留，表格、公式与重要段落回看 PDF。
+- **本机处理现状**：Python 3.13 与 PyMuPDF 已可用。用 `python scripts/research/pdf_to_markdown.py <paper.pdf> --output <paper.md>` 生成带逐页标记的可搜索 Markdown；工具拒绝覆盖已有文件，扫描页会明确标注。已用 26 页的 HUMT-DUMT 论文跑通，抽取到 26 页文本。双栏顺序、表格、公式与图片仍需回到原 PDF 核对；这是阅读副本，不把版面重建当成准确转写。`pdftotext`、MarkItDown、pypdf 未安装，当前研究流程不依赖它们。
 
 ## 首轮阅读路线回看
 
