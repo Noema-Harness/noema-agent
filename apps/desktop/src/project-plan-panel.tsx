@@ -1374,21 +1374,11 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                               </span>
                             </span>
                             <strong className="project-plan-phase-stop-title">{phase.title}</strong>
-                            <span className="project-plan-phase-stop-outcome">
-                              {phase.outcome}
-                            </span>
                             <span className="project-plan-phase-stop-progress">
                               {(() => {
                                 const distribution = phaseWorkStatusDistribution(phase);
                                 return phase.progress.total ? (
                                   <>
-                                    <span>
-                                      {phase.progress.done}/{phase.progress.total} 项已验收
-                                      {distribution
-                                        .filter((segment) => segment.key !== 'accepted')
-                                        .map((segment) => ` · ${segment.count} ${segment.label}`)
-                                        .join('')}
-                                    </span>
                                     <span
                                       className="project-plan-phase-stop-meter"
                                       role="img"
@@ -1402,6 +1392,17 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                                         />
                                       ))}
                                     </span>
+                                    <span className="project-plan-phase-stop-counts">
+                                      <b>{phase.progress.done}/{phase.progress.total}</b>
+                                      <span>项已验收</span>
+                                      {distribution
+                                        .filter((segment) => segment.key !== 'accepted')
+                                        .map((segment) => (
+                                          <span className={`state-${segment.key}`} key={segment.key}>
+                                            {segment.count} {segment.label}
+                                          </span>
+                                        ))}
+                                    </span>
                                   </>
                                 ) : (
                                   <span>工作包待细化</span>
@@ -1410,28 +1411,14 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                             </span>
                             <span className="project-plan-phase-dependencies">
                               {phase.dependsOn.length ? (
-                                <span
-                                  className="project-plan-phase-dependency"
-                                  title={`前置阶段：${phase.dependsOn
-                                    .map(
-                                      (dependencyId) =>
-                                        plan.phases.find(
-                                          (item) => item.id === dependencyId,
-                                        )?.title ?? '未知阶段',
-                                    )
-                                    .join('、')}`}
-                                >
-                                  前置{' '}
-                                  {phase.dependsOn
-                                    .map((dependencyId) =>
-                                      String(
-                                        plan.phases.findIndex(
-                                          (item) => item.id === dependencyId,
-                                        ) + 1,
-                                      ).padStart(2, '0'),
-                                    )
-                                    .join('、')}
-                                </span>
+                                <>
+                                  <span>等待</span>
+                                  {phase.dependsOn.map((dependencyId) => (
+                                    <span className="project-plan-phase-dependency" key={dependencyId}>
+                                      {plan.phases.find((item) => item.id === dependencyId)?.title ?? '未知阶段'}
+                                    </span>
+                                  ))}
+                                </>
                               ) : null}
                             </span>
                           </button>
