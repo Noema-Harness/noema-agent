@@ -1560,7 +1560,7 @@ test('a user-created specialist with explicit project-work capability uses the e
     assert.equal(task.agentId, created.members[0].id);
     assert.equal(starts.length, 1);
     assert.match(starts[0].task, /长期研究游戏项目结构与迭代验证/u);
-    assert.match(starts[0].task, /只有当用户明确切换到项目工作/u);
+    assert.match(starts[0].task, /你具备项目文件任务能力/u);
   } finally {
     await service.shutdown();
     db.close();

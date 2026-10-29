@@ -157,8 +157,11 @@ export async function runIsolatedWorkerE2E({
   // Keep a test-only trace of tool names. Do not record tool arguments or add
   // production persistence solely to prove a synthetic live probe used a tool.
   const rootToolCallNames = [];
-  const originalStreamChat = agent.provider.streamChat;
-  if (rootOnly) {
+  const originalStreamChat =
+    rootOnly && typeof agent.provider?.streamChat === 'function'
+      ? agent.provider.streamChat
+      : null;
+  if (originalStreamChat) {
     const streamChat = originalStreamChat.bind(agent.provider);
     agent.provider.streamChat = async function* (input) {
       yield* streamChat({
@@ -373,7 +376,7 @@ export async function runIsolatedWorkerE2E({
     rootRouteMetadata: getAssistantRouteMetadata(store, turnId),
     rootToolCallNames,
   };
-  if (rootOnly) agent.provider.streamChat = originalStreamChat;
+  if (originalStreamChat) agent.provider.streamChat = originalStreamChat;
   writeResult(resultPath, result, e2eDirectory);
   return result;
 }
