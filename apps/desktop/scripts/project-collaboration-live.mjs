@@ -62,6 +62,21 @@ if (!process.versions.electron) {
       throw Error('--max-requests must be an integer between 1 and 64.');
     env.NOEMA_COLLABORATION_LIVE_MAX_REQUESTS = String(requestLimit);
   }
+  const characterLimitArgument = process.argv.find((arg) =>
+    arg.startsWith('--max-characters='),
+  );
+  if (characterLimitArgument) {
+    const characterLimit = Number(
+      characterLimitArgument.slice('--max-characters='.length),
+    );
+    if (
+      !Number.isInteger(characterLimit) ||
+      characterLimit < 300_000 ||
+      characterLimit > 600_000
+    )
+      throw Error('--max-characters must be an integer from 300000 to 600000.');
+    env.NOEMA_COLLABORATION_LIVE_MAX_CHARACTERS = String(characterLimit);
+  }
   const workspaceIndex = process.argv.indexOf('--workspace-copy');
   const workspace = path.join(scratch, 'workspace');
   if (workspaceIndex >= 0) {
@@ -152,6 +167,7 @@ if (!process.versions.electron) {
           : null,
         calls: result.calls,
         requestLimit: result.requestLimit,
+        characterLimit: result.characterLimit,
         stopReason: result.stopReason,
         projectCount: result.projects?.length,
         progress: result.plan?.progress,
@@ -212,6 +228,15 @@ if (!process.versions.electron) {
     process.env.NOEMA_COLLABORATION_LIVE_MAX_REQUESTS ||
       (process.env.NOEMA_COLLABORATION_LIVE_NATURAL === '1' ? 16 : 48),
   );
+  const characterLimit = Number(
+    process.env.NOEMA_COLLABORATION_LIVE_MAX_CHARACTERS || 300_000,
+  );
+  if (
+    !Number.isInteger(characterLimit) ||
+    characterLimit < 300_000 ||
+    characterLimit > 600_000
+  )
+    throw Error('Natural observation character limit must be 300000–600000.');
   const steps = [];
   const pendingResponseDiagnostics = [];
   let result;
@@ -361,7 +386,7 @@ if (!process.versions.electron) {
           throw stop;
         }
         const requestSize = options.body?.length ?? 0;
-        if (natural && requestCharacters + requestSize > 300_000) {
+        if (natural && requestCharacters + requestSize > characterLimit) {
           characterBudgetRejected++;
           requestBudgetExceeded = true;
           requestBudgetStopReason = 'request_character_limit';
@@ -520,6 +545,7 @@ if (!process.versions.electron) {
         model: 'deepseek-flash',
         calls,
         requestLimit,
+        characterLimit,
         characterBudgetRejected,
         ...(requestBudgetExceeded
           ? { stopReason: requestBudgetStopReason }
@@ -630,6 +656,7 @@ if (!process.versions.electron) {
           model: 'deepseek-flash',
           calls,
           requestLimit,
+          characterLimit,
           balanceBefore: before,
           balanceAfter: await balance(),
           projectId: project.id,
@@ -681,6 +708,7 @@ if (!process.versions.electron) {
           model: 'deepseek-flash',
           calls,
           requestLimit,
+          characterLimit,
           characterBudgetRejected,
           ...(requestBudgetStopReason
             ? { stopReason: requestBudgetStopReason }
@@ -714,6 +742,7 @@ if (!process.versions.electron) {
           stopReason: requestBudgetStopReason ?? 'request_budget_exceeded',
           calls,
           requestLimit,
+          characterLimit,
           characterBudgetRejected,
           requestCharacters,
         }
