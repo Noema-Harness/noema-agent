@@ -209,9 +209,31 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
       plan.phases[0] ??
       null)
     : null;
-  const selectedPhaseIndex = selectedPhase
-    ? plan?.phases.findIndex((phase) => phase.id === selectedPhase.id) ?? -1
-    : -1;
+  const phaseDepths = new Map<string, number>();
+  const phaseDepth = (phaseId: string, ancestors = new Set<string>()): number => {
+    const known = phaseDepths.get(phaseId);
+    if (known !== undefined) return known;
+    const phase = plan?.phases.find((entry) => entry.id === phaseId);
+    if (!phase || ancestors.has(phaseId)) return 0;
+    const nextAncestors = new Set(ancestors).add(phaseId);
+    const dependencies = phase.dependsOn
+      .map((id) => plan?.phases.find((entry) => entry.id === id))
+      .filter((entry): entry is NoemaProjectPlanPhase => Boolean(entry));
+    const depth = dependencies.length
+      ? Math.max(...dependencies.map((entry) => phaseDepth(entry.id, nextAncestors) + 1))
+      : 0;
+    phaseDepths.set(phaseId, depth);
+    return depth;
+  };
+  const phaseLanes = plan
+    ? Array.from(
+        { length: Math.max(1, ...plan.phases.map((phase) => phaseDepth(phase.id) + 1)) },
+        (_, depth) => ({
+          depth,
+          phases: plan.phases.filter((phase) => phaseDepths.get(phase.id) === depth),
+        }),
+      )
+    : [];
   const phaseFocus = selectedPhase
     ? (() => {
         const workItems = selectedPhase.workItems.filter(
@@ -1131,7 +1153,7 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
           {plan.phases.length ? (
             <div className="project-plan-overview" aria-label="项目阶段概览">
               <div className="project-plan-overview-status">
-                <span>
+                <strong>
                   {plan.phases.some((phase) => phase.state === 'blocked')
                     ? '有工作受阻'
                     : plan.phases.some((phase) => phase.state === 'awaiting_review')
@@ -1141,52 +1163,97 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                         : plan.phases.some((phase) => phase.state === 'in_progress')
                           ? '项目正在推进'
                           : '项目准备中'}
-                </span>
-                <span>
-                  {plan.phaseProgress.done} / {plan.phaseProgress.total} 阶段验收
-                  {plan.progress.total
-                    ? ` · ${plan.progress.done}/${plan.progress.total} 项已验收`
-                    : ''}
-                  {plan.progress.submitted ? ` · ${plan.progress.submitted} 项待验收` : ''}
-                </span>
+                </strong>
+                <div className="project-plan-overview-metrics" aria-label="项目验收进度">
+                  <span><b>{plan.phaseProgress.done}/{plan.phaseProgress.total}</b>阶段验收</span>
+                  {plan.progress.total ? (
+                    <span><b>{plan.progress.done}/{plan.progress.total}</b>工作项验收</span>
+                  ) : null}
+                  {plan.progress.submitted ? (
+                    <span className="state-submitted"><b>{plan.progress.submitted}</b>待验收</span>
+                  ) : null}
+                  {plan.items.some((item) => item.status === 'blocked') ? (
+                    <span className="state-blocked">
+                      <b>{plan.items.filter((item) => item.status === 'blocked').length}</b>项受阻
+                    </span>
+                  ) : null}
+                </div>
               </div>
-              <ol className="project-plan-phase-map" aria-label="项目阶段">
-                {plan.phases.map((phase, index) => (
-                  <li
-                    className={`project-plan-phase-stop state-${phase.state}${selectedPhase?.id === phase.id ? ' is-selected' : ''}`}
-                    key={phase.id}
-                  >
-                    <button
-                      type="button"
-                      aria-current={selectedPhase?.id === phase.id ? 'step' : undefined}
-                      aria-controls="project-plan-phase-detail"
-                      onClick={() => setSelectedPhaseId(phase.id)}
-                    >
-                      <span className="project-plan-phase-stop-index">
-                        {String(index + 1).padStart(2, '0')}
-                      </span>
-                      <span className="project-plan-phase-stop-copy">
-                        <strong>{phase.title}</strong>
-                        <small>
-                          {phaseLabels[phase.state]}
-                          {phase.progress.total ? ` · ${phase.progress.done}/${phase.progress.total}` : ''}
-                        </small>
-                        <span className="project-plan-phase-dependencies">
-                          {phase.dependsOn.length
-                            ? `前置：${phase.dependsOn
-                                .map(
-                                  (id) =>
-                                    plan.phases.find((entry) => entry.id === id)
-                                      ?.title ?? id,
-                                )
-                                .join('、')}`
-                            : '可独立开始'}
-                        </span>
-                      </span>
-                    </button>
-                  </li>
+              <div className="project-plan-flow-heading">
+                <strong>阶段关系</strong>
+                <span>向右表示依赖层级；同层阶段满足各自前置条件后可并行推进。</span>
+              </div>
+              <div
+                className="project-plan-phase-flow"
+                aria-label="项目阶段依赖图"
+                tabIndex={0}
+                role="region"
+                aria-describedby="project-plan-flow-help"
+                style={{ gridTemplateColumns: `repeat(${phaseLanes.length}, minmax(210px, 1fr))` }}
+              >
+                {phaseLanes.map((lane) => (
+                  <section className="project-plan-phase-lane" key={lane.depth}>
+                    <header>
+                      <span>{lane.depth === 0 ? '起点' : `依赖层 ${String(lane.depth + 1).padStart(2, '0')}`}</span>
+                      <small>{lane.depth === 0 ? '无需前置阶段' : '前置成果通过后解锁'}</small>
+                    </header>
+                    <ol>
+                      {lane.phases.map((phase) => (
+                        <li
+                          className={`project-plan-phase-stop state-${phase.state}${selectedPhase?.id === phase.id ? ' is-selected' : ''}`}
+                          key={phase.id}
+                        >
+                          <button
+                            type="button"
+                            aria-current={selectedPhase?.id === phase.id ? 'step' : undefined}
+                            aria-controls="project-plan-phase-detail"
+                            onClick={() => setSelectedPhaseId(phase.id)}
+                          >
+                            <span className="project-plan-phase-stop-state">
+                              <i aria-hidden="true" />
+                              {phaseLabels[phase.state]}
+                            </span>
+                            <strong>{phase.title}</strong>
+                            <span className="project-plan-phase-stop-outcome">{phase.outcome}</span>
+                            <span className="project-plan-phase-stop-progress">
+                              <span>
+                                {phase.progress.total
+                                  ? `已验收 ${phase.progress.done}/${phase.progress.total}`
+                                  : '工作项待细化'}
+                              </span>
+                              {phase.progress.total ? (
+                                <progress
+                                  value={phase.progress.done}
+                                  max={phase.progress.total}
+                                  aria-label={`${phase.title}阶段工作项验收进度`}
+                                />
+                              ) : null}
+                            </span>
+                            <span className="project-plan-phase-dependencies">
+                              {phase.dependsOn.length ? (
+                                <>
+                                  <span aria-hidden="true">←</span>
+                                  <span>需先验收</span>
+                                  {phase.dependsOn.map((id) => (
+                                    <span className="project-plan-phase-dependency" key={id}>
+                                      {plan.phases.find((entry) => entry.id === id)?.title ?? id}
+                                    </span>
+                                  ))}
+                                </>
+                              ) : (
+                                <span>无前置阶段</span>
+                              )}
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </ol>
+                  </section>
                 ))}
-              </ol>
+              </div>
+              <span className="project-plan-flow-help" id="project-plan-flow-help">
+                横向滚动可查看后续依赖层；点击阶段查看出口条件与团队工作项。
+              </span>
               {plan.progress.canceled ? (
                 <p className="project-plan-meta">
                   {plan.progress.canceled} 项已取消，不计入当前进度。
@@ -1205,13 +1272,12 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                 aria-label={`${phase.title}阶段详情`}
               >
                 <p className="project-plan-phase-detail-label">
-                  阶段 {String(selectedPhaseIndex + 1).padStart(2, '0')} · 交付与验收
+                  阶段详情 · {phaseDepths.get(phase.id) === 0
+                    ? '起点'
+                    : `依赖层 ${String((phaseDepths.get(phase.id) ?? 0) + 1).padStart(2, '0')}`}
                 </p>
                 <header className="project-plan-phase-head">
                   <div className="project-plan-phase-name">
-                    <span className="project-plan-phase-number">
-                      {String(selectedPhaseIndex + 1).padStart(2, '0')}
-                    </span>
                     <div>
                       <h4>{phase.title}</h4>
                       <p>{phase.outcome}</p>
