@@ -933,7 +933,9 @@ export class SocialChatService {
         maxTokens: 4096,
         tools: [
           ...this.projectTools(run),
-          ...(run.agentId === 'noema' && run.roomId === 'room-noema'
+          ...(run.agentId === 'noema' &&
+          run.roomId === 'room-noema' &&
+          !run.reviewContext
             ? [
                 projectReviewTool(
                   this.accessibleProjects(run).filter(

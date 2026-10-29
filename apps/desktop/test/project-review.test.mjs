@@ -467,6 +467,16 @@ test('review feedback turn carries a scoped context and executes a public handof
         ]);
         return;
       }
+      if (calls === 3) {
+        const toolNames = input.tools.map((tool) => tool.function.name);
+        assert.equal(
+          toolNames.includes('request_project_review'),
+          false,
+          'a feedback turn must remain scoped after executing its project action',
+        );
+        yield '已将下一步交办发送到项目群。';
+        return;
+      }
       yield '已将下一步交办发送到项目群。';
     },
   };
