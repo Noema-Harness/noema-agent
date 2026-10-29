@@ -165,6 +165,148 @@ test('runtime captures public message identity and version; changed source block
   }
 });
 
+test('changed accepted dependency evidence blocks downstream work from starting', () => {
+  const f = fixture();
+  try {
+    f.update('submitted', {
+      evidence: '公开成果。',
+      evidenceSources: [{ kind: 'message', messageId: 'public' }],
+    });
+    f.update('done', {}, 'noema');
+    f.db
+      .prepare(
+        "UPDATE social_messages SET content='更正后的成果' WHERE id='public'",
+      )
+      .run();
+
+    assert.throws(
+      () =>
+        f.projects.plans.updateItem({
+          projectId: f.project.id,
+          itemId: 'consume',
+          expectedRevision: f.projects.plans.get(f.project.id).revision,
+          actorAgentId: f.agent,
+          status: 'in_progress',
+          reason: '开始依赖前置成果的工作。',
+        }),
+      /前置成果来源已变化或不可用：生成成果/u,
+    );
+    const plan = f.projects.plans.get(f.project.id);
+    assert.throws(
+      () =>
+        f.projects.plans.replace({
+          projectId: f.project.id,
+          expectedRevision: plan.revision,
+          actorAgentId: 'noema',
+          reason: '尝试通过计划修订绕过前置来源核验。',
+          plan: {
+            objective: plan.objective,
+            phases: plan.phases.map((phase) => ({
+              ...phase,
+              workItems: phase.workItems.map((item) =>
+                item.id === 'consume'
+                  ? { ...item, status: 'in_progress' }
+                  : item,
+              ),
+            })),
+          },
+        }),
+      /前置成果来源已变化或不可用：生成成果/u,
+    );
+    assert.equal(
+      f.projects.plans
+        .get(f.project.id)
+        .items.find((item) => item.id === 'consume').status,
+      'pending',
+    );
+  } finally {
+    f.close();
+  }
+});
+
+test('changed evidence in a completed prerequisite phase blocks the next phase', () => {
+  const f = fixture();
+  try {
+    f.projects.plans.replace({
+      projectId: f.project.id,
+      expectedRevision: f.projects.plans.get(f.project.id).revision,
+      reason: '建立有阶段门槛的交付链。',
+      plan: {
+        objective: '只有研究成果仍然有效时才启动后续交付。',
+        phases: [
+          {
+            id: 'research',
+            title: '研究',
+            outcome: '确认依据。',
+            exitCriteria: '成果经独立核验。',
+            status: 'pending',
+            workItems: [
+              {
+                id: 'produce',
+                title: '生成成果',
+                ownerAgentId: f.agent,
+                acceptance: '来源版本一致。',
+                status: 'pending',
+              },
+            ],
+          },
+          {
+            id: 'delivery',
+            title: '后续交付',
+            outcome: '基于研究推进。',
+            exitCriteria: '交付完成。',
+            dependsOn: ['research'],
+            status: 'pending',
+            workItems: [
+              {
+                id: 'consume',
+                title: '接手成果',
+                ownerAgentId: f.agent,
+                acceptance: '使用已核验成果。',
+                status: 'pending',
+              },
+            ],
+          },
+        ],
+      },
+    });
+    f.update('submitted', {
+      evidence: '研究成果。',
+      evidenceSources: [{ kind: 'message', messageId: 'public' }],
+    });
+    let plan = f.update('done', {}, 'noema');
+    plan = f.projects.plans.updatePhase({
+      projectId: f.project.id,
+      phaseId: 'research',
+      expectedRevision: plan.revision,
+      actorAgentId: 'noema',
+      status: 'done',
+      evidence: '研究通过核验。',
+      reason: '验收研究阶段。',
+    });
+    f.db
+      .prepare(
+        "UPDATE social_messages SET content='已更正的研究成果' WHERE id='public'",
+      )
+      .run();
+
+    assert.throws(
+      () =>
+        f.projects.plans.updateItem({
+          projectId: f.project.id,
+          itemId: 'consume',
+          expectedRevision: plan.revision,
+          actorAgentId: f.agent,
+          status: 'in_progress',
+          reason: '开始下一阶段工作。',
+        }),
+      /前置成果来源已变化或不可用：生成成果/u,
+    );
+  } finally {
+    f.close();
+  }
+});
+
 test('changed evidence can reopen its accepted dependency chain without erasing history', () => {
   const f = fixture();
   try {

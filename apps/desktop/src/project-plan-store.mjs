@@ -343,6 +343,68 @@ export class ProjectPlanStore {
     };
   }
 
+  assertAcceptedEvidenceFresh(projectId, items) {
+    const stale = items
+      .filter(
+        (item) =>
+          acceptanceRecorded(item) &&
+          Array.isArray(item.evidenceRefs) &&
+          item.evidenceRefs.length > 0,
+      )
+      .filter((item) =>
+        this.evidence
+          .inspect(projectId, item.evidenceRefs)
+          .some((source) => source.state !== 'unchanged'),
+      );
+    if (stale.length)
+      throw new Error(
+        `前置成果来源已变化或不可用：${stale.map((item) => item.title).join('、')}。请先核对来源并退回受影响工作重核。`,
+      );
+  }
+
+  prerequisiteItems(plan, { item = null, phase = null }) {
+    const itemById = new Map(plan.items.map((entry) => [entry.id, entry]));
+    const phaseById = new Map(plan.phases.map((entry) => [entry.id, entry]));
+    const items = new Map();
+    const pendingItems = [...(item?.dependsOn ?? [])];
+    const pendingPhases = phase
+      ? [...phase.dependsOn]
+      : [...(phaseById.get(item?.phaseId)?.dependsOn ?? [])];
+    const visitedItems = new Set();
+    const visitedPhases = new Set();
+    while (pendingItems.length || pendingPhases.length) {
+      while (pendingItems.length) {
+        const id = pendingItems.pop();
+        if (visitedItems.has(id)) continue;
+        visitedItems.add(id);
+        const dependency = itemById.get(id);
+        if (!dependency || dependency.kind !== 'work_package') continue;
+        items.set(id, dependency);
+        pendingItems.push(...dependency.dependsOn);
+        pendingPhases.push(
+          ...(phaseById.get(dependency.phaseId)?.dependsOn ?? []),
+        );
+      }
+      while (pendingPhases.length) {
+        const id = pendingPhases.pop();
+        if (visitedPhases.has(id)) continue;
+        visitedPhases.add(id);
+        const prerequisite = phaseById.get(id);
+        if (!prerequisite) continue;
+        pendingPhases.push(...prerequisite.dependsOn);
+        pendingItems.push(
+          ...prerequisite.workItems
+            .filter(
+              (entry) =>
+                entry.kind === 'work_package' && entry.status !== 'canceled',
+            )
+            .map((entry) => entry.id),
+        );
+      }
+    }
+    return [...items.values()];
+  }
+
   reopenEvidenceImpact({
     projectId,
     itemId,
@@ -1202,6 +1264,21 @@ export class ProjectPlanStore {
             })),
           }
         : normalizedPlan;
+      const candidate = { ...plan, items: flatten(plan.phases) };
+      const priorStatuses = new Map(
+        current.items.map((item) => [item.id, item.status]),
+      );
+      for (const item of candidate.items) {
+        if (
+          item.kind === 'work_package' &&
+          item.status === 'in_progress' &&
+          priorStatuses.get(item.id) !== 'in_progress'
+        )
+          this.assertAcceptedEvidenceFresh(
+            input.projectId,
+            this.prerequisiteItems(candidate, { item }),
+          );
+      }
       return this.write({ ...input, plan });
     })();
   }
@@ -1243,6 +1320,11 @@ export class ProjectPlanStore {
         status === 'done' && item.status === 'done' && acceptanceRecorded(item);
       if (status === 'done' && !accepting && !remainsAccepted)
         throw new Error('必须先由负责人提交成果，再由另一方验收。');
+      if (status === 'in_progress' || accepting)
+        this.assertAcceptedEvidenceFresh(
+          input.projectId,
+          this.prerequisiteItems(current, { item }),
+        );
       if (accepting && !item.submittedByAgentId)
         throw new Error('提交记录缺少提交者；请由负责人重新提交成果。');
       if (accepting && reviewerId === item.submittedByAgentId)
@@ -1383,6 +1465,10 @@ export class ProjectPlanStore {
           )
         )
           throw Error('阶段成果来源已变化或不可用；请先重核相关工作包。');
+        this.assertAcceptedEvidenceFresh(
+          input.projectId,
+          this.prerequisiteItems(current, { phase }),
+        );
         if (
           phase.dependsOn.some(
             (id) =>
