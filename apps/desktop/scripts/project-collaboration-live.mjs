@@ -181,8 +181,8 @@ if (!process.versions.electron) {
   app.setPath('userData', path.join(scratch, 'home'));
   await app.whenReady();
   // Electron's Chromium network stack does not reliably inherit shell proxy
-  // variables on Windows. Keep this isolated live harness on the same proxy
-  // route as curl/Node without changing the user's system proxy settings.
+  // variables on Windows. Pin the isolated harness to the explicitly selected
+  // route so stale Windows proxy values cannot silently redirect live checks.
   const proxyAddress = process.env.HTTPS_PROXY || process.env.HTTP_PROXY;
   if (proxyAddress) {
     const proxy = new URL(proxyAddress);
@@ -190,7 +190,7 @@ if (!process.versions.electron) {
     await session.defaultSession.setProxy({
       proxyRules: `http=${endpoint};https=${endpoint}`,
     });
-  }
+  } else await session.defaultSession.setProxy({ mode: 'direct' });
   const { RootStore } = await import('../src/root-store.mjs');
   const { SocialChatStore } = await import('../src/social-chat-store.mjs');
   const { SocialProjectStore } =
