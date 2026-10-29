@@ -474,7 +474,27 @@ test('review feedback turn carries a scoped context and executes a public handof
           false,
           'a feedback turn must remain scoped after executing its project action',
         );
-        yield '已将下一步交办发送到项目群。';
+        input.onToolCalls([
+          {
+            id: 'review-again',
+            type: 'function',
+            function: {
+              name: 'request_project_review',
+              arguments: JSON.stringify({
+                project_id: f.project.id,
+                question: '是否继续下一步？',
+              }),
+            },
+          },
+        ]);
+        return;
+      }
+      if (calls === 4) {
+        const rejected = input.messages.findLast(
+          (message) => message.role === 'tool',
+        );
+        assert.match(rejected.content, /当前不能发起该项目评审/u);
+        yield '已将下一步交办发送到项目群；本轮未新建评审。';
         return;
       }
       yield '已将下一步交办发送到项目群。';
@@ -506,10 +526,17 @@ test('review feedback turn carries a scoped context and executes a public handof
     });
     await service.active.get('room-noema')?.done;
 
-    assert.equal(calls, 3);
+    assert.equal(calls, 4);
     assert.equal(f.projects.getReview(review.id).status, 'answered');
     assert.equal(f.projects.getProject(f.project.id).status, 'active');
     assert.equal(f.projects.getProject(f.other.id).status, 'active');
+    assert.equal(Boolean(f.projects.getProject(f.project.id).pendingReview), false);
+    assert.equal(
+      f.db
+        .prepare('SELECT COUNT(*) AS count FROM social_project_reviews')
+        .get().count,
+      1,
+    );
     assert.ok(
       f.store
         .getRoomSnapshot(f.project.groupRoomId)

@@ -756,6 +756,7 @@ export class SocialChatService {
               if (callIndex !== calls.length - 1)
                 throw new Error('用户评审必须是本轮最后一个操作。');
               if (
+                run.reviewContext ||
                 run.agentId !== 'noema' ||
                 run.roomId !== 'room-noema' ||
                 project.status !== 'active' ||
