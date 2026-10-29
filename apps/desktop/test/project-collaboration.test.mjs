@@ -379,6 +379,13 @@ test('plan submission triggers Noema review; acceptance unlocks and dispatches t
               ? 'in_progress'
               : 'submitted',
           evidence: isNoema ? item.evidence : '合成成果与核验依据。',
+          ...(!isNoema && item.status !== 'pending'
+            ? {
+                evidence_sources: [
+                  { kind: 'message', messageId: 'collab-a-evidence' },
+                ],
+              }
+            : {}),
           reason: isNoema ? '核验满足预定完成条件。' : '执行计划交付。',
         },
         `update-${calls.length}`,
@@ -413,6 +420,14 @@ test('plan submission triggers Noema review; acceptance unlocks and dispatches t
         ],
       },
     });
+    const evidenceTime = new Date().toISOString();
+    f.db.prepare(`INSERT INTO social_messages
+      (id,room_id,turn_id,role,agent_id,content,status,runtime,created_at,updated_at)
+      VALUES ('collab-a-evidence',?,'collab-a-evidence','user',NULL,'需求证据：合成事实和未知项已核对。','complete','local',?,?)`).run(
+      f.project.groupRoomId,
+      evidenceTime,
+      evidenceTime,
+    );
     f.service.schedulePendingProjectGroupInboxes();
     await settle(f.service);
     const accepted = f.projects.plans.get(f.project.id);
@@ -857,6 +872,9 @@ test('public peer speech stays external, the current event is last, and a batch 
               item_id: 'a',
               status: 'submitted',
               evidence: '已公开交付合成事实和未知项。',
+              evidence_sources: [
+                { kind: 'message', messageId: 'collab-a-evidence' },
+              ],
               reason: '提交本项成果。',
             }),
           },
@@ -889,6 +907,14 @@ test('public peer speech stays external, the current event is last, and a batch 
         ],
       },
     });
+    const evidenceTime = new Date().toISOString();
+    f.db.prepare(`INSERT INTO social_messages
+      (id,room_id,turn_id,role,agent_id,content,status,runtime,created_at,updated_at)
+      VALUES ('collab-a-evidence',?,'collab-a-evidence','user',NULL,'需求证据：合成事实和未知项已核对。','complete','local',?,?)`).run(
+      f.project.groupRoomId,
+      evidenceTime,
+      evidenceTime,
+    );
     f.service.schedulePendingProjectGroupInboxes();
     await settle(f.service);
     assert.equal(
@@ -899,7 +925,10 @@ test('public peer speech stays external, the current event is last, and a batch 
       f.project.groupRoomId,
     ).messages;
     assert.equal(
-      publicMessages.filter((m) => m.agentId === f.a && m.role === 'assistant')
+      publicMessages.filter(
+        (m) =>
+          m.agentId === f.a && m.role === 'assistant' && m.content.trim(),
+      )
         .length,
       1,
     );

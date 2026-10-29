@@ -1718,6 +1718,14 @@ test('project completion reviews members in project sessions and delivers their 
       ],
     },
   });
+  const sourceTime = new Date().toISOString();
+  db.prepare(`INSERT INTO social_messages
+    (id,room_id,turn_id,role,agent_id,content,status,runtime,created_at,updated_at)
+    VALUES ('growth-service-source',?,'growth-service-source','assistant','engineering-partner','服务集成测试覆盖完成。','complete','local',?,?)`).run(
+    project.groupRoomId,
+    sourceTime,
+    sourceTime,
+  );
   projects.plans.updateItem({
     projectId: project.id,
     expectedRevision: 1,
@@ -1725,6 +1733,7 @@ test('project completion reviews members in project sessions and delivers their 
     actorAgentId: 'engineering-partner',
     status: 'submitted',
     evidence: '服务集成测试覆盖完成。',
+    evidenceSources: [{ kind: 'message', messageId: 'growth-service-source' }],
     reason: '成员提交项目成长交接闭环的测试结果。',
   });
   projects.plans.updateItem({
