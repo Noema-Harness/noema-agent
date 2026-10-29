@@ -352,32 +352,23 @@
   gap: 10px;
   margin-top: 9px;
 }
-.social-shell .project-plan-confirm-dialog {
-  width: min(480px, calc(100vw - 32px));
-  max-width: none;
-  padding: 22px;
-  border: 1px solid var(--line-strong);
-  border-radius: 10px;
-  background: var(--paper);
-  color: var(--ink);
-  box-shadow: 0 18px 55px rgb(20 31 38 / 22%);
+.social-shell .project-plan-reopen-confirmation {
+  max-width: 620px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-left: 2px solid var(--accent);
+  background: var(--paper-muted);
 }
-.social-shell .project-plan-confirm-dialog::backdrop {
-  background: rgb(18 28 34 / 36%);
-}
-.social-shell .project-plan-confirm-copy h4 {
-  margin: 5px 0 10px;
-  font-size: 16px;
-}
-.social-shell .project-plan-confirm-copy p:last-child {
+.social-shell .project-plan-reopen-confirmation > p {
   margin: 0;
   color: var(--ink-soft);
-  line-height: 1.65;
+  font-size: 12px;
+  line-height: 1.6;
   overflow-wrap: anywhere;
 }
-.social-shell .project-plan-confirm-dialog .project-plan-actions {
+.social-shell .project-plan-reopen-confirmation .project-plan-actions {
   justify-content: flex-end;
-  margin-top: 20px;
+  margin-top: 8px;
 }
 .social-shell .project-plan .quiet {
   padding: 3px 0;

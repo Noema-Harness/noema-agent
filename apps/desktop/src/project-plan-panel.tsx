@@ -107,7 +107,6 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
   const [pendingEvidenceReopen, setPendingEvidenceReopen] = useState<
     Awaited<ReturnType<typeof window.noema.inspectSocialProjectPlanEvidence>> | null
   >(null);
-  const evidenceReopenDialog = useRef<HTMLDialogElement>(null);
   const [plan, setPlan] = useState<NoemaProjectPlan | null>(null);
   const [groupMessages, setGroupMessages] = useState<NoemaSocialMessage[]>([]);
   const [groupMessagesError, setGroupMessagesError] = useState('');
@@ -194,13 +193,6 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
       off();
     };
   }, [project.groupRoomId, project.id, reload]);
-  useEffect(() => {
-    const dialog = evidenceReopenDialog.current;
-    if (!dialog) return;
-    if (pendingEvidenceReopen && !dialog.open) dialog.showModal();
-    else if (!pendingEvidenceReopen && dialog.open) dialog.close();
-  }, [pendingEvidenceReopen]);
-
   const editable = project.status === 'active';
   const members = project.members;
   const name = (id: string) =>
@@ -568,49 +560,6 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
           </button>
         </p>
       ) : null}
-      <dialog
-        ref={evidenceReopenDialog}
-        className="project-plan-confirm-dialog"
-        aria-labelledby="project-plan-confirm-title"
-        aria-describedby="project-plan-confirm-description"
-        onCancel={(event) => {
-          event.preventDefault();
-          if (!busy) setPendingEvidenceReopen(null);
-        }}
-        onClose={() => {
-          if (pendingEvidenceReopen) setPendingEvidenceReopen(null);
-        }}
-      >
-        <div className="project-plan-confirm-copy">
-          <p className="project-plan-meta">验收来源已变化</p>
-          <h4 id="project-plan-confirm-title">退回受影响的工作项？</h4>
-          <p id="project-plan-confirm-description">
-            {pendingEvidenceReopen?.affectedItems
-              .map((entry) => entry.title)
-              .join('、')}{' '}
-            将退回负责人重新处理，对应阶段也会重新打开。原验收记录会保留在计划历史中。
-          </p>
-        </div>
-        <div className="project-plan-actions">
-          <button
-            className="quiet"
-            type="button"
-            autoFocus
-            disabled={busy}
-            onClick={() => setPendingEvidenceReopen(null)}
-          >
-            先不退回
-          </button>
-          <button
-            className="secondary"
-            type="button"
-            disabled={busy || !pendingEvidenceReopen}
-            onClick={() => void confirmEvidenceReopen()}
-          >
-            {busy ? '正在退回…' : '退回并通知负责人'}
-          </button>
-        </div>
-      </dialog>
       {!plan ? (
         <p aria-live="polite">正在读取计划…</p>
       ) : editor ? (
@@ -1546,6 +1495,45 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                                     >
                                       退回受影响工作重核
                                     </button>
+                                  ) : null}
+                                  {pendingEvidenceReopen?.itemId === item.id ? (
+                                    <div
+                                      className="project-plan-reopen-confirmation"
+                                      role="group"
+                                      aria-label="确认退回受影响的工作项"
+                                    >
+                                      <p>
+                                        将退回
+                                        {pendingEvidenceReopen.affectedItems
+                                          .map((entry) => entry.title)
+                                          .join('、')}
+                                        ，通知负责人重新处理，并重新打开对应阶段。原验收记录会保留在计划历史中。
+                                      </p>
+                                      <div className="project-plan-actions">
+                                        <button
+                                          type="button"
+                                          className="quiet"
+                                          disabled={busy}
+                                          onClick={() =>
+                                            setPendingEvidenceReopen(null)
+                                          }
+                                        >
+                                          取消
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="secondary"
+                                          disabled={busy}
+                                          onClick={() =>
+                                            void confirmEvidenceReopen()
+                                          }
+                                        >
+                                          {busy
+                                            ? '正在退回…'
+                                            : '退回并通知负责人'}
+                                        </button>
+                                      </div>
+                                    </div>
                                   ) : null}
                                 </>
                               ) : null}
