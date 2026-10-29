@@ -31,19 +31,21 @@
 }
 .social-shell .project-plan-objective {
   max-width: 78ch;
-  margin: 14px 0 18px;
+  margin: 8px 0 12px;
+  color: var(--ink-soft);
+  font-size: 12px;
   white-space: pre-wrap;
-  line-height: 1.7;
+  line-height: 1.55;
 }
 .social-shell .project-plan-overview {
-  margin: 0 0 22px;
+  margin: 0 0 14px;
 }
 .social-shell .project-plan-overview-status {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 18px;
-  padding: 10px 0 12px;
+  padding: 7px 0 9px;
   border-top: 1px solid var(--line-strong);
   border-bottom: 1px solid var(--line);
   color: var(--muted);
@@ -81,49 +83,11 @@
 .social-shell .project-plan-overview-metrics .state-blocked b {
   color: #993f31;
 }
-.social-shell .project-plan-current-strip {
-  display: grid;
-  grid-template-columns: auto minmax(0, max-content) auto minmax(0, 1fr);
-  align-items: baseline;
-  gap: 6px 10px;
-  margin: 11px 0 17px;
-  padding: 9px 12px;
-  border-left: 3px solid var(--accent);
-  background: var(--paper-muted);
-}
-.social-shell .project-plan-current-strip.state-blocked,
-.social-shell .project-plan-current-strip.state-awaiting_review {
-  border-left-color: #b97843;
-}
-.social-shell .project-plan-current-strip.state-done {
-  border-left-color: var(--success);
-}
-.social-shell .project-plan-current-strip-label,
-.social-shell .project-plan-current-strip-state {
-  color: var(--muted);
-  font-size: 10px;
-  white-space: nowrap;
-}
-.social-shell .project-plan-current-strip > strong {
-  color: var(--ink);
-  font-size: 12px;
-  font-weight: 650;
-  overflow-wrap: anywhere;
-}
-.social-shell .project-plan-current-strip > small {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--ink-soft);
-  font-size: 10px;
-  line-height: 1.4;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .social-shell .project-plan-flow-heading {
   display: flex;
   align-items: baseline;
   gap: 10px;
-  margin: 15px 0 8px;
+  margin: 10px 0 6px;
 }
 .social-shell .project-plan-flow-heading strong {
   color: var(--ink-soft);
@@ -223,10 +187,10 @@
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 6px;
+  gap: 4px;
   width: 100%;
-  min-height: 168px;
-  padding: 10px 12px 10px;
+  min-height: 0;
+  padding: 7px 8px;
   border: 1px solid var(--line);
   border-top: 2px solid var(--line-strong);
   border-radius: 5px;
@@ -321,7 +285,7 @@
   background: #b97843;
 }
 .social-shell .project-plan-phase-stop > button > strong {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 650;
   line-height: 1.45;
   overflow-wrap: anywhere;
@@ -330,18 +294,18 @@
   display: -webkit-box;
   overflow: hidden;
   color: var(--ink-soft);
-  font-size: 10px;
-  line-height: 1.5;
+  font-size: 9px;
+  line-height: 1.4;
   overflow-wrap: anywhere;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
 .social-shell .project-plan-phase-stop-progress {
   display: grid;
-  gap: 6px;
+  gap: 3px;
   margin-top: auto;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 9px;
   font-variant-numeric: tabular-nums;
 }
 .social-shell .project-plan-phase-stop-meter {
@@ -373,7 +337,7 @@
   align-items: baseline;
   flex-wrap: wrap;
   gap: 3px 6px;
-  padding-top: 7px;
+  padding-top: 4px;
   border-top: 1px solid var(--line);
   color: var(--muted);
   font-size: 10px;
@@ -382,13 +346,12 @@
 }
 .social-shell .project-plan-phase-dependency {
   color: var(--ink-soft);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
 }
 .social-shell .project-plan-phase-dependency:not(:last-child)::after {
   content: '·';
   margin-left: 6px;
-  color: var(--muted);
-}
-.social-shell .project-plan-phase-dependency-free {
   color: var(--muted);
 }
 .social-shell .project-plan-phase-progress progress {
@@ -805,13 +768,6 @@
   overflow: auto;
 }
 @media (max-width: 640px) {
-  .social-shell .project-plan-current-strip {
-    grid-template-columns: auto minmax(0, 1fr) auto;
-  }
-  .social-shell .project-plan-current-strip > small {
-    grid-column: 1 / -1;
-    white-space: normal;
-  }
   .social-shell .project-plan-overview-status {
     align-items: flex-start;
     flex-direction: column;

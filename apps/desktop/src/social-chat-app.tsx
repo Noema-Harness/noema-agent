@@ -3262,19 +3262,14 @@ function SocialChatApp() {
                             ) : null}
                           </div>
                         </section>
-                      ) : (
+                      ) : projectWorkspace.status === 'awaiting_user' ? (
                         <div className="project-stage">
                           <span
-                            className={`state-mark ${projectWorkspace.status === 'awaiting_user' || projectWorkspace.status === 'archived' ? '' : 'running'}`}
+                            className="state-mark"
                           />
-                          {projectWorkspace.status === 'archived'
-                            ? '已归档 · 历史记录仍可查看'
-                            : projectWorkspace.status === 'awaiting_user'
-                              ? '等待你的反馈'
-                              : '项目进行中'}
+                          等待你的反馈
                         </div>
-                      )}
-                      <h2>{projectWorkspace.title}</h2>
+                      ) : null}
                       {projectWorkspace.brief.trim() ? (
                         <details className="project-brief">
                           <summary>项目背景与原始委托</summary>

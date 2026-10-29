@@ -249,11 +249,6 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
       (phase) => phase.state !== 'done' && phase.state !== 'canceled',
     ) ??
     null;
-  const currentWorkItem = currentPhase?.workItems.find(
-    (item) =>
-      item.kind === 'work_package' &&
-      ['blocked', 'submitted', 'in_progress'].includes(item.status),
-  );
   const phaseWorkStatusDistribution = (phase: NoemaProjectPlanPhase) => {
     const items = phase.workItems.filter(
       (item) => item.kind === 'work_package' && item.status !== 'canceled',
@@ -1282,33 +1277,6 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                   ) : null}
                 </div>
               </div>
-              {currentPhase ? (
-                <div
-                  className={`project-plan-current-strip state-${currentPhase.state}`}
-                  aria-label="当前阶段与当前工作"
-                >
-                  <span className="project-plan-current-strip-label">
-                    {currentPhase.state === 'blocked'
-                      ? '受阻阶段'
-                      : currentPhase.state === 'awaiting_review'
-                        ? '待验收阶段'
-                        : currentPhase.state === 'in_progress'
-                          ? '当前阶段'
-                          : currentPhase.state === 'ready'
-                            ? '下一阶段'
-                            : '计划起点'}
-                  </span>
-                  <strong>{currentPhase.title}</strong>
-                  <span className="project-plan-current-strip-state">
-                    {phaseLabels[currentPhase.state]}
-                  </span>
-                  <small>
-                    {currentWorkItem
-                      ? `${name(currentWorkItem.ownerAgentId)} · ${itemStatusLabel(currentWorkItem)} · ${currentWorkItem.title}${currentWorkItem.status === 'blocked' && currentWorkItem.blocker ? ` · ${currentWorkItem.blocker}` : ''}`
-                      : currentPhase.outcome}
-                  </small>
-                </div>
-              ) : null}
               <div className="project-plan-flow-heading">
                 <strong>阶段关系</strong>
                 <span>颜色表示状态；连线表示前置条件，未连线的阶段可并行推进。</span>
@@ -1320,7 +1288,9 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                 tabIndex={0}
                 role="region"
                 aria-describedby="project-plan-flow-help"
-                style={{ gridTemplateColumns: `repeat(${phaseLanes.length}, minmax(210px, 1fr))` }}
+                style={{
+                  gridTemplateColumns: `repeat(${phaseLanes.length}, minmax(${phaseLanes.length <= 3 ? '0' : '210px'}, 1fr))`,
+                }}
               >
                 <svg
                   className="project-plan-phase-links"
@@ -1393,7 +1363,9 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                               </span>
                               <span className="project-plan-phase-stop-status">
                                 <i aria-hidden="true" />
-                                {phaseLabels[phase.state]}
+                                {currentPhase?.id === phase.id
+                                  ? '当前 · ' + phaseLabels[phase.state]
+                                  : phaseLabels[phase.state]}
                               </span>
                             </span>
                             <strong>{phase.title}</strong>
@@ -1433,24 +1405,29 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                             </span>
                             <span className="project-plan-phase-dependencies">
                               {phase.dependsOn.length ? (
-                                <>
-                                  <span>等待</span>
-                                  {phase.dependsOn.map((dependencyId) => (
-                                    <span
-                                      className="project-plan-phase-dependency"
-                                      key={dependencyId}
-                                    >
-                                      {plan.phases.find(
-                                        (item) => item.id === dependencyId,
-                                      )?.title ?? '未知阶段'}
-                                    </span>
-                                  ))}
-                                </>
-                              ) : (
-                                <span className="project-plan-phase-dependency-free">
-                                  可独立启动
+                                <span
+                                  className="project-plan-phase-dependency"
+                                  title={`前置阶段：${phase.dependsOn
+                                    .map(
+                                      (dependencyId) =>
+                                        plan.phases.find(
+                                          (item) => item.id === dependencyId,
+                                        )?.title ?? '未知阶段',
+                                    )
+                                    .join('、')}`}
+                                >
+                                  前置{' '}
+                                  {phase.dependsOn
+                                    .map((dependencyId) =>
+                                      String(
+                                        plan.phases.findIndex(
+                                          (item) => item.id === dependencyId,
+                                        ) + 1,
+                                      ).padStart(2, '0'),
+                                    )
+                                    .join('、')}
                                 </span>
-                              )}
+                              ) : null}
                             </span>
                           </button>
                         </li>
