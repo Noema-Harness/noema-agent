@@ -350,6 +350,98 @@ test('project member replies and retries preserve project scope and user-context
   }
 });
 
+test('project members can calculate numeric claims with the shared local decimal tool', async () => {
+  const db = new Database(':memory:');
+  new RootStore(db);
+  const store = createSocialTestStore(db);
+  const projectStore = new SocialProjectStore({ db, socialChatStore: store });
+  const project = projectStore.createProject({
+    title: '报价核算',
+    brief: '核算收入、材料和场地成本。',
+    agentIds: ['noema', 'engineering-partner'],
+  });
+  const session = projectStore.getProjectSession(
+    project.id,
+    'engineering-partner',
+  );
+  const requests = [];
+  const service = new SocialChatService({
+    store,
+    provider: {
+      async *streamChat(input) {
+        requests.push(input);
+        if (requests.length === 1) {
+          assert.ok(
+            input.tools.some(
+              (tool) => tool.function.name === 'calculate_expression',
+            ),
+          );
+          assert.match(
+            input.messages
+              .filter((message) => message.role === 'system')
+              .map((message) => message.content)
+              .join('\n'),
+            /项目结果涉及会影响结论的算术时/u,
+          );
+          input.onToolCalls?.([
+            {
+              id: 'call-project-calculation',
+              type: 'function',
+              function: {
+                name: 'calculate_expression',
+                arguments: JSON.stringify({ expression: '800 - 120 - 600' }),
+              },
+            },
+          ]);
+          return;
+        }
+
+        const result = input.messages.find(
+          (message) =>
+            message.role === 'tool' &&
+            message.name === 'calculate_expression',
+        );
+        assert.deepEqual(JSON.parse(result.content), {
+          expression: '800 - 120 - 600',
+          value: '80',
+          precision: 50,
+        });
+        yield '核算结果为 80。';
+      },
+    },
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'test-model',
+    getRootState: async () => ({
+      connected: true,
+      selectedModel: 'test-model',
+    }),
+    projectStore,
+    getProjectSessionContext: (roomId, agentId) =>
+      projectStore.getProjectSessionContext(roomId, agentId),
+  });
+
+  try {
+    const sent = service.sendMessage({
+      roomId: session.room.room.id,
+      agentId: 'engineering-partner',
+      text: '请核算收入 800、材料 120 和场地 600 的差额。',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await service.active.get(session.room.room.id)?.done;
+
+    assert.equal(
+      requests.length,
+      2,
+      JSON.stringify(store.getSocialMessage(sent.messageId)),
+    );
+    assert.equal(store.getSocialMessage(sent.messageId)?.content, '核算结果为 80。');
+    assert.equal(store.getSocialMessage(sent.messageId)?.status, 'complete');
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});
+
 test('a stream transport outage pauses project fan-out until a successful model turn', async () => {
   const db = new Database(':memory:');
   new RootStore(db);
