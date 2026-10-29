@@ -128,6 +128,13 @@ if (!process.versions.electron) {
         outcome: result.outcome,
         error: result.error,
         model: result.model,
+        latestReply: result.latestReply
+          ? {
+              status: result.latestReply.status,
+              errorCode: result.latestReply.errorCode,
+              errorMessage: result.latestReply.errorMessage,
+            }
+          : null,
         calls: result.calls,
         projectCount: result.projects?.length,
         progress: result.plan?.progress,
@@ -145,7 +152,8 @@ if (!process.versions.electron) {
   );
   if (
     code !== 0 ||
-    !['passed', 'awaiting_review', 'observed'].includes(result.outcome)
+    !['passed', 'awaiting_review', 'observed'].includes(result.outcome) ||
+    (result.outcome === 'observed' && result.latestReply?.status !== 'complete')
   )
     process.exitCode = 1;
 } else {
@@ -579,3 +587,4 @@ if (!process.versions.electron) {
     );
   }
 }
+
