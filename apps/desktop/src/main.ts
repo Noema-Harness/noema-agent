@@ -70,6 +70,27 @@ function writeSmokeLog(step: string, details: Record<string, unknown> = {}) {
   fs.writeFileSync(logFile, JSON.stringify({ step, ...details }));
 }
 
+function writeRendererHealthLog(
+  event: string,
+  details: Record<string, unknown> = {},
+) {
+  try {
+    const logFile = path.join(app.getPath('userData'), 'renderer-health.jsonl');
+    const line = `${JSON.stringify({ at: new Date().toISOString(), event, ...details })}\n`;
+    if (fs.existsSync(logFile) && fs.statSync(logFile).size > 64 * 1024) {
+      const recent = fs
+        .readFileSync(logFile, 'utf8')
+        .split('\n')
+        .slice(-200)
+        .join('\n');
+      fs.writeFileSync(logFile, recent, 'utf8');
+    }
+    fs.appendFileSync(logFile, line, 'utf8');
+  } catch (error) {
+    console.warn('Could not record renderer health event:', error);
+  }
+}
+
 writeSmokeLog('main-entry', { argv: process.argv, packaged: app.isPackaged });
 
 const testDataArgument = process.argv.find((argument) =>
@@ -347,6 +368,18 @@ const createWindow = () => {
     ),
   });
   mainWindow.setMenuBarVisibility(false);
+  mainWindow.webContents.on('unresponsive', () => {
+    writeRendererHealthLog('unresponsive');
+  });
+  mainWindow.webContents.on('responsive', () => {
+    writeRendererHealthLog('responsive');
+  });
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    writeRendererHealthLog('render-process-gone', {
+      reason: details.reason,
+      exitCode: details.exitCode,
+    });
+  });
   const publishWindowState = () => {
     if (mainWindow && !mainWindow.webContents.isDestroyed())
       mainWindow.webContents.send(
