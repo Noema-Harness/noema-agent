@@ -149,7 +149,7 @@ if (!process.versions.electron) {
   )
     process.exitCode = 1;
 } else {
-  const { app, safeStorage } = await import('electron');
+  const { app, net, safeStorage } = await import('electron');
   const scratch = process.env.NOEMA_COLLABORATION_LIVE_DIRECTORY;
   if (!scratch || !path.isAbsolute(scratch) || !fs.existsSync(scratch))
     throw Error('Isolated test directory required.');
@@ -170,6 +170,7 @@ if (!process.versions.electron) {
     calls = 0,
     requestCharacters = 0;
   const steps = [];
+  const pendingResponseDiagnostics = [];
   let result;
   try {
     const secrets = new EncryptedSecretStore({
@@ -187,10 +188,13 @@ if (!process.versions.electron) {
         'This bounded live check requires the configured DeepSeek provider.',
       );
     const balance = async () => {
-      const response = await fetch('https://api.deepseek.com/user/balance', {
-        headers: { authorization: `Bearer ${secrets.get()}` },
-        signal: AbortSignal.timeout(15000),
-      });
+      const response = await net.fetch(
+        'https://api.deepseek.com/user/balance',
+        {
+          headers: { authorization: `Bearer ${secrets.get()}` },
+          signal: AbortSignal.timeout(15000),
+        },
+      );
       if (!response.ok) throw Error('Balance read failed: ' + response.status);
       const body = await response.json();
       return body.balance_infos?.map(({ currency, total_balance }) => ({
@@ -251,7 +255,7 @@ if (!process.versions.electron) {
           throw Error('Natural observation input budget reached.');
         const request = JSON.parse(options.body);
         const last = request.messages.at(-1);
-        steps.push({
+        const step = {
           call: calls,
           lastRole: last.role,
           lastTool: last.name,
@@ -265,8 +269,53 @@ if (!process.versions.electron) {
               } catch {}
               return { name: call.function.name, argumentKeys };
             }),
-        });
-        return fetch(url, options);
+        };
+        steps.push(step);
+        try {
+          const response = await net.fetch(url, options);
+          step.responseStatus = response.status;
+          step.responseType = response.headers.get('content-type');
+          if (response.body) {
+            const diagnostic = (async () => {
+              const reader = response.clone().body.getReader();
+              const chunks = [];
+              let bytes = 0;
+              try {
+                while (bytes < 1_000_000) {
+                  const { value, done } = await reader.read();
+                  if (done) break;
+                  const chunk = value.subarray(
+                    0,
+                    Math.min(value.byteLength, 1_000_000 - bytes),
+                  );
+                  chunks.push(chunk);
+                  bytes += chunk.byteLength;
+                }
+                const merged = new Uint8Array(bytes);
+                let offset = 0;
+                for (const chunk of chunks) {
+                  merged.set(chunk, offset);
+                  offset += chunk.byteLength;
+                }
+                const preview = new TextDecoder().decode(merged).slice(0, 2000);
+                if (!response.ok) step.responseError = preview;
+                else step.responsePreview = preview;
+              } finally {
+                try {
+                  await reader.cancel();
+                } catch {}
+              }
+            })().catch((error) => {
+              step.responseReadError = `${error?.name ?? 'Error'}: ${error?.message ?? 'response read failed'}`;
+            });
+            pendingResponseDiagnostics.push(diagnostic);
+          }
+          return response;
+        } catch (error) {
+          step.transportError = `${error?.name ?? 'Error'}: ${error?.message ?? 'request failed'}`;
+          if (error?.cause?.code) step.transportCode = error.cause.code;
+          throw error;
+        }
       },
     });
     const workspace = process.env.NOEMA_COLLABORATION_LIVE_WORKSPACE;
@@ -331,6 +380,7 @@ if (!process.versions.electron) {
         await new Promise((resolve) => setTimeout(resolve, 200));
       if (work) await work.shutdown();
       await service.shutdown();
+      await Promise.allSettled(pendingResponseDiagnostics);
       result = {
         outcome: 'observed',
         model: 'deepseek-flash',

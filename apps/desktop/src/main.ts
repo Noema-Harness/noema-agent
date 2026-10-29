@@ -4,6 +4,7 @@ import {
   dialog,
   globalShortcut,
   ipcMain,
+  net,
   safeStorage,
   shell,
   screen,
@@ -3690,6 +3691,8 @@ async function startNoema() {
     const provider = new OpenAICompatibleClient({
       baseUrl: configuredBaseUrl,
       getApiKey: () => providerSecretStore?.get() ?? null,
+      fetchImpl: (input, init) =>
+        net.fetch(input instanceof URL ? input.toString() : input, init),
     });
     const noemaProjectExecutor = new NoemaProjectExecutor({
       provider,
