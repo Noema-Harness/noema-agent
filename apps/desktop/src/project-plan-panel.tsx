@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type {
   NoemaProjectPlan,
   NoemaProjectPlanItem,
@@ -112,6 +112,12 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
   const [groupMessagesError, setGroupMessagesError] = useState('');
   const groupMessagesSequence = useRef(0);
   const [selectedPhaseId, setSelectedPhaseId] = useState<string | null>(null);
+  const phaseFlowRef = useRef<HTMLDivElement>(null);
+  const phaseNodeRefs = useRef(new Map<string, HTMLLIElement>());
+  const [phaseLinks, setPhaseLinks] = useState<
+    Array<{ id: string; path: string; active: boolean }>
+  >([]);
+  const [phaseFlowSize, setPhaseFlowSize] = useState({ width: 0, height: 0 });
   const [workDetailsOpen, setWorkDetailsOpen] = useState<Record<string, boolean>>({});
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -234,6 +240,48 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
         }),
       )
     : [];
+  useLayoutEffect(() => {
+    const flow = phaseFlowRef.current;
+    if (!flow || !plan) return;
+    const updateLinks = () => {
+      const flowRect = flow.getBoundingClientRect();
+      setPhaseFlowSize({ width: flow.scrollWidth, height: flow.scrollHeight });
+      const centers = new Map<string, { left: number; right: number; y: number }>();
+      for (const [id, node] of phaseNodeRefs.current) {
+        const rect = node.getBoundingClientRect();
+        centers.set(id, {
+          left: rect.left - flowRect.left + flow.scrollLeft,
+          right: rect.right - flowRect.left + flow.scrollLeft,
+          y: rect.top - flowRect.top + flow.scrollTop + rect.height / 2,
+        });
+      }
+      const links = plan.phases.flatMap((phase) => {
+        const target = centers.get(phase.id);
+        if (!target) return [];
+        return phase.dependsOn.flatMap((dependencyId) => {
+          const source = centers.get(dependencyId);
+          if (!source) return [];
+          const bend = Math.max(24, (target.left - source.right) * 0.48);
+          return [
+            {
+              id: `${dependencyId}-${phase.id}`,
+              path: `M ${source.right} ${source.y} C ${source.right + bend} ${source.y}, ${target.left - bend} ${target.y}, ${target.left} ${target.y}`,
+              active:
+                phase.state === 'in_progress' ||
+                phase.state === 'awaiting_review' ||
+                dependencyId === selectedPhaseId,
+            },
+          ];
+        });
+      });
+      setPhaseLinks(links);
+    };
+    updateLinks();
+    const observer = new ResizeObserver(updateLinks);
+    observer.observe(flow);
+    for (const node of phaseNodeRefs.current.values()) observer.observe(node);
+    return () => observer.disconnect();
+  }, [plan, selectedPhaseId, phaseLanes.length]);
   const phaseFocus = selectedPhase
     ? (() => {
         const workItems = selectedPhase.workItems.filter(
@@ -1185,12 +1233,51 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
               </div>
               <div
                 className="project-plan-phase-flow"
+                ref={phaseFlowRef}
                 aria-label="项目阶段依赖图"
                 tabIndex={0}
                 role="region"
                 aria-describedby="project-plan-flow-help"
                 style={{ gridTemplateColumns: `repeat(${phaseLanes.length}, minmax(210px, 1fr))` }}
               >
+                <svg
+                  className="project-plan-phase-links"
+                  width={phaseFlowSize.width}
+                  height={phaseFlowSize.height}
+                  aria-hidden="true"
+                  focusable="false"
+                >
+                  <defs>
+                    <marker
+                      id="project-plan-arrowhead"
+                      markerWidth="7"
+                      markerHeight="7"
+                      refX="6"
+                      refY="3.5"
+                      orient="auto"
+                    >
+                      <path d="M 0 0 L 7 3.5 L 0 7 z" />
+                    </marker>
+                    <marker
+                      id="project-plan-arrowhead-active"
+                      markerWidth="7"
+                      markerHeight="7"
+                      refX="6"
+                      refY="3.5"
+                      orient="auto"
+                    >
+                      <path d="M 0 0 L 7 3.5 L 0 7 z" />
+                    </marker>
+                  </defs>
+                  {phaseLinks.map((link) => (
+                    <path
+                      key={link.id}
+                      d={link.path}
+                      className={link.active ? 'is-active' : undefined}
+                      markerEnd={`url(#project-plan-arrowhead${link.active ? '-active' : ''})`}
+                    />
+                  ))}
+                </svg>
                 {phaseLanes.map((lane) => (
                   <section className="project-plan-phase-lane" key={lane.depth}>
                     <header>
@@ -1202,6 +1289,10 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                         <li
                           className={`project-plan-phase-stop state-${phase.state}${selectedPhase?.id === phase.id ? ' is-selected' : ''}`}
                           key={phase.id}
+                          ref={(node) => {
+                            if (node) phaseNodeRefs.current.set(phase.id, node);
+                            else phaseNodeRefs.current.delete(phase.id);
+                          }}
                         >
                           <button
                             type="button"
