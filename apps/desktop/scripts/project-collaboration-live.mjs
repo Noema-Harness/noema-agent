@@ -322,7 +322,8 @@ if (!process.versions.electron) {
         (member) =>
           member.agentId === 'agent-7dd140f1-48f7-4878-bfd9-1dab37a869ec',
       )?.agentId;
-      if (!a || !b) throw Error('真实项目缺少预期的两个活跃成员。');
+      if (!natural && (!a || !b))
+        throw Error('真实项目缺少预期的两个活跃成员。');
     } else if (!natural) {
       a = store.createAgent({
         name: '方案研究员',
@@ -417,7 +418,9 @@ if (!process.versions.electron) {
                     Math.min(value.byteLength, 1_000_000 - bytes),
                   );
                   bytes += chunk.byteLength;
-                  const text = new TextDecoder().decode(chunk, { stream: true });
+                  const text = new TextDecoder().decode(chunk, {
+                    stream: true,
+                  });
                   if (preview.length < 2000)
                     preview += text.slice(0, 2000 - preview.length);
                   tail = `${tail}${text}`.slice(-512);
