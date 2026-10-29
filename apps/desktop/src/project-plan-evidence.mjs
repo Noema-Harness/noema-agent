@@ -48,7 +48,7 @@ export class ProjectPlanEvidence {
       const message = this.db
         .prepare(`SELECT m.id, m.content, m.status, m.agent_id, m.role
         FROM social_messages m JOIN social_projects p ON p.group_room_id=m.room_id
-        WHERE p.id=? AND m.id=?`)
+        WHERE p.id=? AND m.id=? AND m.role IN ('user','assistant')`)
         .get(projectId, source.messageId);
       if (!message) throw Error('来源不是本项目的公开群消息，或已不存在。');
       if (message.status === 'streaming')

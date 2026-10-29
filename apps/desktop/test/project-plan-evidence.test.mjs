@@ -38,6 +38,12 @@ function fixture() {
     now,
     now,
   );
+  db.prepare(`INSERT INTO social_messages (id,room_id,turn_id,role,content,status,runtime,created_at,updated_at)
+    VALUES ('system-notice',?,'notice','system','自动催办：请提交工作项成果。','complete','local',?,?)`).run(
+    project.groupRoomId,
+    now,
+    now,
+  );
   db.prepare(`INSERT INTO social_messages (id,room_id,turn_id,role,agent_id,content,status,runtime,created_at,updated_at)
     VALUES ('private',?,'private-turn','assistant',?,'私聊内容','complete','local',?,?)`).run(
     roomId,
@@ -509,7 +515,7 @@ test('evidence impact cannot reopen while any affected member is working', () =>
 test('private, absent, unfinished and duplicated sources cannot become public evidence', () => {
   const f = fixture();
   try {
-    for (const messageId of ['private', 'absent'])
+    for (const messageId of ['private', 'absent', 'system-notice'])
       assert.throws(
         () =>
           f.update('submitted', {
