@@ -2078,7 +2078,7 @@
   font-size: 12px;
 }
 .social-shell .empty-chat.noema-start-message {
-  max-width: 700px;
+  max-width: 760px;
   margin: 0 auto;
   padding: 38px 0 22px;
   color: #344650;
@@ -2204,6 +2204,27 @@
 .social-shell .chat-body {
   width: min(100%, 760px);
 }
+.social-shell .provider-warning {
+  width: min(100%, 760px);
+  min-height: 30px;
+  margin: 0 auto;
+  padding: 5px 8px;
+  border: 0;
+  border-left: 2px solid #b88b4a;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 11px;
+}
+.social-shell .provider-warning button {
+  color: var(--accent);
+  font-size: 11px;
+  text-decoration: none;
+}
+.social-shell .provider-warning button:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 .social-shell .chat-body .conversation-turn {
   display: flex;
   flex-direction: column;
@@ -2313,6 +2334,92 @@
   border-left: 2px solid var(--accent);
   background: color-mix(in srgb, var(--paper-muted) 86%, transparent);
   color: var(--ink-soft);
+}
+.social-shell .chat-body .message-content a {
+  color: #285d70;
+  text-decoration-color: color-mix(in srgb, #285d70 42%, transparent);
+  text-underline-offset: 3px;
+}
+.social-shell .chat-body .message-content a:hover {
+  text-decoration-color: currentColor;
+}
+.social-shell .chat-body .message-content ul,
+.social-shell .chat-body .message-content ol {
+  padding-inline-start: 1.45em;
+  margin: 0.1em 0 0.9em;
+}
+.social-shell .chat-body .message-content li {
+  padding-inline-start: 0.22em;
+}
+.social-shell .chat-body .message-content li + li {
+  margin-top: 0.34em;
+}
+.social-shell .chat-body .message-content li::marker {
+  color: #69838c;
+}
+.social-shell .chat-body .message-content li > p {
+  margin: 0.25em 0;
+}
+.social-shell .chat-body .message-content :not(pre) > code {
+  padding: 0.12em 0.36em;
+  border: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--paper-muted) 74%, transparent);
+  color: #31596a;
+  font-family: 'Cascadia Code', Consolas, monospace;
+  font-size: 0.88em;
+  overflow-wrap: anywhere;
+}
+.social-shell .chat-body .message-content pre {
+  max-width: 100%;
+  overflow: auto;
+  padding: 13px 15px;
+  margin: 1em 0;
+  border: 0;
+  border-left: 2px solid #9aadb2;
+  background: #f2f5f5;
+  color: #28383d;
+  font-size: 0.86em;
+  line-height: 1.65;
+  tab-size: 2;
+}
+.social-shell .chat-body .message-content pre code {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  overflow-wrap: normal;
+}
+.social-shell .chat-body .message-content table {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  margin: 1em 0;
+  font-size: 0.9em;
+  line-height: 1.55;
+  font-variant-numeric: tabular-nums;
+}
+.social-shell .chat-body .message-content th,
+.social-shell .chat-body .message-content td {
+  min-width: 92px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+.social-shell .chat-body .message-content th {
+  color: #405a63;
+  font-weight: 650;
+}
+.social-shell .chat-body .message-content hr {
+  height: 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 1.35em 0;
 }
 .social-shell .chat-body .message.user.chat-message {
   display: block;

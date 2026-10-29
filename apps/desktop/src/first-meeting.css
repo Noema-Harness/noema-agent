@@ -16,18 +16,18 @@
 
 .first-meeting-entry {
   display: grid;
-  grid-template-columns: 26px auto;
+  grid-template-columns: 18px auto;
   align-items: start;
-  gap: 12px 14px;
+  gap: 0 8px;
   width: fit-content;
   max-width: min(100%, 480px);
-  margin: 0 0 10px 42px;
+  margin: 0 0 10px;
 }
 
 .first-meeting-mark {
-  width: 26px;
-  height: 26px;
-  margin-top: 1px;
+  width: 18px;
+  height: 18px;
+  margin-top: 0;
   fill: none;
   stroke: #52666a;
   stroke-width: 1.6;
@@ -63,7 +63,7 @@
 
 .arrival-letter {
   grid-column: 2;
-  width: min(100%, 480px);
+  width: min(100%, 72ch);
   color: #364442;
 }
 
