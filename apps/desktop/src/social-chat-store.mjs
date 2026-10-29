@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { visibleProjectGroupText } from './project-group-public-text.mjs';
 import { normalizeInteractionAdjustmentSnapshots } from './root-store.mjs';
 import { searchTranscriptHistory } from './transcript-search.mjs';
 import { SOCIAL_SCHEMA_VERSION } from './social-chat-schema.mjs';
@@ -1720,6 +1721,10 @@ export class SocialChatStore {
     const messages = rows.map((row) =>
       hydrateMessage({
         ...row,
+        content:
+          room.kind === 'group' && row.role === 'assistant'
+            ? visibleProjectGroupText(row.content)
+            : row.content,
         ...(pendingByMessage.has(row.id)
           ? {
               deliveryStatus: 'queued',

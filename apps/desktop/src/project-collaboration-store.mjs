@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { resolveGroupRecipients } from './group-mentions.mjs';
 import { parseProjectPlanRevision } from './project-plan-store.mjs';
+import { projectGroupPublicText } from './project-group-public-text.mjs';
 
 const MAX_CHAIN_DISPATCHES = 24;
 const MAX_CHAIN_DEPTH = 8;
@@ -27,6 +28,10 @@ export class ProjectCollaborationStore {
   }) {
     if (typeof text !== 'string' || !text.trim() || text.length > 16_000)
       throw new Error('群消息不能为空，且不得超过 16000 个字符。');
+    if (senderAgentId && !system) {
+      text = projectGroupPublicText(text);
+      if (!text) throw new Error('没有可发送的公开内容。');
+    }
     return this.db.transaction(() => {
       const project = this.projects.getProject(projectId);
       this.projects.assertWorkAllowed(project.groupRoomId);

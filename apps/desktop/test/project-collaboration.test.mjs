@@ -130,6 +130,62 @@ test('unmentioned messages are public without inference; members can directly ha
   }
 });
 
+test('project group sends the public summary but never publishes a member analysis block', async () => {
+  const f = setup({
+    async *streamChat(input) {
+      if (event(input)?.kind === 'unread') {
+        tool(input, 'project_group', {
+          operation: 'quiet',
+          project_id: f.project.id,
+        });
+        return;
+      }
+      tool(input, 'project_group', {
+        operation: 'send',
+        project_id: f.project.id,
+        text: '我先核对来源。<analysis>私有推演不得进入共享记录。</analysis>\n<summary>@预算员 需求证据已核对，场地报价仍待确认。</summary>',
+      });
+    },
+  });
+  try {
+    f.service.sendMessage({
+      roomId: f.project.groupRoomId,
+      agentId: f.a,
+      text: '@研究员 请核对需求来源。',
+    });
+    await settle(f.service);
+
+    const messages = f.store.getRoomSnapshot(f.project.groupRoomId).messages;
+    const publicMessage = messages.find(
+      (message) =>
+        message.agentId === f.a &&
+        message.content.includes('需求证据已核对'),
+    );
+    assert.ok(publicMessage);
+    assert.equal(
+      publicMessage.content,
+      '@预算员 需求证据已核对，场地报价仍待确认。',
+    );
+    assert.doesNotMatch(publicMessage.content, /私有推演|<analysis>|<summary>/u);
+    const stored = f.db
+      .prepare('SELECT id, content FROM social_messages WHERE id=?')
+      .get(publicMessage.id);
+    assert.equal(stored.content, publicMessage.content);
+
+    f.db.prepare('UPDATE social_messages SET content=? WHERE id=?').run(
+      '旧记录<analysis>不得展示</analysis><summary>可见结论</summary>',
+      publicMessage.id,
+    );
+    const legacy = f.store
+      .getRoomSnapshot(f.project.groupRoomId)
+      .messages.find((message) => message.id === publicMessage.id);
+    assert.equal(legacy.content, '可见结论');
+  } finally {
+    await f.service.shutdown();
+    f.db.close();
+  }
+});
+
 test('one broadcast record fans out durably; non-admin broadcasts fail; quiet does not post acknowledgments', async () => {
   let calls = 0;
   const f = setup({
