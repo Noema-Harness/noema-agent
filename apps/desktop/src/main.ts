@@ -370,6 +370,7 @@ const createWindow = () => {
   const windowSize = resolveInitialWindowSize(display.workAreaSize);
   mainWindow = new BrowserWindow({
     ...windowSize,
+    show: process.env.NOEMA_SMOKE_HIDDEN !== '1',
     title: 'Noema',
     frame: false,
     autoHideMenuBar: true,
@@ -4958,6 +4959,8 @@ async function startNoema() {
     const message = `本机对话数据无法打开。请检查应用数据目录权限后重试。\n\n${error instanceof Error ? error.message : '未知错误'}`;
     writeSmokeLog('startup-error', {
       error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      userData: app.getPath('userData'),
     });
     if (process.env.NOEMA_SMOKE_TEST === '1') {
       console.error('Noema startup smoke failed:', message);

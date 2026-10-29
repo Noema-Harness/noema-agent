@@ -1,12 +1,13 @@
 import { spawn } from 'node:child_process';
 import {
   existsSync,
+  copyFileSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { RootStore } from '../src/root-store.mjs';
@@ -27,6 +28,7 @@ const timeoutMs = 90_000;
 const smokeDir = mkdtempSync(path.join(tmpdir(), 'noema-desktop-smoke-'));
 const userDataDir = path.join(smokeDir, 'user-data');
 const probeDirectory = path.join(smokeDir, 'catalog-probe');
+const probeUserDataDir = path.join(probeDirectory, 'user-data');
 const loadedMarker = path.join(smokeDir, 'renderer-loaded.json');
 const startupLog = path.join(smokeDir, 'main-started.json');
 const probeFreeLLMAPI = process.env.NOEMA_SMOKE_PROBE_FREELLMAPI === '1';
@@ -49,6 +51,28 @@ const timelineSearchScreenshotPaths = [
 ].filter((candidate) => typeof candidate === 'string' && candidate.length > 0);
 if (probeFreeLLMAPI) {
   mkdirSync(probeDirectory, { recursive: true });
+  const appDataDirectory =
+    process.platform === 'win32'
+      ? process.env.APPDATA
+      : process.platform === 'darwin'
+        ? path.join(homedir(), 'Library', 'Application Support')
+        : (process.env.XDG_CONFIG_HOME ?? path.join(homedir(), '.config'));
+  if (!appDataDirectory)
+    throw new Error('Cannot locate the Noema credential profile.');
+  const sourceProfile = path.join(appDataDirectory, 'Noema');
+  for (const relativePath of [
+    'Local State',
+    'credentials/model-provider.key',
+    'credentials/freellmapi.key',
+  ]) {
+    const source = path.join(sourceProfile, relativePath);
+    if (!existsSync(source)) continue;
+    const destination = path.join(probeUserDataDir, relativePath);
+    mkdirSync(path.dirname(destination), { recursive: true });
+    copyFileSync(source, destination);
+  }
+  if (!existsSync(path.join(probeUserDataDir, 'Local State')))
+    throw new Error('Noema credential profile has no Local State file.');
   const fixture = new RootStore(path.join(probeDirectory, 'root.sqlite3'));
   fixture.setSelectedModel(process.env.NOEMA_SMOKE_MODEL ?? 'auto:noema-free');
   fixture.close();
@@ -147,6 +171,7 @@ const childEnvironment = {
           probeDirectory,
           'dsh-user-data',
         ),
+        NOEMA_SMOKE_USER_DATA_DIR: probeUserDataDir,
         NOEMA_SMOKE_REFRESH_MODELS: '1',
         NOEMA_SMOKE_CAPTURE_MODEL_AVAILABILITY: '1',
         ...(process.env.NOEMA_SMOKE_MODEL_AVAILABILITY_SCREENSHOT_PATH
@@ -184,8 +209,9 @@ const childEnvironment = {
       }
     : {}),
 };
-if (probeFreeLLMAPI) delete childEnvironment.NOEMA_SMOKE_USER_DATA_DIR;
 if (probeFreeLLMAPI) {
+  if (!process.env.NOEMA_SMOKE_MODEL_AVAILABILITY_SCREENSHOT_PATH)
+    childEnvironment.NOEMA_SMOKE_HIDDEN = '1';
   // Use the encrypted key already stored by Noema, and never let an ambient
   // API-key/base-URL override write into the real userData during this probe.
   delete childEnvironment.NOEMA_FREELLMAPI_API_KEY;
