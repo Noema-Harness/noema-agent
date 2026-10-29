@@ -4535,7 +4535,12 @@ function ChatMessage({
       className={`message ${user ? 'user user-message' : 'assistant agent-message'} chat-message${forwardSelected ? ' is-forward-selected' : ''}`}
       data-message-id={message.id}
     >
-      {!user ? (
+      {user && showNoemaMark ? (
+        <div className="byline user-byline">
+          <strong>你</strong>
+          <span>{timeLabel(message.createdAt)}</span>
+        </div>
+      ) : !user ? (
         <div className="byline">
           {showNoemaMark ? (
             <span className="message-author-mark" aria-hidden="true">
