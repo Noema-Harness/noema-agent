@@ -530,11 +530,13 @@ test('review feedback turn carries a scoped context and executes a public handof
     assert.equal(f.projects.getReview(review.id).status, 'answered');
     assert.equal(f.projects.getProject(f.project.id).status, 'active');
     assert.equal(f.projects.getProject(f.other.id).status, 'active');
-    assert.equal(Boolean(f.projects.getProject(f.project.id).pendingReview), false);
     assert.equal(
-      f.db
-        .prepare('SELECT COUNT(*) AS count FROM social_project_reviews')
-        .get().count,
+      Boolean(f.projects.getProject(f.project.id).pendingReview),
+      false,
+    );
+    assert.equal(
+      f.db.prepare('SELECT COUNT(*) AS count FROM social_project_reviews').get()
+        .count,
       1,
     );
     assert.ok(
