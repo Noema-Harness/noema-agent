@@ -1452,9 +1452,6 @@
     grid-template-columns: 1fr;
     gap: 16px;
   }
-  .social-shell .window-controls {
-    display: none;
-  }
   .social-shell.app.has-workspace .work-head {
     padding: 0 16px;
   }
