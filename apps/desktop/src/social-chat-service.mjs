@@ -652,18 +652,13 @@ export class SocialChatService {
                   (p) => p.id === run.projectContext.projectId,
                 )
               : accessibleProjects.find((p) => p.id === input.project_id);
-            if (
-              !project ||
-              (run.projectContext &&
-                input.project_id !== undefined &&
-                input.project_id !== project.id)
-            ) {
+            if (!project) {
               if (run.projectContext) {
                 const currentProject = this.projectStore.getProject(
                   run.projectContext.projectId,
                 );
                 throw new Error(
-                  `当前会话已绑定并可访问项目“${currentProject.title}”（ID：${currentProject.id}）；本次 project_id“${input.project_id ?? '未提供'}”与当前项目不符。请直接使用上面的准确 ID。这是项目 ID 不匹配，不是权限缺失。`,
+                  `当前会话绑定的项目“${currentProject.title}”（ID：${currentProject.id}）不可用。`,
                 );
               }
               const available = accessibleProjects.length

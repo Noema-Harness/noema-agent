@@ -384,7 +384,7 @@ test('plan tools return actionable conflict fields and on-demand revision values
   }
 });
 
-test('member project tools infer their bound project and reject a conflicting ID', async () => {
+test('member project tools stay on their bound project despite an extraneous ID', async () => {
   const db = new Database(':memory:');
   new RootStore(db);
   const store = createSocialTestStore(db);
@@ -465,9 +465,8 @@ test('member project tools infer their bound project and reject a conflicting ID
           ]);
         } else {
           const result = JSON.parse(input.messages.at(-1).content);
-          assert.match(result.error, /不是权限缺失/u);
-          assert.match(result.error, new RegExp(project.id, 'u'));
-          yield '我会使用当前会话提供的项目 ID 重试。';
+          assert.equal(result.projectId, project.id);
+          yield '我会继续使用当前会话绑定的项目。';
         }
       },
     },
