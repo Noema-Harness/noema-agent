@@ -238,6 +238,64 @@
   border-top: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
 }
+.social-shell .project-plan-focus {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) auto;
+  grid-template-areas: 'label copy action';
+  align-items: center;
+  gap: 10px 14px;
+  margin: 0 0 0 42px;
+  padding: 12px 0 12px 12px;
+  border-left: 2px solid var(--line-strong);
+  border-bottom: 1px solid var(--line);
+}
+.social-shell .project-plan-focus.state-blocked,
+.social-shell .project-plan-focus.state-submitted {
+  border-left-color: #b97843;
+}
+.social-shell .project-plan-focus.state-in_progress {
+  border-left-color: var(--accent);
+}
+.social-shell .project-plan-focus.state-done {
+  border-left-color: var(--success);
+}
+.social-shell .project-plan-focus-label {
+  grid-area: label;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.social-shell .project-plan-focus.state-blocked .project-plan-focus-label,
+.social-shell .project-plan-focus.state-submitted .project-plan-focus-label {
+  color: #8b5b31;
+}
+.social-shell .project-plan-focus-copy {
+  display: grid;
+  grid-area: copy;
+  gap: 3px;
+  min-width: 0;
+}
+.social-shell .project-plan-focus-copy strong {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.social-shell .project-plan-focus-copy p {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.social-shell .project-plan-focus-link {
+  grid-area: action;
+  white-space: nowrap;
+}
 .social-shell .project-plan-phase-exit > span {
   color: var(--muted);
   font-size: 11px;
@@ -535,6 +593,14 @@
   .social-shell .project-plan-phase-summary {
     grid-template-columns: minmax(0, 1fr) 92px;
     gap: 12px;
+    margin-left: 0;
+  }
+  .social-shell .project-plan-focus {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'label action'
+      'copy copy';
+    gap: 6px 10px;
     margin-left: 0;
   }
   .social-shell .project-plan-work-list,
