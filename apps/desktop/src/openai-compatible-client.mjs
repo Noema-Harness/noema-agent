@@ -80,13 +80,20 @@ const VERIFIED_FREE_MODELS = new Map([
 ]);
 
 export class ModelProviderError extends Error {
-  /** @param {string} code @param {string} message @param {number|null} [status] @param {number|null} [retryAfterSeconds] */
-  constructor(code, message, status = null, retryAfterSeconds = null) {
+  /** @param {string} code @param {string} message @param {number|null} [status] @param {number|null} [retryAfterSeconds] @param {string|null} [transportCode] */
+  constructor(
+    code,
+    message,
+    status = null,
+    retryAfterSeconds = null,
+    transportCode = null,
+  ) {
     super(message);
     this.name = 'ModelProviderError';
     this.code = code;
     this.status = status;
     this.retryAfterSeconds = retryAfterSeconds;
+    this.transportCode = transportCode;
   }
 }
 
@@ -176,9 +183,13 @@ export class OpenAICompatibleClient {
           '连接模型服务超时。请确认服务正在运行。',
         );
       }
+      const failure = describeTransportFailure(error);
       throw new ModelProviderError(
         'gateway_unavailable',
-        '无法连接模型服务。请检查地址、网络与凭据后重试。',
+        `无法连接模型服务${failure.suffix}。请检查地址和网络后重试。`,
+        null,
+        null,
+        failure.code,
       );
     }
     if (!response.ok) throw await mapHttpError(response);
@@ -289,9 +300,13 @@ export class OpenAICompatibleClient {
           '模型服务请求超时。消息已保留，可以重试。',
         );
       }
+      const failure = describeTransportFailure(error);
       throw new ModelProviderError(
         'gateway_unavailable',
-        '无法连接模型服务。消息已保留，可以重试。',
+        `无法连接模型服务${failure.suffix}。消息已保留，请检查网络后重试。`,
+        null,
+        null,
+        failure.code,
       );
     }
     if (!response.ok) throw await mapHttpError(response);
@@ -631,6 +646,31 @@ function parseRetryAfterSeconds(value, now = Date.now()) {
   return Number.isSafeInteger(seconds) && seconds > 0 && seconds <= 120
     ? seconds
     : null;
+}
+
+function describeTransportFailure(error) {
+  const code =
+    [error?.cause?.code, error?.code].find(
+      (candidate) =>
+        typeof candidate === 'string' &&
+        /^[A-Z][A-Z0-9_]{1,47}$/u.test(candidate),
+    ) ?? null;
+  const description = {
+    ECONNRESET: '（连接被对端重置，ECONNRESET）',
+    ECONNREFUSED: '（目标服务拒绝连接，ECONNREFUSED）',
+    ENOTFOUND: '（域名解析失败，ENOTFOUND）',
+    EAI_AGAIN: '（域名解析暂时失败，EAI_AGAIN）',
+    ETIMEDOUT: '（网络连接超时，ETIMEDOUT）',
+    CERT_HAS_EXPIRED: '（TLS 证书已过期，CERT_HAS_EXPIRED）',
+    ERR_TLS_CERT_ALTNAME_INVALID:
+      '（TLS 证书名称不匹配，ERR_TLS_CERT_ALTNAME_INVALID）',
+    UNABLE_TO_VERIFY_LEAF_SIGNATURE:
+      '（TLS 证书验证失败，UNABLE_TO_VERIFY_LEAF_SIGNATURE）',
+  }[code];
+  return {
+    code,
+    suffix: description ?? (code ? `（网络错误：${code}）` : ''),
+  };
 }
 
 export { DEFAULT_MODEL_BASE_URL, VERIFIED_FREE_MODELS };

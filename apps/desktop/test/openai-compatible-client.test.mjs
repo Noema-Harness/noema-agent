@@ -531,17 +531,50 @@ test('disables DeepSeek thinking by default to avoid unneeded reasoning tokens',
   assert.deepEqual(chunks, ['OK']);
 });
 
-test('reports unavailable gateway without exposing provider response bodies', async () => {
+test('reports a model-list transport reset without leaking request details', async () => {
   const client = new OpenAICompatibleClient({
     getApiKey: () => 'test-key',
     fetchImpl: async () => {
-      throw new TypeError('socket closed');
+      throw new TypeError('request failed', {
+        cause: { code: 'ECONNRESET', message: 'private socket details' },
+      });
     },
   });
   await assert.rejects(
     client.listModels(),
     (error) =>
-      error.code === 'gateway_unavailable' && !/test-key/.test(error.message),
+      error.code === 'gateway_unavailable' &&
+      error.transportCode === 'ECONNRESET' &&
+      error.message.includes('连接被对端重置') &&
+      !/test-key|private socket details/.test(error.message),
+  );
+});
+
+test('preserves a sanitized transport code when a chat request cannot connect', async () => {
+  const client = new OpenAICompatibleClient({
+    getApiKey: () => 'test-key',
+    fetchImpl: async () => {
+      throw new TypeError('request failed', {
+        cause: { code: 'ENOTFOUND', message: 'private DNS details' },
+      });
+    },
+  });
+
+  await assert.rejects(
+    async () => {
+      for await (const _delta of client.streamChat({
+        model: 'deepseek-flash',
+        messages: [{ role: 'user', content: 'network probe' }],
+        signal: new AbortController().signal,
+      })) {
+        /* no response expected */
+      }
+    },
+    (error) =>
+      error.code === 'gateway_unavailable' &&
+      error.transportCode === 'ENOTFOUND' &&
+      error.message.includes('域名解析失败') &&
+      !/test-key|private DNS details/.test(error.message),
   );
 });
 
