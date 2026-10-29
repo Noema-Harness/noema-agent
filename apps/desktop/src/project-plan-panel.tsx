@@ -409,22 +409,18 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
         return phase.dependsOn.flatMap((dependencyId, dependencyIndex) => {
           const source = centers.get(dependencyId);
           if (!source) return [];
-          const horizontal = target.left > source.left;
-          const targetX = horizontal ? target.left - 2 : target.x;
-          const incomingOffset = horizontal
-            ? (dependencyIndex - (incomingCount - 1) / 2) * 12
-            : 0;
-          const targetY = horizontal ? target.y + incomingOffset : target.top - 2;
-          const gap = horizontal
-            ? target.left - source.right
-            : target.top - source.bottom;
-          const bend = Math.max(4, gap * 0.48);
+          const sourceDepth = phaseDepths.get(dependencyId) ?? 0;
+          const targetDepth = phaseDepths.get(phase.id) ?? 0;
+          // Long-range dependencies are already listed on the target card.
+          // Drawing them across intervening cards makes the path look broken.
+          if (targetDepth - sourceDepth !== 1) return [];
+          const targetX = target.left - 2;
+          const incomingOffset = (dependencyIndex - (incomingCount - 1) / 2) * 12;
+          const targetY = target.y + incomingOffset;
           return [
             {
               id: `${dependencyId}-${phase.id}`,
-              path: horizontal
-                ? `M ${source.right} ${source.y} C ${source.right + bend} ${source.y}, ${targetX - bend} ${targetY}, ${targetX} ${targetY}`
-                : `M ${source.x} ${source.bottom} C ${source.x} ${source.bottom + bend}, ${targetX} ${targetY - bend}, ${targetX} ${targetY}`,
+              path: `M ${source.right} ${source.y} L ${targetX} ${targetY}`,
               active:
                 phase.state === 'in_progress' ||
                 phase.state === 'awaiting_review' ||
@@ -1328,7 +1324,7 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
               </div>
               <div className="project-plan-flow-heading">
                 <strong>阶段路径</strong>
-                <span>箭头从前置阶段指向等待它的阶段；卡片列出具体前置项。</span>
+                <span>箭头连接相邻阶段；跨阶段前置条件列在对应卡片中。</span>
               </div>
               <div
                 className={`project-plan-phase-flow phase-lanes-${Math.min(3, phaseLanes.length)}`}
@@ -1348,23 +1344,25 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                   <defs>
                     <marker
                       id="project-plan-arrowhead"
-                      markerWidth="10"
-                      markerHeight="10"
-                      refX="9"
-                      refY="5"
+                      markerUnits="userSpaceOnUse"
+                      markerWidth="7"
+                      markerHeight="7"
+                      refX="6"
+                      refY="3.5"
                       orient="auto"
                     >
-                      <path d="M 0 0 L 8 5 L 0 10 L 2 5 z" />
+                      <path d="M 0 0 L 7 3.5 L 0 7 z" />
                     </marker>
                     <marker
                       id="project-plan-arrowhead-active"
-                      markerWidth="10"
-                      markerHeight="10"
-                      refX="9"
-                      refY="5"
+                      markerUnits="userSpaceOnUse"
+                      markerWidth="7"
+                      markerHeight="7"
+                      refX="6"
+                      refY="3.5"
                       orient="auto"
                     >
-                      <path d="M 0 0 L 8 5 L 0 10 L 2 5 z" />
+                      <path d="M 0 0 L 7 3.5 L 0 7 z" />
                     </marker>
                   </defs>
                   {phaseLinks.map((link) => (

@@ -247,7 +247,7 @@ try {
     `Array.from(document.querySelectorAll('.project-list-item')).find(n=>n.textContent.includes('共享计划界面验收样例')).click()`,
   );
   await wait(
-    `document.querySelector('.project-plan-overview-status')?.textContent.includes('有工作受阻')`,
+    `document.querySelector('.project-plan-overview') && document.querySelector('.project-plan-overview-metrics')?.textContent.includes('项受阻')`,
   );
   assert.equal(projects.plans.get(project.id).phaseProgress.percentage, 33);
   assert.equal(
@@ -258,7 +258,7 @@ try {
   );
   assert.equal(
     await evaluate(
-      `document.querySelector('.project-plan-phase-map').querySelectorAll('li').length`,
+      `document.querySelector('.project-plan-phase-flow').querySelectorAll('.project-plan-phase-stop').length`,
     ),
     3,
   );
@@ -315,6 +315,7 @@ try {
     `document.querySelector('[data-plan-item-id="venue-budget"]')?.textContent.includes('来源已变，需重核')`,
   );
   await click('退回受影响工作重核', '[data-plan-item-id="venue-budget"]');
+  await click('退回并通知负责人', '.project-plan-reopen-confirmation');
   await wait(
     `document.querySelector('[data-plan-item-id="venue-budget"]')?.classList.contains('plan-item-status-pending')`,
   );
@@ -377,7 +378,7 @@ try {
   );
   await click('验收阶段并解锁后续工作', '[data-plan-phase-id="pilot"]');
   await wait(
-    `document.querySelector('.project-plan-overview-status')?.textContent.includes('2 / 3 阶段验收')`,
+    `document.querySelector('.project-plan-overview-metrics')?.textContent.includes('2/3阶段验收')`,
   );
   assert.equal(projects.plans.get(project.id).phaseProgress.percentage, 67);
   await screenshot('phase-gate-opened.png');
@@ -416,7 +417,7 @@ try {
   await evaluate(
     `Array.from(document.querySelectorAll('.project-list-item')).find(n=>n.textContent.includes('共享计划界面验收样例')).click()`,
   );
-  await wait(`document.querySelector('.project-plan-phase-map')`);
+  await wait(`document.querySelector('.project-plan-phase-flow')`);
   await evaluate(
     `document.querySelectorAll('.project-plan-phase-stop button')[2].click()`,
   );

@@ -165,7 +165,7 @@
 }
 .social-shell .project-plan-phase-links path.is-active {
   stroke: var(--accent);
-  stroke-width: 3.25;
+  stroke-width: 2.5;
 }
 .social-shell #project-plan-arrowhead-active path {
   fill: var(--accent);
