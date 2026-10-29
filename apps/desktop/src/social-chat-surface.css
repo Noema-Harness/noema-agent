@@ -2078,6 +2078,9 @@
   font-size: 12px;
 }
 .social-shell .empty-chat.noema-start-message {
+  display: grid;
+  align-content: end;
+  min-height: 100%;
   max-width: 760px;
   margin: 0 auto;
   padding: 38px 0 22px;
@@ -2085,7 +2088,7 @@
   font-size: 16px;
   line-height: 1.75;
 }
-.social-shell .noema-start-message p {
+.social-shell .noema-start-message > p {
   max-width: 470px;
 }
 @media (max-width: 800px) {

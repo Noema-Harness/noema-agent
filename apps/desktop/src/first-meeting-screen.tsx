@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { FIRST_MEETING_LETTER } from './first-meeting.mjs';
-import './first-meeting.css';
 
 type Props = {
   mode?: 'empty' | 'replay';
@@ -72,24 +71,23 @@ export function FirstMeeting({ mode = 'empty', onRead, onClose }: Props) {
 
   return (
     <section className="first-meeting-entry" aria-label="初次相遇">
-      <svg
-        className="first-meeting-mark"
-        viewBox="0 0 24 24"
-        aria-hidden="true"
-      >
-        <path d="M5 18V9a5 5 0 0 1 10 0v9M9 18V9m10 9V6" />
-      </svg>
-      <button
-        className="arrival-letter-toggle"
-        type="button"
-        aria-expanded={letterOpen}
-        onClick={() => {
-          if (letterOpen) setLetterOpen(false);
-          else void openLetter();
-        }}
-      >
-        创作者的话 <span aria-hidden="true">{letterOpen ? '−' : '+'}</span>
-      </button>
+      <div className="first-meeting-heading">
+        <span>创作者的话</span>
+        <button
+          className="arrival-letter-toggle"
+          type="button"
+          aria-expanded={letterOpen}
+          onClick={() => {
+            if (letterOpen) setLetterOpen(false);
+            else void openLetter();
+          }}
+        >
+          {letterOpen ? '收起' : '展开'}
+        </button>
+      </div>
+      {!letterOpen ? (
+        <p className="first-meeting-excerpt">{FIRST_MEETING_LETTER[1]}</p>
+      ) : null}
       {letterOpen ? letter : null}
     </section>
   );

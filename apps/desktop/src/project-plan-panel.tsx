@@ -11,7 +11,6 @@ import type {
   NoemaSocialMessage,
   NoemaSocialProject,
 } from './noema-bridge.d.ts';
-import './project-plan-panel.css';
 
 type Draft = NoemaProjectPlanWrite['plan'];
 type DraftPhase = Draft['phases'][number];

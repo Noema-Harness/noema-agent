@@ -1,68 +1,50 @@
-.social-shell .empty-chat.noema-start-message {
-  display: grid;
-  align-content: end;
-  min-height: 100%;
-  max-width: 860px;
-  margin: 0 auto;
-  padding: 28px 24px 32px;
-  color: var(--ink);
-}
-
-.social-shell .noema-start-message > p {
-  margin: 0 0 12px 42px;
-  color: var(--muted);
-  font-size: 13px;
-}
-
 .first-meeting-entry {
   display: grid;
-  grid-template-columns: 18px auto;
-  align-items: start;
-  gap: 0 8px;
-  width: fit-content;
-  max-width: min(100%, 480px);
+  gap: 9px;
+  width: min(100%, 560px);
+  padding-left: 14px;
   margin: 0 0 10px;
+  border-left: 1px solid #b7c1bf;
 }
 
-.first-meeting-mark {
-  width: 18px;
-  height: 18px;
-  margin-top: 0;
-  fill: none;
-  stroke: #52666a;
-  stroke-width: 1.6;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+.first-meeting-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  color: #748087;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.first-meeting-excerpt {
+  margin: 0;
+  color: #344650;
+  font-size: 20px;
+  line-height: 1.62;
+  letter-spacing: 0.012em;
 }
 
 .arrival-letter-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 9px;
-  min-height: 28px;
+  min-height: 24px;
   padding: 0;
   border: 0;
-  border-bottom: 1px solid #b7c1bf;
   background: transparent;
-  color: #465a5a;
+  color: #315c6c;
   font: inherit;
-  font-size: 13px;
+  font-size: 11px;
   cursor: pointer;
 }
 
 .arrival-letter-toggle:hover {
-  border-color: #52666a;
-  color: #263c3e;
-}
-
-.arrival-letter-toggle span {
-  color: #7c8985;
-  font-size: 16px;
-  line-height: 1;
+  color: #203f4d;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .arrival-letter {
-  grid-column: 2;
   width: min(100%, 72ch);
   color: #364442;
 }
@@ -141,13 +123,12 @@
 }
 
 @media (max-width: 800px) {
-  .social-shell .empty-chat.noema-start-message {
-    padding: 24px 18px;
-  }
-
-  .social-shell .noema-start-message > p,
   .first-meeting-entry {
     margin-left: 0;
+  }
+
+  .first-meeting-excerpt {
+    font-size: 18px;
   }
 
   .creator-note-backdrop {

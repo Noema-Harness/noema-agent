@@ -5,7 +5,6 @@ import type {
   NoemaSocialProject,
   NoemaSocialSearchResult,
 } from './noema-bridge.d.ts';
-import './global-search-dialog.css';
 
 export function GlobalSearchDialog({
   dialogRef,
