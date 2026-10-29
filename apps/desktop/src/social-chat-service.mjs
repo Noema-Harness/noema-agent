@@ -1567,7 +1567,15 @@ export class SocialChatService {
       this.projectGroupInboxDrains.has(roomId)
     )
       return;
-    const drain = this.drainProjectGroupInbox(roomId).catch(() => {
+    const drain = this.drainProjectGroupInbox(roomId).catch((error) => {
+      // Leave queued work durable, but do not immediately retry a malformed or
+      // otherwise undeliverable head item in a microtask loop. A successful
+      // user turn is the next explicit recovery boundary.
+      this.backgroundModelWorkPaused = true;
+      console.error(
+        'Project group inbox paused after a delivery error:',
+        error?.message ?? error,
+      );
       this.emit({ type: 'chat-state-updated', roomId });
     });
     this.projectGroupInboxDrains.set(roomId, drain);
@@ -1588,6 +1596,7 @@ export class SocialChatService {
                 this.store.hasStreamingReply(item.sessionRoomId)
               )
                 return false;
+              if (!this.isProjectGroupInboxDispatchable(item)) return false;
               try {
                 this.requireReadyModel();
                 const context = this.getProjectSessionContext(
@@ -1604,6 +1613,28 @@ export class SocialChatService {
         this.schedulePendingProjectReports();
       }
     });
+  }
+
+  isProjectGroupInboxDispatchable(inboxItem) {
+    if (!inboxItem.planItemId || !this.projectStore) return true;
+    const plan = this.projectStore.plans.get(inboxItem.projectId);
+    const item = plan.items.find((entry) => entry.id === inboxItem.planItemId);
+    // Let prepareDelivery discard stale notifications; only defer a valid,
+    // ready item when its owner already has different work in progress.
+    if (
+      !item ||
+      item.ownerAgentId !== inboxItem.agentId ||
+      !['pending', 'in_progress'].includes(item.status) ||
+      (item.status === 'pending' && !item.ready)
+    )
+      return true;
+    if (item.status !== 'pending') return true;
+    return !plan.items.some(
+      (other) =>
+        other.id !== item.id &&
+        other.ownerAgentId === inboxItem.agentId &&
+        other.status === 'in_progress',
+    );
   }
 
   schedulePendingProjectReports() {
@@ -1869,7 +1900,8 @@ export class SocialChatService {
         .find(
           (item) =>
             !this.active.has(item.sessionRoomId) &&
-            !this.store.hasStreamingReply(item.sessionRoomId),
+            !this.store.hasStreamingReply(item.sessionRoomId) &&
+            this.isProjectGroupInboxDispatchable(item),
         );
       if (!pending) return;
       if (
@@ -3254,7 +3286,7 @@ export class SocialChatService {
       } else {
         const code =
           typeof error?.code === 'string' ? error.code : 'chat_error';
-        if (code === 'gateway_unavailable')
+        if (code === 'gateway_unavailable' || code === 'provider_unavailable')
           this.backgroundModelWorkPaused = true;
         this.setRunReplyStatus(run, 'failed', code, message);
         this.emitRunEvent(run, 'chat-turn-failed', { code, message });

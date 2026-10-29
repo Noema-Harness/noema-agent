@@ -350,7 +350,7 @@ test('project member replies and retries preserve project scope and user-context
   }
 });
 
-test('a gateway outage pauses project fan-out until a successful model turn', async () => {
+test('a stream transport outage pauses project fan-out until a successful model turn', async () => {
   const db = new Database(':memory:');
   new RootStore(db);
   const store = createSocialTestStore(db);
@@ -374,7 +374,7 @@ test('a gateway outage pauses project fan-out until a successful model turn', as
         requests++;
         if (unavailable) {
           throw Object.assign(new Error('连接已关闭。'), {
-            code: 'gateway_unavailable',
+            code: 'provider_unavailable',
           });
         }
         yield '已继续处理。';
@@ -420,6 +420,146 @@ test('a gateway outage pauses project fan-out until a successful model turn', as
 
     assert.equal(requests, 3);
     assert.equal(store.listProjectGroupInbox(project.groupRoomId).length, 0);
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});
+
+test('a project inbox delivery error pauses instead of spinning on the same item', async () => {
+  const db = new Database(':memory:');
+  new RootStore(db);
+  const store = createSocialTestStore(db);
+  const projectStore = new SocialProjectStore({ db, socialChatStore: store });
+  const project = projectStore.createProject({
+    title: '项目收件队列错误恢复',
+    brief: '队列项无法交付时应保留工作且停止立即重试。',
+    agentIds: ['noema', 'engineering-partner'],
+  });
+  const service = new SocialChatService({
+    store,
+    provider: {
+      async *streamChat() {
+        yield '不应启动模型调用。';
+      },
+    },
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'test-model',
+    getRootState: async () => ({
+      connected: true,
+      selectedModel: 'test-model',
+      providerConfigured: true,
+    }),
+    projectStore,
+    getProjectSessionContext: (roomId, agentId) =>
+      projectStore.getProjectSessionContext(roomId, agentId),
+  });
+
+  try {
+    service.collaboration.publish({
+      projectId: project.id,
+      senderAgentId: 'noema',
+      text: '@工程搭档 请继续核对。',
+      eventKey: 'undeliverable-project-inbox-item',
+    });
+    let attempts = 0;
+    service.collaboration.prepareDelivery = () => {
+      attempts++;
+      throw new Error('simulated durable inbox failure');
+    };
+
+    service.schedulePendingProjectGroupInboxes();
+    await service.projectGroupInboxDrains.get(project.groupRoomId);
+    await new Promise((resolve) => setImmediate(resolve));
+    await service.getUiState();
+
+    assert.equal(attempts, 1);
+    assert.equal(service.backgroundModelWorkPaused, true);
+    assert.equal(store.listProjectGroupInbox(project.groupRoomId).length, 1);
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});
+
+test('a member receives one ready plan item at a time', async () => {
+  const db = new Database(':memory:');
+  new RootStore(db);
+  const store = createSocialTestStore(db);
+  const projectStore = new SocialProjectStore({ db, socialChatStore: store });
+  const project = projectStore.createProject({
+    title: '成员工作项串行交付',
+    brief: '同一成员负责多个并行就绪工作项时，应逐项领取。',
+    agentIds: ['noema', 'engineering-partner'],
+  });
+  projectStore.plans.replace({
+    projectId: project.id,
+    expectedRevision: 0,
+    actorAgentId: 'noema',
+    reason: '建立同一成员负责的两个独立工作项。',
+    plan: {
+      stage: '计划阶段',
+      objective: '验证同一负责人不会同时领取多个计划工作项。',
+      items: [
+        {
+          id: 'first-item',
+          title: '第一项',
+          ownerAgentId: 'engineering-partner',
+          acceptance: '提交第一项成果。',
+          dependsOn: [],
+          status: 'pending',
+        },
+        {
+          id: 'second-item',
+          title: '第二项',
+          ownerAgentId: 'engineering-partner',
+          acceptance: '提交第二项成果。',
+          dependsOn: [],
+          status: 'pending',
+        },
+      ],
+    },
+  });
+  let requests = 0;
+  const service = new SocialChatService({
+    store,
+    provider: {
+      async *streamChat() {
+        requests++;
+        yield '我先处理当前工作项。';
+      },
+    },
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'test-model',
+    getRootState: async () => ({
+      connected: true,
+      selectedModel: 'test-model',
+      providerConfigured: true,
+    }),
+    projectStore,
+    getProjectSessionContext: (roomId, agentId) =>
+      projectStore.getProjectSessionContext(roomId, agentId),
+  });
+
+  try {
+    service.collaboration.finalizeDelivery = () => false;
+    service.collaboration.notifyUnread = () => false;
+    service.onProjectPlanChanged(project.id);
+    await service.projectGroupInboxDrains.get(project.groupRoomId);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    const plan = projectStore.plans.get(project.id);
+    assert.equal(requests, 1);
+    assert.equal(
+      plan.items.find((item) => item.id === 'first-item').status,
+      'in_progress',
+    );
+    assert.equal(
+      plan.items.find((item) => item.id === 'second-item').status,
+      'pending',
+    );
+    assert.equal(store.listProjectGroupInbox(project.groupRoomId).length, 1);
+    assert.equal(service.backgroundModelWorkPaused, false);
   } finally {
     await service.shutdown();
     db.close();
