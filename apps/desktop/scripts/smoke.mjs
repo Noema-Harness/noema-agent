@@ -362,7 +362,7 @@ child.on('exit', (code, signal) => {
     }
     if (probeFreeLLMAPI) {
       console.log(
-        `FreeLLMAPI credential: ${loaded.providerConfigured ? 'configured' : 'missing'}; endpoint: ${loaded.providerBaseUrl ?? 'unknown'}; gateway: ${loaded.connected ? 'connected' : 'unavailable'}${loaded.providerError ? ` — ${loaded.providerError}` : ''}; free routes: ${(loaded.models ?? []).map((model) => `${model.name} [${model.executionStatus ?? (model.routeKind === 'router' ? 'router status unknown' : 'status unavailable')}]`).join(', ') || 'none'}`,
+        `Model provider credential: ${loaded.providerConfigured ? 'configured' : 'missing'}; endpoint: ${loaded.providerBaseUrl ?? 'unknown'}; connection: ${loaded.connected ? 'available' : 'unavailable'}${loaded.providerError ? ` — ${loaded.providerError}` : ''}; models: ${(loaded.models ?? []).map((model) => `${model.name} [${model.executionStatus ?? (model.routeKind === 'router' ? 'router status unknown' : 'status unavailable')}]`).join(', ') || 'none'}`,
       );
       if (
         !loaded.providerConfigured ||
@@ -394,7 +394,7 @@ child.on('exit', (code, signal) => {
         process.exitCode = 1;
       }
       console.log(
-        `FreeLLMAPI model readiness rendered: ${(loaded.modelAvailabilitySmoke?.routes ?? []).map((model) => `${model.name}=${model.executionStatus ?? 'unknown'}`).join(', ')}; narrow layout: ${loaded.modelAvailabilitySmoke?.narrowLayoutValid ? 'fits' : 'not checked'}`,
+        `Model availability rendered: ${(loaded.modelAvailabilitySmoke?.routes ?? []).map((model) => `${model.name}=${model.executionStatus ?? 'unknown'}`).join(', ')}; narrow layout: ${loaded.modelAvailabilitySmoke?.narrowLayoutValid ? 'fits' : 'not checked'}`,
       );
       if (process.env.NOEMA_SMOKE_SOCIAL_CHAT_LIVE === '1') {
         if (!loaded.socialLiveChatSmoke?.verified) {
