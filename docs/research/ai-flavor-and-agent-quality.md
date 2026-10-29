@@ -624,3 +624,23 @@ ICML 2026 的 [UltraHorizon](https://proceedings.mlr.press/v306/luo26ai.html)把
 2. **可逆未知被过早升级为用户阻塞（行为证据）**：平台名单确实可能有用户专属信息，但用户同意了先用假设；Noema 可以选一组代表性公开平台，并清楚标出“不是用户常用清单”。它最终把名单和网络工具缺失一起还给用户，使“一个事实不确定”压住了仍可推进的研究。工具恢复后再复演，才能判断这是模型决策、流程约束还是测试版本工具缺口所致。
 
 因此这次结果不能证明“模型只会做表面计划”是统一根因：它在一个关键子任务上真实缺工具，也诚实暴露了缺口；同时，未解决的用户阻塞可能是对可逆假设的处理失当。下一步先对照成熟 agent 运行时的能力声明、工具注入与阻塞恢复做源码级研究，再决定 Noema 是复用现有搜索实现、将研究留在 Noema 主聊，还是为团队执行层接入统一的只读网络工具。新实现另立交付范围；当前研究不把“已找到原因”冒充为产品修复。
+
+### 源码对照：工具能力怎样进入一次真实委托
+
+我选了三套职责不同、能直接检视运行路径的开源实现：OpenHands SDK 的工具注册表、OpenAI Agents JS 的 Agent 配置、LangGraph 的预置 `ToolNode`。对照范围只限于“模型能看到和调用什么、应用怎样处理不可用或失败的工具”。
+
+| 实现 | 可用工具如何形成 | 不可用/失败怎样暴露 | 对 Noema 的启发 |
+|---|---|---|---|
+| OpenHands SDK | 注册表保存名称、resolver 与 usability checker；resolver 可按会话状态生成工具。`list_tool_catalog()` 同时输出是否可选、当前是否可用、描述和是否属于默认集合。 | usability 检查抛错时按不可用处理；解析未注册工具会抛出明确错误。Agent 执行路径把验证/执行错误变成事件并作为 tool result 记录。 | 角色目录应能区分“职责描述”和“当前可运行能力”，并能在派发前发现能力是否就绪。 |
+| OpenAI Agents JS | Agent 的配置显式持有 `tools`、MCP servers、handoffs；调用时 Agent 按配置形成工具面。每轮可由 context 决定某个 agent-as-tool 是否暴露。 | 工具的执行和失败处理留在当前 runner/工具调用链；工具缺席时模型拿不到该项能力，应用仍需决定替代路径。 | 工具应绑定到这次 Agent run，而不是只存在于旧的主 Agent 或全局目录中。 |
+| LangGraph | `ToolNode` 由构造参数显式接收本轮工具，运行时从工具名映射中解析调用；支持注入 graph state、store 与 runtime context。 | 无效工具名和调用/执行错误有明确的 tool message；工具调用以 call ID 对应结果。 | 将能力缺失、执行失败和工具结果留在执行轨迹中；不要把模型描述当成工具真实存在的证据。 |
+
+源码版本在 2026-10-30 获取：OpenHands `software-agent-sdk` registry SHA `71ea3216ea2beddbf9c0aba0a048f5e12a9054cf`、agent SHA `bb59bf7ae795029f166a4e8ee21136bb5117f8b6`；OpenAI Agents JS `agent.ts` SHA `ca13f7a48f05c4e796af93905b97eb32b6c86d66`；LangGraph `tool_node.py` SHA `c0398f8f46e6f0cda3376fae6958e4713e51cbb6`。代码入口：[OpenHands registry](https://github.com/OpenHands/software-agent-sdk/blob/71ea3216ea2beddbf9c0aba0a048f5e12a9054cf/openhands-sdk/openhands/sdk/tool/registry.py)、[OpenHands agent](https://github.com/OpenHands/software-agent-sdk/blob/bb59bf7ae795029f166a4e8ee21136bb5117f8b6/openhands-sdk/openhands/sdk/agent/agent.py)、[OpenAI Agents JS](https://github.com/openai/openai-agents-js/blob/ca13f7a48f05c4e796af93905b97eb32b6c86d66/packages/agents-core/src/agent.ts)、[LangGraph ToolNode](https://github.com/langchain-ai/langgraph/blob/c0398f8f46e6f0cda3376fae6958e4713e51cbb6/libs/prebuilt/langgraph/prebuilt/tool_node.py)。
+
+差异没有导向“照搬其中某套框架”。三者共同做对的一件基础事是：工具能力以可执行对象进入当前运行时，并且失败有可追踪结果；它们在角色目录、动态启用、状态注入和失败处理上各有取舍。Noema 当前已有部分相似基础设施：`root-agent.mjs` 有搜索和安全网页读取；`social-chat-service.mjs` 每轮按上下文组装项目工具；项目成员也有 `capabilities` 字段。但这些能力来源彼此断开：成员能力数组没有说明实际网页工具是否可运行，项目成员工具表也未接旧 RootAgent 的搜索/读取路径。结果是计划能把“查价格”写成任务，受派成员却无从查起。
+
+这里体现的“AI 味”不是句式，而是**系统能流畅描述自己做不到的工作，计划又让人觉得工作已经开始**。工具缺口是代码问题；把可逆未知升级成用户阻塞是行动判断问题；把零核查计划呈现为项目进度，是状态与验收表达问题。三个问题发生在同一条轨迹，却应由不同控制点解决。
+
+基于此我为可执行缺口新建了 [#122：让团队研究任务使用现有网页来源能力](https://github.com/c3115644151/noema-agent/issues/122)。它限定为复用现有提供方和安全阅读器、只开放明确委托的公开资料核查、保存“搜索候选”与“已读取来源”的差别，并在缺能力时把真实阻塞留在项目状态中。是否由主聊集中研究仍保留为重审条件；本次没有预设团队成员一定是最佳归属。
+
+这一轮的判断可作为后续“AI 味”研究的一个分辨器：当表达显得机械时，先追踪系统能看到什么、被允许做什么、做完后留下什么，而不是先润色语气；当流程看起来成熟时，沿一条真实委托追到可审阅的结果，检查是否发生了对应的真实行动。这是从本地案例和源码得到的产品化判断，不是通用定律。
