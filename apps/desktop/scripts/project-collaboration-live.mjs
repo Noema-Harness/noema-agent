@@ -229,15 +229,67 @@ if (!process.versions.electron) {
         'This bounded live check requires the configured DeepSeek provider.',
       );
     const balance = async () => {
-      const response = await net.fetch(
-        'https://api.deepseek.com/user/balance',
-        {
-          headers: { authorization: `Bearer ${secrets.get()}` },
-          signal: AbortSignal.timeout(15000),
-        },
-      );
-      if (!response.ok) throw Error('Balance read failed: ' + response.status);
-      const body = await response.json();
+      let body;
+      try {
+        const response = await net.fetch(
+          'https://api.deepseek.com/user/balance',
+          {
+            headers: { authorization: `Bearer ${secrets.get()}` },
+            signal: AbortSignal.timeout(15000),
+          },
+        );
+        if (!response.ok)
+          throw Error('Balance read failed: ' + response.status);
+        body = await response.json();
+      } catch (error) {
+        if (!String(error?.message).includes('ERR_CONNECTION_CLOSED'))
+          throw error;
+        const authorization = `Authorization: Bearer ${secrets.get()}`;
+        const quote = (value) => JSON.stringify(value);
+        const config = [
+          `url = ${quote('https://api.deepseek.com/user/balance')}`,
+          `header = ${quote(authorization)}`,
+          `header = ${quote('Accept: application/json')}`,
+          proxyAddress ? `proxy = ${quote(proxyAddress)}` : 'noproxy = "*"',
+        ].join('\n');
+        let output;
+        try {
+          output = execFileSync(
+            'curl.exe',
+            [
+              '--silent',
+              '--show-error',
+              '--max-time',
+              '15',
+              '--config',
+              '-',
+              '--write-out',
+              '\nNOEMA_HTTP_STATUS:%{http_code}',
+            ],
+            { input: config, encoding: 'utf8', windowsHide: true },
+          );
+        } catch (error) {
+          const reason =
+            typeof error?.code === 'string'
+              ? error.code
+              : Number.isInteger(error?.status)
+                ? `curl_exit_${error.status}`
+                : 'unknown_transport_error';
+          throw Error(
+            `DeepSeek balance preflight failed on both transports (${reason}).`,
+          );
+        }
+        const statusMatch = output.match(/\nNOEMA_HTTP_STATUS:(\d{3})$/u);
+        if (
+          !statusMatch ||
+          Number(statusMatch[1]) < 200 ||
+          Number(statusMatch[1]) >= 300
+        )
+          throw Error(
+            'DeepSeek balance preflight returned an invalid response.',
+          );
+        body = JSON.parse(output.slice(0, statusMatch.index));
+      }
       return body.balance_infos?.map(({ currency, total_balance }) => ({
         currency,
         total_balance,
