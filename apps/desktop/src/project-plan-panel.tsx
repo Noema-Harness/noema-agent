@@ -245,8 +245,9 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
     plan?.phases.find((phase) => phase.state === 'awaiting_review') ??
     plan?.phases.find((phase) => phase.state === 'in_progress') ??
     plan?.phases.find((phase) => phase.state === 'ready') ??
-    plan?.phases.find((phase) => phase.state === 'pending') ??
-    plan?.phases[0] ??
+    plan?.phases.find(
+      (phase) => phase.state !== 'done' && phase.state !== 'canceled',
+    ) ??
     null;
   const currentWorkItem = currentPhase?.workItems.find(
     (item) =>
@@ -1262,7 +1263,7 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                     <strong>{currentPhase.title}</strong>
                     <small>
                       {currentWorkItem
-                        ? `${itemStatusLabel(currentWorkItem)} · ${currentWorkItem.title}`
+                        ? `${itemStatusLabel(currentWorkItem)} · ${name(currentWorkItem.ownerAgentId)} · ${currentWorkItem.title}`
                         : `${phaseLabels[currentPhase.state]} · ${currentPhase.outcome}`}
                     </small>
                   </section>
