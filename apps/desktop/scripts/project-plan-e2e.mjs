@@ -223,6 +223,7 @@ try {
   }
   if (!target) throw new Error(`No client debugger: ${diagnostic}`);
   cdp = await connect(target.webSocketDebuggerUrl);
+  await evaluate('window.confirm = () => true');
   await cdp.call('Emulation.setDeviceMetricsOverride', {
     width: 1264,
     height: 850,
@@ -296,7 +297,23 @@ try {
     path.join(scratch, 'source-inspection.png'),
     Buffer.from(evidenceScreenshot.data, 'base64'),
   );
-  await click('继续工作', '[data-plan-item-id="venue-budget"]');
+  db.prepare(
+    "UPDATE social_messages SET content='更正后的场地报价' WHERE id='plan-evidence-ui'",
+  ).run();
+  await click('核对来源版本', '[data-plan-item-id="venue-budget"]');
+  await wait(
+    `document.querySelector('[data-plan-item-id="venue-budget"]')?.textContent.includes('来源已变，需重核')`,
+  );
+  await click('退回受影响工作重核', '[data-plan-item-id="venue-budget"]');
+  await wait(
+    `document.querySelector('[data-plan-item-id="venue-budget"]')?.classList.contains('plan-item-status-pending')`,
+  );
+  assert.equal(
+    projects.plans.get(project.id).phases.find((phase) => phase.id === 'pilot')
+      .status,
+    'pending',
+  );
+  await click('开始', '[data-plan-item-id="venue-budget"]');
   await wait(
     `document.querySelector('[data-plan-item-id="venue-budget"]')?.textContent.includes('进行中')`,
   );
