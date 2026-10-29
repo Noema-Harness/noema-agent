@@ -1383,10 +1383,23 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                             onClick={() => setSelectedPhaseId(phase.id)}
                           >
                             <span className="project-plan-phase-stop-state">
-                              <i aria-hidden="true" />
-                              {phaseLabels[phase.state]}
+                              <span className="project-plan-phase-stop-index">
+                                阶段{' '}
+                                {String(
+                                  plan.phases.findIndex(
+                                    (item) => item.id === phase.id,
+                                  ) + 1,
+                                ).padStart(2, '0')}
+                              </span>
+                              <span className="project-plan-phase-stop-status">
+                                <i aria-hidden="true" />
+                                {phaseLabels[phase.state]}
+                              </span>
                             </span>
                             <strong>{phase.title}</strong>
+                            <span className="project-plan-phase-stop-outcome">
+                              {phase.outcome}
+                            </span>
                             <span className="project-plan-phase-stop-progress">
                               {(() => {
                                 const distribution = phaseWorkStatusDistribution(phase);
@@ -1420,9 +1433,23 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                             </span>
                             <span className="project-plan-phase-dependencies">
                               {phase.dependsOn.length ? (
-                                `前置阶段 ${phase.dependsOn.length} 项`
+                                <>
+                                  <span>等待</span>
+                                  {phase.dependsOn.map((dependencyId) => (
+                                    <span
+                                      className="project-plan-phase-dependency"
+                                      key={dependencyId}
+                                    >
+                                      {plan.phases.find(
+                                        (item) => item.id === dependencyId,
+                                      )?.title ?? '未知阶段'}
+                                    </span>
+                                  ))}
+                                </>
                               ) : (
-                                '无前置阶段'
+                                <span className="project-plan-phase-dependency-free">
+                                  可独立启动
+                                </span>
                               )}
                             </span>
                           </button>
