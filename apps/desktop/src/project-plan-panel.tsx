@@ -240,6 +240,19 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
         }),
       )
     : [];
+  const phaseName = (phaseId: string) => {
+    const index = plan?.phases.findIndex((phase) => phase.id === phaseId) ?? -1;
+    return index < 0 ? '未知阶段' : `阶段 ${String(index + 1).padStart(2, '0')}`;
+  };
+  const phaseAccessibleLabel = (phase: NoemaProjectPlanPhase) =>
+    [
+      phase.title,
+      phaseLabels[phase.state],
+      `阶段成果：${phase.outcome}`,
+      phase.dependsOn.length
+        ? `须先验收：${phase.dependsOn.map(phaseName).join('、')}`
+        : '无前置阶段',
+    ].join('；');
   const currentPhase =
     plan?.phases.find((phase) => phase.state === 'blocked') ??
     plan?.phases.find((phase) => phase.state === 'awaiting_review') ??
@@ -1308,7 +1321,7 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
               </div>
               <div className="project-plan-flow-heading">
                 <strong>阶段路径</strong>
-                <span>每个节点是一项阶段成果；连线表示必须先通过的阶段。</span>
+                <span>箭头从前置阶段指向等待它的阶段；卡片列出具体前置项。</span>
               </div>
               <div
                 className={`project-plan-phase-flow phase-lanes-${Math.min(3, phaseLanes.length)}`}
@@ -1370,7 +1383,7 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                         >
                           <button
                             type="button"
-                            aria-label={`${phase.title}；${phaseLabels[phase.state]}；阶段成果：${phase.outcome}${phase.dependsOn.length ? `；前置阶段：${phase.dependsOn.map((dependencyId) => plan.phases.findIndex((item) => item.id === dependencyId) + 1).join('、')}` : ''}`}
+                            aria-label={phaseAccessibleLabel(phase)}
                             aria-current={selectedPhase?.id === phase.id ? 'step' : undefined}
                             aria-controls="project-plan-phase-detail"
                             title={phase.outcome}
@@ -1435,6 +1448,11 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                                   <span>工作包待细化</span>
                                 );
                               })()}
+                            </span>
+                            <span className="project-plan-phase-dependencies">
+                              {phase.dependsOn.length
+                                ? `须先验收：${phase.dependsOn.map(phaseName).join('、')}`
+                                : '无前置阶段'}
                             </span>
                           </button>
                         </li>

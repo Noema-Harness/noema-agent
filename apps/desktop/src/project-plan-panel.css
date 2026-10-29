@@ -65,14 +65,14 @@
 .social-shell .project-plan-overview {
   container-name: plan-overview;
   container-type: inline-size;
-  margin: 0 0 14px;
+  margin: 0 0 8px;
 }
 .social-shell .project-plan-overview-status {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 18px;
-  padding: 7px 0 9px;
+  padding: 5px 0 6px;
   border-top: 1px solid var(--line-strong);
   border-bottom: 1px solid var(--line);
   color: var(--muted);
@@ -115,7 +115,7 @@
   align-items: baseline;
   flex-wrap: wrap;
   gap: 10px;
-  margin: 8px 0 7px;
+  margin: 4px 0 4px;
 }
 .social-shell .project-plan-flow-heading strong {
   color: var(--ink);
@@ -208,7 +208,8 @@
     'index state'
     'title title'
     'outcome outcome'
-    'progress progress';
+    'progress progress'
+    'dependencies dependencies';
   align-items: start;
   gap: 7px 10px;
   width: 100%;
@@ -354,6 +355,16 @@
   align-content: end;
   gap: 5px;
   font-variant-numeric: tabular-nums;
+}
+.social-shell .project-plan-phase-dependencies {
+  grid-area: dependencies;
+  min-width: 0;
+  padding-top: 4px;
+  border-top: 1px solid var(--line);
+  color: var(--ink-soft);
+  font-size: 10px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 .social-shell .project-plan-phase-stop-meter {
   display: flex;
@@ -888,7 +899,8 @@
       'index state'
       'title title'
       'outcome outcome'
-      'progress progress';
+      'progress progress'
+      'dependencies dependencies';
     gap: 8px;
     min-height: 0;
     padding: 12px;
