@@ -438,12 +438,7 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
       })()
     : null;
   const phaseWorkDetailsOpen = (phase: NoemaProjectPlanPhase) =>
-    workDetailsOpen[phase.id] ??
-    phase.workItems.some(
-      (item) =>
-        item.kind === 'work_package' &&
-        ['blocked', 'submitted'].includes(item.status),
-    );
+    workDetailsOpen[phase.id] ?? false;
   const write = async (fn: () => Promise<NoemaProjectPlan>) => {
     setBusy(true);
     setError('');
