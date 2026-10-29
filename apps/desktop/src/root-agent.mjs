@@ -15,7 +15,10 @@ import {
   searchTranscriptHistory,
   userReferencesPastNoemaContext,
 } from './transcript-search.mjs';
-import { calculateExpression } from './decimal-calculator.mjs';
+import {
+  CALCULATE_EXPRESSION_TOOL,
+  calculateExpression,
+} from './decimal-calculator.mjs';
 import {
   extractUserUrls,
   fetchWebSource,
@@ -91,28 +94,6 @@ function normalizeSearchText(value) {
     .replace(/[\s\p{P}\p{S}]+/gu, '')
     .toLocaleLowerCase();
 }
-
-const CALCULATE_EXPRESSION_TOOL = {
-  type: 'function',
-  function: {
-    name: 'calculate_expression',
-    description:
-      '核算会影响答复的算术。只接受含普通十进制数字、括号和 + - * / 的表达式；先把百分比写成显式乘法或除法。输入数字及其来源由模型提供，此工具不核实这些输入或假设。',
-    parameters: {
-      type: 'object',
-      properties: {
-        expression: {
-          type: 'string',
-          minLength: 1,
-          maxLength: 512,
-          description: '仅数学表达式，不含货币符号、百分号或自然语言。',
-        },
-      },
-      required: ['expression'],
-      additionalProperties: false,
-    },
-  },
-};
 
 const DELEGATE_TASK_TOOL = {
   type: 'function',

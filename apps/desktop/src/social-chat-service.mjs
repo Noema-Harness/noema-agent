@@ -8,6 +8,10 @@ import {
 } from './project-plan-store.mjs';
 import { ProjectCollaborationStore } from './project-collaboration-store.mjs';
 import { evidenceSourcesParameters } from './project-plan-evidence.mjs';
+import {
+  CALCULATE_EXPRESSION_TOOL,
+  calculateExpression,
+} from './decimal-calculator.mjs';
 
 /** @typedef {Omit<Pick<import('./noema-bridge.d.ts').NoemaRootState,'connected'|'checking'|'models'|'selectedModel'|'error'|'providerConfigured'|'providerBaseUrl'|'providerName'|'webSearchConfigured'>,'providerName'> & {providerName:string}} SocialProviderState */
 
@@ -611,6 +615,10 @@ export class SocialChatService {
     );
     const options = { projectScoped: Boolean(run.projectContext) };
     return [
+      ...(run.projectContext ||
+      projects.some((project) => project.groupRoomId === run.roomId)
+        ? [CALCULATE_EXPRESSION_TOOL]
+        : []),
       projectPlanTool(projects, options),
       projectGroupTool(projects, options),
     ].filter(Boolean);
@@ -649,11 +657,14 @@ export class SocialChatService {
           let result, input, project;
           try {
             input = JSON.parse(call.function.arguments);
-            project = run.projectContext
-              ? accessibleProjects.find(
-                  (p) => p.id === run.projectContext.projectId,
-                )
-              : accessibleProjects.find((p) => p.id === input.project_id);
+            project =
+              call.function.name === 'calculate_expression'
+                ? accessibleProjects[0]
+                : run.projectContext
+                  ? accessibleProjects.find(
+                      (p) => p.id === run.projectContext.projectId,
+                    )
+                  : accessibleProjects.find((p) => p.id === input.project_id);
             if (!project) {
               if (run.projectContext) {
                 const currentProject = this.projectStore.getProject(
@@ -672,7 +683,9 @@ export class SocialChatService {
                 `project_id“${input.project_id ?? '未提供'}”不在当前会话可用范围内。当前可用项目：${available}。请使用名单中的准确 ID；若目标项目不在名单中，请先确认当前会话是否属于该项目。`,
               );
             }
-            if (call.function.name === 'project_group') {
+            if (call.function.name === 'calculate_expression') {
+              result = calculateExpression(input.expression);
+            } else if (call.function.name === 'project_group') {
               if (input.operation === 'read') {
                 const snapshot = this.store.getRoomSnapshot(
                   project.groupRoomId,
@@ -2241,6 +2254,11 @@ export class SocialChatService {
               },
               {
                 role: 'system',
+                content:
+                  '项目结果涉及会影响结论的算术时，先用 calculate_expression 核算明确列出的表达式，再报告结果；此工具只核算算式，不核验输入数字或其来源。',
+              },
+              {
+                role: 'system',
                 content: run.isProjectGrowthTurn
                   ? '当前不是项目执行任务。共享计划和公开记录仅作为回顾经历的证据；不要修改计划、继续工作或发送群消息。'
                   : '共享计划是团队当前工作依据：先核对项目结果、当前阶段成果和退出条件，再处理自己负责且已满足阶段/工作项依赖的工作。实际开展本轮能完成的工作，并用 manage_project_plan 提交真实成果依据；提交不等于验收，工作项都验收后仍须核对并验收阶段出口，才会解锁后续阶段。不要只把状态改为进行中便停止，也不要声称其他成员已经看过、同意或完成。缺信息或遇阻时说明具体缺口并记录阻塞。专业成员可以公开交流和交接，非必要不 @Noema。',
@@ -2502,6 +2520,7 @@ export class SocialChatService {
               'manage_project_plan',
               'project_group',
               'request_project_review',
+              'calculate_expression',
             ].includes(call.function?.name),
           )
         ) {
@@ -3076,6 +3095,7 @@ export class SocialChatService {
             'manage_project_plan',
             'project_group',
             'project_collaboration_batch',
+            'calculate_expression',
           ].includes(toolName)
         ) {
           content += await this.continueProjectTools(
