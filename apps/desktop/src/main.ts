@@ -120,6 +120,17 @@ if (
   fs.mkdirSync(smokeUserData, { recursive: true });
   app.setPath('userData', smokeUserData);
 }
+if (
+  process.env.NOEMA_SMOKE_TEST === '1' &&
+  process.env.NOEMA_SMOKE_SESSION_DATA_DIR
+) {
+  const smokeSessionData = path.resolve(
+    process.env.NOEMA_SMOKE_SESSION_DATA_DIR,
+  );
+  fs.mkdirSync(smokeSessionData, { recursive: true });
+  app.setPath('sessionData', smokeSessionData);
+  delete process.env.NOEMA_SMOKE_SESSION_DATA_DIR;
+}
 let mainWindow: BrowserWindow | null = null;
 let initialWindowFitsWorkArea = false;
 let rootStore: RootStore | null = null;

@@ -139,6 +139,7 @@ const childEnvironment = {
   NOEMA_SMOKE_TEST: '1',
   NOEMA_SMOKE_TEST_FILE: loadedMarker,
   NOEMA_SMOKE_LOG_FILE: startupLog,
+  NOEMA_SMOKE_SESSION_DATA_DIR: path.join(smokeDir, 'session-data'),
   ...(probeFreeLLMAPI
     ? {
         NOEMA_E2E_DATABASE_PATH: path.join(probeDirectory, 'root.sqlite3'),
