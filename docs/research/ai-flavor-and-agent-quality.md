@@ -1338,3 +1338,11 @@ Google Research 的 [ConvApparel](https://research.google/blog/convapparel-measu
 
 这段记录把长对话基准里的“轨迹”落到了产品上：不只看回复是否专业，还要对齐用户刚才交付的动作、计划的持久状态，以及汇报给人的信息。对进度汇报而言，最有用的内容是新状态、可核实产出、唯一阻塞与接下来实际执行的动作；重复证明自己认真检查过，除非改变了判断或状态，否则只是增加用户阅读成本。这个观察来自一段真实运行，不足以单独决定所有报告格式；下一次复盘需找成功与失败的对照段，判断哪些审计细节真正保护了交付，哪些只是叙述。
 
+### 源码复核：执行过程与最终回复被混在同一条消息里
+
+Noema 当前的 `social-chat-service.mjs` 会把模型流出的每段文字追加进同一条持久化 assistant message，并实时发出 `chat-message-delta`；项目工具回合也沿用这条消息。因此模型在调用工具前说的“我来检查”、之后解释证据或修正判断，都可能累积成用户最终看到的一条长回复。它能解释真实样本中“审计叙述像工作本身”的一部分：问题不全是模型选了什么措辞，产品的数据结构也没有把最终答复与执行事件分开。源码只能证明这种呈现路径存在，不能证明它导致了每一次冗长回复。
+
+对照 OpenHands 前端在 2026-10-30 检视的源码：它按事件类型区分 action、observation、thought 等内容；连续 action/observation 可收成一张带当前动作和完成数的摘要卡，展开仍能读到逐项细节；thought 文本仍作为消息显示。这个实现给出的有用区分不是“过程全隐藏”，而是**答复、执行状态、可展开细节各自有语义**。Noema 可以先把它当作候选结构，用真实长任务检验用户需要看到的进度是什么，再决定数据模型与呈现；此处不预设所有过程消息都应折叠，也不把 OpenHands 的界面直接照搬过来。源码入口：[事件筛选](https://github.com/All-Hands-AI/OpenHands/blob/64b35695c45775d5624c9c37e31e9d75bc8e804f/src/components/conversation-events/chat/event-content-helpers/should-render-event.ts)、[动作事件分组](https://github.com/All-Hands-AI/OpenHands/blob/64b35695c45775d5624c9c37e31e9d75bc8e804f/src/components/conversation-events/chat/event-message-components/event-group.tsx)、[thought 消息](https://github.com/All-Hands-AI/OpenHands/blob/64b35695c45775d5624c9c37e31e9d75bc8e804f/src/components/conversation-events/chat/event-message-components/thought-event-message.tsx)。
+
+这条证据把“AI 味”往系统边界推进了一层：同一段话若承担了进度指示、工具记录、推理说明和最终答复，模型就会在一个气泡里重复交代任务状态；用户又无法区分哪些话是交互、哪些是产品记录。后续若改造，应先选一段用户要求“直接推进”的完整运行轨迹，分别对照消息文本、工具事件与项目状态，再判断分离事件是否能减少阅读负担，同时保留用户真正需要的过程可见性。若只是把长文本折叠起来，而任务仍未前进，就没有解决问题。
+
