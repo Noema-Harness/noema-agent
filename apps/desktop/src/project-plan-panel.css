@@ -2,8 +2,8 @@
   width: 100%;
   max-width: 1160px;
   min-width: 0;
-  margin: 24px 0;
-  padding-top: 18px;
+  margin: 12px 0;
+  padding-top: 10px;
   border-top: 1px solid var(--line);
   color: var(--ink);
 }
@@ -38,6 +38,8 @@
   line-height: 1.55;
 }
 .social-shell .project-plan-overview {
+  container-name: plan-overview;
+  container-type: inline-size;
   margin: 0 0 14px;
 }
 .social-shell .project-plan-overview-status {
@@ -87,7 +89,7 @@
   display: flex;
   align-items: baseline;
   gap: 10px;
-  margin: 10px 0 6px;
+  margin: 6px 0 4px;
 }
 .social-shell .project-plan-flow-heading strong {
   color: var(--ink-soft);
@@ -104,6 +106,10 @@
   display: grid;
   align-items: start;
   gap: 14px;
+  grid-template-columns: repeat(
+    var(--phase-lane-count, 1),
+    minmax(var(--phase-lane-min, 0px), 1fr)
+  );
   overflow-x: auto;
   padding: 2px 1px 10px;
   scrollbar-width: thin;
@@ -809,5 +815,42 @@
   }
   .social-shell .project-plan-edit-pair {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@container plan-overview (max-width: 760px) {
+  .social-shell .project-plan-phase-flow {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+    overflow-x: visible;
+    padding-right: 0;
+  }
+  .social-shell .project-plan-phase-lane > header {
+    display: none;
+  }
+  .social-shell .project-plan-phase-lane > ol {
+    gap: 2px;
+  }
+  .social-shell .project-plan-phase-stop > button {
+    gap: 2px;
+    padding: 6px 9px;
+  }
+  .social-shell .project-plan-phase-stop.is-current > button {
+    padding-left: 10px;
+  }
+  .social-shell .project-plan-phase-stop > button > strong {
+    font-size: 12px;
+  }
+  .social-shell .project-plan-phase-stop-outcome {
+    display: none;
+  }
+  .social-shell .project-plan-phase-stop-progress {
+    font-size: 9px;
+  }
+  .social-shell .project-plan-phase-stop-meter {
+    height: 6px;
+  }
+  .social-shell .project-plan-phase-dependencies {
+    display: none;
   }
 }

@@ -296,12 +296,18 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
     const updateLinks = () => {
       const flowRect = flow.getBoundingClientRect();
       setPhaseFlowSize({ width: flow.scrollWidth, height: flow.scrollHeight });
-      const centers = new Map<string, { left: number; right: number; y: number }>();
+      const centers = new Map<
+        string,
+        { left: number; right: number; top: number; bottom: number; x: number; y: number }
+      >();
       for (const [id, node] of phaseNodeRefs.current) {
         const rect = node.getBoundingClientRect();
         centers.set(id, {
           left: rect.left - flowRect.left + flow.scrollLeft,
           right: rect.right - flowRect.left + flow.scrollLeft,
+          top: rect.top - flowRect.top + flow.scrollTop,
+          bottom: rect.bottom - flowRect.top + flow.scrollTop,
+          x: rect.left - flowRect.left + flow.scrollLeft + rect.width / 2,
           y: rect.top - flowRect.top + flow.scrollTop + rect.height / 2,
         });
       }
@@ -311,11 +317,16 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
         return phase.dependsOn.flatMap((dependencyId) => {
           const source = centers.get(dependencyId);
           if (!source) return [];
-          const bend = Math.max(24, (target.left - source.right) * 0.48);
+          const horizontal = target.left >= source.right + 20;
+          const bend = horizontal
+            ? Math.max(24, (target.left - source.right) * 0.48)
+            : Math.max(18, (target.top - source.bottom) * 0.48);
           return [
             {
               id: `${dependencyId}-${phase.id}`,
-              path: `M ${source.right} ${source.y} C ${source.right + bend} ${source.y}, ${target.left - bend} ${target.y}, ${target.left} ${target.y}`,
+              path: horizontal
+                ? `M ${source.right} ${source.y} C ${source.right + bend} ${source.y}, ${target.left - bend} ${target.y}, ${target.left} ${target.y}`
+                : `M ${source.x} ${source.bottom} C ${source.x} ${source.bottom + bend}, ${target.x} ${target.top - bend}, ${target.x} ${target.top}`,
               active:
                 phase.state === 'in_progress' ||
                 phase.state === 'awaiting_review' ||
@@ -1279,7 +1290,6 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
               </div>
               <div className="project-plan-flow-heading">
                 <strong>阶段关系</strong>
-                <span>颜色表示状态；连线表示前置条件，未连线的阶段可并行推进。</span>
               </div>
               <div
                 className="project-plan-phase-flow"
@@ -1289,8 +1299,9 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                 role="region"
                 aria-describedby="project-plan-flow-help"
                 style={{
-                  gridTemplateColumns: `repeat(${phaseLanes.length}, minmax(${phaseLanes.length <= 3 ? '0' : '210px'}, 1fr))`,
-                }}
+                  '--phase-lane-count': phaseLanes.length,
+                  '--phase-lane-min': phaseLanes.length <= 3 ? '0px' : '210px',
+                } as React.CSSProperties}
               >
                 <svg
                   className="project-plan-phase-links"
@@ -1348,8 +1359,10 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                         >
                           <button
                             type="button"
+                            aria-label={`${phase.title}；${phaseLabels[phase.state]}；阶段成果：${phase.outcome}`}
                             aria-current={selectedPhase?.id === phase.id ? 'step' : undefined}
                             aria-controls="project-plan-phase-detail"
+                            title={phase.outcome}
                             onClick={() => setSelectedPhaseId(phase.id)}
                           >
                             <span className="project-plan-phase-stop-state">
@@ -1437,7 +1450,7 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                 ))}
               </div>
               <span className="project-plan-flow-help" id="project-plan-flow-help">
-                横向滚动可查看后续依赖层；点击阶段查看出口条件与团队工作项。
+                连线表示前置成果关系；点击阶段查看成果说明、出口条件与团队工作项。
               </span>
               {plan.progress.canceled ? (
                 <p className="project-plan-meta">
