@@ -350,6 +350,82 @@ test('project member replies and retries preserve project scope and user-context
   }
 });
 
+test('a gateway outage pauses project fan-out until a successful model turn', async () => {
+  const db = new Database(':memory:');
+  new RootStore(db);
+  const store = createSocialTestStore(db);
+  const projectStore = new SocialProjectStore({ db, socialChatStore: store });
+  const researcher = store.createAgent({
+    name: '研究员',
+    headline: '资料研究',
+    description: '核对项目资料与来源。',
+  });
+  const project = projectStore.createProject({
+    title: '协作失败恢复',
+    brief: '验证网关断连不会让群内每位成员都重复报错。',
+    agentIds: ['noema', 'engineering-partner', researcher.members[0].id],
+  });
+  let requests = 0;
+  let unavailable = true;
+  const service = new SocialChatService({
+    store,
+    provider: {
+      async *streamChat() {
+        requests++;
+        if (unavailable) {
+          throw Object.assign(new Error('连接已关闭。'), {
+            code: 'gateway_unavailable',
+          });
+        }
+        yield '已继续处理。';
+      },
+    },
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'test-model',
+    getRootState: async () => ({
+      connected: true,
+      selectedModel: 'test-model',
+    }),
+    projectStore,
+    getProjectSessionContext: (roomId, agentId) =>
+      projectStore.getProjectSessionContext(roomId, agentId),
+  });
+
+  try {
+    service.collaboration.publish({
+      projectId: project.id,
+      senderAgentId: 'noema',
+      text: '@工程搭档 @研究员 请各自核对计划依据。',
+      eventKey: 'gateway-outage-fanout',
+    });
+    service.schedulePendingProjectGroupInboxes();
+    await service.projectGroupInboxDrains.get(project.groupRoomId);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.equal(requests, 1);
+    assert.equal(store.listProjectGroupInbox(project.groupRoomId).length, 1);
+
+    unavailable = false;
+    const userTurn = service.sendMessage({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '网络恢复后继续。',
+    });
+    await service.active.get('room-noema')?.done;
+    assert.equal(
+      store.getSocialMessage(userTurn.messageId)?.status,
+      'complete',
+    );
+    await service.projectGroupInboxDrains.get(project.groupRoomId);
+
+    assert.equal(requests, 3);
+    assert.equal(store.listProjectGroupInbox(project.groupRoomId).length, 0);
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});
+
 test('a project-group mention uses only that member project session plus public group context', async () => {
   const db = new Database(':memory:');
   new RootStore(db);

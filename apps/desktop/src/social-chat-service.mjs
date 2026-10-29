@@ -534,6 +534,8 @@ export class SocialChatService {
     this.projectGroupInboxDrains = new Map();
     this.projectReportDrain = null;
     this.projectGrowthDrains = new Map();
+    // Keep a provider outage from multiplying across durable background queues.
+    this.backgroundModelWorkPaused = false;
     this.shuttingDown = false;
     this.reconciledPlans = new Map();
   }
@@ -1559,7 +1561,12 @@ export class SocialChatService {
   }
 
   scheduleProjectGroupInboxDrain(roomId) {
-    if (this.shuttingDown || this.projectGroupInboxDrains.has(roomId)) return;
+    if (
+      this.shuttingDown ||
+      this.backgroundModelWorkPaused ||
+      this.projectGroupInboxDrains.has(roomId)
+    )
+      return;
     const drain = this.drainProjectGroupInbox(roomId).catch(() => {
       this.emit({ type: 'chat-state-updated', roomId });
     });
@@ -1569,6 +1576,7 @@ export class SocialChatService {
         this.projectGroupInboxDrains.delete(roomId);
         if (
           !this.shuttingDown &&
+          !this.backgroundModelWorkPaused &&
           !this.active.has(roomId) &&
           !this.store.hasStreamingReply(roomId)
         ) {
@@ -1599,14 +1607,24 @@ export class SocialChatService {
   }
 
   schedulePendingProjectReports() {
-    if (this.shuttingDown || this.projectReportDrain) return;
+    if (
+      this.shuttingDown ||
+      this.backgroundModelWorkPaused ||
+      this.projectReportDrain
+    )
+      return;
     const drain = this.drainProjectReports().catch(() => {
       this.emit({ type: 'chat-state-updated', roomId: 'room-noema' });
     });
     this.projectReportDrain = drain;
     void drain.finally(() => {
       if (this.projectReportDrain === drain) this.projectReportDrain = null;
-      if (this.shuttingDown || this.active.has('room-noema')) return;
+      if (
+        this.shuttingDown ||
+        this.backgroundModelWorkPaused ||
+        this.active.has('room-noema')
+      )
+        return;
       try {
         this.requireReadyModel();
       } catch {
@@ -1623,6 +1641,7 @@ export class SocialChatService {
 
   async drainProjectReports() {
     while (!this.shuttingDown) {
+      if (this.backgroundModelWorkPaused) return;
       if (
         this.active.has('room-noema') ||
         this.store.hasStreamingReply('room-noema')
@@ -1669,7 +1688,12 @@ export class SocialChatService {
   }
 
   schedulePendingProjectGrowthBatches() {
-    if (this.shuttingDown || !this.projectStore) return;
+    if (
+      this.shuttingDown ||
+      this.backgroundModelWorkPaused ||
+      !this.projectStore
+    )
+      return;
     for (const batch of this.projectStore.listRunningProjectGrowthBatches()) {
       if (batch.members.some((member) => member.status === 'pending')) {
         this.scheduleProjectGrowthBatch(batch.id);
@@ -1750,6 +1774,7 @@ export class SocialChatService {
 
   async drainProjectGrowthBatch(batchId) {
     while (!this.shuttingDown) {
+      if (this.backgroundModelWorkPaused) return;
       const batch = this.projectStore.getProjectGrowthBatch(batchId);
       if (!batch || batch.status !== 'running') return;
       const next = batch.members.find((member) => member.status === 'pending');
@@ -1838,6 +1863,7 @@ export class SocialChatService {
 
   async drainProjectGroupInbox(roomId) {
     while (!this.shuttingDown) {
+      if (this.backgroundModelWorkPaused) return;
       const pending = this.store
         .listProjectGroupInbox(roomId)
         .find(
@@ -3181,6 +3207,7 @@ export class SocialChatService {
       }
       controller.signal.throwIfAborted();
       if (!this.setRunReplyStatus(run, 'complete')) return;
+      this.backgroundModelWorkPaused = false;
       if (run.pendingGrowthBriefBatchIds?.length) {
         this.projectStore.markProjectGrowthBriefsSeen(
           agentId,
@@ -3227,6 +3254,8 @@ export class SocialChatService {
       } else {
         const code =
           typeof error?.code === 'string' ? error.code : 'chat_error';
+        if (code === 'gateway_unavailable')
+          this.backgroundModelWorkPaused = true;
         this.setRunReplyStatus(run, 'failed', code, message);
         this.emitRunEvent(run, 'chat-turn-failed', { code, message });
       }
