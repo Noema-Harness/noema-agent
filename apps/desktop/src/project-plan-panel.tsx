@@ -290,6 +290,84 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
       },
     ].filter((segment) => segment.count > 0);
   };
+  const phaseOverviewFocus = (phase: NoemaProjectPlanPhase) => {
+    const workItems = phase.workItems.filter(
+      (item) => item.kind === 'work_package',
+    );
+    const focusedItem =
+      workItems.find((item) => item.status === 'blocked') ??
+      workItems.find((item) => item.status === 'submitted') ??
+      workItems.find((item) => item.status === 'in_progress') ??
+      workItems.find(
+        (item) =>
+          item.status === 'pending' &&
+          !item.blockedBy.length &&
+          !item.waitingForPhases.length,
+      );
+    if (focusedItem) {
+      const label =
+        focusedItem.status === 'blocked'
+          ? '受阻'
+          : focusedItem.status === 'submitted'
+            ? '待验收'
+            : focusedItem.status === 'in_progress'
+              ? '正在推进'
+              : '下一项';
+      return {
+        state: focusedItem.status,
+        label,
+        title: focusedItem.title,
+        owner: name(focusedItem.ownerAgentId),
+        itemId: focusedItem.id,
+      };
+    }
+    if (phase.state === 'awaiting_review')
+      return {
+        state: 'awaiting_review',
+        label: '阶段待验收',
+        title: '工作项已提交，等待核验阶段出口',
+        owner: '',
+        itemId: null,
+      };
+    if (phase.waitingForPhases.length)
+      return {
+        state: 'waiting',
+        label: '等待前置阶段',
+        title: phase.waitingForPhases
+          .map((id) => plan?.phases.find((entry) => entry.id === id)?.title ?? id)
+          .join('、'),
+        owner: '',
+        itemId: null,
+      };
+    if (phase.state === 'done')
+      return {
+        state: 'done',
+        label: '阶段已验收',
+        title: phase.title,
+        owner: '',
+        itemId: null,
+      };
+    if (!workItems.length)
+      return {
+        state: 'needs_breakdown',
+        label: '待细化',
+        title: '这一阶段暂时没有可执行工作项',
+        owner: '',
+        itemId: null,
+      };
+    const waitingItem = workItems.find(
+      (item) =>
+        item.status === 'pending' &&
+        (item.blockedBy.length > 0 || item.waitingForPhases.length > 0),
+    );
+    return {
+      state: 'waiting',
+      label: '等待工作项前置条件',
+      title: waitingItem?.title ?? '本阶段暂时没有可启动的工作项',
+      owner: waitingItem ? name(waitingItem.ownerAgentId) : '',
+      itemId: waitingItem?.id ?? null,
+    };
+  };
   useLayoutEffect(() => {
     const flow = phaseFlowRef.current;
     if (!flow || !plan) return;
@@ -345,95 +423,38 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
   }, [plan, selectedPhaseId, phaseLanes.length]);
   const phaseFocus = selectedPhase
     ? (() => {
-        const workItems = selectedPhase.workItems.filter(
-          (item) => item.kind === 'work_package',
+        const focus = phaseOverviewFocus(selectedPhase);
+        const item = selectedPhase.workItems.find(
+          (entry) =>
+            entry.kind === 'work_package' && entry.id === focus.itemId,
         );
-        const focusedItem =
-          workItems.find((item) => item.status === 'blocked') ??
-          workItems.find((item) => item.status === 'submitted') ??
-          workItems.find((item) => item.status === 'in_progress') ??
-          workItems.find(
-            (item) =>
-              item.status === 'pending' &&
-              !item.blockedBy.length &&
-              !item.waitingForPhases.length,
-          );
-        if (focusedItem) {
-          const statusLabel =
-            focusedItem.status === 'blocked'
-              ? '受阻'
-              : focusedItem.status === 'submitted'
-                ? '待验收'
-                : focusedItem.status === 'in_progress'
-                  ? '正在推进'
-                  : '下一项';
-          const detail =
-            focusedItem.status === 'blocked'
-              ? focusedItem.blocker || '负责人尚未补充阻塞原因。'
-              : focusedItem.status === 'submitted'
-                ? '成果已提交，等待独立核验。'
-                : focusedItem.status === 'in_progress'
-                  ? `由${name(focusedItem.ownerAgentId)}负责。`
-                  : `由${name(focusedItem.ownerAgentId)}负责，前置条件已满足。`;
-          const otherActiveCount = workItems.filter(
-            (item) =>
-              item.id !== focusedItem.id &&
-              ['blocked', 'submitted', 'in_progress'].includes(item.status),
-          ).length;
-          return {
-            state: focusedItem.status,
-            label: statusLabel,
-            title: focusedItem.title,
-            detail:
-              otherActiveCount > 0
-                ? `${detail} 另有 ${otherActiveCount} 项正在处理或等待验收。`
-                : detail,
-          };
-        }
-        if (selectedPhase.state === 'awaiting_review')
-          return {
-            state: 'awaiting_review',
-            label: '阶段待验收',
-            title: '工作项已提交，等待核验阶段出口',
-            detail: selectedPhase.exitCriteria,
-          };
-        if (selectedPhase.waitingForPhases.length)
-          return {
-            state: 'waiting',
-            label: '等待前置阶段',
-            title: selectedPhase.waitingForPhases
-              .map(
-                (id) => plan?.phases.find((phase) => phase.id === id)?.title ?? id,
-              )
-              .join('、'),
-            detail: '前置阶段通过验收后，这一阶段才会解锁。',
-          };
-        if (selectedPhase.state === 'done')
-          return {
-            state: 'done',
-            label: '阶段已验收',
-            title: selectedPhase.title,
-            detail: '阶段成果与出口条件已记录。',
-          };
-        if (!workItems.length)
-          return {
-            state: 'needs_breakdown',
-            label: '待细化',
-            title: '这一阶段暂时没有可执行工作项',
-            detail: '进入阶段前再补充近期工作，不影响其他阶段推进。',
-          };
-        const waitingItem = workItems.find(
-          (item) =>
-            item.status === 'pending' &&
-            (item.blockedBy.length > 0 || item.waitingForPhases.length > 0),
-        );
+        const detail = item
+          ? item.status === 'blocked'
+            ? item.blocker || '负责人尚未补充阻塞原因。'
+            : item.status === 'submitted'
+              ? '成果已提交，等待独立核验。'
+              : item.status === 'in_progress'
+                ? `由${name(item.ownerAgentId)}负责。`
+                : `由${name(item.ownerAgentId)}负责，前置条件已满足。`
+          : selectedPhase.state === 'awaiting_review'
+            ? selectedPhase.exitCriteria
+            : focus.state === 'waiting'
+              ? '前置工作或阶段通过验收后，这一阶段才会解锁。'
+              : focus.state === 'done'
+                ? '阶段成果与出口条件已记录。'
+                : '进入阶段前再补充近期工作，不影响其他阶段推进。';
+        const otherActiveCount = selectedPhase.workItems.filter(
+          (entry) =>
+            entry.kind === 'work_package' &&
+            entry.id !== item?.id &&
+            ['blocked', 'submitted', 'in_progress'].includes(entry.status),
+        ).length;
         return {
-          state: 'waiting',
-          label: '等待工作项前置条件',
-          title: waitingItem?.title ?? '本阶段暂时没有可启动的工作项',
-          detail: waitingItem
-            ? '前置工作尚未验收。展开工作项可查看具体依赖。'
-            : '查看工作项依赖，确认前置成果是否已经提交并验收。',
+          ...focus,
+          detail:
+            otherActiveCount > 0
+              ? `${detail} 另有 ${otherActiveCount} 项正在处理或等待验收。`
+              : detail,
         };
       })()
     : null;
@@ -1372,6 +1393,19 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                             <span className="project-plan-phase-stop-outcome">
                               {phase.outcome}
                             </span>
+                            {currentPhase?.id === phase.id ? (() => {
+                              const focus = phaseOverviewFocus(phase);
+                              return (
+                                <span
+                                  className={`project-plan-phase-stop-focus state-${focus.state}`}
+                                  aria-label={`当前焦点：${focus.label}，${focus.title}${focus.owner ? `，负责人 ${focus.owner}` : ''}`}
+                                >
+                                  <span>{focus.label}</span>
+                                  <strong>{focus.title}</strong>
+                                  {focus.owner ? <small>{focus.owner}</small> : null}
+                                </span>
+                              );
+                            })() : null}
                             <span className="project-plan-phase-stop-progress">
                               {(() => {
                                 const distribution = phaseWorkStatusDistribution(phase);

@@ -202,6 +202,7 @@
     'state'
     'title'
     'outcome'
+    'focus'
     'progress'
     'dependencies';
   align-items: start;
@@ -321,7 +322,49 @@
   line-height: 1.45;
   overflow-wrap: anywhere;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 1;
+  -webkit-line-clamp: 2;
+}
+.social-shell .project-plan-phase-stop-focus {
+  grid-area: focus;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  padding: 7px 8px;
+  border-left: 2px solid var(--accent);
+  background: var(--paper-muted);
+  color: var(--ink-soft);
+  font-size: 10px;
+  line-height: 1.4;
+}
+.social-shell .project-plan-phase-stop-focus > span {
+  color: var(--accent);
+  font-weight: 650;
+  white-space: nowrap;
+}
+.social-shell .project-plan-phase-stop-focus strong {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 550;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.social-shell .project-plan-phase-stop-focus small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.social-shell .project-plan-phase-stop-focus:is(.state-blocked, .state-awaiting_review) {
+  border-left-color: #b97843;
+}
+.social-shell .project-plan-phase-stop-focus:is(.state-blocked, .state-awaiting_review) > span {
+  color: #8b5b31;
+}
+.social-shell .project-plan-phase-stop-focus.state-submitted > span {
+  color: #8b5b31;
 }
 .social-shell .project-plan-phase-stop-progress {
   grid-area: progress;
