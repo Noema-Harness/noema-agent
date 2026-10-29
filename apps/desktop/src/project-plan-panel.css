@@ -81,6 +81,73 @@
 .social-shell .project-plan-overview-metrics .state-blocked b {
   color: #993f31;
 }
+.social-shell .project-plan-work-distribution {
+  display: grid;
+  gap: 7px;
+  margin: 13px 0 15px;
+}
+.social-shell .project-plan-work-distribution-bar {
+  display: flex;
+  gap: 2px;
+  width: 100%;
+  height: 8px;
+  overflow: hidden;
+  background: var(--line);
+}
+.social-shell .project-plan-work-distribution-bar > span {
+  min-width: 3px;
+  background: var(--line-strong);
+}
+.social-shell .project-plan-work-distribution-bar .state-accepted {
+  background: var(--success);
+}
+.social-shell .project-plan-work-distribution-bar .state-submitted,
+.social-shell .project-plan-work-distribution-bar .state-unverified {
+  background: #b97843;
+}
+.social-shell .project-plan-work-distribution-bar .state-in-progress {
+  background: var(--accent);
+}
+.social-shell .project-plan-work-distribution-bar .state-blocked {
+  background: #993f31;
+}
+.social-shell .project-plan-work-distribution-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 14px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+.social-shell .project-plan-work-distribution-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.social-shell .project-plan-work-distribution-legend i {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  background: var(--line-strong);
+}
+.social-shell .project-plan-work-distribution-legend b {
+  color: var(--ink-soft);
+  font-weight: 650;
+}
+.social-shell .project-plan-work-distribution-legend .state-accepted i {
+  background: var(--success);
+}
+.social-shell .project-plan-work-distribution-legend .state-submitted i,
+.social-shell .project-plan-work-distribution-legend .state-unverified i {
+  background: #b97843;
+}
+.social-shell .project-plan-work-distribution-legend .state-in-progress i {
+  background: var(--accent);
+}
+.social-shell .project-plan-work-distribution-legend .state-blocked i {
+  background: #993f31;
+}
 .social-shell .project-plan-glance {
   display: grid;
   grid-template-columns: minmax(220px, 1.05fr) 28px minmax(220px, 0.95fr);
@@ -304,6 +371,14 @@
 .social-shell .project-plan-phase-stop.state-in_progress > button {
   border-top-color: var(--accent);
 }
+.social-shell .project-plan-phase-stop.is-current > button {
+  border-left: 3px solid var(--accent);
+  padding-left: 10px;
+}
+.social-shell .project-plan-phase-stop.is-current.state-blocked > button,
+.social-shell .project-plan-phase-stop.is-current.state-awaiting_review > button {
+  border-left-color: #b97843;
+}
 .social-shell .project-plan-phase-stop.state-canceled > button {
   opacity: 0.64;
 }
@@ -352,6 +427,16 @@
 .social-shell .project-plan-phase-stop-outcome {
   display: -webkit-box;
   min-height: 2.8em;
+  overflow: hidden;
+  color: var(--ink-soft);
+  font-size: 10px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.social-shell .project-plan-phase-stop-focus {
+  display: -webkit-box;
   overflow: hidden;
   color: var(--ink-soft);
   font-size: 10px;

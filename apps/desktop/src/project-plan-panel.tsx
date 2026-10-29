@@ -254,6 +254,46 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
       item.kind === 'work_package' &&
       ['blocked', 'submitted', 'in_progress'].includes(item.status),
   );
+  const activeWorkItems =
+    plan?.items.filter(
+      (item) => item.kind === 'work_package' && item.status !== 'canceled',
+    ) ?? [];
+  const workStatusDistribution = [
+    {
+      key: 'accepted',
+      label: '已验收',
+      count: activeWorkItems.filter(
+        (item) => item.status === 'done' && item.acceptanceRecorded,
+      ).length,
+    },
+    {
+      key: 'submitted',
+      label: '待验收',
+      count: activeWorkItems.filter((item) => item.status === 'submitted').length,
+    },
+    {
+      key: 'in-progress',
+      label: '进行中',
+      count: activeWorkItems.filter((item) => item.status === 'in_progress').length,
+    },
+    {
+      key: 'blocked',
+      label: '受阻',
+      count: activeWorkItems.filter((item) => item.status === 'blocked').length,
+    },
+    {
+      key: 'pending',
+      label: '待开始',
+      count: activeWorkItems.filter((item) => item.status === 'pending').length,
+    },
+    {
+      key: 'unverified',
+      label: '验收待补',
+      count: activeWorkItems.filter(
+        (item) => item.status === 'done' && !item.acceptanceRecorded,
+      ).length,
+    },
+  ].filter((segment) => segment.count > 0);
   const nextPhases = currentPhase
     ? (plan?.phases.filter((phase) =>
         phase.dependsOn.includes(currentPhase.id),
@@ -1246,6 +1286,32 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                   ) : null}
                 </div>
               </div>
+              {plan.progress.total ? (
+                <div className="project-plan-work-distribution">
+                  <div
+                    className="project-plan-work-distribution-bar"
+                    role="img"
+                    aria-label={`工作项状态分布：${workStatusDistribution.map((segment) => `${segment.label} ${segment.count} 项`).join('，')}`}
+                  >
+                    {workStatusDistribution.map((segment) => (
+                      <span
+                        key={segment.key}
+                        className={`state-${segment.key}`}
+                        style={{ flexGrow: segment.count }}
+                      />
+                    ))}
+                  </div>
+                  <div className="project-plan-work-distribution-legend" aria-hidden="true">
+                    {workStatusDistribution.map((segment) => (
+                      <span key={segment.key} className={`state-${segment.key}`}>
+                        <i />
+                        <b>{segment.count}</b>
+                        {segment.label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
               {currentPhase ? (
                 <div className="project-plan-glance" aria-label="项目当前进展">
                   <section className={`project-plan-glance-current state-${currentPhase.state}`}>
@@ -1350,7 +1416,7 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                     <ol>
                       {lane.phases.map((phase) => (
                         <li
-                          className={`project-plan-phase-stop state-${phase.state}${selectedPhase?.id === phase.id ? ' is-selected' : ''}`}
+                          className={`project-plan-phase-stop state-${phase.state}${currentPhase?.id === phase.id ? ' is-current' : ''}${selectedPhase?.id === phase.id ? ' is-selected' : ''}`}
                           key={phase.id}
                           ref={(node) => {
                             if (node) phaseNodeRefs.current.set(phase.id, node);
@@ -1369,6 +1435,11 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                             </span>
                             <strong>{phase.title}</strong>
                             <span className="project-plan-phase-stop-outcome">{phase.outcome}</span>
+                            {currentPhase?.id === phase.id && currentWorkItem ? (
+                              <span className="project-plan-phase-stop-focus">
+                                当前工作 · {name(currentWorkItem.ownerAgentId)} · {currentWorkItem.title}
+                              </span>
+                            ) : null}
                             <span className="project-plan-phase-stop-progress">
                               <span>
                                 {phase.progress.total
