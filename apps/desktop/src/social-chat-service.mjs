@@ -480,6 +480,7 @@ function noemaActionGuidance(
   return [
     '分享、倾诉、快乐、烦恼和漫谈本身就有意义。自然参与当下交流，不默认把一个想法当成隐含需求，也不把所有讨论转为需求澄清。只有实际形成委托时才组织工作。澄清委托要像对话，不像问卷：先挑一个最可能改变目标、责任或验收的未知点来问，再根据回答决定是否需要下一问；其余可逆细节只有在用户允许按假设推进时才记录假设并继续。',
     '用用户此刻的意图和你承担的责任区分交流与受托工作，不按产物是文字还是代码分类。交流、共创和判断可以留在主聊；用户明确交付需要查证、持续推进或独立专业贡献的工作后，组织合适执行者。缺少细节时，先判断能否带着明确假设开展安全、可逆的工作；用户已允许按假设继续，就把未知项保留在工作计划中并实际推进，不再重复索取这些资料。只有答案会改变目标、授权范围或重大不可逆代价时，才先等用户决定。不要用一份直接生成的文字冒充实际调查；未查证的受众、价格和成本判断必须保留为假设。',
+    '用户明确要求继续或落实已有项目行动时，先读取对应项目和计划，再用项目工具实际推进。没有工具结果，就不能说已经检查、派发或开始；若无法推进，要指出实际阻碍，而不是只写下一步承诺。',
     projectWorkAvailable
       ? '仅当用户明确要求对本地项目文件进行检查、修改、构建或验证时，才可调用 start_project_work。调用会打开本机工作区授权与数据流披露；用户选择工作区后任务才会被创建。不得因用户提到代码、项目或未来想法就启动。'
       : projectTeamAvailable && projectFileEngineAvailable
@@ -600,6 +601,8 @@ export class SocialChatService {
     if (!this.projectStore) return [];
     if (run.projectContext)
       return [this.projectStore.getProject(run.projectContext.projectId)];
+    if (run.reviewContext)
+      return [this.projectStore.getProject(run.reviewContext.projectId)];
     if (run.agentId !== 'noema') return [];
     return this.projectStore
       .listProjects({ includeArchived: true })
@@ -613,7 +616,9 @@ export class SocialChatService {
     const projects = this.accessibleProjects(run).filter(
       (project) => project.status !== 'awaiting_user',
     );
-    const options = { projectScoped: Boolean(run.projectContext) };
+    const options = {
+      projectScoped: Boolean(run.projectContext || run.reviewContext),
+    };
     return [
       ...(run.projectContext ||
       projects.some((project) => project.groupRoomId === run.roomId)
@@ -660,15 +665,18 @@ export class SocialChatService {
             project =
               call.function.name === 'calculate_expression'
                 ? accessibleProjects[0]
-                : run.projectContext
+                : run.projectContext || run.reviewContext
                   ? accessibleProjects.find(
-                      (p) => p.id === run.projectContext.projectId,
+                      (p) =>
+                        p.id ===
+                        (run.projectContext?.projectId ??
+                          run.reviewContext?.projectId),
                     )
                   : accessibleProjects.find((p) => p.id === input.project_id);
             if (!project) {
-              if (run.projectContext) {
+              if (run.projectContext || run.reviewContext) {
                 const currentProject = this.projectStore.getProject(
-                  run.projectContext.projectId,
+                  run.projectContext?.projectId ?? run.reviewContext.projectId,
                 );
                 throw new Error(
                   `当前会话绑定的项目“${currentProject.title}”（ID：${currentProject.id}）不可用。`,
@@ -1092,6 +1100,14 @@ export class SocialChatService {
             beginTurn(`对「${current.projectTitle}」的评审反馈：\n${feedback}`),
         }).turn
       : beginTurn(text);
+    const reviewContext = review
+      ? {
+          reviewId: review.id,
+          projectId: review.projectId,
+          projectTitle: this.projectStore.getProject(review.projectId).title,
+          feedback: text,
+        }
+      : null;
     const controller = new AbortController();
     const run = {
       ...turn,
@@ -1101,6 +1117,7 @@ export class SocialChatService {
       forwardedSources: [],
       replyTo,
       projectContext,
+      reviewContext,
       mirrorRoomId: turn.mirrorRoomId ?? null,
       mirrorUserMessageId: turn.mirrorUserMessageId ?? null,
       mirrorAssistantMessageId: turn.mirrorAssistantMessageId ?? null,
@@ -2197,6 +2214,11 @@ export class SocialChatService {
             ...(run.isProjectGrowthTurn
               ? [
                   '这是系统安排的内部经历复核回合。只评估你实际参与的项目经历；允许的唯一工具是 manage_member_assets。不要继续项目任务、改共享计划、群发消息、创建工作或要求用户判断。简报是写给未来常驻会话的事实材料，不是面向用户的总结。',
+                ]
+              : []),
+            ...(run.reviewContext
+              ? [
+                  `本轮是用户对项目「${run.reviewContext.projectTitle}」提交的正式评审反馈。项目已因这条反馈恢复；当前项目工具已限定到该项目。先核对共享计划和相关成果依据，再按用户反馈实际推进可执行的下一步。需要派发工作时使用项目群消息工具，需要修正计划时使用计划工具；执行工具并核对其结果后，才能向用户报告已采取的动作。不要把“我会去做”“准备派发”当成交付。若反馈要求暂缓、否决或存在必须由用户决定的取舍，说明实际状态和具体未决点，不要擅自续推。`,
                 ]
               : []),
             memberAssetContext

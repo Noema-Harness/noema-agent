@@ -399,6 +399,108 @@ test('real service tool requests review; ordinary chat cannot resume it; failed 
   }
 });
 
+test('review feedback turn carries a scoped context and executes a public handoff', async () => {
+  const f = fixture();
+  let calls = 0;
+  const provider = {
+    async *streamChat(input) {
+      calls++;
+      if (calls === 1) {
+        input.onToolCalls([
+          {
+            id: 'review-call',
+            type: 'function',
+            function: {
+              name: 'request_project_review',
+              arguments: JSON.stringify({
+                project_id: f.project.id,
+                question: '这版计划是否适合继续？',
+              }),
+            },
+          },
+        ]);
+        return;
+      }
+      if (calls === 2) {
+        const groupTool = input.tools.find(
+          (tool) => tool.function.name === 'project_group',
+        );
+        assert.ok(groupTool);
+        assert.equal(
+          Object.hasOwn(groupTool.function.parameters.properties, 'project_id'),
+          false,
+          'review turn should bind the group tool to its reviewed project',
+        );
+        assert.ok(
+          input.messages.some(
+            (message) =>
+              message.role === 'system' &&
+              message.content.includes('正式评审反馈') &&
+              message.content.includes(f.project.title),
+          ),
+        );
+        input.onToolCalls([
+          {
+            id: 'group-send',
+            type: 'function',
+            function: {
+              name: 'project_group',
+              arguments: JSON.stringify({
+                operation: 'send',
+                text: '@设计师 按用户确认的评审节奏继续，阶段出口再向 Noema 汇报。',
+              }),
+            },
+          },
+        ]);
+        return;
+      }
+      yield '已将下一步交办发送到项目群。';
+    },
+  };
+  const service = new SocialChatService({
+    store: f.store,
+    projectStore: f.projects,
+    provider,
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'test',
+    getRootState: async () => ({}),
+  });
+  try {
+    service.sendMessage({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '请提出计划评审。',
+    });
+    await service.active.get('room-noema')?.done;
+    const review = f.projects.listReviewsForRoom('room-noema')[0];
+    assert.ok(review);
+
+    service.sendMessage({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '按建议继续，并在阶段出口汇总给我。',
+      reviewRequestId: review.id,
+    });
+    await service.active.get('room-noema')?.done;
+
+    assert.equal(calls, 3);
+    assert.equal(f.projects.getReview(review.id).status, 'answered');
+    assert.equal(f.projects.getProject(f.project.id).status, 'active');
+    assert.equal(f.projects.getProject(f.other.id).status, 'active');
+    assert.ok(
+      f.store
+        .getRoomSnapshot(f.project.groupRoomId)
+        .messages.some((message) =>
+          message.content.includes('阶段出口再向 Noema 汇报'),
+        ),
+      'the reviewed project should receive the actual public handoff',
+    );
+  } finally {
+    await service.shutdown();
+    f.db.close();
+  }
+});
+
 test('v14 to current migrations preserve projects and old messages', () => {
   const f = fixture();
   try {
