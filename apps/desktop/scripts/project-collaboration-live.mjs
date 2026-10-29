@@ -47,6 +47,21 @@ if (!process.versions.electron) {
   }
   if (resumeDirectory && !env.NOEMA_COLLABORATION_LIVE_MESSAGE)
     throw Error('Resume requires a new natural-language message.');
+  const requestLimitArgument = process.argv.find((arg) =>
+    arg.startsWith('--max-requests='),
+  );
+  if (requestLimitArgument) {
+    const requestLimit = Number(
+      requestLimitArgument.slice('--max-requests='.length),
+    );
+    if (
+      !Number.isInteger(requestLimit) ||
+      requestLimit < 1 ||
+      requestLimit > 64
+    )
+      throw Error('--max-requests must be an integer between 1 and 64.');
+    env.NOEMA_COLLABORATION_LIVE_MAX_REQUESTS = String(requestLimit);
+  }
   const workspaceIndex = process.argv.indexOf('--workspace-copy');
   const workspace = path.join(scratch, 'workspace');
   if (workspaceIndex >= 0) {
@@ -136,6 +151,7 @@ if (!process.versions.electron) {
             }
           : null,
         calls: result.calls,
+        requestLimit: result.requestLimit,
         projectCount: result.projects?.length,
         progress: result.plan?.progress,
         projectId: result.projectId,
@@ -188,6 +204,10 @@ if (!process.versions.electron) {
     service,
     calls = 0,
     requestCharacters = 0;
+  const requestLimit = Number(
+    process.env.NOEMA_COLLABORATION_LIVE_MAX_REQUESTS ||
+      (process.env.NOEMA_COLLABORATION_LIVE_NATURAL === '1' ? 16 : 48),
+  );
   const steps = [];
   const pendingResponseDiagnostics = [];
   let result;
@@ -267,7 +287,7 @@ if (!process.versions.electron) {
       getApiKey: () => secrets.get(),
       fetchImpl: async (url, options) => {
         calls++;
-        if (calls > (natural ? 16 : 48))
+        if (calls > requestLimit)
           throw Error('Live test request limit reached.');
         requestCharacters += options.body?.length ?? 0;
         if (natural && requestCharacters > 300_000)
@@ -404,6 +424,7 @@ if (!process.versions.electron) {
         outcome: 'observed',
         model: 'deepseek-flash',
         calls,
+        requestLimit,
         requestCharacters,
         workspaceSource: workspace
           ? JSON.parse(
@@ -509,6 +530,7 @@ if (!process.versions.electron) {
           outcome: 'passed',
           model: 'deepseek-flash',
           calls,
+          requestLimit,
           balanceBefore: before,
           balanceAfter: await balance(),
           projectId: project.id,
@@ -559,6 +581,7 @@ if (!process.versions.electron) {
                 : 'incomplete'),
           model: 'deepseek-flash',
           calls,
+          requestLimit,
           requestCharacters,
           steps,
           balanceBefore: before,

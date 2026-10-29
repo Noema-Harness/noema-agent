@@ -33,6 +33,9 @@ const database = path.join(scratch, 'noema.sqlite3');
 const sourceProfile = process.argv
   .find((arg) => arg.startsWith('--connection-from='))
   ?.slice('--connection-from='.length);
+const sourceDatabase = process.argv
+  .find((arg) => arg.startsWith('--database-from='))
+  ?.slice('--database-from='.length);
 fs.mkdirSync(userData, { recursive: true });
 if (sourceProfile) {
   // Preserve OS encryption. Never decrypt, print, or copy conversation history.
@@ -43,6 +46,20 @@ if (sourceProfile) {
       fs.mkdirSync(path.dirname(destination), { recursive: true });
       fs.copyFileSync(source, destination);
     }
+  }
+}
+if (sourceDatabase) {
+  const source = path.resolve(sourceDatabase);
+  if (!fs.existsSync(source))
+    throw new Error(`Preview database does not exist: ${source}`);
+  const sourceDb = new Database(source, {
+    readonly: true,
+    fileMustExist: true,
+  });
+  try {
+    await sourceDb.backup(database);
+  } finally {
+    sourceDb.close();
   }
 }
 const db = new Database(database);
@@ -99,6 +116,13 @@ await cdp.call('Runtime.evaluate', {
   expression: 'document.title = "Noema · 初次相遇（待评）"',
 });
 cdp.close();
+if (sourceDatabase) {
+  const rename = await connect(target.webSocketDebuggerUrl);
+  await rename.call('Runtime.evaluate', {
+    expression: `document.title = 'Noema · 计划实测（待评）'`,
+  });
+  rename.close();
+}
 const result = { pid: child.pid, port, scratch, database, userData };
 fs.writeFileSync(
   path.join(scratch, 'preview.json'),
