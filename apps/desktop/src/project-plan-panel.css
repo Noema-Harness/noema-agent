@@ -818,7 +818,7 @@
   }
 }
 
-@container plan-overview (max-width: 620px) {
+@container plan-overview (max-width: 500px) {
   .social-shell .project-plan-phase-flow {
     grid-template-columns: minmax(0, 1fr);
     gap: 2px;
