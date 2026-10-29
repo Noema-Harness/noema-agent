@@ -399,7 +399,7 @@ child.on('exit', (code, signal) => {
       if (process.env.NOEMA_SMOKE_SOCIAL_CHAT_LIVE === '1') {
         if (!loaded.socialLiveChatSmoke?.verified) {
           console.error(
-            'Synthetic Noema chat did not complete through the selected FreeLLMAPI route.',
+            `Synthetic Noema chat failed (${loaded.socialLiveChatSmoke?.status ?? 'unknown'}): ${loaded.socialLiveChatSmoke?.error || 'response did not match the marker.'}`,
           );
           process.exitCode = 1;
           return;
