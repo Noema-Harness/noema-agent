@@ -611,6 +611,7 @@ export class SocialChatService {
 
   async continueProjectTools(run, messages, calls = [], beforeCall = '') {
     let output = '';
+    const accessibleProjects = this.accessibleProjects(run);
     for (let step = 0; step < 6; step++) {
       run.controller.signal.throwIfAborted();
       if (calls.length) {
@@ -628,10 +629,17 @@ export class SocialChatService {
           let result, input, project;
           try {
             input = JSON.parse(call.function.arguments);
-            project = this.accessibleProjects(run).find(
-              (p) => p.id === input.project_id,
-            );
-            if (!project) throw new Error('当前会话无权访问该项目。');
+            project = accessibleProjects.find((p) => p.id === input.project_id);
+            if (!project) {
+              const available = accessibleProjects.length
+                ? accessibleProjects
+                    .map((entry) => `“${entry.title}” (${entry.id})`)
+                    .join('、')
+                : '无';
+              throw new Error(
+                `project_id“${input.project_id ?? '未提供'}”不在当前会话可用范围内。当前可用项目：${available}。请使用名单中的准确 ID；若目标项目不在名单中，请回到 Noema 主聊选择该项目。`,
+              );
+            }
             if (call.function.name === 'project_group') {
               if (input.operation === 'read') {
                 const snapshot = this.store.getRoomSnapshot(
