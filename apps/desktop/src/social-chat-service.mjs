@@ -631,13 +631,21 @@ export class SocialChatService {
             input = JSON.parse(call.function.arguments);
             project = accessibleProjects.find((p) => p.id === input.project_id);
             if (!project) {
+              if (run.projectContext) {
+                const currentProject = this.projectStore.getProject(
+                  run.projectContext.projectId,
+                );
+                throw new Error(
+                  `当前会话已绑定并可访问项目“${currentProject.title}”（ID：${currentProject.id}）；本次 project_id“${input.project_id ?? '未提供'}”与当前项目不符。请直接使用上面的准确 ID。这是项目 ID 不匹配，不是权限缺失。`,
+                );
+              }
               const available = accessibleProjects.length
                 ? accessibleProjects
                     .map((entry) => `“${entry.title}” (${entry.id})`)
                     .join('、')
                 : '无';
               throw new Error(
-                `project_id“${input.project_id ?? '未提供'}”不在当前会话可用范围内。当前可用项目：${available}。请使用名单中的准确 ID；若目标项目不在名单中，请回到 Noema 主聊选择该项目。`,
+                `project_id“${input.project_id ?? '未提供'}”不在当前会话可用范围内。当前可用项目：${available}。请使用名单中的准确 ID；若目标项目不在名单中，请先确认当前会话是否属于该项目。`,
               );
             }
             if (call.function.name === 'project_group') {

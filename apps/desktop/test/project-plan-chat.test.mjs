@@ -384,6 +384,80 @@ test('plan tools return actionable conflict fields and on-demand revision values
   }
 });
 
+test('member project tool distinguishes a mistyped project ID from missing access', async () => {
+  const db = new Database(':memory:');
+  new RootStore(db);
+  const store = createSocialTestStore(db);
+  const projects = new SocialProjectStore({ db, socialChatStore: store });
+  const project = projects.createProject({
+    title: '成员项目上下文',
+    brief: '项目会话中的 ID 输入错误应指出当前授权项目。',
+    agentIds: ['noema', 'engineering-partner'],
+  });
+  const session = projects.getProjectSession(project.id, 'engineering-partner');
+  const requests = [];
+  const service = new SocialChatService({
+    store,
+    projectStore: projects,
+    getProjectSessionContext: (roomId, agentId) =>
+      projects.getProjectSessionContext(roomId, agentId),
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'test-model',
+    getRootState: async () => ({
+      connected: true,
+      selectedModel: 'test-model',
+    }),
+    provider: {
+      async *streamChat(input) {
+        requests.push(input);
+        if (requests.length === 1) {
+          const tool = input.tools.find(
+            (entry) => entry.function.name === 'manage_project_plan',
+          );
+          assert.deepEqual(
+            tool.function.parameters.properties.project_id.enum,
+            [project.id],
+          );
+          input.onToolCalls([
+            {
+              id: 'mistyped-project-id',
+              type: 'function',
+              function: {
+                name: 'manage_project_plan',
+                arguments: JSON.stringify({
+                  operation: 'read',
+                  project_id: `${project.id}-typo`,
+                  reason: '读取当前项目计划。',
+                }),
+              },
+            },
+          ]);
+        } else {
+          const result = JSON.parse(input.messages.at(-1).content);
+          assert.match(result.error, /不是权限缺失/u);
+          assert.match(result.error, new RegExp(project.id, 'u'));
+          yield '我会使用当前会话提供的项目 ID 重试。';
+        }
+      },
+    },
+  });
+  service.onProjectPlanChanged = () => {};
+  try {
+    const turn = service.sendMessage({
+      roomId: session.room.room.id,
+      agentId: 'engineering-partner',
+      text: '读取当前项目计划。',
+    });
+    await service.active.get(session.room.room.id)?.done;
+    assert.equal(store.getSocialMessage(turn.messageId).status, 'complete');
+    assert.equal(projects.plans.get(project.id).revision, 0);
+    assert.equal(requests.length, 2);
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});
+
 test('Noema reads then writes a versioned plan in one turn; members cannot forge an accepting actor', async () => {
   const db = new Database(':memory:');
   new RootStore(db);
