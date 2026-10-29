@@ -152,6 +152,7 @@ if (!process.versions.electron) {
           : null,
         calls: result.calls,
         requestLimit: result.requestLimit,
+        stopReason: result.stopReason,
         projectCount: result.projects?.length,
         progress: result.plan?.progress,
         projectId: result.projectId,
@@ -204,6 +205,7 @@ if (!process.versions.electron) {
     service,
     calls = 0,
     requestCharacters = 0;
+  let requestBudgetExceeded = false;
   const requestLimit = Number(
     process.env.NOEMA_COLLABORATION_LIVE_MAX_REQUESTS ||
       (process.env.NOEMA_COLLABORATION_LIVE_NATURAL === '1' ? 16 : 48),
@@ -286,9 +288,23 @@ if (!process.versions.electron) {
       baseUrl,
       getApiKey: () => secrets.get(),
       fetchImpl: async (url, options) => {
+        if (requestBudgetExceeded)
+          throw Object.assign(
+            new Error('Live observation request budget reached.'),
+            { name: 'AbortError' },
+          );
+        if (calls >= requestLimit) {
+          requestBudgetExceeded = true;
+          const stop = Object.assign(
+            new Error('Live observation request budget reached.'),
+            { name: 'AbortError' },
+          );
+          for (const run of new Set(service?.active.values() ?? []))
+            run.controller.abort(stop);
+          for (const taskId of work?.runs.keys() ?? []) work.stopTask(taskId);
+          throw stop;
+        }
         calls++;
-        if (calls > requestLimit)
-          throw Error('Live test request limit reached.');
         requestCharacters += options.body?.length ?? 0;
         if (natural && requestCharacters > 300_000)
           throw Error('Natural observation input budget reached.');
@@ -421,10 +437,13 @@ if (!process.versions.electron) {
       await service.shutdown();
       await Promise.allSettled(pendingResponseDiagnostics);
       result = {
-        outcome: 'observed',
+        outcome: requestBudgetExceeded ? 'incomplete' : 'observed',
         model: 'deepseek-flash',
         calls,
         requestLimit,
+        ...(requestBudgetExceeded
+          ? { stopReason: 'request_budget_exceeded' }
+          : {}),
         requestCharacters,
         workspaceSource: workspace
           ? JSON.parse(
@@ -605,7 +624,14 @@ if (!process.versions.electron) {
       }
     }
   } catch (error) {
-    result = { outcome: 'failed', error: error.message, calls };
+    result = requestBudgetExceeded
+      ? {
+          outcome: 'incomplete',
+          stopReason: 'request_budget_exceeded',
+          calls,
+          requestLimit,
+        }
+      : { outcome: 'failed', error: error.message, calls };
   } finally {
     if (work) await work.shutdown();
     if (service) await service.shutdown();
