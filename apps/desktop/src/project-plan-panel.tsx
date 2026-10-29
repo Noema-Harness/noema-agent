@@ -1288,7 +1288,15 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                   aria-label="当前阶段与当前工作"
                 >
                   <span className="project-plan-current-strip-label">
-                    {currentPhase.state === 'ready' ? '下一阶段' : '当前阶段'}
+                    {currentPhase.state === 'blocked'
+                      ? '受阻阶段'
+                      : currentPhase.state === 'awaiting_review'
+                        ? '待验收阶段'
+                        : currentPhase.state === 'in_progress'
+                          ? '当前阶段'
+                          : currentPhase.state === 'ready'
+                            ? '下一阶段'
+                            : '计划起点'}
                   </span>
                   <strong>{currentPhase.title}</strong>
                   <span className="project-plan-current-strip-state">
