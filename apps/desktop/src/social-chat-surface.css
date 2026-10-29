@@ -163,6 +163,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  box-sizing: border-box;
+  min-width: 0;
   padding: 0 17px;
   background: #f6f7f8;
 }
@@ -173,6 +175,8 @@
   display: flex;
   align-items: center;
   gap: 9px;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 .social-shell .logo {
   display: inline-flex;
@@ -190,6 +194,8 @@
   display: flex;
   gap: 9px;
   align-items: center;
+  flex: 0 0 auto;
+  margin-left: auto;
 }
 .social-shell .window-tools button {
   font-size: 12px;
@@ -201,6 +207,7 @@
   align-items: center;
   gap: 2px;
   margin-left: 12px;
+  flex: 0 0 auto;
 }
 .social-shell .window-tools .window-control {
   width: 32px;
