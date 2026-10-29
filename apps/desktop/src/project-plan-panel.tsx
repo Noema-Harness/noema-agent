@@ -107,6 +107,7 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
   const [plan, setPlan] = useState<NoemaProjectPlan | null>(null);
   const [groupMessages, setGroupMessages] = useState<NoemaSocialMessage[]>([]);
   const [groupMessagesError, setGroupMessagesError] = useState('');
+  const groupMessagesSequence = useRef(0);
   const [selectedPhaseId, setSelectedPhaseId] = useState<string | null>(null);
   const [workDetailsOpen, setWorkDetailsOpen] = useState<Record<string, boolean>>({});
   const [error, setError] = useState('');
@@ -143,44 +144,52 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
     }
   }, [project.id]);
   useEffect(() => {
+    let active = true;
+    const refreshGroupMessages = () => {
+      const request = ++groupMessagesSequence.current;
+      void window.noema
+        .getSocialRoom(project.groupRoomId)
+        .then((room) => {
+          if (active && request === groupMessagesSequence.current) {
+            setGroupMessages(
+              room.messages.filter(
+                (message) =>
+                  message.role !== 'system' &&
+                  message.status === 'complete' &&
+                  message.content.trim().length > 0,
+              ),
+            );
+            setGroupMessagesError('');
+          }
+        })
+        .catch((e: unknown) => {
+          if (active && request === groupMessagesSequence.current)
+            setGroupMessagesError(
+              e instanceof Error ? e.message : '项目群消息读取失败。',
+            );
+        });
+    };
     void reload();
+    refreshGroupMessages();
     const off = window.noema.onSocialEvent((event) => {
-      if (event.type === 'project-updated' && event.projectId === project.id)
+      if (event.type === 'project-updated' && event.projectId === project.id) {
         void reload();
+        refreshGroupMessages();
+      }
+      if (
+        (event.type === 'chat-state-updated' ||
+          event.type === 'chat-turn-completed') &&
+        event.roomId === project.groupRoomId
+      )
+        refreshGroupMessages();
     });
     return () => {
+      active = false;
+      groupMessagesSequence.current += 1;
       sequence.current += 1;
       off();
     };
-  }, [project.id, reload]);
-
-  useEffect(() => {
-    let active = true;
-    setGroupMessages([]);
-    setGroupMessagesError('');
-    void window.noema
-      .getSocialRoom(project.groupRoomId)
-      .then((room) => {
-        if (active)
-          setGroupMessages(
-            room.messages.filter(
-              (message) =>
-                message.role !== 'system' &&
-                message.status === 'complete' &&
-                message.content.trim().length > 0,
-            ),
-          );
-      })
-      .catch((e: unknown) => {
-        if (active)
-          setGroupMessagesError(
-            e instanceof Error ? e.message : '项目群消息读取失败。',
-          );
-      });
-    return () => {
-      active = false;
-    };
-  }, [project.groupRoomId]);
+  }, [project.groupRoomId, project.id, reload]);
 
   const editable = project.status === 'active';
   const members = project.members;
