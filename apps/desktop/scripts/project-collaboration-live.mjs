@@ -157,12 +157,23 @@ if (!process.versions.electron) {
   )
     process.exitCode = 1;
 } else {
-  const { app, net, safeStorage } = await import('electron');
+  const { app, net, safeStorage, session } = await import('electron');
   const scratch = process.env.NOEMA_COLLABORATION_LIVE_DIRECTORY;
   if (!scratch || !path.isAbsolute(scratch) || !fs.existsSync(scratch))
     throw Error('Isolated test directory required.');
   app.setPath('userData', path.join(scratch, 'home'));
   await app.whenReady();
+  // Electron's Chromium network stack does not reliably inherit shell proxy
+  // variables on Windows. Keep this isolated live harness on the same proxy
+  // route as curl/Node without changing the user's system proxy settings.
+  const proxyAddress = process.env.HTTPS_PROXY || process.env.HTTP_PROXY;
+  if (proxyAddress) {
+    const proxy = new URL(proxyAddress);
+    const endpoint = `${proxy.protocol}//${proxy.host}`;
+    await session.defaultSession.setProxy({
+      proxyRules: `http=${endpoint};https=${endpoint}`,
+    });
+  }
   const { RootStore } = await import('../src/root-store.mjs');
   const { SocialChatStore } = await import('../src/social-chat-store.mjs');
   const { SocialProjectStore } =
@@ -587,4 +598,3 @@ if (!process.versions.electron) {
     );
   }
 }
-
