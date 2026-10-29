@@ -368,8 +368,11 @@ async function searchWorkspace(workspacePath, args, signal) {
   if (!stat.isDirectory() && !stat.isFile()) {
     throw new Error('搜索路径必须是普通文件或目录。');
   }
-  const cwd = stat.isDirectory() ? target : path.dirname(target);
-  const file = stat.isFile() ? path.basename(target) : '.';
+  const searchRoot = stat.isDirectory() ? target : path.dirname(target);
+  // Search from the workspace root so ripgrep sees the same ignore-file
+  // hierarchy regardless of which subdirectory the caller selected.
+  const cwd = root;
+  const file = path.relative(root, target) || '.';
   const { rgPath } = await import('@vscode/ripgrep');
   const commandArgs = [
     '--json',
@@ -377,7 +380,9 @@ async function searchWorkspace(workspacePath, args, signal) {
     '--no-messages',
     ...(args.literal ? ['--fixed-strings'] : []),
     ...(args.caseSensitive === false ? ['--ignore-case'] : []),
-    ...(args.include ? [`--glob=${args.include}`] : []),
+    ...(fs.existsSync(path.join(root, '.gitignore'))
+      ? [`--ignore-file=${path.join(root, '.gitignore')}`]
+      : []),
     '--glob=!**/.git/**',
     '--',
     args.pattern,
@@ -437,6 +442,13 @@ async function searchWorkspace(workspacePath, args, signal) {
       ) {
         throw new Error('搜索结果超出所选工作区，已丢弃。');
       }
+      // ripgrep's explicit include globs override ignore files. Apply the
+      // caller's include filter after ripgrep has honored workspace ignores.
+      if (
+        args.include &&
+        !path.matchesGlob(path.relative(searchRoot, matchPath), args.include)
+      )
+        return;
       const preview = String(data.lines?.text ?? '')
         .replace(/[\r\n]+$/u, '')
         .slice(0, 2_000);

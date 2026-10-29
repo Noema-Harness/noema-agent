@@ -199,15 +199,18 @@ test('search_files uses bounded ripgrep results and respects workspace ignores',
     path.join(tmpdir(), 'noema-project-search-files-'),
   );
   const workspace = path.join(directory, 'workspace');
-  mkdirSync(path.join(workspace, '.hidden'), { recursive: true });
+  mkdirSync(path.join(workspace, 'src', '.hidden'), { recursive: true });
   writeFileSync(path.join(workspace, '.gitignore'), 'ignored.txt\n');
   writeFileSync(
-    path.join(workspace, 'matches.txt'),
+    path.join(workspace, 'src', 'matches.txt'),
     'needle first\nneedle second\nneedle third\n',
   );
-  writeFileSync(path.join(workspace, 'ignored.txt'), 'needle ignored\n');
   writeFileSync(
-    path.join(workspace, '.hidden', 'secret.txt'),
+    path.join(workspace, 'src', 'ignored.txt'),
+    'needle ignored\n',
+  );
+  writeFileSync(
+    path.join(workspace, 'src', '.hidden', 'secret.txt'),
     'needle hidden\n',
   );
   const requests = [];
@@ -216,6 +219,7 @@ test('search_files uses bounded ripgrep results and respects workspace ignores',
       {
         calls: [
           toolCall('search-bounded', 'search_files', {
+            path: 'src',
             pattern: 'needle',
             literal: true,
             include: '*.txt',
@@ -239,8 +243,8 @@ test('search_files uses bounded ripgrep results and respects workspace ignores',
     const toolResult = JSON.parse(
       requests[1].messages.find((message) => message.role === 'tool').content,
     ).result;
-    assert.match(toolResult, /matches\.txt:1: needle first/u);
-    assert.match(toolResult, /matches\.txt:2: needle second/u);
+    assert.match(toolResult, /src\\matches\.txt:1: needle first/u);
+    assert.match(toolResult, /src\\matches\.txt:2: needle second/u);
     assert.match(toolResult, /结果已截断/u);
     assert.doesNotMatch(toolResult, /ignored|hidden|secret/u);
   } finally {
