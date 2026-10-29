@@ -206,6 +206,8 @@ if (!process.versions.electron) {
     calls = 0,
     requestCharacters = 0;
   let requestBudgetExceeded = false;
+  let requestBudgetStopReason = null;
+  let characterBudgetRejected = 0;
   const requestLimit = Number(
     process.env.NOEMA_COLLABORATION_LIVE_MAX_REQUESTS ||
       (process.env.NOEMA_COLLABORATION_LIVE_NATURAL === '1' ? 16 : 48),
@@ -347,6 +349,7 @@ if (!process.versions.electron) {
           );
         if (calls >= requestLimit) {
           requestBudgetExceeded = true;
+          requestBudgetStopReason = 'request_limit';
           const stop = Object.assign(
             new Error('Live observation request budget reached.'),
             { name: 'AbortError' },
@@ -356,10 +359,22 @@ if (!process.versions.electron) {
           for (const taskId of work?.runs.keys() ?? []) work.stopTask(taskId);
           throw stop;
         }
+        const requestSize = options.body?.length ?? 0;
+        if (natural && requestCharacters + requestSize > 300_000) {
+          characterBudgetRejected++;
+          requestBudgetExceeded = true;
+          requestBudgetStopReason = 'request_character_limit';
+          const stop = Object.assign(
+            new Error('Natural observation input budget reached.'),
+            { name: 'AbortError' },
+          );
+          for (const run of new Set(service?.active.values() ?? []))
+            run.controller.abort(stop);
+          for (const taskId of work?.runs.keys() ?? []) work.stopTask(taskId);
+          throw stop;
+        }
+        requestCharacters += requestSize;
         calls++;
-        requestCharacters += options.body?.length ?? 0;
-        if (natural && requestCharacters > 300_000)
-          throw Error('Natural observation input budget reached.');
         const request = JSON.parse(options.body);
         const last = request.messages.at(-1);
         const step = {
@@ -385,32 +400,41 @@ if (!process.versions.electron) {
           if (response.body) {
             const diagnostic = (async () => {
               const reader = response.clone().body.getReader();
-              const chunks = [];
               let bytes = 0;
+              let preview = '';
+              let tail = '';
+              let ended = false;
+              let truncated = false;
               try {
                 while (bytes < 1_000_000) {
                   const { value, done } = await reader.read();
-                  if (done) break;
+                  if (done) {
+                    ended = true;
+                    break;
+                  }
                   const chunk = value.subarray(
                     0,
                     Math.min(value.byteLength, 1_000_000 - bytes),
                   );
-                  chunks.push(chunk);
                   bytes += chunk.byteLength;
+                  const text = new TextDecoder().decode(chunk, { stream: true });
+                  if (preview.length < 2000)
+                    preview += text.slice(0, 2000 - preview.length);
+                  tail = `${tail}${text}`.slice(-512);
                 }
-                const merged = new Uint8Array(bytes);
-                let offset = 0;
-                for (const chunk of chunks) {
-                  merged.set(chunk, offset);
-                  offset += chunk.byteLength;
-                }
-                const preview = new TextDecoder().decode(merged).slice(0, 2000);
+                truncated = !ended && bytes >= 1_000_000;
+                step.responseBytes = bytes;
+                step.responseStreamEnded = ended;
+                step.responseStreamTruncated = truncated;
+                step.responseDoneMarker = tail.includes('[DONE]');
                 if (!response.ok) step.responseError = preview;
                 else step.responsePreview = preview;
               } finally {
-                try {
-                  await reader.cancel();
-                } catch {}
+                if (!ended) {
+                  try {
+                    await reader.cancel();
+                  } catch {}
+                }
               }
             })().catch((error) => {
               step.responseReadError = `${error?.name ?? 'Error'}: ${error?.message ?? 'response read failed'}`;
@@ -493,8 +517,9 @@ if (!process.versions.electron) {
         model: 'deepseek-flash',
         calls,
         requestLimit,
+        characterBudgetRejected,
         ...(requestBudgetExceeded
-          ? { stopReason: 'request_budget_exceeded' }
+          ? { stopReason: requestBudgetStopReason }
           : {}),
         requestCharacters,
         workspaceSource: workspace
@@ -653,6 +678,10 @@ if (!process.versions.electron) {
           model: 'deepseek-flash',
           calls,
           requestLimit,
+          characterBudgetRejected,
+          ...(requestBudgetStopReason
+            ? { stopReason: requestBudgetStopReason }
+            : {}),
           requestCharacters,
           steps,
           balanceBefore: before,
@@ -679,11 +708,19 @@ if (!process.versions.electron) {
     result = requestBudgetExceeded
       ? {
           outcome: 'incomplete',
-          stopReason: 'request_budget_exceeded',
+          stopReason: requestBudgetStopReason ?? 'request_budget_exceeded',
           calls,
           requestLimit,
+          characterBudgetRejected,
+          requestCharacters,
         }
-      : { outcome: 'failed', error: error.message, calls };
+      : {
+          outcome: 'failed',
+          error: error.message,
+          calls,
+          characterBudgetRejected,
+          requestCharacters,
+        };
   } finally {
     if (work) await work.shutdown();
     if (service) await service.shutdown();
