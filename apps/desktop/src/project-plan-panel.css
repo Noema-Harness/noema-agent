@@ -1,5 +1,6 @@
 .social-shell .project-plan {
   width: 100%;
+  max-width: 1160px;
   min-width: 0;
   margin: 24px 0;
   padding-top: 18px;
@@ -29,6 +30,7 @@
   font-size: 12px;
 }
 .social-shell .project-plan-objective {
+  max-width: 78ch;
   margin: 14px 0 18px;
   white-space: pre-wrap;
   line-height: 1.7;
@@ -140,6 +142,14 @@
   overflow: hidden;
   color: var(--muted);
   font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.social-shell .project-plan-phase-dependencies {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.4;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

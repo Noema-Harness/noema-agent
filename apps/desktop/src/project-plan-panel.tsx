@@ -1021,6 +1021,17 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                           {phaseLabels[phase.state]}
                           {phase.progress.total ? ` · ${phase.progress.done}/${phase.progress.total}` : ''}
                         </small>
+                        <span className="project-plan-phase-dependencies">
+                          {phase.dependsOn.length
+                            ? `前置：${phase.dependsOn
+                                .map(
+                                  (id) =>
+                                    plan.phases.find((entry) => entry.id === id)
+                                      ?.title ?? id,
+                                )
+                                .join('、')}`
+                            : '可独立开始'}
+                        </span>
                       </span>
                     </button>
                   </li>
