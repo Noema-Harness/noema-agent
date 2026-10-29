@@ -8,6 +8,22 @@ import { RootStore } from '../src/root-store.mjs';
 import { SocialChatStore } from '../src/social-chat-store.mjs';
 import { SocialProjectStore } from '../src/social-project-store.mjs';
 
+let evidenceMessageSequence = 0;
+
+function messageEvidence(db, project, agentId) {
+  const id = `plan-evidence-${++evidenceMessageSequence}`;
+  const roomId = db
+    .prepare('SELECT group_room_id AS roomId FROM social_projects WHERE id = ?')
+    .get(project.id).roomId;
+  const now = new Date().toISOString();
+  db.prepare(`
+    INSERT INTO social_messages
+      (id, room_id, turn_id, role, agent_id, content, status, runtime, created_at, updated_at)
+    VALUES (?, ?, ?, 'assistant', ?, '测试中的真实成果消息。', 'complete', 'local', ?, ?)
+  `).run(id, roomId, `turn-${id}`, agentId, now, now);
+  return [{ kind: 'message', messageId: id }];
+}
+
 function setup(filename = ':memory:') {
   const db = new Database(filename);
   new RootStore(db);
@@ -68,19 +84,27 @@ test('only accepted deliveries advance progress and unlock dependent work across
       reason: '建立阶段范围。',
       plan,
     });
-    const update = (itemId, status, actorAgentId, extra = {}) =>
-      projects.plans.updateItem({
+    const update = (itemId, status, actorAgentId, extra = {}) => {
+      const details = { ...extra };
+      if (
+        status === 'submitted' &&
+        details.evidence &&
+        details.evidenceSources === undefined
+      )
+        details.evidenceSources = messageEvidence(db, project, actorAgentId);
+      return projects.plans.updateItem({
         projectId: project.id,
         expectedRevision: projects.plans.get(project.id).revision,
         itemId,
         status,
         actorAgentId,
         reason: '推进阶段交付。',
-        ...extra,
+        ...details,
       });
+    };
     assert.throws(() => update('budget', 'in_progress', b), /前置交付/u);
     update('research', 'in_progress', a);
-    assert.throws(() => update('research', 'submitted', a), /成果依据/u);
+    assert.throws(() => update('research', 'submitted', a), /可追溯成果来源/u);
     assert.throws(
       () =>
         update('research', 'submitted', 'noema', {
@@ -212,6 +236,7 @@ test('plan edits cannot skip submission, and legacy done without two-party recor
       status: 'submitted',
       actorAgentId: a,
       evidence: '带依据的交付。',
+      evidenceSources: messageEvidence(db, project, a),
       reason: '负责人提交。',
     });
     assert.throws(
@@ -273,6 +298,7 @@ test('plan edits cannot skip submission, and legacy done without two-party recor
       status: 'submitted',
       actorAgentId: a,
       evidence: '重新提交的工作成果。',
+      evidenceSources: messageEvidence(db, project, a),
       reason: '负责人重新提交。',
     });
     const reaccepted = projects.plans.updateItem({
@@ -393,6 +419,7 @@ test('phases form explicit delivery gates and project progress aggregates accept
       actorAgentId: a,
       status: 'submitted',
       evidence: '两份原始来源与采访记录。',
+      evidenceSources: messageEvidence(db, project, a),
       reason: '提交需求证据。',
     });
     const acceptedWork = projects.plans.updateItem({
@@ -432,6 +459,7 @@ test('phases form explicit delivery gates and project progress aggregates accept
       actorAgentId: b,
       status: 'submitted',
       evidence: '预算与研究结果逐项对应。',
+      evidenceSources: messageEvidence(db, project, b),
       reason: '提交预算草案。',
     });
     const acceptedBudget = projects.plans.updateItem({
@@ -457,6 +485,85 @@ test('phases form explicit delivery gates and project progress aggregates accept
       percentage: 100,
       canceled: 0,
     });
+  } finally {
+    db.close();
+  }
+});
+
+test('legacy text-only submissions must be relinked before independent acceptance', () => {
+  const { db, projects, project, a, plan } = setup();
+  try {
+    const initial = projects.plans.replace({
+      projectId: project.id,
+      expectedRevision: 0,
+      reason: '建立需要可追溯来源的工作项。',
+      plan,
+    });
+    const started = projects.plans.updateItem({
+      projectId: project.id,
+      expectedRevision: initial.revision,
+      itemId: 'research',
+      actorAgentId: a,
+      status: 'in_progress',
+      reason: '开始调研。',
+    });
+    const submitted = projects.plans.updateItem({
+      projectId: project.id,
+      expectedRevision: started.revision,
+      itemId: 'research',
+      actorAgentId: a,
+      status: 'submitted',
+      evidence: '旧格式的文字说明。',
+      evidenceSources: messageEvidence(db, project, a),
+      reason: '提交调研结果。',
+    });
+    const row = db
+      .prepare(
+        'SELECT items_json FROM social_project_plan_revisions WHERE project_id = ? AND revision = ?',
+      )
+      .get(project.id, submitted.revision);
+    const snapshot = JSON.parse(row.items_json);
+    snapshot.phases[0].workItems.find(
+      (entry) => entry.id === 'research',
+    ).evidenceRefs = [];
+    db.prepare(
+      'UPDATE social_project_plan_revisions SET items_json = ? WHERE project_id = ? AND revision = ?',
+    ).run(JSON.stringify(snapshot), project.id, submitted.revision);
+
+    const legacy = projects.plans.get(project.id);
+    assert.equal(legacy.items[0].status, 'submitted');
+    assert.equal(legacy.items[0].acceptanceRecorded, false);
+    assert.throws(
+      () =>
+        projects.plans.updateItem({
+          projectId: project.id,
+          expectedRevision: legacy.revision,
+          itemId: 'research',
+          actorAgentId: 'noema',
+          status: 'done',
+          reason: '尝试核验旧记录。',
+        }),
+      /缺少可追溯来源/u,
+    );
+    const relinked = projects.plans.updateItem({
+      projectId: project.id,
+      expectedRevision: legacy.revision,
+      itemId: 'research',
+      actorAgentId: a,
+      status: 'submitted',
+      evidence: '重新核对后的成果说明。',
+      evidenceSources: messageEvidence(db, project, a),
+      reason: '负责人补齐来源链接。',
+    });
+    const accepted = projects.plans.updateItem({
+      projectId: project.id,
+      expectedRevision: relinked.revision,
+      itemId: 'research',
+      actorAgentId: 'noema',
+      status: 'done',
+      reason: '独立核验补交的成果。',
+    });
+    assert.equal(accepted.items[0].acceptanceRecorded, true);
   } finally {
     db.close();
   }
@@ -624,6 +731,7 @@ test('nested groups organize leaf packages without inflating project progress', 
       actorAgentId: a,
       status: 'submitted',
       evidence: '访谈记录。',
+      evidenceSources: messageEvidence(db, project, a),
       reason: '提交访谈记录。',
     });
     const accepted = projects.plans.updateItem({
@@ -996,6 +1104,9 @@ test('accepted work cannot replace its evidence without reopening and resubmitti
         actorAgentId,
         status,
         evidence,
+        ...(status === 'submitted'
+          ? { evidenceSources: messageEvidence(db, project, actorAgentId) }
+          : {}),
         reason: '推进实际工作。',
       });
     update(1, 'research', a, 'submitted', '第一份来源。');
@@ -1035,6 +1146,7 @@ test('plan summaries mark bounded text and item reads return the complete text',
       actorAgentId: a,
       status: 'submitted',
       evidence,
+      evidenceSources: messageEvidence(db, project, a),
       reason: '记录一份较长的成果依据。',
     });
 

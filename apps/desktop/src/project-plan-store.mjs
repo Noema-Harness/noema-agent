@@ -102,8 +102,11 @@ function acceptanceRecorded(item) {
   return Boolean(
     item.status === 'done' &&
     item.submittedByAgentId &&
+    item.submissionRevision &&
+    item.evidenceRefs?.length &&
     item.evidenceReview?.actorId &&
-    item.evidenceReview.actorId !== item.submittedByAgentId,
+    item.evidenceReview.actorId !== item.submittedByAgentId &&
+    item.evidenceReview?.submissionRevision === item.submissionRevision,
   );
 }
 
@@ -1315,6 +1318,8 @@ export class ProjectPlanStore {
           input.evidenceSources !== undefined);
       if (newSubmission && input.actorAgentId === 'noema')
         throw new Error('Noema 不能代替负责人提交成果。');
+      if (newSubmission && !input.evidenceSources?.length)
+        throw new Error('新提交必须至少关联一项可追溯成果来源。');
       const accepting = status === 'done' && item.status === 'submitted';
       const remainsAccepted =
         status === 'done' && item.status === 'done' && acceptanceRecorded(item);
@@ -1327,6 +1332,8 @@ export class ProjectPlanStore {
         );
       if (accepting && !item.submittedByAgentId)
         throw new Error('提交记录缺少提交者；请由负责人重新提交成果。');
+      if (accepting && !item.evidenceRefs?.length)
+        throw new Error('成果缺少可追溯来源；请负责人补交来源后再验收。');
       if (accepting && reviewerId === item.submittedByAgentId)
         throw new Error('提交者不能验收自己的成果。');
       if (
