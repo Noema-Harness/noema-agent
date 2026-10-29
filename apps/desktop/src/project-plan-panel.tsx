@@ -408,7 +408,7 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
               active:
                 phase.state === 'in_progress' ||
                 phase.state === 'awaiting_review' ||
-                dependencyId === selectedPhaseId,
+                dependencyId === selectedPhase?.id,
             },
           ];
         });
@@ -420,7 +420,7 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
     observer.observe(flow);
     for (const node of phaseNodeRefs.current.values()) observer.observe(node);
     return () => observer.disconnect();
-  }, [plan, selectedPhaseId, phaseLanes.length]);
+  }, [plan, selectedPhase?.id, phaseLanes.length]);
   const phaseFocus = selectedPhase
     ? (() => {
         const focus = phaseOverviewFocus(selectedPhase);
@@ -1270,7 +1270,7 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
         <>
           <div className="project-plan-objective">
             <span>项目结果</span>
-            <strong>
+            <strong title={plan.objective}>
               {plan.objective ||
                 '先确定项目结果，再逐步细化阶段和工作项；未定义的远期工作不计入进度。'}
             </strong>
@@ -1279,9 +1279,11 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
             <div className="project-plan-overview" aria-label="项目阶段概览">
               <div className="project-plan-overview-status">
                 <strong>
-                  {plan.phases.some((phase) => phase.state === 'blocked')
-                    ? '有工作受阻'
-                    : plan.phases.some((phase) => phase.state === 'awaiting_review')
+                  {currentPhase
+                    ? `当前：阶段 ${String(plan.phases.findIndex((phase) => phase.id === currentPhase.id) + 1).padStart(2, '0')} · ${phaseLabels[currentPhase.state]}`
+                    : plan.phases.some((phase) => phase.state === 'blocked')
+                      ? '有工作受阻'
+                      : plan.phases.some((phase) => phase.state === 'awaiting_review')
                       ? '有阶段待验收'
                       : plan.phases.every((phase) => phase.state === 'done')
                         ? '阶段全部验收'
@@ -1368,7 +1370,7 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                         >
                           <button
                             type="button"
-                            aria-label={`${phase.title}；${phaseLabels[phase.state]}；阶段成果：${phase.outcome}`}
+                            aria-label={`${phase.title}；${phaseLabels[phase.state]}；阶段成果：${phase.outcome}${phase.dependsOn.length ? `；前置阶段：${phase.dependsOn.map((dependencyId) => plan.phases.findIndex((item) => item.id === dependencyId) + 1).join('、')}` : ''}`}
                             aria-current={selectedPhase?.id === phase.id ? 'step' : undefined}
                             aria-controls="project-plan-phase-detail"
                             title={phase.outcome}
@@ -1393,9 +1395,11 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                               </span>
                             </span>
                             <strong className="project-plan-phase-stop-title">{phase.title}</strong>
-                            <span className="project-plan-phase-stop-outcome">
-                              <span>交付结果</span>
-                              <span>{phase.outcome || '尚未定义阶段成果'}</span>
+                            <span
+                              className="project-plan-phase-stop-outcome"
+                              title={phase.outcome || '尚未定义阶段成果'}
+                            >
+                              {phase.outcome || '阶段成果待定义'}
                             </span>
                             <span className="project-plan-phase-stop-progress">
                               {(() => {
@@ -1431,18 +1435,6 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                                   <span>工作包待细化</span>
                                 );
                               })()}
-                            </span>
-                            <span className="project-plan-phase-dependencies">
-                              {phase.dependsOn.length ? (
-                                <>
-                                  <span>等待</span>
-                                  {phase.dependsOn.map((dependencyId) => (
-                                    <span className="project-plan-phase-dependency" key={dependencyId}>
-                                      {plan.phases.find((item) => item.id === dependencyId)?.title ?? '未知阶段'}
-                                    </span>
-                                  ))}
-                                </>
-                              ) : null}
                             </span>
                           </button>
                         </li>
