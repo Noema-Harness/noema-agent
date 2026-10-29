@@ -105,6 +105,101 @@
 .social-shell .project-plan-overview-metrics .state-blocked b {
   color: #993f31;
 }
+.social-shell .project-plan-work-status {
+  display: grid;
+  gap: 7px;
+  margin: 10px 0 12px;
+}
+.social-shell .project-plan-work-status-meter {
+  display: flex;
+  gap: 3px;
+  height: 9px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--line);
+}
+.social-shell .project-plan-work-status-meter i {
+  min-width: 5px;
+  background: var(--line-strong);
+}
+.social-shell .project-plan-work-status-meter .state-accepted {
+  background: var(--success);
+}
+.social-shell .project-plan-work-status-meter .state-submitted,
+.social-shell .project-plan-work-status-meter .state-unverified {
+  background: #b97843;
+}
+.social-shell .project-plan-work-status-meter .state-in-progress {
+  background: var(--accent);
+}
+.social-shell .project-plan-work-status-meter .state-blocked {
+  background: #993f31;
+}
+.social-shell .project-plan-work-status-legend {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.social-shell .project-plan-work-status-legend strong {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 650;
+}
+.social-shell .project-plan-work-status-legend .state-submitted,
+.social-shell .project-plan-work-status-legend .state-unverified {
+  color: #8b5b31;
+}
+.social-shell .project-plan-work-status-legend .state-in-progress {
+  color: var(--accent);
+}
+.social-shell .project-plan-work-status-legend .state-blocked {
+  color: #993f31;
+}
+.social-shell .project-plan-current-focus {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin: 0 0 12px;
+  padding: 9px 11px;
+  border-left: 2px solid var(--accent);
+  background: var(--paper-muted);
+}
+.social-shell .project-plan-current-focus > span {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.social-shell .project-plan-current-focus > strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 560;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.social-shell .project-plan-current-focus > small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.social-shell .project-plan-current-focus:is(.state-blocked, .state-awaiting_review, .state-submitted) {
+  border-left-color: #b97843;
+}
+.social-shell .project-plan-current-focus:is(.state-blocked, .state-awaiting_review, .state-submitted) > span {
+  color: #8b5b31;
+}
+.social-shell .project-plan-current-focus.state-done {
+  border-left-color: var(--success);
+}
 .social-shell .project-plan-flow-heading {
   display: flex;
   align-items: baseline;
@@ -201,8 +296,6 @@
   grid-template-areas:
     'state'
     'title'
-    'outcome'
-    'focus'
     'progress'
     'dependencies';
   align-items: start;
@@ -307,64 +400,10 @@
 .social-shell .project-plan-phase-stop-title {
   grid-area: title;
   align-self: center;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 620;
-  line-height: 1.4;
+  line-height: 1.35;
   overflow-wrap: anywhere;
-}
-.social-shell .project-plan-phase-stop-outcome {
-  display: -webkit-box;
-  grid-area: outcome;
-  max-width: 58ch;
-  overflow: hidden;
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1.45;
-  overflow-wrap: anywhere;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-.social-shell .project-plan-phase-stop-focus {
-  grid-area: focus;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: baseline;
-  gap: 6px;
-  min-width: 0;
-  padding: 7px 8px;
-  border-left: 2px solid var(--accent);
-  background: var(--paper-muted);
-  color: var(--ink-soft);
-  font-size: 10px;
-  line-height: 1.4;
-}
-.social-shell .project-plan-phase-stop-focus > span {
-  color: var(--accent);
-  font-weight: 650;
-  white-space: nowrap;
-}
-.social-shell .project-plan-phase-stop-focus strong {
-  min-width: 0;
-  overflow: hidden;
-  font-weight: 550;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.social-shell .project-plan-phase-stop-focus small {
-  overflow: hidden;
-  color: var(--muted);
-  font-size: 10px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.social-shell .project-plan-phase-stop-focus:is(.state-blocked, .state-awaiting_review) {
-  border-left-color: #b97843;
-}
-.social-shell .project-plan-phase-stop-focus:is(.state-blocked, .state-awaiting_review) > span {
-  color: #8b5b31;
-}
-.social-shell .project-plan-phase-stop-focus.state-submitted > span {
-  color: #8b5b31;
 }
 .social-shell .project-plan-phase-stop-progress {
   grid-area: progress;
@@ -862,6 +901,23 @@
     justify-content: flex-start;
     gap: 4px 12px;
   }
+  .social-shell .project-plan-current-focus {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'label phase'
+      'title title';
+    gap: 4px 10px;
+  }
+  .social-shell .project-plan-current-focus > span {
+    grid-area: label;
+  }
+  .social-shell .project-plan-current-focus > strong {
+    grid-area: title;
+    white-space: normal;
+  }
+  .social-shell .project-plan-current-focus > small {
+    grid-area: phase;
+  }
   .social-shell .project-plan-flow-heading {
     align-items: flex-start;
     flex-direction: column;
@@ -919,7 +975,6 @@
     grid-template-areas:
       'state'
       'title'
-      'outcome'
       'progress'
       'dependencies';
     gap: 5px;

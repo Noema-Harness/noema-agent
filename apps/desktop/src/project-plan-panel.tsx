@@ -368,6 +368,49 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
       itemId: waitingItem?.id ?? null,
     };
   };
+  const projectWorkDistribution = plan
+    ? (() => {
+        const items = plan.items.filter(
+          (item) => item.kind === 'work_package' && item.status !== 'canceled',
+        );
+        return [
+          {
+            key: 'accepted',
+            label: '已验收',
+            count: items.filter(
+              (item) => item.status === 'done' && item.acceptanceRecorded,
+            ).length,
+          },
+          {
+            key: 'submitted',
+            label: '待验收',
+            count: items.filter((item) => item.status === 'submitted').length,
+          },
+          {
+            key: 'in-progress',
+            label: '进行中',
+            count: items.filter((item) => item.status === 'in_progress').length,
+          },
+          {
+            key: 'blocked',
+            label: '受阻',
+            count: items.filter((item) => item.status === 'blocked').length,
+          },
+          {
+            key: 'unverified',
+            label: '验收待补',
+            count: items.filter(
+              (item) => item.status === 'done' && !item.acceptanceRecorded,
+            ).length,
+          },
+          {
+            key: 'pending',
+            label: '待开始',
+            count: items.filter((item) => item.status === 'pending').length,
+          },
+        ].filter((segment) => segment.count > 0);
+      })()
+    : [];
   useLayoutEffect(() => {
     const flow = phaseFlowRef.current;
     if (!flow || !plan) return;
@@ -1304,6 +1347,47 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                   ) : null}
                 </div>
               </div>
+              {plan.progress.total ? (
+                <div className="project-plan-work-status" aria-label="全部工作项状态">
+                  <div
+                    className="project-plan-work-status-meter"
+                    role="img"
+                    aria-label={projectWorkDistribution
+                      .map((segment) => `${segment.label} ${segment.count} 项`)
+                      .join('，')}
+                  >
+                    {projectWorkDistribution.map((segment) => (
+                      <i
+                        key={segment.key}
+                        className={`state-${segment.key}`}
+                        style={{ flexGrow: segment.count }}
+                      />
+                    ))}
+                  </div>
+                  <div className="project-plan-work-status-legend">
+                    <strong>{plan.progress.done}/{plan.progress.total} 项已验收</strong>
+                    {projectWorkDistribution
+                      .filter((segment) => segment.key !== 'accepted')
+                      .map((segment) => (
+                        <span className={`state-${segment.key}`} key={segment.key}>
+                          {segment.count} 项{segment.label}
+                        </span>
+                      ))}
+                  </div>
+                </div>
+              ) : null}
+              {currentPhase ? (() => {
+                const focus = phaseOverviewFocus(currentPhase);
+                return (
+                  <div className={`project-plan-current-focus state-${focus.state}`}>
+                    <span>{focus.label}</span>
+                    <strong>{focus.title}</strong>
+                    <small>
+                      {currentPhase.title}{focus.owner ? ` · ${focus.owner}` : ''}
+                    </small>
+                  </div>
+                );
+              })() : null}
               <div className="project-plan-flow-heading">
                 <strong>阶段路径</strong>
               </div>
@@ -1390,22 +1474,6 @@ export function ProjectPlanPanel({ project }: { project: NoemaSocialProject }) {
                               </span>
                             </span>
                             <strong className="project-plan-phase-stop-title">{phase.title}</strong>
-                            <span className="project-plan-phase-stop-outcome">
-                              {phase.outcome}
-                            </span>
-                            {currentPhase?.id === phase.id ? (() => {
-                              const focus = phaseOverviewFocus(phase);
-                              return (
-                                <span
-                                  className={`project-plan-phase-stop-focus state-${focus.state}`}
-                                  aria-label={`当前焦点：${focus.label}，${focus.title}${focus.owner ? `，负责人 ${focus.owner}` : ''}`}
-                                >
-                                  <span>{focus.label}</span>
-                                  <strong>{focus.title}</strong>
-                                  {focus.owner ? <small>{focus.owner}</small> : null}
-                                </span>
-                              );
-                            })() : null}
                             <span className="project-plan-phase-stop-progress">
                               {(() => {
                                 const distribution = phaseWorkStatusDistribution(phase);
