@@ -499,6 +499,7 @@ test('finite delegation chains stop with a public explanation instead of unbound
 
 test('plan submission triggers Noema review; acceptance unlocks and dispatches the dependent member', async () => {
   const calls = [];
+  const events = [];
   const f = setup({
     async *streamChat(input) {
       calls.push(input);
@@ -553,6 +554,7 @@ test('plan submission triggers Noema review; acceptance unlocks and dispatches t
       );
     },
   });
+  f.service.emit = (event) => events.push(event);
   try {
     f.projects.plans.replace({
       projectId: f.project.id,
@@ -612,6 +614,29 @@ test('plan submission triggers Noema review; acceptance unlocks and dispatches t
         )
         .get().n,
       2,
+    );
+    assert.equal(
+      f.db
+        .prepare(`
+          SELECT COUNT(*) AS n FROM social_messages
+          WHERE room_id='room-noema' AND role='assistant'
+            AND turn_id IN (
+              SELECT id FROM social_project_reports WHERE project_id=?
+            )
+        `)
+        .get(f.project.id).n,
+      0,
+      'ordinary internal report handling is not left as a visible Noema reply',
+    );
+    assert.equal(
+      events.filter(
+        (entry) =>
+          entry.type === 'chat-turn-completed' &&
+          entry.roomId === 'room-noema' &&
+          entry.notifyUser === true,
+      ).length,
+      0,
+      'internal reports do not trigger user notifications',
     );
   } finally {
     await f.service.shutdown();
@@ -933,6 +958,14 @@ test('a report may read the plan then request user judgment; queued execution st
     });
     await settle(f.service);
     assert.equal(f.projects.getProject(f.project.id).status, 'awaiting_user');
+    assert.ok(
+      f.store
+        .getRoomSnapshot('room-noema')
+        .messages.some((message) =>
+          message.content.includes('请评审「摄影试办」'),
+        ),
+      'an explicit review request is visible in Noema main chat',
+    );
     assert.throws(
       () =>
         f.service.sendMessage({

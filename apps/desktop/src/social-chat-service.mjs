@@ -1593,7 +1593,9 @@ export class SocialChatService {
         roomId: run.roomId,
         messageId: run.assistantMessageId,
         ...payload,
-        notifyUser: run.notifyUser === true || run.roomId === 'room-noema',
+        notifyUser: run.isProjectReportTurn
+          ? run.notifyUser === true
+          : run.notifyUser === true || run.roomId === 'room-noema',
       });
     if (run.mirrorRoomId) {
       this.emit({
@@ -1945,6 +1947,11 @@ export class SocialChatService {
         text: '项目成员阶段报告',
         forwardedSources: [],
         replyTo: null,
+        // Reports are internal work inputs. Their ordinary coordination text
+        // must not masquerade as a new Noema-to-user chat turn or notification.
+        // An explicit request_project_review below promotes the turn to public.
+        notifyUser: false,
+        suppressPublicReply: true,
         projectContext: null,
         projectReportData,
         isProjectReportTurn: true,
@@ -2785,6 +2792,8 @@ export class SocialChatService {
               'social_tool_invalid',
               '评审问题无效；没有创建评审。',
             );
+          run.suppressPublicReply = false;
+          run.notifyUser = true;
           const delta = `${content.trim() ? '\n\n' : ''}请评审「${projectInfo.title}」：\n${input.question.trim()}`;
           if (!this.appendRunAssistantDelta(run, delta))
             throw new ModelProviderError(
