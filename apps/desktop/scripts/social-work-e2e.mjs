@@ -364,6 +364,13 @@ const summary = {
   outcome: result.outcome,
   taskStatus: result.task?.status ?? null,
   verificationStatus: result.task?.verificationStatus ?? null,
+  modelCatalog: result.modelCatalog
+    ? {
+        connected: result.modelCatalog.connected,
+        modelCount: result.modelCatalog.models?.length ?? 0,
+        selectedModel: result.modelCatalog.selectedModel ?? null,
+      }
+    : null,
   independentVerification: independentVerification.status,
   resultText: result.task?.resultText ?? '',
   errorCode: result.task?.errorCode ?? null,

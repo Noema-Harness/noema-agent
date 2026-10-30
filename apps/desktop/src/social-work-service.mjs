@@ -293,10 +293,7 @@ export class SocialWorkService {
         reason: '请先配置模型服务并选择可用模型，才能启动项目工作。',
       };
     }
-    if (
-      (this.adapter.executionEngine ?? 'noema') !== 'dsh' &&
-      !this.getSelectedModel()
-    ) {
+    if (!this.getSelectedModel()) {
       return {
         available: false,
         reason: '请先在设置中选择一个当前可用的模型。',
@@ -433,8 +430,7 @@ export class SocialWorkService {
     this.assertWorkAllowed(roomId);
     const id = randomUUID();
     const executionEngine = this.adapter.executionEngine ?? 'noema';
-    const model =
-      executionEngine === 'dsh' ? 'auto:noema-free' : this.getSelectedModel();
+    const model = this.getSelectedModel();
     const saveTask = dispatchFromNoema
       ? this.store.createNoemaDispatchedSocialWorkTask.bind(this.store)
       : this.store.createSocialWorkTask.bind(this.store);

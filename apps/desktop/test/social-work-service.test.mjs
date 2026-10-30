@@ -331,7 +331,7 @@ test('social work keeps the stable friend and only includes the issuing room con
   }
 });
 
-test('legacy DSH project execution keeps its pinned route when another model is selected', async () => {
+test('DSH project execution uses the currently selected provider model', async () => {
   const directory = mkdtempSync(
     path.join(tmpdir(), 'noema-dsh-route-contract-'),
   );
@@ -352,7 +352,7 @@ test('legacy DSH project execution keeps its pinned route when another model is 
     });
     const task = await service.waitForTask(accepted.taskId);
     assert.equal(task.status, 'completed');
-    assert.equal(task.model, 'auto:noema-free');
+    assert.equal(task.model, 'free-router');
     assert.equal(task.executionEngine, 'dsh');
   } finally {
     await service.shutdown();

@@ -4098,8 +4098,7 @@ async function startNoema() {
     socialWorkService = new SocialWorkService({
       store: socialChatStore,
       projectStore: socialProjectStore,
-      getSelectedModel: () =>
-        rootStore?.getSelectedModel() ?? 'auto:noema-free',
+      getSelectedModel: () => rootStore?.getSelectedModel() ?? null,
       assertWorkAllowed: (roomId: string) =>
         socialProjectStore?.assertWorkAllowed(roomId),
       adapter: syntheticSocialWorkAdapter ?? noemaProjectExecutor,
@@ -4635,7 +4634,25 @@ async function startNoema() {
       void (async () => {
         let livePracticeProposal: unknown = null;
         const liveEpisodeTasks: Array<Record<string, unknown>> = [];
+        let modelCatalog: Awaited<
+          ReturnType<typeof agent.refreshModels>
+        > | null = null;
         try {
+          if (!testSocialWorkSynthetic) {
+            modelCatalog = await agent.refreshModels();
+            const selectedModel = rootStore!.getSelectedModel();
+            const availableModels = modelCatalog.models as Array<{
+              name: string;
+            }>;
+            if (
+              !modelCatalog.connected ||
+              !availableModels.some((model) => model.name === selectedModel)
+            ) {
+              throw new Error(
+                '当前 Noema 模型目录没有返回已选择的模型，不能开始真实项目执行。',
+              );
+            }
+          }
           if (testSocialWorkLiveEpisodes) {
             const episodeA = await socialWorkService!.startTask({
               roomId: 'room-engineering-collaboration',
@@ -4880,6 +4897,7 @@ async function startNoema() {
               {
                 outcome: task ? 'finished' : 'preflight_failed',
                 task,
+                modelCatalog,
                 workspacePath,
                 livePracticeProposal,
                 practiceConfirmationEvidence,
@@ -4897,6 +4915,7 @@ async function startNoema() {
             JSON.stringify(
               {
                 outcome: 'setup_failed',
+                modelCatalog,
                 errorCode:
                   error &&
                   typeof error === 'object' &&

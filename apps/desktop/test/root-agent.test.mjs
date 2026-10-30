@@ -120,7 +120,7 @@ test('ordinary root turns do not retrieve older conversation context', async () 
   store.close();
 });
 
-test('first connection defaults to the reviewed Noema free chain when available', async () => {
+test('first connection selects the configured provider default when available', async () => {
   const store = new RootStore(':memory:');
   const provider = {
     baseUrl: 'http://127.0.0.1:31415/v1',
@@ -137,8 +137,8 @@ test('first connection defaults to the reviewed Noema free chain when available'
 
   const state = await agent.refreshModels();
 
-  assert.equal(state.selectedModel, 'auto:noema-free');
-  assert.equal(store.getSelectedModel(), 'auto:noema-free');
+  assert.equal(state.selectedModel, 'free-router');
+  assert.equal(store.getSelectedModel(), 'free-router');
   store.close();
 });
 

@@ -526,9 +526,7 @@ export class RootAgent {
       const selectedModel = this.store.getSelectedModel();
       if (!selectedModel && models.length > 0) {
         const defaultModel =
-          models.find((model) => model.name === 'deepseek-flash') ??
-          models.find((model) => model.name === 'auto:noema-free') ??
-          models[0];
+          models.find((model) => model.name === 'deepseek-flash') ?? models[0];
         this.store.setSelectedModel(defaultModel.name);
       }
     } catch (error) {
@@ -939,7 +937,7 @@ export class RootAgent {
               });
             } catch (error) {
               console.warn(
-                'Noema could not save the FreeLLMAPI route metadata:',
+                'Noema could not save the provider route metadata:',
                 error?.message ?? 'unknown persistence error',
               );
             }
@@ -1166,7 +1164,7 @@ export class RootAgent {
                   });
                 } catch (error) {
                   console.warn(
-                    'Noema could not save the FreeLLMAPI route metadata:',
+                    'Noema could not save the provider route metadata:',
                     error?.message ?? 'unknown persistence error',
                   );
                 }
