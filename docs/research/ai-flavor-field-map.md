@@ -30,7 +30,7 @@
 | 领域 | 代表材料与当前线索 | 继续核对的边界 |
 |---|---|---|
 | 语言特征综述 | [Linguistic Characteristics of AI-Generated Text: A Survey (2025)](https://arxiv.org/abs/2510.05136) 汇总词汇、句法与篇章研究，也指出领域偏英文和 GPT 模型、提示敏感性研究不足。 | 按语言、体裁、模型代际拆开看；检测特征不等于用户反感原因。 |
-| 信息密度与可理解性 | [Why is AI-generated language so hard to understand? (arXiv, 2026-10)](https://arxiv.org/abs/2610.29162) 用 9 个前沿/近前沿模型及聊天、代码、作文语料，检查与人类加工难度有关的语言特征；另以长度惩罚微调作机制演示。作者提出，模型后训练对正确性和压缩的奖励可能偏离人类交流对逐句可理解性的要求。 | 这是 2026-10 的预印本；语言特征分析为英文，语料种子有限，机制演示只覆盖窄任务。它提供可测假设，不是“AI 味”的完整解释。 |
+| 信息密度与可理解性 | [Why is AI-generated language so hard to understand? (arXiv, 2026-10)](https://arxiv.org/abs/2610.29162) 在聊天、代码、作文语料里测句法加工特征，并用同义改写作对照；另以长度惩罚微调演示某些短式偏好如何迁移。 | 这是 2026-10 的英文预印本；作文效应较弱，模型间有差别，机制实验只覆盖窄任务。它提供可测假设，不是“AI 味”的完整解释。 |
 | 现实写作的多样性 | [The shrinking landscape of linguistic diversity (Nature Human Behaviour, 2026)](https://www.nature.com/articles/s41562-026-02550-0) 跨 7 个数据集、超过 880,000 篇文本，报告 LLM 写作辅助普及与语言多样性下降相关，若干数据中的写作复杂度方差下降 21–50%。 | 关联和实验结果各自回答什么；“复杂度”怎样测；结果能否迁移到私人聊天。 |
 | 创作分布 | [Large language models are homogeneously creative (PNAS Nexus, 2026)](https://academic.oup.com/pnasnexus/article/5/3/pgag042/8529001) 把多种模型与人放进标准化创造性任务，直接测群体层面的答案差异。 | 读完整任务和指标；创造力不是单一量表，群体趋同与特定用户获得灵感可以同时存在。 |
 | 人类创作的纵向变化 | [Writing in Symbiosis (NeurIPS 2025 Creative AI)](https://proceedings.neurips.cc/paper_files/paper/2025/hash/615229550c97d1c4d006a4bf6b54590e-Abstract-Creative_AI_Track.html) 用跨 LLM 发布前后的写作语料，报告主题趋向 AI 相关内容的同时，不同作者呈现趋近 AI 风格、远离 AI 风格或保持稳定等轨迹。 | 会议论文的语料分析不直接证明 AI 导致个体分化；它提醒“总体趋同”不等于每个人都变得一样。 |
