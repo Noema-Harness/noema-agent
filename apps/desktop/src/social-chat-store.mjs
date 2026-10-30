@@ -22,6 +22,18 @@ const MAX_AGENT_ASSET_COUNT = 128;
 const MAX_AGENT_ASSET_PROMPT_LENGTH = 12_000;
 const MAX_AGENT_SKILL_INDEX_LENGTH = 4_000;
 
+function hideInternalProjectReportSql(messageIdExpression) {
+  return `${messageIdExpression} NOT IN (
+    SELECT report.noema_assistant_message_id
+    FROM social_project_reports AS report
+    WHERE report.noema_assistant_message_id IS NOT NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM social_project_reviews AS review
+        WHERE review.request_message_id = report.noema_assistant_message_id
+      )
+  )`;
+}
+
 function boundContextHistory(
   entries,
   threadAnchorMessageId,
@@ -1084,6 +1096,7 @@ export class SocialChatStore {
                forwarded_sources_json AS forwardedSourcesJson,
                created_at AS createdAt
         FROM social_messages WHERE room_id = ?
+          AND ${hideInternalProjectReportSql('id')}
         ORDER BY seq DESC LIMIT 1
       `)
       .get(roomId);
@@ -1685,7 +1698,9 @@ export class SocialChatStore {
                history_search_status AS historySearchStatus,
                history_sources_included AS historySourcesIncluded,
                created_at AS createdAt, updated_at AS updatedAt
-        FROM social_messages WHERE room_id = ? ORDER BY seq ASC
+        FROM social_messages WHERE room_id = ?
+          AND ${hideInternalProjectReportSql('id')}
+        ORDER BY seq ASC
       `)
       .all(roomId);
     const historyRows = this.db
@@ -1808,6 +1823,7 @@ export class SocialChatStore {
         LEFT JOIN social_agents AS sender ON sender.id = m.sender_agent_id
         WHERE m.status = 'complete'
           AND m.role IN ('user', 'assistant')
+          AND ${hideInternalProjectReportSql('m.id')}
           AND (
             instr(lower(m.content), lower(?)) > 0 OR
             EXISTS (
@@ -1891,6 +1907,7 @@ export class SocialChatStore {
           AND m.status = 'complete'
           AND m.turn_id != ?
           AND (m.role = 'user' OR m.agent_id = 'noema')
+          AND ${hideInternalProjectReportSql('m.id')}
           AND EXISTS (
             SELECT 1 FROM social_messages AS reply
             WHERE reply.turn_id = m.turn_id AND reply.role = 'assistant'
@@ -4042,6 +4059,7 @@ export class SocialChatStore {
         FROM social_messages
         WHERE room_id = ? AND role IN ('user', 'assistant')
           AND status = 'complete'
+          AND ${hideInternalProjectReportSql('id')}
           AND (? IS NULL OR seq < (SELECT seq FROM social_messages WHERE id = ?))
           AND (? IS NULL OR seq <= (SELECT seq FROM social_messages WHERE id = ?))
           AND (

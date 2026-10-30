@@ -638,6 +638,54 @@ test('plan submission triggers Noema review; acceptance unlocks and dispatches t
       0,
       'internal reports do not trigger user notifications',
     );
+    const report = f.db
+      .prepare(
+        'SELECT id FROM social_project_reports WHERE project_id=? LIMIT 1',
+      )
+      .get(f.project.id);
+    const oldAssistantId = 'legacy-internal-report-reply';
+    const now = new Date().toISOString();
+    f.db
+      .prepare(`
+        INSERT INTO social_messages
+          (id, room_id, turn_id, role, agent_id, content, status, runtime,
+           created_at, updated_at)
+        VALUES (?, 'room-noema', ?, 'assistant', 'noema', ?, 'complete',
+                'freellmapi', ?, ?)
+      `)
+      .run(
+        oldAssistantId,
+        report.id,
+        '历史内部报告，不应作为主聊消息显示或进入后续上下文。',
+        now,
+        now,
+      );
+    f.db
+      .prepare(
+        'UPDATE social_project_reports SET noema_assistant_message_id=? WHERE id=?',
+      )
+      .run(oldAssistantId, report.id);
+    assert.equal(
+      f.store
+        .getRoomSnapshot('room-noema')
+        .messages.some((message) => message.id === oldAssistantId),
+      false,
+      'legacy internal report replies are hidden from main chat history',
+    );
+    assert.equal(
+      f.store
+        .getContext('room-noema')
+        .some((message) => message.id === oldAssistantId),
+      false,
+      'legacy internal report replies are excluded from future model context',
+    );
+    assert.equal(
+      f.store.searchMessages('历史内部报告').some((message) =>
+        message.id === oldAssistantId,
+      ),
+      false,
+      'legacy internal report replies are not returned as chat search results',
+    );
   } finally {
     await f.service.shutdown();
     f.db.close();
