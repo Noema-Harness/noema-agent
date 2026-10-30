@@ -46,5 +46,7 @@
 - [Living with AI Companions](https://arxiv.org/html/2609.07243)：Character.AI 用户一年两波跟踪；留存率 37.1%，对照作者的流失处理和仅两波的路径分析再阅读，不把关联写成因果。
 - [OpenAI/MIT：Affective use of ChatGPT](https://openai.com/index/affective-use-study/) 与 [MIT 研究摘要](https://www.media.mit.edu/publications/how-ai-and-human-behaviors-shape-psychosocial-effects-of-chatbot-use-a-longitudinal-controlled-study/)：将约 4,000 万次对话的匿名自动分类与近千人四周随机试验结合；观察研究描述真实使用，随机实验测试指定模式，需分开看。
 - [Interaction with AI Companions and Psychological Well-being](https://doi.org/10.1038/s41562-026-02516-2)：交叉读强迫单选用途、自述关系和捐赠聊天记录；注意 11.8% 与 80.3% 的分母不同（用户 vs. 会话），且聊天记录来自自愿捐赠者。使用[预印本 PDF](https://arxiv.org/pdf/2506.12605)核对完整方法，用[公开分析仓库](https://github.com/SALT-NLP/AI-companionship-well-being)确认会话分类路径及原始聊天为何不可下载。
+- [The Collective Turing Test](https://www.nature.com/articles/s41598-026-62286-9)：真实 Reddit 多人讨论与 AI 替换文本的并排盲测。重点看 61% 识别率的任务构造，以及较强识别者提到的线索；注意 AI 对话固定了原文回复树/字数，开放回答仅分析准确率较高的 58 人，不能据此教模型照搬论坛脏话或戏剧性冲突。
+- [AI-generated language remains systematically distinguishable from human communication](https://doi.org/10.1073/pnas.2531748123)：与上项研究对照；CHAT 同时测来源可辨性、语义相似、风格及话题差异，报告降低可检测度有时会牺牲语义忠实。避免把“读者认不出 AI”当成 Noema 的自然度或关系质量目标。
 
 检索与复核日期：2026-10-30。以上四项用于校准“陪伴是否有效”的研究对象，结论不可直接移植到一般个人 agent。
