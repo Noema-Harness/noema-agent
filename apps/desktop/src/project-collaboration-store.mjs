@@ -354,6 +354,33 @@ export class ProjectCollaborationStore {
             triggerKind: 'checkpoint',
           });
         }
+        if (
+          item.status === 'submitted' &&
+          item.submissionRevision &&
+          item.submissionRevision !== old?.submissionRevision
+        ) {
+          const reviewers = item.reviewerIds
+            .filter((id) => !['user', 'noema'].includes(id))
+            .map((id) =>
+              project.members.find(
+                (member) =>
+                  member.agentId === id &&
+                  member.status === 'active' &&
+                  !member.agentArchivedAt,
+              ),
+            )
+            .filter(Boolean);
+          if (reviewers.length)
+            this.publish({
+              projectId,
+              system: true,
+              eventKey: `review:${projectId}:${item.id}:${item.submissionRevision}`,
+              text: `${reviewers.map((member) => `@${member.name}`).join(' ')} 「${item.phaseTitle}」的工作项「${item.title}」（${item.id}）已提交，提交版本 ${item.submissionRevision}。请核对完成条件和来源，并在计划中记录本轮核验意见；要求修改时须说明理由。`,
+              rootId,
+              depth,
+              triggerKind: 'plan_review',
+            });
+        }
       }
       for (const phase of plan.phases) {
         const old = previous.phases.find((entry) => entry.id === phase.id);

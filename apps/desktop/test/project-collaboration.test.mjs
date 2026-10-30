@@ -70,6 +70,120 @@ function event(input) {
   return row ? JSON.parse(row.content).event : null;
 }
 
+test('submitted work publicly wakes only its named active agent reviewers', async () => {
+  const f = setup({ async *streamChat() {} });
+  f.projects.plans.onChange = null;
+  try {
+    f.projects.plans.replace({
+      projectId: f.project.id,
+      expectedRevision: 0,
+      reason: '建立需要独立核验的团队工作包。',
+      plan: {
+        objective: '根据真实需求形成可核验的试办方案。',
+        phases: [
+          {
+            id: 'research',
+            title: '需求核实',
+            outcome: '需求与来源可复核。',
+            exitCriteria: '工作成果通过独立核验。',
+            dependsOn: [],
+            status: 'pending',
+            evidence: '',
+            workItems: [
+              {
+                id: 'source-review',
+                title: '核验来源与结论',
+                ownerAgentId: f.b,
+                reviewerIds: [f.a, 'user'],
+                acceptance: '引用来源支持结论，未知项清楚列出。',
+                dependsOn: [],
+                status: 'pending',
+                evidence: '',
+                blocker: '',
+              },
+            ],
+          },
+        ],
+      },
+    });
+    let plan = f.projects.plans.get(f.project.id);
+    plan = f.projects.plans.updateItem({
+      projectId: f.project.id,
+      expectedRevision: plan.revision,
+      itemId: 'source-review',
+      status: 'in_progress',
+      actorAgentId: f.b,
+      reason: '责任成员开始核对来源。',
+    });
+    const now = new Date().toISOString();
+    f.db
+      .prepare(`INSERT INTO social_messages
+      (id,room_id,turn_id,role,agent_id,content,status,runtime,created_at,updated_at)
+      VALUES ('review-source',?,'review-source','assistant',?,'来源记录：用户访谈与公开报价已保存。','complete','local',?,?)`)
+      .run(f.project.groupRoomId, f.b, now, now);
+    plan = f.projects.plans.updateItem({
+      projectId: f.project.id,
+      expectedRevision: plan.revision,
+      itemId: 'source-review',
+      status: 'submitted',
+      evidence: '访谈与报价来源均已归档，未核实项已列出。',
+      evidenceSources: [{ kind: 'message', messageId: 'review-source' }],
+      actorAgentId: f.b,
+      reason: '责任成员提交来源核验成果。',
+    });
+
+    f.service.collaboration.planChanged(f.project.id, {
+      rootId: 'review-root',
+    });
+    f.service.collaboration.planChanged(f.project.id, {
+      rootId: 'review-root',
+    });
+
+    const notice = f.db
+      .prepare(
+        "SELECT content FROM social_messages WHERE room_id=? AND content LIKE '%本轮核验意见%'",
+      )
+      .get(f.project.groupRoomId);
+    assert.ok(notice);
+    assert.match(notice.content, /@研究员/u);
+    assert.doesNotMatch(notice.content, /@Noema|@预算员/u);
+    assert.match(
+      notice.content,
+      new RegExp(`提交版本 ${plan.items[0].submissionRevision}`),
+    );
+
+    const reviewerDelivery = f.db
+      .prepare(
+        'SELECT agent_id AS agentId,trigger_kind AS triggerKind FROM social_project_group_inbox WHERE project_id=?',
+      )
+      .all(f.project.id);
+    assert.deepEqual(reviewerDelivery, [
+      { agentId: f.a, triggerKind: 'plan_review' },
+    ]);
+    assert.equal(
+      f.db
+        .prepare(
+          'SELECT COUNT(*) AS n FROM social_project_reports WHERE project_id=?',
+        )
+        .get(f.project.id).n,
+      1,
+      'Noema receives its separate submission checkpoint',
+    );
+    assert.equal(
+      f.db
+        .prepare(
+          "SELECT COUNT(*) AS n FROM social_messages WHERE room_id=? AND content LIKE '%本轮核验意见%'",
+        )
+        .get(f.project.groupRoomId).n,
+      1,
+      'reconciliation does not publish a duplicate review request',
+    );
+  } finally {
+    await f.service.shutdown();
+    f.db.close();
+  }
+});
+
 test('unmentioned messages are public without inference; members can directly hand off with visible @', async () => {
   const calls = [];
   const f = setup({
@@ -158,24 +272,28 @@ test('project group sends the public summary but never publishes a member analys
     const messages = f.store.getRoomSnapshot(f.project.groupRoomId).messages;
     const publicMessage = messages.find(
       (message) =>
-        message.agentId === f.a &&
-        message.content.includes('需求证据已核对'),
+        message.agentId === f.a && message.content.includes('需求证据已核对'),
     );
     assert.ok(publicMessage);
     assert.equal(
       publicMessage.content,
       '@预算员 需求证据已核对，场地报价仍待确认。',
     );
-    assert.doesNotMatch(publicMessage.content, /私有推演|<analysis>|<summary>/u);
+    assert.doesNotMatch(
+      publicMessage.content,
+      /私有推演|<analysis>|<summary>/u,
+    );
     const stored = f.db
       .prepare('SELECT id, content FROM social_messages WHERE id=?')
       .get(publicMessage.id);
     assert.equal(stored.content, publicMessage.content);
 
-    f.db.prepare('UPDATE social_messages SET content=? WHERE id=?').run(
-      '旧记录<analysis>不得展示</analysis><summary>可见结论</summary>',
-      publicMessage.id,
-    );
+    f.db
+      .prepare('UPDATE social_messages SET content=? WHERE id=?')
+      .run(
+        '旧记录<analysis>不得展示</analysis><summary>可见结论</summary>',
+        publicMessage.id,
+      );
     const legacy = f.store
       .getRoomSnapshot(f.project.groupRoomId)
       .messages.find((message) => message.id === publicMessage.id);
@@ -421,13 +539,11 @@ test('plan submission triggers Noema review; acceptance unlocks and dispatches t
       },
     });
     const evidenceTime = new Date().toISOString();
-    f.db.prepare(`INSERT INTO social_messages
+    f.db
+      .prepare(`INSERT INTO social_messages
       (id,room_id,turn_id,role,agent_id,content,status,runtime,created_at,updated_at)
-      VALUES ('collab-a-evidence',?,'collab-a-evidence','user',NULL,'需求证据：合成事实和未知项已核对。','complete','local',?,?)`).run(
-      f.project.groupRoomId,
-      evidenceTime,
-      evidenceTime,
-    );
+      VALUES ('collab-a-evidence',?,'collab-a-evidence','user',NULL,'需求证据：合成事实和未知项已核对。','complete','local',?,?)`)
+      .run(f.project.groupRoomId, evidenceTime, evidenceTime);
     f.service.schedulePendingProjectGroupInboxes();
     await settle(f.service);
     const accepted = f.projects.plans.get(f.project.id);
@@ -757,13 +873,12 @@ test('a report may read the plan then request user judgment; queued execution st
           .filter((name) =>
             ['manage_project_plan', 'project_group'].includes(name),
           );
-        if (calls === 3)
-          assert.deepEqual(projectToolNames, []);
+        if (calls === 3) assert.deepEqual(projectToolNames, []);
         else
-          assert.deepEqual(
-            projectToolNames.sort(),
-            ['manage_project_plan', 'project_group'],
-          );
+          assert.deepEqual(projectToolNames.sort(), [
+            'manage_project_plan',
+            'project_group',
+          ]);
         yield '已收到明确反馈，继续按约束推进。';
       }
     },
@@ -922,13 +1037,11 @@ test('public peer speech stays external, the current event is last, and a batch 
       },
     });
     const evidenceTime = new Date().toISOString();
-    f.db.prepare(`INSERT INTO social_messages
+    f.db
+      .prepare(`INSERT INTO social_messages
       (id,room_id,turn_id,role,agent_id,content,status,runtime,created_at,updated_at)
-      VALUES ('collab-a-evidence',?,'collab-a-evidence','user',NULL,'需求证据：合成事实和未知项已核对。','complete','local',?,?)`).run(
-      f.project.groupRoomId,
-      evidenceTime,
-      evidenceTime,
-    );
+      VALUES ('collab-a-evidence',?,'collab-a-evidence','user',NULL,'需求证据：合成事实和未知项已核对。','complete','local',?,?)`)
+      .run(f.project.groupRoomId, evidenceTime, evidenceTime);
     f.service.schedulePendingProjectGroupInboxes();
     await settle(f.service);
     assert.equal(
@@ -940,10 +1053,8 @@ test('public peer speech stays external, the current event is last, and a batch 
     ).messages;
     assert.equal(
       publicMessages.filter(
-        (m) =>
-          m.agentId === f.a && m.role === 'assistant' && m.content.trim(),
-      )
-        .length,
+        (m) => m.agentId === f.a && m.role === 'assistant' && m.content.trim(),
+      ).length,
       1,
     );
     assert.equal(

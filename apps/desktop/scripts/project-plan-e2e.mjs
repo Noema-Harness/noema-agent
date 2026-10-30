@@ -344,6 +344,27 @@ try {
   await wait(
     `document.querySelector('[data-plan-item-id="venue-budget"]')?.textContent.includes('待验收')`,
   );
+  const reviewerNotice = db
+    .prepare(
+      "SELECT content FROM social_messages WHERE room_id=? AND content LIKE '%本轮核验意见%'",
+    )
+    .get(project.groupRoomId);
+  assert.ok(
+    reviewerNotice,
+    'submission publishes a reviewer request in the group',
+  );
+  assert.match(reviewerNotice.content, /@资料研究员/u);
+  assert.match(reviewerNotice.content, /@交付核验员/u);
+  assert.deepEqual(
+    db
+      .prepare(
+        "SELECT agent_id AS agentId FROM social_project_group_inbox WHERE project_id=? AND trigger_kind='plan_review' ORDER BY agent_id",
+      )
+      .all(project.id)
+      .map((entry) => entry.agentId),
+    [ids[0], ids[2]].sort(),
+    'only the assigned agent reviewers receive durable review deliveries',
+  );
   assert.equal(
     await evaluate(
       `document.querySelector('[data-plan-item-id="venue-budget"]')?.textContent.includes('提交者：用户')`,
