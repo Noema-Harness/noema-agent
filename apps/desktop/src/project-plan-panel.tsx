@@ -16,6 +16,33 @@ type Draft = NoemaProjectPlanWrite['plan'];
 type DraftPhase = Draft['phases'][number];
 type DraftItem = DraftPhase['workItems'][number];
 
+function normalizeProjectPlan(plan: NoemaProjectPlan): NoemaProjectPlan {
+  const list = <T,>(value: T[] | null | undefined): T[] =>
+    Array.isArray(value) ? value : [];
+  const normalizeItem = (item: NoemaProjectPlanItem): NoemaProjectPlanItem => ({
+    ...item,
+    dependsOn: list(item.dependsOn),
+    relatedTo: list(item.relatedTo),
+    relatedItems: list(item.relatedItems),
+    evidenceRefs: list(item.evidenceRefs),
+    reviewerIds: list(item.reviewerIds),
+    evidenceReviews: list(item.evidenceReviews),
+    blockedBy: list(item.blockedBy),
+    waitingForPhases: list(item.waitingForPhases),
+  });
+
+  return {
+    ...plan,
+    items: list(plan.items).map(normalizeItem),
+    phases: list(plan.phases).map((phase) => ({
+      ...phase,
+      dependsOn: list(phase.dependsOn),
+      waitingForPhases: list(phase.waitingForPhases),
+      workItems: list(phase.workItems).map(normalizeItem),
+    })),
+  };
+}
+
 const itemLabels: Record<NoemaProjectPlanStatus, string> = {
   pending: '待开始',
   in_progress: '进行中',
@@ -147,7 +174,9 @@ export function ProjectPlanPanel({ project, onOpenGroupMessage }: {
   const reload = useCallback(async () => {
     const request = ++sequence.current;
     try {
-      const next = await window.noema.getSocialProjectPlan(project.id);
+      const next = normalizeProjectPlan(
+        await window.noema.getSocialProjectPlan(project.id),
+      );
       if (request === sequence.current)
         setPlan((current) =>
           !current || next.revision >= current.revision ? next : current,
