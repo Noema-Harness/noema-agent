@@ -2475,7 +2475,8 @@ export class SocialChatService {
                 (project) =>
                   project.originRoomId === roomId &&
                   project.status === 'active' &&
-                  !project.pendingReview,
+                  !project.pendingReview &&
+                  !this.projectStore.reviewBlockReason(project.id),
               )
               .slice(0, 32)
           : [];

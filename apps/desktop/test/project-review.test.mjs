@@ -161,10 +161,74 @@ test('review cannot pause a project while a member report is queued for Noema', 
       groupRoomId: f.project.groupRoomId,
       sessionRoomId: member.sessionRoomId,
     });
+    assert.match(
+      f.projects.reviewBlockReason(f.project.id),
+      /成员报告待 Noema 处理/u,
+    );
     assert.throws(() => request(f), /成员报告待 Noema 处理/u);
     assert.equal(f.projects.getProject(f.project.id).status, 'active');
     assert.equal(f.projects.getProject(f.project.id).pendingReview, null);
   } finally {
+    f.db.close();
+  }
+});
+
+test('main chat does not offer a project review while member reports are pending', async () => {
+  const f = fixture();
+  const memberId = f.member.members[0].id;
+  const member = f.project.members.find((entry) => entry.agentId === memberId);
+  const reportTurn = f.store.beginTurn({
+    roomId: f.project.groupRoomId,
+    agentId: memberId,
+    text: '阶段成果已提交，请核对。',
+    model: 'test',
+  });
+  f.store.appendAssistantDelta(reportTurn.assistantMessageId, '这是阶段报告。');
+  f.store.completeReplies([reportTurn.assistantMessageId], {
+    projectId: f.project.id,
+    sourceTurnId: reportTurn.turnId,
+    sourceUserMessageId: reportTurn.userMessageId,
+    sourceGroupAssistantMessageId: reportTurn.assistantMessageId,
+    agentId: memberId,
+    groupRoomId: f.project.groupRoomId,
+    sessionRoomId: member.sessionRoomId,
+  });
+  const provider = {
+    async *streamChat(input) {
+      const reviewTool = input.tools.find(
+        (tool) => tool.function.name === 'request_project_review',
+      );
+      assert.ok(reviewTool, 'an unrelated reviewable project may remain');
+      assert.equal(
+        reviewTool.function.parameters.properties.project_id.enum.includes(
+          f.project.id,
+        ),
+        false,
+        'the project with a pending report must not be offered for review',
+      );
+      yield '我先处理完成员报告，再判断是否需要你评审。';
+    },
+  };
+  const service = new SocialChatService({
+    store: f.store,
+    projectStore: f.projects,
+    provider,
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'test',
+    getRootState: async () => ({}),
+  });
+  try {
+    const sent = service.sendMessage({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '请告知我项目最新进度。',
+    });
+    await service.active.get('room-noema')?.done;
+    assert.equal(f.store.getSocialMessage(sent.messageId).status, 'complete');
+    assert.deepEqual(f.projects.listReviewsForRoom('room-noema'), []);
+    assert.equal(f.projects.getProject(f.project.id).status, 'active');
+  } finally {
+    await service.shutdown();
     f.db.close();
   }
 });
@@ -559,7 +623,7 @@ test('v14 to current migrations preserve projects and old messages', () => {
   try {
     const before = f.store.getRoomSnapshot(f.project.groupRoomId).messages;
     f.db.exec(
-      'ALTER TABLE social_work_tasks DROP COLUMN project_plan_item_id; ALTER TABLE social_work_tasks DROP COLUMN project_result_pending; DELETE FROM social_schema_migrations WHERE version = 26; DELETE FROM social_schema_migrations WHERE version = 25; ALTER TABLE social_project_growth_batches DROP COLUMN finalized_at; DROP TABLE social_project_growth_members; DROP TABLE social_project_growth_batches; DELETE FROM social_schema_migrations WHERE version = 24; DELETE FROM social_schema_migrations WHERE version = 23; DROP TABLE social_project_dispatch_log; DROP TABLE social_project_publications; DROP TABLE social_project_read_cursors; DELETE FROM social_schema_migrations WHERE version = 22; DROP TABLE social_project_plan_revisions; DELETE FROM social_schema_migrations WHERE version = 21; DROP TABLE social_agent_asset_revisions; DELETE FROM social_schema_migrations WHERE version = 20; DROP TABLE social_project_reports; DELETE FROM social_schema_migrations WHERE version = 19; DROP TABLE social_project_group_inbox; DELETE FROM social_schema_migrations WHERE version = 18; DROP TABLE social_work_runtime_checkpoints; DELETE FROM social_schema_migrations WHERE version = 17; ALTER TABLE social_messages DROP COLUMN sender_agent_id; DELETE FROM social_schema_migrations WHERE version = 16; ALTER TABLE social_work_execution_steps DROP COLUMN arguments_json; ALTER TABLE social_work_execution_steps DROP COLUMN result_json; DROP TABLE social_project_reviews; DELETE FROM social_schema_migrations WHERE version = 15;',
+      'ALTER TABLE social_work_tasks DROP COLUMN project_plan_item_id; ALTER TABLE social_work_tasks DROP COLUMN project_result_pending; DELETE FROM social_schema_migrations WHERE version = 27; DELETE FROM social_schema_migrations WHERE version = 26; DELETE FROM social_schema_migrations WHERE version = 25; ALTER TABLE social_project_growth_batches DROP COLUMN finalized_at; DROP TABLE social_project_growth_members; DROP TABLE social_project_growth_batches; DELETE FROM social_schema_migrations WHERE version = 24; DELETE FROM social_schema_migrations WHERE version = 23; DROP TABLE social_project_dispatch_log; DROP TABLE social_project_publications; DROP TABLE social_project_read_cursors; DELETE FROM social_schema_migrations WHERE version = 22; DROP TABLE social_project_plan_revisions; DELETE FROM social_schema_migrations WHERE version = 21; DROP TABLE social_agent_asset_revisions; DELETE FROM social_schema_migrations WHERE version = 20; DROP TABLE social_project_reports; DELETE FROM social_schema_migrations WHERE version = 19; DROP TABLE social_project_group_inbox; DELETE FROM social_schema_migrations WHERE version = 18; DROP TABLE social_work_runtime_checkpoints; DELETE FROM social_schema_migrations WHERE version = 17; ALTER TABLE social_messages DROP COLUMN sender_agent_id; DELETE FROM social_schema_migrations WHERE version = 16; ALTER TABLE social_work_execution_steps DROP COLUMN arguments_json; ALTER TABLE social_work_execution_steps DROP COLUMN result_json; DROP TABLE social_project_reviews; DELETE FROM social_schema_migrations WHERE version = 15;',
     );
     const store = new SocialChatStore(f.db);
     const projects = new SocialProjectStore({

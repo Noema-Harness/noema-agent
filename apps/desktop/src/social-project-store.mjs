@@ -1044,6 +1044,32 @@ export class SocialProjectStore {
       .map(({ id }) => this.getReview(id));
   }
 
+  reviewBlockReason(projectId) {
+    const project = this.getProject(projectId);
+    if (project.status === 'archived') return '请先恢复项目，再发起评审。';
+    if (project.pendingReview) return '该项目已有待回复的评审请求。';
+
+    const pendingReport = this.db
+      .prepare(
+        "SELECT 1 FROM social_project_reports WHERE project_id = ? AND status = 'pending' LIMIT 1",
+      )
+      .get(projectId);
+    const readyForUserReview = this.plans
+      .get(projectId)
+      .phases.some((phase) => phase.state === 'awaiting_review');
+    if (pendingReport && !readyForUserReview)
+      return '仍有项目成员报告待 Noema 处理，处理完后再请求用户评审。';
+
+    const active = this.db
+      .prepare(`
+        SELECT 1 FROM social_work_tasks WHERE status IN ('starting', 'running', 'verifying')
+          AND (room_id = ? OR room_id IN (SELECT room_id FROM social_project_sessions WHERE project_id = ?)) LIMIT 1
+      `)
+      .get(project.groupRoomId, projectId);
+    if (active) return '项目仍有执行在进行，请在阶段结束后发起评审。';
+    return null;
+  }
+
   requestReview({ projectId, messageId, question, completeMessage = true }) {
     const normalizedQuestion = requireText(question, '评审问题', 8_000);
     requireText(messageId, '评审消息 ID', 200);
@@ -1072,30 +1098,8 @@ export class SocialProjectStore {
           this.socialChatStore.completeReply(messageId);
         return review;
       }
-      if (project.status === 'archived')
-        throw new Error('请先恢复项目，再发起评审。');
-      if (project.pendingReview)
-        throw new Error('该项目已有待回复的评审请求。');
-      const pendingReport = this.db
-        .prepare(
-          "SELECT 1 FROM social_project_reports WHERE project_id = ? AND status = 'pending' LIMIT 1",
-        )
-        .get(projectId);
-      const readyForUserReview = this.plans
-        .get(projectId)
-        .phases.some((phase) => phase.state === 'awaiting_review');
-      if (pendingReport && !readyForUserReview)
-        throw new Error(
-          '仍有项目成员报告待 Noema 处理，处理完后再请求用户评审。',
-        );
-      const active = this.db
-        .prepare(`
-        SELECT 1 FROM social_work_tasks WHERE status IN ('starting', 'running', 'verifying')
-          AND (room_id = ? OR room_id IN (SELECT room_id FROM social_project_sessions WHERE project_id = ?)) LIMIT 1
-      `)
-        .get(project.groupRoomId, projectId);
-      if (active)
-        throw new Error('项目仍有执行在进行，请在阶段结束后发起评审。');
+      const blockReason = this.reviewBlockReason(projectId);
+      if (blockReason) throw new Error(blockReason);
       const id = randomUUID();
       const now = isoNow();
       this.db
