@@ -212,10 +212,14 @@ test('submitted work publicly wakes only its named active agent reviewers', asyn
       'a stale queued review is discarded before model invocation',
     );
     const currentDelivery = deliveries.find(
-      (delivery) => delivery.planSubmissionRevision === plan.items[0].submissionRevision,
+      (delivery) =>
+        delivery.planSubmissionRevision === plan.items[0].submissionRevision,
     );
     assert.ok(currentDelivery);
-    assert.equal(f.service.collaboration.prepareDelivery(currentDelivery), true);
+    assert.equal(
+      f.service.collaboration.prepareDelivery(currentDelivery),
+      true,
+    );
     assert.equal(
       f.db
         .prepare(
@@ -693,9 +697,9 @@ test('plan submission triggers Noema review; acceptance unlocks and dispatches t
       'legacy internal report replies are excluded from future model context',
     );
     assert.equal(
-      f.store.searchMessages('历史内部报告').some((message) =>
-        message.id === oldAssistantId,
-      ),
+      f.store
+        .searchMessages('历史内部报告')
+        .some((message) => message.id === oldAssistantId),
       false,
       'legacy internal report replies are not returned as chat search results',
     );
@@ -807,7 +811,7 @@ test('an explicit blocked-project recovery provisions an execution member throug
           readinessInstruction = input.messages.some(
             (message) =>
               message.role === 'system' &&
-              message.content.includes('必须先调用 create_project_team') &&
+              message.content.includes('先调用 create_project_team') &&
               message.content.includes('项目执行器当前可用'),
           );
           tool(input, 'create_project_team', {
@@ -833,7 +837,10 @@ test('an explicit blocked-project recovery provisions an execution member throug
           const added = f.projects
             .getProject(f.project.id)
             .members.find((member) => member.name === '应用实施工程师');
-          assert.ok(startTool, 'the new project executor is available in this group');
+          assert.ok(
+            startTool,
+            'the new project executor is available in this group',
+          );
           assert.ok(
             startTool.function.parameters.properties.agent_id.enum.includes(
               added.agentId,

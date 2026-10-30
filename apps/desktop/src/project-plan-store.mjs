@@ -886,9 +886,9 @@ export class ProjectPlanStore {
               boundedTextFields(
                 { ...item, evidenceReviews: compactReviewRecords(item) },
                 {
-                acceptance: 400,
-                evidence: 500,
-                blocker: 300,
+                  acceptance: 400,
+                  evidence: 500,
+                  blocker: 300,
                 },
               ),
             ),
@@ -1314,7 +1314,9 @@ export class ProjectPlanStore {
               (key) => !isDeepStrictEqual(item[key], prior[key]),
             )
           )
-            throw Error('提交后的验收范围不能直接更改；请先重开工作项，再由负责人重新提交。');
+            throw Error(
+              '提交后的验收范围不能直接更改；请先重开工作项，再由负责人重新提交。',
+            );
           if (
             prior &&
             ['submitted', 'done'].includes(prior.status) &&
@@ -1394,7 +1396,9 @@ export class ProjectPlanStore {
         patch.reviewerIds !== undefined &&
         !isDeepStrictEqual(patch.reviewerIds, item.reviewerIds)
       )
-        throw new Error('提交后的核验名单不能直接更改；请先重开工作项，再由负责人重新提交。');
+        throw new Error(
+          '提交后的核验名单不能直接更改；请先重开工作项，再由负责人重新提交。',
+        );
       const reviewerId = input.actorAgentId ?? 'user';
       const assignedReviewer = item.reviewerIds.includes(reviewerId);
       let status = statusSchema.parse(input.status ?? item.status);
@@ -1513,7 +1517,9 @@ export class ProjectPlanStore {
             !isDeepStrictEqual(patch[key], item[key]),
         )
       )
-        throw Error('提交后的验收范围不能直接更改；请先重开工作项，再由负责人重新提交。');
+        throw Error(
+          '提交后的验收范围不能直接更改；请先重开工作项，再由负责人重新提交。',
+        );
       if (status === 'done' && input.evidenceSources !== undefined)
         throw Error('验收不能替换提交时的来源版本；请由负责人重新提交。');
       if (input.actorAgentId === 'noema' && input.evidenceSources !== undefined)

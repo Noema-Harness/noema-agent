@@ -444,6 +444,85 @@ test('project members can calculate numeric claims with the shared local decimal
   }
 });
 
+test('Noema main chat can verify arithmetic without an existing project', async () => {
+  const db = new Database(':memory:');
+  new RootStore(db);
+  const store = createSocialTestStore(db);
+  const requests = [];
+  const service = new SocialChatService({
+    store,
+    provider: {
+      async *streamChat(input) {
+        requests.push(input);
+        if (requests.length === 1) {
+          assert.ok(
+            input.tools.some(
+              (tool) => tool.function.name === 'calculate_expression',
+            ),
+          );
+          assert.match(
+            input.messages
+              .filter((message) => message.role === 'system')
+              .map((message) => message.content)
+              .join('\n'),
+            /涉及会影响结论的算术时/u,
+          );
+          input.onToolCalls?.([
+            {
+              id: 'call-main-calculation',
+              type: 'function',
+              function: {
+                name: 'calculate_expression',
+                arguments: JSON.stringify({
+                  expression: '(4 * 200) - (4 * 30) - 600',
+                }),
+              },
+            },
+          ]);
+          return;
+        }
+
+        const result = input.messages.find(
+          (message) =>
+            message.role === 'tool' && message.name === 'calculate_expression',
+        );
+        assert.deepEqual(JSON.parse(result.content), {
+          expression: '(4 * 200) - (4 * 30) - 600',
+          value: '80',
+          precision: 50,
+        });
+        yield '按这组数字，扣除材料和场地后还剩 80 元；计算只核对了运算。';
+      },
+    },
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'test-model',
+    getRootState: async () => ({
+      connected: true,
+      selectedModel: 'test-model',
+    }),
+  });
+
+  try {
+    const sent = service.sendMessage({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '准备 4 个人，每人收费 200 元，材料每人 30 元，场地 600 元，扣除后剩多少？',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await service.active.get('room-noema')?.done;
+
+    assert.equal(requests.length, 2);
+    assert.match(
+      store.getSocialMessage(sent.messageId)?.content ?? '',
+      /还剩 80 元/u,
+    );
+    assert.equal(store.getSocialMessage(sent.messageId)?.status, 'complete');
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});
+
 test('a stream transport outage pauses project fan-out until a successful model turn', async () => {
   const db = new Database(':memory:');
   new RootStore(db);
@@ -1052,6 +1131,228 @@ test('Noema can start existing project work from an explicit request while other
     assert.match(
       store.getRoomSnapshot('room-noema').messages.at(-1)?.content ?? '',
       /先讨论这个方向/u,
+    );
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});
+
+test('Noema dispatches main-chat project work into the selected member project session', async () => {
+  const db = new Database(':memory:');
+  new RootStore(db);
+  const store = createSocialTestStore(db);
+  const projectStore = new SocialProjectStore({ db, socialChatStore: store });
+  const project = projectStore.createProject({
+    title: 'AI 平台价格追踪',
+    brief: '持续核对平台价格及其来源。',
+    agentIds: ['noema', 'engineering-partner'],
+  });
+  projectStore.plans.replace({
+    projectId: project.id,
+    expectedRevision: 0,
+    actorAgentId: 'noema',
+    reason: '准备一项已派给工程搭档的实现工作。',
+    plan: {
+      stage: '实现阶段',
+      objective: '将已批准的采集计划实现为可核验代码。',
+      items: [
+        {
+          id: 'price-fetcher',
+          title: '实现价格采集器',
+          ownerAgentId: 'engineering-partner',
+          acceptance: '提交可运行的采集实现与验证结果。',
+          dependsOn: [],
+          status: 'pending',
+        },
+      ],
+    },
+  });
+  projectStore.plans.updateItem({
+    projectId: project.id,
+    itemId: 'price-fetcher',
+    expectedRevision: projectStore.plans.get(project.id).revision,
+    status: 'in_progress',
+    actorAgentId: 'noema',
+    reason: '开始执行该工作包。',
+  });
+  const requests = [];
+  const started = [];
+  const service = new SocialChatService({
+    store,
+    provider: {
+      async *streamChat(input) {
+        requests.push(input);
+        if (requests.length === 1) {
+          input.onToolCalls([
+            {
+              function: {
+                name: 'start_project_work',
+                arguments: JSON.stringify({
+                  project_id: project.id,
+                  agent_id: 'engineering-partner',
+                  plan_item_id: 'price-fetcher',
+                  task: '开始实现已批准的价格采集任务。',
+                }),
+              },
+            },
+          ]);
+        } else {
+          yield '已启动。';
+        }
+      },
+    },
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'test-model',
+    getRootState: async () => ({
+      connected: true,
+      selectedModel: 'test-model',
+    }),
+    projectStore,
+    getProjectSessionContext: (roomId, agentId) =>
+      projectStore.getProjectSessionContext(roomId, agentId),
+    getProjectWorkReadiness: () => ({ available: true, reason: null }),
+    startProjectWork: async (input) => {
+      started.push(input);
+      return { accepted: true, taskId: 'project-work-1' };
+    },
+  });
+
+  try {
+    service.sendMessage({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '请继续 AI 平台价格追踪项目，开始实现已批准的采集任务。',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await service.active.get('room-noema')?.done;
+
+    const workTool = requests[0].tools?.find(
+      (tool) => tool.function.name === 'start_project_work',
+    );
+    assert.deepEqual(workTool?.function.parameters.properties.project_id.enum, [
+      project.id,
+    ]);
+    assert.deepEqual(
+      workTool?.function.parameters.properties.plan_item_id.enum,
+      ['price-fetcher'],
+    );
+    assert.match(workTool?.function.description ?? '', /实现价格采集器/u);
+    assert.deepEqual(started, [
+      {
+        roomId: 'room-noema',
+        projectId: project.id,
+        agentId: 'engineering-partner',
+        dispatchFromNoema: true,
+        prompt: '开始实现已批准的价格采集任务。',
+        sourceMessageId: store
+          .getRoomSnapshot('room-noema')
+          .messages.find((message) => message.role === 'user').id,
+      },
+    ]);
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});
+
+test('Noema starts assigned project implementation from a group report without requiring another user command', async () => {
+  const db = new Database(':memory:');
+  new RootStore(db);
+  const store = createSocialTestStore(db);
+  const projectStore = new SocialProjectStore({ db, socialChatStore: store });
+  store.createAgent({
+    name: '数据工程师',
+    headline: '项目文件实施',
+    description: '落实已确认的项目工作项。',
+    projectWork: true,
+  });
+  const executor = store
+    .listAgents()
+    .find((agent) => agent.name === '数据工程师');
+  const project = projectStore.createProject({
+    title: 'AI 平台价格追踪',
+    brief: '实施计划中已经分派的 w3 数据引擎。',
+    agentIds: ['noema', executor.id],
+  });
+  const session = projectStore.getProjectSession(project.id, executor.id);
+  const userRequest =
+    '状态更新：w3 已由你负责。现在可以直接认领 w3 并开始实现，完成后提交可核验成果。';
+  const memberTurn = store.beginTurn({
+    roomId: project.groupRoomId,
+    agentId: executor.id,
+    text: userRequest,
+    model: 'test-model',
+  });
+  store.appendAssistantDelta(memberTurn.assistantMessageId, '收到，准备实施。');
+  assert.equal(
+    store.completeReplies([memberTurn.assistantMessageId], {
+      projectId: project.id,
+      sourceTurnId: memberTurn.turnId,
+      sourceUserMessageId: memberTurn.userMessageId,
+      sourceGroupAssistantMessageId: memberTurn.assistantMessageId,
+      agentId: executor.id,
+      groupRoomId: project.groupRoomId,
+      sessionRoomId: session.room.room.id,
+    }),
+    true,
+  );
+
+  const requests = [];
+  const started = [];
+  const service = new SocialChatService({
+    store,
+    projectStore,
+    provider: {
+      async *streamChat(input) {
+        requests.push(input);
+        if (input.toolChoice?.function?.name === 'start_project_work') {
+          input.onToolCalls?.([
+            {
+              id: 'start-w3-implementation',
+              type: 'function',
+              function: {
+                name: 'start_project_work',
+                arguments: JSON.stringify({
+                  agent_id: executor.id,
+                  task: '实现共享计划中 w3 的数据引擎，并提交实际成果。',
+                }),
+              },
+            },
+          ]);
+          return;
+        }
+        yield '工作区选择器已打开，等待用户选择工作区。';
+      },
+    },
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'test-model',
+    getRootState: async () => ({
+      connected: true,
+      selectedModel: 'test-model',
+    }),
+    getProjectWorkReadiness: () => ({ available: true, reason: null }),
+    startProjectWork: async (input) => {
+      started.push(input);
+      return { accepted: true, taskId: 'w3-work' };
+    },
+  });
+
+  try {
+    await service.drainProjectReports();
+    assert.equal(requests[0].toolChoice?.function?.name, 'start_project_work');
+    assert.equal(started.length, 1);
+    assert.equal(started[0].projectId, project.id);
+    assert.equal(started[0].agentId, executor.id);
+    assert.equal(started[0].sourceMessageId, memberTurn.userMessageId);
+    assert.match(started[0].prompt, /w3/u);
+    assert.equal(
+      db
+        .prepare(
+          'SELECT status FROM social_project_reports WHERE source_turn_id=?',
+        )
+        .get(memberTurn.turnId)?.status,
+      'completed',
     );
   } finally {
     await service.shutdown();

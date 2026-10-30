@@ -11,6 +11,7 @@ import { evidenceSourcesParameters } from './project-plan-evidence.mjs';
 import {
   CALCULATE_EXPRESSION_TOOL,
   calculateExpression,
+  needsCalculationTool,
 } from './decimal-calculator.mjs';
 import { needsWebSearch, searchQueryBelongsToText } from './web-search.mjs';
 
@@ -25,12 +26,12 @@ function safeError(error) {
 function projectWorkStartError(error) {
   if (error instanceof ModelProviderError) return error;
   const detail =
-    typeof error?.message === 'string' ? error.message.trim().slice(0, 500) : '';
+    typeof error?.message === 'string'
+      ? error.message.trim().slice(0, 500)
+      : '';
   return new ModelProviderError(
     'project_work_start_failed',
-    detail
-      ? `项目执行没有启动：${detail}`
-      : '项目执行没有启动，任务未创建。',
+    detail ? `项目执行没有启动：${detail}` : '项目执行没有启动，任务未创建。',
   );
 }
 
@@ -43,27 +44,74 @@ const PROJECT_GROUP_SHARED_CONTEXT = Object.freeze({
   maxCharacters: 8_000,
 });
 
-function projectWorkTool(agents) {
+function projectWorkTool(agents, projects = [], planItems = []) {
   if (!agents.length) return null;
   const roster = agents
     .map((agent) => `- ${agent.name} (${agent.id}): ${agent.headline}`)
     .join('\n');
+  const projectRoster = projects.length
+    ? `\nActive projects and eligible members:\n${projects
+        .map((project) => {
+          const eligible = project.members
+            .filter(
+              (member) => member.status === 'active' && !member.agentArchivedAt,
+            )
+            .map((member) =>
+              agents.find((agent) => agent.id === member.agentId),
+            )
+            .filter((agent) => agent?.capabilities.includes('project-work'))
+            .map((agent) => `${agent.name} (${agent.id})`)
+            .join(', ');
+          return `- ${project.title} (${project.id}): ${eligible || 'no eligible member'}`;
+        })
+        .join('\n')}`
+    : '';
+  const planItemRoster = planItems.length
+    ? `\nCurrent in-progress plan items:\n${planItems
+        .map(
+          (item) =>
+            `- ${item.title} (${item.id}); project=${item.projectId}; owner=${item.ownerAgentId}`,
+        )
+        .join('\n')}`
+    : '';
   return {
     type: 'function',
     function: {
       name: 'start_project_work',
       description:
-        'Start project-file work only when the user explicitly asks you to inspect, modify, build, or verify local files. Select exactly one existing member whose professional scope fits the task. Do not default to a familiar member; if no listed member fits, explain that there is no suitable executor. The app asks for the workspace before starting. Do not use for discussion, advice, planning, code examples, or brainstorming. Eligible members:\n' +
-        roster,
+        'Start project-file work only when the user explicitly asks you to inspect, modify, build, or verify local files. Select exactly one existing member whose professional scope fits the task. When the work belongs to an active listed project, include that project id and select one of its active members; leave project_id out for standalone work. If the task implements a listed in-progress plan item, include its exact plan item id so the result is linked correctly. Do not default to a familiar member; if no listed member fits, explain that there is no suitable executor. The app asks for the workspace before starting. Do not use for discussion, advice, planning, code examples, or brainstorming. Eligible members:\n' +
+        roster +
+        projectRoster +
+        planItemRoster,
       parameters: {
         type: 'object',
         properties: {
+          ...(projects.length
+            ? {
+                project_id: {
+                  type: 'string',
+                  enum: projects.map((project) => project.id),
+                  description:
+                    'The active project this work belongs to. Choose the project named or clearly implied by the user; do not guess when several are plausible.',
+                },
+              }
+            : {}),
           agent_id: {
             type: 'string',
             enum: agents.map((agent) => agent.id),
             description:
               'The existing eligible executor selected for this task.',
           },
+          ...(planItems.length
+            ? {
+                plan_item_id: {
+                  type: 'string',
+                  enum: planItems.map((item) => item.id),
+                  description:
+                    'Optional exact in-progress plan item implemented by this task.',
+                },
+              }
+            : {}),
           task: {
             type: 'string',
             description:
@@ -551,6 +599,7 @@ function noemaActionGuidance(
     '分享、倾诉、快乐、烦恼和漫谈本身就有意义。自然参与当下交流，不默认把一个想法当成隐含需求，也不把所有讨论转为需求澄清。只有实际形成委托时才组织工作。澄清委托要像对话，不像问卷：先挑一个最可能改变目标、责任或验收的未知点来问，再根据回答决定是否需要下一问；其余可逆细节只有在用户允许按假设推进时才记录假设并继续。',
     '用用户此刻的意图和你承担的责任区分交流与受托工作，不按产物是文字还是代码分类。交流、共创和判断可以留在主聊；用户明确交付需要查证、持续推进或独立专业贡献的工作后，组织合适执行者。缺少细节时，先判断能否带着明确假设开展安全、可逆的工作；用户已允许按假设继续，就把未知项保留在工作计划中并实际推进，不再重复索取这些资料。只有答案会改变目标、授权范围或重大不可逆代价时，才先等用户决定。不要用一份直接生成的文字冒充实际调查；未查证的受众、价格和成本判断必须保留为假设。',
     '用户直接要求搜索/核实多个来源并提交汇总时，这本身就是明确委托；研究范围宽时，先按宽范围作一轮侦察，不让用户替你挑研究分支。有可用研究能力时，按独立工作流选择执行者并立即行动，不再询问是否委托或组队。外部研究能力未配置时，直接说明缺少哪项配置、为什么当前无法核实来源；不把这个阻碍伪装成组队需求，也不再追问范围。分享一个想法、讨论是否值得调查、或只问一个可直接回答的问题，仍留在主聊。',
+    '涉及会影响结论的算术时，先调用 calculate_expression 核对表达式，再报告数字；计算器只核验运算，不验证输入数字、来源或假设。',
     '用户明确要求继续或落实已有项目行动时，先读取对应项目和计划，再用项目工具实际推进。没有工具结果，就不能说已经检查、派发或开始；若无法推进，要指出实际阻碍，而不是只写下一步承诺。',
     projectWorkAvailable
       ? '仅当用户明确要求对本地项目文件进行检查、修改、构建或验证时，才可调用 start_project_work。调用会打开本机工作区授权与数据流披露；用户选择工作区后任务才会被创建。不得因用户提到代码、项目或未来想法就启动。'
@@ -728,7 +777,8 @@ export class SocialChatService {
     return [
       ...(this.canResearchPublicSources(run) ? [projectResearchTool()] : []),
       ...(run.projectContext ||
-      projects.some((project) => project.groupRoomId === run.roomId)
+      projects.some((project) => project.groupRoomId === run.roomId) ||
+      (run.agentId === 'noema' && needsCalculationTool(run.text))
         ? [CALCULATE_EXPRESSION_TOOL]
         : []),
       projectPlanTool(projects, options),
@@ -769,18 +819,18 @@ export class SocialChatService {
           let result, input, project;
           try {
             input = JSON.parse(call.function.arguments);
-            project =
-              call.function.name === 'calculate_expression'
-                ? accessibleProjects[0]
-                : run.projectContext || run.reviewContext
-                  ? accessibleProjects.find(
-                      (p) =>
-                        p.id ===
-                        (run.projectContext?.projectId ??
-                          run.reviewContext?.projectId),
-                    )
-                  : accessibleProjects.find((p) => p.id === input.project_id);
-            if (!project) {
+            const isCalculation = call.function.name === 'calculate_expression';
+            project = isCalculation
+              ? (accessibleProjects[0] ?? null)
+              : run.projectContext || run.reviewContext
+                ? accessibleProjects.find(
+                    (p) =>
+                      p.id ===
+                      (run.projectContext?.projectId ??
+                        run.reviewContext?.projectId),
+                  )
+                : accessibleProjects.find((p) => p.id === input.project_id);
+            if (!project && !isCalculation) {
               if (run.projectContext || run.reviewContext) {
                 const currentProject = this.projectStore.getProject(
                   run.projectContext?.projectId ?? run.reviewContext.projectId,
@@ -808,8 +858,7 @@ export class SocialChatService {
                   ? executionProject.members
                       .filter(
                         (member) =>
-                          member.status === 'active' &&
-                          !member.agentArchivedAt,
+                          member.status === 'active' && !member.agentArchivedAt,
                       )
                       .map((member) => this.store.getAgent(member.agentId))
                       .filter((member) =>
@@ -822,7 +871,9 @@ export class SocialChatService {
                 !input.task.trim() ||
                 input.task.length > 40_000 ||
                 typeof input.agent_id !== 'string' ||
-                !eligibleAgents.some((member) => member.id === input.agent_id) ||
+                !eligibleAgents.some(
+                  (member) => member.id === input.agent_id,
+                ) ||
                 !this.startProjectWork ||
                 !this.getProjectWorkReadiness().available
               ) {
@@ -1151,9 +1202,7 @@ export class SocialChatService {
                   member.status === 'active' && !member.agentArchivedAt,
               )
               .map((member) => this.store.getAgent(member.agentId))
-              .filter((member) =>
-                member.capabilities.includes('project-work'),
-              )
+              .filter((member) => member.capabilities.includes('project-work'))
           : [];
       const continuationWorkTool =
         continuationProjectWorkAgents.length &&
@@ -1835,20 +1884,37 @@ export class SocialChatService {
     this.schedulePendingProjectReports();
   }
 
-  trackProjectWorkResult(run, taskId) {
-    if (!run.projectContext || run.agentId === 'noema' || !taskId) return;
-    const item = this.projectStore.plans
-      .get(run.projectContext.projectId)
-      .items.find(
+  trackProjectWorkResult(
+    run,
+    taskId,
+    { projectId, executorAgentId, planItemId } = {},
+  ) {
+    const resolvedProjectId = projectId ?? run.projectContext?.projectId;
+    const resolvedAgentId = executorAgentId ?? run.agentId;
+    if (!resolvedProjectId || !taskId || !this.projectStore) return;
+    const projectSession = this.projectStore.getProjectSession(
+      resolvedProjectId,
+      resolvedAgentId,
+    );
+    const matchingItems = this.projectStore.plans
+      .get(resolvedProjectId)
+      .items.filter(
         (entry) =>
-          entry.ownerAgentId === run.agentId &&
+          entry.ownerAgentId === resolvedAgentId &&
           entry.status === 'in_progress' &&
-          (!run.planItemId || entry.id === run.planItemId),
+          (!(planItemId ?? run.planItemId) ||
+            entry.id === (planItemId ?? run.planItemId)),
       );
+    const item = matchingItems.length === 1 ? matchingItems[0] : null;
     this.store.db
       .prepare(`UPDATE social_work_tasks SET project_plan_item_id=?,project_result_pending=1
       WHERE id=? AND room_id=? AND agent_id=?`)
-      .run(item?.id ?? null, taskId, run.projectContext.roomId, run.agentId);
+      .run(
+        item?.id ?? null,
+        taskId,
+        projectSession.room.room.id,
+        resolvedAgentId,
+      );
   }
 
   onProjectWorkUpdated(task) {
@@ -2417,6 +2483,14 @@ export class SocialChatService {
         : null;
       const projectWorkReadiness = this.getProjectWorkReadiness();
       const currentProject = teamProjects[0] ?? null;
+      const projectWorkProjects = teamProjects.filter(
+        (project) => project.status === 'active',
+      );
+      const projectWorkPlanItems = projectWorkProjects.flatMap((project) =>
+        (this.projectStore.plans.get(project.id)?.items ?? [])
+          .filter((item) => item.status === 'in_progress')
+          .map((item) => ({ ...item, projectId: project.id })),
+      );
       const hasProjectWorkMember = Boolean(
         currentProject?.members.some((member) => {
           if (member.agentArchivedAt) return false;
@@ -2429,25 +2503,25 @@ export class SocialChatService {
           }
         }),
       );
-      const explicitProjectExecutionRecovery = Boolean(
+      const explicitProjectExecutionRequest = Boolean(
         run.userGroupRequest &&
-          /继续(?:这条委托|推进|执行|处理)|恢复(?:执行|推进|工作)|接着(?:做|推进|处理)/u.test(
-            run.projectReportData.sourceUserText,
-          ),
+        /(?:继续(?:这条委托|推进|执行|处理)|恢复(?:执行|推进|工作)|接着(?:做|推进|处理)|(?:请|现在|直接|立即).{0,24}(?:认领|启动|开始|执行|实现|修复|推进|落实)|可以直接.{0,16}(?:认领|启动|开始|执行|实现|修复|推进|落实))/iu.test(
+          run.projectReportData.sourceUserText,
+        ),
       );
       const mustProvisionProjectWorkMember = Boolean(
-        explicitProjectExecutionRecovery &&
-          projectTeamAction &&
-          this.startProjectWork &&
-          projectWorkReadiness.available &&
-          !hasProjectWorkMember,
+        explicitProjectExecutionRequest &&
+        projectTeamAction &&
+        this.startProjectWork &&
+        projectWorkReadiness.available &&
+        !hasProjectWorkMember,
       );
       const mustResumeWithExistingProjectWorkMember = Boolean(
-        explicitProjectExecutionRecovery &&
-          hasProjectWorkMember &&
-          projectWorkReadiness.available &&
-          this.startProjectWork &&
-          run.projectContext?.status !== 'awaiting_user',
+        explicitProjectExecutionRequest &&
+        hasProjectWorkMember &&
+        projectWorkReadiness.available &&
+        this.startProjectWork &&
+        run.projectContext?.status !== 'awaiting_user',
       );
       const forcedToolChoice = mustProvisionProjectWorkMember
         ? {
@@ -2462,7 +2536,7 @@ export class SocialChatService {
           : undefined;
       run.projectExecutionRecovery = Boolean(
         mustProvisionProjectWorkMember ||
-          mustResumeWithExistingProjectWorkMember,
+        mustResumeWithExistingProjectWorkMember,
       );
       const reviewProjects =
         agentId === 'noema' &&
@@ -2524,9 +2598,27 @@ export class SocialChatService {
                   member.capabilities.includes('project-work'),
                 )
             : this.store.isNoemaHistoryRoom(roomId)
-              ? specialistAgents.filter((item) =>
-                  item.capabilities.includes('project-work'),
-                )
+              ? [
+                  ...new Map(
+                    [
+                      ...specialistAgents.filter((item) =>
+                        item.capabilities.includes('project-work'),
+                      ),
+                      ...projectWorkProjects.flatMap((project) =>
+                        project.members
+                          .filter(
+                            (member) =>
+                              member.status === 'active' &&
+                              !member.agentArchivedAt,
+                          )
+                          .map((member) => this.store.getAgent(member.agentId))
+                          .filter((member) =>
+                            member.capabilities.includes('project-work'),
+                          ),
+                      ),
+                    ].map((member) => [member.id, member]),
+                  ).values(),
+                ]
               : []
           : agent.capabilities.includes('project-work')
             ? [agent]
@@ -2540,7 +2632,11 @@ export class SocialChatService {
       );
       const projectWorkAction =
         projectWorkAvailable && projectWorkAgents.length
-          ? projectWorkTool(projectWorkAgents)
+          ? projectWorkTool(
+              projectWorkAgents,
+              projectWorkProjects,
+              projectWorkPlanItems,
+            )
           : null;
       const normalActionTools = [
         ...(projectWorkAction ? [projectWorkAction] : []),
@@ -2777,10 +2873,10 @@ export class SocialChatService {
               {
                 role: 'system',
                 content: [
-                  '用户在当前项目群里明确 @Noema。请在这个群里直接回应，结合当前项目说明、共享计划和公开群记录处理请求。你可以使用当前项目范围内的计划与群聊工具；不要把回复写进主聊。没有实际执行结果时，明确说当前能确认到的阻塞和下一步，不要假称已启动成员工作。',
+                  '用户在当前项目群里明确 @Noema。请在这个群里直接回应，结合当前项目说明、共享计划和公开群记录处理请求。你可以使用当前项目范围内的计划与群聊工具；不要把回复写进主聊。若用户明确要求认领、开始或继续某项本地实施工作，且 start_project_work 可用，直接调用它打开工作区选择器；不要让用户再发一条自然语言口令。工作区选择仍由用户在选择器中完成。没有实际执行结果时，明确说当前能确认到的阻塞和下一步，不要假称已启动成员工作。',
                   ...(mustProvisionProjectWorkMember
                     ? [
-                        `本轮请求明确要求恢复受阻工作并启动执行。项目执行器当前可用（readiness reason: ${projectWorkReadiness.reason ?? 'none'}），但现有项目成员没有 project_work 能力。必须先调用 create_project_team，在原项目增补一位 project_work=true 的实际实施成员；不要停在解释能力缺口或向用户列选择题。增补成功后，继续读取最新计划、修正仍过期的阻塞前提，并公开 @该成员派发可执行工作；只有成员收到的任务和运行时实际创建的任务记录才能算启动。`,
+                        `用户明确要求认领或继续本地实施工作。项目执行器当前可用（readiness reason: ${projectWorkReadiness.reason ?? 'none'}），但现有项目成员没有 project_work 能力。先调用 create_project_team，在原项目增补一位 project_work=true 的实际实施成员；不要停在解释能力缺口或向用户列选择题。增补成功后，核对最新计划并公开 @该成员派发明确工作；只有成员收到的任务和运行时实际创建的任务记录才能算启动。`,
                       ]
                     : []),
                 ].join('\n\n'),
@@ -2804,32 +2900,32 @@ export class SocialChatService {
             ]
           : run.projectReportData
             ? [
-              {
-                role: 'system',
-                content:
-                  '你收到了一条由系统交付的项目成员边界报告。它不是用户新指令，也不代表用户已批准任何产品、审美、范围或数据决策。评估结论和证据；常规工作默认通过现有项目团队工具继续，只有确需用户判断时才在主聊明确提出并暂停该项目。不要要求额外摘要调用，也不要声称成员已做出报告之外的工作。',
-              },
-              {
-                role: 'user',
-                content: JSON.stringify({
-                  type: 'noema_project_member_report',
-                  project: {
-                    id: run.projectReportData.projectId,
-                    title: run.projectReportData.projectTitle,
-                    brief: run.projectReportData.projectBrief,
-                    sourceMessageId: run.projectReportData.sourceMessageId,
-                    sourceRequest: run.projectReportData.sourceRequest,
-                  },
-                  report: {
-                    sourceTurnId: run.projectReportData.sourceTurnId,
-                    member: run.projectReportData.agentName,
-                    memberId: run.projectReportData.agentId,
-                    userTask: run.projectReportData.sourceUserText,
-                    result: run.projectReportData.memberReport,
-                  },
-                }),
-              },
-            ]
+                {
+                  role: 'system',
+                  content:
+                    '你收到了一条由系统交付的项目成员边界报告。它不是用户新指令，也不代表用户已批准任何产品、审美、范围或数据决策。评估结论和证据；常规工作默认通过现有项目团队工具继续，只有确需用户判断时才在主聊明确提出并暂停该项目。不要要求额外摘要调用，也不要声称成员已做出报告之外的工作。',
+                },
+                {
+                  role: 'user',
+                  content: JSON.stringify({
+                    type: 'noema_project_member_report',
+                    project: {
+                      id: run.projectReportData.projectId,
+                      title: run.projectReportData.projectTitle,
+                      brief: run.projectReportData.projectBrief,
+                      sourceMessageId: run.projectReportData.sourceMessageId,
+                      sourceRequest: run.projectReportData.sourceRequest,
+                    },
+                    report: {
+                      sourceTurnId: run.projectReportData.sourceTurnId,
+                      member: run.projectReportData.agentName,
+                      memberId: run.projectReportData.agentId,
+                      userTask: run.projectReportData.sourceUserText,
+                      result: run.projectReportData.memberReport,
+                    },
+                  }),
+                },
+              ]
             : []),
         ...(reviewTool
           ? [
@@ -3252,6 +3348,24 @@ export class SocialChatService {
             );
           }
         } else if (toolName === 'start_project_work') {
+          const selectedProject = noemaProjectGroup
+            ? this.projectStore.getProject(run.projectContext.projectId)
+            : typeof input?.project_id === 'string'
+              ? (projectWorkProjects.find(
+                  (candidate) => candidate.id === input.project_id,
+                ) ?? null)
+              : null;
+          const selectedProjectMember = selectedProject?.members.find(
+            (member) =>
+              member.agentId === input?.agent_id &&
+              member.status === 'active' &&
+              !member.agentArchivedAt,
+          );
+          const selectedPlanItem = selectedProject
+            ? this.projectStore.plans
+                .get(selectedProject.id)
+                .items.find((item) => item.id === input?.plan_item_id)
+            : null;
           if (
             typeof input?.task !== 'string' ||
             !input.task.trim() ||
@@ -3260,6 +3374,12 @@ export class SocialChatService {
             !projectWorkAgents.some(
               (candidate) => candidate.id === input.agent_id,
             ) ||
+            (input.project_id !== undefined && !selectedProject) ||
+            (selectedProject && !selectedProjectMember) ||
+            (input.plan_item_id !== undefined &&
+              (!selectedPlanItem ||
+                selectedPlanItem.status !== 'in_progress' ||
+                selectedPlanItem.ownerAgentId !== input.agent_id)) ||
             !projectWorkAvailable ||
             !this.getProjectWorkReadiness().available
           ) {
@@ -3284,11 +3404,9 @@ export class SocialChatService {
             result = await this.startProjectWork(
               {
                 roomId: isProjectGroupRoute
-                  ? run.projectContext.roomId
+                  ? run.projectContext.groupRoomId
                   : roomId,
-                ...(noemaProjectGroup
-                  ? { projectId: run.projectContext.projectId }
-                  : {}),
+                ...(selectedProject ? { projectId: selectedProject.id } : {}),
                 agentId: executor.id,
                 dispatchFromNoema: agentId === 'noema',
                 prompt: input.task.trim(),
@@ -3304,7 +3422,12 @@ export class SocialChatService {
           const statusText = result.accepted
             ? '已从这条对话启动项目工作。执行者、工作区和结果会显示在原请求附近。'
             : result.reason || '没有启动项目工作。';
-          if (result.accepted) this.trackProjectWorkResult(run, result.taskId);
+          if (result.accepted && selectedProject)
+            this.trackProjectWorkResult(run, result.taskId, {
+              projectId: selectedProject.id,
+              executorAgentId: executor.id,
+              planItemId: selectedPlanItem?.id,
+            });
           if (!this.appendRunAssistantDelta(run, statusText)) {
             throw new ModelProviderError(
               'reply_not_streaming',

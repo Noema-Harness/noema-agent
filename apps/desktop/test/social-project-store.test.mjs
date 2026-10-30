@@ -1013,14 +1013,14 @@ test('schema v11 upgrades to the current schema without deleting chats or re-ena
       DELETE FROM social_schema_migrations WHERE version = 15;
       DROP TABLE social_project_sessions;
       DROP TABLE social_projects;
-      DELETE FROM social_schema_migrations WHERE version = 12;
+      DELETE FROM social_schema_migrations WHERE version > 11;
     `);
     const upgradedStore = new SocialChatStore(db);
     assert.equal(
       db
         .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
         .get().version,
-      26,
+      27,
     );
     assert.deepEqual(
       upgradedStore

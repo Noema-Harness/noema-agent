@@ -55,10 +55,15 @@ test('provider runtime migration preserves old gateway records and marks new tur
   const now = new Date().toISOString();
   try {
     const originalSchema = db
-      .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'social_messages'")
+      .prepare(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'social_messages'",
+      )
       .get().sql;
     const legacySchema = originalSchema
-      .replace('CREATE TABLE "social_messages"', 'CREATE TABLE social_messages_v26')
+      .replace(
+        'CREATE TABLE "social_messages"',
+        'CREATE TABLE social_messages_v26',
+      )
       .replace(
         "runtime IN ('provider', 'freellmapi', 'local', 'system')",
         "runtime IN ('freellmapi', 'local', 'system')",
@@ -95,7 +100,11 @@ test('provider runtime migration preserves old gateway records and marks new tur
 
     const upgraded = new SocialChatStore(db);
     assert.equal(
-      db.prepare("SELECT runtime FROM social_messages WHERE id = 'legacy-gateway-message'").get().runtime,
+      db
+        .prepare(
+          "SELECT runtime FROM social_messages WHERE id = 'legacy-gateway-message'",
+        )
+        .get().runtime,
       'freellmapi',
     );
     const turn = upgraded.beginTurn({
@@ -105,7 +114,11 @@ test('provider runtime migration preserves old gateway records and marks new tur
       model: 'test-model',
     });
     assert.deepEqual(
-      db.prepare('SELECT DISTINCT runtime FROM social_messages WHERE turn_id = ?').all(turn.turnId),
+      db
+        .prepare(
+          'SELECT DISTINCT runtime FROM social_messages WHERE turn_id = ?',
+        )
+        .all(turn.turnId),
       [{ runtime: 'provider' }],
     );
     assert.deepEqual(db.pragma('foreign_key_check'), []);

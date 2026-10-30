@@ -1,6 +1,19 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { calculateExpression } from '../src/decimal-calculator.mjs';
+import {
+  calculateExpression,
+  needsCalculationTool,
+} from '../src/decimal-calculator.mjs';
+
+test('offers the calculator only when the message contains arithmetic work', () => {
+  assert.equal(
+    needsCalculationTool(
+      '收费 200 元，材料每人 30 元，场地 600 元，能剩多少？',
+    ),
+    true,
+  );
+  assert.equal(needsCalculationTool('周末也许可以办一场摄影小聚。'), false);
+});
 
 test('calculates decimal arithmetic without binary floating-point drift', () => {
   assert.equal(calculateExpression('0.1 + 0.2').value, '0.3');

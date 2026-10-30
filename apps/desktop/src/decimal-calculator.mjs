@@ -22,6 +22,13 @@ export const CALCULATE_EXPRESSION_TOOL = {
   },
 };
 
+const ARITHMETIC_REQUEST_PATTERN =
+  /(?:\d|[%×÷=+*/]|核算|计算|算一算|求和|合计|总额|差额|利润|成本|预算|折扣|税额|税率|利率|收益率|增长率|比例|人均|平均|相差|增加了多少|减少了多少)/u;
+
+export function needsCalculationTool(text) {
+  return typeof text === 'string' && ARITHMETIC_REQUEST_PATTERN.test(text);
+}
+
 const CalculationDecimal = Decimal.clone({
   precision: 50,
   rounding: Decimal.ROUND_HALF_UP,

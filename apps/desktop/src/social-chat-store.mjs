@@ -955,7 +955,9 @@ export class SocialChatStore {
       })();
     }
     if (current < 27) {
-      const foreignKeysEnabled = this.db.pragma('foreign_keys', { simple: true });
+      const foreignKeysEnabled = this.db.pragma('foreign_keys', {
+        simple: true,
+      });
       this.db.pragma('foreign_keys = OFF');
       try {
         this.db.transaction(() => {
@@ -2695,6 +2697,20 @@ export class SocialChatStore {
           `)
         .get(projectId, roomId),
     );
+    const isNoemaProjectSession = Boolean(
+      allowNoemaDispatch &&
+      typeof projectId === 'string' &&
+      room.room.kind === 'direct' &&
+      room.members.some((member) => member.id === agentId) &&
+      this.db
+        .prepare(`
+          SELECT 1 FROM social_project_sessions AS ps
+          JOIN social_projects AS p ON p.id = ps.project_id
+          WHERE ps.project_id = ? AND ps.room_id = ? AND ps.agent_id = ?
+            AND ps.status = 'active' AND p.status = 'active'
+        `)
+        .get(projectId, roomId, agentId),
+    );
     if (
       allowNoemaDispatch &&
       room.room.kind === 'group' &&
@@ -2705,7 +2721,8 @@ export class SocialChatStore {
     if (
       !this.isMember(roomId, agentId) &&
       !(allowNoemaDispatch && isNoemaDirectRoom) &&
-      !isNoemaProjectGroup
+      !isNoemaProjectGroup &&
+      !isNoemaProjectSession
     ) {
       throw new Error('这位好友不在当前聊天空间中。');
     }
@@ -2731,9 +2748,31 @@ export class SocialChatStore {
       const sourceMessage = this.db
         .prepare(`
           SELECT 1 FROM social_messages
-          WHERE id = ? AND room_id = ? AND role = 'user'
+          WHERE id = ? AND role = 'user' AND (
+            room_id = ? OR (
+              ? AND ? IS NOT NULL AND room_id IN (
+                SELECT group_room_id FROM social_projects
+                WHERE id = ? AND status = 'active'
+              )
+            ) OR (
+              ? AND ? IS NOT NULL AND room_id = 'room-noema' AND EXISTS (
+                SELECT 1 FROM social_projects
+                WHERE id = ? AND origin_room_id = 'room-noema'
+                  AND status = 'active'
+              )
+            )
+          )
         `)
-        .get(normalizedSourceMessageId, roomId);
+        .get(
+          normalizedSourceMessageId,
+          roomId,
+          allowNoemaDispatch ? 1 : 0,
+          projectId,
+          projectId,
+          allowNoemaDispatch ? 1 : 0,
+          projectId,
+          projectId,
+        );
       if (!sourceMessage) {
         throw new Error('项目工作的来源必须是当前聊天中的用户消息。');
       }

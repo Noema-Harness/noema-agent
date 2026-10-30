@@ -36,7 +36,7 @@
   cursor: pointer;
   overflow-wrap: anywhere;
 }
-.global-search-dialog [cmdk-item][data-selected="true"] {
+.global-search-dialog [cmdk-item][data-selected='true'] {
   background: var(--soft);
   outline: 1px solid var(--line);
   outline-offset: -1px;

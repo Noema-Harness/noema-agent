@@ -226,7 +226,10 @@ test('named reviewers decide against one submission and a resubmission starts a 
     db = new Database(filename);
     chat = new SocialChatStore(db);
     projects = new SocialProjectStore({ db, socialChatStore: chat });
-    assert.equal(projects.plans.get(project.id).items[0].evidenceReviews.length, 1);
+    assert.equal(
+      projects.plans.get(project.id).items[0].evidenceReviews.length,
+      1,
+    );
     assert.throws(
       () => update('research', 'submitted', b, { reviewDecision: 'approve' }),
       /不能重复投票/u,

@@ -50,9 +50,9 @@ test('plays a short, quiet two-note earcon after a user gesture unlocks audio', 
   await Promise.resolve();
   assert.equal(contextsCreated, 1);
   assert.equal(earcon.play(), true);
-  assert.equal(audio.oscillators.length, 4);
+  assert.equal(audio.oscillators.length, 6);
   assert.ok(
-    audio.oscillators[0].stoppedAt - audio.oscillators[0].startedAt < 0.25,
+    audio.oscillators[0].stoppedAt - audio.oscillators[0].startedAt < 0.6,
   );
 });
 

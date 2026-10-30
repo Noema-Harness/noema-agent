@@ -2427,9 +2427,9 @@
 .social-shell .chat-body .message.user.chat-message {
   display: block;
   width: fit-content;
-  max-width: min(78%, 56ch);
+  max-width: min(82%, 60ch);
   padding: 0;
-  margin: 0 0 0 auto;
+  margin: 0 0 23px auto;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -2438,11 +2438,10 @@
   width: fit-content;
   max-width: 100%;
   min-width: 0;
-  padding: 10px 17px 11px 15px;
-  border: 0;
-  border-right: 2px solid #7893a0;
-  border-radius: 4px 0 0 4px;
-  background: color-mix(in srgb, #edf2f4 72%, transparent);
+  padding: 9px 14px 10px;
+  border: 1px solid #e0e7ea;
+  border-radius: 12px 12px 3px 12px;
+  background: #edf2f4;
   color: #26343a;
   font-size: 14px;
   line-height: 1.72;

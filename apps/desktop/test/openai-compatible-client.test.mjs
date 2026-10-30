@@ -259,33 +259,39 @@ test('repairs one malformed buffered tool call before exposing it to tools', asy
     fetchImpl: async (_url, init) => {
       const body = JSON.parse(init.body);
       requests.push(body);
-      const message = requests.length === 1
-        ? {
-            role: 'assistant',
-            content: '我来组建团队。',
-            tool_calls: [
-              {
-                id: 'call_bad',
-                type: 'function',
-                function: { name: 'create_project_team', arguments: '{"brief":' },
-              },
-            ],
-          }
-        : {
-            role: 'assistant',
-            content: null,
-            tool_calls: [
-              {
-                id: 'call_fixed',
-                type: 'function',
-                function: {
-                  name: 'create_project_team',
-                  arguments: '{"brief":"验证团队组建","members":[]}',
+      const message =
+        requests.length === 1
+          ? {
+              role: 'assistant',
+              content: '我来组建团队。',
+              tool_calls: [
+                {
+                  id: 'call_bad',
+                  type: 'function',
+                  function: {
+                    name: 'create_project_team',
+                    arguments: '{"brief":',
+                  },
                 },
-              },
-            ],
-          };
-      return Response.json({ choices: [{ message, finish_reason: 'tool_calls' }] });
+              ],
+            }
+          : {
+              role: 'assistant',
+              content: null,
+              tool_calls: [
+                {
+                  id: 'call_fixed',
+                  type: 'function',
+                  function: {
+                    name: 'create_project_team',
+                    arguments: '{"brief":"验证团队组建","members":[]}',
+                  },
+                },
+              ],
+            };
+      return Response.json({
+        choices: [{ message, finish_reason: 'tool_calls' }],
+      });
     },
   });
   const deltas = [];
@@ -294,12 +300,18 @@ test('repairs one malformed buffered tool call before exposing it to tools', asy
     messages: [{ role: 'user', content: '组建项目团队' }],
     signal: new AbortController().signal,
     tools: [{ type: 'function', function: { name: 'create_project_team' } }],
-    onToolCalls: (calls) => { receivedCalls = calls; },
-  })) deltas.push(delta);
+    onToolCalls: (calls) => {
+      receivedCalls = calls;
+    },
+  }))
+    deltas.push(delta);
 
   assert.equal(requests.length, 2);
   assert.equal(requests[1].messages.at(-2).role, 'assistant');
-  assert.equal(requests[1].messages.at(-2).tool_calls[0].function.arguments, '{"brief":');
+  assert.equal(
+    requests[1].messages.at(-2).tool_calls[0].function.arguments,
+    '{"brief":',
+  );
   assert.equal(requests[1].messages.at(-1).role, 'tool');
   assert.match(requests[1].messages.at(-1).content, /这批调用均未执行/);
   assert.deepEqual(deltas, ['我来组建团队。']);
@@ -376,13 +388,19 @@ test('repairs one malformed streamed tool call and releases the first stream bef
   const encoder = new TextEncoder();
   const requests = [];
   let receivedCalls;
-  const makeStream = (events) => new Response(new ReadableStream({
-    start(controller) {
-      for (const event of events) controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
-      controller.enqueue(encoder.encode('data: [DONE]\n'));
-      controller.close();
-    },
-  }));
+  const makeStream = (events) =>
+    new Response(
+      new ReadableStream({
+        start(controller) {
+          for (const event of events)
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify(event)}\n\n`),
+            );
+          controller.enqueue(encoder.encode('data: [DONE]\n'));
+          controller.close();
+        },
+      }),
+    );
   const client = new OpenAICompatibleClient({
     getApiKey: () => 'test-key',
     fetchImpl: async (_url, init) => {
@@ -390,11 +408,48 @@ test('repairs one malformed streamed tool call and releases the first stream bef
       if (requests.length === 1) {
         return makeStream([
           { choices: [{ delta: { content: '我先建立项目。' } }] },
-          { choices: [{ delta: { tool_calls: [{ index: 0, id: 'call_bad', type: 'function', function: { name: 'create_project_team', arguments: '{"brief":' } }] } }] },
+          {
+            choices: [
+              {
+                delta: {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: 'call_bad',
+                      type: 'function',
+                      function: {
+                        name: 'create_project_team',
+                        arguments: '{"brief":',
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          },
         ]);
       }
       return makeStream([
-        { choices: [{ delta: { content: '项目组已建立。', tool_calls: [{ index: 0, id: 'call_fixed', type: 'function', function: { name: 'create_project_team', arguments: '{"brief":"验证团队组建","members":[]}' } }] } }] },
+        {
+          choices: [
+            {
+              delta: {
+                content: '项目组已建立。',
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: 'call_fixed',
+                    type: 'function',
+                    function: {
+                      name: 'create_project_team',
+                      arguments: '{"brief":"验证团队组建","members":[]}',
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
       ]);
     },
   });
@@ -404,8 +459,11 @@ test('repairs one malformed streamed tool call and releases the first stream bef
     messages: [{ role: 'user', content: '组建项目团队' }],
     signal: new AbortController().signal,
     tools: [{ type: 'function', function: { name: 'create_project_team' } }],
-    onToolCalls: (calls) => { receivedCalls = calls; },
-  })) deltas.push(delta);
+    onToolCalls: (calls) => {
+      receivedCalls = calls;
+    },
+  }))
+    deltas.push(delta);
 
   assert.equal(requests.length, 2);
   assert.equal(requests[1].messages.at(-2).tool_calls[0].id, 'call_bad');
@@ -422,18 +480,22 @@ test('bounds malformed tool-call correction to one additional model request', as
     fetchImpl: async () => {
       requestCount += 1;
       return Response.json({
-        choices: [{
-          message: {
-            role: 'assistant',
-            content: null,
-            tool_calls: [{
-              id: `call_bad_${requestCount}`,
-              type: 'function',
-              function: { name: 'create_project_team', arguments: '{' },
-            }],
+        choices: [
+          {
+            message: {
+              role: 'assistant',
+              content: null,
+              tool_calls: [
+                {
+                  id: `call_bad_${requestCount}`,
+                  type: 'function',
+                  function: { name: 'create_project_team', arguments: '{' },
+                },
+              ],
+            },
+            finish_reason: 'tool_calls',
           },
-          finish_reason: 'tool_calls',
-        }],
+        ],
       });
     },
   });
@@ -444,10 +506,15 @@ test('bounds malformed tool-call correction to one additional model request', as
         model: 'auto:noema-free',
         messages: [{ role: 'user', content: '组建项目团队' }],
         signal: new AbortController().signal,
-        tools: [{ type: 'function', function: { name: 'create_project_team' } }],
-      })) { /* consume */ }
+        tools: [
+          { type: 'function', function: { name: 'create_project_team' } },
+        ],
+      })) {
+        /* consume */
+      }
     },
-    (error) => error instanceof ModelProviderError && error.code === 'invalid_tool_call',
+    (error) =>
+      error instanceof ModelProviderError && error.code === 'invalid_tool_call',
   );
   assert.equal(requestCount, 2);
 });

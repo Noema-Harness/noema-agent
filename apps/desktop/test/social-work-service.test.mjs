@@ -416,7 +416,7 @@ test('Noema internal dispatch stores project work in the source room with a capa
   }
 });
 
-test('Noema can dispatch a real work record from an active project group to one of its capable members', async () => {
+test('Noema dispatches approved work from main chat or the project group into the member project session', async () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'noema-group-work-'));
   const workspace = path.join(directory, 'workspace');
   mkdirSync(workspace);
@@ -456,29 +456,55 @@ test('Noema can dispatch a real work record from an active project group to one 
         { agentId: researcher, task: '核对价格来源与计价口径。' },
       ],
     }).project;
-    const request = store.beginTurn({
-      roomId: project.groupRoomId,
+    store.appendAssistantDelta(origin.assistantMessageId, '项目已创建。');
+    assert.equal(store.completeReply(origin.assistantMessageId), true);
+    const mainRequest = store.beginTurn({
+      roomId: 'room-noema',
       agentId: 'noema',
-      text: '@Noema 请开始 w3 的实际实现。',
+      text: '请继续价格追踪项目，开始 w3 的实际实现。',
       model: 'test-model',
     });
     const accepted = await service.startTaskFromNoema({
-      roomId: project.groupRoomId,
+      roomId: 'room-noema',
       projectId: project.id,
       agentId: 'engineering-partner',
       prompt: '实现价格快照与变化检测。',
-      sourceMessageId: request.userMessageId,
+      sourceMessageId: mainRequest.userMessageId,
     });
     assert.equal(accepted.accepted, true);
     const task = store.getSocialWorkTask(accepted.taskId);
-    assert.equal(task.roomId, project.groupRoomId);
+    const session = projectStore.getProjectSession(
+      project.id,
+      'engineering-partner',
+    );
+    assert.equal(task.roomId, session.room.room.id);
     assert.equal(task.agentId, 'engineering-partner');
-    assert.equal(task.sourceMessageId, request.userMessageId);
+    assert.equal(task.sourceMessageId, mainRequest.userMessageId);
     assert.equal(task.status, 'running');
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(launchCount, 1);
     await service.waitForTask(accepted.taskId);
     assert.equal(store.getSocialWorkTask(accepted.taskId).status, 'completed');
+
+    const groupRequest = store.beginTurn({
+      roomId: project.groupRoomId,
+      agentId: 'noema',
+      text: '@Noema 请继续执行 w3。',
+      model: 'test-model',
+    });
+    const groupAccepted = await service.startTaskFromNoema({
+      roomId: project.groupRoomId,
+      projectId: project.id,
+      agentId: 'engineering-partner',
+      prompt: '继续核验价格快照与变化检测。',
+      sourceMessageId: groupRequest.userMessageId,
+    });
+    assert.equal(groupAccepted.accepted, true);
+    assert.equal(
+      store.getSocialWorkTask(groupAccepted.taskId).roomId,
+      session.room.room.id,
+    );
+    await service.waitForTask(groupAccepted.taskId);
 
     const noProjectMember = store.createAgent({
       name: '非项目工程师',
@@ -492,7 +518,7 @@ test('Noema can dispatch a real work record from an active project group to one 
         projectId: project.id,
         agentId: noProjectMember,
         prompt: '越权加入任务。',
-        sourceMessageId: request.userMessageId,
+        sourceMessageId: groupRequest.userMessageId,
       }),
       /活跃成员/u,
     );

@@ -349,7 +349,15 @@ export class SocialWorkService {
     }
     if (sourceMessageId) {
       const source = this.store.getSocialMessage(sourceMessageId);
-      if (source?.role !== 'user' || source.roomId !== roomId) {
+      const projectSourceRoom = projectId
+        ? this.projectStore?.getProject(projectId)?.groupRoomId
+        : null;
+      const sourceRoomAllowed =
+        source?.roomId === roomId ||
+        (dispatchFromNoema &&
+          projectId &&
+          [projectSourceRoom, 'room-noema'].includes(source?.roomId));
+      if (source?.role !== 'user' || !sourceRoomAllowed) {
         throw new Error('项目工作的来源必须是当前聊天中的用户消息。');
       }
     }
@@ -480,27 +488,28 @@ export class SocialWorkService {
     signal = null,
   }) {
     const room = this.store.getRoomSnapshot(roomId);
-    const isNotNoemaDirectRoom =
-      room.room.kind !== 'direct' ||
-      room.members.length !== 1 ||
-      room.members[0].id !== 'noema';
+    const isNoemaDirectRoom =
+      room.room.kind === 'direct' &&
+      room.members.length === 1 &&
+      room.members[0].id === 'noema';
+    const isNotNoemaDirectRoom = !isNoemaDirectRoom;
     let project = null;
-    if (isNotNoemaDirectRoom) {
-      const isProjectGroup =
-        room.room.kind === 'group' &&
-        typeof projectId === 'string' &&
-        projectId.trim() &&
-        this.projectStore;
-      if (!isProjectGroup) {
-        throw new Error(
-          'Noema 只能从自己的私聊或当前项目群中发起内部项目工作。',
-        );
+    if (projectId) {
+      if (!this.projectStore) {
+        throw new Error('当前没有可用的项目记录。');
       }
       project = this.projectStore.getProject(projectId);
+      const isProjectGroup =
+        isNotNoemaDirectRoom &&
+        room.room.kind === 'group' &&
+        roomId === project.groupRoomId;
+      if (!isNoemaDirectRoom && !isProjectGroup) {
+        throw new Error('Noema 只能从主聊或对应项目群派发项目工作。');
+      }
+      if (project.status !== 'active') {
+        throw new Error('只有进行中的项目才能启动项目工作。');
+      }
       if (
-        project.groupRoomId !== roomId ||
-        project.status !== 'active' ||
-        !room.members.some((member) => member.id === 'noema') ||
         !project.members.some(
           (member) =>
             member.agentId === agentId &&
@@ -508,9 +517,20 @@ export class SocialWorkService {
             !member.agentArchivedAt,
         )
       ) {
-        throw new Error('Noema 只能在活跃项目群中派发给该项目的活跃成员。');
+        throw new Error('Noema 只能向该项目中的活跃成员派发项目工作。');
       }
+    } else if (isNotNoemaDirectRoom) {
+      throw new Error('Noema 只能从自己的私聊或当前项目群中发起内部项目工作。');
     }
+    /*
+     * A project can be selected from Noema's main conversation, or from its
+     * own group. In both cases, execute inside the selected member's durable
+     * project session so later task results join that project's inbox.
+     * The user message remains the source record in its original room.
+     */
+    const executionRoomId = project
+      ? this.projectStore.getProjectSession(project.id, agentId).room.room.id
+      : roomId;
     const sourceMessage = this.store.getSocialMessage(sourceMessageId);
     if (sourceMessage?.role !== 'user' || sourceMessage.roomId !== roomId) {
       throw new Error('项目工作的来源必须是当前聊天中的用户消息。');
@@ -527,7 +547,7 @@ export class SocialWorkService {
     }
     return this.startTaskInternal(
       {
-        roomId,
+        roomId: executionRoomId,
         agentId: executor.id,
         prompt,
         sourceMessageId,
