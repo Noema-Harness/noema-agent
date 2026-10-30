@@ -892,6 +892,17 @@ export class SocialChatStore {
           );
       })();
     }
+    if (current < 26) {
+      this.db.transaction(() => {
+        this.db.exec(`
+          ALTER TABLE social_project_group_inbox
+            ADD COLUMN plan_submission_revision INTEGER
+              CHECK (plan_submission_revision IS NULL OR plan_submission_revision > 0);
+          INSERT INTO social_schema_migrations(version, applied_at)
+          VALUES (26, '${isoNow()}');
+        `);
+      })();
+    }
   }
 
   seedInitialSocialModel() {
@@ -3727,6 +3738,7 @@ export class SocialChatStore {
                group_message.content AS text,
                COALESCE(group_message.sender_agent_id, group_message.agent_id) AS senderAgentId,
                i.root_id AS rootId, i.depth, i.trigger_kind AS triggerKind, i.plan_item_id AS planItemId,
+               i.plan_submission_revision AS planSubmissionRevision,
                group_message.reply_to_json AS replyToJson,
                i.queued_at AS queuedAt
         FROM social_project_group_inbox AS i
@@ -3755,6 +3767,7 @@ export class SocialChatStore {
                  group_message.content AS text,
                  COALESCE(group_message.sender_agent_id, group_message.agent_id) AS senderAgentId,
                  i.root_id AS rootId, i.depth, i.trigger_kind AS triggerKind, i.plan_item_id AS planItemId,
+                 i.plan_submission_revision AS planSubmissionRevision,
                  group_message.reply_to_json AS replyToJson,
                  i.queued_at AS queuedAt
           FROM social_project_group_inbox AS i

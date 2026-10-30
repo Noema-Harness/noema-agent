@@ -23,6 +23,7 @@ export class ProjectCollaborationStore {
     depth = 0,
     triggerKind = null,
     planItemId = null,
+    planSubmissionRevision = null,
     replyTo = null,
     system = false,
   }) {
@@ -91,6 +92,7 @@ export class ProjectCollaborationStore {
         depth,
         triggerKind,
         planItemId,
+        planSubmissionRevision,
       });
       return {
         projectId,
@@ -112,6 +114,7 @@ export class ProjectCollaborationStore {
     depth = 0,
     triggerKind = null,
     planItemId = null,
+    planSubmissionRevision = null,
   }) {
     const message = this.social.getSocialMessage(messageId);
     if (
@@ -187,8 +190,8 @@ export class ProjectCollaborationStore {
         const session = this.projects.getProjectSession(project.id, target.id);
         this.db
           .prepare(`INSERT INTO social_project_group_inbox
-          (turn_id,project_id,group_room_id,agent_id,session_room_id,group_user_message_id,queued_at,root_id,depth,trigger_kind,plan_item_id)
-          VALUES(?,?,?,?,?,?,?,?,?,?,?)`)
+          (turn_id,project_id,group_room_id,agent_id,session_room_id,group_user_message_id,queued_at,root_id,depth,trigger_kind,plan_item_id,plan_submission_revision)
+          VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`)
           .run(
             id,
             project.id,
@@ -201,6 +204,7 @@ export class ProjectCollaborationStore {
             depth,
             triggerKind ?? (route.everyone ? 'broadcast' : 'mention'),
             planItemId,
+            planSubmissionRevision,
           );
       }
       delivered++;
@@ -379,6 +383,8 @@ export class ProjectCollaborationStore {
               rootId,
               depth,
               triggerKind: 'plan_review',
+              planItemId: item.id,
+              planSubmissionRevision: item.submissionRevision,
             });
         }
       }
@@ -437,6 +443,39 @@ export class ProjectCollaborationStore {
   }
 
   prepareDelivery(pending) {
+    if (pending.triggerKind === 'plan_review') {
+      const item = this.projects.plans
+        .get(pending.projectId)
+        .items.find((item) => item.id === pending.planItemId);
+      const reviews = [
+        ...(item?.evidenceReviews ?? []),
+        ...(item?.evidenceReview ? [item.evidenceReview] : []),
+      ];
+      const reviewer = reviews.some(
+        (review) =>
+          review.actorId === pending.agentId &&
+          review.submissionRevision === pending.planSubmissionRevision,
+      );
+      const member = this.projects
+        .getProject(pending.projectId)
+        .members.find((member) => member.agentId === pending.agentId);
+      if (
+        !item ||
+        item.status !== 'submitted' ||
+        !pending.planSubmissionRevision ||
+        item.submissionRevision !== pending.planSubmissionRevision ||
+        !item.reviewerIds.includes(pending.agentId) ||
+        member?.status !== 'active' ||
+        member.agentArchivedAt ||
+        reviewer
+      ) {
+        this.db
+          .prepare('DELETE FROM social_project_group_inbox WHERE turn_id=?')
+          .run(pending.turnId);
+        return false;
+      }
+      return true;
+    }
     if (!pending.planItemId) return true;
     const plan = this.projects.plans.get(pending.projectId);
     const item = plan.items.find((item) => item.id === pending.planItemId);

@@ -920,7 +920,7 @@ test('schema v11 upgrades to the current schema without deleting chats or re-ena
     db.exec(`
       ALTER TABLE social_work_tasks DROP COLUMN project_plan_item_id;
       ALTER TABLE social_work_tasks DROP COLUMN project_result_pending;
-      DELETE FROM social_schema_migrations WHERE version = 25;
+      DELETE FROM social_schema_migrations WHERE version = 26; DELETE FROM social_schema_migrations WHERE version = 25;
       DROP TABLE IF EXISTS social_project_growth_members;
       DROP TABLE IF EXISTS social_project_growth_batches;
       DELETE FROM social_schema_migrations WHERE version = 24;
@@ -956,7 +956,7 @@ test('schema v11 upgrades to the current schema without deleting chats or re-ena
       db
         .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
         .get().version,
-      25,
+      26,
     );
     assert.deepEqual(
       upgradedStore

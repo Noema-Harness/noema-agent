@@ -160,14 +160,57 @@ test('submitted work publicly wakes only its named active agent reviewers', asyn
     assert.deepEqual(reviewerDelivery, [
       { agentId: f.a, triggerKind: 'plan_review' },
     ]);
+    const oldDelivery = f.store.listProjectGroupInbox()[0];
+    assert.equal(oldDelivery.planItemId, 'source-review');
+    assert.equal(
+      oldDelivery.planSubmissionRevision,
+      plan.items[0].submissionRevision,
+    );
+    assert.equal(f.service.collaboration.prepareDelivery(oldDelivery), true);
+    plan = f.projects.plans.updateItem({
+      projectId: f.project.id,
+      expectedRevision: plan.revision,
+      itemId: 'source-review',
+      status: 'submitted',
+      reviewDecision: 'request_changes',
+      reviewReason: '报价来源还缺少有效期。',
+      actorAgentId: f.a,
+      reason: '独立核验后要求补充报价有效期。',
+    });
+    assert.equal(plan.items[0].status, 'in_progress');
+    plan = f.projects.plans.updateItem({
+      projectId: f.project.id,
+      expectedRevision: plan.revision,
+      itemId: 'source-review',
+      status: 'submitted',
+      evidence: '补充报价有效期，访谈与报价来源均已归档。',
+      evidenceSources: [{ kind: 'message', messageId: 'review-source' }],
+      actorAgentId: f.b,
+      reason: '根据核验意见补齐报价有效期后重新提交。',
+    });
+    f.service.collaboration.planChanged(f.project.id, {
+      rootId: 'resubmitted-root',
+    });
+    const deliveries = f.store.listProjectGroupInbox();
+    assert.equal(deliveries.length, 2);
+    assert.equal(
+      f.service.collaboration.prepareDelivery(oldDelivery),
+      false,
+      'a stale queued review is discarded before model invocation',
+    );
+    const currentDelivery = deliveries.find(
+      (delivery) => delivery.planSubmissionRevision === plan.items[0].submissionRevision,
+    );
+    assert.ok(currentDelivery);
+    assert.equal(f.service.collaboration.prepareDelivery(currentDelivery), true);
     assert.equal(
       f.db
         .prepare(
           'SELECT COUNT(*) AS n FROM social_project_reports WHERE project_id=?',
         )
         .get(f.project.id).n,
-      1,
-      'Noema receives its separate submission checkpoint',
+      2,
+      'each submission revision gives Noema its separate checkpoint',
     );
     assert.equal(
       f.db
@@ -175,8 +218,8 @@ test('submitted work publicly wakes only its named active agent reviewers', asyn
           "SELECT COUNT(*) AS n FROM social_messages WHERE room_id=? AND content LIKE '%本轮核验意见%'",
         )
         .get(f.project.groupRoomId).n,
-      1,
-      'reconciliation does not publish a duplicate review request',
+      2,
+      'one review request is published per submission revision',
     );
   } finally {
     await f.service.shutdown();

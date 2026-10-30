@@ -900,7 +900,7 @@ test('schema upgrade refreshes obsolete app-owned file instructions and preserve
       .prepare('UPDATE social_agents SET system_prompt=? WHERE id=?')
       .run(`保留自定义前文\n${obsolete}\n保留自定义后文`, f.agent);
     f.db.exec(
-      'ALTER TABLE social_work_tasks DROP COLUMN project_plan_item_id; ALTER TABLE social_work_tasks DROP COLUMN project_result_pending; DELETE FROM social_schema_migrations WHERE version=25',
+      'ALTER TABLE social_project_group_inbox DROP COLUMN plan_submission_revision; ALTER TABLE social_work_tasks DROP COLUMN project_plan_item_id; ALTER TABLE social_work_tasks DROP COLUMN project_result_pending; DELETE FROM social_schema_migrations WHERE version=26; DELETE FROM social_schema_migrations WHERE version=25',
     );
     new SocialChatStore(f.db);
     const prompt = f.db
