@@ -130,4 +130,8 @@ Noema 的长周期共同开发记录是重要的现场材料，因为它保留�
 
 这给研究划出一个可行动的转折：AI 味可以是模型输出空间变窄的可见表象之一，但只有追到“什么样的数据和反馈被反复强化”，才能判断它是否影响能力本身。下一步对照后训练/偏好优化、厂商真实部署评估和 Noema 的个人级经历沉淀，找出三种学习回路各自的输入、目标与纠错来源；再看相似的是表面症状还是底层控制结构。
 
+### 奖励信号会把“看起来不错”推成什么
+
+[OpenAI 的 ARGO 审计](https://alignment.openai.com/argo/)尝试把黑盒偏好奖励模型中的取舍提炼成可读 rubric，并发现网页视觉奖励模型更愿意选视觉强、但按钮不可用的页面。它与 Noema 过往出现的“截图能看、产品不能用”是同一类代理错位：裁判喜好的表面品质不等于用户要的最终结果。OpenAI 与 Anthropic 的近年部署评估也开始借助生产对话、失败轨迹回放与动态多轮交互来观察迎合和纠错能力。[GPT‑5 system card](https://deploymentsafety.openai.com/gpt-5/account-level-enforcement)；[Anthropic personal guidance](https://www.anthropic.com/research/claude-personal-guidance)。这些材料让研究重心进一步落在“评价信号奖励了什么、交互走完后改变了什么”，而不是单纯把输出修得更像人。
+
 
