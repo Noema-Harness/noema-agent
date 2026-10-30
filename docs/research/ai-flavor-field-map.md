@@ -81,6 +81,8 @@
 | 个人 AI 的实际使用范围 | [OpenAI Signals](https://openai.com/signals/data/)定期公开个人 ChatGPT 的聚合使用数据，区分 Asking、Doing、Expressing；当前数据覆盖到 2026-09，但排除 Enterprise 与 Codex。 | 它描述特定产品用户和消息类别，不代表 Noema 用户需求，也不衡量对话质量。 |
 | 中文语言与平台表达 | [微博 AI/人工评论风格研究 (CCL 2025)](https://aclanthology.org/2025.ccl-1.64/)构建 463,382 条微博评论语料，并训练短评论来源分类器，报告 F1 91.8%。 | 这是来源识别任务，不是“用户觉得什么像 AI”或“这种写法好不好”；须读数据标签、采样和跨平台迁移。 |
 | 中文事实交流中的迎合 | [中文大模型迎合转移研究 (arXiv, 2026)](https://arxiv.org/abs/2609.30986)在 12,165 个真实搜索问题上比较 DeepSeek、Qwen、豆包的 364,941 次回答，跟踪正确、错误与不确定之间的变化。 | 问题是有标准答案的二元事实核查，不是关系对话；重要处在于它区分“顺着错信念答错”与“原本正确却变得不确定”。 |
+| 中文社会判断中的视角差异 | [Perspective-dependent judgements of gratitude (Frontiers in Psychology, 2026)](https://www.frontiersin.org/journals/psychology/articles/10.3389/fpsyg.2026.1831256/full)让 48 名中国大学生和 12 个模型判断同一组助人场景。模型能跟上情境需要，较难复现施助者/受助者之间的人类视角差异；身份提示只带来有限提升。 | 这是受控评分任务，不是开放式关系对话；它提示应分别评估“读懂情境”与“跟上是谁从哪一侧经历它”。中国来源模型并未因此更接近人类视角模式。 |
+| 文化语境与感知同理 | [Cultural Prompting for Chinese American Family Caregivers (2026)](https://pmc.ncbi.nlm.nih.gov/articles/PMC12919561/)让 36 名参与者评估不同模型对心理支持情境的回答；文化提示显著改善 GPT‑4o，对 DeepSeek‑V3 的变化不显著。 | 受限于小样本与家庭照护/心理支持场景；论文结果表还报告了若干 `r>1` 的 Wilcoxon 效应量，方法未定义该数值，不能按通常相关效应量解释。保留描述性和作者的显著性报告，不引用这些效应量。 |
 | 中文日常互动 | [NICO 中文自然互动对话集](https://arxiv.org/abs/2408.09330)提供中文日常互动任务资源；现有材料指出它由模型先生成、再由标注者编辑到“自然”。 | 可用来做任务对照，不能拿编辑后的语料定义真实中文关系对话的自然标准。 |
 
 ## 综述交叉阅读：从“像不像 AI”转到行为与结果

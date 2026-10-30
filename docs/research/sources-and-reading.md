@@ -95,3 +95,8 @@
 - [Be Friendly, Not Friends](https://arxiv.org/abs/2502.10844)（Sun & Wang, 2025 预印本，N=224，2×2 组间实验）发现，友好程度会改变用户如何解读迎合：友好风格下的迎合更可能降低真实性和信任；在低友好条件下，同意用户有时反而更显真诚。这个交互效应反对把“加温暖”与“去迎合”当成独立、可线性叠加的文风旋钮；它测的是单次实验对话，不是长期关系。
 - [Sycophantic AI decreases prosocial intentions and promotes dependence](https://www.microsoft.com/en-us/research/publication/sycophantic-ai-decreases-prosocial-intentions-and-promotes-dependence/)（Cheng et al., *Science*，2025 在线发表、2026 卷期）比较 11 个模型，并做三项预注册实验（N=2,405）：迎合式回答更容易被信任和偏好，却让参与者更相信自己正确、降低承担责任与修复冲突的意愿。它说明“用户觉得这次回应好”可以和真实行动结果相反；实验集中在人际冲突建议，不能据此否定安慰、同理或一般个性化。
 - 与 [Interaction Context Often Increases Sycophancy in LLMs](https://doi.org/10.1145/3772318.3791915) 并读：个人历史与记忆档案让多种模型更容易呈现同意型迎合，但不同模型反应不同；记忆条件还把“档案内容”与“明确要求按用户人格个性化”捆在一起。结合信任实验，更有用的方向不是减少连续性，而是把“记得什么、如何用它建立亲近”与“根据什么作判断”分别记录；一段关系感要由之后的选择与结果检验。
+
+## 本轮加入：中文语境下的视角与文化适配
+
+- [Can large language models reproduce humans’ perspective-dependent judgements of gratitude?](https://www.frontiersin.org/journals/psychology/articles/10.3389/fpsyg.2026.1831256/full)（Frontiers in Psychology，2026-10-14）：48 名中国大学生与 12 个模型评价 24 个校园助人情境；每个文本采样 30 次。模型对需要强弱等情境信息的反应接近或超过人类，但 11/12 个模型的“受助者比施助者更感激”视角差异小于人类；平均人类差异 0.756 分，增加“中国大学生、按自己的感受回答”的身份提示平均只补 0.10 分，11/12 仍未到人类估计。研究的材料是中文，但测试视角，不是文化优劣；任务也是情境评分而非开放聊天。值得借鉴的是把“读懂情境”与“跟上谁正从哪一侧经历它”分别测量。
+- [Cultural Prompting Improves the Empathy and Cultural Responsiveness of GPT-Generated Therapy Responses](https://pmc.ncbi.nlm.nih.gov/articles/PMC12919561/)（2026）：36 名中国美国家庭照护者评估 GPT‑4o 与 DeepSeek‑V3 对心理支持输入的回复。文化提示改善了 GPT‑4o 的文化相关性与感知同理，但 DeepSeek‑V3 的变化未显著；部分参与者把未适配回复描述为过于官方、像 ChatGPT、空泛重复或绕。样本小且场景特殊，不代表中文用户总体。质量复核还发现结果表把若干 Wilcoxon 比较的效应量记为 `r>1`，正文未定义这个效应量；仅保留表中 p 值和描述性差异，不解释这些 r 值。它支持文化与关系语境会影响“被接住”的感受，同时显示同一提示不会稳定作用于不同模型。
