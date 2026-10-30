@@ -20,15 +20,15 @@
 ## 本地阅读
 
 1. 先找论文的 HTML 或 JATS 版本。它们通常保留标题、链接和表格结构，适合直接检索。
-2. PDF 全文需要进入本地笔记时，使用 [`tools/pdf_to_markdown.py`](tools/pdf_to_markdown.py)。它基于本机 PyMuPDF，按页输出 Markdown 并保留页码标记：
+2. PDF 全文需要进入本地笔记时，使用仓库现有的 [`scripts/research/pdf_to_markdown.py`](../../scripts/research/pdf_to_markdown.py)。它基于 PyMuPDF，按页输出 Markdown、保留页码与 SHA-256，并且默认拒绝覆盖已有文件：
 
    ```powershell
-   python -m pip install -r docs/research/tools/requirements.txt
-   python docs/research/tools/pdf_to_markdown.py "C:\path\paper.pdf" -o "$env:TEMP\paper.md"
+   python -m pip install PyMuPDF
+   python scripts/research/pdf_to_markdown.py "C:\path\paper.pdf" -o "$env:TEMP\paper.md"
    ```
 
 3. 转换后核对标题、页数、摘要、方法、结果和局限所在页。图表、公式、脚注及双栏顺序要回到 PDF 抽查。Markdown 是快速检索副本，不是权威版本。
-4. MarkItDown 适合长篇办公文档和结构化附件；在 2025 CCL 双栏论文试跑中，其 PDF 输出产生了字符错序和列混排，故本研究不把它作为论文 PDF 的默认转换器。该论文用 PyMuPDF 抽取的正文顺序明显更可读，数字与图表仍回原 PDF 核对。
+4. MarkItDown 适合长篇办公文档和结构化附件；在 2025 CCL 双栏论文试跑中，其 PDF 输出产生了字符错序和列混排，故本研究不把它作为论文 PDF 的默认转换器。仓库现有 PyMuPDF 脚本提供更可读的逐页文本；数字与图表仍回原 PDF 核对，不再另建一条相同转换路径。
 5. 阅读时只把当前问题需要的段落和页码带入上下文；不要把一整本论文转成更长的 Markdown 后再全文塞入对话。
 
 ## 每篇材料留什么
