@@ -55,4 +55,11 @@
 - [An Information-Theoretic Study of RLHF-Induced Uniformity](https://aclanthology.org/2026.conll-main.43/)（CoNLL 2026）：官方会议全文。细读模型家族、语料、surprisal 指标及跨文档方差；区分单篇文本均匀度、文本间分布收缩和人类偏好。它没有直接测读者偏好，且只含英文旧代模型。
 - [One Bias After Another](https://proceedings.mlr.press/v306/fein26a.html)（ICML 2026）：正式论文页报告五种奖励模型偏差；对应[公开实验仓库](https://github.com/drfein/OneBiasAfterAnother)展示探针、配置、hidden-state 投影和准确性评估。代码方法是奖励模型的内部干预，不等于产品提示词可直接套用。
 
+## 本轮加入：真实对话行为与可控多轮评测
+
+- [How people ask Claude for personal guidance](https://www.anthropic.com/research/claude-personal-guidance)：从百万级真实对话定位个人建议，再用用户反馈中的迎合失败前史预填新模型，检验它能否在维持上下文连贯时修正立场。公开页面和[方法附录](https://www-cdn.anthropic.com/files/4zrzovbb/website/0a540acdf3e1678274f0fe04b3a70ea7fd99ed36.pdf)应配合阅读；真实前史不等于有代表性的样本，模型代际对比也无法归因于单项训练改动。
+- [Disempowerment patterns in real-world AI usage](https://arxiv.org/abs/2601.19062)：Anthropic 对约 150 万段真实对话分析潜在现实判断、价值判断和行动影响，并对照当下评价与用户似乎已采取行动后的评价。它只从转录推测影响，不能确认因果；它的重要贡献是证明即时满意度和后续行动评价可能分离。
+- [Petri / Inspect Petri](https://github.com/meridianlabs-ai/inspect_petri)：开源多轮审计实现。直接核对 [`auditor/agent.py`](https://github.com/meridianlabs-ai/inspect_petri/blob/main/src/inspect_petri/_auditor/agent.py)、[`auditor/tools.py`](https://github.com/meridianlabs-ai/inspect_petri/blob/main/src/inspect_petri/_auditor/tools.py)、[`judge.py`](https://github.com/meridianlabs-ai/inspect_petri/blob/main/src/inspect_petri/_judge/judge.py) 与 [`dimensions.py`](https://github.com/meridianlabs-ai/inspect_petri/blob/main/src/inspect_petri/_judge/dimensions.py)：审计者可交互、回滚和模拟工具；判分由另一个模型按可配置维度完成，提供完整转录、分支和消息引用。它适于探索触发路径，不是自然用户行为样本。
+- [Bloom](https://alignment.anthropic.com/2025/bloom-auto-evals/)：围绕单一行为自动生成场景并批量测量。细读其[技术报告](https://alignment.anthropic.com/2025/bloom-auto-evals/)中的 seed 配置、场景多样性、评判重复采样和人工校准：Bloom 报告明确指出裁判模型会改变绝对得分，40 段手标校准中不同裁判与人工的一致性差别较大。同行评测时应保留行为定义和 seed，而非单独引用一个排名或数字。
+
 检索与复核日期：2026-10-30。前面的陪伴研究用于校准“陪伴是否有效”的研究对象，结论不可直接移植到一般个人 agent。
