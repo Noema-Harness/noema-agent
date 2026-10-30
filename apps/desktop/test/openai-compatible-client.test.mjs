@@ -201,6 +201,61 @@ test('preserves tool calls for buffered automatic router replies', async () => {
   ]);
 });
 
+test('repairs one malformed buffered tool call before exposing it to tools', async () => {
+  const requests = [];
+  let receivedCalls;
+  const client = new OpenAICompatibleClient({
+    getApiKey: () => 'test-key',
+    fetchImpl: async (_url, init) => {
+      const body = JSON.parse(init.body);
+      requests.push(body);
+      const message = requests.length === 1
+        ? {
+            role: 'assistant',
+            content: '我来组建团队。',
+            tool_calls: [
+              {
+                id: 'call_bad',
+                type: 'function',
+                function: { name: 'create_project_team', arguments: '{"brief":' },
+              },
+            ],
+          }
+        : {
+            role: 'assistant',
+            content: null,
+            tool_calls: [
+              {
+                id: 'call_fixed',
+                type: 'function',
+                function: {
+                  name: 'create_project_team',
+                  arguments: '{"brief":"验证团队组建","members":[]}',
+                },
+              },
+            ],
+          };
+      return Response.json({ choices: [{ message, finish_reason: 'tool_calls' }] });
+    },
+  });
+  const deltas = [];
+  for await (const delta of client.streamChat({
+    model: 'auto:noema-free',
+    messages: [{ role: 'user', content: '组建项目团队' }],
+    signal: new AbortController().signal,
+    tools: [{ type: 'function', function: { name: 'create_project_team' } }],
+    onToolCalls: (calls) => { receivedCalls = calls; },
+  })) deltas.push(delta);
+
+  assert.equal(requests.length, 2);
+  assert.equal(requests[1].messages.at(-2).role, 'assistant');
+  assert.equal(requests[1].messages.at(-2).tool_calls[0].function.arguments, '{"brief":');
+  assert.equal(requests[1].messages.at(-1).role, 'tool');
+  assert.match(requests[1].messages.at(-1).content, /这批调用均未执行/);
+  assert.deepEqual(deltas, ['我来组建团队。']);
+  assert.equal(receivedCalls[0].id, 'call_fixed');
+});
+
 test('assembles streamed FreeLLMAPI tool-call deltas without exposing arguments as chat text', async () => {
   const encoder = new TextEncoder();
   const chunks = [
@@ -258,6 +313,85 @@ test('assembles streamed FreeLLMAPI tool-call deltas without exposing arguments 
     },
   ]);
   assert.equal(receivedRoute, 'blockrun/model/name');
+});
+
+test('repairs one malformed streamed tool call and releases the first stream before retrying', async () => {
+  const encoder = new TextEncoder();
+  const requests = [];
+  let receivedCalls;
+  const makeStream = (events) => new Response(new ReadableStream({
+    start(controller) {
+      for (const event of events) controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+      controller.enqueue(encoder.encode('data: [DONE]\n'));
+      controller.close();
+    },
+  }));
+  const client = new OpenAICompatibleClient({
+    getApiKey: () => 'test-key',
+    fetchImpl: async (_url, init) => {
+      requests.push(JSON.parse(init.body));
+      if (requests.length === 1) {
+        return makeStream([
+          { choices: [{ delta: { content: '我先建立项目。' } }] },
+          { choices: [{ delta: { tool_calls: [{ index: 0, id: 'call_bad', type: 'function', function: { name: 'create_project_team', arguments: '{"brief":' } }] } }] },
+        ]);
+      }
+      return makeStream([
+        { choices: [{ delta: { content: '项目组已建立。', tool_calls: [{ index: 0, id: 'call_fixed', type: 'function', function: { name: 'create_project_team', arguments: '{"brief":"验证团队组建","members":[]}' } }] } }] },
+      ]);
+    },
+  });
+  const deltas = [];
+  for await (const delta of client.streamChat({
+    model: 'deepseek-flash',
+    messages: [{ role: 'user', content: '组建项目团队' }],
+    signal: new AbortController().signal,
+    tools: [{ type: 'function', function: { name: 'create_project_team' } }],
+    onToolCalls: (calls) => { receivedCalls = calls; },
+  })) deltas.push(delta);
+
+  assert.equal(requests.length, 2);
+  assert.equal(requests[1].messages.at(-2).tool_calls[0].id, 'call_bad');
+  assert.equal(requests[1].messages.at(-1).tool_call_id, 'call_bad');
+  assert.deepEqual(deltas, ['我先建立项目。', '项目组已建立。']);
+  assert.equal(receivedCalls[0].id, 'call_fixed');
+});
+
+test('bounds malformed tool-call correction to one additional model request', async () => {
+  let requestCount = 0;
+  const client = new OpenAICompatibleClient({
+    getApiKey: () => 'test-key',
+    fetchImpl: async () => {
+      requestCount += 1;
+      return Response.json({
+        choices: [{
+          message: {
+            role: 'assistant',
+            content: null,
+            tool_calls: [{
+              id: `call_bad_${requestCount}`,
+              type: 'function',
+              function: { name: 'create_project_team', arguments: '{' },
+            }],
+          },
+          finish_reason: 'tool_calls',
+        }],
+      });
+    },
+  });
+
+  await assert.rejects(
+    async () => {
+      for await (const _delta of client.streamChat({
+        model: 'auto:noema-free',
+        messages: [{ role: 'user', content: '组建项目团队' }],
+        signal: new AbortController().signal,
+        tools: [{ type: 'function', function: { name: 'create_project_team' } }],
+      })) { /* consume */ }
+    },
+    (error) => error instanceof ModelProviderError && error.code === 'invalid_tool_call',
+  );
+  assert.equal(requestCount, 2);
 });
 
 test('streams OpenAI-compatible SSE across arbitrary network chunk boundaries', async () => {

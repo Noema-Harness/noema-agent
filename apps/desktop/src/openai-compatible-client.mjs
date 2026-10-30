@@ -252,7 +252,7 @@ export class OpenAICompatibleClient {
 
   /**
    * Streams text deltas from an OpenAI-compatible chat endpoint.
-   * @param {{model:string,messages:Array<object>,signal:AbortSignal,maxTokens?:number,tools?:Array<object>,onToolCalls?:(calls:Array<object>)=>void,onRouteMetadata?:(route:string|null)=>void}} input
+   * @param {{model:string,messages:Array<object>,signal:AbortSignal,maxTokens?:number,tools?:Array<object>,onToolCalls?:(calls:Array<object>)=>void,onRouteMetadata?:(route:string|null)=>void,toolCallCorrectionAttempt?:boolean}} input
    * @returns {AsyncGenerator<string,void,void>}
    */
   async *streamChat({
@@ -263,6 +263,7 @@ export class OpenAICompatibleClient {
     tools,
     onToolCalls = () => {},
     onRouteMetadata = () => {},
+    toolCallCorrectionAttempt = false,
   }) {
     const key = this.requireApiKey();
     // FreeLLMAPI can fail over while a routed response is still buffered, but
@@ -349,9 +350,33 @@ export class OpenAICompatibleClient {
       const text = extractMessageText(choice?.message);
       const calls = choice?.message?.tool_calls;
       if (Array.isArray(calls) && calls.length) {
-        onToolCalls(
-          finalizeToolCalls(new Map(calls.map((call, index) => [index, call]))),
-        );
+        let finalizedCalls;
+        try {
+          finalizedCalls = finalizeToolCalls(
+            new Map(calls.map((call, index) => [index, call])),
+          );
+        } catch (error) {
+          if (
+            !toolCallCorrectionAttempt &&
+            tools?.length &&
+            isRecoverableToolCallArgumentsError(error)
+          ) {
+            if (text) yield text;
+            yield* this.streamChat({
+              model,
+              messages: buildToolCorrectionMessages(messages, text, error),
+              signal,
+              maxTokens,
+              tools,
+              onToolCalls,
+              onRouteMetadata,
+              toolCallCorrectionAttempt: true,
+            });
+            return;
+          }
+          throw error;
+        }
+        onToolCalls(finalizedCalls);
       }
       if (text) yield text;
       if (!text && (!Array.isArray(calls) || calls.length === 0)) {
@@ -369,6 +394,8 @@ export class OpenAICompatibleClient {
     let sawDone = false;
     let totalBytes = 0;
     const toolCalls = new Map();
+    let responseText = '';
+    let correctionMessages = null;
     try {
       while (true) {
         const { value, done } = await reader.read();
@@ -392,7 +419,10 @@ export class OpenAICompatibleClient {
           const payload = parseSseDataLine(line);
           if (!payload) continue;
           const text = extractTextDelta(payload);
-          if (text) yield text;
+          if (text) {
+            responseText += text;
+            yield text;
+          }
           collectToolCallDeltas(payload, toolCalls);
         }
         if (sawDone) break;
@@ -405,7 +435,10 @@ export class OpenAICompatibleClient {
         const payload = parseSseDataLine(finalLine);
         if (payload) {
           const text = extractTextDelta(payload);
-          if (text) yield text;
+          if (text) {
+            responseText += text;
+            yield text;
+          }
           collectToolCallDeltas(payload, toolCalls);
         }
       }
@@ -415,7 +448,29 @@ export class OpenAICompatibleClient {
           '模型回复流意外中断，未收到完整结束标记。消息已保留，可以重试。',
         );
       }
-      if (toolCalls.size) onToolCalls(finalizeToolCalls(toolCalls));
+      if (toolCalls.size) {
+        let finalizedCalls;
+        try {
+          finalizedCalls = finalizeToolCalls(toolCalls);
+        } catch (error) {
+          if (
+            !toolCallCorrectionAttempt &&
+            tools?.length &&
+            isRecoverableToolCallArgumentsError(error)
+          ) {
+            correctionMessages = buildToolCorrectionMessages(
+              messages,
+              responseText,
+              error,
+            );
+          } else {
+            throw error;
+          }
+        }
+        if (finalizedCalls) {
+          onToolCalls(finalizedCalls);
+        }
+      }
     } catch (error) {
       if (signal.aborted || error?.name === 'AbortError') throw error;
       if (error instanceof ModelProviderError) throw error;
@@ -447,6 +502,18 @@ export class OpenAICompatibleClient {
       } catch {
         /* the stream may already have released its lock */
       }
+    }
+    if (correctionMessages) {
+      yield* this.streamChat({
+        model,
+        messages: correctionMessages,
+        signal,
+        maxTokens,
+        tools,
+        onToolCalls,
+        onRouteMetadata,
+        toolCallCorrectionAttempt: true,
+      });
     }
   }
 
@@ -540,25 +607,67 @@ function collectToolCallDeltas(payload, toolCalls) {
 }
 
 function finalizeToolCalls(toolCalls) {
-  return [...toolCalls.entries()]
+  const calls = [...toolCalls.entries()]
     .sort(([left], [right]) => left - right)
-    .map(([, call]) => {
-      if (!call.id || !call.function.name) {
-        throw new ModelProviderError(
-          'invalid_tool_call',
-          '模型服务返回了不完整的工具调用。消息已保留，可以重试。',
-        );
-      }
-      try {
-        JSON.parse(call.function.arguments);
-      } catch {
-        throw new ModelProviderError(
-          'invalid_tool_call',
-          '模型服务返回了无法解析的工具参数。消息已保留，可以重试。',
-        );
-      }
-      return call;
-    });
+    .map(([, call]) => call);
+  const invalidToolCallIds = [];
+  for (const call of calls) {
+    if (!call.id || !call.function?.name) {
+      throw new ModelProviderError(
+        'invalid_tool_call',
+        '模型服务返回了不完整的工具调用。消息已保留，可以重试。',
+      );
+    }
+    try {
+      JSON.parse(call.function.arguments);
+    } catch {
+      invalidToolCallIds.push(call.id);
+    }
+  }
+  if (invalidToolCallIds.length) {
+    const error = new ModelProviderError(
+      'invalid_tool_call',
+      '模型服务返回了无法解析的工具参数。消息已保留，可以重试。',
+    );
+    error.toolCalls = calls;
+    error.invalidToolCallIds = invalidToolCallIds;
+    throw error;
+  }
+  return calls;
+}
+
+function isRecoverableToolCallArgumentsError(error) {
+  return (
+    error instanceof ModelProviderError &&
+    error.code === 'invalid_tool_call' &&
+    Array.isArray(error.toolCalls) &&
+    error.toolCalls.length > 0 &&
+    error.toolCalls.every((call) => call.id && call.function?.name) &&
+    Array.isArray(error.invalidToolCallIds) &&
+    error.invalidToolCallIds.length > 0
+  );
+}
+
+function buildToolCorrectionMessages(messages, responseText, error) {
+  const invalidCallIds = new Set(error.invalidToolCallIds);
+  return [
+    ...messages,
+    {
+      role: 'assistant',
+      content: responseText || null,
+      tool_calls: error.toolCalls,
+    },
+    ...error.toolCalls.map((call) => ({
+      role: 'tool',
+      tool_call_id: call.id,
+      name: call.function.name,
+      content: JSON.stringify({
+        error: invalidCallIds.has(call.id)
+          ? '工具参数不是有效 JSON；这批调用均未执行。请重新生成完整且有效的参数。'
+          : '同批次有工具参数格式错误；为避免部分执行，这批调用均未执行。请重新生成完整调用。',
+      }),
+    })),
+  ];
 }
 
 async function readBoundedResponseText(response) {
