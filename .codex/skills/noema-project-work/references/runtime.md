@@ -4,6 +4,8 @@
 
 ## GitHub 与截图
 
+通用 GitHub 协作与故障判断见用户级 `development-maintenance` 的 GitHub 参考；以下只记录本项目入口和平台差异。
+
 多行 Issue 正文用 `node scripts/set-github-issue-body.mjs <编号> <Markdown文件>` 上传并回读核对，避免 shell 转换丢失换行。Git/GitHub 连接入口及发布规则见 `docs/PROJECT_OPERATIONS.md`。
 
 截图用 `scripts/capture-window.ps1 -WindowTitleRegex '^Noema$' -OutputPath <绝对路径>`，返回所用 API、PID 与文件信息。窗口正常但捕获通道超时时可用此原生路径；窗口无响应时检查 `%APPDATA%\Noema\renderer-health.jsonl` 与 Windows Application Hang/Error 事件。renderer 日志记录 unresponsive、responsive 和 render-process-gone。原生截图成功不能单独证明应用从未卡死。
