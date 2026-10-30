@@ -376,7 +376,17 @@ try {
   await wait(
     `document.querySelector('[data-plan-item-id="venue-budget"]')?.textContent.includes('会签进度：1/2 人通过')`,
   );
-  await screenshot('one-of-two-reviews.png');
+  await click('展开工作项', '[data-plan-phase-id="pilot"]');
+  await evaluate(
+    `document.querySelector('[data-plan-item-id="venue-budget"] .project-plan-evidence').open=true`,
+  );
+  await wait(
+    `document.querySelector('[data-plan-item-id="venue-budget"] .project-plan-evidence')?.innerText.includes('资料研究员 · 已通过') && document.querySelector('[data-plan-item-id="venue-budget"] .project-plan-evidence')?.innerText.includes('等待：交付核验员')`,
+  );
+  await screenshot(
+    'one-of-two-reviews.png',
+    '[data-plan-item-id="venue-budget"] .project-plan-evidence',
+  );
   currentPlan = projects.plans.get(project.id);
   currentPlan = projects.plans.updateItem({
     projectId: project.id,
@@ -409,7 +419,17 @@ try {
     true,
     'the UI shows both decisions against the accepted submission',
   );
-  await screenshot('multi-review-complete.png');
+  await click('展开工作项', '[data-plan-phase-id="pilot"]');
+  await evaluate(
+    `document.querySelector('[data-plan-item-id="venue-budget"] .project-plan-evidence').open=true`,
+  );
+  await wait(
+    `document.querySelector('[data-plan-item-id="venue-budget"] .project-plan-evidence')?.innerText.includes('资料研究员 · 已通过') && document.querySelector('[data-plan-item-id="venue-budget"] .project-plan-evidence')?.innerText.includes('交付核验员 · 已通过')`,
+  );
+  await screenshot(
+    'multi-review-complete.png',
+    '[data-plan-item-id="venue-budget"] .project-plan-evidence',
+  );
   await click('核验阶段出口', '[data-plan-phase-id="pilot"]');
   await set(
     '阶段成果与出口核验依据',
@@ -536,8 +556,14 @@ async function set(label, value, scope = '.project-plan-editor') {
     `(() => { const root=document.querySelector(${JSON.stringify(scope)}); const field=Array.from(root.querySelectorAll('label')).find(n=>n.firstChild?.textContent.trim()===${JSON.stringify(label)}); const input=field?.querySelector('input,textarea,select');if(!input)throw Error('Field unavailable: '+${JSON.stringify(label)});Object.getOwnPropertyDescriptor(Object.getPrototypeOf(input),'value').set.call(input,${JSON.stringify(value)});input.dispatchEvent(new Event(input.tagName==='SELECT'?'change':'input',{bubbles:true})); })()`,
   );
 }
-async function screenshot(filename) {
-  await evaluate(`document.querySelector('.work-content')?.scrollTo(0,0)`);
+async function screenshot(filename, targetSelector = null) {
+  if (targetSelector) {
+    await evaluate(
+      `document.querySelector(${JSON.stringify(targetSelector)})?.scrollIntoView({block:'center'})`,
+    );
+  } else {
+    await evaluate(`document.querySelector('.work-content')?.scrollTo(0,0)`);
+  }
   await new Promise((resolve) => setTimeout(resolve, 150));
   const image = await cdp.call('Page.captureScreenshot', {
     format: 'png',
