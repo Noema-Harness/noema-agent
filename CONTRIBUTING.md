@@ -1,22 +1,7 @@
-# 参与 Noema 开发
+# 参与开发
 
-## 先选对工作入口
+先读 [AGENTS.md](AGENTS.md) 与 [工作方式](docs/PROJECT_OPERATIONS.md)。当前管理方式是阶段总览与 OpenSpec；GitHub 仓库用于源码、PR、发行及外部问题，旧 Project 已封存。
 
-- 尚未形成行动项的方向、疑虑和开放问题放在 [GitHub Discussions](https://github.com/c3115644151/noema-agent/discussions)。
-- 已决定推进且有可验收结果的工作使用 [Issue / Project](https://github.com/users/c3115644151/projects/6)。
-- 自动纳入规则会将新开放 Issue/PR 放入 Inbox；经 API/连接器创建后仍需核对是否入板，缺失时手动添加。分诊后再放入 Backlog、Todo 或 Blocked。
-- 当前阶段门和实现许可见 [项目工作流](docs/PROJECT_OPERATIONS.md)；不要从本文件复制一份可能过期的状态。
+PR 说明改变了什么、相关 change 和实际验证结果；有关联外部 Issue 时再链接。小修无需建立整套变更文件。运行命令以 package.json 为准，环境与打包细节按需读取项目技能。
 
-## 开工和交付
-
-1. Todo Issue 才满足开工条件：问题、用户结果、范围、依赖、风险与验收条件齐全。
-2. 有实质的多文件/架构工作优先使用分支和 PR；小型机械文档改动可直接提交。
-3. PR 要关联 Issue，并记录用户可见结果、实际运行的验证和未验证项。
-4. 只有验收通过后才能将 Issue 设为 Done；此动作会自动关闭 Issue。GitHub 关闭 Issue 也会映射成 Done。取消工作用 `not planned` 关闭后，再将 Project Status 改为 Canceled。
-5. CI 在 Windows runner 上执行：`npm ci`、lint、typecheck、测试、桌面 smoke、Electron package 和 Windows Squirrel 安装器构建。
-
-本仓库为 GitHub Free 下的私有仓库，平台目前不允许 branch protection/rulesets。因此 PR 和检查策略目前由协作流程执行，而非服务端强制；不要把 CI 绿灯或直接 push 当成用户验收。
-
-## 本地运行
-
-查看根 [README](README.md) 的 Node/npm 版本与命令。不要提交密钥、本地模型数据、用户导出内容或未脱敏日志。
+不要提交 .work 中的私有快照、临时数据库、凭据、日志或下载源码。被采用的结果进入正式代码/规格/文档；历史讨论和实验不自动成为当前要求。

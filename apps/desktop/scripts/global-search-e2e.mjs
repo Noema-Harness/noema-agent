@@ -1,8 +1,8 @@
+import { createDevelopmentDirectory } from '../test-support/development-workspace.mjs';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import http from 'node:http';
-import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
@@ -20,7 +20,7 @@ const appDirectory = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '..',
 );
-const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'Noema-search-ui-'));
+const scratch = createDevelopmentDirectory('Noema-search-ui-');
 const database = path.join(scratch, 'fixture.sqlite3');
 const db = new Database(database);
 new RootStore(db);

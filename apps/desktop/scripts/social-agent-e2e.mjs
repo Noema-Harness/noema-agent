@@ -1,3 +1,4 @@
+import { developmentRoot } from '../test-support/development-workspace.mjs';
 import { createSocialTestStore } from '../test-support/social-team.mjs';
 import { spawn } from 'node:child_process';
 import Database from 'better-sqlite3';
@@ -8,7 +9,6 @@ import {
   readFileSync,
   rmSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { RootStore } from '../src/root-store.mjs';
@@ -28,7 +28,7 @@ if (
   throw new Error('Run this check with Node.js 24.21.x.');
 }
 
-const configuredE2eRoot = process.env.NOEMA_E2E_ROOT_DIR ?? tmpdir();
+const configuredE2eRoot = developmentRoot();
 const liveProviderE2e = process.argv.includes('--live');
 const attachmentsOnly = process.argv.includes('--attachments-only');
 const liveModel = 'auto:noema-free';
@@ -38,7 +38,7 @@ if (!path.isAbsolute(configuredE2eRoot) || !existsSync(configuredE2eRoot)) {
 const e2eRoot = path.resolve(configuredE2eRoot);
 const e2eDirectory = mkdtempSync(path.join(e2eRoot, 'Noema-social-agents-'));
 const electronUserDataDirectory = mkdtempSync(
-  path.join(e2eRoot, 'Noema-social-agents-electron-home-'),
+  path.join(e2eDirectory, 'Noema-social-agents-electron-home-'),
 );
 const databasePath = path.join(e2eDirectory, 'noema.sqlite3');
 const dshUserDataPath = path.join(e2eDirectory, 'dsh-home');
@@ -46,87 +46,87 @@ const resultPath = path.join(e2eDirectory, 'result.json');
 const smokeLogPath = path.join(e2eDirectory, 'smoke-log.json');
 const screenshotTag = Date.now();
 const desktopScreenshotPath = path.join(
-  e2eRoot,
+  e2eDirectory,
   `Noema-agent-create-desktop-${screenshotTag}.png`,
 );
 const narrowScreenshotPath = path.join(
-  e2eRoot,
+  e2eDirectory,
   `Noema-agent-create-narrow-${screenshotTag}.png`,
 );
 const contactDesktopScreenshotPath = path.join(
-  e2eRoot,
+  e2eDirectory,
   `Noema-agent-capability-desktop-${screenshotTag}.png`,
 );
 const contactNarrowScreenshotPath = path.join(
-  e2eRoot,
+  e2eDirectory,
   `Noema-agent-capability-narrow-${screenshotTag}.png`,
 );
 const forwardDesktopScreenshotPath = path.join(
-  e2eRoot,
+  e2eDirectory,
   `Noema-cross-room-forward-desktop-${screenshotTag}.png`,
 );
 const forwardNarrowScreenshotPath = path.join(
-  e2eRoot,
+  e2eDirectory,
   `Noema-cross-room-forward-narrow-${screenshotTag}.png`,
 );
 const delegationDesktopScreenshotPath = path.join(
-  e2eRoot,
+  e2eDirectory,
   `Noema-specialist-delegation-desktop-${screenshotTag}.png`,
 );
 const delegationNarrowScreenshotPath = path.join(
-  e2eRoot,
+  e2eDirectory,
   `Noema-specialist-delegation-narrow-${screenshotTag}.png`,
 );
 const messageSearchScreenshotPath = path.join(
-  e2eRoot,
+  e2eDirectory,
   `Noema-message-search-${screenshotTag}.png`,
 );
 const historyRecallScreenshotPath = path.join(
-  e2eRoot,
+  e2eDirectory,
   `Noema-history-recall-${screenshotTag}.png`,
 );
 const continuationDesktopScreenshotPath = path.join(
-  e2eRoot,
+  e2eDirectory,
   `Noema-continuation-desktop-${screenshotTag}.png`,
 );
 const continuationNarrowScreenshotPath = path.join(
-  e2eRoot,
+  e2eDirectory,
   `Noema-continuation-narrow-${screenshotTag}.png`,
 );
 const continuationRoomDesktopScreenshotPath = path.join(
-  e2eRoot,
+  e2eDirectory,
   `Noema-continuation-room-desktop-${screenshotTag}.png`,
 );
 const continuationRoomNarrowScreenshotPath = path.join(
-  e2eRoot,
+  e2eDirectory,
   `Noema-continuation-room-narrow-${screenshotTag}.png`,
 );
 const interactionDesktopScreenshotPath = path.join(
-  e2eRoot,
+  e2eDirectory,
   `Noema-interaction-adjustment-desktop-${screenshotTag}.png`,
 );
 const interactionNarrowScreenshotPath = path.join(
-  e2eRoot,
+  e2eDirectory,
   `Noema-interaction-adjustment-narrow-${screenshotTag}.png`,
 );
 const agentProfileDesktopScreenshotPath = path.join(
-  e2eRoot,
+  e2eDirectory,
   `Noema-agent-profile-desktop-${screenshotTag}.png`,
 );
 const agentProfileNarrowScreenshotPath = path.join(
-  e2eRoot,
+  e2eDirectory,
   `Noema-agent-profile-narrow-${screenshotTag}.png`,
 );
 const projectScreenshotPath = path.join(
-  e2eRoot,
+  e2eDirectory,
   `Noema-project-space-${screenshotTag}.png`,
 );
 const attachmentDesktopScreenshotPath = path.join(
-  e2eRoot,
+  e2eDirectory,
   `Noema-text-attachment-desktop-${screenshotTag}.png`,
 );
 const attachmentNarrowScreenshotPath = path.join(
-  e2eRoot,
+  e2eDirectory,
   `Noema-text-attachment-narrow-${screenshotTag}.png`,
 );
 mkdirSync(dshUserDataPath, { recursive: true });

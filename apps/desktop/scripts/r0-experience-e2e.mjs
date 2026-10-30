@@ -1,9 +1,9 @@
+import { createDevelopmentDirectory } from '../test-support/development-workspace.mjs';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import fs from 'node:fs';
 import http from 'node:http';
-import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Database from 'better-sqlite3';
@@ -31,7 +31,7 @@ if (!rendererResponse.ok)
   throw Error(
     `Noema renderer returned HTTP ${rendererResponse.status} at ${rendererUrl}`,
   );
-const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'Noema-r0-experience-'));
+const scratch = createDevelopmentDirectory('Noema-r0-experience-');
 const home = path.join(scratch, 'home');
 fs.mkdirSync(path.join(home, 'credentials'), { recursive: true });
 for (const name of ['Local State', 'credentials/model-provider.key']) {

@@ -26,6 +26,8 @@ Thumbs.db
 *.swo
 
 # Logs and temporary files
+.work/*
+!.work/README.md
 *.log
 .tmp/
 .playwright-cli/

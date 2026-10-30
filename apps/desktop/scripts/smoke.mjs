@@ -1,13 +1,10 @@
-import { spawn } from 'node:child_process';
 import {
-  existsSync,
-  copyFileSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-} from 'node:fs';
-import { homedir, tmpdir } from 'node:os';
+  createDevelopmentDirectory,
+  removeDevelopmentDirectory,
+} from '../test-support/development-workspace.mjs';
+import { spawn } from 'node:child_process';
+import { existsSync, copyFileSync, mkdirSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { RootStore } from '../src/root-store.mjs';
@@ -25,7 +22,7 @@ const forgeCli = path.join(
   'electron-forge.js',
 );
 const timeoutMs = 90_000;
-const smokeDir = mkdtempSync(path.join(tmpdir(), 'noema-desktop-smoke-'));
+const smokeDir = createDevelopmentDirectory('noema-desktop-smoke-');
 const userDataDir = path.join(smokeDir, 'user-data');
 const probeDirectory = path.join(smokeDir, 'catalog-probe');
 const probeUserDataDir = path.join(probeDirectory, 'user-data');
@@ -233,14 +230,7 @@ const child = spawn(process.execPath, [forgeCli, 'start'], {
 });
 
 function cleanSmokeDirectory() {
-  const resolved = path.resolve(smokeDir);
-  const tempRoot = path.resolve(tmpdir());
-  if (!resolved.startsWith(`${tempRoot}${path.sep}`)) {
-    throw new Error(
-      `Refusing to remove smoke data outside the temp directory: ${resolved}`,
-    );
-  }
-  rmSync(resolved, { recursive: true, force: true });
+  removeDevelopmentDirectory(smokeDir);
 }
 
 const timeout = setTimeout(() => {

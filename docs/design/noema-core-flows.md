@@ -488,7 +488,7 @@ flowchart TD
 - 用户提出的整体产品方向与未定边界：[产品章程](../PRODUCT_CHARTER.md)。
 - 唯一 Noema 主聊、成员私聊/项目会话和项目生命周期边界：[ADR 0029](../decisions/0029-persistent-agents-and-project-sessions.md)。
 - 单人有界委托的判断与成本边界：[ADR 0027](../decisions/0027-bounded-specialist-delegation.md)。
-- R0 使用情境、真实验证范围与当前差距：[GitHub Issue #118](https://github.com/c3115644151/noema-agent/issues/118)。
+- 历史 R0 使用情境与当时验证记录（不再作为当前进度）：[GitHub Issue #118](https://github.com/c3115644151/noema-agent/issues/118)。
 - 当前群聊默认回应者、`@` 路由和组队工具规则可在 `apps/desktop/src/group-mentions.mjs`、`apps/desktop/src/social-chat-service.mjs` 中核对；这些代码是当前行为证据，不是永久产品规格。
 
 参照 [ADR 0035](../decisions/0035-shared-project-plan.md)。本图是 Noema 产品逻辑的单一总览入口。发生用户方向、运行证据或长期取舍变化时，在这里改图和状态标记；不要另建并行的流程图副本。模块的接口和工程细节留在架构文档与 ADR。

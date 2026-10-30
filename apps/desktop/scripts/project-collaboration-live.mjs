@@ -1,6 +1,6 @@
+import { createDevelopmentDirectory } from '../test-support/development-workspace.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
 import { spawn, execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { configureElectronRuntime } from './electron-runtime.mjs';
@@ -27,7 +27,7 @@ if (!process.versions.electron) {
     );
   const scratch = resumeDirectory
     ? path.resolve(resumeDirectory)
-    : fs.mkdtempSync(path.join(os.tmpdir(), 'Noema-collaboration-live-'));
+    : createDevelopmentDirectory('Noema-collaboration-live-');
   if (
     resumeDirectory &&
     (!path.basename(scratch).startsWith('Noema-collaboration-live-') ||
@@ -37,8 +37,7 @@ if (!process.versions.electron) {
   const env = { ...process.env, NOEMA_COLLABORATION_LIVE_DIRECTORY: scratch };
   if (process.argv.includes('--natural') || resumeDirectory)
     env.NOEMA_COLLABORATION_LIVE_NATURAL = '1';
-  if (projectGroupRequest)
-    env.NOEMA_COLLABORATION_LIVE_PROJECT_GROUP = '1';
+  if (projectGroupRequest) env.NOEMA_COLLABORATION_LIVE_PROJECT_GROUP = '1';
   const messageIndex = process.argv.indexOf('--message-file');
   if (messageIndex >= 0) {
     if (!env.NOEMA_COLLABORATION_LIVE_NATURAL)
@@ -517,7 +516,10 @@ if (!process.versions.electron) {
       ...(work
         ? {
             getProjectWorkReadiness: () => work.getReadiness(),
-            startProjectWork: async ({ dispatchFromNoema, ...input }, signal) => {
+            startProjectWork: async (
+              { dispatchFromNoema, ...input },
+              signal,
+            ) => {
               try {
                 return dispatchFromNoema
                   ? await work.startTaskFromNoema({ ...input, signal })

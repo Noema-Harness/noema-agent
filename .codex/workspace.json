@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "artifactRoot": ".work",
+  "currentDocuments": [
+    {
+      "path": "README.md",
+      "purpose": "安装与导航",
+      "updateWhen": "安装方式或项目入口变化"
+    },
+    {
+      "path": "AGENTS.md",
+      "purpose": "项目特有约定与恢复入口",
+      "updateWhen": "工作流或工程边界变化"
+    },
+    {
+      "path": "CONTRIBUTING.md",
+      "purpose": "外部参与入口",
+      "updateWhen": "贡献入口变化"
+    },
+    {
+      "path": "docs/PRODUCT_CHARTER.md",
+      "purpose": "产品方向与边界",
+      "updateWhen": "用户明确取舍变化"
+    },
+    {
+      "path": "docs/ARCHITECTURE.md",
+      "purpose": "系统边界与代码导航",
+      "updateWhen": "职责、持久状态或文件边界变化"
+    },
+    {
+      "path": "docs/ROADMAP.md",
+      "purpose": "阶段目标与交付重点",
+      "updateWhen": "阶段取舍或交付重点变化"
+    },
+    {
+      "path": "docs/PROJECT_OPERATIONS.md",
+      "purpose": "工具分工与资料生命周期",
+      "updateWhen": "工作机制或工具入口变化"
+    },
+    {
+      "path": "docs/design/noema-core-flows.md",
+      "purpose": "产品逻辑与节点实现标记",
+      "updateWhen": "相应机制或实现边界变化"
+    },
+    {
+      "path": ".work/README.md",
+      "purpose": "过程材料和历史入口",
+      "updateWhen": "工作材料布局变化"
+    }
+  ],
+  "historyRoots": [
+    "docs/decisions",
+    "openspec/changes/archive"
+  ],
+  "rootDirectories": [
+    ".git",
+    ".codex",
+    ".github",
+    ".work",
+    "apps",
+    "docs",
+    "node_modules",
+    "openspec",
+    "scripts"
+  ],
+  "cleanableArtifacts": [
+    ".work/runs",
+    ".work/scratch"
+  ],
+  "generatedDirectories": [
+    "apps/desktop/.vite",
+    "apps/desktop/out",
+    "coverage",
+    "apps/desktop/coverage"
+  ]
+}

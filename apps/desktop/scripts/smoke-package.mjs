@@ -1,12 +1,9 @@
-import { spawn } from 'node:child_process';
 import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+  createDevelopmentDirectory,
+  removeDevelopmentDirectory,
+} from '../test-support/development-workspace.mjs';
+import { spawn } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listPackage } from '@electron/asar';
@@ -48,7 +45,7 @@ if (missingDependencies.length > 0) {
   );
 }
 
-const smokeDirectory = mkdtempSync(path.join(tmpdir(), 'noema-package-smoke-'));
+const smokeDirectory = createDevelopmentDirectory('noema-package-smoke-');
 const userDataDirectory = path.join(smokeDirectory, 'user-data');
 const loadedMarker = path.join(smokeDirectory, 'renderer-loaded.json');
 const startupLog = path.join(smokeDirectory, 'startup.json');
@@ -76,14 +73,7 @@ const child = spawn(packagedApp, ['--enable-logging=stderr'], {
 });
 
 function cleanSmokeDirectory() {
-  const resolved = path.resolve(smokeDirectory);
-  const tempRoot = path.resolve(tmpdir());
-  if (!resolved.startsWith(`${tempRoot}${path.sep}`)) {
-    throw new Error(
-      `Refusing to remove smoke data outside the temp directory: ${resolved}`,
-    );
-  }
-  rmSync(resolved, { recursive: true, force: true });
+  removeDevelopmentDirectory(smokeDirectory);
 }
 
 const timeout = setTimeout(() => {

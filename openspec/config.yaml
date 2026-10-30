@@ -3,7 +3,7 @@ schema: spec-driven
 context: |
   正文使用中文，保留 OpenSpec 必需结构标题与 SHALL/MUST 关键字。
   项目职责和入口见 AGENTS.md；工作流分工见 docs/PROJECT_OPERATIONS.md。
-  读取本项相关代码、决定与 Issue，不复制完整项目历史。
+  沿 .codex/workspace.json 读取本项相关的当前文档、代码与决定，不复制完整项目历史；原 GitHub Project 已封存。
 rules:
   tasks:
     - 每组对应可验证的交付片段，连接实际代码边界与完成证据；按风险选择检查。

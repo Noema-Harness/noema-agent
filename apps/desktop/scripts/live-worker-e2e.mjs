@@ -1,3 +1,4 @@
+import { developmentRoot } from '../test-support/development-workspace.mjs';
 import { spawn } from 'node:child_process';
 import {
   existsSync,
@@ -7,7 +8,6 @@ import {
   readdirSync,
   statSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { RootStore } from '../src/root-store.mjs';
@@ -28,7 +28,7 @@ if (
   throw new Error('Run this check with Node.js 24.21.x.');
 }
 
-const configuredE2eRoot = process.env.NOEMA_E2E_ROOT_DIR ?? tmpdir();
+const configuredE2eRoot = developmentRoot();
 if (!path.isAbsolute(configuredE2eRoot) || !existsSync(configuredE2eRoot)) {
   throw new Error('The isolated E2E root directory must already exist.');
 }
@@ -444,9 +444,10 @@ console.log(
           requestedModel,
           outcome: rootResult.outcome,
           turnStatus: rootResult.turnStatus,
-          calculatorToolCalls: rootResult.rootToolCallNames?.filter(
-            (name) => name === 'calculate_expression',
-          ).length ?? 0,
+          calculatorToolCalls:
+            rootResult.rootToolCallNames?.filter(
+              (name) => name === 'calculate_expression',
+            ).length ?? 0,
           assistantText: rootResult.assistantText,
           passed: calculatorProbePassed,
           resultFile,

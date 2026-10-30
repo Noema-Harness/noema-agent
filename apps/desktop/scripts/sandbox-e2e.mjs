@@ -1,3 +1,4 @@
+import { createDevelopmentDirectory } from '../test-support/development-workspace.mjs';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import {
@@ -11,7 +12,6 @@ import {
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import {
@@ -43,7 +43,7 @@ if (!existsSync(helperPath)) {
   throw new Error(`The packaged Windows SRT helper is missing: ${helperPath}`);
 }
 
-const root = mkdtempSync(path.join(tmpdir(), 'noema-sandbox-e2e-'));
+const root = createDevelopmentDirectory('noema-sandbox-e2e-');
 const workspace = path.join(root, 'workspace');
 const outside = path.join(root, 'outside');
 mkdirSync(workspace);

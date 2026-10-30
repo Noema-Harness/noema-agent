@@ -8,11 +8,11 @@ Noema 是由用户拥有身份、连续性和长期状态的独立个人 agent �
 
 ## 开发工作流
 
-有实质范围的 Noema 工作先用 `.codex/skills/noema-project-work/SKILL.md` 核对代码现场与当前 GitHub 交付项。GitHub Issues / Project 管结果、阶段、依赖和验收状态；OpenSpec change 管该项的规格差异、技术设计、细任务与验证证据。二者互相链接，Issue 续接点只保留当前结论、提交和下一动作，不复制任务清单。
+有实质范围的 Noema 工作先用 `.codex/skills/noema-project-work/SKILL.md` 核对代码现场、最近讨论与当前 change。`.codex/workspace.json` 列出当前文档及更新时机；阶段方向见 `docs/ROADMAP.md`，OpenSpec 管规格、设计、细任务和证据。GitHub 保留源码、PR 与外部问题，原 Project 已封存，不再维护其卡片或状态。
 
 跨模块功能、行为变更和持续重构使用用户级 `openspec-workflow`；项目配置见 `openspec/config.yaml`。未安装该技能的环境可直接用 OpenSpec CLI 的 context、status 与 instructions 读取流程。小修直接处理；工具、文档维护可以使用不产生产品规格的 change。旧的独立执行计划格式已由 change 替代。
 
-每次聚焦一个可交付片段，处理使其失效的必要依赖；达到条件后转场。新增行为用相称检查验证，文档修订检查格式和链接。产品与审美待评单独说明。阶段看板、协作隔离与源码发布操作见 `docs/PROJECT_OPERATIONS.md`。
+每次聚焦一个可交付片段，处理使其失效的必要依赖；达到条件后转场。新增行为用相称检查验证，文档修订检查格式和链接。产品与审美待评单独说明。文档生命周期、工作材料、协作隔离与源码发布见 `docs/PROJECT_OPERATIONS.md`。过程材料统一进入 `.work`；维护受实现影响的当前文档，历史仅按需追溯。
 
 ## 工程边界
 
