@@ -28,6 +28,7 @@
    ```
 
 3. 转换后核对标题、页数、摘要、方法、结果和局限所在页。图表、公式、脚注及双栏顺序要回到 PDF 抽查。Markdown 是快速检索副本，不是权威版本。
+
 4. MarkItDown 适合长篇办公文档和结构化附件；在 2025 CCL 双栏论文试跑中，其 PDF 输出产生了字符错序和列混排，故本研究不把它作为论文 PDF 的默认转换器。仓库现有 PyMuPDF 脚本提供更可读的逐页文本；数字与图表仍回原 PDF 核对，不再另建一条相同转换路径。
 5. 阅读时只把当前问题需要的段落和页码带入上下文；不要把一整本论文转成更长的 Markdown 后再全文塞入对话。
 
@@ -63,3 +64,7 @@
 - [Bloom](https://alignment.anthropic.com/2025/bloom-auto-evals/)：围绕单一行为自动生成场景并批量测量。细读其[技术报告](https://alignment.anthropic.com/2025/bloom-auto-evals/)中的 seed 配置、场景多样性、评判重复采样和人工校准：Bloom 报告明确指出裁判模型会改变绝对得分，40 段手标校准中不同裁判与人工的一致性差别较大。同行评测时应保留行为定义和 seed，而非单独引用一个排名或数字。
 
 检索与复核日期：2026-10-30。前面的陪伴研究用于校准“陪伴是否有效”的研究对象，结论不可直接移植到一般个人 agent。
+
+## 本轮加入：真实交互体验与投诉后的恢复
+
+- [UXBench: Benchmarking User Experience in AI Assistants (EMNLP 2026)](https://aclanthology.org/2026.emnlp-main.1683/) / [全文](https://arxiv.org/html/2606.09570) / [实现](https://github.com/mengze-hong/UXBench)：论文从腾讯元宝的 7 万多段交互中抽取反馈判断、失败请求续答、投诉恢复三类评测。投诉策略分布、不同模型的恢复率和 LLM judge 正向偏差值得留意；公开恢复分由其 GRM 判定。源码中 QA 失败/解析缺失会 fail-open 标成 keep，实际发布样本受影响的数量未知。仓库许可对数据、代码、协议和衍生物作严格的非商业研究限制；Noema 不复用这些资产或协议，只记录论文观察。
