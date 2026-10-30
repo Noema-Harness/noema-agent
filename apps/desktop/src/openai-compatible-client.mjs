@@ -252,7 +252,7 @@ export class OpenAICompatibleClient {
 
   /**
    * Streams text deltas from an OpenAI-compatible chat endpoint.
-   * @param {{model:string,messages:Array<object>,signal:AbortSignal,maxTokens?:number,tools?:Array<object>,onToolCalls?:(calls:Array<object>)=>void,onRouteMetadata?:(route:string|null)=>void,toolCallCorrectionAttempt?:boolean}} input
+   * @param {{model:string,messages:Array<object>,signal:AbortSignal,maxTokens?:number,tools?:Array<object>,toolChoice?:string|object,onToolCalls?:(calls:Array<object>)=>void,onRouteMetadata?:(route:string|null)=>void,toolCallCorrectionAttempt?:boolean}} input
    * @returns {AsyncGenerator<string,void,void>}
    */
   async *streamChat({
@@ -261,6 +261,7 @@ export class OpenAICompatibleClient {
     signal,
     maxTokens = DEFAULT_MAX_OUTPUT_TOKENS,
     tools,
+    toolChoice = 'auto',
     onToolCalls = () => {},
     onRouteMetadata = () => {},
     toolCallCorrectionAttempt = false,
@@ -289,7 +290,7 @@ export class OpenAICompatibleClient {
           ...(new URL(this.baseUrl).hostname === 'api.deepseek.com'
             ? { thinking: { type: 'disabled' } }
             : {}),
-          ...(tools?.length ? { tools, tool_choice: 'auto' } : {}),
+          ...(tools?.length ? { tools, tool_choice: toolChoice } : {}),
         }),
         signal,
       });
@@ -368,6 +369,7 @@ export class OpenAICompatibleClient {
               signal,
               maxTokens,
               tools,
+              toolChoice,
               onToolCalls,
               onRouteMetadata,
               toolCallCorrectionAttempt: true,
@@ -510,6 +512,7 @@ export class OpenAICompatibleClient {
         signal,
         maxTokens,
         tools,
+        toolChoice,
         onToolCalls,
         onRouteMetadata,
         toolCallCorrectionAttempt: true,

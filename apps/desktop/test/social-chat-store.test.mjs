@@ -313,6 +313,37 @@ test('Noema internal assignments are attributed and persist in the agent residen
   }
 });
 
+test('unparsed DSML assistant output is kept in the transcript but omitted from future model context', () => {
+  const { db, social } = makeStores();
+  try {
+    const roomId = social.getAgentResidentRoomId('engineering-partner');
+    const turn = social.beginTurn({
+      roomId,
+      agentId: 'engineering-partner',
+      text: '读取当前项目计划。',
+      model: 'test-model',
+    });
+    social.appendAssistantDelta(
+      turn.assistantMessageId,
+      '<｜｜DSML｜｜ calls>\n<｜｜DSML｜｜ invoke name="manage_project_plan">',
+    );
+    social.completeReply(turn.assistantMessageId);
+
+    assert.match(
+      social.getRoomSnapshot(roomId).messages.at(-1).content,
+      /<｜｜DSML｜｜ calls>/u,
+    );
+    const context = social.getContext(roomId, {
+      ownAgentId: 'engineering-partner',
+    });
+    assert.equal(context.length, 1);
+    assert.equal(context[0].role, 'user');
+    assert.equal(context[0].content, '读取当前项目计划。');
+  } finally {
+    db.close();
+  }
+});
+
 test('message search spans rooms, matches literal text and returns local navigation context', () => {
   const { db, social } = makeStores();
   try {

@@ -14,6 +14,7 @@ import Database from 'better-sqlite3';
 import { RootStore } from '../src/root-store.mjs';
 import { SocialWorkService } from '../src/social-work-service.mjs';
 import { SocialChatService } from '../src/social-chat-service.mjs';
+import { SocialProjectStore } from '../src/social-project-store.mjs';
 import { NoemaProjectExecutor } from '../src/noema-project-executor.mjs';
 
 function makeStore() {
@@ -378,6 +379,93 @@ test('Noema internal dispatch stores project work in the source room with a capa
         prompt: '尝试绕过 Noema 内部路由。',
       }),
       /不在当前聊天空间/u,
+    );
+  } finally {
+    await service.shutdown();
+    db.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('Noema can dispatch a real work record from an active project group to one of its capable members', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'noema-group-work-'));
+  const workspace = path.join(directory, 'workspace');
+  mkdirSync(workspace);
+  const { db, store } = makeStore();
+  const projectStore = new SocialProjectStore({ db, socialChatStore: store });
+  let launchCount = 0;
+  const service = new SocialWorkService({
+    store,
+    projectStore,
+    adapter: makeAdapter({ onStart: () => launchCount++ }),
+    secretStore: { isConfigured: () => true },
+    chooseWorkspace: async () => workspace,
+  });
+
+  try {
+    const origin = store.beginTurn({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '建立一个需要实现的项目。',
+      model: 'test-model',
+    });
+    const researcher = store.createAgent({
+      name: '价格研究员',
+      headline: '价格来源研究',
+      description: '核对官方来源与计价口径。',
+    }).members[0].id;
+    const project = projectStore.formProjectTeam({
+      title: '价格追踪应用',
+      brief: '实现可核验的价格追踪能力。',
+      originRoomId: 'room-noema',
+      sourceMessageId: origin.userMessageId,
+      members: [
+        {
+          agentId: 'engineering-partner',
+          task: '实现价格数据存储与变更检测。',
+        },
+        { agentId: researcher, task: '核对价格来源与计价口径。' },
+      ],
+    }).project;
+    const request = store.beginTurn({
+      roomId: project.groupRoomId,
+      agentId: 'noema',
+      text: '@Noema 请开始 w3 的实际实现。',
+      model: 'test-model',
+    });
+    const accepted = await service.startTaskFromNoema({
+      roomId: project.groupRoomId,
+      projectId: project.id,
+      agentId: 'engineering-partner',
+      prompt: '实现价格快照与变化检测。',
+      sourceMessageId: request.userMessageId,
+    });
+    assert.equal(accepted.accepted, true);
+    const task = store.getSocialWorkTask(accepted.taskId);
+    assert.equal(task.roomId, project.groupRoomId);
+    assert.equal(task.agentId, 'engineering-partner');
+    assert.equal(task.sourceMessageId, request.userMessageId);
+    assert.equal(task.status, 'running');
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(launchCount, 1);
+    await service.waitForTask(accepted.taskId);
+    assert.equal(store.getSocialWorkTask(accepted.taskId).status, 'completed');
+
+    const noProjectMember = store.createAgent({
+      name: '非项目工程师',
+      headline: '执行',
+      description: '不属于当前项目。',
+      projectWork: true,
+    }).members[0].id;
+    await assert.rejects(
+      service.startTaskFromNoema({
+        roomId: project.groupRoomId,
+        projectId: project.id,
+        agentId: noProjectMember,
+        prompt: '越权加入任务。',
+        sourceMessageId: request.userMessageId,
+      }),
+      /活跃成员/u,
     );
   } finally {
     await service.shutdown();

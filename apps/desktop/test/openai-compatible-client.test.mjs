@@ -179,6 +179,10 @@ test('preserves tool calls for buffered automatic router replies', async () => {
     messages: [{ role: 'user', content: 'Inspect the project' }],
     signal: new AbortController().signal,
     tools: [{ type: 'function', function: { name: 'delegate_task' } }],
+    toolChoice: {
+      type: 'function',
+      function: { name: 'delegate_task' },
+    },
     onToolCalls: (calls) => {
       receivedCalls = calls;
     },
@@ -188,6 +192,10 @@ test('preserves tool calls for buffered automatic router replies', async () => {
 
   assert.equal(requestBody.stream, false);
   assert.equal(requestBody.model, 'kilo-auto/free');
+  assert.deepEqual(requestBody.tool_choice, {
+    type: 'function',
+    function: { name: 'delegate_task' },
+  });
   assert.deepEqual(deltas, []);
   assert.deepEqual(receivedCalls, [
     {
@@ -288,6 +296,10 @@ test('assembles streamed FreeLLMAPI tool-call deltas without exposing arguments 
     messages: [{ role: 'user', content: 'Read this project' }],
     signal: new AbortController().signal,
     tools: [{ type: 'function', function: { name: 'delegate_task' } }],
+    toolChoice: {
+      type: 'function',
+      function: { name: 'delegate_task' },
+    },
     onToolCalls: (calls) => {
       receivedCalls = calls;
     },
@@ -299,7 +311,10 @@ test('assembles streamed FreeLLMAPI tool-call deltas without exposing arguments 
 
   assert.equal(requestBody.model, 'nvidia/nemotron-3.5-lightning');
   assert.equal(requestBody.stream, true);
-  assert.equal(requestBody.tool_choice, 'auto');
+  assert.deepEqual(requestBody.tool_choice, {
+    type: 'function',
+    function: { name: 'delegate_task' },
+  });
   assert.equal(requestBody.max_tokens, 1024);
   assert.deepEqual(text, []);
   assert.deepEqual(receivedCalls, [

@@ -13,6 +13,9 @@ if (!process.versions.electron) {
   const projectIdIndex = process.argv.indexOf('--project-id');
   const existingProjectId =
     projectIdIndex >= 0 ? process.argv[projectIdIndex + 1] : null;
+  const projectGroupRequest = process.argv.includes('--project-group');
+  if (projectGroupRequest && !existingProjectId)
+    throw Error('--project-group requires --project-id.');
   configureElectronRuntime();
   const require = createRequire(import.meta.url);
   const resumeIndex = process.argv.indexOf('--resume-directory');
@@ -34,6 +37,8 @@ if (!process.versions.electron) {
   const env = { ...process.env, NOEMA_COLLABORATION_LIVE_DIRECTORY: scratch };
   if (process.argv.includes('--natural') || resumeDirectory)
     env.NOEMA_COLLABORATION_LIVE_NATURAL = '1';
+  if (projectGroupRequest)
+    env.NOEMA_COLLABORATION_LIVE_PROJECT_GROUP = '1';
   const messageIndex = process.argv.indexOf('--message-file');
   if (messageIndex >= 0) {
     if (!env.NOEMA_COLLABORATION_LIVE_NATURAL)
@@ -238,6 +243,7 @@ if (!process.versions.electron) {
   )
     throw Error('Natural observation character limit must be 300000–600000.');
   const steps = [];
+  const projectWorkDispatchErrors = [];
   const pendingResponseDiagnostics = [];
   let result;
   try {
@@ -511,10 +517,24 @@ if (!process.versions.electron) {
       ...(work
         ? {
             getProjectWorkReadiness: () => work.getReadiness(),
-            startProjectWork: ({ dispatchFromNoema, ...input }, signal) =>
-              dispatchFromNoema
-                ? work.startTaskFromNoema({ ...input, signal })
-                : work.startTask({ ...input, signal }),
+            startProjectWork: async ({ dispatchFromNoema, ...input }, signal) => {
+              try {
+                return dispatchFromNoema
+                  ? await work.startTaskFromNoema({ ...input, signal })
+                  : await work.startTask({ ...input, signal });
+              } catch (error) {
+                projectWorkDispatchErrors.push({
+                  name: error?.name ?? 'Error',
+                  message: error?.message ?? 'unknown project work error',
+                  code: error?.code ?? null,
+                  roomId: input.roomId,
+                  projectId: input.projectId ?? null,
+                  agentId: input.agentId,
+                  sourceMessageId: input.sourceMessageId,
+                });
+                throw error;
+              }
+            },
           }
         : {}),
     });
@@ -522,12 +542,17 @@ if (!process.versions.electron) {
       const task =
         process.env.NOEMA_COLLABORATION_LIVE_MESSAGE ||
         '我想给 Noema 的共享计划补上可靠的成果核对。现在完成依据主要是一段文字，成员说做完了，我还得自己去找文件、消息和执行结果，换个人接手又要重查。希望以后能从工作项直接找到依据，知道谁提交、谁检查过，也能看出依据变更后哪些结论要重新核对。旧项目不能因此丢记录，也要考虑失败、文件变动和不同成员交接。先帮我把这件事梳理成能持续跟进的项目计划，拿不准的地方可以问我；先不要改代码或操作生产数据。';
+      const targetRoomId =
+        existingProjectId &&
+        process.env.NOEMA_COLLABORATION_LIVE_PROJECT_GROUP === '1'
+          ? project.groupRoomId
+          : 'room-noema';
       service.sendMessage({
-        roomId: 'room-noema',
+        roomId: targetRoomId,
         agentId: 'noema',
         text: task,
       });
-      await service.active.get('room-noema')?.done;
+      await service.active.get(targetRoomId)?.done;
       const deadline = Date.now() + 4 * 60_000;
       while (
         Date.now() < deadline &&
@@ -551,6 +576,7 @@ if (!process.versions.electron) {
           ? { stopReason: requestBudgetStopReason }
           : {}),
         requestCharacters,
+        projectWorkDispatchErrors,
         workspaceSource: workspace
           ? JSON.parse(
               fs.readFileSync(
@@ -569,7 +595,7 @@ if (!process.versions.electron) {
         balanceBefore: before,
         balanceAfter: await balance(),
         latestReply: store
-          .getRoomSnapshot('room-noema')
+          .getRoomSnapshot(targetRoomId)
           .messages.findLast((message) => message.role === 'assistant'),
         projects: root.db
           .prepare('SELECT id FROM social_projects')

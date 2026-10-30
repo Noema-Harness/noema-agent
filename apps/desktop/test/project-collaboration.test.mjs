@@ -6,7 +6,10 @@ import { SocialChatStore } from '../src/social-chat-store.mjs';
 import { SocialProjectStore } from '../src/social-project-store.mjs';
 import { SocialChatService } from '../src/social-chat-service.mjs';
 
-function setup(provider) {
+function setup(
+  provider,
+  { projectWorkReady = false, onProjectWorkStart = null } = {},
+) {
   const db = new Database(':memory:');
   new RootStore(db);
   const store = new SocialChatStore(db);
@@ -40,6 +43,16 @@ function setup(provider) {
     }),
     getProjectSessionContext: (roomId, agentId) =>
       projects.getProjectSessionContext(roomId, agentId),
+    getProjectWorkReadiness: () => ({
+      available: projectWorkReady,
+      reason: projectWorkReady ? null : 'fixture unavailable',
+    }),
+    startProjectWork: projectWorkReady
+      ? async (input) => {
+          onProjectWorkStart?.(input);
+          return { accepted: true, taskId: 'fixture-project-work' };
+        }
+      : null,
   });
   return { db, store, projects, project, service, a, b };
 }
@@ -692,6 +705,327 @@ test('plan submission triggers Noema review; acceptance unlocks and dispatches t
   }
 });
 
+test('a user @Noema request in a project group receives its visible reply there', async () => {
+  let request;
+  const f = setup({
+    async *streamChat(input) {
+      request = input;
+      yield '我会先核对当前计划与阻塞，再告诉你实际能推进的部分。';
+    },
+  });
+  const events = [];
+  f.service.emit = (entry) => events.push(entry);
+  try {
+    const sent = f.service.sendMessage({
+      roomId: f.project.groupRoomId,
+      text: '@Noema 请核对目前的阻塞并继续可执行的工作。',
+    });
+    await settle(f.service);
+
+    const group = f.store.getRoomSnapshot(f.project.groupRoomId);
+    const reply = group.messages.find(
+      (message) => message.agentId === 'noema' && message.role === 'assistant',
+    );
+    assert.equal(reply?.agentId, 'noema');
+    assert.equal(reply?.status, 'complete');
+    assert.match(reply?.content ?? '', /核对当前计划/u);
+    assert.ok(
+      request.messages.some((message) =>
+        message.content?.includes('noema_user_group_request'),
+      ),
+      'the model receives the user-authored group request as a public request',
+    );
+    assert.deepEqual(
+      request.tools.map((entry) => entry.function.name).sort(),
+      [
+        'calculate_expression',
+        'create_project_team',
+        'manage_project_plan',
+        'project_group',
+      ],
+      'Noema receives only the tools scoped to this existing project',
+    );
+    const teamTool = request.tools.find(
+      (entry) => entry.function.name === 'create_project_team',
+    );
+    assert.deepEqual(
+      teamTool.function.parameters.properties.existing_project_id.enum,
+      [f.project.id],
+      'team continuation can only affect the project where the user called Noema',
+    );
+    assert.equal(
+      f.store
+        .getRoomSnapshot('room-noema')
+        .messages.some(
+          (message) =>
+            message.id ===
+            f.db
+              .prepare(
+                'SELECT noema_assistant_message_id AS id FROM social_project_reports WHERE source_user_message_id=?',
+              )
+              .get(sent.messageId)?.id,
+        ),
+      false,
+      'the reply is not misrouted into Noema main chat',
+    );
+    assert.ok(
+      events.some(
+        (entry) =>
+          entry.type === 'chat-turn-completed' &&
+          entry.roomId === f.project.groupRoomId &&
+          entry.notifyUser === true,
+      ),
+      'the public group reply emits completion for the originating room',
+    );
+  } finally {
+    await f.service.shutdown();
+    f.db.close();
+  }
+});
+
+test('an explicit blocked-project recovery provisions an execution member through the real tool path', async () => {
+  let calls = 0;
+  let readinessInstruction = false;
+  let projectWorkFieldAvailable = false;
+  const startedWork = [];
+  const f = setup(
+    {
+      async *streamChat(input) {
+        calls++;
+        if (calls === 1) {
+          assert.deepEqual(input.toolChoice, {
+            type: 'function',
+            function: { name: 'create_project_team' },
+          });
+          const team = input.tools.find(
+            (entry) => entry.function.name === 'create_project_team',
+          );
+          projectWorkFieldAvailable = Boolean(
+            team.function.parameters.properties.members.items.properties
+              .new_agent.properties.project_work,
+          );
+          readinessInstruction = input.messages.some(
+            (message) =>
+              message.role === 'system' &&
+              message.content.includes('必须先调用 create_project_team') &&
+              message.content.includes('项目执行器当前可用'),
+          );
+          tool(input, 'create_project_team', {
+            title: f.project.title,
+            brief: f.project.brief,
+            existing_project_id: f.project.id,
+            members: [
+              {
+                new_agent: {
+                  name: '应用实施工程师',
+                  headline: '产品实现与验证',
+                  description: '负责追踪应用的数据与界面实现。',
+                  project_work: true,
+                },
+                task: '接手价格追踪项目中已明确的实现工作。',
+              },
+            ],
+          });
+        } else if (calls === 2) {
+          const startTool = input.tools.find(
+            (entry) => entry.function.name === 'start_project_work',
+          );
+          const added = f.projects
+            .getProject(f.project.id)
+            .members.find((member) => member.name === '应用实施工程师');
+          assert.ok(startTool, 'the new project executor is available in this group');
+          assert.ok(
+            startTool.function.parameters.properties.agent_id.enum.includes(
+              added.agentId,
+            ),
+          );
+          assert.deepEqual(input.toolChoice, {
+            type: 'function',
+            function: { name: 'start_project_work' },
+          });
+          tool(input, 'start_project_work', {
+            agent_id: added.agentId,
+            task: '从当前项目工作区继续 w3 的价格快照与变化检测实现。',
+          });
+        } else {
+          yield '本机项目工作已接受，后续由执行卡展示实际结果。';
+        }
+      },
+    },
+    {
+      projectWorkReady: true,
+      onProjectWorkStart: (input) => startedWork.push(input),
+    },
+  );
+  try {
+    const sent = f.service.sendMessage({
+      roomId: f.project.groupRoomId,
+      text: '@Noema 继续这条委托，优先解决目前 w3/w4 的阻塞。先检查是否能使用现有项目执行器；若可以，给实际负责实现的成员配置能力并启动工作；若不可以，报告具体运行错误。不要重复已完成的规格。',
+    });
+    await settle(f.service);
+
+    assert.equal(calls, 3);
+    assert.equal(projectWorkFieldAvailable, true);
+    assert.equal(readinessInstruction, true);
+    const project = f.projects.getProject(f.project.id);
+    const added = project.members.find(
+      (member) => member.name === '应用实施工程师',
+    );
+    assert.ok(added);
+    assert.ok(
+      f.store.getAgent(added.agentId).capabilities.includes('project-work'),
+    );
+    assert.deepEqual(startedWork, [
+      {
+        roomId: f.project.groupRoomId,
+        projectId: f.project.id,
+        agentId: added.agentId,
+        dispatchFromNoema: true,
+        prompt: '从当前项目工作区继续 w3 的价格快照与变化检测实现。',
+        sourceMessageId: sent.messageId,
+      },
+    ]);
+  } finally {
+    await f.service.shutdown();
+    f.db.close();
+  }
+});
+
+test('an explicit project continuation uses an existing execution member without tool jargon', async () => {
+  let calls = 0;
+  const startedWork = [];
+  const f = setup(
+    {
+      async *streamChat(input) {
+        calls++;
+        if (calls === 1) {
+          assert.deepEqual(input.toolChoice, {
+            type: 'function',
+            function: { name: 'start_project_work' },
+          });
+          tool(input, 'start_project_work', {
+            agent_id: implementerId,
+            task: '检查失败任务留下的项目产物，从当前计划继续完成未交付工作。',
+          });
+        } else {
+          yield '已将续接任务交给项目实施成员。';
+        }
+      },
+    },
+    {
+      projectWorkReady: true,
+      onProjectWorkStart: (input) => startedWork.push(input),
+    },
+  );
+  const implementerId = f.store.createAgent({
+    name: '应用实施工程师',
+    headline: '项目文件实现与验证',
+    description: '检查项目工作区并推进已委托的实现。',
+    projectWork: true,
+  }).members[0].id;
+  f.projects.addProjectMember(f.project.id, implementerId);
+  try {
+    f.service.sendMessage({
+      roomId: f.project.groupRoomId,
+      text: '@Noema 这个项目现在是什么状态？请查看失败记录和已有产物，自己判断下一步并继续推进。',
+    });
+    await settle(f.service);
+
+    assert.equal(calls, 1);
+    assert.equal(startedWork.length, 1);
+    assert.equal(startedWork[0].agentId, implementerId);
+    assert.match(startedWork[0].prompt, /继续完成未交付工作/u);
+  } finally {
+    await f.service.shutdown();
+    f.db.close();
+  }
+});
+
+test('a project work startup error is visible instead of collapsing to a generic chat error', async () => {
+  let calls = 0;
+  const f = setup(
+    {
+      async *streamChat(input) {
+        calls++;
+        tool(input, 'start_project_work', {
+          agent_id: implementerId,
+          task: '检查现有产物并继续未交付工作。',
+        });
+      },
+    },
+    {
+      projectWorkReady: true,
+      onProjectWorkStart: () => {
+        throw new Error('所选项目文件夹已不存在或不可访问。');
+      },
+    },
+  );
+  const implementerId = f.store.createAgent({
+    name: '应用实施工程师',
+    headline: '项目文件实现与验证',
+    description: '检查项目工作区并推进已委托的实现。',
+    projectWork: true,
+  }).members[0].id;
+  f.projects.addProjectMember(f.project.id, implementerId);
+  try {
+    f.service.sendMessage({
+      roomId: f.project.groupRoomId,
+      text: '@Noema 请查看失败任务并继续推进。',
+    });
+    await settle(f.service);
+
+    const reply = f.store
+      .getRoomSnapshot(f.project.groupRoomId)
+      .messages.findLast((message) => message.role === 'assistant');
+    assert.equal(calls, 1);
+    assert.equal(reply.status, 'failed');
+    assert.equal(reply.errorCode, 'project_work_start_failed');
+    assert.match(reply.errorMessage, /所选项目文件夹已不存在或不可访问/u);
+    assert.doesNotMatch(reply.errorMessage, /本轮回复没有完成/u);
+  } finally {
+    await f.service.shutdown();
+    f.db.close();
+  }
+});
+
+test('a project status question alone does not start file execution', async () => {
+  let calls = 0;
+  const startedWork = [];
+  const f = setup(
+    {
+      async *streamChat(input) {
+        calls++;
+        assert.equal(input.toolChoice, undefined);
+        yield '项目仍有工作项等待处理。';
+      },
+    },
+    {
+      projectWorkReady: true,
+      onProjectWorkStart: (input) => startedWork.push(input),
+    },
+  );
+  const implementerId = f.store.createAgent({
+    name: '应用实施工程师',
+    headline: '项目文件实现与验证',
+    description: '检查项目工作区并推进已委托的实现。',
+    projectWork: true,
+  }).members[0].id;
+  f.projects.addProjectMember(f.project.id, implementerId);
+  try {
+    f.service.sendMessage({
+      roomId: f.project.groupRoomId,
+      text: '@Noema 这个项目现在是什么状态？',
+    });
+    await settle(f.service);
+
+    assert.equal(calls, 1);
+    assert.deepEqual(startedWork, []);
+  } finally {
+    await f.service.shutdown();
+    f.db.close();
+  }
+});
+
 test('first launch exposes team creation despite having no specialists', async () => {
   const db = new Database(':memory:');
   new RootStore(db);
@@ -807,6 +1141,159 @@ test('forming a team publishes common background without sequential consultation
         .messages.filter((m) => m.role === 'user').length,
       0,
     );
+  } finally {
+    await f.service.shutdown();
+    f.db.close();
+  }
+});
+
+test('continuing a blocked project can add one project-work member and start its work', async () => {
+  let calls = 0;
+  let addedAgentId;
+  let exposedExecutorCalls = 0;
+  let addedMemberState;
+  let teamSchemaAccepted = false;
+  const startedWork = [];
+  const f = setup(
+    {
+      async *streamChat(input) {
+        calls++;
+        if (calls === 1) {
+          const team = input.tools.find(
+            (entry) => entry.function.name === 'create_project_team',
+          );
+          teamSchemaAccepted = Boolean(
+            team?.function.parameters.properties.members.minItems === 1 &&
+            /续接已有项目时可只增补一位/u.test(team.function.description),
+          );
+          tool(input, 'create_project_team', {
+            existing_project_id: f.project.id,
+            title: f.project.title,
+            brief: f.project.brief,
+            members: [
+              {
+                new_agent: {
+                  name: '实施工程师',
+                  headline: '价格追踪应用实现与验证',
+                  description: '负责可运行实现，并验证数据链路。',
+                  project_work: true,
+                },
+                task: '接手受阻的应用实现工作项，形成可运行交付。',
+              },
+            ],
+          });
+        } else {
+          const result = input.messages.findLast(
+            (message) => message.role === 'tool',
+          );
+          if (result?.content) {
+            try {
+              const state = JSON.parse(result.content).state;
+              if (state === 'members_added') addedMemberState = state;
+            } catch {}
+          }
+          const executor = input.tools.find(
+            (entry) => entry.function.name === 'start_project_work',
+          );
+          addedAgentId = f.projects
+            .getProject(f.project.id)
+            .members.at(-1).agentId;
+          if (executor) {
+            exposedExecutorCalls++;
+            if (
+              executor.function.parameters.properties.agent_id.enum.includes(
+                addedAgentId,
+              )
+            ) {
+              tool(input, 'start_project_work', {
+                agent_id: addedAgentId,
+                task: '实现价格追踪应用，并返回可运行交付及验证结果。',
+              });
+            } else {
+              yield '新增成员不在项目执行名单中。';
+            }
+          } else {
+            yield '已收到团队调整，继续检查当前可执行工作。';
+          }
+        }
+      },
+    },
+    {
+      projectWorkReady: true,
+      onProjectWorkStart: (input) => startedWork.push(input),
+    },
+  );
+  try {
+    let plan = f.projects.plans.replace({
+      projectId: f.project.id,
+      expectedRevision: 0,
+      reason: '模拟价格追踪委托的受阻实现阶段。',
+      plan: {
+        objective: '交付可运行的价格追踪应用。',
+        phases: [
+          {
+            id: 'implementation',
+            title: '应用实现',
+            outcome: '有可运行的价格追踪界面与数据链路。',
+            exitCriteria: '至少一项真实价格来源完成端到端验证。',
+            dependsOn: [],
+            status: 'pending',
+            evidence: '',
+            workItems: [
+              {
+                id: 'build-app',
+                title: '实现价格追踪应用',
+                ownerAgentId: f.a,
+                reviewerIds: ['user'],
+                acceptance: '应用可运行并显示有来源依据的价格。',
+                dependsOn: [],
+                status: 'pending',
+                evidence: '',
+                blocker: '',
+              },
+            ],
+          },
+        ],
+      },
+    });
+    plan = f.projects.plans.updateItem({
+      projectId: f.project.id,
+      expectedRevision: plan.revision,
+      itemId: 'build-app',
+      status: 'blocked',
+      actorAgentId: f.a,
+      blocker: '当前成员没有项目文件执行能力。',
+      reason: '当前成员没有项目文件执行能力。',
+    });
+    assert.equal(plan.items[0].status, 'blocked');
+    f.service.sendMessage({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '继续推进价格追踪应用，处理团队当前的实现阻塞。',
+    });
+    await settle(f.service);
+    assert.ok(calls >= 2);
+    assert.equal(teamSchemaAccepted, true);
+    assert.equal(addedMemberState, 'members_added');
+    assert.ok(exposedExecutorCalls >= 1);
+    assert.equal(startedWork.length, 1);
+    assert.equal(startedWork[0].agentId, addedAgentId);
+    const current = f.projects.getProject(f.project.id);
+    assert.equal(current.id, f.project.id);
+    assert.equal(current.groupRoomId, f.project.groupRoomId);
+    assert.deepEqual(
+      current.members.slice(0, 2).map((member) => member.agentId),
+      [f.a, f.b],
+    );
+    assert.ok(
+      f.store.getAgent(addedAgentId).capabilities.includes('project-work'),
+    );
+    const groupMessages = f.store
+      .getRoomSnapshot(f.project.groupRoomId)
+      .messages.filter((message) => message.agentId === 'noema');
+    assert.equal(groupMessages.length, 1);
+    assert.match(groupMessages[0].content, /项目增补成员/u);
+    assert.doesNotMatch(groupMessages[0].content, /项目启动/u);
   } finally {
     await f.service.shutdown();
     f.db.close();
@@ -1000,10 +1487,12 @@ test('a report may read the plan then request user judgment; queued execution st
     },
   });
   try {
-    f.service.sendMessage({
-      roomId: f.project.groupRoomId,
-      text: '@Noema 当前成果需要我的判断。',
+    f.service.collaboration.publish({
+      projectId: f.project.id,
+      senderAgentId: f.a,
+      text: '@Noema 当前成果需要用户判断。',
     });
+    f.service.schedulePendingProjectReports();
     await settle(f.service);
     assert.equal(f.projects.getProject(f.project.id).status, 'awaiting_user');
     assert.ok(

@@ -113,6 +113,16 @@ if (!app.isPackaged && testDataArgument) {
   app.setPath('userData', testUserData);
 }
 
+const devRemoteDebuggingPort = process.env.NOEMA_DEV_REMOTE_DEBUGGING_PORT;
+if (!app.isPackaged && devRemoteDebuggingPort) {
+  const port = Number(devRemoteDebuggingPort);
+  if (!Number.isInteger(port) || port < 1024 || port > 65535) {
+    throw new Error('NOEMA_DEV_REMOTE_DEBUGGING_PORT must be 1024–65535.');
+  }
+  app.commandLine.appendSwitch('remote-debugging-address', '127.0.0.1');
+  app.commandLine.appendSwitch('remote-debugging-port', String(port));
+}
+
 if (
   process.env.NOEMA_SMOKE_TEST === '1' &&
   process.env.NOEMA_SMOKE_USER_DATA_DIR
@@ -4075,6 +4085,7 @@ async function startNoema() {
     const practiceConfirmationEvidence: Array<Record<string, unknown>> = [];
     socialWorkService = new SocialWorkService({
       store: socialChatStore,
+      projectStore: socialProjectStore,
       getSelectedModel: () =>
         rootStore?.getSelectedModel() ?? 'auto:noema-free',
       assertWorkAllowed: (roomId: string) =>
@@ -4090,6 +4101,23 @@ async function startNoema() {
           : [],
       chooseWorkspace: async ({ reuseCase = false, prompt = '' } = {}) => {
         if (socialWorkE2eValid) return testSocialWorkWorkspace;
+        const devWorkspaceOverride =
+          !app.isPackaged
+            ? process.env.NOEMA_DEV_PROJECT_WORKSPACE_PATH
+            : null;
+        if (devWorkspaceOverride) {
+          const workspace = path.resolve(devWorkspaceOverride);
+          if (
+            !path.isAbsolute(devWorkspaceOverride) ||
+            !fs.existsSync(workspace) ||
+            !fs.statSync(workspace).isDirectory()
+          ) {
+            throw new Error(
+              'NOEMA_DEV_PROJECT_WORKSPACE_PATH must point to an existing absolute directory.',
+            );
+          }
+          return workspace;
+        }
         if (!mainWindow || mainWindow.isDestroyed()) return null;
         const selection = await dialog.showOpenDialog(mainWindow, {
           title: '检查项目工作并选择文件夹',

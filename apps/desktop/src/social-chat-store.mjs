@@ -28,6 +28,11 @@ function hideInternalProjectReportSql(messageIdExpression) {
     FROM social_project_reports AS report
     WHERE report.noema_assistant_message_id IS NOT NULL
       AND NOT EXISTS (
+        SELECT 1 FROM social_messages AS source
+        WHERE source.id = report.source_user_message_id
+          AND source.role = 'user' AND source.sender_agent_id IS NULL
+      )
+      AND NOT EXISTS (
         SELECT 1 FROM social_project_reviews AS review
         WHERE review.request_message_id = report.noema_assistant_message_id
       )
@@ -2555,6 +2560,7 @@ export class SocialChatStore {
       workspacePath,
       workspaceKey,
       taskPrompt,
+      projectId = null,
       sourceMessageId = null,
       model,
       executionEngine = 'dsh',
@@ -2575,9 +2581,30 @@ export class SocialChatStore {
       room.room.kind === 'direct' &&
       room.members.length === 1 &&
       room.members[0].id === 'noema';
+    const isNoemaProjectGroup = Boolean(
+      allowNoemaDispatch &&
+        typeof projectId === 'string' &&
+        room.room.kind === 'group' &&
+        this.isMember(roomId, 'noema') &&
+        this.isMember(roomId, agentId) &&
+        this.db
+          .prepare(`
+            SELECT 1 FROM social_projects
+            WHERE id = ? AND group_room_id = ? AND status = 'active'
+          `)
+          .get(projectId, roomId),
+    );
+    if (
+      allowNoemaDispatch &&
+      room.room.kind === 'group' &&
+      !isNoemaProjectGroup
+    ) {
+      throw new Error('Noema 只能向对应活跃项目群中的成员派发项目工作。');
+    }
     if (
       !this.isMember(roomId, agentId) &&
-      !(allowNoemaDispatch && isNoemaDirectRoom)
+      !(allowNoemaDispatch && isNoemaDirectRoom) &&
+      !isNoemaProjectGroup
     ) {
       throw new Error('这位好友不在当前聊天空间中。');
     }
@@ -4117,7 +4144,17 @@ export class SocialChatStore {
       `)
       .all(roomId)
       .reverse();
-    const entries = rows.map((row) => {
+    // Some OpenAI-compatible models occasionally print Harmony/DSML tool-call
+    // syntax as ordinary prose. It was never executed by the tool runner; feed
+    // it back as assistant history and the model may copy the bogus call again.
+    // Keep the persisted transcript intact, but exclude those invalid assistant
+    // turns from future model context.
+    const contextRows = rows.filter(
+      (row) =>
+        row.role !== 'assistant' ||
+        !row.content.includes('<｜｜DSML｜｜'),
+    );
+    const entries = contextRows.map((row) => {
       const forwardedSources = JSON.parse(row.forwardedSourcesJson ?? '[]');
       const replyTo = JSON.parse(row.replyToJson ?? 'null');
       const attached = [
@@ -4378,11 +4415,14 @@ export class SocialChatStore {
         .prepare(`
         SELECT pr.id AS reportId, pr.project_id AS projectId,
                p.title AS projectTitle, p.brief AS projectBrief,
+               p.status AS projectStatus,
                p.source_message_id AS sourceMessageId,
                origin.content AS sourceRequest,
                pr.source_turn_id AS sourceTurnId,
                pr.source_user_message_id AS sourceUserMessageId,
                source.content AS sourceUserText,
+               source.role AS sourceRole,
+               source.sender_agent_id AS sourceSenderAgentId,
                pr.source_group_assistant_message_id AS sourceAssistantMessageId,
                outcome.content AS memberReport,
                a.name AS agentName, pr.agent_id AS agentId,
@@ -4400,6 +4440,10 @@ export class SocialChatStore {
         .get();
       if (!row) return null;
       if (this.hasStreamingReply('room-noema')) return null;
+      const userGroupRequest =
+        row.sourceRole === 'user' && row.sourceSenderAgentId === null;
+      const targetRoomId = userGroupRequest ? row.groupRoomId : 'room-noema';
+      if (this.hasStreamingReply(targetRoomId)) return null;
       const assistantMessageId = randomUUID();
       const now = isoNow();
       this.db
@@ -4410,10 +4454,17 @@ export class SocialChatStore {
            interaction_adjustment_ids_json,
            interaction_adjustment_snapshots_json,
            interaction_adjustment_attempts_json, created_at, updated_at)
-        VALUES (?, 'room-noema', ?, 'assistant', 'noema', '', 'streaming', 1,
+        VALUES (?, ?, ?, 'assistant', 'noema', '', 'streaming', 1,
                 ?, 'freellmapi', '[]', 'null', '[]', '[]', '[]', ?, ?)
       `)
-        .run(assistantMessageId, row.reportId, normalizedModel, now, now);
+        .run(
+          assistantMessageId,
+          targetRoomId,
+          row.reportId,
+          normalizedModel,
+          now,
+          now,
+        );
       const claimed = this.db
         .prepare(`
         UPDATE social_project_reports
@@ -4424,18 +4475,19 @@ export class SocialChatStore {
         .run(assistantMessageId, now, row.reportId);
       if (claimed.changes !== 1) throw new Error('成员报告已被其他流程领取。');
       this.db
-        .prepare(`
-        UPDATE social_rooms SET updated_at = ? WHERE id = 'room-noema'
-      `)
-        .run(now);
+        .prepare('UPDATE social_rooms SET updated_at = ? WHERE id = ?')
+        .run(now, targetRoomId);
       return {
         ...row,
         turnId: row.reportId,
-        roomId: 'room-noema',
+        roomId: targetRoomId,
         agentId: 'noema',
         model: normalizedModel,
         assistantMessageId,
-        userMessageId: row.sourceMessageId,
+        userMessageId: userGroupRequest
+          ? row.sourceUserMessageId
+          : row.sourceMessageId,
+        userGroupRequest,
         projectReport: true,
       };
     })();

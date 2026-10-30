@@ -646,6 +646,68 @@ test('forming a project team atomically creates missing members and their projec
   }
 });
 
+test('an existing project can add one file-capable specialist without replacing its team', () => {
+  const stores = makeStores();
+  const first = createMember(stores.socialChatStore, '研究员');
+  const second = createMember(stores.socialChatStore, '产品设计师');
+  try {
+    const source = stores.socialChatStore.beginTurn({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '开始一个需要研究和设计的项目。',
+      model: 'test-model',
+    });
+    stores.socialChatStore.completeReply(source.assistantMessageId);
+    const original = stores.socialProjectStore.formProjectTeam({
+      title: '价格追踪器',
+      brief: '提供真实、可溯源的 AI API 价格信息。',
+      sourceMessageId: source.userMessageId,
+      members: [
+        { agentId: first.agentId, task: '研究价格来源。' },
+        { agentId: second.agentId, task: '设计价格展示。' },
+      ],
+    });
+    const priorMembers = original.project.members.map(
+      (member) => member.agentId,
+    );
+
+    const extended = stores.socialProjectStore.formProjectTeam({
+      existingProjectId: original.project.id,
+      title: original.project.title,
+      brief: original.project.brief,
+      originRoomId: 'room-noema',
+      sourceMessageId: source.userMessageId,
+      members: [
+        {
+          newAgent: {
+            name: '实现工程师',
+            headline: '数据工具实现与验证',
+            description: '负责可运行实现，并在授权工作区内验证交付。',
+            projectWork: true,
+          },
+          task: '实现价格快照、变更检测与可运行界面。',
+        },
+      ],
+    });
+
+    assert.equal(extended.project.id, original.project.id);
+    assert.equal(extended.project.groupRoomId, original.project.groupRoomId);
+    assert.deepEqual(
+      extended.project.members.slice(0, 2).map((member) => member.agentId),
+      priorMembers,
+    );
+    const added = stores.socialChatStore.getAgent(extended.members[0].agentId);
+    assert.ok(added.capabilities.includes('project-work'));
+    assert.equal(
+      stores.socialProjectStore.getProjectSession(original.project.id, added.id)
+        .room.members[0].id,
+      added.id,
+    );
+  } finally {
+    stores.db.close();
+  }
+});
+
 test('forming a team for an archived project restores its group and reuses member sessions', () => {
   const stores = makeStores();
   const existing = createMember(stores.socialChatStore, '研究员');

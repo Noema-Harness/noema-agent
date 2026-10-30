@@ -238,14 +238,15 @@ function buildTaskPrompt({
 
 /**
  * Owns room-scoped project work while treating the executor as an adapter.
- * @param {{store:import('./social-chat-store.mjs').SocialChatStore,adapter:{executionEngine?:string,startTask:(input:any)=>any}|null,secretStore:{isConfigured:()=>boolean},getSelectedModel?:()=>string|null,practiceProvider?:import('./openai-compatible-client.mjs').OpenAICompatibleClient|null,chooseWorkspace:(options?:{reuseCase?:boolean,prompt?:string})=>Promise<string|null>,confirmPracticeCandidate?:(input:{candidate:{sourceTaskId:string,basisTaskId:string,basisRoomTitle:string,basisTaskPrompt:string,roomTitle:string,trigger:string,action:string,limits:string},taskPrompt:string,caseSnapshot:{taskId:string,taskPrompt:string}|null})=>Promise<'trial'|'case'|'cancel'>,assertWorkAllowed?:(roomId:string)=>void,emit?:(event:object)=>void}} options
+ * @param {{store:import('./social-chat-store.mjs').SocialChatStore,projectStore?:import('./social-project-store.mjs').SocialProjectStore|null,adapter:{executionEngine?:string,startTask:(input:any)=>any}|null,secretStore:{isConfigured:()=>boolean},getSelectedModel?:()=>string|null,practiceProvider?:import('./openai-compatible-client.mjs').OpenAICompatibleClient|null,chooseWorkspace:(options?:{reuseCase?:boolean,prompt?:string})=>Promise<string|null>,confirmPracticeCandidate?:(input:{candidate:{sourceTaskId:string,basisTaskId:string,basisRoomTitle:string,basisTaskPrompt:string,roomTitle:string,trigger:string,action:string,limits:string},taskPrompt:string,caseSnapshot:{taskId:string,taskPrompt:string}|null})=>Promise<'trial'|'case'|'cancel'>,assertWorkAllowed?:(roomId:string)=>void,emit?:(event:object)=>void}} options
  */
 export class SocialWorkService {
   /**
-   * @param {{store:import('./social-chat-store.mjs').SocialChatStore,adapter:{executionEngine?:string,startTask:(input:any)=>any}|null,secretStore:{isConfigured:()=>boolean},getSelectedModel?:()=>string|null,practiceProvider?:import('./openai-compatible-client.mjs').OpenAICompatibleClient|null,chooseWorkspace:(options?:{reuseCase?:boolean,prompt?:string})=>Promise<string|null>,confirmPracticeCandidate?:(input:{candidate:{sourceTaskId:string,basisTaskId:string,basisRoomTitle:string,basisTaskPrompt:string,roomTitle:string,trigger:string,action:string,limits:string},taskPrompt:string,caseSnapshot:{taskId:string,taskPrompt:string}|null})=>Promise<'trial'|'case'|'cancel'>,defaultVerificationChecks?:unknown,delayImpl?:(milliseconds:number,signal:AbortSignal)=>Promise<boolean>,assertWorkAllowed?:(roomId:string)=>void,emit?:(event:object)=>void}} options
+   * @param {{store:import('./social-chat-store.mjs').SocialChatStore,projectStore?:import('./social-project-store.mjs').SocialProjectStore|null,adapter:{executionEngine?:string,startTask:(input:any)=>any}|null,secretStore:{isConfigured:()=>boolean},getSelectedModel?:()=>string|null,practiceProvider?:import('./openai-compatible-client.mjs').OpenAICompatibleClient|null,chooseWorkspace:(options?:{reuseCase?:boolean,prompt?:string})=>Promise<string|null>,confirmPracticeCandidate?:(input:{candidate:{sourceTaskId:string,basisTaskId:string,basisRoomTitle:string,basisTaskPrompt:string,roomTitle:string,trigger:string,action:string,limits:string},taskPrompt:string,caseSnapshot:{taskId:string,taskPrompt:string}|null})=>Promise<'trial'|'case'|'cancel'>,defaultVerificationChecks?:unknown,delayImpl?:(milliseconds:number,signal:AbortSignal)=>Promise<boolean>,assertWorkAllowed?:(roomId:string)=>void,emit?:(event:object)=>void}} options
    */
   constructor({
     store,
+    projectStore = null,
     adapter,
     secretStore,
     getSelectedModel = () => null,
@@ -258,6 +259,7 @@ export class SocialWorkService {
     emit = () => {},
   }) {
     this.store = store;
+    this.projectStore = projectStore;
     this.adapter = adapter;
     this.secretStore = secretStore;
     this.getSelectedModel = getSelectedModel;
@@ -306,6 +308,7 @@ export class SocialWorkService {
       verificationChecks,
       reuseCase = false,
       sourceMessageId = null,
+      projectId = null,
       signal = null,
     },
     dispatchFromNoema,
@@ -433,6 +436,7 @@ export class SocialWorkService {
       roomId,
       agentId,
       sourceMessageId,
+      projectId: dispatchFromNoema ? projectId : null,
       workspacePath: realWorkspacePath,
       workspaceKey,
       taskPrompt: prompt,
@@ -463,21 +467,44 @@ export class SocialWorkService {
     return { accepted: true, taskId: id, roomId };
   }
 
-  /** @param {{roomId:string,agentId:string,prompt:string,sourceMessageId:string,signal?:AbortSignal|null}} input */
+  /** @param {{roomId:string,projectId?:string|null,agentId:string,prompt:string,sourceMessageId:string,signal?:AbortSignal|null}} input */
   async startTaskFromNoema({
     roomId,
+    projectId = null,
     agentId,
     prompt,
     sourceMessageId,
     signal = null,
   }) {
     const room = this.store.getRoomSnapshot(roomId);
-    if (
+    const isNotNoemaDirectRoom =
       room.room.kind !== 'direct' ||
       room.members.length !== 1 ||
-      room.members[0].id !== 'noema'
-    ) {
-      throw new Error('Noema 只能从自己的私聊中发起内部项目工作。');
+      room.members[0].id !== 'noema';
+    let project = null;
+    if (isNotNoemaDirectRoom) {
+      const isProjectGroup =
+        room.room.kind === 'group' &&
+        typeof projectId === 'string' &&
+        projectId.trim() &&
+        this.projectStore;
+      if (!isProjectGroup) {
+        throw new Error('Noema 只能从自己的私聊或当前项目群中发起内部项目工作。');
+      }
+      project = this.projectStore.getProject(projectId);
+      if (
+        project.groupRoomId !== roomId ||
+        project.status !== 'active' ||
+        !room.members.some((member) => member.id === 'noema') ||
+        !project.members.some(
+          (member) =>
+            member.agentId === agentId &&
+            member.status === 'active' &&
+            !member.agentArchivedAt,
+        )
+      ) {
+        throw new Error('Noema 只能在活跃项目群中派发给该项目的活跃成员。');
+      }
     }
     const sourceMessage = this.store.getSocialMessage(sourceMessageId);
     if (sourceMessage?.role !== 'user' || sourceMessage.roomId !== roomId) {
@@ -499,6 +526,7 @@ export class SocialWorkService {
         agentId: executor.id,
         prompt,
         sourceMessageId,
+        projectId: project?.id ?? null,
         signal,
       },
       true,

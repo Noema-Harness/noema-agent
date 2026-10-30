@@ -795,8 +795,17 @@ export class SocialProjectStore {
     members,
   }) {
     requireText(originRoomId, '来源聊天 ID', 200);
-    if (!Array.isArray(members) || members.length < 2 || members.length > 6) {
-      throw new TypeError('项目团队需要 2 至 6 位专业成员。');
+    const minimumMembers = existingProjectId ? 1 : 2;
+    if (
+      !Array.isArray(members) ||
+      members.length < minimumMembers ||
+      members.length > 6
+    ) {
+      throw new TypeError(
+        existingProjectId
+          ? '续接项目至少需要增补 1 位专业成员。'
+          : '新项目团队需要 2 至 6 位专业成员。',
+      );
     }
     const preparedMembers = members.map((member) => {
       if (!member || typeof member !== 'object') {
