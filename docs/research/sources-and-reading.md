@@ -100,3 +100,14 @@
 
 - [Can large language models reproduce humans’ perspective-dependent judgements of gratitude?](https://www.frontiersin.org/journals/psychology/articles/10.3389/fpsyg.2026.1831256/full)（Frontiers in Psychology，2026-10-14）：48 名中国大学生与 12 个模型评价 24 个校园助人情境；每个文本采样 30 次。模型对需要强弱等情境信息的反应接近或超过人类，但 11/12 个模型的“受助者比施助者更感激”视角差异小于人类；平均人类差异 0.756 分，增加“中国大学生、按自己的感受回答”的身份提示平均只补 0.10 分，11/12 仍未到人类估计。研究的材料是中文，但测试视角，不是文化优劣；任务也是情境评分而非开放聊天。值得借鉴的是把“读懂情境”与“跟上谁正从哪一侧经历它”分别测量。
 - [Cultural Prompting Improves the Empathy and Cultural Responsiveness of GPT-Generated Therapy Responses](https://pmc.ncbi.nlm.nih.gov/articles/PMC12919561/)（2026）：36 名中国美国家庭照护者评估 GPT‑4o 与 DeepSeek‑V3 对心理支持输入的回复。文化提示改善了 GPT‑4o 的文化相关性与感知同理，但 DeepSeek‑V3 的变化未显著；部分参与者把未适配回复描述为过于官方、像 ChatGPT、空泛重复或绕。样本小且场景特殊，不代表中文用户总体。质量复核还发现结果表把若干 Wilcoxon 比较的效应量记为 `r>1`，正文未定义这个效应量；仅保留表中 p 值和描述性差异，不解释这些 r 值。它支持文化与关系语境会影响“被接住”的感受，同时显示同一提示不会稳定作用于不同模型。
+
+## 本轮加入：未表达的想法、记忆选择与长期使用
+
+- [ThoughtTrace](https://arxiv.org/abs/2605.20087)：用户自报发送动机和读完助手回复后的反应，与真实多轮对话配对；细读标注采集过程、模型推断失败、裁判尺度和边聊边报告想法带来的交互影响。它说明消息本身不等于用户的想法，不是让产品读心。
+- [RealCompanion](https://arxiv.org/abs/2610.01780)：十位参与者同意公开的真实 AI 陪伴历史、聊天问题与逐条依据。重点看自然消息中何时需要跨会话记忆、检索器能否判断相关性、过度调用旧记忆的影响，以及十人样本的边界。代码和数据链接在论文正文。
+- [Adopt ≠ Adapt](https://aclanthology.org/2026.emnlp-main.2699/)（EMNLP 2026）：约 12,000 名 Bing Copilot 用户的个体纵向轨迹，比较个体习惯与总体趋势，并核查 WildChat 用户偏差。适合判断产品能否依赖用户自然学会 prompt，不应拿来断言每个用户行为都固定。
+- [Longitudinal Evidence That General-Purpose Chatbots Actively Foster Relational Engagement](https://arxiv.org/abs/2608.10672)：四周预注册对照研究，观察默认与关系型提示下的主动披露、话题引导及主观亲近感。预印本、小样本；可用于检查“看起来亲密”是否真的让用户感到更近，不作确定的产品规律。
+
+## 相关综述：社会型 AI 的纵向证据
+
+- [Only Time Will Tell](https://www.tandfonline.com/doi/full/10.1080/10447318.2026.2670529)：结构化综述纳入 17 项至少一周的社会型 AI 纵向研究；只有 2 项随机对照试验，13 项至少一个月，4 项达到一年以上。纳入对象包含陪伴产品、自建 agent 和少量通用聊天机器人。检索截止 2025 年 5 月，并排除了纯功能型 agent；用于理解长期关系研究的设计缺口，不可代替 Noema 全产品视角。
