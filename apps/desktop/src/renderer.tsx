@@ -2247,7 +2247,7 @@ function DesktopApp() {
                                 (message.routedVia.length === 1 ? (
                                   <span
                                     className="route-provenance-label"
-                                    title="FreeLLMAPI 响应头报告的实际提供方和模型。"
+                                    title="模型服务响应头报告的实际提供方和模型。"
                                   >
                                     实际：{message.routedVia[0]}
                                   </span>
@@ -2264,8 +2264,7 @@ function DesktopApp() {
                                       ))}
                                     </ul>
                                     <p>
-                                      来源：FreeLLMAPI
-                                      响应头；所选路由与实际服务模型可能不同。
+                                      来源：模型服务响应头；所选路由与实际服务模型可能不同。
                                     </p>
                                   </details>
                                 ))}
@@ -2273,7 +2272,7 @@ function DesktopApp() {
                                 'not_reported' && (
                                 <span
                                   className="route-unreported"
-                                  title="FreeLLMAPI 本轮没有报告实际提供方和模型。"
+                                  title="模型服务本轮没有报告实际提供方和模型。"
                                 >
                                   实际路由未报告
                                 </span>

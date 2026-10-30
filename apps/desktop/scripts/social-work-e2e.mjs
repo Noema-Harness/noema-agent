@@ -63,7 +63,9 @@ const dshUserDataPath = path.join(e2eDirectory, 'dsh-home');
 const resultPath = path.join(e2eDirectory, 'result.json');
 const marker = `NOEMA-SOCIAL-WORK-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 const syntheticAdapter = process.argv.includes('--synthetic');
-const liveModel = process.env.NOEMA_E2E_MODEL ?? 'auto:noema-free';
+const liveModel =
+  process.env.NOEMA_E2E_MODEL?.trim() ||
+  (syntheticAdapter ? 'synthetic:test' : readSelectedModel());
 const livePractice = process.argv.includes('--live-practice');
 const liveEpisodes = process.argv.includes('--live-episodes');
 const caseOnly = process.argv.includes('--case-only');
@@ -77,9 +79,36 @@ if (
     'Use one compatible E2E mode: synthetic, live-practice, live-episodes, or synthetic --case-only.',
   );
 }
+if (!liveModel) {
+  throw new Error(
+    'No model is selected in the current Noema profile. Select a model in Noema or set NOEMA_E2E_MODEL explicitly.',
+  );
+}
 if (!/^[\w./:-]{1,200}$/u.test(liveModel)) {
   throw new Error('NOEMA_E2E_MODEL must be a valid model route ID.');
 }
+
+function readSelectedModel() {
+  const appDataPath = process.env.APPDATA;
+  if (!appDataPath) return null;
+  const profileDatabasePath = path.join(appDataPath, 'Noema', 'noema.sqlite3');
+  if (!existsSync(profileDatabasePath)) return null;
+
+  const profileDatabase = new Database(profileDatabasePath, {
+    readonly: true,
+    fileMustExist: true,
+  });
+  try {
+    return (
+      profileDatabase
+        .prepare("SELECT value FROM app_settings WHERE key = 'selected_model'")
+        .get()?.value ?? null
+    );
+  } finally {
+    profileDatabase.close();
+  }
+}
+
 const relativePath = 'NOEMA-E2E-RESULT.txt';
 const verificationChecks = [
   '## 恢复前',
