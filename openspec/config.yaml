@@ -1,23 +1,9 @@
 schema: spec-driven
 
 context: |
-  所有产物正文使用中文，保留 OpenSpec 必需结构标题与 SHALL/MUST 关键字。
-  先核对仓库 AGENTS.md、当前 Git 状态与 GitHub Issue 最新续接点。
-  产品边界见 docs/PRODUCT_CHARTER.md，工程职责见 docs/ARCHITECTURE.md，
-  用户可理解的逻辑流程见 docs/design/noema-core-flows.md，长期取舍见 docs/decisions/。
-  GitHub Issues / Project 是阶段、依赖和状态来源；change 保存本次行为约定与实现细节，互相链接。
-  已实现事实、已接受设计与待验证假设分开写，不将全部历史讨论追认为已实现规格。
-
+  正文使用中文，保留 OpenSpec 必需结构标题与 SHALL/MUST 关键字。
+  项目职责和入口见 AGENTS.md；工作流分工见 docs/PROJECT_OPERATIONS.md。
+  读取本项相关代码、决定与 Issue，不复制完整项目历史。
 rules:
-  proposal:
-    - 引用相关 Issue 和已有依据，不复制整段项目历史或路线图。
   tasks:
-    - 每组围绕一个可验证的交付片段，说明相关代码边界与完成证据。
-    - 验证强度按行为风险决定，不以测试数量作为交付结果。
-operations:
-  apply:
-    guidance:
-      - 在已有用户开发授权内推进，普通可逆工程选择自行决定；仅必要的产品取舍或权限缺口请求用户判断。
-  archive:
-    guidance:
-      - 先核对实现与验收证据，未完成或待必要验收时保持开放，并同步维护逻辑流程图。
+    - 每组对应可验证的交付片段，连接实际代码边界与完成证据；按风险选择检查。
