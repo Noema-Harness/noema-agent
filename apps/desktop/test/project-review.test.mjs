@@ -228,6 +228,7 @@ test('review can pause at a legacy awaiting-review phase while a member report i
       .get(f.project.id, latestPlan.revision);
     const legacyPlan = JSON.parse(latestRevision.items_json);
     legacyPlan.phases[0].workItems[0].evidenceReview = null;
+    legacyPlan.phases[0].workItems[0].evidenceReviews = [];
     f.db
       .prepare(
         'UPDATE social_project_plan_revisions SET items_json = ? WHERE project_id = ? AND revision = ?',
