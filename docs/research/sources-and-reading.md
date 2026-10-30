@@ -68,3 +68,17 @@
 ## 本轮加入：真实交互体验与投诉后的恢复
 
 - [UXBench: Benchmarking User Experience in AI Assistants (EMNLP 2026)](https://aclanthology.org/2026.emnlp-main.1683/) / [全文](https://arxiv.org/html/2606.09570) / [实现](https://github.com/mengze-hong/UXBench)：论文从腾讯元宝的 7 万多段交互中抽取反馈判断、失败请求续答、投诉恢复三类评测。投诉策略分布、不同模型的恢复率和 LLM judge 正向偏差值得留意；公开恢复分由其 GRM 判定。源码中 QA 失败/解析缺失会 fail-open 标成 keep，实际发布样本受影响的数量未知。仓库许可对数据、代码、协议和衍生物作严格的非商业研究限制；Noema 不复用这些资产或协议，只记录论文观察。
+
+## 本轮加入：人机共创中的群体趋同
+
+- [Does generative AI make us think alike?](https://doi.org/10.1080/0144929X.2026.2726451)（Behaviour & Information Technology, 2026）：作者按 Web of Science、ACM Digital Library、Google Scholar 前 200 项及 arXiv/PsyArXiv/SSRN/ProQuest 检索，再做前向与后向引文追踪；出版稿纳入 18 篇文章、19 项研究、61 个效应量，用三层元分析处理同研究的多重测量。总体趋同效应 d=.334；去掉一项影响较大的研究后 d=.247（95% CI [.065,.429]）。
+- 任务差异比总效应更有产品含义：语义框架较强的 idea generation 平均 d=.70（5 项研究、14 个效应量），divergent thinking d=.12，写作 d=.27，视觉艺术/设计 d=.27；后三类置信区间跨零。研究报告任务间调节显著，但剩余异质性仍大。分类按任务/效应量，不应把四类研究数当成互斥样本计数。
+- 对 Noema 的可用判断：单份答案更好，与用户群体获得的内容更相似，可以同时成立。此研究不测一件作品的“AI 味”、个人长期创作或界面审美；不能由此推出每次都要打散默认、随机化或强行制造独特。公开索引显示全文标注 CC BY，但作者门户 PDF 直链在本次抓取中被 Cloudflare 拦截，PDF 下载所得实际是验证页，故没有伪称已完成全文本地转换；以上数值由正式出版索引与作者所属大学的记录交叉核对。后续可取得全文时优先核对任务分组、单项高影响研究及真实情境子组。
+
+## 本轮加入：灵感、共同创作与输入时机
+
+- [How AI Ideas Affect the Creativity, Diversity, and Evolution of Human Ideas](https://arxiv.org/abs/2401.13481)（Ashkinaze et al., 2025，动态实验）：844 人、3,414 次回答，围绕五种物品的替代用途任务展开；前序回答构成连续想法池，每 20 次重置。高 AI 曝光提升的是群体想法差异及其随轮次变化的速度，未提升单条想法创造性。AI 在这里是供人参考的示例，参与者自己提交答案；这与直接让人和模型共同完成同一篇作品不是同一种干预。
+- [Using Generative AI Personas Increases Collective Diversity in Human Ideation](https://arxiv.org/abs/2504.13868) 是 2025 预印本：10 种 persona 生成 300 个故事梗概，100 名参与者被分到无 AI、可取用 1 个梗概、可取用最多 5 个梗概三组；排除 3 名自报外用 AI 者后分析 97 篇故事。正文的相似度差异未显著。尽管标题说“增加”，实际结果只能支持“未观察到前一实验中的显著多样性下降”；不能将它当作已证实的解决方案。
+- IJCAI 2025 [Creative Momentum Transfer](https://ijcai.org/proceedings/2025/1142) 在城市塑料污染方案任务中随机安排 GPT‑4 建议在第一轮或第二轮出现，并操纵是否标明 AI 来源（N=247）。早期建议提高最终专家评分，但回答与建议更接近；晚期建议在第二轮带来更明显的创造性跃升与方向转移。场景是两轮短时构思，不足以直接决定聊天默认行为；它值得我们把“模型何时先表态”视作研究变量。
+- 2026 年 [Artificial intelligence and its impact on creativity and diversity](https://journals.sagepub.com/doi/10.1177/10591478261474243) 在大学生产品点子竞赛中发现，多个较新模型的单模型候选池仍不及人类多样；从四家模型混合抽样可接近人类池的多样性，温度也能提升多样性但可能牺牲质量。研究者自己提醒只研究一个产品创意竞赛，且没有让参与者实际经历 AI 协作过程。它更像低成本扩大候选覆盖的工程线索，不是个人 agent 对话设计的直接答案。
+- 这几项对照把问题从“AI 会不会带来趋同”改成更具体的工作假设：**AI 的作用取决于它是先替用户定中心，还是给用户一个多来源、可选择、可改写的材料池；而且建议进入的时机也会改变用户是锚定还是转向。**先把它保留为设计判断，后续要用 Noema 的真实互动检验；不先把 persona、多模型投票或延迟建议做成产品功能。
