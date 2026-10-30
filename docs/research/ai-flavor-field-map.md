@@ -30,8 +30,10 @@
 | 领域 | 代表材料与当前线索 | 继续核对的边界 |
 |---|---|---|
 | 语言特征综述 | [Linguistic Characteristics of AI-Generated Text: A Survey (2025)](https://arxiv.org/abs/2510.05136) 汇总词汇、句法与篇章研究，也指出领域偏英文和 GPT 模型、提示敏感性研究不足。 | 按语言、体裁、模型代际拆开看；检测特征不等于用户反感原因。 |
+| 信息密度与可理解性 | [Why is AI-generated language so hard to understand? (arXiv, 2026-10)](https://arxiv.org/abs/2610.29162) 用 9 个前沿/近前沿模型及聊天、代码、作文语料，检查与人类加工难度有关的语言特征；另以长度惩罚微调作机制演示。作者提出，模型后训练对正确性和压缩的奖励可能偏离人类交流对逐句可理解性的要求。 | 这是 2026-10 的预印本；语言特征分析为英文，语料种子有限，机制演示只覆盖窄任务。它提供可测假设，不是“AI 味”的完整解释。 |
 | 现实写作的多样性 | [The shrinking landscape of linguistic diversity (Nature Human Behaviour, 2026)](https://www.nature.com/articles/s41562-026-02550-0) 跨 7 个数据集、超过 880,000 篇文本，报告 LLM 写作辅助普及与语言多样性下降相关，若干数据中的写作复杂度方差下降 21–50%。 | 关联和实验结果各自回答什么；“复杂度”怎样测；结果能否迁移到私人聊天。 |
 | 创作分布 | [Large language models are homogeneously creative (PNAS Nexus, 2026)](https://academic.oup.com/pnasnexus/article/5/3/pgag042/8529001) 把多种模型与人放进标准化创造性任务，直接测群体层面的答案差异。 | 读完整任务和指标；创造力不是单一量表，群体趋同与特定用户获得灵感可以同时存在。 |
+| 人类创作的纵向变化 | [Writing in Symbiosis (NeurIPS 2025 Creative AI)](https://proceedings.neurips.cc/paper_files/paper/2025/hash/615229550c97d1c4d006a4bf6b54590e-Abstract-Creative_AI_Track.html) 用跨 LLM 发布前后的写作语料，报告主题趋向 AI 相关内容的同时，不同作者呈现趋近 AI 风格、远离 AI 风格或保持稳定等轨迹。 | 会议论文的语料分析不直接证明 AI 导致个体分化；它提醒“总体趋同”不等于每个人都变得一样。 |
 | 人的实际判断与后果 | [Sycophantic AI decreases prosocial intentions and promotes dependence (Science, 2026)](https://doi.org/10.1126/science.aec8352) 测 11 个模型，并以 2,405 人的三项预注册实验观察：迎合回答可以让人更确信自己正确、降低承担责任和修复冲突的意愿，同时更受偏好。 | 这是社会冲突建议场景；它能证明用户喜好并不总等于好结果，不能直接替 Noema 的所有温暖交流定规矩。 |
 | 个体偏好与模型评价 | [Personalized Benchmarking (Findings of ACL 2026)](https://aclanthology.org/2026.findings-acl.31/) 用 115 位活跃 Arena 用户的个人选择构建模型排名；ELO 和 Bradley–Terry 的个人排名与总体排名相关性差异很大。 | “平均用户偏好”不一定预测个人选择；这项研究测的是 Arena 模型比较，不能直接说明长期关系质量。阅读时同时检查偏好指标和用户真正评价的结果。 |
 | 上下文与个性化 | [Interaction Context Often Increases Sycophancy in LLMs (CHI 2026)](https://doi.org/10.1145/3772318.3791915) 比较无上下文、真实交互历史与用户记忆档案；研究报告后两类上下文在多数被测模型中会增加同意型迎合，记忆档案效应往往更大，GPT‑5.1 是重要例外。 | 读场景构造、用户记忆推断和迎合判据；不能因此得出“记忆应少做”，重点是个性化如何作用于独立判断。 |
