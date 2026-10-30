@@ -50,6 +50,70 @@ test('a fresh installation starts with only the real Noema conversation', () => 
   }
 });
 
+test('provider runtime migration preserves old gateway records and marks new turns generically', () => {
+  const { db } = makeStores();
+  const now = new Date().toISOString();
+  try {
+    const originalSchema = db
+      .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'social_messages'")
+      .get().sql;
+    const legacySchema = originalSchema
+      .replace('CREATE TABLE "social_messages"', 'CREATE TABLE social_messages_v26')
+      .replace(
+        "runtime IN ('provider', 'freellmapi', 'local', 'system')",
+        "runtime IN ('freellmapi', 'local', 'system')",
+      );
+    assert.notEqual(legacySchema, originalSchema);
+
+    const columns = db
+      .pragma('table_info(social_messages)')
+      .map(({ name }) => name)
+      .join(', ');
+    db.pragma('foreign_keys = OFF');
+    try {
+      db.transaction(() => {
+        db.exec(legacySchema);
+        db.exec(`
+          INSERT INTO social_messages_v26 (${columns})
+          SELECT ${columns} FROM social_messages;
+          DROP TABLE social_messages;
+          ALTER TABLE social_messages_v26 RENAME TO social_messages;
+          CREATE INDEX social_messages_room_order ON social_messages(room_id, seq);
+          CREATE INDEX social_messages_turn_attempt ON social_messages(turn_id, attempt, role);
+          DELETE FROM social_schema_migrations WHERE version = 27;
+        `);
+        db.prepare(`
+          INSERT INTO social_messages
+            (id, room_id, turn_id, role, content, status, runtime, created_at, updated_at)
+          VALUES ('legacy-gateway-message', 'room-noema', 'legacy-turn', 'user',
+                  '旧路由记录', 'complete', 'freellmapi', ?, ?)
+        `).run(now, now);
+      })();
+    } finally {
+      db.pragma('foreign_keys = ON');
+    }
+
+    const upgraded = new SocialChatStore(db);
+    assert.equal(
+      db.prepare("SELECT runtime FROM social_messages WHERE id = 'legacy-gateway-message'").get().runtime,
+      'freellmapi',
+    );
+    const turn = upgraded.beginTurn({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '新模型服务下的对话',
+      model: 'test-model',
+    });
+    assert.deepEqual(
+      db.prepare('SELECT DISTINCT runtime FROM social_messages WHERE turn_id = ?').all(turn.turnId),
+      [{ runtime: 'provider' }],
+    );
+    assert.deepEqual(db.pragma('foreign_key_check'), []);
+  } finally {
+    db.close();
+  }
+});
+
 test('legacy demo contacts and history survive without restoring revoked capabilities', () => {
   const { db, social } = makeStores();
   try {
@@ -101,7 +165,7 @@ test('an explicit team fixture keeps one agent across independent rooms', () => 
       db
         .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
         .get().version,
-      26,
+      27,
     );
   } finally {
     db.close();
@@ -949,6 +1013,7 @@ test('social chat schema v1 upgrades additively to project-work state', () => {
     db.exec(`
       ALTER TABLE social_work_tasks DROP COLUMN project_plan_item_id;
       ALTER TABLE social_work_tasks DROP COLUMN project_result_pending;
+      DELETE FROM social_schema_migrations WHERE version = 27;
       DELETE FROM social_schema_migrations WHERE version = 26; DELETE FROM social_schema_migrations WHERE version = 25;
       ALTER TABLE social_project_growth_batches DROP COLUMN finalized_at;
       DROP TABLE social_project_growth_members;
@@ -1021,7 +1086,7 @@ test('social chat schema v1 upgrades additively to project-work state', () => {
       db
         .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
         .get().version,
-      26,
+      27,
     );
     assert.equal(
       db
@@ -1062,6 +1127,7 @@ test('social schema v7 adds retry snapshots without rewriting the last known att
     db.exec(`
       ALTER TABLE social_work_tasks DROP COLUMN project_plan_item_id;
       ALTER TABLE social_work_tasks DROP COLUMN project_result_pending;
+      DELETE FROM social_schema_migrations WHERE version = 27;
       DELETE FROM social_schema_migrations WHERE version = 26; DELETE FROM social_schema_migrations WHERE version = 25;
       ALTER TABLE social_project_growth_batches DROP COLUMN finalized_at;
       DROP TABLE social_project_growth_members;

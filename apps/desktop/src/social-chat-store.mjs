@@ -347,7 +347,7 @@ export class SocialChatStore {
             status TEXT NOT NULL CHECK (status IN ('complete', 'streaming', 'interrupted', 'failed')),
             attempt INTEGER NOT NULL DEFAULT 1 CHECK (attempt > 0),
             model TEXT,
-            runtime TEXT NOT NULL CHECK (runtime IN ('freellmapi', 'local', 'system')),
+            runtime TEXT NOT NULL CHECK (runtime IN ('provider', 'freellmapi', 'local', 'system')),
             error_code TEXT,
             error_message TEXT,
             legacy_source_id TEXT UNIQUE,
@@ -953,6 +953,73 @@ export class SocialChatStore {
           VALUES (26, '${isoNow()}');
         `);
       })();
+    }
+    if (current < 27) {
+      const foreignKeysEnabled = this.db.pragma('foreign_keys', { simple: true });
+      this.db.pragma('foreign_keys = OFF');
+      try {
+        this.db.transaction(() => {
+          this.db.exec(`
+            CREATE TABLE social_messages_provider_runtime (
+              seq INTEGER PRIMARY KEY AUTOINCREMENT,
+              id TEXT NOT NULL UNIQUE,
+              room_id TEXT NOT NULL REFERENCES social_rooms(id) ON DELETE CASCADE,
+              turn_id TEXT NOT NULL,
+              role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
+              agent_id TEXT REFERENCES social_agents(id) ON DELETE SET NULL,
+              content TEXT NOT NULL,
+              status TEXT NOT NULL CHECK (status IN ('complete', 'streaming', 'interrupted', 'failed')),
+              attempt INTEGER NOT NULL DEFAULT 1 CHECK (attempt > 0),
+              model TEXT,
+              runtime TEXT NOT NULL CHECK (runtime IN ('provider', 'freellmapi', 'local', 'system')),
+              error_code TEXT,
+              error_message TEXT,
+              legacy_source_id TEXT UNIQUE,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              forwarded_sources_json TEXT NOT NULL DEFAULT '[]',
+              reply_to_message_id TEXT,
+              reply_to_json TEXT NOT NULL DEFAULT 'null',
+              interaction_adjustment_ids_json TEXT NOT NULL DEFAULT '[]',
+              interaction_adjustment_snapshots_json TEXT NOT NULL DEFAULT '[]',
+              interaction_adjustment_attempts_json TEXT NOT NULL DEFAULT '[]',
+              history_search_status TEXT NOT NULL DEFAULT 'not_searched'
+                CHECK (history_search_status IN ('not_searched', 'found', 'no_match')),
+              history_sources_included INTEGER NOT NULL DEFAULT 0
+                CHECK (history_sources_included IN (0, 1)),
+              sender_agent_id TEXT REFERENCES social_agents(id) ON DELETE SET NULL
+            );
+            INSERT INTO social_messages_provider_runtime (
+              seq, id, room_id, turn_id, role, agent_id, content, status,
+              attempt, model, runtime, error_code, error_message,
+              legacy_source_id, created_at, updated_at, forwarded_sources_json,
+              reply_to_message_id, reply_to_json, interaction_adjustment_ids_json,
+              interaction_adjustment_snapshots_json,
+              interaction_adjustment_attempts_json, history_search_status,
+              history_sources_included, sender_agent_id
+            )
+            SELECT
+              seq, id, room_id, turn_id, role, agent_id, content, status,
+              attempt, model, runtime, error_code, error_message,
+              legacy_source_id, created_at, updated_at, forwarded_sources_json,
+              reply_to_message_id, reply_to_json, interaction_adjustment_ids_json,
+              interaction_adjustment_snapshots_json,
+              interaction_adjustment_attempts_json, history_search_status,
+              history_sources_included, sender_agent_id
+            FROM social_messages;
+            DROP TABLE social_messages;
+            ALTER TABLE social_messages_provider_runtime RENAME TO social_messages;
+            CREATE INDEX social_messages_room_order
+              ON social_messages(room_id, seq);
+            CREATE INDEX social_messages_turn_attempt
+              ON social_messages(turn_id, attempt, role);
+            INSERT INTO social_schema_migrations(version, applied_at)
+            VALUES (27, '${isoNow()}');
+          `);
+        })();
+      } finally {
+        this.db.pragma(`foreign_keys = ${foreignKeysEnabled ? 'ON' : 'OFF'}`);
+      }
     }
   }
 
@@ -3753,7 +3820,7 @@ export class SocialChatStore {
             (id, room_id, turn_id, role, sender_agent_id, content, status, runtime,
              forwarded_sources_json, reply_to_message_id, reply_to_json,
              created_at, updated_at)
-          VALUES (?, ?, ?, 'user', ?, ?, 'complete', 'freellmapi', ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, 'user', ?, ?, 'complete', 'provider', ?, ?, ?, ?, ?)
         `)
         .run(
           userMessageId,
@@ -3775,7 +3842,7 @@ export class SocialChatStore {
              reply_to_json, interaction_adjustment_ids_json,
              interaction_adjustment_snapshots_json,
              interaction_adjustment_attempts_json, created_at, updated_at)
-          VALUES (?, ?, ?, 'assistant', ?, '', 'streaming', 1, ?, 'freellmapi', '[]', NULL, 'null', ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, 'assistant', ?, '', 'streaming', 1, ?, 'provider', '[]', NULL, 'null', ?, ?, ?, ?, ?)
         `)
         .run(
           assistantMessageId,
@@ -3909,7 +3976,7 @@ export class SocialChatStore {
           INSERT INTO social_messages
             (id, room_id, turn_id, role, content, sender_agent_id, status, runtime,
              created_at, updated_at)
-          VALUES (?, ?, ?, 'user', ?, ?, 'complete', 'freellmapi', ?, ?)
+          VALUES (?, ?, ?, 'user', ?, ?, 'complete', 'provider', ?, ?)
         `)
         .run(
           mirrorUserMessageId,
@@ -3927,7 +3994,7 @@ export class SocialChatStore {
            interaction_adjustment_ids_json,
            interaction_adjustment_snapshots_json,
            interaction_adjustment_attempts_json, created_at, updated_at)
-        VALUES (?, ?, ?, 'assistant', ?, '', 'streaming', 1, ?, 'freellmapi',
+        VALUES (?, ?, ?, 'assistant', ?, '', 'streaming', 1, ?, 'provider',
                 '[]', 'null', '[]', '[]', '[]', ?, ?)
       `);
       insertAssistant.run(
@@ -4495,7 +4562,7 @@ export class SocialChatStore {
            interaction_adjustment_snapshots_json,
            interaction_adjustment_attempts_json, created_at, updated_at)
         VALUES (?, ?, ?, 'assistant', 'noema', '', 'streaming', 1,
-                ?, 'freellmapi', '[]', 'null', '[]', '[]', '[]', ?, ?)
+                ?, 'provider', '[]', 'null', '[]', '[]', '[]', ?, ?)
       `)
         .run(
           assistantMessageId,

@@ -173,7 +173,7 @@ export interface NoemaSocialMessage {
   status: 'complete' | 'streaming' | 'interrupted' | 'failed';
   attempt: number;
   model: string | null;
-  runtime: 'freellmapi' | 'local' | 'system';
+  runtime: 'provider' | 'freellmapi' | 'local' | 'system';
   errorCode: string | null;
   errorMessage: string | null;
   legacySourceId: string | null;
