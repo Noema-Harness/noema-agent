@@ -35,7 +35,9 @@
 | 交流负担与弃用 | [Textual cues, cognitive load, and social fatigue (International Journal of Human–Computer Studies, 2026)](https://doi.org/10.1016/j.ijhcs.2026.103846) 组间实验分别操纵对话长短与信息量，摘要报告二者可经认知负担、社交疲劳提高弃用意图，并辅以用户访谈。 | 它研究的是持续使用意向，不能直接定义 Noema 的回复上限；但提醒需观察连续对话的累积阅读成本，不能只评单条回答完整度。 |
 | 现实写作的多样性 | [The shrinking landscape of linguistic diversity (Nature Human Behaviour, 2026)](https://www.nature.com/articles/s41562-026-02550-0) 跨 7 个数据集、超过 880,000 篇文本，报告 LLM 写作辅助普及与语言多样性下降相关，若干数据中的写作复杂度方差下降 21–50%。 | 关联和实验结果各自回答什么；“复杂度”怎样测；结果能否迁移到私人聊天。 |
 | 创作分布 | [Large language models are homogeneously creative (PNAS Nexus, 2026)](https://academic.oup.com/pnasnexus/article/5/3/pgag042/8529001) 把多种模型与人放进标准化创造性任务，直接测群体层面的答案差异。 | 读完整任务和指标；创造力不是单一量表，群体趋同与特定用户获得灵感可以同时存在。 |
+| 跨代创作趋同 | [Are LLMs becoming similarly creative? (arXiv, 2026)](https://arxiv.org/abs/2608.19437) 比较 2023–2026 年模型在开放式聊天和发散思维题上的跨模型语义距离，报告回答逐代趋近。 | 初步趋势分析以嵌入距离衡量内容相似度；它不能单独衡量作品价值，也没有识别趋同的成因。 |
 | 拟人感与同理表达 | [Perceived humanness and empathy are dissociated (Nature Communications, 2026)](https://pmc.ncbi.nlm.nih.gov/articles/PMC13635098/) 在关系建议写作的五项研究中发现，被判断为“像人”、表达同理与实际回应处境彼此不能互相代替；“像人”提示主要改变模型表面语言线索。 | 英语关系建议、来源判断与 GPT‑4/4o 条件；不直接衡量长期关系或真实用户的信任。产品不能拿“像人”分数代替互动质量。 |
+| 用户框架与多轮迎合 | [Sweet Talkers (ACL LUHME 2026)](https://aclanthology.org/2026.luhme-1.21/) 用 2,400 条英语关系求助提示比较两种模型；提问者对处境的立场框架和后续追问，比语法语气更能影响迎合表现。 | 只覆盖五类关系主题、两种模型，后续仅观察一轮；可用于提醒评测要保留用户框架和对话位置。 |
 | 人类创作的纵向变化 | [Writing in Symbiosis (NeurIPS 2025 Creative AI)](https://proceedings.neurips.cc/paper_files/paper/2025/hash/615229550c97d1c4d006a4bf6b54590e-Abstract-Creative_AI_Track.html) 用跨 LLM 发布前后的写作语料，报告主题趋向 AI 相关内容的同时，不同作者呈现趋近 AI 风格、远离 AI 风格或保持稳定等轨迹。 | 会议论文的语料分析不直接证明 AI 导致个体分化；它提醒“总体趋同”不等于每个人都变得一样。 |
 | 人的实际判断与后果 | [Sycophantic AI decreases prosocial intentions and promotes dependence (Science, 2026)](https://doi.org/10.1126/science.aec8352) 测 11 个模型，并以 2,405 人的三项预注册实验观察：迎合回答可以让人更确信自己正确、降低承担责任和修复冲突的意愿，同时更受偏好。 | 这是社会冲突建议场景；它能证明用户喜好并不总等于好结果，不能直接替 Noema 的所有温暖交流定规矩。 |
 | 个体偏好与模型评价 | [Personalized Benchmarking (Findings of ACL 2026)](https://aclanthology.org/2026.findings-acl.31/) 用 115 位活跃 Arena 用户的个人选择构建模型排名；ELO 和 Bradley–Terry 的个人排名与总体排名相关性差异很大。 | “平均用户偏好”不一定预测个人选择；这项研究测的是 Arena 模型比较，不能直接说明长期关系质量。阅读时同时检查偏好指标和用户真正评价的结果。 |
@@ -111,4 +113,5 @@ Noema 的长周期共同开发记录是重要的现场材料，因为它保留�
 ## 中文语境还缺什么
 
 首轮找到了中文短文本来源识别和中文事实迎合评测，但两者都不能直接回答用户在 Noema 里说的“这句话怎么这么像 AI”。一个问评论能不能被分类成模型文本，一个问模型会不会附和错误事实；私人长对话里的语气、人际动作、上下文误读和审美判断仍然缺少贴近真实交互的公开材料。下一轮要继续找中文社交语料、长对话用户研究与中英同条件比较，并把论文里的“自然”定义与真实使用者自己的偏好分开。
+
 
