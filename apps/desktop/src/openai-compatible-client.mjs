@@ -1,5 +1,5 @@
-const DEFAULT_MODEL_BASE_URL = 'http://127.0.0.1:3001/v1';
-// Keep routine turns within a modest free-route output budget; callers may
+const DEFAULT_MODEL_BASE_URL = 'https://api.deepseek.com/v1';
+// Keep routine turns within a modest output budget; callers may
 // explicitly raise it for work that needs a longer response.
 const DEFAULT_MAX_OUTPUT_TOKENS = 1024;
 // Bound both streamed deltas and buffered router replies if a gateway ignores
@@ -18,6 +18,23 @@ export function getProviderName(baseUrl) {
     // The configured endpoint will be reported as unavailable by the client.
   }
   return 'OpenAI 兼容服务';
+}
+
+/**
+ * Prefer the current provider credential and endpoint together. The legacy
+ * gateway is selected only when no current provider credential exists, so a
+ * key is never sent to a URL inherited from the other credential store.
+ * @param {{hasCurrentProviderCredential:boolean,currentProviderBaseUrl?:string|null,legacyFreeLlmApiBaseUrl?:string|null}} options
+ */
+export function resolveConfiguredModelBaseUrl({
+  hasCurrentProviderCredential,
+  currentProviderBaseUrl,
+  legacyFreeLlmApiBaseUrl,
+}) {
+  if (hasCurrentProviderCredential) {
+    return currentProviderBaseUrl ?? DEFAULT_MODEL_BASE_URL;
+  }
+  return legacyFreeLlmApiBaseUrl ?? DEFAULT_MODEL_BASE_URL;
 }
 
 const VERIFIED_FREE_MODELS = new Map([

@@ -362,7 +362,7 @@ export function registerRootIpc({
 
 /**
  * Requires explicit transmission consent before a selected external snapshot
- * can enter any FreeLLMAPI-backed root turn.
+ * can enter any configured model-provider root turn.
  * @param {object} rootAgent
  * @param {(snapshot:{title:string})=>Promise<boolean>} confirmTransmission
  */

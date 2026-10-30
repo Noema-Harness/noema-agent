@@ -25,6 +25,13 @@ function makeStore() {
   return { db, store: createSocialTestStore(db) };
 }
 
+function createWorkService(options) {
+  return new SocialWorkService({
+    getSelectedModel: () => 'test-model',
+    ...options,
+  });
+}
+
 function addCompletedMessage(store, { roomId, agentId, text }) {
   const turn = store.beginTurn({
     roomId,
@@ -77,11 +84,31 @@ function makeAdapter({
   };
 }
 
+test('new-model execution cannot start until a provider model is selected', async () => {
+  const { db, store } = makeStore();
+  const service = new SocialWorkService({
+    store,
+    adapter: makeAdapter(),
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => null,
+    chooseWorkspace: async () => tmpdir(),
+  });
+  try {
+    assert.deepEqual(service.getReadiness(), {
+      available: false,
+      reason: '请先在设置中选择一个当前可用的模型。',
+    });
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});
+
 test('a project paused while its workspace picker is open cannot start file work', async () => {
   const { db, store } = makeStore();
   let paused = false;
   const launches = [];
-  const service = new SocialWorkService({
+  const service = createWorkService({
     store,
     adapter: makeAdapter({ onStart: (input) => launches.push(input) }),
     secretStore: { isConfigured: () => true },
@@ -114,7 +141,7 @@ test('an ordinary specialist message reaches the real work lifecycle without a s
   const directory = mkdtempSync(path.join(tmpdir(), 'noema-natural-work-'));
   const { db, store } = makeStore();
   const launches = [];
-  const work = new SocialWorkService({
+  const work = createWorkService({
     store,
     adapter: makeAdapter({ onStart: (input) => launches.push(input) }),
     secretStore: { isConfigured: () => true },
@@ -178,7 +205,7 @@ test('stopping a conversation while choosing its workspace prevents a late file 
   const controller = new AbortController();
   let releasePicker;
   const launches = [];
-  const service = new SocialWorkService({
+  const service = createWorkService({
     store,
     adapter: makeAdapter({ onStart: (input) => launches.push(input) }),
     secretStore: { isConfigured: () => true },
@@ -222,7 +249,7 @@ test('social work keeps the stable friend and only includes the issuing room con
     agentId: 'noema',
     text: '群聊任务背景：群标记-海盐',
   });
-  const service = new SocialWorkService({
+  const service = createWorkService({
     store,
     adapter: makeAdapter({
       onStart(input) {
@@ -310,7 +337,7 @@ test('legacy DSH project execution keeps its pinned route when another model is 
   );
   const { db, store } = makeStore();
   const adapter = Object.assign(makeAdapter(), { executionEngine: 'dsh' });
-  const service = new SocialWorkService({
+  const service = createWorkService({
     store,
     adapter,
     secretStore: { isConfigured: () => true },
@@ -340,7 +367,7 @@ test('Noema internal dispatch stores project work in the source room with a capa
   mkdirSync(workspace);
   const { db, store } = makeStore();
   const authorizationPrompts = [];
-  const service = new SocialWorkService({
+  const service = createWorkService({
     store,
     adapter: makeAdapter(),
     secretStore: { isConfigured: () => true },
@@ -396,7 +423,7 @@ test('Noema can dispatch a real work record from an active project group to one 
   const { db, store } = makeStore();
   const projectStore = new SocialProjectStore({ db, socialChatStore: store });
   let launchCount = 0;
-  const service = new SocialWorkService({
+  const service = createWorkService({
     store,
     projectStore,
     adapter: makeAdapter({ onStart: () => launchCount++ }),
@@ -482,7 +509,7 @@ test('Noema project dispatch requires an explicit active capable executor before
   mkdirSync(workspace);
   const { db, store } = makeStore();
   const authorizationPrompts = [];
-  const service = new SocialWorkService({
+  const service = createWorkService({
     store,
     adapter: makeAdapter(),
     secretStore: { isConfigured: () => true },
@@ -546,7 +573,7 @@ test('a workspace admits only one active project execution across chats', async 
     finishExecution = resolve;
   });
   const launches = [];
-  const service = new SocialWorkService({
+  const service = createWorkService({
     store,
     adapter: {
       async startTask(input) {
@@ -602,7 +629,7 @@ test('project tasks include only active coding adjustments and persist the exact
   mkdirSync(workspace);
   const { db, store } = makeStore();
   const seen = [];
-  const service = new SocialWorkService({
+  const service = createWorkService({
     store,
     adapter: makeAdapter({ onStart: (input) => seen.push(input) }),
     secretStore: { isConfigured: () => true },
@@ -639,7 +666,7 @@ test('a cross-room task receives only one bounded, redacted, verified case when 
   mkdirSync(workspace);
   const { db, store } = makeStore();
   const seen = [];
-  const service = new SocialWorkService({
+  const service = createWorkService({
     store,
     adapter: makeAdapter({
       result: '完成。历史输出里出现过 sk-abcdefghijklmnop123456。',
@@ -721,7 +748,7 @@ test('a verified case transfer can propose, trial, and revoke one bounded practi
   const practiceConfirmations = [];
   let practiceDecision = 'trial';
   let launchCount = 0;
-  const service = new SocialWorkService({
+  const service = createWorkService({
     store,
     adapter: makeAdapter({
       onStart(input) {
@@ -805,7 +832,7 @@ test('a verified case transfer can propose, trial, and revoke one bounded practi
       '新增文件且用户给出精确内容验收条件。',
     );
     assert.equal(proposalRequests.length, 1);
-    assert.equal(proposalRequests[0].model, 'auto:noema-free');
+    assert.equal(proposalRequests[0].model, 'test-model');
     assert.equal(proposalRequests[0].maxTokens, 512);
     const proposalInput = proposalRequests[0].messages
       .map((message) => message.content)
@@ -909,7 +936,7 @@ test('a verified case transfer can propose, trial, and revoke one bounded practi
 test('canceling the workspace picker starts no DSH task and writes no task record', async () => {
   const { db, store } = makeStore();
   let launches = 0;
-  const service = new SocialWorkService({
+  const service = createWorkService({
     store,
     adapter: makeAdapter({ onStart: () => launches++ }),
     secretStore: { isConfigured: () => true },
@@ -940,7 +967,7 @@ test('a failed DSH run is never upgraded by a passing file check', async () => {
   const workspace = path.join(directory, 'workspace');
   mkdirSync(workspace);
   const { db, store } = makeStore();
-  const service = new SocialWorkService({
+  const service = createWorkService({
     store,
     adapter: makeAdapter({
       status: 'failed',
@@ -977,7 +1004,7 @@ test('a DSH final without Noema file checks is not labeled independently verifie
   const workspace = path.join(directory, 'workspace');
   mkdirSync(workspace);
   const { db, store } = makeStore();
-  const service = new SocialWorkService({
+  const service = createWorkService({
     store,
     adapter: makeAdapter({ result: '已完成，但没有机器核验条件。' }),
     secretStore: { isConfigured: () => true },
@@ -1006,7 +1033,7 @@ test('stopping project work records interruption without claiming rollback', asy
   mkdirSync(workspace);
   const { db, store } = makeStore();
   let finishRun;
-  const service = new SocialWorkService({
+  const service = createWorkService({
     store,
     adapter: {
       async startTask() {
@@ -1134,7 +1161,7 @@ test('a restarted Noema task resumes from durable model-boundary messages', asyn
         yield '已检查已有结果，任务继续完成。';
       },
     };
-    const service = new SocialWorkService({
+    const service = createWorkService({
       store,
       adapter: new NoemaProjectExecutor({ provider }),
       secretStore: { isConfigured: () => true },
@@ -1191,7 +1218,7 @@ test('an unavailable provider can be resumed explicitly without replaying tools'
       yield '已沿用已完成的读取继续任务。';
     },
   };
-  const service = new SocialWorkService({
+  const service = createWorkService({
     store,
     adapter: new NoemaProjectExecutor({ provider }),
     secretStore: { isConfigured: () => true },
@@ -1265,7 +1292,7 @@ test('a long task stopped at the round cap resumes to its final report without r
     },
   };
   const executor = new NoemaProjectExecutor({ provider, maxToolRounds: 16 });
-  const service = new SocialWorkService({
+  const service = createWorkService({
     store,
     adapter: executor,
     secretStore: { isConfigured: () => true },
@@ -1348,7 +1375,7 @@ test('a rate-limited provider can be resumed without replaying tools', async () 
       yield '已沿用已完成的读取继续任务。';
     },
   };
-  const service = new SocialWorkService({
+  const service = createWorkService({
     store,
     adapter: new NoemaProjectExecutor({ provider }),
     secretStore: { isConfigured: () => true },
@@ -1418,7 +1445,7 @@ test('a provider Retry-After resumes once from its saved checkpoint', async () =
       yield '结果已写入并通过核验。';
     },
   };
-  const service = new SocialWorkService({
+  const service = createWorkService({
     store,
     adapter: new NoemaProjectExecutor({
       provider,
@@ -1506,7 +1533,7 @@ test('output budget failure is persisted as non-resumable with no attempted writ
       yield* [];
     },
   };
-  const service = new SocialWorkService({
+  const service = createWorkService({
     store,
     adapter: new NoemaProjectExecutor({ provider }),
     secretStore: { isConfigured: () => true },
@@ -1550,7 +1577,7 @@ test('a rate-limited task resumes once in the same DSH session only after its fi
   const { db, store } = makeStore();
   const launches = [];
   const waits = [];
-  const service = new SocialWorkService({
+  const service = createWorkService({
     store,
     adapter: {
       async startTask(input) {
@@ -1617,10 +1644,10 @@ test('a rate-limited task resumes once in the same DSH session only after its fi
   }
 });
 
-test('project work is unavailable without an executor or FreeLLMAPI and does not open a folder picker', async () => {
+test('project work is unavailable without an executor or configured model and does not open a folder picker', async () => {
   const { db, store } = makeStore();
   let picked = false;
-  const service = new SocialWorkService({
+  const service = createWorkService({
     store,
     adapter: null,
     secretStore: { isConfigured: () => false },
@@ -1651,7 +1678,7 @@ test('archived specialists cannot start project work or open the workspace picke
   const { db, store } = makeStore();
   store.setAgentArchived('engineering-partner', true);
   let pickedWorkspace = false;
-  const service = new SocialWorkService({
+  const service = createWorkService({
     store,
     adapter: makeAdapter(),
     secretStore: { isConfigured: () => true },
@@ -1691,7 +1718,7 @@ test('a user-created specialist with explicit project-work capability uses the e
     projectWork: true,
   });
   const starts = [];
-  const service = new SocialWorkService({
+  const service = createWorkService({
     store,
     adapter: {
       async startTask(input) {

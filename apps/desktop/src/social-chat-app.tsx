@@ -3277,9 +3277,7 @@ function SocialChatApp() {
                         </section>
                       ) : projectWorkspace.status === 'awaiting_user' ? (
                         <div className="project-stage">
-                          <span
-                            className="state-mark"
-                          />
+                          <span className="state-mark" />
                           等待你的反馈
                         </div>
                       ) : null}
@@ -4388,7 +4386,8 @@ function SocialChatApp() {
               </select>
             </label>
             <p className="dialog-footnote">
-              Noema 只接受本机地址。模型服务可能按各自政策处理请求内容。
+              本机服务可使用 HTTP，远程服务必须使用
+              HTTPS。模型服务会按各自政策处理请求内容。
             </p>
             <section
               className="settings-provider-section"
@@ -4777,14 +4776,12 @@ function SocialHistoryRecallTrace({
       )}
       {sources.length && message.historySourcesIncluded ? (
         <p className="history-recall-caveat">
-          FreeLLMAPI
-          已接受包含这些摘录的请求；这不证明模型实际使用或理解了它们。
+          已将这些摘录发送给当前模型服务；这不证明模型实际使用或理解了它们。
         </p>
       ) : null}
       {sources.length && !message.historySourcesIncluded ? (
         <p className="history-recall-caveat">
-          本机找到了这些摘录，但 FreeLLMAPI
-          未返回接受响应；无法确认是否送达上游。
+          本机找到了这些摘录，但请求未成功送达当前模型服务。
         </p>
       ) : null}
     </details>

@@ -1,6 +1,6 @@
 # ADR 0005: Route Noema model calls through FreeLLMAPI free models
 
-- Status: Accepted as the current provider boundary; selected after the user's explicit direction
+- Status: Superseded by [ADR 0034](0034-model-provider-boundary.md) on 2026-10-26. Historical record of the initial free-route experiment.
 - Date: 2026-10-13
 - Replaces: ADR 0003 decision 7's local Ollama choice, and ADR 0004 decision 6's local Ollama worker route
 

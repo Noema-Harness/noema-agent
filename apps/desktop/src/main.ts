@@ -19,8 +19,8 @@ import { resolveElectronProxy } from './electron-proxy.mjs';
 import { verifyConversationNavigation } from './conversation-navigation-e2e.mjs';
 import { runIsolatedWorkerE2E } from './isolated-worker-e2e.mjs';
 import {
-  DEFAULT_MODEL_BASE_URL,
   OpenAICompatibleClient,
+  resolveConfiguredModelBaseUrl,
 } from './openai-compatible-client.mjs';
 import {
   createImportAwareSendMessage,
@@ -3643,7 +3643,7 @@ function discoverFreeLLMAPIBaseUrl(appDataPath: string) {
   } catch {
     // Use FreeLLMAPI's documented default when the desktop configuration is absent.
   }
-  return DEFAULT_MODEL_BASE_URL;
+  return 'http://127.0.0.1:3001/v1';
 }
 
 function isPathWithin(directory: string, candidate: string) {
@@ -3713,13 +3713,14 @@ async function startNoema() {
         'freellmapi.key',
       ),
     });
+    const modelProviderCredentialPath = path.join(
+      app.getPath('userData'),
+      'credentials',
+      'model-provider.key',
+    );
     providerSecretStore = new EncryptedSecretStore({
       safeStorage,
-      filePath: path.join(
-        app.getPath('userData'),
-        'credentials',
-        'model-provider.key',
-      ),
+      filePath: modelProviderCredentialPath,
       fallbackStores: [legacyFreeLlmApiSecretStore],
     });
     const webSearchSecretStore = new EncryptedSecretStore({
@@ -3751,10 +3752,21 @@ async function startNoema() {
       legacyFreeLlmApiSecretStore.set(process.env.NOEMA_FREELLMAPI_API_KEY);
       delete process.env.NOEMA_FREELLMAPI_API_KEY;
     }
-    const configuredBaseUrl =
-      providerSecretStore.getBaseUrl() ??
-      process.env.NOEMA_FREELLMAPI_BASE_URL ??
-      discoverFreeLLMAPIBaseUrl(app.getPath('appData'));
+    const explicitLegacyBaseUrl = process.env.NOEMA_FREELLMAPI_BASE_URL;
+    const hasLegacyFreeLlmApiCredential =
+      legacyFreeLlmApiSecretStore.isConfigured();
+    const legacyFreeLlmApiBaseUrl = hasLegacyFreeLlmApiCredential
+      ? (explicitLegacyBaseUrl ??
+        discoverFreeLLMAPIBaseUrl(app.getPath('appData')))
+      : null;
+    const hasCurrentProviderCredential = fs.existsSync(
+      modelProviderCredentialPath,
+    );
+    const configuredBaseUrl = resolveConfiguredModelBaseUrl({
+      hasCurrentProviderCredential,
+      currentProviderBaseUrl: providerSecretStore.getBaseUrl(),
+      legacyFreeLlmApiBaseUrl,
+    });
     const provider = new OpenAICompatibleClient({
       baseUrl: configuredBaseUrl,
       getApiKey: () => providerSecretStore?.get() ?? null,
@@ -4101,10 +4113,9 @@ async function startNoema() {
           : [],
       chooseWorkspace: async ({ reuseCase = false, prompt = '' } = {}) => {
         if (socialWorkE2eValid) return testSocialWorkWorkspace;
-        const devWorkspaceOverride =
-          !app.isPackaged
-            ? process.env.NOEMA_DEV_PROJECT_WORKSPACE_PATH
-            : null;
+        const devWorkspaceOverride = !app.isPackaged
+          ? process.env.NOEMA_DEV_PROJECT_WORKSPACE_PATH
+          : null;
         if (devWorkspaceOverride) {
           const workspace = path.resolve(devWorkspaceOverride);
           if (
@@ -4123,9 +4134,9 @@ async function startNoema() {
           title: '检查项目工作并选择文件夹',
           message: [
             `Noema 准备在你选择的工作区执行项目任务：\n${prompt}`,
-            'Noema 会读取/修改项目文件，并在操作系统沙箱中运行前台项目命令。默认读写范围是你选定的工作区，网络和工作区外路径默认受限；需要越界时会展示具体命令与目标，逐项询问是否仅对该命令开放。Windows 首次使用需要一次管理员确认来创建独立沙箱账户和出站过滤规则；不会授权读取整个用户目录。项目内容仍可能通过 FreeLLMAPI 发往当前第三方免费模型路由。不要选择含不应发送的密钥或隐私资料的目录。停止任务不会自动撤销已经发生的项目改动。',
+            'Noema 会读取/修改项目文件，并在操作系统沙箱中运行前台项目命令。默认读写范围是你选定的工作区，网络和工作区外路径默认受限；需要越界时会展示具体命令与目标，逐项询问是否仅对该命令开放。Windows 首次使用需要一次管理员确认来创建独立沙箱账户和出站过滤规则；不会授权读取整个用户目录。项目内容可能发送到当前配置的模型服务商，并按该服务商的数据处理条款处理。不要选择含不应发送的密钥或隐私资料的目录。停止任务不会自动撤销已经发生的项目改动。',
             reuseCase
-              ? '本轮还会检查同一位工程搭档在同一项目的其他聊天中，是否有一项通过 Noema 文件条件核验的工作；若找到，会把一份过滤常见凭据样式的限长摘要随本任务发送给模型，不会发送原聊天记录。若本任务也通过 Noema 核验，Noema 还可能用同一免费路由对两项任务的摘要和核验结果做一次额外分析，提出一条候选做法；候选不会自动升级为技能，可在任务卡撤回。若已有候选，选定目录后还会先展示候选正文，供你决定本轮是否试用；普通经验复用勾选不会自动授权使用某条候选。过滤无法保证识别所有敏感信息。'
+              ? '本轮还会检查同一位工程搭档在同一项目的其他聊天中，是否有一项通过 Noema 文件条件核验的工作；若找到，会把一份过滤常见凭据样式的限长摘要随本任务发送给模型，不会发送原聊天记录。若本任务也通过 Noema 核验，Noema 还可能用当前模型服务对两项任务的摘要和核验结果做一次额外分析，提出一条候选做法；候选不会自动升级为技能，可在任务卡撤回。若已有候选，选定目录后还会先展示候选正文，供你决定本轮是否试用；普通经验复用勾选不会自动授权使用某条候选。过滤无法保证识别所有敏感信息。'
               : '本轮不会从其他聊天带入项目案例。',
           ].join('\n\n'),
           properties: ['openDirectory'],
@@ -4238,7 +4249,7 @@ async function startNoema() {
             caseSnapshot
               ? `选择“只引用已核验案例”会带入「${caseSnapshot.taskPrompt || caseSnapshot.taskId}」，不发送候选做法。`
               : '当前没有可带入的原案例；选择“不试用候选”时只执行当前任务。',
-            '选择“试用”会把这条候选和当前任务一并发送给当前 FreeLLMAPI 免费路由。试用结果只表示 Noema 文件条件是否通过，不证明候选导致了结果。',
+            '选择“试用”会把这条候选和当前任务一并发送给当前配置的模型服务商。试用结果只表示 Noema 文件条件是否通过，不证明候选导致了结果。',
           ].join('\n\n'),
           buttons: [
             caseSnapshot ? '只引用已核验案例' : '不带入候选',
@@ -4424,7 +4435,7 @@ async function startNoema() {
           title: '发送导入的 Codex 上下文',
           message: `“${imported.title}”的可见对话将随 Noema 本轮及后续对话发送。`,
           detail:
-            '这份快照保存在本机。确认后，快照和你在 Noema 的近期对话会通过 FreeLLMAPI 发往当前选定的免费模型路由；上游服务的数据处理政策各不相同。该授权持续有效，直到你在 Noema 移除此快照。移除无法撤回此前已发送的数据；Codex 原会话不会被修改。',
+            '这份快照保存在本机。确认后，快照和你在 Noema 的近期对话会发往当前选定的模型服务商；上游服务的数据处理政策各不相同。该授权持续有效，直到你在 Noema 移除此快照。移除无法撤回此前已发送的数据；Codex 原会话不会被修改。',
           buttons: ['取消本次发送', '发送并继续使用此快照'],
           defaultId: 0,
           cancelId: 0,
@@ -4439,7 +4450,7 @@ async function startNoema() {
           title: '后台任务的数据范围',
           message: '选择工作区会允许后台 DSH agent 读取和修改其中的文件。',
           detail:
-            '任务指令，以及 agent 实际读取的文件内容，会通过本机 FreeLLMAPI 发往当前免费链中的第三方服务（目前包括 BlockRun、Kilo 和 OVH，并可能按可用性切换）。不同服务的数据处理条款不同；例如 Kilo 声明会记录请求/响应用于训练。免费不代表私密。不要选择包含不应发送给第三方的密钥或敏感资料的目录。你仍可在任务运行时停止它，但停止前的文件改动不会自动回滚。',
+            '任务指令以及 agent 实际读取的文件内容会发送到当前配置的模型服务商，并按其数据处理条款处理。不要选择包含不应发送给第三方的密钥或敏感资料的目录。你仍可在任务运行时停止它，但停止前的文件改动不会自动回滚。',
           buttons: ['取消', '继续选择工作区'],
           defaultId: 1,
           cancelId: 0,
@@ -4761,7 +4772,7 @@ async function startNoema() {
             };
             if (source.practiceCandidateStatus === 'failed') {
               throw new Error(
-                '基于真实 DSH 经历的 FreeLLMAPI 提炼调用失败；查看本机网关请求日志。',
+                '基于真实 DSH 经历的模型调用失败；请检查当前模型服务连接。',
               );
             }
             if (source.practiceCandidateStatus === 'pending') {
@@ -4808,11 +4819,11 @@ async function startNoema() {
             };
             if (source.practiceCandidateStatus === 'failed') {
               throw new Error(
-                'FreeLLMAPI 候选提炼调用失败；请查看本机网关请求日志。',
+                '候选提炼的模型调用失败；请检查当前模型服务连接。',
               );
             }
             if (source.practiceCandidateStatus === 'pending') {
-              throw new Error('FreeLLMAPI 候选提炼超过 55 秒仍未结束。');
+              throw new Error('候选提炼的模型调用超过 55 秒仍未结束。');
             }
             if (source.practiceCandidateStatus === 'available') {
               const candidate = source.practiceCandidate;

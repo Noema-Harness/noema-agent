@@ -18,6 +18,10 @@ dependency.
   verified route metadata as a supported local gateway behavior, while allowing
   standard OpenAI-compatible model catalogs and chat requests from remote HTTPS
   endpoints.
+- A fresh installation starts with the direct DeepSeek HTTPS endpoint; users
+  still add their own API key before requests can be made. Existing generic
+  credentials keep their saved endpoint, and a legacy FreeLLMAPI credential
+  keeps its discovered local endpoint until the user changes provider.
 - Keep API keys encrypted in the OS-backed credential store. Store the active
   generic endpoint separately from the existing FreeLLMAPI credential so a
   provider change does not destroy the previous configuration. HTTP remains

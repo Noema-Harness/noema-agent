@@ -2,9 +2,46 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   OpenAICompatibleClient,
+  DEFAULT_MODEL_BASE_URL,
   ModelProviderError,
   normalizeBaseUrl,
+  resolveConfiguredModelBaseUrl,
 } from '../src/openai-compatible-client.mjs';
+
+test('a new model client defaults to the direct HTTPS provider endpoint', () => {
+  const client = new OpenAICompatibleClient({ getApiKey: () => null });
+  assert.equal(DEFAULT_MODEL_BASE_URL, 'https://api.deepseek.com/v1');
+  assert.equal(client.baseUrl, DEFAULT_MODEL_BASE_URL);
+});
+
+test('provider endpoint selection keeps current and legacy credentials paired', () => {
+  assert.equal(
+    resolveConfiguredModelBaseUrl({
+      hasCurrentProviderCredential: true,
+      currentProviderBaseUrl: 'https://api.openai.com/v1',
+      legacyFreeLlmApiBaseUrl: 'http://127.0.0.1:31415/v1',
+    }),
+    'https://api.openai.com/v1',
+  );
+  assert.equal(
+    resolveConfiguredModelBaseUrl({
+      hasCurrentProviderCredential: true,
+      legacyFreeLlmApiBaseUrl: 'http://127.0.0.1:31415/v1',
+    }),
+    DEFAULT_MODEL_BASE_URL,
+  );
+  assert.equal(
+    resolveConfiguredModelBaseUrl({
+      hasCurrentProviderCredential: false,
+      legacyFreeLlmApiBaseUrl: 'http://127.0.0.1:31415/v1',
+    }),
+    'http://127.0.0.1:31415/v1',
+  );
+  assert.equal(
+    resolveConfiguredModelBaseUrl({ hasCurrentProviderCredential: false }),
+    DEFAULT_MODEL_BASE_URL,
+  );
+});
 
 test('lists only the explicitly verified free routes from available models', async () => {
   const client = new OpenAICompatibleClient({

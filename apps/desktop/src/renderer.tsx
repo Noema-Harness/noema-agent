@@ -593,7 +593,7 @@ function DesktopApp() {
   };
 
   const openModelSettings = () => {
-    setProviderBaseUrl(root?.providerBaseUrl ?? 'http://127.0.0.1:3001/v1');
+    setProviderBaseUrl(root?.providerBaseUrl ?? 'https://api.deepseek.com/v1');
     setProviderApiKey('');
     setModelSettingsOpen(true);
   };
@@ -2216,7 +2216,7 @@ function DesktopApp() {
                               <>
                                 {' '}
                                 {currentAssistant.historySourcesIncluded
-                                  ? `按本轮提及，另向 FreeLLMAPI 请求发送了 ${currentAssistant.historySources.length} 条旧消息；来源见下方。`
+                                  ? `按本轮提及，另向当前模型服务发送了 ${currentAssistant.historySources.length} 条旧消息；来源见下方。`
                                   : `本机另找到 ${currentAssistant.historySources.length} 条旧消息，但上游是否收到无法确认；来源见下方。`}
                               </>
                             )}
@@ -2341,8 +2341,8 @@ function DesktopApp() {
                                 {message.historySources.length > 0 && (
                                   <p className="history-recall-caveat">
                                     {message.historySourcesIncluded
-                                      ? 'FreeLLMAPI 已接受包含这些摘录的请求；这不证明模型实际使用或理解了它们。'
-                                      : 'Noema 已在本机找到这些摘录，但 FreeLLMAPI 未返回接受响应；无法确认是否送达上游。'}{' '}
+                                      ? '已将这些摘录发送给当前模型服务；这不证明模型实际使用或理解了它们。'
+                                      : 'Noema 已在本机找到这些摘录，但请求未成功送达当前模型服务。'}{' '}
                                     Noema 不会将检索命中自动转为长期记忆。
                                   </p>
                                 )}

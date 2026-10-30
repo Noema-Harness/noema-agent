@@ -290,7 +290,16 @@ export class SocialWorkService {
     if (!this.secretStore.isConfigured()) {
       return {
         available: false,
-        reason: '请先连接本机 FreeLLMAPI，才能启动项目工作。',
+        reason: '请先配置模型服务并选择可用模型，才能启动项目工作。',
+      };
+    }
+    if (
+      (this.adapter.executionEngine ?? 'noema') !== 'dsh' &&
+      !this.getSelectedModel()
+    ) {
+      return {
+        available: false,
+        reason: '请先在设置中选择一个当前可用的模型。',
       };
     }
     return { available: true, reason: null };
@@ -425,9 +434,7 @@ export class SocialWorkService {
     const id = randomUUID();
     const executionEngine = this.adapter.executionEngine ?? 'noema';
     const model =
-      executionEngine === 'dsh'
-        ? 'auto:noema-free'
-        : this.getSelectedModel() || 'auto:noema-free';
+      executionEngine === 'dsh' ? 'auto:noema-free' : this.getSelectedModel();
     const saveTask = dispatchFromNoema
       ? this.store.createNoemaDispatchedSocialWorkTask.bind(this.store)
       : this.store.createSocialWorkTask.bind(this.store);
@@ -1027,7 +1034,7 @@ export class SocialWorkService {
     ];
     let proposals = [];
     for await (const _delta of this.practiceProvider.streamChat({
-      model: 'auto:noema-free',
+      model: task.model,
       messages,
       signal,
       maxTokens: 512,
