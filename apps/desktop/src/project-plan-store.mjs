@@ -14,6 +14,7 @@ const statusSchema = z.enum([
   'done',
   'canceled',
 ]);
+const reviewDecisionSchema = z.enum(['approve', 'request_changes']);
 const workItemSchema = z.object({
   id: text(80).regex(/^[\w-]+$/u),
   kind: z.enum(['group', 'work_package']).default('work_package'),
@@ -26,6 +27,20 @@ const workItemSchema = z.object({
   status: statusSchema,
   evidence: z.string().trim().max(8000).default(''),
   evidenceRefs: evidenceRefsSchema.default([]),
+  reviewerIds: z.array(text(200)).max(30).default([]),
+  evidenceReviews: z
+    .array(
+      z.object({
+        actorId: text(200),
+        decision: z.enum(['approved', 'changes_requested']),
+        reviewedAt: text(100),
+        submissionRevision: z.number().int().min(1),
+        reason: z.string().trim().max(2000).default(''),
+      }),
+    )
+    .max(30)
+    .default([]),
+  // Retained for old snapshots and callers; new reviews are stored in evidenceReviews.
   evidenceReview: z
     .object({
       actorId: text(200),
@@ -61,6 +76,7 @@ const itemPatchSchema = z
     parentId: z.string().trim().max(80).nullable().optional(),
     dependsOn: z.array(text(80)).max(100).optional(),
     relatedTo: z.array(text(80)).max(100).optional(),
+    reviewerIds: z.array(text(200)).max(30).optional(),
   })
   .strict();
 const { $schema: _schema, ...parameters } = z.toJSONSchema(planSchema);
@@ -70,6 +86,8 @@ delete projectPlanParameters.properties.phases.items.properties.workItems.items
   .properties.evidenceRefs;
 delete projectPlanParameters.properties.phases.items.properties.workItems.items
   .properties.evidenceReview;
+delete projectPlanParameters.properties.phases.items.properties.workItems.items
+  .properties.evidenceReviews;
 delete projectPlanParameters.properties.phases.items.properties.workItems.items
   .properties.submittedByAgentId;
 delete projectPlanParameters.properties.phases.items.properties.workItems.items
@@ -82,6 +100,8 @@ projectPlanParameters.properties.phases.items.properties.workItems.items.require
       ![
         'evidenceRefs',
         'evidenceReview',
+        'evidenceReviews',
+        'reviewerIds',
         'submittedByAgentId',
         'submittedAt',
         'submissionRevision',
@@ -99,15 +119,46 @@ const transitions = {
 };
 
 function acceptanceRecorded(item) {
+  const reviews = currentSubmissionReviews(item);
+  const approvals = new Set(
+    reviews
+      .filter(
+        (review) =>
+          review.decision === 'approved' &&
+          review.submissionRevision === item.submissionRevision &&
+          review.actorId !== item.submittedByAgentId,
+      )
+      .map((review) => review.actorId),
+  );
+  const accepted = item.reviewerIds?.length
+    ? item.reviewerIds.every((id) => approvals.has(id))
+    : approvals.size > 0;
   return Boolean(
     item.status === 'done' &&
     item.submittedByAgentId &&
     item.submissionRevision &&
     item.evidenceRefs?.length &&
-    item.evidenceReview?.actorId &&
-    item.evidenceReview.actorId !== item.submittedByAgentId &&
-    item.evidenceReview?.submissionRevision === item.submissionRevision,
+    accepted,
   );
+}
+
+function currentSubmissionReviews(item) {
+  const reviews = Array.isArray(item.evidenceReviews)
+    ? item.evidenceReviews
+    : [];
+  if (reviews.length) return reviews;
+  const legacy = item.evidenceReview;
+  return legacy?.actorId
+    ? [{ ...legacy, decision: 'approved', reason: '' }]
+    : [];
+}
+
+function compactReviewRecords(item, reasonLimit = 300) {
+  return currentSubmissionReviews(item).map((review) => ({
+    ...review,
+    reason: review.reason.slice(0, reasonLimit),
+    reasonTruncated: review.reason.length > reasonLimit,
+  }));
 }
 
 function phaseAcceptanceRecorded(phase, workItems) {
@@ -832,11 +883,14 @@ export class ProjectPlanStore {
           {
             ...phase,
             workItems: phase.workItems.map((item) =>
-              boundedTextFields(item, {
+              boundedTextFields(
+                { ...item, evidenceReviews: compactReviewRecords(item) },
+                {
                 acceptance: 400,
                 evidence: 500,
                 blocker: 300,
-              }),
+                },
+              ),
             ),
           },
           { evidence: 500 },
@@ -904,11 +958,14 @@ export class ProjectPlanStore {
     const items = [];
     let length = 0;
     for (const item of candidates) {
-      const bounded = boundedTextFields(item, {
-        acceptance: 400,
-        evidence: 500,
-        blocker: 300,
-      });
+      const bounded = boundedTextFields(
+        { ...item, evidenceReviews: compactReviewRecords(item) },
+        {
+          acceptance: 400,
+          evidence: 500,
+          blocker: 300,
+        },
+      );
       const size = JSON.stringify(bounded).length;
       if (length + size > 12_000) break;
       items.push(bounded);
@@ -976,6 +1033,8 @@ export class ProjectPlanStore {
             item.status !== 'pending' ||
             item.evidence ||
             item.evidenceRefs.length ||
+            item.reviewerIds.length ||
+            item.evidenceReviews.length ||
             item.evidenceReview ||
             item.blocker
           )
@@ -993,6 +1052,18 @@ export class ProjectPlanStore {
             throw new Error(
               '交付项负责人必须是项目中的活跃执行成员；历史已结束项保留原归属。',
             );
+          if (new Set(item.reviewerIds).size !== item.reviewerIds.length)
+            throw new Error('核验人不能重复。');
+          if (item.reviewerIds.includes(item.ownerAgentId))
+            throw new Error('负责人不能核验自己的工作包。');
+          for (const reviewerId of item.reviewerIds) {
+            if (reviewerId === 'user') continue;
+            const eligible = ['submitted', 'done'].includes(item.status)
+              ? known
+              : members;
+            if (!eligible.has(reviewerId))
+              throw new Error('核验人必须是用户或项目成员。');
+          }
         }
         if (new Set(item.dependsOn).size !== item.dependsOn.length)
           throw new Error('交付项依赖不能重复。');
@@ -1185,7 +1256,7 @@ export class ProjectPlanStore {
         stage,
         validated.objective,
         JSON.stringify({
-          schemaVersion: 2,
+          schemaVersion: 3,
           phases: validated.phases,
           baseRevision,
           changes: planChanges(
@@ -1237,13 +1308,21 @@ export class ProjectPlanStore {
               '计划编辑不能跳过工作项提交/验收；请使用对应的状态操作。',
             );
           if (
-            prior?.evidenceReview &&
-            item.status === 'done' &&
-            ['evidence', 'acceptance', 'ownerAgentId', 'dependsOn'].some(
+            prior &&
+            ['submitted', 'done'].includes(prior.status) &&
+            ['acceptance', 'ownerAgentId', 'dependsOn'].some(
               (key) => !isDeepStrictEqual(item[key], prior[key]),
             )
           )
-            throw Error('修订已验收工作包的成果或验收范围前须重开工作项。');
+            throw Error('提交后的验收范围不能直接更改；请先重开工作项，再由负责人重新提交。');
+          if (
+            prior &&
+            ['submitted', 'done'].includes(prior.status) &&
+            !isDeepStrictEqual(item.reviewerIds, prior.reviewerIds)
+          )
+            throw Error(
+              '提交后的核验名单不能直接更改；请先重开工作项，再由负责人重新提交。',
+            );
         }
       const plan = Array.isArray(normalizedPlan?.phases)
         ? {
@@ -1258,6 +1337,9 @@ export class ProjectPlanStore {
                     submissionRevision:
                       priorItems.get(item.id)?.submissionRevision ?? null,
                     evidenceRefs: priorItems.get(item.id)?.evidenceRefs ?? [],
+                    evidenceReviews: ['submitted', 'done'].includes(item.status)
+                      ? (priorItems.get(item.id)?.evidenceReviews ?? [])
+                      : [],
                     evidenceReview:
                       item.status === 'done'
                         ? (priorItems.get(item.id)?.evidenceReview ?? null)
@@ -1307,10 +1389,87 @@ export class ProjectPlanStore {
       const patch = itemPatchSchema.parse(input.patch ?? {});
       if (Object.keys(patch).length && !coordinator)
         throw new Error('只有用户或 Noema 可以修改工作包结构与范围。');
-      if (!coordinator && input.actorAgentId !== item.ownerAgentId)
-        throw new Error('成员只能更新自己负责的交付项。');
-      const status = statusSchema.parse(input.status ?? item.status);
+      if (
+        ['submitted', 'done'].includes(item.status) &&
+        patch.reviewerIds !== undefined &&
+        !isDeepStrictEqual(patch.reviewerIds, item.reviewerIds)
+      )
+        throw new Error('提交后的核验名单不能直接更改；请先重开工作项，再由负责人重新提交。');
       const reviewerId = input.actorAgentId ?? 'user';
+      const assignedReviewer = item.reviewerIds.includes(reviewerId);
+      let status = statusSchema.parse(input.status ?? item.status);
+      const reviewDecision =
+        input.reviewDecision === undefined
+          ? null
+          : reviewDecisionSchema.parse(input.reviewDecision);
+      const effectiveReviewDecision =
+        reviewDecision ??
+        (status === 'done' && item.status === 'submitted' ? 'approve' : null);
+      if (
+        !coordinator &&
+        input.actorAgentId !== item.ownerAgentId &&
+        !(
+          item.status === 'submitted' &&
+          assignedReviewer &&
+          effectiveReviewDecision
+        )
+      )
+        throw new Error('成员只能更新自己负责的交付项。');
+      let evidenceReviews = currentSubmissionReviews(item);
+      if (effectiveReviewDecision) {
+        if (item.status !== 'submitted')
+          throw new Error('只有待验收的提交可以记录核验意见。');
+        if (reviewerId === item.submittedByAgentId)
+          throw new Error('提交者不能验收自己的成果；不能核验自己的提交。');
+        if (item.reviewerIds.length) {
+          if (!assignedReviewer)
+            throw new Error('当前提交只接受指定核验人的意见。');
+        } else if (!coordinator) {
+          throw new Error('未指定会签人时，由 Noema 或用户完成独立验收。');
+        }
+        if (evidenceReviews.some((review) => review.actorId === reviewerId))
+          throw new Error('你已经核验过这个提交版本，不能重复投票。');
+        if (effectiveReviewDecision === 'request_changes') {
+          if (!(input.reviewReason ?? input.blocker ?? '').trim())
+            throw new Error('退回修改时请说明需要补充或修正的内容。');
+          evidenceReviews = [
+            ...evidenceReviews,
+            {
+              actorId: reviewerId,
+              decision: 'changes_requested',
+              reviewedAt: new Date().toISOString(),
+              submissionRevision: item.submissionRevision ?? current.revision,
+              reason: (input.reviewReason ?? input.blocker ?? '').trim(),
+            },
+          ];
+          status = 'in_progress';
+        } else {
+          evidenceReviews = [
+            ...evidenceReviews,
+            {
+              actorId: reviewerId,
+              decision: 'approved',
+              reviewedAt: new Date().toISOString(),
+              submissionRevision: item.submissionRevision ?? current.revision,
+              reason: (input.reviewReason ?? '').trim(),
+            },
+          ];
+          const approvals = new Set(
+            evidenceReviews
+              .filter(
+                (review) =>
+                  review.decision === 'approved' &&
+                  review.submissionRevision === item.submissionRevision &&
+                  review.actorId !== item.submittedByAgentId,
+              )
+              .map((review) => review.actorId),
+          );
+          const quorumReached = item.reviewerIds.length
+            ? item.reviewerIds.every((id) => approvals.has(id))
+            : approvals.size > 0;
+          status = quorumReached ? 'done' : 'submitted';
+        }
+      }
       const newSubmission =
         status === 'submitted' &&
         (item.status !== 'submitted' ||
@@ -1334,7 +1493,11 @@ export class ProjectPlanStore {
         throw new Error('提交记录缺少提交者；请由负责人重新提交成果。');
       if (accepting && !item.evidenceRefs?.length)
         throw new Error('成果缺少可追溯来源；请负责人补交来源后再验收。');
-      if (accepting && reviewerId === item.submittedByAgentId)
+      if (
+        accepting &&
+        !reviewDecision &&
+        reviewerId === item.submittedByAgentId
+      )
         throw new Error('提交者不能验收自己的成果。');
       if (
         item.status === 'done' &&
@@ -1343,15 +1506,14 @@ export class ProjectPlanStore {
       )
         throw Error('已验收成果的依据不能直接改写；请先重开工作项。');
       if (
-        item.evidenceReview &&
-        status === 'done' &&
-        ['acceptance', 'ownerAgentId', 'dependsOn'].some(
+        ['submitted', 'done'].includes(item.status) &&
+        ['acceptance', 'ownerAgentId', 'dependsOn', 'reviewerIds'].some(
           (key) =>
             patch[key] !== undefined &&
             !isDeepStrictEqual(patch[key], item[key]),
         )
       )
-        throw Error('修改已验收工作包的验收范围前须重开工作项。');
+        throw Error('提交后的验收范围不能直接更改；请先重开工作项，再由负责人重新提交。');
       if (status === 'done' && input.evidenceSources !== undefined)
         throw Error('验收不能替换提交时的来源版本；请由负责人重新提交。');
       if (input.actorAgentId === 'noema' && input.evidenceSources !== undefined)
@@ -1371,7 +1533,8 @@ export class ProjectPlanStore {
       if (
         !coordinator &&
         (['done', 'canceled'].includes(status) ||
-          ['done', 'canceled'].includes(item.status))
+          ['done', 'canceled'].includes(item.status)) &&
+        !(effectiveReviewDecision === 'approve' && assignedReviewer)
       )
         throw new Error('成员不能自行验收、取消或重新开启已结束的交付项。');
       if (status !== item.status && !transitions[item.status].includes(status))
@@ -1385,7 +1548,7 @@ export class ProjectPlanStore {
             ? newSubmission
               ? (input.actorAgentId ?? 'user')
               : item.submittedByAgentId
-            : status === 'done'
+            : status === 'done' || effectiveReviewDecision === 'request_changes'
               ? item.submittedByAgentId
               : null,
         submittedAt:
@@ -1393,7 +1556,7 @@ export class ProjectPlanStore {
             ? newSubmission
               ? new Date().toISOString()
               : item.submittedAt
-            : status === 'done'
+            : status === 'done' || effectiveReviewDecision === 'request_changes'
               ? item.submittedAt
               : null,
         submissionRevision:
@@ -1401,22 +1564,41 @@ export class ProjectPlanStore {
             ? newSubmission
               ? current.revision + 1
               : item.submissionRevision
-            : status === 'done'
+            : status === 'done' || effectiveReviewDecision === 'request_changes'
               ? item.submissionRevision
               : null,
         evidence: input.evidence ?? item.evidence,
         evidenceRefs,
+        evidenceReviews: newSubmission
+          ? []
+          : effectiveReviewDecision === 'approve' ||
+              effectiveReviewDecision === 'request_changes'
+            ? evidenceReviews
+            : status === 'submitted' || status === 'done'
+              ? evidenceReviews
+              : [],
         evidenceReview:
-          status === 'done'
-            ? ((input.evidence !== undefined && input.evidence !== item.evidence
-                ? null
-                : item.evidenceReview) ?? {
+          effectiveReviewDecision === 'approve'
+            ? {
                 actorId: reviewerId,
-                reviewedAt: new Date().toISOString(),
+                reviewedAt:
+                  evidenceReviews.at(-1)?.reviewedAt ??
+                  new Date().toISOString(),
                 submissionRevision: item.submissionRevision ?? current.revision,
-              })
-            : null,
-        blocker: input.blocker ?? item.blocker,
+              }
+            : effectiveReviewDecision === 'request_changes'
+              ? null
+              : status === 'done'
+                ? item.evidenceReview
+                : null,
+        blocker:
+          effectiveReviewDecision === 'request_changes'
+            ? (input.reviewReason ?? input.blocker ?? '').trim()
+            : status === 'blocked'
+              ? (input.blocker ?? item.blocker)
+              : status === 'in_progress' && item.status === 'submitted'
+                ? ''
+                : (input.blocker ?? item.blocker),
       };
       return this.write({
         ...input,

@@ -67,6 +67,8 @@ function draftFromPlan(plan: NoemaProjectPlan): Draft {
           status,
           evidence,
           evidenceRefs,
+          reviewerIds,
+          evidenceReviews,
           evidenceReview,
           submittedByAgentId,
           submittedAt,
@@ -84,6 +86,8 @@ function draftFromPlan(plan: NoemaProjectPlan): Draft {
           status,
           evidence,
           evidenceRefs,
+          reviewerIds,
+          evidenceReviews,
           evidenceReview,
           submittedByAgentId,
           submittedAt,
@@ -137,6 +141,7 @@ export function ProjectPlanPanel({ project, onOpenGroupMessage }: {
     status: NoemaProjectPlanStatus;
     text: string;
     evidenceMessageId: string;
+    reviewDecision?: 'approve' | 'request_changes';
   } | null>(null);
   const sequence = useRef(0);
   const reload = useCallback(async () => {
@@ -207,6 +212,10 @@ export function ProjectPlanPanel({ project, onOpenGroupMessage }: {
     id === 'user'
       ? '用户'
       : (members.find((member) => member.agentId === id)?.name ?? '原项目成员');
+  const currentReviews = (item: NoemaProjectPlanItem) =>
+    item.evidenceReviews.filter(
+      (review) => review.submissionRevision === item.submissionRevision,
+    );
   const savedIds = new Set(plan?.items.map((item) => item.id) ?? []);
   const selectedPhase = plan
     ? (plan.phases.find((phase) => phase.id === selectedPhaseId) ??
@@ -615,6 +624,8 @@ export function ProjectPlanPanel({ project, onOpenGroupMessage }: {
         relatedTo: [],
         status: 'pending',
         evidence: '',
+        reviewerIds: [],
+        evidenceReviews: [],
         blocker: '',
       };
       return {
@@ -648,6 +659,8 @@ export function ProjectPlanPanel({ project, onOpenGroupMessage }: {
         relatedTo: [],
         status: 'pending',
         evidence: '',
+        reviewerIds: [],
+        evidenceReviews: [],
         blocker: '',
       };
       return {
@@ -690,6 +703,7 @@ export function ProjectPlanPanel({ project, onOpenGroupMessage }: {
     status: NoemaProjectPlanStatus,
     evidenceOrBlocker = '',
     evidenceMessageId = '',
+    reviewDecision?: 'approve' | 'request_changes',
   ) => {
     if (!plan) return Promise.resolve(false);
     const input: NoemaProjectPlanItemUpdate = {
@@ -706,6 +720,9 @@ export function ProjectPlanPanel({ project, onOpenGroupMessage }: {
           }
         : {}),
       ...(status === 'blocked' ? { blocker: evidenceOrBlocker } : {}),
+      ...(reviewDecision
+        ? { reviewDecision, reviewReason: evidenceOrBlocker }
+        : {}),
       reason:
         status === 'done'
           ? '用户核验并验收当前工作项。'
@@ -1084,6 +1101,57 @@ export function ProjectPlanPanel({ project, onOpenGroupMessage }: {
                                 }
                               />
                             </label>
+                            <details className="project-plan-dependency-editor">
+                              <summary>
+                                {item.reviewerIds.length
+                                  ? `指定核验 · ${item.reviewerIds.length} 人`
+                                  : '核验方式 · 协调者独立验收'}
+                              </summary>
+                              <p className="project-plan-meta">
+                                只在确实需要多人把关时指定核验人；名单为空时由 Noema 或用户独立验收。提交后更改名单须先退回负责人重新提交。
+                              </p>
+                              <div className="project-plan-dependencies">
+                                <label>
+                                  <input
+                                    type="checkbox"
+                                    disabled={['submitted', 'done'].includes(item.status)}
+                                    checked={item.reviewerIds.includes('user')}
+                                    onChange={(event) =>
+                                      updateItem(item.id, {
+                                        reviewerIds: event.target.checked
+                                          ? [...item.reviewerIds, 'user']
+                                          : item.reviewerIds.filter((id) => id !== 'user'),
+                                      })
+                                    }
+                                  />
+                                  用户
+                                </label>
+                                {members
+                                  .filter(
+                                    (member) =>
+                                      member.status === 'active' &&
+                                      !member.agentArchivedAt &&
+                                      member.agentId !== item.ownerAgentId,
+                                  )
+                                  .map((member) => (
+                                    <label key={member.agentId}>
+                                      <input
+                                        type="checkbox"
+                                        disabled={['submitted', 'done'].includes(item.status)}
+                                        checked={item.reviewerIds.includes(member.agentId)}
+                                        onChange={(event) =>
+                                          updateItem(item.id, {
+                                            reviewerIds: event.target.checked
+                                              ? [...item.reviewerIds, member.agentId]
+                                              : item.reviewerIds.filter((id) => id !== member.agentId),
+                                          })
+                                        }
+                                      />
+                                      {member.name}
+                                    </label>
+                                  ))}
+                              </div>
+                            </details>
                             {['submitted', 'done'].includes(item.status) ? (
                               <label>
                                 成果依据
@@ -1781,10 +1849,30 @@ export function ProjectPlanPanel({ project, onOpenGroupMessage }: {
                               : '缺少独立提交记录'}
                           </p>
                           <p>
-                            {item.evidenceReview
+                            {item.evidenceReview && !item.reviewerIds.length
                               ? `验收者：${name(item.evidenceReview.actorId)} · 核验提交版本 ${item.evidenceReview.submissionRevision}`
-                              : '尚无独立验收记录'}
+                              : currentReviews(item).length
+                                ? `会签进度：${currentReviews(item).filter((review) => review.decision === 'approved').length}/${item.reviewerIds.length} 人通过 · 提交版本 ${item.submissionRevision}`
+                                : item.reviewerIds.length
+                                  ? `指定核验：${item.reviewerIds.map(name).join('、')} · 尚无意见`
+                                  : '尚无独立验收记录'}
                           </p>
+                          {item.evidenceReviews.map((review) => (
+                            <p key={`${review.actorId}:${review.submissionRevision}`}>
+                              {name(review.actorId)} ·{' '}
+                              {review.decision === 'approved' ? '已通过' : '要求修改'}
+                              {' · 提交版本 '}{review.submissionRevision}
+                              {review.reason ? ` · ${review.reason}` : ''}
+                            </p>
+                          ))}
+                          {item.status === 'submitted' && item.reviewerIds.length ? (
+                            <p className="project-plan-meta">
+                              等待：{item.reviewerIds
+                                .filter((id) => !currentReviews(item).some((review) => review.actorId === id))
+                                .map(name)
+                                .join('、') || '全部核验意见已收到，正在更新状态'}
+                            </p>
+                          ) : null}
                           <button
                             type="button"
                             className="quiet"
@@ -2062,24 +2150,36 @@ export function ProjectPlanPanel({ project, onOpenGroupMessage }: {
                           ) : null}
                           {item.status === 'submitted' ? (
                             <>
-                              <button
-                                className="quiet"
-                                type="button"
-                                disabled={busy}
-                                onClick={() => void changeItem(item, 'done')}
-                              >
-                                验收工作项
-                              </button>
-                              <button
-                                className="quiet"
-                                type="button"
-                                disabled={busy}
-                                onClick={() =>
-                                  void changeItem(item, 'in_progress')
-                                }
-                              >
-                                退回完善
-                              </button>
+                              {(!item.reviewerIds.length || item.reviewerIds.includes('user')) &&
+                              !currentReviews(item).some((review) => review.actorId === 'user') ? (
+                                <button
+                                  className="quiet"
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() => void changeItem(item, 'done', '', '', 'approve')}
+                                >
+                                  {item.reviewerIds.length ? '我已核验通过' : '验收工作项'}
+                                </button>
+                              ) : null}
+                              {(!item.reviewerIds.length || item.reviewerIds.includes('user')) &&
+                              !currentReviews(item).some((review) => review.actorId === 'user') ? (
+                                <button
+                                  className="quiet"
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() =>
+                                    setAction({
+                                      id: item.id,
+                                      status: 'in_progress',
+                                      text: '',
+                                      evidenceMessageId: '',
+                                      reviewDecision: 'request_changes',
+                                    })
+                                  }
+                                >
+                                  要求修改
+                                </button>
+                              ) : null}
                             </>
                           ) : null}
                           {item.status === 'done' &&
@@ -2108,13 +2208,16 @@ export function ProjectPlanPanel({ project, onOpenGroupMessage }: {
                               action.status,
                               action.text,
                               action.evidenceMessageId,
+                              action.reviewDecision,
                             ).then((saved) => {
                               if (saved) setAction(null);
                             });
                           }}
                         >
                           <label>
-                            {action.status === 'submitted'
+                            {action.reviewDecision === 'request_changes'
+                              ? '需要修改的内容'
+                              : action.status === 'submitted'
                               ? '本次交付的结果与可核验依据'
                               : '阻塞原因'}
                             <textarea

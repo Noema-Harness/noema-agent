@@ -185,6 +185,91 @@ test('only accepted deliveries advance progress and unlock dependent work across
   }
 });
 
+test('named reviewers decide against one submission and a resubmission starts a fresh round', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'noema-review-'));
+  const filename = path.join(directory, 'plan.sqlite3');
+  const context = setup(filename);
+  let { db, chat, projects } = context;
+  const { project, a, b, plan } = context;
+  try {
+    plan.items[0].reviewerIds = [b, 'user'];
+    projects.plans.replace({
+      projectId: project.id,
+      expectedRevision: 0,
+      reason: '为需共同把关的研究工作指定核验人。',
+      plan,
+    });
+    const update = (itemId, status, actorAgentId, extra = {}) =>
+      projects.plans.updateItem({
+        projectId: project.id,
+        expectedRevision: projects.plans.get(project.id).revision,
+        itemId,
+        status,
+        actorAgentId,
+        reason: '推进带会签的交付闭环。',
+        ...extra,
+      });
+    update('research', 'in_progress', a);
+    const submitted = update('research', 'submitted', a, {
+      evidence: '研究结论与可复核来源。',
+      evidenceSources: messageEvidence(db, project, a),
+    });
+    assert.deepEqual(submitted.items[0].reviewerIds, [b, 'user']);
+    assert.throws(() => update('research', 'done', 'noema'), /指定核验人/u);
+    const firstVote = update('research', 'submitted', b, {
+      reviewDecision: 'approve',
+    });
+    assert.equal(firstVote.items[0].status, 'submitted');
+    assert.equal(firstVote.items[0].acceptanceRecorded, false);
+    assert.equal(firstVote.items[0].evidenceReviews.length, 1);
+    db.close();
+    db = new Database(filename);
+    chat = new SocialChatStore(db);
+    projects = new SocialProjectStore({ db, socialChatStore: chat });
+    assert.equal(projects.plans.get(project.id).items[0].evidenceReviews.length, 1);
+    assert.throws(
+      () => update('research', 'submitted', b, { reviewDecision: 'approve' }),
+      /不能重复投票/u,
+    );
+    const returned = update('research', 'submitted', null, {
+      reviewDecision: 'request_changes',
+      reviewReason: '补上样本选择依据。',
+    });
+    assert.equal(returned.items[0].status, 'in_progress');
+    assert.deepEqual(
+      returned.items[0].evidenceReviews.map((review) => review.decision),
+      ['approved', 'changes_requested'],
+    );
+    const resubmitted = update('research', 'submitted', a, {
+      evidence: '补充样本依据后的研究结论。',
+      evidenceSources: messageEvidence(db, project, a),
+    });
+    assert.equal(resubmitted.items[0].submissionRevision, resubmitted.revision);
+    assert.deepEqual(resubmitted.items[0].evidenceReviews, []);
+    const secondVote = update('research', 'submitted', b, {
+      reviewDecision: 'approve',
+    });
+    const accepted = update('research', 'submitted', null, {
+      reviewDecision: 'approve',
+    });
+    assert.equal(secondVote.items[0].status, 'submitted');
+    assert.equal(accepted.items[0].status, 'done');
+    assert.equal(accepted.items[0].acceptanceRecorded, true);
+    assert.deepEqual(
+      accepted.items[0].evidenceReviews.map((review) => review.actorId),
+      [b, 'user'],
+    );
+    assert.ok(
+      accepted.items[0].evidenceReviews.every(
+        (review) => review.submissionRevision === resubmitted.revision,
+      ),
+    );
+  } finally {
+    db.close();
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('plan edits cannot skip submission, and legacy done without two-party records is not accepted', () => {
   const { db, projects, project, a, plan } = setup();
   try {

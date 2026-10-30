@@ -349,6 +349,14 @@ export interface NoemaProjectPlanItem {
     sourceAuthorId: string | null;
     sourceStatus: string;
   }>;
+  reviewerIds: string[];
+  evidenceReviews: Array<{
+    actorId: string;
+    decision: 'approved' | 'changes_requested';
+    reviewedAt: string;
+    submissionRevision: number;
+    reason: string;
+  }>;
   evidenceReview?: {
     actorId: string;
     reviewedAt: string;
@@ -452,6 +460,8 @@ export interface NoemaProjectPlanItemUpdate {
     NonNullable<NoemaProjectPlanItem['evidenceRefs']>[number]['source']
   >;
   blocker?: string;
+  reviewDecision?: 'approve' | 'request_changes';
+  reviewReason?: string;
   patch?: {
     title?: string;
     ownerAgentId?: string;
@@ -459,6 +469,7 @@ export interface NoemaProjectPlanItemUpdate {
     parentId?: string | null;
     dependsOn?: string[];
     relatedTo?: string[];
+    reviewerIds?: string[];
   };
   reason: string;
 }
