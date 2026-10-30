@@ -37,7 +37,7 @@ try {
 const db = new Database(database);
 new RootStore(db);
 const social = new SocialChatStore(db);
-const ids = ['资料研究员', '预算分析员'].map(
+const ids = ['资料研究员', '预算分析员', '交付核验员'].map(
   (name) =>
     social.createAgent({
       name,
@@ -95,6 +95,7 @@ projects.plans.replace({
             id: 'venue-budget',
             title: '核实场地报价并形成试办预算',
             ownerAgentId: ids[1],
+            reviewerIds: [ids[0], ids[2]],
             acceptance: '预算逐项对应需求证据，注明报价来源和仍待确认的费用。',
             dependsOn: [],
             status: 'pending',
@@ -355,10 +356,41 @@ try {
     projectId: project.id,
     expectedRevision: currentPlan.revision,
     itemId: 'venue-budget',
-    actorAgentId: 'noema',
-    status: 'done',
-    reason: 'Noema 独立核验并验收用户提交的工作成果。',
+    actorAgentId: ids[0],
+    reviewDecision: 'approve',
+    reason: '第一位指定核验人确认成果来源和验收条件一致。',
   });
+  assert.equal(
+    currentPlan.items.find((item) => item.id === 'venue-budget').status,
+    'submitted',
+    'one of two required reviewers must not accept the work package',
+  );
+  await evaluate('window.__noemaFirstReview = true');
+  await cdp.call('Page.reload');
+  await wait(
+    `!window.__noemaFirstReview && Array.from(document.querySelectorAll('.project-list-item')).some(n=>n.textContent.includes('共享计划界面验收样例'))`,
+  );
+  await evaluate(
+    `Array.from(document.querySelectorAll('.project-list-item')).find(n=>n.textContent.includes('共享计划界面验收样例')).click()`,
+  );
+  await wait(
+    `document.querySelector('[data-plan-item-id="venue-budget"]')?.textContent.includes('会签进度：1/2 人通过')`,
+  );
+  await screenshot('one-of-two-reviews.png');
+  currentPlan = projects.plans.get(project.id);
+  currentPlan = projects.plans.updateItem({
+    projectId: project.id,
+    expectedRevision: currentPlan.revision,
+    itemId: 'venue-budget',
+    actorAgentId: ids[2],
+    reviewDecision: 'approve',
+    reason: '第二位指定核验人确认成果来源和验收条件一致。',
+  });
+  assert.equal(
+    currentPlan.items.find((item) => item.id === 'venue-budget').status,
+    'done',
+    'the work package is accepted only after the remaining reviewer approves',
+  );
   await evaluate('window.__noemaAfterAcceptance = true');
   await cdp.call('Page.reload');
   await wait(
@@ -370,6 +402,14 @@ try {
   await wait(
     `document.querySelector('[data-plan-phase-id="pilot"]')?.textContent.includes('阶段待验收')`,
   );
+  assert.equal(
+    await evaluate(
+      `document.querySelector('[data-plan-item-id="venue-budget"]')?.textContent.includes('会签进度：2/2 人通过')`,
+    ),
+    true,
+    'the UI shows both decisions against the accepted submission',
+  );
+  await screenshot('multi-review-complete.png');
   await click('核验阶段出口', '[data-plan-phase-id="pilot"]');
   await set(
     '阶段成果与出口核验依据',
