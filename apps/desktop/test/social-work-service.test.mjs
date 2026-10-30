@@ -4,6 +4,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -16,6 +17,7 @@ import { SocialWorkService } from '../src/social-work-service.mjs';
 import { SocialChatService } from '../src/social-chat-service.mjs';
 import { SocialProjectStore } from '../src/social-project-store.mjs';
 import { NoemaProjectExecutor } from '../src/noema-project-executor.mjs';
+import { MAX_SOCIAL_WORK_TOOL_ROUNDS } from '../src/social-work-limits.mjs';
 
 function makeStore() {
   const db = new Database(':memory:');
@@ -1224,6 +1226,88 @@ test('an unavailable provider can be resumed explicitly without replaying tools'
     assert.equal(
       resumedMessages.at(-2).tool_call_id,
       'read-before-provider-failure',
+    );
+  } finally {
+    await service.shutdown();
+    db.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('a long task stopped at the round cap resumes to its final report without replaying writes', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'noema-round-cap-resume-'));
+  const workspace = path.join(directory, 'workspace');
+  mkdirSync(workspace);
+  const { db, store } = makeStore();
+  let providerCalls = 0;
+  let writeCalls = 0;
+  const provider = {
+    async *streamChat({ onToolCalls }) {
+      providerCalls += 1;
+      if (providerCalls <= 16) {
+        writeCalls += 1;
+        onToolCalls([
+          {
+            id: `write-${writeCalls}`,
+            type: 'function',
+            function: {
+              name: 'write_file',
+              arguments: JSON.stringify({
+                path: `result-${writeCalls}.txt`,
+                content: `saved ${writeCalls}`,
+              }),
+            },
+          },
+        ]);
+        return;
+      }
+      yield '16 个结果文件已经写入，当前任务已收尾。';
+    },
+  };
+  const executor = new NoemaProjectExecutor({ provider, maxToolRounds: 16 });
+  const service = new SocialWorkService({
+    store,
+    adapter: executor,
+    secretStore: { isConfigured: () => true },
+    chooseWorkspace: async () => workspace,
+  });
+  try {
+    const accepted = await service.startTask({
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      prompt: '依次写入 16 个结果文件，最后核对并汇报。',
+    });
+    const failed = await service.waitForTask(accepted.taskId);
+    assert.equal(failed.status, 'failed');
+    assert.equal(failed.errorCode, 'tool_round_limit');
+    assert.equal(failed.canResume, true);
+    assert.equal(failed.executionSteps.length, 16);
+    assert.equal(writeCalls, 16);
+
+    const checkpoint = store.getSocialWorkRuntimeCheckpoint(accepted.taskId);
+    assert.equal(checkpoint.phase, 'failed');
+    assert.equal(checkpoint.resumePhase, null);
+    assert.equal(checkpoint.toolCallCount, 16);
+
+    executor.maxToolRounds = MAX_SOCIAL_WORK_TOOL_ROUNDS;
+    assert.equal((await service.resumeTask(accepted.taskId)).accepted, true);
+    assert.equal(
+      store.getSocialWorkRuntimeCheckpoint(accepted.taskId).resumePhase,
+      'ready_for_model',
+    );
+    const completed = await service.waitForTask(accepted.taskId);
+    assert.equal(completed.status, 'completed');
+    assert.equal(completed.toolCallCount, 16);
+    assert.equal(completed.executionSteps.length, 16);
+    assert.equal(providerCalls, 17);
+    assert.equal(writeCalls, 16);
+    assert.equal(
+      completed.resultText,
+      '16 个结果文件已经写入，当前任务已收尾。',
+    );
+    assert.equal(
+      readFileSync(path.join(workspace, 'result-16.txt'), 'utf8'),
+      'saved 16',
     );
   } finally {
     await service.shutdown();

@@ -4,6 +4,10 @@ import { normalizeInteractionAdjustmentSnapshots } from './root-store.mjs';
 import { searchTranscriptHistory } from './transcript-search.mjs';
 import { SOCIAL_SCHEMA_VERSION } from './social-chat-schema.mjs';
 import {
+  MAX_SOCIAL_WORK_TOOL_CALLS,
+  MAX_SOCIAL_WORK_TOOL_ROUNDS,
+} from './social-work-limits.mjs';
+import {
   FIRST_MEETING_VERSION,
   firstMeetingContext,
 } from './first-meeting.mjs';
@@ -194,21 +198,51 @@ function hydrateMessage(row) {
   };
 }
 
+function isCompletedToolBoundary(messages) {
+  if (!Array.isArray(messages) || messages.at(-1)?.role !== 'tool')
+    return false;
+  const pendingCalls = new Set();
+  for (const message of messages) {
+    if (message?.role === 'assistant' && Array.isArray(message.tool_calls)) {
+      for (const call of message.tool_calls) {
+        if (typeof call?.id === 'string') pendingCalls.add(call.id);
+      }
+    } else if (
+      message?.role === 'tool' &&
+      typeof message.tool_call_id === 'string'
+    ) {
+      pendingCalls.delete(message.tool_call_id);
+    }
+  }
+  return pendingCalls.size === 0;
+}
+
 function hydrateSocialWorkTask(row, executionSteps = [], checkpoint = null) {
   if (!row) return null;
   const restartRecovery =
     row.status === 'interrupted' &&
     row.errorCode === 'app_restarted' &&
     checkpoint?.phase === 'interrupted';
+  const legacyRoundLimitRecovery =
+    row.status === 'failed' &&
+    row.errorCode === 'tool_round_limit' &&
+    checkpoint?.phase === 'failed' &&
+    checkpoint.resumePhase == null &&
+    checkpoint.toolCallCount <= MAX_SOCIAL_WORK_TOOL_CALLS &&
+    isCompletedToolBoundary(checkpoint.messages);
   const providerRecovery =
     row.status === 'failed' &&
-    ['provider_unavailable', 'rate_limited'].includes(row.errorCode) &&
-    checkpoint?.phase === 'failed';
+    ['provider_unavailable', 'rate_limited', 'tool_round_limit'].includes(
+      row.errorCode,
+    ) &&
+    checkpoint?.phase === 'failed' &&
+    (checkpoint.resumePhase === 'ready_for_model' || legacyRoundLimitRecovery);
   const canResume = Boolean(
     (restartRecovery || providerRecovery) &&
     row.executionEngine === 'noema' &&
-    checkpoint.resumePhase === 'ready_for_model' &&
-    checkpoint.round < 16 &&
+    (checkpoint.resumePhase === 'ready_for_model' ||
+      legacyRoundLimitRecovery) &&
+    checkpoint.round < MAX_SOCIAL_WORK_TOOL_ROUNDS &&
     !executionSteps.some(
       (step) =>
         ['running', 'outcome_unknown'].includes(step.status) ||
@@ -2583,16 +2617,16 @@ export class SocialChatStore {
       room.members[0].id === 'noema';
     const isNoemaProjectGroup = Boolean(
       allowNoemaDispatch &&
-        typeof projectId === 'string' &&
-        room.room.kind === 'group' &&
-        this.isMember(roomId, 'noema') &&
-        this.isMember(roomId, agentId) &&
-        this.db
-          .prepare(`
+      typeof projectId === 'string' &&
+      room.room.kind === 'group' &&
+      this.isMember(roomId, 'noema') &&
+      this.isMember(roomId, agentId) &&
+      this.db
+        .prepare(`
             SELECT 1 FROM social_projects
             WHERE id = ? AND group_room_id = ? AND status = 'active'
           `)
-          .get(projectId, roomId),
+        .get(projectId, roomId),
     );
     if (
       allowNoemaDispatch &&
@@ -3051,7 +3085,7 @@ export class SocialChatStore {
           SELECT workspace_key AS workspaceKey FROM social_work_tasks
           WHERE id = ? AND execution_engine = 'noema'
             AND ((status = 'interrupted' AND error_code = 'app_restarted')
-              OR (status = 'failed' AND error_code IN ('provider_unavailable', 'rate_limited')))
+              OR (status = 'failed' AND error_code IN ('provider_unavailable', 'rate_limited', 'tool_round_limit')))
         `)
         .get(taskId);
       if (!task) throw new Error('这项任务当前不能从检查点继续。');
@@ -3059,6 +3093,13 @@ export class SocialChatStore {
         throw new Error(
           '检查点不满足安全续接条件；请检查工作区后重新提交任务。',
         );
+      }
+      const checkpoint = this.getSocialWorkRuntimeCheckpoint(taskId);
+      if (checkpoint?.resumePhase == null && checkpoint.phase === 'failed') {
+        this.saveSocialWorkRuntimeCheckpoint(taskId, {
+          ...checkpoint,
+          resumePhase: 'ready_for_model',
+        });
       }
       const active = this.db
         .prepare(`
@@ -3076,7 +3117,7 @@ export class SocialChatStore {
               error_message = NULL, completed_at = NULL, updated_at = ?
           WHERE id = ? AND execution_engine = 'noema'
             AND ((status = 'interrupted' AND error_code = 'app_restarted')
-              OR (status = 'failed' AND error_code IN ('provider_unavailable', 'rate_limited')))
+              OR (status = 'failed' AND error_code IN ('provider_unavailable', 'rate_limited', 'tool_round_limit')))
         `)
         .run(now, taskId).changes;
       if (changed !== 1) throw new Error('任务状态已变化，请刷新后重试。');
@@ -4151,8 +4192,7 @@ export class SocialChatStore {
     // turns from future model context.
     const contextRows = rows.filter(
       (row) =>
-        row.role !== 'assistant' ||
-        !row.content.includes('<｜｜DSML｜｜'),
+        row.role !== 'assistant' || !row.content.includes('<｜｜DSML｜｜'),
     );
     const entries = contextRows.map((row) => {
       const forwardedSources = JSON.parse(row.forwardedSourcesJson ?? '[]');

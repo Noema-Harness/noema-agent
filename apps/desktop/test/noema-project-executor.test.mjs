@@ -194,6 +194,47 @@ test('Noema executor performs a bounded multi-step tool loop in the selected wor
   }
 });
 
+test('Noema executor allows a final model response after a long single-tool sequence', async () => {
+  const directory = mkdtempSync(
+    path.join(tmpdir(), 'noema-project-final-round-'),
+  );
+  const workspace = path.join(directory, 'workspace');
+  mkdirSync(workspace);
+  const requests = [];
+  const responses = Array.from({ length: 16 }, (_, index) => ({
+    calls: [
+      toolCall(`call-${index + 1}`, 'write_file', {
+        path: `part-${index + 1}.txt`,
+        content: `part ${index + 1}`,
+      }),
+    ],
+  }));
+  responses.push({ text: '已核对 16 个文件并完成本轮交付。' });
+  const provider = makeProvider(responses, requests);
+
+  try {
+    const executor = new NoemaProjectExecutor({ provider });
+    const handle = await executor.startTask({
+      workspacePath: workspace,
+      task: '写入一组文件并在最后核对结果',
+      model: 'test-model',
+      taskId: 'long-single-tool-sequence',
+    });
+    const outcome = await handle.done;
+
+    assert.equal(outcome.status, 'completed');
+    assert.equal(outcome.toolCallCount, 16);
+    assert.equal(provider.callCount, 17);
+    assert.match(outcome.result, /已核对 16 个文件/u);
+    assert.equal(
+      readFileSync(path.join(workspace, 'part-16.txt'), 'utf8'),
+      'part 16',
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('search_files uses bounded ripgrep results and respects workspace ignores', async () => {
   const directory = mkdtempSync(
     path.join(tmpdir(), 'noema-project-search-files-'),
@@ -205,10 +246,7 @@ test('search_files uses bounded ripgrep results and respects workspace ignores',
     path.join(workspace, 'src', 'matches.txt'),
     'needle first\nneedle second\nneedle third\n',
   );
-  writeFileSync(
-    path.join(workspace, 'src', 'ignored.txt'),
-    'needle ignored\n',
-  );
+  writeFileSync(path.join(workspace, 'src', 'ignored.txt'), 'needle ignored\n');
   writeFileSync(
     path.join(workspace, 'src', '.hidden', 'secret.txt'),
     'needle hidden\n',

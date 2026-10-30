@@ -579,6 +579,93 @@ test('only a model-boundary Noema checkpoint can be explicitly resumed', () => {
   }
 });
 
+test('a legacy round-limit task resumes only from a complete saved tool boundary', () => {
+  const { db, social } = makeStores();
+  try {
+    social.createSocialWorkTask({
+      id: 'task-legacy-round-limit',
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      workspacePath: 'C:\\scratch\\project',
+      workspaceKey: 'c:\\scratch\\project',
+      taskPrompt: '继续检查已完成的多步项目工作。',
+      model: 'test-model',
+      executionEngine: 'noema',
+    });
+    social.setSocialWorkTaskSession(
+      'task-legacy-round-limit',
+      'session-legacy-round-limit',
+    );
+    const messages = [
+      { role: 'system', content: 'system' },
+      { role: 'user', content: 'task' },
+    ];
+    for (let index = 0; index < 16; index += 1) {
+      const callId = `legacy-call-${index}`;
+      const stepId = `legacy-step-${index}`;
+      const toolCall = {
+        id: callId,
+        type: 'function',
+        function: {
+          name: 'write_file',
+          arguments: JSON.stringify({ path: `part-${index}.txt` }),
+        },
+      };
+      messages.push({
+        role: 'assistant',
+        content: null,
+        tool_calls: [toolCall],
+      });
+      messages.push({
+        role: 'tool',
+        tool_call_id: callId,
+        content: JSON.stringify({ result: 'saved' }),
+      });
+      social.startSocialWorkExecutionStep('task-legacy-round-limit', {
+        id: stepId,
+        externalCallId: callId,
+        arguments: toolCall.function.arguments,
+        toolName: 'write_file',
+        category: 'write',
+        hasSideEffect: true,
+      });
+      social.finishSocialWorkExecutionStep('task-legacy-round-limit', stepId, {
+        status: 'succeeded',
+        effectStatus: 'applied',
+        resultContent: JSON.stringify({ result: 'saved' }),
+      });
+    }
+    social.saveSocialWorkRuntimeCheckpoint('task-legacy-round-limit', {
+      messages,
+      round: 16,
+      toolCallCount: 16,
+      phase: 'failed',
+    });
+    social.finishSocialWorkTask('task-legacy-round-limit', {
+      status: 'failed',
+      runtimeSessionId: 'session-legacy-round-limit',
+      errorCode: 'tool_round_limit',
+      errorMessage: '工具步骤达到旧版本上限。',
+      toolCallCount: 16,
+    });
+
+    assert.equal(
+      social.getSocialWorkTask('task-legacy-round-limit').canResume,
+      true,
+    );
+    const resumed = social.resumeSocialWorkTask('task-legacy-round-limit');
+    assert.equal(resumed.status, 'starting');
+    assert.equal(
+      social.getSocialWorkRuntimeCheckpoint('task-legacy-round-limit')
+        .resumePhase,
+      'ready_for_model',
+    );
+    assert.equal(resumed.executionSteps.length, 16);
+  } finally {
+    db.close();
+  }
+});
+
 test('a provider-failure checkpoint cannot resume with an unresolved write', () => {
   const { db, social } = makeStores();
   try {
@@ -1590,10 +1677,7 @@ test('a user-created specialist keeps one identity across a fresh DM, group, and
     assert.match(social.getAgent(agentId).systemPrompt, /当前只有聊天能力/u);
     const projectWorkEnabled = social.setAgentProjectWork(agentId, true);
     assert.deepEqual(projectWorkEnabled.capabilities, ['project-work']);
-    assert.match(
-      projectWorkEnabled.systemPrompt,
-      /你具备项目文件任务能力/u,
-    );
+    assert.match(projectWorkEnabled.systemPrompt, /你具备项目文件任务能力/u);
     const projectWorkDisabled = social.setAgentProjectWork(agentId, false);
     assert.deepEqual(projectWorkDisabled.capabilities, []);
     assert.match(projectWorkDisabled.systemPrompt, /当前只有聊天能力/u);

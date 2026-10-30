@@ -489,7 +489,9 @@ export class SocialWorkService {
         projectId.trim() &&
         this.projectStore;
       if (!isProjectGroup) {
-        throw new Error('Noema 只能从自己的私聊或当前项目群中发起内部项目工作。');
+        throw new Error(
+          'Noema 只能从自己的私聊或当前项目群中发起内部项目工作。',
+        );
       }
       project = this.projectStore.getProject(projectId);
       if (
@@ -543,11 +545,15 @@ export class SocialWorkService {
     if (!task.canResume) {
       throw new Error('检查点不满足安全续接条件；请检查工作区后重新提交任务。');
     }
-    const checkpoint = this.store.getSocialWorkRuntimeCheckpoint(taskId);
+    let checkpoint = this.store.getSocialWorkRuntimeCheckpoint(taskId);
     if (
       !checkpoint ||
       !['interrupted', 'failed'].includes(checkpoint.phase) ||
-      checkpoint.resumePhase !== 'ready_for_model'
+      (checkpoint.resumePhase !== 'ready_for_model' &&
+        !(
+          task.errorCode === 'tool_round_limit' &&
+          checkpoint.resumePhase == null
+        ))
     ) {
       throw new Error('检查点不在可安全续接的模型边界。');
     }
@@ -567,6 +573,7 @@ export class SocialWorkService {
     }
 
     this.store.resumeSocialWorkTask(taskId);
+    checkpoint = this.store.getSocialWorkRuntimeCheckpoint(taskId);
     const run = {
       handle: null,
       retryWaitController: null,

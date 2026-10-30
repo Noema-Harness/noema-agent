@@ -9,9 +9,13 @@ import {
   runProjectCommandInSandbox,
   windowsCommandSandboxSupport,
 } from './project-command-sandbox.mjs';
+import {
+  MAX_SOCIAL_WORK_TOOL_CALLS,
+  MAX_SOCIAL_WORK_TOOL_ROUNDS,
+} from './social-work-limits.mjs';
 
-const MAX_TOOL_ROUNDS = 16;
-const MAX_TOOL_CALLS = 24;
+const MAX_TOOL_CALLS = MAX_SOCIAL_WORK_TOOL_CALLS;
+const MAX_TOOL_ROUNDS = MAX_SOCIAL_WORK_TOOL_ROUNDS;
 const MAX_TOOL_OUTPUT_CHARS = 24_000;
 const MAX_TOOL_CONTEXT_CHARS = 48_000;
 const MAX_TOOL_ARGUMENT_CHARS = 32_000;
