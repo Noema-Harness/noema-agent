@@ -45,5 +45,6 @@
 - [How Does Turning to AI for Companionship Predict Loneliness and Vice Versa?](https://journals.sagepub.com/doi/10.1177/09567976261427747)：2,149 人、四波十二个月的前瞻性追踪；对照“情感隔离”和“社会连接”两个不同构念。研究未预注册、日常社交用途稀少，结论是探索性纵向关联。
 - [Living with AI Companions](https://arxiv.org/html/2609.07243)：Character.AI 用户一年两波跟踪；留存率 37.1%，对照作者的流失处理和仅两波的路径分析再阅读，不把关联写成因果。
 - [OpenAI/MIT：Affective use of ChatGPT](https://openai.com/index/affective-use-study/) 与 [MIT 研究摘要](https://www.media.mit.edu/publications/how-ai-and-human-behaviors-shape-psychosocial-effects-of-chatbot-use-a-longitudinal-controlled-study/)：将约 4,000 万次对话的匿名自动分类与近千人四周随机试验结合；观察研究描述真实使用，随机实验测试指定模式，需分开看。
+- [Interaction with AI Companions and Psychological Well-being](https://doi.org/10.1038/s41562-026-02516-2)：交叉读强迫单选用途、自述关系和捐赠聊天记录；注意 11.8% 与 80.3% 的分母不同（用户 vs. 会话），且聊天记录来自自愿捐赠者。使用[预印本 PDF](https://arxiv.org/pdf/2506.12605)核对完整方法，用[公开分析仓库](https://github.com/SALT-NLP/AI-companionship-well-being)确认会话分类路径及原始聊天为何不可下载。
 
 检索与复核日期：2026-10-30。以上四项用于校准“陪伴是否有效”的研究对象，结论不可直接移植到一般个人 agent。
