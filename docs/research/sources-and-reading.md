@@ -41,5 +41,9 @@
 - [Generative AI Mental Health Chatbots as Therapeutic Tools](https://pmc.ncbi.nlm.nih.gov/articles/PMC12707440/)：生成式系统专项综述及元分析。需并读总体效应、各结局、预测区间、异质性和风险偏倚；正文对 14 项与 12 项的数量表述不一致。
 - [People readily follow personal advice from AI but it does not improve their well-being](https://arxiv.org/abs/2511.15352)：单次个人建议对话的随访 RCT，主要用于区分“采纳建议”和“之后的福祉变化”。
 - [JAMA Network Open：Kai 12 周情绪支持平台 RCT](https://jamanetwork.com/journals/jamanetworkopen/fullarticle/2847751)：将长期互动、日常练习、个性化与临床升级作为一整套系统评估；不能从组合干预的结果反推出某一组件是原因。
+- [AI Companions Reduce Loneliness](https://doi.org/10.1093/jcr/ucaf040)：五项研究，把“当下孤独感下降”和“使用结束后的持久改善”分开；特别读 GPT‑4 陪伴/通用助理对比中的感知被听见测量，以及七日研究为何未见长久效果。
+- [How Does Turning to AI for Companionship Predict Loneliness and Vice Versa?](https://journals.sagepub.com/doi/10.1177/09567976261427747)：2,149 人、四波十二个月的前瞻性追踪；对照“情感隔离”和“社会连接”两个不同构念。研究未预注册、日常社交用途稀少，结论是探索性纵向关联。
+- [Living with AI Companions](https://arxiv.org/html/2609.07243)：Character.AI 用户一年两波跟踪；留存率 37.1%，对照作者的流失处理和仅两波的路径分析再阅读，不把关联写成因果。
+- [OpenAI/MIT：Affective use of ChatGPT](https://openai.com/index/affective-use-study/) 与 [MIT 研究摘要](https://www.media.mit.edu/publications/how-ai-and-human-behaviors-shape-psychosocial-effects-of-chatbot-use-a-longitudinal-controlled-study/)：将约 4,000 万次对话的匿名自动分类与近千人四周随机试验结合；观察研究描述真实使用，随机实验测试指定模式，需分开看。
 
 检索与复核日期：2026-10-30。以上四项用于校准“陪伴是否有效”的研究对象，结论不可直接移植到一般个人 agent。
