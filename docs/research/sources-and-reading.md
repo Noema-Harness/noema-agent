@@ -34,3 +34,12 @@
 ## 每篇材料留什么
 
 只记录能改变判断的内容：研究实际想回答什么；样本/模型/任务从哪来；主要比较和测量是什么；最重要的结果；作者承认的范围；公开代码或源数据能否核对；这项工作给 Noema 带来哪条可试的产品判断。对于 AI 味研究，还要明确它测的是来源识别、文字风格、判断行为、用户结果、持久状态、群体趋同或系统执行中的哪一层。
+
+## 本轮加入：关系支持与实际结果
+
+- [Effectiveness of AI and rule-based conversational agents for depression, anxiety and stress](https://www.nature.com/articles/s41746-026-02820-1)：广义 RCT 元分析。读摘要时同时看系统构成表：48 项研究中明确的生成式系统很少，因此它主要说明结构化对话干预，而非开放式 LLM 伙伴。
+- [Generative AI Mental Health Chatbots as Therapeutic Tools](https://pmc.ncbi.nlm.nih.gov/articles/PMC12707440/)：生成式系统专项综述及元分析。需并读总体效应、各结局、预测区间、异质性和风险偏倚；正文对 14 项与 12 项的数量表述不一致。
+- [People readily follow personal advice from AI but it does not improve their well-being](https://arxiv.org/abs/2511.15352)：单次个人建议对话的随访 RCT，主要用于区分“采纳建议”和“之后的福祉变化”。
+- [JAMA Network Open：Kai 12 周情绪支持平台 RCT](https://jamanetwork.com/journals/jamanetworkopen/fullarticle/2847751)：将长期互动、日常练习、个性化与临床升级作为一整套系统评估；不能从组合干预的结果反推出某一组件是原因。
+
+检索与复核日期：2026-10-30。以上四项用于校准“陪伴是否有效”的研究对象，结论不可直接移植到一般个人 agent。
