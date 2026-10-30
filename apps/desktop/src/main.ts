@@ -3767,8 +3767,11 @@ async function startNoema() {
       currentProviderBaseUrl: providerSecretStore.getBaseUrl(),
       legacyFreeLlmApiBaseUrl,
     });
+    const useLegacyFreeLlmApi =
+      !hasCurrentProviderCredential && Boolean(legacyFreeLlmApiBaseUrl);
     const provider = new OpenAICompatibleClient({
       baseUrl: configuredBaseUrl,
+      legacyFreeRouteMode: useLegacyFreeLlmApi,
       getApiKey: () => providerSecretStore?.get() ?? null,
       fetchImpl: (input, init) =>
         net.fetch(input instanceof URL ? input.toString() : input, init),

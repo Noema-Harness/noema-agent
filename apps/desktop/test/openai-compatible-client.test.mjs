@@ -47,6 +47,7 @@ test('lists only the explicitly verified free routes from available models', asy
   const client = new OpenAICompatibleClient({
     baseUrl: 'http://127.0.0.1:31415',
     getApiKey: () => 'test-key',
+    legacyFreeRouteMode: true,
     fetchImpl: async (url, init) => {
       assert.equal(url, 'http://127.0.0.1:31415/v1/models');
       assert.equal(init.method, 'GET');
@@ -88,7 +89,7 @@ test('lists only the explicitly verified free routes from available models', asy
     },
     {
       name: 'free-router',
-      label: 'FreeLLMAPI 免费路由 · 自动',
+      label: '旧版自动路由（兼容）',
       routeKind: 'router',
       executionStatus: null,
     },
@@ -129,6 +130,7 @@ test('keeps optional free routes hidden while FreeLLMAPI marks them unavailable'
   const client = new OpenAICompatibleClient({
     baseUrl: 'http://127.0.0.1:31415',
     getApiKey: () => 'test-key',
+    legacyFreeRouteMode: true,
     fetchImpl: async () =>
       Response.json({
         data: [
@@ -147,6 +149,7 @@ test('buffers automatic router replies so FreeLLMAPI can fail over before delive
   let receivedRoute;
   const client = new OpenAICompatibleClient({
     getApiKey: () => 'test-key',
+    legacyFreeRouteMode: true,
     fetchImpl: async (_url, init) => {
       requestBody = JSON.parse(init.body);
       return Response.json(
@@ -185,6 +188,7 @@ test('preserves tool calls for buffered automatic router replies', async () => {
   let requestBody;
   const client = new OpenAICompatibleClient({
     getApiKey: () => 'test-key',
+    legacyFreeRouteMode: true,
     fetchImpl: async (_url, init) => {
       requestBody = JSON.parse(init.body);
       return Response.json({
@@ -251,6 +255,7 @@ test('repairs one malformed buffered tool call before exposing it to tools', asy
   let receivedCalls;
   const client = new OpenAICompatibleClient({
     getApiKey: () => 'test-key',
+    legacyFreeRouteMode: true,
     fetchImpl: async (_url, init) => {
       const body = JSON.parse(init.body);
       requests.push(body);
@@ -413,6 +418,7 @@ test('bounds malformed tool-call correction to one additional model request', as
   let requestCount = 0;
   const client = new OpenAICompatibleClient({
     getApiKey: () => 'test-key',
+    legacyFreeRouteMode: true,
     fetchImpl: async () => {
       requestCount += 1;
       return Response.json({
@@ -598,6 +604,7 @@ test('bounds buffered router responses while preserving the size error', async (
   });
   const client = new OpenAICompatibleClient({
     getApiKey: () => 'test-key',
+    legacyFreeRouteMode: true,
     fetchImpl: async () => new Response(body, { status: 200 }),
   });
 
@@ -714,6 +721,48 @@ test('exposes the configured provider model catalog outside FreeLLMAPI routes', 
       executionStatus: 'ready',
     },
   ]);
+});
+
+test('generic provider catalogs are not filtered by legacy route metadata', async () => {
+  const client = new OpenAICompatibleClient({
+    baseUrl: 'https://models.example.test',
+    getApiKey: () => 'test-key',
+    fetchImpl: async () =>
+      Response.json({
+        data: [
+          { id: 'free-router', available: true, execution_status: 'exhausted' },
+          { id: 'custom-model' },
+        ],
+      }),
+  });
+
+  assert.deepEqual(await client.listModels(), [
+    {
+      name: 'free-router',
+      label: 'free-router',
+      routeKind: 'direct',
+      executionStatus: 'ready',
+    },
+    {
+      name: 'custom-model',
+      label: 'custom-model',
+      routeKind: 'direct',
+      executionStatus: 'ready',
+    },
+  ]);
+});
+
+test('reconfiguring the provider leaves legacy route semantics behind', () => {
+  const client = new OpenAICompatibleClient({
+    baseUrl: 'http://127.0.0.1:31415',
+    getApiKey: () => 'test-key',
+    legacyFreeRouteMode: true,
+  });
+
+  client.setBaseUrl('https://api.deepseek.com');
+
+  assert.equal(client.legacyFreeRouteMode, false);
+  assert.equal(client.baseUrl, 'https://api.deepseek.com/v1');
 });
 
 test('disables DeepSeek thinking by default to avoid unneeded reasoning tokens', async () => {

@@ -50,7 +50,7 @@ const VERIFIED_FREE_MODELS = new Map([
     'free-router',
     {
       name: 'free-router',
-      label: 'FreeLLMAPI 免费路由 · 自动',
+      label: '旧版自动路由（兼容）',
       routeKind: 'router',
     },
   ],
@@ -154,11 +154,12 @@ export function normalizeBaseUrl(value) {
 }
 
 export class OpenAICompatibleClient {
-  /** @param {{baseUrl?:string,getApiKey:()=>string|null,fetchImpl?:typeof fetch}} options */
+  /** @param {{baseUrl?:string,getApiKey:()=>string|null,fetchImpl?:typeof fetch,legacyFreeRouteMode?:boolean}} options */
   constructor({
     baseUrl = DEFAULT_MODEL_BASE_URL,
     getApiKey,
     fetchImpl = fetch,
+    legacyFreeRouteMode = false,
   }) {
     if (typeof getApiKey !== 'function') {
       throw new TypeError('The model provider requires an API key provider');
@@ -166,10 +167,12 @@ export class OpenAICompatibleClient {
     this.baseUrl = normalizeBaseUrl(baseUrl);
     this.getApiKey = getApiKey;
     this.fetch = fetchImpl;
+    this.legacyFreeRouteMode = legacyFreeRouteMode === true;
   }
 
   setBaseUrl(baseUrl) {
     this.baseUrl = normalizeBaseUrl(baseUrl);
+    this.legacyFreeRouteMode = false;
     return this.baseUrl;
   }
 
@@ -234,31 +237,22 @@ export class OpenAICompatibleClient {
         )
         .map((model) => [model.id, model]),
     );
-    const verifiedFreeModels = [...VERIFIED_FREE_MODELS.entries()]
-      .filter(([catalogId]) => available.has(catalogId))
-      .map(([catalogId, model]) => {
-        const status = available.get(catalogId)?.execution_status;
-        const executionStatus = ['ready', 'needsKey', 'exhausted'].includes(
-          status,
-        )
-          ? status
-          : null;
-        return { ...model, executionStatus };
-      });
-    if (
-      verifiedFreeModels.length > 0 ||
-      body.data.some(
-        (model) =>
-          model?.available === false ||
-          typeof model?.execution_status === 'string',
-      )
-    ) {
-      return verifiedFreeModels;
+    if (this.legacyFreeRouteMode) {
+      return [...VERIFIED_FREE_MODELS.entries()]
+        .filter(([catalogId]) => available.has(catalogId))
+        .map(([catalogId, model]) => {
+          const status = available.get(catalogId)?.execution_status;
+          const executionStatus = ['ready', 'needsKey', 'exhausted'].includes(
+            status,
+          )
+            ? status
+            : null;
+          return { ...model, executionStatus };
+        });
     }
 
-    // A standard OpenAI-compatible provider exposes its own model catalog.
-    // Preserve those provider IDs instead of filtering them through Noema's
-    // FreeLLMAPI-specific free-route allowlist.
+    // Generic providers own their catalog and any provider-specific metadata.
+    // Do not apply the legacy gateway's route allowlist or status semantics.
     return [...available.values()].map((model) => ({
       name: model.id,
       label: model.id,
@@ -284,11 +278,8 @@ export class OpenAICompatibleClient {
     toolCallCorrectionAttempt = false,
   }) {
     const key = this.requireApiKey();
-    // FreeLLMAPI can fail over while a routed response is still buffered, but
-    // cannot replace a provider after streamed text has been committed. Router
-    // aliases therefore use a complete response; pinned direct models still
-    // stream normally.
     const useBufferedRouterResponse =
+      this.legacyFreeRouteMode &&
       VERIFIED_FREE_MODELS.get(model)?.routeKind === 'router';
     let response;
     try {

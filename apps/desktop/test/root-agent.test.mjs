@@ -142,7 +142,7 @@ test('first connection selects the configured provider default when available', 
   store.close();
 });
 
-test('first connection falls back to the first verified free route if no named chain exists', async () => {
+test('first connection selects the first provider model when the preferred model is absent', async () => {
   const store = new RootStore(':memory:');
   const provider = {
     baseUrl: 'http://127.0.0.1:31415/v1',
