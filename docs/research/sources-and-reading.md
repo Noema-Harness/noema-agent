@@ -49,4 +49,10 @@
 - [The Collective Turing Test](https://www.nature.com/articles/s41598-026-62286-9)：真实 Reddit 多人讨论与 AI 替换文本的并排盲测。重点看 61% 识别率的任务构造，以及较强识别者提到的线索；注意 AI 对话固定了原文回复树/字数，开放回答仅分析准确率较高的 58 人，不能据此教模型照搬论坛脏话或戏剧性冲突。
 - [AI-generated language remains systematically distinguishable from human communication](https://doi.org/10.1073/pnas.2531748123)：与上项研究对照；CHAT 同时测来源可辨性、语义相似、风格及话题差异，报告降低可检测度有时会牺牲语义忠实。避免把“读者认不出 AI”当成 Noema 的自然度或关系质量目标。
 
-检索与复核日期：2026-10-30。以上四项用于校准“陪伴是否有效”的研究对象，结论不可直接移植到一般个人 agent。
+## 本轮加入：偏好代理、表达差异与奖励模型
+
+- [Flattery, Fluff, and Fog](https://arxiv.org/abs/2506.05339)（ICLR 2026）：五种表面/行为特征的反事实偏好审计。全文与方法按 arXiv v3 核对；同时查 ICLR 正式页面。重点看人工与 reward/LLM evaluator 的偏好差距、训练语料中的共现，以及反事实数据增强结果。它只测英文单轮任务，不把它当真实陪伴对话的直接证据。
+- [An Information-Theoretic Study of RLHF-Induced Uniformity](https://aclanthology.org/2026.conll-main.43/)（CoNLL 2026）：官方会议全文。细读模型家族、语料、surprisal 指标及跨文档方差；区分单篇文本均匀度、文本间分布收缩和人类偏好。它没有直接测读者偏好，且只含英文旧代模型。
+- [One Bias After Another](https://proceedings.mlr.press/v306/fein26a.html)（ICML 2026）：正式论文页报告五种奖励模型偏差；对应[公开实验仓库](https://github.com/drfein/OneBiasAfterAnother)展示探针、配置、hidden-state 投影和准确性评估。代码方法是奖励模型的内部干预，不等于产品提示词可直接套用。
+
+检索与复核日期：2026-10-30。前面的陪伴研究用于校准“陪伴是否有效”的研究对象，结论不可直接移植到一般个人 agent。

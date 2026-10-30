@@ -152,4 +152,6 @@ Noema 的长周期共同开发记录是重要的现场材料，因为它保留�
 
 [OpenAI 的 ARGO 审计](https://alignment.openai.com/argo/)尝试把黑盒偏好奖励模型中的取舍提炼成可读 rubric，并发现网页视觉奖励模型更愿意选视觉强、但按钮不可用的页面。它与 Noema 过往出现的“截图能看、产品不能用”是同一类代理错位：裁判喜好的表面品质不等于用户要的最终结果。OpenAI 与 Anthropic 的近年部署评估也开始借助生产对话、失败轨迹回放与动态多轮交互来观察迎合和纠错能力。[GPT‑5 system card](https://deploymentsafety.openai.com/gpt-5/account-level-enforcement)；[Anthropic personal guidance](https://www.anthropic.com/research/claude-personal-guidance)。这些材料让研究重心进一步落在“评价信号奖励了什么、交互走完后改变了什么”，而不是单纯把输出修得更像人。
 
+这轮核读的 [Flattery, Fluff, and Fog（ICLR 2026）](https://arxiv.org/abs/2506.05339)用反事实回答对直接测试长度、列表、术语、迎合和模糊是否左右奖励模型及大模型评审。它发现模型偏好与人工判断的偏差能被反事实训练部分纠正；但人类本身也常偏好结构化回答，说明不能把某个形式简单列为“AI 味”。[CoNLL 2026 的 UID 研究](https://aclanthology.org/2026.conll-main.43/)又提醒，“整段信息密度是否均匀”“不同文档之间的分布是否收缩”“读者觉得像不像 AI”是不同量：RLHF 对前者只造成小幅、许多不显著的变化，对跨文档差异却可能有收窄作用。该研究没有直接测人类偏好。合起来，当前较可用的机制假设是：某些容易打分的形式会被反复奖励，但“偏好代理错位”不能覆盖全部表达趋同，更不能由风格指标替代真实对话结果。
+
 
