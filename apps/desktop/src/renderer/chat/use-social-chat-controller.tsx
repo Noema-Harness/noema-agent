@@ -309,7 +309,7 @@ export function useSocialChatController() {
     setAgentDescription('');
     setAgentProjectWork(false);
     requestAnimationFrame(() =>
-      (returnToEdit ? editAgentTriggerRef : agentTriggerRef).current?.focus(),
+      (returnToEdit ? editAgentTriggerRef : settingsTriggerRef).current?.focus(),
     );
   }, [editingAgentId]);
   const closeSettingsDialog = useCallback(() => {

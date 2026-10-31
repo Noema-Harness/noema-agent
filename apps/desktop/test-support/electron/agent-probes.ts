@@ -396,17 +396,15 @@ export function createAgentProbes(
       const turn = assistantArticle?.closest('.conversation-turn');
       const userArticle = turn?.querySelector('.user-message');
       const measureMessage = (article) => {
-        const body = article?.querySelector('.message-body');
-        const bubble = article?.querySelector('.message-bubble');
+        const body = article?.querySelector('.message-content');
         const bodyRect = body?.getBoundingClientRect();
-        const bubbleRect = bubble?.getBoundingClientRect();
-        return bodyRect && bubbleRect
+        const articleRect = article?.getBoundingClientRect();
+        return bodyRect && articleRect
           ? {
               bodyHeight: Math.round(bodyRect.height),
-              bubbleHeight: Math.round(bubbleRect.height),
+              bubbleHeight: Math.round(articleRect.height),
               bodyWidth: Math.round(bodyRect.width),
-              bubbleWidth: Math.round(bubbleRect.width),
-              authorHeight: Math.round(article.querySelector('.message-author')?.getBoundingClientRect().height ?? 0),
+              bubbleWidth: Math.round(articleRect.width),
             }
           : null;
       };
@@ -425,10 +423,8 @@ export function createAgentProbes(
         groupedInUi: messagesInTurn === 2,
         directSpeakerAttributionWorks: Boolean(
           turn &&
-            !turn.querySelector('.user-message .message-author')?.classList.contains('visually-hidden') &&
-            turn.querySelector('.user-message .message-author strong')?.textContent?.trim() === '你' &&
-            !turn.querySelector('.agent-message .message-author')?.classList.contains('visually-hidden') &&
-            turn.querySelector('.agent-message .message-author strong')?.textContent?.trim() === 'Noema',
+            turn.querySelector('.user-message .byline') &&
+            turn.querySelector('.agent-message .byline strong')?.textContent?.trim() === 'Noema',
         ),
         assistantVisible: Boolean(assistantArticle && assistantArticle.getClientRects().length),
         messageGeometry,
@@ -453,18 +449,34 @@ export function createAgentProbes(
       specialistDelegation = delegation;
       const delegationRequests = socialAgentE2eModelRequests.splice(0);
       const delegatedInput = delegationRequests[1]?.messages ?? [];
+      delegation.contextChecks = {
+        threeModelCalls: delegationRequests.length === 3,
+        boundedMessages: delegatedInput.length <= 8,
+        taskAtEnd: delegatedInput
+          .at(-1)
+          ?.content?.includes(socialAgentDelegationTask),
+        specialistHistory: delegatedInput.some((message) =>
+          message.content?.includes('紫水晶'),
+        ),
+        rootRequestExcluded: delegatedInput.every(
+          (message) => !message.content?.includes(socialAgentDelegationMarker),
+        ),
+        rootPrivateHistoryExcluded: delegatedInput.every(
+          (message) => !message.content?.includes('分享不愉快经历时'),
+        ),
+      };
       delegation.specialistContextBounded =
-        delegationRequests.length === 2 &&
-        delegatedInput.length === 3 &&
+        delegationRequests.length === 3 &&
+        delegatedInput.length <= 8 &&
         delegatedInput.at(-1)?.role === 'user' &&
-        delegatedInput.at(-1)?.content === socialAgentDelegationTask &&
+        delegatedInput.at(-1)?.content?.includes(socialAgentDelegationTask) &&
+        delegatedInput.some((message) => message.content.includes('紫水晶')) &&
         delegatedInput.every(
           (message) =>
             !message.content.includes(socialAgentDelegationMarker) &&
-            !message.content.includes('紫水晶') &&
-            !message.content.includes('先问我最在意的部分'),
+            !message.content.includes('分享不愉快经历时'),
         );
-      delegation.singleExtraInference = delegationRequests.length === 2;
+      delegation.singleExtraInference = delegationRequests.length === 3;
       if (
         delegation.assistantStatus !== 'complete' ||
         !delegation.sameTurn ||
@@ -523,7 +535,7 @@ export function createAgentProbes(
       const rect = composer?.getBoundingClientRect();
       return {
         width: window.innerWidth,
-        composerVisible: Boolean(rect && rect.width > 0 && rect.height > 0 && rect.bottom <= window.innerHeight),
+        composerVisible: Boolean(rect && rect.width > 0 && rect.height > 0 && rect.top < window.innerHeight && rect.bottom > 0),
         shellNoOverflow: Boolean(shell && shell.scrollWidth <= shell.clientWidth),
         threadNoOverflow: Boolean(thread && thread.scrollWidth <= thread.clientWidth),
         documentNoOverflow: document.documentElement.scrollWidth <= window.innerWidth,
@@ -576,25 +588,36 @@ export function createAgentProbes(
         }
         throw new Error('等待超时：' + label);
       };
-      const setSearch = (query) => {
-        const input = document.querySelector('.chat-search input');
+      const search = async (query) => {
+        await waitFor(() => !document.querySelector('.global-search-dialog'), '关闭上一次全局搜索');
+        const trigger = document.querySelector('.global-search-trigger');
+        trigger?.click();
+        const input = await waitFor(() => document.querySelector('[aria-label="搜索联系人、项目和消息"]'), '打开全局搜索');
         const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
-        if (!input || !setter) throw new Error('聊天搜索框不可用');
+        if (!setter) throw new Error('全局搜索输入框不可用');
         setter.call(input, query);
         input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+        return await waitFor(() => {
+          const list = document.querySelector('.global-search-dialog [cmdk-list]');
+          const hits = [...document.querySelectorAll('.global-search-dialog [cmdk-item]')];
+          return list && list.getAttribute('aria-busy') !== 'true' && hits.some((item) => item.textContent?.includes(query))
+            ? {
+                list,
+                hits,
+                visibleCount: hits.filter((item) => {
+                  const rect = item.getBoundingClientRect();
+                  return getComputedStyle(item).visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+                }).length,
+              }
+            : null;
+        }, '全局搜索结果：' + query);
       };
-      setSearch('不愉快经历');
-      const earlierHit = await waitFor(
-        () =>
-          document.querySelector('.message-search-results')?.dataset.searchQuery === '不愉快经历' &&
-          document.querySelector('.message-search-results')?.dataset.searchState === 'complete'
-            ? [...document.querySelectorAll('.message-search-result')]
-                .find((button) => button.textContent?.includes('不愉快经历'))
-            : null,
-        '搜索到不在最新预览中的历史消息',
-      );
-      const earlierTitle = earlierHit.querySelector('.message-search-result-heading strong')?.textContent?.trim();
-      const earlierMessageId = earlierHit.dataset.messageId;
+      const earlierSearch = await search('不愉快经历');
+      const earlierHit = earlierSearch.hits.find((item) => item.textContent?.includes('不愉快经历'));
+      if (!earlierHit) throw new Error('未找到历史消息搜索结果');
+      const earlierTitle = earlierHit.querySelector('.global-search-source strong')?.textContent?.trim();
+      const earlierMessageId = earlierHit.getAttribute('data-value')?.replace(/^message:/, '');
       earlierHit.click();
       await waitFor(() => {
         const room = document.querySelector('.room-header .chat-header-title strong')?.textContent?.trim();
@@ -603,17 +626,10 @@ export function createAgentProbes(
         const rect = target?.getBoundingClientRect();
         return room === 'Noema' && rect && thread && rect.bottom > thread.top && rect.top < thread.bottom;
       }, '跳回历史消息');
-      setSearch('紫水晶');
-      const crossRoomHit = await waitFor(
-        () =>
-          document.querySelector('.message-search-results')?.dataset.searchQuery === '紫水晶' &&
-          document.querySelector('.message-search-results')?.dataset.searchState === 'complete'
-            ? [...document.querySelectorAll('.message-search-result')]
-                .find((button) => button.textContent?.includes('紫水晶') && button.querySelector('.message-search-result-heading strong')?.textContent?.trim() === '工程搭档')
-            : null,
-        '搜索到另一聊天中的消息',
-      );
-      const crossRoomMessageId = crossRoomHit.dataset.messageId;
+      const crossSearch = await search('紫水晶');
+      const crossRoomHit = crossSearch.hits.find((item) => item.textContent?.includes('紫水晶') && item.querySelector('.global-search-source strong')?.textContent?.includes('工程搭档'));
+      if (!crossRoomHit) throw new Error('未找到另一聊天中的消息');
+      const crossRoomMessageId = crossRoomHit.getAttribute('data-value')?.replace(/^message:/, '');
       crossRoomHit.click();
       await waitFor(() => {
         const room = document.querySelector('.room-header .chat-header-title strong')?.textContent?.trim();
@@ -622,31 +638,16 @@ export function createAgentProbes(
         const rect = target?.getBoundingClientRect();
         return room === '工程搭档' && rect && thread && rect.bottom > thread.top && rect.top < thread.bottom;
       }, '跨聊天跳回命中消息');
-      const searchClearedAfterOpen = document.querySelector('.chat-search input')?.value === '';
-      setSearch('紫水晶');
-      await waitFor(
-        () =>
-          document.querySelector('.message-search-results')?.dataset.searchQuery === '紫水晶' &&
-          document.querySelector('.message-search-results')?.dataset.searchState === 'complete' &&
-          [...document.querySelectorAll('.message-search-result')]
-            .some((button) => button.textContent?.includes('紫水晶')),
-        '显示聊天搜索结果',
-      );
-      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-      const searchResults = [...document.querySelectorAll('.message-search-result')];
-      const visibleSearchResults = searchResults.filter((button) => {
-        const rect = button.getBoundingClientRect();
-        return getComputedStyle(button).visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
-      });
+      const searchClearedAfterOpen = !document.querySelector('.global-search-dialog');
       return {
         earlierResultRoom: earlierTitle,
         earlierResultReached: true,
         crossRoomResultRoom: '工程搭档',
         crossRoomResultReached: true,
         searchClearedAfterOpen,
-        searchResultCount: searchResults.length,
-        searchResultsVisible: visibleSearchResults.length > 0,
-        searchResultBounds: visibleSearchResults.map((button) => {
+        searchResultCount: crossSearch.hits.length,
+        searchResultsVisible: crossSearch.visibleCount > 0,
+        searchResultBounds: crossSearch.hits.map((button) => {
           const rect = button.getBoundingClientRect();
           const list = button.closest('.conversation-list');
           const listRect = list?.getBoundingClientRect();
@@ -767,15 +768,20 @@ export function createAgentProbes(
         );
       }
       const recallSourceJump = await mainWindow.webContents
-        .executeJavaScript(`(() => {
+        .executeJavaScript(`(async () => {
       const trace = document.querySelector('[data-message-id="${historyRecall.assistantId}"] .social-history-recall-trace');
       const button = trace?.querySelector('button');
       const sourceId = ${JSON.stringify(historyRecall.sourceMessageId)};
       button?.click();
-      const target = document.querySelector('[data-message-id="' + sourceId + '"]');
-      const thread = document.querySelector('.message-thread')?.getBoundingClientRect();
-      const rect = target?.getBoundingClientRect();
-      return Boolean(target && rect && thread && rect.bottom > thread.top && rect.top < thread.bottom);
+      const deadline = Date.now() + 7000;
+      while (Date.now() < deadline) {
+        const target = document.querySelector('[data-message-id="' + sourceId + '"]');
+        const thread = document.querySelector('.message-thread')?.getBoundingClientRect();
+        const rect = target?.getBoundingClientRect();
+        if (target && rect && thread && rect.bottom > thread.top && rect.top < thread.bottom) return true;
+        await new Promise((resolve) => setTimeout(resolve, 40));
+      }
+      return false;
     })()`);
       if (!recallSourceJump) throw new Error('历史来源入口没有跳回原消息');
       (historySearch.recall as Record<string, unknown>).sourceJumped = true;
@@ -956,22 +962,22 @@ export function createAgentProbes(
       throw new Error('等待超时：' + label);
     };
     const room = (await window.noema.getSocialState()).rooms.find((item) => item.id === ${JSON.stringify(continuationCreated.threadRoomId)});
-    document.querySelector('.continuation-parent-link')?.click();
+    [...document.querySelectorAll('.note-row button')].find((button) => button.textContent?.trim() === '回到来源消息')?.click();
     await waitFor(() => document.querySelector('.room-header .chat-header-title strong')?.textContent?.trim() === 'Noema', '来源聊天回链');
     const sourceLink = await waitFor(() => [...document.querySelectorAll('.message-continuation-link')].find((item) => item.textContent?.includes('E2E 持续主题')), '来源消息上的主题链接');
     const originBacklinkVisible = Boolean(sourceLink);
     sourceLink.click();
     await waitFor(() => document.querySelector('.room-header .chat-header-title strong')?.textContent?.trim() === 'E2E 持续主题', '返回主题聊天');
-    const closeButton = [...document.querySelectorAll('.room-header-meta button')].find((button) => button.textContent?.trim() === '结束主题');
+    const closeButton = [...document.querySelectorAll('.note-row button')].find((button) => button.textContent?.trim() === '结束主题');
     closeButton?.click();
     await waitFor(async () => (await window.noema.getSocialRoom(room.id)).room.closedAt, '结束主题');
     await waitFor(() => document.querySelector('#social-message-input')?.disabled, '已结束主题的输入锁定');
     const closedComposerDisabled = Boolean(document.querySelector('#social-message-input')?.disabled);
-    const reopenButton = await waitFor(() => [...document.querySelectorAll('.room-header-meta button')]
+    const reopenButton = await waitFor(() => [...document.querySelectorAll('.note-row button')]
       .find((button) => button.textContent?.trim() === '重新打开' && !button.disabled), '重新打开按钮就绪');
     reopenButton.click();
     await waitFor(async () => !(await window.noema.getSocialRoom(room.id)).room.closedAt, '重新打开主题');
-    const deleteButton = await waitFor(() => [...document.querySelectorAll('.room-header-meta button')]
+    const deleteButton = await waitFor(() => [...document.querySelectorAll('.note-row button')]
       .find((button) => button.textContent?.trim() === '删除' && !button.disabled), '删除按钮就绪');
     window.confirm = () => true;
     deleteButton.click();
@@ -1010,9 +1016,12 @@ export function createAgentProbes(
     mainWindow.setSize(1280, 800);
     await mainWindow.webContents.executeJavaScript(`(async () => {
     const deadline = Date.now() + 5000;
-    const createButton = document.querySelector('.new-agent-button');
-    createButton?.focus();
-    createButton?.click();
+    document.querySelector('.sidebar-settings-button')?.click();
+    while (Date.now() < deadline && !document.querySelector('.settings-dialog')) {
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    }
+    [...document.querySelectorAll('.settings-administration button')]
+      .find((button) => button.textContent?.trim() === '创建联系人')?.click();
     while (Date.now() < deadline && !document.querySelector('#social-agent-name')) {
       await new Promise((resolve) => setTimeout(resolve, 40));
     }
@@ -1100,12 +1109,12 @@ export function createAgentProbes(
     await waitFrames();
     return {
       initialDialog,
-      cancelReturnedFocus: document.activeElement?.classList?.contains('new-agent-button') ?? false,
+      cancelReturnedFocus: document.activeElement?.classList?.contains('sidebar-settings-button') ?? false,
       cancelFocusTarget: {
         tagName: document.activeElement?.tagName ?? null,
         className: document.activeElement?.className ?? null,
-        buttonConnected: Boolean(document.querySelector('.new-agent-button')?.isConnected),
-        buttonVisible: Boolean(document.querySelector('.new-agent-button')?.getClientRects().length),
+        buttonConnected: Boolean(document.querySelector('.sidebar-settings-button')?.isConnected),
+        buttonVisible: Boolean(document.querySelector('.sidebar-settings-button')?.getClientRects().length),
       },
     };
   })()`);
@@ -1138,7 +1147,10 @@ export function createAgentProbes(
     document.querySelector('.navigation-reveal')?.click();
     await waitFor(() => !document.querySelector('.social-body')?.classList.contains('room-open'), '移动端返回联系人列表');
     await waitFrames();
-    document.querySelector('.new-agent-button')?.click();
+    document.querySelector('.sidebar-settings-button')?.click();
+    await waitFor(() => document.querySelector('.settings-dialog'), '移动端连接设置');
+    [...document.querySelectorAll('.settings-administration button')]
+      .find((button) => button.textContent?.trim() === '创建联系人')?.click();
     await waitFor(() => document.querySelector('#social-agent-name'), '重新打开联系人表单');
     let name = 'E2E 图形观察员';
     setValue(document.querySelector('#social-agent-name'), name);
@@ -1160,31 +1172,29 @@ export function createAgentProbes(
     );
     const initialDirectIsEmpty = directRoom.messages.length === 1 && directRoom.messages[0].role === 'system';
     const capabilityWasExplicitlyGranted = createdState.agent.capabilities.includes('project-work');
-    const projectWorkControl = document.querySelector('.agent-project-capability input');
-    const projectModeInitiallyVisible = Boolean(document.querySelector('.composer-mode-switch button'));
+    document.querySelector('[aria-label="成员资料"]')?.click();
+    await waitFor(() => document.querySelector('.work-content h2')?.textContent?.trim() === name, '联系人资料页');
+    const projectWorkControl = [...document.querySelectorAll('.asset-row button')]
+      .find((button) => button.textContent?.includes('已启用'));
     projectWorkControl?.click();
     const projectWorkRevokedState = await waitFor(async () => {
       const state = await window.noema.getSocialState();
       const agent = state.agents.find((candidate) => candidate.id === createdState.agent.id);
       return agent && !agent.capabilities.includes('project-work') ? state : null;
     }, '撤回项目工作能力');
-    await waitFor(() => !document.querySelector('.composer-mode-switch'), '关闭项目工作入口');
-    const projectModeDisappeared = !document.querySelector('.composer-mode-switch');
-    const refreshedCapabilityControl = document.querySelector('.agent-project-capability input');
+    document.querySelector('[aria-label="成员资料"]')?.click();
+    await waitFor(() => document.querySelector('.work-content h2')?.textContent?.trim() === name, '重新打开联系人资料页');
+    const refreshedCapabilityControl = await waitFor(() => [...document.querySelectorAll('.asset-row button')]
+      .find((button) => button.textContent?.includes('未启用')), '更新项目工作能力开关');
     refreshedCapabilityControl?.click();
     const projectWorkEnabledState = await waitFor(async () => {
       const state = await window.noema.getSocialState();
       const agent = state.agents.find((candidate) => candidate.id === createdState.agent.id);
       return agent?.capabilities.includes('project-work') ? state : null;
     }, '重新开启项目工作能力');
-    await waitFor(() => Boolean(document.querySelector('.composer-mode-switch button')), '恢复项目工作入口');
-    const projectModeAppeared = Boolean(document.querySelector('.composer-mode-switch button'));
     const projectWorkOptInAndReversible =
       projectWorkDefaultedOff &&
       capabilityWasExplicitlyGranted &&
-      projectModeInitiallyVisible &&
-      projectModeDisappeared &&
-      projectModeAppeared &&
       projectWorkRevokedState.agents.some(
         (agent) => agent.id === createdState.agent.id && agent.capabilities.length === 0,
       ) &&
@@ -1193,7 +1203,8 @@ export function createAgentProbes(
       );
     const directBeforeProfileEdit = await window.noema.getSocialRoom(directRoom.room.id);
     const initialDirectMessageIds = directBeforeProfileEdit.messages.map((message) => message.id);
-    document.querySelector('button[aria-label^="编辑"]')?.click();
+    [...document.querySelectorAll('.profile-links button')]
+      .find((button) => button.textContent?.trim() === '编辑资料')?.click();
     await waitFor(() => document.querySelector('#social-agent-name'), '编辑联系人资料表单');
     await waitFrames();
     const profileEditNarrow = (() => {
@@ -1226,7 +1237,7 @@ export function createAgentProbes(
       const agent = state.agents.find((candidate) => candidate.id === createdState.agent.id);
       return agent?.name === updatedName ? { state, agent } : null;
     }, '更新后的联系人资料');
-    await waitFor(() => document.querySelector('.room-header .chat-header-title strong')?.textContent?.trim() === updatedName, '同步更新联系人私聊标题');
+    await waitFor(() => document.querySelector('.work-title strong')?.textContent?.trim() === updatedName, '同步更新联系人资料标题');
     const updatedDirectRoom = await window.noema.getSocialRoom(directRoom.room.id);
     const profileEdit = {
       name: updatedName,
@@ -1249,10 +1260,12 @@ export function createAgentProbes(
       !profileEdit.directTitleUpdated
     ) throw new Error('联系人资料编辑破坏了身份、能力或聊天记录：' + JSON.stringify(profileEdit));
     name = updatedName;
+    document.querySelector('.profile-links button.primary')?.click();
+    await waitFor(() => document.querySelector('.room-header .chat-header-title strong')?.textContent?.trim() === name, '打开更新后的常驻私聊');
     const shell = document.querySelector('.social-shell');
     const panel = document.querySelector('.conversation-panel');
     const header = document.querySelector('.room-header');
-    const controls = document.querySelector('.agent-header-actions');
+    const controls = document.querySelector('.pane-actions');
     const compactRoomLayout = {
       width: window.innerWidth,
       roomTitle: document.querySelector('.room-header .chat-header-title strong')?.textContent?.trim() ?? '',
@@ -1263,30 +1276,46 @@ export function createAgentProbes(
       documentNoOverflow: document.documentElement.scrollWidth <= window.innerWidth,
     };
 
-    document.querySelector('.agent-archive-button')?.click();
+    document.querySelector('[aria-label="成员资料"]')?.click();
+    await waitFor(() => document.querySelector('.work-content h2')?.textContent?.trim() === name, '归档前打开成员资料');
+    [...document.querySelectorAll('.profile-links button')]
+      .find((button) => button.textContent?.includes('归档联系人'))?.click();
     const archivedState = await waitFor(async () => {
       const state = await window.noema.getSocialState();
       return state.agents.find((candidate) => candidate.id === createdState.agent.id)?.archivedAt
         ? state : null;
     }, '联系人归档状态');
-    await waitFor(() => document.querySelector('.agent-archive-button')?.textContent?.includes('恢复'), '联系人恢复入口');
+    await waitFor(() => [...document.querySelectorAll('.profile-links button')].some((button) => button.textContent?.includes('恢复联系人')), '联系人恢复入口');
+    document.querySelector('.profile-links button.primary')?.click();
+    await waitFor(() => document.querySelector('.room-header .chat-header-title strong')?.textContent?.trim() === name, '归档成员常驻私聊');
     const archivedUi = Boolean(document.querySelector('.archived-agent-notice'));
-    document.querySelector('.new-group-button')?.click();
+    document.querySelector('.sidebar-settings-button')?.click();
+    await waitFor(() => document.querySelector('.settings-dialog'), '归档状态打开设置');
+    [...document.querySelectorAll('.settings-administration button')]
+      .find((button) => button.textContent?.trim() === '新建群聊')?.click();
     await waitFor(() => document.querySelector('#social-group-title'), '归档状态下新群聊表单');
     const archivedInviteExcluded = ![...document.querySelectorAll('.group-agent-option')]
       .some((option) => option.querySelector('strong')?.textContent?.trim() === name);
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     await waitFor(() => !document.querySelector('#social-group-title'), '关闭归档状态群聊表单');
 
-    document.querySelector('.agent-archive-button')?.click();
+    document.querySelector('[aria-label="成员资料"]')?.click();
+    await waitFor(() => document.querySelector('.work-content h2')?.textContent?.trim() === name, '恢复前打开成员资料');
+    [...document.querySelectorAll('.profile-links button')]
+      .find((button) => button.textContent?.includes('恢复联系人'))?.click();
     const restoredState = await waitFor(async () => {
       const state = await window.noema.getSocialState();
       const agent = state.agents.find((candidate) => candidate.id === createdState.agent.id);
       return agent && !agent.archivedAt ? state : null;
     }, '联系人恢复状态');
-    await waitFor(() => document.querySelector('.agent-archive-button')?.textContent?.includes('归档'), '联系人归档入口');
+    await waitFor(() => [...document.querySelectorAll('.profile-links button')].some((button) => button.textContent?.includes('归档联系人')), '联系人归档入口');
 
-    document.querySelector('.new-group-button')?.click();
+    document.querySelector('.profile-links button.primary')?.click();
+    await waitFor(() => document.querySelector('.room-header .chat-header-title strong')?.textContent?.trim() === name, '恢复联系人常驻私聊');
+    document.querySelector('.sidebar-settings-button')?.click();
+    await waitFor(() => document.querySelector('.settings-dialog'), '恢复状态打开设置');
+    [...document.querySelectorAll('.settings-administration button')]
+      .find((button) => button.textContent?.trim() === '新建群聊')?.click();
     await waitFor(() => document.querySelector('#social-group-title'), '新群聊表单');
     const inviteOption = [...document.querySelectorAll('.group-agent-option')]
       .find((option) => option.querySelector('strong')?.textContent?.trim() === name);
@@ -1302,7 +1331,10 @@ export function createAgentProbes(
     const groupSnapshot = await window.noema.getSocialRoom(groupRoom.id);
     const sameIdentityJoined = groupSnapshot.members.some((member) => member.id === createdState.agent.id);
     const groupDidNotImportDm = !groupSnapshot.messages.some((message) => message.content.includes('长期观察游戏视觉与交互'));
-    document.querySelector('.new-project-button')?.click();
+    document.querySelector('.sidebar-settings-button')?.click();
+    await waitFor(() => document.querySelector('.settings-dialog'), '新建项目打开设置');
+    [...document.querySelectorAll('.settings-administration button')]
+      .find((button) => button.textContent?.trim() === '新建项目')?.click();
     await waitFor(() => document.querySelector('.project-dialog input'), '新项目表单');
     setValue(document.querySelector('.project-dialog input'), 'E2E 定价追踪');
     setValue(document.querySelector('.project-dialog textarea'), '比较平台价格并记录变化。');
@@ -1311,43 +1343,62 @@ export function createAgentProbes(
     if (!projectMemberOption) throw new Error('已创建的专业联系人没有出现在项目成员列表中');
     projectMemberOption.querySelector('input')?.click();
     document.querySelector('.project-dialog button[type="submit"]')?.click();
-    await waitFor(() => document.querySelector('.project-workspace h2')?.textContent?.trim() === 'E2E 定价追踪' && document.querySelector('.room-header .chat-header-title strong')?.textContent?.trim() === 'Noema', 'Noema 主聊旁的项目工作区');
+    await waitFor(() => document.querySelector('.work-title strong')?.textContent?.trim() === 'E2E 定价追踪' && document.querySelector('.room-header .chat-header-title strong')?.textContent?.trim() === 'Noema', 'Noema 主聊旁的项目工作区');
+    [...document.querySelectorAll('.work-tabs button')]
+      .find((button) => button.textContent?.trim() === '交付')?.click();
     const projectCreatedState = await waitFor(async () => {
       const state = await window.noema.getSocialState();
       const project = state.projects.find((candidate) => candidate.title === 'E2E 定价追踪');
       return project ? { state, project } : null;
     }, '项目持久化状态');
     const projectSidebarEntry = [...document.querySelectorAll('.project-list-item')]
-      .find((item) => item.querySelector('strong')?.textContent?.trim() === 'E2E 定价追踪');
-    const projectNotDuplicatedInOtherChats = ![...document.querySelectorAll('.conversation-list .room-list-item')]
-      .some((item) => item.querySelector('.item-title')?.textContent?.includes('E2E 定价追踪'));
-    const projectBannerVisible = Boolean(document.querySelector('.project-workspace-brief')?.textContent?.includes('比较平台价格并记录变化'));
+      .find((item) => item.querySelector('.item-title')?.textContent?.trim() === 'E2E 定价追踪');
+    const projectNotDuplicatedInOtherChats = ![...document.querySelectorAll('.room-list-item .item-title')]
+      .some((item) => item.textContent?.includes('E2E 定价追踪'));
+    const projectBannerVisible = Boolean(document.querySelector('.project-brief')?.textContent?.includes('比较平台价格并记录变化'));
     const projectMemberSession = projectCreatedState.project.members.find((member) => member.agentId === createdState.agent.id);
     const projectGroup = await window.noema.getSocialRoom(projectCreatedState.project.groupRoomId);
     const projectPrivateDmUnchanged = !(await window.noema.getSocialRoom(directRoom.room.id)).messages.some((message) => message.content.includes('比较平台价格并记录变化'));
-    document.querySelector('.project-archive-action')?.click();
+    const archiveButton = await waitFor(() => [...document.querySelectorAll('.real-project-actions button')]
+      .find((button) => button.textContent?.trim() === '归档项目'), '项目归档按钮');
+    archiveButton.click();
     const archivedProjectState = await waitFor(async () => {
       const state = await window.noema.getSocialState();
       const project = state.projects.find((candidate) => candidate.id === projectCreatedState.project.id);
       return project?.status === 'archived' ? state : null;
-    }, '项目归档状态');
+    }, '项目归档状态').catch(async (error) => {
+      const state = await window.noema.getSocialState();
+      const project = state.projects.find((candidate) => candidate.id === projectCreatedState.project.id);
+      throw new Error(error.message + JSON.stringify({
+        projectStatus: project?.status,
+        notice: document.querySelector('[role="status"]')?.textContent,
+        actions: [...document.querySelectorAll('.real-project-actions button')].map((button) => ({text: button.textContent?.trim(), disabled: button.disabled})),
+      }));
+    });
     const archivedProjectHidden = !archivedProjectState.rooms.some((room) => room.id === projectCreatedState.project.groupRoomId);
-    await waitFor(() => document.querySelector('.archived-project-toggle'), '归档项目分区');
-    document.querySelector('.archived-project-toggle')?.click();
+    await waitFor(() => [...document.querySelectorAll('.bottom-link')]
+      .some((button) => button.textContent?.includes('已归档项目')), '归档项目分区');
+    [...document.querySelectorAll('.bottom-link')]
+      .find((button) => button.textContent?.includes('已归档项目'))?.click();
     const archivedProjectEntry = await waitFor(() =>
-      [...document.querySelectorAll('.archived-project-item')]
+      [...document.querySelectorAll('.project-link')]
         .find((item) => item.querySelector('strong')?.textContent?.trim() === 'E2E 定价追踪'),
       '归档列表中的项目恢复入口',
     );
     archivedProjectEntry?.click();
+    await waitFor(() => document.querySelector('.work-title strong')?.textContent?.trim() === 'E2E 定价追踪', '打开归档项目');
+    [...document.querySelectorAll('.work-content button')]
+      .find((button) => button.textContent?.trim() === '恢复项目')?.click();
     const restoredProjectState = await waitFor(async () => {
       const state = await window.noema.getSocialState();
       const project = state.projects.find((candidate) => candidate.id === projectCreatedState.project.id);
       return project?.status === 'active' ? state : null;
     }, '项目恢复状态');
-    await waitFor(() => document.querySelector('.project-workspace h2')?.textContent?.trim() === 'E2E 定价追踪', '恢复后的原项目工作区');
-    const openMemberSession = [...document.querySelectorAll('.project-workspace .project-member-open')]
-      .find((button) => button.parentElement?.textContent?.includes(name));
+    await waitFor(() => document.querySelector('.work-title strong')?.textContent?.trim() === 'E2E 定价追踪', '恢复后的原项目工作区');
+    [...document.querySelectorAll('.work-tabs button')]
+      .find((button) => button.textContent?.startsWith('成员'))?.click();
+    const openMemberSession = await waitFor(() => [...document.querySelectorAll('.member-row')]
+      .find((button) => button.textContent?.includes(name)), '项目成员会话入口');
     if (!openMemberSession) throw new Error('项目群没有提供成员独立会话入口');
     openMemberSession.click();
     await waitFor(() => document.querySelector('.room-header .chat-header-title strong')?.textContent?.trim() === name, '成员项目会话');
@@ -1371,7 +1422,9 @@ export function createAgentProbes(
       archivedProjectHidden,
       restored: restoredProjectState.rooms.some((room) => room.id === projectCreatedState.project.groupRoomId),
       restoredSameSession: restoredProjectState.projects.find((candidate) => candidate.id === projectCreatedState.project.id)?.members.find((member) => member.agentId === createdState.agent.id)?.sessionRoomId === projectMemberSession?.sessionRoomId,
-      memberSessionOpened: document.querySelector('.project-context-kicker')?.textContent?.includes(name) ?? false,
+      memberSessionOpened:
+        document.querySelector('.room-header .chat-header-title strong')?.textContent?.trim() === name &&
+        document.querySelector('.room-header .chat-header-title small')?.textContent?.includes('项目会话') === true,
       memberSessionReplied: projectSessionReply.assistantMessage.status === 'complete',
       projectSessionContainsOnlyItsOwnRequest: projectSessionReply.room.messages.some((message) => message.content.includes(sessionMarker)) && !projectSessionReply.room.messages.some((message) => message.content.includes('葡萄柚') || message.content.includes('珊瑚标记')),
     };
@@ -1531,9 +1584,20 @@ export function createAgentProbes(
       };
     })()`);
     };
+    mainWindow.setSize(1280, 800);
     await mainWindow.webContents.executeJavaScript(`(async () => {
-    const edit = document.querySelector('button[aria-label^="编辑"]');
-    if (!edit) throw new Error('联系人私聊缺少资料编辑入口');
+    const profileTriggerDeadline = Date.now() + 5000;
+    while (Date.now() < profileTriggerDeadline && !document.querySelector('[aria-label="成员资料"]')) {
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    }
+    document.querySelector('[aria-label="成员资料"]')?.click();
+    const profileDeadline = Date.now() + 5000;
+    while (Date.now() < profileDeadline && !document.querySelector('.profile-links button')) {
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    }
+    const edit = [...document.querySelectorAll('.profile-links button')]
+      .find((button) => button.textContent?.trim() === '编辑资料');
+    if (!edit) throw new Error('成员资料页缺少资料编辑入口');
     edit.click();
     const deadline = Date.now() + 5000;
     while (Date.now() < deadline && !document.querySelector('.agent-create-dialog')) {
@@ -1568,7 +1632,8 @@ export function createAgentProbes(
     );
     mainWindow.setSize(1280, 800);
     await mainWindow.webContents.executeJavaScript(`(async () => {
-    const edit = document.querySelector('button[aria-label^="编辑"]');
+    const edit = [...document.querySelectorAll('.profile-links button')]
+      .find((button) => button.textContent?.trim() === '编辑资料');
     edit?.click();
     const deadline = Date.now() + 5000;
     while (Date.now() < deadline && !document.querySelector('.agent-create-dialog')) {
@@ -1596,6 +1661,21 @@ export function createAgentProbes(
     await mainWindow.webContents.executeJavaScript(
       `document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))`,
     );
+    await mainWindow.webContents.executeJavaScript(`(async () => {
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline && ![...document.querySelectorAll('.profile-links button')]
+      .some((button) => button.textContent?.trim() === '打开常驻私聊')) {
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    }
+    [...document.querySelectorAll('.profile-links button')]
+      .find((button) => button.textContent?.trim() === '打开常驻私聊')?.click();
+  })()`);
+    await mainWindow.webContents.executeJavaScript(`(async () => {
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline && document.querySelector('.room-header .chat-header-title strong')?.textContent?.trim() !== ${JSON.stringify(result.agentProfileEdit?.name ?? '')}) {
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    }
+  })()`);
     result.agentProfileEdit.desktopLayout = profileDesktop;
     result.agentProfileEdit.narrowLayout = profileNarrow;
     const inspectContactRoom = async (width: number, height: number) => {
@@ -1607,13 +1687,12 @@ export function createAgentProbes(
       const shell = document.querySelector('.social-shell');
       const panel = document.querySelector('.conversation-panel');
       const header = document.querySelector('.room-header');
-      const actions = document.querySelector('.agent-header-actions');
-      const capability = document.querySelector('.agent-project-capability input');
+      const actions = document.querySelector('.pane-actions');
+      const profile = actions?.querySelector('[aria-label="成员资料"]');
       return {
         width: window.innerWidth,
         roomTitle: document.querySelector('.room-header .chat-header-title strong')?.textContent?.trim() ?? '',
-        actionsVisible: Boolean(actions && actions.getClientRects().length),
-        projectWorkEnabled: capability?.checked ?? null,
+        actionsVisible: Boolean(actions && actions.getClientRects().length && profile?.getClientRects().length),
         shellNoOverflow: Boolean(shell && shell.scrollWidth <= shell.clientWidth),
         panelNoOverflow: Boolean(panel && panel.scrollWidth <= panel.clientWidth),
         headerNoOverflow: Boolean(header && header.scrollWidth <= header.clientWidth),
@@ -1625,7 +1704,6 @@ export function createAgentProbes(
     if (
       contactDesktop?.roomTitle !== result.agentProfileEdit?.name ||
       !contactDesktop.actionsVisible ||
-      contactDesktop.projectWorkEnabled !== true ||
       !contactDesktop.shellNoOverflow ||
       !contactDesktop.panelNoOverflow ||
       !contactDesktop.headerNoOverflow ||
@@ -1643,7 +1721,6 @@ export function createAgentProbes(
     if (
       contactNarrow?.roomTitle !== result.agentProfileEdit?.name ||
       !contactNarrow.actionsVisible ||
-      contactNarrow.projectWorkEnabled !== true ||
       !contactNarrow.shellNoOverflow ||
       !contactNarrow.panelNoOverflow ||
       !contactNarrow.headerNoOverflow ||

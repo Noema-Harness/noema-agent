@@ -1257,6 +1257,9 @@ export class SocialChatService {
       });
       return { delivered: true, status: 'completed', report };
     } catch (error) {
+      if (process.env.NOEMA_SMOKE_TEST === '1') {
+        console.error('Noema social turn failed:', error);
+      }
       const interrupted =
         controller.signal.aborted || error?.name === 'AbortError';
       const message = safeError(error);
@@ -3351,6 +3354,9 @@ export class SocialChatService {
         empty: content.trim().length === 0,
       });
     } catch (error) {
+      if (process.env.NOEMA_SMOKE_TEST === '1') {
+        console.error('Noema root social turn failed:', error);
+      }
       const interrupted =
         controller.signal.aborted || error?.name === 'AbortError';
       const message = safeError(error);

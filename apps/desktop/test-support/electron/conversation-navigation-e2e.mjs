@@ -54,7 +54,7 @@ export async function verifyConversationNavigation(window) {
           document.querySelector('.navigation-resize-handle')) return;
       await new Promise(resolve => setTimeout(resolve, 40));
     }
-    throw new Error('Navigation controls did not mount: ' + JSON.stringify({url:location.href,ready:document.readyState,text:document.body.innerText.slice(0,500)}));
+    throw new Error('Navigation controls did not mount: ' + JSON.stringify({url:location.href,ready:document.readyState,text:document.body.innerText.slice(0,500),root:document.querySelector('#root')?.innerHTML.slice(0,1000),resources:performance.getEntriesByType('resource').map(entry=>entry.name).filter(name=>name.includes('/renderer.tsx')||name.includes('social-chat-app'))}));
   })()`);
   window.setSize(1280, 800);
   await settle();

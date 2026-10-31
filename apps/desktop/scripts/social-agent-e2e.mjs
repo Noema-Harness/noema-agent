@@ -105,14 +105,6 @@ const continuationRoomNarrowScreenshotPath = path.join(
   e2eDirectory,
   `Noema-continuation-room-narrow-${screenshotTag}.png`,
 );
-const interactionDesktopScreenshotPath = path.join(
-  e2eDirectory,
-  `Noema-interaction-adjustment-desktop-${screenshotTag}.png`,
-);
-const interactionNarrowScreenshotPath = path.join(
-  e2eDirectory,
-  `Noema-interaction-adjustment-narrow-${screenshotTag}.png`,
-);
 const agentProfileDesktopScreenshotPath = path.join(
   e2eDirectory,
   `Noema-agent-profile-desktop-${screenshotTag}.png`,
@@ -211,9 +203,6 @@ const child = spawn(process.execPath, ['scripts/start.mjs'], {
       continuationRoomDesktopScreenshotPath,
     NOEMA_SMOKE_SOCIAL_CONTINUATION_ROOM_NARROW_PATH:
       continuationRoomNarrowScreenshotPath,
-    NOEMA_SMOKE_SOCIAL_ADJUSTMENT_DESKTOP_PATH:
-      interactionDesktopScreenshotPath,
-    NOEMA_SMOKE_SOCIAL_ADJUSTMENT_NARROW_PATH: interactionNarrowScreenshotPath,
     NOEMA_SMOKE_SOCIAL_AGENT_PROFILE_PATH: agentProfileDesktopScreenshotPath,
     NOEMA_SMOKE_SOCIAL_AGENT_PROFILE_NARROW_PATH:
       agentProfileNarrowScreenshotPath,
@@ -270,8 +259,6 @@ const summary = {
   continuationNarrowScreenshotPath,
   continuationRoomDesktopScreenshotPath,
   continuationRoomNarrowScreenshotPath,
-  interactionDesktopScreenshotPath,
-  interactionNarrowScreenshotPath,
   agentProfileDesktopScreenshotPath,
   agentProfileNarrowScreenshotPath,
   projectScreenshotPath,
@@ -304,13 +291,6 @@ if (attachmentsOnly) {
   !result.workflow?.roomDraftIsolation?.partnerStartedEmpty ||
   !result.workflow?.roomDraftIsolation?.noemaDraftRestored ||
   !result.workflow?.roomDraftIsolation?.partnerDraftRestored ||
-  !result.workflow?.interactionAdjustments?.created ||
-  !result.workflow?.interactionAdjustments?.sourceValidated ||
-  !result.workflow?.interactionAdjustments?.usedOnNoemaReply ||
-  !result.workflow?.interactionAdjustments?.updated ||
-  !result.workflow?.interactionAdjustments?.usedUpdatedBehavior ||
-  !result.workflow?.interactionAdjustments?.withdrawn ||
-  !result.workflow?.interactionAdjustments?.notUsedAfterWithdrawal ||
   !result.workflow?.projectWorkDefaultedOff ||
   !result.workflow?.capabilityWasExplicitlyGranted ||
   !result.workflow?.projectWorkOptInAndReversible ||
@@ -353,8 +333,6 @@ if (attachmentsOnly) {
   (!liveProviderE2e &&
     (!existsSync(delegationDesktopScreenshotPath) ||
       !existsSync(delegationNarrowScreenshotPath))) ||
-  !existsSync(interactionDesktopScreenshotPath) ||
-  !existsSync(interactionNarrowScreenshotPath) ||
   !existsSync(agentProfileDesktopScreenshotPath) ||
   !existsSync(agentProfileNarrowScreenshotPath) ||
   !result.workflow?.agentProfileEdit?.identityPreserved ||

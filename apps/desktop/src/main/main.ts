@@ -1173,7 +1173,7 @@ async function startNoema() {
             }) {
               socialAgentE2eModelRequests.push(input);
               const history = input.messages.find((message) =>
-                message.content.includes('"type":"noema_history_recall"'),
+                message.content?.includes('"type":"noema_history_recall"'),
               );
               if (history) {
                 input.onRouteMetadata?.('e2e-local-spy');
@@ -1183,6 +1183,14 @@ async function startNoema() {
               const latestUserMessage = [...input.messages]
                 .reverse()
                 .find((message) => message.role === 'user')?.content;
+              const specialistReport = input.messages.find(
+                (message) => message.role === 'tool',
+              );
+              if (specialistReport) {
+                input.onRouteMetadata?.('e2e-local-spy');
+                yield `结合工程搭档的协助，我核对了这项信息。${socialAgentDelegationTask} 核对结果：${socialAgentDelegationResult}`;
+                return;
+              }
               if (latestUserMessage?.includes(socialAgentDelegationMarker)) {
                 input.onToolCalls?.([
                   {

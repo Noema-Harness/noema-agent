@@ -11,6 +11,10 @@ export function createAttachmentProbes(context: DesktopProbeContext) {
     if (!mainWindow || mainWindow.isDestroyed() || testSocialAgentLiveE2e) {
       throw new Error('文字附件 E2E 需要隔离的确定性模型与桌面窗口。');
     }
+    mainWindow.setSize(1280, 800);
+    await mainWindow.webContents.executeJavaScript(
+      'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+    );
     const requestCountBefore = socialAgentE2eModelRequests.length;
     const ui = await mainWindow.webContents.executeJavaScript(`(async () => {
     const waitFor = async (predicate, label, timeoutMs = 7000) => {
@@ -127,16 +131,22 @@ export function createAttachmentProbes(context: DesktopProbeContext) {
     }
 
     mainWindow.setSize(680, 560);
+    await mainWindow.webContents.executeJavaScript(
+      'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+    );
     const narrow = await mainWindow.webContents.executeJavaScript(`(() => {
     const shell = document.querySelector('.social-shell');
     const composer = document.querySelector('.message-composer');
+    const rect = composer?.getBoundingClientRect();
     return {
       width: window.innerWidth,
+      height: window.innerHeight,
       sendEnabled: !document.querySelector('.send-message-button')?.disabled,
       chipVisible: Boolean(document.querySelector('.attachment-chip')?.getClientRects().length),
       shellNoOverflow: Boolean(shell && shell.scrollWidth <= shell.clientWidth),
       documentNoOverflow: document.documentElement.scrollWidth <= window.innerWidth,
-      composerVisible: Boolean(composer && composer.getBoundingClientRect().bottom <= window.innerHeight),
+      composerVisible: Boolean(rect && rect.top < window.innerHeight && rect.bottom > 0),
+      composerBounds: rect ? { top: Math.round(rect.top), bottom: Math.round(rect.bottom), height: Math.round(rect.height) } : null,
     };
   })()`);
     if (
