@@ -43,6 +43,16 @@
       "updateWhen": "相应机制或实现边界变化"
     },
     {
+      "path": "docs/decisions/README.md",
+      "purpose": "ADR 历史的使用、核对与替代规则",
+      "updateWhen": "ADR 的职责或引用方式变化"
+    },
+    {
+      "path": "docs/decisions/TEMPLATE.md",
+      "purpose": "跨变更持久取舍的记录格式",
+      "updateWhen": "决策记录要求变化"
+    },
+    {
       "path": ".work/README.md",
       "purpose": "过程材料和历史入口",
       "updateWhen": "工作材料布局变化"
