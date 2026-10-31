@@ -918,6 +918,7 @@ export class RootAgent {
           model: turn.model,
           messages,
           signal: controller.signal,
+          usageOperation: 'root_chat',
           tools,
           onToolCalls: (calls) => {
             toolCalls = calls;
@@ -1145,6 +1146,7 @@ export class RootAgent {
               model: turn.model,
               messages,
               signal: controller.signal,
+              usageOperation: 'root_tool_followup',
               tools: continuationTools,
               onToolCalls: (calls) => {
                 followUpToolCalls = calls;
@@ -2318,6 +2320,7 @@ export class RootAgent {
           model,
           messages,
           signal: controller.signal,
+          usageOperation: 'root_background_followup',
         })) {
           this.store.appendBackgroundEventResponse(event.id, delta);
           this.emit({

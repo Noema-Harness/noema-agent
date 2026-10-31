@@ -384,6 +384,166 @@ test('assembles streamed FreeLLMAPI tool-call deltas without exposing arguments 
   assert.equal(receivedRoute, 'blockrun/model/name');
 });
 
+test('captures DeepSeek terminal streaming usage without changing the returned text', async () => {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(
+        encoder.encode(
+          'data: {"choices":[{"delta":{"content":"已完成"}}]}\n\n',
+        ),
+      );
+      controller.enqueue(
+        encoder.encode(
+          'data: {"choices":[],"usage":{"prompt_tokens":100,"completion_tokens":5,"prompt_cache_hit_tokens":64,"prompt_cache_miss_tokens":36,"completion_tokens_details":{"reasoning_tokens":2}}}\n\n',
+        ),
+      );
+      controller.enqueue(encoder.encode('data: [DONE]\n'));
+      controller.close();
+    },
+  });
+  let requestBody;
+  let recordedUsage;
+  const client = new OpenAICompatibleClient({
+    getApiKey: () => 'test-key',
+    onUsage: (usage) => {
+      recordedUsage = usage;
+    },
+    fetchImpl: async (_url, init) => {
+      requestBody = JSON.parse(init.body);
+      return new Response(stream);
+    },
+  });
+  const deltas = [];
+  for await (const delta of client.streamChat({
+    model: 'deepseek-flash',
+    messages: [{ role: 'user', content: 'PRIVATE PROMPT MUST NOT BE STORED' }],
+    signal: new AbortController().signal,
+    usageOperation: 'root_chat',
+  })) {
+    deltas.push(delta);
+  }
+
+  assert.deepEqual(deltas, ['已完成']);
+  assert.equal(requestBody.stream_options, undefined);
+  assert.deepEqual(recordedUsage, {
+    model: 'deepseek-flash',
+    providerHost: 'api.deepseek.com',
+    operation: 'root_chat',
+    requestStatus: 'completed',
+    requestCharacters: JSON.stringify([
+      { role: 'user', content: 'PRIVATE PROMPT MUST NOT BE STORED' },
+    ]).length,
+    messageCount: 1,
+    toolCount: 0,
+    usageReceived: true,
+    inputTokens: 100,
+    outputTokens: 5,
+    cachedInputTokens: 64,
+    cacheMissTokens: 36,
+    reasoningTokens: 2,
+    providerCost: null,
+  });
+  assert.equal(JSON.stringify(recordedUsage).includes('PRIVATE PROMPT'), false);
+});
+
+test('normalizes cached input from standard OpenAI-compatible usage details', async () => {
+  let recordedUsage;
+  const client = new OpenAICompatibleClient({
+    getApiKey: () => 'test-key',
+    legacyFreeRouteMode: true,
+    onUsage: (usage) => {
+      recordedUsage = usage;
+    },
+    fetchImpl: async (_url, init) => {
+      assert.equal(JSON.parse(init.body).stream_options, undefined);
+      return Response.json({
+        usage: {
+          prompt_tokens: 80,
+          completion_tokens: 12,
+          prompt_tokens_details: { cached_tokens: 32 },
+          cost: { input: 0.01, output: 0.02 },
+        },
+        choices: [{ message: { role: 'assistant', content: 'ok' } }],
+      });
+    },
+  });
+  for await (const _delta of client.streamChat({
+    model: 'free-router',
+    messages: [{ role: 'user', content: 'x' }],
+    signal: new AbortController().signal,
+    usageOperation: 'social_turn',
+  })) {
+    /* buffered compatibility response */
+  }
+
+  assert.equal(recordedUsage.usageReceived, true);
+  assert.equal(recordedUsage.inputTokens, 80);
+  assert.equal(recordedUsage.cachedInputTokens, 32);
+  assert.equal(recordedUsage.cacheMissTokens, 48);
+  assert.equal(recordedUsage.outputTokens, 12);
+  assert.deepEqual(recordedUsage.providerCost, { input: 0.01, output: 0.02 });
+});
+
+test('records failed attempts even when the provider returns no usage', async () => {
+  let recordedUsage;
+  const client = new OpenAICompatibleClient({
+    getApiKey: () => 'test-key',
+    onUsage: (usage) => {
+      recordedUsage = usage;
+    },
+    fetchImpl: async () => {
+      throw new TypeError('socket hang up');
+    },
+  });
+
+  await assert.rejects(
+    async () => {
+      for await (const _delta of client.streamChat({
+        model: 'deepseek-flash',
+        messages: [{ role: 'user', content: 'x' }],
+        signal: new AbortController().signal,
+        usageOperation: 'project_execution',
+      })) {
+        /* no response expected */
+      }
+    },
+    (error) => error.code === 'gateway_unavailable',
+  );
+  assert.equal(recordedUsage.requestStatus, 'failed');
+  assert.equal(recordedUsage.usageReceived, false);
+  assert.equal(recordedUsage.inputTokens, null);
+});
+
+test('a usage persistence failure does not interrupt the model response', async () => {
+  const client = new OpenAICompatibleClient({
+    getApiKey: () => 'test-key',
+    onUsage: () => {
+      throw new Error('database unavailable');
+    },
+    fetchImpl: async () =>
+      new Response(
+        'data: {"choices":[{"delta":{"content":"仍然回复"}}]}\n\ndata: [DONE]\n',
+      ),
+  });
+  const deltas = [];
+  const originalWarn = console.warn;
+  console.warn = () => {};
+  try {
+    for await (const delta of client.streamChat({
+      model: 'deepseek-flash',
+      messages: [{ role: 'user', content: 'x' }],
+      signal: new AbortController().signal,
+    })) {
+      deltas.push(delta);
+    }
+  } finally {
+    console.warn = originalWarn;
+  }
+
+  assert.deepEqual(deltas, ['仍然回复']);
+});
+
 test('repairs one malformed streamed tool call and releases the first stream before retrying', async () => {
   const encoder = new TextEncoder();
   const requests = [];

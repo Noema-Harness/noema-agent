@@ -873,6 +873,7 @@ export class NoemaProjectExecutor {
             model,
             messages: requestMessages,
             signal: controller.signal,
+            usageOperation: 'project_execution',
             maxTokens: 4_096,
             tools: budgetFinalization
               ? []

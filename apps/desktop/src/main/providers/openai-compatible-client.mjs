@@ -154,12 +154,13 @@ export function normalizeBaseUrl(value) {
 }
 
 export class OpenAICompatibleClient {
-  /** @param {{baseUrl?:string,getApiKey:()=>string|null,fetchImpl?:typeof fetch,legacyFreeRouteMode?:boolean}} options */
+  /** @param {{baseUrl?:string,getApiKey:()=>string|null,fetchImpl?:typeof fetch,legacyFreeRouteMode?:boolean,onUsage?:(usage:Record<string,unknown>)=>void}} options */
   constructor({
     baseUrl = DEFAULT_MODEL_BASE_URL,
     getApiKey,
     fetchImpl = fetch,
     legacyFreeRouteMode = false,
+    onUsage = () => {},
   }) {
     if (typeof getApiKey !== 'function') {
       throw new TypeError('The model provider requires an API key provider');
@@ -168,6 +169,7 @@ export class OpenAICompatibleClient {
     this.getApiKey = getApiKey;
     this.fetch = fetchImpl;
     this.legacyFreeRouteMode = legacyFreeRouteMode === true;
+    this.onUsage = typeof onUsage === 'function' ? onUsage : () => {};
   }
 
   setBaseUrl(baseUrl) {
@@ -263,7 +265,7 @@ export class OpenAICompatibleClient {
 
   /**
    * Streams text deltas from an OpenAI-compatible chat endpoint.
-   * @param {{model:string,messages:Array<object>,signal:AbortSignal,maxTokens?:number,tools?:Array<object>,toolChoice?:string|object,onToolCalls?:(calls:Array<object>)=>void,onRouteMetadata?:(route:string|null)=>void,toolCallCorrectionAttempt?:boolean}} input
+   * @param {{model:string,messages:Array<object>,signal:AbortSignal,maxTokens?:number,tools?:Array<object>,toolChoice?:string|object,onToolCalls?:(calls:Array<object>)=>void,onRouteMetadata?:(route:string|null)=>void,toolCallCorrectionAttempt?:boolean,usageOperation?:string}} input
    * @returns {AsyncGenerator<string,void,void>}
    */
   async *streamChat({
@@ -276,11 +278,32 @@ export class OpenAICompatibleClient {
     onToolCalls = () => {},
     onRouteMetadata = () => {},
     toolCallCorrectionAttempt = false,
+    usageOperation = 'unspecified',
   }) {
     const key = this.requireApiKey();
     const useBufferedRouterResponse =
       this.legacyFreeRouteMode &&
       VERIFIED_FREE_MODELS.get(model)?.routeKind === 'router';
+    const providerHost = new URL(this.baseUrl).hostname;
+    const requestMetadata = {
+      model,
+      providerHost,
+      operation: normalizeUsageOperation(usageOperation),
+      requestStatus: 'completed',
+      requestCharacters: safeJsonLength(messages),
+      messageCount: messages.length,
+      toolCount: Array.isArray(tools) ? tools.length : 0,
+    };
+    let usageReported = false;
+    const recordUsage = (status, usage) => {
+      if (usageReported) return;
+      usageReported = true;
+      reportUsage(
+        this.onUsage,
+        { ...requestMetadata, requestStatus: status },
+        usage,
+      );
+    };
     let response;
     try {
       response = await this.fetch(`${this.baseUrl}/chat/completions`, {
@@ -303,6 +326,12 @@ export class OpenAICompatibleClient {
         signal,
       });
     } catch (error) {
+      recordUsage(
+        signal.aborted || error?.name === 'AbortError'
+          ? 'interrupted'
+          : 'failed',
+        null,
+      );
       if (signal.aborted || error?.name === 'AbortError') throw error;
       if (error?.name === 'TimeoutError') {
         throw new ModelProviderError(
@@ -319,8 +348,12 @@ export class OpenAICompatibleClient {
         failure.code,
       );
     }
-    if (!response.ok) throw await mapHttpError(response);
+    if (!response.ok) {
+      recordUsage('failed', null);
+      throw await mapHttpError(response);
+    }
     if (!response.body) {
+      recordUsage('failed', null);
       throw new ModelProviderError(
         'invalid_response',
         '模型服务没有返回可读取的回复流。',
@@ -343,6 +376,7 @@ export class OpenAICompatibleClient {
       try {
         body = JSON.parse(await readBoundedResponseText(response));
       } catch (error) {
+        recordUsage('failed', null);
         if (error instanceof ModelProviderError) throw error;
         throw new ModelProviderError(
           'invalid_response',
@@ -350,11 +384,13 @@ export class OpenAICompatibleClient {
         );
       }
       if (body?.error) {
+        recordUsage('failed', body?.usage);
         throw new ModelProviderError(
           'provider_error',
           '模型服务未能完成请求。可以稍后重试或切换模型。',
         );
       }
+      recordUsage('completed', body?.usage);
       const choice = body?.choices?.[0];
       const text = extractMessageText(choice?.message);
       const calls = choice?.message?.tool_calls;
@@ -381,6 +417,7 @@ export class OpenAICompatibleClient {
               onToolCalls,
               onRouteMetadata,
               toolCallCorrectionAttempt: true,
+              usageOperation,
             });
             return;
           }
@@ -406,6 +443,7 @@ export class OpenAICompatibleClient {
     const toolCalls = new Map();
     let responseText = '';
     let correctionMessages = null;
+    let finalUsage = null;
     try {
       while (true) {
         const { value, done } = await reader.read();
@@ -428,6 +466,9 @@ export class OpenAICompatibleClient {
           }
           const payload = parseSseDataLine(line);
           if (!payload) continue;
+          if (payload.usage && typeof payload.usage === 'object') {
+            finalUsage = payload.usage;
+          }
           const text = extractTextDelta(payload);
           if (text) {
             responseText += text;
@@ -444,6 +485,9 @@ export class OpenAICompatibleClient {
       } else if (!sawDone && finalLine) {
         const payload = parseSseDataLine(finalLine);
         if (payload) {
+          if (payload.usage && typeof payload.usage === 'object') {
+            finalUsage = payload.usage;
+          }
           const text = extractTextDelta(payload);
           if (text) {
             responseText += text;
@@ -481,7 +525,14 @@ export class OpenAICompatibleClient {
           onToolCalls(finalizedCalls);
         }
       }
+      recordUsage('completed', finalUsage);
     } catch (error) {
+      recordUsage(
+        signal.aborted || error?.name === 'AbortError'
+          ? 'interrupted'
+          : 'failed',
+        finalUsage,
+      );
       if (signal.aborted || error?.name === 'AbortError') throw error;
       if (error instanceof ModelProviderError) throw error;
       const failure = describeTransportFailure(error);
@@ -500,6 +551,9 @@ export class OpenAICompatibleClient {
       }
       throw error;
     } finally {
+      if (!usageReported) {
+        recordUsage(signal.aborted ? 'interrupted' : 'failed', finalUsage);
+      }
       if (!sawDone) {
         try {
           await reader.cancel();
@@ -524,6 +578,7 @@ export class OpenAICompatibleClient {
         onToolCalls,
         onRouteMetadata,
         toolCallCorrectionAttempt: true,
+        usageOperation,
       });
     }
   }
@@ -567,6 +622,99 @@ function parseSseDataLine(line) {
 
 function isSseDone(line) {
   return line.trim() === 'data: [DONE]';
+}
+
+function normalizeUsageOperation(value) {
+  if (typeof value !== 'string') return 'unspecified';
+  const normalized = value.trim().toLowerCase();
+  return /^[a-z][a-z0-9_:-]{0,79}$/.test(normalized)
+    ? normalized
+    : 'unspecified';
+}
+
+function safeJsonLength(value) {
+  try {
+    return JSON.stringify(value).length;
+  } catch {
+    return null;
+  }
+}
+
+function nonNegativeInteger(value) {
+  return Number.isSafeInteger(value) && value >= 0 ? value : null;
+}
+
+function normalizeProviderUsage(usage) {
+  if (!usage || typeof usage !== 'object' || Array.isArray(usage)) {
+    return {
+      usageReceived: false,
+      inputTokens: null,
+      outputTokens: null,
+      cachedInputTokens: null,
+      cacheMissTokens: null,
+      reasoningTokens: null,
+      providerCost: null,
+    };
+  }
+  const inputTokens = nonNegativeInteger(usage.prompt_tokens);
+  const outputTokens = nonNegativeInteger(usage.completion_tokens);
+  const reportedCachedInputTokens = nonNegativeInteger(
+    usage.prompt_cache_hit_tokens ??
+      usage.prompt_tokens_details?.cached_tokens ??
+      usage.input_tokens_details?.cached_tokens,
+  );
+  const cachedInputTokens =
+    inputTokens !== null && reportedCachedInputTokens > inputTokens
+      ? null
+      : reportedCachedInputTokens;
+  const explicitMissTokens = nonNegativeInteger(
+    usage.prompt_cache_miss_tokens ??
+      usage.prompt_tokens_details?.uncached_tokens,
+  );
+  let cacheMissTokens =
+    explicitMissTokens ??
+    (inputTokens !== null && cachedInputTokens !== null
+      ? Math.max(0, inputTokens - cachedInputTokens)
+      : null);
+  if (
+    inputTokens !== null &&
+    cachedInputTokens !== null &&
+    cacheMissTokens !== null &&
+    cachedInputTokens + cacheMissTokens !== inputTokens
+  ) {
+    cacheMissTokens = null;
+  }
+  const reasoningTokens = nonNegativeInteger(
+    usage.completion_tokens_details?.reasoning_tokens ?? usage.reasoning_tokens,
+  );
+  const providerCost = usage.cost ?? usage.total_cost ?? null;
+  return {
+    usageReceived: true,
+    inputTokens,
+    outputTokens,
+    cachedInputTokens,
+    cacheMissTokens,
+    reasoningTokens,
+    providerCost:
+      providerCost !== null && typeof providerCost === 'object'
+        ? providerCost
+        : (nonNegativeInteger(providerCost) ??
+          (typeof providerCost === 'number' &&
+          Number.isFinite(providerCost) &&
+          providerCost >= 0
+            ? providerCost
+            : null)),
+  };
+}
+
+function reportUsage(onUsage, requestMetadata, usage) {
+  const normalized = normalizeProviderUsage(usage);
+  try {
+    onUsage({ ...requestMetadata, ...normalized });
+  } catch (error) {
+    // Usage diagnostics must never change the model response or tool behavior.
+    console.warn('Noema could not save model usage metadata:', error?.message);
+  }
 }
 
 function extractTextDelta(payload) {

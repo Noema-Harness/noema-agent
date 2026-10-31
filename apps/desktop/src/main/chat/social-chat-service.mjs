@@ -837,6 +837,7 @@ export class SocialChatService {
         model: run.model,
         messages,
         signal: run.controller.signal,
+        usageOperation: 'social_project_tool_continuation',
         // Allow enough output for structured project-plan tool arguments.
         maxTokens: 4096,
         tools: [
@@ -1415,6 +1416,7 @@ export class SocialChatService {
         model,
         messages,
         signal: controller.signal,
+        usageOperation: 'specialist_private_handoff',
       })) {
         controller.signal.throwIfAborted();
         if (!this.store.appendAssistantDelta(turn.assistantMessageId, delta)) {
@@ -2627,6 +2629,7 @@ export class SocialChatService {
         model,
         messages,
         signal: controller.signal,
+        usageOperation: 'social_turn',
         ...(isProjectGroupRoute || actionTools.length
           ? { maxTokens: 4096 }
           : {}),
@@ -2841,6 +2844,7 @@ export class SocialChatService {
             model,
             messages,
             signal: controller.signal,
+            usageOperation: 'social_project_growth_followup',
           })) {
             controller.signal.throwIfAborted();
             followUp += delta;
@@ -2955,6 +2959,7 @@ export class SocialChatService {
             model,
             messages,
             signal: controller.signal,
+            usageOperation: 'social_specialist_followup',
             onRouteMetadata: () => {
               if (!controller.signal.aborted && historySources.length) {
                 this.store.markReplyHistorySourcesIncluded(assistantMessageId);
@@ -3502,6 +3507,7 @@ export class SocialChatService {
             model,
             messages,
             signal: controller.signal,
+            usageOperation: 'social_asset_followup',
           })) {
             controller.signal.throwIfAborted();
             followUpContent += delta;

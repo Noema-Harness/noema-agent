@@ -27,6 +27,7 @@ import {
 } from './ipc/root-ipc.mjs';
 import { RootAgent } from './agents/root-agent.mjs';
 import { RootStore } from './storage/root-store.mjs';
+import { ModelUsageStore } from './storage/model-usage-store.mjs';
 import { SocialChatStore } from './chat/social-chat-store.mjs';
 import { SocialProjectStore } from './projects/social-project-store.mjs';
 import { SocialChatService } from './chat/social-chat-service.mjs';
@@ -576,6 +577,7 @@ async function startNoema() {
       testDatabasePath,
     });
     rootStore = new RootStore(databasePath);
+    const modelUsageStore = new ModelUsageStore(rootStore.db);
     writeSmokeLog('store-opened');
     const legacyFreeLlmApiSecretStore = new EncryptedSecretStore({
       safeStorage,
@@ -647,6 +649,7 @@ async function startNoema() {
       getApiKey: () => providerSecretStore?.get() ?? null,
       fetchImpl: (input, init) =>
         net.fetch(input instanceof URL ? input.toString() : input, init),
+      onUsage: (usage) => modelUsageStore.record(usage),
     });
     const noemaProjectExecutor = new NoemaProjectExecutor({
       provider,

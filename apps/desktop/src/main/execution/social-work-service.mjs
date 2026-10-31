@@ -1061,6 +1061,7 @@ export class SocialWorkService {
       model: task.model,
       messages,
       signal,
+      usageOperation: 'member_practice',
       maxTokens: 512,
       tools: [PRACTICE_PROPOSAL_TOOL],
       onToolCalls: (calls) => {
