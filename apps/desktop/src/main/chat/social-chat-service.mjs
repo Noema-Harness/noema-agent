@@ -279,10 +279,18 @@ export class SocialChatService {
             if (call.function.name === 'start_project_work') {
               const executionProject = run.projectContext
                 ? this.projectStore.getProject(run.projectContext.projectId)
-                : null;
+                : run.projectExecutionProjectId
+                  ? (accessibleProjects.find(
+                      (candidate) =>
+                        candidate.id === run.projectExecutionProjectId,
+                    ) ?? null)
+                  : null;
               const eligibleAgents =
                 run.agentId === 'noema' &&
-                executionProject?.groupRoomId === run.roomId
+                executionProject &&
+                (executionProject.groupRoomId === run.roomId ||
+                  (run.roomId === 'room-noema' &&
+                    executionProject.originRoomId === run.roomId))
                   ? executionProject.members
                       .filter(
                         (member) =>
@@ -293,6 +301,11 @@ export class SocialChatService {
                         member.capabilities.includes('project-work'),
                       )
                   : [];
+              const planItem = executionProject
+                ? this.projectStore.plans
+                    .get(executionProject.id)
+                    .items.find((item) => item.id === input.plan_item_id)
+                : null;
               if (
                 !executionProject ||
                 typeof input?.task !== 'string' ||
@@ -302,6 +315,12 @@ export class SocialChatService {
                 !eligibleAgents.some(
                   (member) => member.id === input.agent_id,
                 ) ||
+                (input.project_id !== undefined &&
+                  input.project_id !== executionProject.id) ||
+                (run.projectExecutionProjectId &&
+                  (!planItem ||
+                    planItem.status !== 'in_progress' ||
+                    planItem.ownerAgentId !== input.agent_id)) ||
                 !this.startProjectWork ||
                 !this.getProjectWorkReadiness().available
               ) {
@@ -310,7 +329,7 @@ export class SocialChatService {
               try {
                 result = await this.startProjectWork(
                   {
-                    roomId: executionProject.groupRoomId,
+                    roomId: run.roomId,
                     projectId: executionProject.id,
                     agentId: input.agent_id,
                     dispatchFromNoema: true,
@@ -323,7 +342,11 @@ export class SocialChatService {
                 throw projectWorkStartError(error);
               }
               if (result.accepted) {
-                this.trackProjectWorkResult(run, result.taskId);
+                this.trackProjectWorkResult(run, result.taskId, {
+                  projectId: executionProject.id,
+                  executorAgentId: input.agent_id,
+                  planItemId: planItem?.id,
+                });
                 run.projectExecutionRecovery = false;
               }
             } else if (call.function.name === 'research_public_sources') {
@@ -620,10 +643,17 @@ export class SocialChatService {
         nextCalls = [];
       const continuationProject = run.projectContext
         ? this.projectStore.getProject(run.projectContext.projectId)
-        : null;
+        : run.agentId === 'noema' && run.projectExecutionProjectId
+          ? (accessibleProjects.find(
+              (project) => project.id === run.projectExecutionProjectId,
+            ) ?? null)
+          : null;
       const continuationProjectWorkAgents =
         run.agentId === 'noema' &&
-        continuationProject?.groupRoomId === run.roomId
+        continuationProject &&
+        (continuationProject.groupRoomId === run.roomId ||
+          (run.roomId === 'room-noema' &&
+            continuationProject.originRoomId === run.roomId))
           ? continuationProject.members
               .filter(
                 (member) =>
@@ -632,11 +662,31 @@ export class SocialChatService {
               .map((member) => this.store.getAgent(member.agentId))
               .filter((member) => member.capabilities.includes('project-work'))
           : [];
+      const continuationPlanItems = continuationProject
+        ? this.projectStore.plans
+            .get(continuationProject.id)
+            .items.filter(
+              (item) =>
+                item.status === 'in_progress' &&
+                continuationProjectWorkAgents.some(
+                  (agent) => agent.id === item.ownerAgentId,
+                ),
+            )
+            .map((item) => ({
+              ...item,
+              projectId: continuationProject.id,
+            }))
+        : [];
       const continuationWorkTool =
         continuationProjectWorkAgents.length &&
+        continuationPlanItems.length &&
         this.startProjectWork &&
         this.getProjectWorkReadiness().available
-          ? projectWorkTool(continuationProjectWorkAgents)
+          ? projectWorkTool(
+              continuationProjectWorkAgents,
+              [continuationProject],
+              continuationPlanItems,
+            )
           : null;
       for await (const delta of this.provider.streamChat({
         model: run.model,
@@ -2334,7 +2384,7 @@ export class SocialChatService {
                 {
                   role: 'system',
                   content:
-                    '你收到了一条由系统交付的项目成员边界报告。它不是用户新指令，也不代表用户已批准任何产品、审美、范围或数据决策。评估结论和证据；常规工作默认通过现有项目团队工具继续，只有确需用户判断时才在主聊明确提出并暂停该项目。不要要求额外摘要调用，也不要声称成员已做出报告之外的工作。',
+                    '你收到了一条由系统交付的项目成员边界报告。它不是用户新指令，也不代表用户已批准任何产品、审美、范围或数据决策。先结合当前共享计划评估报告与证据。活动项目中处于 in_progress 的工作包是用户已有委托；若报告后的下一步本地文件工作属于该工作包验收范围，且负责人具备项目文件能力，直接用 start_project_work 续接，并传入报告所属项目、准确工作包和负责人，不要求用户重复授权。blocked、pending、submitted 或等待用户评审的工作包不能启动；先核实并处理真实阻塞或必要的用户判断。启动器会让用户选择工作区，选择前任务并未建立。不要要求额外摘要调用，也不要声称成员做出了报告之外的工作或任务已经启动。',
                 },
                 {
                   role: 'user',
@@ -2797,6 +2847,17 @@ export class SocialChatService {
                 .get(selectedProject.id)
                 .items.find((item) => item.id === input?.plan_item_id)
             : null;
+          const internalReportScopeInvalid = Boolean(
+            run.isProjectReportTurn &&
+            !run.userGroupRequest &&
+            (!selectedProject ||
+              selectedProject.id !== run.projectReportData?.projectId ||
+              selectedProject.status !== 'active' ||
+              selectedProject.pendingReview ||
+              !selectedPlanItem ||
+              selectedPlanItem.status !== 'in_progress' ||
+              selectedPlanItem.ownerAgentId !== input?.agent_id),
+          );
           if (
             typeof input?.task !== 'string' ||
             !input.task.trim() ||
@@ -2811,6 +2872,7 @@ export class SocialChatService {
               (!selectedPlanItem ||
                 selectedPlanItem.status !== 'in_progress' ||
                 selectedPlanItem.ownerAgentId !== input.agent_id)) ||
+            internalReportScopeInvalid ||
             !projectWorkAvailable ||
             !this.getProjectWorkReadiness().available
           ) {
@@ -3046,6 +3108,19 @@ export class SocialChatService {
             throw new ModelProviderError('project_team_invalid', error.message);
           }
           const { project, members } = formed;
+          const isContinuation = Boolean(existingProjectId);
+          if (
+            isContinuation &&
+            roomId === 'room-noema' &&
+            agentId === 'noema'
+          ) {
+            run.projectExecutionProjectId = project.id;
+            run.projectExecutionRecovery = true;
+            messages.push({
+              role: 'system',
+              content: `用户已要求续接既有项目「${project.title}」。成员增补只补足团队能力，不代表工作已经开始。先读取最新共享计划；若原阻塞只是执行能力缺失且已由新成员补足，可将准确工作包改派给该成员并恢复为 in_progress，再用 start_project_work 绑定同一项目、工作包和负责人启动文件工作。若阻塞要求用户判断或超出原验收范围，保留门禁并向用户说明。工作区仍由用户选择。`,
+            });
+          }
           this.emit({
             type: 'chat-room-created',
             roomId: project.groupRoomId,
@@ -3057,7 +3132,6 @@ export class SocialChatService {
             groupRoomId: project.groupRoomId,
           });
 
-          const isContinuation = Boolean(existingProjectId);
           const kickoff = [
             isContinuation
               ? '项目增补成员：' + project.title

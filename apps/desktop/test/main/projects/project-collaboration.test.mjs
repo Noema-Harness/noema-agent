@@ -56,6 +56,62 @@ function setup(
   });
   return { db, store, projects, project, service, a, b };
 }
+function installSingleWorkItem(
+  f,
+  {
+    projectId = f.project.id,
+    itemId,
+    ownerAgentId = f.b,
+    status = 'pending',
+    blocker = '',
+  },
+) {
+  f.projects.plans.onChange = null;
+  let plan = f.projects.plans.replace({
+    projectId,
+    expectedRevision: 0,
+    reason: '建立项目执行续接测试计划。',
+    plan: {
+      objective: '按已授权项目范围完成可验收成果。',
+      phases: [
+        {
+          id: 'implementation',
+          title: '项目实现',
+          outcome: '工作包成果可核验。',
+          exitCriteria: '工作包按验收条件独立通过。',
+          dependsOn: [],
+          status: 'pending',
+          evidence: '',
+          workItems: [
+            {
+              id: itemId,
+              title: '实现项目工作包',
+              ownerAgentId,
+              reviewerIds: [f.a],
+              acceptance: '实现并验证计划中的交付。',
+              dependsOn: [],
+              status: 'pending',
+              evidence: '',
+              blocker: '',
+            },
+          ],
+        },
+      ],
+    },
+  });
+  if (status !== 'pending') {
+    plan = f.projects.plans.updateItem({
+      projectId,
+      expectedRevision: plan.revision,
+      itemId,
+      status,
+      blocker,
+      actorAgentId: ownerAgentId,
+      reason: blocker || '工作包进入当前测试状态。',
+    });
+  }
+  return plan;
+}
 async function settle(service) {
   for (let i = 0; i < 300; i++) {
     await new Promise((resolve) => setImmediate(resolve));
@@ -831,6 +887,25 @@ test('an explicit blocked-project recovery provisions an execution member throug
             ],
           });
         } else if (calls === 2) {
+          const planTool = input.tools.find(
+            (entry) => entry.function.name === 'manage_project_plan',
+          );
+          const added = f.projects
+            .getProject(f.project.id)
+            .members.find((member) => member.name === '应用实施工程师');
+          assert.ok(planTool, 'Noema can reassign the blocked work package');
+          const plan = f.projects.plans.get(f.project.id);
+          tool(input, 'manage_project_plan', {
+            operation: 'update_item',
+            project_id: f.project.id,
+            expected_revision: plan.revision,
+            reason:
+              '原阻塞仅因原负责人没有项目文件执行能力；新成员已补足该能力。',
+            item_id: 'w3-implementation',
+            item_patch: { ownerAgentId: added.agentId },
+            status: 'in_progress',
+          });
+        } else if (calls === 3) {
           const startTool = input.tools.find(
             (entry) => entry.function.name === 'start_project_work',
           );
@@ -851,6 +926,8 @@ test('an explicit blocked-project recovery provisions an execution member throug
             function: { name: 'start_project_work' },
           });
           tool(input, 'start_project_work', {
+            project_id: f.project.id,
+            plan_item_id: 'w3-implementation',
             agent_id: added.agentId,
             task: '从当前项目工作区继续 w3 的价格快照与变化检测实现。',
           });
@@ -864,6 +941,48 @@ test('an explicit blocked-project recovery provisions an execution member throug
       onProjectWorkStart: (input) => startedWork.push(input),
     },
   );
+  f.projects.plans.onChange = null;
+  const initialPlan = f.projects.plans.replace({
+    projectId: f.project.id,
+    expectedRevision: 0,
+    reason: '建立一个仅因执行能力缺失而阻塞的真实工作包。',
+    plan: {
+      objective: '完成价格追踪应用的首版实现。',
+      phases: [
+        {
+          id: 'implementation',
+          title: '实现与验证',
+          outcome: '价格快照与变化可用。',
+          exitCriteria: '实现可运行并有验证证据。',
+          dependsOn: [],
+          status: 'pending',
+          evidence: '',
+          workItems: [
+            {
+              id: 'w3-implementation',
+              title: '实现价格快照与变化检测',
+              ownerAgentId: f.b,
+              reviewerIds: [f.a],
+              acceptance: '实现并验证价格快照与变化检测。',
+              dependsOn: [],
+              status: 'pending',
+              evidence: '',
+              blocker: '',
+            },
+          ],
+        },
+      ],
+    },
+  });
+  f.projects.plans.updateItem({
+    projectId: f.project.id,
+    expectedRevision: initialPlan.revision,
+    itemId: 'w3-implementation',
+    status: 'blocked',
+    blocker: '原负责人没有项目文件执行能力。',
+    actorAgentId: 'noema',
+    reason: '将能力缺口与其他阻塞区分开。',
+  });
   try {
     const sent = f.service.sendMessage({
       roomId: f.project.groupRoomId,
@@ -871,7 +990,7 @@ test('an explicit blocked-project recovery provisions an execution member throug
     });
     await settle(f.service);
 
-    assert.equal(calls, 3);
+    assert.equal(calls, 4);
     assert.equal(projectWorkFieldAvailable, true);
     assert.equal(readinessInstruction, true);
     const project = f.projects.getProject(f.project.id);
@@ -882,6 +1001,11 @@ test('an explicit blocked-project recovery provisions an execution member throug
     assert.ok(
       f.store.getAgent(added.agentId).capabilities.includes('project-work'),
     );
+    const recoveredItem = f.projects.plans
+      .get(f.project.id)
+      .items.find((item) => item.id === 'w3-implementation');
+    assert.equal(recoveredItem.status, 'in_progress');
+    assert.equal(recoveredItem.ownerAgentId, added.agentId);
     assert.deepEqual(startedWork, [
       {
         roomId: f.project.groupRoomId,
@@ -1189,7 +1313,42 @@ test('continuing a blocked project can add one project-work member and start its
               },
             ],
           });
+        } else if (calls === 2) {
+          const result = input.messages.findLast(
+            (message) => message.role === 'tool',
+          );
+          if (result?.content) {
+            try {
+              addedMemberState = JSON.parse(result.content).state;
+            } catch {}
+          }
+          const planTool = input.tools.find(
+            (entry) => entry.function.name === 'manage_project_plan',
+          );
+          assert.ok(planTool, 'the existing project plan remains available');
+          addedAgentId = f.projects
+            .getProject(f.project.id)
+            .members.at(-1).agentId;
+          tool(input, 'manage_project_plan', {
+            operation: 'update_item',
+            project_id: f.project.id,
+            expected_revision: 2,
+            item_id: 'build-app',
+            item_patch: { ownerAgentId: addedAgentId },
+            status: 'in_progress',
+            reason: '原阻塞是缺少执行能力；新增的项目执行成员已补足该条件。',
+          });
         } else {
+          if (
+            input.messages.some(
+              (message) =>
+                message.role === 'tool' &&
+                message.name === 'start_project_work',
+            )
+          ) {
+            yield '项目执行任务已建立，正在等待工作区选择。';
+            return;
+          }
           const result = input.messages.findLast(
             (message) => message.role === 'tool',
           );
@@ -1202,18 +1361,24 @@ test('continuing a blocked project can add one project-work member and start its
           const executor = input.tools.find(
             (entry) => entry.function.name === 'start_project_work',
           );
-          addedAgentId = f.projects
-            .getProject(f.project.id)
-            .members.at(-1).agentId;
           if (executor) {
+            assert.deepEqual(input.toolChoice, {
+              type: 'function',
+              function: { name: 'start_project_work' },
+            });
             exposedExecutorCalls++;
             if (
               executor.function.parameters.properties.agent_id.enum.includes(
                 addedAgentId,
+              ) &&
+              executor.function.parameters.properties.plan_item_id.enum.includes(
+                'build-app',
               )
             ) {
               tool(input, 'start_project_work', {
+                project_id: f.project.id,
                 agent_id: addedAgentId,
+                plan_item_id: 'build-app',
                 task: '实现价格追踪应用，并返回可运行交付及验证结果。',
               });
             } else {
@@ -1230,6 +1395,10 @@ test('continuing a blocked project can add one project-work member and start its
       onProjectWorkStart: (input) => startedWork.push(input),
     },
   );
+  f.service.collaboration.planChanged = () => ({
+    delivered: 0,
+    limited: false,
+  });
   try {
     let plan = f.projects.plans.replace({
       projectId: f.project.id,
@@ -1283,6 +1452,11 @@ test('continuing a blocked project can add one project-work member and start its
     assert.equal(teamSchemaAccepted, true);
     assert.equal(addedMemberState, 'members_added');
     assert.ok(exposedExecutorCalls >= 1);
+    const reboundItem = f.projects.plans
+      .get(f.project.id)
+      .items.find((item) => item.id === 'build-app');
+    assert.equal(reboundItem.status, 'in_progress');
+    assert.equal(reboundItem.ownerAgentId, addedAgentId);
     assert.equal(startedWork.length, 1);
     assert.equal(startedWork[0].agentId, addedAgentId);
     const current = f.projects.getProject(f.project.id);
@@ -1459,6 +1633,337 @@ test('persisted fanout survives service replacement without repeating a complete
   } finally {
     await f.service.shutdown();
     f.db.close();
+  }
+});
+
+test('an internal project report can continue only its assigned in-progress work package', async () => {
+  let calls = 0;
+  let reportGuidance = '';
+  const started = [];
+  const f = setup(
+    {
+      async *streamChat(input) {
+        calls++;
+        const report = input.messages.find((message) =>
+          message.content?.includes('"type":"noema_project_member_report"'),
+        );
+        if (report) {
+          if (
+            input.messages.some(
+              (message) =>
+                message.role === 'tool' &&
+                message.name === 'start_project_work',
+            )
+          ) {
+            yield '已提交给工作包负责人；等待你在工作区选择器中确认目录。';
+            return;
+          }
+          reportGuidance = input.messages.find(
+            (message) =>
+              message.role === 'system' &&
+              message.content.includes('由系统交付的项目成员边界报告'),
+          )?.content;
+          assert.match(reportGuidance, /in_progress/u);
+          assert.match(reportGuidance, /不要求用户重复授权/u);
+          const startTool = input.tools.find(
+            (entry) => entry.function.name === 'start_project_work',
+          );
+          assert.ok(startTool);
+          assert.match(
+            startTool.function.description,
+            /existing active project mandate/u,
+          );
+          tool(input, 'start_project_work', {
+            project_id: f.project.id,
+            agent_id: f.b,
+            plan_item_id: 'implement-store',
+            task: '按 w3 验收条件实现报价存储与变化记录。',
+          });
+        } else {
+          yield '已提交给工作包负责人；等待你在工作区选择器中确认目录。';
+        }
+      },
+    },
+    {
+      projectWorkReady: true,
+      onProjectWorkStart: (input) => started.push(input),
+    },
+  );
+  f.store.setAgentProjectWork(f.b, true);
+  installSingleWorkItem(f, {
+    itemId: 'implement-store',
+    status: 'in_progress',
+  });
+  try {
+    f.service.collaboration.publish({
+      projectId: f.project.id,
+      senderAgentId: f.a,
+      text: '@Noema 调研结论已提交，可以按计划进入实现。',
+    });
+    f.service.schedulePendingProjectReports();
+    await settle(f.service);
+
+    assert.ok(reportGuidance);
+    assert.equal(calls, 1, 'one report decision starts the bounded work item');
+    assert.equal(started.length, 1, JSON.stringify(started));
+    assert.deepEqual(
+      {
+        roomId: started[0].roomId,
+        projectId: started[0].projectId,
+        agentId: started[0].agentId,
+        dispatchFromNoema: started[0].dispatchFromNoema,
+        prompt: started[0].prompt,
+      },
+      {
+        roomId: 'room-noema',
+        projectId: f.project.id,
+        agentId: f.b,
+        dispatchFromNoema: true,
+        prompt: '按 w3 验收条件实现报价存储与变化记录。',
+      },
+    );
+  } finally {
+    await f.service.shutdown();
+    f.db.close();
+  }
+});
+
+test('an internal project report cannot start a blocked plan item', async () => {
+  const started = [];
+  const f = setup(
+    {
+      async *streamChat(input) {
+        const report = input.messages.find((message) =>
+          message.content?.includes('"type":"noema_project_member_report"'),
+        );
+        if (!report) return;
+        tool(input, 'start_project_work', {
+          project_id: f.project.id,
+          agent_id: f.b,
+          plan_item_id: 'blocked-store',
+          task: '绕过计划阻塞开始实现。',
+        });
+      },
+    },
+    {
+      projectWorkReady: true,
+      onProjectWorkStart: (input) => started.push(input),
+    },
+  );
+  f.store.setAgentProjectWork(f.b, true);
+  f.projects.plans.onChange = null;
+  f.projects.plans.replace({
+    projectId: f.project.id,
+    expectedRevision: 0,
+    reason: '建立受阻工作包的安全边界。',
+    plan: {
+      objective: '实现受阻的应用工作。',
+      phases: [
+        {
+          id: 'implementation',
+          title: '应用实现',
+          outcome: '实现工作可验收。',
+          exitCriteria: '阻塞解决且工作通过验收。',
+          dependsOn: [],
+          status: 'pending',
+          evidence: '',
+          workItems: [
+            {
+              id: 'blocked-store',
+              title: '实现报价存储',
+              ownerAgentId: f.b,
+              reviewerIds: [f.a],
+              acceptance: '实现报价持久化。',
+              dependsOn: [],
+              status: 'pending',
+              evidence: '',
+              blocker: '',
+            },
+          ],
+        },
+      ],
+    },
+  });
+  f.projects.plans.updateItem({
+    projectId: f.project.id,
+    expectedRevision: 1,
+    itemId: 'blocked-store',
+    status: 'blocked',
+    blocker: '等待用户选择实现范围。',
+    actorAgentId: f.b,
+    reason: '保留计划设定的用户决策门。',
+  });
+  try {
+    f.service.collaboration.publish({
+      projectId: f.project.id,
+      senderAgentId: f.a,
+      text: '@Noema 目前仍受阻。',
+    });
+    f.service.schedulePendingProjectReports();
+    await settle(f.service);
+
+    assert.equal(started.length, 0);
+    const failed = f.db
+      .prepare(
+        'SELECT status,error_code FROM social_project_reports WHERE project_id=? ORDER BY created_at DESC LIMIT 1',
+      )
+      .get(f.project.id);
+    assert.equal(failed.status, 'failed', JSON.stringify(failed));
+    assert.equal(
+      failed.error_code,
+      'social_tool_invalid',
+      JSON.stringify(failed),
+    );
+  } finally {
+    await f.service.shutdown();
+    f.db.close();
+  }
+});
+
+test('an internal project report rejects missing or mismatched work package bindings', async () => {
+  for (const invalidBinding of [
+    'missing-item',
+    'wrong-project',
+    'wrong-owner',
+  ]) {
+    const started = [];
+    let f;
+    let otherProject = null;
+    const provider = {
+      async *streamChat(input) {
+        if (
+          !input.messages.some((message) =>
+            message.content?.includes('"type":"noema_project_member_report"'),
+          )
+        )
+          return;
+        const args = {
+          project_id:
+            invalidBinding === 'wrong-project' ? otherProject.id : f.project.id,
+          agent_id: invalidBinding === 'wrong-owner' ? f.a : f.b,
+          task: '尝试越过项目报告授权边界。',
+        };
+        if (invalidBinding !== 'missing-item')
+          args.plan_item_id = 'implementation';
+        tool(input, 'start_project_work', args);
+      },
+    };
+    f = setup(provider, {
+      projectWorkReady: true,
+      onProjectWorkStart: (input) => started.push(input),
+    });
+    f.projects.plans.onChange = null;
+    f.store.setAgentProjectWork(f.b, true);
+    if (invalidBinding === 'wrong-owner')
+      f.store.setAgentProjectWork(f.a, true);
+    f.projects.plans.replace({
+      projectId: f.project.id,
+      expectedRevision: 0,
+      reason: '建立报告续接边界测试。',
+      plan: {
+        objective: '按已授权范围完成报价追踪应用。',
+        phases: [
+          {
+            id: 'implementation',
+            title: '实现',
+            outcome: '功能可运行。',
+            exitCriteria: '工作包通过核验。',
+            dependsOn: [],
+            status: 'pending',
+            evidence: '',
+            workItems: [
+              {
+                id: 'implementation',
+                title: '实现存储',
+                ownerAgentId: f.b,
+                reviewerIds: [f.a],
+                acceptance: '实现报价持久化。',
+                dependsOn: [],
+                status: 'pending',
+                evidence: '',
+                blocker: '',
+              },
+            ],
+          },
+        ],
+      },
+    });
+    f.projects.plans.updateItem({
+      projectId: f.project.id,
+      expectedRevision: 1,
+      itemId: 'implementation',
+      status: 'in_progress',
+      actorAgentId: f.b,
+      reason: '工作包进入执行。',
+    });
+    if (invalidBinding === 'wrong-project') {
+      otherProject = f.projects.createProject({
+        title: '其他项目',
+        brief: '独立项目。',
+        agentIds: ['noema', f.a, f.b],
+      });
+      f.projects.plans.replace({
+        projectId: otherProject.id,
+        expectedRevision: 0,
+        reason: '建立另一个有效但无关的项目工作包。',
+        plan: {
+          objective: '另一个项目目标。',
+          phases: [
+            {
+              id: 'other',
+              title: '其他实现',
+              outcome: '其他项目成果。',
+              exitCriteria: '其他工作包通过核验。',
+              dependsOn: [],
+              status: 'pending',
+              evidence: '',
+              workItems: [
+                {
+                  id: 'implementation',
+                  title: '其他项目实现',
+                  ownerAgentId: f.b,
+                  reviewerIds: [f.a],
+                  acceptance: '其他项目的报价持久化。',
+                  dependsOn: [],
+                  status: 'pending',
+                  evidence: '',
+                  blocker: '',
+                },
+              ],
+            },
+          ],
+        },
+      });
+      f.projects.plans.updateItem({
+        projectId: otherProject.id,
+        expectedRevision: 1,
+        itemId: 'implementation',
+        status: 'in_progress',
+        actorAgentId: f.b,
+        reason: '其他项目工作包进入执行。',
+      });
+    }
+    try {
+      f.service.collaboration.publish({
+        projectId: f.project.id,
+        senderAgentId: f.a,
+        text: '@Noema 请检查本阶段进展。',
+      });
+      f.service.schedulePendingProjectReports();
+      await settle(f.service);
+
+      const failed = f.db
+        .prepare(
+          'SELECT status,error_code FROM social_project_reports WHERE project_id=? ORDER BY created_at DESC LIMIT 1',
+        )
+        .get(f.project.id);
+      assert.equal(started.length, 0, invalidBinding);
+      assert.equal(failed.status, 'failed', invalidBinding);
+      assert.equal(failed.error_code, 'social_tool_invalid', invalidBinding);
+    } finally {
+      await f.service.shutdown();
+      f.db.close();
+    }
   }
 });
 

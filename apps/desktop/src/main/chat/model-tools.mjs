@@ -49,7 +49,7 @@ export function projectWorkTool(agents, projects = [], planItems = []) {
     function: {
       name: 'start_project_work',
       description:
-        'Start project-file work only when the user explicitly asks you to inspect, modify, build, or verify local files. Select exactly one existing member whose professional scope fits the task. When the work belongs to an active listed project, include that project id and select one of its active members; leave project_id out for standalone work. If the task implements a listed in-progress plan item, include its exact plan item id so the result is linked correctly. Do not default to a familiar member; if no listed member fits, explain that there is no suitable executor. The app asks for the workspace before starting. Do not use for discussion, advice, planning, code examples, or brainstorming. Eligible members:\n' +
+        'Start project-file work when the user explicitly requests it, or when continuing an existing active project mandate. In a project report turn, the mandate covers only a listed in-progress work item: include its exact project id, plan item id, and assigned eligible member, and keep the task within that item’s acceptance scope. A blocked, pending, submitted, or user-review item does not authorize execution. For standalone work, the user must explicitly request local file work and project_id must be omitted. Select exactly one existing eligible member; do not default to a familiar member. The app asks the user to choose the workspace before starting, so do not claim the task has started until that choice is confirmed. Do not use for discussion, advice, planning, code examples, or brainstorming. Eligible members:\n' +
         roster +
         projectRoster +
         planItemRoster,
@@ -572,7 +572,7 @@ export function noemaActionGuidance(
     '涉及会影响结论的算术时，先调用 calculate_expression 核对表达式，再报告数字；计算器只核验运算，不验证输入数字、来源或假设。',
     '用户明确要求继续或落实已有项目行动时，先读取对应项目和计划，再用项目工具实际推进。没有工具结果，就不能说已经检查、派发或开始；若无法推进，要指出实际阻碍，而不是只写下一步承诺。',
     projectWorkAvailable
-      ? '仅当用户明确要求对本地项目文件进行检查、修改、构建或验证时，才可调用 start_project_work。调用会打开本机工作区授权与数据流披露；用户选择工作区后任务才会被创建。不得因用户提到代码、项目或未来想法就启动。'
+      ? '本地文件工作默认需要用户明确委托；但活动项目中状态为 in_progress 的计划工作包本身就是已有委托范围。收到该项目的成员报告后，如果下一步文件工作确实落在这项工作包的验收范围内，使用 start_project_work 并绑定准确的项目、工作包和负责人，不要求用户重复授权。blocked、pending、submitted 或等待用户评审的工作包不能据此启动；先解决真实阻塞或等待用户。调用会打开本机工作区授权与数据流披露；用户选择工作区后任务才会被创建，确认前不得声称已开始。'
       : projectTeamAvailable && projectFileEngineAvailable
         ? '项目文件执行器已就绪，但还没有可选的文件执行成员。复杂项目确需组队时，可在 create_project_team 创建成员并赋予 project_work；创建完成前不要声称已检查文件。'
         : '当前没有可用的项目文件执行能力。不要声称能在本机项目中检查或修改文件。',
