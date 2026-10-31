@@ -172,6 +172,116 @@ test('project members can read exact URLs supplied by the user without search cr
   }
 });
 
+test('project members can read a URL from an earlier user message in the same group', async () => {
+  const historicalUrl = 'https://example.com/official-pricing';
+  let calls = 0;
+  let exposedUrls = [];
+  let exposedDescription = '';
+  let fetchedUrl;
+  const f = setup(
+    {
+      async *streamChat(input) {
+        calls++;
+        if (calls === 1) {
+          const direct = input.tools.find(
+            (entry) => entry.function.name === 'read_project_source',
+          );
+          exposedUrls = direct?.function.parameters.properties.url.enum ?? [];
+          exposedDescription = direct?.function.description ?? '';
+          input.onToolCalls?.([
+            {
+              id: 'read-historical-user-url',
+              type: 'function',
+              function: {
+                name: 'read_project_source',
+                arguments: JSON.stringify({ url: historicalUrl }),
+              },
+            },
+          ]);
+          return;
+        }
+        const result = JSON.parse(
+          input.messages.findLast(
+            (message) =>
+              message.role === 'tool' && message.name === 'read_project_source',
+          ).content,
+        );
+        assert.equal(result.status, 'read');
+        yield '我读取了你之前在项目群分享的官方页面，并会把它作为本轮来源。';
+      },
+    },
+    {
+      isWebSearchConfigured: () => false,
+      fetchProjectSource: async (url) => {
+        fetchedUrl = url;
+        return {
+          source: {
+            id: 'historical-user-source',
+            title: '官方定价',
+            url,
+            fetchedAt: '2026-11-01T00:00:00.000Z',
+            excerpt: '官方价格页面正文。',
+            truncated: false,
+          },
+          content: '官方价格页面正文。',
+        };
+      },
+    },
+  );
+
+  try {
+    const source = f.store.beginTurn({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '比较几家 AI 平台的 API 价格。',
+      model: 'fixture',
+    });
+    f.store.appendAssistantDelta(source.assistantMessageId, '开始整理需求。');
+    f.store.completeReply(source.assistantMessageId);
+    f.project = f.projects.createProject({
+      title: 'AI 平台价格追踪',
+      brief: '根据官方价格页建立可追踪的比较。',
+      sourceMessageId: source.userMessageId,
+      agentIds: ['noema', f.a, f.b],
+    });
+    const earlierUserMessage = f.store.beginTurn({
+      roomId: f.project.groupRoomId,
+      agentId: 'noema',
+      text: `官方来源：${historicalUrl}`,
+      model: 'fixture',
+    });
+    f.store.appendAssistantDelta(
+      earlierUserMessage.assistantMessageId,
+      '收到，后续核对时会使用。',
+    );
+    f.store.completeReply(earlierUserMessage.assistantMessageId);
+    f.service.sendMessage({
+      roomId: f.project.groupRoomId,
+      text: '@研究员 请读取我之前发在群里的官方价格页面。',
+    });
+    await settle(f.service);
+
+    assert.deepEqual(exposedUrls, [historicalUrl]);
+    assert.match(exposedDescription, /同一群聊近期已完成发言/u);
+    assert.ok(exposedDescription.includes(historicalUrl));
+    assert.equal(fetchedUrl, historicalUrl);
+    assert.equal(calls, 2);
+    const group = f.store.getRoomSnapshot(f.project.groupRoomId);
+    const reply = group.messages.find(
+      (message) => message.role === 'assistant' && message.agentId === f.a,
+    );
+    assert.equal(reply?.status, 'complete');
+    assert.match(reply?.content ?? '', /已读取来源/u);
+    assert.match(
+      reply?.content ?? '',
+      /https:\/\/example\.com\/official-pricing/u,
+    );
+  } finally {
+    await f.service.shutdown();
+    f.db.close();
+  }
+});
+
 test('agent-authored URLs stay untrusted and cannot be read as user-authorized sources', async () => {
   const attemptedUrl = 'https://example.net/private-doc';
   let directToolExposed = false;

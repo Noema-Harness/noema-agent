@@ -1194,6 +1194,21 @@ export class SocialChatStore {
     return hydrateMessage(row);
   }
 
+  listRecentUserMessagesWithLinks(roomId, limit = 128) {
+    const boundedLimit = Math.min(128, Math.max(0, Math.trunc(limit) || 0));
+    if (!boundedLimit) return [];
+    return this.db
+      .prepare(`
+        SELECT id, room_id AS roomId, role,
+               sender_agent_id AS senderAgentId, content, status
+        FROM social_messages
+        WHERE room_id = ? AND role = 'user' AND sender_agent_id IS NULL
+          AND status = 'complete' AND content LIKE '%http%'
+        ORDER BY seq DESC LIMIT ?
+      `)
+      .all(requireText(roomId, '群聊 ID', 200), boundedLimit);
+  }
+
   listAgentAssets(agentId) {
     const agent = this.getAgent(agentId);
     const rows = this.db

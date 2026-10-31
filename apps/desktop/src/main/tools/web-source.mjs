@@ -300,8 +300,9 @@ function citationUrl(value) {
   return url.href;
 }
 
-export function extractUserUrls(text) {
-  const matches = String(text ?? '').match(/https?:\/\/[^\s<>"']+/giu) ?? [];
+export function extractUserUrls(text, limit = 3) {
+  const matches =
+    String(text ?? '').match(/https?:\/\/[^\s<>"'，。；、！？]+/giu) ?? [];
   const urls = matches
     .map((match) =>
       match
@@ -313,10 +314,11 @@ export function extractUserUrls(text) {
           1,
         )[0]
         .split(/[，。；、！？]/u, 1)[0]
-        .replace(/[),.!?，。！？；;】}]+$/u, ''),
+        .replace(/[),.!?，。！？；;】}）]+$/u, ''),
     )
     .filter(Boolean);
-  return [...new Set(urls)].slice(0, 3);
+  const boundedLimit = Math.min(128, Math.max(0, Math.trunc(limit) || 0));
+  return [...new Set(urls)].slice(0, boundedLimit);
 }
 export async function fetchWebSource(value, dependencies = {}) {
   const requestedUrl = validateUrl(value);

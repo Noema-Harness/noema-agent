@@ -18,6 +18,19 @@ test('extracts only explicit HTTP links and caps the current-turn source list', 
       'https://example.net/c',
     ],
   );
+  assert.deepEqual(
+    extractUserUrls(
+      'https://example.com/1 https://example.com/2 https://example.com/3 https://example.com/4 https://example.com/5',
+      10,
+    ),
+    [
+      'https://example.com/1',
+      'https://example.com/2',
+      'https://example.com/3',
+      'https://example.com/4',
+      'https://example.com/5',
+    ],
+  );
 });
 
 test('stops copied URLs before percent-encoded Chinese punctuation and following labels', () => {
@@ -26,6 +39,18 @@ test('stops copied URLs before percent-encoded Chinese punctuation and following
       'https://example.com/pricing%EF%BC%89%E3%80%81Anthropic https://example.org/models%EF%BC%8CDeepSeek',
     ),
     ['https://example.com/pricing', 'https://example.org/models'],
+  );
+});
+
+test('stops copied URLs before literal Chinese closing parentheses', () => {
+  assert.deepEqual(
+    extractUserUrls(
+      '官方页（https://developers.openai.com/api/docs/pricing）、Anthropic（https://platform.claude.com/docs/en/about-claude/pricing）',
+    ),
+    [
+      'https://developers.openai.com/api/docs/pricing',
+      'https://platform.claude.com/docs/en/about-claude/pricing',
+    ],
   );
 });
 
