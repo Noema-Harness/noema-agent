@@ -415,9 +415,20 @@ test('captures DeepSeek terminal streaming usage without changing the returned t
     },
   });
   const deltas = [];
+  const toolDefinition = [
+    {
+      type: 'function',
+      function: {
+        name: 'lookup',
+        description: '读取用户明确提供的资料。',
+        parameters: { type: 'object', properties: {} },
+      },
+    },
+  ];
   for await (const delta of client.streamChat({
     model: 'deepseek-flash',
     messages: [{ role: 'user', content: 'PRIVATE PROMPT MUST NOT BE STORED' }],
+    tools: toolDefinition,
     signal: new AbortController().signal,
     usageOperation: 'root_chat',
   })) {
@@ -434,8 +445,9 @@ test('captures DeepSeek terminal streaming usage without changing the returned t
     requestCharacters: JSON.stringify([
       { role: 'user', content: 'PRIVATE PROMPT MUST NOT BE STORED' },
     ]).length,
+    toolDefinitionCharacters: JSON.stringify(toolDefinition).length,
     messageCount: 1,
-    toolCount: 0,
+    toolCount: 1,
     usageReceived: true,
     inputTokens: 100,
     outputTokens: 5,

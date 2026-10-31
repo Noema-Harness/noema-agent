@@ -46,6 +46,7 @@ export class ModelUsageStore {
         reasoning_tokens INTEGER CHECK (reasoning_tokens IS NULL OR reasoning_tokens >= 0),
         provider_cost_json TEXT,
         request_characters INTEGER CHECK (request_characters IS NULL OR request_characters >= 0),
+        tool_definition_characters INTEGER CHECK (tool_definition_characters IS NULL OR tool_definition_characters >= 0),
         message_count INTEGER NOT NULL CHECK (message_count >= 0),
         tool_count INTEGER NOT NULL CHECK (tool_count >= 0)
       );
@@ -66,13 +67,20 @@ export class ModelUsageStore {
         CHECK (cache_write_tokens IS NULL OR cache_write_tokens >= 0)
       `);
     }
+    if (!columns.has('tool_definition_characters')) {
+      this.db.exec(`
+        ALTER TABLE model_usage_records
+        ADD COLUMN tool_definition_characters INTEGER
+        CHECK (tool_definition_characters IS NULL OR tool_definition_characters >= 0)
+      `);
+    }
     this.insertRecord = this.db.prepare(`
       INSERT INTO model_usage_records (
         id, created_at, provider_host, model, operation, request_status, usage_received,
         input_tokens, output_tokens, cached_input_tokens, cache_miss_tokens,
         cache_write_tokens, reasoning_tokens, provider_cost_json, request_characters,
-        message_count, tool_count
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        tool_definition_characters, message_count, tool_count
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
   }
 
@@ -101,6 +109,7 @@ export class ModelUsageStore {
       reasoningTokens: count(record.reasoningTokens),
       providerCostJson: serializeProviderCost(record.providerCost),
       requestCharacters: count(record.requestCharacters),
+      toolDefinitionCharacters: count(record.toolDefinitionCharacters),
       messageCount: count(record.messageCount) ?? 0,
       toolCount: count(record.toolCount) ?? 0,
     };
@@ -120,6 +129,7 @@ export class ModelUsageStore {
       row.reasoningTokens,
       row.providerCostJson,
       row.requestCharacters,
+      row.toolDefinitionCharacters,
       row.messageCount,
       row.toolCount,
     );
@@ -185,6 +195,7 @@ export class ModelUsageStore {
           reasoning_tokens AS reasoningTokens,
           provider_cost_json AS providerCostJson,
           request_characters AS requestCharacters,
+          tool_definition_characters AS toolDefinitionCharacters,
           message_count AS messageCount, tool_count AS toolCount
         FROM model_usage_records
         ORDER BY created_at DESC

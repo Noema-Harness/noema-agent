@@ -29,6 +29,9 @@
 
 6. **DSH usage 按 step 记录，不按工具调用或整个 worker 任务记账。** 已安装的 DSH headless 投影在完成 step 时提供跨 attempt 聚合用量；这最接近真实模型请求边界。Noema 只保存规范化 token 桶，不保存 DSH session 内容、推理文本、工具输入或结果。provider 没有报告的 usage 记为未知；不通过读取 DSH 私有投影缓存或直接解析其内部持久化文件来补账。
 
+7. **缓存优化先稳定输入前缀，再用真实 usage 确认收益。** DeepSeek 文档说明后续请求只能复用已持久化且完整匹配的输入前缀，缓存为 best-effort；因此根对话中仅当前一轮才需要的网页引用和历史检索说明不应抢在此前的对话记录之前。现已把它们放到历史之后、当前用户消息之前。该改动只提高可复用前缀的机会，不保证服务端命中率，也尚未在付费请求后验证实际收益。
+8. **把工具定义体积作为成本维度单独观测。** 原用量表只记录 message JSON 字符数和工具数量，未记录工具 schema 本身。现在增加 `tool_definition_characters`，只保存序列化 schema 长度，不保存名称、描述、参数、提示词或回复。现有五条账本样本均为社交/项目协作调用，缺少工具定义长度，不能据此归因低命中。源码样例中 `manage_project_plan` 约 9.6K 字符，但这是合成项目数据下的本地结构测量，不是服务端实发 token 数。后续只有真实请求数据表明 schema 负载显著且动态时，才进一步考虑稳定 schema、请求上下文或删减描述。
+
 ### 源码级校准
 
 - DeepSeek [Context Caching](https://api-docs.deepseek.com/guides/kv_cache/) 说明缓存默认开启，但只有完整复用已落盘的前缀单元才算命中；API 返回 hit/miss token。缓存不是“对话开了就有”的开关，提示前缀稳定性才是可优化变量。
@@ -37,6 +40,7 @@
 - Anthropic 官方 [`prompt-caching.md`](https://github.com/anthropics/skills/blob/main/skills/claude-api/shared/prompt-caching.md) 把缓存优化落实为提示构造顺序：全局固定内容在前、会话级内容其次、每轮变化的内容放在尾部；它还特别指出并行成员若只改变少量任务文本，仍会各自写入不同缓存。这里复用的是“按稳定性排布、测量前缀断点”的方法；Claude 的 cache-control 标记、TTL 与 DeepSeek 自动缓存规则不同，不直接移植。
 - Goose 在快照 `b23d21cabd9b4de0c045dcdd731821a3a15c2bfc` 的 [`context_mgmt/mod.rs`](https://github.com/aaif-goose/goose/blob/b23d21cabd9b4de0c045dcdd731821a3a15c2bfc/crates/goose/src/context_mgmt/mod.rs) 用占上下文比例和绝对 token 上限共同触发压缩，并分批总结较早的工具调用。压缩调用本身也计费用；这适合其长工具会话治理，不证明对 Noema 的所有短聊天更省钱。
 - Noema 当前主聊的稳定 ROOT prompt 已单独位于消息首部；专业成员则将稳定人格 prompt 与初识、项目成长、评审等动态文本拼成一个 system message。执行工具集合也随请求变化。第一批账本数据应验证这些动态边界实际消耗的缓存份额，再决定是否拆分/重排；在数据出来前不做 prompt 内容改写。
+- 成本专项的首批现有样本只有 5 次 `deepseek-flash` 协作请求：两次同一社交工具轮次的连续记录、两次同一项目工具续答、另一次社交轮次；对应缓存命中率分别为 1.9%、93.6%、16.4%、99.1%、0.8%。高低值可与请求场景切换相伴，但样本没有工具 schema 字符数、精确前缀指纹或费用，不能断言工具变化就是低命中的因果。后续采集只增加长度元数据，不采集正文。
 
 ## Risks / Trade-offs
 

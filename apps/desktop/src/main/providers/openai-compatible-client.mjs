@@ -291,6 +291,9 @@ export class OpenAICompatibleClient {
       operation: normalizeUsageOperation(usageOperation),
       requestStatus: 'completed',
       requestCharacters: safeJsonLength(messages),
+      toolDefinitionCharacters: Array.isArray(tools)
+        ? safeJsonLength(tools)
+        : 0,
       messageCount: messages.length,
       toolCount: Array.isArray(tools) ? tools.length : 0,
     };

@@ -20,6 +20,7 @@ test('stores only usage metadata and reports cache hit rate by request operation
       reasoningTokens: 4,
       providerCost: { total: 0.001 },
       requestCharacters: 4_000,
+      toolDefinitionCharacters: 2_100,
       messageCount: 9,
       toolCount: 2,
     });
@@ -27,6 +28,7 @@ test('stores only usage metadata and reports cache hit rate by request operation
     assert.equal(record.operation, 'root_chat');
     const rows = db.prepare('SELECT * FROM model_usage_records').all();
     assert.equal(rows.length, 1);
+    assert.equal(rows[0].tool_definition_characters, 2_100);
     assert.equal(JSON.stringify(rows[0]).includes('prompt'), false);
     assert.equal(JSON.stringify(rows[0]).includes('response'), false);
     assert.equal(JSON.parse(rows[0].provider_cost_json).total, 0.001);
@@ -40,6 +42,7 @@ test('stores only usage metadata and reports cache hit rate by request operation
     assert.equal(summary.cacheBreakdownRequests, 1);
     assert.equal(summary.cacheHitRate, 0.64);
     assert.equal(store.getRecent()[0].providerCost.total, 0.001);
+    assert.equal(store.getRecent()[0].toolDefinitionCharacters, 2_100);
   } finally {
     db.close();
   }
@@ -122,6 +125,13 @@ test('adds the cache-write bucket to an existing usage table without losing rows
         )
         .get('existing').cache_write_tokens,
       null,
+    );
+    assert.equal(
+      db
+        .prepare('PRAGMA table_info(model_usage_records)')
+        .all()
+        .some((column) => column.name === 'tool_definition_characters'),
+      true,
     );
     const row = store.record({
       providerHost: 'api.test',

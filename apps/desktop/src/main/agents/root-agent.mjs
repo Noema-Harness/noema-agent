@@ -891,8 +891,12 @@ export class RootAgent {
           tools.push(RECORD_INTERACTION_ADJUSTMENT_TOOL);
         if (this.allowRootActions && this.canDelegateToDsh())
           tools.push(DELEGATE_TASK_TOOL);
-        const messages = [
-          { role: 'system', content: ROOT_SYSTEM_PROMPT },
+        // Keep turn-specific instructions after the reusable conversation prefix.
+        // DeepSeek caches exact input prefixes; inserting optional guidance before
+        // the transcript invalidates every following cached token for that turn.
+        const currentUserMessage = context.messages.at(-1);
+        const priorContextMessages = context.messages.slice(0, -1);
+        const turnGuidance = [
           ...(userUrls.length > 0 && this.allowRootActions
             ? [
                 {
@@ -910,7 +914,12 @@ export class RootAgent {
               ]
             : []),
           ...(historyContextMessage ? [historyContextMessage] : []),
-          ...context.messages,
+        ];
+        const messages = [
+          { role: 'system', content: ROOT_SYSTEM_PROMPT },
+          ...priorContextMessages,
+          ...turnGuidance,
+          ...(currentUserMessage ? [currentUserMessage] : []),
         ];
         let toolCalls = [];
         providerStreamActive = true;

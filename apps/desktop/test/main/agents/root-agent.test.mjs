@@ -120,6 +120,45 @@ test('ordinary root turns do not retrieve older conversation context', async () 
   store.close();
 });
 
+test('turn-specific citation guidance follows prior conversation for cache reuse', async () => {
+  const store = new RootStore(':memory:');
+  store.setSelectedModel('free-router');
+  let callCount = 0;
+  let secondRequest;
+  const agent = new RootAgent({
+    store,
+    provider: {
+      baseUrl: 'https://api.deepseek.com',
+      listModels: async () => [{ name: 'free-router', label: '测试模型' }],
+      async *streamChat(input) {
+        callCount += 1;
+        if (callCount === 2) secondRequest = input;
+        yield callCount === 1 ? '上一轮已完成。' : '这轮会带来源说明。';
+      },
+    },
+    secretStore: createSecretStore(),
+  });
+
+  agent.sendMessage({ text: '先聊聊这个价格追踪项目。' });
+  await agent.active.done;
+  agent.sendMessage({ text: '请核对 https://example.com/pricing' });
+  await agent.active.done;
+
+  const messages = secondRequest.messages;
+  const guidanceIndex = messages.findIndex(
+    (message) =>
+      message.role === 'system' && message.content.includes('[[S1]] 编号引用'),
+  );
+  const previousAssistantIndex = messages.findIndex(
+    (message) =>
+      message.role === 'assistant' && message.content === '上一轮已完成。',
+  );
+  assert.ok(guidanceIndex > previousAssistantIndex);
+  assert.equal(messages.at(-1).role, 'user');
+  assert.equal(messages.at(-1).content, '请核对 https://example.com/pricing');
+  store.close();
+});
+
 test('first connection selects the configured provider default when available', async () => {
   const store = new RootStore(':memory:');
   const provider = {
