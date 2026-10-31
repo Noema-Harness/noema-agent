@@ -378,7 +378,7 @@ export function normalizeDshReportedUsage(value) {
 }
 
 /**
- * @param {{runtime:{nodeExecutable:string,dshBin:string},userDataPath:string,workspacePath:string,task:string,model:string,taskId?:string,sessionId?:string,env?:NodeJS.ProcessEnv,spawnImpl?:typeof spawn,onEvent?:(event:object)=>void,timeoutMs?:number}} input
+ * @param {{runtime:{nodeExecutable:string,dshBin:string},userDataPath:string,workspacePath:string,task:string,model:string,taskId?:string,usageInteractionId?:string,sessionId?:string,env?:NodeJS.ProcessEnv,spawnImpl?:typeof spawn,onEvent?:(event:object)=>void,timeoutMs?:number}} input
  */
 export class DshHeadlessAdapter {
   /**
@@ -408,6 +408,7 @@ export class DshHeadlessAdapter {
     task,
     model,
     taskId = randomUUID(),
+    usageInteractionId = taskId,
     sessionId = null,
     onEvent = () => {},
     timeoutMs = 30 * 60 * 1000,
@@ -491,6 +492,7 @@ export class DshHeadlessAdapter {
       patchPath,
       secret: apiKey,
       model,
+      usageInteractionId,
       providerHost: new URL(this.providerBaseUrl).hostname,
       onUsage: this.onUsage,
     });
@@ -529,7 +531,7 @@ function makeLocalWorkerEnvironment({ parent, userDataPath, apiKey }) {
   return env;
 }
 
-/** @param {{child:import('node:child_process').ChildProcess,task:string,taskId:string,sessionId:string|null,timeoutMs:number,onEvent:(event:object)=>void,patchPath:string,secret:string,model:string,providerHost:string,onUsage:(usage:Record<string,unknown>)=>void}} input */
+/** @param {{child:import('node:child_process').ChildProcess,task:string,taskId:string,usageInteractionId:string,sessionId:string|null,timeoutMs:number,onEvent:(event:object)=>void,patchPath:string,secret:string,model:string,providerHost:string,onUsage:(usage:Record<string,unknown>)=>void}} input */
 function createRunHandle({
   child,
   task,
@@ -540,6 +542,7 @@ function createRunHandle({
   patchPath,
   secret,
   model,
+  usageInteractionId,
   providerHost,
   onUsage,
 }) {
@@ -582,6 +585,7 @@ function createRunHandle({
         providerHost,
         model,
         operation: 'dsh_worker_step',
+        interactionId: usageInteractionId,
         requestStatus,
         ...normalized,
         requestCharacters: null,

@@ -747,6 +747,7 @@ export class NoemaProjectExecutor {
     task,
     model,
     taskId = randomUUID(),
+    usageInteractionId = taskId,
     onEvent = () => {},
     checkpoint = null,
   }) {
@@ -874,6 +875,7 @@ export class NoemaProjectExecutor {
             messages: requestMessages,
             signal: controller.signal,
             usageOperation: 'project_execution',
+            usageInteractionId,
             maxTokens: 4_096,
             tools: budgetFinalization
               ? []

@@ -674,6 +674,7 @@ export class SocialWorkService {
             verificationAttempts === 0
               ? taskId
               : `${taskId}-resume-${verificationAttempts}`,
+          usageInteractionId: taskId,
           sessionId: runtimeSessionId,
           checkpoint,
           onEvent: (event) => {
@@ -1062,6 +1063,7 @@ export class SocialWorkService {
       messages,
       signal,
       usageOperation: 'member_practice',
+      usageInteractionId: taskId,
       maxTokens: 512,
       tools: [PRACTICE_PROPOSAL_TOOL],
       onToolCalls: (calls) => {

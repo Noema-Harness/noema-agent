@@ -915,6 +915,7 @@ export class SocialChatService {
         messages,
         signal: run.controller.signal,
         usageOperation: 'social_project_tool_continuation',
+        usageInteractionId: run.assistantMessageId,
         // Allow enough output for structured project-plan tool arguments.
         maxTokens: 4096,
         tools: [
@@ -1452,7 +1453,13 @@ export class SocialChatService {
     }
   }
 
-  async delegateToSpecialist({ specialist, task, model, parentSignal }) {
+  async delegateToSpecialist({
+    specialist,
+    task,
+    model,
+    parentSignal,
+    parentInteractionId,
+  }) {
     const roomId = this.store.getAgentResidentRoomId(specialist.id);
     if (this.active.has(roomId) || this.store.hasStreamingReply(roomId)) {
       return {
@@ -1494,6 +1501,7 @@ export class SocialChatService {
         messages,
         signal: controller.signal,
         usageOperation: 'specialist_private_handoff',
+        usageInteractionId: parentInteractionId,
       })) {
         controller.signal.throwIfAborted();
         if (!this.store.appendAssistantDelta(turn.assistantMessageId, delta)) {
@@ -2734,6 +2742,7 @@ export class SocialChatService {
         messages,
         signal: controller.signal,
         usageOperation: 'social_turn',
+        usageInteractionId: assistantMessageId,
         ...(isProjectGroupRoute || actionTools.length
           ? { maxTokens: 4096 }
           : {}),
@@ -2949,6 +2958,7 @@ export class SocialChatService {
             messages,
             signal: controller.signal,
             usageOperation: 'social_project_growth_followup',
+            usageInteractionId: assistantMessageId,
           })) {
             controller.signal.throwIfAborted();
             followUp += delta;
@@ -3035,6 +3045,7 @@ export class SocialChatService {
             task,
             model,
             parentSignal: controller.signal,
+            parentInteractionId: assistantMessageId,
           });
           messages.push({
             role: 'system',
@@ -3064,6 +3075,7 @@ export class SocialChatService {
             messages,
             signal: controller.signal,
             usageOperation: 'social_specialist_followup',
+            usageInteractionId: assistantMessageId,
             onRouteMetadata: () => {
               if (!controller.signal.aborted && historySources.length) {
                 this.store.markReplyHistorySourcesIncluded(assistantMessageId);
@@ -3612,6 +3624,7 @@ export class SocialChatService {
             messages,
             signal: controller.signal,
             usageOperation: 'social_asset_followup',
+            usageInteractionId: assistantMessageId,
           })) {
             controller.signal.throwIfAborted();
             followUpContent += delta;

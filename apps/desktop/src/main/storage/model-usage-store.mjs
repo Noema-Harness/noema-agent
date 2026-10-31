@@ -36,6 +36,7 @@ export class ModelUsageStore {
         provider_host TEXT NOT NULL,
         model TEXT NOT NULL,
         operation TEXT NOT NULL,
+        interaction_id TEXT,
         request_status TEXT NOT NULL CHECK (request_status IN ('completed', 'failed', 'interrupted')),
         usage_received INTEGER NOT NULL CHECK (usage_received IN (0, 1)),
         input_tokens INTEGER CHECK (input_tokens IS NULL OR input_tokens >= 0),
@@ -74,13 +75,23 @@ export class ModelUsageStore {
         CHECK (tool_definition_characters IS NULL OR tool_definition_characters >= 0)
       `);
     }
+    if (!columns.has('interaction_id')) {
+      this.db.exec(`
+        ALTER TABLE model_usage_records
+        ADD COLUMN interaction_id TEXT
+      `);
+    }
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS model_usage_records_interaction
+        ON model_usage_records(interaction_id, created_at DESC)
+    `);
     this.insertRecord = this.db.prepare(`
       INSERT INTO model_usage_records (
-        id, created_at, provider_host, model, operation, request_status, usage_received,
+        id, created_at, provider_host, model, operation, interaction_id, request_status, usage_received,
         input_tokens, output_tokens, cached_input_tokens, cache_miss_tokens,
         cache_write_tokens, reasoning_tokens, provider_cost_json, request_characters,
         tool_definition_characters, message_count, tool_count
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
   }
 
@@ -95,6 +106,7 @@ export class ModelUsageStore {
       providerHost: shortText(record.providerHost, 'unknown', 253),
       model: shortText(record.model, 'unknown', 200),
       operation: shortText(record.operation, 'unspecified', 80),
+      interactionId: shortText(record.interactionId, null, 120),
       requestStatus: ['completed', 'failed', 'interrupted'].includes(
         record.requestStatus,
       )
@@ -119,6 +131,7 @@ export class ModelUsageStore {
       row.providerHost,
       row.model,
       row.operation,
+      row.interactionId,
       row.requestStatus,
       row.usageReceived,
       row.inputTokens,
@@ -186,7 +199,8 @@ export class ModelUsageStore {
     return this.db
       .prepare(`
         SELECT id, created_at AS createdAt, provider_host AS providerHost,
-          model, operation, request_status AS requestStatus,
+          model, operation, interaction_id AS interactionId,
+          request_status AS requestStatus,
           usage_received AS usageReceived,
           input_tokens AS inputTokens, output_tokens AS outputTokens,
           cached_input_tokens AS cachedInputTokens,
@@ -212,6 +226,52 @@ export class ModelUsageStore {
         const record = { ...row };
         delete record.providerCostJson;
         return { ...record, providerCost };
+      });
+  }
+
+  /** @param {{limit?:number}} [options] */
+  getInteractionSummary({ limit = 100 } = {}) {
+    const safeLimit = Math.max(1, Math.min(count(limit) ?? 100, 500));
+    return this.db
+      .prepare(`
+        SELECT interaction_id AS interactionId,
+          provider_host AS providerHost,
+          model,
+          MIN(created_at) AS firstRequestAt,
+          MAX(created_at) AS lastRequestAt,
+          COUNT(*) AS requests,
+          SUM(CASE WHEN request_status = 'completed' THEN 1 ELSE 0 END) AS completedRequests,
+          SUM(CASE WHEN request_status = 'failed' THEN 1 ELSE 0 END) AS failedRequests,
+          SUM(CASE WHEN request_status = 'interrupted' THEN 1 ELSE 0 END) AS interruptedRequests,
+          SUM(usage_received) AS usageReportedRequests,
+          SUM(input_tokens) AS inputTokens,
+          SUM(output_tokens) AS outputTokens,
+          SUM(CASE WHEN cached_input_tokens IS NOT NULL AND cache_miss_tokens IS NOT NULL THEN cached_input_tokens ELSE 0 END) AS cachedInputTokens,
+          SUM(CASE WHEN cached_input_tokens IS NOT NULL AND cache_miss_tokens IS NOT NULL THEN cache_miss_tokens ELSE 0 END) AS cacheMissTokens,
+          SUM(CASE WHEN cached_input_tokens IS NOT NULL AND cache_miss_tokens IS NOT NULL THEN 1 ELSE 0 END) AS cacheBreakdownRequests,
+          SUM(cache_write_tokens) AS cacheWriteTokens,
+          SUM(reasoning_tokens) AS reasoningTokens
+        FROM model_usage_records
+        WHERE interaction_id IS NOT NULL
+        GROUP BY interaction_id, provider_host, model
+        ORDER BY MAX(created_at) DESC
+        LIMIT ?
+      `)
+      .all(safeLimit)
+      .map((row) => {
+        const cacheTotal =
+          row.cachedInputTokens === null || row.cacheMissTokens === null
+            ? null
+            : row.cachedInputTokens + row.cacheMissTokens;
+        return {
+          ...row,
+          cachedInputTokens:
+            row.cacheBreakdownRequests > 0 ? row.cachedInputTokens : null,
+          cacheMissTokens:
+            row.cacheBreakdownRequests > 0 ? row.cacheMissTokens : null,
+          cacheHitRate:
+            cacheTotal > 0 ? row.cachedInputTokens / cacheTotal : null,
+        };
       });
   }
 }

@@ -928,6 +928,7 @@ export class RootAgent {
           messages,
           signal: controller.signal,
           usageOperation: 'root_chat',
+          usageInteractionId: turn.id,
           tools,
           onToolCalls: (calls) => {
             toolCalls = calls;
@@ -1156,6 +1157,7 @@ export class RootAgent {
               messages,
               signal: controller.signal,
               usageOperation: 'root_tool_followup',
+              usageInteractionId: turn.id,
               tools: continuationTools,
               onToolCalls: (calls) => {
                 followUpToolCalls = calls;
@@ -1926,6 +1928,7 @@ export class RootAgent {
         nextRepairIsInvalidArgumentsLoop = false;
         currentHandle = await this.dshAdapter.startTask({
           taskId: runId,
+          usageInteractionId: sourceTurnId,
           workspacePath,
           task: repairPrompt,
           model,
@@ -2330,6 +2333,7 @@ export class RootAgent {
           messages,
           signal: controller.signal,
           usageOperation: 'root_background_followup',
+          usageInteractionId: event.sourceTurnId,
         })) {
           this.store.appendBackgroundEventResponse(event.id, delta);
           this.emit({

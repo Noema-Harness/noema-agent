@@ -431,6 +431,7 @@ test('captures DeepSeek terminal streaming usage without changing the returned t
     tools: toolDefinition,
     signal: new AbortController().signal,
     usageOperation: 'root_chat',
+    usageInteractionId: 'turn-cost-group',
   })) {
     deltas.push(delta);
   }
@@ -441,6 +442,7 @@ test('captures DeepSeek terminal streaming usage without changing the returned t
     model: 'deepseek-flash',
     providerHost: 'api.deepseek.com',
     operation: 'root_chat',
+    interactionId: 'turn-cost-group',
     requestStatus: 'completed',
     requestCharacters: JSON.stringify([
       { role: 'user', content: 'PRIVATE PROMPT MUST NOT BE STORED' },

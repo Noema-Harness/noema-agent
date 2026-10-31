@@ -265,7 +265,7 @@ export class OpenAICompatibleClient {
 
   /**
    * Streams text deltas from an OpenAI-compatible chat endpoint.
-   * @param {{model:string,messages:Array<object>,signal:AbortSignal,maxTokens?:number,tools?:Array<object>,toolChoice?:string|object,onToolCalls?:(calls:Array<object>)=>void,onRouteMetadata?:(route:string|null)=>void,toolCallCorrectionAttempt?:boolean,usageOperation?:string}} input
+   * @param {{model:string,messages:Array<object>,signal:AbortSignal,maxTokens?:number,tools?:Array<object>,toolChoice?:string|object,onToolCalls?:(calls:Array<object>)=>void,onRouteMetadata?:(route:string|null)=>void,toolCallCorrectionAttempt?:boolean,usageOperation?:string,usageInteractionId?:string|null}} input
    * @returns {AsyncGenerator<string,void,void>}
    */
   async *streamChat({
@@ -279,6 +279,7 @@ export class OpenAICompatibleClient {
     onRouteMetadata = () => {},
     toolCallCorrectionAttempt = false,
     usageOperation = 'unspecified',
+    usageInteractionId = null,
   }) {
     const key = this.requireApiKey();
     const useBufferedRouterResponse =
@@ -289,6 +290,10 @@ export class OpenAICompatibleClient {
       model,
       providerHost,
       operation: normalizeUsageOperation(usageOperation),
+      interactionId:
+        typeof usageInteractionId === 'string' && usageInteractionId.trim()
+          ? usageInteractionId.trim().slice(0, 120)
+          : null,
       requestStatus: 'completed',
       requestCharacters: safeJsonLength(messages),
       toolDefinitionCharacters: Array.isArray(tools)
@@ -421,6 +426,7 @@ export class OpenAICompatibleClient {
               onRouteMetadata,
               toolCallCorrectionAttempt: true,
               usageOperation,
+              usageInteractionId,
             });
             return;
           }
@@ -582,6 +588,7 @@ export class OpenAICompatibleClient {
         onRouteMetadata,
         toolCallCorrectionAttempt: true,
         usageOperation,
+        usageInteractionId,
       });
     }
   }

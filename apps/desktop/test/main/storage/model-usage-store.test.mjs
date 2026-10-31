@@ -11,6 +11,7 @@ test('stores only usage metadata and reports cache hit rate by request operation
       providerHost: 'api.deepseek.com',
       model: 'deepseek-flash',
       operation: 'root_chat',
+      interactionId: 'turn-1',
       usageReceived: true,
       inputTokens: 100,
       outputTokens: 20,
@@ -26,6 +27,7 @@ test('stores only usage metadata and reports cache hit rate by request operation
     });
 
     assert.equal(record.operation, 'root_chat');
+    assert.equal(record.interactionId, 'turn-1');
     const rows = db.prepare('SELECT * FROM model_usage_records').all();
     assert.equal(rows.length, 1);
     assert.equal(rows[0].tool_definition_characters, 2_100);
@@ -43,6 +45,8 @@ test('stores only usage metadata and reports cache hit rate by request operation
     assert.equal(summary.cacheHitRate, 0.64);
     assert.equal(store.getRecent()[0].providerCost.total, 0.001);
     assert.equal(store.getRecent()[0].toolDefinitionCharacters, 2_100);
+    assert.equal(store.getRecent()[0].interactionId, 'turn-1');
+    assert.equal(store.getInteractionSummary()[0].interactionId, 'turn-1');
   } finally {
     db.close();
   }
@@ -133,6 +137,13 @@ test('adds the cache-write bucket to an existing usage table without losing rows
         .some((column) => column.name === 'tool_definition_characters'),
       true,
     );
+    assert.equal(
+      db
+        .prepare('PRAGMA table_info(model_usage_records)')
+        .all()
+        .some((column) => column.name === 'interaction_id'),
+      true,
+    );
     const row = store.record({
       providerHost: 'api.test',
       model: 'm',
@@ -150,6 +161,70 @@ test('adds the cache-write bucket to an existing usage table without losing rows
         .count,
       2,
     );
+  } finally {
+    db.close();
+  }
+});
+
+test('groups related provider calls into one interaction summary', () => {
+  const db = new Database(':memory:');
+  try {
+    const store = new ModelUsageStore(db);
+    for (const record of [
+      {
+        interactionId: 'turn-shared',
+        providerHost: 'api.deepseek.com',
+        model: 'deepseek-flash',
+        operation: 'social_turn',
+        usageReceived: true,
+        inputTokens: 100,
+        outputTokens: 20,
+        cachedInputTokens: 40,
+        cacheMissTokens: 60,
+      },
+      {
+        interactionId: 'turn-shared',
+        providerHost: 'api.deepseek.com',
+        model: 'deepseek-flash',
+        operation: 'social_specialist_followup',
+        requestStatus: 'failed',
+        usageReceived: false,
+        inputTokens: null,
+        outputTokens: null,
+      },
+      {
+        interactionId: 'turn-other',
+        providerHost: 'api.deepseek.com',
+        model: 'deepseek-flash',
+        operation: 'social_turn',
+        usageReceived: true,
+        inputTokens: 30,
+        outputTokens: 8,
+        cachedInputTokens: 0,
+        cacheMissTokens: 30,
+      },
+    ]) {
+      store.record(record);
+    }
+
+    const [summary] = store.getInteractionSummary();
+    assert.equal(summary.interactionId, 'turn-other');
+    assert.equal(summary.requests, 1);
+    assert.equal(summary.inputTokens, 30);
+    assert.equal(summary.cacheHitRate, 0);
+
+    const shared = store
+      .getInteractionSummary()
+      .find((row) => row.interactionId === 'turn-shared');
+    assert.equal(shared.requests, 2);
+    assert.equal(shared.completedRequests, 1);
+    assert.equal(shared.failedRequests, 1);
+    assert.equal(shared.usageReportedRequests, 1);
+    assert.equal(shared.inputTokens, 100);
+    assert.equal(shared.outputTokens, 20);
+    assert.equal(shared.cachedInputTokens, 40);
+    assert.equal(shared.cacheMissTokens, 60);
+    assert.equal(shared.cacheHitRate, 0.4);
   } finally {
     db.close();
   }

@@ -203,6 +203,7 @@ test('worker process streams safe status events and reports the final result', a
     });
     const handle = await adapter.startTask({
       taskId: 'task-test',
+      usageInteractionId: 'parent-result',
       workspacePath: workspace,
       task: 'Create one file in the workspace.',
       model: routerModel,
@@ -268,6 +269,7 @@ test('worker process streams safe status events and reports the final result', a
         providerHost: '127.0.0.1',
         model: routerModel,
         operation: 'dsh_worker_step',
+        interactionId: 'parent-result',
         requestStatus: 'completed',
         usageReceived: true,
         inputTokens: 33,
