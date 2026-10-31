@@ -25,7 +25,10 @@ function makeProvider(responses, requests = []) {
   let index = 0;
   return {
     async *streamChat(request) {
-      requests.push({ messages: structuredClone(request.messages) });
+      requests.push({
+        messages: structuredClone(request.messages),
+        tools: structuredClone(request.tools),
+      });
       const { onToolCalls } = request;
       const response = responses[index++];
       if (!response) throw new Error('Unexpected provider call');
@@ -648,6 +651,60 @@ test('Noema executor redacts recognized credentials before checkpointing tool ou
         secret,
       ),
     );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('a batch crossing the segment budget is rejected atomically before writes', async () => {
+  const directory = mkdtempSync(
+    path.join(tmpdir(), 'noema-project-segment-budget-'),
+  );
+  const workspace = path.join(directory, 'workspace');
+  mkdirSync(workspace);
+  const responses = Array.from({ length: 23 }, (_, index) => ({
+    calls: [
+      toolCall(`segment-write-${index}`, 'write_file', {
+        path: `done-${index}.txt`,
+        content: `written ${index}`,
+      }),
+    ],
+  }));
+  responses.push({
+    calls: [
+      toolCall('crossing-write-one', 'write_file', {
+        path: 'must-not-write-one.txt',
+        content: 'not executed',
+      }),
+      toolCall('crossing-write-two', 'write_file', {
+        path: 'must-not-write-two.txt',
+        content: 'not executed',
+      }),
+    ],
+  });
+  responses.push({ text: '已完成前 23 个文件；剩余两个写入尚未执行。' });
+  const requests = [];
+  const provider = makeProvider(responses, requests);
+  try {
+    const executor = new NoemaProjectExecutor({ provider });
+    const handle = await executor.startTask({
+      workspacePath: workspace,
+      task: '连续写入多个文件',
+      model: 'auto:noema-free',
+    });
+    const outcome = await handle.done;
+    assert.equal(outcome.status, 'failed');
+    assert.equal(outcome.errorCode, 'tool_round_limit');
+    assert.equal(provider.callCount, 25);
+    assert.equal(outcome.toolCallCount, 23);
+    for (let index = 0; index < 23; index += 1) {
+      assert.equal(existsSync(path.join(workspace, `done-${index}.txt`)), true);
+    }
+    assert.equal(existsSync(path.join(workspace, 'must-not-write-one.txt')), false);
+    assert.equal(existsSync(path.join(workspace, 'must-not-write-two.txt')), false);
+    assert.deepEqual(requests.at(-1).tools, []);
+    assert.match(outcome.result, /部分进度交接/u);
+    assert.match(outcome.result, /不代表项目工作项已完成或验收/u);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

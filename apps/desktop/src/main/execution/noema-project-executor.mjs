@@ -783,7 +783,7 @@ export class NoemaProjectExecutor {
               ? '需要验证时通过 run_command 前台运行相关检查。不要启动后台服务、长期进程或超出本项目的任务。'
               : '当前宿主没有通过 Noema 工作区权限边界验证的命令沙箱；文件读写工具仍可用，但不能运行系统命令。不要尝试无沙箱执行或通过其他工具绕过此限制。',
             'write_file 会完整替换目标文件。每次工具调用后检查结果，不要重复已成功的写入。出现工具错误时先处理错误；无法安全继续就如实结束。',
-            '工具总轮数有限。最终用简体中文报告实际修改、运行的检查和未完成项；没有证据时不要声称通过。',
+            '每段工具轮数有限。到达预算时只交接部分进度，不得声称任务已完成；最终用简体中文报告实际修改、运行的检查和未完成项，没有证据时不要声称通过。',
             `所选工作区：${workspace}`,
           ].join('\n'),
         },
@@ -797,6 +797,8 @@ export class NoemaProjectExecutor {
           0,
         );
       let toolCallCount = checkpoint?.toolCallCount ?? 0;
+      let segmentToolCallCount = 0;
+      let budgetReached = false;
       const restoredLedger = checkpoint ? restoreCallLedger(messages) : null;
       const executedCalls = restoredLedger?.executedCalls ?? new Map();
       const sideEffectCalls = restoredLedger?.sideEffectCalls ?? new Set();
@@ -835,6 +837,8 @@ export class NoemaProjectExecutor {
               toolCallCount: callCount,
             };
           }
+          const budgetFinalization =
+            budgetReached || segmentToolCallCount >= MAX_TOOL_CALLS;
           const modelMessages = compactModelHistory(messages);
           if (
             serializedHistoryCharacters(modelMessages) > MAX_MODEL_HISTORY_CHARS
@@ -854,16 +858,29 @@ export class NoemaProjectExecutor {
           let batchArgumentCharacters = 0;
           let responseText = '';
           saveCheckpoint(round, 'ready_for_model');
+          const requestMessages = modelMessages.map((message, index) =>
+            budgetFinalization && index === 0
+              ? {
+                  ...message,
+                  content: [
+                    message.content,
+                    '本段工具预算已经用完。现在只允许用文本交接：列出已完成内容、未完成内容、现有证据和建议的续接点。明确说明本段未完成；不得把未核验结果说成已完成。',
+                  ].join('\n\n'),
+                }
+              : message,
+          );
           for await (const delta of this.provider.streamChat({
             model,
-            messages: modelMessages,
+            messages: requestMessages,
             signal: controller.signal,
             maxTokens: 4_096,
-            tools: this.commandSupport.supported
-              ? PROJECT_TOOLS
-              : PROJECT_TOOLS.filter(
-                  (tool) => tool.function.name !== 'run_command',
-                ),
+            tools: budgetFinalization
+              ? []
+              : this.commandSupport.supported
+                ? PROJECT_TOOLS
+                : PROJECT_TOOLS.filter(
+                    (tool) => tool.function.name !== 'run_command',
+                  ),
             onToolCalls: (next) => {
               for (const call of next) {
                 receivedToolCallCount += 1;
@@ -885,11 +902,50 @@ export class NoemaProjectExecutor {
               toolCallCount: callCount,
             };
           }
+          if (budgetFinalization && receivedToolCallCount > 0) {
+            const result = [
+              `本段工具预算已用完（${MAX_TOOL_CALLS} 次）；模型仍请求继续操作，这些操作均未执行。`,
+              responseText,
+            ]
+              .filter(Boolean)
+              .join('\n\n');
+            messages.push({ role: 'assistant', content: result });
+            saveCheckpoint(0, 'ready_for_model');
+            return {
+              status: 'failed',
+              errorCode: 'tool_round_limit',
+              errorMessage:
+                '本段工具步骤预算已用完；进度已保存，超额操作未执行。可从检查点继续。',
+              sessionId,
+              result,
+              toolCallCount: callCount,
+            };
+          }
           if (!calls.length) {
             if (responseText) finalText = truncate(responseText, 100_000);
             if (!finalText.trim())
               throw new Error('模型没有返回最终说明或工具调用。');
             messages.push({ role: 'assistant', content: finalText });
+            if (budgetFinalization) {
+              const handoff = [
+                `本段工具预算已用完（${MAX_TOOL_CALLS} 次）。以下内容是部分进度交接，不代表项目工作项已完成或验收。`,
+                finalText,
+              ].join('\n\n');
+              messages[messages.length - 1] = {
+                role: 'assistant',
+                content: handoff,
+              };
+              saveCheckpoint(0, 'ready_for_model');
+              return {
+                status: 'failed',
+                errorCode: 'tool_round_limit',
+                errorMessage:
+                  '本段工具步骤预算已用完；部分进度和操作记录已保存，可从检查点继续。',
+                sessionId,
+                result: handoff,
+                toolCallCount: callCount,
+              };
+            }
             saveCheckpoint(round + 1, 'completed');
             return {
               status: 'completed',
@@ -898,26 +954,25 @@ export class NoemaProjectExecutor {
               toolCallCount: callCount,
             };
           }
-          if (
-            receivedToolCallCount > MAX_TOOL_CALLS ||
-            batchArgumentCharacters > MAX_TOOL_BATCH_ARGUMENT_CHARS
-          ) {
+          if (batchArgumentCharacters > MAX_TOOL_BATCH_ARGUMENT_CHARS) {
             return {
               status: 'failed',
               errorCode: 'tool_context_budget',
               errorMessage:
-                receivedToolCallCount > MAX_TOOL_CALLS
-                  ? `本批工具调用超过 ${MAX_TOOL_CALLS} 次上限；整批工具均未执行。`
-                  : '本批工具参数超过 48000 字符上限；整批工具均未执行。请拆分任务或减少工具参数后重试。',
+                '本批工具参数超过 48000 字符上限；整批工具均未执行。请拆分任务或减少工具参数后重试。',
               sessionId,
               result: finalText,
               toolCallCount: callCount,
             };
           }
-          if (toolCallCount + calls.length > MAX_TOOL_CALLS) {
-            throw new Error(
-              `工具调用超过 ${MAX_TOOL_CALLS} 次上限；未执行本批工具。`,
-            );
+          if (receivedToolCallCount > MAX_TOOL_CALLS) {
+            messages.push({
+              role: 'system',
+              content: `模型请求的单批工具数超过 ${MAX_TOOL_CALLS} 次；整批没有执行。请交接当前部分进度。`,
+            });
+            budgetReached = true;
+            saveCheckpoint(round + 1, 'ready_for_model');
+            continue;
           }
           if (
             calls.some(
@@ -947,6 +1002,23 @@ export class NoemaProjectExecutor {
               result: finalText,
               toolCallCount: callCount,
             };
+          }
+          if (segmentToolCallCount + calls.length > MAX_TOOL_CALLS) {
+            messages.push(assistantToolMessage);
+            for (const call of calls) {
+              const content = JSON.stringify({
+                error: `本段工具预算为 ${MAX_TOOL_CALLS} 次；本批工具均未执行。请停止工具操作并交接部分进度。`,
+              });
+              messages.push({
+                role: 'tool',
+                tool_call_id: call.id,
+                content,
+              });
+              toolOutputCharacters += content.length;
+            }
+            budgetReached = true;
+            saveCheckpoint(round + 1, 'ready_for_model');
+            continue;
           }
           messages.push(assistantToolMessage);
           saveCheckpoint(round, 'tool_pending');
@@ -980,6 +1052,7 @@ export class NoemaProjectExecutor {
               onEvent({ type: 'runtime-checkpoint', ...checkpoint });
             };
             toolCallCount += 1;
+            segmentToolCallCount += 1;
             callCount = toolCallCount;
             let parsed;
             try {
@@ -1240,7 +1313,7 @@ export class NoemaProjectExecutor {
         return {
           status: 'failed',
           errorCode: 'tool_round_limit',
-          errorMessage: `工具调用超过 ${this.maxToolRounds} 轮上限；没有自动重试。`,
+          errorMessage: `本段工具调用达到 ${this.maxToolRounds} 轮上限；已保存安全检查点，可继续处理。`,
           sessionId,
           result: finalText,
           toolCallCount: callCount,

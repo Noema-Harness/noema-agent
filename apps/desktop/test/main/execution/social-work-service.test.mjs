@@ -17,7 +17,6 @@ import { SocialWorkService } from '../../../src/main/execution/social-work-servi
 import { SocialChatService } from '../../../src/main/chat/social-chat-service.mjs';
 import { SocialProjectStore } from '../../../src/main/projects/social-project-store.mjs';
 import { NoemaProjectExecutor } from '../../../src/main/execution/noema-project-executor.mjs';
-import { MAX_SOCIAL_WORK_TOOL_ROUNDS } from '../../../src/shared/execution/social-work-limits.mjs';
 
 function makeStore() {
   const db = new Database(':memory:');
@@ -1200,7 +1199,7 @@ test('a restarted Noema task resumes from durable model-boundary messages', asyn
       assert.equal(task.status, 'completed');
       assert.equal(task.toolCallCount, 1);
       assert.equal(task.resultText, '已检查已有结果，任务继续完成。');
-      assert.deepEqual(receivedMessages.at(-2), {
+      assert.deepEqual(receivedMessages.at(-1), {
         role: 'tool',
         tool_call_id: 'write-once',
         content: JSON.stringify({ result: '已写入 result.txt。' }),
@@ -1275,9 +1274,9 @@ test('an unavailable provider can be resumed explicitly without replaying tools'
     assert.equal(completed.toolCallCount, 1);
     assert.equal(completed.executionSteps.length, 1);
     assert.equal(providerCalls, 3);
-    assert.equal(resumedMessages.at(-2).role, 'tool');
+    assert.equal(resumedMessages.at(-1).role, 'tool');
     assert.equal(
-      resumedMessages.at(-2).tool_call_id,
+      resumedMessages.at(-1).tool_call_id,
       'read-before-provider-failure',
     );
   } finally {
@@ -1287,17 +1286,22 @@ test('an unavailable provider can be resumed explicitly without replaying tools'
   }
 });
 
-test('a long task stopped at the round cap resumes to its final report without replaying writes', async () => {
+test('a long task hands off at the tool budget and resumes in a new segment without replaying writes', async () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'noema-round-cap-resume-'));
   const workspace = path.join(directory, 'workspace');
   mkdirSync(workspace);
   const { db, store } = makeStore();
   let providerCalls = 0;
   let writeCalls = 0;
+  const requestToolCounts = [];
   const provider = {
-    async *streamChat({ onToolCalls }) {
+    async *streamChat({ onToolCalls, tools, messages }) {
       providerCalls += 1;
-      if (providerCalls <= 16) {
+      requestToolCounts.push({
+        toolCount: tools.length,
+        budgetInstruction: messages[0].content.includes('本段工具预算已经用完'),
+      });
+      if (providerCalls <= 24) {
         writeCalls += 1;
         onToolCalls([
           {
@@ -1314,10 +1318,31 @@ test('a long task stopped at the round cap resumes to its final report without r
         ]);
         return;
       }
-      yield '16 个结果文件已经写入，当前任务已收尾。';
+      if (providerCalls === 25) {
+        yield '已写入 24 个结果，剩余工作尚未完成。';
+        return;
+      }
+      if (providerCalls === 26) {
+        writeCalls += 1;
+        onToolCalls([
+          {
+            id: `write-${writeCalls}`,
+            type: 'function',
+            function: {
+              name: 'write_file',
+              arguments: JSON.stringify({
+                path: `result-${writeCalls}.txt`,
+                content: `saved ${writeCalls}`,
+              }),
+            },
+          },
+        ]);
+        return;
+      }
+      yield '25 个结果文件已经写入，当前任务已收尾。';
     },
   };
-  const executor = new NoemaProjectExecutor({ provider, maxToolRounds: 16 });
+  const executor = new NoemaProjectExecutor({ provider });
   const service = createWorkService({
     store,
     adapter: executor,
@@ -1328,39 +1353,41 @@ test('a long task stopped at the round cap resumes to its final report without r
     const accepted = await service.startTask({
       roomId: 'room-engineering-partner',
       agentId: 'engineering-partner',
-      prompt: '依次写入 16 个结果文件，最后核对并汇报。',
+      prompt: '依次写入 25 个结果文件，最后核对并汇报。',
     });
     const failed = await service.waitForTask(accepted.taskId);
     assert.equal(failed.status, 'failed');
     assert.equal(failed.errorCode, 'tool_round_limit');
     assert.equal(failed.canResume, true);
-    assert.equal(failed.executionSteps.length, 16);
-    assert.equal(writeCalls, 16);
+    assert.equal(failed.executionSteps.length, 24);
+    assert.equal(failed.toolCallCount, 24);
+    assert.equal(writeCalls, 24);
+    assert.match(failed.resultText, /部分进度交接/u);
 
     const checkpoint = store.getSocialWorkRuntimeCheckpoint(accepted.taskId);
     assert.equal(checkpoint.phase, 'failed');
-    assert.equal(checkpoint.resumePhase, null);
-    assert.equal(checkpoint.toolCallCount, 16);
+    assert.equal(checkpoint.resumePhase, 'ready_for_model');
+    assert.equal(checkpoint.round, 0);
+    assert.equal(checkpoint.toolCallCount, 24);
+    assert.deepEqual(requestToolCounts[24], {
+      toolCount: 0,
+      budgetInstruction: true,
+    });
 
-    executor.maxToolRounds = MAX_SOCIAL_WORK_TOOL_ROUNDS;
     assert.equal((await service.resumeTask(accepted.taskId)).accepted, true);
-    assert.equal(
-      store.getSocialWorkRuntimeCheckpoint(accepted.taskId).resumePhase,
-      'ready_for_model',
-    );
     const completed = await service.waitForTask(accepted.taskId);
     assert.equal(completed.status, 'completed');
-    assert.equal(completed.toolCallCount, 16);
-    assert.equal(completed.executionSteps.length, 16);
-    assert.equal(providerCalls, 17);
-    assert.equal(writeCalls, 16);
+    assert.equal(completed.toolCallCount, 25);
+    assert.equal(completed.executionSteps.length, 25);
+    assert.equal(providerCalls, 27);
+    assert.equal(writeCalls, 25);
     assert.equal(
       completed.resultText,
-      '16 个结果文件已经写入，当前任务已收尾。',
+      '25 个结果文件已经写入，当前任务已收尾。',
     );
     assert.equal(
-      readFileSync(path.join(workspace, 'result-16.txt'), 'utf8'),
-      'saved 16',
+      readFileSync(path.join(workspace, 'result-25.txt'), 'utf8'),
+      'saved 25',
     );
   } finally {
     await service.shutdown();
@@ -1427,8 +1454,8 @@ test('a rate-limited provider can be resumed without replaying tools', async () 
     assert.equal(completed.toolCallCount, 1);
     assert.equal(completed.executionSteps.length, 1);
     assert.equal(providerCalls, 3);
-    assert.equal(resumedMessages.at(-2).role, 'tool');
-    assert.equal(resumedMessages.at(-2).tool_call_id, 'read-before-rate-limit');
+    assert.equal(resumedMessages.at(-1).role, 'tool');
+    assert.equal(resumedMessages.at(-1).tool_call_id, 'read-before-rate-limit');
   } finally {
     await service.shutdown();
     db.close();
@@ -1503,9 +1530,9 @@ test('a provider Retry-After resumes once from its saved checkpoint', async () =
     assert.equal(completed.executionSteps[0].effectStatus, 'applied');
     assert.equal(providerCalls, 3);
     assert.deepEqual(waits, [1_000]);
-    assert.equal(resumedMessages.at(-2).role, 'tool');
+    assert.equal(resumedMessages.at(-1).role, 'tool');
     assert.equal(
-      resumedMessages.at(-2).tool_call_id,
+      resumedMessages.at(-1).tool_call_id,
       'write-before-rate-limit',
     );
   } finally {

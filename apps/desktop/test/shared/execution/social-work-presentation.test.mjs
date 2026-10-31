@@ -13,7 +13,7 @@ test('project work cards name the recoverable failure instead of hiding it in ge
     ['rate_limited', 'failed', '模型请求被限流'],
     ['dsh_task_timeout', 'failed', '执行超时'],
     ['dsh_tool_loop', 'failed', '重复操作过多，已停止'],
-    ['tool_round_limit', 'failed', '工具步骤达到上限'],
+    ['tool_round_limit', 'failed', '本段工具预算已用完，进度已保存'],
     ['tool_output_budget', 'failed', '工具输出达到上限'],
     ['tool_context_budget', 'failed', '工具上下文达到上限'],
     ['command_sandbox_unavailable', 'failed', '项目命令沙箱不可用'],

@@ -597,6 +597,10 @@ export class SocialWorkService {
 
     this.store.resumeSocialWorkTask(taskId);
     checkpoint = this.store.getSocialWorkRuntimeCheckpoint(taskId);
+    if (checkpoint?.resumePhase === 'ready_for_model' && checkpoint.round !== 0) {
+      checkpoint = { ...checkpoint, round: 0 };
+      this.store.saveSocialWorkRuntimeCheckpoint(taskId, checkpoint);
+    }
     const run = {
       handle: null,
       retryWaitController: null,
@@ -771,9 +775,13 @@ export class SocialWorkService {
             : null;
         let resumableCheckpoint = null;
         if (persistedCheckpoint) {
-          const resumableProviderFailure =
+          const resumableSafeBoundary =
             outcome.status === 'failed' &&
-            ['provider_unavailable', 'rate_limited'].includes(
+            [
+              'provider_unavailable',
+              'rate_limited',
+              'tool_round_limit',
+            ].includes(
               outcome.errorCode,
             ) &&
             persistedCheckpoint.phase === 'ready_for_model' &&
@@ -781,7 +789,7 @@ export class SocialWorkService {
           resumableCheckpoint = {
             ...persistedCheckpoint,
             phase: outcome.status,
-            resumePhase: resumableProviderFailure ? 'ready_for_model' : null,
+            resumePhase: resumableSafeBoundary ? 'ready_for_model' : null,
           };
           this.store.saveSocialWorkRuntimeCheckpoint(
             taskId,
