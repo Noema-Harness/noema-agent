@@ -21,10 +21,8 @@ if (!process.versions.electron) {
   const resumeIndex = process.argv.indexOf('--resume-directory');
   const resumeDirectory =
     resumeIndex >= 0 ? process.argv[resumeIndex + 1] : null;
-  if (resumeIndex >= 0 && (!resumeDirectory || existingProjectId))
-    throw Error(
-      'Resume requires a directory and cannot clone a production project.',
-    );
+  if (resumeIndex >= 0 && !resumeDirectory)
+    throw Error('Resume requires an existing isolated observation directory.');
   const scratch = resumeDirectory
     ? path.resolve(resumeDirectory)
     : createDevelopmentDirectory('Noema-collaboration-live-');
@@ -116,7 +114,7 @@ if (!process.versions.electron) {
     fs.existsSync(workspace)
   )
     env.NOEMA_COLLABORATION_LIVE_WORKSPACE = workspace;
-  if (existingProjectId) {
+  if (existingProjectId && !resumeDirectory) {
     const Database = require('better-sqlite3');
     const source = new Database(
       path.join(process.env.APPDATA, 'Noema', 'noema.sqlite3'),
@@ -124,6 +122,8 @@ if (!process.versions.electron) {
     );
     await source.backup(path.join(scratch, 'noema.sqlite3'));
     source.close();
+  }
+  if (existingProjectId) {
     env.NOEMA_COLLABORATION_LIVE_PROJECT_ID = existingProjectId;
   }
   delete env.ELECTRON_RUN_AS_NODE;
@@ -492,6 +492,7 @@ if (!process.versions.electron) {
         await import('../src/main/execution/noema-project-executor.mjs');
       work = new SocialWorkService({
         store,
+        projectStore: projects,
         secretStore: secrets,
         adapter: new NoemaProjectExecutor({ provider }),
         getSelectedModel: () => 'deepseek-flash',
