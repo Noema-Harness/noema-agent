@@ -1094,11 +1094,18 @@ test('Noema can start existing project work from an explicit request while other
     const workTool = requests[0].tools?.find(
       (tool) => tool.function.name === 'start_project_work',
     );
-    assert.deepEqual(workTool?.function.parameters.properties.agent_id.enum, [
-      'engineering-partner',
-      selectedExecutor.id,
-    ]);
-    assert.match(workTool?.function.description ?? '', /软件变更与回归验证/u);
+    assert.equal(
+      workTool?.function.parameters.properties.agent_id.type,
+      'string',
+    );
+    assert.ok(
+      requests[0].messages.some(
+        (message) =>
+          message.role === 'system' &&
+          message.content.includes(selectedExecutor.id) &&
+          message.content.includes('软件变更与回归验证'),
+      ),
+    );
     assert.deepEqual(started, [
       {
         roomId: 'room-noema',
@@ -1230,14 +1237,19 @@ test('Noema dispatches main-chat project work into the selected member project s
     const workTool = requests[0].tools?.find(
       (tool) => tool.function.name === 'start_project_work',
     );
-    assert.deepEqual(workTool?.function.parameters.properties.project_id.enum, [
-      project.id,
-    ]);
-    assert.deepEqual(
-      workTool?.function.parameters.properties.plan_item_id.enum,
-      ['price-fetcher'],
+    assert.equal(
+      workTool?.function.parameters.properties.project_id.type,
+      'string',
     );
-    assert.match(workTool?.function.description ?? '', /实现价格采集器/u);
+    assert.ok(
+      requests[0].messages.some(
+        (message) =>
+          message.role === 'system' &&
+          message.content.includes(project.id) &&
+          message.content.includes('price-fetcher') &&
+          message.content.includes('实现价格采集器'),
+      ),
+    );
     assert.deepEqual(started, [
       {
         roomId: 'room-noema',
@@ -1499,9 +1511,16 @@ test('Noema receives a bounded specialist report and writes its own final reply'
     const specialistTool = requests[0].tools?.find(
       (tool) => tool.function.name === 'delegate_to_specialist',
     );
-    assert.deepEqual(
-      specialistTool?.function.parameters.properties.agent_id.enum,
-      ['engineering-partner'],
+    assert.equal(
+      specialistTool?.function.parameters.properties.agent_id.type,
+      'string',
+    );
+    assert.ok(
+      requests[0].messages.some(
+        (message) =>
+          message.role === 'system' &&
+          message.content.includes('engineering-partner'),
+      ),
     );
     assert.match(requests[0].messages.at(-1).content, /主聊天机密/u);
     assert.deepEqual(
@@ -1641,7 +1660,10 @@ test('Noema creates a persistent specialist and delegates in its resident privat
         );
         assert.ok(tool);
         assert.ok(tool.function.parameters.properties.new_agent);
-        assert.equal(tool.function.parameters.properties.agent_id, undefined);
+        assert.equal(
+          tool.function.parameters.properties.agent_id.type,
+          'string',
+        );
         input.onToolCalls([
           {
             id: 'call-create-and-delegate',

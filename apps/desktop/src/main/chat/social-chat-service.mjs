@@ -31,6 +31,7 @@ import {
   projectPlanTool,
   requestsMemberAssetAction,
   projectGroupTool,
+  projectToolChoicesContext,
   noemaActionGuidance,
 } from './model-tools.mjs';
 
@@ -268,9 +269,6 @@ export class SocialChatService {
     const projects = this.accessibleProjects(run).filter(
       (project) => project.status !== 'awaiting_user',
     );
-    const options = {
-      projectScoped: Boolean(run.projectContext || run.reviewContext),
-    };
     return [
       ...(this.canResearchPublicSources(run) ? [projectResearchTool()] : []),
       ...(this.projectSourceReadBudget(run) > 0
@@ -287,8 +285,8 @@ export class SocialChatService {
       (run.agentId === 'noema' && needsCalculationTool(run.text))
         ? [CALCULATE_EXPRESSION_TOOL]
         : []),
-      projectPlanTool(projects, options),
-      projectGroupTool(projects, options),
+      projectPlanTool(projects),
+      projectGroupTool(projects),
     ].filter(Boolean);
   }
 
@@ -822,16 +820,95 @@ export class SocialChatService {
               projectId: continuationProject.id,
             }))
         : [];
+      const contextProjects = accessibleProjects.filter(
+        (project) => project.status !== 'awaiting_user',
+      );
+      const contextTeamProjects = run.projectContext
+        ? run.agentId === 'noema'
+          ? contextProjects.filter(
+              (project) => project.id === run.projectContext.projectId,
+            )
+          : []
+        : run.agentId === 'noema'
+          ? contextProjects.filter(
+              (project) =>
+                project.originRoomId === run.roomId &&
+                ['active', 'archived'].includes(project.status),
+            )
+          : [];
+      const contextReviewProjects =
+        run.agentId === 'noema' && run.roomId === 'room-noema'
+          ? contextProjects.filter(
+              (project) =>
+                project.originRoomId === run.roomId &&
+                project.status === 'active' &&
+                !project.pendingReview &&
+                !this.projectStore.reviewBlockReason(project.id),
+            )
+          : [];
+      const contextCompletionProjects =
+        run.agentId === 'noema' && run.roomId === 'room-noema'
+          ? contextProjects.filter(
+              (project) =>
+                project.originRoomId === run.roomId &&
+                project.status === 'active' &&
+                !project.pendingReview,
+            )
+          : [];
+      const contextAgents =
+        run.agentId === 'noema'
+          ? this.store
+              .listAgents()
+              .filter(
+                (item) =>
+                  item.kind === 'specialist' &&
+                  !item.archivedAt &&
+                  item.id !== 'noema',
+              )
+              .slice(0, 32)
+              .map((item) => this.store.getAgent(item.id))
+          : [];
+      const toolChoices = projectToolChoicesContext({
+        agents: contextAgents,
+        projects: contextProjects,
+        teamProjects: contextTeamProjects,
+        reviewProjects: contextReviewProjects,
+        completionProjects: contextCompletionProjects,
+        workProjects: continuationProjectWorkAgents.length
+          ? [continuationProject]
+          : [],
+        planItems: continuationPlanItems,
+        sourceUrls:
+          run.projectContext && this.projectSourceReadBudget(run) > 0
+            ? this.authorizedProjectSourceUrls(run)
+                .filter((url) => !run.projectResearchAttemptedUrls?.has(url))
+                .slice(0, this.projectSourceReadBudget(run))
+            : [],
+      });
+      const priorToolChoicesIndex = messages.findIndex(
+        (message) =>
+          message.role === 'system' &&
+          message.content.startsWith('当前项目工具可选对象：'),
+      );
+      if (priorToolChoicesIndex >= 0) {
+        messages.splice(priorToolChoicesIndex, 1);
+      }
+      if (toolChoices) {
+        const latestUserMessageIndex = messages.findLastIndex(
+          (message) => message.role === 'user',
+        );
+        messages.splice(
+          latestUserMessageIndex < 0 ? messages.length : latestUserMessageIndex,
+          0,
+          { role: 'system', content: toolChoices },
+        );
+      }
       const continuationWorkTool =
         continuationProjectWorkAgents.length &&
         continuationPlanItems.length &&
         this.startProjectWork &&
         this.getProjectWorkReadiness().available
-          ? projectWorkTool(
-              continuationProjectWorkAgents,
-              [continuationProject],
-              continuationPlanItems,
-            )
+          ? projectWorkTool(continuationProjectWorkAgents)
           : null;
       for await (const delta of this.provider.streamChat({
         model: run.model,
@@ -2072,7 +2149,7 @@ export class SocialChatService {
           : [];
       const specialistTool =
         agentId === 'noema' && roomId === 'room-noema' && !run.reviewContext
-          ? specialistDelegationTool(specialistAgents)
+          ? specialistDelegationTool()
           : null;
       const noemaProjectGroup = Boolean(
         agentId === 'noema' &&
@@ -2102,8 +2179,6 @@ export class SocialChatService {
       );
       const projectTeamAction = teamToolAvailable
         ? projectTeamTool({
-            agents: specialistAgents,
-            projects: teamProjects,
             projectWorkReady: Boolean(
               this.startProjectWork && this.getProjectWorkReadiness().available,
             ),
@@ -2260,11 +2335,7 @@ export class SocialChatService {
       );
       const projectWorkAction =
         projectWorkAvailable && projectWorkAgents.length
-          ? projectWorkTool(
-              projectWorkAgents,
-              projectWorkProjects,
-              projectWorkPlanItems,
-            )
+          ? projectWorkTool(projectWorkAgents)
           : null;
       const normalActionTools = [
         ...(projectWorkAction ? [projectWorkAction] : []),
@@ -2286,6 +2357,27 @@ export class SocialChatService {
                 run.isProjectGrowthTurn || requestsMemberAssetAction(run.text),
             })
           : '';
+      const projectToolContext = run.isProjectGrowthTurn
+        ? ''
+        : projectToolChoicesContext({
+            agents: specialistAgents,
+            projects: this.accessibleProjects(run).filter(
+              (project) => project.status !== 'awaiting_user',
+            ),
+            teamProjects,
+            reviewProjects,
+            completionProjects,
+            workProjects: projectWorkProjects,
+            planItems: projectWorkPlanItems,
+            sourceUrls:
+              run.projectContext && this.projectSourceReadBudget(run) > 0
+                ? this.authorizedProjectSourceUrls(run)
+                    .filter(
+                      (url) => !run.projectResearchAttemptedUrls?.has(url),
+                    )
+                    .slice(0, this.projectSourceReadBudget(run))
+                : [],
+          });
       const residentGrowthBriefs =
         agent.kind === 'specialist' &&
         roomId === this.store.getAgentResidentRoomId(agentId) &&
@@ -2622,6 +2714,18 @@ export class SocialChatService {
           });
           messages.push(...sharedMessages);
         }
+      }
+      if (projectToolContext) {
+        // Keep request-specific IDs and URLs after prior conversation history
+        // so they do not invalidate cache reuse for older messages.
+        const latestUserMessageIndex = messages.findLastIndex(
+          (message) => message.role === 'user',
+        );
+        messages.splice(
+          latestUserMessageIndex < 0 ? messages.length : latestUserMessageIndex,
+          0,
+          { role: 'system', content: projectToolContext },
+        );
       }
       let content = '';
       let toolCalls = [];

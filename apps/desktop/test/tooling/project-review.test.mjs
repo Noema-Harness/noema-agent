@@ -200,11 +200,18 @@ test('main chat does not offer a project review while member reports are pending
       );
       assert.ok(reviewTool, 'an unrelated reviewable project may remain');
       assert.equal(
-        reviewTool.function.parameters.properties.project_id.enum.includes(
-          f.project.id,
-        ),
+        reviewTool.function.parameters.properties.project_id.type,
+        'string',
+      );
+      const reviewChoiceLine = input.messages
+        .filter((message) => message.role === 'system')
+        .map((message) => message.content)
+        .flatMap((content) => content.split('\n'))
+        .find((line) => line.startsWith('可请求用户评审的项目：'));
+      assert.equal(
+        reviewChoiceLine?.includes(f.project.id) ?? false,
         false,
-        'the project with a pending report must not be offered for review',
+        'the project with a pending report must not appear in review choices',
       );
       yield '我先处理完成员报告，再判断是否需要你评审。';
     },
@@ -505,9 +512,9 @@ test('review feedback turn carries a scoped context and executes a public handof
             `${unrelatedTool} should not be available in a project-bound review turn`,
           );
         assert.equal(
-          Object.hasOwn(groupTool.function.parameters.properties, 'project_id'),
-          false,
-          'review turn should bind the group tool to its reviewed project',
+          groupTool.function.parameters.properties.project_id.type,
+          'string',
+          'schema remains stable; runtime binds the group tool to its reviewed project',
         );
         assert.ok(
           input.messages.some(

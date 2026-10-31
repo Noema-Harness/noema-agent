@@ -418,12 +418,12 @@ test('member project tools stay on their bound project despite an extraneous ID'
             (entry) => entry.function.name === 'project_group',
           );
           assert.equal(
-            planTool.function.parameters.properties.project_id,
-            undefined,
+            planTool.function.parameters.properties.project_id.type,
+            'string',
           );
           assert.equal(
-            groupTool.function.parameters.properties.project_id,
-            undefined,
+            groupTool.function.parameters.properties.project_id.type,
+            'string',
           );
           assert.deepEqual(planTool.function.parameters.required, [
             'operation',
@@ -586,24 +586,39 @@ test('Noema reads then writes a versioned plan in one turn; members cannot forge
           const tool = input.tools.find(
             (entry) => entry.function.name === 'manage_project_plan',
           );
-          assert.deepEqual(
-            tool.function.parameters.properties.project_id.enum,
-            [project.id],
+          assert.equal(
+            tool.function.parameters.properties.project_id.type,
+            'string',
+          );
+          assert.ok(
+            input.messages.some(
+              (message) =>
+                message.role === 'system' &&
+                message.content.includes(project.id) &&
+                message.content.includes('工程搭档 (engineering-partner)'),
+            ),
           );
           assert.deepEqual(tool.function.parameters.required, [
             'operation',
-            'project_id',
             'reason',
           ]);
-          assert.match(
-            tool.function.description,
-            /工程搭档 \(engineering-partner\)/u,
+          assert.equal(
+            tool.function.parameters.properties.project_id.type,
+            'string',
+          );
+          assert.ok(
+            input.messages.some(
+              (message) =>
+                message.role === 'system' &&
+                message.content.includes(project.id) &&
+                message.content.includes('工程搭档 (engineering-partner)'),
+            ),
           );
           assert.match(tool.function.description, /Noema is the coordinator/u);
-          assert.deepEqual(
+          assert.equal(
             tool.function.parameters.properties.plan.properties.phases.items
               .properties.workItems.items.properties.ownerAgentId.enum,
-            ['engineering-partner'],
+            undefined,
           );
           yield '可以在项目群里查看和维护当前计划。';
         }

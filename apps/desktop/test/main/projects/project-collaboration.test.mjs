@@ -78,11 +78,16 @@ test('project members can read exact URLs supplied by the user without search cr
       async *streamChat(input) {
         calls.push(input);
         if (calls.length === 1) {
-          const direct = input.tools.find(
-            (entry) => entry.function.name === 'read_project_source',
-          );
+          const sourceContext = input.messages.find(
+            (message) =>
+              message.role === 'system' &&
+              message.content.includes('本轮允许读取的精确来源'),
+          )?.content;
           directUrlsSeen =
-            direct?.function.parameters.properties.url.enum ?? [];
+            sourceContext
+              ?.split('本轮允许读取的精确来源：')[1]
+              ?.split('\n')[0]
+              ?.split('；') ?? [];
           searchToolSeen = input.tools.some(
             (entry) => entry.function.name === 'research_public_sources',
           );
@@ -186,7 +191,16 @@ test('project members can read a URL from an earlier user message in the same gr
           const direct = input.tools.find(
             (entry) => entry.function.name === 'read_project_source',
           );
-          exposedUrls = direct?.function.parameters.properties.url.enum ?? [];
+          const sourceContext = input.messages.find(
+            (message) =>
+              message.role === 'system' &&
+              message.content.includes('本轮允许读取的精确来源'),
+          )?.content;
+          exposedUrls =
+            sourceContext
+              ?.split('本轮允许读取的精确来源：')[1]
+              ?.split('\n')[0]
+              ?.split('；') ?? [];
           exposedDescription = direct?.function.description ?? '';
           input.onToolCalls?.([
             {
@@ -263,7 +277,7 @@ test('project members can read a URL from an earlier user message in the same gr
 
     assert.deepEqual(exposedUrls, [historicalUrl]);
     assert.match(exposedDescription, /同一群聊近期已完成发言/u);
-    assert.ok(exposedDescription.includes(historicalUrl));
+    assert.ok(exposedUrls.includes(historicalUrl));
     assert.equal(fetchedUrl, historicalUrl);
     assert.equal(calls, 2);
     const group = f.store.getRoomSnapshot(f.project.groupRoomId);
@@ -1114,10 +1128,31 @@ test('a user @Noema request in a project group receives its visible reply there'
     const teamTool = request.tools.find(
       (entry) => entry.function.name === 'create_project_team',
     );
-    assert.deepEqual(
-      teamTool.function.parameters.properties.existing_project_id.enum,
-      [f.project.id],
-      'team continuation can only affect the project where the user called Noema',
+    assert.equal(
+      teamTool.function.parameters.properties.existing_project_id.type,
+      'string',
+    );
+    assert.ok(
+      request.messages.some(
+        (message) =>
+          message.role === 'system' &&
+          message.content.includes(
+            `可续接项目：${f.project.title} (${f.project.id})`,
+          ),
+      ),
+      'team continuation receives only the project where the user called Noema',
+    );
+    const projectChoicesIndex = request.messages.findIndex(
+      (message) =>
+        message.role === 'system' &&
+        message.content.startsWith('当前项目工具可选对象：'),
+    );
+    const latestUserMessageIndex = request.messages.findLastIndex(
+      (message) => message.role === 'user',
+    );
+    assert.ok(
+      projectChoicesIndex > 0 && projectChoicesIndex < latestUserMessageIndex,
+      'request-specific project choices follow prior history and precede the current event',
     );
     assert.equal(
       f.store
@@ -1223,8 +1258,11 @@ test('an explicit blocked-project recovery provisions an execution member throug
             'the new project executor is available in this group',
           );
           assert.ok(
-            startTool.function.parameters.properties.agent_id.enum.includes(
-              added.agentId,
+            input.messages.some(
+              (message) =>
+                message.role === 'system' &&
+                message.content.includes(added.agentId) &&
+                message.content.includes('应用实施工程师'),
             ),
           );
           assert.deepEqual(input.toolChoice, {
@@ -1730,11 +1768,11 @@ test('continuing a blocked project can add one project-work member and start its
             });
             exposedExecutorCalls++;
             if (
-              executor.function.parameters.properties.agent_id.enum.includes(
-                addedAgentId,
-              ) &&
-              executor.function.parameters.properties.plan_item_id.enum.includes(
-                'build-app',
+              input.messages.some(
+                (message) =>
+                  message.role === 'system' &&
+                  message.content.includes(addedAgentId) &&
+                  message.content.includes('build-app'),
               )
             ) {
               tool(input, 'start_project_work', {
