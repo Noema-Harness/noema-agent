@@ -1165,6 +1165,7 @@ async function startNoema() {
               messages: Array<{ role: string; content: string }>;
               onToolCalls?: (
                 calls: Array<{
+                  id: string;
                   function: { name: string; arguments: string };
                 }>,
               ) => void;
@@ -1185,6 +1186,7 @@ async function startNoema() {
               if (latestUserMessage?.includes(socialAgentDelegationMarker)) {
                 input.onToolCalls?.([
                   {
+                    id: 'e2e-specialist-delegation',
                     function: {
                       name: 'delegate_to_specialist',
                       arguments: JSON.stringify({

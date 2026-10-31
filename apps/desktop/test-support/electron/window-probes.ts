@@ -653,7 +653,7 @@ export function createWindowProbes(context: DesktopProbeContext) {
           .some((author) => !author.classList.contains('visually-hidden'));
         return {
           loaded: Boolean(shell),
-          roomTitle: document.querySelector('.room-header h2')?.textContent?.trim() ?? '',
+          roomTitle: document.querySelector('.room-header .chat-header-title strong')?.textContent?.trim() ?? '',
           participantCount: document.querySelectorAll('.room-header-copy p').length,
           routingChoices: routing?.querySelectorAll('button').length ?? 0,
           groupedResponseTurns,
@@ -960,7 +960,7 @@ export function createWindowProbes(context: DesktopProbeContext) {
       const noemaRoom = [...document.querySelectorAll('.room-list-item')]
         .find((item) => item.querySelector('.item-title')?.textContent?.trim() === 'Noema');
       noemaRoom?.click();
-      if (document.querySelector('.room-header h2')?.textContent?.trim() === 'Noema') break;
+      if (document.querySelector('.room-header .chat-header-title strong')?.textContent?.trim() === 'Noema') break;
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
     const input = document.querySelector('#social-message-input');
@@ -972,7 +972,7 @@ export function createWindowProbes(context: DesktopProbeContext) {
         status: 'composer_unavailable',
         inputFound: Boolean(input),
         inputDisabled: Boolean(input?.disabled),
-        activeRoom: document.querySelector('.room-header h2')?.textContent?.trim() ?? null,
+        activeRoom: document.querySelector('.room-header .chat-header-title strong')?.textContent?.trim() ?? null,
         selectedModel: state.selectedModel ?? null,
         connected: Boolean(state.connected),
         providerConfigured: Boolean(state.providerConfigured),
