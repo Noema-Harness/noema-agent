@@ -20,6 +20,15 @@ test('extracts only explicit HTTP links and caps the current-turn source list', 
   );
 });
 
+test('stops copied URLs before percent-encoded Chinese punctuation and following labels', () => {
+  assert.deepEqual(
+    extractUserUrls(
+      'https://example.com/pricing%EF%BC%89%E3%80%81Anthropic https://example.org/models%EF%BC%8CDeepSeek',
+    ),
+    ['https://example.com/pricing', 'https://example.org/models'],
+  );
+});
+
 test('fetches an explicitly supplied page, extracts readable text, and redacts secret query parameters in citations', async () => {
   let requested;
   const result = await fetchWebSource(

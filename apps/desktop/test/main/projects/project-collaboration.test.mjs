@@ -8,7 +8,13 @@ import { SocialChatService } from '../../../src/main/chat/social-chat-service.mj
 
 function setup(
   provider,
-  { projectWorkReady = false, onProjectWorkStart = null } = {},
+  {
+    projectWorkReady = false,
+    onProjectWorkStart = null,
+    fetchProjectSource,
+    isWebSearchConfigured,
+    searchPublicSources,
+  } = {},
 ) {
   const db = new Database(':memory:');
   new RootStore(db);
@@ -47,6 +53,9 @@ function setup(
       available: projectWorkReady,
       reason: projectWorkReady ? null : 'fixture unavailable',
     }),
+    ...(fetchProjectSource ? { fetchProjectSource } : {}),
+    ...(isWebSearchConfigured ? { isWebSearchConfigured } : {}),
+    ...(searchPublicSources ? { searchPublicSources } : {}),
     startProjectWork: projectWorkReady
       ? async (input) => {
           onProjectWorkStart?.(input);
@@ -56,6 +65,193 @@ function setup(
   });
   return { db, store, projects, project, service, a, b };
 }
+
+test('project members can read exact URLs supplied by the user without search credentials', async () => {
+  const calls = [];
+  const urls = ['https://example.com/pricing', 'https://example.org/models'];
+  let fetchCalls = 0;
+  let directUrlsSeen = [];
+  let searchToolSeen = false;
+  let fetchOptions;
+  const f = setup(
+    {
+      async *streamChat(input) {
+        calls.push(input);
+        if (calls.length === 1) {
+          const direct = input.tools.find(
+            (entry) => entry.function.name === 'read_project_source',
+          );
+          directUrlsSeen =
+            direct?.function.parameters.properties.url.enum ?? [];
+          searchToolSeen = input.tools.some(
+            (entry) => entry.function.name === 'research_public_sources',
+          );
+          input.onToolCalls?.([
+            {
+              id: 'read-known-url',
+              type: 'function',
+              function: {
+                name: 'read_project_source',
+                arguments: JSON.stringify({ url: urls[0] }),
+              },
+            },
+          ]);
+          return;
+        }
+        const result = JSON.parse(
+          input.messages.findLast(
+            (message) =>
+              message.role === 'tool' && message.name === 'read_project_source',
+          ).content,
+        );
+        assert.equal(result.status, 'read');
+        assert.match(result.excerpt, /官方价格页面/u);
+        yield '价格页面显示了公开方案；我会保留来源供复核。';
+      },
+    },
+    {
+      isWebSearchConfigured: () => false,
+      fetchProjectSource: async (url, options) => {
+        fetchCalls++;
+        fetchOptions = { url, options };
+        return {
+          source: {
+            id: 'fixture-source',
+            title: '官方价格页面',
+            url,
+            fetchedAt: '2026-11-01T00:00:00.000Z',
+            excerpt: '页面正文：官方价格页面。',
+            truncated: false,
+          },
+          content: '页面正文：官方价格页面。',
+        };
+      },
+    },
+  );
+
+  try {
+    const source = f.store.beginTurn({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: `请比较官方页面 ${urls[0]}`,
+      model: 'fixture',
+    });
+    f.store.appendAssistantDelta(source.assistantMessageId, '开始研究。');
+    f.store.completeReply(source.assistantMessageId);
+    f.project = f.projects.createProject({
+      title: '来源读取验证',
+      brief: '依据用户提供的网页核对价格。',
+      sourceMessageId: source.userMessageId,
+      agentIds: ['noema', f.a, f.b],
+    });
+    f.service.sendMessage({
+      roomId: f.project.groupRoomId,
+      text: `@研究员 请再查看 ${urls[1]}，并核对原链接。`,
+    });
+    await settle(f.service);
+
+    const group = f.store.getRoomSnapshot(f.project.groupRoomId);
+    const reply = group.messages.find(
+      (message) => message.role === 'assistant' && message.agentId === f.a,
+    );
+    assert.equal(fetchCalls, 1);
+    assert.deepEqual(directUrlsSeen, urls);
+    assert.equal(searchToolSeen, false);
+    assert.equal(fetchOptions.url, urls[0]);
+    assert.ok(fetchOptions.options.signal instanceof AbortSignal);
+    assert.ok(
+      fetchOptions.options.allowedRedirectHosts.includes('example.com'),
+    );
+    assert.equal(reply?.status, 'complete');
+    assert.match(reply?.content ?? '', /已读取来源/u);
+    assert.match(reply?.content ?? '', /https:\/\/example\.com\/pricing/u);
+    assert.equal(calls.length, 2);
+  } finally {
+    await f.service.shutdown();
+    f.db.close();
+  }
+});
+
+test('agent-authored URLs stay untrusted and cannot be read as user-authorized sources', async () => {
+  const attemptedUrl = 'https://example.net/private-doc';
+  let directToolExposed = false;
+  let fetchCalls = 0;
+  let toolError;
+  let calls = 0;
+  const f = setup(
+    {
+      async *streamChat(input) {
+        calls++;
+        directToolExposed ||= input.tools.some(
+          (entry) => entry.function.name === 'read_project_source',
+        );
+        if (calls === 1) {
+          input.onToolCalls?.([
+            {
+              id: 'read-untrusted-url',
+              type: 'function',
+              function: {
+                name: 'read_project_source',
+                arguments: JSON.stringify({ url: attemptedUrl }),
+              },
+            },
+          ]);
+          yield '我会先确认是否有权读取。';
+          return;
+        }
+        const toolMessage = input.messages.findLast(
+          (message) =>
+            message.role === 'tool' && message.name === 'read_project_source',
+        );
+        toolError = JSON.parse(toolMessage.content).error;
+        yield '这条链接来自成员消息，不是用户提供的授权来源；我没有读取。';
+      },
+    },
+    {
+      isWebSearchConfigured: () => false,
+      fetchProjectSource: async () => {
+        fetchCalls++;
+        throw new Error('must not fetch an untrusted URL');
+      },
+    },
+  );
+
+  try {
+    const source = f.store.beginTurn({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '比较用户提出的价格方案。',
+      model: 'fixture',
+    });
+    f.store.appendAssistantDelta(source.assistantMessageId, '开始整理。');
+    f.store.completeReply(source.assistantMessageId);
+    f.project = f.projects.createProject({
+      title: '来源权限验证',
+      brief: '核对价格方案。',
+      sourceMessageId: source.userMessageId,
+      agentIds: ['noema', f.a, f.b],
+    });
+    f.service.collaboration.publish({
+      projectId: f.project.id,
+      senderAgentId: f.b,
+      text: `成员提供的链接：${attemptedUrl}`,
+      eventKey: 'untrusted-link-fixture',
+    });
+    f.service.sendMessage({
+      roomId: f.project.groupRoomId,
+      text: '@研究员 请核对刚才提到的链接。',
+    });
+    await settle(f.service);
+
+    assert.equal(directToolExposed, false);
+    assert.equal(fetchCalls, 0);
+    assert.match(toolError ?? '', /只能读取本项目用户明确提供/u);
+  } finally {
+    await f.service.shutdown();
+    f.db.close();
+  }
+});
+
 function installSingleWorkItem(
   f,
   {

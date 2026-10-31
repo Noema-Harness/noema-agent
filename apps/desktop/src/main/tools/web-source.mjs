@@ -303,7 +303,18 @@ function citationUrl(value) {
 export function extractUserUrls(text) {
   const matches = String(text ?? '').match(/https?:\/\/[^\s<>"']+/giu) ?? [];
   const urls = matches
-    .map((match) => match.replace(/[),.!?，。！？；;】}]+$/u, ''))
+    .map((match) =>
+      match
+        // Chinese punctuation is sometimes percent-encoded inside a copied URL
+        // immediately before the next label, so it is not caught by the
+        // ordinary trailing punctuation trim below.
+        .split(
+          /%(?:EF%BC%(?:88|89|8C|9B|81|9F)|E3%80%(?:80|81|82|8C|9B|90|91|93))/iu,
+          1,
+        )[0]
+        .split(/[，。；、！？]/u, 1)[0]
+        .replace(/[),.!?，。！？；;】}]+$/u, ''),
+    )
     .filter(Boolean);
   return [...new Set(urls)].slice(0, 3);
 }
