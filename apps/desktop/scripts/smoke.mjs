@@ -7,7 +7,7 @@ import { existsSync, copyFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { RootStore } from '../src/root-store.mjs';
+import { RootStore } from '../src/main/storage/root-store.mjs';
 import { configureElectronRuntime } from './electron-runtime.mjs';
 
 configureElectronRuntime();

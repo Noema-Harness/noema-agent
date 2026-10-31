@@ -7,7 +7,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Database from 'better-sqlite3';
-import { RootStore } from '../src/root-store.mjs';
+import { RootStore } from '../src/main/storage/root-store.mjs';
 import { configureElectronRuntime } from './electron-runtime.mjs';
 import { connect } from './electron-cdp.mjs';
 

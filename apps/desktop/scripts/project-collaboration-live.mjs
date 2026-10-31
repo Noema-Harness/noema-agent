@@ -211,15 +211,17 @@ if (!process.versions.electron) {
       proxyRules: `http=${endpoint};https=${endpoint}`,
     });
   } else await session.defaultSession.setProxy({ mode: 'direct' });
-  const { RootStore } = await import('../src/root-store.mjs');
-  const { SocialChatStore } = await import('../src/social-chat-store.mjs');
+  const { RootStore } = await import('../src/main/storage/root-store.mjs');
+  const { SocialChatStore } =
+    await import('../src/main/chat/social-chat-store.mjs');
   const { SocialProjectStore } =
-    await import('../src/social-project-store.mjs');
-  const { SocialChatService } = await import('../src/social-chat-service.mjs');
+    await import('../src/main/projects/social-project-store.mjs');
+  const { SocialChatService } =
+    await import('../src/main/chat/social-chat-service.mjs');
   const { EncryptedSecretStore } =
-    await import('../src/encrypted-secret-store.mjs');
+    await import('../src/main/platform/encrypted-secret-store.mjs');
   const { OpenAICompatibleClient } =
-    await import('../src/openai-compatible-client.mjs');
+    await import('../src/main/providers/openai-compatible-client.mjs');
   let root,
     work,
     service,
@@ -485,9 +487,9 @@ if (!process.versions.electron) {
     const workspace = process.env.NOEMA_COLLABORATION_LIVE_WORKSPACE;
     if (workspace) {
       const { SocialWorkService } =
-        await import('../src/social-work-service.mjs');
+        await import('../src/main/execution/social-work-service.mjs');
       const { NoemaProjectExecutor } =
-        await import('../src/noema-project-executor.mjs');
+        await import('../src/main/execution/noema-project-executor.mjs');
       work = new SocialWorkService({
         store,
         secretStore: secrets,

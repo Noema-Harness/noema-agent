@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { SocialChatStore } from '../src/social-chat-store.mjs';
+import { SocialChatStore } from '../src/main/chat/social-chat-store.mjs';
 
 // Explicit test data. A real first launch contains only Noema, not a fabricated
 // engineering team or collaboration history. Never import this from app code.

@@ -24,6 +24,8 @@ README 维护安装与导航，不维护开发进度；行为约定用 OpenSpec�
 
 ## 可执行入口
 
+- `npm run check`：结构、格式、类型和服务测试的交付检查入口；日常改动先做相关验证。
+- `npm run source:check`：检查源码环境边界、循环和导入，避免恢复成平铺结构。
 - `npm run workspace:test`：检查清理预览、链接边界与历史保留。
 - `npm run workspace:check`：检查目录、文档分类、当前文档链接及误提交的过程材料；已加入 CI。
 - `npm run workspace:clean`：预览 runs/scratch；追加 `-- --apply` 才执行。`-- --generated` 可包含标准构建产物，执行前停止使用这些产物的开发进程。归档和依赖不在清理集合中。

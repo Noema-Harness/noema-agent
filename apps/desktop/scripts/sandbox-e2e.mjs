@@ -17,7 +17,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import {
   resolveNoemaSrtWinExecutable,
   runProjectCommandInSandbox,
-} from '../src/project-command-sandbox.mjs';
+} from '../src/main/execution/project-command-sandbox.mjs';
 
 const usage = `Noema Windows command-sandbox integration check
 

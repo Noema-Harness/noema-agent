@@ -11,7 +11,7 @@ import {
 } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { RootStore } from '../src/root-store.mjs';
+import { RootStore } from '../src/main/storage/root-store.mjs';
 import { configureElectronRuntime } from './electron-runtime.mjs';
 
 configureElectronRuntime();
@@ -36,9 +36,13 @@ if (!path.isAbsolute(configuredE2eRoot) || !existsSync(configuredE2eRoot)) {
   throw new Error('The isolated E2E root directory must already exist.');
 }
 const e2eRoot = path.resolve(configuredE2eRoot);
-const e2eDirectory = mkdtempSync(path.join(e2eRoot, 'Noema-social-agents-'));
+const runDirectory = mkdtempSync(path.join(e2eRoot, 'Noema-social-agents-'));
+// Scenario data and Electron's profile must be siblings: the runtime rejects
+// either directory containing the other to protect the user's application data.
+const e2eDirectory = path.join(runDirectory, 'scenario');
+mkdirSync(e2eDirectory);
 const electronUserDataDirectory = mkdtempSync(
-  path.join(e2eDirectory, 'Noema-social-agents-electron-home-'),
+  path.join(runDirectory, 'Noema-social-agents-electron-home-'),
 );
 const databasePath = path.join(e2eDirectory, 'noema.sqlite3');
 const dshUserDataPath = path.join(e2eDirectory, 'dsh-home');

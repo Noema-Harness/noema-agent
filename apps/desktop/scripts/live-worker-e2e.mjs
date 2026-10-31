@@ -10,8 +10,8 @@ import {
 } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { RootStore } from '../src/root-store.mjs';
-import { verifyWorkspaceChecks } from '../src/workspace-verifier.mjs';
+import { RootStore } from '../src/main/storage/root-store.mjs';
+import { verifyWorkspaceChecks } from '../src/main/tools/workspace-verifier.mjs';
 import { configureElectronRuntime } from './electron-runtime.mjs';
 
 configureElectronRuntime();
