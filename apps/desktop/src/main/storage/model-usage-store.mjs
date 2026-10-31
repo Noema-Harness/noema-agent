@@ -42,6 +42,7 @@ export class ModelUsageStore {
         output_tokens INTEGER CHECK (output_tokens IS NULL OR output_tokens >= 0),
         cached_input_tokens INTEGER CHECK (cached_input_tokens IS NULL OR cached_input_tokens >= 0),
         cache_miss_tokens INTEGER CHECK (cache_miss_tokens IS NULL OR cache_miss_tokens >= 0),
+        cache_write_tokens INTEGER CHECK (cache_write_tokens IS NULL OR cache_write_tokens >= 0),
         reasoning_tokens INTEGER CHECK (reasoning_tokens IS NULL OR reasoning_tokens >= 0),
         provider_cost_json TEXT,
         request_characters INTEGER CHECK (request_characters IS NULL OR request_characters >= 0),
@@ -53,13 +54,25 @@ export class ModelUsageStore {
       CREATE INDEX IF NOT EXISTS model_usage_records_group
         ON model_usage_records(provider_host, model, operation, created_at);
     `);
+    const columns = new Set(
+      this.db
+        .pragma('table_info(model_usage_records)')
+        .map((column) => column.name),
+    );
+    if (!columns.has('cache_write_tokens')) {
+      this.db.exec(`
+        ALTER TABLE model_usage_records
+        ADD COLUMN cache_write_tokens INTEGER
+        CHECK (cache_write_tokens IS NULL OR cache_write_tokens >= 0)
+      `);
+    }
     this.insertRecord = this.db.prepare(`
       INSERT INTO model_usage_records (
         id, created_at, provider_host, model, operation, request_status, usage_received,
         input_tokens, output_tokens, cached_input_tokens, cache_miss_tokens,
-        reasoning_tokens, provider_cost_json, request_characters,
+        cache_write_tokens, reasoning_tokens, provider_cost_json, request_characters,
         message_count, tool_count
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
   }
 
@@ -84,6 +97,7 @@ export class ModelUsageStore {
       outputTokens: count(record.outputTokens),
       cachedInputTokens: count(record.cachedInputTokens),
       cacheMissTokens: count(record.cacheMissTokens),
+      cacheWriteTokens: count(record.cacheWriteTokens),
       reasoningTokens: count(record.reasoningTokens),
       providerCostJson: serializeProviderCost(record.providerCost),
       requestCharacters: count(record.requestCharacters),
@@ -102,6 +116,7 @@ export class ModelUsageStore {
       row.outputTokens,
       row.cachedInputTokens,
       row.cacheMissTokens,
+      row.cacheWriteTokens,
       row.reasoningTokens,
       row.providerCostJson,
       row.requestCharacters,
@@ -127,6 +142,8 @@ export class ModelUsageStore {
           SUM(output_tokens) AS outputTokens,
           SUM(CASE WHEN cached_input_tokens IS NOT NULL AND cache_miss_tokens IS NOT NULL THEN cached_input_tokens ELSE 0 END) AS cachedInputTokens,
           SUM(CASE WHEN cached_input_tokens IS NOT NULL AND cache_miss_tokens IS NOT NULL THEN cache_miss_tokens ELSE 0 END) AS cacheMissTokens,
+          SUM(cache_write_tokens) AS cacheWriteTokens,
+          SUM(CASE WHEN cache_write_tokens IS NOT NULL THEN 1 ELSE 0 END) AS cacheWriteBreakdownRequests,
           SUM(CASE WHEN cached_input_tokens IS NOT NULL AND cache_miss_tokens IS NOT NULL THEN 1 ELSE 0 END) AS cacheBreakdownRequests,
           SUM(reasoning_tokens) AS reasoningTokens
         FROM model_usage_records
@@ -146,6 +163,8 @@ export class ModelUsageStore {
           row.cacheBreakdownRequests > 0 ? row.cachedInputTokens : null,
         cacheMissTokens:
           row.cacheBreakdownRequests > 0 ? row.cacheMissTokens : null,
+        cacheWriteTokens:
+          row.cacheWriteBreakdownRequests > 0 ? row.cacheWriteTokens : null,
         cacheHitRate:
           cacheTotal > 0 ? row.cachedInputTokens / cacheTotal : null,
       };
@@ -162,6 +181,7 @@ export class ModelUsageStore {
           input_tokens AS inputTokens, output_tokens AS outputTokens,
           cached_input_tokens AS cachedInputTokens,
           cache_miss_tokens AS cacheMissTokens,
+          cache_write_tokens AS cacheWriteTokens,
           reasoning_tokens AS reasoningTokens,
           provider_cost_json AS providerCostJson,
           request_characters AS requestCharacters,

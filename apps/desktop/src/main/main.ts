@@ -713,6 +713,9 @@ async function startNoema() {
         }),
         providerBaseUrl: provider.baseUrl,
         getApiKey: () => providerSecretStore?.get() ?? null,
+        onUsage: (usage: Record<string, unknown>): void => {
+          modelUsageStore.record(usage);
+        },
       });
     } catch (error) {
       dshRuntimeError =

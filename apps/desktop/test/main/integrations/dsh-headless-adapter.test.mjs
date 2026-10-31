@@ -9,12 +9,61 @@ import {
   DshHeadlessAdapter,
   DshHeadlessError,
   makeNoemaDshWorkerPatch,
+  normalizeDshReportedUsage,
   parseDshHeadlessEvent,
   parseDshRateLimitRetryAfterSeconds,
   resolveDshHeadlessRuntime,
 } from '../../../src/main/integrations/dsh-headless-adapter.mjs';
 
 const routerModel = 'auto:noema-free';
+
+test('normalizes DSH cache buckets without guessing missing hit data', () => {
+  assert.deepEqual(
+    normalizeDshReportedUsage({
+      inputTokens: 20,
+      outputTokens: 7,
+      totalTokens: 40,
+      cacheReadTokens: 10,
+      cacheWriteTokens: 3,
+      reasoningTokens: 2,
+    }),
+    {
+      usageReceived: true,
+      inputTokens: 33,
+      outputTokens: 7,
+      cachedInputTokens: 10,
+      cacheMissTokens: 23,
+      cacheWriteTokens: 3,
+      reasoningTokens: 2,
+    },
+  );
+  assert.deepEqual(
+    normalizeDshReportedUsage({
+      inputTokens: 20,
+      outputTokens: 7,
+      totalTokens: 27,
+    }),
+    {
+      usageReceived: true,
+      inputTokens: 20,
+      outputTokens: 7,
+      cachedInputTokens: null,
+      cacheMissTokens: null,
+      cacheWriteTokens: null,
+      reasoningTokens: null,
+    },
+  );
+  assert.equal(
+    normalizeDshReportedUsage({
+      inputTokens: 20,
+      outputTokens: 7,
+      totalTokens: 40,
+      cacheReadTokens: 11,
+      cacheWriteTokens: 3,
+    }).usageReceived,
+    false,
+  );
+});
 
 class FakeChild extends EventEmitter {
   stdout = new PassThrough();
@@ -138,12 +187,14 @@ test('worker process streams safe status events and reports the final result', a
   const child = new FakeChild();
   let launch;
   const observed = [];
+  const usageRecords = [];
   try {
     const adapter = new DshHeadlessAdapter({
       runtime: { nodeExecutable: 'node.exe', dshBin: 'dsh/lib/bin.js' },
       userDataPath: userData,
       providerBaseUrl: 'http://127.0.0.1:31415/v1',
       getApiKey: () => 'test-free-key',
+      onUsage: (record) => usageRecords.push(record),
       env: { PATH: 'C:\\node' },
       spawnImpl: (executable, args, options) => {
         launch = { executable, args, options };
@@ -177,6 +228,7 @@ test('worker process streams safe status events and reports the final result', a
     child.stdout.write(
       '{"type":"session","sessionId":"session-test"}\n' +
         '{"type":"status","phase":"turn_start"}\n' +
+        '{"type":"status","phase":"step_end","turn":1,"step":1,"usage":{"inputTokens":20,"outputTokens":7,"totalTokens":40,"cacheReadTokens":10,"cacheWriteTokens":3,"reasoningTokens":2}}\n' +
         '{"type":"tool_call","callId":"call-write","tool":"write","input":{"path":"secret path omitted"}}\n' +
         '{"type":"tool_result","callId":"call-write","status":"completed","result":"omitted"}\n' +
         '{"type":"tool_call","tool":"tool-pwsh","input":{"command":"hidden command"}}\n' +
@@ -195,6 +247,7 @@ test('worker process streams safe status events and reports the final result', a
       [
         'session',
         'status',
+        'status',
         'tool-call',
         'tool-result',
         'tool-call',
@@ -202,14 +255,32 @@ test('worker process streams safe status events and reports the final result', a
         'final',
       ],
     );
-    assert.equal(observed[2].category, 'write');
-    assert.equal(observed[2].hasSideEffect, true);
-    assert.equal(observed[2].stepId, observed[3].stepId);
-    assert.equal(observed[3].effectStatus, 'applied');
-    assert.equal(observed[4].category, 'command');
-    assert.equal(observed[4].hasSideEffect, true);
-    assert.equal(observed[4].stepId, observed[5].stepId);
-    assert.equal(observed[5].effectStatus, 'unknown');
+    assert.equal(observed[3].category, 'write');
+    assert.equal(observed[3].hasSideEffect, true);
+    assert.equal(observed[3].stepId, observed[4].stepId);
+    assert.equal(observed[4].effectStatus, 'applied');
+    assert.equal(observed[5].category, 'command');
+    assert.equal(observed[5].hasSideEffect, true);
+    assert.equal(observed[5].stepId, observed[6].stepId);
+    assert.equal(observed[6].effectStatus, 'unknown');
+    assert.deepEqual(usageRecords, [
+      {
+        providerHost: '127.0.0.1',
+        model: routerModel,
+        operation: 'dsh_worker_step',
+        requestStatus: 'completed',
+        usageReceived: true,
+        inputTokens: 33,
+        outputTokens: 7,
+        cachedInputTokens: 10,
+        cacheMissTokens: 23,
+        cacheWriteTokens: 3,
+        reasoningTokens: 2,
+        requestCharacters: null,
+        messageCount: 0,
+        toolCount: 0,
+      },
+    ]);
     assert.equal(
       JSON.stringify(observed).includes('secret path omitted'),
       false,
@@ -223,12 +294,14 @@ test('worker process streams safe status events and reports the final result', a
 test('a worker deadline stops the DSH process and reports a bounded timeout', async () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'noema-dsh-timeout-'));
   const child = new FakeChild();
+  const usageRecords = [];
   try {
     const adapter = new DshHeadlessAdapter({
       runtime: { nodeExecutable: 'node.exe', dshBin: 'dsh/lib/bin.js' },
       userDataPath: path.join(directory, 'user-data'),
       providerBaseUrl: 'http://127.0.0.1:31415/v1',
       getApiKey: () => 'test-free-key',
+      onUsage: (record) => usageRecords.push(record),
       spawnImpl: () => child,
     });
     const handle = await adapter.startTask({
@@ -238,7 +311,10 @@ test('a worker deadline stops the DSH process and reports a bounded timeout', as
       model: routerModel,
       timeoutMs: 10,
     });
-    child.stdout.write('{"type":"session","sessionId":"session-timeout"}\n');
+    child.stdout.write(
+      '{"type":"session","sessionId":"session-timeout"}\n' +
+        '{"type":"status","phase":"step_start","turn":1,"step":1}\n',
+    );
     await handle.started;
     child.stdout.write(
       '{"type":"tool_call","callId":"write-timeout","tool":"write","input":{"path":"README.md"}}\n',
@@ -250,6 +326,9 @@ test('a worker deadline stops the DSH process and reports a bounded timeout', as
     assert.equal(result.errorCode, 'dsh_task_timeout');
     assert.match(result.errorMessage, /超过允许的运行时间/u);
     assert.equal(result.workspaceMutationStatus, 'unknown');
+    assert.equal(usageRecords.length, 1);
+    assert.equal(usageRecords[0].requestStatus, 'interrupted');
+    assert.equal(usageRecords[0].usageReceived, false);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

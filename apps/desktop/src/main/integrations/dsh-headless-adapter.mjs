@@ -289,15 +289,107 @@ export function parseDshHeadlessEvent(line) {
   return event;
 }
 
+function validUsageCount(value) {
+  return Number.isSafeInteger(value) && value >= 0;
+}
+
+/**
+ * Normalize a DSH headless step's aggregate provider usage. DSH separates
+ * uncached input, cache reads, and cache writes; Noema stores total prompt
+ * tokens plus a miss bucket so the same hit-rate calculation works across
+ * providers. Missing or inconsistent buckets remain unknown.
+ * @param {unknown} value
+ */
+export function normalizeDshReportedUsage(value) {
+  const unknown = {
+    usageReceived: false,
+    inputTokens: null,
+    outputTokens: null,
+    cachedInputTokens: null,
+    cacheMissTokens: null,
+    cacheWriteTokens: null,
+    reasoningTokens: null,
+  };
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return unknown;
+  }
+
+  const readCount = (key) => {
+    if (!Object.hasOwn(value, key)) return { present: false, value: null };
+    return validUsageCount(value[key])
+      ? { present: true, value: value[key] }
+      : { present: true, value: null, invalid: true };
+  };
+  const uncached = readCount('inputTokens');
+  const output = readCount('outputTokens');
+  const total = readCount('totalTokens');
+  const cacheRead = readCount('cacheReadTokens');
+  const cacheWrite = readCount('cacheWriteTokens');
+  const reasoning = readCount('reasoningTokens');
+  if (
+    uncached.invalid ||
+    output.invalid ||
+    total.invalid ||
+    cacheRead.invalid ||
+    cacheWrite.invalid ||
+    reasoning.invalid ||
+    !uncached.present ||
+    !output.present ||
+    (reasoning.present && reasoning.value > output.value)
+  ) {
+    return unknown;
+  }
+
+  let read = cacheRead.value;
+  let write = cacheWrite.value;
+  let inputTokens = null;
+  if (total.present) {
+    const exactPromptTokens = total.value - output.value;
+    const knownPromptTokens = uncached.value + (read ?? 0) + (write ?? 0);
+    if (
+      !validUsageCount(knownPromptTokens) ||
+      exactPromptTokens < knownPromptTokens ||
+      (cacheRead.present &&
+        cacheWrite.present &&
+        exactPromptTokens !== knownPromptTokens)
+    ) {
+      return unknown;
+    }
+    const unassigned = exactPromptTokens - knownPromptTokens;
+    if (!cacheRead.present && cacheWrite.present) read = unassigned;
+    else if (cacheRead.present && !cacheWrite.present) write = unassigned;
+    // If both cache fields are absent, the exact total still cannot reveal hits.
+    inputTokens = exactPromptTokens;
+  } else if (cacheRead.present && cacheWrite.present) {
+    inputTokens = uncached.value + read + write;
+    if (!validUsageCount(inputTokens)) return unknown;
+  }
+
+  const cacheBreakdownAvailable = inputTokens !== null && read !== null;
+  return {
+    usageReceived: true,
+    inputTokens,
+    outputTokens: output.value,
+    cachedInputTokens: read,
+    cacheMissTokens: cacheBreakdownAvailable ? inputTokens - read : null,
+    cacheWriteTokens: write,
+    reasoningTokens: reasoning.value,
+  };
+}
+
 /**
  * @param {{runtime:{nodeExecutable:string,dshBin:string},userDataPath:string,workspacePath:string,task:string,model:string,taskId?:string,sessionId?:string,env?:NodeJS.ProcessEnv,spawnImpl?:typeof spawn,onEvent?:(event:object)=>void,timeoutMs?:number}} input
  */
 export class DshHeadlessAdapter {
+  /**
+   * @param {{runtime:{nodeExecutable:string,dshBin:string},userDataPath:string,providerBaseUrl:string,getApiKey:()=>string|null,onUsage?:(usage:Record<string,unknown>)=>void,env?:NodeJS.ProcessEnv,spawnImpl?:typeof spawn}} options
+   */
   constructor({
     runtime,
     userDataPath,
     providerBaseUrl,
     getApiKey,
+    onUsage = () => {},
     env = process.env,
     spawnImpl = spawn,
   }) {
@@ -306,6 +398,7 @@ export class DshHeadlessAdapter {
     this.userDataPath = path.resolve(userDataPath);
     this.providerBaseUrl = providerBaseUrl;
     this.getApiKey = getApiKey;
+    this.onUsage = typeof onUsage === 'function' ? onUsage : () => {};
     this.env = env;
     this.spawnImpl = spawnImpl;
   }
@@ -397,6 +490,9 @@ export class DshHeadlessAdapter {
       onEvent,
       patchPath,
       secret: apiKey,
+      model,
+      providerHost: new URL(this.providerBaseUrl).hostname,
+      onUsage: this.onUsage,
     });
   }
 }
@@ -433,7 +529,7 @@ function makeLocalWorkerEnvironment({ parent, userDataPath, apiKey }) {
   return env;
 }
 
-/** @param {{child:import('node:child_process').ChildProcess,task:string,taskId:string,sessionId:string|null,timeoutMs:number,onEvent:(event:object)=>void,patchPath:string}} input */
+/** @param {{child:import('node:child_process').ChildProcess,task:string,taskId:string,sessionId:string|null,timeoutMs:number,onEvent:(event:object)=>void,patchPath:string,secret:string,model:string,providerHost:string,onUsage:(usage:Record<string,unknown>)=>void}} input */
 function createRunHandle({
   child,
   task,
@@ -443,6 +539,9 @@ function createRunHandle({
   onEvent,
   patchPath,
   secret,
+  model,
+  providerHost,
+  onUsage,
 }) {
   let sessionId = requestedSessionId;
   let finalText = '';
@@ -466,6 +565,7 @@ function createRunHandle({
   let workspaceMutationSucceeded = false;
   let workspaceMutationUnknown = false;
   let invalidArgumentsLoopDetected = false;
+  let pendingModelSteps = 0;
   const getWorkspaceMutationStatus = () => {
     if (workspaceMutationSucceeded) return 'mutation_succeeded';
     if (workspaceMutationUnknown) return 'unknown';
@@ -475,6 +575,29 @@ function createRunHandle({
   };
   const safeStderrTail = () =>
     secret ? stderrTail.replaceAll(secret, '[已隐藏凭据]') : stderrTail;
+  const recordStepUsage = (requestStatus, usage) => {
+    const normalized = normalizeDshReportedUsage(usage);
+    try {
+      onUsage({
+        providerHost,
+        model,
+        operation: 'dsh_worker_step',
+        requestStatus,
+        ...normalized,
+        requestCharacters: null,
+        messageCount: 0,
+        toolCount: 0,
+      });
+    } catch (error) {
+      console.warn('Noema could not save DSH usage metadata:', error?.message);
+    }
+  };
+  const flushPendingModelSteps = (requestStatus) => {
+    while (pendingModelSteps > 0) {
+      pendingModelSteps -= 1;
+      recordStepUsage(requestStatus, null);
+    }
+  };
   const started = new Promise((resolve, reject) => {
     resolveStarted = resolve;
     rejectStarted = reject;
@@ -540,12 +663,19 @@ function createRunHandle({
         emit({ type: 'session', sessionId });
         break;
       }
-      case 'status':
+      case 'status': {
+        const phase = typeof event.phase === 'string' ? event.phase : 'unknown';
+        if (phase === 'step_start') pendingModelSteps += 1;
+        if (phase === 'step_end') {
+          pendingModelSteps = Math.max(0, pendingModelSteps - 1);
+          recordStepUsage('completed', event.usage);
+        }
         emit({
           type: 'status',
-          phase: typeof event.phase === 'string' ? event.phase : 'unknown',
+          phase,
         });
         break;
+      }
       case 'tool_call': {
         toolCallCount += 1;
         const tool = typeof event.tool === 'string' ? event.tool : 'unknown';
@@ -725,6 +855,7 @@ function createRunHandle({
   }, timeoutMs);
 
   child.on('error', (error) => {
+    flushPendingModelSteps('failed');
     lineError ??= new DshHeadlessError(
       'dsh_process_error',
       `无法启动 DSH headless：${error.message}`.slice(0, 1_000),
@@ -752,6 +883,7 @@ function createRunHandle({
 
   child.on('close', (code, signal) => {
     clearTimeout(timeoutHandle);
+    flushPendingModelSteps(stopRequested ? 'interrupted' : 'failed');
     if (!startedResolved) {
       startedResolved = true;
       rejectStarted(

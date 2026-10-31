@@ -2,13 +2,13 @@
 
 ## Context
 
-见 [proposal.md - Why](proposal.md#why)。目前唯一模型边界是 OpenAI-compatible Chat Completions。流式解析器读取文本和工具调用后丢弃 usage chunk；应用没有持久用量记录。DeepSeek 的上下文缓存依赖精确重复的输入前缀，并在响应 usage 中报告命中/未命中 token；其他兼容端点的字段并不完全一致。
+见 [proposal.md - Why](proposal.md#why)。Noema 有两条模型调用路径：主进程内的 OpenAI-compatible Chat Completions，以及 DSH headless worker。前者之前丢弃 SSE usage chunk；后者的 `--json` `step_end` usage 之前被适配器丢弃；应用尚无完整的持久用量记录。DeepSeek 的上下文缓存依赖精确重复的输入前缀，并在响应 usage 中报告命中/未命中 token；其他兼容端点的字段并不完全一致。
 
 ## Goals / Non-Goals
 
 **Goals:**
 
-- 让每次模型请求留下可按模型、调用场景和日期汇总的状态与 token/cache 用量。
+- 让直连模型请求与 DSH 后台 worker 的每次模型步骤留下可按模型、调用场景和日期汇总的状态与 token/cache 用量。
 - 保留“服务端没提供”的未知状态，不把缺失字段记成零。
 - 不让诊断存储故障中断用户回复；不保存请求正文或 API 凭据。
 - 先以调用量、上下文与缓存数据定位成本，再逐项优化，保留真实使用行为。
@@ -21,11 +21,13 @@
 
 ## Decisions
 
-1. **用 provider 回调传递归一化 usage，调用方提供内部场景标签。** 保持模型边界是 OpenAI-compatible，不把成本逻辑写入各 agent；标签和提示词均不发送给服务端。DeepSeek 的流式接口默认在最后一块返回 usage，因此不发送 `stream_options.include_usage`；其他端点只记录它们实际返回的数据。
-2. **在现有 Noema SQLite 数据库内用独立 `ModelUsageStore` 持久化。** 与对话正文分开；字段仅含日期、服务端主机名、模型、调用场景、输入/输出/缓存/推理 token、可选服务端成本、请求字符数及消息/工具数。替代方案是临时日志，但它难以可靠汇总且容易丢失；不在 root 对话表或社交消息表中加入成本字段，避免绑死单一对话域。
+1. **直连 API 与 DSH worker 都把用量写入同一个 provider 回调边界。** 直连请求读取 OpenAI-compatible 响应 usage；DSH headless JSON 的 `step_end` 聚合 usage 经薄适配器回调。DSH 同一 step 的重试已由上游聚合；缺失任一尝试用量时，上游不输出 usage，Noema 将其保留为未知。场景标签和提示词均不发送给服务端。DeepSeek 的流式接口默认在最后一块返回 usage，因此不发送 `stream_options.include_usage`。
+2. **在现有 Noema SQLite 数据库内用独立 `ModelUsageStore` 持久化。** 与对话正文分开；字段仅含日期、服务端主机名、模型、调用场景、请求状态、输入/输出/缓存命中/未命中/写入/推理 token、可选服务端成本、请求字符数及消息/工具数。现有 profile 通过幂等 `ALTER TABLE` 补入 cache-write 列，不回填历史数据。替代方案是临时日志，但它难以可靠汇总且容易丢失；不在 root 对话表或社交消息表中加入成本字段，避免绑死单一对话域。
 3. **字段缺失用 NULL，非负整数才接收。** 兼容 DeepSeek `prompt_cache_hit_tokens` / `prompt_cache_miss_tokens` 与 OpenAI `prompt_tokens_details.cached_tokens` 等常见结构；输入/输出 token 与缓存 token 保持独立。服务端费用原样保存为受限 JSON，若语义或币种未知不在本地换算。
 4. **流式与缓冲响应都在完成边界记录一次。** SSE usage 常在终止块出现且没有 choices；解析该块但不改变流出的文字/工具顺序。工具参数纠错产生的新请求单独计量。记录失败被捕获为诊断写入失败，不可改写模型结果。
 5. **缓存优化遵循前缀稳定性，而非通用模板改写。** OpenCode 的缓存策略显式按 provider 区分隐式缓存与显式 cache-control；Goose 的上下文压缩/缓存实践也有明确阈值和成本边界。Noema 先用账本确认哪些调用的提示前缀重复、动态字段在哪开始变化，再调整消息顺序或上下文；不直接移植其他 agent 的压缩策略。
+
+6. **DSH usage 按 step 记录，不按工具调用或整个 worker 任务记账。** 已安装的 DSH headless 投影在完成 step 时提供跨 attempt 聚合用量；这最接近真实模型请求边界。Noema 只保存规范化 token 桶，不保存 DSH session 内容、推理文本、工具输入或结果。provider 没有报告的 usage 记为未知；不通过读取 DSH 私有投影缓存或直接解析其内部持久化文件来补账。
 
 ### 源码级校准
 
@@ -46,4 +48,4 @@
 
 ## Migration Plan
 
-创建独立用量表和索引，不变更已有数据、不回填旧请求。新版本第一次打开数据库时 `CREATE TABLE IF NOT EXISTS`。若实现回滚，保留用量表即可；应用旧版本忽略该表。
+创建独立用量表和索引，不变更已有数据、不回填旧请求。新版本第一次打开数据库时 `CREATE TABLE IF NOT EXISTS`；已有表以幂等 `ALTER TABLE` 增加 `cache_write_tokens`，旧记录保持 `NULL`。若实现回滚，保留用量表即可；应用旧版本忽略新增列。

@@ -21,7 +21,7 @@ Renderer 通过 preload API 与主进程通信，不直接导入 Node、Electron
 | 聊天、上下文和成员资产 | [main/chat](../apps/desktop/src/main/chat)；服务编排与存储分开，model-tools 定义模型协议，records 处理记录映射，migrations 独立维护升级 |
 | 项目、协作与共享计划 | [main/projects](../apps/desktop/src/main/projects)；保留各自的状态与事务边界 |
 | 执行与授权 | [main/execution](../apps/desktop/src/main/execution)；执行任务、沙箱、失败恢复及核验 |
-| 模型、工具与兼容接入 | [main/providers](../apps/desktop/src/main/providers)、[main/tools](../apps/desktop/src/main/tools)、[main/integrations](../apps/desktop/src/main/integrations)；供应商与旧 harness 为可替换边界；[ModelUsageStore](../apps/desktop/src/main/storage/model-usage-store.mjs) 在本地记录不含正文的 provider 用量元数据 |
+| 模型、工具与兼容接入 | [main/providers](../apps/desktop/src/main/providers)、[main/tools](../apps/desktop/src/main/tools)、[main/integrations](../apps/desktop/src/main/integrations)；供应商与旧 harness 为可替换边界；[ModelUsageStore](../apps/desktop/src/main/storage/model-usage-store.mjs) 在本地记录直连 API 与 DSH worker 的不含正文用量元数据 |
 | 桌面集成 | [main/platform](../apps/desktop/src/main/platform)、[main/ipc](../apps/desktop/src/main/ipc)；窗口、通知、凭据、代理及 IPC 契约 |
 | 当前聊天界面 | [renderer/chat](../apps/desktop/src/renderer/chat)；controller 持有状态和动作，shell 负责组合，messages、workspaces 与 dialogs 按职责呈现 |
 | 项目、设置及其他界面 | [renderer/projects](../apps/desktop/src/renderer/projects)、[renderer/settings](../apps/desktop/src/renderer/settings)，另有 search/onboarding/capture；样式与所属界面邻近 |
