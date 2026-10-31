@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-11-01
+goal: Keep project status, blocker text, and next-step decisions consistent
+  across member handoffs.

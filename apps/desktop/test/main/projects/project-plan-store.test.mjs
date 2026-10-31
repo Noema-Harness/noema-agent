@@ -71,6 +71,66 @@ function setup(filename = ':memory:') {
   return { db, chat, projects, project, a, b, plan };
 }
 
+test('current blocker belongs only to blocked work while history remains intact', () => {
+  const { db, projects, project, a, plan } = setup();
+  try {
+    const initial = projects.plans.replace({
+      projectId: project.id,
+      expectedRevision: 0,
+      reason: '建立可恢复的工作项。',
+      plan,
+    });
+    const blocked = projects.plans.updateItem({
+      projectId: project.id,
+      expectedRevision: initial.revision,
+      itemId: 'research',
+      status: 'blocked',
+      blocker: '外部资料暂时不可用。',
+      actorAgentId: a,
+      reason: '记录当前阻塞。',
+    });
+    assert.equal(blocked.items[0].blocker, '外部资料暂时不可用。');
+
+    const resumed = projects.plans.updateItem({
+      projectId: project.id,
+      expectedRevision: blocked.revision,
+      itemId: 'research',
+      status: 'in_progress',
+      actorAgentId: a,
+      reason: '阻塞已排除，恢复工作。',
+    });
+    assert.equal(resumed.items[0].status, 'in_progress');
+    assert.equal(resumed.items[0].blocker, '');
+    assert.equal(
+      projects.plans.revisionDetails(project.id, blocked.revision).changes.find(
+        (entry) => entry.entity === 'item:research',
+      ).values.blocker.after,
+      '外部资料暂时不可用。',
+    );
+
+    const snapshot = db
+      .prepare(
+        'SELECT items_json FROM social_project_plan_revisions WHERE project_id=? AND revision=?',
+      )
+      .get(project.id, resumed.revision);
+    const saved = JSON.parse(snapshot.items_json);
+    saved.phases[0].workItems.find((item) => item.id === 'research').blocker =
+      '旧版本遗留的阻塞说明。';
+    db.prepare(
+      'UPDATE social_project_plan_revisions SET items_json=? WHERE project_id=? AND revision=?',
+    ).run(JSON.stringify(saved), project.id, resumed.revision);
+    assert.equal(projects.plans.get(project.id).items[0].blocker, '');
+    assert.equal(
+      projects.plans.revisionDetails(project.id, resumed.revision).changes.find(
+        (entry) => entry.entity === 'item:research',
+      ).values.blocker.after,
+      '旧版本遗留的阻塞说明。',
+    );
+  } finally {
+    db.close();
+  }
+});
+
 test('only accepted deliveries advance progress and unlock dependent work across restart', () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'noema-plan-'));
   const filename = path.join(directory, 'plan.sqlite3');
@@ -239,9 +299,14 @@ test('named reviewers decide against one submission and a resubmission starts a 
       reviewReason: '补上样本选择依据。',
     });
     assert.equal(returned.items[0].status, 'in_progress');
+    assert.equal(returned.items[0].blocker, '');
     assert.deepEqual(
       returned.items[0].evidenceReviews.map((review) => review.decision),
       ['approved', 'changes_requested'],
+    );
+    assert.equal(
+      returned.items[0].evidenceReviews.at(-1).reason,
+      '补上样本选择依据。',
     );
     const resubmitted = update('research', 'submitted', a, {
       evidence: '补充样本依据后的研究结论。',

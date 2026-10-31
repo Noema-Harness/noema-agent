@@ -576,6 +576,7 @@ export class ProjectPlanStore {
         };
       return {
         ...item,
+        blocker: item.status === 'blocked' ? item.blocker : '',
         acceptanceRecorded: acceptanceRecorded(item),
         ready:
           phase.status === 'pending' &&
@@ -1598,13 +1599,7 @@ export class ProjectPlanStore {
                 ? item.evidenceReview
                 : null,
         blocker:
-          effectiveReviewDecision === 'request_changes'
-            ? (input.reviewReason ?? input.blocker ?? '').trim()
-            : status === 'blocked'
-              ? (input.blocker ?? item.blocker)
-              : status === 'in_progress' && item.status === 'submitted'
-                ? ''
-                : (input.blocker ?? item.blocker),
+          status === 'blocked' ? (input.blocker ?? item.blocker) : '',
       };
       return this.write({
         ...input,
