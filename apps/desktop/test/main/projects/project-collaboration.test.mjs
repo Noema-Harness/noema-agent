@@ -1425,6 +1425,62 @@ test('a project work startup error is visible instead of collapsing to a generic
   }
 });
 
+test('a member can start delegated project work from its mirrored project-session message', async () => {
+  let calls = 0;
+  const startedWork = [];
+  const f = setup(
+    {
+      async *streamChat(input) {
+        calls++;
+        if (calls === 1) {
+          yield '@预算员 请检查现有实现并继续已委托的修复。';
+          return;
+        }
+        if (calls === 2) {
+          assert.ok(
+            input.tools.some(
+              (entry) => entry.function.name === 'start_project_work',
+            ),
+          );
+          tool(input, 'start_project_work', {
+            agent_id: f.b,
+            task: '检查项目工作区中的现有实现并完成已委托的修复。',
+          });
+          return;
+        }
+        yield '项目文件工作已启动。';
+      },
+    },
+    {
+      projectWorkReady: true,
+      onProjectWorkStart: (input) => {
+        const source = f.store.getSocialMessage(input.sourceMessageId);
+        assert.equal(source?.role, 'user');
+        assert.equal(source?.roomId, input.roomId);
+        startedWork.push(input);
+      },
+    },
+  );
+  f.store.setAgentProjectWork(f.b, true);
+  try {
+    f.service.sendMessage({
+      roomId: f.project.groupRoomId,
+      text: '@Noema 请让预算员继续这条已委托的修复。',
+    });
+    await settle(f.service);
+
+    const session = f.projects.getProjectSession(f.project.id, f.b);
+    assert.equal(calls, 2);
+    assert.equal(startedWork.length, 1);
+    assert.equal(startedWork[0].roomId, session.room.room.id);
+    assert.equal(startedWork[0].agentId, f.b);
+    assert.match(startedWork[0].prompt, /完成已委托的修复/u);
+  } finally {
+    await f.service.shutdown();
+    f.db.close();
+  }
+});
+
 test('a project status question alone does not start file execution', async () => {
   let calls = 0;
   const startedWork = [];

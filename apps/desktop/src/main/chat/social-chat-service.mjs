@@ -3057,7 +3057,7 @@ export class SocialChatService {
             result = await this.startProjectWork(
               {
                 roomId: isProjectGroupRoute
-                  ? run.projectContext.groupRoomId
+                  ? run.projectContext.roomId
                   : roomId,
                 ...(selectedProject ? { projectId: selectedProject.id } : {}),
                 agentId: executor.id,
