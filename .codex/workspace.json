@@ -1,6 +1,7 @@
 {
   "schemaVersion": 1,
   "artifactRoot": ".work",
+  "specificationRoot": "openspec/specs",
   "currentDocuments": [
     {
       "path": "README.md",

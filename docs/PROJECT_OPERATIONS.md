@@ -18,7 +18,16 @@
 
 `.codex/workspace.json` 指定哪些文档承担当前职责、何时需要更新。新增正式文档先明确它替代或补足哪个入口；能在现有文档的一处表达就不另建目录。代码变化只更新受影响的内容，不为刷新日期改写整篇。
 
-README 维护安装与导航，不维护开发进度；行为约定用 OpenSpec，代码导航用 ARCHITECTURE，产品边界用 PRODUCT_CHARTER，逻辑用核心流程图。它们承载跨变更仍有效的当前依据，不与 OpenSpec 冲突：具体变更期间的范围、方案、任务和验证写在 change；其中被验证且仍需长期成立的结果，再回写到对应的长期入口。不要把 change 原文复制进 docs。
+## 资料各自的权威范围
+
+- `openspec/specs/` 是已实现且仍应成立的可观察行为契约。规格以当前源码和自动化验证为依据；产品方向与未定构想不能直接写成已实现行为。
+- `openspec/changes/<name>/` 是正在发生的行为差异：proposal 说明原因和范围，spec delta 写变化后的契约，design 写实现选择，tasks 记录验证与交付。变更完成后归档；`changes/archive/` 只作历史，不覆盖当前 specs。
+- `docs/PRODUCT_CHARTER.md` 记录长期方向和高层取舍；`docs/ROADMAP.md` 管阶段顺序和退出条件；`docs/ARCHITECTURE.md` 是代码导航；核心流程图解释角色和机制如何衔接，并标出已实现程度。这些文档不能替代细粒度行为规格，也不重复列 change 任务。
+- 根 `AGENTS.md` 是自动加载的短协作契约和导航入口；根 README 面向安装和项目导航，CONTRIBUTING 面向外部贡献者。后两者不会因为位于根目录就自动成为当前开发上下文。按 `.codex/workspace.json` 选择本项相关材料，不把所有文档一并注入。
+
+`workspace:check` 只检查文档是否登记、路径和链接是否存在，以及 OpenSpec 基线是否仍有规格文件；它不能判断语义是否过时。行为变化必须在对应 OpenSpec change 更新 delta，并由测试核对契约；稳定后归档应用到 specs。只改方向、阶段计划或代码导航时，按 manifest 的触发条件更新相应 docs，不复制行为规格正文。不要把 change 原文复制进 docs。
+
+当前 OpenSpec 基线只覆盖已经有明确自动化证据的聊天、专业成员和项目协作核心切片，不代表 Noema 全部能力已经规格化；其他领域在对应功能发生实质变化时，根据当前代码与测试补入基线。
 
 `docs/decisions/README.md` 是 ADR 的使用规则，`TEMPLATE.md` 是新增决策的格式，两者属于维护入口；各编号 ADR 是只读决策历史，不代表当前源码必然仍按其实现。需要引用 ADR 时，先检查后续 ADR、当前 OpenSpec、产品章程、架构和代码；当前依据优先，过时结论通过新 ADR 明确取代，不批量翻修历史正文。新 ADR 仅记录跨变更持久的取舍；单次实现方案留在 OpenSpec。
 

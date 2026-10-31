@@ -33,6 +33,13 @@ function filesUnder(directory) {
 if (command === "check") {
   const errors = [];
   const current = new Set(config.currentDocuments.map((entry) => entry.path));
+  if (config.specificationRoot) {
+    const specificationFiles = filesUnder(resolve(config.specificationRoot)).filter(
+      (file) => path.basename(file) === "spec.md",
+    );
+    if (!specificationFiles.length)
+      errors.push(`No baseline OpenSpec specifications found: ${config.specificationRoot}`);
+  }
   for (const name of current) {
     if (!fs.existsSync(resolve(name))) errors.push(`Missing current document: ${name}`);
   }

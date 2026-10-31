@@ -12,7 +12,15 @@ test("workspace tooling previews, confines cleanup and detects stale document en
   try {
     const root = path.join(holder, "repository");
     const outside = path.join(holder, "outside");
-    for (const p of ["scripts", ".codex", "docs", ".work/runs", ".work/scratch", ".work/archive"])
+    for (const p of [
+      "scripts",
+      ".codex",
+      "docs",
+      "openspec/specs/example",
+      ".work/runs",
+      ".work/scratch",
+      ".work/archive",
+    ])
       fs.mkdirSync(path.join(root, p), { recursive: true });
     fs.mkdirSync(outside);
     fs.writeFileSync(path.join(outside, "keep"), "outside");
@@ -24,12 +32,14 @@ test("workspace tooling previews, confines cleanup and detects stale document en
       currentDocuments: [{ path: "README.md" }],
       historyRoots: ["docs/history"],
       artifactRoot: ".work",
-      rootDirectories: [".git", ".codex", ".work", "scripts", "docs"],
+      specificationRoot: "openspec/specs",
+      rootDirectories: [".git", ".codex", ".work", "scripts", "docs", "openspec"],
       cleanableArtifacts: [".work/runs", ".work/scratch"],
       generatedDirectories: [],
     };
     fs.writeFileSync(path.join(root, ".codex/workspace.json"), JSON.stringify(config));
     fs.writeFileSync(path.join(root, "README.md"), "# probe");
+    fs.writeFileSync(path.join(root, "openspec/specs/example/spec.md"), "# example");
     fs.writeFileSync(path.join(root, ".work/runs", "remove"), "run");
     fs.writeFileSync(path.join(root, ".work/archive", "keep"), "history");
     execFileSync("git", ["init", "--quiet"], { cwd: root, windowsHide: true, timeout: 5000 });
@@ -65,6 +75,10 @@ test("workspace tooling previews, confines cleanup and detects stale document en
     assert.notEqual(invalid.status, 0);
     assert(invalid.stdout.includes("Unclassified document"));
     assert(invalid.stdout.includes("Broken link"));
+    fs.rmSync(path.join(root, "openspec/specs/example/spec.md"));
+    const missingBaseline = run("check");
+    assert.notEqual(missingBaseline.status, 0);
+    assert.match(missingBaseline.stdout, /No baseline OpenSpec specifications found/);
   } finally {
     fs.rmSync(holder, { recursive: true });
   }

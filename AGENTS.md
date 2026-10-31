@@ -8,7 +8,7 @@ Noema 是由用户拥有身份、连续性和长期状态的独立个人 agent �
 
 ## 开发工作流
 
-有实质范围的 Noema 工作先用 `.codex/skills/noema-project-work/SKILL.md` 核对代码现场、最近讨论与当前 change。`.codex/workspace.json` 列出当前文档及更新时机；阶段方向见 `docs/ROADMAP.md`，OpenSpec 管规格、设计、细任务和证据。GitHub 保留源码、PR 与外部问题，原 Project 已封存，不再维护其卡片或状态。
+有实质范围的 Noema 工作先用 `.codex/skills/noema-project-work/SKILL.md` 核对代码现场、最近讨论与当前 change。OpenSpec specs 是已实现行为的当前契约，change 记录正在发生的差异；首批基线只覆盖已有自动化证据的核心切片。`.codex/workspace.json` 路由当前文档及更新时机；阶段方向见 `docs/ROADMAP.md`。GitHub 保留源码、PR 与外部问题，原 Project 已封存，不再维护其卡片或状态。
 
 跨模块功能、行为变更和持续重构使用用户级 `openspec-workflow`；项目配置见 `openspec/config.yaml`。未安装该技能的环境可直接用 OpenSpec CLI 的 context、status 与 instructions 读取流程。小修直接处理；工具、文档维护可以使用不产生产品规格的 change。旧的独立执行计划格式已由 change 替代。
 
