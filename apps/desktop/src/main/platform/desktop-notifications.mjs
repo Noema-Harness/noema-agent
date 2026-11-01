@@ -44,3 +44,34 @@ export function createSocialReplyNotificationHandler({
     }
   };
 }
+
+export function createUserFollowupNotificationHandler({
+  NotificationClass,
+  openMainWindow,
+  disabled = false,
+}) {
+  return (event) => {
+    if (
+      disabled ||
+      event?.type !== 'user-followup-due' ||
+      typeof event.id !== 'string' ||
+      typeof event.title !== 'string' ||
+      typeof event.body !== 'string' ||
+      !NotificationClass?.isSupported?.()
+    )
+      return false;
+    try {
+      const notification = new NotificationClass({
+        title: event.title,
+        body: event.body,
+        groupId: 'noema-followups',
+        silent: true,
+      });
+      notification.once('click', openMainWindow);
+      notification.show();
+      return true;
+    } catch {
+      return false;
+    }
+  };
+}

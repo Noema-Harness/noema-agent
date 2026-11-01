@@ -771,4 +771,33 @@ export function migrateSocialChatSchema(db) {
         `);
     })();
   }
+  if (current < 30) {
+    db.transaction(() => {
+      db.exec(`
+          CREATE TABLE social_user_followups (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL CHECK (length(title) BETWEEN 1 AND 80),
+            body TEXT NOT NULL CHECK (length(body) BETWEEN 1 AND 500),
+            due_at TEXT NOT NULL,
+            status TEXT NOT NULL CHECK (status IN ('pending', 'delivering', 'delivered', 'canceled')),
+            source_room_id TEXT REFERENCES social_rooms(id) ON DELETE SET NULL,
+            source_message_id TEXT REFERENCES social_messages(id) ON DELETE SET NULL,
+            delivery_lease_until TEXT,
+            delivered_at TEXT,
+            last_error TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+          );
+          CREATE INDEX social_user_followups_due
+            ON social_user_followups(status, due_at, delivery_lease_until);
+          CREATE INDEX social_user_followups_history
+            ON social_user_followups(updated_at DESC, id);
+          INSERT INTO app_settings(key, value, updated_at)
+            VALUES ('user_followups_enabled', 'true', '${isoNow()}')
+            ON CONFLICT(key) DO NOTHING;
+          INSERT INTO social_schema_migrations(version, applied_at)
+            VALUES (30, '${isoNow()}');
+        `);
+    })();
+  }
 }

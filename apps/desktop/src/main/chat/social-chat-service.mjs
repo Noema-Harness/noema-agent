@@ -35,6 +35,7 @@ import {
   projectToolChoicesContext,
   noemaActionGuidance,
   personalMemoryTool,
+  userFollowupTool,
   shouldExposePersonalMemoryTool,
 } from './model-tools.mjs';
 
@@ -93,6 +94,63 @@ function shouldExposeExistingProjectTools(run, roomHistory, projects) {
     const title = project.title?.trim();
     return title && title.length >= 2 && recentText.includes(title);
   });
+}
+
+function isFollowupAcceptance(text) {
+  return /^(?:好|好的|可以|行|没问题|麻烦你|那就这样|请这样|就这么办)[。！!，, ]*$/u.test(
+    String(text ?? '').trim(),
+  );
+}
+
+function assistantOfferedFollowup(roomHistory, currentUserText) {
+  const currentUserIndex = roomHistory.findLastIndex(
+    (message) => message.role === 'user' && message.content === currentUserText,
+  );
+  const priorMessages =
+    currentUserIndex < 0
+      ? roomHistory
+      : roomHistory.filter((_, index) => index !== currentUserIndex);
+  const recent = [...priorMessages]
+    .reverse()
+    .find((message) => ['user', 'assistant'].includes(message.role));
+  return Boolean(
+    recent?.role === 'assistant' &&
+    /(?:可以|要不要|我会|我来|需要我).{0,24}(?:提醒|回访|到时再问|之后再问)|(?:提醒|回访).{0,24}(?:可以吗|要不要|好吗)/u.test(
+      recent.content ?? '',
+    ) &&
+    /(?:今天|今晚|今早|明天|明早|明晚|后天|(?:这|下)周[一二三四五六日天]|\d{1,2}月\d{1,2}[日号]|\d{1,2}[日号]|\d+分钟后|\d+小时后|\d+天后|\d+周后|\d+个月后)/u.test(
+      recent.content ?? '',
+    ) &&
+    /(?:\d{1,2}[:：]\d{2}|(?:上午|下午|晚上|中午)[一二三四五六七八九十\d]+点|\d{1,2}点(?:\d{1,2}分)?|\d+分钟后|\d+小时后)/u.test(
+      recent.content ?? '',
+    ),
+  );
+}
+
+function userAuthorizedFollowup(text, roomHistory) {
+  const normalizedText = String(text ?? '').trim();
+  if (
+    /(?:不要|别|不必|无需|不用|不需要|取消|停止).{0,8}(?:提醒|回访)|(?:提醒|回访).{0,8}(?:不要|别|不必|取消)/u.test(
+      normalizedText,
+    )
+  )
+    return false;
+  return (
+    /(?:提醒我|到时提醒|届时提醒|回访我|之后问我|到时候叫我|记得提醒|请提醒|帮我提醒|设置.{0,5}提醒|安排.{0,5}回访)/u.test(
+      normalizedText,
+    ) ||
+    (isFollowupAcceptance(text) && assistantOfferedFollowup(roomHistory, text))
+  );
+}
+
+function localTimeContext() {
+  const now = new Date();
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'local';
+  const offsetMinutes = -now.getTimezoneOffset();
+  const sign = offsetMinutes >= 0 ? '+' : '-';
+  const absolute = Math.abs(offsetMinutes);
+  const offset = `${sign}${String(Math.floor(absolute / 60)).padStart(2, '0')}:${String(absolute % 60).padStart(2, '0')}`;
+  return `安排回访时使用当前本地时间：${now.toLocaleString('zh-CN')}；时区 ${zone}，当前偏移 ${offset}。`;
 }
 
 function socialTurnUsageOperation(run, room, exposeProjectActions) {
@@ -301,6 +359,58 @@ export class SocialChatService {
     this.backgroundModelWorkPaused = false;
     this.shuttingDown = false;
     this.reconciledPlans = new Map();
+    this.userFollowupDrain = null;
+    this.userFollowupTimer = setInterval(
+      () => this.scheduleUserFollowups(),
+      30_000,
+    );
+    this.userFollowupTimer.unref?.();
+    this.scheduleUserFollowups();
+  }
+
+  scheduleUserFollowups() {
+    if (
+      this.shuttingDown ||
+      this.userFollowupDrain ||
+      !this.store.userFollowups
+    )
+      return;
+    const drain = Promise.resolve()
+      .then(() => this.store.userFollowups.claimDue())
+      .then((items) => {
+        for (const item of items) {
+          try {
+            const shown = this.emit({
+              type: 'user-followup-due',
+              id: item.id,
+              title: item.title,
+              body: item.body,
+              dueAt: item.dueAt,
+            });
+            if (shown === true) this.store.userFollowups.markDelivered(item.id);
+            else
+              this.store.userFollowups.release(
+                item.id,
+                '桌面通知当前不可用；到下次检查时重试。',
+              );
+          } catch (error) {
+            this.store.userFollowups.release(
+              item.id,
+              error?.message ?? '桌面通知发送失败。',
+            );
+          }
+        }
+      })
+      .catch((error) => {
+        console.error(
+          'User follow-up delivery failed:',
+          error?.message ?? error,
+        );
+      })
+      .finally(() => {
+        if (this.userFollowupDrain === drain) this.userFollowupDrain = null;
+      });
+    this.userFollowupDrain = drain;
   }
 
   async getUiState() {
@@ -2633,6 +2743,12 @@ export class SocialChatService {
       const normalActionTools = [
         ...(agentId === 'noema' &&
         roomId === 'room-noema' &&
+        !run.isProjectGrowthTurn &&
+        userAuthorizedFollowup(run.text, roomHistory)
+          ? [userFollowupTool()]
+          : []),
+        ...(agentId === 'noema' &&
+        roomId === 'room-noema' &&
         this.store.personalMemories?.isEnabled() &&
         shouldExposePersonalMemoryTool(run.text)
           ? [personalMemoryTool()]
@@ -2711,6 +2827,11 @@ export class SocialChatService {
               : '',
             agentId === 'noema' && roomId === 'room-noema'
               ? (this.store.getFirstMeetingContext?.() ?? '')
+              : '',
+            actionTools.some(
+              (tool) => tool.function.name === 'schedule_followup',
+            )
+              ? localTimeContext()
               : '',
           ]
             .filter(Boolean)
@@ -4191,6 +4312,85 @@ export class SocialChatService {
               '成员资产操作已处理，但没有生成说明。可以重试这条消息。',
             );
           }
+        } else if (toolName === 'schedule_followup') {
+          const callId = toolCalls[0]?.id;
+          if (
+            agentId !== 'noema' ||
+            roomId !== 'room-noema' ||
+            run.isProjectGrowthTurn ||
+            !callId ||
+            !userAuthorizedFollowup(run.text, roomHistory)
+          ) {
+            throw new ModelProviderError(
+              'user_followup_not_authorized',
+              '没有收到明确的回访授权；未创建回访。',
+            );
+          }
+          let result;
+          try {
+            const item = this.store.userFollowups.add({
+              title: input?.title,
+              body: input?.body,
+              dueAt: input?.due_at,
+              sourceRoomId: roomId,
+              sourceMessageId: run.userMessageId,
+            });
+            result = { created: true, item };
+            this.scheduleUserFollowups();
+          } catch (error) {
+            result = {
+              created: false,
+              message: error?.message ?? '本机回访没有创建。',
+            };
+          }
+          messages.push(
+            {
+              role: 'system',
+              content:
+                '回访工具只管理用户授权的一次性本机通知。到期不会调用模型或执行操作；只有结果 created=true 时才能说已安排。',
+            },
+            {
+              role: 'assistant',
+              content: content || null,
+              tool_calls: [toolCalls[0]],
+            },
+            {
+              role: 'tool',
+              tool_call_id: callId,
+              name: 'schedule_followup',
+              content: JSON.stringify(result),
+            },
+          );
+          let followUpContent = '';
+          for await (const delta of this.provider.streamChat({
+            model,
+            messages,
+            signal: controller.signal,
+            usageOperation: 'social_user_followup_confirmation',
+            usageInteractionId: assistantMessageId,
+          })) {
+            controller.signal.throwIfAborted();
+            followUpContent += delta;
+            content += delta;
+            if (!this.appendRunAssistantDelta(run, delta)) {
+              throw new ModelProviderError(
+                'reply_not_streaming',
+                '回访操作已处理，但 Noema 的说明没有完成保存。',
+              );
+            }
+            this.emit({
+              type: 'chat-message-delta',
+              roomId,
+              messageId: assistantMessageId,
+              delta,
+            });
+          }
+          if (!followUpContent.trim()) {
+            throw new ModelProviderError(
+              'empty_reply',
+              '回访操作已处理，但 Noema 没有生成说明。可以重试这条消息。',
+            );
+          }
         } else {
           throw new ModelProviderError(
             'social_tool_invalid',
@@ -4313,8 +4513,12 @@ export class SocialChatService {
 
   async shutdown() {
     this.shuttingDown = true;
+    clearInterval(this.userFollowupTimer);
     const active = [...this.active.values()];
     for (const run of active) run.controller.abort();
-    await Promise.allSettled(active.map((run) => run.done));
+    await Promise.allSettled([
+      ...active.map((run) => run.done),
+      this.userFollowupDrain,
+    ]);
   }
 }

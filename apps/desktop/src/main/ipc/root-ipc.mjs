@@ -36,6 +36,11 @@ const CHANNELS = Object.freeze({
   addPersonalMemory: 'noema:add-personal-memory',
   updatePersonalMemory: 'noema:update-personal-memory',
   deletePersonalMemory: 'noema:delete-personal-memory',
+  userFollowups: 'noema:user-followups',
+  userFollowupsEnabled: 'noema:user-followups-enabled',
+  addUserFollowup: 'noema:add-user-followup',
+  updateUserFollowup: 'noema:update-user-followup',
+  cancelUserFollowup: 'noema:cancel-user-followup',
   firstMeetingProgress: 'noema:first-meeting-progress',
   socialRoom: 'noema:social-room',
   socialSearchMessages: 'noema:social-search-messages',
@@ -119,6 +124,27 @@ export function registerRootIpc({
     );
     register(CHANNELS.deletePersonalMemory, (id) =>
       socialChatService.store.personalMemories.delete(id),
+    );
+    register(CHANNELS.userFollowups, () =>
+      socialChatService.store.userFollowups.list(),
+    );
+    register(CHANNELS.userFollowupsEnabled, (enabled) => {
+      const result = socialChatService.store.userFollowups.setEnabled(enabled);
+      if (result) socialChatService.scheduleUserFollowups();
+      return result;
+    });
+    register(CHANNELS.addUserFollowup, (input) => {
+      const item = socialChatService.store.userFollowups.add(input);
+      socialChatService.scheduleUserFollowups();
+      return item;
+    });
+    register(CHANNELS.updateUserFollowup, (input) => {
+      const item = socialChatService.store.userFollowups.update(input);
+      socialChatService.scheduleUserFollowups();
+      return item;
+    });
+    register(CHANNELS.cancelUserFollowup, (id) =>
+      socialChatService.store.userFollowups.cancel(id),
     );
     register(CHANNELS.socialRoom, (roomId) => ({
       ...socialChatService.store.getRoomSnapshot(roomId),

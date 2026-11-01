@@ -225,6 +225,28 @@ export interface NoemaPersonalMemoryList {
   items: NoemaPersonalMemory[];
 }
 
+export interface NoemaUserFollowup {
+  id: string;
+  title: string;
+  body: string;
+  dueAt: string;
+  status: 'pending' | 'delivering' | 'delivered' | 'canceled';
+  sourceRoomId: string | null;
+  sourceMessageId: string | null;
+  deliveryLeaseUntil: string | null;
+  deliveredAt: string | null;
+  lastError: string | null;
+  createdAt: string;
+  updatedAt: string;
+  sourceRoomTitle: string | null;
+  sourceMessageCreatedAt: string | null;
+}
+
+export interface NoemaUserFollowupList {
+  enabled: boolean;
+  items: NoemaUserFollowup[];
+}
+
 export interface NoemaSocialHistorySource {
   id: string;
   roomId: string;
@@ -856,6 +878,20 @@ export interface NoemaBridge {
     content: string;
   }): Promise<NoemaPersonalMemory>;
   deletePersonalMemory(id: string): Promise<boolean>;
+  getUserFollowups(): Promise<NoemaUserFollowupList>;
+  setUserFollowupsEnabled(enabled: boolean): Promise<boolean>;
+  addUserFollowup(input: {
+    title: string;
+    body: string;
+    dueAt: string;
+  }): Promise<NoemaUserFollowup>;
+  updateUserFollowup(input: {
+    id: string;
+    title: string;
+    body: string;
+    dueAt: string;
+  }): Promise<NoemaUserFollowup>;
+  cancelUserFollowup(id: string): Promise<boolean>;
   advanceFirstMeeting(
     action: 'read' | 'enter',
   ): Promise<NoemaFirstMeetingState>;

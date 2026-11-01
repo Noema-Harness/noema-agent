@@ -62,7 +62,10 @@ import {
   finishQuickCaptureWindow,
   registerQuickCaptureShortcut,
 } from './platform/quick-capture-shortcut.mjs';
-import { createSocialReplyNotificationHandler } from './platform/desktop-notifications.mjs';
+import {
+  createSocialReplyNotificationHandler,
+  createUserFollowupNotificationHandler,
+} from './platform/desktop-notifications.mjs';
 import { readDesktopDevelopmentOptions } from './platform/development-options';
 const developmentOptions = readDesktopDevelopmentOptions();
 const {
@@ -446,6 +449,14 @@ const createWindow = () => {
 const notifySocialReply = createSocialReplyNotificationHandler({
   NotificationClass: Notification,
   getWindow: () => mainWindow,
+  disabled: process.env.NOEMA_E2E_SILENT_NOTIFICATIONS === '1',
+  openMainWindow: () => {
+    if (!mainWindow || mainWindow.isDestroyed()) createWindow();
+    focusPrimaryWindow(mainWindow);
+  },
+});
+const notifyUserFollowup = createUserFollowupNotificationHandler({
+  NotificationClass: Notification,
   disabled: process.env.NOEMA_E2E_SILENT_NOTIFICATIONS === '1',
   openMainWindow: () => {
     if (!mainWindow || mainWindow.isDestroyed()) createWindow();
@@ -1310,6 +1321,11 @@ async function startNoema() {
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send(CHANNELS.socialEvent, outgoingPayload);
         }
+        if (
+          'type' in outgoingPayload &&
+          outgoingPayload.type === 'user-followup-due'
+        )
+          return notifyUserFollowup(outgoingPayload);
         notifySocialReply(outgoingPayload);
       },
     });

@@ -26,6 +26,7 @@ import { createNotificationEarcon } from '../notifications/notification-earcon.m
 import type {
   NoemaSocialAgent,
   NoemaPersonalMemoryList,
+  NoemaUserFollowupList,
   NoemaSocialEvent,
   NoemaSocialHistorySource,
   NoemaSocialMessage,
@@ -150,6 +151,18 @@ export function useSocialChatController() {
   const [deletingPersonalMemoryId, setDeletingPersonalMemoryId] = useState<
     string | null
   >(null);
+  const [userFollowupsOpen, setUserFollowupsOpen] = useState(false);
+  const [userFollowupList, setUserFollowupList] =
+    useState<NoemaUserFollowupList | null>(null);
+  const [userFollowupLoading, setUserFollowupLoading] = useState(false);
+  const [userFollowupBusy, setUserFollowupBusy] = useState(false);
+  const [userFollowupError, setUserFollowupError] = useState('');
+  const [userFollowupTitle, setUserFollowupTitle] = useState('');
+  const [userFollowupBody, setUserFollowupBody] = useState('');
+  const [userFollowupDueAt, setUserFollowupDueAt] = useState('');
+  const [editingUserFollowupId, setEditingUserFollowupId] = useState<
+    string | null
+  >(null);
   const [firstMeetingReplay, setFirstMeetingReplay] = useState(false);
   const firstMeetingEntryVisible = Boolean(
     state?.firstMeeting &&
@@ -180,6 +193,7 @@ export function useSocialChatController() {
   const conversationSearchRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLFormElement>(null);
   const personalMemoryDialogRef = useRef<HTMLElement>(null);
+  const userFollowupDialogRef = useRef<HTMLElement>(null);
   const searchTriggerRef = useRef<HTMLButtonElement>(null);
   const forwardOriginMessageId = useRef<string | null>(null);
   const threadTriggerRef = useRef<HTMLButtonElement>(null);
@@ -438,6 +452,114 @@ export function useSocialChatController() {
     },
     [editingPersonalMemoryId, refreshPersonalMemories],
   );
+  const refreshUserFollowups = useCallback(async () => {
+    setUserFollowupLoading(true);
+    setUserFollowupError('');
+    try {
+      setUserFollowupList(await window.noema.getUserFollowups());
+    } catch (error) {
+      setUserFollowupError(
+        error instanceof Error ? error.message : '无法读取回访。',
+      );
+    } finally {
+      setUserFollowupLoading(false);
+    }
+  }, []);
+  const openUserFollowups = useCallback(() => {
+    setSettingsOpen(false);
+    setUserFollowupsOpen(true);
+    void refreshUserFollowups();
+  }, [refreshUserFollowups]);
+  const closeUserFollowups = useCallback(() => {
+    setUserFollowupsOpen(false);
+    setUserFollowupError('');
+    setUserFollowupTitle('');
+    setUserFollowupBody('');
+    setUserFollowupDueAt('');
+    setEditingUserFollowupId(null);
+    requestAnimationFrame(() => settingsTriggerRef.current?.focus());
+  }, []);
+  const handleUserFollowupsEnabled = useCallback(
+    async (enabled: boolean) => {
+      setUserFollowupBusy(true);
+      setUserFollowupError('');
+      try {
+        await window.noema.setUserFollowupsEnabled(enabled);
+        await refreshUserFollowups();
+      } catch (error) {
+        setUserFollowupError(
+          error instanceof Error ? error.message : '无法更新回访设置。',
+        );
+      } finally {
+        setUserFollowupBusy(false);
+      }
+    },
+    [refreshUserFollowups],
+  );
+  const saveUserFollowup = useCallback(
+    async (event: FormEvent) => {
+      event.preventDefault();
+      setUserFollowupBusy(true);
+      setUserFollowupError('');
+      try {
+        const input = {
+          title: userFollowupTitle,
+          body: userFollowupBody,
+          dueAt: new Date(userFollowupDueAt).toISOString(),
+        };
+        if (editingUserFollowupId) {
+          await window.noema.updateUserFollowup({
+            id: editingUserFollowupId,
+            ...input,
+          });
+        } else {
+          await window.noema.addUserFollowup(input);
+        }
+        setUserFollowupTitle('');
+        setUserFollowupBody('');
+        setUserFollowupDueAt('');
+        setEditingUserFollowupId(null);
+        await refreshUserFollowups();
+      } catch (error) {
+        setUserFollowupError(
+          error instanceof Error ? error.message : '无法保存回访。',
+        );
+      } finally {
+        setUserFollowupBusy(false);
+      }
+    },
+    [
+      editingUserFollowupId,
+      refreshUserFollowups,
+      userFollowupBody,
+      userFollowupDueAt,
+      userFollowupTitle,
+    ],
+  );
+  const cancelUserFollowup = useCallback(
+    async (id: string) => {
+      setUserFollowupBusy(true);
+      setUserFollowupError('');
+      try {
+        const canceled = await window.noema.cancelUserFollowup(id);
+        if (!canceled) throw new Error('这条回访已进入发送流程，无法取消。');
+        if (editingUserFollowupId === id) {
+          setEditingUserFollowupId(null);
+          setUserFollowupTitle('');
+          setUserFollowupBody('');
+          setUserFollowupDueAt('');
+        }
+        await refreshUserFollowups();
+      } catch (error) {
+        setUserFollowupError(
+          error instanceof Error ? error.message : '无法取消回访。',
+        );
+      } finally {
+        setUserFollowupBusy(false);
+      }
+    },
+    [editingUserFollowupId, refreshUserFollowups],
+  );
   const cancelForward = useCallback(() => {
     const originMessageId = forwardOriginMessageId.current;
     forwardOriginMessageId.current = null;
@@ -625,13 +747,16 @@ export function useSocialChatController() {
       !threadDialogOpen &&
       !conversationSearchOpen &&
       !globalSearchOpen &&
-      !personalMemoryOpen
+      !personalMemoryOpen &&
+      !userFollowupsOpen
     ) {
       return;
     }
-    const dialog = personalMemoryOpen
-      ? personalMemoryDialogRef.current
-      : dialogRef.current;
+    const dialog = userFollowupsOpen
+      ? userFollowupDialogRef.current
+      : personalMemoryOpen
+        ? personalMemoryDialogRef.current
+        : dialogRef.current;
     if (!dialog) return;
     const focusableSelector =
       'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
@@ -657,6 +782,7 @@ export function useSocialChatController() {
         else if (threadDialogOpen) closeThreadDialog();
         else if (conversationSearchOpen) closeConversationSearch();
         else if (personalMemoryOpen) closePersonalMemories();
+        else if (userFollowupsOpen) closeUserFollowups();
         else closeSettingsDialog();
         return;
       }
@@ -697,6 +823,8 @@ export function useSocialChatController() {
     conversationSearchOpen,
     globalSearchOpen,
     personalMemoryOpen,
+    userFollowupsOpen,
+    closeUserFollowups,
     closePersonalMemories,
     closeGlobalSearch,
     closeGroupDialog,
@@ -2097,6 +2225,7 @@ export function useSocialChatController() {
     archivedProjects,
     settingsTriggerRef,
     personalMemoryDialogRef,
+    userFollowupDialogRef,
     setProjectTab,
     searchTriggerRef,
     openConversationSearch,
@@ -2200,6 +2329,25 @@ export function useSocialChatController() {
     handlePersonalMemoryEnabled,
     savePersonalMemory,
     deletePersonalMemory,
+    openUserFollowups,
+    userFollowupsOpen,
+    closeUserFollowups,
+    userFollowupList,
+    userFollowupLoading,
+    userFollowupBusy,
+    userFollowupError,
+    setUserFollowupError,
+    userFollowupTitle,
+    setUserFollowupTitle,
+    userFollowupBody,
+    setUserFollowupBody,
+    userFollowupDueAt,
+    setUserFollowupDueAt,
+    editingUserFollowupId,
+    setEditingUserFollowupId,
+    handleUserFollowupsEnabled,
+    saveUserFollowup,
+    cancelUserFollowup,
     handleProviderSave,
     agentTriggerRef,
     setCreateAgentOpen,

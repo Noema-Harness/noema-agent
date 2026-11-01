@@ -11,6 +11,7 @@ type PartnerSettingsDialogModel = Pick<
   | 'settingsOpen'
   | 'closeSettingsDialog'
   | 'openPersonalMemories'
+  | 'openUserFollowups'
   | 'handleProviderSave'
   | 'agentTriggerRef'
   | 'setCreateAgentOpen'
@@ -48,6 +49,7 @@ export function PartnerSettingsDialog({
     settingsOpen,
     closeSettingsDialog,
     openPersonalMemories,
+    openUserFollowups,
     handleProviderSave,
     agentTriggerRef,
     setCreateAgentOpen,
@@ -247,6 +249,22 @@ export function PartnerSettingsDialog({
             onClick={openPersonalMemories}
           >
             管理个人记忆
+          </button>
+        </section>
+        <section
+          className="settings-provider-section personal-memory-settings-entry"
+          aria-labelledby="user-followups-settings-title"
+        >
+          <div>
+            <h3 id="user-followups-settings-title">回访提醒</h3>
+            <p>只在你安排或接受后创建，到期通过本机通知提醒。</p>
+          </div>
+          <button
+            className="secondary-action"
+            type="button"
+            onClick={openUserFollowups}
+          >
+            管理回访
           </button>
         </section>
         <section

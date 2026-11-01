@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import test from 'node:test';
-import { createSocialReplyNotificationHandler } from '../../../src/main/platform/desktop-notifications.mjs';
+import {
+  createSocialReplyNotificationHandler,
+  createUserFollowupNotificationHandler,
+} from '../../../src/main/platform/desktop-notifications.mjs';
 
 function createNotificationClass(supported = true) {
   const notifications = [];
@@ -177,6 +180,58 @@ test('silent end-to-end clients never emit operating-system banners', () => {
       roomId: 'room-noema',
       messageId: 'e2e-reply',
       notifyUser: true,
+    }),
+    false,
+  );
+  assert.equal(notifications.length, 0);
+});
+
+test('due follow-ups produce a silent notification that opens Noema on click', () => {
+  const { NotificationClass, notifications } = createNotificationClass();
+  let opened = 0;
+  const handle = createUserFollowupNotificationHandler({
+    NotificationClass,
+    openMainWindow: () => opened++,
+  });
+
+  assert.equal(
+    handle({
+      type: 'user-followup-due',
+      id: 'followup-1',
+      title: '跟进报价',
+      body: '看看报价是否发来。',
+    }),
+    true,
+  );
+  assert.deepEqual(notifications[0].options, {
+    title: '跟进报价',
+    body: '看看报价是否发来。',
+    groupId: 'noema-followups',
+    silent: true,
+  });
+  notifications[0].emit('click');
+  assert.equal(opened, 1);
+});
+
+test('does not notify for malformed, unrelated, unsupported, or silent-test events', () => {
+  const { NotificationClass, notifications } = createNotificationClass();
+  const handle = createUserFollowupNotificationHandler({
+    NotificationClass,
+    openMainWindow() {},
+  });
+
+  assert.equal(handle({ type: 'user-followup-due', id: 'x' }), false);
+  assert.equal(handle({ type: 'chat-turn-completed', id: 'x' }), false);
+  assert.equal(
+    createUserFollowupNotificationHandler({
+      NotificationClass,
+      openMainWindow() {},
+      disabled: true,
+    })({
+      type: 'user-followup-due',
+      id: 'followup-1',
+      title: '标题',
+      body: '正文',
     }),
     false,
   );

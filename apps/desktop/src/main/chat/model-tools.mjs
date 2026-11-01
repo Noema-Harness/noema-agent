@@ -248,6 +248,33 @@ export function personalMemoryTool() {
   };
 }
 
+export function userFollowupTool() {
+  return {
+    type: 'function',
+    function: {
+      name: 'schedule_followup',
+      description: [
+        '只在用户明确要求安排回访，或明确接受你刚提出的具体回访建议时调用。普通讨论、推测用户可能需要提醒、仅提到未来日期都不构成授权。',
+        '把内容写成用户到时能直接理解的短标题与一句正文。due_at 必须是带时区的 ISO 8601 时间；系统会提供当前时间、时区和偏移。时间含糊时先问清，不要自行选一个时间。',
+        '这会创建一次性桌面通知，不会在到期时调用模型、发送消息或执行任务。',
+      ].join('\n'),
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', minLength: 1, maxLength: 80 },
+          body: { type: 'string', minLength: 1, maxLength: 500 },
+          due_at: {
+            type: 'string',
+            description: '包含 Z 或明确时区偏移的 ISO 8601 日期时间。',
+          },
+        },
+        required: ['title', 'body', 'due_at'],
+        additionalProperties: false,
+      },
+    },
+  };
+}
+
 export function shouldExposePersonalMemoryTool(text) {
   return /记住|记下来|记一下|保存记忆|更新记忆|修改记忆|忘记|忘掉|删除记忆|删除这条|删掉这条|移除记忆|你(?:还)?记得我|我(?:之前|以前)说过|根据你对我的了解|结合你对我的了解|考虑我的(?:偏好|习惯|目标)|我的(?:偏好|习惯|目标)|我喜欢|我不喜欢|remember (?:that|when|what)|what do you remember|forget (?:that|what)|based on what you know about me/iu.test(
     String(text ?? ''),

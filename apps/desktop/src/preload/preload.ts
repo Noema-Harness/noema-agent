@@ -4,6 +4,8 @@ import type {
   NoemaQuickCaptureShortcutStatus,
   NoemaPersonalMemory,
   NoemaPersonalMemoryList,
+  NoemaUserFollowupList,
+  NoemaUserFollowup,
   NoemaRootEvent,
   NoemaRootState,
   NoemaSocialEvent,
@@ -45,6 +47,25 @@ const bridge = {
     ipcRenderer.invoke('noema:update-personal-memory', input),
   deletePersonalMemory: (id: string): Promise<boolean> =>
     ipcRenderer.invoke('noema:delete-personal-memory', id),
+  getUserFollowups: (): Promise<NoemaUserFollowupList> =>
+    ipcRenderer.invoke('noema:user-followups'),
+  setUserFollowupsEnabled: (enabled: boolean): Promise<boolean> =>
+    ipcRenderer.invoke('noema:user-followups-enabled', enabled),
+  addUserFollowup: (input: {
+    title: string;
+    body: string;
+    dueAt: string;
+  }): Promise<NoemaUserFollowup> =>
+    ipcRenderer.invoke('noema:add-user-followup', input),
+  updateUserFollowup: (input: {
+    id: string;
+    title: string;
+    body: string;
+    dueAt: string;
+  }): Promise<NoemaUserFollowup> =>
+    ipcRenderer.invoke('noema:update-user-followup', input),
+  cancelUserFollowup: (id: string): Promise<boolean> =>
+    ipcRenderer.invoke('noema:cancel-user-followup', id),
   advanceFirstMeeting: (action: 'read' | 'enter') =>
     ipcRenderer.invoke('noema:first-meeting-progress', action),
   getSocialRoom: (roomId: string): Promise<NoemaSocialRoomState> =>

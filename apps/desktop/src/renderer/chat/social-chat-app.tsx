@@ -22,6 +22,7 @@ import {
 } from './dialogs/team-dialogs';
 import { PartnerSettingsDialog } from '../settings/partner-settings-dialog';
 import { PersonalMemoryDialog } from '../settings/personal-memory-dialog';
+import { UserFollowupsDialog } from '../settings/user-followups-dialog';
 
 export function SocialChatApp() {
   const controller = useSocialChatController();
@@ -1089,6 +1090,8 @@ export function SocialChatApp() {
       <PartnerSettingsDialog model={controller} />
 
       <PersonalMemoryDialog model={controller} />
+
+      <UserFollowupsDialog model={controller} />
     </main>
   );
 }

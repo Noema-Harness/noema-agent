@@ -177,6 +177,143 @@ test('personal memory stays in Noema main chat and writes only from explicit use
   }
 });
 
+test('a direct acceptance of a specific Noema follow-up offer exposes the reminder tool', async () => {
+  const db = new Database(':memory:');
+  new RootStore(db);
+  const store = createSocialTestStore(db);
+  const requests = [];
+  const provider = {
+    async *streamChat(input) {
+      requests.push(input);
+      if (requests.length === 1) {
+        yield '我可以明天下午3点提醒你跟进这件事。';
+        return;
+      }
+      if (
+        input.tools?.some((tool) => tool.function.name === 'schedule_followup')
+      ) {
+        input.onToolCalls?.([
+          {
+            id: 'followup-1',
+            function: {
+              name: 'schedule_followup',
+              arguments: JSON.stringify({
+                title: '跟进这件事',
+                body: '回顾一下进展。',
+                due_at: new Date(Date.now() + 120_000).toISOString(),
+              }),
+            },
+          },
+        ]);
+        return;
+      }
+      yield '已安排。';
+    },
+  };
+  const service = new SocialChatService({
+    store,
+    provider,
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'test-model',
+    getRootState: async () => ({
+      connected: true,
+      selectedModel: 'test-model',
+    }),
+  });
+
+  try {
+    service.sendMessage({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '我想继续跟进这件事。',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await service.active.get('room-noema')?.done;
+
+    service.sendMessage({ roomId: 'room-noema', agentId: 'noema', text: '好' });
+    await new Promise((resolve) => setImmediate(resolve));
+    await service.active.get('room-noema')?.done;
+
+    assert.equal(
+      requests[1].tools.some(
+        (tool) => tool.function.name === 'schedule_followup',
+      ),
+      true,
+    );
+    assert.equal(store.userFollowups.list().items.length, 1);
+    assert.equal(
+      store.userFollowups.list().items[0].sourceMessageId != null,
+      true,
+    );
+
+    service.sendMessage({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '以后不要提醒我这件事。',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await service.active.get('room-noema')?.done;
+    assert.equal(
+      requests[3].tools.some(
+        (tool) => tool.function.name === 'schedule_followup',
+      ),
+      false,
+    );
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});
+
+test('due follow-ups deliver through the notification event without a model request', async () => {
+  const db = new Database(':memory:');
+  new RootStore(db);
+  const store = createSocialTestStore(db);
+  const dueAt = new Date(Date.now() + 60_000).toISOString();
+  const item = store.userFollowups.add({
+    title: '查看项目进展',
+    body: '看看是否收到报价。',
+    dueAt,
+  });
+  store.userFollowups.now = () => Date.parse(dueAt) + 1;
+  const events = [];
+  let providerCalls = 0;
+  const service = new SocialChatService({
+    store,
+    provider: {
+      async *streamChat() {
+        providerCalls++;
+        yield '不应调用模型。';
+      },
+    },
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'test-model',
+    getRootState: async () => ({
+      connected: true,
+      selectedModel: 'test-model',
+    }),
+    emit: (event) => {
+      events.push(event);
+      return event.type === 'user-followup-due';
+    },
+  });
+
+  try {
+    await service.userFollowupDrain;
+    assert.equal(providerCalls, 0);
+    assert.deepEqual(
+      events
+        .filter((event) => event.type === 'user-followup-due')
+        .map((event) => event.id),
+      [item.id],
+    );
+    assert.equal(store.userFollowups.get(item.id).status, 'delivered');
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});
+
 test('Noema retrieves saved personal memory on demand and only deletes a unique explicit match', async () => {
   const db = new Database(':memory:');
   new RootStore(db);
