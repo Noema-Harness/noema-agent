@@ -33,6 +33,7 @@
 8. **把工具定义体积作为成本维度单独观测。** 原用量表只记录 message JSON 字符数和工具数量，未记录工具 schema 本身。现在增加 `tool_definition_characters`，只保存序列化 schema 长度，不保存名称、描述、参数、提示词或回复。现有五条账本样本均为社交/项目协作调用，缺少工具定义长度，不能据此归因低命中。源码样例中 `manage_project_plan` 约 9.6K 字符，但这是合成项目数据下的本地结构测量，不是服务端实发 token 数。后续按正常请求观察 schema 长度和缓存字段，不为验证而额外消费余额。
 9. **把频繁变化的工具选项移出 schema，保持项目工具定义稳定。** 项目、成员、工作项、评审资格和来源 URL 仍需告诉模型，但把这些值放进单条请求上下文；schema 只声明字符串字段及其稳定含义。所有 ID、URL、成员能力和状态仍由原服务端执行路径校验，schema 不再承担权限边界。动态工具上下文在项目状态变化后刷新，避免模型沿用过期名单；它放在已存对话历史之后、当前请求之前，保留此前可复用的消息前缀。用不同项目、成员、工作项和 URL 的 fixture 对照，工具 schema 序列化结果一致；该逻辑提升可复用前缀的机会，但没有减少静态 `manage_project_plan` 定义的体积，也未取得新的服务端 cache usage，因此实际费用收益待自然请求验证。
 10. **用不含正文的交互 ID 把一次用户结果中的请求归组。** 直连 API 接受可选 `usageInteractionId`，SQLite 只存内部 turn/message/task ID；主聊工具续答共用 root turn ID，Noema 社交回复及其专家私聊/工具续答共用 assistant message ID，项目执行与 DSH step 共用执行 task ID，后台执行和 Noema 整理回复共用 background task ID。按 interaction 汇总各 provider request 的状态和 token/cache 字段；旧行保持 `NULL`，没有 ID 的调用不混成一个虚假的“结果”。查询会读取现存 root turn、社交消息、项目任务或后台任务的当前状态；项目文件核验状态和后台 Noema 回复状态分开显示，因此 completed worker 或请求不冒充已验收。该汇总不从缺失 usage 推算费用。
+11. **根对话网页读取工具保持稳定 schema。** 工具仍只在用户本轮明确提供 URL 且有可用来源槽位时加入；URL 不再写进 `enum`，避免同一工具定义随用户链接变化。执行端继续从当前 turn 原文提取 URL 并逐条核验，未授权地址仍在任何网络请求前拒绝。这样只稳定工具定义，不扩大可读取地址，也不改变工具何时出现。
 
 ### 源码级校准
 

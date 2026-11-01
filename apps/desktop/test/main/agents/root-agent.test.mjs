@@ -886,11 +886,12 @@ test('Noema reads only a user-provided URL and persists the source with its answ
     .messages.find(
       (message) => message.turnId === turnId && message.role === 'assistant',
     );
-  assert.deepEqual(
-    firstRequest.tools.find((tool) => tool.function.name === 'fetch_web_page')
-      .function.parameters.properties.url.enum,
-    [source.url],
+  const fetchTool = firstRequest.tools.find(
+    (tool) => tool.function.name === 'fetch_web_page',
   );
+  assert.deepEqual(fetchTool.function.parameters.properties.url, {
+    type: 'string',
+  });
   assert.deepEqual(assistant.externalSources, [
     { ...source, citationId: 'S1' },
   ]);
@@ -925,6 +926,60 @@ test('Noema does not expose web fetching for chats without an explicit URL', asy
   );
   await agent.shutdown();
   store.close();
+});
+
+test('RootAgent rejects a URL that the user did not provide even with a stable fetch schema', async () => {
+  const store = new RootStore(':memory:');
+  store.setSelectedModel('test-model');
+  let fetchCount = 0;
+  let advertisedFetchTool;
+  const agent = new RootAgent({
+    store,
+    provider: {
+      baseUrl: 'http://127.0.0.1:31415/v1',
+      listModels: async () => [{ name: 'test-model', label: 'Test' }],
+      async *streamChat(input) {
+        advertisedFetchTool = input.tools.find(
+          (tool) => tool.function.name === 'fetch_web_page',
+        );
+        input.onToolCalls([
+          {
+            id: 'call-unprovided-url',
+            type: 'function',
+            function: {
+              name: 'fetch_web_page',
+              arguments: JSON.stringify({
+                url: 'https://example.net/not-provided',
+              }),
+            },
+          },
+        ]);
+        yield '';
+      },
+    },
+    secretStore: createSecretStore(),
+    fetchWebSourceImpl: async () => {
+      fetchCount += 1;
+      assert.fail('unprovided URL must be rejected before network access');
+    },
+  });
+
+  try {
+    const { turnId } = agent.sendMessage({
+      text: '请读取这个页面：https://example.com/docs',
+    });
+    await agent.active.done;
+    const turn = store.getTurn(turnId);
+    assert.deepEqual(advertisedFetchTool.function.parameters.properties.url, {
+      type: 'string',
+    });
+    assert.equal(turn.status, 'failed');
+    assert.match(turn.errorMessage, /只允许使用用户本轮明确给出的链接/u);
+    assert.equal(fetchCount, 0);
+  } finally {
+    await agent.shutdown();
+    store.close();
+  }
 });
 
 test('Noema searches only on current-source requests when configured and attaches results to the answer', async () => {
