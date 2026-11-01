@@ -12,6 +12,8 @@ const MAX_RESULT_CHARS = 100_000;
 const MAX_CASE_PROMPT_CHARS = 1_600;
 const MAX_CASE_RESULT_CHARS = 2_400;
 const MAX_PRACTICE_INPUT_CHARS = 12_000;
+const OVERSIZED_RESPONSE_RECOVERY_MARKER =
+  'noema-response-too-large-recovery-v1';
 
 const PRACTICE_PROPOSAL_TOOL = {
   type: 'function',
@@ -580,6 +582,29 @@ export class SocialWorkService {
     ) {
       throw new Error('检查点不在可安全续接的模型边界。');
     }
+    if (
+      task.errorCode === 'response_too_large' &&
+      !checkpoint.messages.some((message) =>
+        String(message.content ?? '').includes(
+          OVERSIZED_RESPONSE_RECOVERY_MARKER,
+        ),
+      )
+    ) {
+      checkpoint = {
+        ...checkpoint,
+        messages: [
+          ...checkpoint.messages,
+          {
+            role: 'user',
+            content: [
+              `[${OVERSIZED_RESPONSE_RECOVERY_MARKER}]`,
+              '上一轮模型响应超过安全读取上限，响应中的工具调用没有执行。请从已保存的对话与工具结果继续；缩小本次输出，只读取或修改必要片段，不要重发整份大型文件。',
+            ].join('\n'),
+          },
+        ],
+      };
+      this.store.saveSocialWorkRuntimeCheckpoint(taskId, checkpoint);
+    }
     this.assertWorkAllowed(task.roomId);
     let realWorkspacePath;
     try {
@@ -597,7 +622,10 @@ export class SocialWorkService {
 
     this.store.resumeSocialWorkTask(taskId);
     checkpoint = this.store.getSocialWorkRuntimeCheckpoint(taskId);
-    if (checkpoint?.resumePhase === 'ready_for_model' && checkpoint.round !== 0) {
+    if (
+      checkpoint?.resumePhase === 'ready_for_model' &&
+      checkpoint.round !== 0
+    ) {
       checkpoint = { ...checkpoint, round: 0 };
       this.store.saveSocialWorkRuntimeCheckpoint(taskId, checkpoint);
     }
@@ -782,9 +810,8 @@ export class SocialWorkService {
               'provider_unavailable',
               'rate_limited',
               'tool_round_limit',
-            ].includes(
-              outcome.errorCode,
-            ) &&
+              'response_too_large',
+            ].includes(outcome.errorCode) &&
             persistedCheckpoint.phase === 'ready_for_model' &&
             persistedCheckpoint.resumePhase === 'ready_for_model';
           resumableCheckpoint = {

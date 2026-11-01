@@ -243,9 +243,12 @@ export function hydrateSocialWorkTask(
     isCompletedToolBoundary(checkpoint.messages);
   const providerRecovery =
     row.status === 'failed' &&
-    ['provider_unavailable', 'rate_limited', 'tool_round_limit'].includes(
-      row.errorCode,
-    ) &&
+    [
+      'provider_unavailable',
+      'rate_limited',
+      'tool_round_limit',
+      'response_too_large',
+    ].includes(row.errorCode) &&
     checkpoint?.phase === 'failed' &&
     (checkpoint.resumePhase === 'ready_for_model' || legacyRoundLimitRecovery);
   const canResume = Boolean(

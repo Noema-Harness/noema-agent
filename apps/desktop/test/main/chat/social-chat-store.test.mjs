@@ -743,7 +743,7 @@ test('a legacy round-limit task resumes only from a complete saved tool boundary
   }
 });
 
-test('a provider-failure checkpoint cannot resume with an unresolved write', () => {
+test('an oversized-response checkpoint cannot resume with an unresolved write', () => {
   const { db, social } = makeStores();
   try {
     social.createSocialWorkTask({
@@ -781,8 +781,8 @@ test('a provider-failure checkpoint cannot resume with an unresolved write', () 
     social.finishSocialWorkTask('task-provider-failure-unknown-write', {
       status: 'failed',
       runtimeSessionId: 'session-provider-failure',
-      errorCode: 'provider_unavailable',
-      errorMessage: '模型供应商不可用。',
+      errorCode: 'response_too_large',
+      errorMessage: '模型回复超过安全读取上限。',
       toolCallCount: 1,
     });
 

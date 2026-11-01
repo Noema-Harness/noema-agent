@@ -2231,7 +2231,7 @@ export class SocialChatStore {
           SELECT workspace_key AS workspaceKey FROM social_work_tasks
           WHERE id = ? AND execution_engine = 'noema'
             AND ((status = 'interrupted' AND error_code = 'app_restarted')
-              OR (status = 'failed' AND error_code IN ('provider_unavailable', 'rate_limited', 'tool_round_limit')))
+              OR (status = 'failed' AND error_code IN ('provider_unavailable', 'rate_limited', 'tool_round_limit', 'response_too_large')))
         `)
         .get(taskId);
       if (!task) throw new Error('这项任务当前不能从检查点继续。');
@@ -2263,7 +2263,7 @@ export class SocialChatStore {
               error_message = NULL, completed_at = NULL, updated_at = ?
           WHERE id = ? AND execution_engine = 'noema'
             AND ((status = 'interrupted' AND error_code = 'app_restarted')
-              OR (status = 'failed' AND error_code IN ('provider_unavailable', 'rate_limited', 'tool_round_limit')))
+              OR (status = 'failed' AND error_code IN ('provider_unavailable', 'rate_limited', 'tool_round_limit', 'response_too_large')))
         `)
         .run(now, taskId).changes;
       if (changed !== 1) throw new Error('任务状态已变化，请刷新后重试。');

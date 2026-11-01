@@ -19,6 +19,7 @@ test('project work cards name the recoverable failure instead of hiding it in ge
     ['command_sandbox_unavailable', 'failed', '项目命令沙箱不可用'],
     ['model_unavailable', 'failed', '所选免费模型当前不可用'],
     ['provider_unavailable', 'failed', '模型没有返回结果'],
+    ['response_too_large', 'failed', '模型回复过长，进度已保存'],
     ['verification_failed', 'failed', '文件验收未通过'],
     ['dsh_process_failed', 'failed', '执行进程异常退出'],
     ['dsh_node_unavailable', 'failed', '本机执行环境不可用'],

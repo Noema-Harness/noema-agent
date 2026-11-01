@@ -24,6 +24,7 @@ export function socialWorkCardTitle(task) {
     model_unavailable: '所选免费模型当前不可用',
     verification_failed: '文件验收未通过',
     provider_unavailable: '模型没有返回结果',
+    response_too_large: '模型回复过长，进度已保存',
     dsh_process_failed: '执行进程异常退出',
     dsh_process_error: '执行进程异常退出',
     dsh_start_failed: '执行进程异常退出',
