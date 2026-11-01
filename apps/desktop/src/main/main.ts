@@ -16,6 +16,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { EncryptedSecretStore } from './platform/encrypted-secret-store.mjs';
 import { resolveElectronProxy } from './platform/electron-proxy.mjs';
+import { createPendingFollowupNavigationDelivery } from './platform/pending-followup-navigation.mjs';
 import {
   OpenAICompatibleClient,
   resolveConfiguredModelBaseUrl,
@@ -200,6 +201,22 @@ let pendingQuickCaptureRequest = false;
 let shutdownStarted = false;
 let shutdownComplete = false;
 
+const pendingFollowupNavigation = createPendingFollowupNavigationDelivery(
+  (target: { roomId: string; messageId: string | null }) => {
+    if (
+      !mainWindow ||
+      mainWindow.isDestroyed() ||
+      mainWindow.webContents.isDestroyed()
+    )
+      return false;
+    mainWindow.webContents.send(CHANNELS.socialEvent, {
+      type: 'open-followup-source',
+      ...target,
+    });
+    return true;
+  },
+);
+
 const isSquirrelLifecycleEvent = process.argv.some((argument) =>
   /^--squirrel-(install|updated|uninstall|obsolete)$/.test(argument),
 );
@@ -224,6 +241,7 @@ ipcMain.handle('noema:window-control', (event, action: unknown) => {
 
 const createWindow = () => {
   quickCaptureRendererReady = false;
+  pendingFollowupNavigation.resetRenderer();
   const display = screen.getPrimaryDisplay();
   const windowSize = resolveInitialWindowSize(display.workAreaSize);
   mainWindow = new BrowserWindow({
@@ -238,6 +256,9 @@ const createWindow = () => {
     ),
   });
   mainWindow.setMenuBarVisibility(false);
+  mainWindow.webContents.on('did-start-loading', () => {
+    pendingFollowupNavigation.resetRenderer();
+  });
   mainWindow.webContents.on('unresponsive', () => {
     writeRendererHealthLog('unresponsive');
   });
@@ -245,6 +266,7 @@ const createWindow = () => {
     writeRendererHealthLog('responsive');
   });
   mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    pendingFollowupNavigation.resetRenderer();
     writeRendererHealthLog('render-process-gone', {
       reason: details.reason,
       exitCode: details.exitCode,
@@ -299,6 +321,7 @@ const createWindow = () => {
     quickCaptureActive = false;
     quickCaptureRendererReady = false;
     pendingQuickCaptureRequest = false;
+    pendingFollowupNavigation.resetRenderer();
   });
 
   mainWindow.webContents.once('did-finish-load', () => {
@@ -462,6 +485,25 @@ const notifyUserFollowup = createUserFollowupNotificationHandler({
     if (!mainWindow || mainWindow.isDestroyed()) createWindow();
     focusPrimaryWindow(mainWindow);
   },
+  openFollowupSource: ({
+    sourceRoomId,
+    sourceMessageId,
+  }: {
+    sourceRoomId: string | null;
+    sourceMessageId: string | null;
+  }) => {
+    if (!sourceRoomId) {
+      if (!mainWindow || mainWindow.isDestroyed()) createWindow();
+      focusPrimaryWindow(mainWindow);
+      return;
+    }
+    if (!mainWindow || mainWindow.isDestroyed()) createWindow();
+    focusPrimaryWindow(mainWindow);
+    pendingFollowupNavigation.request({
+      roomId: sourceRoomId,
+      messageId: sourceMessageId,
+    });
+  },
 });
 
 function dispatchQuickCaptureRequest() {
@@ -478,6 +520,17 @@ function markQuickCaptureReady() {
   if (!mainWindow || mainWindow.isDestroyed()) return false;
   quickCaptureRendererReady = true;
   if (pendingQuickCaptureRequest) dispatchQuickCaptureRequest();
+  return true;
+}
+
+function markSocialChatReady() {
+  if (
+    !mainWindow ||
+    mainWindow.isDestroyed() ||
+    mainWindow.webContents.isDestroyed()
+  )
+    return false;
+  pendingFollowupNavigation.markRendererReady();
   return true;
 }
 
@@ -1375,6 +1428,7 @@ async function startNoema() {
       },
       finishQuickCapture,
       markQuickCaptureReady,
+      markSocialChatReady,
       getQuickCaptureShortcutStatus: () =>
         quickCaptureShortcutRegistration
           ? {

@@ -27,6 +27,7 @@ const CHANNELS = Object.freeze({
   quickCaptureRequest: 'noema:quick-capture-request',
   quickCaptureShortcutStatus: 'noema:quick-capture-shortcut-status',
   markQuickCaptureReady: 'noema:mark-quick-capture-ready',
+  markSocialChatReady: 'noema:mark-social-chat-ready',
   finishQuickCapture: 'noema:finish-quick-capture',
   event: 'noema:root-event',
   socialEvent: 'noema:social-event',
@@ -76,7 +77,7 @@ const CHANNELS = Object.freeze({
 
 /**
  * Registers only the narrow root-conversation operations that the renderer needs.
- * @param {{ipcMain: {handle: Function, removeHandler: Function}, rootAgent: object, socialChatService?:object, socialProjectStore?:object, socialWorkService?:object, isTrustedSender: (sender: object) => boolean,chooseWorkspace?:()=>Promise<string|null>,sendMessage?:(text:string)=>Promise<object>|object,retryTurn?:(turnId:string,model:string|null)=>Promise<object>|object,finishQuickCapture?:()=>boolean,getQuickCaptureShortcutStatus?:()=>object|null,markQuickCaptureReady?:()=>boolean}} options
+ * @param {{ipcMain: {handle: Function, removeHandler: Function}, rootAgent: object, socialChatService?:object, socialProjectStore?:object, socialWorkService?:object, isTrustedSender: (sender: object) => boolean,chooseWorkspace?:()=>Promise<string|null>,sendMessage?:(text:string)=>Promise<object>|object,retryTurn?:(turnId:string,model:string|null)=>Promise<object>|object,finishQuickCapture?:()=>boolean,getQuickCaptureShortcutStatus?:()=>object|null,markQuickCaptureReady?:()=>boolean,markSocialChatReady?:()=>boolean}} options
  */
 export function registerRootIpc({
   ipcMain,
@@ -91,6 +92,7 @@ export function registerRootIpc({
   finishQuickCapture = () => false,
   getQuickCaptureShortcutStatus = () => null,
   markQuickCaptureReady = () => false,
+  markSocialChatReady = () => false,
 }) {
   const register = (channel, handler) => {
     ipcMain.handle(channel, async (event, ...args) => {
@@ -393,6 +395,7 @@ export function registerRootIpc({
     getQuickCaptureShortcutStatus(),
   );
   register(CHANNELS.markQuickCaptureReady, () => markQuickCaptureReady());
+  register(CHANNELS.markSocialChatReady, () => markSocialChatReady());
 
   return () => {
     for (const channel of Object.values(CHANNELS)) {

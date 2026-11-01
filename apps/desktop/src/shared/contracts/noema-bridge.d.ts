@@ -671,6 +671,11 @@ export interface NoemaSocialRoomState {
 
 export type NoemaSocialEvent =
   | { type: 'chat-room-created'; roomId: string; navigate?: boolean }
+  | {
+      type: 'open-followup-source';
+      roomId: string;
+      messageId: string | null;
+    }
   | { type: 'project-updated'; projectId: string; groupRoomId: string }
   | {
       type: 'project-growth-archived';
@@ -1081,6 +1086,7 @@ export interface NoemaBridge {
   withdrawInteractionAdjustment(id: string): Promise<boolean>;
   onRootEvent(listener: (event: NoemaRootEvent) => void): () => void;
   onSocialEvent(listener: (event: NoemaSocialEvent) => void): () => void;
+  markSocialChatReady(): Promise<boolean>;
   onQuickCaptureRequested(
     listener: (request: NoemaQuickCaptureRequest) => void,
   ): () => void;

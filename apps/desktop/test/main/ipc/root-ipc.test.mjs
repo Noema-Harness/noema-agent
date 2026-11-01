@@ -51,6 +51,7 @@ test('registers only named root-agent actions and rejects non-window senders', a
   const trustedSender = {};
   let quickCaptureFinished = 0;
   let quickCaptureReady = 0;
+  let socialChatReady = 0;
   const unregister = registerRootIpc({
     ipcMain: harness.ipcMain,
     rootAgent,
@@ -66,6 +67,10 @@ test('registers only named root-agent actions and rejects non-window senders', a
     }),
     markQuickCaptureReady: () => {
       quickCaptureReady += 1;
+      return true;
+    },
+    markSocialChatReady: () => {
+      socialChatReady += 1;
       return true;
     },
   });
@@ -100,6 +105,7 @@ test('registers only named root-agent actions and rejects non-window senders', a
       CHANNELS.withdrawInteractionAdjustment,
       CHANNELS.quickCaptureShortcutStatus,
       CHANNELS.markQuickCaptureReady,
+      CHANNELS.markSocialChatReady,
       CHANNELS.finishQuickCapture,
     ].sort(),
   );
@@ -195,6 +201,13 @@ test('registers only named root-agent actions and rejects non-window senders', a
     true,
   );
   assert.equal(quickCaptureReady, 1);
+  assert.equal(
+    await harness.handlers.get(CHANNELS.markSocialChatReady)({
+      sender: trustedSender,
+    }),
+    true,
+  );
+  assert.equal(socialChatReady, 1);
   assert.deepEqual(
     await harness.handlers.get(CHANNELS.updateInteractionAdjustment)(
       { sender: trustedSender },

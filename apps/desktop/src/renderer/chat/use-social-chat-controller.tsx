@@ -11,6 +11,7 @@ import {
 import * as pdfjs from 'pdfjs-dist';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { useConversationNavigation } from './use-conversation-navigation';
+import { resolveFollowupNavigationTarget } from './followup-navigation.mjs';
 import { highlightMessageMatches } from './search-highlights';
 import { useScrollActivity } from '../shared/use-scroll-activity';
 import { resolveGroupRecipient } from '../../shared/chat/group-mentions.mjs';
@@ -122,6 +123,20 @@ export function useSocialChatController() {
   const navigation = useConversationNavigation();
   const shellRef = useRef<HTMLElement>(null);
   useScrollActivity(shellRef);
+  const selectRoom = useCallback((room: NoemaSocialRoom) => {
+    setShowJumpToLatest(false);
+    setArchivedProjectsOpen(false);
+    setActiveProjectSession(null);
+    setProjectWorkspaceId(null);
+    setAgentWorkspaceId(null);
+    shouldFollowRef.current = true;
+    setActiveRoomId(room.id);
+    setReplyTarget(null);
+    setForwardSelectionActive(false);
+    setSelectedForwardMessageIds([]);
+    setShowRoomList(false);
+    setNotice('');
+  }, []);
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
   const [projectTitle, setProjectTitle] = useState('');
@@ -689,6 +704,30 @@ export function useSocialChatController() {
     return unsubscribe;
   }, [activeRoomId, loadRoom, refreshState]);
   useEffect(() => {
+    const unsubscribe = window.noema.onSocialEvent(
+      (event: NoemaSocialEvent) => {
+        if (event.type !== 'open-followup-source') return;
+        void window.noema
+          .getSocialState()
+          .then((state) => {
+            const target = resolveFollowupNavigationTarget(state.rooms, {
+              roomId: event.roomId,
+              messageId: event.messageId,
+            });
+            if (!target.room) {
+              setNotice('无法打开回访来源聊天。');
+              return;
+            }
+            if (target.messageId) setPendingScrollMessageId(target.messageId);
+            selectRoom(target.room);
+          })
+          .catch(() => setNotice('无法打开回访来源聊天。'));
+      },
+    );
+    void window.noema.markSocialChatReady().catch(() => {});
+    return unsubscribe;
+  }, [selectRoom]);
+  useEffect(() => {
     const unsubscribe = window.noema.onRootEvent((event) => {
       if (
         event.type === 'models-updated' ||
@@ -1197,20 +1236,6 @@ export function useSocialChatController() {
         </span>
       </button>
     );
-  };
-  const selectRoom = (room: NoemaSocialRoom) => {
-    setShowJumpToLatest(false);
-    setArchivedProjectsOpen(false);
-    setActiveProjectSession(null);
-    setProjectWorkspaceId(null);
-    setAgentWorkspaceId(null);
-    shouldFollowRef.current = true;
-    setActiveRoomId(room.id);
-    setReplyTarget(null);
-    setForwardSelectionActive(false);
-    setSelectedForwardMessageIds([]);
-    setShowRoomList(false);
-    setNotice('');
   };
   const openAgentWorkspace = (agentId: string) => {
     setArchivedProjectsOpen(false);

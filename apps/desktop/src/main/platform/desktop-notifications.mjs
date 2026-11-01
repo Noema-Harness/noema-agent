@@ -48,6 +48,7 @@ export function createSocialReplyNotificationHandler({
 export function createUserFollowupNotificationHandler({
   NotificationClass,
   openMainWindow,
+  openFollowupSource = openMainWindow,
   disabled = false,
 }) {
   return (event) => {
@@ -67,7 +68,12 @@ export function createUserFollowupNotificationHandler({
         groupId: 'noema-followups',
         silent: true,
       });
-      notification.once('click', openMainWindow);
+      notification.once('click', () =>
+        openFollowupSource({
+          sourceRoomId: event.sourceRoomId ?? null,
+          sourceMessageId: event.sourceMessageId ?? null,
+        }),
+      );
       notification.show();
       return true;
     } catch {

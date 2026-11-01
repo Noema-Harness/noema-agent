@@ -233,6 +233,8 @@ const bridge = {
     ipcRenderer.on('noema:social-event', handler);
     return () => ipcRenderer.removeListener('noema:social-event', handler);
   },
+  markSocialChatReady: (): Promise<boolean> =>
+    ipcRenderer.invoke('noema:mark-social-chat-ready'),
   onQuickCaptureRequested: (
     listener: (request: NoemaQuickCaptureRequest) => void,
   ) => {

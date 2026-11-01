@@ -186,12 +186,15 @@ test('silent end-to-end clients never emit operating-system banners', () => {
   assert.equal(notifications.length, 0);
 });
 
-test('due follow-ups produce a silent notification that opens Noema on click', () => {
+test('due follow-up notification click returns its stored source to Noema', () => {
   const { NotificationClass, notifications } = createNotificationClass();
-  let opened = 0;
+  let destination = null;
   const handle = createUserFollowupNotificationHandler({
     NotificationClass,
-    openMainWindow: () => opened++,
+    openMainWindow() {},
+    openFollowupSource: (source) => {
+      destination = source;
+    },
   });
 
   assert.equal(
@@ -200,6 +203,8 @@ test('due follow-ups produce a silent notification that opens Noema on click', (
       id: 'followup-1',
       title: '跟进报价',
       body: '看看报价是否发来。',
+      sourceRoomId: 'room-noema',
+      sourceMessageId: 'source-message-1',
     }),
     true,
   );
@@ -208,6 +213,26 @@ test('due follow-ups produce a silent notification that opens Noema on click', (
     body: '看看报价是否发来。',
     groupId: 'noema-followups',
     silent: true,
+  });
+  notifications[0].emit('click');
+  assert.deepEqual(destination, {
+    sourceRoomId: 'room-noema',
+    sourceMessageId: 'source-message-1',
+  });
+});
+
+test('manual follow-up notification click opens Noema without a source', () => {
+  const { NotificationClass, notifications } = createNotificationClass();
+  let opened = 0;
+  const handle = createUserFollowupNotificationHandler({
+    NotificationClass,
+    openMainWindow: () => opened++,
+  });
+  handle({
+    type: 'user-followup-due',
+    id: 'manual-followup',
+    title: '手动提醒',
+    body: '查看一下。',
   });
   notifications[0].emit('click');
   assert.equal(opened, 1);

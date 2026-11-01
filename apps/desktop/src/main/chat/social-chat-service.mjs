@@ -409,6 +409,8 @@ export class SocialChatService {
               title: item.title,
               body: item.body,
               dueAt: item.dueAt,
+              sourceRoomId: item.sourceRoomId,
+              sourceMessageId: item.sourceMessageId,
             });
             if (shown === true) this.store.userFollowups.markDelivered(item.id);
             else
