@@ -305,6 +305,23 @@ test('project member replies and retries preserve project scope and user-context
     await service.active.get(projectSession.room.room.id)?.done;
 
     assert.equal(seenRequests.length, 1);
+    const memberPlanTool = seenRequests[0].tools.find(
+      (tool) => tool.function.name === 'manage_project_plan',
+    );
+    assert.ok(memberPlanTool);
+    assert.equal(
+      'plan' in memberPlanTool.function.parameters.properties,
+      false,
+    );
+    assert.equal(
+      'project_id' in memberPlanTool.function.parameters.properties,
+      false,
+    );
+    assert.ok(
+      !memberPlanTool.function.parameters.properties.operation.enum.includes(
+        'replace',
+      ),
+    );
     const prompt = seenRequests[0].messages
       .map((message) => message.content)
       .join('\n');

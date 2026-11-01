@@ -169,6 +169,24 @@ test('adds the cache-write bucket to an existing usage table without losing rows
 test('groups related provider calls into one interaction summary', () => {
   const db = new Database(':memory:');
   try {
+    db.exec(`
+      CREATE TABLE root_turns (id TEXT PRIMARY KEY, status TEXT NOT NULL);
+      CREATE TABLE social_messages (id TEXT PRIMARY KEY, status TEXT NOT NULL);
+      CREATE TABLE social_work_tasks (
+        id TEXT PRIMARY KEY,
+        status TEXT NOT NULL,
+        verification_status TEXT NOT NULL
+      );
+      CREATE TABLE background_tasks (
+        id TEXT PRIMARY KEY,
+        status TEXT NOT NULL,
+        noema_response_status TEXT NOT NULL
+      );
+      INSERT INTO root_turns VALUES ('turn-other', 'completed');
+      INSERT INTO social_messages VALUES ('turn-shared', 'complete');
+      INSERT INTO social_work_tasks VALUES ('work-task', 'completed', 'failed');
+      INSERT INTO background_tasks VALUES ('background-task', 'completed', 'failed');
+    `);
     const store = new ModelUsageStore(db);
     for (const record of [
       {
@@ -203,15 +221,41 @@ test('groups related provider calls into one interaction summary', () => {
         cachedInputTokens: 0,
         cacheMissTokens: 30,
       },
+      {
+        interactionId: 'work-task',
+        providerHost: 'api.deepseek.com',
+        model: 'deepseek-flash',
+        operation: 'project_execution',
+        usageReceived: true,
+        inputTokens: 200,
+        outputTokens: 50,
+        cachedInputTokens: 100,
+        cacheMissTokens: 100,
+      },
+      {
+        interactionId: 'background-task',
+        providerHost: 'api.deepseek.com',
+        model: 'deepseek-flash',
+        operation: 'dsh_worker_step',
+        usageReceived: true,
+        inputTokens: 300,
+        outputTokens: 60,
+        cachedInputTokens: 150,
+        cacheMissTokens: 150,
+      },
     ]) {
       store.record(record);
     }
 
-    const [summary] = store.getInteractionSummary();
+    const summary = store
+      .getInteractionSummary()
+      .find((row) => row.interactionId === 'turn-other');
     assert.equal(summary.interactionId, 'turn-other');
     assert.equal(summary.requests, 1);
     assert.equal(summary.inputTokens, 30);
     assert.equal(summary.cacheHitRate, 0);
+    assert.equal(summary.outcomeKind, 'root_turn');
+    assert.equal(summary.outcomeStatus, 'completed');
 
     const shared = store
       .getInteractionSummary()
@@ -225,6 +269,22 @@ test('groups related provider calls into one interaction summary', () => {
     assert.equal(shared.cachedInputTokens, 40);
     assert.equal(shared.cacheMissTokens, 60);
     assert.equal(shared.cacheHitRate, 0.4);
+    assert.equal(shared.outcomeKind, 'social_message');
+    assert.equal(shared.outcomeStatus, 'complete');
+
+    const work = store
+      .getInteractionSummary()
+      .find((row) => row.interactionId === 'work-task');
+    assert.equal(work.outcomeKind, 'project_work_task');
+    assert.equal(work.outcomeStatus, 'completed');
+    assert.equal(work.verificationStatus, 'failed');
+
+    const background = store
+      .getInteractionSummary()
+      .find((row) => row.interactionId === 'background-task');
+    assert.equal(background.outcomeKind, 'background_task');
+    assert.equal(background.outcomeStatus, 'completed');
+    assert.equal(background.noemaResponseStatus, 'failed');
   } finally {
     db.close();
   }

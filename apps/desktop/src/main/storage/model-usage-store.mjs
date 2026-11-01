@@ -232,9 +232,47 @@ export class ModelUsageStore {
   /** @param {{limit?:number}} [options] */
   getInteractionSummary({ limit = 100 } = {}) {
     const safeLimit = Math.max(1, Math.min(count(limit) ?? 100, 500));
+    const tables = new Set(
+      this.db
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
+        .all()
+        .map(({ name }) => name),
+    );
+    const outcomes = [
+      ['root_turns', 'root_turn'],
+      ['social_messages', 'social_message'],
+      ['social_work_tasks', 'project_work_task'],
+      ['background_tasks', 'background_task'],
+    ].filter(([table]) => tables.has(table));
+    const outcomeKind = outcomes.length
+      ? `CASE ${outcomes
+          .map(
+            ([table, kind]) =>
+              `WHEN EXISTS (SELECT 1 FROM ${table} WHERE id = interaction_id) THEN '${kind}'`,
+          )
+          .join(' ')} ELSE NULL END`
+      : 'NULL';
+    const outcomeStatus = outcomes.length
+      ? `COALESCE(${outcomes
+          .map(
+            ([table]) =>
+              `(SELECT status FROM ${table} WHERE id = interaction_id)`,
+          )
+          .join(', ')})`
+      : 'NULL';
+    const verificationStatus = tables.has('social_work_tasks')
+      ? '(SELECT verification_status FROM social_work_tasks WHERE id = interaction_id)'
+      : 'NULL';
+    const noemaResponseStatus = tables.has('background_tasks')
+      ? '(SELECT noema_response_status FROM background_tasks WHERE id = interaction_id)'
+      : 'NULL';
     return this.db
       .prepare(`
         SELECT interaction_id AS interactionId,
+          ${outcomeKind} AS outcomeKind,
+          ${outcomeStatus} AS outcomeStatus,
+          ${verificationStatus} AS verificationStatus,
+          ${noemaResponseStatus} AS noemaResponseStatus,
           provider_host AS providerHost,
           model,
           MIN(created_at) AS firstRequestAt,

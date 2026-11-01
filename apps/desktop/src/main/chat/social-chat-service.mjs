@@ -285,7 +285,10 @@ export class SocialChatService {
       (run.agentId === 'noema' && needsCalculationTool(run.text))
         ? [CALCULATE_EXPRESSION_TOOL]
         : []),
-      projectPlanTool(projects),
+      projectPlanTool(projects, {
+        coordinator: run.agentId === 'noema',
+        projectBound: Boolean(run.projectContext),
+      }),
       projectGroupTool(projects),
     ].filter(Boolean);
   }

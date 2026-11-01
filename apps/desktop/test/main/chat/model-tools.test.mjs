@@ -59,6 +59,41 @@ test('project tool schemas stay stable when project, member, work-item, and URL 
   assert.deepEqual(toolSchemas(fixture('one')), toolSchemas(fixture('two')));
 });
 
+test('specialist project-plan schema omits coordinator-only structure controls', () => {
+  const specialistTool = projectPlanTool([fixture('member').project], {
+    coordinator: false,
+    projectBound: true,
+  });
+  const { parameters, description } = specialistTool.function;
+  const serializedLength = JSON.stringify(specialistTool).length;
+
+  assert.deepEqual(parameters.properties.operation.enum, [
+    'read',
+    'history',
+    'inspect_evidence',
+    'read_sources',
+    'update_item',
+  ]);
+  assert.equal('project_id' in parameters.properties, false);
+  assert.equal('plan' in parameters.properties, false);
+  assert.equal('item_patch' in parameters.properties, false);
+  assert.equal('phase_status' in parameters.properties, false);
+  assert.match(description, /only your assigned work package/u);
+  assert.ok(serializedLength < JSON.stringify(projectPlanTool([{}])).length);
+});
+
+test('coordinator project-bound schema keeps plan controls without redundant project ID', () => {
+  const coordinatorTool = projectPlanTool([fixture('lead').project], {
+    coordinator: true,
+    projectBound: true,
+  });
+  const { parameters } = coordinatorTool.function;
+
+  assert.ok(parameters.properties.operation.enum.includes('replace'));
+  assert.ok(parameters.properties.plan);
+  assert.equal('project_id' in parameters.properties, false);
+});
+
 test('request context carries current selectable IDs and source URLs outside tool schemas', () => {
   const { agent, project, planItem } = fixture('live');
   const sourceUrl = 'https://example.com/current-pricing';
