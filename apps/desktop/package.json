@@ -28,7 +28,8 @@
     "smoke:freellmapi": "node scripts/smoke-freellmapi.mjs",
     "e2e:live-worker": "node scripts/live-worker-e2e.mjs",
     "e2e:social-work": "node scripts/social-work-e2e.mjs",
-    "e2e:social-agents": "node scripts/social-agent-e2e.mjs"
+    "e2e:social-agents": "node scripts/social-agent-e2e.mjs",
+    "diagnostics:model-usage": "node scripts/model-usage-diagnostics.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sandbox-runtime": "0.0.81",

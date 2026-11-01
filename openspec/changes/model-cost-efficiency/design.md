@@ -119,3 +119,7 @@
 源码追踪确认，`manage_project_plan` 的 `replace`、`update_item` 和 `update_phase` 在写入成功后，原先都会把整份计划快照作为工具结果加入同一轮后续请求。计划的规范状态仍由 SQLite 保存，后续需要完整内容时可以按 ID 使用 `read`，因此写操作回执只保留修订号、整体进度和受影响阶段/工作项的状态摘要；读取、历史、证据检查及错误路径保持原样。
 
 对照 [OpenCode 的会话压缩源码](https://github.com/anomalyco/opencode/blob/dev/packages/core/src/session/compaction.ts)与 [Goose 的上下文管理说明](https://github.com/aaif-goose/goose/blob/main/documentation/docs/guides/sessions/smart-context-management.md)，成熟实现会按新旧程度裁剪或摘要工具输出，并保留近期细节。Noema 这次只处理可由持久化计划重读的成功写回执，不引入摘要模型调用，也不裁剪证据读取结果。定向 fixture 中回执由 1,203 降至 498 字符（−58.6%）；这是单项结构指标，不代表实际 token 或账单节省，真实效果继续等待自然 usage。
+
+## 实测责任与诊断入口
+
+长时间自然使用由用户完成，避免助手反复启动不稳定的长测。项目提供 `npm --workspace noema-desktop run diagnostics:model-usage -- --hours=24`，也可传 `--interaction=<交互ID>` 缩小范围；导出的本地 JSON 连接已持久化的对话、模型与外部用量、后台任务及执行步骤。此工具只读 SQLite，不发模型请求；它导出数据库里已经记录的轨迹，不伪造未落盘的原始 HTTP 报文。日志文件可能包含对话和任务正文，分享前由用户检查。
