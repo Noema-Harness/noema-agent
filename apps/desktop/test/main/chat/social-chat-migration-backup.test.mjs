@@ -141,6 +141,43 @@ test('a later schema upgrade gets a verified snapshot without overwriting the fi
   }
 });
 
+test('social schema v27 upgrades to v28 without losing existing messages', () => {
+  const root = new RootStore(':memory:');
+  try {
+    const store = new SocialChatStore(root.db);
+    const before = store.beginTurn({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '保留已有主聊内容。',
+      model: 'test-model',
+    });
+    store.db.exec(`
+      DROP INDEX social_messages_delegation_parent;
+      ALTER TABLE social_messages DROP COLUMN delegation_parent_message_id;
+      DELETE FROM social_schema_migrations WHERE version = 28;
+    `);
+
+    new SocialChatStore(root.db);
+
+    const version = root.db
+      .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
+      .get().version;
+    const columns = root.db.pragma('table_info(social_messages)');
+    assert.equal(version, SOCIAL_SCHEMA_VERSION);
+    assert.ok(
+      columns.some((column) => column.name === 'delegation_parent_message_id'),
+    );
+    assert.equal(
+      root.db
+        .prepare('SELECT content FROM social_messages WHERE id = ?')
+        .get(before.userMessageId).content,
+      '保留已有主聊内容。',
+    );
+  } finally {
+    root.close();
+  }
+});
+
 test('an incomplete existing backup is preserved and replaced by a valid snapshot', async () => {
   const directory = fs.mkdtempSync(
     path.join(os.tmpdir(), 'noema-partial-backup-'),

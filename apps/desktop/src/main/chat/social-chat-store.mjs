@@ -2797,6 +2797,7 @@ export class SocialChatStore {
     forwardedSources = [],
     replyTo = null,
     interactionAdjustmentSnapshots = [],
+    delegationParentMessageId = null,
   }) {
     this.assertRoomOpen(roomId);
     const normalizedText = typeof text === 'string' ? text.trim() : '';
@@ -2826,6 +2827,9 @@ export class SocialChatStore {
     const adjustmentSnapshots = normalizeInteractionAdjustmentSnapshots(
       interactionAdjustmentSnapshots,
     );
+    const normalizedDelegationParentMessageId = delegationParentMessageId
+      ? requireText(delegationParentMessageId, '委派来源回复 ID', 200)
+      : null;
     const adjustmentIds = adjustmentSnapshots.map(
       (adjustment) => adjustment.id,
     );
@@ -2880,6 +2884,27 @@ export class SocialChatStore {
         throw new Error('Noema 内部交办只能发到常驻私聊或项目群。');
       }
     }
+    if (normalizedDelegationParentMessageId) {
+      if (senderAgentId !== 'noema' || agentId === 'noema') {
+        throw new Error('专业成员交办必须关联 Noema 主聊回复。');
+      }
+      const parent = this.db
+        .prepare(`
+          SELECT 1 FROM social_messages
+          WHERE id = ? AND room_id = 'room-noema'
+            AND role = 'assistant' AND status = 'streaming'
+        `)
+        .get(normalizedDelegationParentMessageId);
+      if (!parent) throw new Error('找不到这条委派对应的 Noema 主聊回复。');
+      const existingHandoff = this.db
+        .prepare(`
+          SELECT 1 FROM social_messages
+          WHERE delegation_parent_message_id = ?
+        `)
+        .get(normalizedDelegationParentMessageId);
+      if (existingHandoff)
+        throw new Error('这条 Noema 回复已经创建过成员交办。');
+    }
     if (this.getAgent(agentId).archivedAt) {
       throw new Error('这个联系人已归档；请先恢复后再发送消息。');
     }
@@ -2898,8 +2923,8 @@ export class SocialChatStore {
           INSERT INTO social_messages
             (id, room_id, turn_id, role, sender_agent_id, content, status, runtime,
              forwarded_sources_json, reply_to_message_id, reply_to_json,
-             created_at, updated_at)
-          VALUES (?, ?, ?, 'user', ?, ?, 'complete', 'provider', ?, ?, ?, ?, ?)
+             delegation_parent_message_id, created_at, updated_at)
+          VALUES (?, ?, ?, 'user', ?, ?, 'complete', 'provider', ?, ?, ?, ?, ?, ?)
         `)
         .run(
           userMessageId,
@@ -2910,6 +2935,7 @@ export class SocialChatStore {
           JSON.stringify(forwardedSources),
           replyTo?.id ?? null,
           JSON.stringify(replyTo),
+          normalizedDelegationParentMessageId,
           now,
           now,
         );
@@ -2957,6 +2983,29 @@ export class SocialChatStore {
       interactionAdjustmentIds: adjustmentIds,
       interactionAdjustmentSnapshots: adjustmentSnapshots,
     };
+  }
+
+  getSpecialistHandoff(parentAssistantMessageId) {
+    if (!parentAssistantMessageId) return null;
+    const row = this.db
+      .prepare(`
+        SELECT user.id AS userMessageId, user.turn_id AS turnId,
+               user.room_id AS roomId, user.content AS task,
+               assistant.id AS assistantMessageId,
+               assistant.agent_id AS agentId,
+               assistant.status, assistant.content AS report,
+               assistant.error_code AS errorCode,
+               assistant.error_message AS errorMessage
+        FROM social_messages AS user
+        JOIN social_messages AS assistant
+          ON assistant.turn_id = user.turn_id
+         AND assistant.room_id = user.room_id
+         AND assistant.role = 'assistant'
+        WHERE user.delegation_parent_message_id = ? AND user.role = 'user'
+      `)
+      .get(parentAssistantMessageId);
+    if (!row) return null;
+    return { ...row, agent: this.getAgent(row.agentId) };
   }
 
   listProjectGroupInbox(roomId = null) {

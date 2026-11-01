@@ -732,4 +732,18 @@ export function migrateSocialChatSchema(db) {
       db.pragma(`foreign_keys = ${foreignKeysEnabled ? 'ON' : 'OFF'}`);
     }
   }
+  if (current < 28) {
+    db.transaction(() => {
+      db.exec(`
+          ALTER TABLE social_messages
+            ADD COLUMN delegation_parent_message_id TEXT
+              REFERENCES social_messages(id) ON DELETE SET NULL;
+          CREATE UNIQUE INDEX social_messages_delegation_parent
+            ON social_messages(delegation_parent_message_id)
+            WHERE delegation_parent_message_id IS NOT NULL;
+          INSERT INTO social_schema_migrations(version, applied_at)
+          VALUES (28, '${isoNow()}');
+        `);
+    })();
+  }
 }

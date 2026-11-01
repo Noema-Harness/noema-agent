@@ -1762,6 +1762,198 @@ test('Noema receives a bounded specialist report and writes its own final reply'
   }
 });
 
+test('retrying Noema synthesis reuses the completed specialist handoff', async () => {
+  const db = new Database(':memory:');
+  new RootStore(db);
+  const store = createSocialTestStore(db);
+  const requests = [];
+  const provider = {
+    async *streamChat(input) {
+      requests.push({ ...input, messages: [...input.messages] });
+      if (requests.length === 1) {
+        input.onToolCalls([
+          {
+            id: 'call-recoverable-specialist',
+            type: 'function',
+            function: {
+              name: 'delegate_to_specialist',
+              arguments: JSON.stringify({
+                agent_id: 'engineering-partner',
+                task: '核对这个迁移的失败恢复风险。',
+              }),
+            },
+          },
+        ]);
+      } else if (requests.length === 2) {
+        yield '失败后应在同一成员回合恢复，并保留原报告。';
+      } else if (requests.length === 3) {
+        const error = new Error('simulated synthesis provider_unavailable');
+        error.code = 'provider_unavailable';
+        throw error;
+      } else {
+        yield '工程搭档已完成核对；失败恢复应沿用原成员回合和报告。';
+      }
+    },
+  };
+  const service = new SocialChatService({
+    store,
+    provider,
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'test-model',
+    getRootState: async () => ({
+      connected: true,
+      selectedModel: 'test-model',
+    }),
+  });
+
+  try {
+    const sent = service.sendMessage({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '请让工程搭档核对迁移的失败恢复风险。',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await service.active.get('room-noema')?.done;
+    assert.equal(store.getSocialMessage(sent.messageId).status, 'failed');
+
+    const firstHandoff = store.getSpecialistHandoff(sent.messageId);
+    assert.equal(firstHandoff?.status, 'complete');
+    assert.equal(
+      firstHandoff?.report,
+      '失败后应在同一成员回合恢复，并保留原报告。',
+    );
+    service.retryReply(sent.messageId);
+    await service.active.get('room-noema')?.done;
+
+    assert.equal(requests.length, 4);
+    assert.equal(requests[3].tools, undefined);
+    assert.ok(
+      requests[3].messages.some((message) =>
+        message.content?.includes('noema_recovered_specialist_handoff'),
+      ),
+    );
+    assert.ok(
+      requests[3].messages.some((message) =>
+        message.content?.includes('失败后应在同一成员回合恢复'),
+      ),
+    );
+    const residentMessages = store.getRoomSnapshot(
+      'room-engineering-partner',
+    ).messages;
+    assert.equal(
+      residentMessages.filter(
+        (message) => message.content === '核对这个迁移的失败恢复风险。',
+      ).length,
+      1,
+    );
+    assert.equal(
+      residentMessages.filter((message) => message.role === 'assistant').length,
+      1,
+    );
+    assert.equal(store.getSocialMessage(sent.messageId).status, 'complete');
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});
+
+test('retrying Noema resumes a failed specialist reply in the original handoff turn', async () => {
+  const db = new Database(':memory:');
+  new RootStore(db);
+  const store = createSocialTestStore(db);
+  const requests = [];
+  const provider = {
+    async *streamChat(input) {
+      requests.push({ ...input, messages: [...input.messages] });
+      if (requests.length === 1) {
+        input.onToolCalls([
+          {
+            id: 'call-failed-specialist',
+            type: 'function',
+            function: {
+              name: 'delegate_to_specialist',
+              arguments: JSON.stringify({
+                agent_id: 'engineering-partner',
+                task: '核对这个功能的故障恢复方式。',
+              }),
+            },
+          },
+        ]);
+      } else if (requests.length === 2) {
+        const error = new Error('simulated specialist provider_unavailable');
+        error.code = 'provider_unavailable';
+        throw error;
+      } else if (requests.length === 3) {
+        const error = new Error('simulated synthesis provider_unavailable');
+        error.code = 'provider_unavailable';
+        throw error;
+      } else if (requests.length === 4) {
+        yield '故障恢复应复用原成员消息与回合。';
+      } else {
+        yield '工程搭档的失败回复已在原交办中恢复。';
+      }
+    },
+  };
+  const service = new SocialChatService({
+    store,
+    provider,
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'test-model',
+    getRootState: async () => ({
+      connected: true,
+      selectedModel: 'test-model',
+    }),
+  });
+
+  try {
+    const sent = service.sendMessage({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '请让工程搭档核对功能的故障恢复方式。',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await service.active.get('room-noema')?.done;
+    const failedHandoff = store.getSpecialistHandoff(sent.messageId);
+    assert.equal(failedHandoff?.status, 'failed');
+    const originalAssistantMessageId = failedHandoff.assistantMessageId;
+
+    service.retryReply(sent.messageId);
+    await service.active.get('room-noema')?.done;
+
+    const recoveredHandoff = store.getSpecialistHandoff(sent.messageId);
+    assert.equal(
+      recoveredHandoff.assistantMessageId,
+      originalAssistantMessageId,
+    );
+    assert.equal(recoveredHandoff.status, 'complete');
+    assert.equal(requests.length, 5);
+    assert.equal(
+      requests[4].messages.some((message) =>
+        message.content?.includes('故障恢复应复用原成员消息与回合'),
+      ),
+      true,
+    );
+    const residentMessages = store.getRoomSnapshot(
+      'room-engineering-partner',
+    ).messages;
+    assert.equal(
+      residentMessages.filter(
+        (message) => message.content === '核对这个功能的故障恢复方式。',
+      ).length,
+      1,
+    );
+    assert.equal(
+      residentMessages.filter((message) => message.role === 'assistant').length,
+      1,
+    );
+    assert.equal(recoveredHandoff.report, '故障恢复应复用原成员消息与回合。');
+    assert.equal(store.getSocialMessage(sent.messageId).status, 'complete');
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});
+
 test('main-chat provider failures retry in place without duplicating the user turn', async () => {
   const db = new Database(':memory:');
   new RootStore(db);
