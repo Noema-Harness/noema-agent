@@ -18,7 +18,7 @@ Renderer 通过 preload API 与主进程通信，不直接导入 Node、Electron
 | 范围 | 代码定位与所有权 |
 | --- | --- |
 | 主体、根对话与持久化 | [main/agents](../apps/desktop/src/main/agents)、[main/storage](../apps/desktop/src/main/storage)；RootAgent 与 RootStore 持有根对话及连续工作状态 |
-| 聊天、上下文和成员资产 | [main/chat](../apps/desktop/src/main/chat)；服务编排与存储分开，model-tools 定义模型协议，records 处理记录映射，migrations 独立维护升级 |
+| 聊天、上下文和成员资产 | [main/chat](../apps/desktop/src/main/chat)；服务编排与存储分开，`personal-memory-store` 独立持有用户个人记忆，model-tools 定义模型协议，migrations 独立维护升级 |
 | 项目、协作与共享计划 | [main/projects](../apps/desktop/src/main/projects)；保留各自的状态与事务边界 |
 | 执行与授权 | [main/execution](../apps/desktop/src/main/execution)；执行任务、沙箱、失败恢复及核验 |
 | 模型、工具与兼容接入 | [main/providers](../apps/desktop/src/main/providers)、[main/tools](../apps/desktop/src/main/tools)、[main/integrations](../apps/desktop/src/main/integrations)；供应商与旧 harness 为可替换边界；[ModelUsageStore](../apps/desktop/src/main/storage/model-usage-store.mjs) 在本地记录直连 API 与 DSH worker 的不含正文用量元数据 |
@@ -27,7 +27,7 @@ Renderer 通过 preload API 与主进程通信，不直接导入 Node、Electron
 | 项目、设置及其他界面 | [renderer/projects](../apps/desktop/src/renderer/projects)、[renderer/settings](../apps/desktop/src/renderer/settings)，另有 search/onboarding/capture；样式与所属界面邻近 |
 | 验证与开发场景 | [test](../apps/desktop/test) 对应运行环境/领域；[test-support/electron](../apps/desktop/test-support/electron) 保存窗口探针和场景；scripts 为执行入口 |
 
-身份、会话、群消息、项目计划、行动和成员资产分别持有状态。群窗口不等于成员共享一个上下文。Noema 主聊协调并和用户沟通，项目会话承接对应工作，用户继续保有关键取舍与验收。
+身份、会话、群消息、项目计划、行动、成员资产和用户个人记忆分别持有状态。个人记忆只供 Noema 主聊按需读取，不注入项目成员会话；设置可查看与维护。群窗口不等于成员共享一个上下文。Noema 主聊协调并和用户沟通，项目会话承接对应工作，用户继续保有关键取舍与验收。
 
 ## 结构怎样保持
 
@@ -41,7 +41,7 @@ Renderer 通过 preload API 与主进程通信，不直接导入 Node、Electron
 
 模型配置支持通用供应商；FreeLLMAPI 为旧用户兼容路径。网页、工具和成员反馈不获得用户指令权限，调用预算与授权由运行时控制。用户数据在 Electron user-data 中，测试使用独立数据库。Windows 10 严格隔离不满足时命令执行保持关闭，不默认要求 WSL。
 
-当前文档及维护时机见 `.codex/workspace.json`；行为约定与变更在 OpenSpec，历史 ADR 仅按需追溯，过程材料进入 `.work`。产品逻辑继续见[核心流程图](design/noema-core-flows.md)，本轮源码重构不改其中的产品机制。
+当前文档及维护时机见 `.codex/workspace.json`；行为约定与变更在 OpenSpec，历史 ADR 仅按需追溯，过程材料进入 `.work`。产品逻辑继续见[核心流程图](design/noema-core-flows.md)，包括日常连续性的个人记忆子流程 J。
 
 ## 实现参照
 

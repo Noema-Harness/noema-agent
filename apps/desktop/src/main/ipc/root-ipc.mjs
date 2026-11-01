@@ -31,6 +31,11 @@ const CHANNELS = Object.freeze({
   event: 'noema:root-event',
   socialEvent: 'noema:social-event',
   socialState: 'noema:social-state',
+  personalMemories: 'noema:personal-memories',
+  personalMemoryEnabled: 'noema:personal-memory-enabled',
+  addPersonalMemory: 'noema:add-personal-memory',
+  updatePersonalMemory: 'noema:update-personal-memory',
+  deletePersonalMemory: 'noema:delete-personal-memory',
   firstMeetingProgress: 'noema:first-meeting-progress',
   socialRoom: 'noema:social-room',
   socialSearchMessages: 'noema:social-search-messages',
@@ -100,6 +105,21 @@ export function registerRootIpc({
       projects:
         socialProjectStore?.listProjects({ includeArchived: true }) ?? [],
     }));
+    register(CHANNELS.personalMemories, () =>
+      socialChatService.store.personalMemories.list(),
+    );
+    register(CHANNELS.personalMemoryEnabled, (enabled) =>
+      socialChatService.store.personalMemories.setEnabled(enabled),
+    );
+    register(CHANNELS.addPersonalMemory, (content) =>
+      socialChatService.store.personalMemories.add({ content }),
+    );
+    register(CHANNELS.updatePersonalMemory, ({ id, content }) =>
+      socialChatService.store.personalMemories.update({ id, content }),
+    );
+    register(CHANNELS.deletePersonalMemory, (id) =>
+      socialChatService.store.personalMemories.delete(id),
+    );
     register(CHANNELS.socialRoom, (roomId) => ({
       ...socialChatService.store.getRoomSnapshot(roomId),
       projectReviews: socialProjectStore?.listReviewsForRoom(roomId) ?? [],

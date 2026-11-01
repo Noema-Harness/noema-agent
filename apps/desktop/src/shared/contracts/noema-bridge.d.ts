@@ -207,6 +207,24 @@ export interface NoemaSocialSearchResult {
   createdAt: string;
 }
 
+export interface NoemaPersonalMemory {
+  id: string;
+  content: string;
+  sourceKind: 'manual' | 'message';
+  sourceRoomId: string | null;
+  sourceMessageId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  sourceRoomTitle: string | null;
+  sourceMessageCreatedAt: string | null;
+  sourceMessageStatus?: string | null;
+}
+
+export interface NoemaPersonalMemoryList {
+  enabled: boolean;
+  items: NoemaPersonalMemory[];
+}
+
 export interface NoemaSocialHistorySource {
   id: string;
   roomId: string;
@@ -830,6 +848,14 @@ export interface NoemaBridge {
   appVersion: string;
   getRootState(): Promise<NoemaRootState>;
   getSocialState(): Promise<NoemaSocialState>;
+  getPersonalMemories(): Promise<NoemaPersonalMemoryList>;
+  setPersonalMemoryEnabled(enabled: boolean): Promise<boolean>;
+  addPersonalMemory(content: string): Promise<NoemaPersonalMemory>;
+  updatePersonalMemory(input: {
+    id: string;
+    content: string;
+  }): Promise<NoemaPersonalMemory>;
+  deletePersonalMemory(id: string): Promise<boolean>;
   advanceFirstMeeting(
     action: 'read' | 'enter',
   ): Promise<NoemaFirstMeetingState>;

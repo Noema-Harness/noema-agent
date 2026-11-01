@@ -2,6 +2,8 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type {
   NoemaQuickCaptureRequest,
   NoemaQuickCaptureShortcutStatus,
+  NoemaPersonalMemory,
+  NoemaPersonalMemoryList,
   NoemaRootEvent,
   NoemaRootState,
   NoemaSocialEvent,
@@ -30,6 +32,19 @@ const bridge = {
     ipcRenderer.invoke('noema:root-state'),
   getSocialState: (): Promise<NoemaSocialState> =>
     ipcRenderer.invoke('noema:social-state'),
+  getPersonalMemories: (): Promise<NoemaPersonalMemoryList> =>
+    ipcRenderer.invoke('noema:personal-memories'),
+  setPersonalMemoryEnabled: (enabled: boolean): Promise<boolean> =>
+    ipcRenderer.invoke('noema:personal-memory-enabled', enabled),
+  addPersonalMemory: (content: string): Promise<NoemaPersonalMemory> =>
+    ipcRenderer.invoke('noema:add-personal-memory', content),
+  updatePersonalMemory: (input: {
+    id: string;
+    content: string;
+  }): Promise<NoemaPersonalMemory> =>
+    ipcRenderer.invoke('noema:update-personal-memory', input),
+  deletePersonalMemory: (id: string): Promise<boolean> =>
+    ipcRenderer.invoke('noema:delete-personal-memory', id),
   advanceFirstMeeting: (action: 'read' | 'enter') =>
     ipcRenderer.invoke('noema:first-meeting-progress', action),
   getSocialRoom: (roomId: string): Promise<NoemaSocialRoomState> =>

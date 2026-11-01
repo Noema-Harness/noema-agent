@@ -89,6 +89,242 @@ test('social chat sends only the selected room transcript and persists the real 
   }
 });
 
+test('personal memory stays in Noema main chat and writes only from explicit user requests', async () => {
+  const db = new Database(':memory:');
+  new RootStore(db);
+  const store = createSocialTestStore(db);
+  const requests = [];
+  const provider = {
+    async *streamChat(input) {
+      requests.push({
+        ...input,
+        messages: input.messages.map((message) => ({ ...message })),
+      });
+      if (requests.length === 1) {
+        input.onToolCalls?.([
+          {
+            id: 'memory-save',
+            function: {
+              name: 'manage_personal_memory',
+              arguments: JSON.stringify({
+                operation: 'save',
+                content: '我通常希望先看到结论。',
+              }),
+            },
+          },
+        ]);
+        return;
+      }
+      yield '记好了。';
+    },
+  };
+  const service = new SocialChatService({
+    store,
+    provider,
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'test-model',
+    getRootState: async () => ({
+      connected: true,
+      selectedModel: 'test-model',
+    }),
+  });
+
+  try {
+    const sent = service.sendMessage({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '请记住，我通常希望先看到结论。',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await service.active.get('room-noema')?.done;
+
+    assert.ok(
+      requests[0].tools.some(
+        (tool) => tool.function.name === 'manage_personal_memory',
+      ),
+    );
+    const saved = store.personalMemories.list().items[0];
+    assert.equal(saved.content, '我通常希望先看到结论。');
+    assert.equal(saved.sourceRoomId, 'room-noema');
+    assert.equal(
+      saved.sourceMessageId,
+      store
+        .getRoomSnapshot('room-noema')
+        .messages.find(
+          (message) =>
+            message.role === 'user' && message.content.includes('请记住'),
+        ).id,
+    );
+    assert.match(store.getSocialMessage(sent.messageId).content, /记好了/u);
+
+    const specialist = store.getRoomSnapshot('room-engineering-partner');
+    service.sendMessage({
+      roomId: specialist.room.id,
+      agentId: specialist.members[0].id,
+      text: '你还记得我偏好什么吗？',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await service.active.get(specialist.room.id)?.done;
+    assert.equal(
+      requests[2].tools?.some(
+        (tool) => tool.function.name === 'manage_personal_memory',
+      ) ?? false,
+      false,
+    );
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});
+
+test('Noema retrieves saved personal memory on demand and only deletes a unique explicit match', async () => {
+  const db = new Database(':memory:');
+  new RootStore(db);
+  const store = createSocialTestStore(db);
+  store.personalMemories.add({
+    content: '我习惯周五下班前收尾，再安排下周计划。',
+  });
+  const requests = [];
+  const provider = {
+    async *streamChat(input) {
+      requests.push({
+        ...input,
+        messages: input.messages.map((message) => ({ ...message })),
+      });
+      if (requests.length === 1 || requests.length === 3) {
+        const operation = requests.length === 1 ? 'search' : 'forget';
+        input.onToolCalls?.([
+          {
+            id: `memory-${operation}`,
+            function: {
+              name: 'manage_personal_memory',
+              arguments: JSON.stringify(
+                operation === 'search'
+                  ? { operation, query: '周五下班' }
+                  : { operation, query: '周五下班' },
+              ),
+            },
+          },
+        ]);
+        return;
+      }
+      yield requests.length === 2 ? '你习惯周五收尾。' : '这条记忆已删除。';
+    },
+  };
+  const service = new SocialChatService({
+    store,
+    provider,
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'test-model',
+    getRootState: async () => ({
+      connected: true,
+      selectedModel: 'test-model',
+    }),
+  });
+
+  try {
+    const turn = service.sendMessage({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '你还记得我怎么安排周五吗？',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await service.active.get('room-noema')?.done;
+    assert.equal(
+      requests[0].messages.some(
+        (message) =>
+          typeof message.content === 'string' &&
+          message.content.includes('我习惯周五下班前收尾'),
+      ),
+      false,
+    );
+    assert.ok(
+      requests[1].messages.some(
+        (message) =>
+          message.role === 'tool' &&
+          typeof message.content === 'string' &&
+          message.content.includes('我习惯周五下班前收尾'),
+      ),
+    );
+    assert.match(store.getSocialMessage(turn.messageId).content, /周五收尾/u);
+
+    const deleteTurn = service.sendMessage({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '请忘掉我关于周五下班收尾的记忆。',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await service.active.get('room-noema')?.done;
+    assert.equal(store.personalMemories.list().items.length, 0);
+    assert.match(
+      store.getSocialMessage(deleteTurn.messageId).content,
+      /已删除/u,
+    );
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});
+
+test('an unavailable personal-memory index does not prevent a normal Noema reply', async () => {
+  const db = new Database(':memory:');
+  new RootStore(db);
+  const store = createSocialTestStore(db);
+  const requests = [];
+  const provider = {
+    async *streamChat(input) {
+      requests.push({
+        ...input,
+        messages: input.messages.map((message) => ({ ...message })),
+      });
+      if (requests.length === 1) {
+        input.onToolCalls?.([
+          {
+            id: 'memory-search',
+            function: {
+              name: 'manage_personal_memory',
+              arguments: JSON.stringify({
+                operation: 'search',
+                query: '我的偏好',
+              }),
+            },
+          },
+        ]);
+        return;
+      }
+      yield '记忆暂时读不到，我先根据你现在说的内容回答。';
+    },
+  };
+  const service = new SocialChatService({
+    store,
+    provider,
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'test-model',
+    getRootState: async () => ({
+      connected: true,
+      selectedModel: 'test-model',
+    }),
+  });
+
+  try {
+    db.exec('DROP TABLE social_user_memories_fts');
+    const sent = service.sendMessage({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '你还记得我的偏好吗？',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await service.active.get('room-noema')?.done;
+    const reply = store.getSocialMessage(sent.messageId);
+    assert.equal(reply.status, 'complete');
+    assert.match(reply.content, /先根据你现在说的内容回答/u);
+    assert.match(requests[1].messages.at(-1).content, /"completed":false/u);
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});
+
 test('ordinary Noema conversation omits existing-project tools and restores them for a project request', async () => {
   const db = new Database(':memory:');
   new RootStore(db);

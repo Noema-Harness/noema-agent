@@ -21,6 +21,7 @@ import {
   ProjectEditorDialog,
 } from './dialogs/team-dialogs';
 import { PartnerSettingsDialog } from '../settings/partner-settings-dialog';
+import { PersonalMemoryDialog } from '../settings/personal-memory-dialog';
 
 export function SocialChatApp() {
   const controller = useSocialChatController();
@@ -1086,6 +1087,8 @@ export function SocialChatApp() {
       <ProjectEditorDialog model={controller} />
 
       <PartnerSettingsDialog model={controller} />
+
+      <PersonalMemoryDialog model={controller} />
     </main>
   );
 }

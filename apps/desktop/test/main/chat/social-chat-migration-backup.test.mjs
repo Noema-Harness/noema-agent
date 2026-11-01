@@ -154,7 +154,7 @@ test('social schema v27 upgrades to v28 without losing existing messages', () =>
     store.db.exec(`
       DROP INDEX social_messages_delegation_parent;
       ALTER TABLE social_messages DROP COLUMN delegation_parent_message_id;
-      DELETE FROM social_schema_migrations WHERE version = 28;
+      DELETE FROM social_schema_migrations WHERE version IN (28, 29);
     `);
 
     new SocialChatStore(root.db);

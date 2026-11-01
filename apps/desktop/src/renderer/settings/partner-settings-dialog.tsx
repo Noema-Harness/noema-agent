@@ -10,6 +10,7 @@ type PartnerSettingsDialogModel = Pick<
   | 'setFirstMeetingReplay'
   | 'settingsOpen'
   | 'closeSettingsDialog'
+  | 'openPersonalMemories'
   | 'handleProviderSave'
   | 'agentTriggerRef'
   | 'setCreateAgentOpen'
@@ -46,6 +47,7 @@ export function PartnerSettingsDialog({
     setFirstMeetingReplay,
     settingsOpen,
     closeSettingsDialog,
+    openPersonalMemories,
     handleProviderSave,
     agentTriggerRef,
     setCreateAgentOpen,
@@ -231,6 +233,22 @@ export function PartnerSettingsDialog({
           本机服务可使用 HTTP，远程服务必须使用
           HTTPS。模型服务会按各自政策处理请求内容。
         </p>
+        <section
+          className="settings-provider-section personal-memory-settings-entry"
+          aria-labelledby="personal-memory-settings-title"
+        >
+          <div>
+            <h3 id="personal-memory-settings-title">个人记忆</h3>
+            <p>由你决定保存什么；Noema 主聊只在相关时检索。</p>
+          </div>
+          <button
+            className="secondary-action"
+            type="button"
+            onClick={openPersonalMemories}
+          >
+            管理个人记忆
+          </button>
+        </section>
         <section
           className="settings-provider-section"
           aria-labelledby="web-search-settings-title"

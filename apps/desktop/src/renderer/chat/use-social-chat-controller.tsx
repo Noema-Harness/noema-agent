@@ -25,6 +25,7 @@ import { extractChatPdfText } from '../../shared/chat/chat-pdf-extraction.mjs';
 import { createNotificationEarcon } from '../notifications/notification-earcon.mjs';
 import type {
   NoemaSocialAgent,
+  NoemaPersonalMemoryList,
   NoemaSocialEvent,
   NoemaSocialHistorySource,
   NoemaSocialMessage,
@@ -136,6 +137,19 @@ export function useSocialChatController() {
   const [createAgentOpen, setCreateAgentOpen] = useState(false);
   const [editingAgentId, setEditingAgentId] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [personalMemoryOpen, setPersonalMemoryOpen] = useState(false);
+  const [personalMemoryList, setPersonalMemoryList] =
+    useState<NoemaPersonalMemoryList | null>(null);
+  const [personalMemoryLoading, setPersonalMemoryLoading] = useState(false);
+  const [personalMemoryBusy, setPersonalMemoryBusy] = useState(false);
+  const [personalMemoryError, setPersonalMemoryError] = useState('');
+  const [personalMemoryDraft, setPersonalMemoryDraft] = useState('');
+  const [editingPersonalMemoryId, setEditingPersonalMemoryId] = useState<
+    string | null
+  >(null);
+  const [deletingPersonalMemoryId, setDeletingPersonalMemoryId] = useState<
+    string | null
+  >(null);
   const [firstMeetingReplay, setFirstMeetingReplay] = useState(false);
   const firstMeetingEntryVisible = Boolean(
     state?.firstMeeting &&
@@ -165,6 +179,7 @@ export function useSocialChatController() {
   const searchRef = useRef<HTMLInputElement>(null);
   const conversationSearchRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLFormElement>(null);
+  const personalMemoryDialogRef = useRef<HTMLElement>(null);
   const searchTriggerRef = useRef<HTMLButtonElement>(null);
   const forwardOriginMessageId = useRef<string | null>(null);
   const threadTriggerRef = useRef<HTMLButtonElement>(null);
@@ -329,6 +344,100 @@ export function useSocialChatController() {
     setEditProviderConfig(false);
     requestAnimationFrame(() => settingsTriggerRef.current?.focus());
   }, []);
+  const refreshPersonalMemories = useCallback(async () => {
+    setPersonalMemoryLoading(true);
+    setPersonalMemoryError('');
+    try {
+      setPersonalMemoryList(await window.noema.getPersonalMemories());
+    } catch (error) {
+      setPersonalMemoryError(
+        error instanceof Error ? error.message : '无法读取个人记忆。',
+      );
+    } finally {
+      setPersonalMemoryLoading(false);
+    }
+  }, []);
+  const openPersonalMemories = useCallback(() => {
+    setSettingsOpen(false);
+    setPersonalMemoryOpen(true);
+    void refreshPersonalMemories();
+  }, [refreshPersonalMemories]);
+  const closePersonalMemories = useCallback(() => {
+    setPersonalMemoryOpen(false);
+    setPersonalMemoryError('');
+    setPersonalMemoryDraft('');
+    setEditingPersonalMemoryId(null);
+    setDeletingPersonalMemoryId(null);
+    requestAnimationFrame(() => settingsTriggerRef.current?.focus());
+  }, []);
+  const handlePersonalMemoryEnabled = useCallback(
+    async (enabled: boolean) => {
+      setPersonalMemoryBusy(true);
+      setPersonalMemoryError('');
+      try {
+        await window.noema.setPersonalMemoryEnabled(enabled);
+        await refreshPersonalMemories();
+      } catch (error) {
+        setPersonalMemoryError(
+          error instanceof Error ? error.message : '无法更新个人记忆设置。',
+        );
+      } finally {
+        setPersonalMemoryBusy(false);
+      }
+    },
+    [refreshPersonalMemories],
+  );
+  const savePersonalMemory = useCallback(
+    async (event: FormEvent) => {
+      event.preventDefault();
+      const content = personalMemoryDraft.trim();
+      if (!content) return;
+      setPersonalMemoryBusy(true);
+      setPersonalMemoryError('');
+      try {
+        if (editingPersonalMemoryId) {
+          await window.noema.updatePersonalMemory({
+            id: editingPersonalMemoryId,
+            content,
+          });
+        } else {
+          await window.noema.addPersonalMemory(content);
+        }
+        setPersonalMemoryDraft('');
+        setEditingPersonalMemoryId(null);
+        await refreshPersonalMemories();
+      } catch (error) {
+        setPersonalMemoryError(
+          error instanceof Error ? error.message : '无法保存个人记忆。',
+        );
+      } finally {
+        setPersonalMemoryBusy(false);
+      }
+    },
+    [editingPersonalMemoryId, personalMemoryDraft, refreshPersonalMemories],
+  );
+  const deletePersonalMemory = useCallback(
+    async (id: string) => {
+      setPersonalMemoryBusy(true);
+      setPersonalMemoryError('');
+      try {
+        await window.noema.deletePersonalMemory(id);
+        setDeletingPersonalMemoryId(null);
+        if (editingPersonalMemoryId === id) {
+          setEditingPersonalMemoryId(null);
+          setPersonalMemoryDraft('');
+        }
+        await refreshPersonalMemories();
+      } catch (error) {
+        setPersonalMemoryError(
+          error instanceof Error ? error.message : '无法删除个人记忆。',
+        );
+      } finally {
+        setPersonalMemoryBusy(false);
+      }
+    },
+    [editingPersonalMemoryId, refreshPersonalMemories],
+  );
   const cancelForward = useCallback(() => {
     const originMessageId = forwardOriginMessageId.current;
     forwardOriginMessageId.current = null;
@@ -515,11 +624,14 @@ export function useSocialChatController() {
       !forwardDialogOpen &&
       !threadDialogOpen &&
       !conversationSearchOpen &&
-      !globalSearchOpen
+      !globalSearchOpen &&
+      !personalMemoryOpen
     ) {
       return;
     }
-    const dialog = dialogRef.current;
+    const dialog = personalMemoryOpen
+      ? personalMemoryDialogRef.current
+      : dialogRef.current;
     if (!dialog) return;
     const focusableSelector =
       'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
@@ -544,6 +656,7 @@ export function useSocialChatController() {
         else if (forwardDialogOpen) cancelForward();
         else if (threadDialogOpen) closeThreadDialog();
         else if (conversationSearchOpen) closeConversationSearch();
+        else if (personalMemoryOpen) closePersonalMemories();
         else closeSettingsDialog();
         return;
       }
@@ -583,6 +696,8 @@ export function useSocialChatController() {
     threadDialogOpen,
     conversationSearchOpen,
     globalSearchOpen,
+    personalMemoryOpen,
+    closePersonalMemories,
     closeGlobalSearch,
     closeGroupDialog,
     closeProjectDialog,
@@ -1981,6 +2096,7 @@ export function useSocialChatController() {
     setAgentWorkspaceId,
     archivedProjects,
     settingsTriggerRef,
+    personalMemoryDialogRef,
     setProjectTab,
     searchTriggerRef,
     openConversationSearch,
@@ -2067,6 +2183,23 @@ export function useSocialChatController() {
     projectBusy,
     settingsOpen,
     closeSettingsDialog,
+    openPersonalMemories,
+    personalMemoryOpen,
+    closePersonalMemories,
+    personalMemoryList,
+    personalMemoryLoading,
+    personalMemoryBusy,
+    personalMemoryError,
+    setPersonalMemoryError,
+    personalMemoryDraft,
+    setPersonalMemoryDraft,
+    editingPersonalMemoryId,
+    setEditingPersonalMemoryId,
+    deletingPersonalMemoryId,
+    setDeletingPersonalMemoryId,
+    handlePersonalMemoryEnabled,
+    savePersonalMemory,
+    deletePersonalMemory,
     handleProviderSave,
     agentTriggerRef,
     setCreateAgentOpen,

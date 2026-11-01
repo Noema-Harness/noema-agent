@@ -10,6 +10,8 @@ import {
   projectToolChoicesContext,
   projectWorkTool,
   specialistDelegationTool,
+  personalMemoryTool,
+  shouldExposePersonalMemoryTool,
 } from '../../../src/main/chat/model-tools.mjs';
 
 function fixture(suffix) {
@@ -57,6 +59,26 @@ function toolSchemas(data) {
 
 test('project tool schemas stay stable when project, member, work-item, and URL values change', () => {
   assert.deepEqual(toolSchemas(fixture('one')), toolSchemas(fixture('two')));
+});
+
+test('personal memory tool is explicit, small, and only exposed for memory-relevant turns', () => {
+  const tool = personalMemoryTool().function;
+  assert.equal(tool.name, 'manage_personal_memory');
+  assert.deepEqual(tool.parameters.properties.operation.enum, [
+    'search',
+    'save',
+    'update',
+    'forget',
+  ]);
+  assert.equal(
+    shouldExposePersonalMemoryTool('帮我记住我通常先看结论。'),
+    true,
+  );
+  assert.equal(
+    shouldExposePersonalMemoryTool('你还记得我之前说过的偏好吗？'),
+    true,
+  );
+  assert.equal(shouldExposePersonalMemoryTool('帮我解释一下 FTS5。'), false);
 });
 
 test('specialist project-plan schema omits coordinator-only structure controls', () => {

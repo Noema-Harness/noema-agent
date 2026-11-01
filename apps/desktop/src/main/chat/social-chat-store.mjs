@@ -30,6 +30,7 @@ import {
   hydrateSocialWorkTask,
 } from './records.mjs';
 import { migrateSocialChatSchema } from './migrations.mjs';
+import { PersonalMemoryStore } from './personal-memory-store.mjs';
 
 /**
  * Stores stable agent identities separately from conversation rooms.
@@ -40,6 +41,7 @@ export class SocialChatStore {
     this.db = db;
     this.db.pragma('foreign_keys = ON');
     this.migrate();
+    this.personalMemories = new PersonalMemoryStore(this.db);
     this.seedInitialSocialModel();
     this.importLegacyRootMessages();
     this.recoverInterruptedReplies();

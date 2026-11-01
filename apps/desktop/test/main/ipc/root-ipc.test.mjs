@@ -258,6 +258,55 @@ test('registers only named root-agent actions and rejects non-window senders', a
   assert.equal(harness.handlers.size, 0);
 });
 
+test('personal memory management is exposed only through trusted desktop IPC', async () => {
+  const harness = createIpcHarness();
+  const trustedSender = {};
+  const calls = [];
+  const memories = {
+    list: () => ({ enabled: true, items: [] }),
+    setEnabled: (enabled) => (calls.push(['enabled', enabled]), enabled),
+    add: (input) => (calls.push(['add', input]), { id: 'memory-1', ...input }),
+    update: (input) => (
+      calls.push(['update', input]),
+      { id: input.id, ...input }
+    ),
+    delete: (id) => (calls.push(['delete', id]), true),
+  };
+  registerRootIpc({
+    ipcMain: harness.ipcMain,
+    rootAgent: { getUiState: async () => ({}) },
+    socialChatService: { store: { personalMemories: memories } },
+    isTrustedSender: (sender) => sender === trustedSender,
+  });
+  const invoke = (channel, ...args) =>
+    harness.handlers.get(channel)({ sender: trustedSender }, ...args);
+
+  assert.deepEqual(await invoke(CHANNELS.personalMemories), {
+    enabled: true,
+    items: [],
+  });
+  assert.equal(await invoke(CHANNELS.personalMemoryEnabled, false), false);
+  assert.equal(
+    (await invoke(CHANNELS.addPersonalMemory, '一条本地记忆。')).id,
+    'memory-1',
+  );
+  await invoke(CHANNELS.updatePersonalMemory, {
+    id: 'memory-1',
+    content: '已修正。',
+  });
+  assert.equal(await invoke(CHANNELS.deletePersonalMemory, 'memory-1'), true);
+  assert.deepEqual(calls, [
+    ['enabled', false],
+    ['add', { content: '一条本地记忆。' }],
+    ['update', { id: 'memory-1', content: '已修正。' }],
+    ['delete', 'memory-1'],
+  ]);
+  await assert.rejects(
+    harness.handlers.get(CHANNELS.personalMemories)({ sender: {} }),
+    /未授权/u,
+  );
+});
+
 test('Codex import sends nothing until transmission consent and remains revocable', async () => {
   let consented = false;
   let sends = 0;

@@ -746,4 +746,29 @@ export function migrateSocialChatSchema(db) {
         `);
     })();
   }
+  if (current < 29) {
+    db.transaction(() => {
+      db.exec(`
+          CREATE TABLE IF NOT EXISTS social_user_memories (
+            id TEXT PRIMARY KEY,
+            content TEXT NOT NULL CHECK (length(content) BETWEEN 1 AND 2000),
+            source_kind TEXT NOT NULL CHECK (source_kind IN ('manual', 'message')),
+            source_room_id TEXT REFERENCES social_rooms(id) ON DELETE SET NULL,
+            source_message_id TEXT REFERENCES social_messages(id) ON DELETE SET NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            CHECK (
+              (source_kind = 'manual' AND source_room_id IS NULL AND source_message_id IS NULL)
+              OR (source_kind = 'message' AND (source_message_id IS NULL OR source_room_id IS NOT NULL))
+            )
+          );
+          CREATE INDEX IF NOT EXISTS social_user_memories_updated
+            ON social_user_memories(updated_at DESC, id);
+          CREATE VIRTUAL TABLE IF NOT EXISTS social_user_memories_fts
+            USING fts5(memory_id UNINDEXED, content, tokenize='trigram');
+          INSERT INTO social_schema_migrations(version, applied_at)
+          VALUES (29, '${isoNow()}');
+        `);
+    })();
+  }
 }
