@@ -87,6 +87,95 @@ test('social chat sends only the selected room transcript and persists the real 
   }
 });
 
+test('ordinary Noema conversation omits existing-project tools and restores them for a project request', async () => {
+  const db = new Database(':memory:');
+  new RootStore(db);
+  const store = createSocialTestStore(db);
+  const projectStore = new SocialProjectStore({ db, socialChatStore: store });
+  projectStore.createProject({
+    title: 'AI 平台 API 价格追踪应用',
+    brief: '追踪公开平台 API 价格变化。',
+    agentIds: ['noema', 'engineering-partner'],
+  });
+  const requests = [];
+  const service = new SocialChatService({
+    store,
+    projectStore,
+    getProjectSessionContext: (roomId, agentId) =>
+      projectStore.getProjectSessionContext(roomId, agentId),
+    provider: {
+      async *streamChat(input) {
+        requests.push(input);
+        yield '我在听。';
+      },
+    },
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'test-model',
+    getRootState: async () => ({
+      connected: true,
+      selectedModel: 'test-model',
+    }),
+  });
+
+  try {
+    service.sendMessage({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '今天有点累，想聊聊天。',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await service.active.get('room-noema')?.done;
+
+    const casualTools = requests[0].tools.map((tool) => tool.function.name);
+    assert.equal(casualTools.includes('manage_project_plan'), false);
+    assert.equal(casualTools.includes('project_group'), false);
+    assert.equal(
+      requests[0].messages.some((message) =>
+        message.content.includes('可管理计划和群记录的项目'),
+      ),
+      false,
+    );
+
+    service.sendMessage({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: 'AI 平台 API 价格追踪应用这个项目现在进展到哪了？',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await service.active.get('room-noema')?.done;
+
+    const projectTools = requests[1].tools.map((tool) => tool.function.name);
+    assert.equal(projectTools.includes('manage_project_plan'), true);
+    assert.equal(projectTools.includes('project_group'), true);
+    assert.ok(
+      requests[1].messages.some((message) =>
+        message.content.includes('可管理计划和群记录的项目'),
+      ),
+    );
+    assert.ok(
+      JSON.stringify(requests[0].tools).length <
+        JSON.stringify(requests[1].tools).length,
+    );
+
+    service.sendMessage({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '那就接着做吧。',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await service.active.get('room-noema')?.done;
+    assert.equal(
+      requests[2].tools.some(
+        (tool) => tool.function.name === 'manage_project_plan',
+      ),
+      true,
+    );
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});
+
 test('specialists can version only their own assets and reload them next turn', async () => {
   const db = new Database(':memory:');
   new RootStore(db);

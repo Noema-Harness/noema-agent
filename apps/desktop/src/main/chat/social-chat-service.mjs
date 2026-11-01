@@ -55,6 +55,43 @@ function projectWorkStartError(error) {
   );
 }
 
+function shouldExposeExistingProjectTools(run, roomHistory, projects) {
+  if (
+    run.projectContext ||
+    run.reviewContext ||
+    run.projectReportData ||
+    run.userGroupRequest
+  )
+    return true;
+  if (run.agentId !== 'noema' || run.roomId !== 'room-noema') return true;
+
+  const recentText = [
+    run.text,
+    ...roomHistory
+      .filter(
+        (message) => message.role === 'user' || message.role === 'assistant',
+      )
+      .slice(-8)
+      .map((message) => message.content),
+  ]
+    .filter(Boolean)
+    .join('\n');
+  if (
+    /(?:项目|计划(?:表|进度)?|阶段|工作项|团队|项目组|成员|派单|验收|交付|委托|群聊|工作区|文件执行)/u.test(
+      recentText,
+    ) ||
+    /(?:代码|文件|应用|程序|网站).{0,12}(?:修改|实现|修复|重构|开发|继续做)|(?:修改|实现|修复|重构|开发).{0,12}(?:代码|文件|应用|程序|网站)/u.test(
+      recentText,
+    )
+  )
+    return true;
+
+  return projects.some((project) => {
+    const title = project.title?.trim();
+    return title && title.length >= 2 && recentText.includes(title);
+  });
+}
+
 /**
  * Sends room-scoped turns to a replaceable chat provider.
  * @param {{store:import('./social-chat-store.mjs').SocialChatStore,provider:import('./openai-compatible-client.mjs').OpenAICompatibleClient,secretStore:{isConfigured:()=>boolean},getSelectedModel:()=>string|null,getRootState:()=>Promise<SocialProviderState>,projectStore?:import('./social-project-store.mjs').SocialProjectStore|null,getProjectSessionContext?:(roomId:string,agentId:string)=>{projectId:string,title:string,brief:string,sourceMessageId:string|null,status:string,agentId:string,roomId:string,groupRoomId:string}|null,getProjectWorkReadiness?:()=>{available:boolean,reason:string|null},isWebSearchConfigured?:()=>boolean,searchPublicSources?:(query:string,signal:AbortSignal,maxSources?:number,options?:{onUsage?:(usage:{requestStatus:string,usageUnits?:number,usageUnit:string,providerRequestId?:string})=>void})=>Promise<object>,recordExternalUsage?:(record:Record<string,unknown>)=>void,fetchProjectSource?:(url:string,options:object)=>Promise<object>,startProjectWork?:(input:{roomId:string,agentId:string,dispatchFromNoema:boolean,prompt:string,sourceMessageId:string},signal:AbortSignal)=>Promise<{accepted:boolean,taskId?:string,reason?:string}>,emit?:(event:object)=>void}} options
@@ -2156,6 +2193,12 @@ export class SocialChatService {
             }
           : { ownAgentId: agentId },
       );
+      const accessibleProjects = this.accessibleProjects(run);
+      const exposeProjectActions = shouldExposeExistingProjectTools(
+        run,
+        roomHistory,
+        accessibleProjects,
+      );
       const specialistAgents =
         agentId === 'noema'
           ? this.store
@@ -2349,6 +2392,7 @@ export class SocialChatService {
             ? [agent]
             : [];
       const projectWorkAvailable = Boolean(
+        exposeProjectActions &&
         this.startProjectWork &&
         !run.reviewContext &&
         run.projectContext?.status !== 'awaiting_user' &&
@@ -2363,15 +2407,22 @@ export class SocialChatService {
         ...(projectWorkAction ? [projectWorkAction] : []),
         ...(specialistTool ? [specialistTool] : []),
         ...(projectTeamAction ? [projectTeamAction] : []),
-        ...(reviewTool ? [reviewTool] : []),
-        ...this.projectTools(run),
+        ...(exposeProjectActions && reviewTool ? [reviewTool] : []),
+        ...(exposeProjectActions
+          ? this.projectTools(run)
+          : agentId === 'noema' && needsCalculationTool(run.text)
+            ? [CALCULATE_EXPRESSION_TOOL]
+            : []),
         ...(agent.kind === 'specialist' && requestsMemberAssetAction(run.text)
           ? [memberAssetsTool()]
           : []),
       ];
       const actionTools = run.isProjectGrowthTurn
         ? this.projectGrowthTools(run)
-        : [...normalActionTools, ...(completionTool ? [completionTool] : [])];
+        : [
+            ...normalActionTools,
+            ...(exposeProjectActions && completionTool ? [completionTool] : []),
+          ];
       const memberAssetContext =
         agent.kind === 'specialist'
           ? this.store.getAgentAssetsForPrompt(agent.id, {
@@ -2383,14 +2434,16 @@ export class SocialChatService {
         ? ''
         : projectToolChoicesContext({
             agents: specialistAgents,
-            projects: this.accessibleProjects(run).filter(
-              (project) => project.status !== 'awaiting_user',
-            ),
-            teamProjects,
-            reviewProjects,
-            completionProjects,
-            workProjects: projectWorkProjects,
-            planItems: projectWorkPlanItems,
+            projects: exposeProjectActions
+              ? accessibleProjects.filter(
+                  (project) => project.status !== 'awaiting_user',
+                )
+              : [],
+            teamProjects: exposeProjectActions ? teamProjects : [],
+            reviewProjects: exposeProjectActions ? reviewProjects : [],
+            completionProjects: exposeProjectActions ? completionProjects : [],
+            workProjects: exposeProjectActions ? projectWorkProjects : [],
+            planItems: exposeProjectActions ? projectWorkPlanItems : [],
             sourceUrls:
               run.projectContext && this.projectSourceReadBudget(run) > 0
                 ? this.authorizedProjectSourceUrls(run)
