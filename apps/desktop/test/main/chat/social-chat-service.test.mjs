@@ -135,6 +135,15 @@ test('ordinary Noema conversation omits existing-project tools and restores them
       ),
       false,
     );
+    const casualGuidance = requests[0].messages
+      .filter((message) => message.role === 'system')
+      .map((message) => message.content)
+      .join('\n');
+    assert.match(casualGuidance, /只有实际形成委托时才组织工作/u);
+    assert.match(casualGuidance, /create_project_team/u);
+    assert.doesNotMatch(casualGuidance, /calculate_expression/u);
+    assert.doesNotMatch(casualGuidance, /明确要求继续或落实已有项目行动/u);
+    assert.doesNotMatch(casualGuidance, /本地文件工作默认需要用户明确委托/u);
 
     service.sendMessage({
       roomId: 'room-noema',
@@ -152,6 +161,12 @@ test('ordinary Noema conversation omits existing-project tools and restores them
         message.content.includes('可管理计划和群记录的项目'),
       ),
     );
+    const projectGuidance = requests[1].messages
+      .filter((message) => message.role === 'system')
+      .map((message) => message.content)
+      .join('\n');
+    assert.match(projectGuidance, /明确要求继续或落实已有项目行动/u);
+    assert.match(projectGuidance, /当前没有可用的项目文件执行能力/u);
     assert.ok(
       JSON.stringify(requests[0].tools).length <
         JSON.stringify(requests[1].tools).length,

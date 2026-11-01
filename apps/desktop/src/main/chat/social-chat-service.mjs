@@ -2626,6 +2626,12 @@ export class SocialChatService {
                     this.getProjectWorkReadiness().available,
                   ),
                   this.isWebSearchConfigured(),
+                  {
+                    existingProjectActionsAvailable: exposeProjectActions,
+                    calculatorAvailable: actionTools.some(
+                      (tool) => tool.function.name === 'calculate_expression',
+                    ),
+                  },
                 ),
               },
               {
