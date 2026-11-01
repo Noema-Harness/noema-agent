@@ -87,5 +87,5 @@ if ($taskProxyAvailable) {
   Write-Verbose 'GitHub transport: no configured proxy is reachable; trying direct access'
 }
 
-$env:NO_PROXY = $taskNoProxy | Select-Object -Unique | Join-String -Separator ','
+$env:NO_PROXY = ($taskNoProxy | Select-Object -Unique) -join ','
 $env:no_proxy = $env:NO_PROXY
