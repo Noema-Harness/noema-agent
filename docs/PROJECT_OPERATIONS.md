@@ -40,7 +40,7 @@
 - `npm run workspace:test`：检查清理预览、链接边界与历史保留。
 - `npm run workspace:check`：检查目录、文档分类、当前文档链接及误提交的过程材料；已加入 CI。
 - `npm run workspace:clean`：预览 runs/scratch；追加 `-- --apply` 才执行。`-- --generated` 可包含标准构建产物，执行前停止使用这些产物的开发进程。归档和依赖不在清理集合中。
-- `scripts/gh-direct.ps1` / `scripts/git-direct.ps1`：GitHub 与 Git 入口。入口先探测已配置代理：代理可用时让 GitHub 流量经过代理，Git 使用 OpenSSL 后端；否则才尝试直连。源码发布后核对远端 SHA，当前 Actions 账户阻断与源码同步分开处理。
+- `scripts/gh-direct.ps1` / `scripts/git-direct.ps1`：GitHub 与 Git 入口。入口先探测已配置代理：代理可用时让 GitHub 流量经过代理，Git 使用 OpenSSL 与 HTTP/2；否则才尝试直连。源码发布后核对远端 SHA，当前 Actions 账户阻断与源码同步分开处理。
 
 批量整理先保存清单并核对备份，操作使用明确来源与目标。若宿主在启动命令前返回 blocked by policy，应与 Windows ACL/文件占用区分，检查拒绝理由及可缩小的操作范围，不盲目提权或通过其他执行器重复被拒绝的动作。
 

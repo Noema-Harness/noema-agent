@@ -2,7 +2,7 @@
 
 ## Context
 
-当前脚本把 GitHub 域名始终加入 `NO_PROXY`。在本机 VPN fake-IP 路由下，直连到 `198.18.0.61` 的 Schannel 握手失败；设置 `http.proxy=http://127.0.0.1:7888` 后仍需覆盖仓库/全局的 Schannel 选择为 OpenSSL。代理路径已实测通过远端读取与推送。
+当前脚本把 GitHub 域名始终加入 `NO_PROXY`。在本机 VPN fake-IP 路由下，直连到 `198.18.0.61` 的 Schannel 握手失败；设置 `http.proxy=http://127.0.0.1:7888` 后仍需覆盖仓库/全局的 Schannel 选择为 OpenSSL。再现时 HTTP/1.1 能读远端但推送会 EOF；显式使用 HTTP/2 后读取与推送均成功。
 
 ## Goals / Non-Goals
 
@@ -13,9 +13,9 @@
 ## Decisions
 
 - 逐一探测进程及用户环境中配置的 HTTP(S) 代理，选择首个 TCP 可达者；选择代理时移除 GitHub 域名的 `NO_PROXY` 绕行，并将环境代理导出给 `gh`。
-- `git-direct.ps1` 仅在探测到代理时，对单次 Git 进程传入代理和 `http.sslBackend=openssl`；不更改持久 Git 配置。无可达代理时才加入 GitHub `NO_PROXY` 并直连。
+- `git-direct.ps1` 仅在探测到代理时，对单次 Git 进程传入代理、`http.sslBackend=openssl` 和 `http.version=HTTP/2`；不更改持久 Git 配置。无可达代理时才加入 GitHub `NO_PROXY` 并直连。
 - 不自动重试写操作。传输失败后先核对远端 ref，避免把结果不明误判为未提交。
-- 入口通过实际 `ls-remote`、推送与远端 SHA 核对验证；`gh` 使用相同代理环境，不增加另一套传输脚本。
+- 入口通过实际 `ls-remote`、HTTP/2 推送与远端 SHA 核对验证；`gh` 使用相同代理环境，不增加另一套传输脚本。
 
 ## Risks / Trade-offs
 

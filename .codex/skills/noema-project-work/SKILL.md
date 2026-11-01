@@ -11,6 +11,6 @@ description: 续接或交付有实质范围的 Noema 工作时，核对代码现
 
 恢复、交付与资料生命周期使用用户级 `development-maintenance` 的相关部分。Noema 的本地约定和独立可用命令见 `docs/PROJECT_OPERATIONS.md`；没有该用户级技能的环境沿用这些仓库约定，不必先安装新工具。
 
-本机 GitHub connector 传输异常时，使用仓库的 `scripts/gh-direct.ps1` / `scripts/git-direct.ps1`。入口优先探测可用的已配置代理并为 Git 选用 OpenSSL；没有可用代理才尝试直连。故障按当次证据判断，源码同步与 Actions 账户阻断分开处理；发布后核对远端 SHA。
+本机 GitHub connector 传输异常时，使用仓库的 `scripts/gh-direct.ps1` / `scripts/git-direct.ps1`。入口优先探测可用的已配置代理并为 Git 选用 OpenSSL/HTTP/2；没有可用代理才尝试直连。故障按当次证据判断，源码同步与 Actions 账户阻断分开处理；发布后核对远端 SHA。
 
 需要本机连接诊断、截图、打包或真实模型执行入口时，读 [运行与平台说明](references/runtime.md)；其他工作不必加载。
