@@ -274,8 +274,20 @@ test('specialists can version only their own assets and reload them next turn', 
     });
     await new Promise((resolve) => setImmediate(resolve));
     await service.active.get('room-engineering-partner')?.done;
+    const assetMessages = requests[2].messages;
+    const assetContextIndex = assetMessages.findIndex((message) =>
+      message.content.includes('"type":"noema_member_assets"'),
+    );
+    const priorUserMessageIndex = assetMessages.findIndex((message) =>
+      message.content.includes('请复盘刚才的研究方式。'),
+    );
+    const currentUserMessageIndex = assetMessages.findIndex((message) =>
+      message.content.includes('这次研究应该如何开始？'),
+    );
+    assert.ok(assetContextIndex > priorUserMessageIndex);
+    assert.ok(assetContextIndex < currentUserMessageIndex);
     assert.ok(
-      requests[2].messages.some(
+      assetMessages.some(
         (message) =>
           message.role === 'user' &&
           message.content.includes('先区分已验证事实与待验证假设'),
