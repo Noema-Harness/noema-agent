@@ -949,10 +949,22 @@ test('a project-group mention uses only that member project session plus public 
     });
     await service.active.get(project.groupRoomId)?.done;
 
-    const prompt = JSON.stringify(seenRequests[0]?.messages ?? []);
+    const firstMessages = seenRequests[0]?.messages ?? [];
+    const prompt = JSON.stringify(firstMessages);
     assert.equal(seenRequests[0].usageOperation, 'social_turn:project_group');
     assert.match(prompt, /目标成员的项目记录：保留价格来源/);
     assert.match(prompt, /群里的公开决定：保留原币种/);
+    const projectSessionIndex = firstMessages.findIndex((message) =>
+      message.content.includes('"type":"noema_project_session"'),
+    );
+    const sharedHistoryIndex = firstMessages.findIndex((message) =>
+      message.content.includes('群里的公开决定：保留原币种'),
+    );
+    const currentMentionIndex = firstMessages.findIndex((message) =>
+      message.content.includes('@工程搭档 请继续核对。'),
+    );
+    assert.ok(projectSessionIndex > sharedHistoryIndex);
+    assert.ok(projectSessionIndex < currentMentionIndex);
     assert.equal(
       seenRequests[0].tools.some(
         (tool) => tool.function.name === 'research_public_sources',

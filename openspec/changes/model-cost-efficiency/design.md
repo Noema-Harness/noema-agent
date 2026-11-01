@@ -104,3 +104,9 @@
 ## Migration Plan
 
 创建独立用量表和索引，不变更已有数据、不回填旧请求。新版本第一次打开数据库时 `CREATE TABLE IF NOT EXISTS`；已有表以幂等 `ALTER TABLE` 增加 `cache_write_tokens`，旧记录保持 `NULL`。若实现回滚，保留用量表即可；应用旧版本忽略新增列。
+
+## 实施记录：2026-11-02 项目请求前缀
+
+源码追踪发现 `SocialChatService` 曾在项目/群聊历史前注入 `noema_project_session`，其中包含当前共享计划、项目资料与本轮研究权限。计划或权限变化会使请求在对话历史之前分叉，削短 DeepSeek 可以复用的共同前缀。现已将项目专属系统指引与快照放在既有历史之后、当前用户消息之前；信息内容及服务端权限检查不变。
+
+定向用例检查请求消息顺序：历史先于项目快照，项目快照先于当前 @ 消息。`social-chat-service.test.mjs` 的 26 项用例全部通过。此改动没有额外模型成本，但本地结构测试不能证明 provider 实际命中率提高；后续只从自然请求的 cache hit/miss usage 确认。
