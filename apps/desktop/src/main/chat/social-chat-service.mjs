@@ -92,6 +92,22 @@ function shouldExposeExistingProjectTools(run, roomHistory, projects) {
   });
 }
 
+function socialTurnUsageOperation(run, room, exposeProjectActions) {
+  if (run.isProjectGrowthTurn) return 'social_turn:member_growth';
+  if (room.kind === 'group') {
+    return run.projectContext?.groupRoomId === room.id
+      ? 'social_turn:project_group'
+      : 'social_turn:group';
+  }
+  if (run.projectContext) return 'social_turn:project_private';
+  if (run.agentId === 'noema' && room.id === 'room-noema') {
+    return exposeProjectActions
+      ? 'social_turn:noema_main:project_tools'
+      : 'social_turn:noema_main';
+  }
+  return 'social_turn:member_private';
+}
+
 /**
  * Sends room-scoped turns to a replaceable chat provider.
  * @param {{store:import('./social-chat-store.mjs').SocialChatStore,provider:import('./openai-compatible-client.mjs').OpenAICompatibleClient,secretStore:{isConfigured:()=>boolean},getSelectedModel:()=>string|null,getRootState:()=>Promise<SocialProviderState>,projectStore?:import('./social-project-store.mjs').SocialProjectStore|null,getProjectSessionContext?:(roomId:string,agentId:string)=>{projectId:string,title:string,brief:string,sourceMessageId:string|null,status:string,agentId:string,roomId:string,groupRoomId:string}|null,getProjectWorkReadiness?:()=>{available:boolean,reason:string|null},isWebSearchConfigured?:()=>boolean,searchPublicSources?:(query:string,signal:AbortSignal,maxSources?:number,options?:{onUsage?:(usage:{requestStatus:string,usageUnits?:number,usageUnit:string,providerRequestId?:string})=>void})=>Promise<object>,recordExternalUsage?:(record:Record<string,unknown>)=>void,fetchProjectSource?:(url:string,options:object)=>Promise<object>,startProjectWork?:(input:{roomId:string,agentId:string,dispatchFromNoema:boolean,prompt:string,sourceMessageId:string},signal:AbortSignal)=>Promise<{accepted:boolean,taskId?:string,reason?:string}>,emit?:(event:object)=>void}} options
@@ -2819,7 +2835,11 @@ export class SocialChatService {
         model,
         messages,
         signal: controller.signal,
-        usageOperation: 'social_turn',
+        usageOperation: socialTurnUsageOperation(
+          run,
+          room,
+          exposeProjectActions,
+        ),
         usageInteractionId: assistantMessageId,
         ...(isProjectGroupRoute || actionTools.length
           ? { maxTokens: 4096 }

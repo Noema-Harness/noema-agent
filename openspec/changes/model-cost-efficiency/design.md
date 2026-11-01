@@ -85,6 +85,13 @@
 - 已把这些按轮变化的片段移到既有聊天历史之后、当前用户消息之前。指令仍在当前问题前提供；工具选择与服务端授权没有改变。
 - 定向用例验证普通历史、动态行动指导、历史检索结果和当前用户消息的顺序。此证据证明请求结构保持连续，不证明实际 cache hit、token 或账单已经改善；继续用自然 provider usage 验证。
 - 重试边界也属于每个有效结果的成本：provider 层一次 `streamChat` 只发送一次请求，但 RootAgent 过去会在 `provider_error` 后自动新建一个 attempt，甚至首轮已输出文本时也会重放。显式 provider 错误可能已经经过计费处理，客户端无法证明重放免费；因此现在只对无输出的 `provider_unavailable` 保留一次恢复，其它错误由用户看到失败与保留内容后显式重试。单次失败请求是否计费仍以 provider usage 为准；缺失时记为未知。
+- 社交账本最初把主聊、成员私聊和群聊共用一个 `social_turn` 操作名。源码显示这些路径可能带有不同系统提示、历史窗口和工具集合，因此原先 23.8% 的聚合命中率只描述混合样本，不能用于定位某个会话的缓存表现。现只记录固定路由类别（如 `social_turn:noema_main`、`social_turn:project_group`），不记录会话 ID 或文本；以后按同一路径比较 hit/miss，避免把不同前缀结构混成一个平均数。
+
+### 工具裁剪与缓存的取舍
+
+- DeepSeek [Chat Completions API](https://api-docs.deepseek.com/api/create-chat-completion/) 只提供 `tools` 与 `tool_choice` 的 `none` / `auto` / `required` / 单个指定函数；没有 OpenAI Responses API 的 `allowed_tools` 子集接口。OpenAI [Prompt caching diagnostics](https://developers.openai.com/api/docs/guides/prompt-caching/diagnostics) 展示了固定工具清单配合 `allowed_tools` 的做法，可以保持工具前缀并按轮限制可调用工具，但不能直接移植到 Noema 当前的 DeepSeek Chat Completions 路径。DeepSeek `tool_choice: "none"` 只能关闭全部工具，不能隐藏部分工具的可调用权。
+- CacheRouter（[2026-08 论文](https://arxiv.org/abs/2608.22708)及[原型源码](https://github.com/qingyiwanchen/CacheRouter)）把稳定的小型核心工具集留给主模型，另加一条路由模型链寻找长尾工具。论文报告来自 55 个功能查询与 30 轮对话的原型结果；这是可行性信号，不能当作 Noema 收益基线。源码显示该路径会再调用路由模型来筛选和执行工具；Noema 现在的工具集合较小，已有按角色缩减 schema 和按情境隐藏无关工具的实现，复制此架构可能用更多模型调用换缓存稳定。
+- 目前不改为“永远发送完整工具清单”：DeepSeek 缓存命中输入单价显著低于未命中，但未命中时大 schema 仍要付费；正确比较应是每个成功用户结果的真实 provider 输入成本与质量，而不是单看命中率。新增的主聊用量标签将“普通主聊”和“暴露既有项目工具的主聊”分开，以免把两种工具前缀结构混作一类；工具定义字符数仍作为解释变量一并记录。
 
 ## Risks / Trade-offs
 

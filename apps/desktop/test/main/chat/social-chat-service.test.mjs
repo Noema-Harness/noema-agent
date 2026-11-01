@@ -42,6 +42,7 @@ test('social chat sends only the selected room transcript and persists the real 
     await service.active.get('room-engineering-partner')?.done;
 
     assert.equal(seenRequests.length, 1);
+    assert.equal(seenRequests[0].usageOperation, 'social_turn:member_private');
     assert.equal(seenRequests[0].tools, undefined);
     assert.equal(seenRequests[0].messages[0].role, 'system');
     assert.equal(
@@ -64,6 +65,7 @@ test('social chat sends only the selected room transcript and persists the real 
     await service.active.get('room-engineering-collaboration')?.done;
 
     assert.equal(seenRequests.length, 2);
+    assert.equal(seenRequests[1].usageOperation, 'social_turn:group');
     assert.equal(
       seenRequests[1].messages.some((message) =>
         message.content.includes('黑麦'),
@@ -127,6 +129,7 @@ test('ordinary Noema conversation omits existing-project tools and restores them
     await service.active.get('room-noema')?.done;
 
     const casualTools = requests[0].tools.map((tool) => tool.function.name);
+    assert.equal(requests[0].usageOperation, 'social_turn:noema_main');
     assert.equal(casualTools.includes('manage_project_plan'), false);
     assert.equal(casualTools.includes('project_group'), false);
     assert.equal(
@@ -154,6 +157,10 @@ test('ordinary Noema conversation omits existing-project tools and restores them
     await service.active.get('room-noema')?.done;
 
     const projectTools = requests[1].tools.map((tool) => tool.function.name);
+    assert.equal(
+      requests[1].usageOperation,
+      'social_turn:noema_main:project_tools',
+    );
     assert.equal(projectTools.includes('manage_project_plan'), true);
     assert.equal(projectTools.includes('project_group'), true);
     assert.ok(
@@ -409,6 +416,7 @@ test('project member replies and retries preserve project scope and user-context
     await service.active.get(projectSession.room.room.id)?.done;
 
     assert.equal(seenRequests.length, 1);
+    assert.equal(seenRequests[0].usageOperation, 'social_turn:project_private');
     const memberPlanTool = seenRequests[0].tools.find(
       (tool) => tool.function.name === 'manage_project_plan',
     );
@@ -942,6 +950,7 @@ test('a project-group mention uses only that member project session plus public 
     await service.active.get(project.groupRoomId)?.done;
 
     const prompt = JSON.stringify(seenRequests[0]?.messages ?? []);
+    assert.equal(seenRequests[0].usageOperation, 'social_turn:project_group');
     assert.match(prompt, /目标成员的项目记录：保留价格来源/);
     assert.match(prompt, /群里的公开决定：保留原币种/);
     assert.equal(
