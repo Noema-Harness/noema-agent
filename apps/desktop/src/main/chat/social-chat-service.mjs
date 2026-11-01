@@ -102,6 +102,33 @@ function isFollowupAcceptance(text) {
   );
 }
 
+function hasConcreteFollowupTime(text) {
+  const normalized = String(text ?? '');
+  if (/\d+\s*(?:分钟|小时|天|周)后/u.test(normalized)) return true;
+  const hasDate =
+    /(?:今天|今晚|今早|明天|明早|明晚|后天|(?:这|下)周[一二三四五六日天]|\d{1,2}月\d{1,2}[日号]|\d{1,2}[日号])/u.test(
+      normalized,
+    );
+  const hasTime =
+    /(?:[01]?\d|2[0-3])[:：][0-5]\d|(?:上午|下午|晚上|中午|凌晨|早上|傍晚)\s*[一二三四五六七八九十\d]+点|[一二三四五六七八九十\d]+点(?:半|[一二三四五六七八九十\d]+分?)?/u.test(
+      normalized,
+    );
+  return hasDate && hasTime;
+}
+
+function needsFollowupTimeClarification(text) {
+  const normalized = String(text ?? '').trim();
+  return (
+    /(?:提醒我|到时提醒|届时提醒|回访我|之后问我|到时候叫我|记得提醒|请提醒|帮我提醒|设置.{0,5}提醒|安排.{0,5}回访)/u.test(
+      normalized,
+    ) &&
+    !/(?:不要|别|不必|无需|不用|不需要|取消|停止).{0,8}(?:提醒|回访)|(?:提醒|回访).{0,8}(?:不要|别|不必|取消)/u.test(
+      normalized,
+    ) &&
+    !hasConcreteFollowupTime(normalized)
+  );
+}
+
 function assistantOfferedFollowup(roomHistory, currentUserText) {
   const currentUserIndex = roomHistory.findLastIndex(
     (message) => message.role === 'user' && message.content === currentUserText,
@@ -118,12 +145,7 @@ function assistantOfferedFollowup(roomHistory, currentUserText) {
     /(?:可以|要不要|我会|我来|需要我).{0,24}(?:提醒|回访|到时再问|之后再问)|(?:提醒|回访).{0,24}(?:可以吗|要不要|好吗)/u.test(
       recent.content ?? '',
     ) &&
-    /(?:今天|今晚|今早|明天|明早|明晚|后天|(?:这|下)周[一二三四五六日天]|\d{1,2}月\d{1,2}[日号]|\d{1,2}[日号]|\d+分钟后|\d+小时后|\d+天后|\d+周后|\d+个月后)/u.test(
-      recent.content ?? '',
-    ) &&
-    /(?:\d{1,2}[:：]\d{2}|(?:上午|下午|晚上|中午)[一二三四五六七八九十\d]+点|\d{1,2}点(?:\d{1,2}分)?|\d+分钟后|\d+小时后)/u.test(
-      recent.content ?? '',
-    ),
+    hasConcreteFollowupTime(recent.content ?? ''),
   );
 }
 
@@ -136,9 +158,10 @@ function userAuthorizedFollowup(text, roomHistory) {
   )
     return false;
   return (
-    /(?:提醒我|到时提醒|届时提醒|回访我|之后问我|到时候叫我|记得提醒|请提醒|帮我提醒|设置.{0,5}提醒|安排.{0,5}回访)/u.test(
+    (/(?:提醒我|到时提醒|届时提醒|回访我|之后问我|到时候叫我|记得提醒|请提醒|帮我提醒|设置.{0,5}提醒|安排.{0,5}回访)/u.test(
       normalizedText,
-    ) ||
+    ) &&
+      hasConcreteFollowupTime(normalizedText)) ||
     (isFollowupAcceptance(text) && assistantOfferedFollowup(roomHistory, text))
   );
 }
@@ -2827,6 +2850,11 @@ export class SocialChatService {
               : '',
             agentId === 'noema' && roomId === 'room-noema'
               ? (this.store.getFirstMeetingContext?.() ?? '')
+              : '',
+            agentId === 'noema' &&
+            roomId === 'room-noema' &&
+            needsFollowupTimeClarification(run.text)
+              ? '用户明确表达了回访意图，但没有给出具体时刻。先自然地问清时间；在用户明确回答前，不创建也不确认回访。'
               : '',
             actionTools.some(
               (tool) => tool.function.name === 'schedule_followup',

@@ -259,6 +259,36 @@ test('a direct acceptance of a specific Noema follow-up offer exposes the remind
       ),
       false,
     );
+
+    service.sendMessage({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '记得提醒我跟进报价。',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await service.active.get('room-noema')?.done;
+    assert.equal(
+      requests[4].tools.some(
+        (tool) => tool.function.name === 'schedule_followup',
+      ),
+      false,
+    );
+    assert.match(requests[4].messages[0].content, /先自然地问清时间/u);
+
+    service.sendMessage({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '提醒我 2026-11-02 跟进报价。',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await service.active.get('room-noema')?.done;
+    assert.equal(
+      requests[5].tools.some(
+        (tool) => tool.function.name === 'schedule_followup',
+      ),
+      false,
+    );
+    assert.match(requests[5].messages[0].content, /先自然地问清时间/u);
   } finally {
     await service.shutdown();
     db.close();
