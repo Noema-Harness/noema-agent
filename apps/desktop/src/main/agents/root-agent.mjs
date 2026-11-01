@@ -1222,10 +1222,11 @@ export class RootAgent {
           });
           return;
         }
+        // Only retry an upstream-unavailable response before any output was
+        // streamed. Provider errors can follow billable processing, so a
+        // hidden replay risks charging twice for one user turn.
         const retryableProviderFailure =
-          error?.code === 'provider_error' ||
-          (error?.code === 'provider_unavailable' &&
-            !providerStreamEmittedText);
+          error?.code === 'provider_unavailable' && !providerStreamEmittedText;
         if (
           providerStreamActive &&
           retryableProviderFailure &&

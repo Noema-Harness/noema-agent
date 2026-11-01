@@ -1581,7 +1581,7 @@ test('preserves a user turn on free-provider rate limits without changing routes
   store.close();
 });
 
-test('retries one committed FreeLLMAPI provider error without losing the user turn', async () => {
+test('does not automatically replay a provider error after partial output', async () => {
   const store = new RootStore(':memory:');
   store.setSelectedModel('auto:noema-free');
   const requestedModels = [];
@@ -1600,14 +1600,11 @@ test('retries one committed FreeLLMAPI provider error without losing the user tu
         const route = `custom/test-route-${calls}`;
         routedVia.push(route);
         input.onRouteMetadata(route);
-        if (calls === 1) {
-          yield '上一次只返回了部分内容。';
-          throw new ModelProviderError(
-            'provider_error',
-            'FreeLLMAPI 流式响应中途失败。',
-          );
-        }
-        yield '重试后完整返回。';
+        yield '上一次只返回了部分内容。';
+        throw new ModelProviderError(
+          'provider_error',
+          'FreeLLMAPI 流式响应中途失败。',
+        );
       },
     },
     secretStore: createSecretStore(),
@@ -1622,27 +1619,24 @@ test('retries one committed FreeLLMAPI provider error without losing the user tu
     .messages.filter(
       (message) => message.turnId === turnId && message.role === 'assistant',
     );
-  assert.equal(calls, 2);
-  assert.deepEqual(requestedModels, ['auto:noema-free', 'auto:noema-free']);
-  assert.deepEqual(routedVia, ['custom/test-route-1', 'custom/test-route-2']);
+  assert.equal(calls, 1);
+  assert.deepEqual(requestedModels, ['auto:noema-free']);
+  assert.deepEqual(routedVia, ['custom/test-route-1']);
   assert.deepEqual(
     assistantMessages.map((message) => [
       message.attempt,
       message.status,
       message.content,
     ]),
-    [
-      [1, 'failed', '上一次只返回了部分内容。'],
-      [2, 'complete', '重试后完整返回。'],
-    ],
+    [[1, 'failed', '上一次只返回了部分内容。']],
   );
-  assert.equal(store.getTurn(turnId).status, 'completed');
-  assert.equal(store.getTurn(turnId).attempt, 2);
+  assert.equal(store.getTurn(turnId).status, 'failed');
+  assert.equal(store.getTurn(turnId).attempt, 1);
   assert.deepEqual(
     events
       .filter((event) => event.type === 'turn-started')
       .map((event) => event.attempt),
-    [1, 2],
+    [1],
   );
   store.close();
 });
@@ -1745,7 +1739,7 @@ test('does not retry provider_unavailable after text was already streamed', asyn
   store.close();
 });
 
-test('stops after one automatic root retry when the stream fails twice', async () => {
+test('stops after one automatic retry when upstream is unavailable twice', async () => {
   const store = new RootStore(':memory:');
   store.setSelectedModel('auto:noema-free');
   let calls = 0;
@@ -1757,10 +1751,11 @@ test('stops after one automatic root retry when the stream fails twice', async (
       ],
       async *streamChat() {
         calls += 1;
-        yield `第 ${calls} 次的未完成片段。`;
+        yield '';
         throw new ModelProviderError(
-          'provider_error',
-          'FreeLLMAPI 流式响应中途失败。',
+          'provider_unavailable',
+          'FreeLLMAPI 上游暂时不可用。',
+          503,
         );
       },
     },
