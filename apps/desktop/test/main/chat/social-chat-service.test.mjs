@@ -1088,6 +1088,18 @@ test('Noema retrieves bounded, redacted history from its own threads only when t
       ),
       false,
     );
+    const ordinaryMessages = requests[0].messages;
+    const ordinaryHistoryIndex = ordinaryMessages.findIndex((message) =>
+      message.content.includes('Minecraft 碰撞箱用体素化工具校准'),
+    );
+    const ordinaryGuidanceIndex = ordinaryMessages.findIndex((message) =>
+      message.content.includes('分享、倾诉、快乐、烦恼和漫谈'),
+    );
+    const ordinaryCurrentUserIndex = ordinaryMessages.findIndex((message) =>
+      message.content.includes('我们先聊聊最近的构思。'),
+    );
+    assert.ok(ordinaryHistoryIndex < ordinaryGuidanceIndex);
+    assert.ok(ordinaryGuidanceIndex < ordinaryCurrentUserIndex);
 
     const recallTurn = service.sendMessage({
       roomId: thread.room.id,
@@ -1102,6 +1114,20 @@ test('Noema retrieves bounded, redacted history from its own threads only when t
       message.content.includes('"type":"noema_history_recall"'),
     );
     assert.ok(recall);
+    const recallMessages = requests[1].messages;
+    const continuedHistoryIndex = recallMessages.findIndex((message) =>
+      message.content.includes('检修记录仍在主题旧版面板继续。'),
+    );
+    const recallContextIndex = recallMessages.findIndex((message) =>
+      message.content.includes('"type":"noema_history_recall"'),
+    );
+    const recallUserIndex = recallMessages.findIndex((message) =>
+      message.content.includes(
+        '你还记得我们之前讨论 Minecraft 碰撞箱怎么校准吗？',
+      ),
+    );
+    assert.ok(continuedHistoryIndex < recallContextIndex);
+    assert.ok(recallContextIndex < recallUserIndex);
     const reply = store
       .getRoomSnapshot(thread.room.id)
       .messages.find((message) => message.id === recallTurn.messageId);
