@@ -17,10 +17,13 @@ function response(payload, { status = 200, headers = {} } = {}) {
 
 test('Tavily uses one bounded basic search and returns only safe, short results', async () => {
   let request;
+  const usage = [];
   const result = await searchWeb('最新 AI 新闻', 'secret-key', {
     fetchImpl: async (url, options) => {
       request = { url, options };
       return response({
+        usage: { credits: 1 },
+        request_id: 'tavily-request-1',
         results: [
           {
             title: '可信网页',
@@ -41,6 +44,7 @@ test('Tavily uses one bounded basic search and returns only safe, short results'
         ],
       });
     },
+    onUsage: (record) => usage.push(record),
   });
 
   assert.equal(request.url, 'https://api.tavily.com/search');
@@ -51,9 +55,18 @@ test('Tavily uses one bounded basic search and returns only safe, short results'
     max_results: 3,
     include_answer: false,
     include_raw_content: false,
+    include_usage: true,
   });
   assert.equal(result.results.length, WEB_SEARCH_LIMITS.maxResults);
   assert.equal(result.results[0].url, 'https://example.com/news');
+  assert.deepEqual(usage, [
+    {
+      requestStatus: 'completed',
+      usageUnits: 1,
+      usageUnit: 'credits',
+      providerRequestId: 'tavily-request-1',
+    },
+  ]);
   assert.deepEqual(Object.keys(result.results[0]).sort(), [
     'id',
     'title',
@@ -63,15 +76,25 @@ test('Tavily uses one bounded basic search and returns only safe, short results'
 });
 
 test('Tavily errors do not leak provider response bodies or credentials', async () => {
+  const usage = [];
   await assert.rejects(
     searchWeb('当前资料', 'secret-key', {
       fetchImpl: async () =>
         new Response('secret-key provider details', { status: 429 }),
+      onUsage: (record) => usage.push(record),
     }),
     (error) =>
       error.message === '网页搜索额度或频率限制已达到。' &&
       !error.message.includes('secret-key'),
   );
+  assert.deepEqual(usage, [
+    {
+      requestStatus: 'failed',
+      usageUnits: undefined,
+      usageUnit: 'credits',
+      providerRequestId: undefined,
+    },
+  ]);
 });
 
 test('Tavily search rejects invalid queries before making a request', async () => {

@@ -57,11 +57,11 @@ function projectWorkStartError(error) {
 
 /**
  * Sends room-scoped turns to a replaceable chat provider.
- * @param {{store:import('./social-chat-store.mjs').SocialChatStore,provider:import('./openai-compatible-client.mjs').OpenAICompatibleClient,secretStore:{isConfigured:()=>boolean},getSelectedModel:()=>string|null,getRootState:()=>Promise<SocialProviderState>,projectStore?:import('./social-project-store.mjs').SocialProjectStore|null,getProjectSessionContext?:(roomId:string,agentId:string)=>{projectId:string,title:string,brief:string,sourceMessageId:string|null,status:string,agentId:string,roomId:string,groupRoomId:string}|null,getProjectWorkReadiness?:()=>{available:boolean,reason:string|null},isWebSearchConfigured?:()=>boolean,searchPublicSources?:(query:string,signal:AbortSignal,maxSources?:number)=>Promise<object>,fetchProjectSource?:(url:string,options:object)=>Promise<object>,startProjectWork?:(input:{roomId:string,agentId:string,dispatchFromNoema:boolean,prompt:string,sourceMessageId:string},signal:AbortSignal)=>Promise<{accepted:boolean,taskId?:string,reason?:string}>,emit?:(event:object)=>void}} options
+ * @param {{store:import('./social-chat-store.mjs').SocialChatStore,provider:import('./openai-compatible-client.mjs').OpenAICompatibleClient,secretStore:{isConfigured:()=>boolean},getSelectedModel:()=>string|null,getRootState:()=>Promise<SocialProviderState>,projectStore?:import('./social-project-store.mjs').SocialProjectStore|null,getProjectSessionContext?:(roomId:string,agentId:string)=>{projectId:string,title:string,brief:string,sourceMessageId:string|null,status:string,agentId:string,roomId:string,groupRoomId:string}|null,getProjectWorkReadiness?:()=>{available:boolean,reason:string|null},isWebSearchConfigured?:()=>boolean,searchPublicSources?:(query:string,signal:AbortSignal,maxSources?:number,options?:{onUsage?:(usage:{requestStatus:string,usageUnits?:number,usageUnit:string,providerRequestId?:string})=>void})=>Promise<object>,recordExternalUsage?:(record:Record<string,unknown>)=>void,fetchProjectSource?:(url:string,options:object)=>Promise<object>,startProjectWork?:(input:{roomId:string,agentId:string,dispatchFromNoema:boolean,prompt:string,sourceMessageId:string},signal:AbortSignal)=>Promise<{accepted:boolean,taskId?:string,reason?:string}>,emit?:(event:object)=>void}} options
  */
 export class SocialChatService {
   /**
-   * @param {{store:import('./social-chat-store.mjs').SocialChatStore,provider:import('./openai-compatible-client.mjs').OpenAICompatibleClient,secretStore:{isConfigured:()=>boolean},getSelectedModel:()=>string|null,getRootState:()=>Promise<SocialProviderState>,projectStore?:import('./social-project-store.mjs').SocialProjectStore|null,getProjectSessionContext?:(roomId:string,agentId:string)=>{projectId:string,title:string,brief:string,sourceMessageId:string|null,status:string,agentId:string,roomId:string,groupRoomId:string}|null,getProjectWorkReadiness?:()=>{available:boolean,reason:string|null},isWebSearchConfigured?:()=>boolean,searchPublicSources?:(query:string,signal:AbortSignal,maxSources?:number)=>Promise<object>,fetchProjectSource?:(url:string,options:object)=>Promise<object>,startProjectWork?:(input:{roomId:string,agentId:string,dispatchFromNoema:boolean,prompt:string,sourceMessageId:string},signal:AbortSignal)=>Promise<{accepted:boolean,taskId?:string,reason?:string}>,emit?:(event:object)=>void}} options
+   * @param {{store:import('./social-chat-store.mjs').SocialChatStore,provider:import('./openai-compatible-client.mjs').OpenAICompatibleClient,secretStore:{isConfigured:()=>boolean},getSelectedModel:()=>string|null,getRootState:()=>Promise<SocialProviderState>,projectStore?:import('./social-project-store.mjs').SocialProjectStore|null,getProjectSessionContext?:(roomId:string,agentId:string)=>{projectId:string,title:string,brief:string,sourceMessageId:string|null,status:string,agentId:string,roomId:string,groupRoomId:string}|null,getProjectWorkReadiness?:()=>{available:boolean,reason:string|null},isWebSearchConfigured?:()=>boolean,searchPublicSources?:(query:string,signal:AbortSignal,maxSources?:number,options?:{onUsage?:(usage:{requestStatus:string,usageUnits?:number,usageUnit:string,providerRequestId?:string})=>void})=>Promise<object>,recordExternalUsage?:(record:Record<string,unknown>)=>void,fetchProjectSource?:(url:string,options:object)=>Promise<object>,startProjectWork?:(input:{roomId:string,agentId:string,dispatchFromNoema:boolean,prompt:string,sourceMessageId:string},signal:AbortSignal)=>Promise<{accepted:boolean,taskId?:string,reason?:string}>,emit?:(event:object)=>void}} options
    */
   constructor({
     store,
@@ -78,6 +78,7 @@ export class SocialChatService {
     }),
     isWebSearchConfigured = () => false,
     searchPublicSources = null,
+    recordExternalUsage = () => {},
     fetchProjectSource = fetchWebSource,
     emit = () => {},
   }) {
@@ -113,6 +114,7 @@ export class SocialChatService {
     this.getProjectWorkReadiness = getProjectWorkReadiness;
     this.isWebSearchConfigured = isWebSearchConfigured;
     this.searchPublicSources = searchPublicSources;
+    this.recordExternalUsage = recordExternalUsage;
     this.fetchProjectSource = fetchProjectSource;
     this.emit = emit;
     this.active = new Map();
@@ -515,6 +517,15 @@ export class SocialChatService {
                 input.query.trim(),
                 run.controller.signal,
                 Math.max(0, 3 - alreadyRead),
+                {
+                  onUsage: (usage) =>
+                    this.recordExternalUsage({
+                      service: 'api.tavily.com',
+                      operation: 'search',
+                      interactionId: run.assistantMessageId,
+                      ...usage,
+                    }),
+                },
               );
               const results = lookup.results.map((item) => {
                 if (item.status === 'read' && item.source) {

@@ -94,7 +94,12 @@ async function readLimitedBody(response) {
 export async function searchWeb(
   query,
   apiKey,
-  { fetchImpl = fetch, signal, timeoutMs = REQUEST_TIMEOUT_MS } = {},
+  {
+    fetchImpl = fetch,
+    signal,
+    timeoutMs = REQUEST_TIMEOUT_MS,
+    onUsage = () => {},
+  } = {},
 ) {
   if (typeof apiKey !== 'string' || !apiKey.trim()) {
     throw new Error('网页搜索服务尚未配置。');
@@ -112,6 +117,18 @@ export async function searchWeb(
   const requestSignal = signal
     ? AbortSignal.any([signal, timeoutSignal])
     : timeoutSignal;
+  const recordUsage = (requestStatus, payload = null) => {
+    try {
+      onUsage({
+        requestStatus,
+        usageUnits: payload?.usage?.credits,
+        usageUnit: 'credits',
+        providerRequestId: payload?.request_id,
+      });
+    } catch {
+      // Usage bookkeeping must not change the user's search result.
+    }
+  };
   try {
     response = await fetchImpl(SEARCH_ENDPOINT, {
       method: 'POST',
@@ -126,10 +143,12 @@ export async function searchWeb(
         max_results: MAX_RESULTS,
         include_answer: false,
         include_raw_content: false,
+        include_usage: true,
       }),
       signal: requestSignal,
     });
   } catch (error) {
+    recordUsage(signal?.aborted ? 'interrupted' : 'failed');
     if (signal?.aborted) throw error;
     throw new Error(
       timeoutSignal.aborted || error?.name === 'TimeoutError'
@@ -146,6 +165,7 @@ export async function searchWeb(
   try {
     text = await readLimitedBody(response);
   } catch (error) {
+    recordUsage(signal?.aborted ? 'interrupted' : 'failed');
     if (signal?.aborted) throw error;
     if (timeoutSignal.aborted) throw new Error('网页搜索超时。');
     if (
@@ -156,6 +176,7 @@ export async function searchWeb(
     throw new Error('网页搜索响应无法读取。');
   }
   if (!response.ok) {
+    recordUsage('failed');
     if (response.status === 401 || response.status === 403) {
       throw new Error('网页搜索凭据无效或服务尚未启用。');
     }
@@ -169,8 +190,10 @@ export async function searchWeb(
   try {
     payload = JSON.parse(text);
   } catch {
+    recordUsage('failed');
     throw new Error('网页搜索服务返回了无法读取的内容。');
   }
+  recordUsage('completed', payload);
   const results = sanitizeResults(payload);
   return {
     fetchedAt: new Date().toISOString(),
@@ -185,7 +208,7 @@ export async function searchWeb(
 /**
  * @param {string} query
  * @param {string} apiKey
- * @param {{searchImpl?:typeof searchWeb,fetchSourceImpl?:typeof fetchWebSource,signal?:AbortSignal,maxSources?:number}} options
+ * @param {{searchImpl?:typeof searchWeb,fetchSourceImpl?:typeof fetchWebSource,signal?:AbortSignal,maxSources?:number,onUsage?:(usage:{requestStatus:string,usageUnits?:number,usageUnit:string,providerRequestId?:string})=>void}} options
  */
 export async function searchAndReadWeb(
   query,
@@ -195,9 +218,10 @@ export async function searchAndReadWeb(
     fetchSourceImpl = fetchWebSource,
     signal,
     maxSources = MAX_EXTERNAL_SOURCES_PER_MESSAGE,
+    onUsage,
   } = {},
 ) {
-  const discovery = await searchImpl(query, apiKey, { signal });
+  const discovery = await searchImpl(query, apiKey, { signal, onUsage });
   const allowedRedirectHosts = discovery.results.flatMap((item) => {
     try {
       return [new URL(item.url).hostname];

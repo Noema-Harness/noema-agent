@@ -932,6 +932,7 @@ test('Noema searches only on current-source requests when configured and attache
   store.setSelectedModel('test-model');
   let calls = 0;
   let firstRequest;
+  const externalUsage = [];
   const webSearchSecretStore = createSecretStore();
   const agent = new RootAgent({
     store,
@@ -962,9 +963,15 @@ test('Noema searches only on current-source requests when configured and attache
     },
     secretStore: createSecretStore(),
     webSearchSecretStore,
-    searchWebImpl: async (query, key) => {
+    searchWebImpl: async (query, key, { onUsage }) => {
       assert.equal(query, '本周 AI 新闻');
       assert.equal(key, 'test-key');
+      onUsage({
+        requestStatus: 'completed',
+        usageUnits: 1,
+        usageUnit: 'credits',
+        providerRequestId: 'tavily-root-1',
+      });
       return {
         results: [
           {
@@ -975,6 +982,7 @@ test('Noema searches only on current-source requests when configured and attache
         ],
       };
     },
+    recordExternalUsage: (record) => externalUsage.push(record),
     fetchWebSourceImpl: async (url, options) => {
       assert.equal(url, 'https://example.com/news');
       assert.deepEqual(options.allowedRedirectHosts, ['example.com']);
@@ -1009,6 +1017,17 @@ test('Noema searches only on current-source requests when configured and attache
   assert.equal(assistant.externalSources[0].citationId, 'S1');
   assert.equal(assistant.externalSourcesIncluded, true);
   assert.match(assistant.content, /搜索到的来源/u);
+  assert.deepEqual(externalUsage, [
+    {
+      service: 'api.tavily.com',
+      operation: 'search',
+      interactionId: turnId,
+      requestStatus: 'completed',
+      usageUnits: 1,
+      usageUnit: 'credits',
+      providerRequestId: 'tavily-root-1',
+    },
+  ]);
   assert.equal(calls, 2);
   await agent.shutdown();
   store.close();

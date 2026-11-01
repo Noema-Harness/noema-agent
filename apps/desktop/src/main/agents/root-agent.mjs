@@ -331,7 +331,7 @@ function incompleteWorkerResponse(event) {
 }
 
 export class RootAgent {
-  /** @param {{store:import('./root-store.mjs').RootStore,provider:import('./openai-compatible-client.mjs').OpenAICompatibleClient,secretStore:{get:()=>string|null,getBaseUrl:()=>string|null,isConfigured:()=>boolean,set:(value:string)=>void,setConfiguration:(input:{apiKey:string,baseUrl:string})=>void,clear:()=>void},webSearchSecretStore?:{get:()=>string|null,isConfigured:()=>boolean,set:(value:string)=>void,clear:()=>void},searchWebImpl?:typeof searchWeb,dshAdapter?:import('./dsh-headless-adapter.mjs').DshHeadlessAdapter|null,dshRuntimeError?:string|null,codexAdapter?:import('./codex-app-server-adapter.mjs').CodexAppServerAdapter|null,allowRootActions?:boolean,allowHistorySearch?:boolean,fetchWebSourceImpl?:typeof fetchWebSource,emit?:(event:object)=>void}} options */
+  /** @param {{store:import('./root-store.mjs').RootStore,provider:import('./openai-compatible-client.mjs').OpenAICompatibleClient,secretStore:{get:()=>string|null,getBaseUrl:()=>string|null,isConfigured:()=>boolean,set:(value:string)=>void,setConfiguration:(input:{apiKey:string,baseUrl:string})=>void,clear:()=>void},webSearchSecretStore?:{get:()=>string|null,isConfigured:()=>boolean,set:(value:string)=>void,clear:()=>void},searchWebImpl?:typeof searchWeb,dshAdapter?:import('./dsh-headless-adapter.mjs').DshHeadlessAdapter|null,dshRuntimeError?:string|null,codexAdapter?:import('./codex-app-server-adapter.mjs').CodexAppServerAdapter|null,allowRootActions?:boolean,allowHistorySearch?:boolean,fetchWebSourceImpl?:typeof fetchWebSource,recordExternalUsage?:(record:Record<string,unknown>)=>void,emit?:(event:object)=>void}} options */
   constructor({
     store,
     provider,
@@ -349,6 +349,7 @@ export class RootAgent {
     allowRootActions = true,
     allowHistorySearch = true,
     fetchWebSourceImpl = fetchWebSource,
+    recordExternalUsage = () => {},
     delayImpl = waitWithAbort,
     emit = () => {},
   }) {
@@ -363,6 +364,7 @@ export class RootAgent {
     this.allowRootActions = allowRootActions;
     this.allowHistorySearch = allowHistorySearch;
     this.fetchWebSourceImpl = fetchWebSourceImpl;
+    this.recordExternalUsage = recordExternalUsage;
     this.delayImpl = delayImpl;
     this.emit = emit;
     this.active = null;
@@ -1543,6 +1545,13 @@ export class RootAgent {
               searchImpl: this.searchWebImpl,
               fetchSourceImpl: this.fetchWebSourceImpl,
               signal,
+              onUsage: (usage) =>
+                this.recordExternalUsage({
+                  service: 'api.tavily.com',
+                  operation: 'search',
+                  interactionId: turn.id,
+                  ...usage,
+                }),
               maxSources: Math.max(
                 0,
                 MAX_EXTERNAL_SOURCES_PER_MESSAGE - externalSources.length,

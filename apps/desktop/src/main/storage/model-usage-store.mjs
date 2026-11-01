@@ -55,6 +55,20 @@ export class ModelUsageStore {
         ON model_usage_records(created_at DESC);
       CREATE INDEX IF NOT EXISTS model_usage_records_group
         ON model_usage_records(provider_host, model, operation, created_at);
+      CREATE TABLE IF NOT EXISTS external_usage_records (
+        id TEXT PRIMARY KEY,
+        created_at TEXT NOT NULL,
+        service TEXT NOT NULL,
+        operation TEXT NOT NULL,
+        interaction_id TEXT,
+        request_status TEXT NOT NULL CHECK (request_status IN ('completed', 'failed', 'interrupted')),
+        usage_received INTEGER NOT NULL CHECK (usage_received IN (0, 1)),
+        usage_units INTEGER CHECK (usage_units IS NULL OR usage_units >= 0),
+        usage_unit TEXT,
+        provider_request_id TEXT
+      );
+      CREATE INDEX IF NOT EXISTS external_usage_records_interaction
+        ON external_usage_records(interaction_id, created_at DESC);
     `);
     const columns = new Set(
       this.db
@@ -92,6 +106,12 @@ export class ModelUsageStore {
         cache_write_tokens, reasoning_tokens, provider_cost_json, request_characters,
         tool_definition_characters, message_count, tool_count
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    this.insertExternalUsage = this.db.prepare(`
+      INSERT INTO external_usage_records (
+        id, created_at, service, operation, interaction_id, request_status,
+        usage_received, usage_units, usage_unit, provider_request_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
   }
 
@@ -147,6 +167,71 @@ export class ModelUsageStore {
       row.toolCount,
     );
     return row;
+  }
+
+  /** @param {Record<string, unknown>} record */
+  recordExternal(record) {
+    if (!record || typeof record !== 'object') {
+      throw new TypeError('External usage record must be an object');
+    }
+    const requestStatus = ['completed', 'failed', 'interrupted'].includes(
+      record.requestStatus,
+    )
+      ? record.requestStatus
+      : 'completed';
+    const usageUnits = count(record.usageUnits);
+    const row = {
+      id: randomUUID(),
+      createdAt: new Date().toISOString(),
+      service: shortText(record.service, 'unknown', 100),
+      operation: shortText(record.operation, 'unspecified', 80),
+      interactionId: shortText(record.interactionId, null, 120),
+      requestStatus,
+      usageReceived: usageUnits === null ? 0 : 1,
+      usageUnits,
+      usageUnit:
+        usageUnits === null ? null : shortText(record.usageUnit, 'units', 40),
+      providerRequestId: shortText(record.providerRequestId, null, 200),
+    };
+    this.insertExternalUsage.run(
+      row.id,
+      row.createdAt,
+      row.service,
+      row.operation,
+      row.interactionId,
+      row.requestStatus,
+      row.usageReceived,
+      row.usageUnits,
+      row.usageUnit,
+      row.providerRequestId,
+    );
+    return row;
+  }
+
+  /** @param {{limit?:number}} [options] */
+  getExternalInteractionSummary({ limit = 100 } = {}) {
+    const safeLimit = Math.max(1, Math.min(count(limit) ?? 100, 500));
+    return this.db
+      .prepare(`
+        SELECT interaction_id AS interactionId,
+          service,
+          operation,
+          usage_unit AS usageUnit,
+          MIN(created_at) AS firstRequestAt,
+          COUNT(*) AS requests,
+          SUM(CASE WHEN request_status = 'completed' THEN 1 ELSE 0 END) AS completedRequests,
+          SUM(CASE WHEN request_status = 'failed' THEN 1 ELSE 0 END) AS failedRequests,
+          SUM(CASE WHEN request_status = 'interrupted' THEN 1 ELSE 0 END) AS interruptedRequests,
+          SUM(usage_received) AS usageReportedRequests,
+          SUM(usage_units) AS usageUnits,
+          COUNT(provider_request_id) AS requestIdCount
+        FROM external_usage_records
+        WHERE interaction_id IS NOT NULL
+        GROUP BY interaction_id, service, operation, usage_unit
+        ORDER BY firstRequestAt DESC
+        LIMIT ?
+      `)
+      .all(safeLimit);
   }
 
   /** @param {{since?:string|null}} [options] */

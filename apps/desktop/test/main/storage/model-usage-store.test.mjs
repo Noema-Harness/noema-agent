@@ -89,6 +89,53 @@ test('preserves missing and invalid usage as unknown rather than zero', () => {
   }
 });
 
+test('records external search credits by interaction without storing query text', () => {
+  const db = new Database(':memory:');
+  try {
+    const store = new ModelUsageStore(db);
+    store.recordExternal({
+      service: 'api.tavily.com',
+      operation: 'search',
+      interactionId: 'turn-search',
+      requestStatus: 'completed',
+      usageUnits: 1,
+      usageUnit: 'credits',
+      providerRequestId: 'tavily-request-1',
+      query: 'private user query that must not be stored',
+    });
+    store.recordExternal({
+      service: 'api.tavily.com',
+      operation: 'search',
+      interactionId: 'turn-search',
+      requestStatus: 'failed',
+    });
+
+    const rows = store.getExternalInteractionSummary();
+    const reported = rows.find((row) => row.usageUnit === 'credits');
+    const unknown = rows.find((row) => row.usageUnit === null);
+    assert.equal(reported.interactionId, 'turn-search');
+    assert.equal(reported.service, 'api.tavily.com');
+    assert.equal(reported.requests, 1);
+    assert.equal(reported.completedRequests, 1);
+    assert.equal(reported.usageReportedRequests, 1);
+    assert.equal(reported.usageUnits, 1);
+    assert.equal(reported.requestIdCount, 1);
+    assert.equal(unknown.interactionId, 'turn-search');
+    assert.equal(unknown.requests, 1);
+    assert.equal(unknown.failedRequests, 1);
+    assert.equal(unknown.usageReportedRequests, 0);
+    assert.equal(unknown.usageUnits, null);
+    assert.equal(
+      JSON.stringify(
+        db.prepare('SELECT * FROM external_usage_records').all(),
+      ).includes('private user query'),
+      false,
+    );
+  } finally {
+    db.close();
+  }
+});
+
 test('adds the cache-write bucket to an existing usage table without losing rows', () => {
   const db = new Database(':memory:');
   try {

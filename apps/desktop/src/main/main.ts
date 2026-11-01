@@ -728,6 +728,7 @@ async function startNoema() {
       provider,
       secretStore: providerSecretStore,
       webSearchSecretStore,
+      recordExternalUsage: (record) => modelUsageStore.recordExternal(record),
       dshAdapter,
       dshRuntimeError,
       codexAdapter: codexAdapter.available ? codexAdapter : null,
@@ -1288,10 +1289,12 @@ async function startNoema() {
       getProjectSessionContext: (roomId, agentId) =>
         socialProjectStore?.getProjectSessionContext(roomId, agentId) ?? null,
       isWebSearchConfigured: () => webSearchSecretStore.isConfigured(),
-      searchPublicSources: (query, signal, maxSources) =>
+      recordExternalUsage: (record) => modelUsageStore.recordExternal(record),
+      searchPublicSources: (query, signal, maxSources, options) =>
         searchAndReadWeb(query, webSearchSecretStore.get(), {
           signal,
           maxSources,
+          ...options,
         }),
       startProjectWork: ({ dispatchFromNoema, ...input }, signal) =>
         dispatchFromNoema
