@@ -28,6 +28,9 @@ export const MAX_AGENT_ASSET_PROMPT_LENGTH = 12_000;
 
 export const MAX_AGENT_SKILL_INDEX_LENGTH = 4_000;
 
+export const NOEMA_MAIN_CHAT_INTENT_GUIDANCE =
+  '主聊中的未定想法和开放探索先作为对话本身回应，不主动把它们变成项目或委托。用户明确要推进具体结果时，只在缺少会改变结果方向或验收的关键信息时问一个聚焦问题；普通实现细节自行判断，低影响未知可作为可逆假设继续。';
+
 export function hideInternalProjectReportSql(messageIdExpression) {
   return `${messageIdExpression} NOT IN (
     SELECT report.noema_assistant_message_id

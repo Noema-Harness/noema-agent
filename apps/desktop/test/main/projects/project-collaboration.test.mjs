@@ -1678,6 +1678,56 @@ test('forming a team publishes common background without sequential consultation
   }
 });
 
+test('an uncommitted idea stays in Noema chat while team creation is available', async () => {
+  let request;
+  const f = setup({
+    async *streamChat(input) {
+      request = input;
+      yield '先聊聊这个念头本身，不需要现在就把它变成项目。';
+    },
+  });
+  const originalProjects = f.projects
+    .listProjects()
+    .map((project) => project.id);
+  const originalAgents = f.store.listAgents().map((agent) => agent.id);
+  f.db
+    .prepare('UPDATE social_agents SET system_prompt = ? WHERE id = ?')
+    .run('existing installation prompt', 'noema');
+  try {
+    f.service.sendMessage({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '我最近在想办场摄影小聚，不过还没决定要不要做。',
+    });
+    await settle(f.service);
+
+    assert.ok(
+      request.tools.some(
+        (entry) => entry.function.name === 'create_project_team',
+      ),
+      'team capability is present but does not imply a project should be created',
+    );
+    const noemaPrompt = request.messages
+      .filter((message) => message.role === 'system')
+      .map((message) => message.content)
+      .join('\n');
+    assert.match(noemaPrompt, /existing installation prompt/u);
+    assert.match(noemaPrompt, /未定想法和开放探索先作为对话本身回应/u);
+    assert.match(noemaPrompt, /会改变结果方向或验收的关键信息/u);
+    assert.deepEqual(
+      f.projects.listProjects().map((project) => project.id),
+      originalProjects,
+    );
+    assert.deepEqual(
+      f.store.listAgents().map((agent) => agent.id),
+      originalAgents,
+    );
+  } finally {
+    await f.service.shutdown();
+    f.db.close();
+  }
+});
+
 test('continuing a blocked project can add one project-work member and start its work', async () => {
   let calls = 0;
   let firstRequestMessages;

@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { userReferencesPastNoemaContext } from '../../shared/search/transcript-search.mjs';
 import { resolveGroupRecipient } from '../../shared/chat/group-mentions.mjs';
 import { ProjectCollaborationStore } from '../projects/project-collaboration-store.mjs';
+import { NOEMA_MAIN_CHAT_INTENT_GUIDANCE } from './records.mjs';
 import {
   CALCULATE_EXPRESSION_TOOL,
   calculateExpression,
@@ -2652,6 +2653,9 @@ export class SocialChatService {
           role: 'system',
           content: [
             agent.systemPrompt,
+            agentId === 'noema' && roomId === 'room-noema'
+              ? NOEMA_MAIN_CHAT_INTENT_GUIDANCE
+              : '',
             agentId === 'noema' && roomId === 'room-noema'
               ? (this.store.getFirstMeetingContext?.() ?? '')
               : '',
