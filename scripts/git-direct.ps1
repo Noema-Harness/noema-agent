@@ -9,5 +9,9 @@ if (-not $gitCommand) {
 }
 
 . (Join-Path $PSScriptRoot 'github-env.ps1')
-& $gitCommand.Source @GitArgs
+if ($env:CODEX_GITHUB_PROXY) {
+  & $gitCommand.Source -c "http.proxy=$env:CODEX_GITHUB_PROXY" -c 'http.sslBackend=openssl' @GitArgs
+} else {
+  & $gitCommand.Source @GitArgs
+}
 exit $LASTEXITCODE
