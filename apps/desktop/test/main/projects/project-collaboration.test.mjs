@@ -1680,6 +1680,7 @@ test('forming a team publishes common background without sequential consultation
 
 test('continuing a blocked project can add one project-work member and start its work', async () => {
   let calls = 0;
+  let firstRequestMessages;
   let addedAgentId;
   let exposedExecutorCalls = 0;
   let addedMemberState;
@@ -1690,6 +1691,7 @@ test('continuing a blocked project can add one project-work member and start its
       async *streamChat(input) {
         calls++;
         if (calls === 1) {
+          firstRequestMessages = structuredClone(input.messages);
           const team = input.tools.find(
             (entry) => entry.function.name === 'create_project_team',
           );
@@ -1714,6 +1716,16 @@ test('continuing a blocked project can add one project-work member and start its
             ],
           });
         } else if (calls === 2) {
+          assert.deepEqual(
+            input.messages.slice(0, firstRequestMessages.length),
+            firstRequestMessages,
+            'DeepSeek continuations preserve the complete prior request prefix',
+          );
+          assert.match(
+            input.messages.at(-1)?.content ?? '',
+            /实施工程师/u,
+            'a changed team snapshot is appended after earlier request content',
+          );
           const result = input.messages.findLast(
             (message) => message.role === 'tool',
           );
@@ -1739,6 +1751,11 @@ test('continuing a blocked project can add one project-work member and start its
             reason: '原阻塞是缺少执行能力；新增的项目执行成员已补足该条件。',
           });
         } else {
+          assert.deepEqual(
+            input.messages.slice(0, firstRequestMessages.length),
+            firstRequestMessages,
+            'later DeepSeek continuations keep the original cacheable prefix',
+          );
           if (
             input.messages.some(
               (message) =>
@@ -1795,6 +1812,7 @@ test('continuing a blocked project can add one project-work member and start its
       onProjectWorkStart: (input) => startedWork.push(input),
     },
   );
+  f.service.provider.baseUrl = 'https://api.deepseek.com/v1';
   f.service.collaboration.planChanged = () => ({
     delivered: 0,
     limited: false,

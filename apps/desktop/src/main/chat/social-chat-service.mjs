@@ -108,6 +108,28 @@ function socialTurnUsageOperation(run, room, exposeProjectActions) {
   return 'social_turn:member_private';
 }
 
+function usesDeepSeekChatCompletions(provider) {
+  try {
+    return new URL(provider?.baseUrl).hostname === 'api.deepseek.com';
+  } catch {
+    return false;
+  }
+}
+
+function projectChoicesSnapshotValue(content) {
+  return content
+    .replace(
+      '\n最新快照取代本轮较早的项目工具对象快照；这只是运行状态，不是新的用户要求。',
+      '',
+    )
+    .trim();
+}
+
+function latestProjectChoicesSnapshot(toolChoices) {
+  const content = toolChoices || '当前项目工具可选对象：当前没有可用对象。';
+  return `${content}\n最新快照取代本轮较早的项目工具对象快照；这只是运行状态，不是新的用户要求。`;
+}
+
 function compactProjectPlanWriteReceipt(plan, operation, input) {
   const receipt = {
     applied: true,
@@ -1047,23 +1069,55 @@ export class SocialChatService {
                 .slice(0, this.projectSourceReadBudget(run))
             : [],
       });
-      const priorToolChoicesIndex = messages.findIndex(
-        (message) =>
-          message.role === 'system' &&
-          message.content.startsWith('当前项目工具可选对象：'),
-      );
-      if (priorToolChoicesIndex >= 0) {
-        messages.splice(priorToolChoicesIndex, 1);
-      }
-      if (toolChoices) {
-        const latestUserMessageIndex = messages.findLastIndex(
-          (message) => message.role === 'user',
-        );
-        messages.splice(
-          latestUserMessageIndex < 0 ? messages.length : latestUserMessageIndex,
-          0,
-          { role: 'system', content: toolChoices },
-        );
+      const isDeepSeekChat = usesDeepSeekChatCompletions(this.provider);
+      const priorToolChoicesIndex = isDeepSeekChat
+        ? messages.findLastIndex(
+            (message) =>
+              message.role === 'system' &&
+              message.content.startsWith('当前项目工具可选对象：'),
+          )
+        : messages.findIndex(
+            (message) =>
+              message.role === 'system' &&
+              message.content.startsWith('当前项目工具可选对象：'),
+          );
+      if (isDeepSeekChat) {
+        const previousChoices =
+          priorToolChoicesIndex >= 0
+            ? projectChoicesSnapshotValue(
+                messages[priorToolChoicesIndex].content,
+              )
+            : '';
+        const nextChoices =
+          toolChoices || '当前项目工具可选对象：当前没有可用对象。';
+        if (
+          (toolChoices || priorToolChoicesIndex >= 0) &&
+          previousChoices !== nextChoices
+        ) {
+          // DeepSeek Chat Completions accepts system messages mid-history.
+          // Appending a changed snapshot preserves the exact cached request
+          // prefix; replacing the earlier snapshot would rewrite it.
+          messages.push({
+            role: 'system',
+            content: latestProjectChoicesSnapshot(toolChoices),
+          });
+        }
+      } else {
+        if (priorToolChoicesIndex >= 0) {
+          messages.splice(priorToolChoicesIndex, 1);
+        }
+        if (toolChoices) {
+          const latestUserMessageIndex = messages.findLastIndex(
+            (message) => message.role === 'user',
+          );
+          messages.splice(
+            latestUserMessageIndex < 0
+              ? messages.length
+              : latestUserMessageIndex,
+            0,
+            { role: 'system', content: toolChoices },
+          );
+        }
       }
       const continuationWorkTool =
         continuationProjectWorkAgents.length &&
