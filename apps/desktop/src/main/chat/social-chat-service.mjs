@@ -108,6 +108,96 @@ function socialTurnUsageOperation(run, room, exposeProjectActions) {
   return 'social_turn:member_private';
 }
 
+function compactProjectPlanWriteReceipt(plan, operation, input) {
+  const receipt = {
+    applied: true,
+    operation,
+    projectId: plan.projectId,
+    revision: plan.revision,
+    progress: plan.progress,
+    phaseProgress: plan.phaseProgress,
+    readAfterWriteAvailable: true,
+  };
+
+  if (operation === 'replace') {
+    return {
+      ...receipt,
+      objective: plan.objective,
+      phases: plan.phases.map((phase) => ({
+        id: phase.id,
+        title: phase.title,
+        status: phase.status,
+        state: phase.state,
+        progress: phase.progress,
+        dependsOn: phase.dependsOn,
+        workItemCount: phase.workItems.filter(
+          (item) => item.kind === 'work_package',
+        ).length,
+      })),
+    };
+  }
+
+  if (operation === 'update_item') {
+    const item = plan.items.find((entry) => entry.id === input.item_id);
+    const phase = plan.phases.find((entry) => entry.id === item?.phaseId);
+    return {
+      ...receipt,
+      item: item
+        ? {
+            id: item.id,
+            title: item.title,
+            phaseId: item.phaseId,
+            status: item.status,
+            ownerAgentId: item.ownerAgentId,
+            reviewerIds: item.reviewerIds,
+            submissionRevision: item.submissionRevision,
+            submittedByAgentId: item.submittedByAgentId,
+            evidenceReferenceCount: item.evidenceRefs?.length ?? 0,
+            reviewCount:
+              item.evidenceReviews?.length ?? (item.evidenceReview ? 1 : 0),
+            blockerPresent: Boolean(item.blocker),
+          }
+        : null,
+      phase: phase
+        ? {
+            id: phase.id,
+            status: phase.status,
+            state: phase.state,
+            progress: phase.progress,
+          }
+        : null,
+    };
+  }
+
+  if (operation === 'update_phase') {
+    const phase = plan.phases.find((entry) => entry.id === input.phase_id);
+    return {
+      ...receipt,
+      phase: phase
+        ? {
+            id: phase.id,
+            title: phase.title,
+            status: phase.status,
+            state: phase.state,
+            progress: phase.progress,
+            dependsOn: phase.dependsOn,
+            workItemCount: phase.workItems.filter(
+              (item) => item.kind === 'work_package',
+            ).length,
+            workItemStatuses: phase.workItems
+              .filter((item) => item.kind === 'work_package')
+              .reduce((counts, item) => {
+                counts[item.status] = (counts[item.status] ?? 0) + 1;
+                return counts;
+              }, {}),
+          }
+        : null,
+    };
+  }
+
+  return null;
+}
+
 /**
  * Sends room-scoped turns to a replaceable chat provider.
  * @param {{store:import('./social-chat-store.mjs').SocialChatStore,provider:import('./openai-compatible-client.mjs').OpenAICompatibleClient,secretStore:{isConfigured:()=>boolean},getSelectedModel:()=>string|null,getRootState:()=>Promise<SocialProviderState>,projectStore?:import('./social-project-store.mjs').SocialProjectStore|null,getProjectSessionContext?:(roomId:string,agentId:string)=>{projectId:string,title:string,brief:string,sourceMessageId:string|null,status:string,agentId:string,roomId:string,groupRoomId:string}|null,getProjectWorkReadiness?:()=>{available:boolean,reason:string|null},isWebSearchConfigured?:()=>boolean,searchPublicSources?:(query:string,signal:AbortSignal,maxSources?:number,options?:{onUsage?:(usage:{requestStatus:string,usageUnits?:number,usageUnit:string,providerRequestId?:string})=>void})=>Promise<object>,recordExternalUsage?:(record:Record<string,unknown>)=>void,fetchProjectSource?:(url:string,options:object)=>Promise<object>,startProjectWork?:(input:{roomId:string,agentId:string,dispatchFromNoema:boolean,prompt:string,sourceMessageId:string},signal:AbortSignal)=>Promise<{accepted:boolean,taskId?:string,reason?:string}>,emit?:(event:object)=>void}} options
@@ -810,10 +900,15 @@ export class SocialChatService {
                   });
                 else throw new Error('未知计划操作。');
                 this.onProjectPlanChanged(project.id, run);
-                result = this.projectStore.plans.forAgent(
-                  project.id,
-                  run.agentId,
+                const updatedPlan = this.projectStore.plans.get(project.id);
+                const writeReceipt = compactProjectPlanWriteReceipt(
+                  updatedPlan,
+                  input.operation,
+                  input,
                 );
+                result =
+                  writeReceipt ??
+                  this.projectStore.plans.forAgent(project.id, run.agentId);
                 this.emit({
                   type: 'project-updated',
                   projectId: project.id,

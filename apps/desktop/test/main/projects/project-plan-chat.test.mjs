@@ -557,9 +557,20 @@ test('Noema reads then writes a versioned plan in one turn; members cannot forge
               ],
             },
           });
-        } else if (requests.length === 3)
+        } else if (requests.length === 3) {
+          const receipt = JSON.parse(input.messages.at(-1).content);
+          const fullPlan = projects.plans.forAgent(project.id, 'noema');
+          assert.equal(receipt.applied, true);
+          assert.equal(receipt.operation, 'replace');
+          assert.equal(receipt.revision, 1);
+          assert.equal(receipt.phases[0].workItemCount, 1);
+          assert.equal('items' in receipt, false);
+          assert.ok(
+            JSON.stringify(receipt).length <
+              JSON.stringify(fullPlan).length * 0.5,
+          );
           yield '阶段计划已建立，工作尚未开始。';
-        else if (requests.length === 4) {
+        } else if (requests.length === 4) {
           const context = JSON.parse(
             input.messages.find((message) =>
               message.content.includes('"type":"noema_project_session"'),

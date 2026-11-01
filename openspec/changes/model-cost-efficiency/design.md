@@ -112,3 +112,9 @@
 源码追踪发现 `SocialChatService` 曾在历史之前注入动态 `noema_project_session`、成员资产快照和项目经历简报；评审状态、资产管理指导及部分项目指引还会改变首个 system 消息。计划或资产变化、调用场景切换都可能让请求在对话历史之前分叉，削短 DeepSeek 可以复用的共同前缀。现已将这些按轮内容与条件指令放到既有历史之后、当前用户消息之前；稳定人格提示留在开头，消息内容、系统角色和服务端授权不变。
 
 定向用例检查请求消息顺序：历史先于项目与成员资产快照，当前用户消息仍保持在动态上下文之后。`social-chat-service.test.mjs` 的 26 项用例全部通过。此改动没有额外模型成本，但本地结构测试不能证明 provider 实际命中率提高；后续只从自然请求的 cache hit/miss usage 确认。
+
+## 实施记录：2026-11-02 项目计划写入回执
+
+源码追踪确认，`manage_project_plan` 的 `replace`、`update_item` 和 `update_phase` 在写入成功后，原先都会把整份计划快照作为工具结果加入同一轮后续请求。计划的规范状态仍由 SQLite 保存，后续需要完整内容时可以按 ID 使用 `read`，因此写操作回执只保留修订号、整体进度和受影响阶段/工作项的状态摘要；读取、历史、证据检查及错误路径保持原样。
+
+对照 [OpenCode 的会话压缩源码](https://github.com/anomalyco/opencode/blob/dev/packages/core/src/session/compaction.ts)与 [Goose 的上下文管理说明](https://github.com/aaif-goose/goose/blob/main/documentation/docs/guides/sessions/smart-context-management.md)，成熟实现会按新旧程度裁剪或摘要工具输出，并保留近期细节。Noema 这次只处理可由持久化计划重读的成功写回执，不引入摘要模型调用，也不裁剪证据读取结果。定向 fixture 中回执由 1,203 降至 498 字符（−58.6%）；这是单项结构指标，不代表实际 token 或账单节省，真实效果继续等待自然 usage。
