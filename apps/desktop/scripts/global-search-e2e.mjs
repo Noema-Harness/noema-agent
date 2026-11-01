@@ -48,7 +48,11 @@ function message(roomId, agentId, text) {
   social.completeReply(turn.assistantMessageId);
   return { roomId, id: turn.userMessageId };
 }
-const main = message('room-noema', 'noema', 'main-needle 只在主聊天中。');
+const main = message(
+  'room-noema',
+  'noema',
+  'main-needle **main-needle** 只在主聊天中。',
+);
 const resident = message(
   agent.room.id,
   agentId,
@@ -237,6 +241,32 @@ try {
   await wait(
     `document.querySelector('.conversation-search-results')?.textContent.includes('没有找到')`,
   );
+  await key('Escape', 'Escape');
+  await evaluate(
+    `document.querySelector('[aria-label="查找当前对话"]').click()`,
+  );
+  await wait(`document.querySelector('[aria-label="搜索当前聊天"]')`);
+  await set('[aria-label="搜索当前聊天"]', 'main-needle');
+  await wait(
+    `document.querySelector('.conversation-search-result')?.textContent.includes('main-needle')`,
+  );
+  await evaluate(
+    `document.querySelector('.conversation-search-result').click()`,
+  );
+  await wait(
+    `Array.from(document.querySelectorAll('[data-message-id]')).some(n=>n.dataset.messageId===${JSON.stringify(main.id)}&&n.getClientRects().length>0) && CSS.highlights.get('noema-current-chat-search')?.size===2`,
+  );
+  assert.deepEqual(
+    await evaluate(
+      `Array.from(CSS.highlights.get('noema-current-chat-search'),range=>range.toString())`,
+    ),
+    ['main-needle', 'main-needle'],
+  );
+  await screenshot('current-chat-search-hit.png');
+  await evaluate(
+    `document.querySelector('[aria-label="查找当前对话"]').click()`,
+  );
+  await wait(`!CSS.highlights.has('noema-current-chat-search')`);
   await key('Escape', 'Escape');
   await set('[aria-label="搜索成员或项目"]', 'group-needle');
   assert.equal(

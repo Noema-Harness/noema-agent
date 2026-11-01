@@ -11,6 +11,7 @@ import {
 import * as pdfjs from 'pdfjs-dist';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { useConversationNavigation } from './use-conversation-navigation';
+import { highlightMessageMatches } from './search-highlights';
 import { useScrollActivity } from '../shared/use-scroll-activity';
 import { resolveGroupRecipient } from '../../shared/chat/group-mentions.mjs';
 import {
@@ -102,6 +103,14 @@ export function useSocialChatController() {
   const globalSearchReturnFocusRef = useRef<HTMLElement | null>(null);
   const globalNavigationSequence = useRef(0);
   const [conversationSearchQuery, setConversationSearchQuery] = useState('');
+  const [
+    pendingConversationSearchNavigation,
+    setPendingConversationSearchNavigation,
+  ] = useState<{ messageId: string; roomId: string; query: string } | null>(
+    null,
+  );
+  const [activeConversationSearchMatch, setActiveConversationSearchMatch] =
+    useState<{ messageId: string; roomId: string; query: string } | null>(null);
   const [notice, setNotice] = useState('');
   const [draftAttachmentsByRoom, setDraftAttachmentsByRoom] = useState<
     Record<string, File[]>
@@ -309,7 +318,10 @@ export function useSocialChatController() {
     setAgentDescription('');
     setAgentProjectWork(false);
     requestAnimationFrame(() =>
-      (returnToEdit ? editAgentTriggerRef : settingsTriggerRef).current?.focus(),
+      (returnToEdit
+        ? editAgentTriggerRef
+        : settingsTriggerRef
+      ).current?.focus(),
     );
   }, [editingAgentId]);
   const closeSettingsDialog = useCallback(() => {
@@ -361,6 +373,7 @@ export function useSocialChatController() {
     setGlobalSearchOpen(true);
   }, []);
   const openConversationSearch = () => {
+    setActiveConversationSearchMatch(null);
     setConversationSearchQuery('');
     setConversationSearchOpen(true);
   };
@@ -612,6 +625,47 @@ export function useSocialChatController() {
     });
     return () => cancelAnimationFrame(frame);
   }, [activeRoomId, pendingScrollMessageId, roomState]);
+  useLayoutEffect(() => {
+    const navigation = pendingConversationSearchNavigation;
+    if (
+      !navigation ||
+      navigation.roomId !== activeRoomId ||
+      roomState?.room.id !== navigation.roomId
+    )
+      return;
+    const frame = requestAnimationFrame(() => {
+      const target = Array.from(
+        document.querySelectorAll<HTMLElement>('[data-message-id]'),
+      ).find((message) => message.dataset.messageId === navigation.messageId);
+      target?.scrollIntoView({ block: 'center' });
+      if (target) {
+        setActiveConversationSearchMatch(navigation);
+      }
+      setPendingConversationSearchNavigation(null);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [
+    activeRoomId,
+    pendingConversationSearchNavigation,
+    roomState?.room.id,
+    roomState?.messages,
+  ]);
+  useEffect(() => {
+    const match = activeConversationSearchMatch;
+    if (!match || match.roomId !== activeRoomId) return;
+    const message = Array.from(
+      document.querySelectorAll<HTMLElement>('[data-message-id]'),
+    ).find((item) => item.dataset.messageId === match.messageId);
+    const body = message?.querySelector<HTMLElement>('.message-content');
+    if (!body) return;
+    return highlightMessageMatches(body, match.query);
+  }, [activeConversationSearchMatch, activeRoomId, roomState?.messages]);
+  useEffect(() => {
+    setActiveConversationSearchMatch(null);
+    setPendingConversationSearchNavigation((navigation) =>
+      navigation?.roomId === activeRoomId ? navigation : null,
+    );
+  }, [activeRoomId]);
   const agents = state?.agents ?? [];
   const activeAgents = agents.filter((agent) => !agent.archivedAt);
   const projects = state?.projects ?? [];
@@ -635,6 +689,19 @@ export function useSocialChatController() {
     (currentProjectSessionRoom?.id === activeRoomId
       ? currentProjectSessionRoom
       : null);
+  const navigateToConversationSearchResult = useCallback(
+    (messageId: string) => {
+      const query = conversationSearchQuery.trim();
+      if (!query || !currentRoom) return;
+      setPendingConversationSearchNavigation({
+        messageId,
+        roomId: currentRoom.id,
+        query,
+      });
+      closeConversationSearch();
+    },
+    [closeConversationSearch, conversationSearchQuery, currentRoom],
+  );
   const members = roomState?.room.id === activeRoomId ? roomState.members : [];
   const messages =
     roomState?.room.id === activeRoomId ? roomState.messages : [];
@@ -1947,6 +2014,7 @@ export function useSocialChatController() {
     conversationSearchQuery,
     setConversationSearchQuery,
     conversationSearchResults,
+    navigateToConversationSearchResult,
     firstMeetingReplay,
     setFirstMeetingReplay,
     forwardDialogOpen,

@@ -5,7 +5,7 @@ type ConversationSearchDialogModel = Pick<
   SocialChatController,
   | 'messageAgent'
   | 'currentRoom'
-  | 'setPendingScrollMessageId'
+  | 'navigateToConversationSearchResult'
   | 'dialogRef'
   | 'conversationSearchOpen'
   | 'closeConversationSearch'
@@ -22,7 +22,7 @@ export function ConversationSearchDialog({
   const {
     messageAgent,
     currentRoom,
-    setPendingScrollMessageId,
+    navigateToConversationSearchResult,
     dialogRef,
     conversationSearchOpen,
     closeConversationSearch,
@@ -89,8 +89,7 @@ export function ConversationSearchDialog({
                 type="button"
                 key={message.id}
                 onClick={() => {
-                  setPendingScrollMessageId(message.id);
-                  closeConversationSearch();
+                  navigateToConversationSearchResult(message.id);
                 }}
               >
                 <strong>

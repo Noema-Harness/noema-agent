@@ -1694,6 +1694,12 @@
 .social-shell .conversation-search-result:hover {
   background: #eef2f4;
 }
+::highlight(noema-current-chat-search) {
+  background-color: #f3d56d;
+  color: inherit;
+  text-decoration: underline 2px var(--ink);
+  text-underline-offset: 2px;
+}
 .social-shell .send:disabled {
   background: #dfe5e8;
   color: #9aa5ad;
