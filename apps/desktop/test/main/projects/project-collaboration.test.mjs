@@ -1990,6 +1990,123 @@ test('team formation takes precedence over duplicate parallel specialist handoff
   }
 });
 
+test('a failed post-formation reply preserves the created team and retry reuses it', async () => {
+  let calls = 0;
+  const teamInput = {
+    title: '平台价格追踪方案',
+    brief: '比较价格数据来源、产品范围和维护方案。',
+  };
+  const f = setup({
+    async *streamChat(input) {
+      calls++;
+      if (calls === 1 || calls === 3) {
+        const args = {
+          ...teamInput,
+          members: [
+            { agent_id: f.a, task: '研究官方来源与更新限制。' },
+            { agent_id: f.b, task: '分析平台价格和计费单位。' },
+          ],
+        };
+        tool(input, 'create_project_team', args, `team-${calls}`);
+        return;
+      }
+      if (calls === 2) throw new Error('fixture provider failure');
+      yield '团队与共享计划已建立。';
+    },
+  });
+  try {
+    const sent = f.service.sendMessage({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '请组织团队研究并规划平台价格追踪方案。',
+    });
+    await settle(f.service);
+
+    const failed = f.store.getSocialMessage(sent.messageId);
+    assert.equal(failed.status, 'failed');
+    assert.match(failed.content, /项目团队「平台价格追踪方案」已建立/u);
+    assert.match(failed.content, /共享计划尚未完成/u);
+    assert.match(failed.errorMessage, /没有完成/u);
+    const formedBeforeRetry = f.projects
+      .listProjects()
+      .filter((project) => project.title === teamInput.title);
+    assert.equal(formedBeforeRetry.length, 1);
+    const originalGroupRoomId = formedBeforeRetry[0].groupRoomId;
+
+    f.service.retryReply(sent.messageId);
+    await settle(f.service);
+
+    const completed = f.store.getSocialMessage(sent.messageId);
+    assert.equal(completed.status, 'complete');
+    const formedAfterRetry = f.projects
+      .listProjects()
+      .filter((project) => project.title === teamInput.title);
+    assert.equal(formedAfterRetry.length, 1);
+    assert.equal(formedAfterRetry[0].groupRoomId, originalGroupRoomId);
+    assert.equal(calls, 4);
+  } finally {
+    await f.service.shutdown();
+    f.db.close();
+  }
+});
+
+test('stopping after team formation keeps the partial result visible', async () => {
+  let calls = 0;
+  let signalSecondStarted;
+  let releaseSecond;
+  const secondStarted = new Promise((resolve) => {
+    signalSecondStarted = resolve;
+  });
+  const secondGate = new Promise((resolve) => {
+    releaseSecond = resolve;
+  });
+  const f = setup({
+    async *streamChat(input) {
+      calls++;
+      if (calls === 1) {
+        tool(
+          input,
+          'create_project_team',
+          {
+            title: '平台价格追踪方案',
+            brief: '比较价格数据来源、产品范围和维护方案。',
+            members: [
+              { agent_id: f.a, task: '研究官方来源与更新限制。' },
+              { agent_id: f.b, task: '分析平台价格和计费单位。' },
+            ],
+          },
+          'team-stop',
+        );
+        return;
+      }
+      signalSecondStarted();
+      await secondGate;
+      yield '这段回复在停止后不会被接受。';
+    },
+  });
+  try {
+    const sent = f.service.sendMessage({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '请组织团队研究并规划平台价格追踪方案。',
+    });
+    await secondStarted;
+    assert.equal(f.service.stopReply(sent.messageId), true);
+    releaseSecond();
+    await settle(f.service);
+
+    const stopped = f.store.getSocialMessage(sent.messageId);
+    assert.equal(stopped.status, 'interrupted');
+    assert.match(stopped.content, /项目团队「平台价格追踪方案」已建立/u);
+    assert.match(stopped.content, /共享计划尚未完成/u);
+    assert.equal(calls, 2);
+  } finally {
+    releaseSecond?.();
+    await f.service.shutdown();
+    f.db.close();
+  }
+});
+
 test('persisted fanout survives service replacement without repeating a completed recipient', async () => {
   let calls = 0;
   const provider = {

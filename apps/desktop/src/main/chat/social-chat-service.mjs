@@ -1548,6 +1548,24 @@ export class SocialChatService {
     return written;
   }
 
+  appendProjectFormationPartialResult(run) {
+    const formation = run.projectFormation;
+    if (!formation || formation.partialResultWritten) return false;
+    const current = this.store.getSocialMessage(
+      run.assistantMessageId,
+    )?.content;
+    const action = formation.isContinuation
+      ? `项目「${formation.title}」已增补成员`
+      : formation.isExistingProject
+        ? `项目「${formation.title}」已保留`
+        : `项目团队「${formation.title}」已建立`;
+    const delta = `${current?.trim() ? '\n\n' : ''}${action}；共享计划尚未完成。可在项目群中 @Noema 继续。`;
+    if (!this.appendRunAssistantDelta(run, delta)) return false;
+    formation.partialResultWritten = true;
+    this.emitRunEvent(run, 'chat-message-delta', { delta });
+    return true;
+  }
+
   appendProjectResearchSources(run) {
     const sources = run.projectResearchSources ?? [];
     if (!sources.length || run.projectResearchSourcesWritten) return '';
@@ -3647,6 +3665,11 @@ export class SocialChatService {
           }
           const { project, members } = formed;
           const isContinuation = Boolean(existingProjectId);
+          run.projectFormation = {
+            title: project.title,
+            isContinuation,
+            isExistingProject: Boolean(existingProject),
+          };
           if (
             isContinuation &&
             roomId === 'room-noema' &&
@@ -3974,6 +3997,7 @@ export class SocialChatService {
       }
       const interrupted =
         controller.signal.aborted || error?.name === 'AbortError';
+      this.appendProjectFormationPartialResult(run);
       const message = safeError(error);
       if (interrupted) {
         if (this.setRunReplyStatus(run, 'interrupted')) {
@@ -4011,10 +4035,14 @@ export class SocialChatService {
   stopReply(messageId) {
     for (const run of this.active.values()) {
       if (!this.assistantMessageIds(run).includes(messageId)) continue;
+      const projectFormationInterrupted =
+        this.appendProjectFormationPartialResult(run);
       run.controller.abort();
       if (this.setRunReplyStatus(run, 'interrupted')) {
         this.emitRunEvent(run, 'chat-turn-interrupted', {
-          message: '已停止生成；已有内容已保留。',
+          message: projectFormationInterrupted
+            ? '团队已建立；共享计划尚未完成，已保留，可在项目群中 @Noema 继续。'
+            : '已停止生成；已有内容已保留。',
         });
         this.emit({ type: 'chat-state-updated', roomId: run.roomId });
         if (run.mirrorRoomId)
