@@ -1,6 +1,6 @@
 # Noema 一期规划与执行顺序
 
-状态：Gate E 完成。本文是 Noema 一期唯一权威阶段计划；实施时仍需按影响范围创建相应 OpenSpec change。规划依据：[规划契约](../.work/planning/PLANNING_CONTRACT.md)、[当前上下文](CURRENT_CONTEXT.md)、[固定参考源码索引](../.work/references/README.md)、[Gate C 审计](../.work/planning/research/noema/GATE_C_CLOSURE_AUDIT.md)、[Gate D 决策](../.work/planning/research/noema/GATE_D_DECISIONS.md)。更新：2026-11-02。
+状态：首轮 Gate E 计划已提交；用户补充要求完整端到端开发闭环，并确认当前目标机为 Windows 10 Pro build 19045。Windows 隔离方案仍在研究，计划范围未最终锁定；不得据此开始产品开发。本文仍是唯一权威阶段计划，实施时按影响范围创建 OpenSpec change。规划依据：[规划契约](../.work/planning/PLANNING_CONTRACT.md)、[当前上下文](CURRENT_CONTEXT.md)、[固定参考源码索引](../.work/references/README.md)、[Gate C 审计](../.work/planning/research/noema/GATE_C_CLOSURE_AUDIT.md)、[Gate D 决策](../.work/planning/research/noema/GATE_D_DECISIONS.md)、[Windows 10 隔离候选评估](../.work/planning/research/noema/WINDOWS10_ISOLATION_CANDIDATES.md)。更新：2026-11-02。
 
 路径约定：研究卡/规划文档里的 `research/...` 相对 `.work/planning/`；源码路径以 `apps/desktop/...` 为仓库根相对路径，简写的 `main/...`、`renderer/...` 相对 `apps/desktop/src/`。
 
@@ -229,17 +229,17 @@ flowchart TD
 
 **阶段门：**范围为MXC Node/native依赖、Windows capability、workspace/file/network policy、child与UI/packaging；不支持旧Windows alternative，也不评估系统安全以外的任意命令shell偏好。进入条件为Gate D的24H2+候选默认、B阶段关联/生命周期contract。Noema拥有授权决策/任务结果，MXC拥有原生策略编译与process handle；diagnostics关联policy→probe→spawn→child→cleanup。检查包括依赖/packaging和可控进程测试；用户在目标设备完成OS拒绝/能力确认。完成定义是失败时100%无宿主spawn，目标机满足MXC/PSEC每项能力门槛；风险是公开源码不可审计OS强制、target machine未知、SDK平台矩阵与proxy identity限制。下一阶段E才将command加入用户工作区Agent闭环。
 
-### D1 — 固定 MXC/PSEC 集成版本、兼容门槛与供应链
+### D1 — 选定兼容目标机的严格隔离后端
 
-- **结果/可见行为：**在 source control/notice/SBOM 中记录集成依赖版本、许可证、原生组件、Windows build/架构支持和升级验证流程；安装 UI 只声明实际检测到的能力。
+- **结果/可见行为：**比较 AppContainer/LPAC、Windows Sandbox、Hyper-V guest worker 与 MXC/PSEC 等候选能否在 Windows 10 Pro build 19045 上满足完整命令执行闭环；明确推荐及边界，只有用户决定升级时才以 Windows 11 24H2+ 作为目标。选型后在 source control/notice/SBOM 中记录依赖版本、许可证、原生组件、支持范围和升级验证；安装 UI 只声明实际能力。
 - **前置：**D-05 支持范围重新开放。当前目标机已核实为 Windows 10 build 19045；先研究满足严格隔离的目标机方案，或等待用户决定升级/支持范围，再锁集成版本。
-- **源码依据：**`research/noema/WINDOWS_ISOLATION_CANDIDATE_COMPARISON.md`；MXC `INVENTORY.md`、`REQUEST_BACKEND_SELECTION.md`、`PSEC_CAPABILITY_AND_LAUNCH.md`、`WINDOWS_STATIC_VALIDATION_AND_COVERAGE.md`；本地 SRT provenance README/patch。
-- **状态/接口：**backend contract 抽象 capabilities/reasons/version/backend identity，不向 Agent 伪造支持状态；只将 MXC/PSEC 作为候选集成。
+- **源码依据：**`research/noema/WINDOWS_ISOLATION_CANDIDATE_COMPARISON.md`、`research/noema/WINDOWS10_ISOLATION_CANDIDATES.md`；MXC `INVENTORY.md`、`REQUEST_BACKEND_SELECTION.md`、`PSEC_CAPABILITY_AND_LAUNCH.md`、`WINDOWS_STATIC_VALIDATION_AND_COVERAGE.md`；本地 SRT provenance README/patch。
+- **状态/接口：**backend contract 抽象 capabilities/reasons/version/backend identity，不向 Agent 伪造支持状态；只有候选比较完成并锁定目标机后才固定 adapter。
 - **异常/恢复：**原生库/ABI/系统 build/capability 不符时启动拒绝命令功能；由于命令是完整开发闭环的必要能力，这种状态属于一期交付阻断，不能将“仍可对话/文件操作”视为一期完成；不装入未经研究的 helper 后尝试。
 - **诊断：**启动 probe 记录 OS build/架构、API availability、支持 capability 和拒绝理由；不搜集账号凭据或私人路径。
-- **检查：**先用 Git 协议将 MXC 固定参考与当前上游 `main` 精确对齐，比较所有 ProcessContainer/PSEC 相关变化并更新对应研究卡；静态 manifest/license/attribution 检查；核对 `apps/desktop/package.json`、root `package-lock.json`、`apps/desktop/forge.config.mts` 和 Windows CI workflow；原生依赖在干净环境可重复 build/package 验证，报告具体版本/架构。不触发真实受限命令。
+- **检查：**先按 Windows 10 隔离候选评估逐项核实候选的输入/输出、文件/网络隔离、后台生命周期、取消/恢复、部署门槛和 fail-closed 行为；确认路线后再同步固定源码并核实许可证/供应链。随后核对 `apps/desktop/package.json`、root `package-lock.json`、`apps/desktop/forge.config.mts` 和 Windows CI workflow；原生依赖在干净环境可重复 build/package 验证。不触发真实受限命令。
 - **用户验收：**在目标机读明能力报告，并由用户决定是否继续安装/启用；Windows build 不满足则确认命令保持禁用。
-- **完成条件/下一项：**锁定可复核的原生依赖版本、当前目标机支持下限与本地构建/分发边界；若 Windows 10 目标机无合格方案，明确列出用户需决定的升级选择并暂停完整交付。通过后下一项 D2。
+- **完成条件/下一项：**锁定可复核的后端、当前目标机支持下限与本地构建/分发边界；若 Windows 10 无合格方案，向用户提交具体升级选择并暂停完整交付。通过后下一项 D2。
 
 ### D2 — 将 Agent workspace grant 编译成受限执行策略
 
