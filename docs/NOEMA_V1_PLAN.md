@@ -10,7 +10,7 @@
 
 ### 一期要完成的用户闭环
 
-用户在自己的 Windows 电脑上启动 Noema，通过默认界面选择工作区，和 Agent 围绕该工作区交流与执行开发任务。Agent 能可靠理解/编辑允许范围内的文件；运行命令时经明确授权并由满足条件的 OS 隔离后端执行；用户能看到正在发生什么、停止任务、窗口关闭后让宿主和任务继续运行、重新打开窗口查看进展，并在失败/重启后辨明哪些操作完成、未完成或结果未知。真实模型调用前先完成请求上下文与 token/cache 友好性优化。用户可在 Noema 内查到核心任务、错误、模型用量和执行来源，便于日常使用和后续用 Noema 开发自身。
+用户在自己的 Windows 电脑上启动 Noema，通过默认界面选择工作区，和 Agent 围绕该工作区完成端到端开发任务：理解代码、制定和调整方案、编辑文件、经明确授权执行受控命令、核验结果并审阅变更。Agent 必须可靠处理任务状态、取消、后台持续运行和失败/重启恢复；窗口关闭后宿主和任务继续运行，用户重新打开能查看进展，并辨明哪些操作完成、未完成或结果未知。真实模型调用前先完成请求上下文与 token/cache 友好性优化。用户可在 Noema 内查到核心任务、错误、模型用量和执行来源，便于日常使用和后续用 Noema 开发自身。
 
 该范围是工程验收闭环，不构成新的差异化定位或终极产品定义。
 
@@ -31,7 +31,7 @@
 - 全应用 DSH 式插件化重构、通用插件市场、任意外部 agent runtime marketplace。
 - SocialChat 当前复杂的房间、多成员协同、specialist delegation、复杂跟进/实践/经验功能，除非 Gate E 对某项证明它是工作区开发闭环直接必要且已有成熟证据。现存实现、测试、OpenSpec 历史不自动构成一期要求。
 - RootAgent + DSH legacy/#legacy 路径与默认 social work 执行路径合并。legacy 实现不作为一期工作区任务的默认 owner；发现其具有唯一必要能力时先补证据再单项判断。
-- 更多 Windows 版本的兼容隔离后端。默认按 `research/noema/WINDOWS_ISOLATION_CANDIDATE_COMPARISON.md` 的 MXC/PSEC 候选边界规划；目标不满足候选支持条件时继续关闭命令能力。
+- 尚未研究并核验的旧版 Windows 隔离兼容方案。MXC/PSEC 固定参考的 ProcessContainer 支持从 Windows 11 24H2 起列出，而当前目标机是 Windows 10 build 19045；在兼容方案或用户支持范围决定收敛前，Windows 命令能力是一期阻断项，不可通过关闭命令后宣称开发闭环完整。
 - 云端同步、多机任务接管、任务外部恰好一次语义、公开发行/签名承诺。
 
 ## 最终交付条件
@@ -232,14 +232,14 @@ flowchart TD
 ### D1 — 固定 MXC/PSEC 集成版本、兼容门槛与供应链
 
 - **结果/可见行为：**在 source control/notice/SBOM 中记录集成依赖版本、许可证、原生组件、Windows build/架构支持和升级验证流程；安装 UI 只声明实际检测到的能力。
-- **前置：**D-05 已按推荐收敛；无需实现集成代码先验证技术/打包可行性。
+- **前置：**D-05 支持范围重新开放。当前目标机已核实为 Windows 10 build 19045；先研究满足严格隔离的目标机方案，或等待用户决定升级/支持范围，再锁集成版本。
 - **源码依据：**`research/noema/WINDOWS_ISOLATION_CANDIDATE_COMPARISON.md`；MXC `INVENTORY.md`、`REQUEST_BACKEND_SELECTION.md`、`PSEC_CAPABILITY_AND_LAUNCH.md`、`WINDOWS_STATIC_VALIDATION_AND_COVERAGE.md`；本地 SRT provenance README/patch。
 - **状态/接口：**backend contract 抽象 capabilities/reasons/version/backend identity，不向 Agent 伪造支持状态；只将 MXC/PSEC 作为候选集成。
-- **异常/恢复：**原生库/ABI/系统 build/capability 不符时启动拒绝命令功能；Agent 继续可对话/文件操作但清楚说明不能执行命令；不装入另一 helper 后尝试。
+- **异常/恢复：**原生库/ABI/系统 build/capability 不符时启动拒绝命令功能；由于命令是完整开发闭环的必要能力，这种状态属于一期交付阻断，不能将“仍可对话/文件操作”视为一期完成；不装入未经研究的 helper 后尝试。
 - **诊断：**启动 probe 记录 OS build/架构、API availability、支持 capability 和拒绝理由；不搜集账号凭据或私人路径。
 - **检查：**先用 Git 协议将 MXC 固定参考与当前上游 `main` 精确对齐，比较所有 ProcessContainer/PSEC 相关变化并更新对应研究卡；静态 manifest/license/attribution 检查；核对 `apps/desktop/package.json`、root `package-lock.json`、`apps/desktop/forge.config.mts` 和 Windows CI workflow；原生依赖在干净环境可重复 build/package 验证，报告具体版本/架构。不触发真实受限命令。
 - **用户验收：**在目标机读明能力报告，并由用户决定是否继续安装/启用；Windows build 不满足则确认命令保持禁用。
-- **完成条件/下一项：**锁定可复核的原生依赖版本、支持下限与本地构建/分发边界；不能证实时停在 fail closed。下一项 D2。
+- **完成条件/下一项：**锁定可复核的原生依赖版本、当前目标机支持下限与本地构建/分发边界；若 Windows 10 目标机无合格方案，明确列出用户需决定的升级选择并暂停完整交付。通过后下一项 D2。
 
 ### D2 — 将 Agent workspace grant 编译成受限执行策略
 
@@ -335,7 +335,7 @@ flowchart TD
 
 **阶段结果：**用户能从可重复 Windows package 安装/修复 Noema，正常启动/退出并保留自身配置和状态；进行受控最终验收，未通过项明确保留为阻断，不以研究文档替代可用软件。
 
-**阶段门：**范围为用户现有电脑的本地package、升级/修复/退出/卸载和最终使用验收；不公开发行、不承诺auto-update或签名、不启动学习系统项目。进入条件为A–E的行为和状态合同完成；Windows/PSEC门槛不过则保留command关闭并标注交付阻断。Forge负责package/native resources，DB store负责迁移/保全，用户拥有最终验收；诊断由版本/迁移/启动连至task trace。检查package/migration/install smoke；用户执行开窗关窗、真实模型请求、workspace更改、安全命令、恢复和diagnostics验收。完成定义为F1候选安装与数据保全通过且F2用户确认自开发起步；风险是目标机/签名/原生依赖更新差异。后续入口为用户在Noema中创建第一项自主开发任务，而不是自动扩大一期范围。
+**阶段门：**范围为用户现有电脑的本地package、升级/修复/退出/卸载和完整开发闭环验收；不公开发行、不承诺auto-update或签名、不启动学习系统项目。进入条件为A–E的行为和状态合同完成，且 Windows 隔离方案满足目标机；Windows 命令仍关闭时不得通过 F2，不得宣称一期完整交付。Forge负责package/native resources，DB store负责迁移/保全，用户拥有最终验收；诊断由版本/迁移/启动连至task trace。检查package/migration/install smoke；用户执行端到端开发任务、开窗关窗、真实模型请求、workspace更改、安全命令、恢复和diagnostics验收。完成定义为F1候选安装与数据保全通过且F2用户确认可用 Noema 完成开发任务；风险是目标机/签名/原生依赖更新差异。后续入口为用户在Noema中创建第一项自主开发任务，而不是自动扩大一期范围。
 
 ### F1 — 可重复 Windows package、安装升级与数据保全
 
