@@ -6,63 +6,45 @@
     {
       "path": "README.md",
       "purpose": "安装与导航",
-      "updateWhen": "安装方式或项目入口变化"
+      "updateWhen": "安装方式或入口变化"
     },
     {
       "path": "AGENTS.md",
-      "purpose": "项目特有约定与恢复入口",
-      "updateWhen": "工作流或工程边界变化"
+      "purpose": "协作与工程入口",
+      "updateWhen": "协作或工程约定变化"
     },
     {
       "path": "CONTRIBUTING.md",
       "purpose": "外部参与入口",
-      "updateWhen": "贡献入口变化"
+      "updateWhen": "贡献方式变化"
     },
     {
-      "path": "docs/PRODUCT_CHARTER.md",
-      "purpose": "产品方向与边界",
-      "updateWhen": "用户明确取舍变化"
+      "path": "docs/CURRENT_CONTEXT.md",
+      "purpose": "本轮用户明确要求",
+      "updateWhen": "用户补充或改变明确要求"
+    },
+    {
+      "path": "docs/NOEMA_V1_PLAN.md",
+      "purpose": "Noema 一期权威范围与阶段验收计划",
+      "updateWhen": "一期范围、依赖或完成条件变化"
     },
     {
       "path": "docs/ARCHITECTURE.md",
-      "purpose": "系统边界与代码导航",
-      "updateWhen": "职责、持久状态或文件边界变化"
-    },
-    {
-      "path": "docs/ROADMAP.md",
-      "purpose": "阶段目标与交付重点",
-      "updateWhen": "阶段取舍或交付重点变化"
+      "purpose": "当前源码导航与核对事实",
+      "updateWhen": "源码位置或事实变化"
     },
     {
       "path": "docs/PROJECT_OPERATIONS.md",
-      "purpose": "工具分工与资料生命周期",
-      "updateWhen": "工作机制或工具入口变化"
-    },
-    {
-      "path": "docs/design/noema-core-flows.md",
-      "purpose": "产品逻辑与节点实现标记",
-      "updateWhen": "相应机制或实现边界变化"
-    },
-    {
-      "path": "docs/decisions/README.md",
-      "purpose": "ADR 历史的使用、核对与替代规则",
-      "updateWhen": "ADR 的职责或引用方式变化"
-    },
-    {
-      "path": "docs/decisions/TEMPLATE.md",
-      "purpose": "跨变更持久取舍的记录格式",
-      "updateWhen": "决策记录要求变化"
+      "purpose": "工作材料与维护入口",
+      "updateWhen": "维护方式变化"
     },
     {
       "path": ".work/README.md",
-      "purpose": "过程材料和历史入口",
-      "updateWhen": "工作材料布局变化"
+      "purpose": "有效过程材料入口",
+      "updateWhen": "工作材料用途变化"
     }
   ],
-  "historyRoots": [
-    "docs/decisions",
-    "openspec/changes/archive"
-  ],
+  "historyRoots": [],
   "rootDirectories": [
     ".git",
     ".codex",

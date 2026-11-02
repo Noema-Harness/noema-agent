@@ -2,10 +2,9 @@ schema: spec-driven
 
 context: |
   正文使用中文，保留 OpenSpec 必需结构标题与 SHALL/MUST 关键字。
-  项目职责和入口见 AGENTS.md；文档权威与工作流分工见 docs/PROJECT_OPERATIONS.md。
-  openspec/specs 是已实现行为的当前契约（当前只覆盖已有自动化证据的核心切片）；change 是进行中的行为差异，归档 change 仅作历史。
-  PRODUCT_CHARTER、ROADMAP、ARCHITECTURE 与核心流程图分别保持方向、阶段、代码导航和逻辑全景，不替代行为规格。
-  沿 .codex/workspace.json 选择本项相关材料，不复制完整项目历史；原 GitHub Project 已封存。
+  当前明确要求见 docs/CURRENT_CONTEXT.md；源码导航与维护入口由 .codex/workspace.json 路由。
+  openspec/specs 仅作为现有可观察行为的回归参照，不代表新一期必须包含全部现有功能。
+  只为已授权的实际变更建立 change，不从既有代码、历史提交或参考项目恢复旧规划。
 rules:
   tasks:
-    - 每组对应可验证的交付片段，连接实际代码边界与完成证据；按风险选择检查。
+    - 围绕实际交付结果记录变更和验证，不复制历史任务表。

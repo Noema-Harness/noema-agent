@@ -1,5 +1,0 @@
-schema: spec-driven
-created: 2026-11-01
-goal: "Deliver the first R4 module: users can inspect, correct, remove, and
-  selectively use personal facts without storing or injecting full chat
-  history."

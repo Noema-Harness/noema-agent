@@ -1,6 +1,6 @@
 # Windows sandbox helper
 
-Noema packages a patched x64 helper for `@anthropic-ai/sandbox-runtime` 0.0.81. The stock helper denies metadata reads on parent directories, which makes Node's `fs.realpathSync(process.cwd())` fail for the repository workspace. Noema uses this helper in development and places it at `resources/srt-win/x64/srt-win.exe` in packaged builds. A missing helper is a hard error; Windows does not silently fall back to the unpatched binary.
+Noema packages a patched x64 helper for `@anthropic-ai/sandbox-runtime` 0.0.81. The stock helper denies metadata reads on parent directories, which makes Node's `fs.realpathSync(process.cwd())` fail for the repository workspace. Packaging places the helper at `resources/srt-win/x64/srt-win.exe`; a missing helper is a hard error. The product currently disables Windows project commands before sandbox initialization, so this binary's presence does not mean command execution is available.
 
 ## Provenance and changes
 
@@ -25,8 +25,8 @@ cargo build --locked --release --manifest-path vendor/srt-win-src/Cargo.toml --b
 Copy-Item vendor/srt-win-src/target/release/srt-win.exe C:\path\to\noema\apps\desktop\vendor\srt-win\x64\srt-win.exe -Force
 ```
 
-The current x64 binary SHA-256 is `E3B878903A16FB82C03F6C9F85AC8B85D1C0606AD97243217AD37E4C4386695A`. It was built with the Windows GNU target and passed 193 unit tests, 2 persistent-grant integration tests, and 5 security-descriptor matrix tests.
+The packaged x64 binary SHA-256 is `E3B878903A16FB82C03F6C9F85AC8B85D1C0606AD97243217AD37E4C4386695A`, rechecked on 2026-11-02. It was built with the Windows GNU target.
 
 ## Verification limit
 
-The helper's install step scans mounted local volume roots and adds a sandbox-user-only deny where broad local principals have write access. Before each sandbox session, Noema runs `srt-win ambient ensure`: its fast path only checks current roots, and it requests elevation only if a new or drifted root needs repair. A failed or cancelled repair prevents the command from starting. The baseline Windows x64 suite passes 22/22 real-runner checks, including denial of an unapproved D-drive write and continued writes inside approved workspaces. A separate adversarial check confirmed that a protected descendant directory with an explicit `Everyone:F` DACL can bypass the volume-root deny and modify an unapproved sentinel (0/1 for this boundary). Therefore the helper currently does not enforce the full outside-workspace write contract; see ADR 0033 and Issue #112. Do not present this SRT backend as a complete adversarial sandbox.
+The helper adds sandbox-user-only deny entries at volume roots. A previously reproduced protected descendant directory with an explicit `Everyone:F` DACL bypassed that inherited deny and allowed an unapproved write. The backend therefore does not enforce Noema's full outside-workspace contract. The current startup guard is in `src/main/execution/project-command-sandbox.mjs`, with regression coverage in `test/main/execution/project-command-sandbox.test.mjs`. Changing the development shell or finding this binary is not evidence that the isolation gap is resolved.

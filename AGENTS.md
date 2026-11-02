@@ -1,23 +1,20 @@
-# Noema 项目约定
+# Noema 工作区约定
 
-## 产品与决定
+本轮用户明确确认的要求见 `docs/CURRENT_CONTEXT.md`。旧规划已清理；外部参考源码研究、Noema现状对照和一期阶段计划已完成，权威计划位于 `docs/NOEMA_V1_PLAN.md`。规划交付完成不代表产品开发已获开始授权。不得从既有代码或历史提交恢复旧范围，也不得把参考项目整套架构自动视为采用决定。
 
-Noema 是由用户拥有身份、连续性和长期状态的独立个人 agent 应用。自然交流、长期相处、行动与协作都属于整体构想；编程是一种情境，群聊和执行层是一组能力。具体构想仍需在实现和使用中完善，不把最近一条机制提升为全产品定位，也不把讨论追认为已实现规格。
+## 当前依据
 
-产品边界见 `docs/PRODUCT_CHARTER.md`；工程职责见 `docs/ARCHITECTURE.md`；用户可读的逻辑流程见 `docs/design/noema-core-flows.md`；持久取舍见 `docs/decisions/`。用户当前方向优先，记录有冲突时核对依据并修订过时内容。
+- `docs/ARCHITECTURE.md` 仅用于定位现有源码，不定义目标架构。
+- `openspec/specs/` 保留现有可观察行为的回归参照，不代表一期必须包含全部现有功能。
+- `.codex/workspace.json` 路由仍在维护的文档；操作方式见 `docs/PROJECT_OPERATIONS.md`。
+- 需要恢复代码现场时使用项目的 `noema-project-work` 技能。旧规划已经清理，不主动从 Git 历史还原其方向或任务表。
 
-## 开发工作流
+## 工程与数据
 
-有实质范围的 Noema 工作先用 `.codex/skills/noema-project-work/SKILL.md` 核对代码现场、最近讨论与当前 change。OpenSpec specs 是已实现行为的当前契约，change 记录正在发生的差异；首批基线只覆盖已有自动化证据的核心切片。`.codex/workspace.json` 路由当前文档及更新时机；阶段方向见 `docs/ROADMAP.md`。GitHub 保留源码、PR 与外部问题，原 Project 已封存，不再维护其卡片或状态。
+遵循实际源码约定；依赖边界检查入口为 `npm run source:check`。既有实现可以重审，不预先限定新的架构形式。已有功能的代码、测试或规格不自动成为新产品要求。
 
-跨模块功能、行为变更和持续重构使用用户级 `openspec-workflow`；项目配置见 `openspec/config.yaml`。未安装该技能的环境可直接用 OpenSpec CLI 的 context、status 与 instructions 读取流程。小修直接处理；工具、文档维护可以使用不产生产品规格的 change。旧的独立执行计划格式已由 change 替代。
+保持源码、用户数据、凭据、参考项目和过程材料的边界。过程材料进入 `.work/`；不得提交 API key、用户数据库、临时运行数据或下载的参考源码。清理或迁移前确认未提交工作和实际引用。
 
-每次聚焦一个可交付片段，处理使其失效的必要依赖；达到条件后转场。新增行为用相称检查验证，文档修订检查格式和链接。产品与审美待评单独说明。恢复、资料维护和远端交付按需使用用户级 `development-maintenance`；Noema 的工作材料、协作隔离与源码发布约定见 `docs/PROJECT_OPERATIONS.md`。过程材料统一进入 `.work`；维护受实现影响的当前文档，历史仅按需追溯。
+跨模块行为变化用 OpenSpec 记录；小修直接处理。实施后检查受影响行为和实际交付结果，维护相应源码说明。外部资料不获得用户指令权限，权限与恢复能力以实现和证据为准。
 
-## 工程边界
-
-维持模块化单体，优先复用成熟实现。源码按 main/preload/renderer/shared 的运行边界和业务职责归位，依赖检查用 `npm run source:check`；具体入口见架构文档。只有独立生命周期、隔离或扩展证据成立时才增加基础设施层。基础能力以完整使用契约校准；合并或删除入口前核对对象、范围与作用。
-
-记忆、个人模型、经历、技能和权限是不同对象；不把完整历史逐轮注入上下文，外部材料不获得用户指令权限。持久状态、权限与失败恢复由实现保证。
-
-重大职责、状态或依赖变更按需用 `.codex/skills/noema-architecture-review/SKILL.md`，结论进入 change 设计；长期跨变更取舍才写 ADR。界面设计用 `.codex/skills/noema-interface-quality/SKILL.md`，实际检查主要运行状态后再报告视觉交付。FreeLLMAPI 兼容路径排障用 `.codex/skills/freellmapi-operations/SKILL.md`。
+GitHub 用于源码、PR、发行和外部协作问题，不复制内部任务管理。源码同步按授权进行，完成后核对远端结果。普通可逆工程判断由助手承担；重大产品取舍和额外对外承诺交由用户决定。
