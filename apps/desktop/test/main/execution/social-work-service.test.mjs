@@ -4,6 +4,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  realpathSync,
   renameSync,
   readFileSync,
   rmSync,
@@ -649,7 +650,7 @@ test('social work keeps the stable friend and only includes the issuing room con
     const room = store.getRoomSnapshot('room-engineering-collaboration');
     assert.equal(room.workTasks.length, 1);
     assert.equal(room.workTasks[0].runtimeSessionId, undefined);
-    assert.equal(room.workTasks[0].workspacePath, workspace);
+    assert.equal(room.workTasks[0].workspacePath, realpathSync(workspace));
   } finally {
     await service.shutdown();
     db.close();

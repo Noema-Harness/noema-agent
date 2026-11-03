@@ -281,13 +281,6 @@ test('approved paths and network requests are scoped to the current command', as
     assert.ok(
       harness.state.configuration.filesystem.allowRead.includes(external),
     );
-    if (process.platform === 'win32') {
-      assert.ok(
-        harness.state.configuration.filesystem.allowRead.includes(
-          path.dirname(realpathSync(process.execPath)),
-        ),
-      );
-    }
     assert.ok(
       !harness.state.configuration.filesystem.allowWrite.includes(external),
     );

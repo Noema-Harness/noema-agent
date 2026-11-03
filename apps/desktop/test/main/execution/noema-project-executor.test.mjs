@@ -4,6 +4,7 @@ import {
   existsSync,
   mkdtempSync,
   mkdirSync,
+  realpathSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -215,11 +216,11 @@ test('project execution keeps workspace-specific state after its reusable system
     assert.equal(requests[1].messages[1].role, 'system');
     assert.equal(
       requests[0].messages[1].content,
-      `所选工作区：${path.resolve(firstWorkspace)}`,
+      `所选工作区：${realpathSync(firstWorkspace)}`,
     );
     assert.equal(
       requests[1].messages[1].content,
-      `所选工作区：${path.resolve(secondWorkspace)}`,
+      `所选工作区：${realpathSync(secondWorkspace)}`,
     );
     assert.equal(requests[0].messages[2].role, 'user');
     assert.equal(requests[1].messages[2].role, 'user');
