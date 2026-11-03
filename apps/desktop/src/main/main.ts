@@ -629,9 +629,18 @@ const createWindow = () => {
           return { found: true };
         })()`);
         if (!diagnosticsEntry?.found) throw new Error('运行诊断入口不可见');
-        await mainWindow?.webContents.executeJavaScript(
-          'new Promise((resolve) => setTimeout(resolve, 160))',
-        );
+        await mainWindow?.webContents
+          .executeJavaScript(`new Promise((resolve) => {
+          const deadline = Date.now() + 5_000;
+          const poll = () => {
+            const capability = document.querySelector(
+              '[aria-label="Windows 命令隔离能力"]',
+            );
+            if (capability || Date.now() >= deadline) return resolve();
+            window.setTimeout(poll, 50);
+          };
+          poll();
+        })`);
         const diagnosticsLayout = await mainWindow?.webContents
           .executeJavaScript(`(() => {
           const dialog = document.querySelector('[aria-labelledby="diagnostics-title"]');
