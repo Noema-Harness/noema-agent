@@ -84,6 +84,15 @@ test('a project creates one shared room and separate hidden member sessions', ()
     );
     assert.deepEqual(session.room.messages, []);
     assert.notEqual(session.room.room.id, member.roomId);
+    // A project session is also a one-member direct room; its age must not
+    // make it the resident room.
+    stores.db
+      .prepare('UPDATE social_rooms SET created_at = ? WHERE id = ?')
+      .run('0001-01-01T00:00:00.000Z', session.room.room.id);
+    assert.equal(
+      stores.socialChatStore.getAgentResidentRoomId(member.agentId),
+      member.roomId,
+    );
     assert.ok(
       stores.socialChatStore
         .listRooms()
