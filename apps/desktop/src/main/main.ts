@@ -848,9 +848,26 @@ const createWindow = () => {
           );
         }
       } catch (error) {
+        let rendererBoot: unknown = null;
+        try {
+          rendererBoot = await mainWindow?.webContents.executeJavaScript(
+            `(() => ({
+              rendererEntryEvaluated: performance
+                .getEntriesByName('noema.renderer.entry-evaluated')
+                .length > 0,
+              reactRefreshReady: typeof window.$RefreshReg$ === 'function',
+              rootLength: document.querySelector('#root')?.innerHTML.length ?? 0,
+              scripts: [...document.scripts].map((script) => ({
+                src: script.src,
+                type: script.type,
+              })),
+            }))()`,
+          );
+        } catch {}
         writeSmokeLog('renderer-bridge-failed', {
           stage: bridgeProbeStage,
           error: error instanceof Error ? error.message : String(error),
+          rendererBoot,
         });
       }
       app.quit();
