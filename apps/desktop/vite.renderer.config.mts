@@ -37,4 +37,3 @@ export default defineConfig({
   // Concurrent live and test clients must not rewrite each other's prebundles.
   cacheDir: testProfile ? path.join(testProfile, 'vite-cache') : undefined,
 });
-
