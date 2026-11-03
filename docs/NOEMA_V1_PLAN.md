@@ -1,6 +1,6 @@
 # Noema 一期规划与执行顺序
 
-状态：Gate E 规划交付完成；Noema 一期开发进行中。本文定义范围、验收条件和 20 项分阶段工作。Windows 平台基线已由用户确认：Windows 10 22H2 x64（build 19045）及更新的 Windows 10 build；不设置最低 UBR/ESU 补丁门槛，不要求 Windows 11，也不逐 release 维护实现分支。D1 最初以 Codex Windows sandbox 作为候选实现参考；D3 源码审查后，当前实现方向已调整为 Noema 自有的普通 AppContainer runner。Sandy 仅提供 AppContainer 启动原语参考，Codex 继续作为 handle ACL/path、Job 与诊断参考；不直接依赖任一上游 crate。2026-11-04，D3 目标机网络 deny、process-tree、filesystem ACL 与 Electron durable setup/journal/command integration 均已通过；native readiness 已按实时平台/profile/capability 状态启用，D4 package/lifecycle gates 仍在进行，普通项目 workspace 日用验收留给用户。本文仍是唯一权威阶段计划；实施时按影响范围创建 OpenSpec change。规划依据：[当前上下文](CURRENT_CONTEXT.md)；完整源码研究与规划契约保存在本机过程目录 `.work/planning/`、`.work/references/`（该目录按工作区约定不纳入 Git）。更新：2026-11-04。
+状态：Gate E 规划交付完成；Noema 一期开发进行中。本文定义范围、验收条件和 20 项分阶段工作。Windows 平台基线已由用户确认：Windows 10 22H2 x64（build 19045）及更新的 Windows 10 build；不设置最低 UBR/ESU 补丁门槛，不要求 Windows 11，也不逐 release 维护实现分支。D1 最初以 Codex Windows sandbox 作为候选实现参考；D3 源码审查后，当前实现方向已调整为 Noema 自有的普通 AppContainer runner。Sandy 仅提供 AppContainer 启动原语参考，Codex 继续作为 handle ACL/path、Job 与诊断参考；不直接依赖任一上游 crate。2026-11-04，D3 目标机网络 deny、process-tree、filesystem ACL 与 Electron durable setup/journal/command integration 均已通过；D4 package、打包 smoke 和 CI 干净用户安装/升级/修复/卸载数据保全门全部通过。F2 普通项目 workspace 日用和现有用户数据升级验收留给用户。本文仍是唯一权威阶段计划；实施时按影响范围创建 OpenSpec change。规划依据：[当前上下文](CURRENT_CONTEXT.md)；完整源码研究与规划契约保存在本机过程目录 `.work/planning/`、`.work/references/`（该目录按工作区约定不纳入 Git）。更新：2026-11-04。
 
 路径约定：研究卡/规划文档里的 `research/...` 相对 `.work/planning/`；源码路径以 `apps/desktop/...` 为仓库根相对路径，简写的 `main/...`、`renderer/...` 相对 `apps/desktop/src/`。
 
@@ -277,7 +277,7 @@ flowchart TD
 - **用户验收：**安装版显示的支持状态与真实 target capabilities 一致；升级后旧 SRT 提示消失、Noema用户数据保留。
 - **完成条件/下一项：**只有一个可审计backend来源，UI/包/执行同源；若隔离 target-machine gate失败则命令维持禁用、一期交付条件未满足，不回退宿主 shell。下一项 E1。
 
-**2026-11-04 进展：**D3 target-machine OS gates 已全部通过，native readiness 已激活。D4 当前源码已重建为 Squirrel x64 package，resource manifest 与 runner SHA-256 匹配，packaged startup/diagnostics/tray smoke 通过。setup diagnostics 仅在本机 setup state 需要修复时提供按钮，点击后无 UAC reconcile；app 启动不改 OS state。clean-user install/upgrade/uninstall lifecycle 仍待 CI 或隔离安装环境核验；没有在用户现有安装和 `%APPDATA%\Noema` 数据上执行 destructive smoke。E 阶段开发与用户普通 workspace 日用验收尚未完成。
+**2026-11-04 进展：**D3 target-machine OS gates 已全部通过，native readiness 已激活。D4 Squirrel x64 package、resource manifest/helper digest、packaged startup/diagnostics/tray smoke，以及 GitHub Actions clean-user install/upgrade/missing-app-folder recovery/uninstall data-retention smoke 全部通过（run 41672220332）。setup diagnostics 仅在本机 setup state 需要修复时提供按钮，点击后无 UAC reconcile；app 启动不改 OS state。没有在用户现有安装和 `%APPDATA%\Noema` 数据上执行 destructive smoke。E1–E4 源码阶段已完成；F2 用户普通 workspace 日用、现有安装升级和核心闭环验收仍待用户实际使用。
 
 ## 阶段 E：工作区开发闭环整合
 

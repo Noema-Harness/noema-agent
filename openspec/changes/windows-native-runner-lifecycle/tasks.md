@@ -62,12 +62,13 @@
   - [x] 记录目标机 AppContainer ACL/hard-link enforcement、child/job lifecycle、托盘后台运行和安装更新仍需用户最终验收；本阶段没有真实 OS mutation。
 - [x] 5.2 通过 gate fixture 验证 helper/resource 缺失、backend version 不符、Windows build/architecture 不支持、durable/live setup 未就绪与 diagnostics sink failure 都不能开放 Windows command gate；diagnostics sink 运行中写入失败会关闭 main-process 共享 gate，阻止后续命令。没有执行受限命令或安装系统 identity/WFP。
 - [x] 5.3 以当前 readiness activation 与 setup UI 构建 Squirrel x64 package；`npm run smoke:package` 通过 packaged renderer startup、诊断窗口文案、托盘 close-to-hide/restore/shutdown；runner manifest protocol v8 的 SHA-256 与包内 helper 一致，Squirrel `RELEASES` SHA-1 与 nupkg 匹配。未将候选安装覆盖用户当前 `%APPDATA%\Noema`。
+- [x] 5.4 GitHub Actions Desktop checks run `41672220332` 在干净 Windows 用户下通过 package make、首次安装、版本升级、移动 app 文件夹后的 installer recovery、卸载和 userData sentinel 保留；该 CI userData 与本机真实数据隔离。
 
 ## Workflow follow-up
 
 - 目标机器通过实际 OS enforcement 验收前，Windows 命令 gate 保持关闭；D4 负责统一打包与资源就绪契约。
 - 按项目 OpenSpec 工作流归档前，核对归档 spec 与 `docs/NOEMA_V1_PLAN.md`、`.work/planning/PROGRESS.md` 的阶段状态一致。
-- 3.4 live target-machine gates are complete; the remaining active D4 work is rebuild/package smoke on the activated source and release/lifecycle verification. Do not install over the user's current application data as part of package smoke.
+- D3 live target-machine gates and D4 automated package/clean-user install lifecycle gates are complete. Do not install over the user's current application data as part of unattended smoke; F2 ordinary workspace use and existing-user upgrade remain user acceptance work.
 
 
 
