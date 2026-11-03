@@ -7,6 +7,7 @@ use crate::policy::{
 use crate::protocol::{Operation, RequestEnvelope, ResultFrame, parse_readiness_response};
 use crate::{handle_request, setup_operation_denied, validate_setup_user_data_path};
 use serde_json::Value;
+use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -31,6 +32,362 @@ fn appcontainer_capability_names_derive_stable_distinct_read_write_sids() {
         derive_capability_name("Network.Noema.Read.4eeb0c18e86e40eb"),
         Err("appcontainer_capability_name_invalid")
     );
+}
+
+#[test]
+fn setup_removal_ipc_is_versioned_and_binds_the_operation_identity() {
+    let request = parse_request(
+        br#"{"protocolVersion":7,"requestId":"remove_request_01","operation":{"type":"remove_sandbox_setup","operationId":"remove_request_01"}}"#,
+    )
+    .expect("remove setup operation is valid versioned IPC");
+    assert!(matches!(
+        request.operation,
+        Operation::RemoveSandboxSetup { operation_id }
+            if operation_id == "remove_request_01"
+    ));
+
+    let response = handle_request(RequestEnvelope {
+        protocol_version: crate::protocol::PROTOCOL_VERSION,
+        request_id: "remove_request_01".to_string(),
+        operation: Operation::RemoveSandboxSetup {
+            operation_id: "another_request_02".to_string(),
+        },
+    });
+    assert!(matches!(
+        response.result,
+        ResultFrame::Denied { code, stage }
+            if code == "setup_operation_identity_mismatch" && stage == "setup"
+    ));
+}
+
+/// A target-machine acceptance probe for the real AppContainer process and Job
+/// behavior. It is ignored by default, has a second explicit opt-in, and never
+/// provisions a profile, changes ACLs, or mutates WFP state.
+#[cfg(windows)]
+#[test]
+#[ignore = "target-machine AppContainer acceptance; requires explicit opt-in and completed setup"]
+fn windows_live_appcontainer_process_tree_acceptance() {
+    assert_eq!(
+        std::env::var("NOEMA_RUN_WINDOWS_LIVE_ACCEPTANCE").as_deref(),
+        Ok("1"),
+        "set NOEMA_RUN_WINDOWS_LIVE_ACCEPTANCE=1 to run fixed live acceptance commands"
+    );
+
+    let platform = crate::windows_probe::read_platform().expect("read current Windows version");
+    assert!(
+        platform.build > crate::protocol::MINIMUM_WINDOWS_BUILD
+            || (platform.build == crate::protocol::MINIMUM_WINDOWS_BUILD
+                && platform.ubr >= crate::protocol::MINIMUM_WINDOWS_UBR),
+        "native command acceptance requires the configured Windows security baseline"
+    );
+    let package_sid = crate::appcontainer::derive_package_sid().expect("derive fixed package SID");
+    let profile_path = crate::appcontainer::probe_profile(&package_sid)
+        .expect("Noema AppContainer profile is ready");
+    assert_eq!(
+        crate::wfp::probe_network_deny(&package_sid),
+        Ok(true),
+        "Noema persistent network-deny filters must already be verified"
+    );
+
+    let system_root = std::env::var("SystemRoot").expect("SystemRoot is available");
+    let working_directory = std::path::Path::new(&system_root).join("System32");
+    let working_directory = working_directory
+        .to_str()
+        .expect("System32 path is valid UTF-8 for this test");
+    let environment_names = ["SystemRoot", "WINDIR", "TEMP", "TMP", "PATH"]
+        .into_iter()
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+
+    // The root cmd exits immediately; the fixed timeout descendant remains in
+    // its Job. Completion must wait for the entire Job, not just the root.
+    let root_exit = crate::process::run_appcontainer_command(
+        &package_sid,
+        &[],
+        "start /b timeout.exe /t 2 /nobreak >nul & exit /b 0",
+        working_directory,
+        &environment_names,
+        8_000,
+    )
+    .unwrap_or_else(|failure| panic!("root-exit process-tree command fails: {}", failure.code));
+    assert!(root_exit.child_started);
+    assert!(!root_exit.timed_out);
+    assert_eq!(root_exit.exit_code, 0);
+    assert!(
+        root_exit.duration_ms >= 1_000,
+        "Job wait must include descendant lifetime"
+    );
+    eprintln!(
+        "live_acceptance=root_exit job_duration_ms={}",
+        root_exit.duration_ms
+    );
+
+    // A bounded timeout must terminate the Job and confirm its signaled state
+    // before reporting cleanup as complete.
+    let timeout = crate::process::run_appcontainer_command(
+        &package_sid,
+        &[],
+        "timeout.exe /t 30 /nobreak >nul",
+        working_directory,
+        &environment_names,
+        1_000,
+    )
+    .unwrap_or_else(|failure| panic!("timeout cleanup is unconfirmed: {}", failure.code));
+    assert!(timeout.child_started);
+    assert!(timeout.timed_out);
+    assert!(
+        timeout.duration_ms < 8_000,
+        "timeout cleanup remains bounded"
+    );
+    eprintln!(
+        "live_acceptance=timeout cleanup_duration_ms={}",
+        timeout.duration_ms
+    );
+
+    assert_helper_stop_kills_child(&profile_path);
+    assert_appcontainer_network_is_denied(&package_sid, working_directory, &environment_names);
+}
+
+#[cfg(windows)]
+fn assert_appcontainer_network_is_denied(
+    package_sid: &str,
+    working_directory: &str,
+    environment_names: &[String],
+) {
+    use std::io::Write;
+    use std::net::{TcpListener, TcpStream};
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::thread::sleep;
+    use std::time::Duration;
+
+    let system_root = std::env::var("SystemRoot").expect("SystemRoot is available");
+    let curl_path = Path::new(&system_root).join("System32").join("curl.exe");
+    assert!(
+        curl_path.is_file(),
+        "Windows curl.exe is required for this fixed probe"
+    );
+
+    let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind controlled loopback endpoint");
+    listener
+        .set_nonblocking(true)
+        .expect("configure controlled listener");
+    let endpoint = listener.local_addr().expect("read local endpoint");
+    let accepted_count = Arc::new(AtomicUsize::new(0));
+    let stop_server = Arc::new(AtomicBool::new(false));
+    let thread_count = Arc::clone(&accepted_count);
+    let thread_stop = Arc::clone(&stop_server);
+    let server = std::thread::spawn(move || {
+        while !thread_stop.load(Ordering::SeqCst) {
+            match listener.accept() {
+                Ok((mut stream, _)) => {
+                    thread_count.fetch_add(1, Ordering::SeqCst);
+                    let _ = stream.write_all(
+                        b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok",
+                    );
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    sleep(Duration::from_millis(20));
+                }
+                Err(_) => break,
+            }
+        }
+    });
+
+    let control = TcpStream::connect_timeout(&endpoint, Duration::from_secs(2))
+        .expect("host positive control reaches the local endpoint");
+    drop(control);
+    let control_deadline = std::time::Instant::now() + Duration::from_secs(1);
+    while accepted_count.load(Ordering::SeqCst) == 0 && std::time::Instant::now() < control_deadline
+    {
+        sleep(Duration::from_millis(20));
+    }
+    assert_eq!(
+        accepted_count.load(Ordering::SeqCst),
+        1,
+        "host positive control must reach the endpoint before the child probe"
+    );
+
+    let version = crate::process::run_appcontainer_command(
+        package_sid,
+        &[],
+        "curl.exe --version",
+        working_directory,
+        environment_names,
+        4_000,
+    )
+    .unwrap_or_else(|failure| panic!("AppContainer curl bootstrap fails: {}", failure.code));
+    assert_eq!(
+        version.exit_code, 0,
+        "curl must execute inside the AppContainer"
+    );
+
+    let command = format!("curl.exe -sS --max-time 4 http://{endpoint}/");
+    let attempt = crate::process::run_appcontainer_command(
+        package_sid,
+        &[],
+        &command,
+        working_directory,
+        environment_names,
+        6_000,
+    )
+    .unwrap_or_else(|failure| panic!("AppContainer network probe fails: {}", failure.code));
+    sleep(Duration::from_millis(200));
+    stop_server.store(true, Ordering::SeqCst);
+    server.join().expect("join controlled loopback server");
+
+    assert!(
+        !attempt.timed_out,
+        "curl's own bounded timeout must finish first"
+    );
+    assert_ne!(
+        attempt.exit_code, 0,
+        "AppContainer network request must fail"
+    );
+    assert_eq!(
+        accepted_count.load(Ordering::SeqCst),
+        1,
+        "the AppContainer request must not reach the controlled listener"
+    );
+    eprintln!("live_acceptance=appcontainer_network denied=1 endpoint=loopback");
+}
+
+#[cfg(windows)]
+fn assert_helper_stop_kills_child(profile_path: &Path) {
+    use std::process::Stdio;
+    use std::thread::sleep;
+    use std::time::{Duration, Instant};
+
+    let nonce = format!(
+        "{}_{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock after epoch")
+            .as_nanos()
+    );
+    let ready = profile_path.join(format!("noema-stop-{nonce}.ready"));
+    let leaked = profile_path.join(format!("noema-stop-{nonce}.leaked"));
+    let helper = std::env::current_exe().expect("current test executable path");
+    let mut helper = std::process::Command::new(helper)
+        .args([
+            "--ignored",
+            "--exact",
+            "tests::windows_live_appcontainer_stop_helper",
+            "--nocapture",
+        ])
+        .env("NOEMA_RUN_WINDOWS_LIVE_STOP_HELPER", "1")
+        .env("NOEMA_LIVE_STOP_NONCE", nonce)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn the opt-in native helper process");
+
+    let ready_deadline = Instant::now() + Duration::from_secs(10);
+    let mut helper_exited_early = false;
+    while !ready.exists() && Instant::now() < ready_deadline {
+        helper_exited_early = helper
+            .try_wait()
+            .expect("check native helper state")
+            .is_some();
+        if helper_exited_early {
+            break;
+        }
+        sleep(Duration::from_millis(50));
+    }
+    if helper_exited_early || !ready.exists() {
+        let _ = helper.kill();
+        let _ = helper.wait();
+        let _ = std::fs::remove_file(&ready);
+        let _ = std::fs::remove_file(&leaked);
+        panic!("AppContainer child did not create its ready marker");
+    }
+
+    helper
+        .kill()
+        .expect("simulate Noema Stop terminating the helper");
+    let status = helper.wait().expect("wait for terminated helper");
+    assert!(
+        !status.success(),
+        "terminated helper must not report success"
+    );
+
+    sleep(Duration::from_secs(7));
+    let child_survived = leaked.exists();
+    let _ = std::fs::remove_file(&ready);
+    let _ = std::fs::remove_file(&leaked);
+    assert!(
+        !child_survived,
+        "a child survived helper termination and wrote its delayed marker"
+    );
+    eprintln!("live_acceptance=stop child_residue=none");
+}
+
+#[cfg(windows)]
+#[test]
+#[ignore = "helper mode for the opt-in AppContainer Stop acceptance"]
+fn windows_live_appcontainer_stop_helper() {
+    assert_eq!(
+        std::env::var("NOEMA_RUN_WINDOWS_LIVE_STOP_HELPER").as_deref(),
+        Ok("1"),
+        "this helper test is started only by the parent acceptance test"
+    );
+    let platform = crate::windows_probe::read_platform().expect("read current Windows version");
+    assert!(
+        platform.build > crate::protocol::MINIMUM_WINDOWS_BUILD
+            || (platform.build == crate::protocol::MINIMUM_WINDOWS_BUILD
+                && platform.ubr >= crate::protocol::MINIMUM_WINDOWS_UBR),
+        "native command acceptance requires the configured Windows security baseline"
+    );
+    let package_sid = crate::appcontainer::derive_package_sid().expect("derive package SID");
+    let profile_path = crate::appcontainer::probe_profile(&package_sid)
+        .expect("Noema AppContainer profile is ready");
+    assert_eq!(
+        crate::wfp::probe_network_deny(&package_sid),
+        Ok(true),
+        "Noema persistent network-deny filters must already be verified"
+    );
+    let system_root = std::env::var("SystemRoot").expect("SystemRoot is available");
+    let working_directory = Path::new(&system_root).join("System32");
+    let working_directory = working_directory
+        .to_str()
+        .expect("System32 path is valid UTF-8 for this test");
+    let environment_names = ["SystemRoot", "WINDIR", "TEMP", "TMP", "PATH"]
+        .into_iter()
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    let nonce = std::env::var("NOEMA_LIVE_STOP_NONCE").expect("fixed marker identity is passed");
+    assert!(
+        nonce.split_once('_').is_some_and(|(pid, ticks)| {
+            !pid.is_empty()
+                && !ticks.is_empty()
+                && pid.bytes().all(|byte| byte.is_ascii_digit())
+                && ticks.bytes().all(|byte| byte.is_ascii_digit())
+        }),
+        "marker identity contains only the parent PID and timestamp"
+    );
+    let ready = profile_path.join(format!("noema-stop-{nonce}.ready"));
+    let leaked = profile_path.join(format!("noema-stop-{nonce}.leaked"));
+    let ready_arg = crate::process::quote_windows_argument(
+        &ready.as_os_str().encode_wide().collect::<Vec<_>>(),
+    );
+    let leaked_arg = crate::process::quote_windows_argument(
+        &leaked.as_os_str().encode_wide().collect::<Vec<_>>(),
+    );
+    let command = format!(
+        "echo ready > {ready_arg} & timeout.exe /t 6 /nobreak >nul & echo leaked > {leaked_arg}"
+    );
+
+    let result = crate::process::run_appcontainer_command(
+        &package_sid,
+        &[],
+        &command,
+        working_directory,
+        &environment_names,
+        20_000,
+    )
+    .unwrap_or_else(|failure| panic!("Stop helper command fails: {}", failure.code));
+    assert!(!result.timed_out);
 }
 
 #[test]
@@ -678,7 +1035,7 @@ fn incomplete_setup_probe_serializes_typed_blockers_and_never_reports_ready() {
 #[test]
 fn request_protocol_rejects_unknown_fields() {
     let parsed = serde_json::from_str::<RequestEnvelope>(
-        r#"{"protocolVersion":6,"requestId":"execution_request_01","operation":{"type":"probe","extra":true}}"#,
+        r#"{"protocolVersion":7,"requestId":"execution_request_01","operation":{"type":"probe","extra":true}}"#,
     );
     assert!(parsed.is_err());
 }
@@ -997,7 +1354,7 @@ fn set_execute_fixture_root(fixture: &mut Value, path: &Path, identity_path: &Pa
 }
 
 const SERIALIZED_EXECUTE_FIXTURE: &str = r#"{
-    "protocolVersion": 6,
+    "protocolVersion": 7,
     "requestId": "execution_request_01",
     "operation": {
         "type": "execute",
@@ -1061,7 +1418,7 @@ fn execute_fixture_value() -> Value {
 }
 
 const READY_READINESS_FIXTURE: &str = r#"{
-    "protocolVersion": 6,
+    "protocolVersion": 7,
     "requestId": "execution_request_01",
     "result": {
         "type": "probe",
@@ -1080,7 +1437,7 @@ const READY_READINESS_FIXTURE: &str = r#"{
             "workingDirectoryConfinement": true,
             "environmentConfinement": true,
             "networkDefaultDeny": true,
-            "identityBoundNetworkBroker": true,
+            "identityBoundNetworkBroker": false,
             "jobProcessTree": true,
             "boundedStdio": true
         },
@@ -1133,7 +1490,7 @@ fn sandbox_setup_ipc_schema_is_strict_and_probe_fails_closed() {
     for operation_type in ["reconcile_sandbox_setup", "probe_sandbox_setup"] {
         let request_id = "setup_operation_0001";
         let request = serde_json::json!({
-            "protocolVersion": 6,
+            "protocolVersion": 7,
             "requestId": request_id,
             "operation": {
                 "type": operation_type,

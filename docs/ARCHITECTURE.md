@@ -22,8 +22,8 @@
 ## 已核对的工程事实
 
 - SocialChatService 和聊天存储仍有较集中的职责，且保留兼容运行路径。相关对象的未来保留范围尚未决定。
-- [命令沙箱](../apps/desktop/src/main/execution/project-command-sandbox.mjs) 当前在 Windows 启动前返回不支持；[回归](../apps/desktop/test/main/execution/project-command-sandbox.test.mjs) 覆盖该拒绝路径。现有 helper 不能完整满足严格的工作区外写入和网络边界，不可仅移除 guard 来声称恢复。
-- [Windows runner setup state](../apps/desktop/src/main/execution/windows-runner-setup-state.mjs) 保存严格版本化的本机 setup 状态；[setup service](../apps/desktop/src/main/execution/windows-runner-setup-service.mjs) 在主进程先持久化 repair-required，再协调 helper 幂等修复并 fresh-probe 后提交 ready。当前 helper 尚未实现 setup operations，service 也未接入应用启动/命令 readiness，因此 command sandbox 仍保持拒绝。
+- [命令沙箱](../apps/desktop/src/main/execution/project-command-sandbox.mjs) 的 Windows 路径已接入固定打包的 native AppContainer runner，并在 capability 不完整时保持 fail closed；[回归](../apps/desktop/test/main/execution/project-command-sandbox.test.mjs) 覆盖拒绝路径。不得因 helper 存在或 fixtures 通过而宣称工作区外文件与网络隔离已由 Windows 实机验证。
+- [Windows runner setup state](../apps/desktop/src/main/execution/windows-runner-setup-state.mjs) 保存严格版本化的本机 setup 状态；[setup service](../apps/desktop/src/main/execution/windows-runner-setup-service.mjs) 先持久化 repair-required，再协调 helper 幂等修复并 fresh-probe 后提交 ready。native helper 已实现 profile/WFP setup、当前用户对 Noema 自有 WFP 对象的只读核验权限、ACL journal 和 AppContainer child/Job 生命周期代码；probe 仍因 runner implementation gate、未配置 setup 或未验证 WFP 报告不可用。WFP/UAC/ACL enforcement 与真实进程树清理仍须目标机验收，当前 command sandbox 保持拒绝。
 - [项目存储测试](../apps/desktop/test/main/projects/social-project-store.test.mjs) 中模拟旧数据库升级的夹具未移除新增回访表，最新核查遇到重名失败；真实旧库升级安全性不能由该夹具保证。
 - 格式检查此前未全通过；当前整体客户端、真实模型与长期使用未完成统一验收。
 - 参考源码的版本和检出范围登记在本机过程资料 `.work/references/README.md`；`.work/` 按工作区约定不纳入 Git。

@@ -24,7 +24,20 @@ $userDataPath = Join-Path $appDataPath 'Noema'
 $loadedMarker = Join-Path $smokeRoot 'renderer-loaded.json'
 $startupLog = Join-Path $smokeRoot 'startup.jsonl'
 $sentinelPath = Join-Path $userDataPath 'install-lifecycle-sentinel.txt'
-$installRoot = Join-Path $env:LOCALAPPDATA 'noema_desktop'
+$localAppDataPath = [Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)
+if ([string]::IsNullOrWhiteSpace($localAppDataPath)) {
+  throw 'Could not resolve the Windows Local Application Data folder.'
+}
+$localAppDataPath = [IO.Path]::GetFullPath($localAppDataPath)
+if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA) -and
+    -not [string]::Equals(
+      [IO.Path]::GetFullPath($env:LOCALAPPDATA),
+      $localAppDataPath,
+      [StringComparison]::OrdinalIgnoreCase
+    )) {
+  throw 'Refusing installer smoke because LOCALAPPDATA does not match the Windows known folder used by Squirrel.'
+}
+$installRoot = Join-Path $localAppDataPath 'noema_desktop'
 $uninstallKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\noema_desktop'
 $completed = $false
 
@@ -254,7 +267,7 @@ finally {
     }
   }
   if ($completed) {
-    $localAppDataRoot = [IO.Path]::GetFullPath($env:LOCALAPPDATA).TrimEnd('\') + '\'
+    $localAppDataRoot = [IO.Path]::GetFullPath($localAppDataPath).TrimEnd('\') + '\'
     $installRootFull = [IO.Path]::GetFullPath($installRoot)
     if (-not $installRootFull.StartsWith($localAppDataRoot, [StringComparison]::OrdinalIgnoreCase) -or
         (Split-Path -Leaf $installRootFull) -ne 'noema_desktop') {

@@ -16,6 +16,8 @@ export function createWindowsRunnerCapabilityReport({
       backendReady: false,
       status: 'not_applicable',
       reasonCode: null,
+      reasonCodes: [],
+      setupActionAvailable: false,
       backendId: null,
       backendVersion: null,
       protocolVersion: null,
@@ -24,16 +26,33 @@ export function createWindowsRunnerCapabilityReport({
   }
 
   const supported = support?.supported === true;
-  const candidateCode = [
+  const reasonCodes = [
+    ...(Array.isArray(backendReadiness?.blockers)
+      ? backendReadiness.blockers
+      : []),
     support?.reason,
     backendReadiness?.code,
     setupReadiness?.reason,
-  ].find((value) => typeof value === 'string' && SAFE_CODE.test(value));
+  ].filter(
+    (value, index, all) =>
+      typeof value === 'string' &&
+      SAFE_CODE.test(value) &&
+      all.indexOf(value) === index,
+  );
   const reasonCode = supported
     ? null
-    : candidateCode
-      ? candidateCode
-      : 'runner_unavailable';
+    : (reasonCodes[0] ?? 'runner_unavailable');
+  const setupActionAvailable =
+    !supported &&
+    backendReadiness?.ready === false &&
+    setupReadiness?.ready !== true &&
+    !reasonCodes.includes('os_baseline_unsupported') &&
+    !reasonCodes.includes('diagnostics_unavailable') &&
+    reasonCodes.some((code) =>
+      ['sandbox_setup_unavailable', 'network_filters_unverified'].includes(
+        code,
+      ),
+    );
   const backend = backendReadiness?.backend;
   return Object.freeze({
     platform: 'win32',
@@ -41,6 +60,8 @@ export function createWindowsRunnerCapabilityReport({
     backendReady: backendReadiness?.ready === true,
     status: supported ? 'ready' : 'unavailable',
     reasonCode,
+    reasonCodes: supported ? [] : reasonCodes,
+    setupActionAvailable,
     backendId:
       typeof backend?.id === 'string' && SAFE_CODE.test(backend.id)
         ? backend.id

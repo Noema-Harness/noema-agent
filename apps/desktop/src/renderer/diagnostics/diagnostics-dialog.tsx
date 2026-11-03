@@ -10,6 +10,10 @@ import {
   formatMessageRoleCharactersLabel,
   formatRequestShapeLabel,
 } from './request-shape-label.mjs';
+import {
+  canOfferWindowsRunnerSetup,
+  windowsRunnerReasonLabel,
+} from './windows-runner-status.mjs';
 import { Icon } from '../chat/presentation';
 
 const GAP_LABELS: Record<string, string> = {
@@ -47,24 +51,6 @@ function statusLabel(status: string) {
     started: '开始',
   };
   return labels[status] ?? status;
-}
-
-function runnerReasonLabel(reasonCode: string | null) {
-  const labels: Record<string, string> = {
-    runner_startup_not_checked: '应用仍在检查命令隔离能力。',
-    runner_resource_missing: '安装包中没有找到 Windows 命令隔离组件。',
-    runner_resource_untrusted: 'Windows 命令隔离组件未通过资源检查。',
-    runner_resource_architecture_unsupported: '当前 Windows 架构暂不支持。',
-    sandbox_setup_unavailable: '本机隔离设置尚未完成或未通过检查。',
-    sandbox_setup_missing: '需要先完成本机隔离设置。',
-    setup_state_unavailable: '本机隔离设置状态暂不可读取。',
-    setup_failed: '本机隔离设置未完成。',
-    runner_runtime_unavailable: 'Windows 命令隔离运行组件暂不可用。',
-    diagnostics_unavailable: 'Noema 诊断记录不可用，命令保持关闭。',
-  };
-  return reasonCode
-    ? (labels[reasonCode] ?? `命令不可用（${reasonCode}）。`)
-    : '';
 }
 
 export function DiagnosticsDialog({
@@ -184,7 +170,7 @@ export function DiagnosticsDialog({
       setRunnerCapability(await window.noema.getWindowsRunnerCapability());
       if (result.canceled) setRunnerStatusError('设置已取消；命令仍不可用。');
       else if (!result.supported)
-        setRunnerStatusError(runnerReasonLabel(result.reasonCode));
+        setRunnerStatusError(windowsRunnerReasonLabel(result.reasonCode));
     } catch {
       setRunnerStatusError('设置没有完成；命令仍保持不可用。');
     } finally {
@@ -434,10 +420,19 @@ export function DiagnosticsDialog({
                 {runnerCapability.supported
                   ? `${runnerCapability.backendId ?? 'Windows runner'} ${runnerCapability.backendVersion ?? ''} · 协议 ${runnerCapability.protocolVersion ?? '未知'}`
                   : runnerStatusError ||
-                    runnerReasonLabel(runnerCapability.reasonCode)}
+                    windowsRunnerReasonLabel(
+                      runnerCapability.reasonCodes.length > 0
+                        ? runnerCapability.reasonCodes
+                        : runnerCapability.reasonCode,
+                    )}
+              </p>
+              <p>
+                无需更新 Windows 即可启动和使用 Noema
+                桌面应用；此处状态只影响受限命令。
               </p>
             </div>
-            {!runnerCapability.supported && runnerCapability.backendId ? (
+            {canOfferWindowsRunnerSetup(runnerCapability) &&
+            runnerCapability.backendId ? (
               <button
                 className="secondary-action"
                 type="button"

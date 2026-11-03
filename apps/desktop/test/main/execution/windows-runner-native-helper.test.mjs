@@ -68,7 +68,7 @@ test('native helper transport drives the durable journal before reconcile and ve
       operations.push('verify');
     }
     return {
-      protocolVersion: 6,
+      protocolVersion: 7,
       requestId: request.requestId,
       result: {
         type: 'acl_evidence',
@@ -99,7 +99,7 @@ test('native helper rejects mismatched response identity and leaves the journal 
   t.after(() => fs.rmSync(userDataPath, { recursive: true, force: true }));
   const journal = new WindowsRunnerAclJournalStore({ userDataPath });
   const helper = makeHelper(() => ({
-    protocolVersion: 6,
+    protocolVersion: 7,
     requestId: 'different-request-id',
     result: {
       type: 'acl_evidence',
@@ -130,7 +130,7 @@ test('native helper rejects a mismatched backend version and leaves the journal 
   t.after(() => fs.rmSync(userDataPath, { recursive: true, force: true }));
   const journal = new WindowsRunnerAclJournalStore({ userDataPath });
   const helper = makeHelper(({ request }) => ({
-    protocolVersion: 6,
+    protocolVersion: 7,
     requestId: request.requestId,
     result: {
       type: 'acl_evidence',
@@ -231,7 +231,7 @@ test('native setup transport accepts only matching typed reconcile and probe evi
         userDataPath: setupUserDataPath,
       });
       return {
-        protocolVersion: 6,
+        protocolVersion: 7,
         requestId: operationId,
         result: {
           type: 'setup_reconciled',
@@ -248,7 +248,7 @@ test('native setup transport accepts only matching typed reconcile and probe evi
       userDataPath: setupUserDataPath,
     });
     return {
-      protocolVersion: 6,
+      protocolVersion: 7,
       requestId: operationId,
       result: {
         type: 'setup_evidence',
@@ -282,9 +282,48 @@ test('native setup transport accepts only matching typed reconcile and probe evi
   );
 });
 
+test('native uninstall cleanup sends a fixed setup-removal operation and accepts only exact evidence', async () => {
+  const helper = makeHelper(({ request, options }) => {
+    assert.equal(options.shell, false);
+    assert.equal(options.windowsHide, true);
+    assert.deepEqual(request.operation, {
+      type: 'remove_sandbox_setup',
+      operationId,
+    });
+    return {
+      protocolVersion: 7,
+      requestId: operationId,
+      result: {
+        type: 'setup_removed',
+        backendId: 'noema-codex-windows',
+        backendVersion: '0.1.0',
+        operationId,
+      },
+    };
+  });
+  assert.deepEqual(await helper.removeSandboxSetup({ operationId }), {
+    operationId,
+  });
+
+  const invalid = makeHelper(({ request }) => ({
+    protocolVersion: 7,
+    requestId: request.requestId,
+    result: {
+      type: 'setup_removed',
+      backendId: 'noema-codex-windows',
+      backendVersion: '0.1.0',
+      operationId,
+      extra: 'rejected',
+    },
+  }));
+  await assert.rejects(invalid.removeSandboxSetup({ operationId }), {
+    code: 'runner_helper_response_invalid',
+  });
+});
+
 test('native setup transport rejects credentials and mismatched identity fields', async () => {
   const helper = makeHelper(({ request }) => ({
-    protocolVersion: 6,
+    protocolVersion: 7,
     requestId: request.requestId,
     result: {
       type: 'setup_reconciled',
@@ -305,7 +344,7 @@ test('native setup transport rejects credentials and mismatched identity fields'
   );
 
   const mismatch = makeHelper(({ request }) => ({
-    protocolVersion: 6,
+    protocolVersion: 7,
     requestId: request.requestId,
     result: {
       type: 'setup_reconciled',
@@ -344,7 +383,7 @@ test('native setup transport rejects nonlocal or aliased userData paths', async 
 
 test('native setup transport preserves an explicit setup-unavailable denial', async () => {
   const helper = makeHelper(({ request }) => ({
-    protocolVersion: 6,
+    protocolVersion: 7,
     requestId: request.requestId,
     result: {
       type: 'denied',
@@ -365,7 +404,7 @@ test('native capability probe returns a fail-closed typed report', async () => {
   const helper = makeHelper(({ request }) => {
     assert.deepEqual(request.operation, { type: 'probe' });
     return {
-      protocolVersion: 6,
+      protocolVersion: 7,
       requestId: request.requestId,
       result: {
         type: 'probe',
@@ -384,7 +423,7 @@ test('native capability probe returns a fail-closed typed report', async () => {
           workingDirectoryConfinement: true,
           environmentConfinement: true,
           networkDefaultDeny: true,
-          identityBoundNetworkBroker: true,
+          identityBoundNetworkBroker: false,
           jobProcessTree: true,
           boundedStdio: false,
         },
@@ -405,9 +444,48 @@ test('native capability probe returns a fail-closed typed report', async () => {
   assert.equal(report.platform.build, 19045);
 });
 
+test('deny-only readiness does not require the unimplemented network broker', async () => {
+  const helper = makeHelper(({ request }) => ({
+    protocolVersion: 7,
+    requestId: request.requestId,
+    result: {
+      type: 'probe',
+      backendId: 'noema-codex-windows',
+      backendVersion: '0.1.0',
+      policyVersion: 2,
+      ready: true,
+      blockers: [],
+      setupStatus: 'ready',
+      networkFilterStatus: 'ready',
+      capabilities: {
+        filesystemDefaultDeny: true,
+        filesystemReadAllowlist: true,
+        filesystemWriteAllowlist: true,
+        pathIdentityValidation: true,
+        workingDirectoryConfinement: true,
+        environmentConfinement: true,
+        networkDefaultDeny: true,
+        identityBoundNetworkBroker: false,
+        jobProcessTree: true,
+        boundedStdio: true,
+      },
+      platform: {
+        major: 10,
+        minor: 0,
+        build: 19045,
+        ubr: 7_807,
+        architecture: 'x86_64',
+      },
+    },
+  }));
+  const report = await helper.probeCommandBackend({ requestId: operationId });
+  assert.equal(report.ready, true);
+  assert.equal(report.capabilities.identityBoundNetworkBroker, false);
+});
+
 test('native capability probe rejects unknown fields and mismatched identity', async () => {
   const helper = makeHelper(({ request }) => ({
-    protocolVersion: 6,
+    protocolVersion: 7,
     requestId: request.requestId,
     result: {
       type: 'probe',
@@ -491,7 +569,7 @@ test('native execute transport binds the request, policy, grants and bounded com
     ]);
     assert.equal('OPENAI_API_KEY' in options.env, false);
     return {
-      protocolVersion: 6,
+      protocolVersion: 7,
       requestId: operationId,
       result: {
         type: 'command_complete',
@@ -538,7 +616,7 @@ test('native execute transport keeps timeout effects unknown even after cleanup'
     request.operation.type === 'probe'
       ? readyProbeResponse(request.requestId)
       : {
-          protocolVersion: 6,
+          protocolVersion: 7,
           requestId: request.requestId,
           result: {
             type: 'command_complete',
@@ -575,7 +653,7 @@ test('native execute transport marks a runner cleanup failure as unknown', async
     request.operation.type === 'probe'
       ? readyProbeResponse(request.requestId)
       : {
-          protocolVersion: 6,
+          protocolVersion: 7,
           requestId: request.requestId,
           result: {
             type: 'command_outcome_unknown',
@@ -624,7 +702,7 @@ test('native execute transport rejects malformed results and invalid request bou
           request.operation.type === 'probe'
             ? readyProbeResponse(request.requestId)
             : {
-                protocolVersion: 6,
+                protocolVersion: 7,
                 requestId: request.requestId,
                 result: {
                   type: 'command_complete',
@@ -682,7 +760,7 @@ test('native execute does not submit a command when the OS readiness baseline fa
   const helper = makeHelper(({ request }) => {
     operations.push(request.operation.type);
     return {
-      protocolVersion: 6,
+      protocolVersion: 7,
       requestId: request.requestId,
       result: {
         ...readyProbeResponse(request.requestId).result,
@@ -832,7 +910,7 @@ function validExecutePolicy() {
 
 function readyProbeResponse(requestId) {
   return {
-    protocolVersion: 6,
+    protocolVersion: 7,
     requestId,
     result: {
       type: 'probe',

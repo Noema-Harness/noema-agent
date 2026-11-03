@@ -84,6 +84,31 @@ export class WindowsRunnerNativeHelper {
     return this.#setupRequest('probe_sandbox_setup', operationId, userDataPath);
   }
 
+  async removeSandboxSetup({ operationId }) {
+    if (
+      typeof operationId !== 'string' ||
+      !/^[A-Za-z0-9_-]{16,128}$/u.test(operationId)
+    ) {
+      throw helperError('runner_helper_request_invalid');
+    }
+    const input = Buffer.from(
+      `${JSON.stringify({
+        protocolVersion: WINDOWS_RUNNER_PROTOCOL_VERSION,
+        requestId: operationId,
+        operation: { type: 'remove_sandbox_setup', operationId },
+      })}\n`,
+      'utf8',
+    );
+    const stdout = await this.#run(input);
+    const result = parseSetupResponse(
+      stdout,
+      operationId,
+      this.expectedBackendVersion,
+    );
+    if (result.type === 'denied') throw helperError(result.code);
+    return result.value;
+  }
+
   async probeCommandBackend({ requestId }) {
     if (
       typeof requestId !== 'string' ||
@@ -645,6 +670,23 @@ function parseSetupResponse(bytes, expectedRequestId, expectedBackendVersion) {
     };
   }
 
+  if (result.type === 'setup_removed') {
+    if (
+      !hasExactKeys(result, [
+        'type',
+        'backendId',
+        'backendVersion',
+        'operationId',
+      ]) ||
+      result.backendId !== WINDOWS_RUNNER_BACKEND_ID ||
+      result.backendVersion !== expectedBackendVersion ||
+      result.operationId !== expectedRequestId
+    ) {
+      throw helperError('runner_helper_response_invalid');
+    }
+    return { type: result.type, value: { operationId: result.operationId } };
+  }
+
   if (
     result.type !== 'setup_evidence' ||
     !hasExactKeys(result, [
@@ -846,6 +888,12 @@ function parseProbeResponse(bytes, expectedRequestId, expectedBackendVersion) {
     'jobProcessTree',
     'boundedStdio',
   ];
+  // The current policy only allows network denial. An identity-bound broker
+  // is required only by prompt-per-destination networking, which the policy
+  // compiler rejects until that capability is implemented.
+  const requiredCapabilityNames = capabilityNames.filter(
+    (name) => name !== 'identityBoundNetworkBroker',
+  );
   const blockers = new Set([
     'runner_implementation_incomplete',
     'sandbox_setup_unavailable',
@@ -930,7 +978,7 @@ function parseProbeResponse(bytes, expectedRequestId, expectedBackendVersion) {
     result.setupStatus === 'ready' &&
     result.networkFilterStatus === 'ready' &&
     platformSupported &&
-    capabilityNames.every((name) => capabilities[name]);
+    requiredCapabilityNames.every((name) => capabilities[name]);
   return {
     ready: actualReady,
     reportedReady: result.ready,

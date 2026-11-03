@@ -257,13 +257,13 @@ flowchart TD
 
 - **结果/可见行为：**命令在隔离生效与 Job/进程生命周期控制成功后才开始运行；用户可看到 stdout/stderr、退出状态和耗时；停止/超时可终止整棵子进程树。
 - **前置：**D1–D2；B4 task shutdown contract。
-- **源码依据：**Noema-owned `SECURITY_CAPABILITIES`/`CreateProcessW` AppContainer launch direction；Sandy `Sandbox.h`、`SandboxCapabilities.h`、`SandboxProcess.h` 的 AppContainer capability/process-attribute 启动原语；Microsoft AppContainer docs；Codex `CODEX_WINDOWS_SANDBOX.md` 的 handle-based ACL/path、Job/pipe/cancel/diagnostics 调用链；MXC `PSEC_CAPABILITY_AND_LAUNCH.md`、`PROCESS_IO_LIFECYCLE.md` 作对照；Noema `project-command-sandbox.mjs` 与 `NoemaProjectExecutor` lifecycle。
+- **源码依据：**Noema-owned `SECURITY_CAPABILITIES`/`CreateProcessW` AppContainer launch direction；Sandy `Sandbox.h`、`SandboxCapabilities.h`、`SandboxProcess.h` 的 AppContainer capability/process-attribute 启动原语；Microsoft AppContainer docs 和 [`PROC_THREAD_ATTRIBUTE_JOB_LIST`](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-updateprocthreadattribute) 创建期 Job 归属文档；其[进程生命周期说明](https://devblogs.microsoft.com/oldnewthing/20230209-00/?p=107812)记录创建后加入 Job 的孤儿进程窗口及创建时归属方式；Codex `CODEX_WINDOWS_SANDBOX.md` 的 handle-based ACL/path、Job/pipe/cancel/diagnostics 调用链；MXC `PSEC_CAPABILITY_AND_LAUNCH.md`、`PROCESS_IO_LIFECYCLE.md` 作对照；Noema `project-command-sandbox.mjs` 与 `NoemaProjectExecutor` lifecycle。
 - **状态/接口：**backend adapter 持有 native handle/child/job/pipes；executor 持有 tool call ledger；SocialChatStore 持有可恢复 task facts。console流只由 executor 追加为受限结果。
 - **异常/恢复：**AppContainer profile/capability setup、process create、Job bind、pipe、cancel、timeout 任一步失败都不得留下未受限 child；任务恢复若执行结果不明记 outcome_unknown，不自动第二次执行。
 - **诊断：**每条命令记录 backend id、spawn phase、PID关联（仅本地）、stdout/stderr截断统计、deadline、终止原因、exit code 与清理结果；截断保留边界可见。
 - **检查：**child lifecycle/cancel/timeout/IO backpressure/cleanup 单元和可控进程集成测试；隔离恶意访问由目标机验收做，助手不伪造 OS enforcement 效果。
 - **用户验收：**运行安全无害本地任务、主动停止、多进程任务与超时；确认子进程已收束，工作区外/未授权网络尝试拒绝。
-- **完成条件/下一项：**返回状态/退出原因可确定，取消后无残留进程，任何设置失败无 untrusted spawn。下一项 D4。
+- **完成条件/下一项：**返回状态/退出原因可确定，取消后无残留进程，任何设置失败无 untrusted spawn；2.3.e 与 3.3.b 的目标机验收全部通过后，才移除 native readiness 的静态未完成 blocker，并改由实时 OS/build/profile/ACL/WFP 证据开放 capabilities。此 gate activation 本身要有完整负向测试，不能让缺少能力、状态过期、helper/policy mismatch 或诊断关闭时开放命令。完成后下一项 D4。
 
 ### D4 — 统一命令能力 UI、Windows 打包资源与安全回归门
 

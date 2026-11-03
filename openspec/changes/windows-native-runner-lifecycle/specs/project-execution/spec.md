@@ -48,6 +48,21 @@ The OS baseline, AppContainer profile/setup and filter state, blockers, readines
 - **WHEN** the host restarts after AppContainer profile, ACL, or network setup began but before readiness was committed
 - **THEN** startup treats the identity as repair-required, revalidates actual OS state under the setup lock, and denies commands until recovery is complete
 
+### Requirement: ordinary Noema can verify only its own WFP policy
+After confirmed setup, ordinary Noema MUST read its fixed WFP policy for readiness. Elevated setup MUST grant the initiating user only `FWPM_ACTRL_READ` on Noema's exact objects, preserve existing DACL entries, and MUST NOT grant write/delete. Setup MUST verify descriptors and worker exit; failure or unknown cleanup MUST leave setup unavailable.
+
+#### Scenario: standard-user probe checks the installed Noema policy
+- **WHEN** the fixed WFP policy is complete and Noema probes it without elevation
+- **THEN** the probe can read the exact policy objects using the initiating user's read-only ACE, while conflicting, inaccessible, or incomplete policy still fails closed
+
+#### Scenario: elevated setup cannot change the command policy target
+- **WHEN** a UAC worker is launched for setup or removal
+- **THEN** it operates on the validated package SID captured by the ordinary helper, and setup grants only read access to the validated initiating user's SID
+
+#### Scenario: elevated worker exceeds its wait limit
+- **WHEN** the setup or removal worker has not exited before the bounded wait expires
+- **THEN** the caller attempts bounded worker termination, and does not report confirmed setup or cleanup unless process exit is observed
+
 ### Requirement: Windows filesystem roots use unambiguous Win32 path components
 Windows command policy roots MUST reject path components that invoke alternate data streams, Win32 reserved device names, forbidden path characters, dot traversal, or trailing ASCII spaces/periods. This lexical check is only an admission check and MUST NOT replace native handle identity, reparse-point, or hard-link verification.
 
@@ -106,3 +121,18 @@ Windows runner MUST 将 stdout、stderr、退出码、耗时以及完成、失�
 #### Scenario: runner diagnostics sink is unavailable
 - **WHEN** 本机诊断存储不可用
 - **THEN** runner 仍按隔离执行结果完成或失败，不因诊断写入失败改用宿主执行或重放命令
+
+### Requirement: Windows command availability is explained separately from desktop availability
+Noema MUST 在诊断界面将 Windows 命令隔离状态与 Noema 桌面应用可用性区分说明，并呈现全部经主进程验证的有限阻塞原因。界面 MUST 仅在存在可由 setup 修复的 profile/network blocker 且 Windows 安全基线已满足时显示“启用或重试设置”；单独的实现未完成、资源无效、诊断不可用或操作系统基线不符不得提示用户通过 setup 修复。主进程的 setup IPC handler MUST 独立复核该条件后才可弹出 UAC。界面说明 MUST NOT 暗示启动或使用 Noema 桌面应用需要 Windows 更新。
+
+#### Scenario: command runner implementation has not passed target verification
+- **WHEN** runner readiness 仅报告 `runner_implementation_incomplete`
+- **THEN** 诊断说明命令隔离尚未完成目标机验证、Noema 桌面应用仍可使用且无需更新 Windows 才能启动，并且不显示 setup 操作
+
+#### Scenario: setup blockers coexist with the implementation hold
+- **WHEN** readiness reports `runner_implementation_incomplete` together with a missing/incomplete sandbox profile or unverified network filters, and the Windows security baseline is met
+- **THEN** diagnostics lists each blocker and provides setup for the profile/network blockers while ordinary command execution remains disabled
+
+#### Scenario: Windows security baseline is not met
+- **WHEN** readiness includes `os_baseline_unsupported` alongside setup blockers
+- **THEN** diagnostics explains that the baseline applies to restricted commands, leaves Noema desktop usage available, and does not offer setup or trigger UAC
