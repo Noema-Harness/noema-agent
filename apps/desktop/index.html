@@ -3,9 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Permit only Vite React's fixed refresh preamble; keep unsafe-inline disabled. -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self';"
+      content="default-src 'self'; script-src 'self' 'sha256-Z2/iFzh9VMlVkEOar1f/oSHWwQk3ve1qk/C2WdsC4Xk='; style-src 'self'; img-src 'self' data:; connect-src 'self';"
     />
     <meta name="theme-color" content="#fcfcfc" />
     <link rel="stylesheet" href="./src/renderer/styles/index.css" />

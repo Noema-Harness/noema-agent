@@ -19,7 +19,7 @@ export default defineConfig({
   },
   // Electron can request the renderer while Vite's cold-start scanner is still
   // discovering this graph. Pre-bundle its direct dependencies up front so
-  // the first page load does not mix optimizer generations.
+  // the first page load uses a stable optimized module graph.
   optimizeDeps: {
     include: [
       'cmdk',
