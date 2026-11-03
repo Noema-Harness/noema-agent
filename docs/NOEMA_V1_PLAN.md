@@ -1,6 +1,6 @@
 # Noema 一期规划与执行顺序
 
-状态：Gate E 规划交付完成；Noema 一期开发进行中。本文定义范围、验收条件和 20 项分阶段工作。Windows 支持基线已由用户确认：Windows 10 22H2 + 当前 ESU 安全更新；不要求 Windows 11，也不逐 release 维护实现分支。D1 已选定以 Codex Windows sandbox 固定源码为基础，开发 Noema 自有的窄 runner bridge/维护子集；不将上游 crate 当作独立依赖，也不采用未修改的 WFP best-effort setup。该选择尚未通过实现或安全验收。本文仍是唯一权威阶段计划；实施时按影响范围创建 OpenSpec change。规划依据：[当前上下文](CURRENT_CONTEXT.md)；完整源码研究与规划契约保存在本机过程目录 `.work/planning/`、`.work/references/`（该目录按工作区约定不纳入 Git）。更新：2026-11-02。
+状态：Gate E 规划交付完成；Noema 一期开发进行中。本文定义范围、验收条件和 20 项分阶段工作。Windows 支持基线已由用户确认：Windows 10 22H2 + 当前 ESU 安全更新；不要求 Windows 11，也不逐 release 维护实现分支。D1 最初以 Codex Windows sandbox 作为候选实现参考；D3 源码审查后，当前实现方向已调整为 Noema 自有的普通 AppContainer runner。Sandy 仅提供 AppContainer 启动原语参考，Codex 继续作为 handle ACL/path、Job 与诊断参考；不直接依赖任一上游 crate。该实现尚未通过目标机 OS 安全验收。本文仍是唯一权威阶段计划；实施时按影响范围创建 OpenSpec change。规划依据：[当前上下文](CURRENT_CONTEXT.md)；完整源码研究与规划契约保存在本机过程目录 `.work/planning/`、`.work/references/`（该目录按工作区约定不纳入 Git）。更新：2026-11-03。
 
 路径约定：研究卡/规划文档里的 `research/...` 相对 `.work/planning/`；源码路径以 `apps/desktop/...` 为仓库根相对路径，简写的 `main/...`、`renderer/...` 相对 `apps/desktop/src/`。
 
@@ -31,7 +31,7 @@
 - 全应用 DSH 式插件化重构、通用插件市场、任意外部 agent runtime marketplace。
 - SocialChat 当前复杂的房间、多成员协同、specialist delegation、复杂跟进/实践/经验功能，除非 Gate E 对某项证明它是工作区开发闭环直接必要且已有成熟证据。现存实现、测试、OpenSpec 历史不自动构成一期要求。
 - RootAgent + DSH legacy/#legacy 路径与默认 social work 执行路径合并。legacy 实现不作为一期工作区任务的默认 owner；发现其具有唯一必要能力时先补证据再单项判断。
-- Windows 一期支持基线为用户确认的 Windows 10 22H2 + 当前 ESU 安全更新。启动检查当前 OS/更新状态、所需 API/setup 与逐请求策略能力；同一实现覆盖该基线，不为每个 Windows release 建分支。目标机当前 UBR 6093 尚未达到核验时的最新 ESU 状态。Codex 官方的 Win10 best-effort 声明不构成 Noema 兼容或安全验收。命令必须 fail closed；不要求 Win11，不默认自研 VM。若源码审计证明 native runner 无法满足已定隔离边界，再依据具体缺口评估替代路线。
+- Windows 一期支持基线为用户确认的 Windows 10 22H2 + 当前 ESU 安全更新。Windows build/UBR gate 只决定严格隔离命令 backend 能否 ready，不是 Noema 桌面程序启动、交互或安装的最低版本要求。AppContainer 与 WFP 所需 API 在 Windows 10 22H2 可用；本实现将当时最新 ESU 累积更新 UBR 7807 作为 command runner 的安全基线，不是 API 兼容线，也未映射到某个特定漏洞。目标机当前 UBR 6093，因此 command runner 仍 fail closed；Noema 桌面/安装生命周期可以在当前系统独立验收。Codex 官方的 Win10 best-effort 声明不构成 Noema 兼容或安全验收。不要求 Win11，不默认自研 VM。若源码审计证明 native runner 无法满足已定隔离边界，再依据具体缺口评估替代路线。
 - 云端同步、多机任务接管、任务外部恰好一次语义、公开发行/签名承诺。
 
 ## 最终交付条件
@@ -231,10 +231,10 @@ flowchart TD
 
 ### D1 — 选定兼容目标机的严格隔离后端
 
-- **结果/可见行为：**以固定 Codex Windows sandbox 源码为实现基线，开发 Noema 自有窄 runner bridge/维护子集；确定 backend contract、用户确定的单一最低 Windows 基线（Win10 22H2 + 当前 ESU 更新）、启动 API/setup/policy capability probe、依赖/许可/SBOM 和目标机验收边界。不直接依赖上游 crate API，不纳入 Codex app/workspace；普通 setup 的 WFP best-effort 必须加固为 fail closed。不为每个 release 做单独适配。Codex 官方 Win10 best-effort 声明仅作支持范围参考，不是 Noema 兼容或安全结论。
+- **结果/可见行为：**依据固定源码评估确定 Noema 自有 Windows runner 的 backend contract、用户确定的单一最低 Windows 基线（Win10 22H2 + 当前 ESU 更新）、启动 API/setup/policy capability probe、依赖/许可/SBOM 和目标机验收边界。最初候选 Codex restricted-token 路径因无法满足已确认的 hard-link 边界而被放弃；当前实现方向为普通 AppContainer。Sandy 仅作 AppContainer 启动原语参考，Codex 作 handle ACL/path、Job 与诊断参考；不直接依赖上游 crate API或引入 Codex app/workspace。WFP setup 必须 fail closed。不为每个 release 做单独适配。Codex 官方 Win10 best-effort 声明仅作支持范围参考，不是 Noema 兼容或安全结论。
 - **前置：**Codex 固定 SHA 源码卡和 Windows 隔离候选审计；当前目标机已核实为 Windows 10 22H2/build 19045、UBR 6093。闭合 permission→setup→policy→runner→cleanup 调用链并核对 crate 依赖、许可证和可重复构建路径后，按既定威胁边界判断策略可表达能力、拒绝行为与可集成性。
 - **源码依据：**`research/noema/CODEX_WINDOWS_SANDBOX.md`、`research/noema/WINDOWS_ISOLATION_CANDIDATE_COMPARISON.md`、`research/noema/WINDOWS10_ISOLATION_CANDIDATES.md`、`research/noema/SANDY_SOURCE_REVIEW.md`；Codex 固定源码中的 `setup.rs`、`elevated_impl.rs`、`process.rs`、ACL/reparse/WFP/identity/diagnostic 模块；Noema 本地 SRT provenance README/patch。MXC/PSEC `INVENTORY.md` 与 request/capability 卡作为备选路线参考，不构成 Win10 前置。
-- **状态/接口：**backend contract 抽象 capabilities/reasons/version/backend identity，不向 Agent 伪造支持状态；D1 已锁定 Codex-source-derived Noema runner bridge 实现基线，D2 逐项确定 policy mapper 与 runtime adapter 接口。
+- **状态/接口：**backend contract 抽象 capabilities/reasons/version/backend identity，不向 Agent 伪造支持状态；D1 当前基线为 Noema 自有 AppContainer runner，D2 逐项确定 policy mapper 与 runtime adapter 接口。
 - **异常/恢复：**原生库/ABI/系统 build/capability 不符时启动拒绝命令功能；由于命令是完整开发闭环的必要能力，这种状态属于一期交付阻断，不能将“仍可对话/文件操作”视为一期完成；不装入未经研究的 helper 后尝试。
 - **诊断：**启动 probe 记录 OS build/架构、API availability、支持 capability 和拒绝理由；不搜集账号凭据或私人路径。
 - **检查：**逐项核实输入/输出、文件/网络策略、后台生命周期、取消/恢复、管理员 setup 门槛和 fail-closed 行为；标清固定源码能证明与不能证明的内容。核对 `apps/desktop/package.json`、root `package-lock.json`、`apps/desktop/forge.config.mts` 和 Windows CI workflow；依赖/license/SBOM 与原生 build/package 可重复性列为开发阶段检查。不触发真实受限命令。
