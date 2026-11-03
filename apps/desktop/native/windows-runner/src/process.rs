@@ -16,7 +16,7 @@ use windows_sys::Win32::Storage::FileSystem::{
     CreateFileW, FILE_ATTRIBUTE_NORMAL, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
 };
 use windows_sys::Win32::System::JobObjects::{
-    AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    CreateJobObjectW, IsProcessInJob, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
     JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
     SetInformationJobObject, TerminateJobObject,
 };
@@ -25,9 +25,10 @@ use windows_sys::Win32::System::SystemInformation::GetSystemDirectoryW;
 use windows_sys::Win32::System::Threading::{
     CREATE_NO_WINDOW, CREATE_SUSPENDED, CREATE_UNICODE_ENVIRONMENT, CreateProcessW,
     EXTENDED_STARTUPINFO_PRESENT, GetExitCodeProcess, InitializeProcThreadAttributeList,
-    LPPROC_THREAD_ATTRIBUTE_LIST, PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES, PROCESS_INFORMATION,
-    ResumeThread, STARTF_USESTDHANDLES, STARTUPINFOEXW, TerminateProcess,
-    UpdateProcThreadAttribute, WaitForSingleObject,
+    LPPROC_THREAD_ATTRIBUTE_LIST, PROC_THREAD_ATTRIBUTE_JOB_LIST,
+    PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES, PROCESS_INFORMATION, ResumeThread,
+    STARTF_USESTDHANDLES, STARTUPINFOEXW, TerminateProcess, UpdateProcThreadAttribute,
+    WaitForSingleObject,
 };
 
 const PROC_THREAD_ATTRIBUTE_HANDLE_LIST: usize = 0x0002_0002;
@@ -105,14 +106,16 @@ struct PipeHandles {
 struct StartupAttributes {
     buffer: Vec<u8>,
     handles: Vec<HANDLE>,
+    jobs: Vec<HANDLE>,
 }
 
 impl StartupAttributes {
     fn new(
         handles: [HANDLE; 3],
         capabilities: &SECURITY_CAPABILITIES,
+        job: HANDLE,
     ) -> Result<Self, &'static str> {
-        let attribute_count = 2;
+        let attribute_count = 3;
         let mut size = 0usize;
         // SAFETY: first call queries the required byte size for one attribute.
         unsafe {
@@ -131,6 +134,7 @@ impl StartupAttributes {
         let mut value = Self {
             buffer,
             handles: handles.into(),
+            jobs: vec![job],
         };
         let bytes = std::mem::size_of_val(value.handles.as_slice());
         // SAFETY: the handle list stays owned by `value` until the process is
@@ -142,6 +146,23 @@ impl StartupAttributes {
                 PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
                 value.handles.as_mut_ptr().cast(),
                 bytes,
+                ptr::null_mut(),
+                ptr::null_mut(),
+            )
+        } == 0
+        {
+            return Err("runner_process_attribute_update_failed");
+        }
+        // SAFETY: the job handle array stays owned by `value` until process
+        // creation returns. Windows assigns the new process to this job before
+        // its initial thread can run, closing the suspended-child orphan gap.
+        if unsafe {
+            UpdateProcThreadAttribute(
+                value.as_mut_ptr(),
+                0,
+                PROC_THREAD_ATTRIBUTE_JOB_LIST as usize,
+                value.jobs.as_mut_ptr().cast(),
+                std::mem::size_of_val(value.jobs.as_slice()),
                 ptr::null_mut(),
                 ptr::null_mut(),
             )
@@ -207,6 +228,7 @@ pub fn run_appcontainer_command(
             pipes.stderr_write.as_raw_handle() as HANDLE,
         ],
         security_capabilities.as_ref(),
+        job.as_raw_handle() as HANDLE,
     )?;
     let mut startup = unsafe { std::mem::zeroed::<STARTUPINFOEXW>() };
     startup.StartupInfo.cb = std::mem::size_of::<STARTUPINFOEXW>() as u32;
@@ -280,12 +302,18 @@ fn finish_child(
     };
     drop(pipes.stdout_write);
     drop(pipes.stderr_write);
-    bind_then_resume_child(
-        || unsafe {
-            AssignProcessToJobObject(
-                job.as_raw_handle() as HANDLE,
-                handles.process.as_raw_handle() as HANDLE,
-            ) != 0
+    verify_job_then_resume_child(
+        || {
+            let mut assigned = 0;
+            // SAFETY: both handles remain live and `assigned` is writable.
+            unsafe {
+                IsProcessInJob(
+                    handles.process.as_raw_handle() as HANDLE,
+                    job.as_raw_handle() as HANDLE,
+                    &mut assigned,
+                ) != 0
+                    && assigned != 0
+            }
         },
         || unsafe { ResumeThread(handles.thread.as_raw_handle() as HANDLE) },
         || terminate_and_wait(&handles, &job),
@@ -565,14 +593,14 @@ fn terminate_and_wait(handles: &ProcessHandles, job: &OwnedHandle) -> Result<(),
     Ok(())
 }
 
-fn bind_then_resume_child(
-    assign_to_job: impl FnOnce() -> bool,
+fn verify_job_then_resume_child(
+    verify_job_membership: impl FnOnce() -> bool,
     resume: impl FnOnce() -> u32,
     cleanup: impl FnOnce() -> Result<(), &'static str>,
 ) -> Result<(), &'static str> {
-    if !assign_to_job() {
+    if !verify_job_membership() {
         cleanup().map_err(|_| "runner_child_cleanup_unknown")?;
-        return Err("runner_child_job_assignment_failed");
+        return Err("runner_child_job_membership_unverified");
     }
     if resume() != 1 {
         cleanup().map_err(|_| "runner_child_cleanup_unknown")?;
@@ -594,7 +622,7 @@ fn system_cmd_path() -> Result<Vec<u16>, &'static str> {
     Ok(wide(&path))
 }
 
-fn quote_windows_argument(value: &[u16]) -> String {
+pub(super) fn quote_windows_argument(value: &[u16]) -> String {
     let value = String::from_utf16_lossy(value);
     let mut output = String::from("\"");
     let mut backslashes = 0usize;
@@ -626,9 +654,9 @@ fn wide(value: &str) -> Vec<u16> {
 #[cfg(test)]
 mod tests {
     use super::{
-        CommandFailure, WAIT_OBJECT_0, WAIT_TIMEOUT, bind_then_resume_child,
-        quote_windows_argument, read_bounded_output, restricted_environment_block, system_cmd_path,
-        terminate_timed_out_job, wait_for_job_with,
+        CommandFailure, WAIT_OBJECT_0, WAIT_TIMEOUT, quote_windows_argument, read_bounded_output,
+        restricted_environment_block, system_cmd_path, terminate_timed_out_job,
+        verify_job_then_resume_child, wait_for_job_with,
     };
     use std::cell::RefCell;
     use std::ffi::OsString;
@@ -670,11 +698,11 @@ mod tests {
     }
 
     #[test]
-    fn suspended_child_is_job_bound_before_resume() {
+    fn suspended_child_job_membership_is_verified_before_resume() {
         let calls = RefCell::new(Vec::new());
-        let result = bind_then_resume_child(
+        let result = verify_job_then_resume_child(
             || {
-                calls.borrow_mut().push("assign");
+                calls.borrow_mut().push("verify_job");
                 true
             },
             || {
@@ -687,15 +715,15 @@ mod tests {
             },
         );
         assert_eq!(result, Ok(()));
-        assert_eq!(*calls.borrow(), ["assign", "resume"]);
+        assert_eq!(*calls.borrow(), ["verify_job", "resume"]);
     }
 
     #[test]
-    fn failed_assignment_terminates_before_any_resume() {
+    fn unverified_job_membership_terminates_before_any_resume() {
         let calls = RefCell::new(Vec::new());
-        let result = bind_then_resume_child(
+        let result = verify_job_then_resume_child(
             || {
-                calls.borrow_mut().push("assign");
+                calls.borrow_mut().push("verify_job");
                 false
             },
             || {
@@ -707,16 +735,16 @@ mod tests {
                 Ok(())
             },
         );
-        assert_eq!(result, Err("runner_child_job_assignment_failed"));
-        assert_eq!(*calls.borrow(), ["assign", "cleanup"]);
+        assert_eq!(result, Err("runner_child_job_membership_unverified"));
+        assert_eq!(*calls.borrow(), ["verify_job", "cleanup"]);
     }
 
     #[test]
     fn failed_resume_requires_confirmed_cleanup() {
         let calls = RefCell::new(Vec::new());
-        let result = bind_then_resume_child(
+        let result = verify_job_then_resume_child(
             || {
-                calls.borrow_mut().push("assign");
+                calls.borrow_mut().push("verify_job");
                 true
             },
             || {
@@ -729,7 +757,7 @@ mod tests {
             },
         );
         assert_eq!(result, Err("runner_child_cleanup_unknown"));
-        assert_eq!(*calls.borrow(), ["assign", "resume", "cleanup"]);
+        assert_eq!(*calls.borrow(), ["verify_job", "resume", "cleanup"]);
     }
 
     #[test]

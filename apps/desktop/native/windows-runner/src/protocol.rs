@@ -1,7 +1,7 @@
 use crate::policy::{AclGrant, VerifiedAclGrantEvidence, WindowsCommandPolicyV2};
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 6;
+pub const PROTOCOL_VERSION: u16 = 7;
 pub const POLICY_VERSION: u16 = 2;
 pub const BACKEND_ID: &str = "noema-codex-windows";
 pub const MINIMUM_WINDOWS_BUILD: u32 = 19_045;
@@ -48,6 +48,9 @@ pub enum Operation {
     ProbeSandboxSetup {
         operation_id: String,
         user_data_path: String,
+    },
+    RemoveSandboxSetup {
+        operation_id: String,
     },
 }
 
@@ -114,6 +117,11 @@ pub enum ResultFrame {
         backend_version: String,
         operation_id: String,
         evidence: SandboxSetupEvidence,
+    },
+    SetupRemoved {
+        backend_id: String,
+        backend_version: String,
+        operation_id: String,
     },
     CommandComplete {
         backend_id: String,
@@ -218,7 +226,6 @@ impl Capabilities {
             && self.working_directory_confinement
             && self.environment_confinement
             && self.network_default_deny
-            && self.identity_bound_network_broker
             && self.job_process_tree
             && self.bounded_stdio
     }

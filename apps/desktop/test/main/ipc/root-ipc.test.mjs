@@ -393,7 +393,7 @@ test('Windows runner capability and setup IPC are main-frame gated', async () =>
     reasonCode: 'sandbox_setup_unavailable',
     backendId: 'noema-codex-windows',
     backendVersion: '0.1.0',
-    protocolVersion: 6,
+    protocolVersion: 7,
     setupStatus: 'unavailable',
   };
   let refreshes = 0;

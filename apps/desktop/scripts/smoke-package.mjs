@@ -214,9 +214,23 @@ child.on('exit', (code, signal) => {
       `Packaged diagnostics runtime manifest was incomplete: ${JSON.stringify(runtime)}`,
     );
   }
+  const runnerCapabilityText =
+    loaded.diagnosticsSmoke?.runnerCapabilityText ?? '';
+  const runnerSetupButton = loaded.diagnosticsSmoke?.runnerSetupButton ?? '';
+  const runnerSetupNeeded =
+    runnerCapabilityText.includes('本机隔离设置尚未完成') ||
+    runnerCapabilityText.includes('本机网络隔离规则尚未完成检查');
+  const runnerBaselineUnsupported = runnerCapabilityText.includes(
+    '当前 Windows 安全更新未达到受限命令的安全基线',
+  );
   if (
     !loaded.diagnosticsSmoke?.visible ||
     !loaded.diagnosticsSmoke.noHorizontalOverflow ||
+    !runnerCapabilityText.includes('无需更新 Windows 即可启动和使用 Noema') ||
+    (runnerBaselineUnsupported && runnerSetupButton !== '') ||
+    (!runnerBaselineUnsupported &&
+      runnerSetupNeeded &&
+      runnerSetupButton !== '启用或重试设置') ||
     loaded.diagnosticsSmoke.databaseStatusText !== '检查通过。' ||
     !loaded.diagnosticsSmoke.databaseRecoveryButton?.includes(
       '打开数据与备份目录',

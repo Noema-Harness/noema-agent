@@ -57,7 +57,7 @@ test('request lifecycle events preserve only safe timing and status metadata', (
         elapsedMs: 18,
         backendId: 'noema-codex-windows',
         backendVersion: '0.1.0',
-        protocolVersion: 6,
+        protocolVersion: 7,
         capabilityStatus: 'ready',
         path: 'C:\\private\\runner.exe',
         content: 'PRIVATE RESPONSE SENTINEL',
@@ -70,7 +70,7 @@ test('request lifecycle events preserve only safe timing and status metadata', (
     assert.equal(event.details.elapsedMs, 18);
     assert.equal(event.details.backendId, 'noema-codex-windows');
     assert.equal(event.details.backendVersion, '0.1.0');
-    assert.equal(event.details.protocolVersion, 6);
+    assert.equal(event.details.protocolVersion, 7);
     assert.equal(event.details.capabilityStatus, 'ready');
     assert.equal('path' in event.details, false);
     assert.equal('content' in event.details, false);

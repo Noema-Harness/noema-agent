@@ -258,6 +258,8 @@ export interface NoemaWindowsRunnerCapability {
   backendReady: boolean;
   status: 'ready' | 'unavailable' | 'not_applicable';
   reasonCode: string | null;
+  reasonCodes: string[];
+  setupActionAvailable: boolean;
   backendId: string | null;
   backendVersion: string | null;
   protocolVersion: number | null;

@@ -61,6 +61,7 @@ import { createWindowsRunnerCapabilityReport } from './execution/windows-runner-
 import { WINDOWS_RUNNER_PROTOCOL_VERSION } from './execution/windows-runner-native-helper.mjs';
 import { WindowsRunnerSetupService } from './execution/windows-runner-setup-service.mjs';
 import { WindowsRunnerSetupStateStore } from './execution/windows-runner-setup-state.mjs';
+import { removeWindowsRunnerStateOnUninstall } from './execution/windows-runner-uninstall.mjs';
 import { backupBeforeSocialChatMigration } from './chat/social-chat-migration-backup.mjs';
 import {
   resolveNoemaDatabasePath,
@@ -654,6 +655,8 @@ const createWindow = () => {
             heading: dialog?.querySelector('h2')?.textContent?.trim() ?? '',
             runnerCapabilityText:
               dialog?.querySelector('[aria-label="Windows 命令隔离能力"]')?.textContent?.trim() ?? '',
+            runnerSetupButton:
+              dialog?.querySelector('[aria-label="Windows 命令隔离能力"] button')?.textContent?.trim() ?? '',
             databaseStatusText:
               dialog?.querySelector('[aria-label="数据库检查状态"]')?.textContent?.trim() ?? '',
             databaseRecoveryButton:
@@ -668,6 +671,10 @@ const createWindow = () => {
           !diagnosticsLayout.runnerCapabilityText.includes(
             'Windows 命令隔离',
           ) ||
+          !diagnosticsLayout.runnerCapabilityText.includes(
+            '无需更新 Windows 即可启动和使用 Noema',
+          ) ||
+          diagnosticsLayout.runnerSetupButton !== '' ||
           diagnosticsLayout.databaseStatusText !== '检查通过。' ||
           !diagnosticsLayout.databaseRecoveryButton.includes(
             '打开数据与备份目录',
@@ -809,6 +816,8 @@ const createWindow = () => {
           diagnosticsSmoke: {
             visible: diagnosticsLayout.visible,
             noHorizontalOverflow: diagnosticsLayout.noHorizontalOverflow,
+            runnerCapabilityText: diagnosticsLayout.runnerCapabilityText,
+            runnerSetupButton: diagnosticsLayout.runnerSetupButton,
             databaseStatusText: diagnosticsLayout.databaseStatusText,
             databaseRecoveryButton: diagnosticsLayout.databaseRecoveryButton,
           },
@@ -1040,6 +1049,42 @@ function isIsolatedE2eDirectory(directory: string, userDataDirectory: string) {
 
 async function startNoema() {
   if (app.isPackaged && process.platform === 'win32') {
+    if (process.argv.includes('--squirrel-uninstall')) {
+      await app.whenReady();
+      const cleanup = await removeWindowsRunnerStateOnUninstall({
+        platform: process.platform,
+        isPackaged: app.isPackaged,
+        isUninstallEvent: true,
+        operationId: randomUUID(),
+        createHelper() {
+          const executablePath = resolveWindowsRunnerNativeHelper({
+            platform: process.platform,
+            arch: process.arch,
+            isPackaged: app.isPackaged,
+            resourcesPath: process.resourcesPath,
+            appPath: app.getAppPath(),
+          });
+          return new WindowsRunnerNativeHelper({ executablePath });
+        },
+        onFailure(code: string) {
+          return dialog.showMessageBox({
+            type: 'warning',
+            title: 'Noema 卸载清理未完成',
+            message:
+              'Windows 未能删除 Noema 的持久网络限制规则。卸载将继续；该规则可能继续限制 Noema 命令容器的网络。',
+            detail: `原因码：${code}`,
+            buttons: ['我知道了'],
+            noLink: true,
+          });
+        },
+      });
+      if (cleanup.status === 'warning') {
+        console.warn(
+          'Noema Windows runner uninstall cleanup failed:',
+          cleanup.code,
+        );
+      }
+    }
     try {
       const { default: handleSquirrelEvent } =
         await import('electron-squirrel-startup');
@@ -1303,6 +1348,17 @@ async function startNoema() {
               supported: false,
               canceled: false,
               reasonCode: 'main_window_unavailable',
+            };
+          }
+          const currentCapability = await refreshWindowsRunnerCapability();
+          if (!currentCapability.setupActionAvailable) {
+            return {
+              supported: currentCapability.supported,
+              canceled: false,
+              reasonCode:
+                currentCapability.reasonCodes[0] ??
+                currentCapability.reasonCode ??
+                'runner_setup_not_actionable',
             };
           }
           const confirmation = await dialog.showMessageBox(mainWindow, {

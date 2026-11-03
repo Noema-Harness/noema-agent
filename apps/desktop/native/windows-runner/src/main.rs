@@ -22,12 +22,28 @@ const MAX_REQUEST_BYTES: usize = 2 * 1024 * 1024;
 
 fn main() {
     #[cfg(windows)]
-    if std::env::args().nth(1).as_deref() == Some(wfp::ELEVATED_WORKER_ARGUMENT) {
-        std::process::exit(if wfp::run_elevated_worker().is_ok() {
-            0
-        } else {
-            1
-        });
+    let arguments = std::env::args().collect::<Vec<_>>();
+    #[cfg(windows)]
+    if arguments.get(1).map(String::as_str) == Some(wfp::ELEVATED_WORKER_ARGUMENT) {
+        std::process::exit(
+            if arguments.len() == 4
+                && wfp::run_elevated_worker(&arguments[2], &arguments[3]).is_ok()
+            {
+                0
+            } else {
+                1
+            },
+        );
+    }
+    #[cfg(windows)]
+    if arguments.get(1).map(String::as_str) == Some(wfp::ELEVATED_REMOVE_WORKER_ARGUMENT) {
+        std::process::exit(
+            if arguments.len() == 3 && wfp::run_elevated_remove_worker(&arguments[2]).is_ok() {
+                0
+            } else {
+                1
+            },
+        );
     }
 
     let response = match read_request() {
@@ -296,6 +312,43 @@ fn handle_request(request: protocol::RequestEnvelope) -> protocol::ResponseEnvel
             operation_id,
             user_data_path,
         } => handle_setup_operation(request.request_id, operation_id, user_data_path, false),
+        protocol::Operation::RemoveSandboxSetup { operation_id } => {
+            handle_setup_removal(request.request_id, operation_id)
+        }
+    }
+}
+
+fn handle_setup_removal(request_id: String, operation_id: String) -> protocol::ResponseEnvelope {
+    #[cfg(windows)]
+    let result = acl::require_unrestricted_caller().and_then(|()| {
+        if request_id != operation_id {
+            return Err("setup_operation_identity_mismatch");
+        }
+        let package_sid = appcontainer::derive_package_sid()?;
+        wfp::remove_with_uac(&package_sid)
+    });
+    #[cfg(not(windows))]
+    let result: Result<(), &'static str> = Err("windows_required");
+
+    let frame = match result {
+        Ok(()) => protocol::ResultFrame::SetupRemoved {
+            backend_id: protocol::BACKEND_ID.to_string(),
+            backend_version: env!("CARGO_PKG_VERSION").to_string(),
+            operation_id: operation_id.clone(),
+        },
+        Err(code) => protocol::ResultFrame::Denied {
+            code: if request_id != operation_id {
+                "setup_operation_identity_mismatch".to_string()
+            } else {
+                code.to_string()
+            },
+            stage: "setup".to_string(),
+        },
+    };
+    protocol::ResponseEnvelope {
+        protocol_version: protocol::PROTOCOL_VERSION,
+        request_id: Some(request_id),
+        result: frame,
     }
 }
 
