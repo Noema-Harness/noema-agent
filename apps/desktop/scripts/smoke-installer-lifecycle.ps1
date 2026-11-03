@@ -156,15 +156,20 @@ try {
   }
 
   $installedUpgradeDirectory = Join-Path $installRoot "app-$upgradeVersion"
-  $repairProbeDirectory = Join-Path $installRoot "repair-probe-$upgradeVersion"
+  $repairProbeDirectory = Join-Path $smokeRoot "repair-probe-$upgradeVersion"
   Move-Item -LiteralPath $installedUpgradeDirectory -Destination $repairProbeDirectory
+  if (-not (Test-Path -LiteralPath $repairProbeDirectory -PathType Container)) {
+    throw 'Could not preserve the moved application folder for installer recovery.'
+  }
   Invoke-CheckedProcess $upgradeSetupCopy @()
   Wait-ForInstalledApp $upgradeVersion | Out-Null
   Invoke-InstalledStartupSmoke
   if ((Get-Content -LiteralPath $sentinelPath -Raw).Trim() -ne $sentinel) {
     throw 'The user-data sentinel changed or disappeared during installer recovery.'
   }
-  Remove-Item -LiteralPath $repairProbeDirectory -Recurse -Force
+  if (Test-Path -LiteralPath $repairProbeDirectory) {
+    Remove-Item -LiteralPath $repairProbeDirectory -Recurse -Force
+  }
 
   Invoke-CheckedProcess (Join-Path $installRoot 'Update.exe') @('--uninstall')
   $uninstallDeadline = [DateTime]::UtcNow.AddSeconds(90)
