@@ -19,8 +19,8 @@ $runnerTemp = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [IO.Path]::GetTe
 $smokeRoot = Join-Path $runnerTemp "noema-installer-lifecycle-$([guid]::NewGuid().ToString('N'))"
 $initialSetupCopy = Join-Path $smokeRoot "Noema-$initialVersion Setup.exe"
 $upgradeSetupCopy = Join-Path $smokeRoot "Noema-$upgradeVersion Setup.exe"
-$userDataPath = Join-Path $smokeRoot 'user-data'
 $appDataPath = Join-Path $smokeRoot 'app-data'
+$userDataPath = Join-Path $appDataPath 'Noema'
 $loadedMarker = Join-Path $smokeRoot 'renderer-loaded.json'
 $startupLog = Join-Path $smokeRoot 'startup.jsonl'
 $sentinelPath = Join-Path $userDataPath 'install-lifecycle-sentinel.txt'
@@ -89,6 +89,9 @@ function Invoke-InstalledStartupSmoke {
   $loaded = Get-Content -LiteralPath $loadedMarker -Raw | ConvertFrom-Json
   if (-not $loaded.packaged -or -not $loaded.rootStateLoaded -or $loaded.socialChat.agentIds -join ',' -ne 'noema') {
     throw "Installed Noema startup smoke returned an invalid renderer marker: $($loadedMarker)"
+  }
+  if (-not (Test-Path -LiteralPath (Join-Path $userDataPath 'noema.sqlite3') -PathType Leaf)) {
+    throw 'Installed Noema did not persist its database under the isolated test user-data path.'
   }
 
   $deadline = [DateTime]::UtcNow.AddSeconds(45)
