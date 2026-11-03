@@ -1598,8 +1598,7 @@ export class ProjectPlanStore {
               : status === 'done'
                 ? item.evidenceReview
                 : null,
-        blocker:
-          status === 'blocked' ? (input.blocker ?? item.blocker) : '',
+        blocker: status === 'blocked' ? (input.blocker ?? item.blocker) : '',
       };
       return this.write({
         ...input,

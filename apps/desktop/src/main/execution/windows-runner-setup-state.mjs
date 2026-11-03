@@ -414,9 +414,7 @@ function isLegacySetupState(value) {
       (value.version === 1
         ? ['account', 'credentials', 'filesystem', 'network', 'verify']
         : ['profile', 'verify']
-      ).includes(
-        value.stage,
-      ) &&
+      ).includes(value.stage) &&
       (value.reasonCode === null ||
         (typeof value.reasonCode === 'string' &&
           /^[a-z0-9_]{1,96}$/u.test(value.reasonCode)))

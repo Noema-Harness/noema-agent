@@ -68,14 +68,16 @@ test('compiles one effective capability name per root and upgrades writable root
       fileIdentity: workspace.fileIdentity,
       access: 'write',
       isDirectory: true,
-      capabilityName: 'Noema.Write.1111111111111111111111111111111111111111111111111111111111111111',
+      capabilityName:
+        'Noema.Write.1111111111111111111111111111111111111111111111111111111111111111',
     },
     {
       path: readonlyRoot.path,
       fileIdentity: readonlyRoot.fileIdentity,
       access: 'read',
       isDirectory: false,
-      capabilityName: 'Noema.Read.2222222222222222222222222222222222222222222222222222222222222222',
+      capabilityName:
+        'Noema.Read.2222222222222222222222222222222222222222222222222222222222222222',
     },
   ]);
   assert.deepEqual(
@@ -190,7 +192,8 @@ test('rejects malformed or repeated capability names returned by the registry ow
   );
 
   const repeated = dependencies({ stats });
-  repeated.capabilityNameStore.getOrCreate = () => 'Noema.Read.1111111111111111111111111111111111111111111111111111111111111111';
+  repeated.capabilityNameStore.getOrCreate = () =>
+    'Noema.Read.1111111111111111111111111111111111111111111111111111111111111111';
   assert.equal(
     (await createWindowsRunnerCapabilityGrants(policy, repeated)).code,
     'capability_sid_record_invalid',

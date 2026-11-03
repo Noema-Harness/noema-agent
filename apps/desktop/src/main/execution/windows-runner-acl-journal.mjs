@@ -338,7 +338,9 @@ function validateGrants(value) {
       !isValidIdentity(grant.fileIdentity) ||
       !isWindowsRunnerCapabilityName(grant.capabilityName) ||
       !['read', 'write'].includes(grant.access) ||
-      !grant.capabilityName.startsWith(`Noema.${grant.access === 'read' ? 'Read' : 'Write'}.`) ||
+      !grant.capabilityName.startsWith(
+        `Noema.${grant.access === 'read' ? 'Read' : 'Write'}.`,
+      ) ||
       typeof grant.isDirectory !== 'boolean'
     ) {
       throw aclJournalError('acl_grants_invalid');
@@ -393,7 +395,9 @@ function validateVerification(grants, evidence) {
         }) ||
         !isWindowsRunnerCapabilityName(entry.capabilityName) ||
         !['read', 'write'].includes(entry.access) ||
-        !entry.capabilityName.startsWith(`Noema.${entry.access === 'read' ? 'Read' : 'Write'}.`) ||
+        !entry.capabilityName.startsWith(
+          `Noema.${entry.access === 'read' ? 'Read' : 'Write'}.`,
+        ) ||
         !Number.isSafeInteger(entry.objectCount) ||
         entry.objectCount < 1 ||
         entry.objectCount > MAX_OBJECTS_PER_GRANT ||
@@ -552,7 +556,10 @@ function isRecord(value) {
 }
 
 function isWindowsRunnerCapabilityName(value) {
-  return typeof value === 'string' && /^Noema\.(?:Read|Write)\.[a-f0-9]{64}$/u.test(value);
+  return (
+    typeof value === 'string' &&
+    /^Noema\.(?:Read|Write)\.[a-f0-9]{64}$/u.test(value)
+  );
 }
 
 function aclJournalError(code) {

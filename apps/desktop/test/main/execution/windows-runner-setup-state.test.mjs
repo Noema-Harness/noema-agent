@@ -52,10 +52,15 @@ test('setup state only becomes ready after strict staged live verification', () 
   );
   assert.throws(
     () =>
-      commitWindowsRunnerSetupReady(verifying, 'setup_01', appContainerPackageSid, {
-        ...completeEvidence,
-        networkFiltersValid: false,
-      }),
+      commitWindowsRunnerSetupReady(
+        verifying,
+        'setup_01',
+        appContainerPackageSid,
+        {
+          ...completeEvidence,
+          networkFiltersValid: false,
+        },
+      ),
     { code: 'setup_state_live_verification_incomplete' },
   );
   assert.throws(
@@ -70,10 +75,15 @@ test('setup state only becomes ready after strict staged live verification', () 
   );
   assert.throws(
     () =>
-      commitWindowsRunnerSetupReady(verifying, 'setup_01', appContainerPackageSid, {
-        ...completeEvidence,
-        unexpected: 'ignored evidence',
-      }),
+      commitWindowsRunnerSetupReady(
+        verifying,
+        'setup_01',
+        appContainerPackageSid,
+        {
+          ...completeEvidence,
+          unexpected: 'ignored evidence',
+        },
+      ),
     { code: 'setup_state_live_verification_incomplete' },
   );
   assert.throws(

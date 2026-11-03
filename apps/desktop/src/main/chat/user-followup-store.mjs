@@ -34,7 +34,9 @@ export class UserFollowupStore {
 
   isEnabled() {
     const row = this.db
-      .prepare("SELECT value FROM app_settings WHERE key = 'user_followups_enabled'")
+      .prepare(
+        "SELECT value FROM app_settings WHERE key = 'user_followups_enabled'",
+      )
       .get();
     return row?.value !== 'false';
   }
@@ -109,7 +111,9 @@ export class UserFollowupStore {
     const now = isoNow();
     this.db.transaction(() => {
       const pending = this.db
-        .prepare("SELECT COUNT(*) AS count FROM social_user_followups WHERE status IN ('pending', 'delivering')")
+        .prepare(
+          "SELECT COUNT(*) AS count FROM social_user_followups WHERE status IN ('pending', 'delivering')",
+        )
         .get().count;
       if (pending >= MAX_PENDING)
         throw new Error(`最多同时保留 ${MAX_PENDING} 条待处理回访。`);
@@ -146,8 +150,7 @@ export class UserFollowupStore {
         WHERE id = ? AND status = 'pending'
       `)
       .run(normalizedTitle, normalizedBody, due, isoNow(), followupId);
-    if (result.changes !== 1)
-      throw new Error('只能修改仍在待处理状态的回访。');
+    if (result.changes !== 1) throw new Error('只能修改仍在待处理状态的回访。');
     return this.get(followupId);
   }
 
@@ -193,14 +196,16 @@ export class UserFollowupStore {
 
   markDelivered(id) {
     const now = isoNow();
-    return this.db
-      .prepare(`
+    return (
+      this.db
+        .prepare(`
         UPDATE social_user_followups SET status = 'delivered',
           delivered_at = ?, delivery_lease_until = NULL, last_error = NULL,
           updated_at = ?
         WHERE id = ? AND status = 'delivering'
       `)
-      .run(now, now, id).changes === 1;
+        .run(now, now, id).changes === 1
+    );
   }
 
   release(id, error) {
@@ -208,18 +213,21 @@ export class UserFollowupStore {
       typeof error === 'string' && error.trim()
         ? error.trim().slice(0, 300)
         : '桌面通知暂时无法显示。';
-    return this.db
-      .prepare(`
+    return (
+      this.db
+        .prepare(`
         UPDATE social_user_followups SET status = 'pending',
           delivery_lease_until = NULL, last_error = ?, updated_at = ?
         WHERE id = ? AND status = 'delivering'
       `)
-      .run(message, isoNow(), id).changes === 1;
+        .run(message, isoNow(), id).changes === 1
+    );
   }
 
   get(id) {
-    return this.db
-      .prepare(`
+    return (
+      this.db
+        .prepare(`
         SELECT f.id, f.title, f.body, f.due_at AS dueAt, f.status,
                f.source_room_id AS sourceRoomId,
                f.source_message_id AS sourceMessageId,
@@ -233,7 +241,8 @@ export class UserFollowupStore {
         LEFT JOIN social_messages AS source ON source.id = f.source_message_id
         WHERE f.id = ?
       `)
-      .get(id) ?? null;
+        .get(id) ?? null
+    );
   }
 }
 

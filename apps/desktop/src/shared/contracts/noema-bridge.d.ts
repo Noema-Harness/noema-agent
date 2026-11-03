@@ -1070,7 +1070,9 @@ export interface NoemaBridge {
     diagnostics: Record<string, unknown>;
     runtime: NoemaDiagnosticRuntimeInfo | null;
   }>;
-  getDiagnosticsDatabaseHealth(): Promise<'healthy' | 'problem' | 'unavailable'>;
+  getDiagnosticsDatabaseHealth(): Promise<
+    'healthy' | 'problem' | 'unavailable'
+  >;
   openUserDataDirectory(): Promise<{
     opened: boolean;
     errorCode: string | null;

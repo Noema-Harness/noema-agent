@@ -102,9 +102,10 @@ test('current blocker belongs only to blocked work while history remains intact'
     assert.equal(resumed.items[0].status, 'in_progress');
     assert.equal(resumed.items[0].blocker, '');
     assert.equal(
-      projects.plans.revisionDetails(project.id, blocked.revision).changes.find(
-        (entry) => entry.entity === 'item:research',
-      ).values.blocker.after,
+      projects.plans
+        .revisionDetails(project.id, blocked.revision)
+        .changes.find((entry) => entry.entity === 'item:research').values
+        .blocker.after,
       '外部资料暂时不可用。',
     );
 
@@ -121,9 +122,10 @@ test('current blocker belongs only to blocked work while history remains intact'
     ).run(JSON.stringify(saved), project.id, resumed.revision);
     assert.equal(projects.plans.get(project.id).items[0].blocker, '');
     assert.equal(
-      projects.plans.revisionDetails(project.id, resumed.revision).changes.find(
-        (entry) => entry.entity === 'item:research',
-      ).values.blocker.after,
+      projects.plans
+        .revisionDetails(project.id, resumed.revision)
+        .changes.find((entry) => entry.entity === 'item:research').values
+        .blocker.after,
       '旧版本遗留的阻塞说明。',
     );
   } finally {

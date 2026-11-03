@@ -38,9 +38,7 @@ function request(overrides = {}) {
         access: 'write',
       },
     ],
-    runtimeReadRoots: [
-      pathRoot('C:\\Program Files\\Noema\\runtime'),
-    ],
+    runtimeReadRoots: [pathRoot('C:\\Program Files\\Noema\\runtime')],
     cwd: pathRoot('C:\\Users\\me\\project\\src'),
     network: { mode: 'deny' },
     command: 'private command text',
@@ -82,9 +80,7 @@ test('compiles workspace, external and runtime grants to the minimum roots', () 
 test('does not widen read-only external grants into write roots', () => {
   const result = compileWindowsCommandPolicy(
     request({
-      externalAccess: [
-        { ...pathRoot('C:\\data\\reference'), access: 'read' },
-      ],
+      externalAccess: [{ ...pathRoot('C:\\data\\reference'), access: 'read' }],
     }),
   );
   assert.equal(result.ok, true);
@@ -136,7 +132,7 @@ test('rejects cwd whose backend object identity is unverified', () => {
   assert.deepEqual(
     compileWindowsCommandPolicy(
       request({
-      cwd: { path: 'C:\\Users\\me\\project\\src', fileIdentity: null },
+        cwd: { path: 'C:\\Users\\me\\project\\src', fileIdentity: null },
       }),
     ),
     { ok: false, code: 'path_identity_unverified' },
@@ -159,9 +155,7 @@ test('rejects drive roots and UNC paths as grant roots', () => {
     assert.deepEqual(
       compileWindowsCommandPolicy(
         request({
-          externalAccess: [
-            { ...pathRoot(unsafePath), access: 'read' },
-          ],
+          externalAccess: [{ ...pathRoot(unsafePath), access: 'read' }],
         }),
       ),
       { ok: false, code: 'path_identity_unverified' },
@@ -182,9 +176,7 @@ test('rejects Win32 alternate streams, device names and ambiguous components', (
     assert.deepEqual(
       compileWindowsCommandPolicy(
         request({
-          externalAccess: [
-            { ...pathRoot(unsafePath), access: 'read' },
-          ],
+          externalAccess: [{ ...pathRoot(unsafePath), access: 'read' }],
         }),
       ),
       { ok: false, code: 'path_identity_unverified' },

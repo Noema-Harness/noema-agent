@@ -2,21 +2,21 @@
 
 Generated from `cargo metadata --locked --offline --format-version 1` for the checked-in `Cargo.lock` on 2026-11-02. This is a source dependency inventory, not yet a packaged third-party notices bundle.
 
-| Package | Version | Declared license |
-|---|---:|---|
-| `serde` | 1.0.228 | MIT OR Apache-2.0 |
-| `serde_core` | 1.0.228 | MIT OR Apache-2.0 |
-| `serde_derive` | 1.0.228 | MIT OR Apache-2.0 |
-| `serde_json` | 1.0.150 | MIT OR Apache-2.0 |
-| `windows-sys` | 0.61.2 | MIT OR Apache-2.0 |
-| `windows-link` | 0.2.1 | MIT OR Apache-2.0 |
-| `proc-macro2` | 1.0.106 | MIT OR Apache-2.0 |
-| `quote` | 1.0.45 | MIT OR Apache-2.0 |
-| `syn` | 2.0.117 | MIT OR Apache-2.0 |
-| `unicode-ident` | 1.0.24 | (MIT OR Apache-2.0) AND Unicode-3.0 |
-| `itoa` | 1.0.18 | MIT OR Apache-2.0 |
-| `memchr` | 2.8.0 | Unlicense OR MIT |
-| `zmij` | 1.0.21 | MIT |
+| Package         | Version | Declared license                    |
+| --------------- | ------: | ----------------------------------- |
+| `serde`         | 1.0.228 | MIT OR Apache-2.0                   |
+| `serde_core`    | 1.0.228 | MIT OR Apache-2.0                   |
+| `serde_derive`  | 1.0.228 | MIT OR Apache-2.0                   |
+| `serde_json`    | 1.0.150 | MIT OR Apache-2.0                   |
+| `windows-sys`   |  0.61.2 | MIT OR Apache-2.0                   |
+| `windows-link`  |   0.2.1 | MIT OR Apache-2.0                   |
+| `proc-macro2`   | 1.0.106 | MIT OR Apache-2.0                   |
+| `quote`         |  1.0.45 | MIT OR Apache-2.0                   |
+| `syn`           | 2.0.117 | MIT OR Apache-2.0                   |
+| `unicode-ident` |  1.0.24 | (MIT OR Apache-2.0) AND Unicode-3.0 |
+| `itoa`          |  1.0.18 | MIT OR Apache-2.0                   |
+| `memchr`        |   2.8.0 | Unlicense OR MIT                    |
+| `zmij`          |  1.0.21 | MIT                                 |
 
 The native crate is private (`publish = false`) and has no independent license declaration; the Noema repository also does not provide a root license file. Resolve the product-level license/notice policy before packaging.
 

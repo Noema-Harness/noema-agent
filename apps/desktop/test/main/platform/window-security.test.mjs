@@ -19,10 +19,7 @@ test('renderer runs without Node privileges and with process isolation', () => {
 test('IPC accepts only the current top-level renderer frame', () => {
   const mainFrame = { parent: null };
   const sender = { mainFrame };
-  assert.equal(
-    isMainFrameIpcEvent({ sender, senderFrame: mainFrame }),
-    true,
-  );
+  assert.equal(isMainFrameIpcEvent({ sender, senderFrame: mainFrame }), true);
   assert.equal(
     isMainFrameIpcEvent({ sender, senderFrame: { parent: mainFrame } }),
     false,

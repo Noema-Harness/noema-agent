@@ -110,7 +110,8 @@ export class WindowsRunnerCapabilityNameStore {
   #newName(identity, access) {
     const key = `${identity.volumeSerialNumber}:${identity.fileIndex}:${access}`;
     const digest = this.crypto.createHash('sha256').update(key).digest('hex');
-    const mode = access === WINDOWS_RUNNER_CAPABILITY_ACCESS.READ ? 'Read' : 'Write';
+    const mode =
+      access === WINDOWS_RUNNER_CAPABILITY_ACCESS.READ ? 'Read' : 'Write';
     return `Noema.${mode}.${digest}`;
   }
 
@@ -197,7 +198,10 @@ export class WindowsRunnerCapabilityNameStore {
 }
 
 function isCapabilityName(value) {
-  return typeof value === 'string' && /^Noema\.(?:Read|Write)\.[a-f0-9]{64}$/u.test(value);
+  return (
+    typeof value === 'string' &&
+    /^Noema\.(?:Read|Write)\.[a-f0-9]{64}$/u.test(value)
+  );
 }
 
 function validateFileIdentity(value) {

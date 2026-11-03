@@ -233,12 +233,12 @@ export function compileWindowsCommandPolicy(input) {
       requestId,
       workspaceRoot: pathRoot(workspaceRoot),
       filesystem: {
-        readRoots: [...readRoots.values()].sort((a, b) =>
-          pathKey(a.path).localeCompare(pathKey(b.path)),
-        ).map(pathRoot),
-        writeRoots: [...writeRoots.values()].sort((a, b) =>
-          pathKey(a.path).localeCompare(pathKey(b.path)),
-        ).map(pathRoot),
+        readRoots: [...readRoots.values()]
+          .sort((a, b) => pathKey(a.path).localeCompare(pathKey(b.path)))
+          .map(pathRoot),
+        writeRoots: [...writeRoots.values()]
+          .sort((a, b) => pathKey(a.path).localeCompare(pathKey(b.path)))
+          .map(pathRoot),
         defaultDeny: true,
       },
       workingDirectory: pathRoot(workingDirectory),
