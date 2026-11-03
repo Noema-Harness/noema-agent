@@ -85,6 +85,9 @@ export async function verifyConversationNavigation(window) {
           ready: document.readyState,
           text: document.body.innerText.slice(0, 500),
           root: document.querySelector('#root')?.innerHTML.slice(0, 1000),
+          rendererEntryEvaluated: performance
+            .getEntriesByName('noema.renderer.entry-evaluated')
+            .length > 0,
           bridge: typeof window.noema?.getSocialState,
           errors: window.__noemaE2eErrors.slice(-10),
           resources,

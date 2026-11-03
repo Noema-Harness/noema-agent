@@ -17,6 +17,19 @@ export default defineConfig({
       ignored: ['**/.vite/**'],
     },
   },
+  // Electron can request the renderer while Vite's cold-start scanner is still
+  // discovering this graph. Pre-bundle its direct dependencies up front so
+  // the first page load does not mix optimizer generations.
+  optimizeDeps: {
+    include: [
+      'cmdk',
+      'pdfjs-dist',
+      'react',
+      'react-dom/client',
+      'react-markdown',
+      'remark-gfm',
+    ],
+  },
   // Concurrent live and test clients must not rewrite each other's prebundles.
   cacheDir: testProfile ? path.join(testProfile, 'vite-cache') : undefined,
 });
