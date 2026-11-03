@@ -216,11 +216,11 @@ test('project execution keeps workspace-specific state after its reusable system
     assert.equal(requests[1].messages[1].role, 'system');
     assert.equal(
       requests[0].messages[1].content,
-      `所选工作区：${realpathSync(firstWorkspace)}`,
+      `所选工作区：${realpathSync.native(firstWorkspace)}`,
     );
     assert.equal(
       requests[1].messages[1].content,
-      `所选工作区：${realpathSync(secondWorkspace)}`,
+      `所选工作区：${realpathSync.native(secondWorkspace)}`,
     );
     assert.equal(requests[0].messages[2].role, 'user');
     assert.equal(requests[1].messages[2].role, 'user');

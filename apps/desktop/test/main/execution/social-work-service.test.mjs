@@ -650,7 +650,10 @@ test('social work keeps the stable friend and only includes the issuing room con
     const room = store.getRoomSnapshot('room-engineering-collaboration');
     assert.equal(room.workTasks.length, 1);
     assert.equal(room.workTasks[0].runtimeSessionId, undefined);
-    assert.equal(room.workTasks[0].workspacePath, realpathSync(workspace));
+    assert.equal(
+      room.workTasks[0].workspacePath,
+      realpathSync.native(workspace),
+    );
   } finally {
     await service.shutdown();
     db.close();
@@ -817,7 +820,10 @@ test('Noema dispatches approved work from main chat or the project group into th
     assert.equal(task.agentId, 'engineering-partner');
     assert.equal(task.sourceMessageId, mainRequest.userMessageId);
     assert.equal(task.status, 'running');
-    assert.equal(task.workspaceIdentity.canonicalPath, workspace);
+    assert.equal(
+      task.workspaceIdentity.canonicalPath,
+      realpathSync.native(workspace),
+    );
     assert.equal(
       projectStore.getWorkspaceBinding(project.id).identity.fileIndex,
       task.workspaceIdentity.fileIndex,
@@ -870,7 +876,7 @@ test('Noema dispatches approved work from main chat or the project group into th
     assert.equal(store.listRoomWorkTasks(session.room.room.id).length, 2);
     assert.equal(
       projectStore.getWorkspaceBinding(project.id).workspacePath,
-      workspace,
+      realpathSync.native(workspace),
     );
     store.appendAssistantDelta(canceledRequest.assistantMessageId, '已取消。');
     store.completeReply(canceledRequest.assistantMessageId);
@@ -893,7 +899,7 @@ test('Noema dispatches approved work from main chat or the project group into th
     assert.equal(rebindCount, 2);
     assert.equal(
       projectStore.getWorkspaceBinding(project.id).workspacePath,
-      alternateWorkspace,
+      realpathSync.native(alternateWorkspace),
     );
     await service.waitForTask(rebound.taskId);
 
