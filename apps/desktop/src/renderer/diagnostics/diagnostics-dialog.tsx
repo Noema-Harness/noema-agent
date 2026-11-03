@@ -426,7 +426,10 @@ export function DiagnosticsDialog({
                         : runnerCapability.reasonCode,
                     )}
               </p>
-              <p>此状态只影响受限命令，不影响 Noema 桌面应用的启动和使用。</p>
+              <p>
+                无需更新 Windows 即可启动和使用 Noema
+                桌面应用；此处状态只影响受限命令。
+              </p>
             </div>
             {canOfferWindowsRunnerSetup(runnerCapability) &&
             runnerCapability.backendId ? (

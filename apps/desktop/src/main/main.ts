@@ -672,7 +672,7 @@ const createWindow = () => {
             'Windows 命令隔离',
           ) ||
           !diagnosticsLayout.runnerCapabilityText.includes(
-            '无需更新 Windows 即可启动和使用 Noema',
+            '无需更新 Windows 即可启动和使用 Noema 桌面应用',
           ) ||
           diagnosticsLayout.runnerSetupButton !== '' ||
           diagnosticsLayout.databaseStatusText !== '检查通过。' ||

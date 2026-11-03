@@ -4,7 +4,7 @@ const REASON_LABELS = Object.freeze({
   runner_resource_untrusted: 'Windows 命令隔离组件未通过资源检查。',
   runner_resource_architecture_unsupported: '当前 Windows 架构暂不支持。',
   runner_implementation_incomplete:
-    'Windows 命令隔离尚未完成目标机验证，命令暂未开放。无需更新 Windows 即可启动和使用 Noema。',
+    'Windows 命令隔离尚未完成目标机验证，命令暂未开放。',
   sandbox_setup_unavailable: '本机隔离设置尚未完成或未通过检查。',
   sandbox_setup_missing: '需要先完成本机隔离设置。',
   setup_state_unavailable: '本机隔离设置状态暂不可读取。',

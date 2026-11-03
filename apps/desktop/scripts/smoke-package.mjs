@@ -226,7 +226,9 @@ child.on('exit', (code, signal) => {
   if (
     !loaded.diagnosticsSmoke?.visible ||
     !loaded.diagnosticsSmoke.noHorizontalOverflow ||
-    !runnerCapabilityText.includes('无需更新 Windows 即可启动和使用 Noema') ||
+    !runnerCapabilityText.includes(
+      '无需更新 Windows 即可启动和使用 Noema 桌面应用',
+    ) ||
     (runnerBaselineUnsupported && runnerSetupButton !== '') ||
     (!runnerBaselineUnsupported &&
       runnerSetupNeeded &&

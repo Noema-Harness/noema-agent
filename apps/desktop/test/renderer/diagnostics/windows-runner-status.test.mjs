@@ -5,11 +5,10 @@ import {
   windowsRunnerReasonLabel,
 } from '../../../src/renderer/diagnostics/windows-runner-status.mjs';
 
-test('explains an incomplete runner without implying a Windows update is needed for Noema', () => {
-  assert.match(
-    windowsRunnerReasonLabel('runner_implementation_incomplete'),
-    /无需更新 Windows 即可启动和使用 Noema/u,
-  );
+test('keeps the incomplete-runner reason specific to command availability', () => {
+  const label = windowsRunnerReasonLabel('runner_implementation_incomplete');
+  assert.match(label, /命令暂未开放/u);
+  assert.doesNotMatch(label, /无需更新 Windows/u);
 });
 
 test('formats every readiness blocker into a readable explanation', () => {
