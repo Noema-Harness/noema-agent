@@ -68,6 +68,9 @@ export async function verifyConversationNavigation(window) {
           document.querySelector('.navigation-resize-handle')) return;
       await new Promise(resolve => setTimeout(resolve, 40));
     }
+    const rendererEntryEvaluatedBeforeRetry = performance
+      .getEntriesByName('noema.renderer.entry-evaluated')
+      .length > 0;
     const entryRetry = await Promise.race([
       import('/src/renderer/renderer.tsx').then(
         () => ({ outcome: 'loaded' }),
@@ -80,6 +83,15 @@ export async function verifyConversationNavigation(window) {
         setTimeout(() => resolve({ outcome: 'timeout' }), 1500),
       ),
     ]);
+    await new Promise(resolve =>
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+    );
+    const rootAfterRetry = document.querySelector('#root')?.innerHTML.slice(0, 1000);
+    const navigationMountedAfterRetry = Boolean(
+      document.querySelector('.conversation-sidebar') &&
+        document.querySelector('.conversation-panel') &&
+        document.querySelector('.navigation-resize-handle'),
+    );
     const resources = performance
       .getEntriesByType('resource')
       .filter(entry => entry.name.startsWith(location.origin))
@@ -101,6 +113,9 @@ export async function verifyConversationNavigation(window) {
             type: script.type,
           })),
           entryRetry,
+          rendererEntryEvaluatedBeforeRetry,
+          rootAfterRetry,
+          navigationMountedAfterRetry,
           rendererEntryEvaluated: performance
             .getEntriesByName('noema.renderer.entry-evaluated')
             .length > 0,
