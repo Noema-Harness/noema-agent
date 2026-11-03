@@ -418,8 +418,8 @@ test('member project tools stay on their bound project despite an extraneous ID'
             (entry) => entry.function.name === 'project_group',
           );
           assert.equal(
-            planTool.function.parameters.properties.project_id.type,
-            'string',
+            'project_id' in planTool.function.parameters.properties,
+            false,
           );
           assert.equal(
             groupTool.function.parameters.properties.project_id.type,

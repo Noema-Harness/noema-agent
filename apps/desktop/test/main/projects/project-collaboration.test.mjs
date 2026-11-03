@@ -1712,8 +1712,8 @@ test('an uncommitted idea stays in Noema chat while team creation is available',
       .map((message) => message.content)
       .join('\n');
     assert.match(noemaPrompt, /existing installation prompt/u);
-    assert.match(noemaPrompt, /未定想法和开放探索先作为对话本身回应/u);
-    assert.match(noemaPrompt, /会改变结果方向或验收的关键信息/u);
+    assert.match(noemaPrompt, /不默认把一个想法当成隐含需求/u);
+    assert.match(noemaPrompt, /最可能改变目标、责任或验收的未知点/u);
     assert.deepEqual(
       f.projects.listProjects().map((project) => project.id),
       originalProjects,
