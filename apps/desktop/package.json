@@ -24,6 +24,7 @@
     "e2e:project-collaboration": "node scripts/project-collaboration-live.mjs",
     "smoke": "node scripts/smoke.mjs",
     "smoke:package": "node scripts/smoke-package.mjs",
+    "smoke:installer": "pwsh -NoProfile -File scripts/smoke-installer-lifecycle.ps1",
     "smoke:freellmapi": "node scripts/smoke-freellmapi.mjs",
     "e2e:live-worker": "node scripts/live-worker-e2e.mjs",
     "e2e:social-work": "node scripts/social-work-e2e.mjs",
