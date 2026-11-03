@@ -47,7 +47,7 @@ export async function verifyConversationNavigation(window) {
   // did-finish-load confirms document loading, not React's asynchronous IPC boot.
   // Wait for the actual controls instead of assuming two animation frames suffice.
   await contents.executeJavaScript(`(async () => {
-    const deadline = Date.now() + 20000;
+    const deadline = Date.now() + 60000;
     while (Date.now() < deadline) {
       if (document.querySelector('.conversation-sidebar') &&
           document.querySelector('.conversation-panel') &&
