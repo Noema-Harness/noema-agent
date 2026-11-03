@@ -10,6 +10,13 @@ const testProfile =
 // https://vitejs.dev/config
 export default defineConfig({
   plugins: [react()],
+  // Main/preload builds write runtime assets under .vite; they are not
+  // renderer sources and must not trigger the renderer dev server's watcher.
+  server: {
+    watch: {
+      ignored: ['**/.vite/**'],
+    },
+  },
   // Concurrent live and test clients must not rewrite each other's prebundles.
   cacheDir: testProfile ? path.join(testProfile, 'vite-cache') : undefined,
 });
