@@ -26,6 +26,6 @@
 - [Windows runner setup state](../apps/desktop/src/main/execution/windows-runner-setup-state.mjs) 保存严格版本化的本机 setup 状态；[setup service](../apps/desktop/src/main/execution/windows-runner-setup-service.mjs) 在主进程先持久化 repair-required，再协调 helper 幂等修复并 fresh-probe 后提交 ready。当前 helper 尚未实现 setup operations，service 也未接入应用启动/命令 readiness，因此 command sandbox 仍保持拒绝。
 - [项目存储测试](../apps/desktop/test/main/projects/social-project-store.test.mjs) 中模拟旧数据库升级的夹具未移除新增回访表，最新核查遇到重名失败；真实旧库升级安全性不能由该夹具保证。
 - 格式检查此前未全通过；当前整体客户端、真实模型与长期使用未完成统一验收。
-- 参考源码位于 [.work/references](../.work/references/README.md)，其版本和检出范围由该入口登记。
+- 参考源码的版本和检出范围登记在本机过程资料 `.work/references/README.md`；`.work/` 按工作区约定不纳入 Git。
 
 当前确认条件见 [CURRENT_CONTEXT](CURRENT_CONTEXT.md)，实际命令与材料管理见 [PROJECT_OPERATIONS](PROJECT_OPERATIONS.md)。

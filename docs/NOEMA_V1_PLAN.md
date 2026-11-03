@@ -1,10 +1,10 @@
 # Noema 一期规划与执行顺序
 
-状态：Gate E 规划交付完成；Noema 一期开发进行中。本文定义范围、验收条件和 20 项分阶段工作。Windows 支持基线已由用户确认：Windows 10 22H2 + 当前 ESU 安全更新；不要求 Windows 11，也不逐 release 维护实现分支。D1 已选定以 Codex Windows sandbox 固定源码为基础，开发 Noema 自有的窄 runner bridge/维护子集；不将上游 crate 当作独立依赖，也不采用未修改的 WFP best-effort setup。该选择尚未通过实现或安全验收。本文仍是唯一权威阶段计划；实施时按影响范围创建 OpenSpec change。规划依据：[规划契约](../.work/planning/PLANNING_CONTRACT.md)、[当前上下文](CURRENT_CONTEXT.md)、[固定参考源码索引](../.work/references/README.md)、[Gate C 审计](../.work/planning/research/noema/GATE_C_CLOSURE_AUDIT.md)、[Gate D 决策](../.work/planning/research/noema/GATE_D_DECISIONS.md)、[Windows 10 隔离候选评估](../.work/planning/research/noema/WINDOWS10_ISOLATION_CANDIDATES.md)。更新：2026-11-02。
+状态：Gate E 规划交付完成；Noema 一期开发进行中。本文定义范围、验收条件和 20 项分阶段工作。Windows 支持基线已由用户确认：Windows 10 22H2 + 当前 ESU 安全更新；不要求 Windows 11，也不逐 release 维护实现分支。D1 已选定以 Codex Windows sandbox 固定源码为基础，开发 Noema 自有的窄 runner bridge/维护子集；不将上游 crate 当作独立依赖，也不采用未修改的 WFP best-effort setup。该选择尚未通过实现或安全验收。本文仍是唯一权威阶段计划；实施时按影响范围创建 OpenSpec change。规划依据：[当前上下文](CURRENT_CONTEXT.md)；完整源码研究与规划契约保存在本机过程目录 `.work/planning/`、`.work/references/`（该目录按工作区约定不纳入 Git）。更新：2026-11-02。
 
 路径约定：研究卡/规划文档里的 `research/...` 相对 `.work/planning/`；源码路径以 `apps/desktop/...` 为仓库根相对路径，简写的 `main/...`、`renderer/...` 相对 `apps/desktop/src/`。
 
-每条外部实现依据引用到一个研究卡；该卡记录固定 `repo@commit`、仓库相对源码位置和适用限制。各源摘要见[源码索引](../.work/references/README.md)，机器可读版本见[revisions.json](../.work/references/revisions.json)。研究卡适用范围比单个 task 广时，以卡中标出的模块边界为准，不把整个项目都算成采纳。
+每条外部实现依据引用到一个研究卡；该卡记录固定 `repo@commit`、仓库相对源码位置和适用限制。各源摘要及机器可读版本清单保存在本机过程资料 `.work/references/README.md` 与 `.work/references/revisions.json`。研究卡适用范围比单个 task 广时，以卡中标出的模块边界为准，不把整个项目都算成采纳。
 
 ## 一期范围
 
