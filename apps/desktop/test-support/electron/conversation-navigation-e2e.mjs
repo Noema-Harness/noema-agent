@@ -68,10 +68,21 @@ export async function verifyConversationNavigation(window) {
           document.querySelector('.navigation-resize-handle')) return;
       await new Promise(resolve => setTimeout(resolve, 40));
     }
+    const entryRetry = await Promise.race([
+      import('/src/renderer/renderer.tsx').then(
+        () => ({ outcome: 'loaded' }),
+        error => ({
+          outcome: 'rejected',
+          error: String(error?.stack || error).slice(0, 2000),
+        }),
+      ),
+      new Promise(resolve =>
+        setTimeout(() => resolve({ outcome: 'timeout' }), 1500),
+      ),
+    ]);
     const resources = performance
       .getEntriesByType('resource')
       .filter(entry => entry.name.startsWith(location.origin))
-      .slice(-40)
       .map(entry => ({
         name: entry.name.slice(location.origin.length),
         duration: Math.round(entry.duration),
@@ -85,6 +96,11 @@ export async function verifyConversationNavigation(window) {
           ready: document.readyState,
           text: document.body.innerText.slice(0, 500),
           root: document.querySelector('#root')?.innerHTML.slice(0, 1000),
+          scripts: [...document.scripts].map(script => ({
+            src: script.src,
+            type: script.type,
+          })),
+          entryRetry,
           rendererEntryEvaluated: performance
             .getEntriesByName('noema.renderer.entry-evaluated')
             .length > 0,
