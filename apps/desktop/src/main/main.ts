@@ -546,6 +546,9 @@ const createWindow = () => {
             const button = document.querySelector('.composer-mode-button');
             const status = document.querySelector('.composer-mode > span');
             const rect = button?.getBoundingClientRect();
+            const selectedRoom = document.querySelector(
+              '.room-list-item[aria-current="page"]',
+            );
             return {
               visible: Boolean(rect && rect.width > 0 && rect.height > 0),
               accessibleName: button?.textContent?.trim() ?? '',
@@ -553,6 +556,13 @@ const createWindow = () => {
               keyboardFocusable: button?.tabIndex === 0,
               disabled: Boolean(button?.disabled),
               statusText: status?.textContent?.trim() ?? '',
+              selectedRoom: selectedRoom?.textContent?.trim() ?? '',
+              messageRoomId:
+                document
+                  .querySelector('.message-thread')
+                  ?.getAttribute('data-room-id') ?? '',
+              emptyChatText:
+                document.querySelector('.empty-chat')?.textContent?.trim() ?? '',
               composerVisible: Boolean(
                 document.querySelector('.message-composer')?.getBoundingClientRect().height,
               ),
