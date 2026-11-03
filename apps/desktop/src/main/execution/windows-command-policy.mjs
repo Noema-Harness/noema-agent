@@ -15,6 +15,7 @@ const WINDOWS_ENVIRONMENT_ALLOW_NAMES = [
   'TEMP',
   'TMP',
   'PATH',
+  'LOCALAPPDATA',
 ];
 
 function denial(code) {

@@ -2,14 +2,10 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
-export const WINDOWS_RUNNER_SETUP_STATE_VERSION = 3;
+export const WINDOWS_RUNNER_SETUP_STATE_VERSION = 4;
 const MAX_STATE_BYTES = 64 * 1024;
 const SETUP_STAGES = ['profile', 'verify'];
-const REQUIRED_LIVE_EVIDENCE = [
-  'packageSid',
-  'profileValid',
-  'networkFiltersValid',
-];
+const REQUIRED_LIVE_EVIDENCE = ['packageSid', 'profileValid'];
 
 export function unconfiguredWindowsRunnerSetupState() {
   return {
@@ -114,8 +110,7 @@ export function hasCompleteWindowsRunnerSetupEvidence(
     hasExactKeys(evidence, REQUIRED_LIVE_EVIDENCE) &&
     isValidWindowsRunnerPackageSid(expectedPackageSid) &&
     evidence.packageSid === expectedPackageSid &&
-    evidence.profileValid === true &&
-    evidence.networkFiltersValid === true
+    evidence.profileValid === true
   );
 }
 

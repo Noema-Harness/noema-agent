@@ -426,10 +426,7 @@ export function DiagnosticsDialog({
                         : runnerCapability.reasonCode,
                     )}
               </p>
-              <p>
-                无需更新 Windows 即可启动和使用 Noema
-                桌面应用；此处状态只影响受限命令。
-              </p>
+              <p>此状态只影响 Windows 项目命令，不影响 Noema 桌面应用运行。</p>
             </div>
             {canOfferWindowsRunnerSetup(runnerCapability) &&
             runnerCapability.backendId ? (
@@ -439,7 +436,7 @@ export function DiagnosticsDialog({
                 onClick={() => void startWindowsRunnerSetup()}
                 disabled={runnerSetupBusy}
               >
-                {runnerSetupBusy ? '正在设置…' : '启用或重试设置'}
+                {runnerSetupBusy ? '正在设置…' : '完成或修复隔离设置'}
               </button>
             ) : null}
           </section>

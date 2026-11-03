@@ -47,7 +47,11 @@ test('native helper transport drives the durable journal before reconcile and ve
     assert.equal(options.shell, false);
     assert.equal(options.windowsHide, true);
     assert.equal('OPENAI_API_KEY' in options.env, false);
-    assert.deepEqual(Object.keys(options.env).sort(), ['PATH', 'SystemRoot']);
+    assert.deepEqual(Object.keys(options.env).sort(), [
+      'LOCALAPPDATA',
+      'PATH',
+      'SystemRoot',
+    ]);
     assert.equal(request.requestId, operationId);
     assert.deepEqual(request.operation.grants, [
       {
@@ -68,7 +72,7 @@ test('native helper transport drives the durable journal before reconcile and ve
       operations.push('verify');
     }
     return {
-      protocolVersion: 7,
+      protocolVersion: 8,
       requestId: request.requestId,
       result: {
         type: 'acl_evidence',
@@ -99,7 +103,7 @@ test('native helper rejects mismatched response identity and leaves the journal 
   t.after(() => fs.rmSync(userDataPath, { recursive: true, force: true }));
   const journal = new WindowsRunnerAclJournalStore({ userDataPath });
   const helper = makeHelper(() => ({
-    protocolVersion: 7,
+    protocolVersion: 8,
     requestId: 'different-request-id',
     result: {
       type: 'acl_evidence',
@@ -130,7 +134,7 @@ test('native helper rejects a mismatched backend version and leaves the journal 
   t.after(() => fs.rmSync(userDataPath, { recursive: true, force: true }));
   const journal = new WindowsRunnerAclJournalStore({ userDataPath });
   const helper = makeHelper(({ request }) => ({
-    protocolVersion: 7,
+    protocolVersion: 8,
     requestId: request.requestId,
     result: {
       type: 'acl_evidence',
@@ -215,7 +219,6 @@ test('native setup transport accepts only matching typed reconcile and probe evi
   const setupEvidence = {
     packageSid,
     profileValid: true,
-    networkFiltersValid: true,
   };
   const helper = makeHelper(({ request, options }) => {
     assert.equal(options.shell, false);
@@ -231,7 +234,7 @@ test('native setup transport accepts only matching typed reconcile and probe evi
         userDataPath: setupUserDataPath,
       });
       return {
-        protocolVersion: 7,
+        protocolVersion: 8,
         requestId: operationId,
         result: {
           type: 'setup_reconciled',
@@ -248,7 +251,7 @@ test('native setup transport accepts only matching typed reconcile and probe evi
       userDataPath: setupUserDataPath,
     });
     return {
-      protocolVersion: 7,
+      protocolVersion: 8,
       requestId: operationId,
       result: {
         type: 'setup_evidence',
@@ -282,48 +285,9 @@ test('native setup transport accepts only matching typed reconcile and probe evi
   );
 });
 
-test('native uninstall cleanup sends a fixed setup-removal operation and accepts only exact evidence', async () => {
-  const helper = makeHelper(({ request, options }) => {
-    assert.equal(options.shell, false);
-    assert.equal(options.windowsHide, true);
-    assert.deepEqual(request.operation, {
-      type: 'remove_sandbox_setup',
-      operationId,
-    });
-    return {
-      protocolVersion: 7,
-      requestId: operationId,
-      result: {
-        type: 'setup_removed',
-        backendId: 'noema-codex-windows',
-        backendVersion: '0.1.0',
-        operationId,
-      },
-    };
-  });
-  assert.deepEqual(await helper.removeSandboxSetup({ operationId }), {
-    operationId,
-  });
-
-  const invalid = makeHelper(({ request }) => ({
-    protocolVersion: 7,
-    requestId: request.requestId,
-    result: {
-      type: 'setup_removed',
-      backendId: 'noema-codex-windows',
-      backendVersion: '0.1.0',
-      operationId,
-      extra: 'rejected',
-    },
-  }));
-  await assert.rejects(invalid.removeSandboxSetup({ operationId }), {
-    code: 'runner_helper_response_invalid',
-  });
-});
-
 test('native setup transport rejects credentials and mismatched identity fields', async () => {
   const helper = makeHelper(({ request }) => ({
-    protocolVersion: 7,
+    protocolVersion: 8,
     requestId: request.requestId,
     result: {
       type: 'setup_reconciled',
@@ -344,7 +308,7 @@ test('native setup transport rejects credentials and mismatched identity fields'
   );
 
   const mismatch = makeHelper(({ request }) => ({
-    protocolVersion: 7,
+    protocolVersion: 8,
     requestId: request.requestId,
     result: {
       type: 'setup_reconciled',
@@ -383,7 +347,7 @@ test('native setup transport rejects nonlocal or aliased userData paths', async 
 
 test('native setup transport preserves an explicit setup-unavailable denial', async () => {
   const helper = makeHelper(({ request }) => ({
-    protocolVersion: 7,
+    protocolVersion: 8,
     requestId: request.requestId,
     result: {
       type: 'denied',
@@ -400,11 +364,30 @@ test('native setup transport preserves an explicit setup-unavailable denial', as
   );
 });
 
+test('native setup transport preserves stable profile setup failure reasons', async () => {
+  const helper = makeHelper(({ request }) => ({
+    protocolVersion: 8,
+    requestId: request.requestId,
+    result: {
+      type: 'denied',
+      code: 'appcontainer_profile_create_failed',
+      stage: 'setup',
+    },
+  }));
+  await assert.rejects(
+    helper.reconcileSandboxSetup({
+      operationId,
+      userDataPath: setupUserDataPath,
+    }),
+    { code: 'appcontainer_profile_create_failed' },
+  );
+});
+
 test('native capability probe returns a fail-closed typed report', async () => {
   const helper = makeHelper(({ request }) => {
     assert.deepEqual(request.operation, { type: 'probe' });
     return {
-      protocolVersion: 7,
+      protocolVersion: 8,
       requestId: request.requestId,
       result: {
         type: 'probe',
@@ -414,7 +397,6 @@ test('native capability probe returns a fail-closed typed report', async () => {
         ready: true,
         blockers: [],
         setupStatus: 'ready',
-        networkFilterStatus: 'ready',
         capabilities: {
           filesystemDefaultDeny: true,
           filesystemReadAllowlist: true,
@@ -446,7 +428,7 @@ test('native capability probe returns a fail-closed typed report', async () => {
 
 test('deny-only readiness does not require the unimplemented network broker', async () => {
   const helper = makeHelper(({ request }) => ({
-    protocolVersion: 7,
+    protocolVersion: 8,
     requestId: request.requestId,
     result: {
       type: 'probe',
@@ -456,7 +438,6 @@ test('deny-only readiness does not require the unimplemented network broker', as
       ready: true,
       blockers: [],
       setupStatus: 'ready',
-      networkFilterStatus: 'ready',
       capabilities: {
         filesystemDefaultDeny: true,
         filesystemReadAllowlist: true,
@@ -481,11 +462,12 @@ test('deny-only readiness does not require the unimplemented network broker', as
   const report = await helper.probeCommandBackend({ requestId: operationId });
   assert.equal(report.ready, true);
   assert.equal(report.capabilities.identityBoundNetworkBroker, false);
+  assert.equal(report.backend.capabilities.networkDefaultDeny, true);
 });
 
 test('native capability probe rejects unknown fields and mismatched identity', async () => {
   const helper = makeHelper(({ request }) => ({
-    protocolVersion: 7,
+    protocolVersion: 8,
     requestId: request.requestId,
     result: {
       type: 'probe',
@@ -495,7 +477,6 @@ test('native capability probe rejects unknown fields and mismatched identity', a
       ready: false,
       blockers: ['sandbox_setup_unavailable'],
       setupStatus: 'incomplete',
-      networkFilterStatus: 'not_verified',
       capabilities: {
         filesystemDefaultDeny: false,
         filesystemReadAllowlist: false,
@@ -541,7 +522,14 @@ test('native execute transport binds the request, policy, grants and bounded com
     workingDirectory: root,
     environment: {
       inherit: false,
-      allowNames: ['SystemRoot', 'WINDIR', 'TEMP', 'TMP', 'PATH'],
+      allowNames: [
+        'SystemRoot',
+        'WINDIR',
+        'TEMP',
+        'TMP',
+        'PATH',
+        'LOCALAPPDATA',
+      ],
     },
     network: { mode: 'deny', identity: operationId },
   };
@@ -569,7 +557,7 @@ test('native execute transport binds the request, policy, grants and bounded com
     ]);
     assert.equal('OPENAI_API_KEY' in options.env, false);
     return {
-      protocolVersion: 7,
+      protocolVersion: 8,
       requestId: operationId,
       result: {
         type: 'command_complete',
@@ -616,7 +604,7 @@ test('native execute transport keeps timeout effects unknown even after cleanup'
     request.operation.type === 'probe'
       ? readyProbeResponse(request.requestId)
       : {
-          protocolVersion: 7,
+          protocolVersion: 8,
           requestId: request.requestId,
           result: {
             type: 'command_complete',
@@ -653,7 +641,7 @@ test('native execute transport marks a runner cleanup failure as unknown', async
     request.operation.type === 'probe'
       ? readyProbeResponse(request.requestId)
       : {
-          protocolVersion: 7,
+          protocolVersion: 8,
           requestId: request.requestId,
           result: {
             type: 'command_outcome_unknown',
@@ -702,7 +690,7 @@ test('native execute transport rejects malformed results and invalid request bou
           request.operation.type === 'probe'
             ? readyProbeResponse(request.requestId)
             : {
-                protocolVersion: 7,
+                protocolVersion: 8,
                 requestId: request.requestId,
                 result: {
                   type: 'command_complete',
@@ -755,19 +743,19 @@ test('native execute transport rejects malformed results and invalid request bou
   assert.equal(started, 2);
 });
 
-test('native execute does not submit a command when the OS readiness baseline fails', async () => {
+test('native execute does not submit a command when the Windows platform is unsupported', async () => {
   const operations = [];
   const helper = makeHelper(({ request }) => {
     operations.push(request.operation.type);
     return {
-      protocolVersion: 7,
+      protocolVersion: 8,
       requestId: request.requestId,
       result: {
         ...readyProbeResponse(request.requestId).result,
         platform: {
           major: 10,
           minor: 0,
-          build: 19045,
+          build: 19044,
           ubr: 6093,
           architecture: 'x86_64',
         },
@@ -791,6 +779,51 @@ test('native execute does not submit a command when the OS readiness baseline fa
     effectStatus: 'not_applied',
   });
   assert.deepEqual(operations, ['probe']);
+});
+
+test('native readiness accepts Windows 10 22H2 below the former UBR floor', async () => {
+  const operations = [];
+  const helper = makeHelper(({ request }) => {
+    operations.push(request.operation.type);
+    return {
+      protocolVersion: 8,
+      requestId: request.requestId,
+      result: {
+        ...readyProbeResponse(request.requestId).result,
+        platform: {
+          major: 10,
+          minor: 0,
+          build: 19045,
+          ubr: 6093,
+          architecture: 'x86_64',
+        },
+      },
+    };
+  });
+  const report = await helper.probeCommandBackend({ requestId: operationId });
+  assert.equal(report.ready, true);
+  assert.equal(report.platform.ubr, 6093);
+  assert.deepEqual(operations, ['probe']);
+});
+
+test('native readiness does not require the diagnostic UBR value', async () => {
+  const helper = makeHelper(({ request }) => ({
+    protocolVersion: 8,
+    requestId: request.requestId,
+    result: {
+      ...readyProbeResponse(request.requestId).result,
+      platform: {
+        major: 10,
+        minor: 0,
+        build: 19_045,
+        ubr: 0,
+        architecture: 'x86_64',
+      },
+    },
+  }));
+  const report = await helper.probeCommandBackend({ requestId: operationId });
+  assert.equal(report.ready, true);
+  assert.equal(report.platform.ubr, 0);
 });
 
 test('native execute abort before admission does not spawn the helper', async () => {
@@ -902,7 +935,14 @@ function validExecutePolicy() {
     workingDirectory: root,
     environment: {
       inherit: false,
-      allowNames: ['SystemRoot', 'WINDIR', 'TEMP', 'TMP', 'PATH'],
+      allowNames: [
+        'SystemRoot',
+        'WINDIR',
+        'TEMP',
+        'TMP',
+        'PATH',
+        'LOCALAPPDATA',
+      ],
     },
     network: { mode: 'deny', identity: operationId },
   };
@@ -910,7 +950,7 @@ function validExecutePolicy() {
 
 function readyProbeResponse(requestId) {
   return {
-    protocolVersion: 7,
+    protocolVersion: 8,
     requestId,
     result: {
       type: 'probe',
@@ -920,7 +960,6 @@ function readyProbeResponse(requestId) {
       ready: true,
       blockers: [],
       setupStatus: 'ready',
-      networkFilterStatus: 'ready',
       capabilities: {
         filesystemDefaultDeny: true,
         filesystemReadAllowlist: true,
@@ -937,7 +976,7 @@ function readyProbeResponse(requestId) {
         major: 10,
         minor: 0,
         build: 19045,
-        ubr: 7807,
+        ubr: 6093,
         architecture: 'x86_64',
       },
     },
@@ -949,6 +988,7 @@ function makeHelper(respond) {
     executablePath: 'C:\\Noema\\native\\noema-windows-runner.exe',
     env: {
       SystemRoot: 'C:\\Windows',
+      LOCALAPPDATA: 'C:\\Users\\fixture\\AppData\\Local',
       PATH: 'C:\\Windows\\System32',
       OPENAI_API_KEY: 'must-not-inherit',
     },

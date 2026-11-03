@@ -14,4 +14,4 @@
 ## Workflow follow-up
 
 - Archive after tracked work and strict validation pass; update the `desktop-host-lifecycle` specification and F1 progress.
-- Actual Windows userData/DPAPI preservation through Squirrel install, upgrade and uninstall remains a target-machine acceptance gate after ESU UBR 7807.
+- Actual Windows userData/DPAPI preservation through Squirrel install, upgrade and uninstall remains a target-machine acceptance gate after D3 target-machine sandbox acceptance; no ESU/UBR threshold applies.

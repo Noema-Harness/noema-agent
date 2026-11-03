@@ -9,10 +9,8 @@ const REASON_LABELS = Object.freeze({
   sandbox_setup_missing: '需要先完成本机隔离设置。',
   setup_state_unavailable: '本机隔离设置状态暂不可读取。',
   setup_failed: '本机隔离设置未完成。',
-  network_filters_unverified: '本机网络隔离规则尚未完成检查。',
   setup_state_live_verification_incomplete: '隔离设置未通过实时状态核验。',
-  os_baseline_unsupported:
-    '当前 Windows 安全更新未达到受限命令的安全基线；Noema 桌面应用仍可使用。',
+  os_baseline_unsupported: '当前 Windows 版本或架构暂不支持受限命令。',
   runner_runtime_unavailable: 'Windows 命令隔离运行组件暂不可用。',
   diagnostics_unavailable: 'Noema 诊断记录不可用，命令保持关闭。',
 });
@@ -21,7 +19,9 @@ export function windowsRunnerReasonLabel(reasonCode) {
   const reasonCodes = Array.isArray(reasonCode) ? reasonCode : [reasonCode];
   return reasonCodes
     .filter((code) => typeof code === 'string' && code)
-    .map((code) => REASON_LABELS[code] ?? `命令不可用（${code}）。`)
+    .map((code) => {
+      return REASON_LABELS[code] ?? `命令不可用（${code}）。`;
+    })
     .join(' ');
 }
 

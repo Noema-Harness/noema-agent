@@ -17,7 +17,6 @@ import {
 const completeEvidence = Object.freeze({
   packageSid: 'S-1-15-2-101-102-103-104-105-106-107',
   profileValid: true,
-  networkFiltersValid: true,
 });
 const appContainerPackageSid = 'S-1-15-2-101-102-103-104-105-106-107';
 
@@ -47,19 +46,6 @@ test('setup state only becomes ready after strict staged live verification', () 
         'setup_01',
         appContainerPackageSid,
         incomplete,
-      ),
-    { code: 'setup_state_live_verification_incomplete' },
-  );
-  assert.throws(
-    () =>
-      commitWindowsRunnerSetupReady(
-        verifying,
-        'setup_01',
-        appContainerPackageSid,
-        {
-          ...completeEvidence,
-          networkFiltersValid: false,
-        },
       ),
     { code: 'setup_state_live_verification_incomplete' },
   );
@@ -109,13 +95,6 @@ test('setup state only becomes ready after strict staged live verification', () 
     admitsWindowsRunnerSetup(ready, {
       ...completeEvidence,
       profileValid: false,
-    }),
-    false,
-  );
-  assert.equal(
-    admitsWindowsRunnerSetup(ready, {
-      ...completeEvidence,
-      networkFiltersValid: false,
     }),
     false,
   );
@@ -207,7 +186,7 @@ test('legacy account setup state resets to unconfigured without asserting AppCon
   });
 });
 
-test('version two AppContainer state resets because it lacks WFP evidence', async () => {
+test('version two AppContainer state resets because it lacks the retired network setup evidence', async () => {
   await withUserDataPath(async (userDataPath) => {
     const directory = path.join(userDataPath, 'windows-runner');
     fs.mkdirSync(directory, { recursive: true });

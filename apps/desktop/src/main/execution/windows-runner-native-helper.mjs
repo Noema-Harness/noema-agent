@@ -19,8 +19,15 @@ const MAX_COMMAND_TIMEOUT_MS = 180_000;
 const PROBE_TIMEOUT_MS = 20_000;
 const RUNNER_STARTUP_TIMEOUT_MS = 15_000;
 const MAX_RUNNER_OUTPUT_BYTES = 128 * 1024;
-const ENVIRONMENT_ALLOWLIST = ['SystemRoot', 'WINDIR', 'TEMP', 'TMP', 'PATH'];
-const SETUP_EVIDENCE_FLAGS = ['profileValid', 'networkFiltersValid'];
+const ENVIRONMENT_ALLOWLIST = [
+  'SystemRoot',
+  'WINDIR',
+  'TEMP',
+  'TMP',
+  'PATH',
+  'LOCALAPPDATA',
+];
+const SETUP_EVIDENCE_FLAGS = ['profileValid'];
 
 /**
  * One-shot, bounded stdin/stdout transport for the native Windows helper.
@@ -82,31 +89,6 @@ export class WindowsRunnerNativeHelper {
 
   probeSandboxSetup({ operationId, userDataPath }) {
     return this.#setupRequest('probe_sandbox_setup', operationId, userDataPath);
-  }
-
-  async removeSandboxSetup({ operationId }) {
-    if (
-      typeof operationId !== 'string' ||
-      !/^[A-Za-z0-9_-]{16,128}$/u.test(operationId)
-    ) {
-      throw helperError('runner_helper_request_invalid');
-    }
-    const input = Buffer.from(
-      `${JSON.stringify({
-        protocolVersion: WINDOWS_RUNNER_PROTOCOL_VERSION,
-        requestId: operationId,
-        operation: { type: 'remove_sandbox_setup', operationId },
-      })}\n`,
-      'utf8',
-    );
-    const stdout = await this.#run(input);
-    const result = parseSetupResponse(
-      stdout,
-      operationId,
-      this.expectedBackendVersion,
-    );
-    if (result.type === 'denied') throw helperError(result.code);
-    return result.value;
   }
 
   async probeCommandBackend({ requestId }) {
@@ -670,23 +652,6 @@ function parseSetupResponse(bytes, expectedRequestId, expectedBackendVersion) {
     };
   }
 
-  if (result.type === 'setup_removed') {
-    if (
-      !hasExactKeys(result, [
-        'type',
-        'backendId',
-        'backendVersion',
-        'operationId',
-      ]) ||
-      result.backendId !== WINDOWS_RUNNER_BACKEND_ID ||
-      result.backendVersion !== expectedBackendVersion ||
-      result.operationId !== expectedRequestId
-    ) {
-      throw helperError('runner_helper_response_invalid');
-    }
-    return { type: result.type, value: { operationId: result.operationId } };
-  }
-
   if (
     result.type !== 'setup_evidence' ||
     !hasExactKeys(result, [
@@ -897,7 +862,6 @@ function parseProbeResponse(bytes, expectedRequestId, expectedBackendVersion) {
   const blockers = new Set([
     'runner_implementation_incomplete',
     'sandbox_setup_unavailable',
-    'network_filters_unverified',
     'os_baseline_unsupported',
     'helper_resource_invalid',
     'required_capability_missing',
@@ -912,7 +876,6 @@ function parseProbeResponse(bytes, expectedRequestId, expectedBackendVersion) {
       'ready',
       'blockers',
       'setupStatus',
-      'networkFilterStatus',
       'capabilities',
       'platform',
     ]) ||
@@ -931,9 +894,6 @@ function parseProbeResponse(bytes, expectedRequestId, expectedBackendVersion) {
       'ready',
       'unknown',
     ].includes(result.setupStatus) ||
-    !['not_verified', 'incomplete', 'ready', 'failed', 'unknown'].includes(
-      result.networkFilterStatus,
-    ) ||
     !isRecord(result.capabilities) ||
     !hasExactKeys(result.capabilities, capabilityNames) ||
     capabilityNames.some(
@@ -963,8 +923,7 @@ function parseProbeResponse(bytes, expectedRequestId, expectedBackendVersion) {
     platform.major === 10 &&
     platform.minor === 0 &&
     platform.architecture === 'x86_64' &&
-    platform.build >= 19_045 &&
-    (platform.build !== 19_045 || platform.ubr >= 7_807);
+    platform.build >= 19_045;
   const readinessBlockers = [...result.blockers];
   if (
     !platformSupported &&
@@ -976,7 +935,6 @@ function parseProbeResponse(bytes, expectedRequestId, expectedBackendVersion) {
     result.ready &&
     readinessBlockers.length === 0 &&
     result.setupStatus === 'ready' &&
-    result.networkFilterStatus === 'ready' &&
     platformSupported &&
     requiredCapabilityNames.every((name) => capabilities[name]);
   return {
@@ -990,9 +948,9 @@ function parseProbeResponse(bytes, expectedRequestId, expectedBackendVersion) {
       id: result.backendId,
       version: result.backendVersion,
       policyVersion: result.policyVersion,
+      capabilities,
     },
     setupStatus: result.setupStatus,
-    networkFilterStatus: result.networkFilterStatus,
     capabilities,
     platform,
   };

@@ -19,17 +19,17 @@ Before readiness or preparation, the native runner MUST open each existing works
 - **THEN** admission returns a bounded path reason and does not proceed to readiness or child creation
 
 ### Requirement: Windows runner readiness responses use a strict versioned schema
-Windows runner probe responses MUST include protocol/request identity, backend and policy versions, OS build/UBR/architecture, AppContainer profile/package SID status, filesystem ACL journal status, network-filter status, blockers, and required capabilities. Missing or unknown fields and identity/version mismatches MUST reject the response before command admission. A separate sandbox account, its credentials, and restricted-token status are not v1 prerequisites.
+Windows runner probe responses MUST include protocol/request identity, backend and policy versions, OS build/UBR/architecture, AppContainer profile/package SID status, filesystem ACL journal status, blockers, and required capabilities. Missing or unknown fields and identity/version mismatches MUST reject the response before command admission. A separate sandbox account, its credentials, and restricted-token status are not v1 prerequisites.
 
 #### Scenario: probe response is incomplete or from an incompatible helper
 - **WHEN** a probe response omits a required field or reports an unsupported protocol, helper, or policy version
 - **THEN** the runner rejects the response with a bounded reason and does not admit the command
 
 ### Requirement: Windows command admission requires complete readiness
-The OS baseline, AppContainer profile/setup and filter state, blockers, readiness flag, and all required capabilities MUST pass the current release gate before command admission. Readiness is only a prerequisite and MUST NOT bypass later policy, AppContainer launch, or process-tree controls.
+The OS baseline, AppContainer profile/setup state, blockers, readiness flag, and all required capabilities MUST pass the current release gate before command admission. Readiness is only a prerequisite and MUST NOT bypass later policy, AppContainer launch, or process-tree controls.
 
-#### Scenario: OS baseline or setup is below the supported floor
-- **WHEN** the Windows build/UBR is below the current Noema support floor, or sandbox setup or network filters are not ready
+#### Scenario: Windows platform or sandbox setup is unsupported
+- **WHEN** the Windows platform version or architecture is unsupported, or AppContainer setup is not ready
 - **THEN** the runner rejects the command before process creation and reports the relevant readiness reason
 
 #### Scenario: required capability is missing
@@ -41,27 +41,23 @@ The OS baseline, AppContainer profile/setup and filter state, blockers, readines
 - **THEN** the runner still denies execution and does not create a child process
 
 #### Scenario: setup marker exists but live AppContainer or enforcement state is stale
-- **WHEN** versioned setup files exist but the AppContainer profile/package SID differs from the helper-verified state, or profile, current-request filesystem grants, or required network filters are missing, inconsistent, or cannot be queried
+- **WHEN** versioned setup files exist but the AppContainer profile/package SID differs from the helper-verified state, or profile/current-request filesystem grants are missing, inconsistent, or cannot be queried
 - **THEN** readiness remains false with a bounded repair reason, and no command child is created
 
 #### Scenario: process interruption leaves setup in progress
-- **WHEN** the host restarts after AppContainer profile, ACL, or network setup began but before readiness was committed
+- **WHEN** the host restarts after AppContainer profile or ACL setup began but before readiness was committed
 - **THEN** startup treats the identity as repair-required, revalidates actual OS state under the setup lock, and denies commands until recovery is complete
 
-### Requirement: ordinary Noema can verify only its own WFP policy
-After confirmed setup, ordinary Noema MUST read its fixed WFP policy for readiness. Elevated setup MUST grant the initiating user only `FWPM_ACTRL_READ` on Noema's exact objects, preserve existing DACL entries, and MUST NOT grant write/delete. Setup MUST verify descriptors and worker exit; failure or unknown cleanup MUST leave setup unavailable.
+### Requirement: AppContainer commands have no network capabilities
+The native runner MUST create command children without AppContainer network capabilities. Network access MUST remain denied unless a future product change explicitly adds a supported network policy and matching enforcement. Readiness MUST NOT depend on Noema-owned persistent machine firewall rules or require elevation to establish network denial.
 
-#### Scenario: standard-user probe checks the installed Noema policy
-- **WHEN** the fixed WFP policy is complete and Noema probes it without elevation
-- **THEN** the probe can read the exact policy objects using the initiating user's read-only ACE, while conflicting, inaccessible, or incomplete policy still fails closed
+#### Scenario: command child has no network capability
+- **WHEN** an AppContainer command is launched with only the current request's filesystem capabilities
+- **THEN** Windows denies the child's network access while the host retains ordinary network access
 
-#### Scenario: elevated setup cannot change the command policy target
-- **WHEN** a UAC worker is launched for setup or removal
-- **THEN** it operates on the validated package SID captured by the ordinary helper, and setup grants only read access to the validated initiating user's SID
-
-#### Scenario: elevated worker exceeds its wait limit
-- **WHEN** the setup or removal worker has not exited before the bounded wait expires
-- **THEN** the caller attempts bounded worker termination, and does not report confirmed setup or cleanup unless process exit is observed
+#### Scenario: network denial is unavailable
+- **WHEN** the native runner cannot prove the child uses the fixed AppContainer identity without network capabilities
+- **THEN** command readiness remains false and the command is not created
 
 ### Requirement: Windows filesystem roots use unambiguous Win32 path components
 Windows command policy roots MUST reject path components that invoke alternate data streams, Win32 reserved device names, forbidden path characters, dot traversal, or trailing ASCII spaces/periods. This lexical check is only an admission check and MUST NOT replace native handle identity, reparse-point, or hard-link verification.
@@ -123,16 +119,20 @@ Windows runner MUST 将 stdout、stderr、退出码、耗时以及完成、失�
 - **THEN** runner 仍按隔离执行结果完成或失败，不因诊断写入失败改用宿主执行或重放命令
 
 ### Requirement: Windows command availability is explained separately from desktop availability
-Noema MUST 在诊断界面将 Windows 命令隔离状态与 Noema 桌面应用可用性区分说明，并呈现全部经主进程验证的有限阻塞原因。界面 MUST 仅在存在可由 setup 修复的 profile/network blocker 且 Windows 安全基线已满足时显示“启用或重试设置”；单独的实现未完成、资源无效、诊断不可用或操作系统基线不符不得提示用户通过 setup 修复。主进程的 setup IPC handler MUST 独立复核该条件后才可弹出 UAC。界面说明 MUST NOT 暗示启动或使用 Noema 桌面应用需要 Windows 更新。
+Noema MUST 在诊断界面将 Windows 命令隔离状态与 Noema 桌面应用可用性区分说明，并呈现全部经主进程验证的有限阻塞原因。界面 MUST 仅在存在可由 setup 修复的 AppContainer profile blocker 且 Windows 平台版本、架构兼容时显示“启用或重试设置”；单独的实现未完成、资源无效、诊断不可用或平台版本/架构不符不得提示用户通过 setup 修复。setup 不触发 UAC。界面说明 MUST NOT 暗示启动或使用 Noema 桌面应用需要 Windows 更新。
 
 #### Scenario: command runner implementation has not passed target verification
 - **WHEN** runner readiness 仅报告 `runner_implementation_incomplete`
 - **THEN** 诊断说明命令隔离尚未完成目标机验证、Noema 桌面应用仍可使用且无需更新 Windows 才能启动，并且不显示 setup 操作
 
 #### Scenario: setup blockers coexist with the implementation hold
-- **WHEN** readiness reports `runner_implementation_incomplete` together with a missing/incomplete sandbox profile or unverified network filters, and the Windows security baseline is met
-- **THEN** diagnostics lists each blocker and provides setup for the profile/network blockers while ordinary command execution remains disabled
+- **WHEN** readiness reports `runner_implementation_incomplete` together with a missing/incomplete AppContainer profile, and the Windows platform version and architecture are supported
+- **THEN** diagnostics lists each blocker and provides profile setup while ordinary command execution remains disabled
 
-#### Scenario: Windows security baseline is not met
+#### Scenario: Windows platform version or architecture is unsupported
 - **WHEN** readiness includes `os_baseline_unsupported` alongside setup blockers
-- **THEN** diagnostics explains that the baseline applies to restricted commands, leaves Noema desktop usage available, and does not offer setup or trigger UAC
+- **THEN** diagnostics explains that the platform is unsupported for restricted commands, leaves Noema desktop usage available, and does not offer setup or trigger UAC
+
+#### Scenario: the informational UBR value cannot be read
+- **WHEN** Windows 10 22H2 x64 platform details are available but the registry UBR value is unavailable
+- **THEN** the runner preserves the detected OS version and architecture, reports UBR as unknown, and does not add a blocker based on the missing UBR value

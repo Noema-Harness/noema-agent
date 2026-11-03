@@ -8,18 +8,16 @@ import {
 test('keeps the incomplete-runner reason specific to command availability', () => {
   const label = windowsRunnerReasonLabel('runner_implementation_incomplete');
   assert.match(label, /命令暂未开放/u);
-  assert.doesNotMatch(label, /无需更新 Windows/u);
+  assert.doesNotMatch(label, /管理员权限|Windows 更新/u);
 });
 
 test('formats every readiness blocker into a readable explanation', () => {
   const label = windowsRunnerReasonLabel([
     'runner_implementation_incomplete',
     'sandbox_setup_unavailable',
-    'network_filters_unverified',
   ]);
   assert.match(label, /尚未完成目标机验证/u);
   assert.match(label, /隔离设置尚未完成/u);
-  assert.match(label, /网络隔离规则尚未完成检查/u);
 });
 
 test('does not offer setup when the runner implementation is incomplete', () => {

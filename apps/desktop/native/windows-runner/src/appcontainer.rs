@@ -27,7 +27,11 @@ const MAX_CAPABILITY_NAME_UNITS: usize = 128;
 /// The profile does not need to exist for the SID to be derived.
 #[allow(dead_code)] // Used by the AppContainer readiness/setup integration.
 pub fn derive_package_sid() -> Result<String, &'static str> {
-    let name = wide(NOEMA_APPCONTAINER_PROFILE);
+    derive_package_sid_for(NOEMA_APPCONTAINER_PROFILE)
+}
+
+pub(crate) fn derive_package_sid_for(profile_name: &str) -> Result<String, &'static str> {
+    let name = wide(profile_name);
     let mut sid: PSID = ptr::null_mut();
     // SAFETY: `name` is NUL terminated and `sid` is a valid output location.
     let result = unsafe { DeriveAppContainerSidFromAppContainerName(name.as_ptr(), &mut sid) };
@@ -43,7 +47,11 @@ pub fn derive_package_sid() -> Result<String, &'static str> {
 /// Create the per-current-user Noema profile without network capabilities.
 /// Call only after the main process has durably recorded repair-required state.
 pub fn ensure_profile() -> Result<String, &'static str> {
-    let name = wide(NOEMA_APPCONTAINER_PROFILE);
+    ensure_profile_for(NOEMA_APPCONTAINER_PROFILE)
+}
+
+pub(crate) fn ensure_profile_for(profile_name: &str) -> Result<String, &'static str> {
+    let name = wide(profile_name);
     let display_name = wide("Noema Workspace Runner");
     let description = wide("Restricted command execution for Noema workspaces");
     let mut sid: PSID = ptr::null_mut();
@@ -63,7 +71,7 @@ pub fn ensure_profile() -> Result<String, &'static str> {
         let package_sid = sid_to_string(sid);
         free_sid(sid);
         let package_sid = package_sid?;
-        let derived = derive_package_sid()?;
+        let derived = derive_package_sid_for(profile_name)?;
         if package_sid != derived {
             return Err("appcontainer_profile_identity_mismatch");
         }
@@ -73,17 +81,24 @@ pub fn ensure_profile() -> Result<String, &'static str> {
     if result != HRESULT_ALREADY_EXISTS {
         return Err("appcontainer_profile_create_failed");
     }
-    let derived = derive_package_sid()?;
-    probe_profile(&derived)?;
+    let derived = derive_package_sid_for(profile_name)?;
+    probe_profile_for(profile_name, &derived)?;
     Ok(derived)
 }
 
 /// Independently verify that the current Windows user's profile is resolvable.
 pub fn probe_profile(expected_package_sid: &str) -> Result<PathBuf, &'static str> {
+    probe_profile_for(NOEMA_APPCONTAINER_PROFILE, expected_package_sid)
+}
+
+pub(crate) fn probe_profile_for(
+    profile_name: &str,
+    expected_package_sid: &str,
+) -> Result<PathBuf, &'static str> {
     if !is_appcontainer_package_sid(expected_package_sid) {
         return Err("appcontainer_package_sid_invalid");
     }
-    let derived = derive_package_sid()?;
+    let derived = derive_package_sid_for(profile_name)?;
     if derived != expected_package_sid {
         return Err("appcontainer_profile_identity_mismatch");
     }
@@ -139,16 +154,17 @@ pub struct ProcessSecurityCapabilities {
 }
 
 impl ProcessSecurityCapabilities {
-    pub fn new(
+    pub(crate) fn new_for_profile(
+        profile_name: &str,
         expected_package_sid: &str,
         capability_names: &[String],
     ) -> Result<Self, &'static str> {
         validate_process_capability_names(capability_names)?;
-        let package_sid_text = derive_package_sid()?;
+        let package_sid_text = derive_package_sid_for(profile_name)?;
         if package_sid_text != expected_package_sid {
             return Err("appcontainer_profile_identity_mismatch");
         }
-        probe_profile(expected_package_sid)?;
+        probe_profile_for(profile_name, expected_package_sid)?;
         let package_sid = LocalSid::from_string(&package_sid_text)?;
         let mut seen_names = std::collections::HashSet::with_capacity(capability_names.len());
         let mut capability_sids = Vec::with_capacity(capability_names.len());

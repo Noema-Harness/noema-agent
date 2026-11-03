@@ -44,14 +44,19 @@ export function createWindowsRunnerCapabilityReport({
     : (reasonCodes[0] ?? 'runner_unavailable');
   const setupActionAvailable =
     !supported &&
-    backendReadiness?.ready === false &&
     setupReadiness?.ready !== true &&
-    !reasonCodes.includes('os_baseline_unsupported') &&
-    !reasonCodes.includes('diagnostics_unavailable') &&
+    backendReadiness?.ready !== undefined &&
+    ![
+      'os_baseline_unsupported',
+      'diagnostics_unavailable',
+      'helper_resource_invalid',
+      'runner_implementation_incomplete',
+      'runner_resource_missing',
+      'runner_resource_untrusted',
+      'runner_runtime_unavailable',
+    ].some((code) => reasonCodes.includes(code)) &&
     reasonCodes.some((code) =>
-      ['sandbox_setup_unavailable', 'network_filters_unverified'].includes(
-        code,
-      ),
+      ['sandbox_setup_unavailable', 'sandbox_setup_missing'].includes(code),
     );
   const backend = backendReadiness?.backend;
   return Object.freeze({

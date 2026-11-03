@@ -1,11 +1,10 @@
 use crate::policy::{AclGrant, VerifiedAclGrantEvidence, WindowsCommandPolicyV2};
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 7;
+pub const PROTOCOL_VERSION: u16 = 8;
 pub const POLICY_VERSION: u16 = 2;
 pub const BACKEND_ID: &str = "noema-codex-windows";
 pub const MINIMUM_WINDOWS_BUILD: u32 = 19_045;
-pub const MINIMUM_WINDOWS_UBR: u32 = 7_807;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -49,9 +48,6 @@ pub enum Operation {
         operation_id: String,
         user_data_path: String,
     },
-    RemoveSandboxSetup {
-        operation_id: String,
-    },
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -90,7 +86,6 @@ pub enum ResultFrame {
         ready: bool,
         blockers: Vec<ReadinessBlocker>,
         setup_status: SandboxSetupStatus,
-        network_filter_status: NetworkFilterStatus,
         capabilities: Capabilities,
         platform: PlatformInfo,
     },
@@ -117,11 +112,6 @@ pub enum ResultFrame {
         backend_version: String,
         operation_id: String,
         evidence: SandboxSetupEvidence,
-    },
-    SetupRemoved {
-        backend_id: String,
-        backend_version: String,
-        operation_id: String,
     },
     CommandComplete {
         backend_id: String,
@@ -153,7 +143,6 @@ pub enum ResultFrame {
 pub struct SandboxSetupEvidence {
     pub package_sid: String,
     pub profile_valid: bool,
-    pub network_filters_valid: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -161,7 +150,6 @@ pub struct SandboxSetupEvidence {
 pub enum ReadinessBlocker {
     RunnerImplementationIncomplete,
     SandboxSetupUnavailable,
-    NetworkFiltersUnverified,
     OsBaselineUnsupported,
     HelperResourceInvalid,
     RequiredCapabilityMissing,
@@ -174,16 +162,6 @@ pub enum SandboxSetupStatus {
     NotConfigured,
     Incomplete,
     Ready,
-    Unknown,
-}
-
-#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case", deny_unknown_fields)]
-pub enum NetworkFilterStatus {
-    NotVerified,
-    Incomplete,
-    Ready,
-    Failed,
     Unknown,
 }
 
@@ -203,6 +181,21 @@ pub struct Capabilities {
 }
 
 impl Capabilities {
+    pub fn implemented() -> Self {
+        Self {
+            filesystem_default_deny: true,
+            filesystem_read_allowlist: true,
+            filesystem_write_allowlist: true,
+            path_identity_validation: true,
+            working_directory_confinement: true,
+            environment_confinement: true,
+            network_default_deny: true,
+            identity_bound_network_broker: false,
+            job_process_tree: true,
+            bounded_stdio: true,
+        }
+    }
+
     pub fn disabled() -> Self {
         Self {
             filesystem_default_deny: false,
@@ -237,6 +230,7 @@ pub struct PlatformInfo {
     pub major: u32,
     pub minor: u32,
     pub build: u32,
+    /// Diagnostic Windows UBR; zero means the registry value was unavailable.
     pub ubr: u32,
     pub architecture: String,
 }
@@ -266,7 +260,6 @@ pub fn validate_readiness_response(
         ready,
         blockers,
         setup_status,
-        network_filter_status,
         capabilities,
         platform,
     } = &response.result
@@ -283,7 +276,6 @@ pub fn validate_readiness_response(
     if platform.major != 10
         || platform.minor != 0
         || platform.build < MINIMUM_WINDOWS_BUILD
-        || (platform.build == MINIMUM_WINDOWS_BUILD && platform.ubr < MINIMUM_WINDOWS_UBR)
         || platform.architecture != "x86_64"
     {
         return Err("os_baseline_unsupported");
@@ -291,14 +283,10 @@ pub fn validate_readiness_response(
     if *setup_status != SandboxSetupStatus::Ready {
         return Err("sandbox_setup_unavailable");
     }
-    if *network_filter_status != NetworkFilterStatus::Ready {
-        return Err("network_filters_unverified");
-    }
     if let Some(blocker) = blockers.first() {
         return Err(match blocker {
             ReadinessBlocker::RunnerImplementationIncomplete => "runner_not_ready",
             ReadinessBlocker::SandboxSetupUnavailable => "sandbox_setup_unavailable",
-            ReadinessBlocker::NetworkFiltersUnverified => "network_filters_unverified",
             ReadinessBlocker::OsBaselineUnsupported => "os_baseline_unsupported",
             ReadinessBlocker::HelperResourceInvalid => "helper_version_unsupported",
             ReadinessBlocker::RequiredCapabilityMissing => "required_capability_missing",

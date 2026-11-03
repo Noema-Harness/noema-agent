@@ -61,7 +61,6 @@ import { createWindowsRunnerCapabilityReport } from './execution/windows-runner-
 import { WINDOWS_RUNNER_PROTOCOL_VERSION } from './execution/windows-runner-native-helper.mjs';
 import { WindowsRunnerSetupService } from './execution/windows-runner-setup-service.mjs';
 import { WindowsRunnerSetupStateStore } from './execution/windows-runner-setup-state.mjs';
-import { removeWindowsRunnerStateOnUninstall } from './execution/windows-runner-uninstall.mjs';
 import { backupBeforeSocialChatMigration } from './chat/social-chat-migration-backup.mjs';
 import {
   resolveNoemaDatabasePath,
@@ -665,19 +664,14 @@ const createWindow = () => {
           };
         })()`);
         const runnerSetupNeeded =
-          diagnosticsLayout?.runnerCapabilityText.includes(
-            '本机隔离设置尚未完成',
-          ) ||
-          diagnosticsLayout?.runnerCapabilityText.includes(
-            '本机网络隔离规则尚未完成检查',
-          );
+          diagnosticsLayout?.runnerCapabilityText.includes('隔离设置尚未完成');
         const runnerBaselineUnsupported =
           diagnosticsLayout?.runnerCapabilityText.includes(
-            '当前 Windows 安全更新未达到受限命令的安全基线',
+            '当前 Windows 版本或架构暂不支持受限命令',
           );
         const expectedRunnerSetupButton =
           runnerSetupNeeded && !runnerBaselineUnsupported
-            ? '启用或重试设置'
+            ? '完成或修复隔离设置'
             : '';
         if (
           !diagnosticsLayout?.visible ||
@@ -687,7 +681,7 @@ const createWindow = () => {
             'Windows 命令隔离',
           ) ||
           !diagnosticsLayout.runnerCapabilityText.includes(
-            '无需更新 Windows 即可启动和使用 Noema 桌面应用',
+            '此状态只影响 Windows 项目命令',
           ) ||
           diagnosticsLayout.runnerSetupButton !== expectedRunnerSetupButton ||
           diagnosticsLayout.databaseStatusText !== '检查通过。' ||
@@ -1064,42 +1058,6 @@ function isIsolatedE2eDirectory(directory: string, userDataDirectory: string) {
 
 async function startNoema() {
   if (app.isPackaged && process.platform === 'win32') {
-    if (process.argv.includes('--squirrel-uninstall')) {
-      await app.whenReady();
-      const cleanup = await removeWindowsRunnerStateOnUninstall({
-        platform: process.platform,
-        isPackaged: app.isPackaged,
-        isUninstallEvent: true,
-        operationId: randomUUID(),
-        createHelper() {
-          const executablePath = resolveWindowsRunnerNativeHelper({
-            platform: process.platform,
-            arch: process.arch,
-            isPackaged: app.isPackaged,
-            resourcesPath: process.resourcesPath,
-            appPath: app.getAppPath(),
-          });
-          return new WindowsRunnerNativeHelper({ executablePath });
-        },
-        onFailure(code: string) {
-          return dialog.showMessageBox({
-            type: 'warning',
-            title: 'Noema 卸载清理未完成',
-            message:
-              'Windows 未能删除 Noema 的持久网络限制规则。卸载将继续；该规则可能继续限制 Noema 命令容器的网络。',
-            detail: `原因码：${code}`,
-            buttons: ['我知道了'],
-            noLink: true,
-          });
-        },
-      });
-      if (cleanup.status === 'warning') {
-        console.warn(
-          'Noema Windows runner uninstall cleanup failed:',
-          cleanup.code,
-        );
-      }
-    }
     try {
       const { default: handleSquirrelEvent } =
         await import('electron-squirrel-startup');
@@ -1376,30 +1334,6 @@ async function startNoema() {
                 'runner_setup_not_actionable',
             };
           }
-          const confirmation = await dialog.showMessageBox(mainWindow, {
-            type: 'warning',
-            title: '启用 Windows 命令隔离',
-            message: 'Noema 将设置本机 Windows 命令隔离能力。',
-            detail:
-              '这会请求一次 Windows 管理员确认，用于建立 Noema 自己的隔离配置。取消或设置核验失败时，项目命令仍保持不可用。',
-            buttons: ['继续并请求系统确认', '取消'],
-            defaultId: 0,
-            cancelId: 1,
-            noLink: true,
-          });
-          if (confirmation.response !== 0) {
-            recordDiagnosticEvent({
-              module: 'windows_runner',
-              operation: 'setup.user_decision',
-              status: 'denied',
-              errorCode: 'user_cancelled',
-            });
-            return {
-              supported: windowsRunnerCapability.supported,
-              canceled: true,
-              reasonCode: windowsRunnerCapability.reasonCode,
-            };
-          }
           try {
             await setupService.reconcile();
             const report = await refreshWindowsRunnerCapability();
@@ -1467,8 +1401,8 @@ async function startNoema() {
           },
         });
 
-        // Read-only checks only. In particular, startup never calls reconcile()
-        // and therefore never surprises the user with a UAC prompt.
+        // Read-only checks only. Startup never mutates the current user's
+        // AppContainer profile or durable setup state.
         const report = await refreshWindowsRunnerCapability();
         recordDiagnosticEvent({
           module: 'windows_runner',
@@ -1930,7 +1864,7 @@ async function startNoema() {
           title: '检查项目工作并选择文件夹',
           message: [
             `Noema 准备在你选择的工作区执行项目任务：\n${prompt}`,
-            'Noema 会读取/修改项目文件，并在操作系统沙箱中运行前台项目命令。默认读写范围是你选定的工作区，网络和工作区外路径默认受限；需要越界时会展示具体命令与目标，逐项询问是否仅对该命令开放。Windows 首次启用命令隔离时需要一次管理员确认，用于设置 AppContainer 沙箱和出站网络阻断规则；不会创建 Windows 登录账号，也不会授权读取整个用户目录。项目内容可能发送到当前配置的模型服务商，并按该服务商的数据处理条款处理。不要选择含不应发送的密钥或隐私资料的目录。停止任务不会自动撤销已经发生的项目改动。',
+            'Noema 会读取/修改项目文件，并在当前 Windows 用户的 AppContainer 沙箱中运行前台项目命令。首次启用时，Noema 会建立并核验当前用户的隔离配置，无需管理员权限，不创建 Windows 登录账号。命令默认没有网络访问，读写范围限于你选定的工作区；需要访问工作区外路径时会展示具体命令与目标，逐项询问是否仅对该命令开放。项目内容可能发送到当前配置的模型服务商，并按该服务商的数据处理条款处理。不要选择含不应发送的密钥或隐私资料的目录。停止任务不会自动撤销已经发生的项目改动。',
             reuseCase
               ? '本轮还会检查同一位工程搭档在同一项目的其他聊天中，是否有一项通过 Noema 文件条件核验的工作；若找到，会把一份过滤常见凭据样式的限长摘要随本任务发送给模型，不会发送原聊天记录。若本任务也通过 Noema 核验，Noema 还可能用当前模型服务对两项任务的摘要和核验结果做一次额外分析，提出一条候选做法；候选不会自动升级为技能，可在任务卡撤回。若已有候选，选定目录后还会先展示候选正文，供你决定本轮是否试用；普通经验复用勾选不会自动授权使用某条候选。过滤无法保证识别所有敏感信息。'
               : '本轮不会从其他聊天带入项目案例。',

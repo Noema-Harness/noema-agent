@@ -1,9 +1,9 @@
-//! Cross-process serialization for sandbox profile, ACL, and network setup.
+//! Cross-process serialization for sandbox profile and ACL maintenance.
 //!
 //! This mutex adapts the fixed Codex `setup_mutex.rs` boundary. Every future
-//! profile, ACL, WFP, repair, or uninstall mutation must hold it for the
+//! profile, ACL, repair, or uninstall mutation must hold it for the
 //! complete native operation. The current user serializes ordinary setup;
-//! SYSTEM and administrators can also acquire it for elevated WFP setup.
+//! SYSTEM and administrators can also acquire it for machine recovery.
 
 use std::ffi::OsStr;
 use std::marker::PhantomData;

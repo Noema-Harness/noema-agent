@@ -1,7 +1,14 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
-const ALLOWED_ENVIRONMENT_NAMES: [&str; 5] = ["SystemRoot", "WINDIR", "TEMP", "TMP", "PATH"];
+const ALLOWED_ENVIRONMENT_NAMES: [&str; 6] = [
+    "SystemRoot",
+    "WINDIR",
+    "TEMP",
+    "TMP",
+    "PATH",
+    "LOCALAPPDATA",
+];
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

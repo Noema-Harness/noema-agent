@@ -16,7 +16,7 @@ test('Windows capability report exposes only safe identity and readiness fields'
         },
       },
       setupReadiness: { ready: true, packageSid: 'S-1-secret' },
-      protocolVersion: 7,
+      protocolVersion: 8,
     }),
     {
       platform: 'win32',
@@ -28,7 +28,7 @@ test('Windows capability report exposes only safe identity and readiness fields'
       setupActionAvailable: false,
       backendId: 'noema-codex-windows',
       backendVersion: '0.1.0',
-      protocolVersion: 7,
+      protocolVersion: 8,
       setupStatus: 'ready',
     },
   );
@@ -54,32 +54,40 @@ test('Windows capability report bounds error reasons and versions', () => {
   assert.equal(report.setupStatus, 'unavailable');
 });
 
-test('runner setup remains available when setup blockers coexist with implementation hold', () => {
+test('runner setup remains available when the backend works but durable setup needs repair', () => {
   const report = createWindowsRunnerCapabilityReport({
     platform: 'win32',
-    support: { supported: false, reason: 'runner_implementation_incomplete' },
+    support: { supported: false, reason: 'sandbox_setup_unavailable' },
     backendReadiness: {
-      ready: false,
-      code: 'runner_implementation_incomplete',
-      blockers: [
-        'runner_implementation_incomplete',
-        'sandbox_setup_unavailable',
-        'network_filters_unverified',
-      ],
-      platform: { build: 19_045, ubr: 7_807 },
+      ready: true,
+      blockers: [],
+      platform: { build: 19_045, ubr: 6_093 },
       backend: { id: 'noema-codex-windows', version: '0.1.0' },
     },
     setupReadiness: { ready: false, reason: 'sandbox_setup_unavailable' },
   });
-  assert.deepEqual(report.reasonCodes, [
-    'runner_implementation_incomplete',
-    'sandbox_setup_unavailable',
-    'network_filters_unverified',
-  ]);
+  assert.deepEqual(report.reasonCodes, ['sandbox_setup_unavailable']);
   assert.equal(report.setupActionAvailable, true);
 });
 
-test('runner setup remains hidden below the command security baseline', () => {
+test('runner setup stays hidden when the backend itself is incomplete', () => {
+  const report = createWindowsRunnerCapabilityReport({
+    platform: 'win32',
+    support: { supported: false, reason: 'runner_implementation_incomplete' },
+    backendReadiness: {
+      ready: false,
+      blockers: [
+        'runner_implementation_incomplete',
+        'sandbox_setup_unavailable',
+      ],
+      backend: { id: 'noema-codex-windows', version: '0.1.0' },
+    },
+    setupReadiness: { ready: false, reason: 'sandbox_setup_unavailable' },
+  });
+  assert.equal(report.setupActionAvailable, false);
+});
+
+test('runner setup remains hidden when the Windows platform is unsupported', () => {
   const report = createWindowsRunnerCapabilityReport({
     platform: 'win32',
     support: { supported: false, reason: 'runner_implementation_incomplete' },
@@ -89,10 +97,9 @@ test('runner setup remains hidden below the command security baseline', () => {
       blockers: [
         'runner_implementation_incomplete',
         'sandbox_setup_unavailable',
-        'network_filters_unverified',
         'os_baseline_unsupported',
       ],
-      platform: { build: 19_045, ubr: 6_093 },
+      platform: { build: 19_044, ubr: 6_093 },
       backend: { id: 'noema-codex-windows', version: '0.1.0' },
     },
     setupReadiness: { ready: false, reason: 'sandbox_setup_unavailable' },

@@ -12,8 +12,6 @@ mod process;
 #[cfg(windows)]
 mod setup_mutex;
 #[cfg(windows)]
-mod wfp;
-#[cfg(windows)]
 mod windows_probe;
 
 use std::io::{self, BufRead, Read, Write};
@@ -21,31 +19,6 @@ use std::io::{self, BufRead, Read, Write};
 const MAX_REQUEST_BYTES: usize = 2 * 1024 * 1024;
 
 fn main() {
-    #[cfg(windows)]
-    let arguments = std::env::args().collect::<Vec<_>>();
-    #[cfg(windows)]
-    if arguments.get(1).map(String::as_str) == Some(wfp::ELEVATED_WORKER_ARGUMENT) {
-        std::process::exit(
-            if arguments.len() == 4
-                && wfp::run_elevated_worker(&arguments[2], &arguments[3]).is_ok()
-            {
-                0
-            } else {
-                1
-            },
-        );
-    }
-    #[cfg(windows)]
-    if arguments.get(1).map(String::as_str) == Some(wfp::ELEVATED_REMOVE_WORKER_ARGUMENT) {
-        std::process::exit(
-            if arguments.len() == 3 && wfp::run_elevated_remove_worker(&arguments[2]).is_ok() {
-                0
-            } else {
-                1
-            },
-        );
-    }
-
     let response = match read_request() {
         Ok(request) => handle_request(request),
         Err(code) => protocol::ResponseEnvelope::error(protocol::PROTOCOL_VERSION, code),
@@ -312,43 +285,6 @@ fn handle_request(request: protocol::RequestEnvelope) -> protocol::ResponseEnvel
             operation_id,
             user_data_path,
         } => handle_setup_operation(request.request_id, operation_id, user_data_path, false),
-        protocol::Operation::RemoveSandboxSetup { operation_id } => {
-            handle_setup_removal(request.request_id, operation_id)
-        }
-    }
-}
-
-fn handle_setup_removal(request_id: String, operation_id: String) -> protocol::ResponseEnvelope {
-    #[cfg(windows)]
-    let result = acl::require_unrestricted_caller().and_then(|()| {
-        if request_id != operation_id {
-            return Err("setup_operation_identity_mismatch");
-        }
-        let package_sid = appcontainer::derive_package_sid()?;
-        wfp::remove_with_uac(&package_sid)
-    });
-    #[cfg(not(windows))]
-    let result: Result<(), &'static str> = Err("windows_required");
-
-    let frame = match result {
-        Ok(()) => protocol::ResultFrame::SetupRemoved {
-            backend_id: protocol::BACKEND_ID.to_string(),
-            backend_version: env!("CARGO_PKG_VERSION").to_string(),
-            operation_id: operation_id.clone(),
-        },
-        Err(code) => protocol::ResultFrame::Denied {
-            code: if request_id != operation_id {
-                "setup_operation_identity_mismatch".to_string()
-            } else {
-                code.to_string()
-            },
-            stage: "setup".to_string(),
-        },
-    };
-    protocol::ResponseEnvelope {
-        protocol_version: protocol::PROTOCOL_VERSION,
-        request_id: Some(request_id),
-        result: frame,
     }
 }
 
@@ -393,9 +329,6 @@ fn handle_setup_operation(
             Ok(value) => value,
             Err(code) => return setup_operation_denied(request_id, operation_id, code),
         };
-        if let Err(code) = wfp::install_with_uac(&package_sid) {
-            return setup_operation_denied(request_id, operation_id, code);
-        }
         return protocol::ResponseEnvelope {
             protocol_version: protocol::PROTOCOL_VERSION,
             request_id: Some(request_id),
@@ -419,7 +352,15 @@ fn handle_setup_probe(request_id: String, operation_id: String) -> protocol::Res
         Err(code) => return setup_operation_denied(request_id, operation_id, code),
     };
     let profile_valid = appcontainer::probe_profile(&package_sid).is_ok();
-    let network_filters_valid = wfp::probe_network_deny(&package_sid).unwrap_or(false);
+    setup_probe_response(request_id, operation_id, package_sid, profile_valid)
+}
+
+fn setup_probe_response(
+    request_id: String,
+    operation_id: String,
+    package_sid: String,
+    profile_valid: bool,
+) -> protocol::ResponseEnvelope {
     protocol::ResponseEnvelope {
         protocol_version: protocol::PROTOCOL_VERSION,
         request_id: Some(request_id),
@@ -430,7 +371,6 @@ fn handle_setup_probe(request_id: String, operation_id: String) -> protocol::Res
             evidence: protocol::SandboxSetupEvidence {
                 package_sid,
                 profile_valid,
-                network_filters_valid,
             },
         },
     }
@@ -558,39 +498,34 @@ fn probe(request_id: String) -> protocol::ResponseEnvelope {
 fn runtime_probe(platform: protocol::PlatformInfo) -> protocol::ResultFrame {
     #[cfg(windows)]
     {
+        let platform_supported = platform.major == 10
+            && platform.minor == 0
+            && platform.build >= protocol::MINIMUM_WINDOWS_BUILD
+            && platform.architecture == "x86_64";
         let Ok(package_sid) = appcontainer::derive_package_sid() else {
             return not_ready_probe(platform);
         };
         let profile_valid = appcontainer::probe_profile(&package_sid).is_ok();
-        let network_status = match wfp::probe_network_deny(&package_sid) {
-            Ok(true) => protocol::NetworkFilterStatus::Ready,
-            Ok(false) => protocol::NetworkFilterStatus::Incomplete,
-            Err(_) => protocol::NetworkFilterStatus::Failed,
+        let setup_status = if profile_valid {
+            protocol::SandboxSetupStatus::Ready
+        } else {
+            protocol::SandboxSetupStatus::NotConfigured
         };
-        let setup_status =
-            if profile_valid && network_status == protocol::NetworkFilterStatus::Ready {
-                protocol::SandboxSetupStatus::Ready
-            } else if profile_valid || network_status == protocol::NetworkFilterStatus::Ready {
-                protocol::SandboxSetupStatus::Incomplete
-            } else {
-                protocol::SandboxSetupStatus::NotConfigured
-            };
-        let mut blockers = vec![protocol::ReadinessBlocker::RunnerImplementationIncomplete];
+        let mut blockers = Vec::new();
+        if !platform_supported {
+            blockers.push(protocol::ReadinessBlocker::OsBaselineUnsupported);
+        }
         if !profile_valid {
             blockers.push(protocol::ReadinessBlocker::SandboxSetupUnavailable);
-        }
-        if network_status != protocol::NetworkFilterStatus::Ready {
-            blockers.push(protocol::ReadinessBlocker::NetworkFiltersUnverified);
         }
         return protocol::ResultFrame::Probe {
             backend_id: protocol::BACKEND_ID.to_string(),
             backend_version: env!("CARGO_PKG_VERSION").to_string(),
             policy_version: protocol::POLICY_VERSION,
-            ready: false,
+            ready: blockers.is_empty(),
             blockers,
             setup_status,
-            network_filter_status: network_status,
-            capabilities: protocol::Capabilities::disabled(),
+            capabilities: protocol::Capabilities::implemented(),
             platform,
         };
     }
@@ -608,10 +543,8 @@ fn not_ready_probe(platform: protocol::PlatformInfo) -> protocol::ResultFrame {
         blockers: vec![
             protocol::ReadinessBlocker::RunnerImplementationIncomplete,
             protocol::ReadinessBlocker::SandboxSetupUnavailable,
-            protocol::ReadinessBlocker::NetworkFiltersUnverified,
         ],
         setup_status: protocol::SandboxSetupStatus::NotImplemented,
-        network_filter_status: protocol::NetworkFilterStatus::NotVerified,
         capabilities: protocol::Capabilities::disabled(),
         platform,
     }

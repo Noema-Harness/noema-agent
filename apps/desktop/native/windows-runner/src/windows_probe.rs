@@ -33,7 +33,9 @@ pub fn read_platform() -> Result<PlatformInfo, &'static str> {
         return Err("windows_version_unavailable");
     }
 
-    let ubr = read_ubr()?;
+    // UBR is diagnostic only. Windows release/build and architecture determine
+    // compatibility; an unavailable UBR registry value must not suppress them.
+    let ubr = diagnostic_ubr(read_ubr);
     Ok(PlatformInfo {
         major: version.major,
         minor: version.minor,
@@ -67,4 +69,19 @@ fn read_ubr() -> Result<u32, &'static str> {
         return Err("windows_ubr_unavailable");
     }
     Ok(ubr)
+}
+
+fn diagnostic_ubr(read: impl FnOnce() -> Result<u32, &'static str>) -> u32 {
+    read().unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::diagnostic_ubr;
+
+    #[test]
+    fn unavailable_ubr_is_recorded_as_unknown_without_failing_platform_probe() {
+        assert_eq!(diagnostic_ubr(|| Err("windows_ubr_unavailable")), 0);
+        assert_eq!(diagnostic_ubr(|| Ok(6_093)), 6_093);
+    }
 }

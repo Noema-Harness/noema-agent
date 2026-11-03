@@ -1,6 +1,6 @@
 # Noema 一期规划与执行顺序
 
-状态：Gate E 规划交付完成；Noema 一期开发进行中。本文定义范围、验收条件和 20 项分阶段工作。Windows 支持基线已由用户确认：Windows 10 22H2 + 当前 ESU 安全更新；不要求 Windows 11，也不逐 release 维护实现分支。D1 最初以 Codex Windows sandbox 作为候选实现参考；D3 源码审查后，当前实现方向已调整为 Noema 自有的普通 AppContainer runner。Sandy 仅提供 AppContainer 启动原语参考，Codex 继续作为 handle ACL/path、Job 与诊断参考；不直接依赖任一上游 crate。该实现尚未通过目标机 OS 安全验收。本文仍是唯一权威阶段计划；实施时按影响范围创建 OpenSpec change。规划依据：[当前上下文](CURRENT_CONTEXT.md)；完整源码研究与规划契约保存在本机过程目录 `.work/planning/`、`.work/references/`（该目录按工作区约定不纳入 Git）。更新：2026-11-03。
+状态：Gate E 规划交付完成；Noema 一期开发进行中。本文定义范围、验收条件和 20 项分阶段工作。Windows 平台基线已由用户确认：Windows 10 22H2 x64（build 19045）及更新的 Windows 10 build；不设置最低 UBR/ESU 补丁门槛，不要求 Windows 11，也不逐 release 维护实现分支。D1 最初以 Codex Windows sandbox 作为候选实现参考；D3 源码审查后，当前实现方向已调整为 Noema 自有的普通 AppContainer runner。Sandy 仅提供 AppContainer 启动原语参考，Codex 继续作为 handle ACL/path、Job 与诊断参考；不直接依赖任一上游 crate。2026-11-04，D3 目标机网络 deny、process-tree、filesystem ACL 与 Electron durable setup/journal/command integration 均已通过；native readiness 已按实时平台/profile/capability 状态启用，D4 package/lifecycle gates 仍在进行，普通项目 workspace 日用验收留给用户。本文仍是唯一权威阶段计划；实施时按影响范围创建 OpenSpec change。规划依据：[当前上下文](CURRENT_CONTEXT.md)；完整源码研究与规划契约保存在本机过程目录 `.work/planning/`、`.work/references/`（该目录按工作区约定不纳入 Git）。更新：2026-11-04。
 
 路径约定：研究卡/规划文档里的 `research/...` 相对 `.work/planning/`；源码路径以 `apps/desktop/...` 为仓库根相对路径，简写的 `main/...`、`renderer/...` 相对 `apps/desktop/src/`。
 
@@ -31,7 +31,7 @@
 - 全应用 DSH 式插件化重构、通用插件市场、任意外部 agent runtime marketplace。
 - SocialChat 当前复杂的房间、多成员协同、specialist delegation、复杂跟进/实践/经验功能，除非 Gate E 对某项证明它是工作区开发闭环直接必要且已有成熟证据。现存实现、测试、OpenSpec 历史不自动构成一期要求。
 - RootAgent + DSH legacy/#legacy 路径与默认 social work 执行路径合并。legacy 实现不作为一期工作区任务的默认 owner；发现其具有唯一必要能力时先补证据再单项判断。
-- Windows 一期支持基线为用户确认的 Windows 10 22H2 + 当前 ESU 安全更新。Windows build/UBR gate 只决定严格隔离命令 backend 能否 ready，不是 Noema 桌面程序启动、交互或安装的最低版本要求。AppContainer 与 WFP 所需 API 在 Windows 10 22H2 可用；本实现将当时最新 ESU 累积更新 UBR 7807 作为 command runner 的安全基线，不是 API 兼容线，也未映射到某个特定漏洞。目标机当前 UBR 6093，因此 command runner 仍 fail closed；Noema 桌面/安装生命周期可以在当前系统独立验收。Codex 官方的 Win10 best-effort 声明不构成 Noema 兼容或安全验收。不要求 Win11，不默认自研 VM。若源码审计证明 native runner 无法满足已定隔离边界，再依据具体缺口评估替代路线。
+- Noema 一期支持 Windows 10 22H2 x64（build 19045）及更新的 Windows 10 build；不设置最低 UBR/ESU 补丁号，也不要求用户为使用 Noema 更新系统。AppContainer 所需 API 在 Windows 10 22H2 可用，UBR 保留作系统信息，不作为命令 readiness 拒绝条件。目标机 AppContainer 默认网络拒绝、3.3.b 进程树验收、真实读写 capability ACL 和 Electron durable setup/journal/command integration 均已通过；3.4 native readiness activation 已完成。当前目标机 UBR 6456 不构成平台兼容阻断；D4 package/lifecycle gates 仍在进行，Noema 普通项目 workspace 日用留给用户最终验收。Codex 官方的 Win10 best-effort 声明不构成 Noema 的技术兼容下限；若目标机验收发现具体 API/系统行为问题，再针对证据处理，不预先设置补丁门槛。若源码审计证明 native runner 无法满足已定隔离边界，再依据具体缺口评估替代路线。
 - 云端同步、多机任务接管、任务外部恰好一次语义、公开发行/签名承诺。
 
 ## 最终交付条件
@@ -227,11 +227,11 @@ flowchart TD
 
 **阶段结果：**提供满足目标机能力边界的 OS 隔离命令路径；不支持设备上命令工具隐藏或明确禁用，绝不宿主回退。若 Windows runner 源码/目标机验收未能证明所需隔离，Noema 不能宣称一期工程闭环通过。
 
-**阶段门：**范围为 Windows native runner、用户确定的单一支持基线（Win10 22H2 + 当前 ESU 更新）、启动能力检查、workspace/file/network policy、child、后台任务和安装/更新。不逐 release 分叉，不要求 Win11，不默认自研 VM。D1 已选定 Codex-source-derived Noema bridge/维护子集，但 D3 token/bootstrap 源码审查发现该受限令牌路径与已确认的 hard-link 边界冲突；按用户先前授权的无回复默认规则，2026-11-03 暂将普通 AppContainer 作为新执行身份方向，使用 Sandy 的 AppContainer 启动原语作补充源码参考，Codex 继续作为 handle ACL/path/Job/诊断参考。该决策不代表功能或 OS enforcement 已验证。D2–D4 负责逐项策略实现、WFP hard-fail、进程生命周期、依赖/许可、打包与目标机验收。Noema 拥有授权决策/任务结果；backend 拥有策略编译、隔离进程和本机进程通信。诊断关联 policy→probe→setup→spawn→child→cancel/cleanup/recovery。助手核验源码、结构与可复核检查；用户验收目标机 OS enforcement 与长期日用。ESU/系统/API/setup/policy 能力缺失时命令拒绝执行；任何 backend 能力缺失都无宿主 fallback，命令关闭不算一期闭环通过。下一阶段 E 才将 command 加入工作区 Agent。
+**阶段门：**范围为 Windows native runner、用户确定的单一支持基线（Win10 22H2 x64，build 19045+，无 UBR 补丁门槛）、启动能力检查、workspace/file/network policy、child、后台任务和安装/更新。不逐 release 分叉，不要求 Win11，不默认自研 VM。D1 已选定 Codex-source-derived Noema bridge/维护子集，但 D3 token/bootstrap 源码审查发现该受限令牌路径与已确认的 hard-link 边界冲突；按用户先前授权的无回复默认规则，2026-11-03 暂将普通 AppContainer 作为新执行身份方向，使用 Sandy 的 AppContainer 启动原语作补充源码参考，Codex 继续作为 handle ACL/path/Job/诊断参考。该决策不代表功能或 OS enforcement 已验证。D2–D4 负责逐项策略实现、AppContainer 零网络 capability、进程生命周期、依赖/许可、打包与目标机验收。Noema 拥有授权决策/任务结果；backend 拥有策略编译、隔离进程和本机进程通信。诊断关联 policy→probe→setup→spawn→child→cancel/cleanup/recovery。助手核验源码、结构与可复核检查；用户验收目标机 OS enforcement 与长期日用。Windows 平台版本/架构不支持、系统 API/setup/policy 能力缺失时命令拒绝执行；不以 UBR/ESU 补丁号阻断。任何 backend 能力缺失都无宿主 fallback，命令关闭不算一期闭环通过。下一阶段 E 才将 command 加入工作区 Agent。
 
 ### D1 — 选定兼容目标机的严格隔离后端
 
-- **结果/可见行为：**依据固定源码评估确定 Noema 自有 Windows runner 的 backend contract、用户确定的单一最低 Windows 基线（Win10 22H2 + 当前 ESU 更新）、启动 API/setup/policy capability probe、依赖/许可/SBOM 和目标机验收边界。最初候选 Codex restricted-token 路径因无法满足已确认的 hard-link 边界而被放弃；当前实现方向为普通 AppContainer。Sandy 仅作 AppContainer 启动原语参考，Codex 作 handle ACL/path、Job 与诊断参考；不直接依赖上游 crate API或引入 Codex app/workspace。WFP setup 必须 fail closed。不为每个 release 做单独适配。Codex 官方 Win10 best-effort 声明仅作支持范围参考，不是 Noema 兼容或安全结论。
+- **结果/可见行为：**依据固定源码评估确定 Noema 自有 Windows runner 的 backend contract、用户确定的单一 Windows 平台基线（Win10 22H2 x64、build 19045+，不设 UBR 补丁下限）、启动 API/setup/policy capability probe、依赖/许可/SBOM 和目标机验收边界。最初候选 Codex restricted-token 路径因无法满足已确认的 hard-link 边界而被放弃；当前实现方向为普通 AppContainer。Sandy 仅作 AppContainer 启动原语参考，Codex 作 handle ACL/path、Job 与诊断参考；不直接依赖上游 crate API或引入 Codex app/workspace。命令 child 不授予网络 capability；通过 Windows AppContainer 默认网络隔离，不安装持久 WFP 规则或触发 UAC。不为每个 release 做单独适配。Codex 官方 Win10 best-effort 声明仅作支持范围参考，不是 Noema 兼容或安全结论。
 - **前置：**Codex 固定 SHA 源码卡和 Windows 隔离候选审计；当前目标机已核实为 Windows 10 22H2/build 19045、UBR 6093。闭合 permission→setup→policy→runner→cleanup 调用链并核对 crate 依赖、许可证和可重复构建路径后，按既定威胁边界判断策略可表达能力、拒绝行为与可集成性。
 - **源码依据：**`research/noema/CODEX_WINDOWS_SANDBOX.md`、`research/noema/WINDOWS_ISOLATION_CANDIDATE_COMPARISON.md`、`research/noema/WINDOWS10_ISOLATION_CANDIDATES.md`、`research/noema/SANDY_SOURCE_REVIEW.md`；Codex 固定源码中的 `setup.rs`、`elevated_impl.rs`、`process.rs`、ACL/reparse/WFP/identity/diagnostic 模块；Noema 本地 SRT provenance README/patch。MXC/PSEC `INVENTORY.md` 与 request/capability 卡作为备选路线参考，不构成 Win10 前置。
 - **状态/接口：**backend contract 抽象 capabilities/reasons/version/backend identity，不向 Agent 伪造支持状态；D1 当前基线为 Noema 自有 AppContainer runner，D2 逐项确定 policy mapper 与 runtime adapter 接口。
@@ -239,7 +239,7 @@ flowchart TD
 - **诊断：**启动 probe 记录 OS build/架构、API availability、支持 capability 和拒绝理由；不搜集账号凭据或私人路径。
 - **检查：**逐项核实输入/输出、文件/网络策略、后台生命周期、取消/恢复、管理员 setup 门槛和 fail-closed 行为；标清固定源码能证明与不能证明的内容。核对 `apps/desktop/package.json`、root `package-lock.json`、`apps/desktop/forge.config.mts` 和 Windows CI workflow；依赖/license/SBOM 与原生 build/package 可重复性列为开发阶段检查。不触发真实受限命令。
 - **用户验收：**最终在目标机查看 OS/API/setup 能力报告并验收实际 enforcement；若设备 capability/setup 不足，Noema 拒绝命令并清楚说明原因，不要求为单一 feature 立刻升级或降级隔离标准。
-- **完成条件/下一项：**固定源码调用链与依赖边界审阅完成；形成 backend contract、单一 OS/update 基线、能力 probe 与拒绝理由、逐策略映射工作入口、WFP hard-failure 要求、SBOM/许可/build/package 任务和目标机验收表；风险与 fail-closed 行为均可追踪。通过后下一项 D2。
+- **完成条件/下一项：**固定源码调用链与依赖边界审阅完成；形成 backend contract、单一 OS/update 基线、能力 probe 与拒绝理由、逐策略映射工作入口、AppContainer 默认网络拒绝要求、SBOM/许可/build/package 任务和目标机验收表；风险与 fail-closed 行为均可追踪。通过后下一项 D2。
 
 ### D2 — 将 Agent workspace grant 编译成受限执行策略
 
@@ -263,7 +263,7 @@ flowchart TD
 - **诊断：**每条命令记录 backend id、spawn phase、PID关联（仅本地）、stdout/stderr截断统计、deadline、终止原因、exit code 与清理结果；截断保留边界可见。
 - **检查：**child lifecycle/cancel/timeout/IO backpressure/cleanup 单元和可控进程集成测试；隔离恶意访问由目标机验收做，助手不伪造 OS enforcement 效果。
 - **用户验收：**运行安全无害本地任务、主动停止、多进程任务与超时；确认子进程已收束，工作区外/未授权网络尝试拒绝。
-- **完成条件/下一项：**返回状态/退出原因可确定，取消后无残留进程，任何设置失败无 untrusted spawn；2.3.e 与 3.3.b 的目标机验收全部通过后，才移除 native readiness 的静态未完成 blocker，并改由实时 OS/build/profile/ACL/WFP 证据开放 capabilities。此 gate activation 本身要有完整负向测试，不能让缺少能力、状态过期、helper/policy mismatch 或诊断关闭时开放命令。完成后下一项 D4。
+- **完成条件/下一项：**返回状态/退出原因可确定，取消后无残留进程，任何设置失败无 untrusted spawn。3.3.b process-tree、AppContainer network deny、真实 filesystem ACL capability enforcement 和 Electron setup/journal/helper/command live integration 已于 2026-11-04 在目标机通过；3.4 移除静态未完成 blocker，并按实时 OS/build/profile/capability 与逐请求 ACL evidence 决定 readiness。负向拒绝覆盖保留在版本、身份、缺字段、hard-link/reparse、ACL/journal 和不支持平台门中。下一项 D4 package/lifecycle gate。
 
 ### D4 — 统一命令能力 UI、Windows 打包资源与安全回归门
 
@@ -276,6 +276,8 @@ flowchart TD
 - **检查：**Forge package contents manifest、clean-user install/uninstall/upgrade/repair smoke、错误注入缺失/版本冲突；不执行安全验证之外的真实项目命令。
 - **用户验收：**安装版显示的支持状态与真实 target capabilities 一致；升级后旧 SRT 提示消失、Noema用户数据保留。
 - **完成条件/下一项：**只有一个可审计backend来源，UI/包/执行同源；若隔离 target-machine gate失败则命令维持禁用、一期交付条件未满足，不回退宿主 shell。下一项 E1。
+
+**2026-11-04 进展：**D3 target-machine OS gates 已全部通过，native readiness 已激活。D4 当前源码已重建为 Squirrel x64 package，resource manifest 与 runner SHA-256 匹配，packaged startup/diagnostics/tray smoke 通过。setup diagnostics 仅在本机 setup state 需要修复时提供按钮，点击后无 UAC reconcile；app 启动不改 OS state。clean-user install/upgrade/uninstall lifecycle 仍待 CI 或隔离安装环境核验；没有在用户现有安装和 `%APPDATA%\Noema` 数据上执行 destructive smoke。E 阶段开发与用户普通 workspace 日用验收尚未完成。
 
 ## 阶段 E：工作区开发闭环整合
 
@@ -393,6 +395,6 @@ flowchart TD
 - 抽核 Pi、DeepSeek Harness/Prototype、Goose、OpenHands、Letta 与 MXC 研究卡的 commit 引用，并与 `.work/references/README.md` / `revisions.json` 一致；MXC明示快照没有Git工作树且最新HEAD未由Git协议复核。各 task 引用具体研究模块，未把整仓视为采纳依据。
 - 测试文件仅作为计划中的可复核断言入口，未运行 tests、build、模型、应用或 OS 流程。
 
-最终复核：所有固定源码和过程材料引用均在交付清单中；研究卡的 commit/来源限制有汇总索引；`.work/README.md` 已链接本计划；用户明确要求、授权默认项、工程建议和实机待验内容分别标记。残留的不确定项（Codex 固定源码为部分模块而非完整 checkout、WFP 普通 setup 的 fail-closed 映射、目标机 Windows enforcement、MXC远端HEAD精确同步、provider真实cache hit、最终体验）已作为后续源码审计/实现/用户验收门槛，不伪装成已验证事实，也不阻止完成规划文档本身。
+最终复核：所有固定源码和过程材料引用均在交付清单中；研究卡的 commit/来源限制有汇总索引；`.work/README.md` 已链接本计划；用户明确要求、授权默认项、工程建议和实机待验内容分别标记。残留的不确定项（Codex 固定源码为部分模块而非完整 checkout、AppContainer 进程树与文件 ACL 的目标机验收、目标机 Windows enforcement、MXC远端HEAD精确同步、provider真实cache hit、最终体验）已作为后续源码审计/实现/用户验收门槛，不伪装成已验证事实，也不阻止完成规划文档本身。
 
 文档/仓库验证：本轮规划相关 Markdown 内链检查通过（12份文件，0断链）；20个工作项必填字段检查通过；`npm run workspace:check` 通过（8个当前文档，0 errors）。没有运行应用测试、build、模型、Windows API或安全长测。

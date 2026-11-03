@@ -5,7 +5,9 @@ use crate::policy::{
     PathRoot, WindowsCommandPolicyV2,
 };
 use crate::protocol::{Operation, RequestEnvelope, ResultFrame, parse_readiness_response};
-use crate::{handle_request, setup_operation_denied, validate_setup_user_data_path};
+use crate::{
+    handle_request, setup_operation_denied, setup_probe_response, validate_setup_user_data_path,
+};
 use serde_json::Value;
 use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
@@ -35,34 +37,14 @@ fn appcontainer_capability_names_derive_stable_distinct_read_write_sids() {
 }
 
 #[test]
-fn setup_removal_ipc_is_versioned_and_binds_the_operation_identity() {
-    let request = parse_request(
-        br#"{"protocolVersion":7,"requestId":"remove_request_01","operation":{"type":"remove_sandbox_setup","operationId":"remove_request_01"}}"#,
-    )
-    .expect("remove setup operation is valid versioned IPC");
-    assert!(matches!(
-        request.operation,
-        Operation::RemoveSandboxSetup { operation_id }
-            if operation_id == "remove_request_01"
-    ));
-
-    let response = handle_request(RequestEnvelope {
-        protocol_version: crate::protocol::PROTOCOL_VERSION,
-        request_id: "remove_request_01".to_string(),
-        operation: Operation::RemoveSandboxSetup {
-            operation_id: "another_request_02".to_string(),
-        },
-    });
-    assert!(matches!(
-        response.result,
-        ResultFrame::Denied { code, stage }
-            if code == "setup_operation_identity_mismatch" && stage == "setup"
-    ));
+fn setup_protocol_rejects_the_retired_machine_firewall_operation() {
+    let request = br#"{"protocolVersion":8,"requestId":"remove_request_01","operation":{"type":"remove_sandbox_setup","operationId":"remove_request_01"}}"#;
+    assert_eq!(parse_request(request).err(), Some("request_invalid"));
 }
 
 /// A target-machine acceptance probe for the real AppContainer process and Job
 /// behavior. It is ignored by default, has a second explicit opt-in, and never
-/// provisions a profile, changes ACLs, or mutates WFP state.
+/// provisions a profile, changes ACLs, or changes system firewall state.
 #[cfg(windows)]
 #[test]
 #[ignore = "target-machine AppContainer acceptance; requires explicit opt-in and completed setup"]
@@ -75,36 +57,40 @@ fn windows_live_appcontainer_process_tree_acceptance() {
 
     let platform = crate::windows_probe::read_platform().expect("read current Windows version");
     assert!(
-        platform.build > crate::protocol::MINIMUM_WINDOWS_BUILD
-            || (platform.build == crate::protocol::MINIMUM_WINDOWS_BUILD
-                && platform.ubr >= crate::protocol::MINIMUM_WINDOWS_UBR),
-        "native command acceptance requires the configured Windows security baseline"
+        platform.major == 10
+            && platform.minor == 0
+            && platform.build >= crate::protocol::MINIMUM_WINDOWS_BUILD
+            && platform.architecture == "x86_64",
+        "native command acceptance requires supported Windows 10 x64"
     );
     let package_sid = crate::appcontainer::derive_package_sid().expect("derive fixed package SID");
     let profile_path = crate::appcontainer::probe_profile(&package_sid)
         .expect("Noema AppContainer profile is ready");
-    assert_eq!(
-        crate::wfp::probe_network_deny(&package_sid),
-        Ok(true),
-        "Noema persistent network-deny filters must already be verified"
-    );
 
     let system_root = std::env::var("SystemRoot").expect("SystemRoot is available");
     let working_directory = std::path::Path::new(&system_root).join("System32");
     let working_directory = working_directory
         .to_str()
         .expect("System32 path is valid UTF-8 for this test");
-    let environment_names = ["SystemRoot", "WINDIR", "TEMP", "TMP", "PATH"]
-        .into_iter()
-        .map(str::to_string)
-        .collect::<Vec<_>>();
+    let environment_names = [
+        "SystemRoot",
+        "WINDIR",
+        "TEMP",
+        "TMP",
+        "PATH",
+        "LOCALAPPDATA",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect::<Vec<_>>();
 
-    // The root cmd exits immediately; the fixed timeout descendant remains in
-    // its Job. Completion must wait for the entire Job, not just the root.
+    // The root cmd exits immediately; the fixed CPU-bound cmd descendant
+    // remains in its Job without relying on console timer APIs unavailable to
+    // an AppContainer's redirected standard input.
     let root_exit = crate::process::run_appcontainer_command(
         &package_sid,
         &[],
-        "start /b timeout.exe /t 2 /nobreak >nul & exit /b 0",
+        "start /b \"\" cmd.exe /d /q /c \"@for /L %i in (1,1,1000000) do @rem\" & exit /b 0",
         working_directory,
         &environment_names,
         8_000,
@@ -113,13 +99,15 @@ fn windows_live_appcontainer_process_tree_acceptance() {
     assert!(root_exit.child_started);
     assert!(!root_exit.timed_out);
     assert_eq!(root_exit.exit_code, 0);
+    eprintln!(
+        "live_acceptance=root_exit job_duration_ms={} stdout_bytes={} stderr_bytes={}",
+        root_exit.duration_ms,
+        root_exit.stdout.len(),
+        root_exit.stderr.len()
+    );
     assert!(
         root_exit.duration_ms >= 1_000,
         "Job wait must include descendant lifetime"
-    );
-    eprintln!(
-        "live_acceptance=root_exit job_duration_ms={}",
-        root_exit.duration_ms
     );
 
     // A bounded timeout must terminate the Job and confirm its signaled state
@@ -127,7 +115,7 @@ fn windows_live_appcontainer_process_tree_acceptance() {
     let timeout = crate::process::run_appcontainer_command(
         &package_sid,
         &[],
-        "timeout.exe /t 30 /nobreak >nul",
+        "@for /L %i in (1,1,1000000000) do @rem",
         working_directory,
         &environment_names,
         1_000,
@@ -145,11 +133,310 @@ fn windows_live_appcontainer_process_tree_acceptance() {
     );
 
     assert_helper_stop_kills_child(&profile_path);
-    assert_appcontainer_network_is_denied(&package_sid, working_directory, &environment_names);
+}
+
+#[cfg(windows)]
+#[test]
+#[ignore = "target-machine AppContainer ACL enforcement; creates and removes isolated temporary roots"]
+fn windows_live_appcontainer_enforces_read_and_write_capability_acls() {
+    assert_eq!(
+        std::env::var("NOEMA_RUN_APPCONTAINER_ACL_ENFORCEMENT").as_deref(),
+        Ok("1"),
+        "set NOEMA_RUN_APPCONTAINER_ACL_ENFORCEMENT=1 to run the temporary-root ACL probe"
+    );
+    let platform = crate::windows_probe::read_platform().expect("read current Windows version");
+    assert!(
+        platform.major == 10
+            && platform.minor == 0
+            && platform.build >= crate::protocol::MINIMUM_WINDOWS_BUILD
+            && platform.architecture == "x86_64",
+        "ACL enforcement probe requires supported Windows 10 x64"
+    );
+    let package_sid = crate::appcontainer::derive_package_sid().expect("derive fixed package SID");
+    crate::appcontainer::probe_profile(&package_sid).expect("Noema AppContainer profile is ready");
+
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock after epoch")
+        .as_nanos();
+    let roots = TemporaryAclProbeRoots::new(nonce);
+    let read_root = roots.path.join("read");
+    let write_root = roots.path.join("write");
+    std::fs::create_dir(&read_root).expect("create isolated read-root fixture");
+    std::fs::create_dir(&write_root).expect("create isolated write-root fixture");
+    let read_file = read_root.join("seed.txt");
+    std::fs::write(&read_file, "read-capability-proof").expect("write read-root fixture");
+    let system_root = std::env::var("SystemRoot").expect("SystemRoot is available");
+    let working_directory = Path::new(&system_root).join("System32");
+    let working_directory = working_directory
+        .to_str()
+        .expect("System32 path is valid UTF-8 for this test");
+    let environment_names = [
+        "SystemRoot",
+        "WINDIR",
+        "TEMP",
+        "TMP",
+        "PATH",
+        "LOCALAPPDATA",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect::<Vec<_>>();
+    let suffix = format!("{nonce:064x}");
+    let grants = vec![
+        crate::policy::AclGrant {
+            path: read_root.to_str().expect("read root is UTF-8").to_string(),
+            file_identity: crate::path_identity::file_identity_for_directory(&read_root)
+                .expect("verify read-root identity"),
+            capability_name: format!("Noema.Read.{suffix}"),
+            access: crate::policy::FilesystemAccessMode::Read,
+            is_directory: true,
+        },
+        crate::policy::AclGrant {
+            path: write_root
+                .to_str()
+                .expect("write root is UTF-8")
+                .to_string(),
+            file_identity: crate::path_identity::file_identity_for_directory(&write_root)
+                .expect("verify write-root identity"),
+            capability_name: format!("Noema.Write.{suffix}"),
+            access: crate::policy::FilesystemAccessMode::Write,
+            is_directory: true,
+        },
+    ];
+    let evidence = crate::run_windows_acl_operation(&grants, true)
+        .expect("reconcile and verify ACLs on isolated temporary roots");
+    assert_eq!(evidence.len(), 2);
+    assert!(evidence.iter().all(|grant| {
+        grant.object_count == grant.acl_verified_count
+            && grant.object_count > 0
+            && grant.inheritance_verified
+    }));
+
+    let read_capability = grants[0].capability_name.clone();
+    let write_capability = grants[1].capability_name.clone();
+    let read_command = format!(
+        "type {}",
+        crate::process::quote_windows_argument(
+            &read_file.as_os_str().encode_wide().collect::<Vec<_>>()
+        )
+    );
+    let read_result = crate::process::run_appcontainer_command(
+        &package_sid,
+        &[read_capability.clone()],
+        &read_command,
+        working_directory,
+        &environment_names,
+        5_000,
+    )
+    .unwrap_or_else(|failure| panic!("read-capability check failed: {}", failure.code));
+    assert_eq!(read_result.exit_code, 0);
+    assert!(String::from_utf8_lossy(&read_result.stdout).contains("read-capability-proof"));
+
+    let denied_read_write = read_root.join("must-not-exist.txt");
+    let denied_read_write_command = format!(
+        "echo denied > {}",
+        crate::process::quote_windows_argument(
+            &denied_read_write
+                .as_os_str()
+                .encode_wide()
+                .collect::<Vec<_>>()
+        )
+    );
+    let denied_read_write_result = crate::process::run_appcontainer_command(
+        &package_sid,
+        &[read_capability],
+        &denied_read_write_command,
+        working_directory,
+        &environment_names,
+        5_000,
+    )
+    .unwrap_or_else(|failure| panic!("read-only denial check failed: {}", failure.code));
+    assert!(!denied_read_write_result.timed_out);
+    assert!(
+        !denied_read_write.exists(),
+        "read capability must not write"
+    );
+
+    let write_file = write_root.join("created.txt");
+    let write_command = format!(
+        "echo write-capability-proof > {}",
+        crate::process::quote_windows_argument(
+            &write_file.as_os_str().encode_wide().collect::<Vec<_>>()
+        )
+    );
+    let write_result = crate::process::run_appcontainer_command(
+        &package_sid,
+        &[write_capability],
+        &write_command,
+        working_directory,
+        &environment_names,
+        5_000,
+    )
+    .unwrap_or_else(|failure| panic!("write-capability check failed: {}", failure.code));
+    assert_eq!(write_result.exit_code, 0);
+    assert_eq!(
+        std::fs::read_to_string(&write_file)
+            .expect("host reads AppContainer-created file")
+            .trim(),
+        "write-capability-proof"
+    );
+
+    let denied_write = write_root.join("without-capability.txt");
+    let denied_write_command = format!(
+        "echo denied > {}",
+        crate::process::quote_windows_argument(
+            &denied_write.as_os_str().encode_wide().collect::<Vec<_>>()
+        )
+    );
+    let denied_write_result = crate::process::run_appcontainer_command(
+        &package_sid,
+        &[],
+        &denied_write_command,
+        working_directory,
+        &environment_names,
+        5_000,
+    )
+    .unwrap_or_else(|failure| panic!("no-capability denial check failed: {}", failure.code));
+    assert!(!denied_write_result.timed_out);
+    assert!(!denied_write.exists(), "package SID alone must not write");
+    eprintln!(
+        "live_acceptance=appcontainer_filesystem_acl read=allowed read_write=denied write=allowed missing_capability=denied evidence_roots={}",
+        evidence.len()
+    );
+}
+
+#[cfg(windows)]
+struct TemporaryAclProbeRoots {
+    path: PathBuf,
+}
+
+#[cfg(windows)]
+impl TemporaryAclProbeRoots {
+    fn new(nonce: u128) -> Self {
+        let path =
+            std::env::temp_dir().join(format!("Noema.AclProbe.{}.{nonce:x}", std::process::id()));
+        std::fs::create_dir(&path).expect("create isolated ACL-probe root");
+        Self { path }
+    }
+}
+
+#[cfg(windows)]
+impl Drop for TemporaryAclProbeRoots {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.path);
+    }
+}
+
+#[cfg(windows)]
+#[test]
+#[ignore = "target-machine AppContainer default network isolation probe; opt-in only"]
+fn windows_live_appcontainer_without_network_capability_denies_loopback() {
+    assert_eq!(
+        std::env::var("NOEMA_RUN_APPCONTAINER_NETWORK_ISOLATION").as_deref(),
+        Ok("1"),
+        "set NOEMA_RUN_APPCONTAINER_NETWORK_ISOLATION=1 to run the fixed loopback probe"
+    );
+    let platform = crate::windows_probe::read_platform().expect("read current Windows version");
+    assert!(
+        platform.major == 10
+            && platform.minor == 0
+            && platform.build >= crate::protocol::MINIMUM_WINDOWS_BUILD
+            && platform.architecture == "x86_64",
+        "network isolation probe requires supported Windows 10 x64"
+    );
+
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock after epoch")
+        .as_nanos();
+    let profile_name = format!("Noema.NetProbe.{:x}{:x}", std::process::id(), nonce);
+    let profile_sid = crate::appcontainer::ensure_profile_for(&profile_name)
+        .expect("create isolated AppContainer profile with no capabilities");
+    let temporary_profile = TemporaryAppContainerProfile::new(profile_name, profile_sid);
+    assert_ne!(
+        temporary_profile.sid,
+        crate::appcontainer::derive_package_sid().expect("derive Noema runner SID"),
+        "temporary profile must have a unique package identity"
+    );
+
+    let system_root = std::env::var("SystemRoot").expect("SystemRoot is available");
+    let working_directory = Path::new(&system_root).join("System32");
+    let working_directory = working_directory
+        .to_str()
+        .expect("System32 path is valid UTF-8 for this test");
+    let environment_names = [
+        "SystemRoot",
+        "WINDIR",
+        "TEMP",
+        "TMP",
+        "PATH",
+        "LOCALAPPDATA",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect::<Vec<_>>();
+    assert_appcontainer_network_is_denied(
+        &temporary_profile.name,
+        &temporary_profile.sid,
+        working_directory,
+        &environment_names,
+    );
+    temporary_profile
+        .remove()
+        .expect("remove the temporary AppContainer profile");
+    eprintln!(
+        "live_acceptance=appcontainer_default_network_denied loopback=1 system_firewall_mutation=0"
+    );
+}
+
+#[cfg(windows)]
+struct TemporaryAppContainerProfile {
+    name: String,
+    sid: String,
+    removed: bool,
+}
+
+#[cfg(windows)]
+impl TemporaryAppContainerProfile {
+    fn new(name: String, sid: String) -> Self {
+        Self {
+            name,
+            sid,
+            removed: false,
+        }
+    }
+
+    fn remove(mut self) -> Result<(), &'static str> {
+        if delete_appcontainer_profile(&self.name) < 0 {
+            return Err("temporary_appcontainer_profile_delete_failed");
+        }
+        self.removed = true;
+        Ok(())
+    }
+}
+
+#[cfg(windows)]
+impl Drop for TemporaryAppContainerProfile {
+    fn drop(&mut self) {
+        if !self.removed {
+            let _ = delete_appcontainer_profile(&self.name);
+        }
+    }
+}
+
+#[cfg(windows)]
+fn delete_appcontainer_profile(name: &str) -> i32 {
+    use windows_sys::Win32::Security::Isolation::DeleteAppContainerProfile;
+
+    let name = name.encode_utf16().chain(Some(0)).collect::<Vec<_>>();
+    // SAFETY: the profile name is NUL terminated and Windows owns the profile state.
+    unsafe { DeleteAppContainerProfile(name.as_ptr()) }
 }
 
 #[cfg(windows)]
 fn assert_appcontainer_network_is_denied(
+    profile_name: &str,
     package_sid: &str,
     working_directory: &str,
     environment_names: &[String],
@@ -208,7 +495,8 @@ fn assert_appcontainer_network_is_denied(
         "host positive control must reach the endpoint before the child probe"
     );
 
-    let version = crate::process::run_appcontainer_command(
+    let version = crate::process::run_appcontainer_command_for_profile(
+        profile_name,
         package_sid,
         &[],
         "curl.exe --version",
@@ -221,15 +509,22 @@ fn assert_appcontainer_network_is_denied(
         version.exit_code, 0,
         "curl must execute inside the AppContainer"
     );
+    assert!(
+        String::from_utf8_lossy(&version.stdout)
+            .to_ascii_lowercase()
+            .contains("curl"),
+        "fixed curl bootstrap command must actually run"
+    );
 
-    let command = format!("curl.exe -sS --max-time 4 http://{endpoint}/");
-    let attempt = crate::process::run_appcontainer_command(
+    let command = format!("curl.exe -sS --connect-timeout 1 --max-time 2 http://{endpoint}/");
+    let attempt = crate::process::run_appcontainer_command_for_profile(
+        profile_name,
         package_sid,
         &[],
         &command,
         working_directory,
         environment_names,
-        6_000,
+        8_000,
     )
     .unwrap_or_else(|failure| panic!("AppContainer network probe fails: {}", failure.code));
     sleep(Duration::from_millis(200));
@@ -238,7 +533,11 @@ fn assert_appcontainer_network_is_denied(
 
     assert!(
         !attempt.timed_out,
-        "curl's own bounded timeout must finish first"
+        "curl's own bounded timeout must finish first: exit_code={} duration_ms={} stdout={} stderr={}",
+        attempt.exit_code,
+        attempt.duration_ms,
+        String::from_utf8_lossy(&attempt.stdout),
+        String::from_utf8_lossy(&attempt.stderr)
     );
     assert_ne!(
         attempt.exit_code, 0,
@@ -334,28 +633,31 @@ fn windows_live_appcontainer_stop_helper() {
     );
     let platform = crate::windows_probe::read_platform().expect("read current Windows version");
     assert!(
-        platform.build > crate::protocol::MINIMUM_WINDOWS_BUILD
-            || (platform.build == crate::protocol::MINIMUM_WINDOWS_BUILD
-                && platform.ubr >= crate::protocol::MINIMUM_WINDOWS_UBR),
-        "native command acceptance requires the configured Windows security baseline"
+        platform.major == 10
+            && platform.minor == 0
+            && platform.build >= crate::protocol::MINIMUM_WINDOWS_BUILD
+            && platform.architecture == "x86_64",
+        "native command acceptance requires supported Windows 10 x64"
     );
     let package_sid = crate::appcontainer::derive_package_sid().expect("derive package SID");
     let profile_path = crate::appcontainer::probe_profile(&package_sid)
         .expect("Noema AppContainer profile is ready");
-    assert_eq!(
-        crate::wfp::probe_network_deny(&package_sid),
-        Ok(true),
-        "Noema persistent network-deny filters must already be verified"
-    );
     let system_root = std::env::var("SystemRoot").expect("SystemRoot is available");
     let working_directory = Path::new(&system_root).join("System32");
     let working_directory = working_directory
         .to_str()
         .expect("System32 path is valid UTF-8 for this test");
-    let environment_names = ["SystemRoot", "WINDIR", "TEMP", "TMP", "PATH"]
-        .into_iter()
-        .map(str::to_string)
-        .collect::<Vec<_>>();
+    let environment_names = [
+        "SystemRoot",
+        "WINDIR",
+        "TEMP",
+        "TMP",
+        "PATH",
+        "LOCALAPPDATA",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect::<Vec<_>>();
     let nonce = std::env::var("NOEMA_LIVE_STOP_NONCE").expect("fixed marker identity is passed");
     assert!(
         nonce.split_once('_').is_some_and(|(pid, ticks)| {
@@ -375,7 +677,7 @@ fn windows_live_appcontainer_stop_helper() {
         &leaked.as_os_str().encode_wide().collect::<Vec<_>>(),
     );
     let command = format!(
-        "echo ready > {ready_arg} & timeout.exe /t 6 /nobreak >nul & echo leaked > {leaked_arg}"
+        "echo ready > {ready_arg} & start /b \"\" cmd.exe /d /q /c \"@for /L %i in (1,1,10000000) do @rem & echo leaked > {leaked_arg}\""
     );
 
     let result = crate::process::run_appcontainer_command(
@@ -711,7 +1013,7 @@ fn native_admission_rejects_unsupported_network_policy_mode() {
 }
 
 #[test]
-fn a_valid_serialized_policy_still_cannot_bypass_runner_readiness() {
+fn a_valid_serialized_policy_cannot_bypass_live_acl_admission() {
     let test_root = create_test_root();
     let mut policy = valid_policy();
     set_policy_root(&mut policy, &test_root);
@@ -733,20 +1035,13 @@ fn a_valid_serialized_policy_still_cannot_bypass_runner_readiness() {
 
     assert!(matches!(
         response.result,
-        ResultFrame::Denied { code, .. }
-            if matches!(
-                code.as_str(),
-                "os_baseline_unsupported"
-                    | "sandbox_setup_unavailable"
-                    | "network_filters_unverified"
-                    | "runner_not_ready"
-            )
+        ResultFrame::Denied { stage, .. } if stage == "admission"
     ));
     std::fs::remove_dir_all(test_root).expect("remove temporary policy directory");
 }
 
 #[test]
-fn serialized_d2_policy_is_validated_before_runner_readiness() {
+fn serialized_d2_policy_is_validated_before_live_acl_admission() {
     let test_root = create_test_root();
     let mut fixture = execute_fixture_value();
     set_execute_fixture_root(&mut fixture, &test_root, &test_root);
@@ -760,15 +1055,7 @@ fn serialized_d2_policy_is_validated_before_runner_readiness() {
     let response = handle_request(request);
     assert!(matches!(
         response.result,
-        ResultFrame::Denied { code, stage }
-            if stage == "admission"
-                && matches!(
-                    code.as_str(),
-                    "os_baseline_unsupported"
-                        | "sandbox_setup_unavailable"
-                        | "network_filters_unverified"
-                        | "runner_not_ready"
-                )
+        ResultFrame::Denied { stage, .. } if stage == "admission"
     ));
     std::fs::remove_dir_all(test_root).expect("remove temporary policy directory");
 }
@@ -993,19 +1280,19 @@ fn policy_request_identity_must_match_the_ipc_envelope() {
 }
 
 #[test]
-fn probe_reports_capability_flags_as_disabled_until_enforcement_exists() {
-    let capabilities = crate::protocol::Capabilities::disabled();
+fn implemented_probe_capabilities_match_the_os_enforcement_evidence() {
+    let capabilities = crate::protocol::Capabilities::implemented();
     assert!(
-        !capabilities.filesystem_default_deny
-            && !capabilities.filesystem_read_allowlist
-            && !capabilities.filesystem_write_allowlist
-            && !capabilities.path_identity_validation
-            && !capabilities.working_directory_confinement
-            && !capabilities.environment_confinement
-            && !capabilities.network_default_deny
+        capabilities.filesystem_default_deny
+            && capabilities.filesystem_read_allowlist
+            && capabilities.filesystem_write_allowlist
+            && capabilities.path_identity_validation
+            && capabilities.working_directory_confinement
+            && capabilities.environment_confinement
+            && capabilities.network_default_deny
             && !capabilities.identity_bound_network_broker
-            && !capabilities.job_process_tree
-            && !capabilities.bounded_stdio
+            && capabilities.job_process_tree
+            && capabilities.bounded_stdio
     );
 }
 
@@ -1023,10 +1310,8 @@ fn incomplete_setup_probe_serializes_typed_blockers_and_never_reports_ready() {
     assert_eq!(json["type"], "probe");
     assert_eq!(json["ready"], false);
     assert_eq!(json["setupStatus"], "not_implemented");
-    assert_eq!(json["networkFilterStatus"], "not_verified");
     assert_eq!(json["blockers"][0], "runner_implementation_incomplete");
     assert_eq!(json["blockers"][1], "sandbox_setup_unavailable");
-    assert_eq!(json["blockers"][2], "network_filters_unverified");
     assert_eq!(json["capabilities"]["filesystemDefaultDeny"], false);
     assert_eq!(json["platform"]["build"], 19_045);
     assert_eq!(json["platform"]["ubr"], 7_807);
@@ -1035,7 +1320,7 @@ fn incomplete_setup_probe_serializes_typed_blockers_and_never_reports_ready() {
 #[test]
 fn request_protocol_rejects_unknown_fields() {
     let parsed = serde_json::from_str::<RequestEnvelope>(
-        r#"{"protocolVersion":7,"requestId":"execution_request_01","operation":{"type":"probe","extra":true}}"#,
+        r#"{"protocolVersion":8,"requestId":"execution_request_01","operation":{"type":"probe","extra":true}}"#,
     );
     assert!(parsed.is_err());
 }
@@ -1112,7 +1397,6 @@ fn readiness_rejects_each_missing_required_field() {
         &["result", "policyVersion"][..],
         &["result", "ready"][..],
         &["result", "setupStatus"][..],
-        &["result", "networkFilterStatus"][..],
         &["result", "capabilities", "jobProcessTree"][..],
         &["result", "platform", "ubr"][..],
     ] {
@@ -1147,30 +1431,31 @@ fn readiness_rejects_unsupported_protocol_helper_and_policy_versions() {
 }
 
 #[test]
-fn readiness_rejects_old_windows_build_and_security_ubr() {
+fn readiness_rejects_unsupported_windows_build() {
     assert_readiness_rejected(
         &["result", "platform", "build"],
         serde_json::json!(19_044),
         "os_baseline_unsupported",
     );
-    assert_readiness_rejected(
-        &["result", "platform", "ubr"],
-        serde_json::json!(7_806),
-        "os_baseline_unsupported",
+}
+
+#[test]
+fn readiness_accepts_windows_10_with_older_security_ubr() {
+    let mut fixture = readiness_fixture_value();
+    fixture["result"]["platform"]["ubr"] = serde_json::json!(6_093);
+    let response = serde_json::from_value(fixture).expect("readiness fixture deserializes");
+    assert_eq!(
+        crate::protocol::validate_readiness_response(&response, "execution_request_01"),
+        Ok(())
     );
 }
 
 #[test]
-fn readiness_rejects_incomplete_setup_filters_and_missing_capabilities() {
+fn readiness_rejects_incomplete_setup_and_missing_capabilities() {
     assert_readiness_rejected(
         &["result", "setupStatus"],
         serde_json::json!("incomplete"),
         "sandbox_setup_unavailable",
-    );
-    assert_readiness_rejected(
-        &["result", "networkFilterStatus"],
-        serde_json::json!("failed"),
-        "network_filters_unverified",
     );
     assert_readiness_rejected(
         &["result", "capabilities", "jobProcessTree"],
@@ -1252,6 +1537,7 @@ pub(crate) fn valid_policy() -> WindowsCommandPolicyV2 {
                 "TEMP".to_string(),
                 "TMP".to_string(),
                 "PATH".to_string(),
+                "LOCALAPPDATA".to_string(),
             ],
         },
         network: NetworkPolicy {
@@ -1354,7 +1640,7 @@ fn set_execute_fixture_root(fixture: &mut Value, path: &Path, identity_path: &Pa
 }
 
 const SERIALIZED_EXECUTE_FIXTURE: &str = r#"{
-    "protocolVersion": 7,
+    "protocolVersion": 8,
     "requestId": "execution_request_01",
     "operation": {
         "type": "execute",
@@ -1390,7 +1676,7 @@ const SERIALIZED_EXECUTE_FIXTURE: &str = r#"{
             },
             "environment": {
                 "inherit": false,
-                "allowNames": ["SystemRoot", "WINDIR", "TEMP", "TMP", "PATH"]
+                "allowNames": ["SystemRoot", "WINDIR", "TEMP", "TMP", "PATH", "LOCALAPPDATA"]
             },
             "network": {
                 "mode": "deny",
@@ -1418,7 +1704,7 @@ fn execute_fixture_value() -> Value {
 }
 
 const READY_READINESS_FIXTURE: &str = r#"{
-    "protocolVersion": 7,
+    "protocolVersion": 8,
     "requestId": "execution_request_01",
     "result": {
         "type": "probe",
@@ -1428,7 +1714,6 @@ const READY_READINESS_FIXTURE: &str = r#"{
         "ready": true,
         "blockers": [],
         "setupStatus": "ready",
-        "networkFilterStatus": "ready",
         "capabilities": {
             "filesystemDefaultDeny": true,
             "filesystemReadAllowlist": true,
@@ -1445,7 +1730,7 @@ const READY_READINESS_FIXTURE: &str = r#"{
             "major": 10,
             "minor": 0,
             "build": 19045,
-            "ubr": 7807,
+            "ubr": 6093,
             "architecture": "x86_64"
         }
     }
@@ -1490,7 +1775,7 @@ fn sandbox_setup_ipc_schema_is_strict_and_probe_fails_closed() {
     for operation_type in ["reconcile_sandbox_setup", "probe_sandbox_setup"] {
         let request_id = "setup_operation_0001";
         let request = serde_json::json!({
-            "protocolVersion": 7,
+            "protocolVersion": 8,
             "requestId": request_id,
             "operation": {
                 "type": operation_type,
@@ -1501,20 +1786,10 @@ fn sandbox_setup_ipc_schema_is_strict_and_probe_fails_closed() {
         let parsed = parse_request(&serde_json::to_vec(&request).unwrap())
             .expect("setup request follows the strict operation schema");
         if operation_type == "probe_sandbox_setup" {
-            let response = handle_request(parsed);
-            if cfg!(windows) {
-                assert!(matches!(
-                    response.result,
-                    ResultFrame::SetupEvidence { evidence, .. }
-                        if crate::appcontainer::is_appcontainer_package_sid(&evidence.package_sid)
-                ));
-            } else {
-                assert!(matches!(
-                    response.result,
-                    ResultFrame::Denied { code, stage }
-                        if code == "windows_required" && stage == "setup"
-                ));
-            }
+            assert!(matches!(
+                parsed.operation,
+                Operation::ProbeSandboxSetup { .. }
+            ));
         } else {
             assert!(matches!(
                 parsed.operation,
@@ -1529,6 +1804,33 @@ fn sandbox_setup_ipc_schema_is_strict_and_probe_fails_closed() {
             Some("request_invalid")
         );
     }
+}
+
+#[test]
+fn sandbox_setup_probe_reports_profile_evidence_without_machine_firewall_state() {
+    let missing_profile = setup_probe_response(
+        "setup_operation_0001".to_string(),
+        "setup_operation_0001".to_string(),
+        "S-1-15-2-100-200-300-400-500-600-700".to_string(),
+        false,
+    );
+    assert!(matches!(
+        missing_profile.result,
+        ResultFrame::SetupEvidence { evidence, .. }
+            if !evidence.profile_valid
+    ));
+
+    let ready_profile = setup_probe_response(
+        "setup_operation_0002".to_string(),
+        "setup_operation_0002".to_string(),
+        "S-1-15-2-100-200-300-400-500-600-700".to_string(),
+        true,
+    );
+    assert!(matches!(
+        ready_profile.result,
+        ResultFrame::SetupEvidence { evidence, .. }
+            if evidence.profile_valid
+    ));
 }
 
 #[test]

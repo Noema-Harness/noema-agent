@@ -9,7 +9,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 use windows_sys::Win32::Foundation::{
     GENERIC_READ, HANDLE, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE, SetHandleInformation,
-    WAIT_OBJECT_0, WAIT_TIMEOUT,
+    WAIT_OBJECT_0,
 };
 use windows_sys::Win32::Security::{SECURITY_ATTRIBUTES, SECURITY_CAPABILITIES};
 use windows_sys::Win32::Storage::FileSystem::{
@@ -17,8 +17,9 @@ use windows_sys::Win32::Storage::FileSystem::{
 };
 use windows_sys::Win32::System::JobObjects::{
     CreateJobObjectW, IsProcessInJob, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
-    JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
-    SetInformationJobObject, TerminateJobObject,
+    JOBOBJECT_BASIC_ACCOUNTING_INFORMATION, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+    JobObjectBasicAccountingInformation, JobObjectExtendedLimitInformation,
+    QueryInformationJobObject, SetInformationJobObject, TerminateJobObject,
 };
 use windows_sys::Win32::System::Pipes::CreatePipe;
 use windows_sys::Win32::System::SystemInformation::GetSystemDirectoryW;
@@ -214,9 +215,32 @@ pub fn run_appcontainer_command(
     environment_names: &[String],
     timeout_ms: u32,
 ) -> Result<CommandResult, CommandFailure> {
+    run_appcontainer_command_for_profile(
+        crate::appcontainer::NOEMA_APPCONTAINER_PROFILE,
+        package_sid,
+        capability_names,
+        command,
+        cwd,
+        environment_names,
+        timeout_ms,
+    )
+}
+
+pub(crate) fn run_appcontainer_command_for_profile(
+    profile_name: &str,
+    package_sid: &str,
+    capability_names: &[String],
+    command: &str,
+    cwd: &str,
+    environment_names: &[String],
+    timeout_ms: u32,
+) -> Result<CommandResult, CommandFailure> {
     validate_command(command, cwd, timeout_ms)?;
-    let security_capabilities =
-        crate::appcontainer::ProcessSecurityCapabilities::new(package_sid, capability_names)?;
+    let security_capabilities = crate::appcontainer::ProcessSecurityCapabilities::new_for_profile(
+        profile_name,
+        package_sid,
+        capability_names,
+    )?;
     let started = Instant::now();
     let job = create_kill_on_close_job()?;
     let pipes = create_output_pipes()?;
@@ -239,7 +263,8 @@ pub fn run_appcontainer_command(
     startup.lpAttributeList = startup_attributes.as_mut_ptr();
 
     let application = system_cmd_path()?;
-    let environment = restricted_environment_block(std::env::vars_os(), environment_names)?;
+    let environment =
+        restricted_environment_block_for_cwd(std::env::vars_os(), environment_names, cwd)?;
     let mut command_line = wide(&format!(
         "{} /D /S /C \"{}\"",
         quote_windows_argument(&application),
@@ -268,6 +293,10 @@ pub fn run_appcontainer_command(
         )
     };
     if created == 0 {
+        #[cfg(test)]
+        eprintln!("appcontainer_test_create_process_win32_error={}", unsafe {
+            windows_sys::Win32::Foundation::GetLastError()
+        });
         return Err("runner_appcontainer_child_create_failed".into());
     }
     finish_child(process_info, job, pipes, started, timeout_ms)
@@ -325,9 +354,7 @@ fn finish_child(
     if timed_out {
         terminate_timed_out_job(
             || unsafe { TerminateJobObject(job.as_raw_handle() as HANDLE, 1) != 0 },
-            || unsafe {
-                WaitForSingleObject(job.as_raw_handle() as HANDLE, CLEANUP_WAIT_MS) == WAIT_OBJECT_0
-            },
+            || wait_for_job(&job, CLEANUP_WAIT_MS).is_ok_and(|still_active| !still_active),
         )
         .map_err(CommandFailure::unknown)?;
     }
@@ -347,7 +374,14 @@ fn finish_child(
     })
 }
 
-const ALLOWED_ENVIRONMENT_NAMES: [&str; 5] = ["SystemRoot", "WINDIR", "TEMP", "TMP", "PATH"];
+const ALLOWED_ENVIRONMENT_NAMES: [&str; 6] = [
+    "SystemRoot",
+    "WINDIR",
+    "TEMP",
+    "TMP",
+    "PATH",
+    "LOCALAPPDATA",
+];
 
 pub(super) fn restricted_environment_block(
     source: impl IntoIterator<Item = (OsString, OsString)>,
@@ -387,6 +421,9 @@ pub(super) fn restricted_environment_block(
     if !selected.contains_key("systemroot") {
         return Err("runner_environment_system_root_missing");
     }
+    if !selected.contains_key("localappdata") {
+        return Err("runner_environment_local_app_data_missing");
+    }
 
     let mut entries = selected.into_values().collect::<Vec<_>>();
     entries.sort_by_key(|(key, _)| key.to_string_lossy().to_ascii_lowercase());
@@ -401,6 +438,35 @@ pub(super) fn restricted_environment_block(
         }
     }
     block.push(0);
+    if block.len() > 32_767 {
+        return Err("runner_environment_too_large");
+    }
+    Ok(block)
+}
+
+fn restricted_environment_block_for_cwd(
+    source: impl IntoIterator<Item = (OsString, OsString)>,
+    allow_names: &[String],
+    cwd: &str,
+) -> Result<Vec<u16>, &'static str> {
+    let bytes = cwd.as_bytes();
+    if bytes.len() < 3
+        || !bytes[0].is_ascii_alphabetic()
+        || bytes[1] != b':'
+        || bytes[2] != b'\\'
+        || cwd.contains('\0')
+        || cwd.contains('=')
+    {
+        return Err("runner_working_directory_invalid");
+    }
+
+    let mut block = Vec::new();
+    let drive_name = format!("={}:", (bytes[0] as char).to_ascii_uppercase());
+    block.extend(drive_name.encode_utf16());
+    block.push(b'=' as u16);
+    block.extend(cwd.encode_utf16());
+    block.push(0);
+    block.extend(restricted_environment_block(source, allow_names)?);
     if block.len() > 32_767 {
         return Err("runner_environment_too_large");
     }
@@ -544,28 +610,42 @@ fn join_reader(
 }
 
 fn wait_for_job(job: &OwnedHandle, timeout_ms: u32) -> Result<bool, &'static str> {
-    wait_for_job_with(timeout_ms, |_| unsafe {
-        WaitForSingleObject(job.as_raw_handle() as HANDLE, PROCESS_WAIT_SLICE_MS)
-    })
+    wait_for_job_with(timeout_ms, || query_job_active_processes(job))
 }
 
 fn wait_for_job_with(
     timeout_ms: u32,
-    mut wait: impl FnMut(u32) -> u32,
+    mut query_active_processes: impl FnMut() -> Result<u32, &'static str>,
 ) -> Result<bool, &'static str> {
     let started = Instant::now();
     loop {
-        let waited = wait(PROCESS_WAIT_SLICE_MS);
-        if waited == WAIT_OBJECT_0 {
+        if query_active_processes()? == 0 {
             return Ok(false);
-        }
-        if waited != WAIT_TIMEOUT {
-            return Err("runner_job_wait_failed");
         }
         if started.elapsed() >= Duration::from_millis(timeout_ms as u64) {
             return Ok(true);
         }
+        thread::sleep(Duration::from_millis(PROCESS_WAIT_SLICE_MS as u64));
     }
+}
+
+fn query_job_active_processes(job: &OwnedHandle) -> Result<u32, &'static str> {
+    let mut accounting = JOBOBJECT_BASIC_ACCOUNTING_INFORMATION::default();
+    // SAFETY: `accounting` is the exact output structure for this information
+    // class and remains writable for the duration of the call.
+    if unsafe {
+        QueryInformationJobObject(
+            job.as_raw_handle() as HANDLE,
+            JobObjectBasicAccountingInformation,
+            (&mut accounting as *mut JOBOBJECT_BASIC_ACCOUNTING_INFORMATION).cast(),
+            std::mem::size_of::<JOBOBJECT_BASIC_ACCOUNTING_INFORMATION>() as u32,
+            ptr::null_mut(),
+        )
+    } == 0
+    {
+        return Err("runner_job_query_failed");
+    }
+    Ok(accounting.ActiveProcesses)
 }
 
 fn read_exit_code(process: HANDLE) -> Result<i32, &'static str> {
@@ -623,7 +703,11 @@ fn system_cmd_path() -> Result<Vec<u16>, &'static str> {
 }
 
 pub(super) fn quote_windows_argument(value: &[u16]) -> String {
-    let value = String::from_utf16_lossy(value);
+    let value_end = value
+        .iter()
+        .position(|unit| *unit == 0)
+        .unwrap_or(value.len());
+    let value = String::from_utf16_lossy(&value[..value_end]);
     let mut output = String::from("\"");
     let mut backslashes = 0usize;
     for ch in value.chars() {
@@ -654,8 +738,8 @@ fn wide(value: &str) -> Vec<u16> {
 #[cfg(test)]
 mod tests {
     use super::{
-        CommandFailure, WAIT_OBJECT_0, WAIT_TIMEOUT, quote_windows_argument, read_bounded_output,
-        restricted_environment_block, system_cmd_path, terminate_timed_out_job,
+        CommandFailure, quote_windows_argument, read_bounded_output, restricted_environment_block,
+        restricted_environment_block_for_cwd, system_cmd_path, terminate_timed_out_job,
         verify_job_then_resume_child, wait_for_job_with,
     };
     use std::cell::RefCell;
@@ -670,6 +754,17 @@ mod tests {
                 .collect::<Vec<_>>(),
         );
         assert_eq!(actual, "\"C:\\Program Files\\Noema\\cmd.exe\"");
+    }
+
+    #[test]
+    fn command_path_argument_omits_the_utf16_terminator() {
+        let actual = quote_windows_argument(
+            &"C:\\Windows\\System32\\cmd.exe\0"
+                .encode_utf16()
+                .collect::<Vec<_>>(),
+        );
+        assert_eq!(actual, "\"C:\\Windows\\System32\\cmd.exe\"");
+        assert!(!actual.encode_utf16().any(|unit| unit == 0));
     }
 
     #[test]
@@ -809,17 +904,17 @@ mod tests {
 
     #[test]
     fn job_wait_does_not_finish_when_only_the_root_process_has_exited() {
-        let mut waits = [WAIT_TIMEOUT, WAIT_OBJECT_0].into_iter();
-        let result = wait_for_job_with(5_000, |_| waits.next().unwrap());
+        let mut active_counts = [1, 0].into_iter();
+        let result = wait_for_job_with(5_000, || Ok(active_counts.next().unwrap()));
         assert_eq!(result, Ok(false));
     }
 
     #[test]
     fn job_wait_timeout_and_wait_failure_are_not_reported_as_completion() {
-        assert_eq!(wait_for_job_with(0, |_| WAIT_TIMEOUT), Ok(true));
+        assert_eq!(wait_for_job_with(0, || Ok(1)), Ok(true));
         assert_eq!(
-            wait_for_job_with(1_000, |_| u32::MAX),
-            Err("runner_job_wait_failed")
+            wait_for_job_with(1_000, || Err("runner_job_query_failed")),
+            Err("runner_job_query_failed")
         );
     }
 
@@ -839,30 +934,124 @@ mod tests {
 
     #[test]
     fn command_environment_contains_only_the_exact_allowed_names() {
-        let allow_names = ["SystemRoot", "WINDIR", "TEMP", "TMP", "PATH"].map(str::to_string);
+        let allow_names = [
+            "SystemRoot",
+            "WINDIR",
+            "TEMP",
+            "TMP",
+            "PATH",
+            "LOCALAPPDATA",
+        ]
+        .map(str::to_string);
         let source = [
             ("SystemRoot", "C:\\Windows"),
             ("PATH", "C:\\Windows\\System32"),
+            ("LOCALAPPDATA", "C:\\Users\\operator\\AppData\\Local"),
             ("OPENAI_API_KEY", "secret-value"),
             ("USERPROFILE", "C:\\Users\\operator"),
         ]
         .map(|(key, value)| (OsString::from(key), OsString::from(value)));
         let block = restricted_environment_block(source, &allow_names).unwrap();
         assert!(block.ends_with(&[0, 0]));
-        let entries = String::from_utf16_lossy(&block)
+        let text = String::from_utf16_lossy(&block);
+        let entries = text
             .split('\0')
             .filter(|entry| !entry.is_empty())
             .map(str::to_ascii_lowercase)
             .collect::<Vec<_>>();
         assert_eq!(
             entries,
-            ["path=c:\\windows\\system32", "systemroot=c:\\windows",]
+            [
+                "localappdata=c:\\users\\operator\\appdata\\local",
+                "path=c:\\windows\\system32",
+                "systemroot=c:\\windows",
+            ]
+        );
+    }
+
+    #[test]
+    fn command_environment_preserves_only_the_explicit_working_drive_directory() {
+        let allow_names = [
+            "SystemRoot",
+            "WINDIR",
+            "TEMP",
+            "TMP",
+            "PATH",
+            "LOCALAPPDATA",
+        ]
+        .map(str::to_string);
+        let source = [
+            (OsString::from("SystemRoot"), OsString::from("C:\\Windows")),
+            (
+                OsString::from("LOCALAPPDATA"),
+                OsString::from("C:\\Users\\operator\\AppData\\Local"),
+            ),
+            (
+                OsString::from("PATH"),
+                OsString::from("C:\\Windows\\System32"),
+            ),
+            (OsString::from("=C:"), OsString::from("C:\\Users\\operator")),
+            (
+                OsString::from("OPENAI_API_KEY"),
+                OsString::from("secret-value"),
+            ),
+        ];
+        let block =
+            restricted_environment_block_for_cwd(source, &allow_names, "C:\\workspace\\project")
+                .unwrap();
+        assert!(block.ends_with(&[0, 0]));
+        let text = String::from_utf16_lossy(&block);
+        let entries = text
+            .split('\0')
+            .filter(|entry| !entry.is_empty())
+            .collect::<Vec<_>>();
+        assert_eq!(entries[0], "=C:=C:\\workspace\\project");
+        assert!(entries.contains(&"PATH=C:\\Windows\\System32"));
+        assert!(entries.contains(&"SystemRoot=C:\\Windows"));
+        assert!(entries.contains(&"LOCALAPPDATA=C:\\Users\\operator\\AppData\\Local"));
+        assert!(!entries.iter().any(|entry| entry.contains("secret-value")));
+        assert!(
+            !entries
+                .iter()
+                .any(|entry| *entry == "=C:=C:\\Users\\operator")
+        );
+    }
+
+    #[test]
+    fn command_environment_rejects_non_drive_working_directories_for_drive_state() {
+        let allow_names = [
+            "SystemRoot",
+            "WINDIR",
+            "TEMP",
+            "TMP",
+            "PATH",
+            "LOCALAPPDATA",
+        ]
+        .map(str::to_string);
+        let source = [
+            (OsString::from("SystemRoot"), OsString::from("C:\\Windows")),
+            (
+                OsString::from("LOCALAPPDATA"),
+                OsString::from("C:\\Users\\operator\\AppData\\Local"),
+            ),
+        ];
+        assert_eq!(
+            restricted_environment_block_for_cwd(source, &allow_names, "\\\\server\\share"),
+            Err("runner_working_directory_invalid")
         );
     }
 
     #[test]
     fn command_environment_rejects_missing_system_root_or_invalid_allowlist() {
-        let allow_names = ["SystemRoot", "WINDIR", "TEMP", "TMP", "PATH"].map(str::to_string);
+        let allow_names = [
+            "SystemRoot",
+            "WINDIR",
+            "TEMP",
+            "TMP",
+            "PATH",
+            "LOCALAPPDATA",
+        ]
+        .map(str::to_string);
         assert_eq!(
             restricted_environment_block(
                 [(
@@ -875,7 +1064,20 @@ mod tests {
         );
         assert_eq!(
             restricted_environment_block(
-                [(OsString::from("SystemRoot"), OsString::from("C:\\Windows"))],
+                [(OsString::from("SystemRoot"), OsString::from("C:\\Windows"),)],
+                &allow_names,
+            ),
+            Err("runner_environment_local_app_data_missing")
+        );
+        assert_eq!(
+            restricted_environment_block(
+                [
+                    (OsString::from("SystemRoot"), OsString::from("C:\\Windows")),
+                    (
+                        OsString::from("LOCALAPPDATA"),
+                        OsString::from("C:\\Users\\operator\\AppData\\Local"),
+                    ),
+                ],
                 &["SystemRoot".to_string()],
             ),
             Err("runner_environment_policy_invalid")
@@ -884,12 +1086,24 @@ mod tests {
 
     #[test]
     fn command_environment_rejects_duplicate_names_and_oversized_values() {
-        let allow_names = ["SystemRoot", "WINDIR", "TEMP", "TMP", "PATH"].map(str::to_string);
+        let allow_names = [
+            "SystemRoot",
+            "WINDIR",
+            "TEMP",
+            "TMP",
+            "PATH",
+            "LOCALAPPDATA",
+        ]
+        .map(str::to_string);
         assert_eq!(
             restricted_environment_block(
                 [
                     (OsString::from("SystemRoot"), OsString::from("C:\\Windows")),
                     (OsString::from("SYSTEMROOT"), OsString::from("C:\\Windows")),
+                    (
+                        OsString::from("LOCALAPPDATA"),
+                        OsString::from("C:\\Users\\operator\\AppData\\Local"),
+                    ),
                 ],
                 &allow_names,
             ),
@@ -897,10 +1111,16 @@ mod tests {
         );
         assert_eq!(
             restricted_environment_block(
-                [(
-                    OsString::from("SystemRoot"),
-                    OsString::from(format!("C:\\{}", "x".repeat(32_768))),
-                ),],
+                [
+                    (
+                        OsString::from("SystemRoot"),
+                        OsString::from(format!("C:\\{}", "x".repeat(32_768))),
+                    ),
+                    (
+                        OsString::from("LOCALAPPDATA"),
+                        OsString::from("C:\\Users\\operator\\AppData\\Local"),
+                    )
+                ],
                 &allow_names,
             ),
             Err("runner_environment_too_large")

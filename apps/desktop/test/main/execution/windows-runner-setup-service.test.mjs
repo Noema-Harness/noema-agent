@@ -16,7 +16,6 @@ const otherPackageSid = 'S-1-15-2-101-102-103-104-105-106-108';
 const completeEvidence = Object.freeze({
   packageSid,
   profileValid: true,
-  networkFiltersValid: true,
 });
 
 async function withUserDataPath(run) {

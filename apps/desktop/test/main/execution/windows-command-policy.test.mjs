@@ -64,7 +64,7 @@ test('compiles workspace, external and runtime grants to the minimum roots', () 
   assert.equal(result.policy.requestId, 'test-request-identity-123456');
   assert.deepEqual(result.policy.environment, {
     inherit: false,
-    allowNames: ['SystemRoot', 'WINDIR', 'TEMP', 'TMP', 'PATH'],
+    allowNames: ['SystemRoot', 'WINDIR', 'TEMP', 'TMP', 'PATH', 'LOCALAPPDATA'],
   });
   assert.deepEqual(result.policy.network, {
     mode: 'deny',

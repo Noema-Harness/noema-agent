@@ -21,14 +21,14 @@ test('missing helper or startup error keeps the command gate closed', () => {
   );
 });
 
-test('backend version and unsupported ESU evidence cannot open the command gate', () => {
+test('backend version and unsupported platform evidence cannot open the command gate', () => {
   for (const backendReadiness of [
     { ready: false, code: 'runner_helper_version_mismatch' },
     {
       ready: false,
       reportedReady: true,
       code: 'os_baseline_unsupported',
-      platform: { build: 19_045, ubr: 6_093 },
+      platform: { build: 19_044, ubr: 6_093 },
     },
   ]) {
     assert.equal(
