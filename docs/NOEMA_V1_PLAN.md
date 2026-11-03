@@ -345,7 +345,7 @@ flowchart TD
 - **状态/接口：**Forge负责构建/安装资源；UserData owner负责schema migration/backup; UI公开版本、DB状态与修复路径。
 - **异常/恢复：**安装中断、旧版本db、migration失败、native resource缺失、权限不足可恢复/备份；不可静默删库或重置秘密。
 - **诊断：**build/source/native backend version、migration序号、安装/启动错误、tray启动状态进本地诊断；不含credential。
-- **检查：**Windows CI package/make、干净用户升级/修复/卸载 smoke、migration backup/restore tests；人工确认签名/SmartScreen提示事实，若未签名不隐瞒。
+- **检查：**Windows CI package/make 与 `apps/desktop/scripts/smoke-installer-lifecycle.ps1` 的干净用户安装/升级/安装恢复/卸载及 userData 保留 smoke、migration backup/restore tests；人工确认签名/SmartScreen提示事实，若未签名不隐瞒。
 - **用户验收：**用户在当前电脑安装/升级候选版本并核对旧数据仍在；手动卸载后确认数据处理行为。
 - **完成条件/下一项：**可重复安装包及可恢复升级路径有证据；不要求公开发行或自动更新。下一项 F2。
 
