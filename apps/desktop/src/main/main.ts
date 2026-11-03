@@ -530,7 +530,7 @@ const createWindow = () => {
         bridgeProbeStage = 'workspace-task-entry';
         await mainWindow?.webContents
           .executeJavaScript(`new Promise((resolve) => {
-          const deadline = Date.now() + 15_000;
+          const deadline = Date.now() + 60_000;
           const poll = () => {
             if (document.querySelector('.composer-mode-button') || Date.now() >= deadline) {
               resolve();
