@@ -31,7 +31,7 @@
 - 全应用 DSH 式插件化重构、通用插件市场、任意外部 agent runtime marketplace。
 - SocialChat 当前复杂的房间、多成员协同、specialist delegation、复杂跟进/实践/经验功能，除非 Gate E 对某项证明它是工作区开发闭环直接必要且已有成熟证据。现存实现、测试、OpenSpec 历史不自动构成一期要求。
 - RootAgent + DSH legacy/#legacy 路径与默认 social work 执行路径合并。legacy 实现不作为一期工作区任务的默认 owner；发现其具有唯一必要能力时先补证据再单项判断。
-- Noema 一期支持 Windows 10 22H2 x64（build 19045）及更新的 Windows 10 build；不设置最低 UBR/ESU 补丁号，也不要求用户为使用 Noema 更新系统。AppContainer 所需 API 在 Windows 10 22H2 可用，UBR 保留作系统信息，不作为命令 readiness 拒绝条件。目标机 AppContainer 默认网络拒绝、3.3.b 进程树验收、真实读写 capability ACL 和 Electron durable setup/journal/command integration 均已通过；3.4 native readiness activation 已完成。当前目标机 UBR 6456 不构成平台兼容阻断；D4 package/lifecycle gates 仍在进行，Noema 普通项目 workspace 日用留给用户最终验收。Codex 官方的 Win10 best-effort 声明不构成 Noema 的技术兼容下限；若目标机验收发现具体 API/系统行为问题，再针对证据处理，不预先设置补丁门槛。若源码审计证明 native runner 无法满足已定隔离边界，再依据具体缺口评估替代路线。
+- Noema 一期支持 Windows 10 22H2 x64（build 19045）及更新的 Windows 10 build；不设置最低 UBR/ESU 补丁号，也不要求用户为使用 Noema 更新系统。AppContainer 所需 API 在 Windows 10 22H2 可用，UBR 保留作系统信息，不作为命令 readiness 拒绝条件。目标机 AppContainer 默认网络拒绝、3.3.b 进程树验收、真实读写 capability ACL、Electron durable setup/journal/command integration 和 3.4 native readiness activation 均已通过。D4 package/lifecycle 自动门通过 GitHub Actions run `41675611673`；本机 0.1.1 安装升级与用户真实工作区日用验收仍留在 F1/F2 用户验收，不把 CI 结果当成本机体验通过。Codex 官方的 Win10 best-effort 声明不构成 Noema 的技术兼容下限；若目标机验收发现具体 API/系统行为问题，再针对证据处理，不预先设置补丁门槛。若源码审计证明 native runner 无法满足已定隔离边界，再依据具体缺口评估替代路线。
 - 云端同步、多机任务接管、任务外部恰好一次语义、公开发行/签名承诺。
 
 ## 最终交付条件
