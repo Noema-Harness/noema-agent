@@ -107,6 +107,25 @@ function Invoke-InstalledStartupSmoke {
   throw 'Installed Noema did not exit after its Squirrel lifecycle startup smoke.'
 }
 
+function Stop-InstalledAppProcesses {
+  $deadline = [DateTime]::UtcNow.AddSeconds(15)
+  while ([DateTime]::UtcNow -lt $deadline) {
+    $running = @(
+      Get-CimInstance Win32_Process | Where-Object {
+        $_.ExecutablePath -and
+        $_.ExecutablePath.StartsWith($installRoot, [StringComparison]::OrdinalIgnoreCase) -and
+        $_.Name -notin @('Update.exe', 'Squirrel.exe')
+      }
+    )
+    if ($running.Count -eq 0) { return }
+    foreach ($process in $running) {
+      Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue
+    }
+    Start-Sleep -Milliseconds 250
+  }
+  throw "Installed Noema still has app processes before uninstall: $($running.Name -join ', ')"
+}
+
 try {
   New-Item -ItemType Directory -Path $smokeRoot -Force | Out-Null
   Copy-Item -LiteralPath $initialSetup -Destination $initialSetupCopy
@@ -171,6 +190,7 @@ try {
     Remove-Item -LiteralPath $repairProbeDirectory -Recurse -Force
   }
 
+  Stop-InstalledAppProcesses
   Invoke-CheckedProcess (Join-Path $installRoot 'Update.exe') @('--uninstall')
   $uninstallDeadline = [DateTime]::UtcNow.AddSeconds(90)
   do {
@@ -183,7 +203,8 @@ try {
     Start-Sleep -Milliseconds 500
   } while ([DateTime]::UtcNow -lt $uninstallDeadline)
   if ($remainingAppDirectories.Count -gt 0) {
-    throw 'Squirrel uninstall left Noema application version directories installed.'
+    $remainingNames = $remainingAppDirectories.Name -join ', '
+    throw "Squirrel uninstall left Noema application version directories installed: $remainingNames."
   }
   if (-not (Test-Path -LiteralPath $sentinelPath -PathType Leaf) -or
       (Get-Content -LiteralPath $sentinelPath -Raw).Trim() -ne $sentinel) {
