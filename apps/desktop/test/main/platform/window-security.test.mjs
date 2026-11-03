@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   createWindowPreferences,
+  isMainFrameIpcEvent,
   isInternalNavigation,
   shouldOpenExternally,
 } from '../../../src/main/platform/window-security.mjs';
@@ -13,6 +14,24 @@ test('renderer runs without Node privileges and with process isolation', () => {
     nodeIntegration: false,
     sandbox: true,
   });
+});
+
+test('IPC accepts only the current top-level renderer frame', () => {
+  const mainFrame = { parent: null };
+  const sender = { mainFrame };
+  assert.equal(
+    isMainFrameIpcEvent({ sender, senderFrame: mainFrame }),
+    true,
+  );
+  assert.equal(
+    isMainFrameIpcEvent({ sender, senderFrame: { parent: mainFrame } }),
+    false,
+  );
+  assert.equal(isMainFrameIpcEvent({ sender }), false);
+  assert.equal(
+    isMainFrameIpcEvent({ sender: { mainFrame: {} }, senderFrame: mainFrame }),
+    false,
+  );
 });
 
 test('navigation stays in the app; only HTTPS links are handed to the system browser', () => {

@@ -9,6 +9,16 @@ import {
   runProjectCommandInSandbox,
   windowsCommandSandboxSupport,
 } from './project-command-sandbox.mjs';
+import { scanWorkspaceFileBoundary } from './workspace-file-boundary.mjs';
+import {
+  captureWorkspaceIdentity,
+  compareWorkspaceIdentities,
+  isWorkspaceIdentity,
+} from '../platform/workspace-identity.mjs';
+import {
+  createWorkspaceFileDiff,
+  workspaceFileContentHash,
+} from './workspace-file-diff.mjs';
 import {
   MAX_SOCIAL_WORK_TOOL_CALLS,
   MAX_SOCIAL_WORK_TOOL_ROUNDS,
@@ -167,9 +177,14 @@ function compactModelHistory(messages) {
   )
     return messages;
   if (messages.length < 2 || messages[0]?.role !== 'system') return messages;
+  const firstUserIndex = messages.findIndex(
+    (message, index) => index > 0 && message?.role === 'user',
+  );
+  if (firstUserIndex < 1) return messages;
+  const prefixEndIndex = firstUserIndex + 1;
 
   const groups = [];
-  for (let index = 2; index < messages.length;) {
+  for (let index = prefixEndIndex; index < messages.length;) {
     const message = messages[index];
     if (message?.role !== 'assistant' || !Array.isArray(message.tool_calls)) {
       groups.push({ messages: [message], toolNames: [], compactable: false });
@@ -203,7 +218,7 @@ function compactModelHistory(messages) {
   const project = () => {
     if (!omittedBatches)
       return [
-        ...messages.slice(0, 2),
+        ...messages.slice(0, prefixEndIndex),
         ...retained.flatMap((group) => group.messages),
       ];
     const names = [
@@ -220,7 +235,7 @@ function compactModelHistory(messages) {
     ].join('\n');
     return [
       { ...messages[0], content: notice },
-      messages[1],
+      ...messages.slice(1, prefixEndIndex),
       ...retained.flatMap((group) => group.messages),
     ];
   };
@@ -528,7 +543,161 @@ async function searchWorkspace(workspacePath, args, signal) {
   });
 }
 
-function executeFileTool(workspacePath, name, args, { signal } = {}) {
+function fileBoundaryError(code) {
+  const messages = {
+    workspace_identity_changed:
+      '工作区目录身份已变化；文件工具未访问该目录，请重新选择工作区。',
+    workspace_hard_link_detected:
+      '工作区中存在普通文件硬链接；为避免访问授权目录外的同一文件对象，文件工具已拒绝。',
+    workspace_reparse_point_detected:
+      '工作区中存在符号链接或重解析点；文件工具已拒绝访问。',
+    workspace_scan_limit:
+      '工作区文件系统扫描超出安全上限；文件工具未访问该目录。',
+    workspace_scan_cancelled: '工作区检查已取消；文件工具未访问该目录。',
+    workspace_unsupported_entry:
+      '工作区包含不支持的文件系统对象；文件工具已拒绝访问。',
+  };
+  const error = new Error(
+    messages[code] ?? '无法完整验证工作区文件边界；文件工具已拒绝访问。',
+  );
+  error.code = code;
+  error.effectStatus = 'not_applied';
+  return error;
+}
+
+function readExistingMutationTarget(target) {
+  try {
+    const stat = fs.lstatSync(target);
+    if (stat.isSymbolicLink() || !stat.isFile()) {
+      throw new Error('指定路径不是普通文件。');
+    }
+    const bytes = fs.readFileSync(target);
+    try {
+      new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    } catch (error) {
+      if (error instanceof TypeError) {
+        throw new Error('现有文件不是有效 UTF-8 文本；未修改文件。');
+      }
+      throw error;
+    }
+    return bytes;
+  } catch (error) {
+    if (error?.code === 'ENOENT') return null;
+    throw error;
+  }
+}
+
+async function persistFileMutation({
+  workspacePath,
+  relative,
+  target,
+  beforeBytes,
+  afterBytes,
+  stepId,
+  fileChangeJournal,
+}) {
+  if (
+    !fileChangeJournal ||
+    typeof fileChangeJournal.prepare !== 'function' ||
+    typeof fileChangeJournal.complete !== 'function' ||
+    typeof stepId !== 'string'
+  ) {
+    const error = new Error(
+      '文件恢复记录不可用；为保护工作区，本次写入没有执行。',
+    );
+    error.code = 'workspace_file_change_store_unavailable';
+    error.effectStatus = 'not_applied';
+    throw error;
+  }
+  const normalizedPath = relative.replaceAll(path.sep, '/');
+  const diff = createWorkspaceFileDiff({
+    relativePath: normalizedPath,
+    beforeBytes,
+    afterBytes,
+  });
+  const afterHash = workspaceFileContentHash(afterBytes);
+  const prepared = await fileChangeJournal.prepare({
+    stepId,
+    relativePath: normalizedPath,
+    beforeBytes,
+    afterHash,
+    diffText: diff.text,
+    diffTruncated: diff.truncated,
+  });
+  const complete = async () => {
+    let actualHash = null;
+    try {
+      const stat = fs.lstatSync(target);
+      if (stat.isFile() && !stat.isSymbolicLink()) {
+        actualHash = workspaceFileContentHash(fs.readFileSync(target));
+      }
+    } catch {
+      actualHash = null;
+    }
+    return {
+      actualHash,
+      record: await fileChangeJournal.complete({
+        stepId,
+        changeId: prepared.changeId,
+        operationId: prepared.operationId,
+        actualHash,
+      }),
+    };
+  };
+
+  try {
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    resolveWorkspacePath(workspacePath, relative);
+    fs.writeFileSync(target, afterBytes);
+    const { actualHash, record } = await complete();
+    if (actualHash !== afterHash || record?.state !== 'applied') {
+      const error = new Error(
+        '文件写入结果无法与恢复记录核对；请先检查文件，不要重复提交。',
+      );
+      error.code = 'workspace_file_change_outcome_unknown';
+      error.effectStatus = 'unknown';
+      throw error;
+    }
+    return record;
+  } catch (error) {
+    if (error?.effectStatus === 'unknown') throw error;
+    let completion = null;
+    try {
+      completion = await complete();
+    } catch {
+      // Keep the durable pending journal for non-destructive recovery.
+    }
+    if (
+      completion?.actualHash === afterHash &&
+      completion.record?.state === 'applied'
+    ) {
+      return completion.record;
+    }
+    error.effectStatus =
+      completion?.record?.state === 'not_applied' ? 'not_applied' : 'unknown';
+    if (!error.code) error.code = 'workspace_file_change_write_failed';
+    throw error;
+  }
+}
+
+async function executeFileTool(
+  workspacePath,
+  name,
+  args,
+  {
+    signal,
+    workspaceIdentity,
+    workspaceFileBoundaryScanner = scanWorkspaceFileBoundary,
+    fileChangeJournal,
+    stepId,
+  } = {},
+) {
+  const boundary = await workspaceFileBoundaryScanner(workspacePath, {
+    expectedIdentity: workspaceIdentity,
+    signal,
+  });
+  if (!boundary.ok) throw fileBoundaryError(boundary.code);
+
   if (name === 'list_files') {
     const { target } = resolveWorkspacePath(workspacePath, args.path, {
       allowRoot: true,
@@ -611,20 +780,13 @@ function executeFileTool(workspacePath, name, args, { signal } = {}) {
     if (args.oldText === args.newText) {
       throw new Error('新旧文本相同，没有需要应用的修改。');
     }
-    const stat = fs.statSync(target);
-    if (!stat.isFile()) throw new Error('指定路径不是普通文件。');
-    if (stat.size > MAX_FILE_BYTES) throw new Error('文件超过 1 MB 编辑上限。');
-    let source;
-    try {
-      source = new TextDecoder('utf-8', { fatal: true }).decode(
-        fs.readFileSync(target),
-      );
-    } catch (error) {
-      if (error instanceof TypeError) {
-        throw new Error('文件不是有效 UTF-8 文本，未修改。');
-      }
-      throw error;
-    }
+    const beforeBytes = readExistingMutationTarget(target);
+    if (!beforeBytes) throw new Error('指定路径不是普通文件。');
+    if (beforeBytes.byteLength > MAX_FILE_BYTES)
+      throw new Error('文件超过 1 MB 编辑上限。');
+    const source = new TextDecoder('utf-8', { fatal: true }).decode(
+      beforeBytes,
+    );
     const matches = [];
     let offset = 0;
     while ((offset = source.indexOf(args.oldText, offset)) !== -1) {
@@ -647,12 +809,16 @@ function executeFileTool(workspacePath, name, args, { signal } = {}) {
     if (Buffer.byteLength(updated, 'utf8') > MAX_FILE_BYTES) {
       throw new Error('编辑后的文件超过 1 MB 上限；未修改文件。');
     }
-    try {
-      fs.writeFileSync(target, updated, { encoding: 'utf8' });
-    } catch (error) {
-      error.effectStatus = 'unknown';
-      throw error;
-    }
+    const afterBytes = Buffer.from(updated, 'utf8');
+    await persistFileMutation({
+      workspacePath,
+      relative: path.relative(workspacePath, target),
+      target,
+      beforeBytes,
+      afterBytes,
+      stepId,
+      fileChangeJournal,
+    });
     return {
       output: `已在工作区文件中完成一次精确替换（${Buffer.byteLength(updated, 'utf8')} 字节）。`,
       effectStatus: 'applied',
@@ -662,17 +828,26 @@ function executeFileTool(workspacePath, name, args, { signal } = {}) {
     throw new Error('文件内容无效或超过 500 KB 上限。');
   }
   const { target, relative } = resolveWorkspacePath(workspacePath, args.path);
-  let mutationStarted = false;
-  try {
-    mutationStarted = true;
-    fs.mkdirSync(path.dirname(target), { recursive: true });
-    // Re-check after directory creation so an existing junction cannot redirect the write.
-    resolveWorkspacePath(workspacePath, relative);
-    fs.writeFileSync(target, args.content, { encoding: 'utf8' });
-  } catch (error) {
-    error.effectStatus = mutationStarted ? 'unknown' : 'not_applied';
-    throw error;
+  const beforeBytes = readExistingMutationTarget(target);
+  if (beforeBytes && beforeBytes.byteLength > MAX_FILE_BYTES) {
+    throw new Error('文件超过 1 MB 写入上限；未修改文件。');
   }
+  const afterBytes = Buffer.from(args.content, 'utf8');
+  if (beforeBytes?.equals(afterBytes)) {
+    return {
+      output: `文件内容已经相同；没有改写 ${relative}。`,
+      effectStatus: 'not_applied',
+    };
+  }
+  await persistFileMutation({
+    workspacePath,
+    relative,
+    target,
+    beforeBytes,
+    afterBytes,
+    stepId,
+    fileChangeJournal,
+  });
   return {
     output: `已写入 ${relative}（${Buffer.byteLength(args.content, 'utf8')} 字节）。`,
     effectStatus: 'applied',
@@ -713,6 +888,9 @@ export class NoemaProjectExecutor {
    *   commandSupport?: {supported: boolean, reason?: string},
    *   authorizeAdditionalAccess?: (request: {command: string, path: string, access: 'read' | 'write', reason: string}) => Promise<boolean>,
    *   authorizeNetwork?: (request: {command: string, host: string, port: number}) => Promise<boolean>,
+   *   workspaceIdentityCapture?: (path: string) => {ok: boolean, identity?: any, code?: string},
+   *   workspaceFileBoundaryScanner?: typeof scanWorkspaceFileBoundary,
+   *   fileChangeJournal?: {prepare: (input: any) => Promise<any>, complete: (input: any) => Promise<any>} | null,
    * }} options
    */
   constructor({
@@ -726,6 +904,9 @@ export class NoemaProjectExecutor {
     ),
     authorizeAdditionalAccess = async (_request) => false,
     authorizeNetwork = async (_request) => false,
+    workspaceIdentityCapture = captureWorkspaceIdentity,
+    workspaceFileBoundaryScanner = scanWorkspaceFileBoundary,
+    fileChangeJournal = null,
   }) {
     if (!provider?.streamChat)
       throw new TypeError('Noema project executor needs a chat provider.');
@@ -740,6 +921,9 @@ export class NoemaProjectExecutor {
     this.commandSupport = commandSupport;
     this.authorizeAdditionalAccess = authorizeAdditionalAccess;
     this.authorizeNetwork = authorizeNetwork;
+    this.workspaceIdentityCapture = workspaceIdentityCapture;
+    this.workspaceFileBoundaryScanner = workspaceFileBoundaryScanner;
+    this.fileChangeJournal = fileChangeJournal;
   }
 
   async startTask({
@@ -747,13 +931,30 @@ export class NoemaProjectExecutor {
     task,
     model,
     taskId = randomUUID(),
+    executionId = taskId,
     usageInteractionId = taskId,
     onEvent = () => {},
     checkpoint = null,
+    workspaceIdentity = null,
+    fileChangeJournal = this.fileChangeJournal,
   }) {
-    const workspace = fs.realpathSync(workspacePath);
-    if (!fs.statSync(workspace).isDirectory())
+    const capturedWorkspace = this.workspaceIdentityCapture(workspacePath);
+    if (!capturedWorkspace?.ok || !capturedWorkspace.identity) {
       throw new Error('所选工作区不可用。');
+    }
+    if (
+      workspaceIdentity &&
+      (!isWorkspaceIdentity(workspaceIdentity) ||
+        !compareWorkspaceIdentities(
+          workspaceIdentity,
+          capturedWorkspace.identity,
+        ))
+    ) {
+      throw new Error('所选工作区身份已变化。');
+    }
+    const activeWorkspaceIdentity =
+      workspaceIdentity ?? capturedWorkspace.identity;
+    const workspace = capturedWorkspace.identity.canonicalPath;
     if (
       checkpoint &&
       (!['interrupted', 'failed'].includes(checkpoint.phase) ||
@@ -785,8 +986,12 @@ export class NoemaProjectExecutor {
               : '当前宿主没有通过 Noema 工作区权限边界验证的命令沙箱；文件读写工具仍可用，但不能运行系统命令。不要尝试无沙箱执行或通过其他工具绕过此限制。',
             'write_file 会完整替换目标文件。每次工具调用后检查结果，不要重复已成功的写入。出现工具错误时先处理错误；无法安全继续就如实结束。',
             '每段工具轮数有限。到达预算时只交接部分进度，不得声称任务已完成；最终用简体中文报告实际修改、运行的检查和未完成项，没有证据时不要声称通过。',
-            `所选工作区：${workspace}`,
           ].join('\n'),
+        },
+        // Keep the per-task workspace out of the reusable safety/tool prefix.
+        {
+          role: 'system',
+          content: `所选工作区：${workspace}`,
         },
         { role: 'user', content: task },
       ];
@@ -870,6 +1075,9 @@ export class NoemaProjectExecutor {
                 }
               : message,
           );
+          onEvent({ type: 'status', phase: 'model_request' });
+          let reportedModelResponse = false;
+          let reportedToolRequest = false;
           for await (const delta of this.provider.streamChat({
             model,
             messages: requestMessages,
@@ -885,6 +1093,10 @@ export class NoemaProjectExecutor {
                     (tool) => tool.function.name !== 'run_command',
                   ),
             onToolCalls: (next) => {
+              if (next.length && !reportedToolRequest) {
+                reportedToolRequest = true;
+                onEvent({ type: 'status', phase: 'tool_requested' });
+              }
               for (const call of next) {
                 receivedToolCallCount += 1;
                 batchArgumentCharacters += String(
@@ -893,8 +1105,17 @@ export class NoemaProjectExecutor {
                 if (receivedToolCallCount <= MAX_TOOL_CALLS) calls.push(call);
               }
             },
-          }))
+          })) {
+            if (
+              delta.length &&
+              !reportedModelResponse &&
+              !reportedToolRequest
+            ) {
+              reportedModelResponse = true;
+              onEvent({ type: 'status', phase: 'model_response' });
+            }
             responseText += delta;
+          }
           if (stopped || controller.signal.aborted) {
             return {
               status: 'interrupted',
@@ -1136,6 +1357,7 @@ export class NoemaProjectExecutor {
               onEvent({
                 type: 'tool-result',
                 stepId,
+                externalCallId: call.id,
                 status: 'error',
                 effectStatus: 'not_applied',
                 resultContent: toolContent,
@@ -1180,6 +1402,7 @@ export class NoemaProjectExecutor {
               onEvent({
                 type: 'tool-result',
                 stepId,
+                externalCallId: call.id,
                 status: 'error',
                 effectStatus: sideEffect ? 'not_applied' : 'none',
                 resultContent: toolContent,
@@ -1201,21 +1424,52 @@ export class NoemaProjectExecutor {
                 result = await this.commandRunner({
                   command: parsed.args.command,
                   workspacePath: workspace,
+                  requestId: stepId,
+                  executionId,
+                  taskId,
+                  toolCallId: call.id,
                   signal: controller.signal,
                   onChild: (child) => {
                     currentChild = child;
                   },
                   timeoutMs: this.commandTimeoutMs,
                   additionalAccess: parsed.args.additionalAccess ?? [],
-                  authorizeAdditionalAccess: this.authorizeAdditionalAccess,
-                  authorizeNetwork: this.authorizeNetwork,
+                  authorizeAdditionalAccess: async (request) => {
+                    onEvent({
+                      type: 'status',
+                      phase: 'awaiting_authorization',
+                    });
+                    try {
+                      return await this.authorizeAdditionalAccess(request);
+                    } finally {
+                      onEvent({ type: 'status', phase: 'tool_call' });
+                    }
+                  },
+                  authorizeNetwork: async (request) => {
+                    onEvent({
+                      type: 'status',
+                      phase: 'awaiting_authorization',
+                    });
+                    try {
+                      return await this.authorizeNetwork(request);
+                    } finally {
+                      onEvent({ type: 'status', phase: 'tool_call' });
+                    }
+                  },
                 });
               } else {
                 result = await executeFileTool(
                   workspace,
                   parsed.name,
                   parsed.args,
-                  { signal: controller.signal },
+                  {
+                    signal: controller.signal,
+                    workspaceIdentity: activeWorkspaceIdentity,
+                    workspaceFileBoundaryScanner:
+                      this.workspaceFileBoundaryScanner,
+                    fileChangeJournal,
+                    stepId,
+                  },
                 );
               }
               const interrupted = result.interrupted || stopped;
@@ -1223,6 +1477,7 @@ export class NoemaProjectExecutor {
                 onEvent({
                   type: 'tool-result',
                   stepId,
+                  externalCallId: call.id,
                   status: 'interrupted',
                   effectStatus: sideEffect ? 'unknown' : 'none',
                 });
@@ -1255,17 +1510,36 @@ export class NoemaProjectExecutor {
               onEvent({
                 type: 'tool-result',
                 stepId,
-                status: result.timedOut ? 'error' : 'completed',
+                externalCallId: call.id,
+                status:
+                  result.timedOut || result.effectStatus === 'unknown'
+                    ? 'error'
+                    : 'completed',
                 effectStatus: sideEffect ? result.effectStatus : 'none',
                 resultContent: toolContent,
                 checkpoint: checkpointForTool(),
               });
+              if (
+                parsed.name === 'run_command' &&
+                (result.timedOut || result.effectStatus === 'unknown')
+              ) {
+                return {
+                  status: 'failed',
+                  errorCode: 'command_outcome_unknown',
+                  errorMessage:
+                    '命令超时或清理状态未知，任务已停止；请先检查工作区和进程状态，再手动决定是否重新提交。',
+                  sessionId,
+                  result: finalText,
+                  toolCallCount: callCount,
+                };
+              }
             } catch (error) {
               const interrupted = stopped || controller.signal.aborted;
               if (interrupted) {
                 onEvent({
                   type: 'tool-result',
                   stepId,
+                  externalCallId: call.id,
                   status: 'interrupted',
                   effectStatus: sideEffect
                     ? (error?.effectStatus ?? 'unknown')
@@ -1293,13 +1567,33 @@ export class NoemaProjectExecutor {
               onEvent({
                 type: 'tool-result',
                 stepId,
+                externalCallId: call.id,
                 status: 'error',
+                reasonCode:
+                  typeof error?.code === 'string' &&
+                  /^workspace_[a-z0-9_]{1,60}$/u.test(error.code)
+                    ? error.code
+                    : undefined,
                 effectStatus: sideEffect
                   ? (error?.effectStatus ?? 'not_applied')
                   : 'none',
                 resultContent: toolContent,
                 checkpoint: checkpointForTool(),
               });
+              if (
+                parsed.name === 'run_command' &&
+                error?.effectStatus === 'unknown'
+              ) {
+                return {
+                  status: 'failed',
+                  errorCode: 'command_outcome_unknown',
+                  errorMessage:
+                    '命令副作用或进程清理状态未知，任务已停止；请先检查工作区和进程状态，再手动决定是否重新提交。',
+                  sessionId,
+                  result: finalText,
+                  toolCallCount: callCount,
+                };
+              }
               if (error?.code === 'command_sandbox_unavailable') {
                 return {
                   status: 'failed',

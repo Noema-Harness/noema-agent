@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 const DEFAULT_MODEL_BASE_URL = 'https://api.deepseek.com/v1';
 // Keep routine turns within a modest output budget; callers may
 // explicitly raise it for work that needs a longer response.
@@ -154,13 +156,14 @@ export function normalizeBaseUrl(value) {
 }
 
 export class OpenAICompatibleClient {
-  /** @param {{baseUrl?:string,getApiKey:()=>string|null,fetchImpl?:typeof fetch,legacyFreeRouteMode?:boolean,onUsage?:(usage:Record<string,unknown>)=>void}} options */
+  /** @param {{baseUrl?:string,getApiKey:()=>string|null,fetchImpl?:typeof fetch,legacyFreeRouteMode?:boolean,onUsage?:(usage:Record<string,unknown>)=>void,onRequestEvent?:(event:Record<string,unknown>)=>void}} options */
   constructor({
     baseUrl = DEFAULT_MODEL_BASE_URL,
     getApiKey,
     fetchImpl = fetch,
     legacyFreeRouteMode = false,
     onUsage = () => {},
+    onRequestEvent = () => {},
   }) {
     if (typeof getApiKey !== 'function') {
       throw new TypeError('The model provider requires an API key provider');
@@ -170,6 +173,8 @@ export class OpenAICompatibleClient {
     this.fetch = fetchImpl;
     this.legacyFreeRouteMode = legacyFreeRouteMode === true;
     this.onUsage = typeof onUsage === 'function' ? onUsage : () => {};
+    this.onRequestEvent =
+      typeof onRequestEvent === 'function' ? onRequestEvent : () => {};
   }
 
   setBaseUrl(baseUrl) {
@@ -265,7 +270,7 @@ export class OpenAICompatibleClient {
 
   /**
    * Streams text deltas from an OpenAI-compatible chat endpoint.
-   * @param {{model:string,messages:Array<object>,signal:AbortSignal,maxTokens?:number,tools?:Array<object>,toolChoice?:string|object,onToolCalls?:(calls:Array<object>)=>void,onRouteMetadata?:(route:string|null)=>void,toolCallCorrectionAttempt?:boolean,usageOperation?:string,usageInteractionId?:string|null}} input
+   * @param {{model:string,messages:Array<object>,signal:AbortSignal,maxTokens?:number,tools?:Array<object>,toolChoice?:string|object,onToolCalls?:(calls:Array<object>)=>void,onRouteMetadata?:(route:string|null)=>void,toolCallCorrectionAttempt?:boolean,usageOperation?:string,usageInteractionId?:string|null,usageExecutionId?:string|null,usageTurnId?:string|null}} input
    * @returns {AsyncGenerator<string,void,void>}
    */
   async *streamChat({
@@ -280,6 +285,8 @@ export class OpenAICompatibleClient {
     toolCallCorrectionAttempt = false,
     usageOperation = 'unspecified',
     usageInteractionId = null,
+    usageExecutionId = null,
+    usageTurnId = null,
   }) {
     const key = this.requireApiKey();
     const useBufferedRouterResponse =
@@ -287,6 +294,17 @@ export class OpenAICompatibleClient {
       VERIFIED_FREE_MODELS.get(model)?.routeKind === 'router';
     const providerHost = new URL(this.baseUrl).hostname;
     const requestMetadata = {
+      requestId: randomUUID(),
+      executionId:
+        typeof usageExecutionId === 'string' && usageExecutionId.trim()
+          ? usageExecutionId.trim().slice(0, 120)
+          : typeof usageInteractionId === 'string' && usageInteractionId.trim()
+            ? usageInteractionId.trim().slice(0, 120)
+            : null,
+      turnId:
+        typeof usageTurnId === 'string' && usageTurnId.trim()
+          ? usageTurnId.trim().slice(0, 120)
+          : null,
       model,
       providerHost,
       operation: normalizeUsageOperation(usageOperation),
@@ -296,22 +314,53 @@ export class OpenAICompatibleClient {
           : null,
       requestStatus: 'completed',
       requestCharacters: safeJsonLength(messages),
+      messageRoleCharacters: measureMessageRoleCharacters(messages),
       toolDefinitionCharacters: Array.isArray(tools)
         ? safeJsonLength(tools)
         : 0,
       messageCount: messages.length,
       toolCount: Array.isArray(tools) ? tools.length : 0,
     };
+    const startedAt = Date.now();
+    let firstOutputReported = false;
+    const emitRequestEvent = (phase, status, requestStatus = status) => {
+      try {
+        this.onRequestEvent({
+          requestId: requestMetadata.requestId,
+          executionId: requestMetadata.executionId,
+          turnId: requestMetadata.turnId,
+          interactionId: requestMetadata.interactionId,
+          operation: requestMetadata.operation,
+          phase,
+          status,
+          requestStatus,
+          elapsedMs: Math.max(0, Date.now() - startedAt),
+        });
+      } catch {
+        // Diagnostics must never change provider request or tool behavior.
+      }
+    };
+    const reportFirstOutput = () => {
+      if (firstOutputReported) return;
+      firstOutputReported = true;
+      emitRequestEvent('first_output', 'running', 'running');
+    };
     let usageReported = false;
     const recordUsage = (status, usage) => {
       if (usageReported) return;
       usageReported = true;
+      const usageReceived = normalizeProviderUsage(usage).usageReceived;
+      if (!usageReceived) {
+        emitRequestEvent('usage_missing', 'unknown', status);
+      }
+      emitRequestEvent(status, status, status);
       reportUsage(
         this.onUsage,
         { ...requestMetadata, requestStatus: status },
         usage,
       );
     };
+    emitRequestEvent('started', 'running', 'running');
     let response;
     try {
       response = await this.fetch(`${this.baseUrl}/chat/completions`, {
@@ -398,10 +447,18 @@ export class OpenAICompatibleClient {
           '模型服务未能完成请求。可以稍后重试或切换模型。',
         );
       }
-      recordUsage('completed', body?.usage);
       const choice = body?.choices?.[0];
       const text = extractMessageText(choice?.message);
       const calls = choice?.message?.tool_calls;
+      if (!text && (!Array.isArray(calls) || calls.length === 0)) {
+        recordUsage('failed', body?.usage);
+        throw new ModelProviderError(
+          'empty_reply',
+          '模型没有返回文字或工具调用。消息已保留，可以重试。',
+        );
+      }
+      reportFirstOutput();
+      recordUsage('completed', body?.usage);
       if (Array.isArray(calls) && calls.length) {
         let finalizedCalls;
         try {
@@ -427,6 +484,8 @@ export class OpenAICompatibleClient {
               toolCallCorrectionAttempt: true,
               usageOperation,
               usageInteractionId,
+              usageExecutionId,
+              usageTurnId,
             });
             return;
           }
@@ -435,12 +494,6 @@ export class OpenAICompatibleClient {
         onToolCalls(finalizedCalls);
       }
       if (text) yield text;
-      if (!text && (!Array.isArray(calls) || calls.length === 0)) {
-        throw new ModelProviderError(
-          'empty_reply',
-          '模型没有返回文字或工具调用。消息已保留，可以重试。',
-        );
-      }
       return;
     }
 
@@ -479,6 +532,13 @@ export class OpenAICompatibleClient {
             finalUsage = payload.usage;
           }
           const text = extractTextDelta(payload);
+          if (
+            text ||
+            (Array.isArray(payload?.choices?.[0]?.delta?.tool_calls) &&
+              payload.choices[0].delta.tool_calls.length > 0)
+          ) {
+            reportFirstOutput();
+          }
           if (text) {
             responseText += text;
             yield text;
@@ -498,6 +558,13 @@ export class OpenAICompatibleClient {
             finalUsage = payload.usage;
           }
           const text = extractTextDelta(payload);
+          if (
+            text ||
+            (Array.isArray(payload?.choices?.[0]?.delta?.tool_calls) &&
+              payload.choices[0].delta.tool_calls.length > 0)
+          ) {
+            reportFirstOutput();
+          }
           if (text) {
             responseText += text;
             yield text;
@@ -589,6 +656,8 @@ export class OpenAICompatibleClient {
         toolCallCorrectionAttempt: true,
         usageOperation,
         usageInteractionId,
+        usageExecutionId,
+        usageTurnId,
       });
     }
   }
@@ -648,6 +717,31 @@ function safeJsonLength(value) {
   } catch {
     return null;
   }
+}
+
+const MESSAGE_SHAPE_ROLES = [
+  'system',
+  'developer',
+  'user',
+  'assistant',
+  'tool',
+  'other',
+];
+
+function measureMessageRoleCharacters(messages) {
+  if (!Array.isArray(messages)) return null;
+  const counts = Object.fromEntries(
+    MESSAGE_SHAPE_ROLES.map((role) => [role, 0]),
+  );
+  for (const message of messages) {
+    const length = safeJsonLength(message);
+    if (length === null) return null;
+    const role = MESSAGE_SHAPE_ROLES.includes(message?.role)
+      ? message.role
+      : 'other';
+    counts[role] += length;
+  }
+  return counts;
 }
 
 function nonNegativeInteger(value) {

@@ -12,6 +12,9 @@ test('stores only usage metadata and reports cache hit rate by request operation
       model: 'deepseek-flash',
       operation: 'root_chat',
       interactionId: 'turn-1',
+      requestId: 'request-1',
+      executionId: 'execution-1',
+      turnId: 'turn-1',
       usageReceived: true,
       inputTokens: 100,
       outputTokens: 20,
@@ -21,6 +24,14 @@ test('stores only usage metadata and reports cache hit rate by request operation
       reasoningTokens: 4,
       providerCost: { total: 0.001 },
       requestCharacters: 4_000,
+      messageRoleCharacters: {
+        system: 1_200,
+        developer: 0,
+        user: 500,
+        assistant: 1_100,
+        tool: 1_000,
+        other: 0,
+      },
       toolDefinitionCharacters: 2_100,
       messageCount: 9,
       toolCount: 2,
@@ -28,6 +39,9 @@ test('stores only usage metadata and reports cache hit rate by request operation
 
     assert.equal(record.operation, 'root_chat');
     assert.equal(record.interactionId, 'turn-1');
+    assert.equal(record.requestId, 'request-1');
+    assert.equal(record.executionId, 'execution-1');
+    assert.equal(record.turnId, 'turn-1');
     const rows = db.prepare('SELECT * FROM model_usage_records').all();
     assert.equal(rows.length, 1);
     assert.equal(rows[0].tool_definition_characters, 2_100);
@@ -45,7 +59,18 @@ test('stores only usage metadata and reports cache hit rate by request operation
     assert.equal(summary.cacheHitRate, 0.64);
     assert.equal(store.getRecent()[0].providerCost.total, 0.001);
     assert.equal(store.getRecent()[0].toolDefinitionCharacters, 2_100);
+    assert.deepEqual(store.getRecent()[0].messageRoleCharacters, {
+      system: 1_200,
+      developer: 0,
+      user: 500,
+      assistant: 1_100,
+      tool: 1_000,
+      other: 0,
+    });
     assert.equal(store.getRecent()[0].interactionId, 'turn-1');
+    assert.equal(store.getRecent()[0].requestId, 'request-1');
+    assert.equal(store.getRecent()[0].executionId, 'execution-1');
+    assert.equal(store.getRecent()[0].turnId, 'turn-1');
     assert.equal(store.getInteractionSummary()[0].interactionId, 'turn-1');
   } finally {
     db.close();
@@ -79,11 +104,91 @@ test('preserves missing and invalid usage as unknown rather than zero', () => {
     assert.equal(row.cachedInputTokens, null);
     assert.equal(row.cacheMissTokens, null);
     assert.equal(row.cacheWriteTokens, null);
+    assert.equal(row.messageRoleCharacters, null);
     const [summary] = store.getSummary();
     assert.equal(summary.cacheHitRate, null);
     assert.equal(summary.cachedInputTokens, null);
     assert.equal(summary.cacheBreakdownRequests, 0);
     assert.equal(summary.failedRequests, 1);
+  } finally {
+    db.close();
+  }
+});
+
+test('rejects arbitrary message role keys and treats malformed stored shape as unknown', () => {
+  const db = new Database(':memory:');
+  try {
+    const store = new ModelUsageStore(db);
+    store.record({
+      requestId: 'role-shape-unsafe',
+      executionId: 'role-shape-execution',
+      requestCharacters: 30,
+      messageRoleCharacters: {
+        system: 0,
+        developer: 0,
+        user: 0,
+        assistant: 0,
+        tool: 0,
+        other: 0,
+        'private-role-name': 30,
+      },
+    });
+    assert.equal(store.getRecent()[0].messageRoleCharacters, null);
+    db.prepare(
+      `UPDATE model_usage_records
+       SET message_role_characters_json = ? WHERE request_id = ?`,
+    ).run('{"private-role-name":30}', 'role-shape-unsafe');
+    assert.equal(
+      store.getForDiagnostics({ executionId: 'role-shape-execution' })[0]
+        .messageRoleCharacters,
+      null,
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test('adds nullable role-shape storage to an existing usage database', () => {
+  const db = new Database(':memory:');
+  try {
+    const original = new ModelUsageStore(db);
+    original.record({
+      requestId: 'before-upgrade',
+      executionId: 'migration-execution',
+      requestCharacters: 20,
+      messageCount: 1,
+      toolCount: 0,
+    });
+    db.exec(
+      'ALTER TABLE model_usage_records DROP COLUMN message_role_characters_json',
+    );
+
+    const upgraded = new ModelUsageStore(db);
+    upgraded.record({
+      requestId: 'after-upgrade',
+      executionId: 'migration-execution',
+      requestCharacters: 22,
+      messageRoleCharacters: {
+        system: 10,
+        developer: 0,
+        user: 12,
+        assistant: 0,
+        tool: 0,
+        other: 0,
+      },
+    });
+    const rows = upgraded.getForDiagnostics({
+      executionId: 'migration-execution',
+    });
+    assert.equal(rows[0].messageRoleCharacters, null);
+    assert.deepEqual(rows[1].messageRoleCharacters, {
+      system: 10,
+      developer: 0,
+      user: 12,
+      assistant: 0,
+      tool: 0,
+      other: 0,
+    });
   } finally {
     db.close();
   }
@@ -184,6 +289,16 @@ test('adds the cache-write bucket to an existing usage table without losing rows
         .some((column) => column.name === 'tool_definition_characters'),
       true,
     );
+    const migratedRow = db
+      .prepare(
+        'SELECT request_id, execution_id, turn_id FROM model_usage_records WHERE id = ?',
+      )
+      .get('existing');
+    assert.deepEqual(migratedRow, {
+      request_id: null,
+      execution_id: null,
+      turn_id: null,
+    });
     assert.equal(
       db
         .prepare('PRAGMA table_info(model_usage_records)')
@@ -332,6 +447,46 @@ test('groups related provider calls into one interaction summary', () => {
     assert.equal(background.outcomeKind, 'background_task');
     assert.equal(background.outcomeStatus, 'completed');
     assert.equal(background.noemaResponseStatus, 'failed');
+  } finally {
+    db.close();
+  }
+});
+
+test('diagnostics usage lookup joins only stable request and execution identities', () => {
+  const db = new Database(':memory:');
+  try {
+    const store = new ModelUsageStore(db);
+    store.record({
+      requestId: 'req-visible',
+      executionId: 'execution-visible',
+      turnId: 'turn-visible',
+      interactionId: 'legacy-message-id',
+      model: 'model-a',
+      operation: 'social_turn',
+      requestStatus: 'completed',
+      usageReceived: true,
+      inputTokens: 81,
+      outputTokens: 13,
+    });
+    store.record({
+      interactionId: 'unlinked-old-row',
+      model: 'model-a',
+      operation: 'social_turn',
+      usageReceived: true,
+      inputTokens: 999,
+    });
+
+    assert.equal(
+      store.getForDiagnostics({ requestIds: ['req-visible'] })[0].inputTokens,
+      81,
+    );
+    assert.deepEqual(
+      store
+        .getForDiagnostics({ executionId: 'execution-visible' })
+        .map((row) => row.requestId),
+      ['req-visible'],
+    );
+    assert.deepEqual(store.getForDiagnostics({ executionId: 'no-match' }), []);
   } finally {
     db.close();
   }

@@ -4,6 +4,7 @@ import test from 'node:test';
 import Database from 'better-sqlite3';
 import { RootStore } from '../../../src/main/storage/root-store.mjs';
 import { SocialChatStore } from '../../../src/main/chat/social-chat-store.mjs';
+import { SOCIAL_SCHEMA_VERSION } from '../../../src/main/chat/social-chat-schema.mjs';
 
 function makeStores() {
   const db = new Database(':memory:');
@@ -50,55 +51,18 @@ test('a fresh installation starts with only the real Noema conversation', () => 
   }
 });
 
-test('provider runtime migration preserves old gateway records and marks new turns generically', () => {
+test('provider runtime preserves gateway records and marks new turns generically', () => {
   const { db } = makeStores();
   const now = new Date().toISOString();
   try {
-    const originalSchema = db
-      .prepare(
-        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'social_messages'",
-      )
-      .get().sql;
-    const legacySchema = originalSchema
-      .replace(
-        'CREATE TABLE "social_messages"',
-        'CREATE TABLE social_messages_v26',
-      )
-      .replace(
-        "runtime IN ('provider', 'freellmapi', 'local', 'system')",
-        "runtime IN ('freellmapi', 'local', 'system')",
-      );
-    assert.notEqual(legacySchema, originalSchema);
+    db.prepare(`
+      INSERT INTO social_messages
+        (id, room_id, turn_id, role, content, status, runtime, created_at, updated_at)
+      VALUES ('legacy-gateway-message', 'room-noema', 'legacy-turn', 'user',
+              '旧路由记录', 'complete', 'freellmapi', ?, ?)
+    `).run(now, now);
 
-    const columns = db
-      .pragma('table_info(social_messages)')
-      .map(({ name }) => name)
-      .join(', ');
-    db.pragma('foreign_keys = OFF');
-    try {
-      db.transaction(() => {
-        db.exec(legacySchema);
-        db.exec(`
-          INSERT INTO social_messages_v26 (${columns})
-          SELECT ${columns} FROM social_messages;
-          DROP TABLE social_messages;
-          ALTER TABLE social_messages_v26 RENAME TO social_messages;
-          CREATE INDEX social_messages_room_order ON social_messages(room_id, seq);
-          CREATE INDEX social_messages_turn_attempt ON social_messages(turn_id, attempt, role);
-          DELETE FROM social_schema_migrations WHERE version = 27;
-        `);
-        db.prepare(`
-          INSERT INTO social_messages
-            (id, room_id, turn_id, role, content, status, runtime, created_at, updated_at)
-          VALUES ('legacy-gateway-message', 'room-noema', 'legacy-turn', 'user',
-                  '旧路由记录', 'complete', 'freellmapi', ?, ?)
-        `).run(now, now);
-      })();
-    } finally {
-      db.pragma('foreign_keys = ON');
-    }
-
-    const upgraded = new SocialChatStore(db);
+    const store = new SocialChatStore(db);
     assert.equal(
       db
         .prepare(
@@ -107,7 +71,7 @@ test('provider runtime migration preserves old gateway records and marks new tur
         .get().runtime,
       'freellmapi',
     );
-    const turn = upgraded.beginTurn({
+    const turn = store.beginTurn({
       roomId: 'room-noema',
       agentId: 'noema',
       text: '新模型服务下的对话',
@@ -178,7 +142,7 @@ test('an explicit team fixture keeps one agent across independent rooms', () => 
       db
         .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
         .get().version,
-      27,
+      SOCIAL_SCHEMA_VERSION,
     );
   } finally {
     db.close();
@@ -589,7 +553,7 @@ test('Noema history recall searches only its private room lineage and deletes so
   }
 });
 
-test('an app restart interrupts a running social project task without replaying it', () => {
+test('unexpected process loss interrupts active work but preserves terminal outcomes', () => {
   const { db, social } = makeStores();
   try {
     social.createSocialWorkTask({
@@ -604,12 +568,258 @@ test('an app restart interrupts a running social project task without replaying 
     social.setSocialWorkTaskSession('task-restart', 'session-restart');
     assert.equal(social.getSocialWorkTask('task-restart').status, 'running');
 
-    new SocialChatStore(db);
+    const terminalFixtures = [
+      {
+        id: 'task-restart-completed',
+        status: 'completed',
+        resultText: '完成结果应保留。',
+        errorCode: null,
+      },
+      {
+        id: 'task-restart-failed',
+        status: 'failed',
+        resultText: '失败前已保存的部分结果。',
+        errorCode: 'verification_failed',
+      },
+      {
+        id: 'task-restart-interrupted',
+        status: 'interrupted',
+        resultText: '用户停止后的结果。',
+        errorCode: 'worker_interrupted',
+      },
+    ];
+    for (const fixture of terminalFixtures) {
+      social.createSocialWorkTask({
+        id: fixture.id,
+        roomId: 'room-engineering-partner',
+        agentId: 'engineering-partner',
+        workspacePath: `C:\\scratch\\${fixture.id}`,
+        workspaceKey: `c:\\scratch\\${fixture.id}`,
+        taskPrompt: '重开 store 不得改写既有终态。',
+        model: 'auto:noema-free',
+      });
+      social.finishSocialWorkTask(fixture.id, {
+        status: fixture.status,
+        resultText: fixture.resultText,
+        errorCode: fixture.errorCode,
+      });
+    }
+
+    const recoveredStore = new SocialChatStore(db);
+    assert.deepEqual(recoveredStore.recoveredSocialWorkTaskIds, [
+      'task-restart',
+    ]);
 
     const task = social.getSocialWorkTask('task-restart');
     assert.equal(task.status, 'interrupted');
     assert.equal(task.runtimeSessionId, 'session-restart');
-    assert.equal(task.errorCode, 'app_restarted');
+    assert.equal(task.errorCode, 'process_crash');
+    for (const fixture of terminalFixtures) {
+      const preserved = social.getSocialWorkTask(fixture.id);
+      assert.equal(preserved.status, fixture.status);
+      assert.equal(preserved.resultText, fixture.resultText);
+      assert.equal(preserved.errorCode, fixture.errorCode);
+    }
+  } finally {
+    db.close();
+  }
+});
+
+test('persisted progress phases survive session binding and unknown phase writes normalize safely', () => {
+  const { db, social } = makeStores();
+  try {
+    social.createSocialWorkTask({
+      id: 'task-progress-phase',
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      workspacePath: 'C:\\scratch\\project',
+      workspaceKey: 'c:\\scratch\\project',
+      taskPrompt: '阶段只由持久任务记录承载。',
+      model: 'test-model',
+    });
+    social.updateSocialWorkTaskProgress('task-progress-phase', {
+      phase: 'model_request',
+    });
+    social.setSocialWorkTaskSession('task-progress-phase', 'session-progress');
+    assert.equal(
+      social.getSocialWorkTask('task-progress-phase').phase,
+      'model_request',
+    );
+    assert.equal(
+      social
+        .getRoomSnapshot('room-engineering-partner')
+        .workTasks.find((task) => task.id === 'task-progress-phase').phase,
+      'model_request',
+    );
+    social.updateSocialWorkTaskProgress('task-progress-phase', {
+      phase: 'obsolete-private-phase-name',
+    });
+    assert.equal(
+      social.getSocialWorkTask('task-progress-phase').phase,
+      'unknown',
+    );
+    social.updateSocialWorkTaskProgress('task-progress-phase', {
+      phase: 'working',
+    });
+    assert.equal(
+      social.getSocialWorkTask('task-progress-phase').phase,
+      'running',
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test('system shutdown recovery preserves its reason and marks active effects unknown', () => {
+  const { db, social } = makeStores();
+  try {
+    social.createSocialWorkTask({
+      id: 'task-system-shutdown',
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      workspacePath: 'C:\\scratch\\system-shutdown',
+      workspaceKey: 'c:\\scratch\\system-shutdown',
+      taskPrompt: '关机时不要自动重放命令。',
+      model: 'auto:noema-free',
+    });
+    social.setSocialWorkTaskSession('task-system-shutdown', 'session-shutdown');
+    social.startSocialWorkExecutionStep('task-system-shutdown', {
+      id: 'step-system-command',
+      toolName: 'run_command',
+      category: 'command',
+      hasSideEffect: true,
+    });
+    social.recordApplicationShutdownIntent('system_shutdown');
+
+    const recoveredStore = new SocialChatStore(db);
+    assert.deepEqual(recoveredStore.recoveredSocialWorkTaskIds, [
+      'task-system-shutdown',
+    ]);
+    assert.equal(
+      recoveredStore.recoveredSocialWorkTaskErrorCode,
+      'system_shutdown_incomplete',
+    );
+    const task = recoveredStore.getSocialWorkTask('task-system-shutdown');
+    assert.equal(task.status, 'interrupted');
+    assert.equal(task.errorCode, 'system_shutdown_incomplete');
+    assert.equal(task.canResume, false);
+    assert.deepEqual(
+      recoveredStore
+        .listSocialWorkExecutionSteps('task-system-shutdown')
+        .map(({ status, effectStatus }) => ({ status, effectStatus })),
+      [{ status: 'outcome_unknown', effectStatus: 'unknown' }],
+    );
+    assert.equal(
+      db
+        .prepare('SELECT COUNT(*) AS count FROM application_shutdown_intent')
+        .get().count,
+      0,
+    );
+
+    recoveredStore.createSocialWorkTask({
+      id: 'task-application-exit',
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      workspacePath: 'C:\\scratch\\application-exit',
+      workspaceKey: 'c:\\scratch\\application-exit',
+      taskPrompt: '应用退出未完成时保留退出原因。',
+      model: 'auto:noema-free',
+    });
+    recoveredStore.setSocialWorkTaskSession(
+      'task-application-exit',
+      'session-application-exit',
+    );
+    recoveredStore.recordApplicationShutdownIntent('application_exit');
+    const recoveredExit = new SocialChatStore(db);
+    assert.equal(
+      recoveredExit.getSocialWorkTask('task-application-exit').errorCode,
+      'application_exit_incomplete',
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test('a DSH task cannot resume through the Noema checkpoint state machine', () => {
+  const { db, social } = makeStores();
+  try {
+    social.createSocialWorkTask({
+      id: 'task-dsh-noema-resume',
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      workspacePath: 'C:\\scratch\\legacy-dsh',
+      workspaceKey: 'c:\\scratch\\legacy-dsh',
+      taskPrompt: '旧 DSH task 不得假装拥有 Noema checkpoint。',
+      model: 'auto:noema-free',
+    });
+    social.setSocialWorkTaskSession('task-dsh-noema-resume', 'session-dsh');
+    social.saveSocialWorkRuntimeCheckpoint('task-dsh-noema-resume', {
+      messages: [
+        { role: 'system', content: 'system' },
+        { role: 'user', content: 'task' },
+      ],
+      round: 0,
+      toolCallCount: 0,
+      phase: 'ready_for_model',
+    });
+    social.finishSocialWorkTask('task-dsh-noema-resume', {
+      status: 'failed',
+      errorCode: 'provider_unavailable',
+      errorMessage: '服务不可用。',
+    });
+
+    const task = social.getSocialWorkTask('task-dsh-noema-resume');
+    assert.equal(task.executionEngine, 'dsh');
+    assert.equal(task.canResume, false);
+    assert.throws(
+      () => social.resumeSocialWorkTask(task.id),
+      /当前不能从检查点继续/u,
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test('project-result task metadata is persisted through SocialChatStore APIs', () => {
+  const { db, social } = makeStores();
+  try {
+    social.createSocialWorkTask({
+      id: 'task-project-result-owner',
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      workspacePath: 'C:\\scratch\\project-result',
+      workspaceKey: 'c:\\scratch\\project-result',
+      taskPrompt: '验证项目结果状态写入归属。',
+      model: 'auto:noema-free',
+    });
+
+    assert.equal(
+      social.trackSocialWorkProjectResult({
+        taskId: 'task-project-result-owner',
+        roomId: 'room-engineering-partner',
+        agentId: 'engineering-partner',
+        planItemId: 'plan-item-1',
+      }),
+      1,
+    );
+    let row = db
+      .prepare(`SELECT project_plan_item_id, project_result_pending
+        FROM social_work_tasks WHERE id = ?`)
+      .get('task-project-result-owner');
+    assert.equal(row.project_plan_item_id, 'plan-item-1');
+    assert.equal(row.project_result_pending, 1);
+
+    social.finishSocialWorkTask('task-project-result-owner', {
+      status: 'interrupted',
+      errorCode: 'worker_interrupted',
+    });
+    assert.equal(social.clearInterruptedSocialWorkProjectResults(), 1);
+    row = db
+      .prepare(
+        'SELECT project_result_pending FROM social_work_tasks WHERE id = ?',
+      )
+      .get('task-project-result-owner');
+    assert.equal(row.project_result_pending, 0);
   } finally {
     db.close();
   }
@@ -624,6 +834,12 @@ test('only a model-boundary Noema checkpoint can be explicitly resumed', () => {
       agentId: 'engineering-partner',
       workspacePath: 'C:\\scratch\\project',
       workspaceKey: 'c:\\scratch\\project',
+      workspaceIdentity: {
+        version: 1,
+        canonicalPath: 'C:\\scratch\\project',
+        device: '7',
+        fileIndex: '42',
+      },
       taskPrompt: '继续已保存的模型轮次。',
       model: 'auto:noema-free',
       executionEngine: 'noema',
@@ -656,6 +872,53 @@ test('only a model-boundary Noema checkpoint can be explicitly resumed', () => {
   }
 });
 
+test('legacy resumable work without a workspace identity remains visible but blocked', () => {
+  const { db, social } = makeStores();
+  try {
+    social.createSocialWorkTask({
+      id: 'task-legacy-workspace-identity',
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      workspacePath: 'C:\\scratch\\project',
+      workspaceKey: 'c:\\scratch\\project',
+      taskPrompt: '旧版本工作区任务。',
+      model: 'test-model',
+      executionEngine: 'noema',
+    });
+    social.setSocialWorkTaskSession(
+      'task-legacy-workspace-identity',
+      'session-legacy-workspace',
+    );
+    social.saveSocialWorkRuntimeCheckpoint('task-legacy-workspace-identity', {
+      messages: [
+        { role: 'system', content: 'system' },
+        { role: 'user', content: 'task' },
+      ],
+      round: 0,
+      toolCallCount: 0,
+      phase: 'failed',
+      resumePhase: 'ready_for_model',
+    });
+    social.finishSocialWorkTask('task-legacy-workspace-identity', {
+      status: 'failed',
+      errorCode: 'provider_unavailable',
+      errorMessage: '暂时无法连接。',
+      toolCallCount: 0,
+    });
+
+    const task = social.getSocialWorkTask('task-legacy-workspace-identity');
+    assert.equal(task.status, 'failed');
+    assert.equal(task.canResume, false);
+    assert.match(task.resumeBlockReason, /没有工作区身份快照/u);
+    assert.throws(
+      () => social.resumeSocialWorkTask('task-legacy-workspace-identity'),
+      /检查工作区后重新提交/u,
+    );
+  } finally {
+    db.close();
+  }
+});
+
 test('a legacy round-limit task resumes only from a complete saved tool boundary', () => {
   const { db, social } = makeStores();
   try {
@@ -665,6 +928,12 @@ test('a legacy round-limit task resumes only from a complete saved tool boundary
       agentId: 'engineering-partner',
       workspacePath: 'C:\\scratch\\project',
       workspaceKey: 'c:\\scratch\\project',
+      workspaceIdentity: {
+        version: 1,
+        canonicalPath: 'C:\\scratch\\project',
+        device: '7',
+        fileIndex: '42',
+      },
       taskPrompt: '继续检查已完成的多步项目工作。',
       model: 'test-model',
       executionEngine: 'noema',
@@ -793,6 +1062,68 @@ test('an oversized-response checkpoint cannot resume with an unresolved write', 
     assert.throws(
       () => social.resumeSocialWorkTask('task-provider-failure-unknown-write'),
       /不满足安全续接条件/u,
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test('unknown command outcome cannot resume from a ready model checkpoint', () => {
+  const { db, social } = makeStores();
+  try {
+    social.createSocialWorkTask({
+      id: 'task-command-outcome-unknown',
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      workspacePath: 'C:\\scratch\\project',
+      workspaceKey: 'c:\\scratch\\project',
+      taskPrompt: '不要自动重放结果未知的命令。',
+      model: 'test-model',
+      executionEngine: 'noema',
+    });
+    social.setSocialWorkTaskSession(
+      'task-command-outcome-unknown',
+      'session-command-outcome-unknown',
+    );
+    social.startSocialWorkExecutionStep('task-command-outcome-unknown', {
+      id: 'unknown-command',
+      externalCallId: 'command-call',
+      arguments: JSON.stringify({ command: 'npm test' }),
+      toolName: 'run_command',
+      category: 'command',
+      hasSideEffect: true,
+    });
+    social.finishSocialWorkExecutionStep(
+      'task-command-outcome-unknown',
+      'unknown-command',
+      {
+        status: 'failed',
+        effectStatus: 'unknown',
+        resultContent: JSON.stringify({ error: '命令结果未知。' }),
+      },
+    );
+    social.saveSocialWorkRuntimeCheckpoint('task-command-outcome-unknown', {
+      messages: [{ role: 'user', content: 'task' }],
+      round: 1,
+      toolCallCount: 1,
+      phase: 'ready_for_model',
+      resumePhase: 'ready_for_model',
+    });
+    social.finishSocialWorkTask('task-command-outcome-unknown', {
+      status: 'failed',
+      runtimeSessionId: 'session-command-outcome-unknown',
+      errorCode: 'command_outcome_unknown',
+      errorMessage: '命令结果未知。',
+      toolCallCount: 1,
+    });
+
+    const task = social.getSocialWorkTask('task-command-outcome-unknown');
+    assert.equal(task.canResume, false);
+    assert.equal(task.executionSteps[0].status, 'failed');
+    assert.equal(task.executionSteps[0].effectStatus, 'unknown');
+    assert.throws(
+      () => social.resumeSocialWorkTask('task-command-outcome-unknown'),
+      /不能从检查点继续/u,
     );
   } finally {
     db.close();
@@ -1024,6 +1355,19 @@ test('social chat schema v1 upgrades additively to project-work state', () => {
     social.appendAssistantDelta(message.assistantMessageId, '已保存。');
     social.completeReply(message.assistantMessageId);
     db.exec(`
+      ALTER TABLE social_projects DROP COLUMN workspace_identity_json;
+      ALTER TABLE social_projects DROP COLUMN workspace_path;
+      ALTER TABLE social_work_tasks DROP COLUMN workspace_identity_json;
+      DROP INDEX social_messages_delegation_parent;
+      ALTER TABLE social_messages DROP COLUMN delegation_parent_message_id;
+      DROP TABLE social_user_memories_fts;
+      DROP INDEX social_user_memories_updated;
+      DROP TABLE social_user_memories;
+      DROP TABLE social_user_followups;
+      DROP TABLE application_shutdown_intent;
+      DROP TABLE social_work_file_change_operations;
+      DROP TABLE social_work_file_changes;
+      DELETE FROM social_schema_migrations WHERE version >= 28;
       ALTER TABLE social_work_tasks DROP COLUMN project_plan_item_id;
       ALTER TABLE social_work_tasks DROP COLUMN project_result_pending;
       DELETE FROM social_schema_migrations WHERE version = 27;
@@ -1099,7 +1443,7 @@ test('social chat schema v1 upgrades additively to project-work state', () => {
       db
         .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
         .get().version,
-      27,
+      SOCIAL_SCHEMA_VERSION,
     );
     assert.equal(
       db
@@ -1138,6 +1482,19 @@ test('social schema v7 adds retry snapshots without rewriting the last known att
     });
     social.failReply(turn.assistantMessageId, 'test_failure', '重试前失败');
     db.exec(`
+      ALTER TABLE social_projects DROP COLUMN workspace_identity_json;
+      ALTER TABLE social_projects DROP COLUMN workspace_path;
+      ALTER TABLE social_work_tasks DROP COLUMN workspace_identity_json;
+      DROP INDEX social_messages_delegation_parent;
+      ALTER TABLE social_messages DROP COLUMN delegation_parent_message_id;
+      DROP TABLE social_user_memories_fts;
+      DROP INDEX social_user_memories_updated;
+      DROP TABLE social_user_memories;
+      DROP TABLE social_user_followups;
+      DROP TABLE application_shutdown_intent;
+      DROP TABLE social_work_file_change_operations;
+      DROP TABLE social_work_file_changes;
+      DELETE FROM social_schema_migrations WHERE version >= 28;
       ALTER TABLE social_work_tasks DROP COLUMN project_plan_item_id;
       ALTER TABLE social_work_tasks DROP COLUMN project_result_pending;
       DELETE FROM social_schema_migrations WHERE version = 27;

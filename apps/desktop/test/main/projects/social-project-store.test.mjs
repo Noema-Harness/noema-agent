@@ -109,6 +109,100 @@ test('a project creates one shared room and separate hidden member sessions', ()
   }
 });
 
+test('project workspace binding is durable and cannot change during active project work', () => {
+  const stores = makeStores();
+  const member = createMember(stores.socialChatStore);
+  stores.socialChatStore.setAgentProjectWork(member.agentId, true);
+  try {
+    const project = createProject(stores, member);
+    const original = {
+      version: 1,
+      canonicalPath: 'C:\\work\\project-a',
+      device: '7',
+      fileIndex: '42',
+    };
+    const replacement = {
+      ...original,
+      canonicalPath: 'C:\\work\\project-b',
+      fileIndex: '43',
+    };
+    assert.equal(
+      stores.socialProjectStore.getWorkspaceBinding(project.id),
+      null,
+    );
+    stores.socialProjectStore.bindWorkspace({
+      projectId: project.id,
+      workspacePath: original.canonicalPath,
+      identity: original,
+      expectUnbound: true,
+    });
+    assert.equal(
+      stores.socialProjectStore.getWorkspaceBinding(project.id).identity
+        .fileIndex,
+      '42',
+    );
+    assert.throws(
+      () =>
+        stores.socialProjectStore.bindWorkspace({
+          projectId: project.id,
+          workspacePath: replacement.canonicalPath,
+          identity: replacement,
+          expectUnbound: true,
+        }),
+      /绑定已在等待期间变化/u,
+    );
+
+    const session = stores.socialProjectStore.getProjectSession(
+      project.id,
+      member.agentId,
+    );
+    stores.socialChatStore.createSocialWorkTask({
+      id: 'active-project-workspace-task',
+      roomId: session.room.room.id,
+      agentId: member.agentId,
+      workspacePath: original.canonicalPath,
+      workspaceKey: 'v1:7:42',
+      workspaceIdentity: original,
+      taskPrompt: '继续项目工作。',
+      model: 'test-model',
+    });
+    assert.throws(
+      () =>
+        stores.socialProjectStore.bindWorkspace({
+          projectId: project.id,
+          workspacePath: replacement.canonicalPath,
+          identity: replacement,
+          expectedIdentity: original,
+        }),
+      /仍有工作正在运行/u,
+    );
+
+    stores.db
+      .prepare(`
+        UPDATE social_work_tasks
+        SET status = 'completed', phase = 'completed', completed_at = ?, updated_at = ?
+        WHERE id = ?
+      `)
+      .run(
+        new Date().toISOString(),
+        new Date().toISOString(),
+        'active-project-workspace-task',
+      );
+    stores.socialProjectStore.bindWorkspace({
+      projectId: project.id,
+      workspacePath: replacement.canonicalPath,
+      identity: replacement,
+      expectedIdentity: original,
+    });
+    assert.equal(
+      stores.socialProjectStore.getWorkspaceBinding(project.id).workspacePath,
+      replacement.canonicalPath,
+    );
+  } finally {
+    stores.db.close();
+  }
+});
+
 test('project growth is keyed to accepted plan revisions and settles each member once', () => {
   const stores = makeStores();
   const first = createMember(stores.socialChatStore, '研究员');
@@ -983,6 +1077,14 @@ test('schema v11 upgrades to the current schema without deleting chats or re-ena
   const roomBefore = oldStore.getRoomSnapshot('room-engineering-collaboration');
   try {
     db.exec(`
+      DROP TABLE social_work_file_change_operations;
+      DROP TABLE social_work_file_changes;
+      ALTER TABLE social_work_tasks DROP COLUMN workspace_identity_json;
+      DROP TABLE social_user_memories_fts;
+      DROP INDEX social_user_memories_updated;
+      DROP TABLE social_user_memories;
+      DROP TABLE social_user_followups;
+      DROP TABLE application_shutdown_intent;
       ALTER TABLE social_work_tasks DROP COLUMN project_plan_item_id;
       ALTER TABLE social_work_tasks DROP COLUMN project_result_pending;
       DELETE FROM social_schema_migrations WHERE version = 26; DELETE FROM social_schema_migrations WHERE version = 25;

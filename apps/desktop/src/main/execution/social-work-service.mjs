@@ -6,6 +6,15 @@ import {
   verifyWorkspaceChecks,
 } from '../tools/workspace-verifier.mjs';
 import { redactSensitiveText } from '../../shared/search/transcript-search.mjs';
+import {
+  captureWorkspaceIdentity,
+  compareWorkspaceIdentities,
+  isWorkspaceIdentity,
+} from '../platform/workspace-identity.mjs';
+import { scanWorkspaceFileBoundary } from './workspace-file-boundary.mjs';
+import { workspaceFileContentHash } from './workspace-file-diff.mjs';
+import { reviewWorkspaceGitState } from './workspace-git-review.mjs';
+import { normalizeSocialWorkPhase } from '../../shared/execution/social-work-phase.mjs';
 
 const MAX_ROOM_CONTEXT_CHARS = 12_000;
 const MAX_RESULT_CHARS = 100_000;
@@ -14,6 +23,27 @@ const MAX_CASE_RESULT_CHARS = 2_400;
 const MAX_PRACTICE_INPUT_CHARS = 12_000;
 const OVERSIZED_RESPONSE_RECOVERY_MARKER =
   'noema-response-too-large-recovery-v1';
+
+function hostShutdownOutcome(reason) {
+  if (reason === 'system_shutdown') {
+    return {
+      errorCode: 'system_shutdown',
+      errorMessage:
+        '系统正在关机或注销；任务已停止，停止前的文件修改不会自动回滚。',
+    };
+  }
+  if (reason === 'application_exit') {
+    return {
+      errorCode: 'application_exit',
+      errorMessage:
+        'Noema 正在退出；任务已停止，停止前的文件修改不会自动回滚。',
+    };
+  }
+  return {
+    errorCode: 'worker_interrupted',
+    errorMessage: '任务已停止；停止前已产生的项目文件修改不会自动回滚。',
+  };
+}
 
 const PRACTICE_PROPOSAL_TOOL = {
   type: 'function',
@@ -86,13 +116,6 @@ function workToolCategory(tool) {
     return 'command';
   }
   return 'other';
-}
-
-function workspaceIdentity(realPath) {
-  return path
-    .normalize(realPath)
-    .replaceAll('/', '\\')
-    .toLocaleLowerCase('en-US');
 }
 
 function waitForRetry(milliseconds, signal) {
@@ -240,11 +263,11 @@ function buildTaskPrompt({
 
 /**
  * Owns room-scoped project work while treating the executor as an adapter.
- * @param {{store:import('./social-chat-store.mjs').SocialChatStore,projectStore?:import('./social-project-store.mjs').SocialProjectStore|null,adapter:{executionEngine?:string,startTask:(input:any)=>any}|null,secretStore:{isConfigured:()=>boolean},getSelectedModel?:()=>string|null,practiceProvider?:import('./openai-compatible-client.mjs').OpenAICompatibleClient|null,chooseWorkspace:(options?:{reuseCase?:boolean,prompt?:string})=>Promise<string|null>,confirmPracticeCandidate?:(input:{candidate:{sourceTaskId:string,basisTaskId:string,basisRoomTitle:string,basisTaskPrompt:string,roomTitle:string,trigger:string,action:string,limits:string},taskPrompt:string,caseSnapshot:{taskId:string,taskPrompt:string}|null})=>Promise<'trial'|'case'|'cancel'>,assertWorkAllowed?:(roomId:string)=>void,emit?:(event:object)=>void}} options
+ * @param {{store:import('./social-chat-store.mjs').SocialChatStore,projectStore?:import('./social-project-store.mjs').SocialProjectStore|null,adapter:{executionEngine?:string,startTask:(input:any)=>any}|null,secretStore:{isConfigured:()=>boolean},getSelectedModel?:()=>string|null,practiceProvider?:import('./openai-compatible-client.mjs').OpenAICompatibleClient|null,chooseWorkspace:(options?:{reuseCase?:boolean,prompt?:string})=>Promise<string|null>,confirmPracticeCandidate?:(input:{candidate:{sourceTaskId:string,basisTaskId:string,basisRoomTitle:string,basisTaskPrompt:string,roomTitle:string,trigger:string,action:string,limits:string},taskPrompt:string,caseSnapshot:{taskId:string,taskPrompt:string}|null})=>Promise<'trial'|'case'|'cancel'>,assertWorkAllowed?:(roomId:string)=>void,emit?:(event:object)=>void,recordDiagnosticEvent?:(event:Record<string,unknown>)=>void}} options
  */
 export class SocialWorkService {
   /**
-   * @param {{store:import('./social-chat-store.mjs').SocialChatStore,projectStore?:import('./social-project-store.mjs').SocialProjectStore|null,adapter:{executionEngine?:string,startTask:(input:any)=>any}|null,secretStore:{isConfigured:()=>boolean},getSelectedModel?:()=>string|null,practiceProvider?:import('./openai-compatible-client.mjs').OpenAICompatibleClient|null,chooseWorkspace:(options?:{reuseCase?:boolean,prompt?:string})=>Promise<string|null>,confirmPracticeCandidate?:(input:{candidate:{sourceTaskId:string,basisTaskId:string,basisRoomTitle:string,basisTaskPrompt:string,roomTitle:string,trigger:string,action:string,limits:string},taskPrompt:string,caseSnapshot:{taskId:string,taskPrompt:string}|null})=>Promise<'trial'|'case'|'cancel'>,defaultVerificationChecks?:unknown,delayImpl?:(milliseconds:number,signal:AbortSignal)=>Promise<boolean>,assertWorkAllowed?:(roomId:string)=>void,emit?:(event:object)=>void}} options
+   * @param {{store:import('./social-chat-store.mjs').SocialChatStore,projectStore?:import('./social-project-store.mjs').SocialProjectStore|null,adapter:{executionEngine?:string,startTask:(input:any)=>any}|null,secretStore:{isConfigured:()=>boolean},getSelectedModel?:()=>string|null,practiceProvider?:import('./openai-compatible-client.mjs').OpenAICompatibleClient|null,chooseWorkspace:(options?:{reuseCase?:boolean,prompt?:string,projectId?:string|null})=>Promise<string|null>,confirmWorkspaceRebind?:(input:{projectId:string,oldPath:string,newPath:string})=>Promise<'rebind'|'cancel'>,confirmPracticeCandidate?:(input:{candidate:{sourceTaskId:string,basisTaskId:string,basisRoomTitle:string,basisTaskPrompt:string,roomTitle:string,trigger:string,action:string,limits:string},taskPrompt:string,caseSnapshot:{taskId:string,taskPrompt:string}|null})=>Promise<'trial'|'case'|'cancel'>,defaultVerificationChecks?:unknown,delayImpl?:(milliseconds:number,signal:AbortSignal)=>Promise<boolean>,assertWorkAllowed?:(roomId:string)=>void,emit?:(event:object)=>void,recordDiagnosticEvent?:(event:Record<string,unknown>)=>void}} options
    */
   constructor({
     store,
@@ -254,11 +277,14 @@ export class SocialWorkService {
     getSelectedModel = () => null,
     practiceProvider = null,
     chooseWorkspace,
+    confirmWorkspaceRebind = null,
     confirmPracticeCandidate = null,
+    workspaceFileBoundaryScanner = scanWorkspaceFileBoundary,
     defaultVerificationChecks = [],
     delayImpl = waitForRetry,
     assertWorkAllowed = (_roomId) => {},
     emit = () => {},
+    recordDiagnosticEvent = () => {},
   }) {
     this.store = store;
     this.projectStore = projectStore;
@@ -267,13 +293,22 @@ export class SocialWorkService {
     this.getSelectedModel = getSelectedModel;
     this.practiceProvider = practiceProvider;
     this.chooseWorkspace = chooseWorkspace;
+    this.confirmWorkspaceRebind = confirmWorkspaceRebind;
     this.confirmPracticeCandidate = confirmPracticeCandidate;
+    this.workspaceFileBoundaryScanner = workspaceFileBoundaryScanner;
     this.defaultVerificationChecks = normalizeWorkspaceVerificationChecks(
       defaultVerificationChecks,
     );
     this.delayImpl = delayImpl;
     this.assertWorkAllowed = assertWorkAllowed;
     this.emit = emit;
+    this.recordDiagnosticEvent = (event) => {
+      try {
+        recordDiagnosticEvent(event);
+      } catch {
+        // Diagnostics are observational and must never change task outcomes.
+      }
+    };
     this.runs = new Map();
     this.practiceRuns = new Map();
     this.shuttingDown = false;
@@ -366,17 +401,60 @@ export class SocialWorkService {
     const workspaceSelection = await this.chooseWorkspace({
       reuseCase: reuseCase === true,
       prompt: prompt.trim(),
+      projectId,
     });
     signal?.throwIfAborted();
     if (!workspaceSelection)
       return { accepted: false, reason: '已取消选择项目文件夹。' };
     this.assertWorkAllowed(roomId);
-    let realWorkspacePath;
-    try {
-      realWorkspacePath = fs.realpathSync(workspaceSelection);
-      if (!fs.statSync(realWorkspacePath).isDirectory()) throw new Error();
-    } catch {
-      throw new Error('所选项目文件夹已不存在或不可访问。');
+    const capturedWorkspace = captureWorkspaceIdentity(workspaceSelection);
+    if (!capturedWorkspace.ok) {
+      this.recordDiagnosticEvent({
+        executionId: null,
+        module: 'social.work',
+        operation: 'workspace.identity.capture',
+        status: 'denied',
+        details: { reasonCode: capturedWorkspace.code },
+      });
+      throw new Error('所选项目文件夹无法验证；没有启动项目工作。');
+    }
+    const { identity: workspaceIdentity, workspaceKey } = capturedWorkspace;
+    const realWorkspacePath = workspaceIdentity.canonicalPath;
+    let projectBinding = null;
+    if (projectId) {
+      if (!this.projectStore) {
+        throw new Error('当前没有可用的项目记录；没有启动项目工作。');
+      }
+      projectBinding = this.projectStore.getWorkspaceBinding(projectId);
+      if (projectBinding && !projectBinding.valid) {
+        throw new Error('项目工作区绑定记录无法验证；没有启动项目工作。');
+      }
+      if (
+        projectBinding &&
+        !compareWorkspaceIdentities(projectBinding.identity, workspaceIdentity)
+      ) {
+        const decision = this.confirmWorkspaceRebind
+          ? await this.confirmWorkspaceRebind({
+              projectId,
+              oldPath: projectBinding.workspacePath,
+              newPath: realWorkspacePath,
+            })
+          : 'cancel';
+        signal?.throwIfAborted();
+        if (decision !== 'rebind') {
+          this.recordDiagnosticEvent({
+            executionId: null,
+            module: 'social.work',
+            operation: 'workspace.identity.rebind',
+            status: 'denied',
+            details: { reasonCode: 'user_cancelled' },
+          });
+          return {
+            accepted: false,
+            reason: '已取消更换项目工作区；没有启动项目工作。',
+          };
+        }
+      }
     }
 
     const agent = this.store.getAgent(agentId);
@@ -384,7 +462,6 @@ export class SocialWorkService {
       throw new Error(`${agent.name}目前没有项目工作能力。`);
     }
     const context = this.store.getContext(roomId);
-    const workspaceKey = workspaceIdentity(realWorkspacePath);
     const practiceCandidate =
       reuseCase === true
         ? this.store.findReusablePractice({
@@ -438,6 +515,19 @@ export class SocialWorkService {
 
     signal?.throwIfAborted();
     this.assertWorkAllowed(roomId);
+    if (
+      projectId &&
+      (!projectBinding ||
+        !compareWorkspaceIdentities(projectBinding.identity, workspaceIdentity))
+    ) {
+      this.projectStore.bindWorkspace({
+        projectId,
+        workspacePath: realWorkspacePath,
+        identity: workspaceIdentity,
+        expectedIdentity: projectBinding?.identity ?? null,
+        expectUnbound: projectBinding === null,
+      });
+    }
     const id = randomUUID();
     const executionEngine = this.adapter.executionEngine ?? 'noema';
     const model = this.getSelectedModel();
@@ -452,6 +542,7 @@ export class SocialWorkService {
       projectId: dispatchFromNoema ? projectId : null,
       workspacePath: realWorkspacePath,
       workspaceKey,
+      workspaceIdentity,
       taskPrompt: prompt,
       model,
       executionEngine,
@@ -460,17 +551,47 @@ export class SocialWorkService {
       caseSnapshot,
       practiceSnapshot,
     });
+    this.recordDiagnosticEvent({
+      executionId: id,
+      taskId: id,
+      module: 'social.work',
+      operation: projectId
+        ? projectBinding &&
+          compareWorkspaceIdentities(projectBinding.identity, workspaceIdentity)
+          ? 'workspace.identity.matched'
+          : projectBinding
+            ? 'workspace.identity.rebound'
+            : 'workspace.identity.bound'
+        : 'workspace.identity.captured',
+      status: 'complete',
+      details: { schemaVersion: workspaceIdentity.version },
+    });
+    const sourceTurnId = sourceMessageId
+      ? (this.store.getSocialMessage(sourceMessageId)?.turnId ?? null)
+      : null;
+    this.recordDiagnosticEvent({
+      executionId: id,
+      taskId: id,
+      turnId: sourceTurnId,
+      module: 'social.work',
+      operation: 'task.created',
+      status: 'starting',
+    });
     this.publish(saved);
     const run = {
+      executionId: id,
       handle: null,
       retryWaitController: null,
       stopRequested: false,
+      stopReason: null,
       completion: null,
     };
     this.runs.set(id, run);
     run.completion = this.executeTask({
       taskId: id,
+      executionId: id,
       workspacePath: realWorkspacePath,
+      workspaceIdentity,
       task,
       model,
       sessionId: null,
@@ -567,6 +688,19 @@ export class SocialWorkService {
     const readiness = this.getReadiness();
     if (!readiness.available) throw new Error(readiness.reason);
     const task = this.store.getSocialWorkTask(taskId);
+    if (!isWorkspaceIdentity(task.workspaceIdentity)) {
+      this.recordDiagnosticEvent({
+        executionId: taskId,
+        taskId,
+        module: 'social.work',
+        operation: 'workspace.identity.resume',
+        status: 'denied',
+        details: { reasonCode: 'workspace_identity_missing' },
+      });
+      throw new Error(
+        '这项旧任务没有工作区身份快照；请重新选择文件夹并提交新任务。',
+      );
+    }
     if (!task.canResume) {
       throw new Error('检查点不满足安全续接条件；请检查工作区后重新提交任务。');
     }
@@ -581,6 +715,46 @@ export class SocialWorkService {
         ))
     ) {
       throw new Error('检查点不在可安全续接的模型边界。');
+    }
+    this.assertWorkAllowed(task.roomId);
+    const capturedWorkspace = captureWorkspaceIdentity(task.workspacePath);
+    if (!capturedWorkspace.ok) {
+      this.recordDiagnosticEvent({
+        executionId: taskId,
+        taskId,
+        module: 'social.work',
+        operation: 'workspace.identity.resume',
+        status: 'denied',
+        details: { reasonCode: 'workspace_identity_unavailable' },
+      });
+      throw new Error('原工作区已不存在或不可访问；请重新选择后提交任务。');
+    }
+    const realWorkspacePath = capturedWorkspace.identity.canonicalPath;
+    if (
+      !isWorkspaceIdentity(task.workspaceIdentity) ||
+      !compareWorkspaceIdentities(
+        task.workspaceIdentity,
+        capturedWorkspace.identity,
+      )
+    ) {
+      this.recordDiagnosticEvent({
+        executionId: taskId,
+        taskId,
+        module: 'social.work',
+        operation: 'workspace.identity.resume',
+        status: 'denied',
+        details: {
+          reasonCode: task.workspaceIdentity
+            ? 'workspace_identity_changed'
+            : 'workspace_identity_missing',
+          schemaVersion: capturedWorkspace.identity.version,
+        },
+      });
+      throw new Error(
+        task.workspaceIdentity
+          ? '原工作区身份已变化；请检查文件夹后重新提交任务。'
+          : '这项旧任务没有工作区身份快照；请重新选择文件夹并提交新任务。',
+      );
     }
     if (
       task.errorCode === 'response_too_large' &&
@@ -605,22 +779,21 @@ export class SocialWorkService {
       };
       this.store.saveSocialWorkRuntimeCheckpoint(taskId, checkpoint);
     }
-    this.assertWorkAllowed(task.roomId);
-    let realWorkspacePath;
-    try {
-      realWorkspacePath = fs.realpathSync(task.workspacePath);
-      if (!fs.statSync(realWorkspacePath).isDirectory()) throw new Error();
-    } catch {
-      throw new Error('原工作区已不存在或不可访问；请重新选择后提交任务。');
-    }
-    if (
-      path.normalize(realWorkspacePath).toLowerCase() !==
-      path.normalize(task.workspacePath).toLowerCase()
-    ) {
-      throw new Error('原工作区路径已指向其他位置；请重新检查后提交任务。');
-    }
 
+    const executionId = randomUUID();
     this.store.resumeSocialWorkTask(taskId);
+    this.recordDiagnosticEvent({
+      executionId,
+      parentExecutionId: taskId,
+      taskId,
+      module: 'social.work',
+      operation: 'task.resumed',
+      status: 'starting',
+      details: {
+        phase: checkpoint.resumePhase ?? checkpoint.phase,
+        recoveryReason: task.errorCode,
+      },
+    });
     checkpoint = this.store.getSocialWorkRuntimeCheckpoint(taskId);
     if (
       checkpoint?.resumePhase === 'ready_for_model' &&
@@ -630,16 +803,20 @@ export class SocialWorkService {
       this.store.saveSocialWorkRuntimeCheckpoint(taskId, checkpoint);
     }
     const run = {
+      executionId,
       handle: null,
       retryWaitController: null,
       stopRequested: false,
+      stopReason: null,
       completion: null,
     };
     this.runs.set(taskId, run);
     this.publish(this.store.getSocialWorkTask(taskId));
     run.completion = this.executeTask({
       taskId,
+      executionId,
       workspacePath: realWorkspacePath,
+      workspaceIdentity: task.workspaceIdentity,
       task: task.taskPrompt,
       model: task.model,
       sessionId: task.runtimeSessionId,
@@ -652,7 +829,9 @@ export class SocialWorkService {
 
   async executeTask({
     taskId,
+    executionId = taskId,
     workspacePath,
+    workspaceIdentity,
     task,
     model,
     sessionId,
@@ -696,8 +875,10 @@ export class SocialWorkService {
               ].join('\n\n');
         const handle = await this.adapter.startTask({
           workspacePath,
+          workspaceIdentity,
           task: runPrompt,
           model,
+          executionId,
           taskId:
             verificationAttempts === 0
               ? taskId
@@ -705,7 +886,43 @@ export class SocialWorkService {
           usageInteractionId: taskId,
           sessionId: runtimeSessionId,
           checkpoint,
+          fileChangeJournal: {
+            prepare: (input) =>
+              this.store.prepareSocialWorkFileChange({ taskId, ...input }),
+            complete: (input) =>
+              this.store.completeSocialWorkFileChange({ taskId, ...input }),
+          },
           onEvent: (event) => {
+            if (event.type === 'tool-call') {
+              this.recordDiagnosticEvent({
+                executionId,
+                taskId,
+                toolCallId: event.externalCallId ?? event.stepId,
+                module: 'noema.executor',
+                operation: 'tool.call',
+                status: 'started',
+                details: {
+                  toolName: event.tool,
+                  toolCategory: event.category,
+                },
+              });
+            } else if (event.type === 'tool-result') {
+              this.recordDiagnosticEvent({
+                executionId,
+                taskId,
+                toolCallId: event.externalCallId ?? event.stepId,
+                module: 'noema.executor',
+                operation: 'tool.result',
+                status: event.status ?? 'unknown',
+                details: {
+                  effectStatus: event.effectStatus,
+                  ...(typeof event.reasonCode === 'string' &&
+                  /^workspace_[a-z0-9_]{1,60}$/u.test(event.reasonCode)
+                    ? { reasonCode: event.reasonCode }
+                    : {}),
+                },
+              });
+            }
             if (
               event.type === 'session' &&
               typeof event.sessionId === 'string'
@@ -716,8 +933,16 @@ export class SocialWorkService {
               event.type === 'status' &&
               typeof event.phase === 'string'
             ) {
-              this.store.updateSocialWorkTaskProgress(taskId, {
-                phase: event.phase,
+              const updated = this.store.updateSocialWorkTaskProgress(taskId, {
+                phase: normalizeSocialWorkPhase(event.phase),
+              });
+              this.recordDiagnosticEvent({
+                executionId,
+                taskId,
+                module: 'noema.executor',
+                operation: 'task.phase',
+                status: 'observed',
+                details: { phase: updated.phase },
               });
             } else if (event.type === 'tool-call') {
               const currentRunCount = Number(event.count) || 0;
@@ -902,9 +1127,12 @@ export class SocialWorkService {
       const interrupted =
         run.stopRequested || outcome?.status === 'interrupted';
       let status = interrupted ? 'interrupted' : (outcome?.status ?? 'failed');
-      let errorCode = interrupted ? 'worker_interrupted' : outcome?.errorCode;
+      const shutdownOutcome = hostShutdownOutcome(run.stopReason);
+      let errorCode = interrupted
+        ? shutdownOutcome.errorCode
+        : outcome?.errorCode;
       let errorMessage = interrupted
-        ? '任务已停止；停止前已产生的项目文件修改不会自动回滚。'
+        ? shutdownOutcome.errorMessage
         : outcome?.errorMessage;
       if (
         !interrupted &&
@@ -933,6 +1161,15 @@ export class SocialWorkService {
         verificationResults,
         verificationAttempts,
       });
+      this.recordDiagnosticEvent({
+        executionId,
+        taskId,
+        module: 'social.work',
+        operation: 'task.finished',
+        status: completed.status,
+        errorCode: completed.errorCode,
+        details: { verificationStatus: completed.verificationStatus },
+      });
       this.publish(completed);
       if (
         completed.status === 'completed' &&
@@ -959,15 +1196,24 @@ export class SocialWorkService {
           runtimeSessionId,
           resultText,
           errorCode: run.stopRequested
-            ? 'worker_interrupted'
+            ? hostShutdownOutcome(run.stopReason).errorCode
             : (error?.code ?? 'dsh_start_failed'),
           errorMessage: run.stopRequested
-            ? '任务已停止；停止前已产生的项目文件修改不会自动回滚。'
+            ? hostShutdownOutcome(run.stopReason).errorMessage
             : safeError(error),
           toolCallCount,
           verificationStatus: verification.status,
           verificationResults: verification.checks,
           verificationAttempts,
+        });
+        this.recordDiagnosticEvent({
+          executionId,
+          taskId,
+          module: 'social.work',
+          operation: 'task.finished',
+          status: failed.status,
+          errorCode: failed.errorCode,
+          details: { verificationStatus: failed.verificationStatus },
         });
         this.publish(failed);
         return failed;
@@ -991,9 +1237,195 @@ export class SocialWorkService {
     });
   }
 
+  async reviewFileChange({ taskId, changeId, action }) {
+    if (!['keep', 'revert'].includes(action)) {
+      throw new TypeError('文件变更操作无效。');
+    }
+    const task = this.store.getSocialWorkTask(taskId);
+    if (!['completed', 'failed', 'interrupted'].includes(task.status)) {
+      throw new Error('任务仍在运行；结束后才能处理文件变更。');
+    }
+    if (!task.workspaceIdentity) {
+      throw new Error('任务没有可验证的工作区身份；文件未变更。');
+    }
+    let change = this.store.getSocialWorkFileChange(taskId, changeId);
+    if (!change) throw new Error('找不到这项文件变更。');
+    if (!['pending', 'applied', 'unknown', 'conflict'].includes(change.state)) {
+      throw new Error('这项文件变更已经处理或需要人工检查。');
+    }
+    const workspacePath = task.workspaceIdentity.canonicalPath;
+    const segments = change.relativePath.split('/');
+    const target = path.resolve(workspacePath, ...segments);
+    const relative = path.relative(workspacePath, target);
+    if (
+      !relative ||
+      relative === '..' ||
+      relative.startsWith(`..${path.sep}`) ||
+      path.isAbsolute(relative)
+    ) {
+      this.store.markSocialWorkFileChangeConflict(taskId, changeId);
+      this.publish(this.store.getSocialWorkTask(taskId));
+      throw new Error('文件变更路径不在原工作区内；没有修改文件。');
+    }
+
+    const inspectCurrent = async () => {
+      const boundary = await this.workspaceFileBoundaryScanner(workspacePath, {
+        expectedIdentity: task.workspaceIdentity,
+      });
+      if (!boundary?.ok) {
+        throw new Error(
+          '工作区身份或文件边界检查未通过；没有修改文件。请先检查并重新选择工作区。',
+        );
+      }
+      try {
+        const stat = fs.lstatSync(target);
+        if (stat.isSymbolicLink() || !stat.isFile()) {
+          throw new Error('目标已不是普通文件；没有修改文件。');
+        }
+        if (stat.size > 1_000_000) {
+          throw new Error('目标文件超过 1 MB；为避免误操作没有修改文件。');
+        }
+        return workspaceFileContentHash(fs.readFileSync(target));
+      } catch (error) {
+        if (error?.code === 'ENOENT') return null;
+        throw error;
+      }
+    };
+
+    let actualHash = await inspectCurrent();
+    if (change.state === 'pending') {
+      change = this.store.reconcileSocialWorkFileChange({
+        taskId,
+        changeId,
+        actualHash,
+      });
+    } else {
+      change = this.store.reconcileSocialWorkFileChange({
+        taskId,
+        changeId,
+        actualHash,
+      });
+    }
+
+    if (change.state === 'reverted' || change.state === 'not_applied') {
+      this.publish(this.store.getSocialWorkTask(taskId));
+      return this.store.getSocialWorkTask(taskId);
+    }
+    if (
+      !['applied', 'unknown'].includes(change.state) &&
+      !(action === 'keep' && change.state === 'conflict')
+    ) {
+      this.publish(this.store.getSocialWorkTask(taskId));
+      throw new Error(
+        '当前文件内容与 Noema 的恢复记录不一致；文件未覆盖，请检查工作区。',
+      );
+    }
+
+    if (action === 'keep') {
+      const kept = this.store.markSocialWorkFileChangeKept(
+        taskId,
+        changeId,
+        actualHash,
+      );
+      this.publish(this.store.getSocialWorkTask(taskId));
+      if (kept.state !== 'kept') {
+        throw new Error('文件在审阅期间发生变化；恢复副本仍保留。');
+      }
+      return this.store.getSocialWorkTask(taskId);
+    }
+
+    if (change.state !== 'applied' || actualHash !== change.latestHash) {
+      this.store.markSocialWorkFileChangeConflict(taskId, changeId);
+      this.publish(this.store.getSocialWorkTask(taskId));
+      throw new Error('当前文件不等于 Noema 最后一次写入；拒绝撤回。');
+    }
+    const latestHash = change.latestHash;
+    actualHash = await inspectCurrent();
+    if (actualHash !== latestHash) {
+      this.store.markSocialWorkFileChangeConflict(taskId, changeId);
+      this.publish(this.store.getSocialWorkTask(taskId));
+      throw new Error('文件在撤回前发生变化；为保护新内容，拒绝撤回。');
+    }
+    if (change.originalExists) {
+      if (!Buffer.isBuffer(change.originalBytes)) {
+        throw new Error('原文件恢复副本不可用；没有修改文件。');
+      }
+      const temporaryPath = `${target}.noema-restore-${randomUUID()}`;
+      try {
+        fs.writeFileSync(temporaryPath, change.originalBytes, { flag: 'wx' });
+        const boundary = await this.workspaceFileBoundaryScanner(
+          workspacePath,
+          {
+            expectedIdentity: task.workspaceIdentity,
+          },
+        );
+        if (!boundary?.ok || (await inspectCurrent()) !== latestHash) {
+          throw new Error('文件路径或内容在撤回前发生变化；没有替换文件。');
+        }
+        fs.renameSync(temporaryPath, target);
+      } catch (error) {
+        try {
+          fs.rmSync(temporaryPath, { force: true });
+        } catch {
+          // Preserve the original failure; a uniquely named staging file is harmless.
+        }
+        throw error;
+      }
+    } else {
+      const boundary = await this.workspaceFileBoundaryScanner(workspacePath, {
+        expectedIdentity: task.workspaceIdentity,
+      });
+      if (!boundary?.ok || (await inspectCurrent()) !== latestHash) {
+        this.store.markSocialWorkFileChangeConflict(taskId, changeId);
+        this.publish(this.store.getSocialWorkTask(taskId));
+        throw new Error('文件路径或内容在撤回前发生变化；拒绝删除。');
+      }
+      fs.unlinkSync(target);
+    }
+    const restoredHash = await inspectCurrent();
+    if (
+      change.originalExists
+        ? restoredHash !== change.originalHash
+        : restoredHash !== null
+    ) {
+      this.store.markSocialWorkFileChangeConflict(taskId, changeId);
+      this.publish(this.store.getSocialWorkTask(taskId));
+      throw new Error('撤回后的文件内容未通过核对；请检查工作区。');
+    }
+    this.store.markSocialWorkFileChangeReverted(taskId, changeId);
+    this.publish(this.store.getSocialWorkTask(taskId));
+    return this.store.getSocialWorkTask(taskId);
+  }
+
+  async reviewGitState(taskId) {
+    const task = this.store.getSocialWorkTask(taskId);
+    if (!['completed', 'failed', 'interrupted'].includes(task.status)) {
+      throw new Error('任务仍在运行；结束后才能审阅 Git 工作区状态。');
+    }
+    if (!task.workspaceIdentity) {
+      return {
+        available: false,
+        reason: 'workspace_identity_missing',
+        files: [],
+      };
+    }
+    return reviewWorkspaceGitState({
+      workspacePath: task.workspaceIdentity.canonicalPath,
+      expectedIdentity: task.workspaceIdentity,
+      workspaceFileBoundaryScanner: this.workspaceFileBoundaryScanner,
+    });
+  }
+
   stopTask(taskId) {
     const run = this.runs.get(taskId);
     if (!run) return false;
+    this.recordDiagnosticEvent({
+      executionId: run.executionId ?? taskId,
+      taskId,
+      module: 'social.work',
+      operation: 'task.stop_requested',
+      status: 'requested',
+    });
     run.stopRequested = true;
     run.retryWaitController?.abort();
     const stopped = run.handle?.stop() ?? true;
@@ -1140,10 +1572,11 @@ export class SocialWorkService {
     return this.store.getSocialWorkTask(taskId);
   }
 
-  async shutdown() {
+  async shutdown(reason = 'application_exit') {
     this.shuttingDown = true;
     for (const [taskId, run] of this.runs) {
       run.stopRequested = true;
+      run.stopReason = reason;
       run.retryWaitController?.abort();
       run.handle?.stop();
       this.publish(this.store.getSocialWorkTask(taskId));

@@ -7,6 +7,14 @@ export function createWindowPreferences(preload) {
   };
 }
 
+export function isMainFrameIpcEvent(event) {
+  return Boolean(
+    event?.senderFrame &&
+      event.senderFrame === event.sender?.mainFrame &&
+      event.senderFrame.parent === null,
+  );
+}
+
 export function isInternalNavigation(url, devServerUrl) {
   return url === devServerUrl || url.startsWith('file://');
 }

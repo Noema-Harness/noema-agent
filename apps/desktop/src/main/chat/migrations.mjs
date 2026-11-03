@@ -800,4 +800,90 @@ export function migrateSocialChatSchema(db) {
         `);
     })();
   }
+  if (current < 31) {
+    db.transaction(() => {
+      db.exec(`
+          CREATE TABLE application_shutdown_intent (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            reason TEXT NOT NULL CHECK (reason IN ('application_exit', 'system_shutdown')),
+            requested_at TEXT NOT NULL
+          );
+          INSERT INTO social_schema_migrations(version, applied_at)
+            VALUES (31, '${isoNow()}');
+        `);
+    })();
+  }
+  if (current < 32) {
+    db.transaction(() => {
+      db.exec(`
+          ALTER TABLE social_projects ADD COLUMN workspace_path TEXT;
+          ALTER TABLE social_projects ADD COLUMN workspace_identity_json TEXT;
+          ALTER TABLE social_work_tasks ADD COLUMN workspace_identity_json TEXT;
+          INSERT INTO social_schema_migrations(version, applied_at)
+            VALUES (32, '${isoNow()}');
+        `);
+    })();
+  }
+  if (current < 33) {
+    db.transaction(() => {
+      db.exec(`
+          CREATE TABLE social_work_file_changes (
+            id TEXT PRIMARY KEY,
+            task_id TEXT NOT NULL REFERENCES social_work_tasks(id) ON DELETE CASCADE,
+            relative_path TEXT NOT NULL,
+            original_exists INTEGER NOT NULL CHECK (original_exists IN (0, 1)),
+            original_bytes BLOB,
+            original_hash TEXT,
+            latest_hash TEXT,
+            diff_text TEXT NOT NULL DEFAULT '',
+            diff_truncated INTEGER NOT NULL DEFAULT 0 CHECK (diff_truncated IN (0, 1)),
+            state TEXT NOT NULL CHECK (
+              state IN ('pending', 'applied', 'unknown', 'not_applied', 'kept', 'reverted', 'conflict')
+            ),
+            pending_before_hash TEXT,
+            pending_after_hash TEXT,
+            pending_diff_text TEXT,
+            pending_diff_truncated INTEGER CHECK (
+              pending_diff_truncated IS NULL OR pending_diff_truncated IN (0, 1)
+            ),
+            pending_step_id TEXT REFERENCES social_work_execution_steps(id) ON DELETE SET NULL,
+            last_step_id TEXT REFERENCES social_work_execution_steps(id) ON DELETE SET NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            CHECK (
+              (original_exists = 1 AND original_hash IS NOT NULL AND
+                (original_bytes IS NOT NULL OR state IN ('kept', 'reverted', 'not_applied')))
+              OR (original_exists = 0 AND original_bytes IS NULL AND original_hash IS NULL)
+            ),
+            CHECK (
+              (state = 'pending' AND pending_after_hash IS NOT NULL AND pending_step_id IS NOT NULL)
+              OR (state <> 'pending' AND pending_after_hash IS NULL AND pending_step_id IS NULL)
+            )
+          );
+          CREATE INDEX social_work_file_changes_task_order
+            ON social_work_file_changes(task_id, created_at, relative_path);
+          CREATE UNIQUE INDEX social_work_file_changes_one_open_path
+            ON social_work_file_changes(task_id, relative_path)
+            WHERE state IN ('pending', 'applied', 'unknown', 'conflict');
+          CREATE TABLE social_work_file_change_operations (
+            id TEXT PRIMARY KEY,
+            change_id TEXT NOT NULL REFERENCES social_work_file_changes(id) ON DELETE CASCADE,
+            task_id TEXT NOT NULL REFERENCES social_work_tasks(id) ON DELETE CASCADE,
+            step_id TEXT NOT NULL REFERENCES social_work_execution_steps(id) ON DELETE CASCADE,
+            ordinal INTEGER NOT NULL CHECK (ordinal > 0),
+            before_hash TEXT,
+            after_hash TEXT NOT NULL,
+            state TEXT NOT NULL CHECK (state IN ('pending', 'applied', 'not_applied', 'unknown')),
+            created_at TEXT NOT NULL,
+            completed_at TEXT,
+            UNIQUE (change_id, ordinal),
+            UNIQUE (step_id)
+          );
+          CREATE INDEX social_work_file_change_operations_task
+            ON social_work_file_change_operations(task_id, created_at, id);
+          INSERT INTO social_schema_migrations(version, applied_at)
+            VALUES (33, '${isoNow()}');
+        `);
+    })();
+  }
 }

@@ -1,6 +1,14 @@
 import { randomUUID } from 'node:crypto';
 
 const MAX_PROVIDER_COST_JSON_LENGTH = 2_000;
+const MESSAGE_SHAPE_ROLES = [
+  'system',
+  'developer',
+  'user',
+  'assistant',
+  'tool',
+  'other',
+];
 
 function count(value) {
   return Number.isSafeInteger(value) && value >= 0 ? value : null;
@@ -24,6 +32,32 @@ function serializeProviderCost(value) {
   }
 }
 
+function normalizeMessageRoleCharacters(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const keys = Object.keys(value);
+  if (
+    keys.length !== MESSAGE_SHAPE_ROLES.length ||
+    keys.some((key) => !MESSAGE_SHAPE_ROLES.includes(key))
+  )
+    return null;
+  const normalized = {};
+  for (const role of MESSAGE_SHAPE_ROLES) {
+    const characters = count(value[role]);
+    if (characters === null) return null;
+    normalized[role] = characters;
+  }
+  return normalized;
+}
+
+function parseMessageRoleCharacters(value) {
+  if (typeof value !== 'string') return null;
+  try {
+    return normalizeMessageRoleCharacters(JSON.parse(value));
+  } catch {
+    return null;
+  }
+}
+
 /** Stores provider-reported usage metadata without conversation content. */
 export class ModelUsageStore {
   /** @param {import('better-sqlite3').Database} db */
@@ -37,6 +71,9 @@ export class ModelUsageStore {
         model TEXT NOT NULL,
         operation TEXT NOT NULL,
         interaction_id TEXT,
+        request_id TEXT,
+        execution_id TEXT,
+        turn_id TEXT,
         request_status TEXT NOT NULL CHECK (request_status IN ('completed', 'failed', 'interrupted')),
         usage_received INTEGER NOT NULL CHECK (usage_received IN (0, 1)),
         input_tokens INTEGER CHECK (input_tokens IS NULL OR input_tokens >= 0),
@@ -47,6 +84,7 @@ export class ModelUsageStore {
         reasoning_tokens INTEGER CHECK (reasoning_tokens IS NULL OR reasoning_tokens >= 0),
         provider_cost_json TEXT,
         request_characters INTEGER CHECK (request_characters IS NULL OR request_characters >= 0),
+        message_role_characters_json TEXT,
         tool_definition_characters INTEGER CHECK (tool_definition_characters IS NULL OR tool_definition_characters >= 0),
         message_count INTEGER NOT NULL CHECK (message_count >= 0),
         tool_count INTEGER NOT NULL CHECK (tool_count >= 0)
@@ -89,23 +127,39 @@ export class ModelUsageStore {
         CHECK (tool_definition_characters IS NULL OR tool_definition_characters >= 0)
       `);
     }
+    if (!columns.has('message_role_characters_json')) {
+      this.db.exec(
+        'ALTER TABLE model_usage_records ADD COLUMN message_role_characters_json TEXT',
+      );
+    }
     if (!columns.has('interaction_id')) {
       this.db.exec(`
         ALTER TABLE model_usage_records
         ADD COLUMN interaction_id TEXT
       `);
     }
+    for (const column of ['request_id', 'execution_id', 'turn_id']) {
+      if (!columns.has(column)) {
+        this.db.exec(
+          `ALTER TABLE model_usage_records ADD COLUMN ${column} TEXT`,
+        );
+      }
+    }
     this.db.exec(`
       CREATE INDEX IF NOT EXISTS model_usage_records_interaction
         ON model_usage_records(interaction_id, created_at DESC)
+      ;
+      CREATE INDEX IF NOT EXISTS model_usage_records_request
+        ON model_usage_records(request_id)
     `);
     this.insertRecord = this.db.prepare(`
       INSERT INTO model_usage_records (
-        id, created_at, provider_host, model, operation, interaction_id, request_status, usage_received,
+        id, created_at, provider_host, model, operation, interaction_id,
+        request_id, execution_id, turn_id, request_status, usage_received,
         input_tokens, output_tokens, cached_input_tokens, cache_miss_tokens,
         cache_write_tokens, reasoning_tokens, provider_cost_json, request_characters,
-        tool_definition_characters, message_count, tool_count
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        message_role_characters_json, tool_definition_characters, message_count, tool_count
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     this.insertExternalUsage = this.db.prepare(`
       INSERT INTO external_usage_records (
@@ -127,6 +181,9 @@ export class ModelUsageStore {
       model: shortText(record.model, 'unknown', 200),
       operation: shortText(record.operation, 'unspecified', 80),
       interactionId: shortText(record.interactionId, null, 120),
+      requestId: shortText(record.requestId, null, 120),
+      executionId: shortText(record.executionId, null, 120),
+      turnId: shortText(record.turnId, null, 120),
       requestStatus: ['completed', 'failed', 'interrupted'].includes(
         record.requestStatus,
       )
@@ -141,6 +198,12 @@ export class ModelUsageStore {
       reasoningTokens: count(record.reasoningTokens),
       providerCostJson: serializeProviderCost(record.providerCost),
       requestCharacters: count(record.requestCharacters),
+      messageRoleCharactersJson: (() => {
+        const normalized = normalizeMessageRoleCharacters(
+          record.messageRoleCharacters,
+        );
+        return normalized ? JSON.stringify(normalized) : null;
+      })(),
       toolDefinitionCharacters: count(record.toolDefinitionCharacters),
       messageCount: count(record.messageCount) ?? 0,
       toolCount: count(record.toolCount) ?? 0,
@@ -152,6 +215,9 @@ export class ModelUsageStore {
       row.model,
       row.operation,
       row.interactionId,
+      row.requestId,
+      row.executionId,
+      row.turnId,
       row.requestStatus,
       row.usageReceived,
       row.inputTokens,
@@ -162,6 +228,7 @@ export class ModelUsageStore {
       row.reasoningTokens,
       row.providerCostJson,
       row.requestCharacters,
+      row.messageRoleCharactersJson,
       row.toolDefinitionCharacters,
       row.messageCount,
       row.toolCount,
@@ -285,6 +352,7 @@ export class ModelUsageStore {
       .prepare(`
         SELECT id, created_at AS createdAt, provider_host AS providerHost,
           model, operation, interaction_id AS interactionId,
+          request_id AS requestId, execution_id AS executionId, turn_id AS turnId,
           request_status AS requestStatus,
           usage_received AS usageReceived,
           input_tokens AS inputTokens, output_tokens AS outputTokens,
@@ -294,6 +362,7 @@ export class ModelUsageStore {
           reasoning_tokens AS reasoningTokens,
           provider_cost_json AS providerCostJson,
           request_characters AS requestCharacters,
+          message_role_characters_json AS messageRoleCharactersJson,
           tool_definition_characters AS toolDefinitionCharacters,
           message_count AS messageCount, tool_count AS toolCount
         FROM model_usage_records
@@ -310,7 +379,77 @@ export class ModelUsageStore {
         }
         const record = { ...row };
         delete record.providerCostJson;
+        record.messageRoleCharacters = parseMessageRoleCharacters(
+          record.messageRoleCharactersJson,
+        );
+        delete record.messageRoleCharactersJson;
         return { ...record, providerCost };
+      });
+  }
+
+  getForDiagnostics({
+    requestIds = [],
+    executionId = null,
+    taskId = null,
+    limit = 500,
+  } = {}) {
+    const safeLimit = Math.max(1, Math.min(count(limit) ?? 500, 500));
+    const ids = [
+      ...new Set(requestIds.filter((id) => typeof id === 'string')),
+    ].slice(0, 500);
+    const predicates = [];
+    const values = [];
+    if (ids.length) {
+      predicates.push(`request_id IN (${ids.map(() => '?').join(', ')})`);
+      values.push(...ids);
+    }
+    if (typeof executionId === 'string' && executionId) {
+      predicates.push('execution_id = ?', 'turn_id = ?');
+      values.push(executionId, executionId);
+    }
+    if (typeof taskId === 'string' && taskId) {
+      predicates.push('interaction_id = ?');
+      values.push(taskId);
+    }
+    if (!predicates.length) return [];
+    return this.db
+      .prepare(`
+      SELECT created_at AS createdAt, provider_host AS providerHost,
+        model, operation, interaction_id AS interactionId,
+        request_id AS requestId, execution_id AS executionId, turn_id AS turnId,
+        request_status AS requestStatus, usage_received AS usageReceived,
+        input_tokens AS inputTokens, output_tokens AS outputTokens,
+        cached_input_tokens AS cachedInputTokens,
+        cache_miss_tokens AS cacheMissTokens,
+        cache_write_tokens AS cacheWriteTokens,
+        reasoning_tokens AS reasoningTokens,
+        request_characters AS requestCharacters,
+        message_role_characters_json AS messageRoleCharactersJson,
+        tool_definition_characters AS toolDefinitionCharacters,
+        message_count AS messageCount, tool_count AS toolCount
+      FROM model_usage_records
+      WHERE ${predicates.join(' OR ')}
+      ORDER BY created_at ASC, id ASC
+      LIMIT ?
+    `)
+      .all(...values, safeLimit)
+      .map((row) => {
+        const hasRequestShape = row.requestCharacters !== null;
+        const messageRoleCharacters = hasRequestShape
+          ? parseMessageRoleCharacters(row.messageRoleCharactersJson)
+          : null;
+        delete row.messageRoleCharactersJson;
+        return {
+          ...row,
+          messageRoleCharacters,
+          usageReceived: row.usageReceived === 1,
+          requestCharacters: hasRequestShape ? row.requestCharacters : null,
+          toolDefinitionCharacters: hasRequestShape
+            ? row.toolDefinitionCharacters
+            : null,
+          messageCount: hasRequestShape ? row.messageCount : null,
+          toolCount: hasRequestShape ? row.toolCount : null,
+        };
       });
   }
 

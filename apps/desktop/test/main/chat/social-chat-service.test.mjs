@@ -89,6 +89,66 @@ test('social chat sends only the selected room transcript and persists the real 
   }
 });
 
+test('Noema main chat keeps first-meeting context after the reusable transcript prefix', async () => {
+  const db = new Database(':memory:');
+  new RootStore(db);
+  const store = createSocialTestStore(db);
+  const requests = [];
+  let firstMeetingContext = '首次交流上下文版本一';
+  store.getFirstMeetingContext = () => firstMeetingContext;
+  const service = new SocialChatService({
+    store,
+    provider: {
+      async *streamChat(input) {
+        requests.push(input.messages.map((message) => ({ ...message })));
+        yield '收到。';
+      },
+    },
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'test-model',
+    getRootState: async () => ({
+      connected: true,
+      selectedModel: 'test-model',
+    }),
+  });
+
+  try {
+    service.sendMessage({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '第一条普通消息。',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await service.active.get('room-noema')?.done;
+
+    firstMeetingContext = '首次交流上下文版本二';
+    service.sendMessage({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '第二条普通消息。',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await service.active.get('room-noema')?.done;
+
+    assert.equal(requests.length, 2);
+    assert.equal(requests[0][0].role, 'system');
+    assert.equal(requests[0][0].content, requests[1][0].content);
+    assert.doesNotMatch(requests[0][0].content, /首次交流上下文版本/u);
+    for (const [index, messages] of requests.entries()) {
+      const dynamicIndex = messages.findIndex((message) =>
+        message.content.includes(`首次交流上下文版本${index ? '二' : '一'}`),
+      );
+      const userIndex = messages.findLastIndex(
+        (message) => message.role === 'user',
+      );
+      assert.ok(dynamicIndex > 0 && dynamicIndex < userIndex);
+    }
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});
+
 test('personal memory stays in Noema main chat and writes only from explicit user requests', async () => {
   const db = new Database(':memory:');
   new RootStore(db);
@@ -273,7 +333,13 @@ test('a direct acceptance of a specific Noema follow-up offer exposes the remind
       ),
       false,
     );
-    assert.match(requests[4].messages[0].content, /先自然地问清时间/u);
+    assert.match(
+      requests[4].messages
+        .filter((message) => message.role === 'system')
+        .map((message) => message.content)
+        .join('\n'),
+      /先自然地问清时间/u,
+    );
 
     service.sendMessage({
       roomId: 'room-noema',
@@ -288,7 +354,13 @@ test('a direct acceptance of a specific Noema follow-up offer exposes the remind
       ),
       false,
     );
-    assert.match(requests[5].messages[0].content, /先自然地问清时间/u);
+    assert.match(
+      requests[5].messages
+        .filter((message) => message.role === 'system')
+        .map((message) => message.content)
+        .join('\n'),
+      /先自然地问清时间/u,
+    );
   } finally {
     await service.shutdown();
     db.close();
@@ -560,6 +632,10 @@ test('ordinary Noema conversation omits existing-project tools and restores them
     await service.active.get('room-noema')?.done;
 
     const projectTools = requests[1].tools.map((tool) => tool.function.name);
+    assert.equal(
+      requests[0].messages[0].content,
+      requests[1].messages[0].content,
+    );
     assert.equal(
       requests[1].usageOperation,
       'social_turn:noema_main:project_tools',
@@ -1534,8 +1610,8 @@ test('Noema retrieves bounded, redacted history from its own threads only when t
     const ordinaryCurrentUserIndex = ordinaryMessages.findIndex((message) =>
       message.content.includes('我们先聊聊最近的构思。'),
     );
-    assert.ok(ordinaryHistoryIndex < ordinaryGuidanceIndex);
-    assert.ok(ordinaryGuidanceIndex < ordinaryCurrentUserIndex);
+    assert.ok(ordinaryGuidanceIndex < ordinaryHistoryIndex);
+    assert.ok(ordinaryHistoryIndex < ordinaryCurrentUserIndex);
 
     const recallTurn = service.sendMessage({
       roomId: thread.room.id,
@@ -1655,10 +1731,12 @@ test('Noema can start existing project work from an explicit request while other
   });
 
   try {
+    const workspaceTaskRequest =
+      '请在本机工作区执行以下任务：\n\n请检查本地项目的依赖配置并修复问题。';
     service.sendMessage({
       roomId: 'room-noema',
       agentId: 'noema',
-      text: '请检查本地项目的依赖配置并修复问题。',
+      text: workspaceTaskRequest,
     });
     await new Promise((resolve) => setImmediate(resolve));
     await service.active.get('room-noema')?.done;
@@ -1666,6 +1744,12 @@ test('Noema can start existing project work from an explicit request while other
     assert.deepEqual(
       requests[0].tools?.map((tool) => tool.function.name),
       ['start_project_work', 'delegate_to_specialist'],
+    );
+    assert.equal(
+      store
+        .getRoomSnapshot('room-noema')
+        .messages.find((message) => message.role === 'user').content,
+      workspaceTaskRequest,
     );
     assert.ok(
       requests[0].messages.some(

@@ -10,11 +10,15 @@ import {
   shell,
   screen,
   Notification,
+  Menu,
+  Tray,
+  nativeImage,
 } from 'electron';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { EncryptedSecretStore } from './platform/encrypted-secret-store.mjs';
+import { redactSensitiveText } from '../shared/text/sensitive-text.mjs';
 import { resolveElectronProxy } from './platform/electron-proxy.mjs';
 import { createPendingFollowupNavigationDelivery } from './platform/pending-followup-navigation.mjs';
 import {
@@ -29,12 +33,34 @@ import {
 import { RootAgent } from './agents/root-agent.mjs';
 import { RootStore } from './storage/root-store.mjs';
 import { ModelUsageStore } from './storage/model-usage-store.mjs';
+import { DiagnosticsEventStore } from './storage/diagnostics-event-store.mjs';
+import { DiagnosticsQueryService } from './diagnostics/diagnostics-query-service.mjs';
+import { collectDiagnosticsRuntimeInfo } from './diagnostics/diagnostics-runtime-info.mjs';
+import { startupFailureDiagnostic } from './diagnostics/startup-failure-diagnostic.mjs';
+import {
+  openNoemaDataDirectory,
+  readDatabaseHealth,
+  showDatabaseStartupFailure,
+} from './diagnostics/database-recovery.mjs';
+import { saveDiagnosticsExport } from './diagnostics/save-diagnostics-export.mjs';
 import { SocialChatStore } from './chat/social-chat-store.mjs';
+import { SOCIAL_SCHEMA_VERSION } from './chat/social-chat-schema.mjs';
 import { SocialProjectStore } from './projects/social-project-store.mjs';
 import { SocialChatService } from './chat/social-chat-service.mjs';
 import { searchAndReadWeb } from './tools/web-search.mjs';
 import { SocialWorkService } from './execution/social-work-service.mjs';
 import { NoemaProjectExecutor } from './execution/noema-project-executor.mjs';
+import { WindowsRunnerAclJournalStore } from './execution/windows-runner-acl-journal.mjs';
+import { WindowsRunnerAclTransactionService } from './execution/windows-runner-acl-transaction.mjs';
+import { WindowsRunnerCapabilityNameStore } from './execution/windows-runner-capability-name-store.mjs';
+import { WindowsRunnerExecutionService } from './execution/windows-runner-execution-service.mjs';
+import { WindowsRunnerNativeHelper } from './execution/windows-runner-native-helper.mjs';
+import { resolveWindowsRunnerNativeHelper } from './execution/windows-runner-resource.mjs';
+import { resolveWindowsRunnerCommandSupport } from './execution/windows-runner-command-support.mjs';
+import { createWindowsRunnerCapabilityReport } from './execution/windows-runner-capability.mjs';
+import { WINDOWS_RUNNER_PROTOCOL_VERSION } from './execution/windows-runner-native-helper.mjs';
+import { WindowsRunnerSetupService } from './execution/windows-runner-setup-service.mjs';
+import { WindowsRunnerSetupStateStore } from './execution/windows-runner-setup-state.mjs';
 import { backupBeforeSocialChatMigration } from './chat/social-chat-migration-backup.mjs';
 import {
   resolveNoemaDatabasePath,
@@ -50,6 +76,7 @@ import {
 } from './integrations/dsh-headless-adapter.mjs';
 import {
   createWindowPreferences,
+  isMainFrameIpcEvent,
   isInternalNavigation,
   shouldOpenExternally,
 } from './platform/window-security.mjs';
@@ -67,6 +94,10 @@ import {
   createSocialReplyNotificationHandler,
   createUserFollowupNotificationHandler,
 } from './platform/desktop-notifications.mjs';
+import {
+  createDesktopLifecycle,
+  waitForDesktopShutdown,
+} from './platform/desktop-lifecycle.mjs';
 import { readDesktopDevelopmentOptions } from './platform/development-options';
 const developmentOptions = readDesktopDevelopmentOptions();
 const {
@@ -131,6 +162,45 @@ function writeRendererHealthLog(
   }
 }
 
+function recordAuthorizationDecision(
+  capability: string,
+  decision: 'requested' | 'granted' | 'denied' | 'revoked',
+  reason?: string,
+) {
+  recordDiagnosticEvent({
+    executionId: randomUUID(),
+    parentExecutionId: currentApplicationExecutionId,
+    module: 'authorization',
+    operation: `authorization.${capability}`,
+    status: decision,
+    details: {
+      capability,
+      ...(reason ? { reason } : {}),
+    },
+  });
+}
+
+function beginAuthorizationDecision(capability: string) {
+  const executionId = randomUUID();
+  const record = (
+    decision: 'requested' | 'granted' | 'denied' | 'revoked',
+    reason?: string,
+  ) =>
+    recordDiagnosticEvent({
+      executionId,
+      parentExecutionId: currentApplicationExecutionId,
+      module: 'authorization',
+      operation: `authorization.${capability}`,
+      status: decision,
+      details: {
+        capability,
+        ...(reason ? { reason } : {}),
+      },
+    });
+  record('requested');
+  return record;
+}
+
 writeSmokeLog('main-entry', { argv: process.argv, packaged: app.isPackaged });
 if (!app.isPackaged && testDataArgument) {
   const testPortArgument = process.argv.find((argument) =>
@@ -178,9 +248,86 @@ if (
   delete process.env.NOEMA_SMOKE_SESSION_DATA_DIR;
 }
 let mainWindow: BrowserWindow | null = null;
+let desktopLifecycle: ReturnType<typeof createDesktopLifecycle> | null = null;
+const currentApplicationExecutionId = randomUUID();
+let currentEntryRoute: 'social-chat' | 'legacy' | null = null;
+let entryReadinessRecordedFor: string | null = null;
 let initialWindowFitsWorkArea = false;
 let rootStore: RootStore | null = null;
+let diagnosticsEventStore: DiagnosticsEventStore | null = null;
+let diagnosticsWriteFailureCount = 0;
+let windowsRunnerCommandSupportGate: {
+  supported: boolean;
+  reason?: string;
+} | null = null;
+let windowsRunnerCapability = createWindowsRunnerCapabilityReport({
+  platform: process.platform,
+  support: { supported: false, reason: 'runner_startup_not_checked' },
+});
+let refreshWindowsRunnerCapability: (
+  identity?: Record<string, unknown>,
+) => Promise<typeof windowsRunnerCapability> = async () =>
+  windowsRunnerCapability;
+let setupWindowsRunner: () => Promise<{
+  supported: boolean;
+  canceled: boolean;
+  reasonCode: string | null;
+}> = async () => ({
+  supported: false,
+  canceled: false,
+  reasonCode: 'runner_unavailable',
+});
 let providerSecretStore: EncryptedSecretStore | null = null;
+
+function recordDiagnosticEvent(event: Record<string, unknown>) {
+  if (!diagnosticsEventStore) {
+    diagnosticsWriteFailureCount += 1;
+    return false;
+  }
+  const recorded = diagnosticsEventStore.record({
+    applicationExecutionId: currentApplicationExecutionId,
+    ...event,
+  });
+  if (!recorded) {
+    diagnosticsWriteFailureCount += 1;
+    if (windowsRunnerCommandSupportGate) {
+      windowsRunnerCommandSupportGate.supported = false;
+      windowsRunnerCommandSupportGate.reason =
+        'Noema 诊断记录不可用；为保留执行链路，命令未启动。';
+    }
+  }
+  return recorded;
+}
+
+function createNoemaTray({
+  onOpen,
+  onQuit,
+}: {
+  onOpen: () => unknown;
+  onQuit: () => void;
+}) {
+  const iconPath = app.isPackaged
+    ? path.join(process.resourcesPath, 'noema-tray-icon.png')
+    : path.join(app.getAppPath(), 'assets', 'noema-tray-icon.png');
+  const icon = nativeImage.createFromPath(iconPath);
+  if (icon.isEmpty()) throw new Error('tray_icon_unavailable');
+  const tray = new Tray(icon);
+  try {
+    tray.setToolTip('Noema');
+    tray.setContextMenu(
+      Menu.buildFromTemplate([
+        { label: '打开 Noema', click: onOpen },
+        { type: 'separator' },
+        { label: '退出 Noema', click: onQuit },
+      ]),
+    );
+    tray.on('click', onOpen);
+    return tray;
+  } catch (error) {
+    tray.destroy();
+    throw error;
+  }
+}
 let unregisterRootIpc: (() => void) | null = null;
 let rootAgent: RootAgent | null = null;
 let socialChatStore: SocialChatStore | null = null;
@@ -228,7 +375,7 @@ const hasSingleInstanceLock =
 
 ipcMain.handle('noema:window-control', (event, action: unknown) => {
   const target = BrowserWindow.fromWebContents(event.sender);
-  if (!target || target !== mainWindow)
+  if (!isMainFrameIpcEvent(event) || !target || target !== mainWindow)
     throw new Error('Window is unavailable');
   if (action === 'minimize') target.minimize();
   else if (action === 'maximize') {
@@ -240,6 +387,8 @@ ipcMain.handle('noema:window-control', (event, action: unknown) => {
 });
 
 const createWindow = () => {
+  currentEntryRoute = null;
+  entryReadinessRecordedFor = null;
   quickCaptureRendererReady = false;
   pendingFollowupNavigation.resetRenderer();
   const display = screen.getPrimaryDisplay();
@@ -294,8 +443,8 @@ const createWindow = () => {
       const source = details.sourceId ?? legacySource;
       const line = details.lineNumber ?? legacyLine;
       writeRendererHealthLog('console-error', {
-        message,
-        source,
+        message: redactSensitiveText(message).snippet.slice(0, 2_000),
+        source: path.basename(source ?? ''),
         line,
       });
       if (process.env.NOEMA_SMOKE_TEST === '1') {
@@ -323,8 +472,21 @@ const createWindow = () => {
     pendingQuickCaptureRequest = false;
     pendingFollowupNavigation.resetRenderer();
   });
+  desktopLifecycle?.attachWindow(mainWindow);
 
   mainWindow.webContents.once('did-finish-load', () => {
+    const loadedUrl = mainWindow?.webContents.getURL();
+    if (currentApplicationExecutionId && loadedUrl) {
+      currentEntryRoute =
+        new URL(loadedUrl).hash === '#legacy' ? 'legacy' : 'social-chat';
+      recordDiagnosticEvent({
+        executionId: currentApplicationExecutionId,
+        module: 'desktop.main',
+        operation: 'entry.route_selected',
+        status: 'observed',
+        details: { route: currentEntryRoute },
+      });
+    }
     if (pendingQuickCaptureRequest) dispatchQuickCaptureRequest();
   });
 
@@ -365,6 +527,165 @@ const createWindow = () => {
             'Social chat bridge did not return contacts and rooms',
           );
         }
+        bridgeProbeStage = 'workspace-task-entry';
+        await mainWindow?.webContents
+          .executeJavaScript(`new Promise((resolve) => {
+          const deadline = Date.now() + 15_000;
+          const poll = () => {
+            if (document.querySelector('.composer-mode-button') || Date.now() >= deadline) {
+              resolve();
+              return;
+            }
+            requestAnimationFrame(poll);
+          };
+          poll();
+        })`);
+        const workspaceTaskEntry =
+          await mainWindow?.webContents.executeJavaScript(
+            `(() => {
+            const button = document.querySelector('.composer-mode-button');
+            const status = document.querySelector('.composer-mode > span');
+            const rect = button?.getBoundingClientRect();
+            return {
+              visible: Boolean(rect && rect.width > 0 && rect.height > 0),
+              accessibleName: button?.textContent?.trim() ?? '',
+              pressed: button?.getAttribute('aria-pressed'),
+              keyboardFocusable: button?.tabIndex === 0,
+              disabled: Boolean(button?.disabled),
+              statusText: status?.textContent?.trim() ?? '',
+              composerVisible: Boolean(
+                document.querySelector('.message-composer')?.getBoundingClientRect().height,
+              ),
+            };
+          })()`,
+          );
+        if (
+          !workspaceTaskEntry?.visible ||
+          workspaceTaskEntry.accessibleName !== '工作区任务' ||
+          workspaceTaskEntry.pressed !== 'false' ||
+          !workspaceTaskEntry.keyboardFocusable ||
+          !workspaceTaskEntry.composerVisible ||
+          (!socialState.projectWork.available &&
+            (!workspaceTaskEntry.disabled ||
+              !workspaceTaskEntry.statusText.includes(
+                socialState.projectWork.reason ?? '正在检查工作区任务能力',
+              )))
+        ) {
+          throw new Error(
+            `工作区任务入口默认状态不符合预期：${JSON.stringify(workspaceTaskEntry)}`,
+          );
+        }
+        const originalWindowSize = mainWindow?.getSize();
+        let workspaceTaskNarrowLayout;
+        try {
+          mainWindow?.setSize(680, 720);
+          await mainWindow?.webContents.executeJavaScript(
+            'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+          );
+          workspaceTaskNarrowLayout = await mainWindow?.webContents
+            .executeJavaScript(`(() => {
+              const button = document.querySelector('.composer-mode-button');
+              const composer = document.querySelector('.message-composer');
+              const rect = button?.getBoundingClientRect();
+              return {
+                visible: Boolean(rect && rect.width > 0 && rect.bottom <= window.innerHeight),
+                composerVisible: Boolean(
+                  composer && composer.getBoundingClientRect().bottom <= window.innerHeight,
+                ),
+                noHorizontalOverflow:
+                  document.documentElement.scrollWidth <= window.innerWidth,
+              };
+            })()`);
+        } finally {
+          if (originalWindowSize)
+            mainWindow?.setSize(originalWindowSize[0], originalWindowSize[1]);
+        }
+        if (
+          !workspaceTaskNarrowLayout?.visible ||
+          !workspaceTaskNarrowLayout.composerVisible ||
+          !workspaceTaskNarrowLayout.noHorizontalOverflow
+        ) {
+          throw new Error(
+            `窄窗口工作区任务入口布局不符合预期：${JSON.stringify(workspaceTaskNarrowLayout)}`,
+          );
+        }
+        bridgeProbeStage = 'diagnostics-view';
+        const diagnosticsEntry = await mainWindow?.webContents
+          .executeJavaScript(`(() => {
+          const button = [...document.querySelectorAll('button')]
+            .find((candidate) => candidate.getAttribute('aria-label') === '运行诊断');
+          if (!button) return { found: false };
+          button.click();
+          return { found: true };
+        })()`);
+        if (!diagnosticsEntry?.found) throw new Error('运行诊断入口不可见');
+        await mainWindow?.webContents.executeJavaScript(
+          'new Promise((resolve) => setTimeout(resolve, 160))',
+        );
+        const diagnosticsLayout = await mainWindow?.webContents
+          .executeJavaScript(`(() => {
+          const dialog = document.querySelector('[aria-labelledby="diagnostics-title"]');
+          const rect = dialog?.getBoundingClientRect();
+          const runtimeInfo = dialog?.querySelector('.diagnostics-runtime-info');
+          runtimeInfo?.querySelector('summary')?.click();
+          return {
+            visible: Boolean(rect && rect.width > 0 && rect.height > 0),
+            width: rect?.width ?? 0,
+            noHorizontalOverflow: document.documentElement.scrollWidth <= window.innerWidth,
+            heading: dialog?.querySelector('h2')?.textContent?.trim() ?? '',
+            runnerCapabilityText:
+              dialog?.querySelector('[aria-label="Windows 命令隔离能力"]')?.textContent?.trim() ?? '',
+            databaseStatusText:
+              dialog?.querySelector('[aria-label="数据库检查状态"]')?.textContent?.trim() ?? '',
+            databaseRecoveryButton:
+              dialog?.querySelector('[aria-label="打开 Noema 数据与备份目录"]')?.textContent?.trim() ?? '',
+            runtimeInfoText: runtimeInfo?.textContent?.trim() ?? '',
+          };
+        })()`);
+        if (
+          !diagnosticsLayout?.visible ||
+          !diagnosticsLayout.noHorizontalOverflow ||
+          diagnosticsLayout.heading !== '运行诊断' ||
+          !diagnosticsLayout.runnerCapabilityText.includes(
+            'Windows 命令隔离',
+          ) ||
+          diagnosticsLayout.databaseStatusText !== '检查通过。' ||
+          !diagnosticsLayout.databaseRecoveryButton.includes(
+            '打开数据与备份目录',
+          ) ||
+          !diagnosticsLayout.runtimeInfoText.includes('SocialChat schema v') ||
+          !diagnosticsLayout.runtimeInfoText.includes('Diagnostics schema v') ||
+          /SRT|srt-win/iu.test(diagnosticsLayout.runnerCapabilityText)
+        ) {
+          throw new Error(
+            `运行诊断窗口在窄窗口下不可用：${JSON.stringify(diagnosticsLayout)}`,
+          );
+        }
+        bridgeProbeStage = 'diagnostics-export-preview';
+        const diagnosticsPreviewVisible = await mainWindow?.webContents
+          .executeJavaScript(`new Promise((resolve) => {
+          const button = document.querySelector('.diagnostics-detail-heading button');
+          if (!button) return resolve(false);
+          button.click();
+          const deadline = Date.now() + 3_000;
+          const poll = () => {
+            const preview = document.querySelector('.diagnostics-preview');
+            if (preview) {
+              preview.querySelector('summary')?.click();
+              const report = preview.querySelector('pre')?.textContent ?? '';
+              return resolve(report.includes('"schemaVersion": 1') && report.includes('"manifest"'));
+            }
+            if (Date.now() >= deadline) return resolve(false);
+            setTimeout(poll, 40);
+          };
+          poll();
+        })`);
+        if (!diagnosticsPreviewVisible)
+          throw new Error('诊断报告导出预览不可见');
+        await mainWindow?.webContents.executeJavaScript(`(() => {
+          document.querySelector('.diagnostics-preview-actions .secondary-action')?.click();
+          document.querySelector('[aria-label="关闭运行诊断"]')?.click();
+        })()`);
         const firstRoom = socialState.rooms[0];
         bridgeProbeStage = 'social-room';
         const socialRoom = firstRoom
@@ -374,6 +695,21 @@ const createWindow = () => {
           : null;
         if (!socialRoom?.room || !Array.isArray(socialRoom.members)) {
           throw new Error('Social chat room could not be opened through IPC');
+        }
+        bridgeProbeStage = 'diagnostics-runtime-manifest';
+        const diagnosticsRuntime =
+          await mainWindow?.webContents.executeJavaScript(
+            'window.noema.getDiagnosticsRecent(1).then((result) => result.runtime)',
+          );
+        if (
+          !diagnosticsRuntime?.applicationVersion ||
+          !diagnosticsRuntime?.electronVersion ||
+          !Number.isSafeInteger(diagnosticsRuntime?.socialSchemaVersion) ||
+          !Number.isSafeInteger(diagnosticsRuntime?.diagnosticsSchemaVersion)
+        ) {
+          throw new Error(
+            'Packaged diagnostics runtime manifest is incomplete',
+          );
         }
         bridgeProbeStage = 'smoke-rendering';
         const quickCaptureSmoke = await runDesktopProbe(
@@ -401,6 +737,39 @@ const createWindow = () => {
         const socialLiveChatSmoke = await runDesktopProbe(
           'verifyLiveSocialChatSmoke',
         );
+        let desktopLifecycleSmoke: {
+          trayReady: boolean;
+          hiddenOnClose: boolean;
+          restoredSameWindow: boolean;
+        } | null = null;
+        if (process.platform === 'win32') {
+          const originalWindow = mainWindow;
+          originalWindow?.show();
+          originalWindow?.close();
+          const hiddenOnClose = Boolean(
+            originalWindow && !originalWindow.isVisible(),
+          );
+          desktopLifecycle?.restoreWindow();
+          const restoredSameWindow = Boolean(
+            originalWindow &&
+            mainWindow === originalWindow &&
+            originalWindow.isVisible(),
+          );
+          desktopLifecycleSmoke = {
+            trayReady: Boolean(desktopLifecycle?.hasTray),
+            hiddenOnClose,
+            restoredSameWindow,
+          };
+          if (
+            !desktopLifecycleSmoke.trayReady ||
+            !desktopLifecycleSmoke.hiddenOnClose ||
+            !desktopLifecycleSmoke.restoredSameWindow
+          ) {
+            throw new Error(
+              `Desktop tray lifecycle probe failed: ${JSON.stringify(desktopLifecycleSmoke)}`,
+            );
+          }
+        }
         const result = {
           url: mainWindow?.webContents.getURL() ?? null,
           title: mainWindow?.getTitle() ?? null,
@@ -415,6 +784,14 @@ const createWindow = () => {
             ),
             roomIds: socialState.rooms.map((room: { id: string }) => room.id),
             firstRoomOpened: true,
+            workspaceTaskEntry,
+            workspaceTaskNarrowLayout,
+          },
+          diagnosticsSmoke: {
+            visible: diagnosticsLayout.visible,
+            noHorizontalOverflow: diagnosticsLayout.noHorizontalOverflow,
+            databaseStatusText: diagnosticsLayout.databaseStatusText,
+            databaseRecoveryButton: diagnosticsLayout.databaseRecoveryButton,
           },
           providerConfigured: Boolean(bridgeState.providerConfigured),
           providerBaseUrl: bridgeState.providerBaseUrl ?? null,
@@ -450,6 +827,8 @@ const createWindow = () => {
           modelAvailabilitySmoke,
           socialChatSmoke,
           socialLiveChatSmoke,
+          diagnosticsRuntime,
+          desktopLifecycleSmoke,
         };
         writeSmokeLog('renderer-loaded', result);
         if (process.env.NOEMA_SMOKE_TEST_FILE) {
@@ -468,6 +847,20 @@ const createWindow = () => {
     });
   }
 };
+
+desktopLifecycle = createDesktopLifecycle({
+  app,
+  createTray: createNoemaTray,
+  getWindow: () => mainWindow,
+  createWindow: () => {
+    createWindow();
+    return mainWindow;
+  },
+  recordEvent: recordDiagnosticEvent,
+  onSystemSessionEnd: () => {
+    void beginHostShutdown('system_shutdown');
+  },
+});
 
 const notifySocialReply = createSocialReplyNotificationHandler({
   NotificationClass: Notification,
@@ -641,6 +1034,7 @@ async function startNoema() {
       testDatabasePath,
     });
     rootStore = new RootStore(databasePath);
+    diagnosticsEventStore = new DiagnosticsEventStore(rootStore.db);
     const modelUsageStore = new ModelUsageStore(rootStore.db);
     writeSmokeLog('store-opened');
     const legacyFreeLlmApiSecretStore = new EncryptedSecretStore({
@@ -713,10 +1107,330 @@ async function startNoema() {
       getApiKey: () => providerSecretStore?.get() ?? null,
       fetchImpl: (input, init) =>
         net.fetch(input instanceof URL ? input.toString() : input, init),
-      onUsage: (usage) => modelUsageStore.record(usage),
+      onRequestEvent: (event) => {
+        recordDiagnosticEvent({
+          executionId: event.executionId ?? event.interactionId,
+          taskId:
+            typeof event.operation === 'string' &&
+            ['project_execution', 'member_practice'].includes(event.operation)
+              ? (event.executionId ?? event.interactionId)
+              : null,
+          turnId: event.turnId ?? event.interactionId,
+          requestId: event.requestId,
+          module: 'provider',
+          operation: `request.${event.phase}`,
+          status: event.status,
+          details: {
+            requestStatus: event.requestStatus,
+            elapsedMs: event.elapsedMs,
+          },
+        });
+      },
+      onUsage: (usage) => {
+        modelUsageStore.record(usage);
+      },
     });
+    let windowsRunnerExecution: WindowsRunnerExecutionService | null = null;
+    let windowsRunnerSupport: { supported: boolean; reason?: string } =
+      resolveWindowsRunnerCommandSupport({
+        unavailableCode: 'runner_startup_not_checked',
+      });
+    if (process.platform === 'win32') {
+      try {
+        const userDataPath = app.getPath('userData');
+        const helperPath = resolveWindowsRunnerNativeHelper({
+          platform: process.platform,
+          arch: process.arch,
+          isPackaged: app.isPackaged,
+          resourcesPath: process.resourcesPath,
+          appPath: app.getAppPath(),
+        });
+        const helper = new WindowsRunnerNativeHelper({
+          executablePath: helperPath,
+        });
+        const setupStateStore = new WindowsRunnerSetupStateStore({
+          userDataPath,
+        });
+        const setupService = new WindowsRunnerSetupService({
+          stateStore: setupStateStore,
+          helper,
+          onEvent: (event) => {
+            recordDiagnosticEvent({
+              executionId: event.operationId,
+              module: 'windows_runner',
+              operation: event.type ?? 'setup_event',
+              status: event.type?.endsWith('_failed') ? 'error' : 'observed',
+              errorCode: event.code,
+              details: { phase: event.stage },
+            });
+          },
+        });
+        let lastCapabilitySignature = '';
+        refreshWindowsRunnerCapability = async (identity) => {
+          let backendReadiness;
+          let setupReadiness;
+          try {
+            [backendReadiness, setupReadiness] = await Promise.all([
+              helper.probeCommandBackend({ requestId: randomUUID() }),
+              setupService.verifyReady(),
+            ]);
+            windowsRunnerSupport = resolveWindowsRunnerCommandSupport({
+              backendReadiness,
+              setupReadiness,
+              diagnosticsReady: diagnosticsWriteFailureCount === 0,
+            });
+            if (windowsRunnerCommandSupportGate) {
+              Object.assign(
+                windowsRunnerCommandSupportGate,
+                windowsRunnerSupport,
+              );
+            } else {
+              windowsRunnerCommandSupportGate = windowsRunnerSupport;
+            }
+            windowsRunnerCapability = createWindowsRunnerCapabilityReport({
+              platform: process.platform,
+              support: windowsRunnerSupport,
+              backendReadiness,
+              setupReadiness,
+              protocolVersion: WINDOWS_RUNNER_PROTOCOL_VERSION,
+            });
+          } catch (error) {
+            const code =
+              typeof (error as { code?: unknown })?.code === 'string'
+                ? (error as { code: string }).code
+                : 'runner_runtime_unavailable';
+            windowsRunnerSupport = resolveWindowsRunnerCommandSupport({
+              unavailableCode: code,
+            });
+            if (windowsRunnerCommandSupportGate) {
+              Object.assign(
+                windowsRunnerCommandSupportGate,
+                windowsRunnerSupport,
+              );
+            } else {
+              windowsRunnerCommandSupportGate = windowsRunnerSupport;
+            }
+            windowsRunnerCapability = createWindowsRunnerCapabilityReport({
+              platform: process.platform,
+              support: windowsRunnerSupport,
+            });
+          }
+          const signature = JSON.stringify(windowsRunnerCapability);
+          if (signature !== lastCapabilitySignature) {
+            recordDiagnosticEvent({
+              executionId:
+                typeof identity?.executionId === 'string'
+                  ? identity.executionId
+                  : undefined,
+              taskId:
+                typeof identity?.taskId === 'string'
+                  ? identity.taskId
+                  : undefined,
+              requestId:
+                typeof identity?.requestId === 'string'
+                  ? identity.requestId
+                  : undefined,
+              toolCallId:
+                typeof identity?.toolCallId === 'string'
+                  ? identity.toolCallId
+                  : undefined,
+              module: 'windows_runner',
+              operation:
+                lastCapabilitySignature === ''
+                  ? 'capability.initialized'
+                  : 'capability.changed',
+              status: windowsRunnerCapability.status,
+              errorCode: windowsRunnerCapability.reasonCode ?? undefined,
+              details: {
+                backendId: windowsRunnerCapability.backendId ?? undefined,
+                backendVersion:
+                  windowsRunnerCapability.backendVersion ?? undefined,
+                protocolVersion:
+                  windowsRunnerCapability.protocolVersion ?? undefined,
+                backendReady: windowsRunnerCapability.backendReady,
+                capabilityStatus: windowsRunnerCapability.status,
+              },
+            });
+            lastCapabilitySignature = signature;
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send(
+                'noema:windows-runner-capability-changed',
+                windowsRunnerCapability,
+              );
+            }
+          }
+          return windowsRunnerCapability;
+        };
+        setupWindowsRunner = async () => {
+          if (!mainWindow || mainWindow.isDestroyed()) {
+            return {
+              supported: false,
+              canceled: false,
+              reasonCode: 'main_window_unavailable',
+            };
+          }
+          const confirmation = await dialog.showMessageBox(mainWindow, {
+            type: 'warning',
+            title: '启用 Windows 命令隔离',
+            message: 'Noema 将设置本机 Windows 命令隔离能力。',
+            detail:
+              '这会请求一次 Windows 管理员确认，用于建立 Noema 自己的隔离配置。取消或设置核验失败时，项目命令仍保持不可用。',
+            buttons: ['继续并请求系统确认', '取消'],
+            defaultId: 0,
+            cancelId: 1,
+            noLink: true,
+          });
+          if (confirmation.response !== 0) {
+            recordDiagnosticEvent({
+              module: 'windows_runner',
+              operation: 'setup.user_decision',
+              status: 'denied',
+              errorCode: 'user_cancelled',
+            });
+            return {
+              supported: windowsRunnerCapability.supported,
+              canceled: true,
+              reasonCode: windowsRunnerCapability.reasonCode,
+            };
+          }
+          try {
+            await setupService.reconcile();
+            const report = await refreshWindowsRunnerCapability();
+            return {
+              supported: report.supported,
+              canceled: false,
+              reasonCode: report.reasonCode,
+            };
+          } catch (error) {
+            await refreshWindowsRunnerCapability();
+            const code =
+              typeof (error as { code?: unknown })?.code === 'string' &&
+              /^[a-z0-9_]{1,96}$/u.test((error as { code: string }).code)
+                ? (error as { code: string }).code
+                : 'setup_failed';
+            return {
+              supported: false,
+              canceled: false,
+              reasonCode: code,
+            };
+          }
+        };
+        const aclJournalStore = new WindowsRunnerAclJournalStore({
+          userDataPath,
+        });
+        const aclTransaction = new WindowsRunnerAclTransactionService({
+          journalStore: aclJournalStore,
+          helper,
+          recordEvent: (event) => {
+            recordDiagnosticEvent({
+              executionId: event.executionId,
+              taskId: event.taskId,
+              requestId: event.requestId,
+              toolCallId: event.toolCallId,
+              module: 'windows_runner',
+              operation: event.operation,
+              status: event.reasonCode ? 'error' : event.stage,
+              errorCode: event.reasonCode,
+              details: { phase: event.stage },
+            });
+          },
+        });
+        const capabilityNameStore = new WindowsRunnerCapabilityNameStore({
+          userDataPath,
+        });
+        windowsRunnerExecution = new WindowsRunnerExecutionService({
+          helper,
+          setupService,
+          aclTransaction,
+          capabilityNameStore,
+          userDataPath,
+          recordEvent: (event) => {
+            recordDiagnosticEvent(event);
+            const backendStateChanged =
+              event.operation === 'backend_probe' &&
+              windowsRunnerCapability.backendReady !==
+                (event.status === 'ready');
+            const setupStateChanged =
+              event.operation === 'setup_verify' &&
+              (windowsRunnerCapability.setupStatus === 'ready') !==
+                (event.status === 'ready');
+            if (backendStateChanged || setupStateChanged) {
+              void refreshWindowsRunnerCapability(event);
+            }
+          },
+        });
+
+        // Read-only checks only. In particular, startup never calls reconcile()
+        // and therefore never surprises the user with a UAC prompt.
+        const report = await refreshWindowsRunnerCapability();
+        recordDiagnosticEvent({
+          module: 'windows_runner',
+          operation: 'startup_readiness',
+          status: report.supported ? 'ready' : 'unavailable',
+          errorCode: report.reasonCode ?? undefined,
+          details: { phase: 'startup' },
+        });
+      } catch (error) {
+        const code =
+          typeof (error as { code?: unknown })?.code === 'string'
+            ? (error as { code: string }).code
+            : 'runner_runtime_unavailable';
+        windowsRunnerSupport = resolveWindowsRunnerCommandSupport({
+          unavailableCode: code,
+        });
+        windowsRunnerCommandSupportGate = windowsRunnerSupport;
+        windowsRunnerCapability = createWindowsRunnerCapabilityReport({
+          platform: process.platform,
+          support: windowsRunnerSupport,
+        });
+        recordDiagnosticEvent({
+          module: 'windows_runner',
+          operation: 'startup_readiness',
+          status: 'error',
+          errorCode: code,
+          details: { phase: 'startup' },
+        });
+      }
+    }
     const noemaProjectExecutor = new NoemaProjectExecutor({
       provider,
+      ...(process.platform === 'win32'
+        ? {
+            commandSupport: windowsRunnerSupport,
+            commandRunner: async (input) => {
+              if (!windowsRunnerExecution) {
+                const error = new Error('runner_runtime_unavailable');
+                (
+                  error as Error & { code?: string; effectStatus?: string }
+                ).code = 'runner_runtime_unavailable';
+                (
+                  error as Error & { code?: string; effectStatus?: string }
+                ).effectStatus = 'not_applied';
+                throw error;
+              }
+              const result = await windowsRunnerExecution.run(input);
+              if (!result || typeof result !== 'object') {
+                const error = new Error('runner_response_invalid');
+                (
+                  error as Error & { code?: string; effectStatus?: string }
+                ).code = 'runner_response_invalid';
+                (
+                  error as Error & { code?: string; effectStatus?: string }
+                ).effectStatus = 'unknown';
+                throw error;
+              }
+              const exitSummary = `退出码：${result.exitCode}`;
+              const timeoutSummary = result.timedOut
+                ? '\n命令已超时并由沙箱终止。'
+                : '';
+              return {
+                output: `${exitSummary}${timeoutSummary}\n${result.output}`,
+                timedOut: result.timedOut,
+                effectStatus: result.effectStatus,
+              };
+            },
+          }
+        : {}),
       authorizeAdditionalAccess: async ({
         command,
         path: requestedPath,
@@ -813,6 +1527,26 @@ async function startNoema() {
       });
     }
     socialChatStore = new SocialChatStore(rootStore.db);
+    recordDiagnosticEvent({
+      executionId: currentApplicationExecutionId,
+      module: 'desktop.store',
+      operation: 'social.schema.ready',
+      status: 'completed',
+      details: { schemaVersion: SOCIAL_SCHEMA_VERSION },
+    });
+    for (const taskId of socialChatStore.recoveredSocialWorkTaskIds) {
+      const recoveryReason =
+        socialChatStore.recoveredSocialWorkTaskErrorCode ?? 'app_restarted';
+      recordDiagnosticEvent({
+        executionId: taskId,
+        taskId,
+        module: 'social.store',
+        operation: 'task.recovered',
+        status: 'interrupted',
+        errorCode: recoveryReason,
+        details: { recoveryReason },
+      });
+    }
     socialProjectStore = new SocialProjectStore({
       db: rootStore.db,
       socialChatStore,
@@ -1052,12 +1786,18 @@ async function startNoema() {
         ? { isConfigured: () => true }
         : providerSecretStore,
       practiceProvider: useSyntheticSocialWork ? null : practiceProvider,
+      recordDiagnosticEvent,
       defaultVerificationChecks:
         socialWorkE2eValid && testSocialWorkChecksJson
           ? JSON.parse(testSocialWorkChecksJson)
           : [],
       chooseWorkspace: async ({ reuseCase = false, prompt = '' } = {}) => {
-        if (socialWorkE2eValid) return testSocialWorkWorkspace;
+        const recordWorkspaceAuthorization =
+          beginAuthorizationDecision('workspace_access');
+        if (socialWorkE2eValid) {
+          recordWorkspaceAuthorization('granted');
+          return testSocialWorkWorkspace;
+        }
         const devWorkspaceOverride = !app.isPackaged
           ? process.env.NOEMA_DEV_PROJECT_WORKSPACE_PATH
           : null;
@@ -1072,14 +1812,18 @@ async function startNoema() {
               'NOEMA_DEV_PROJECT_WORKSPACE_PATH must point to an existing absolute directory.',
             );
           }
+          recordWorkspaceAuthorization('granted', 'development_override');
           return workspace;
         }
-        if (!mainWindow || mainWindow.isDestroyed()) return null;
+        if (!mainWindow || mainWindow.isDestroyed()) {
+          recordWorkspaceAuthorization('denied', 'main_window_unavailable');
+          return null;
+        }
         const selection = await dialog.showOpenDialog(mainWindow, {
           title: '检查项目工作并选择文件夹',
           message: [
             `Noema 准备在你选择的工作区执行项目任务：\n${prompt}`,
-            'Noema 会读取/修改项目文件，并在操作系统沙箱中运行前台项目命令。默认读写范围是你选定的工作区，网络和工作区外路径默认受限；需要越界时会展示具体命令与目标，逐项询问是否仅对该命令开放。Windows 首次使用需要一次管理员确认来创建独立沙箱账户和出站过滤规则；不会授权读取整个用户目录。项目内容可能发送到当前配置的模型服务商，并按该服务商的数据处理条款处理。不要选择含不应发送的密钥或隐私资料的目录。停止任务不会自动撤销已经发生的项目改动。',
+            'Noema 会读取/修改项目文件，并在操作系统沙箱中运行前台项目命令。默认读写范围是你选定的工作区，网络和工作区外路径默认受限；需要越界时会展示具体命令与目标，逐项询问是否仅对该命令开放。Windows 首次启用命令隔离时需要一次管理员确认，用于设置 AppContainer 沙箱和出站网络阻断规则；不会创建 Windows 登录账号，也不会授权读取整个用户目录。项目内容可能发送到当前配置的模型服务商，并按该服务商的数据处理条款处理。不要选择含不应发送的密钥或隐私资料的目录。停止任务不会自动撤销已经发生的项目改动。',
             reuseCase
               ? '本轮还会检查同一位工程搭档在同一项目的其他聊天中，是否有一项通过 Noema 文件条件核验的工作；若找到，会把一份过滤常见凭据样式的限长摘要随本任务发送给模型，不会发送原聊天记录。若本任务也通过 Noema 核验，Noema 还可能用当前模型服务对两项任务的摘要和核验结果做一次额外分析，提出一条候选做法；候选不会自动升级为技能，可在任务卡撤回。若已有候选，选定目录后还会先展示候选正文，供你决定本轮是否试用；普通经验复用勾选不会自动授权使用某条候选。过滤无法保证识别所有敏感信息。'
               : '本轮不会从其他聊天带入项目案例。',
@@ -1087,59 +1831,34 @@ async function startNoema() {
           properties: ['openDirectory'],
           buttonLabel: '允许并继续',
         });
-        if (selection.canceled || !selection.filePaths[0]) return null;
-        if (process.platform === 'win32') {
-          const sandbox = await import('@anthropic-ai/sandbox-runtime');
-          const srtWin = sandbox.resolveSrtWin({
-            path: sandbox.VENDORED_SRT_WIN_EXE,
-          });
-          const status = await sandbox.getWindowsSandboxUserStatusAsync({
-            srtWin,
-          });
-          if (!status.provisioned) {
-            const installationChoice = await dialog.showMessageBox(mainWindow, {
-              type: 'question',
-              title: '启用项目命令沙箱',
-              message: 'Noema 需要先安装本机命令隔离组件。',
-              detail: [
-                '安装会请求一次 Windows 管理员确认，创建独立的 srt-sandbox 本地账户并添加只匹配该账户的出站过滤规则。',
-                'Noema 会跳过整个用户目录的读取授权；命令仅额外读取所需的系统/工具运行目录、所选工作区，以及你逐次批准的路径。Windows 支持目前仍是上游 alpha。',
-                '账户安装后，真正的 ACL 与出站隔离探针会在命令执行器授予本次运行所需的精确 helper 与工作区路径后执行。若验证失败，命令不会改用当前 Windows 账户运行。',
-              ].join('\n\n'),
-              buttons: ['安装并继续', '取消'],
-              defaultId: 0,
-              cancelId: 1,
-              noLink: true,
-            });
-            if (installationChoice.response !== 0) return null;
-            try {
-              const installed = await sandbox.installWindowsSandboxAsync({
-                skipProfileGrant: true,
-                srtWin,
-              });
-              if (installed.cancelled) return null;
-              const verified = await sandbox.getWindowsSandboxUserStatusAsync({
-                srtWin,
-              });
-              if (!verified.provisioned || !verified.credPresent) {
-                throw new Error(
-                  'Windows 命令沙箱安装后未通过状态核验；命令未执行。',
-                );
-              }
-            } catch (error) {
-              await dialog.showMessageBox(mainWindow, {
-                type: 'error',
-                title: 'Windows 命令沙箱安装未完成',
-                message: '安装或账户状态检查未通过，项目命令未执行。',
-                detail: error instanceof Error ? error.message : String(error),
-                buttons: ['返回'],
-                noLink: true,
-              });
-              return null;
-            }
-          }
+        if (selection.canceled || !selection.filePaths[0]) {
+          recordWorkspaceAuthorization('denied', 'user_cancelled');
+          return null;
         }
+        recordWorkspaceAuthorization('granted');
         return selection.filePaths[0];
+      },
+      confirmWorkspaceRebind: async ({
+        oldPath,
+        newPath,
+      }: {
+        projectId: string;
+        oldPath: string;
+        newPath: string;
+      }) => {
+        if (!mainWindow || mainWindow.isDestroyed()) return 'cancel';
+        const confirmation = await dialog.showMessageBox(mainWindow, {
+          type: 'warning',
+          title: '确认更换项目工作区',
+          message:
+            '这个项目已绑定到另一个文件夹。是否将项目绑定更换到新文件夹？',
+          detail: `当前绑定：${oldPath}\n新选择：${newPath}\n\n更换后，新任务会在新文件夹中执行。已有任务记录与恢复检查点不会迁移。`,
+          buttons: ['更换工作区', '取消'],
+          defaultId: 1,
+          cancelId: 1,
+          noLink: true,
+        });
+        return confirmation.response === 0 ? 'rebind' : 'cancel';
       },
       confirmPracticeCandidate: async ({
         candidate,
@@ -1360,10 +2079,29 @@ async function startNoema() {
           maxSources,
           ...options,
         }),
-      startProjectWork: ({ dispatchFromNoema, ...input }, signal) =>
-        dispatchFromNoema
-          ? socialWorkService!.startTaskFromNoema({ ...input, signal })
-          : socialWorkService!.startTask({ ...input, signal }),
+      startProjectWork: async ({ dispatchFromNoema, ...input }, signal) => {
+        const result = dispatchFromNoema
+          ? await socialWorkService!.startTaskFromNoema({ ...input, signal })
+          : await socialWorkService!.startTask({ ...input, signal });
+        if (
+          currentEntryRoute === 'social-chat' &&
+          dispatchFromNoema &&
+          input.roomId === 'room-noema' &&
+          currentApplicationExecutionId &&
+          result.accepted &&
+          result.taskId
+        ) {
+          recordDiagnosticEvent({
+            executionId: result.taskId,
+            parentExecutionId: currentApplicationExecutionId,
+            taskId: result.taskId,
+            module: 'social.work',
+            operation: 'task.created_from_entry',
+            status: 'starting',
+          });
+        }
+        return result;
+      },
       emit: (payload) => {
         const outgoingPayload =
           process.env.NOEMA_E2E_SILENT_NOTIFICATIONS === '1' &&
@@ -1382,16 +2120,62 @@ async function startNoema() {
         notifySocialReply(outgoingPayload);
       },
     });
+    const diagnosticsQueryService = new DiagnosticsQueryService({
+      eventStore: diagnosticsEventStore!,
+      modelUsageStore,
+      socialChatStore: socialChatStore!,
+      runtimeInfo: collectDiagnosticsRuntimeInfo({
+        db: rootStore!.db,
+        applicationVersion: app.getVersion(),
+        electronVersion: process.versions.electron ?? null,
+        nodeVersion: process.versions.node ?? null,
+        osVersion: process.getSystemVersion(),
+        platform: process.platform,
+        architecture: process.arch,
+        isPackaged: app.isPackaged,
+      }),
+      recordDiagnosticEvent,
+    });
     unregisterRootIpc = registerRootIpc({
       ipcMain,
       rootAgent: agent,
       socialChatService,
       socialProjectStore,
       socialWorkService,
+      diagnosticsQueryService,
+      getDiagnosticsDatabaseHealth: () => readDatabaseHealth(rootStore?.db),
+      openUserDataDirectory: () =>
+        openNoemaDataDirectory({
+          shell,
+          userDataPath: app.getPath('userData'),
+        }),
+      getWindowsRunnerCapability: () => refreshWindowsRunnerCapability(),
+      setupWindowsRunner: () => setupWindowsRunner(),
+      saveDiagnosticsExport: (previewId) =>
+        !mainWindow || mainWindow.isDestroyed()
+          ? Promise.resolve({ saved: false, errorCode: 'window_unavailable' })
+          : saveDiagnosticsExport({
+              previewId,
+              queryService: diagnosticsQueryService,
+              selectFile: () =>
+                dialog.showSaveDialog(mainWindow!, {
+                  title: '保存 Noema 诊断报告',
+                  defaultPath: `noema-diagnostics-${new Date().toISOString().replaceAll(':', '-')}.json`,
+                  filters: [{ name: 'JSON 报告', extensions: ['json'] }],
+                }),
+              writeFile: (filePath: string, content: string) =>
+                fs.promises.writeFile(filePath, content, { encoding: 'utf8' }),
+            }),
       isTrustedSender: (sender) =>
         Boolean(mainWindow && sender === mainWindow.webContents),
       sendMessage: createImportAwareSendMessage(agent, async (imported) => {
-        if (!mainWindow || mainWindow.isDestroyed()) return false;
+        const recordImportAuthorization = beginAuthorizationDecision(
+          'imported_context_transmission',
+        );
+        if (!mainWindow || mainWindow.isDestroyed()) {
+          recordImportAuthorization('denied', 'main_window_unavailable');
+          return false;
+        }
         const consent = await dialog.showMessageBox(mainWindow, {
           type: 'warning',
           title: '发送导入的 Codex 上下文',
@@ -1403,10 +2187,24 @@ async function startNoema() {
           cancelId: 0,
           noLink: true,
         });
-        return consent.response === 1;
+        const granted = consent.response === 1;
+        recordImportAuthorization(
+          granted ? 'granted' : 'denied',
+          granted ? undefined : 'user_cancelled',
+        );
+        return granted;
       }),
       chooseWorkspace: async () => {
-        if (!mainWindow || mainWindow.isDestroyed()) return null;
+        const recordLegacyWorkspaceAuthorization = beginAuthorizationDecision(
+          'legacy_workspace_access',
+        );
+        if (!mainWindow || mainWindow.isDestroyed()) {
+          recordLegacyWorkspaceAuthorization(
+            'denied',
+            'main_window_unavailable',
+          );
+          return null;
+        }
         const disclosure = await dialog.showMessageBox(mainWindow, {
           type: 'info',
           title: '后台任务的数据范围',
@@ -1418,16 +2216,41 @@ async function startNoema() {
           cancelId: 0,
           noLink: true,
         });
-        if (disclosure.response !== 1) return null;
+        if (disclosure.response !== 1) {
+          recordLegacyWorkspaceAuthorization('denied', 'disclosure_declined');
+          return null;
+        }
         const selection = await dialog.showOpenDialog(mainWindow, {
           title: '选择后台 agent 可访问的工作区',
           properties: ['openDirectory'],
           buttonLabel: '允许此文件夹',
         });
-        return selection.canceled ? null : (selection.filePaths[0] ?? null);
+        const selected = !selection.canceled ? selection.filePaths[0] : null;
+        recordLegacyWorkspaceAuthorization(
+          selected ? 'granted' : 'denied',
+          selected ? undefined : 'user_cancelled',
+        );
+        return selected;
       },
       finishQuickCapture,
       markQuickCaptureReady,
+      recordSocialReadiness: (readiness) => {
+        if (
+          currentEntryRoute !== 'social-chat' ||
+          !currentApplicationExecutionId ||
+          entryReadinessRecordedFor === currentApplicationExecutionId
+        )
+          return;
+        entryReadinessRecordedFor = currentApplicationExecutionId;
+        recordDiagnosticEvent({
+          executionId: currentApplicationExecutionId,
+          module: 'desktop.main',
+          operation: 'entry.capability_availability',
+          status: readiness.available ? 'available' : 'unavailable',
+          details: { reason: readiness.reason ? 'capability_unavailable' : '' },
+        });
+      },
+      recordAuthorization: recordAuthorizationDecision,
       markSocialChatReady,
       getQuickCaptureShortcutStatus: () =>
         quickCaptureShortcutRegistration
@@ -1503,9 +2326,15 @@ async function startNoema() {
       platform: process.platform,
       onQuickCapture: openQuickCapture,
     });
+    if (process.platform === 'win32') desktopLifecycle?.initializeTray();
     if (!mainWindow || mainWindow.isDestroyed()) createWindow();
     writeSmokeLog('window-created');
   } catch (error) {
+    recordDiagnosticEvent({
+      executionId: currentApplicationExecutionId,
+      module: 'desktop.main',
+      ...startupFailureDiagnostic(error),
+    });
     const message = `本机对话数据无法打开。请检查应用数据目录权限后重试。\n\n${error instanceof Error ? error.message : '未知错误'}`;
     writeSmokeLog('startup-error', {
       error: error instanceof Error ? error.message : String(error),
@@ -1515,7 +2344,14 @@ async function startNoema() {
     if (process.env.NOEMA_SMOKE_TEST === '1') {
       console.error('Noema startup smoke failed:', message);
     } else {
-      dialog.showErrorBox('Noema 无法启动', message);
+      await showDatabaseStartupFailure({
+        dialog: {
+          showMessageBox: (options) => dialog.showMessageBox(options),
+        },
+        shell,
+        userDataPath: app.getPath('userData'),
+        message,
+      });
     }
     app.quit();
   }
@@ -1523,7 +2359,7 @@ async function startNoema() {
 
 if (hasSingleInstanceLock) {
   app.on('second-instance', () => {
-    focusPrimaryWindow(mainWindow);
+    desktopLifecycle?.onSecondInstance();
   });
   void startNoema();
 } else {
@@ -1531,37 +2367,117 @@ if (hasSingleInstanceLock) {
 }
 
 app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  desktopLifecycle?.restoreWindow();
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
+  desktopLifecycle?.onWindowAllClosed();
 });
 
-app.on('before-quit', (event) => {
-  if (!rootAgent || shutdownComplete) {
-    unregisterRootIpc?.();
-    rootStore?.close();
-    return;
-  }
-  event.preventDefault();
-  if (shutdownStarted) return;
+async function beginHostShutdown(
+  reason: 'application_exit' | 'system_shutdown',
+) {
+  if (shutdownComplete || shutdownStarted) return;
   shutdownStarted = true;
-  void Promise.allSettled([
-    rootAgent.shutdown(),
-    socialChatService?.shutdown(),
-    socialWorkService?.shutdown(),
-  ]).finally(() => {
+  desktopLifecycle?.markQuitting();
+  try {
+    socialChatStore?.recordApplicationShutdownIntent(reason);
+  } catch {
+    recordDiagnosticEvent({
+      executionId: randomUUID(),
+      module: 'desktop.lifecycle',
+      operation: 'shutdown.intent',
+      status: 'failed',
+      errorCode: 'shutdown_intent_persist_failed',
+    });
+  }
+  recordDiagnosticEvent({
+    executionId: randomUUID(),
+    module: 'desktop.lifecycle',
+    operation: 'shutdown.started',
+    status: 'observed',
+    details: { reason },
+  });
+  if (!rootAgent) {
     shutdownComplete = true;
     unregisterRootIpc?.();
-    rootStore?.close();
+    desktopLifecycle?.dispose();
+    try {
+      rootStore?.close();
+    } catch {
+      // The host is exiting; the database owns its own close failure boundary.
+    }
     app.quit();
+    return;
+  }
+  const outcome = await waitForDesktopShutdown([
+    () => rootAgent?.shutdown(),
+    () => socialChatService?.shutdown(),
+    () => socialWorkService?.shutdown(reason),
+  ]);
+  if (outcome.type === 'timeout') {
+    recordDiagnosticEvent({
+      executionId: randomUUID(),
+      module: 'desktop.lifecycle',
+      operation: 'shutdown.timeout',
+      status: 'failed',
+      errorCode: 'shutdown_deadline_exceeded',
+      details: { reason },
+    });
+    shutdownComplete = true;
+    unregisterRootIpc?.();
+    desktopLifecycle?.dispose();
+    quickCaptureShortcutRegistration?.unregister();
+    quickCaptureShortcutRegistration = null;
+    app.exit(1);
+    return;
+  }
+  const failed = outcome.results.some(
+    (result: { status: string }) => result.status === 'rejected',
+  );
+  if (!failed) {
+    try {
+      socialChatStore?.clearApplicationShutdownIntent();
+    } catch {
+      recordDiagnosticEvent({
+        executionId: randomUUID(),
+        module: 'desktop.lifecycle',
+        operation: 'shutdown.intent.clear',
+        status: 'failed',
+        errorCode: 'shutdown_intent_clear_failed',
+      });
+    }
+  }
+  recordDiagnosticEvent({
+    executionId: randomUUID(),
+    module: 'desktop.lifecycle',
+    operation: failed ? 'shutdown.failed' : 'shutdown.completed',
+    status: failed ? 'failed' : 'completed',
+    ...(failed ? { errorCode: 'service_shutdown_failed' } : {}),
+    details: { reason },
   });
+  shutdownComplete = true;
+  unregisterRootIpc?.();
+  desktopLifecycle?.dispose();
+  try {
+    rootStore?.close();
+  } catch {
+    // The host is exiting; the database owns its own close failure boundary.
+  }
+  app.quit();
+}
+
+app.on('before-quit', (event) => {
+  desktopLifecycle?.markQuitting();
+  if (shutdownComplete) return;
+  event.preventDefault();
+  void beginHostShutdown('application_exit');
 });
 
 app.on('will-quit', () => {
   quickCaptureShortcutRegistration?.unregister();
   quickCaptureShortcutRegistration = null;
+  desktopLifecycle?.dispose();
 });
 
 type DesktopProbes = ReturnType<

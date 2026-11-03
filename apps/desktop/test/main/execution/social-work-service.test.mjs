@@ -4,6 +4,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  renameSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -17,6 +18,8 @@ import { SocialWorkService } from '../../../src/main/execution/social-work-servi
 import { SocialChatService } from '../../../src/main/chat/social-chat-service.mjs';
 import { SocialProjectStore } from '../../../src/main/projects/social-project-store.mjs';
 import { NoemaProjectExecutor } from '../../../src/main/execution/noema-project-executor.mjs';
+import { captureWorkspaceIdentity } from '../../../src/main/platform/workspace-identity.mjs';
+import { DiagnosticsEventStore } from '../../../src/main/storage/diagnostics-event-store.mjs';
 
 function makeStore() {
   const db = new Database(':memory:');
@@ -64,6 +67,7 @@ function makeAdapter({
       input.onEvent({
         type: 'tool-result',
         stepId,
+        externalCallId: 'call-write',
         status: 'completed',
         effectStatus: 'applied',
       });
@@ -82,6 +86,304 @@ function makeAdapter({
     },
   };
 }
+
+test('file boundary diagnostics keep only a finite reason code', async () => {
+  const workspace = mkdtempSync(
+    path.join(tmpdir(), 'noema-file-scan-diagnostics-'),
+  );
+  const { db, store } = makeStore();
+  const diagnostics = new DiagnosticsEventStore(db);
+  const service = createWorkService({
+    store,
+    adapter: {
+      async startTask(input) {
+        input.onEvent({
+          type: 'tool-result',
+          stepId: 'workspace-scan-step',
+          externalCallId: 'workspace-scan-call',
+          status: 'error',
+          effectStatus: 'not_applied',
+          reasonCode: 'workspace_hard_link_detected',
+          filePath: 'C:\\private\\workspace\\linked.txt',
+          content: 'PRIVATE_FILE_CONTENT_SENTINEL',
+          hash: 'PRIVATE_CONTENT_HASH_SENTINEL',
+          arguments: 'PRIVATE_TOOL_ARGUMENT_SENTINEL',
+        });
+        return {
+          started: Promise.resolve({ sessionId: 'file-scan-session' }),
+          done: Promise.resolve({
+            status: 'completed',
+            sessionId: 'file-scan-session',
+            result: '工具因边界检查拒绝。',
+            toolCallCount: 0,
+          }),
+          stop: () => true,
+        };
+      },
+    },
+    recordDiagnosticEvent: (event) =>
+      diagnostics.record({ applicationExecutionId: 'test-app', ...event }),
+    secretStore: { isConfigured: () => true },
+    chooseWorkspace: async () => workspace,
+  });
+  try {
+    const started = await service.startTask({
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      prompt: '检查工作区边界。',
+    });
+    await service.waitForTask(started.taskId);
+    const [event] = diagnostics
+      .query({ taskId: started.taskId })
+      .filter((entry) => entry.operation === 'tool.result');
+    assert.ok(
+      event,
+      JSON.stringify(diagnostics.query({ taskId: started.taskId })),
+    );
+    assert.equal(event.details.reasonCode, 'workspace_hard_link_detected');
+    assert.equal(event.details.effectStatus, 'not_applied');
+    const serialized = JSON.stringify(event);
+    assert.doesNotMatch(serialized, /PRIVATE_FILE_CONTENT_SENTINEL/u);
+    assert.doesNotMatch(serialized, /PRIVATE_CONTENT_HASH_SENTINEL/u);
+    assert.doesNotMatch(serialized, /PRIVATE_TOOL_ARGUMENT_SENTINEL/u);
+    assert.doesNotMatch(serialized, /C:\\\\private/u);
+  } finally {
+    await service.shutdown();
+    db.close();
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('project work publishes persisted model and authorization phase snapshots in event order', async () => {
+  const workspace = mkdtempSync(
+    path.join(tmpdir(), 'noema-progress-snapshots-'),
+  );
+  const { db, store } = makeStore();
+  const diagnostics = new DiagnosticsEventStore(db);
+  const snapshots = [];
+  const service = createWorkService({
+    store,
+    adapter: {
+      async startTask(input) {
+        input.onEvent({ type: 'session', sessionId: 'progress-session' });
+        input.onEvent({ type: 'status', phase: 'model_request' });
+        input.onEvent({ type: 'status', phase: 'awaiting_authorization' });
+        input.onEvent({
+          type: 'tool-call',
+          stepId: 'progress-step',
+          externalCallId: 'progress-call',
+          tool: 'run_command',
+          category: 'command',
+          hasSideEffect: true,
+        });
+        input.onEvent({
+          type: 'tool-result',
+          stepId: 'progress-step',
+          externalCallId: 'progress-call',
+          status: 'completed',
+          effectStatus: 'applied',
+        });
+        return {
+          started: Promise.resolve({ sessionId: 'progress-session' }),
+          done: Promise.resolve({
+            status: 'completed',
+            sessionId: 'progress-session',
+            result: '任务完成。',
+            toolCallCount: 1,
+          }),
+          stop: () => true,
+        };
+      },
+    },
+    secretStore: { isConfigured: () => true },
+    chooseWorkspace: async () => workspace,
+    recordDiagnosticEvent: (event) =>
+      diagnostics.record({ applicationExecutionId: 'test-app', ...event }),
+    emit: (event) => {
+      if (event.type === 'project-work-updated') snapshots.push(event.task);
+    },
+  });
+  try {
+    const started = await service.startTask({
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      prompt: '展示真实的执行阶段。',
+    });
+    const completed = await service.waitForTask(started.taskId);
+    const phases = snapshots.map((task) => task.phase);
+    assert.ok(phases.indexOf('model_request') >= 0);
+    assert.ok(
+      phases.indexOf('awaiting_authorization') >
+        phases.indexOf('model_request'),
+    );
+    assert.ok(
+      phases.indexOf('tool_call') > phases.indexOf('awaiting_authorization'),
+    );
+    assert.equal(completed.status, 'completed');
+    assert.equal(
+      store
+        .getRoomSnapshot('room-engineering-partner')
+        .workTasks.find((task) => task.id === started.taskId).phase,
+      completed.phase,
+    );
+    const phaseEvents = diagnostics
+      .query({ taskId: started.taskId })
+      .filter((event) => event.operation === 'task.phase');
+    assert.ok(
+      phaseEvents.some((event) => event.details.phase === 'model_request'),
+    );
+    assert.ok(
+      phaseEvents.some(
+        (event) => event.details.phase === 'awaiting_authorization',
+      ),
+    );
+    assert.doesNotMatch(JSON.stringify(phaseEvents), /workspace|command|path/u);
+  } finally {
+    await service.shutdown();
+    db.close();
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('task file review restores exact originals and leaves concurrent edits untouched', async () => {
+  const workspace = mkdtempSync(path.join(tmpdir(), 'noema-file-review-'));
+  const target = path.join(workspace, 'result.txt');
+  const createdTarget = path.join(workspace, 'created.txt');
+  writeFileSync(target, 'before');
+  const { db, store } = makeStore();
+  const diagnostics = new DiagnosticsEventStore(db);
+  let providerCall = 0;
+  const provider = {
+    async *streamChat({ onToolCalls }) {
+      providerCall += 1;
+      if (providerCall === 1) {
+        onToolCalls([
+          {
+            id: 'write-existing',
+            type: 'function',
+            function: {
+              name: 'write_file',
+              arguments: JSON.stringify({
+                path: 'result.txt',
+                content: 'after',
+              }),
+            },
+          },
+          {
+            id: 'write-created',
+            type: 'function',
+            function: {
+              name: 'write_file',
+              arguments: JSON.stringify({
+                path: 'created.txt',
+                content: 'created by Noema',
+              }),
+            },
+          },
+        ]);
+        return;
+      }
+      yield '文件处理完成。';
+    },
+  };
+  const service = createWorkService({
+    store,
+    adapter: new NoemaProjectExecutor({ provider }),
+    secretStore: { isConfigured: () => true },
+    chooseWorkspace: async () => workspace,
+    recordDiagnosticEvent: (event) =>
+      diagnostics.record({
+        applicationExecutionId: 'file-review-test',
+        ...event,
+      }),
+  });
+  try {
+    const started = await service.startTask({
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      prompt: '写入文件。',
+    });
+    const completed = await service.waitForTask(started.taskId);
+    assert.equal(completed.fileChanges.length, 2);
+    const existingChange = completed.fileChanges.find(
+      (change) => change.relativePath === 'result.txt',
+    );
+    const createdChange = completed.fileChanges.find(
+      (change) => change.relativePath === 'created.txt',
+    );
+    assert.equal(existingChange.state, 'applied');
+    assert.equal(createdChange.state, 'applied');
+    assert.equal(readFileSync(target, 'utf8'), 'after');
+    assert.equal(readFileSync(createdTarget, 'utf8'), 'created by Noema');
+    const diagnosticText = JSON.stringify(
+      diagnostics.query({ taskId: started.taskId }),
+    );
+    assert.doesNotMatch(
+      diagnosticText,
+      /result\.txt|created\.txt|external change|created by Noema|before|after/u,
+    );
+    assert.doesNotMatch(diagnosticText, /[a-f0-9]{64}/u);
+
+    const realBoundaryScanner = service.workspaceFileBoundaryScanner;
+    service.workspaceFileBoundaryScanner = async () => ({
+      ok: false,
+      code: 'workspace_identity_changed',
+    });
+    await assert.rejects(
+      service.reviewFileChange({
+        taskId: started.taskId,
+        changeId: existingChange.id,
+        action: 'revert',
+      }),
+      /工作区身份或文件边界检查/u,
+    );
+    assert.equal(readFileSync(target, 'utf8'), 'after');
+    service.workspaceFileBoundaryScanner = realBoundaryScanner;
+
+    const reverted = await service.reviewFileChange({
+      taskId: started.taskId,
+      changeId: existingChange.id,
+      action: 'revert',
+    });
+    assert.equal(readFileSync(target, 'utf8'), 'before');
+    assert.equal(
+      reverted.fileChanges.find((change) => change.id === existingChange.id)
+        .state,
+      'reverted',
+    );
+    writeFileSync(createdTarget, 'external change');
+    await assert.rejects(
+      service.reviewFileChange({
+        taskId: started.taskId,
+        changeId: createdChange.id,
+        action: 'revert',
+      }),
+      /拒绝撤回/u,
+    );
+    assert.equal(readFileSync(createdTarget, 'utf8'), 'external change');
+    assert.equal(
+      store
+        .getSocialWorkTask(started.taskId)
+        .fileChanges.find((change) => change.id === createdChange.id).state,
+      'conflict',
+    );
+    const keptConflict = await service.reviewFileChange({
+      taskId: started.taskId,
+      changeId: createdChange.id,
+      action: 'keep',
+    });
+    assert.equal(readFileSync(createdTarget, 'utf8'), 'external change');
+    assert.equal(
+      keptConflict.fileChanges.find((change) => change.id === createdChange.id)
+        .state,
+      'kept',
+    );
+  } finally {
+    await service.shutdown();
+    db.close();
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
 
 test('new-model execution cannot start until a provider model is selected', async () => {
   const { db, store } = makeStore();
@@ -238,6 +540,7 @@ test('social work keeps the stable friend and only includes the issuing room con
   const { db, store } = makeStore();
   const seen = [];
   const events = [];
+  const diagnosticEvents = [];
   addCompletedMessage(store, {
     roomId: 'room-engineering-partner',
     agentId: 'engineering-partner',
@@ -263,6 +566,10 @@ test('social work keeps the stable friend and only includes the issuing room con
     getSelectedModel: () => 'free-router',
     chooseWorkspace: async () => workspace,
     emit: (event) => events.push(event),
+    recordDiagnosticEvent: (event) => {
+      diagnosticEvents.push(event);
+      throw new Error('diagnostic sink unavailable');
+    },
   });
 
   try {
@@ -279,6 +586,26 @@ test('social work keeps the stable friend and only includes the issuing room con
 
     const task = store.getSocialWorkTask(accepted.taskId);
     assert.equal(task.status, 'completed');
+    assert.deepEqual(
+      diagnosticEvents.map(({ operation, status }) => ({ operation, status })),
+      [
+        { operation: 'workspace.identity.captured', status: 'complete' },
+        { operation: 'task.created', status: 'starting' },
+        { operation: 'task.phase', status: 'observed' },
+        { operation: 'tool.call', status: 'started' },
+        { operation: 'tool.result', status: 'completed' },
+        { operation: 'task.finished', status: 'completed' },
+      ],
+    );
+    assert.ok(
+      diagnosticEvents.every(
+        (event) =>
+          event.executionId === accepted.taskId &&
+          event.taskId === accepted.taskId,
+      ),
+    );
+    assert.equal(diagnosticEvents[3].toolCallId, 'call-write');
+    assert.equal(diagnosticEvents[4].toolCallId, 'call-write');
     assert.equal(task.agentId, 'engineering-partner');
     assert.equal(task.roomId, 'room-engineering-collaboration');
     assert.equal(task.executionEngine, 'noema');
@@ -419,15 +746,24 @@ test('Noema dispatches approved work from main chat or the project group into th
   const directory = mkdtempSync(path.join(tmpdir(), 'noema-group-work-'));
   const workspace = path.join(directory, 'workspace');
   mkdirSync(workspace);
+  const alternateWorkspace = path.join(directory, 'alternate-workspace');
+  mkdirSync(alternateWorkspace);
   const { db, store } = makeStore();
   const projectStore = new SocialProjectStore({ db, socialChatStore: store });
   let launchCount = 0;
+  let selectedWorkspace = workspace;
+  let rebindDecision = 'cancel';
+  let rebindCount = 0;
   const service = createWorkService({
     store,
     projectStore,
     adapter: makeAdapter({ onStart: () => launchCount++ }),
     secretStore: { isConfigured: () => true },
-    chooseWorkspace: async () => workspace,
+    chooseWorkspace: async () => selectedWorkspace,
+    confirmWorkspaceRebind: async () => {
+      rebindCount++;
+      return rebindDecision;
+    },
   });
 
   try {
@@ -480,10 +816,17 @@ test('Noema dispatches approved work from main chat or the project group into th
     assert.equal(task.agentId, 'engineering-partner');
     assert.equal(task.sourceMessageId, mainRequest.userMessageId);
     assert.equal(task.status, 'running');
+    assert.equal(task.workspaceIdentity.canonicalPath, workspace);
+    assert.equal(
+      projectStore.getWorkspaceBinding(project.id).identity.fileIndex,
+      task.workspaceIdentity.fileIndex,
+    );
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(launchCount, 1);
     await service.waitForTask(accepted.taskId);
     assert.equal(store.getSocialWorkTask(accepted.taskId).status, 'completed');
+    store.appendAssistantDelta(mainRequest.assistantMessageId, '已接收。');
+    store.completeReply(mainRequest.assistantMessageId);
 
     const groupRequest = store.beginTurn({
       roomId: project.groupRoomId,
@@ -504,6 +847,54 @@ test('Noema dispatches approved work from main chat or the project group into th
       session.room.room.id,
     );
     await service.waitForTask(groupAccepted.taskId);
+    store.appendAssistantDelta(groupRequest.assistantMessageId, '已接收。');
+    store.completeReply(groupRequest.assistantMessageId);
+    assert.equal(rebindCount, 0);
+
+    selectedWorkspace = alternateWorkspace;
+    const canceledRequest = store.beginTurn({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '我先取消更换项目目录。',
+      model: 'test-model',
+    });
+    const canceled = await service.startTaskFromNoema({
+      roomId: 'room-noema',
+      projectId: project.id,
+      agentId: 'engineering-partner',
+      prompt: '检查新工作区。',
+      sourceMessageId: canceledRequest.userMessageId,
+    });
+    assert.equal(canceled.accepted, false);
+    assert.equal(store.listRoomWorkTasks(session.room.room.id).length, 2);
+    assert.equal(
+      projectStore.getWorkspaceBinding(project.id).workspacePath,
+      workspace,
+    );
+    store.appendAssistantDelta(canceledRequest.assistantMessageId, '已取消。');
+    store.completeReply(canceledRequest.assistantMessageId);
+
+    rebindDecision = 'rebind';
+    const acceptedRebindRequest = store.beginTurn({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '确认将项目更换到新目录。',
+      model: 'test-model',
+    });
+    const rebound = await service.startTaskFromNoema({
+      roomId: 'room-noema',
+      projectId: project.id,
+      agentId: 'engineering-partner',
+      prompt: '检查新工作区。',
+      sourceMessageId: acceptedRebindRequest.userMessageId,
+    });
+    assert.equal(rebound.accepted, true);
+    assert.equal(rebindCount, 2);
+    assert.equal(
+      projectStore.getWorkspaceBinding(project.id).workspacePath,
+      alternateWorkspace,
+    );
+    await service.waitForTask(rebound.taskId);
 
     const noProjectMember = store.createAgent({
       name: '非项目工程师',
@@ -1108,16 +1499,70 @@ test('stopping project work records interruption without claiming rollback', asy
   }
 });
 
+test('host shutdown records its reason while manual stop stays distinct', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'noema-social-work-exit-'));
+  const workspace = path.join(directory, 'workspace');
+  mkdirSync(workspace);
+  const { db, store } = makeStore();
+  let finishRun;
+  const service = createWorkService({
+    store,
+    adapter: {
+      async startTask() {
+        return {
+          started: Promise.resolve({ sessionId: 'session-system-shutdown' }),
+          done: new Promise((resolve) => {
+            finishRun = resolve;
+          }),
+          stop() {
+            finishRun({
+              status: 'interrupted',
+              sessionId: 'session-system-shutdown',
+              result: '已保存的部分结果。',
+              toolCallCount: 1,
+              errorCode: 'worker_interrupted',
+              errorMessage: 'stopped',
+            });
+            return true;
+          },
+        };
+      },
+    },
+    secretStore: { isConfigured: () => true },
+    chooseWorkspace: async () => workspace,
+  });
+  try {
+    const accepted = await service.startTask({
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      prompt: '在系统关机时结束当前任务。',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await service.shutdown('system_shutdown');
+    const task = store.getSocialWorkTask(accepted.taskId);
+    assert.equal(task.status, 'interrupted');
+    assert.equal(task.errorCode, 'system_shutdown');
+    assert.match(task.errorMessage, /系统正在关机/u);
+  } finally {
+    await service.shutdown();
+    db.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('a restarted Noema task resumes from durable model-boundary messages', async () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'noema-explicit-resume-'));
+  const workspace = captureWorkspaceIdentity(directory);
   const { db, store } = makeStore();
+  const diagnostics = new DiagnosticsEventStore(db);
   try {
     store.createSocialWorkTask({
       id: 'resume-project-task',
       roomId: 'room-engineering-partner',
       agentId: 'engineering-partner',
-      workspacePath: directory,
-      workspaceKey: directory.toLowerCase(),
+      workspacePath: workspace.identity.canonicalPath,
+      workspaceKey: workspace.workspaceKey,
+      workspaceIdentity: workspace.identity,
       taskPrompt: '继续原有项目任务。',
       model: 'test-model',
       executionEngine: 'noema',
@@ -1191,6 +1636,8 @@ test('a restarted Noema task resumes from durable model-boundary messages', asyn
       adapter: new NoemaProjectExecutor({ provider }),
       secretStore: { isConfigured: () => true },
       chooseWorkspace: async () => directory,
+      recordDiagnosticEvent: (event) =>
+        diagnostics.record({ applicationExecutionId: 'test-app', ...event }),
     });
     try {
       const resumed = await service.resumeTask('resume-project-task');
@@ -1204,10 +1651,227 @@ test('a restarted Noema task resumes from durable model-boundary messages', asyn
         tool_call_id: 'write-once',
         content: JSON.stringify({ result: '已写入 result.txt。' }),
       });
+      const events = diagnostics.query({ taskId: 'resume-project-task' });
+      const resumedEvent = events.find(
+        (event) => event.operation === 'task.resumed',
+      );
+      const finished = events.find(
+        (event) => event.operation === 'task.finished',
+      );
+      assert.ok(resumedEvent);
+      assert.notEqual(resumedEvent.executionId, 'resume-project-task');
+      assert.equal(resumedEvent.taskId, 'resume-project-task');
+      assert.equal(resumedEvent.parentExecutionId, 'resume-project-task');
+      assert.equal(resumedEvent.details.phase, 'ready_for_model');
+      assert.equal(resumedEvent.details.recoveryReason, 'process_crash');
+      assert.equal(finished.executionId, resumedEvent.executionId);
+      assert.equal(finished.taskId, 'resume-project-task');
+      assert.doesNotMatch(
+        JSON.stringify(events),
+        /完整执行请求和上下文|system prompt|written once/u,
+      );
     } finally {
       await service.shutdown();
     }
   } finally {
+    db.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('malformed checkpoint data fails closed before a resumed executor starts', async () => {
+  const directory = mkdtempSync(
+    path.join(tmpdir(), 'noema-corrupt-resume-checkpoint-'),
+  );
+  const workspace = captureWorkspaceIdentity(directory);
+  const { db, store } = makeStore();
+  let executorStarts = 0;
+  try {
+    store.createSocialWorkTask({
+      id: 'task-corrupt-checkpoint',
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      workspacePath: workspace.identity.canonicalPath,
+      workspaceKey: workspace.workspaceKey,
+      workspaceIdentity: workspace.identity,
+      taskPrompt: '检查损坏的续接状态。',
+      model: 'test-model',
+      executionEngine: 'noema',
+    });
+    store.setSocialWorkTaskSession(
+      'task-corrupt-checkpoint',
+      'session-corrupt-checkpoint',
+    );
+    store.saveSocialWorkRuntimeCheckpoint('task-corrupt-checkpoint', {
+      messages: [
+        { role: 'system', content: 'system' },
+        { role: 'user', content: 'task' },
+      ],
+      round: 0,
+      toolCallCount: 0,
+      phase: 'failed',
+      resumePhase: 'ready_for_model',
+    });
+    store.finishSocialWorkTask('task-corrupt-checkpoint', {
+      status: 'failed',
+      errorCode: 'provider_unavailable',
+      errorMessage: 'provider unavailable',
+      toolCallCount: 0,
+    });
+    db.prepare(`
+      UPDATE social_work_runtime_checkpoints
+      SET messages_json = '{malformed-json'
+      WHERE task_id = ?
+    `).run('task-corrupt-checkpoint');
+
+    const service = createWorkService({
+      store,
+      adapter: {
+        async startTask() {
+          executorStarts += 1;
+          throw new Error('executor must not start');
+        },
+      },
+      secretStore: { isConfigured: () => true },
+      chooseWorkspace: async () => directory,
+    });
+    await assert.rejects(
+      service.resumeTask('task-corrupt-checkpoint'),
+      SyntaxError,
+    );
+    assert.equal(executorStarts, 0);
+    assert.equal(
+      db
+        .prepare('SELECT status FROM social_work_tasks WHERE id = ?')
+        .get('task-corrupt-checkpoint').status,
+      'failed',
+    );
+    await service.shutdown();
+  } finally {
+    db.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('resume rejects a replaced workspace before changing task or checkpoint state', async () => {
+  const directory = mkdtempSync(
+    path.join(tmpdir(), 'noema-workspace-replaced-'),
+  );
+  const workspacePath = path.join(directory, 'workspace');
+  const movedPath = path.join(directory, 'workspace-moved');
+  const missingWorkspacePath = path.join(directory, 'workspace-to-remove');
+  mkdirSync(workspacePath);
+  mkdirSync(missingWorkspacePath);
+  const workspace = captureWorkspaceIdentity(workspacePath);
+  const missingWorkspace = captureWorkspaceIdentity(missingWorkspacePath);
+  const { db, store } = makeStore();
+  const events = [];
+  const service = createWorkService({
+    store,
+    adapter: makeAdapter(),
+    secretStore: { isConfigured: () => true },
+    chooseWorkspace: async () => workspacePath,
+    recordDiagnosticEvent: (event) => events.push(event),
+  });
+  try {
+    store.createSocialWorkTask({
+      id: 'task-workspace-replaced',
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      workspacePath: workspace.identity.canonicalPath,
+      workspaceKey: workspace.workspaceKey,
+      workspaceIdentity: workspace.identity,
+      taskPrompt: '续接前检查工作区。',
+      model: 'test-model',
+      executionEngine: 'noema',
+    });
+    store.setSocialWorkTaskSession('task-workspace-replaced', 'session-safe');
+    store.saveSocialWorkRuntimeCheckpoint('task-workspace-replaced', {
+      messages: [
+        { role: 'system', content: 'system' },
+        { role: 'user', content: 'task' },
+      ],
+      round: 0,
+      toolCallCount: 0,
+      phase: 'failed',
+      resumePhase: 'ready_for_model',
+    });
+    store.finishSocialWorkTask('task-workspace-replaced', {
+      status: 'failed',
+      errorCode: 'provider_unavailable',
+      errorMessage: '暂时无法连接。',
+      toolCallCount: 0,
+    });
+    const before = store.getSocialWorkRuntimeCheckpoint(
+      'task-workspace-replaced',
+    );
+    renameSync(workspacePath, movedPath);
+    mkdirSync(workspacePath);
+
+    await assert.rejects(
+      service.resumeTask('task-workspace-replaced'),
+      /工作区身份已变化/u,
+    );
+    assert.equal(
+      store.getSocialWorkTask('task-workspace-replaced').status,
+      'failed',
+    );
+    assert.deepEqual(
+      store.getSocialWorkRuntimeCheckpoint('task-workspace-replaced'),
+      before,
+    );
+    assert.equal(
+      events.at(-1).details.reasonCode,
+      'workspace_identity_changed',
+    );
+    assert.equal(JSON.stringify(events).includes(directory), false);
+
+    store.createSocialWorkTask({
+      id: 'task-workspace-missing',
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      workspacePath: missingWorkspace.identity.canonicalPath,
+      workspaceKey: missingWorkspace.workspaceKey,
+      workspaceIdentity: missingWorkspace.identity,
+      taskPrompt: '检查丢失的工作区。',
+      model: 'test-model',
+      executionEngine: 'noema',
+    });
+    store.setSocialWorkTaskSession('task-workspace-missing', 'session-missing');
+    store.saveSocialWorkRuntimeCheckpoint('task-workspace-missing', {
+      messages: [
+        { role: 'system', content: 'system' },
+        { role: 'user', content: 'task' },
+      ],
+      round: 0,
+      toolCallCount: 0,
+      phase: 'failed',
+      resumePhase: 'ready_for_model',
+    });
+    store.finishSocialWorkTask('task-workspace-missing', {
+      status: 'failed',
+      errorCode: 'provider_unavailable',
+      errorMessage: '暂时无法连接。',
+      toolCallCount: 0,
+    });
+    const missingCheckpoint = store.getSocialWorkRuntimeCheckpoint(
+      'task-workspace-missing',
+    );
+    rmSync(missingWorkspacePath, { recursive: true, force: true });
+    await assert.rejects(
+      service.resumeTask('task-workspace-missing'),
+      /原工作区已不存在/u,
+    );
+    assert.equal(
+      store.getSocialWorkTask('task-workspace-missing').status,
+      'failed',
+    );
+    assert.deepEqual(
+      store.getSocialWorkRuntimeCheckpoint('task-workspace-missing'),
+      missingCheckpoint,
+    );
+  } finally {
+    await service.shutdown();
     db.close();
     rmSync(directory, { recursive: true, force: true });
   }

@@ -40,6 +40,7 @@ import type {
   NoemaSocialSearchResult,
   NoemaSocialState,
   NoemaSocialWorkTask,
+  NoemaSocialWorkGitReview,
 } from '../../shared/contracts/noema-bridge.d.ts';
 import { Icon, AgentMark } from './presentation';
 type QueuedMessage = {
@@ -58,6 +59,10 @@ type ProjectSessionsState = {
 export function useSocialChatController() {
   const [state, setState] = useState<NoemaSocialState | null>(null);
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
+  const [workspaceTaskMode, setWorkspaceTaskMode] = useState(false);
+  useEffect(() => {
+    setWorkspaceTaskMode(false);
+  }, [activeRoomId]);
   const [projectWorkspaceId, setProjectWorkspaceId] = useState<string | null>(
     null,
   );
@@ -78,6 +83,9 @@ export function useSocialChatController() {
   >({});
   const [projectSessionsById, setProjectSessionsById] = useState<
     Record<string, ProjectSessionsState>
+  >({});
+  const [gitReviewsByTask, setGitReviewsByTask] = useState<
+    Record<string, NoemaSocialWorkGitReview>
   >({});
   const [queueResumedAfterByRoom, setQueueResumedAfterByRoom] = useState<
     Record<string, string>
@@ -124,6 +132,7 @@ export function useSocialChatController() {
   const shellRef = useRef<HTMLElement>(null);
   useScrollActivity(shellRef);
   const selectRoom = useCallback((room: NoemaSocialRoom) => {
+    setWorkspaceTaskMode(false);
     setShowJumpToLatest(false);
     setArchivedProjectsOpen(false);
     setActiveProjectSession(null);
@@ -1238,6 +1247,7 @@ export function useSocialChatController() {
     );
   };
   const openAgentWorkspace = (agentId: string) => {
+    setWorkspaceTaskMode(false);
     setArchivedProjectsOpen(false);
     setProjectWorkspaceId(null);
     setAgentWorkspaceId(agentId);
@@ -1283,6 +1293,7 @@ export function useSocialChatController() {
       return;
     }
     const roomId = currentRoom.id;
+    const startsWorkspaceTask = workspaceTaskMode && roomId === 'room-noema';
     const text = draft;
     const persistentProjectQueue =
       currentRoom.kind === 'group' && activeProject?.groupRoomId === roomId;
@@ -1297,7 +1308,7 @@ export function useSocialChatController() {
     setBusy(true);
     setNotice('');
     try {
-      const messageText = await prepareChatMessage(text, draftAttachments, {
+      const preparedMessage = await prepareChatMessage(text, draftAttachments, {
         extractPdfText: (file) =>
           extractChatPdfText(file, {
             pdfjs,
@@ -1305,6 +1316,9 @@ export function useSocialChatController() {
             maxCharacters: MAX_CHAT_ATTACHMENT_CHARACTERS,
           }),
       });
+      const messageText = startsWorkspaceTask
+        ? `请在本机工作区执行以下任务：\n\n${preparedMessage}`
+        : preparedMessage;
       if (activeReply && !persistentProjectQueue) {
         setQueuedMessagesByRoom((current) => {
           const queue = current[roomId] ?? [];
@@ -1326,6 +1340,7 @@ export function useSocialChatController() {
         setRoomDraft(roomId, '');
         clearDraftAttachments(roomId);
         setReplyTarget(null);
+        if (startsWorkspaceTask) setWorkspaceTaskMode(false);
         if (draftRef.current) draftRef.current.style.height = 'auto';
         setNotice('已加入当前聊天的发送队列。');
         return;
@@ -1351,6 +1366,7 @@ export function useSocialChatController() {
       setRoomDraft(roomId, '');
       clearDraftAttachments(roomId);
       setReplyTarget(null);
+      if (startsWorkspaceTask) setWorkspaceTaskMode(false);
       if (draftRef.current) draftRef.current.style.height = 'auto';
       if (sent.queued) {
         setNotice('群消息已保存；点名成员会在当前工作边界收到。');
@@ -1621,6 +1637,46 @@ export function useSocialChatController() {
     } catch (error) {
       setNotice(
         error instanceof Error ? error.message : '任务无法从检查点继续。',
+      );
+    }
+  };
+  const handleReviewProjectFileChange = async (
+    task: NoemaSocialWorkTask,
+    changeId: string,
+    action: 'keep' | 'revert',
+  ) => {
+    try {
+      const updated = await window.noema.reviewSocialWorkFileChange({
+        taskId: task.id,
+        changeId,
+        action,
+      });
+      await loadRoom(task.roomId);
+      const state = updated.fileChanges.find(
+        (change) => change.id === changeId,
+      )?.state;
+      setNotice(
+        state === 'kept'
+          ? '当前文件已保留。'
+          : state === 'reverted'
+            ? '文件修改已安全撤回。'
+            : state === 'not_applied'
+              ? '记录显示这次写入没有生效。'
+              : '文件状态已核对，请查看任务卡片中的结果。',
+      );
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : '文件变更没有处理。');
+      await loadRoom(task.roomId);
+    }
+  };
+  const handleReviewProjectGitState = async (taskId: string) => {
+    try {
+      const review = await window.noema.reviewSocialWorkGitState(taskId);
+      setGitReviewsByTask((current) => ({ ...current, [taskId]: review }));
+      if (!review.available) setNotice('Git 工作区状态暂不可用。');
+    } catch (error) {
+      setNotice(
+        error instanceof Error ? error.message : 'Git 工作区状态读取失败。',
       );
     }
   };
@@ -2156,9 +2212,14 @@ export function useSocialChatController() {
     }
   };
   return {
+    workspaceTaskMode,
+    setWorkspaceTaskMode,
     messageAgent,
     handleStopProjectWork,
     handleResumeProjectWork,
+    handleReviewProjectFileChange,
+    handleReviewProjectGitState,
+    gitReviewsByTask,
     handleDisableCaseReuse,
     handleWithdrawPracticeCandidate,
     projects,

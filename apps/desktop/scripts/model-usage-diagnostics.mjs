@@ -188,6 +188,8 @@ try {
     filter: interactionId ? { interactionId } : { since, hours },
     traceScope:
       '已持久化的交互消息、模型/外部用量与后台工作记录；不导出凭据，也不抓取未持久化的原始 HTTP 报文。',
+    privacyNotice:
+      '此本机文件可能包含个人对话、任务 prompt/result、错误和工作区路径；不会自动上传，请按敏感资料保管。文件不包含模型凭据。',
     counts: {
       modelRequests: modelUsage.length,
       externalUsageRecords: externalUsage.length,
@@ -215,6 +217,7 @@ try {
       `model-diagnostics-${new Date().toISOString().replaceAll(':', '-')}.json`,
     );
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+  process.stderr.write(`${report.privacyNotice}\n`);
   fs.writeFileSync(outputPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
   process.stdout.write(
     `${JSON.stringify({ outputPath, counts: report.counts }, null, 2)}\n`,

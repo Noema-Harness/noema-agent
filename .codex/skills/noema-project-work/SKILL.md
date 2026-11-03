@@ -1,16 +1,16 @@
 ---
 name: noema-project-work
-description: 续接或交付有实质范围的 Noema 工作时，核对代码现场、当前变更与源码发布；小修不启动完整管理流程。
+description: 续接或交付有实质范围的 Noema 工作时，核对代码现场、当前要求与源码发布；小修不启动完整管理流程。
 ---
 
 # Noema 项目衔接
 
-结合最近真实讨论、Git 状态、分支与近期提交，找到正在进行的 OpenSpec change。沿 `.codex/workspace.json` 的当前文档入口恢复本项背景，再读相关代码与必要历史；不靠旧 Issue、旧看板或聊天摘要独自决定下一步。
+先核对用户最近讨论、Git 状态、分支与未提交工作，再沿 `.codex/workspace.json` 读取本项必要入口。`docs/CURRENT_CONTEXT.md` 保存本轮明确要求，`docs/ARCHITECTURE.md` 只用于定位当前代码。
 
-阶段方向与退出条件在 `docs/ROADMAP.md`，变更设计、细任务与验证在 change。GitHub 保留源码、PR 与外部问题，Project 已封存；不新建卡片、不重复同步任务状态。范围变化更新 change，阶段重点变化才更新 ROADMAP。当前工作方式见 `docs/PROJECT_OPERATIONS.md`。
+范围发现先从外部参考源码的实际模块和契约展开，再对照 Noema；不从现有功能、旧提交或旧 Issue 恢复旧规划。参考项目的成熟度和适用性逐项核实，不自动采用其整套架构。源码研究、规划和开发的当前授权以最近用户要求为准。
 
-恢复、交付与资料生命周期使用用户级 `development-maintenance` 的相关部分。Noema 的本地约定和独立可用命令见 `docs/PROJECT_OPERATIONS.md`；没有该用户级技能的环境沿用这些仓库约定，不必先安装新工具。
+现有行为参考 `openspec/specs/`，实际变更再使用对应 change。资料和源码交付按 `docs/PROJECT_OPERATIONS.md` 处理；GitHub 保留源码与外部协作，不重复维护内部状态。
 
-本机 GitHub connector 传输异常时，使用仓库的 `scripts/gh-direct.ps1` / `scripts/git-direct.ps1`。入口优先探测可用的已配置代理并为 Git 选用 OpenSSL/HTTP/2；没有可用代理才尝试直连。故障按当次证据判断，源码同步与 Actions 账户阻断分开处理；发布后核对远端 SHA。
+GitHub connector 传输异常时使用 `scripts/gh-direct.ps1` / `scripts/git-direct.ps1`。故障按当次证据判断，同步后核对远端 SHA。
 
-需要本机连接诊断、截图、打包或真实模型执行入口时，读 [运行与平台说明](references/runtime.md)；其他工作不必加载。
+本机 shell、连接、截图、打包或模型执行入口按需读 [运行说明](references/runtime.md)。

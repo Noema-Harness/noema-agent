@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   MAX_CHAT_ATTACHMENT_CHARACTERS,
   MAX_CHAT_PDF_ATTACHMENT_BYTES,
@@ -23,13 +23,18 @@ import {
 import { PartnerSettingsDialog } from '../settings/partner-settings-dialog';
 import { PersonalMemoryDialog } from '../settings/personal-memory-dialog';
 import { UserFollowupsDialog } from '../settings/user-followups-dialog';
+import { DiagnosticsDialog } from '../diagnostics/diagnostics-dialog';
 
 export function SocialChatApp() {
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const controller = useSocialChatController();
   const {
     messageAgent,
     handleStopProjectWork,
     handleResumeProjectWork,
+    handleReviewProjectFileChange,
+    handleReviewProjectGitState,
+    gitReviewsByTask,
     handleDisableCaseReuse,
     handleWithdrawPracticeCandidate,
     projects,
@@ -78,6 +83,8 @@ export function SocialChatApp() {
     activeReply,
     showJumpToLatest,
     handleSend,
+    workspaceTaskMode,
+    setWorkspaceTaskMode,
     notice,
     setNotice,
     providerWarning,
@@ -151,6 +158,11 @@ export function SocialChatApp() {
       onResume={() => void handleResumeProjectWork(task)}
       onDisableCase={() => void handleDisableCaseReuse(task)}
       onWithdrawPractice={() => void handleWithdrawPracticeCandidate(task)}
+      onReviewFileChange={(changeId, action) =>
+        void handleReviewProjectFileChange(task, changeId, action)
+      }
+      gitReview={gitReviewsByTask[task.id] ?? null}
+      onReviewGitState={() => void handleReviewProjectGitState(task.id)}
       onRepeat={() => {
         const project = projects.find((candidate) =>
           candidate.members.some(
@@ -628,11 +640,42 @@ export function SocialChatApp() {
               </button>
             </div>
             <div className="composer-hint">
-              <span>
-                {draftAttachments.length
-                  ? `${draftAttachments.length} 个文字附件会随本条消息进入模型上下文`
-                  : 'Enter 发送 · Shift + Enter 换行'}
-              </span>
+              {currentRoom.id === noemaRoom?.id ? (
+                <div className="composer-mode">
+                  <button
+                    className={`composer-mode-button${workspaceTaskMode ? ' active' : ''}`}
+                    type="button"
+                    aria-pressed={workspaceTaskMode}
+                    disabled={composerDisabled || !state?.projectWork.available}
+                    title={
+                      state?.projectWork.available
+                        ? '以本机工作区任务提交；启动前仍需你选择工作区'
+                        : (state?.projectWork.reason ??
+                          '正在检查工作区任务能力')
+                    }
+                    onClick={() => setWorkspaceTaskMode((value) => !value)}
+                  >
+                    工作区任务
+                  </button>
+                  <span
+                    role={!state?.projectWork.available ? 'status' : undefined}
+                  >
+                    {!state?.projectWork.available
+                      ? (state?.projectWork.reason ?? '正在检查工作区任务能力')
+                      : workspaceTaskMode
+                        ? '发送后会先让你选择工作区'
+                        : draftAttachments.length
+                          ? `${draftAttachments.length} 个文字附件会随本条消息进入模型上下文`
+                          : 'Enter 发送 · Shift + Enter 换行'}
+                  </span>
+                </div>
+              ) : (
+                <span>
+                  {draftAttachments.length
+                    ? `${draftAttachments.length} 个文字附件会随本条消息进入模型上下文`
+                    : 'Enter 发送 · Shift + Enter 换行'}
+                </span>
+              )}
               <span>{activeRoute?.label || activeModel || '尚未连接模型'}</span>
             </div>
           </div>
@@ -679,6 +722,15 @@ export function SocialChatApp() {
             onClick={openGlobalSearch}
           >
             <Icon name="search" />
+          </button>
+          <button
+            type="button"
+            className="icon-button diagnostics-trigger"
+            title="运行诊断"
+            aria-label="运行诊断"
+            onClick={() => setDiagnosticsOpen(true)}
+          >
+            <Icon name="activity" />
           </button>
           <div className="window-controls" aria-label="窗口控件">
             <button
@@ -1088,6 +1140,11 @@ export function SocialChatApp() {
       <ProjectEditorDialog model={controller} />
 
       <PartnerSettingsDialog model={controller} />
+
+      <DiagnosticsDialog
+        open={diagnosticsOpen}
+        onClose={() => setDiagnosticsOpen(false)}
+      />
 
       <PersonalMemoryDialog model={controller} />
 

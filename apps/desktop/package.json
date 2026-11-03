@@ -24,7 +24,6 @@
     "e2e:project-collaboration": "node scripts/project-collaboration-live.mjs",
     "smoke": "node scripts/smoke.mjs",
     "smoke:package": "node scripts/smoke-package.mjs",
-    "e2e:sandbox": "node scripts/sandbox-e2e.mjs",
     "smoke:freellmapi": "node scripts/smoke-freellmapi.mjs",
     "e2e:live-worker": "node scripts/live-worker-e2e.mjs",
     "e2e:social-work": "node scripts/social-work-e2e.mjs",

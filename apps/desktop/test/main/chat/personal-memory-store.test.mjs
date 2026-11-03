@@ -3,6 +3,7 @@ import test from 'node:test';
 import Database from 'better-sqlite3';
 import { RootStore } from '../../../src/main/storage/root-store.mjs';
 import { SocialChatStore } from '../../../src/main/chat/social-chat-store.mjs';
+import { SOCIAL_SCHEMA_VERSION } from '../../../src/main/chat/social-chat-schema.mjs';
 
 function makeStore() {
   const db = new Database(':memory:');
@@ -140,17 +141,24 @@ test('schema v28 upgrades to personal memory without changing older data', () =>
       .prepare('SELECT COUNT(*) AS count FROM social_messages')
       .get().count;
     db.exec(`
+      ALTER TABLE social_projects DROP COLUMN workspace_identity_json;
+      ALTER TABLE social_projects DROP COLUMN workspace_path;
+      ALTER TABLE social_work_tasks DROP COLUMN workspace_identity_json;
+      DROP TABLE social_work_file_change_operations;
+      DROP TABLE social_work_file_changes;
       DROP TABLE social_user_memories_fts;
       DROP INDEX social_user_memories_updated;
       DROP TABLE social_user_memories;
-      DELETE FROM social_schema_migrations WHERE version = 29;
+      DROP TABLE social_user_followups;
+      DROP TABLE application_shutdown_intent;
+      DELETE FROM social_schema_migrations WHERE version >= 29;
     `);
     chat.migrate();
     assert.equal(
       db
         .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
         .get().version,
-      29,
+      SOCIAL_SCHEMA_VERSION,
     );
     assert.equal(
       db.prepare('SELECT COUNT(*) AS count FROM social_messages').get().count,

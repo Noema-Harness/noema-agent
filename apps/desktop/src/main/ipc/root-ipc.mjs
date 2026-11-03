@@ -1,3 +1,5 @@
+import { isMainFrameIpcEvent } from '../platform/window-security.mjs';
+
 const CHANNELS = Object.freeze({
   state: 'noema:root-state',
   models: 'noema:refresh-models',
@@ -71,13 +73,23 @@ const CHANNELS = Object.freeze({
   socialRetry: 'noema:social-retry',
   socialWorkStop: 'noema:social-work-stop',
   socialWorkResume: 'noema:social-work-resume',
+  socialWorkFileChange: 'noema:social-work-file-change',
+  socialWorkGitReview: 'noema:social-work-git-review',
   socialWorkCaseEligible: 'noema:social-work-case-eligible',
   socialPracticeWithdraw: 'noema:social-practice-withdraw',
+  diagnosticsRecent: 'noema:diagnostics-recent',
+  diagnosticsTimeline: 'noema:diagnostics-timeline',
+  diagnosticsDatabaseHealth: 'noema:diagnostics-database-health',
+  openUserDataDirectory: 'noema:open-user-data-directory',
+  diagnosticsExportPreview: 'noema:diagnostics-export-preview',
+  diagnosticsExportSave: 'noema:diagnostics-export-save',
+  windowsRunnerCapability: 'noema:windows-runner-capability',
+  setupWindowsRunner: 'noema:setup-windows-runner',
 });
 
 /**
  * Registers only the narrow root-conversation operations that the renderer needs.
- * @param {{ipcMain: {handle: Function, removeHandler: Function}, rootAgent: object, socialChatService?:object, socialProjectStore?:object, socialWorkService?:object, isTrustedSender: (sender: object) => boolean,chooseWorkspace?:()=>Promise<string|null>,sendMessage?:(text:string)=>Promise<object>|object,retryTurn?:(turnId:string,model:string|null)=>Promise<object>|object,finishQuickCapture?:()=>boolean,getQuickCaptureShortcutStatus?:()=>object|null,markQuickCaptureReady?:()=>boolean,markSocialChatReady?:()=>boolean}} options
+ * @param {{ipcMain: {handle: Function, removeHandler: Function}, rootAgent: object, socialChatService?:object, socialProjectStore?:object, socialWorkService?:object, diagnosticsQueryService?:object, getDiagnosticsDatabaseHealth?:()=>string, openUserDataDirectory?:()=>Promise<object>,saveDiagnosticsExport?:(previewId:string)=>Promise<object>, getWindowsRunnerCapability?:()=>object,setupWindowsRunner?:()=>Promise<object>, isTrustedSender: (sender: object) => boolean,chooseWorkspace?:()=>Promise<string|null>,sendMessage?:(text:string)=>Promise<object>|object,retryTurn?:(turnId:string,model:string|null)=>Promise<object>|object,finishQuickCapture?:()=>boolean,getQuickCaptureShortcutStatus?:()=>object|null,markQuickCaptureReady?:()=>boolean,markSocialChatReady?:()=>boolean,recordAuthorization?:(capability:string,decision:'requested'|'granted'|'denied'|'revoked',reason?:string)=>void,recordSocialReadiness?:(readiness:{available:boolean,reason:string|null})=>void}} options
  */
 export function registerRootIpc({
   ipcMain,
@@ -85,6 +97,16 @@ export function registerRootIpc({
   socialChatService = null,
   socialProjectStore = null,
   socialWorkService = null,
+  diagnosticsQueryService = null,
+  getDiagnosticsDatabaseHealth = () => 'unavailable',
+  openUserDataDirectory = async () => ({
+    opened: false,
+    errorCode: 'data_directory_unavailable',
+  }),
+  saveDiagnosticsExport = async () => ({
+    saved: false,
+    errorCode: 'unavailable',
+  }),
   isTrustedSender,
   chooseWorkspace = async () => null,
   sendMessage = (text) => rootAgent.sendMessage({ text }),
@@ -93,25 +115,51 @@ export function registerRootIpc({
   getQuickCaptureShortcutStatus = () => null,
   markQuickCaptureReady = () => false,
   markSocialChatReady = () => false,
+  recordAuthorization = () => {},
+  recordSocialReadiness = () => {},
+  getWindowsRunnerCapability = () => ({
+    platform: 'not_applicable',
+    supported: false,
+    backendReady: false,
+    status: 'not_applicable',
+    reasonCode: null,
+    backendId: null,
+    backendVersion: null,
+    protocolVersion: null,
+    setupStatus: 'not_applicable',
+  }),
+  setupWindowsRunner = async () => ({
+    supported: false,
+    canceled: false,
+    reasonCode: 'runner_unavailable',
+  }),
 }) {
   const register = (channel, handler) => {
     ipcMain.handle(channel, async (event, ...args) => {
-      if (!isTrustedSender(event.sender))
+      if (!isTrustedSender(event.sender) || !isMainFrameIpcEvent(event))
         throw new Error('未授权的应用窗口请求');
       return handler(...args);
     });
   };
 
   register(CHANNELS.state, () => rootAgent.getUiState());
+  register(CHANNELS.windowsRunnerCapability, () =>
+    getWindowsRunnerCapability(),
+  );
+  register(CHANNELS.setupWindowsRunner, () => setupWindowsRunner());
   if (socialChatService) {
     register(CHANNELS.firstMeetingProgress, (action) =>
       socialChatService.store.advanceFirstMeeting(action),
     );
-    register(CHANNELS.socialState, async () => ({
-      ...(await socialChatService.getUiState()),
-      projects:
-        socialProjectStore?.listProjects({ includeArchived: true }) ?? [],
-    }));
+    register(CHANNELS.socialState, async () => {
+      const state = await socialChatService.getUiState();
+      recordSocialReadiness(state.projectWork);
+      return {
+        ...state,
+        projects:
+          socialProjectStore?.listProjects({ includeArchived: true }) ?? [],
+      };
+    });
     register(CHANNELS.personalMemories, () =>
       socialChatService.store.personalMemories.list(),
     );
@@ -332,11 +380,35 @@ export function registerRootIpc({
     register(CHANNELS.socialWorkResume, (taskId) =>
       socialWorkService.resumeTask(taskId),
     );
+    register(CHANNELS.socialWorkFileChange, (input) =>
+      socialWorkService.reviewFileChange(input),
+    );
+    register(CHANNELS.socialWorkGitReview, (taskId) =>
+      socialWorkService.reviewGitState(taskId),
+    );
     register(CHANNELS.socialWorkCaseEligible, (taskId, eligible) =>
       socialWorkService.setCaseEligible(taskId, eligible),
     );
     register(CHANNELS.socialPracticeWithdraw, (taskId) =>
       socialWorkService.revokePracticeCandidate(taskId),
+    );
+  }
+  if (diagnosticsQueryService) {
+    register(CHANNELS.diagnosticsRecent, (limit) =>
+      diagnosticsQueryService.listRecent(limit),
+    );
+    register(CHANNELS.diagnosticsDatabaseHealth, () =>
+      getDiagnosticsDatabaseHealth(),
+    );
+    register(CHANNELS.openUserDataDirectory, () => openUserDataDirectory());
+    register(CHANNELS.diagnosticsTimeline, (input) =>
+      diagnosticsQueryService.getTimeline(input),
+    );
+    register(CHANNELS.diagnosticsExportPreview, (input) =>
+      diagnosticsQueryService.getExportPreview(input),
+    );
+    register(CHANNELS.diagnosticsExportSave, (previewId) =>
+      saveDiagnosticsExport(previewId),
     );
   }
   register(CHANNELS.models, () => rootAgent.refreshModels());
@@ -370,7 +442,20 @@ export function registerRootIpc({
   register(CHANNELS.retryWorkerEvent, (taskId) =>
     rootAgent.retryBackgroundEvent(taskId),
   );
-  register(CHANNELS.clearWorkspace, () => rootAgent.clearWorkspaceDirectory());
+  register(CHANNELS.clearWorkspace, () => {
+    try {
+      const result = rootAgent.clearWorkspaceDirectory();
+      recordAuthorization('legacy_workspace_access', 'revoked');
+      return result;
+    } catch (error) {
+      recordAuthorization(
+        'legacy_workspace_access',
+        'denied',
+        'operation_blocked',
+      );
+      throw error;
+    }
+  });
   register(CHANNELS.listCodexThreads, (cursor) =>
     rootAgent.listCodexThreads(cursor ?? null),
   );
@@ -380,7 +465,11 @@ export function registerRootIpc({
   register(CHANNELS.importCodexThread, (input) =>
     rootAgent.importCodexThread(input),
   );
-  register(CHANNELS.removeContextImport, () => rootAgent.removeContextImport());
+  register(CHANNELS.removeContextImport, () => {
+    const result = rootAgent.removeContextImport();
+    if (result) recordAuthorization('imported_context_transmission', 'revoked');
+    return result;
+  });
   register(CHANNELS.addSocialInteractionAdjustment, (input) =>
     rootAgent.addSocialInteractionAdjustment(input),
   );

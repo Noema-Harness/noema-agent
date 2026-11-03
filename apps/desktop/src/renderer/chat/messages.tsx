@@ -5,12 +5,14 @@ import {
   socialWorkCardTitle,
   socialWorkExecutionStepPresentation,
   socialWorkRecoveryPresentation,
+  socialWorkResultPresentation,
 } from '../../shared/execution/social-work-presentation.mjs';
 import type {
   NoemaSocialAgent,
   NoemaSocialHistorySource,
   NoemaSocialMessage,
   NoemaSocialRoom,
+  NoemaSocialWorkGitReview,
   NoemaSocialWorkTask,
 } from '../../shared/contracts/noema-bridge.d.ts';
 import { timeLabel, Icon, AgentMark } from './presentation';
@@ -339,6 +341,9 @@ export function ProjectWorkCard({
   onRepeat,
   onDisableCase,
   onWithdrawPractice,
+  onReviewFileChange,
+  gitReview,
+  onReviewGitState,
 }: {
   task: NoemaSocialWorkTask;
   agent: NoemaSocialAgent | null;
@@ -347,8 +352,12 @@ export function ProjectWorkCard({
   onRepeat: () => void;
   onDisableCase: () => void;
   onWithdrawPractice: () => void;
+  onReviewFileChange: (changeId: string, action: 'keep' | 'revert') => void;
+  gitReview: NoemaSocialWorkGitReview | null;
+  onReviewGitState: () => void;
 }) {
   const active = ['starting', 'running', 'verifying'].includes(task.status);
+  const resultPresentation = socialWorkResultPresentation(task);
   const recovery = ['failed', 'interrupted'].includes(task.status)
     ? socialWorkRecoveryPresentation(task)
     : null;
@@ -444,9 +453,14 @@ export function ProjectWorkCard({
           记录工具类别与状态，不包含工具参数或文件内容。
         </p>
       </details>
-      {task.resultText ? (
+      {resultPresentation.visible ? (
         <div className="work-result">
-          <h4>执行结果</h4>
+          <h4>{resultPresentation.title}</h4>
+          {resultPresentation.caveat ? (
+            <p className="request-explanation" role="status">
+              {resultPresentation.caveat}
+            </p>
+          ) : null}
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             components={markdownComponents}
@@ -456,6 +470,117 @@ export function ProjectWorkCard({
         </div>
       ) : null}
       {!active ? <p className="request-explanation">{verification}</p> : null}
+      {task.fileChanges.length ? (
+        <details className="project-file-review">
+          <summary>审阅 Noema 文件工具变更 · {task.fileChanges.length}</summary>
+          <p className="request-explanation">
+            这里只列出 Noema
+            的文件工具变更；命令或外部程序造成的变化不在此恢复范围内。
+          </p>
+          {task.fileChanges.map((change) => {
+            const label = {
+              pending: '写入结果待核对',
+              applied: '已写入，待你决定',
+              unknown: '写入结果不确定',
+              not_applied: '写入未生效',
+              kept: '已保留',
+              reverted: '已撤回',
+              conflict: '内容有变化，未覆盖',
+            }[change.state];
+            const reviewable =
+              !active &&
+              ['pending', 'applied', 'unknown', 'conflict'].includes(
+                change.state,
+              );
+            return (
+              <section className="project-file-review-item" key={change.id}>
+                <h4>
+                  <code>
+                    {change.originalExists ? '修改' : '新建'} ·{' '}
+                    {change.relativePath}
+                  </code>
+                </h4>
+                <p role="status">{label}</p>
+                {change.diffText ? <pre>{change.diffText}</pre> : null}
+                {change.diffTruncated ? (
+                  <p className="request-explanation">差异显示已截断。</p>
+                ) : null}
+                {reviewable ? (
+                  <div className="request-actions">
+                    <button
+                      className="secondary"
+                      type="button"
+                      onClick={() => onReviewFileChange(change.id, 'keep')}
+                    >
+                      保留当前文件
+                    </button>
+                    {['pending', 'applied'].includes(change.state) ? (
+                      <button
+                        className="quiet"
+                        type="button"
+                        onClick={() => onReviewFileChange(change.id, 'revert')}
+                      >
+                        安全撤回此文件
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </section>
+            );
+          })}
+        </details>
+      ) : null}
+      {!active ? (
+        <details className="project-git-review">
+          <summary>查看当前 Git 工作区状态</summary>
+          <p className="request-explanation">
+            这是工作区当前状态，可能包含任务开始前已有的修改；它不是本任务独占差异。此视图只读，不执行暂存、提交或清理。
+          </p>
+          <button
+            className="secondary"
+            type="button"
+            onClick={onReviewGitState}
+          >
+            读取 Git 状态
+          </button>
+          {gitReview ? (
+            gitReview.available ? (
+              <div className="project-git-review-results">
+                {gitReview.files.length ? (
+                  gitReview.files.map((file) => (
+                    <section
+                      className="project-file-review-item"
+                      key={file.relativePath}
+                    >
+                      <h4>
+                        <code>
+                          {file.status} {file.relativePath}
+                        </code>
+                      </h4>
+                      {file.diffText ? <pre>{file.diffText}</pre> : null}
+                      {file.diffTruncated ? (
+                        <p className="request-explanation">差异内容已截断。</p>
+                      ) : null}
+                    </section>
+                  ))
+                ) : (
+                  <p className="request-explanation">
+                    当前没有 Git 已跟踪或未跟踪的文件变更。
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="request-explanation" role="status">
+                {gitReview.reason === 'not_a_repository'
+                  ? '所选目录不属于 Git 工作区。'
+                  : gitReview.reason === 'git_timeout'
+                    ? 'Git 检查超时；没有修改仓库。'
+                    : 'Git 当前状态无法安全读取；没有修改仓库。'}
+              </p>
+            )
+          ) : null}
+        </details>
+      ) : null}
       {task.caseSnapshot || task.practiceSnapshot || task.practiceCandidate ? (
         <details>
           <summary>本次经验引用与候选</summary>

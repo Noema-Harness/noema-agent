@@ -133,6 +133,137 @@ export interface NoemaRootState {
   codexImportAvailable: boolean;
 }
 
+export interface NoemaDiagnosticExecution {
+  executionId: string;
+  taskId: string | null;
+  turnId: string | null;
+  module: string;
+  operation: string;
+  status: string;
+  occurredAt: string;
+  eventCount: number;
+  usageRequestCount: number;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  usageReported: boolean;
+}
+
+export interface NoemaDiagnosticEvent {
+  eventId: string;
+  schemaVersion: number;
+  occurredAt: string;
+  applicationExecutionId: string;
+  executionId: string | null;
+  parentExecutionId: string | null;
+  taskId: string | null;
+  turnId: string | null;
+  requestId: string | null;
+  toolCallId: string | null;
+  module: string;
+  operation: string;
+  status: string;
+  errorCode: string | null;
+  details: Record<string, string | number | boolean>;
+}
+
+export interface NoemaDiagnosticUsage {
+  createdAt: string;
+  providerHost: string;
+  model: string;
+  operation: string;
+  interactionId: string | null;
+  requestId: string | null;
+  executionId: string | null;
+  turnId: string | null;
+  requestStatus: string;
+  usageReceived: boolean;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  cachedInputTokens: number | null;
+  cacheMissTokens: number | null;
+  cacheWriteTokens: number | null;
+  reasoningTokens: number | null;
+  requestCharacters: number | null;
+  messageRoleCharacters: {
+    system: number;
+    developer: number;
+    user: number;
+    assistant: number;
+    tool: number;
+    other: number;
+  } | null;
+  toolDefinitionCharacters: number | null;
+  messageCount: number | null;
+  toolCount: number | null;
+}
+
+export interface NoemaDiagnosticTimeline {
+  available: boolean;
+  runtime: NoemaDiagnosticRuntimeInfo | null;
+  executionId: string | null;
+  taskId: string | null;
+  events: NoemaDiagnosticEvent[];
+  usage: NoemaDiagnosticUsage[];
+  task: {
+    id: string;
+    status: string;
+    verificationStatus: string | null;
+    errorCode: string | null;
+    executionEngine: string | null;
+    createdAt: string | null;
+    updatedAt: string | null;
+    completedAt: string | null;
+    executionSteps: Array<{
+      index: number | null;
+      category: string | null;
+      status: string | null;
+      effectStatus: string | null;
+      errorCode: string | null;
+    }>;
+  } | null;
+  coverageGaps: string[];
+  truncated: boolean;
+  diagnostics: Record<string, unknown>;
+}
+
+export interface NoemaDiagnosticRuntimeInfo {
+  applicationVersion: string | null;
+  electronVersion: string | null;
+  nodeVersion: string | null;
+  osVersion: string | null;
+  platform: string | null;
+  architecture: string | null;
+  isPackaged: boolean;
+  socialSchemaVersion: number | null;
+  diagnosticsSchemaVersion: number | null;
+}
+
+export interface NoemaDiagnosticExportPreview {
+  previewId: string;
+  schemaVersion: number;
+  executionId: string | null;
+  taskId: string | null;
+  eventCount: number;
+  usageCount: number;
+  included: string[];
+  excluded: string[];
+  coverageGaps: string[];
+  truncated: boolean;
+  reportJson: string;
+}
+
+export interface NoemaWindowsRunnerCapability {
+  platform: 'win32' | 'not_applicable';
+  supported: boolean;
+  backendReady: boolean;
+  status: 'ready' | 'unavailable' | 'not_applicable';
+  reasonCode: string | null;
+  backendId: string | null;
+  backendVersion: string | null;
+  protocolVersion: number | null;
+  setupStatus: 'ready' | 'unavailable' | 'not_applicable';
+}
+
 export interface NoemaSocialAgent {
   id: string;
   name: string;
@@ -550,6 +681,7 @@ export interface NoemaSocialWorkTask {
   workspacePath: string;
   executionEngine: string;
   canResume: boolean;
+  resumeBlockReason: string | null;
   taskPrompt: string;
   status:
     | 'starting'
@@ -558,7 +690,21 @@ export interface NoemaSocialWorkTask {
     | 'completed'
     | 'failed'
     | 'interrupted';
-  phase: string | null;
+  phase:
+    | 'starting'
+    | 'running'
+    | 'model_request'
+    | 'model_response'
+    | 'tool_requested'
+    | 'tool_call'
+    | 'awaiting_authorization'
+    | 'retry_waiting_rate_limit'
+    | 'verifying'
+    | 'completed'
+    | 'failed'
+    | 'interrupted'
+    | 'unknown'
+    | null;
   toolCallCount: number;
   toolActionCategories: string[];
   executionSteps: Array<{
@@ -578,6 +724,7 @@ export interface NoemaSocialWorkTask {
     startedAt: string;
     completedAt: string | null;
   }>;
+  fileChanges: NoemaSocialWorkFileChange[];
   resultText: string;
   errorCode: string | null;
   errorMessage: string | null;
@@ -649,6 +796,39 @@ export interface NoemaSocialWorkTask {
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
+}
+
+export interface NoemaSocialWorkFileChange {
+  id: string;
+  relativePath: string;
+  originalExists: boolean;
+  originalHash: string | null;
+  latestHash: string | null;
+  diffText: string;
+  diffTruncated: boolean;
+  state:
+    | 'pending'
+    | 'applied'
+    | 'unknown'
+    | 'not_applied'
+    | 'kept'
+    | 'reverted'
+    | 'conflict';
+  lastStepId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NoemaSocialWorkGitReview {
+  available: boolean;
+  reason?: string;
+  source?: 'current_workspace';
+  files: Array<{
+    relativePath: string;
+    status: string;
+    diffText: string;
+    diffTruncated: boolean;
+  }>;
 }
 
 export interface NoemaSocialRoomState {
@@ -875,6 +1055,41 @@ export interface NoemaBridge {
   appVersion: string;
   getRootState(): Promise<NoemaRootState>;
   getSocialState(): Promise<NoemaSocialState>;
+  getWindowsRunnerCapability(): Promise<NoemaWindowsRunnerCapability>;
+  setupWindowsRunner(): Promise<{
+    supported: boolean;
+    canceled: boolean;
+    reasonCode: string | null;
+  }>;
+  onWindowsRunnerCapabilityChanged(
+    listener: (state: NoemaWindowsRunnerCapability) => void,
+  ): () => void;
+  getDiagnosticsRecent(limit?: number): Promise<{
+    available: boolean;
+    executions: NoemaDiagnosticExecution[];
+    diagnostics: Record<string, unknown>;
+    runtime: NoemaDiagnosticRuntimeInfo | null;
+  }>;
+  getDiagnosticsDatabaseHealth(): Promise<'healthy' | 'problem' | 'unavailable'>;
+  openUserDataDirectory(): Promise<{
+    opened: boolean;
+    errorCode: string | null;
+  }>;
+  getDiagnosticsTimeline(input: {
+    executionId?: string | null;
+    taskId?: string | null;
+    limit?: number;
+  }): Promise<NoemaDiagnosticTimeline>;
+  previewDiagnosticsExport(input: {
+    executionId?: string | null;
+    taskId?: string | null;
+  }): Promise<NoemaDiagnosticExportPreview>;
+  saveDiagnosticsExport(previewId: string): Promise<{
+    saved: boolean;
+    canceled?: boolean;
+    fileName?: string;
+    errorCode?: string;
+  }>;
   getPersonalMemories(): Promise<NoemaPersonalMemoryList>;
   setPersonalMemoryEnabled(enabled: boolean): Promise<boolean>;
   addPersonalMemory(content: string): Promise<NoemaPersonalMemory>;
@@ -1009,6 +1224,12 @@ export interface NoemaBridge {
     messageId: string;
   }>;
   stopSocialWorkTask(taskId: string): Promise<boolean>;
+  reviewSocialWorkFileChange(input: {
+    taskId: string;
+    changeId: string;
+    action: 'keep' | 'revert';
+  }): Promise<NoemaSocialWorkTask>;
+  reviewSocialWorkGitState(taskId: string): Promise<NoemaSocialWorkGitReview>;
   resumeSocialWorkTask(
     taskId: string,
   ): Promise<{ accepted: boolean; taskId: string; roomId: string }>;

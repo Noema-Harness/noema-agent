@@ -141,7 +141,7 @@ test('a later schema upgrade gets a verified snapshot without overwriting the fi
   }
 });
 
-test('social schema v27 upgrades to v28 without losing existing messages', () => {
+test('social schema v27 upgrades to the current version without losing existing messages', () => {
   const root = new RootStore(':memory:');
   try {
     const store = new SocialChatStore(root.db);
@@ -152,9 +152,19 @@ test('social schema v27 upgrades to v28 without losing existing messages', () =>
       model: 'test-model',
     });
     store.db.exec(`
+      ALTER TABLE social_projects DROP COLUMN workspace_identity_json;
+      ALTER TABLE social_projects DROP COLUMN workspace_path;
+      ALTER TABLE social_work_tasks DROP COLUMN workspace_identity_json;
       DROP INDEX social_messages_delegation_parent;
       ALTER TABLE social_messages DROP COLUMN delegation_parent_message_id;
-      DELETE FROM social_schema_migrations WHERE version IN (28, 29);
+      DROP TABLE social_user_memories_fts;
+      DROP INDEX social_user_memories_updated;
+      DROP TABLE social_user_memories;
+      DROP TABLE social_user_followups;
+      DROP TABLE application_shutdown_intent;
+      DROP TABLE social_work_file_change_operations;
+      DROP TABLE social_work_file_changes;
+      DELETE FROM social_schema_migrations WHERE version >= 28;
     `);
 
     new SocialChatStore(root.db);

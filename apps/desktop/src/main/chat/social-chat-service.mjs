@@ -3,7 +3,6 @@ import { createHash, randomUUID } from 'node:crypto';
 import { userReferencesPastNoemaContext } from '../../shared/search/transcript-search.mjs';
 import { resolveGroupRecipient } from '../../shared/chat/group-mentions.mjs';
 import { ProjectCollaborationStore } from '../projects/project-collaboration-store.mjs';
-import { NOEMA_MAIN_CHAT_INTENT_GUIDANCE } from './records.mjs';
 import {
   CALCULATE_EXPRESSION_TOOL,
   calculateExpression,
@@ -37,6 +36,7 @@ import {
   personalMemoryTool,
   userFollowupTool,
   shouldExposePersonalMemoryTool,
+  NOEMA_STABLE_ACTION_GUIDANCE,
 } from './model-tools.mjs';
 
 /** @typedef {Omit<Pick<import('./noema-bridge.d.ts').NoemaRootState,'connected'|'checking'|'models'|'selectedModel'|'error'|'providerConfigured'|'providerBaseUrl'|'providerName'|'webSearchConfigured'>,'providerName'> & {providerName:string}} SocialProviderState */
@@ -1278,6 +1278,8 @@ export class SocialChatService {
         signal: run.controller.signal,
         usageOperation: 'social_project_tool_continuation',
         usageInteractionId: run.assistantMessageId,
+        usageExecutionId: run.turnId,
+        usageTurnId: run.turnId,
         // Allow enough output for structured project-plan tool arguments.
         maxTokens: 4096,
         tools: [
@@ -1902,6 +1904,8 @@ export class SocialChatService {
         signal: controller.signal,
         usageOperation: 'specialist_private_handoff',
         usageInteractionId: parentInteractionId,
+        usageExecutionId: turn.turnId,
+        usageTurnId: turn.turnId,
       })) {
         controller.signal.throwIfAborted();
         if (!this.store.appendAssistantDelta(turn.assistantMessageId, delta)) {
@@ -2019,37 +2023,25 @@ export class SocialChatService {
             entry.id === (planItemId ?? run.planItemId)),
       );
     const item = matchingItems.length === 1 ? matchingItems[0] : null;
-    this.store.db
-      .prepare(`UPDATE social_work_tasks SET project_plan_item_id=?,project_result_pending=1
-      WHERE id=? AND room_id=? AND agent_id=?`)
-      .run(
-        item?.id ?? null,
-        taskId,
-        projectSession.room.room.id,
-        resolvedAgentId,
-      );
+    this.store.trackSocialWorkProjectResult({
+      taskId,
+      roomId: projectSession.room.room.id,
+      agentId: resolvedAgentId,
+      planItemId: item?.id ?? null,
+    });
   }
 
   onProjectWorkUpdated(task) {
     if (this.shuttingDown || !task) return;
     if (!['completed', 'failed', 'interrupted'].includes(task.status)) return;
     if (task.status !== 'interrupted')
-      this.store.db
-        .prepare(
-          `UPDATE social_work_tasks SET project_result_pending=1 WHERE id=? AND EXISTS (
-            SELECT 1 FROM social_project_sessions s WHERE s.room_id=social_work_tasks.room_id AND s.agent_id=social_work_tasks.agent_id)`,
-        )
-        .run(task.id);
+      this.store.markSocialWorkProjectResultPending(task.id);
     this.schedulePendingProjectGroupInboxes();
   }
 
   syncProjectWorkResults() {
     if (!this.projectStore || !this.collaboration) return;
-    this.store.db
-      .prepare(
-        `UPDATE social_work_tasks SET project_result_pending=0 WHERE project_result_pending=1 AND status='interrupted'`,
-      )
-      .run();
+    this.store.clearInterruptedSocialWorkProjectResults();
     const pending = this.store.db
       .prepare(`SELECT t.id,t.status,t.verification_status AS verificationStatus,
         t.project_plan_item_id AS planItemId,t.completed_at AS completedAt,t.updated_at AS updatedAt,
@@ -2070,11 +2062,7 @@ export class SocialChatService {
           planItemId: task.planItemId,
           text: `@${completed ? task.memberName : 'Noema'} 项目执行任务 ${task.id} ${completed ? '已结束' : '失败'}；文件条件核验状态：${task.verificationStatus}。${task.planItemId ? `关联工作包：${task.planItemId}。` : ''}${completed ? '在本项目会话中' : '在项目群聊中'}使用 manage_project_plan 读取实际结果：operation="read_sources",${completed ? '' : ` project_id="${task.projectId}",`} evidence_sources=[{"kind":"execution","taskId":"${task.id}"}], reason="核查执行结果"。${completed ? '项目会话已绑定目标项目，不要传 project_id。原成员核对后提交成果及 evidence_sources；任务结束本身不代表工作包通过验收。' : '请核查具体错误再协调，不能盲目自动重试或声称已完成。'}`,
         });
-        this.store.db
-          .prepare(
-            'UPDATE social_work_tasks SET project_result_pending=0 WHERE id=?',
-          )
-          .run(task.id);
+        this.store.clearSocialWorkProjectResultPending(task.id);
         if (!result.duplicate)
           this.emit({ type: 'chat-state-updated', roomId: result.roomId });
       })();
@@ -2848,20 +2836,7 @@ export class SocialChatService {
           content: [
             agent.systemPrompt,
             agentId === 'noema' && roomId === 'room-noema'
-              ? NOEMA_MAIN_CHAT_INTENT_GUIDANCE
-              : '',
-            agentId === 'noema' && roomId === 'room-noema'
-              ? (this.store.getFirstMeetingContext?.() ?? '')
-              : '',
-            agentId === 'noema' &&
-            roomId === 'room-noema' &&
-            needsFollowupTimeClarification(run.text)
-              ? '用户明确表达了回访意图，但没有给出具体时刻。先自然地问清时间；在用户明确回答前，不创建也不确认回访。'
-              : '',
-            actionTools.some(
-              (tool) => tool.function.name === 'schedule_followup',
-            )
-              ? localTimeContext()
+              ? NOEMA_STABLE_ACTION_GUIDANCE
               : '',
           ]
             .filter(Boolean)
@@ -3130,7 +3105,25 @@ export class SocialChatService {
             ]
           : []),
       ].filter(Boolean);
+      const turnSpecificSystemContext = [
+        agentId === 'noema' && roomId === 'room-noema'
+          ? (this.store.getFirstMeetingContext?.() ?? '')
+          : '',
+        agentId === 'noema' &&
+        roomId === 'room-noema' &&
+        needsFollowupTimeClarification(run.text)
+          ? '用户明确表达了回访意图，但没有给出具体时刻。先自然地问清时间；在用户明确回答前，不创建也不确认回访。'
+          : '',
+        actionTools.some((tool) => tool.function.name === 'schedule_followup')
+          ? localTimeContext()
+          : '',
+      ]
+        .filter(Boolean)
+        .join('\n\n');
       const turnSpecificContext = [
+        turnSpecificSystemContext
+          ? { role: 'system', content: turnSpecificSystemContext }
+          : null,
         run.forwardedSources.length
           ? {
               role: 'system',
@@ -3250,6 +3243,8 @@ export class SocialChatService {
           exposeProjectActions,
         ),
         usageInteractionId: assistantMessageId,
+        usageExecutionId: run.turnId,
+        usageTurnId: run.turnId,
         ...(isProjectGroupRoute || actionTools.length
           ? { maxTokens: 4096 }
           : {}),
@@ -3466,6 +3461,8 @@ export class SocialChatService {
             signal: controller.signal,
             usageOperation: 'social_project_growth_followup',
             usageInteractionId: assistantMessageId,
+            usageExecutionId: run.turnId,
+            usageTurnId: run.turnId,
           })) {
             controller.signal.throwIfAborted();
             followUp += delta;
@@ -3583,6 +3580,8 @@ export class SocialChatService {
             signal: controller.signal,
             usageOperation: 'social_specialist_followup',
             usageInteractionId: assistantMessageId,
+            usageExecutionId: run.turnId,
+            usageTurnId: run.turnId,
             onRouteMetadata: () => {
               if (!controller.signal.aborted && historySources.length) {
                 this.store.markReplyHistorySourcesIncluded(assistantMessageId);
@@ -4143,6 +4142,8 @@ export class SocialChatService {
             signal: controller.signal,
             usageOperation: 'social_personal_memory_followup',
             usageInteractionId: assistantMessageId,
+            usageExecutionId: run.turnId,
+            usageTurnId: run.turnId,
           })) {
             controller.signal.throwIfAborted();
             followUpContent += delta;
@@ -4319,6 +4320,8 @@ export class SocialChatService {
             signal: controller.signal,
             usageOperation: 'social_asset_followup',
             usageInteractionId: assistantMessageId,
+            usageExecutionId: run.turnId,
+            usageTurnId: run.turnId,
           })) {
             controller.signal.throwIfAborted();
             followUpContent += delta;
@@ -4398,6 +4401,8 @@ export class SocialChatService {
             signal: controller.signal,
             usageOperation: 'social_user_followup_confirmation',
             usageInteractionId: assistantMessageId,
+            usageExecutionId: run.turnId,
+            usageTurnId: run.turnId,
           })) {
             controller.signal.throwIfAborted();
             followUpContent += delta;

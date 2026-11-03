@@ -1,4 +1,5 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import path from 'node:path';
 import { visibleProjectGroupText } from '../../shared/chat/project-group-public-text.mjs';
 import { normalizeInteractionAdjustmentSnapshots } from '../storage/root-store.mjs';
 import { searchTranscriptHistory } from '../../shared/search/transcript-search.mjs';
@@ -32,6 +33,51 @@ import {
 import { migrateSocialChatSchema } from './migrations.mjs';
 import { PersonalMemoryStore } from './personal-memory-store.mjs';
 import { UserFollowupStore } from './user-followup-store.mjs';
+import { isWorkspaceIdentity } from '../platform/workspace-identity.mjs';
+import { normalizeSocialWorkPhase } from '../../shared/execution/social-work-phase.mjs';
+
+const MAX_WORKSPACE_FILE_SNAPSHOT_BYTES = 1_000_000;
+const MAX_SOCIAL_WORK_TASK_FILE_CHANGE_BYTES = 20 * 1024 * 1024;
+const MAX_SOCIAL_WORK_TOTAL_FILE_CHANGE_BYTES = 200 * 1024 * 1024;
+const MAX_SOCIAL_WORK_FILE_CHANGE_PATHS = 200;
+const MAX_SOCIAL_WORK_FILE_DIFF_BYTES = 64 * 1024;
+
+function workspaceFileChangeError(code, message) {
+  const error = new Error(message);
+  error.code = code;
+  return error;
+}
+
+function normalizeWorkspaceRelativePath(value) {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value.length > 2_000 ||
+    value.includes('\0') ||
+    path.isAbsolute(value) ||
+    path.win32.isAbsolute(value) ||
+    /^[a-z]:/iu.test(value)
+  ) {
+    throw workspaceFileChangeError(
+      'workspace_file_change_path_invalid',
+      '工作区文件变更路径无效。',
+    );
+  }
+  const segments = value.split(/[\\/]/u);
+  if (
+    segments.some((segment) => !segment || segment === '.' || segment === '..')
+  ) {
+    throw workspaceFileChangeError(
+      'workspace_file_change_path_invalid',
+      '工作区文件变更路径无效。',
+    );
+  }
+  return segments.join('/');
+}
+
+function workspaceFileHash(bytes) {
+  return createHash('sha256').update(bytes).digest('hex');
+}
 
 /**
  * Stores stable agent identities separately from conversation rooms.
@@ -47,7 +93,29 @@ export class SocialChatStore {
     this.seedInitialSocialModel();
     this.importLegacyRootMessages();
     this.recoverInterruptedReplies();
-    this.recoverInterruptedSocialWorkTasks();
+    this.recoveredSocialWorkTaskErrorCode = null;
+    this.recoveredSocialWorkTaskIds = this.recoverInterruptedSocialWorkTasks();
+  }
+
+  recordApplicationShutdownIntent(reason) {
+    if (!['application_exit', 'system_shutdown'].includes(reason)) {
+      throw new Error('invalid_shutdown_reason');
+    }
+    this.db
+      .prepare(`
+        INSERT INTO application_shutdown_intent (id, reason, requested_at)
+        VALUES (1, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          reason = excluded.reason,
+          requested_at = excluded.requested_at
+      `)
+      .run(reason, isoNow());
+  }
+
+  clearApplicationShutdownIntent() {
+    return this.db
+      .prepare('DELETE FROM application_shutdown_intent WHERE id = 1')
+      .run().changes;
   }
 
   migrate() {
@@ -792,7 +860,98 @@ export class SocialChatStore {
     return this.getAgent(agentId);
   }
 
-  getRoomSnapshot(roomId) {
+  getRoomMessageWindow(roomId, options = {}) {
+    const limit = Number.isInteger(options.limit)
+      ? Math.max(20, Math.min(200, options.limit))
+      : 200;
+    const baseSelect = `
+      SELECT seq, id, room_id AS roomId, turn_id AS turnId, role,
+             agent_id AS agentId, sender_agent_id AS senderAgentId,
+             content, status, attempt, model, runtime,
+             error_code AS errorCode, error_message AS errorMessage,
+             legacy_source_id AS legacySourceId,
+             forwarded_sources_json AS forwardedSourcesJson,
+             reply_to_message_id AS replyToMessageId,
+             reply_to_json AS replyToJson,
+             interaction_adjustment_ids_json AS interactionAdjustmentIdsJson,
+             interaction_adjustment_snapshots_json AS interactionAdjustmentSnapshotsJson,
+             interaction_adjustment_attempts_json AS interactionAdjustmentAttemptsJson,
+             history_search_status AS historySearchStatus,
+             history_sources_included AS historySourcesIncluded,
+             created_at AS createdAt, updated_at AS updatedAt
+      FROM social_messages WHERE room_id = ?
+        AND ${hideInternalProjectReportSql('id')}
+    `;
+    const existsAt = (operator, sequence) =>
+      Boolean(
+        this.db
+          .prepare(`
+            SELECT 1 FROM social_messages WHERE room_id = ? AND seq ${operator} ?
+              AND ${hideInternalProjectReportSql('id')}
+            LIMIT 1
+          `)
+          .get(roomId, sequence),
+      );
+    const cursorFor = (rows, key) =>
+      rows.length ? String(rows[key].seq) : null;
+
+    let rows;
+    let targetFound = null;
+    if (typeof options.aroundMessageId === 'string') {
+      const target = this.db
+        .prepare(`
+          SELECT seq FROM social_messages
+          WHERE room_id = ? AND id = ? AND ${hideInternalProjectReportSql('id')}
+        `)
+        .get(roomId, options.aroundMessageId);
+      targetFound = Boolean(target);
+      if (target) {
+        const earlierCount = Math.floor(limit / 2);
+        rows = [
+          ...this.db
+            .prepare(`${baseSelect} AND seq < ? ORDER BY seq DESC LIMIT ?`)
+            .all(roomId, target.seq, earlierCount)
+            .reverse(),
+          ...this.db
+            .prepare(`${baseSelect} AND seq >= ? ORDER BY seq ASC LIMIT ?`)
+            .all(roomId, target.seq, limit - earlierCount),
+        ];
+      }
+    }
+
+    if (!rows && Number.isInteger(Number(options.beforeSequence))) {
+      const cursor = Number(options.beforeSequence);
+      rows = this.db
+        .prepare(`${baseSelect} AND seq < ? ORDER BY seq DESC LIMIT ?`)
+        .all(roomId, cursor, limit)
+        .reverse();
+    } else if (!rows && Number.isInteger(Number(options.afterSequence))) {
+      const cursor = Number(options.afterSequence);
+      rows = this.db
+        .prepare(`${baseSelect} AND seq > ? ORDER BY seq ASC LIMIT ?`)
+        .all(roomId, cursor, limit);
+    } else if (!rows) {
+      rows = this.db
+        .prepare(`${baseSelect} ORDER BY seq DESC LIMIT ?`)
+        .all(roomId, limit)
+        .reverse();
+    }
+
+    const oldestSequence = rows.length ? String(rows[0].seq) : null;
+    const newestSequence = rows.length ? String(rows.at(-1).seq) : null;
+    return {
+      rows,
+      page: {
+        oldestSequence,
+        newestSequence,
+        hasEarlier: oldestSequence ? existsAt('<', oldestSequence) : false,
+        hasLater: newestSequence ? existsAt('>', newestSequence) : false,
+        targetFound,
+      },
+    };
+  }
+
+  getRoomSnapshot(roomId, options = null) {
     requireText(roomId, '房间 ID', 200);
     const room = this.db
       .prepare(`
@@ -819,27 +978,30 @@ export class SocialChatStore {
         ...agent,
         capabilities: JSON.parse(agent.capabilitiesJson),
       }));
-    const rows = this.db
-      .prepare(`
-        SELECT id, room_id AS roomId, turn_id AS turnId, role,
-               agent_id AS agentId, sender_agent_id AS senderAgentId,
-               content, status, attempt, model, runtime,
-               error_code AS errorCode, error_message AS errorMessage,
-               legacy_source_id AS legacySourceId,
-               forwarded_sources_json AS forwardedSourcesJson,
-               reply_to_message_id AS replyToMessageId,
-               reply_to_json AS replyToJson,
-               interaction_adjustment_ids_json AS interactionAdjustmentIdsJson,
-               interaction_adjustment_snapshots_json AS interactionAdjustmentSnapshotsJson,
-               interaction_adjustment_attempts_json AS interactionAdjustmentAttemptsJson,
-               history_search_status AS historySearchStatus,
-               history_sources_included AS historySourcesIncluded,
-               created_at AS createdAt, updated_at AS updatedAt
-        FROM social_messages WHERE room_id = ?
-          AND ${hideInternalProjectReportSql('id')}
-        ORDER BY seq ASC
-      `)
-      .all(roomId);
+    const window = options ? this.getRoomMessageWindow(roomId, options) : null;
+    const rows =
+      window?.rows ??
+      this.db
+        .prepare(`
+          SELECT seq, id, room_id AS roomId, turn_id AS turnId, role,
+                 agent_id AS agentId, sender_agent_id AS senderAgentId,
+                 content, status, attempt, model, runtime,
+                 error_code AS errorCode, error_message AS errorMessage,
+                 legacy_source_id AS legacySourceId,
+                 forwarded_sources_json AS forwardedSourcesJson,
+                 reply_to_message_id AS replyToMessageId,
+                 reply_to_json AS replyToJson,
+                 interaction_adjustment_ids_json AS interactionAdjustmentIdsJson,
+                 interaction_adjustment_snapshots_json AS interactionAdjustmentSnapshotsJson,
+                 interaction_adjustment_attempts_json AS interactionAdjustmentAttemptsJson,
+                 history_search_status AS historySearchStatus,
+                 history_sources_included AS historySourcesIncluded,
+                 created_at AS createdAt, updated_at AS updatedAt
+          FROM social_messages WHERE room_id = ?
+            AND ${hideInternalProjectReportSql('id')}
+          ORDER BY seq ASC
+        `)
+        .all(roomId);
     const historyRows = this.db
       .prepare(`
         SELECT hs.assistant_message_id AS assistantMessageId,
@@ -851,10 +1013,16 @@ export class SocialChatStore {
         JOIN social_rooms AS room ON room.id = source.room_id
         WHERE hs.assistant_message_id IN (
           SELECT id FROM social_messages WHERE room_id = ? AND role = 'assistant'
+          ${window ? 'AND seq >= ? AND seq <= ?' : ''}
         )
         ORDER BY hs.assistant_message_id, hs.position
       `)
-      .all(roomId);
+      .all(
+        roomId,
+        ...(window && window.rows.length
+          ? [window.page.oldestSequence, window.page.newestSequence]
+          : []),
+      );
     const historiesByAssistant = new Map();
     for (const source of historyRows) {
       const history = historiesByAssistant.get(source.assistantMessageId) ?? [];
@@ -881,7 +1049,7 @@ export class SocialChatStore {
         ...(pendingByMessage.get(item.messageId) ?? []),
         item.agentId,
       ]);
-    const messages = rows.map((row) =>
+    const messages = rows.map(({ seq: _seq, ...row }) =>
       hydrateMessage({
         ...row,
         content:
@@ -902,6 +1070,7 @@ export class SocialChatStore {
       room,
       members,
       messages,
+      ...(window ? { messageWindow: window.page } : {}),
       workTasks: this.listRoomWorkTasks(roomId).map((task) => ({
         id: task.id,
         roomId: task.roomId,
@@ -1706,6 +1875,7 @@ export class SocialChatStore {
       agentId,
       workspacePath,
       workspaceKey,
+      workspaceIdentity = null,
       taskPrompt,
       projectId = null,
       sourceMessageId = null,
@@ -1780,6 +1950,9 @@ export class SocialChatStore {
       throw new TypeError('请先选择项目文件夹。');
     }
     requireText(workspaceKey, '工作区标识', 2_000);
+    if (workspaceIdentity !== null && !isWorkspaceIdentity(workspaceIdentity)) {
+      throw new Error('工作区身份无效；没有创建项目任务。');
+    }
     const normalizedPrompt = requireText(taskPrompt, '项目任务', 40_000);
     const normalizedSourceMessageId =
       sourceMessageId === null
@@ -1847,12 +2020,12 @@ export class SocialChatStore {
       this.db
         .prepare(`
           INSERT INTO social_work_tasks
-            (id, room_id, agent_id, source_message_id, workspace_path, workspace_key, task_prompt,
+            (id, room_id, agent_id, source_message_id, workspace_path, workspace_key, workspace_identity_json, task_prompt,
              model, runtime, execution_engine, status, verification_status,
              verification_checks_json, case_snapshot_json, case_reuse_requested,
              practice_snapshot_json, interaction_adjustment_ids_json,
              interaction_adjustment_snapshots_json, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'dsh', ?, 'starting', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'dsh', ?, 'starting', ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `)
         .run(
           id,
@@ -1861,6 +2034,7 @@ export class SocialChatStore {
           normalizedSourceMessageId,
           workspacePath,
           workspaceKey,
+          workspaceIdentity ? JSON.stringify(workspaceIdentity) : null,
           normalizedPrompt,
           normalizedModel,
           requireText(executionEngine, '执行器', 40),
@@ -1913,6 +2087,7 @@ export class SocialChatStore {
         SELECT id, room_id AS roomId, agent_id AS agentId,
                source_message_id AS sourceMessageId,
                workspace_path AS workspacePath, workspace_key AS workspaceKey,
+               workspace_identity_json AS workspaceIdentityJson,
                task_prompt AS taskPrompt, model, runtime,
                execution_engine AS executionEngine,
                runtime_session_id AS runtimeSessionId, status, phase,
@@ -1942,11 +2117,20 @@ export class SocialChatStore {
       `)
       .get(requireText(taskId, '任务 ID', 200));
     if (!row) throw new Error('找不到这项项目工作。');
-    return hydrateSocialWorkTask(
+    const hydrated = hydrateSocialWorkTask(
       row,
       this.listSocialWorkExecutionSteps(row.id),
       this.getSocialWorkRuntimeCheckpoint(row.id),
     );
+    const task = {
+      ...hydrated,
+      fileChanges: this.listSocialWorkFileChanges(row.id),
+    };
+    Object.defineProperty(task, 'workspaceIdentity', {
+      value: hydrated.workspaceIdentity,
+      enumerable: false,
+    });
+    return task;
   }
 
   listRoomWorkTasks(roomId) {
@@ -1955,6 +2139,7 @@ export class SocialChatStore {
         SELECT id, room_id AS roomId, agent_id AS agentId,
                source_message_id AS sourceMessageId,
                workspace_path AS workspacePath, workspace_key AS workspaceKey,
+               workspace_identity_json AS workspaceIdentityJson,
                task_prompt AS taskPrompt, model, runtime,
                execution_engine AS executionEngine,
                runtime_session_id AS runtimeSessionId, status, phase,
@@ -2004,13 +2189,49 @@ export class SocialChatStore {
       list.push({ ...step, hasSideEffect: Boolean(step.hasSideEffect) });
       byTask.set(step.taskId, list);
     }
-    return rows.map((row) =>
-      hydrateSocialWorkTask(
+    const fileChanges = this.db
+      .prepare(`
+        SELECT id, task_id AS taskId, relative_path AS relativePath,
+               original_exists AS originalExists,
+               original_hash AS originalHash, latest_hash AS latestHash,
+               CASE WHEN state = 'pending' THEN pending_diff_text ELSE diff_text END
+                 AS diffText,
+               CASE WHEN state = 'pending'
+                 THEN COALESCE(pending_diff_truncated, 0)
+                 ELSE diff_truncated END AS diffTruncated,
+               state, last_step_id AS lastStepId,
+               created_at AS createdAt, updated_at AS updatedAt
+        FROM social_work_file_changes
+        WHERE task_id IN (${placeholders})
+        ORDER BY task_id, created_at, relative_path, id
+      `)
+      .all(...taskIds);
+    const changesByTask = new Map();
+    for (const change of fileChanges) {
+      const list = changesByTask.get(change.taskId) ?? [];
+      list.push({
+        ...change,
+        originalExists: Boolean(change.originalExists),
+        diffTruncated: Boolean(change.diffTruncated),
+      });
+      changesByTask.set(change.taskId, list);
+    }
+    return rows.map((row) => {
+      const hydrated = hydrateSocialWorkTask(
         row,
         byTask.get(row.id) ?? [],
         this.getSocialWorkRuntimeCheckpoint(row.id),
-      ),
-    );
+      );
+      const task = {
+        ...hydrated,
+        fileChanges: changesByTask.get(row.id) ?? [],
+      };
+      Object.defineProperty(task, 'workspaceIdentity', {
+        value: hydrated.workspaceIdentity,
+        enumerable: false,
+      });
+      return task;
+    });
   }
 
   listSocialWorkExecutionSteps(taskId) {
@@ -2026,6 +2247,581 @@ export class SocialChatStore {
       `)
       .all(taskId)
       .map((step) => ({ ...step, hasSideEffect: Boolean(step.hasSideEffect) }));
+  }
+
+  prepareSocialWorkFileChange({
+    taskId,
+    stepId,
+    relativePath,
+    beforeBytes,
+    afterHash,
+    diffText,
+    diffTruncated = false,
+  }) {
+    const safeTaskId = requireText(taskId, '任务 ID', 200);
+    const safeStepId = requireText(stepId, '步骤 ID', 200);
+    const safePath = normalizeWorkspaceRelativePath(relativePath);
+    if (!/^[a-f0-9]{64}$/u.test(afterHash ?? '')) {
+      throw workspaceFileChangeError(
+        'workspace_file_change_hash_invalid',
+        '工作区文件变更摘要无效。',
+      );
+    }
+    if (beforeBytes !== null && !Buffer.isBuffer(beforeBytes)) {
+      throw workspaceFileChangeError(
+        'workspace_file_change_snapshot_invalid',
+        '工作区文件恢复副本无效。',
+      );
+    }
+    if (
+      beforeBytes &&
+      beforeBytes.byteLength > MAX_WORKSPACE_FILE_SNAPSHOT_BYTES
+    ) {
+      throw workspaceFileChangeError(
+        'workspace_file_change_snapshot_limit',
+        '现有文件超过 1 MB 恢复副本上限；没有修改文件。',
+      );
+    }
+    if (typeof diffText !== 'string' || typeof diffTruncated !== 'boolean') {
+      throw workspaceFileChangeError(
+        'workspace_file_change_diff_invalid',
+        '工作区差异内容无效。',
+      );
+    }
+    let safeDiff = diffText;
+    let safeDiffTruncated = diffTruncated;
+    if (Buffer.byteLength(safeDiff, 'utf8') > MAX_SOCIAL_WORK_FILE_DIFF_BYTES) {
+      safeDiff = Buffer.from(safeDiff, 'utf8')
+        .subarray(0, MAX_SOCIAL_WORK_FILE_DIFF_BYTES)
+        .toString('utf8');
+      safeDiffTruncated = true;
+    }
+    const originalExists = Buffer.isBuffer(beforeBytes);
+    const beforeHash = originalExists ? workspaceFileHash(beforeBytes) : null;
+    const now = isoNow();
+    const operationId = randomUUID();
+    let changeId = null;
+
+    this.db.transaction(() => {
+      const task = this.db
+        .prepare(`
+          SELECT status FROM social_work_tasks WHERE id = ?
+        `)
+        .get(safeTaskId);
+      const step = this.db
+        .prepare(`
+          SELECT status, category FROM social_work_execution_steps
+          WHERE id = ? AND task_id = ?
+        `)
+        .get(safeStepId, safeTaskId);
+      if (
+        !task ||
+        !['starting', 'running'].includes(task.status) ||
+        !step ||
+        step.status !== 'running' ||
+        !['write', 'edit'].includes(step.category)
+      ) {
+        throw workspaceFileChangeError(
+          'workspace_file_change_owner_unavailable',
+          '项目文件变更记录 owner 不可用；文件没有修改。',
+        );
+      }
+
+      const existing = this.db
+        .prepare(`
+          SELECT id, original_exists AS originalExists,
+                 original_bytes AS originalBytes, original_hash AS originalHash,
+                 latest_hash AS latestHash, state
+          FROM social_work_file_changes
+          WHERE task_id = ? AND relative_path = ?
+            AND state IN ('pending', 'applied', 'unknown', 'conflict')
+        `)
+        .get(safeTaskId, safePath);
+      if (existing && existing.state !== 'applied') {
+        throw workspaceFileChangeError(
+          'workspace_file_change_unresolved',
+          '该文件已有未解决的写入结果；为保护现有内容，本次写入已拒绝。',
+        );
+      }
+      if (
+        (existing && existing.latestHash !== beforeHash) ||
+        (existing &&
+          existing.originalExists &&
+          !Buffer.isBuffer(existing.originalBytes))
+      ) {
+        throw workspaceFileChangeError(
+          'workspace_file_concurrent_change',
+          '文件内容已在 Noema 上次修改后变化；为避免覆盖并发修改，本次写入已拒绝。',
+        );
+      }
+
+      if (!existing) {
+        const pathCount = this.db
+          .prepare(`
+            SELECT COUNT(*) AS count FROM social_work_file_changes
+            WHERE task_id = ? AND state IN ('pending', 'applied', 'unknown', 'conflict')
+          `)
+          .get(safeTaskId).count;
+        if (pathCount >= MAX_SOCIAL_WORK_FILE_CHANGE_PATHS) {
+          throw workspaceFileChangeError(
+            'workspace_file_change_path_limit',
+            '单项任务的文件变更记录达到 200 个路径上限；没有修改文件。',
+          );
+        }
+        const snapshotBytes = beforeBytes?.byteLength ?? 0;
+        const taskBytes = this.db
+          .prepare(`
+            SELECT COALESCE(SUM(length(original_bytes)), 0) AS bytes
+            FROM social_work_file_changes
+            WHERE task_id = ? AND state IN ('pending', 'applied', 'unknown', 'conflict')
+          `)
+          .get(safeTaskId).bytes;
+        if (
+          taskBytes + snapshotBytes >
+          MAX_SOCIAL_WORK_TASK_FILE_CHANGE_BYTES
+        ) {
+          throw workspaceFileChangeError(
+            'workspace_file_change_task_storage_limit',
+            '单项任务的文件恢复资料超过 20 MiB 上限；没有修改文件。',
+          );
+        }
+        const totalBytes = this.db
+          .prepare(`
+            SELECT COALESCE(SUM(length(original_bytes)), 0) AS bytes
+            FROM social_work_file_changes
+            WHERE state IN ('pending', 'applied', 'unknown', 'conflict')
+          `)
+          .get().bytes;
+        if (
+          totalBytes + snapshotBytes >
+          MAX_SOCIAL_WORK_TOTAL_FILE_CHANGE_BYTES
+        ) {
+          throw workspaceFileChangeError(
+            'workspace_file_change_total_storage_limit',
+            'Noema 的未解决文件恢复资料达到 200 MiB 上限；请先处理已有变更。',
+          );
+        }
+        changeId = randomUUID();
+        this.db
+          .prepare(`
+            INSERT INTO social_work_file_changes (
+              id, task_id, relative_path, original_exists, original_bytes,
+              original_hash, latest_hash, diff_text, diff_truncated, state,
+              pending_before_hash, pending_after_hash, pending_diff_text,
+              pending_diff_truncated, pending_step_id, last_step_id,
+              created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, NULL, '', 0, 'pending', ?, ?, ?, ?, ?, ?, ?, ?)
+          `)
+          .run(
+            changeId,
+            safeTaskId,
+            safePath,
+            originalExists ? 1 : 0,
+            beforeBytes,
+            beforeHash,
+            beforeHash,
+            afterHash,
+            safeDiff,
+            safeDiffTruncated ? 1 : 0,
+            safeStepId,
+            safeStepId,
+            now,
+            now,
+          );
+      } else {
+        changeId = existing.id;
+        this.db
+          .prepare(`
+            UPDATE social_work_file_changes
+            SET state = 'pending', pending_before_hash = ?, pending_after_hash = ?,
+                pending_diff_text = ?, pending_diff_truncated = ?,
+                pending_step_id = ?, last_step_id = ?, updated_at = ?
+            WHERE id = ? AND state = 'applied'
+          `)
+          .run(
+            beforeHash,
+            afterHash,
+            safeDiff,
+            safeDiffTruncated ? 1 : 0,
+            safeStepId,
+            safeStepId,
+            now,
+            changeId,
+          );
+      }
+      const ordinal =
+        (this.db
+          .prepare(
+            'SELECT MAX(ordinal) AS ordinal FROM social_work_file_change_operations WHERE change_id = ?',
+          )
+          .get(changeId)?.ordinal ?? 0) + 1;
+      this.db
+        .prepare(`
+          INSERT INTO social_work_file_change_operations (
+            id, change_id, task_id, step_id, ordinal, before_hash,
+            after_hash, state, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+        `)
+        .run(
+          operationId,
+          changeId,
+          safeTaskId,
+          safeStepId,
+          ordinal,
+          beforeHash,
+          afterHash,
+          now,
+        );
+    })();
+    return { changeId, operationId, beforeHash, afterHash };
+  }
+
+  completeSocialWorkFileChange({
+    taskId,
+    stepId,
+    changeId,
+    operationId,
+    actualHash,
+  }) {
+    const safeTaskId = requireText(taskId, '任务 ID', 200);
+    const safeStepId = requireText(stepId, '步骤 ID', 200);
+    const safeChangeId = requireText(changeId, '文件变更 ID', 200);
+    const safeOperationId = requireText(operationId, '文件操作 ID', 200);
+    if (actualHash !== null && !/^[a-f0-9]{64}$/u.test(actualHash)) {
+      throw workspaceFileChangeError(
+        'workspace_file_change_hash_invalid',
+        '工作区文件变更摘要无效。',
+      );
+    }
+    const now = isoNow();
+    return this.db.transaction(() => {
+      const change = this.db
+        .prepare(`
+          SELECT state, latest_hash AS latestHash,
+                 pending_before_hash AS pendingBeforeHash,
+                 pending_after_hash AS pendingAfterHash,
+                 pending_diff_text AS pendingDiffText,
+                 pending_diff_truncated AS pendingDiffTruncated
+          FROM social_work_file_changes
+          WHERE id = ? AND task_id = ?
+        `)
+        .get(safeChangeId, safeTaskId);
+      const operation = this.db
+        .prepare(`
+          SELECT state FROM social_work_file_change_operations
+          WHERE id = ? AND change_id = ? AND task_id = ? AND step_id = ?
+        `)
+        .get(safeOperationId, safeChangeId, safeTaskId, safeStepId);
+      if (
+        !change ||
+        change.state !== 'pending' ||
+        !operation ||
+        operation.state !== 'pending'
+      ) {
+        throw workspaceFileChangeError(
+          'workspace_file_change_state_changed',
+          '工作区文件变更状态已变化；结果保留为待检查。',
+        );
+      }
+
+      let state = 'unknown';
+      if (actualHash === change.pendingAfterHash) state = 'applied';
+      else if (actualHash === change.pendingBeforeHash) state = 'not_applied';
+      const operationState = state;
+      if (state === 'applied') {
+        this.db
+          .prepare(`
+            UPDATE social_work_file_changes
+            SET state = 'applied', latest_hash = pending_after_hash,
+                diff_text = pending_diff_text,
+                diff_truncated = COALESCE(pending_diff_truncated, 0),
+                pending_before_hash = NULL, pending_after_hash = NULL,
+                pending_diff_text = NULL, pending_diff_truncated = NULL,
+                pending_step_id = NULL, updated_at = ?
+            WHERE id = ?
+          `)
+          .run(now, safeChangeId);
+      } else if (state === 'not_applied' && change.latestHash) {
+        this.db
+          .prepare(`
+            UPDATE social_work_file_changes
+            SET state = 'applied', pending_before_hash = NULL,
+                pending_after_hash = NULL, pending_diff_text = NULL,
+                pending_diff_truncated = NULL, pending_step_id = NULL,
+                updated_at = ?
+            WHERE id = ?
+          `)
+          .run(now, safeChangeId);
+      } else if (state === 'not_applied') {
+        this.db
+          .prepare(`
+            UPDATE social_work_file_changes
+            SET state = 'not_applied', original_bytes = NULL,
+                pending_before_hash = NULL, pending_after_hash = NULL,
+                pending_diff_text = NULL, pending_diff_truncated = NULL,
+                pending_step_id = NULL, updated_at = ?
+            WHERE id = ?
+          `)
+          .run(now, safeChangeId);
+      } else {
+        this.db
+          .prepare(`
+            UPDATE social_work_file_changes
+            SET state = 'unknown', diff_text = pending_diff_text,
+                diff_truncated = COALESCE(pending_diff_truncated, 0),
+                pending_before_hash = NULL,
+                pending_after_hash = NULL, pending_diff_text = NULL,
+                pending_diff_truncated = NULL, pending_step_id = NULL,
+                updated_at = ?
+            WHERE id = ?
+          `)
+          .run(now, safeChangeId);
+      }
+      this.db
+        .prepare(`
+          UPDATE social_work_file_change_operations
+          SET state = ?, completed_at = ? WHERE id = ? AND state = 'pending'
+        `)
+        .run(operationState, now, safeOperationId);
+      return this.getSocialWorkFileChange(safeTaskId, safeChangeId);
+    })();
+  }
+
+  listSocialWorkFileChanges(taskId) {
+    const safeTaskId = requireText(taskId, '任务 ID', 200);
+    return this.db
+      .prepare(`
+        SELECT id, task_id AS taskId, relative_path AS relativePath,
+               original_exists AS originalExists,
+               original_hash AS originalHash, latest_hash AS latestHash,
+               CASE WHEN state = 'pending' THEN pending_diff_text ELSE diff_text END
+                 AS diffText,
+               CASE WHEN state = 'pending'
+                 THEN COALESCE(pending_diff_truncated, 0)
+                 ELSE diff_truncated END AS diffTruncated,
+               state, last_step_id AS lastStepId,
+               created_at AS createdAt, updated_at AS updatedAt
+        FROM social_work_file_changes
+        WHERE task_id = ? ORDER BY created_at, relative_path, id
+      `)
+      .all(safeTaskId)
+      .map((row) => ({
+        ...row,
+        originalExists: Boolean(row.originalExists),
+        diffTruncated: Boolean(row.diffTruncated),
+      }));
+  }
+
+  getSocialWorkFileChange(taskId, changeId) {
+    const safeTaskId = requireText(taskId, '任务 ID', 200);
+    const safeChangeId = requireText(changeId, '文件变更 ID', 200);
+    const row = this.db
+      .prepare(`
+        SELECT id, task_id AS taskId, relative_path AS relativePath,
+               original_exists AS originalExists,
+               original_bytes AS originalBytes,
+               original_hash AS originalHash, latest_hash AS latestHash,
+               diff_text AS diffText, diff_truncated AS diffTruncated,
+               state, last_step_id AS lastStepId,
+               created_at AS createdAt, updated_at AS updatedAt
+        FROM social_work_file_changes WHERE task_id = ? AND id = ?
+      `)
+      .get(safeTaskId, safeChangeId);
+    if (!row) return null;
+    return {
+      ...row,
+      originalExists: Boolean(row.originalExists),
+      diffTruncated: Boolean(row.diffTruncated),
+    };
+  }
+
+  reconcileSocialWorkFileChange({ taskId, changeId, actualHash }) {
+    const safeTaskId = requireText(taskId, '任务 ID', 200);
+    const safeChangeId = requireText(changeId, '文件变更 ID', 200);
+    if (actualHash !== null && !/^[a-f0-9]{64}$/u.test(actualHash)) {
+      throw workspaceFileChangeError(
+        'workspace_file_change_hash_invalid',
+        '工作区文件变更摘要无效。',
+      );
+    }
+    const now = isoNow();
+    return this.db.transaction(() => {
+      const change = this.db
+        .prepare(`
+          SELECT state, original_exists AS originalExists,
+                 original_hash AS originalHash, latest_hash AS latestHash,
+                 pending_before_hash AS pendingBeforeHash,
+                 pending_after_hash AS pendingAfterHash,
+                 pending_diff_text AS pendingDiffText,
+                 pending_diff_truncated AS pendingDiffTruncated,
+                 pending_step_id AS pendingStepId
+          FROM social_work_file_changes WHERE task_id = ? AND id = ?
+        `)
+        .get(safeTaskId, safeChangeId);
+      if (!change) throw new Error('找不到这项文件变更。');
+      if (change.state === 'pending') {
+        const operation = this.db
+          .prepare(`
+            SELECT id, step_id AS stepId FROM social_work_file_change_operations
+            WHERE task_id = ? AND change_id = ? AND state = 'pending'
+            ORDER BY ordinal DESC LIMIT 1
+          `)
+          .get(safeTaskId, safeChangeId);
+        if (!operation) {
+          this.markSocialWorkFileChangeConflict(safeTaskId, safeChangeId);
+          return this.getSocialWorkFileChange(safeTaskId, safeChangeId);
+        }
+        let state = 'unknown';
+        if (actualHash === change.pendingAfterHash) state = 'applied';
+        else if (actualHash === change.pendingBeforeHash) {
+          state = change.latestHash ? 'applied' : 'not_applied';
+        }
+        if (state === 'applied' && actualHash === change.pendingAfterHash) {
+          this.db
+            .prepare(`
+              UPDATE social_work_file_changes
+              SET state = 'applied', latest_hash = pending_after_hash,
+                  diff_text = pending_diff_text,
+                  diff_truncated = COALESCE(pending_diff_truncated, 0),
+                  pending_before_hash = NULL, pending_after_hash = NULL,
+                  pending_diff_text = NULL, pending_diff_truncated = NULL,
+                  pending_step_id = NULL, updated_at = ?
+              WHERE id = ? AND task_id = ? AND state = 'pending'
+            `)
+            .run(now, safeChangeId, safeTaskId);
+        } else if (state === 'applied') {
+          this.db
+            .prepare(`
+              UPDATE social_work_file_changes
+              SET state = 'applied', pending_before_hash = NULL,
+                  pending_after_hash = NULL, pending_diff_text = NULL,
+                  pending_diff_truncated = NULL, pending_step_id = NULL,
+                  updated_at = ?
+              WHERE id = ? AND task_id = ? AND state = 'pending'
+            `)
+            .run(now, safeChangeId, safeTaskId);
+        } else if (state === 'not_applied') {
+          this.db
+            .prepare(`
+              UPDATE social_work_file_changes
+              SET state = 'not_applied', original_bytes = NULL,
+                  pending_before_hash = NULL, pending_after_hash = NULL,
+                  pending_diff_text = NULL, pending_diff_truncated = NULL,
+                  pending_step_id = NULL, updated_at = ?
+              WHERE id = ? AND task_id = ? AND state = 'pending'
+            `)
+            .run(now, safeChangeId, safeTaskId);
+        } else {
+          this.markSocialWorkFileChangeConflict(safeTaskId, safeChangeId);
+        }
+        this.db
+          .prepare(`
+            UPDATE social_work_file_change_operations
+            SET state = ?, completed_at = COALESCE(completed_at, ?)
+            WHERE id = ? AND state = 'pending'
+          `)
+          .run(
+            state === 'applied'
+              ? 'applied'
+              : state === 'not_applied'
+                ? 'not_applied'
+                : 'unknown',
+            now,
+            operation.id,
+          );
+      } else if (
+        change.state === 'applied' &&
+        ((change.originalExists && actualHash === change.originalHash) ||
+          (!change.originalExists && actualHash === null))
+      ) {
+        this.db
+          .prepare(`
+            UPDATE social_work_file_changes
+            SET state = 'reverted', original_bytes = NULL, updated_at = ?
+            WHERE id = ? AND task_id = ? AND state = 'applied'
+          `)
+          .run(now, safeChangeId, safeTaskId);
+      }
+      return this.getSocialWorkFileChange(safeTaskId, safeChangeId);
+    })();
+  }
+
+  markSocialWorkFileChangeKept(taskId, changeId, actualHash) {
+    const safeTaskId = requireText(taskId, '任务 ID', 200);
+    const safeChangeId = requireText(changeId, '文件变更 ID', 200);
+    if (actualHash !== null && !/^[a-f0-9]{64}$/u.test(actualHash)) {
+      throw workspaceFileChangeError(
+        'workspace_file_change_hash_invalid',
+        '工作区文件变更摘要无效。',
+      );
+    }
+    return this.db.transaction(() => {
+      const change = this.db
+        .prepare(`
+          SELECT state, latest_hash AS latestHash FROM social_work_file_changes
+          WHERE id = ? AND task_id = ?
+        `)
+        .get(safeChangeId, safeTaskId);
+      if (!change) throw new Error('找不到这项文件变更。');
+      if (!['applied', 'unknown', 'conflict'].includes(change.state)) {
+        throw new Error('这项文件变更当前不能保留。');
+      }
+      this.db
+        .prepare(`
+          UPDATE social_work_file_changes
+          SET state = 'kept', original_bytes = NULL, latest_hash = ?,
+              pending_before_hash = NULL, pending_after_hash = NULL,
+              pending_diff_text = NULL, pending_diff_truncated = NULL,
+              pending_step_id = NULL, updated_at = ?
+          WHERE id = ? AND task_id = ?
+        `)
+        .run(actualHash, isoNow(), safeChangeId, safeTaskId);
+      return this.getSocialWorkFileChange(safeTaskId, safeChangeId);
+    })();
+  }
+
+  markSocialWorkFileChangeReverted(taskId, changeId) {
+    const safeTaskId = requireText(taskId, '任务 ID', 200);
+    const safeChangeId = requireText(changeId, '文件变更 ID', 200);
+    const result = this.db
+      .prepare(`
+        UPDATE social_work_file_changes
+        SET state = 'reverted', original_bytes = NULL, updated_at = ?
+        WHERE id = ? AND task_id = ? AND state = 'applied'
+      `)
+      .run(isoNow(), safeChangeId, safeTaskId);
+    if (result.changes !== 1) {
+      throw new Error('文件变更状态已变化；为保护工作区，撤回结果未确认。');
+    }
+    return this.getSocialWorkFileChange(safeTaskId, safeChangeId);
+  }
+
+  markSocialWorkFileChangeConflict(taskId, changeId) {
+    const safeTaskId = requireText(taskId, '任务 ID', 200);
+    const safeChangeId = requireText(changeId, '文件变更 ID', 200);
+    this.db
+      .prepare(`
+        UPDATE social_work_file_changes
+        SET state = 'conflict', pending_before_hash = NULL,
+            diff_text = CASE WHEN state = 'pending' AND pending_diff_text IS NOT NULL
+              THEN pending_diff_text ELSE diff_text END,
+            diff_truncated = CASE WHEN state = 'pending'
+              THEN COALESCE(pending_diff_truncated, 0) ELSE diff_truncated END,
+            pending_after_hash = NULL, pending_diff_text = NULL,
+            pending_diff_truncated = NULL, pending_step_id = NULL,
+            updated_at = ?
+        WHERE id = ? AND task_id = ?
+          AND state IN ('pending', 'applied', 'unknown', 'conflict')
+      `)
+      .run(isoNow(), safeChangeId, safeTaskId);
+    this.db
+      .prepare(`
+        UPDATE social_work_file_change_operations SET state = 'unknown',
+          completed_at = COALESCE(completed_at, ?)
+        WHERE task_id = ? AND change_id = ? AND state = 'pending'
+      `)
+      .run(isoNow(), safeTaskId, safeChangeId);
+    return this.getSocialWorkFileChange(safeTaskId, safeChangeId);
   }
 
   saveSocialWorkRuntimeCheckpoint(taskId, checkpoint) {
@@ -2220,7 +3016,9 @@ export class SocialChatStore {
     this.db
       .prepare(`
         UPDATE social_work_tasks SET runtime_session_id = ?,
-          status = 'running', phase = 'running', updated_at = ?
+          status = 'running',
+          phase = CASE WHEN phase = 'starting' THEN 'running' ELSE phase END,
+          updated_at = ?
         WHERE id = ? AND status IN ('starting', 'running')
       `)
       .run(runtimeSessionId, now, taskId);
@@ -2234,7 +3032,7 @@ export class SocialChatStore {
         .prepare(`
           SELECT workspace_key AS workspaceKey FROM social_work_tasks
           WHERE id = ? AND execution_engine = 'noema'
-            AND ((status = 'interrupted' AND error_code = 'app_restarted')
+            AND ((status = 'interrupted' AND error_code IN ('app_restarted', 'application_exit_incomplete', 'system_shutdown_incomplete', 'process_crash'))
               OR (status = 'failed' AND error_code IN ('provider_unavailable', 'rate_limited', 'tool_round_limit', 'response_too_large')))
         `)
         .get(taskId);
@@ -2266,7 +3064,7 @@ export class SocialChatStore {
           SET status = 'starting', phase = 'starting', error_code = NULL,
               error_message = NULL, completed_at = NULL, updated_at = ?
           WHERE id = ? AND execution_engine = 'noema'
-            AND ((status = 'interrupted' AND error_code = 'app_restarted')
+            AND ((status = 'interrupted' AND error_code IN ('app_restarted', 'application_exit_incomplete', 'system_shutdown_incomplete', 'process_crash'))
               OR (status = 'failed' AND error_code IN ('provider_unavailable', 'rate_limited', 'tool_round_limit', 'response_too_large')))
         `)
         .run(now, taskId).changes;
@@ -2536,7 +3334,7 @@ export class SocialChatStore {
   updateSocialWorkTaskProgress(taskId, { phase, toolCallCount } = {}) {
     const task = this.getSocialWorkTask(taskId);
     const categories = task.toolActionCategories;
-    if (typeof phase === 'string') task.phase = phase.slice(0, 100);
+    if (typeof phase === 'string') task.phase = normalizeSocialWorkPhase(phase);
     if (Number.isInteger(toolCallCount) && toolCallCount >= 0) {
       task.toolCallCount = Math.max(task.toolCallCount, toolCallCount);
     }
@@ -2597,6 +3395,40 @@ export class SocialChatStore {
         taskId,
       );
     return this.getSocialWorkTask(taskId);
+  }
+
+  trackSocialWorkProjectResult({ taskId, roomId, agentId, planItemId }) {
+    return this.db
+      .prepare(`UPDATE social_work_tasks
+        SET project_plan_item_id = ?, project_result_pending = 1
+        WHERE id = ? AND room_id = ? AND agent_id = ?`)
+      .run(planItemId ?? null, taskId, roomId, agentId).changes;
+  }
+
+  markSocialWorkProjectResultPending(taskId) {
+    return this.db
+      .prepare(`UPDATE social_work_tasks SET project_result_pending = 1
+        WHERE id = ? AND EXISTS (
+          SELECT 1 FROM social_project_sessions s
+          WHERE s.room_id = social_work_tasks.room_id
+            AND s.agent_id = social_work_tasks.agent_id
+        )`)
+      .run(taskId).changes;
+  }
+
+  clearInterruptedSocialWorkProjectResults() {
+    return this.db
+      .prepare(`UPDATE social_work_tasks SET project_result_pending = 0
+        WHERE project_result_pending = 1 AND status = 'interrupted'`)
+      .run().changes;
+  }
+
+  clearSocialWorkProjectResultPending(taskId) {
+    return this.db
+      .prepare(
+        'UPDATE social_work_tasks SET project_result_pending = 0 WHERE id = ?',
+      )
+      .run(taskId).changes;
   }
 
   finishSocialWorkTask(taskId, outcome) {
@@ -2688,16 +3520,41 @@ export class SocialChatStore {
 
   recoverInterruptedSocialWorkTasks() {
     const now = isoNow();
+    const shutdownIntent = this.db
+      .prepare('SELECT reason FROM application_shutdown_intent WHERE id = 1')
+      .get();
+    const recoveryReason = shutdownIntent?.reason ?? 'process_crash';
+    const recoveryErrorCode =
+      recoveryReason === 'application_exit'
+        ? 'application_exit_incomplete'
+        : recoveryReason === 'system_shutdown'
+          ? 'system_shutdown_incomplete'
+          : 'process_crash';
+    this.recoveredSocialWorkTaskErrorCode = recoveryErrorCode;
+    const recoveringTaskIds = this.db
+      .prepare(`SELECT id FROM social_work_tasks
+        WHERE status IN ('starting', 'running', 'verifying') ORDER BY id`)
+      .all()
+      .map(({ id }) => id);
     const recover = this.db.transaction(() => {
       const taskCount = this.db
         .prepare(`
         UPDATE social_work_tasks SET status = 'interrupted',
-          phase = 'interrupted', error_code = 'app_restarted',
-          error_message = 'Noema 关闭时任务仍在运行；已停止自动执行。可查看已产生的文件改动后手动重试。',
+          phase = 'interrupted', error_code = ?,
+          error_message = ?,
           updated_at = ?, completed_at = ?
         WHERE status IN ('starting', 'running', 'verifying')
       `)
-        .run(now, now).changes;
+        .run(
+          recoveryErrorCode,
+          recoveryReason === 'process_crash'
+            ? 'Noema 进程意外结束时任务仍在运行；已停止自动执行。可查看已产生的文件改动后手动重试。'
+            : recoveryReason === 'system_shutdown'
+              ? '系统关机或注销时任务未能完成收束；已停止自动执行。可查看已产生的文件改动后手动重试。'
+              : 'Noema 退出时任务未能完成收束；已停止自动执行。可查看已产生的文件改动后手动重试。',
+          now,
+          now,
+        ).changes;
       this.db
         .prepare(`
         UPDATE social_work_execution_steps
@@ -2711,32 +3568,35 @@ export class SocialChatStore {
             END,
             completed_at = ?
         WHERE status = 'running' AND task_id IN (
-          SELECT id FROM social_work_tasks WHERE error_code = 'app_restarted'
+          SELECT id FROM social_work_tasks WHERE error_code = ?
         )
       `)
-        .run(now);
+        .run(now, recoveryErrorCode);
       this.db
         .prepare(`
           UPDATE social_work_runtime_checkpoints
           SET phase = 'interrupted', updated_at = ?
           WHERE task_id IN (
-            SELECT id FROM social_work_tasks WHERE error_code = 'app_restarted'
+            SELECT id FROM social_work_tasks WHERE error_code = ?
           )
         `)
-        .run(now);
+        .run(now, recoveryErrorCode);
+      this.db
+        .prepare('DELETE FROM application_shutdown_intent WHERE id = 1')
+        .run();
       return taskCount;
     });
-    const recovered = recover();
+    recover();
     const interruptedTrials = this.db
       .prepare(`
         SELECT id, runtime_session_id AS runtimeSessionId,
                tool_call_count AS toolCallCount,
                practice_snapshot_json AS practiceSnapshotJson
         FROM social_work_tasks
-        WHERE status = 'interrupted' AND error_code = 'app_restarted'
+        WHERE status = 'interrupted' AND error_code = ?
           AND practice_snapshot_json != 'null'
       `)
-      .all();
+      .all(recoveryErrorCode);
     for (const trial of interruptedTrials) {
       const snapshot = JSON.parse(trial.practiceSnapshotJson ?? 'null');
       if (!snapshot?.sourceTaskId) continue;
@@ -2768,7 +3628,7 @@ export class SocialChatStore {
         WHERE practice_candidate_status = 'pending'
       `)
       .run(now);
-    return recovered;
+    return recoveringTaskIds;
   }
 
   isMember(roomId, agentId) {

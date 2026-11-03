@@ -7,7 +7,9 @@ import { existsSync, copyFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import Database from 'better-sqlite3';
 import { RootStore } from '../src/main/storage/root-store.mjs';
+import { resolveNoemaDatabasePath } from '../src/main/platform/runtime-paths.mjs';
 import { configureElectronRuntime } from './electron-runtime.mjs';
 
 configureElectronRuntime();
@@ -232,6 +234,7 @@ const child = spawn(process.execPath, [forgeCli, 'start'], {
 function cleanSmokeDirectory() {
   removeDevelopmentDirectory(smokeDir);
 }
+process.once('exit', cleanSmokeDirectory);
 
 const timeout = setTimeout(() => {
   if (process.platform === 'win32' && child.pid) {
@@ -288,6 +291,93 @@ child.on('exit', (code, signal) => {
       process.exitCode = 1;
       return;
     }
+    const databasePath = resolveNoemaDatabasePath({
+      userDataPath: userDataDir,
+      isPackaged: true,
+    });
+    let entryEvents = [];
+    try {
+      const diagnosticsDb = new Database(databasePath, { readonly: true });
+      try {
+        entryEvents = diagnosticsDb
+          .prepare(`SELECT application_execution_id AS applicationExecutionId,
+            execution_id AS executionId, module, operation, status, details_json AS detailsJson
+            FROM diagnostic_events WHERE operation IN (
+              'entry.route_selected', 'entry.capability_availability'
+            ) OR module = 'desktop.lifecycle' ORDER BY occurred_at`)
+          .all()
+          .map((event) => ({
+            ...event,
+            details: JSON.parse(event.detailsJson),
+          }));
+      } finally {
+        diagnosticsDb.close();
+      }
+    } catch (error) {
+      console.error('Could not read local diagnostic events:', error);
+      process.exitCode = 1;
+      return;
+    }
+    const routeEvent = entryEvents.find(
+      (event) => event.operation === 'entry.route_selected',
+    );
+    const capabilityEvent = entryEvents.find(
+      (event) => event.operation === 'entry.capability_availability',
+    );
+    if (
+      routeEvent?.details.route !== 'social-chat' ||
+      typeof routeEvent.applicationExecutionId !== 'string' ||
+      routeEvent.applicationExecutionId.length < 16 ||
+      capabilityEvent?.applicationExecutionId !==
+        routeEvent.applicationExecutionId ||
+      !['available', 'unavailable'].includes(capabilityEvent.status)
+    ) {
+      console.error(
+        'Default entry diagnostics did not correlate route and project-work readiness.',
+      );
+      process.exitCode = 1;
+      return;
+    }
+    if (process.platform === 'win32') {
+      const lifecycleOperations = new Set(
+        entryEvents
+          .filter((event) => event.module === 'desktop.lifecycle')
+          .map((event) => event.operation),
+      );
+      const shutdownStarted = entryEvents.find(
+        (event) => event.operation === 'shutdown.started',
+      );
+      const shutdownCompleted = entryEvents.find(
+        (event) => event.operation === 'shutdown.completed',
+      );
+      const requiredOperations = [
+        'tray.ready',
+        'window.hidden',
+        'window.restored',
+        'exit.requested',
+        'shutdown.started',
+        'shutdown.completed',
+      ];
+      if (
+        !loaded.desktopLifecycleSmoke?.trayReady ||
+        !loaded.desktopLifecycleSmoke.hiddenOnClose ||
+        !loaded.desktopLifecycleSmoke.restoredSameWindow ||
+        shutdownStarted?.details.reason !== 'application_exit' ||
+        shutdownCompleted?.details.reason !== 'application_exit' ||
+        requiredOperations.some(
+          (operation) => !lifecycleOperations.has(operation),
+        )
+      ) {
+        console.error(
+          `Desktop tray lifecycle smoke was incomplete: ${JSON.stringify({
+            probe: loaded.desktopLifecycleSmoke,
+            events: [...lifecycleOperations],
+          })}`,
+        );
+        process.exitCode = 1;
+        return;
+      }
+    }
     cleanSmokeDirectory();
     console.log(
       `Desktop startup smoke test passed: renderer loaded at ${loaded.url}.`,
@@ -298,6 +388,17 @@ child.on('exit', (code, signal) => {
     console.log(
       `Quick capture shortcut: ${loaded.quickCaptureShortcut?.accelerator ?? 'unknown'} — ${loaded.quickCaptureShortcut?.registered ? 'registered' : 'unavailable'}`,
     );
+    console.log(
+      `Entry diagnostics: route and project-work readiness share execution ${routeEvent.applicationExecutionId}.`,
+    );
+    console.log(
+      `Workspace task entry: visible as “${loaded.socialChat.workspaceTaskEntry.accessibleName}”; 680px layout ${loaded.socialChat.workspaceTaskNarrowLayout.noHorizontalOverflow ? 'has no horizontal overflow' : 'overflows'}.`,
+    );
+    if (loaded.desktopLifecycleSmoke) {
+      console.log(
+        'Desktop tray lifecycle: tray ready, close hid the window, restore reused it, and shutdown was recorded.',
+      );
+    }
     if (probeQuickCapture) {
       if (
         !loaded.quickCaptureSmoke?.dialogOpen ||

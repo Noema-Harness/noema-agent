@@ -147,9 +147,11 @@ test('keeps optional free routes hidden while FreeLLMAPI marks them unavailable'
 test('buffers automatic router replies so FreeLLMAPI can fail over before delivery', async () => {
   let requestBody;
   let receivedRoute;
+  const requestEvents = [];
   const client = new OpenAICompatibleClient({
     getApiKey: () => 'test-key',
     legacyFreeRouteMode: true,
+    onRequestEvent: (event) => requestEvents.push(event),
     fetchImpl: async (_url, init) => {
       requestBody = JSON.parse(init.body);
       return Response.json(
@@ -181,6 +183,12 @@ test('buffers automatic router replies so FreeLLMAPI can fail over before delive
   assert.equal(requestBody.max_tokens, 1024);
   assert.deepEqual(deltas, ['完整回复']);
   assert.equal(receivedRoute, 'ovh/model');
+  assert.deepEqual(
+    requestEvents.map((event) => event.phase),
+    ['started', 'first_output', 'usage_missing', 'completed'],
+  );
+  assert.equal(new Set(requestEvents.map((event) => event.requestId)).size, 1);
+  assert.doesNotMatch(JSON.stringify(requestEvents), /完整回复|请回答/u);
 });
 
 test('preserves tool calls for buffered automatic router replies', async () => {
@@ -252,10 +260,12 @@ test('preserves tool calls for buffered automatic router replies', async () => {
 
 test('repairs one malformed buffered tool call before exposing it to tools', async () => {
   const requests = [];
+  const usageRecords = [];
   let receivedCalls;
   const client = new OpenAICompatibleClient({
     getApiKey: () => 'test-key',
     legacyFreeRouteMode: true,
+    onUsage: (usage) => usageRecords.push(usage),
     fetchImpl: async (_url, init) => {
       const body = JSON.parse(init.body);
       requests.push(body);
@@ -300,6 +310,8 @@ test('repairs one malformed buffered tool call before exposing it to tools', asy
     messages: [{ role: 'user', content: '组建项目团队' }],
     signal: new AbortController().signal,
     tools: [{ type: 'function', function: { name: 'create_project_team' } }],
+    usageExecutionId: 'buffered-correction-execution',
+    usageTurnId: 'buffered-correction-turn',
     onToolCalls: (calls) => {
       receivedCalls = calls;
     },
@@ -316,6 +328,19 @@ test('repairs one malformed buffered tool call before exposing it to tools', asy
   assert.match(requests[1].messages.at(-1).content, /这批调用均未执行/);
   assert.deepEqual(deltas, ['我来组建团队。']);
   assert.equal(receivedCalls[0].id, 'call_fixed');
+  assert.deepEqual(
+    usageRecords.map(({ executionId, turnId }) => ({ executionId, turnId })),
+    [
+      {
+        executionId: 'buffered-correction-execution',
+        turnId: 'buffered-correction-turn',
+      },
+      {
+        executionId: 'buffered-correction-execution',
+        turnId: 'buffered-correction-turn',
+      },
+    ],
+  );
 });
 
 test('assembles streamed FreeLLMAPI tool-call deltas without exposing arguments as chat text', async () => {
@@ -432,6 +457,8 @@ test('captures DeepSeek terminal streaming usage without changing the returned t
     signal: new AbortController().signal,
     usageOperation: 'root_chat',
     usageInteractionId: 'turn-cost-group',
+    usageExecutionId: 'execution-cost-group',
+    usageTurnId: 'turn-cost-group',
   })) {
     deltas.push(delta);
   }
@@ -439,6 +466,9 @@ test('captures DeepSeek terminal streaming usage without changing the returned t
   assert.deepEqual(deltas, ['已完成']);
   assert.equal(requestBody.stream_options, undefined);
   assert.deepEqual(recordedUsage, {
+    requestId: recordedUsage.requestId,
+    executionId: 'execution-cost-group',
+    turnId: 'turn-cost-group',
     model: 'deepseek-flash',
     providerHost: 'api.deepseek.com',
     operation: 'root_chat',
@@ -447,6 +477,17 @@ test('captures DeepSeek terminal streaming usage without changing the returned t
     requestCharacters: JSON.stringify([
       { role: 'user', content: 'PRIVATE PROMPT MUST NOT BE STORED' },
     ]).length,
+    messageRoleCharacters: {
+      system: 0,
+      developer: 0,
+      user: JSON.stringify({
+        role: 'user',
+        content: 'PRIVATE PROMPT MUST NOT BE STORED',
+      }).length,
+      assistant: 0,
+      tool: 0,
+      other: 0,
+    },
     toolDefinitionCharacters: JSON.stringify(toolDefinition).length,
     messageCount: 1,
     toolCount: 1,
@@ -458,7 +499,86 @@ test('captures DeepSeek terminal streaming usage without changing the returned t
     reasoningTokens: 2,
     providerCost: null,
   });
+  assert.match(recordedUsage.requestId, /^[0-9a-f-]{36}$/u);
   assert.equal(JSON.stringify(recordedUsage).includes('PRIVATE PROMPT'), false);
+});
+
+test('measures message JSON characters by a fixed role allowlist', async () => {
+  let recordedUsage;
+  const messages = [
+    { role: 'system', content: 'private system' },
+    { role: 'developer', content: 'private developer' },
+    { role: 'user', content: 'private user' },
+    { role: 'assistant', content: 'private assistant' },
+    {
+      role: 'tool',
+      tool_call_id: 'private-id',
+      content: 'private tool result',
+    },
+    { role: 'custom-private-role', content: 'private other' },
+  ];
+  const client = new OpenAICompatibleClient({
+    getApiKey: () => 'test-key',
+    onUsage: (usage) => {
+      recordedUsage = usage;
+    },
+    fetchImpl: async () =>
+      new Response(
+        'data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n',
+      ),
+  });
+  for await (const _delta of client.streamChat({
+    model: 'test-model',
+    messages,
+    signal: new AbortController().signal,
+  })) {
+    /* consume streamed response */
+  }
+
+  const expected = {
+    system: 0,
+    developer: 0,
+    user: 0,
+    assistant: 0,
+    tool: 0,
+    other: 0,
+  };
+  for (const message of messages) {
+    const role = Object.hasOwn(expected, message.role) ? message.role : 'other';
+    expected[role] += JSON.stringify(message).length;
+  }
+  assert.deepEqual(recordedUsage.messageRoleCharacters, expected);
+  const serializedUsage = JSON.stringify(recordedUsage);
+  assert.doesNotMatch(serializedUsage, /private|custom-private-role/u);
+});
+
+test('marks the whole role shape unknown when a message cannot be serialized', async () => {
+  let recordedUsage;
+  let requestReachedProvider = false;
+  const client = new OpenAICompatibleClient({
+    getApiKey: () => 'test-key',
+    onUsage: (usage) => {
+      recordedUsage = usage;
+    },
+    fetchImpl: async () => {
+      requestReachedProvider = true;
+      return new Response('');
+    },
+  });
+
+  await assert.rejects(async () => {
+    for await (const _delta of client.streamChat({
+      model: 'test-model',
+      messages: [{ role: 'user', content: 1n }],
+      signal: new AbortController().signal,
+    })) {
+      /* request cannot serialize */
+    }
+  });
+
+  assert.equal(requestReachedProvider, false);
+  assert.equal(recordedUsage.requestCharacters, null);
+  assert.equal(recordedUsage.messageRoleCharacters, null);
 });
 
 test('normalizes cached input from standard OpenAI-compatible usage details', async () => {
@@ -501,8 +621,10 @@ test('normalizes cached input from standard OpenAI-compatible usage details', as
 
 test('records failed attempts even when the provider returns no usage', async () => {
   let recordedUsage;
+  const requestEvents = [];
   const client = new OpenAICompatibleClient({
     getApiKey: () => 'test-key',
+    onRequestEvent: (event) => requestEvents.push(event),
     onUsage: (usage) => {
       recordedUsage = usage;
     },
@@ -527,6 +649,69 @@ test('records failed attempts even when the provider returns no usage', async ()
   assert.equal(recordedUsage.requestStatus, 'failed');
   assert.equal(recordedUsage.usageReceived, false);
   assert.equal(recordedUsage.inputTokens, null);
+  assert.deepEqual(
+    requestEvents.map((event) => event.phase),
+    ['started', 'usage_missing', 'failed'],
+  );
+  assert.equal(requestEvents.at(-1).status, 'failed');
+});
+
+test('a request lifecycle diagnostics failure does not interrupt provider output', async () => {
+  const client = new OpenAICompatibleClient({
+    getApiKey: () => 'test-key',
+    onRequestEvent: () => {
+      throw new Error('private diagnostics failure');
+    },
+    fetchImpl: async () =>
+      new Response(
+        'data: {"choices":[{"delta":{"content":"仍可回复"}}]}\n\ndata: [DONE]\n',
+      ),
+  });
+  const deltas = [];
+  for await (const delta of client.streamChat({
+    model: 'test-model',
+    messages: [{ role: 'user', content: 'request' }],
+    signal: new AbortController().signal,
+  })) {
+    deltas.push(delta);
+  }
+  assert.deepEqual(deltas, ['仍可回复']);
+});
+
+test('records interruption after first output without inventing usage', async () => {
+  const requestEvents = [];
+  const controller = new AbortController();
+  const client = new OpenAICompatibleClient({
+    getApiKey: () => 'test-key',
+    onRequestEvent: (event) => requestEvents.push(event),
+    fetchImpl: async () =>
+      new Response(
+        new ReadableStream({
+          start(streamController) {
+            streamController.enqueue(
+              new TextEncoder().encode(
+                'data: {"choices":[{"delta":{"content":"先收到"}}]}\n\n',
+              ),
+            );
+          },
+        }),
+      ),
+  });
+
+  for await (const _delta of client.streamChat({
+    model: 'test-model',
+    messages: [{ role: 'user', content: 'request' }],
+    signal: controller.signal,
+  })) {
+    controller.abort();
+    break;
+  }
+
+  assert.deepEqual(
+    requestEvents.map((event) => event.phase),
+    ['started', 'first_output', 'usage_missing', 'interrupted'],
+  );
+  assert.equal(requestEvents.at(-1).status, 'interrupted');
 });
 
 test('a usage persistence failure does not interrupt the model response', async () => {
@@ -561,6 +746,7 @@ test('a usage persistence failure does not interrupt the model response', async 
 test('repairs one malformed streamed tool call and releases the first stream before retrying', async () => {
   const encoder = new TextEncoder();
   const requests = [];
+  const usageRecords = [];
   let receivedCalls;
   const makeStream = (events) =>
     new Response(
@@ -577,6 +763,7 @@ test('repairs one malformed streamed tool call and releases the first stream bef
     );
   const client = new OpenAICompatibleClient({
     getApiKey: () => 'test-key',
+    onUsage: (usage) => usageRecords.push(usage),
     fetchImpl: async (_url, init) => {
       requests.push(JSON.parse(init.body));
       if (requests.length === 1) {
@@ -633,6 +820,8 @@ test('repairs one malformed streamed tool call and releases the first stream bef
     messages: [{ role: 'user', content: '组建项目团队' }],
     signal: new AbortController().signal,
     tools: [{ type: 'function', function: { name: 'create_project_team' } }],
+    usageExecutionId: 'execution-correction',
+    usageTurnId: 'turn-correction',
     onToolCalls: (calls) => {
       receivedCalls = calls;
     },
@@ -644,6 +833,13 @@ test('repairs one malformed streamed tool call and releases the first stream bef
   assert.equal(requests[1].messages.at(-1).tool_call_id, 'call_bad');
   assert.deepEqual(deltas, ['我先建立项目。', '项目组已建立。']);
   assert.equal(receivedCalls[0].id, 'call_fixed');
+  assert.deepEqual(
+    usageRecords.map(({ executionId, turnId }) => ({ executionId, turnId })),
+    [
+      { executionId: 'execution-correction', turnId: 'turn-correction' },
+      { executionId: 'execution-correction', turnId: 'turn-correction' },
+    ],
+  );
 });
 
 test('bounds malformed tool-call correction to one additional model request', async () => {

@@ -1,9 +1,35 @@
+import { normalizeSocialWorkPhase } from './social-work-phase.mjs';
+
 /**
- * @param {{status:string,errorCode:string|null,verificationStatus:string}} task
+ * @param {{status:string,phase?:string|null,errorCode:string|null,verificationStatus:string,executionSteps?:Array<{status:string,category:string}>}} task
  */
 export function socialWorkCardTitle(task) {
   if (task.status === 'starting') return '正在启动项目工作';
-  if (task.status === 'running') return '工程搭档正在处理';
+  if (task.status === 'running') {
+    const phase = normalizeSocialWorkPhase(task.phase);
+    if (phase === 'model_request') return '正在等待模型回复';
+    if (phase === 'model_response') return '正在接收模型回复';
+    if (phase === 'tool_requested') return '模型已请求工具，准备执行';
+    if (phase === 'awaiting_authorization') return '正在等待你确认本次访问授权';
+    if (phase === 'retry_waiting_rate_limit') return '模型请求受限，等待后重试';
+    if (phase === 'tool_call') {
+      const activeStep = Array.isArray(task.executionSteps)
+        ? task.executionSteps.find((step) => step.status === 'running')
+        : null;
+      const categoryLabels = {
+        read: '读取文件',
+        search: '搜索文件',
+        write: '写入文件',
+        edit: '编辑文件',
+        command: '执行隔离命令',
+      };
+      const label = activeStep ? categoryLabels[activeStep.category] : null;
+      return label ? `正在${label}` : '正在执行项目工具';
+    }
+    return phase === 'unknown'
+      ? '项目任务正在处理（具体阶段未知）'
+      : '项目任务正在处理';
+  }
   if (task.status === 'verifying') return '正在核对交付文件';
   if (task.status === 'completed') {
     return task.verificationStatus === 'verified'
@@ -13,6 +39,11 @@ export function socialWorkCardTitle(task) {
 
   const failureTitles = {
     app_restarted: '应用重启后已停止',
+    application_exit: 'Noema 退出时已停止',
+    application_exit_incomplete: 'Noema 退出时任务未能收束',
+    system_shutdown: '系统关机或注销时已停止',
+    system_shutdown_incomplete: '系统关机或注销时任务未能收束',
+    process_crash: 'Noema 异常退出后已停止',
     dsh_rate_limited: '模型请求被限流',
     rate_limited: '模型请求被限流',
     dsh_task_timeout: '执行超时',
@@ -37,7 +68,40 @@ export function socialWorkCardTitle(task) {
   );
 }
 
+/**
+ * @param {{status:string,resultText?:string|null}} task
+ */
+export function socialWorkResultPresentation(task) {
+  const visible =
+    typeof task.resultText === 'string' && task.resultText.length > 0;
+  if (task.status === 'completed') {
+    return { visible, title: '执行结果', caveat: null };
+  }
+  if (task.status === 'interrupted') {
+    return {
+      visible,
+      title: '停止前保存的部分内容',
+      caveat: '任务已停止；下面的文字不代表任务完成或最终交付。',
+    };
+  }
+  if (task.status === 'failed') {
+    return {
+      visible,
+      title: '未完成任务的已保存内容',
+      caveat: '任务未完成；请结合上方失败原因和执行记录检查这段内容。',
+    };
+  }
+  return {
+    visible,
+    title: '已保存的阶段内容',
+    caveat: '当前任务尚未完成；下面的文字不代表本轮交付。',
+  };
+}
+
 export function socialWorkRecoveryPresentation(task) {
+  if (typeof task.resumeBlockReason === 'string' && task.resumeBlockReason) {
+    return { kind: 'unknown', message: task.resumeBlockReason };
+  }
   const steps = Array.isArray(task.executionSteps) ? task.executionSteps : [];
   const toolCallCount = Number.isSafeInteger(task.toolCallCount)
     ? task.toolCallCount

@@ -3,6 +3,8 @@ import {
   MAX_SOCIAL_WORK_TOOL_CALLS,
   MAX_SOCIAL_WORK_TOOL_ROUNDS,
 } from '../../shared/execution/social-work-limits.mjs';
+import { isWorkspaceIdentity } from '../platform/workspace-identity.mjs';
+import { normalizeSocialWorkPhase } from '../../shared/execution/social-work-phase.mjs';
 
 export const LEGACY_FILE_TASK_GUIDANCE =
   '用户已开启 Noema 的项目文件任务能力。只有当用户明确切换到项目工作并选择目录后，才在该任务中通过现有 DSH 流程操作文件。普通聊天不授权文件操作；每项任务的具体范围以 Noema 显示的目录与数据确认步骤为准。';
@@ -27,9 +29,6 @@ export const MAX_AGENT_ASSET_COUNT = 128;
 export const MAX_AGENT_ASSET_PROMPT_LENGTH = 12_000;
 
 export const MAX_AGENT_SKILL_INDEX_LENGTH = 4_000;
-
-export const NOEMA_MAIN_CHAT_INTENT_GUIDANCE =
-  '主聊中的未定想法和开放探索先作为对话本身回应，不主动把它们变成项目或委托。用户明确要推进具体结果时，只在缺少会改变结果方向或验收的关键信息时问一个聚焦问题；普通实现细节自行判断，低影响未知可作为可逆假设继续。';
 
 export function hideInternalProjectReportSql(messageIdExpression) {
   return `${messageIdExpression} NOT IN (
@@ -233,9 +232,20 @@ export function hydrateSocialWorkTask(
   checkpoint = null,
 ) {
   if (!row) return null;
+  let workspaceIdentity = null;
+  try {
+    workspaceIdentity = JSON.parse(row.workspaceIdentityJson ?? 'null');
+  } catch {
+    workspaceIdentity = null;
+  }
   const restartRecovery =
     row.status === 'interrupted' &&
-    row.errorCode === 'app_restarted' &&
+    [
+      'app_restarted',
+      'application_exit_incomplete',
+      'system_shutdown_incomplete',
+      'process_crash',
+    ].includes(row.errorCode) &&
     checkpoint?.phase === 'interrupted';
   const legacyRoundLimitRecovery =
     row.status === 'failed' &&
@@ -256,6 +266,7 @@ export function hydrateSocialWorkTask(
     (checkpoint.resumePhase === 'ready_for_model' || legacyRoundLimitRecovery);
   const canResume = Boolean(
     (restartRecovery || providerRecovery) &&
+    isWorkspaceIdentity(workspaceIdentity) &&
     row.executionEngine === 'noema' &&
     (checkpoint.resumePhase === 'ready_for_model' ||
       legacyRoundLimitRecovery) &&
@@ -266,10 +277,17 @@ export function hydrateSocialWorkTask(
         ['pending', 'unknown'].includes(step.effectStatus),
     ),
   );
-  return {
-    ...row,
+  const { workspaceIdentityJson: _workspaceIdentityJson, ...publicRow } = row;
+  const task = {
+    ...publicRow,
+    phase: normalizeSocialWorkPhase(row.phase),
     executionSteps,
     canResume,
+    resumeBlockReason:
+      (restartRecovery || providerRecovery) &&
+      !isWorkspaceIdentity(workspaceIdentity)
+        ? '这项旧任务没有工作区身份快照；请重新选择文件夹并提交新任务。'
+        : null,
     toolActionCategories: JSON.parse(row.toolActionCategoriesJson ?? '[]'),
     verificationChecks: JSON.parse(row.verificationChecksJson ?? '[]'),
     verificationResults: JSON.parse(row.verificationResultsJson ?? '[]'),
@@ -291,4 +309,9 @@ export function hydrateSocialWorkTask(
       JSON.parse(row.interactionAdjustmentSnapshotsJson ?? '[]'),
     ),
   };
+  Object.defineProperty(task, 'workspaceIdentity', {
+    value: workspaceIdentity,
+    enumerable: false,
+  });
+  return task;
 }

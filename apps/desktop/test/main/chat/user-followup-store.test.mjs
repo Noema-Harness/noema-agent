@@ -152,7 +152,7 @@ test('only pending reminders can be edited or canceled; active reminder count is
   }
 });
 
-test('schema v29 upgrades to follow-ups without changing the existing transcript', () => {
+test('schema v29 upgrades to current follow-ups without changing the existing transcript', () => {
   const { db, chat, followups } = makeStore();
   try {
     const sourceMessageId = addMainMessage(chat, '旧主聊内容应保留。');
@@ -160,11 +160,17 @@ test('schema v29 upgrades to follow-ups without changing the existing transcript
       .prepare('SELECT COUNT(*) AS count FROM social_messages')
       .get().count;
     db.exec(`
+      DROP TABLE social_work_file_change_operations;
+      DROP TABLE social_work_file_changes;
+      ALTER TABLE social_projects DROP COLUMN workspace_identity_json;
+      ALTER TABLE social_projects DROP COLUMN workspace_path;
+      ALTER TABLE social_work_tasks DROP COLUMN workspace_identity_json;
+      DROP TABLE application_shutdown_intent;
       DROP INDEX social_user_followups_history;
       DROP INDEX social_user_followups_due;
       DROP TABLE social_user_followups;
       DELETE FROM app_settings WHERE key = 'user_followups_enabled';
-      DELETE FROM social_schema_migrations WHERE version = 30;
+      DELETE FROM social_schema_migrations WHERE version >= 30;
     `);
 
     chat.migrate();
@@ -173,7 +179,7 @@ test('schema v29 upgrades to follow-ups without changing the existing transcript
       db
         .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
         .get().version,
-      30,
+      33,
     );
     assert.equal(
       db.prepare('SELECT COUNT(*) AS count FROM social_messages').get().count,

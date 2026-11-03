@@ -1,5 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { ProjectPlanStore } from './project-plan-store.mjs';
+import {
+  isWorkspaceIdentity,
+  compareWorkspaceIdentities,
+} from '../platform/workspace-identity.mjs';
 
 function isoNow() {
   return new Date().toISOString();
@@ -77,6 +81,90 @@ export class SocialProjectStore {
       .get(projectId);
     if (!project) throw new Error('找不到这个项目。');
     return this.#hydrateProject(project);
+  }
+
+  getWorkspaceBinding(projectId) {
+    requireText(projectId, '项目 ID', 200);
+    const row = this.db
+      .prepare(`
+        SELECT workspace_path AS workspacePath,
+               workspace_identity_json AS workspaceIdentityJson
+        FROM social_projects WHERE id = ?
+      `)
+      .get(projectId);
+    if (!row) throw new Error('找不到这个项目。');
+    if (!row.workspacePath && !row.workspaceIdentityJson) return null;
+    let identity = null;
+    try {
+      identity = JSON.parse(row.workspaceIdentityJson ?? 'null');
+    } catch {
+      // Corrupt durable state is returned as invalid and must not be rebound silently.
+    }
+    return {
+      workspacePath: row.workspacePath,
+      identity,
+      valid: Boolean(row.workspacePath && isWorkspaceIdentity(identity)),
+    };
+  }
+
+  bindWorkspace({
+    projectId,
+    workspacePath,
+    identity,
+    expectedIdentity = null,
+    expectUnbound = false,
+  }) {
+    requireText(projectId, '项目 ID', 200);
+    requireText(workspacePath, '工作区路径', 4_000);
+    if (!isWorkspaceIdentity(identity)) {
+      throw new Error('工作区身份无效；没有修改项目绑定。');
+    }
+    return this.db.transaction(() => {
+      const project = this.getProject(projectId);
+      if (project.status !== 'active') {
+        throw new Error('只有进行中的项目可以绑定工作区。');
+      }
+      const activeTask = this.db
+        .prepare(`
+          SELECT 1 FROM social_work_tasks
+          WHERE status IN ('starting', 'running', 'verifying')
+            AND room_id IN (
+              SELECT room_id FROM social_project_sessions
+              WHERE project_id = ?
+              UNION SELECT group_room_id FROM social_projects WHERE id = ?
+            )
+          LIMIT 1
+        `)
+        .get(projectId, projectId);
+      if (activeTask) {
+        throw new Error('项目仍有工作正在运行；当前不能更换工作区。');
+      }
+      const existing = this.getWorkspaceBinding(projectId);
+      const bindingUnchanged = existing
+        ? existing.valid &&
+          isWorkspaceIdentity(expectedIdentity) &&
+          compareWorkspaceIdentities(existing.identity, expectedIdentity)
+        : expectUnbound === true;
+      if (!bindingUnchanged) {
+        throw new Error(
+          '项目工作区绑定已在等待期间变化；请重新选择工作区后再试。',
+        );
+      }
+      if (
+        existing?.valid &&
+        compareWorkspaceIdentities(existing.identity, identity)
+      ) {
+        return existing;
+      }
+      this.db
+        .prepare(`
+          UPDATE social_projects
+          SET workspace_path = ?, workspace_identity_json = ?, updated_at = ?
+          WHERE id = ?
+        `)
+        .run(workspacePath, JSON.stringify(identity), isoNow(), projectId);
+      return { workspacePath, identity, valid: true };
+    })();
   }
 
   #hydrateProject(project, { includeGroup = true } = {}) {

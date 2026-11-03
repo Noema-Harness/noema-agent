@@ -31,3 +31,4 @@ Thumbs.db
 *.log
 .tmp/
 .playwright-cli/
+**/target/

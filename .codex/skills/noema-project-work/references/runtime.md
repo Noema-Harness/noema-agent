@@ -1,25 +1,27 @@
-# 本机运行与平台说明
+# 本机运行说明
 
-按需要读取以下入口，实际命令与触发条件以当前 package.json、workflow 和代码为准。
+实际命令以当前 package.json、源码和运行结果为准。
+
+## Shell
+
+日常开发默认 PowerShell 7（`pwsh`）；2026-11-02 已实测工具入口为 7.6.5。显式指定可执行文件时用 `Get-Command pwsh` 确认路径，不绑定缓存目录。中文、空格、JSON 和空参数已验证可传给 Node。
+
+POSIX 脚本需要先确认实际 Git Bash 路径。`C:\Windows\System32\bash.exe` 不能当作 Git Bash。复杂结构化输入优先用参数数组或 `.work` 下的脚本/数据文件；文件操作使用 `-LiteralPath`。
+
+开发 shell 与产品命令执行分开。Windows 命令目前因严格隔离边界未成立而关闭，更换 shell 不能作为启用依据；当前 guard 和回归见源码导航。
 
 ## GitHub 与截图
 
-通用 GitHub 协作与故障判断见用户级 `development-maintenance` 的 GitHub 参考；以下只记录本项目入口和平台差异。
+Git/GitHub 连接使用项目脚本，必要时核对 `scripts/github-env.ps1` 实际代理路由。多行外部正文可用临时文件，只有获授权时才发送。
 
-多行 Issue 正文用 `node scripts/set-github-issue-body.mjs <编号> <Markdown文件>` 上传并回读核对，避免 shell 转换丢失换行。Git/GitHub 连接入口及发布规则见 `docs/PROJECT_OPERATIONS.md`。
+`scripts/capture-window.ps1 -WindowTitleRegex '^Noema$' -OutputPath <绝对路径>` 可原生捕获窗口。截图超时先判断窗口是否响应；renderer 状态日志位于用户数据目录的 `renderer-health.jsonl`。区分截图通道故障与应用无响应。
 
-截图用 `scripts/capture-window.ps1 -WindowTitleRegex '^Noema$' -OutputPath <绝对路径>`，返回所用 API、PID 与文件信息。窗口正常但捕获通道超时时可用此原生路径；窗口无响应时检查 `%APPDATA%\Noema\renderer-health.jsonl` 与 Windows Application Hang/Error 事件。renderer 日志记录 unresponsive、responsive 和 render-process-gone。原生截图成功不能单独证明应用从未卡死。
+## 模型与隔离检查
 
-## 模型与执行链
+真实模型调用遵守 `docs/CURRENT_CONTEXT.md` 的前置条件。`npm run e2e:social-work --workspace noema-desktop` 使用隔离数据；`--synthetic` 只验证合成服务行为，真实模式会调用已配置模型并产生用量。临时模型覆盖使用 `NOEMA_E2E_MODEL`，不回写用户配置。
 
-`npm run e2e:social-work --workspace noema-desktop` 使用隔离数据库与临时工作区验证执行服务。真实模式沿用已选 provider/model，会消耗上游额度，仅在验证实际执行链时使用；`--synthetic` 验证服务行为，不证明真实模型或 UI 表现。临时指定模型可设置 `NOEMA_E2E_MODEL`，不必改用户的应用配置。
+FreeLLMAPI 仅为兼容接入，按其 operations 技能排障，不把它当作所有客户端检查的前提。凭据仅由正常应用路径读取，不输出或复制到命令行。
 
-FreeLLMAPI 为兼容路径，其目录、生成与路由诊断按专用 freellmapi-operations 技能处理，不将它作为所有客户端验证的前提。
+## 构建与 CI
 
-## CI 与打包
-
-工作流位于 `.github/workflows/desktop-checks.yml`。步骤尚未启动、runner 为空时查 check-run annotation；已记录账户 spending limit 阻断，运行结果需要按当次原因解释。
-
-Forge/Vite 打包过滤保留 `.vite`；better-sqlite3 是主进程外置 native runtime，需由 packagerConfig.afterCopy 放入 app 包，兼容 workspace hoisting。生产包能构建与能真实启动分别验证。
-
-该私有仓库曾因 GitHub Free 方案无法启用 branch protection/rulesets；检查定义不能等同平台强制门禁。手动工作流按配置生成私有便携预览，安装器涉及 Squirrel、代码签名与升级流程，修改发行模块时再核对当前实现与本机权限。旧记录中的 `.nupkg` Access Denied 不足以判断新版本状态。
+工作流位于 `.github/workflows/desktop-checks.yml`；源码同步与 CI 账户状态分别核实。Forge/Vite 打包依赖 `.vite`，better-sqlite3 等主进程原生依赖由打包配置复制。构建成功和真实启动分别验证。发布或安装问题按当次证据定位，不沿用旧错误结论。

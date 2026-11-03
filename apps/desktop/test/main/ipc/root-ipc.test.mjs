@@ -11,7 +11,17 @@ function createIpcHarness() {
   return {
     handlers,
     ipcMain: {
-      handle: (channel, handler) => handlers.set(channel, handler),
+      handle: (channel, handler) =>
+        handlers.set(channel, (event, ...args) => {
+          event.sender.mainFrame ??= { parent: null };
+          return handler(
+            {
+              ...event,
+              senderFrame: event.senderFrame ?? event.sender.mainFrame,
+            },
+            ...args,
+          );
+        }),
       removeHandler: (channel) => handlers.delete(channel),
     },
   };
@@ -52,10 +62,36 @@ test('registers only named root-agent actions and rejects non-window senders', a
   let quickCaptureFinished = 0;
   let quickCaptureReady = 0;
   let socialChatReady = 0;
+  const authorizationEvents = [];
+  const diagnosticCalls = [];
   const unregister = registerRootIpc({
     ipcMain: harness.ipcMain,
     rootAgent,
+    diagnosticsQueryService: {
+      listRecent: (limit) => {
+        diagnosticCalls.push(['recent', limit]);
+        return { executions: [] };
+      },
+      getTimeline: (input) => {
+        diagnosticCalls.push(['timeline', input]);
+        return { events: [] };
+      },
+      getExportPreview: (input) => {
+        diagnosticCalls.push(['preview', input]);
+        return { previewId: 'preview-1' };
+      },
+    },
+    getDiagnosticsDatabaseHealth: () => 'healthy',
+    openUserDataDirectory: async () => ({
+      opened: true,
+      errorCode: null,
+    }),
+    saveDiagnosticsExport: async (previewId) => {
+      diagnosticCalls.push(['save', previewId]);
+      return { saved: true };
+    },
     isTrustedSender: (sender) => sender === trustedSender,
+    recordAuthorization: (...event) => authorizationEvents.push(event),
     chooseWorkspace: async () => 'D:\\Scratch',
     finishQuickCapture: () => {
       quickCaptureFinished += 1;
@@ -107,6 +143,14 @@ test('registers only named root-agent actions and rejects non-window senders', a
       CHANNELS.markQuickCaptureReady,
       CHANNELS.markSocialChatReady,
       CHANNELS.finishQuickCapture,
+      CHANNELS.diagnosticsRecent,
+      CHANNELS.diagnosticsTimeline,
+      CHANNELS.diagnosticsDatabaseHealth,
+      CHANNELS.openUserDataDirectory,
+      CHANNELS.diagnosticsExportPreview,
+      CHANNELS.diagnosticsExportSave,
+      CHANNELS.windowsRunnerCapability,
+      CHANNELS.setupWindowsRunner,
     ].sort(),
   );
   assert.deepEqual(
@@ -159,6 +203,19 @@ test('registers only named root-agent actions and rejects non-window senders', a
     }),
     null,
   );
+  assert.deepEqual(authorizationEvents, [
+    ['legacy_workspace_access', 'revoked'],
+  ]);
+  assert.equal(
+    await harness.handlers.get(CHANNELS.removeContextImport)({
+      sender: trustedSender,
+    }),
+    true,
+  );
+  assert.deepEqual(authorizationEvents, [
+    ['legacy_workspace_access', 'revoked'],
+    ['imported_context_transmission', 'revoked'],
+  ]);
   assert.equal(
     await harness.handlers.get(CHANNELS.withdrawInteractionAdjustment)(
       { sender: trustedSender },
@@ -239,8 +296,63 @@ test('registers only named root-agent actions and rejects non-window senders', a
     ),
     { accepted: true, completed: true, taskId: 'task-1' },
   );
+  assert.deepEqual(
+    await harness.handlers.get(CHANNELS.diagnosticsRecent)(
+      { sender: trustedSender },
+      12,
+    ),
+    { executions: [] },
+  );
+  assert.deepEqual(
+    await harness.handlers.get(CHANNELS.diagnosticsTimeline)(
+      { sender: trustedSender },
+      { taskId: 'task-1' },
+    ),
+    { events: [] },
+  );
+  assert.equal(
+    await harness.handlers.get(CHANNELS.diagnosticsDatabaseHealth)({
+      sender: trustedSender,
+    }),
+    'healthy',
+  );
+  assert.deepEqual(
+    await harness.handlers.get(CHANNELS.openUserDataDirectory)(
+      { sender: trustedSender },
+      'C:\\attacker-selected-path',
+    ),
+    { opened: true, errorCode: null },
+  );
+  assert.deepEqual(
+    await harness.handlers.get(CHANNELS.diagnosticsExportPreview)(
+      { sender: trustedSender },
+      { taskId: 'task-1' },
+    ),
+    { previewId: 'preview-1' },
+  );
+  assert.deepEqual(
+    await harness.handlers.get(CHANNELS.diagnosticsExportSave)(
+      { sender: trustedSender },
+      'preview-1',
+    ),
+    { saved: true },
+  );
+  assert.deepEqual(diagnosticCalls, [
+    ['recent', 12],
+    ['timeline', { taskId: 'task-1' }],
+    ['preview', { taskId: 'task-1' }],
+    ['save', 'preview-1'],
+  ]);
   await assert.rejects(
     harness.handlers.get(CHANNELS.state)({ sender: {} }),
+    /未授权/,
+  );
+  await assert.rejects(
+    harness.handlers.get(CHANNELS.diagnosticsRecent)({ sender: {} }),
+    /未授权/,
+  );
+  await assert.rejects(
+    harness.handlers.get(CHANNELS.openUserDataDirectory)({ sender: {} }),
     /未授权/,
   );
   await assert.rejects(
@@ -269,6 +381,120 @@ test('registers only named root-agent actions and rejects non-window senders', a
   );
   unregister();
   assert.equal(harness.handlers.size, 0);
+});
+
+test('Windows runner capability and setup IPC are main-frame gated', async () => {
+  const harness = createIpcHarness();
+  const trustedSender = {};
+  const capability = {
+    platform: 'win32',
+    supported: false,
+    status: 'unavailable',
+    reasonCode: 'sandbox_setup_unavailable',
+    backendId: 'noema-codex-windows',
+    backendVersion: '0.1.0',
+    protocolVersion: 6,
+    setupStatus: 'unavailable',
+  };
+  let refreshes = 0;
+  let setups = 0;
+  const unregister = registerRootIpc({
+    ipcMain: harness.ipcMain,
+    rootAgent: { getUiState: () => ({}) },
+    isTrustedSender: (sender) => sender === trustedSender,
+    getWindowsRunnerCapability: () => {
+      refreshes += 1;
+      return capability;
+    },
+    setupWindowsRunner: async () => {
+      setups += 1;
+      return { supported: true, canceled: false, reasonCode: null };
+    },
+  });
+
+  assert.deepEqual(
+    await harness.handlers.get(CHANNELS.windowsRunnerCapability)({
+      sender: trustedSender,
+    }),
+    capability,
+  );
+  assert.deepEqual(
+    await harness.handlers.get(CHANNELS.setupWindowsRunner)({
+      sender: trustedSender,
+    }),
+    { supported: true, canceled: false, reasonCode: null },
+  );
+  await assert.rejects(
+    harness.handlers.get(CHANNELS.setupWindowsRunner)({ sender: {} }),
+    /未授权/u,
+  );
+  assert.equal(refreshes, 1);
+  assert.equal(setups, 1);
+  unregister();
+});
+
+test('rejects IPC from a child frame hosted in the trusted window', async () => {
+  const harness = createIpcHarness();
+  const trustedSender = { mainFrame: { parent: null } };
+  let diagnosticReads = 0;
+  const unregister = registerRootIpc({
+    ipcMain: harness.ipcMain,
+    rootAgent: { getUiState: () => ({ messages: [] }) },
+    diagnosticsQueryService: {
+      listRecent: () => {
+        diagnosticReads += 1;
+        return { executions: [] };
+      },
+    },
+    isTrustedSender: (sender) => sender === trustedSender,
+  });
+  try {
+    await assert.rejects(
+      harness.handlers.get(CHANNELS.state)({
+        sender: trustedSender,
+        senderFrame: { parent: trustedSender.mainFrame },
+      }),
+      /未授权的应用窗口请求/u,
+    );
+    await assert.rejects(
+      harness.handlers.get(CHANNELS.diagnosticsRecent)({
+        sender: trustedSender,
+        senderFrame: { parent: trustedSender.mainFrame },
+      }),
+      /未授权的应用窗口请求/u,
+    );
+    assert.equal(diagnosticReads, 0);
+  } finally {
+    unregister();
+  }
+});
+
+test('workspace selection cancellation creates no legacy workspace grant', async () => {
+  const harness = createIpcHarness();
+  const trustedSender = { mainFrame: { parent: null } };
+  let workspaceChanges = 0;
+  const unregister = registerRootIpc({
+    ipcMain: harness.ipcMain,
+    rootAgent: {
+      getUiState: () => ({ messages: [] }),
+      setWorkspaceDirectory: () => {
+        workspaceChanges += 1;
+      },
+    },
+    isTrustedSender: (sender) => sender === trustedSender,
+    chooseWorkspace: async () => null,
+  });
+  try {
+    assert.equal(
+      await harness.handlers.get(CHANNELS.chooseWorkspace)({
+        sender: trustedSender,
+      }),
+      null,
+    );
+    assert.equal(workspaceChanges, 0);
+  } finally {
+    unregister();
+  }
 });
 
 test('personal memory management is exposed only through trusted desktop IPC', async () => {
@@ -385,6 +611,14 @@ test('file requests use ordinary social messages; only task controls retain dire
       calls.push(['resume', taskId]);
       return { accepted: true, taskId };
     },
+    reviewFileChange: (input) => {
+      calls.push(['file-change', input]);
+      return { id: input.taskId, fileChanges: [] };
+    },
+    reviewGitState: (taskId) => {
+      calls.push(['git-review', taskId]);
+      return { available: false, reason: 'not_a_repository', files: [] };
+    },
     stopTask: (taskId) => {
       calls.push(['stop', taskId]);
       return true;
@@ -404,6 +638,8 @@ test('file requests use ordinary social messages; only task controls retain dire
   assert.equal(harness.handlers.has('noema:social-work-start'), false);
   assert.equal(harness.handlers.has(CHANNELS.socialWorkStop), true);
   assert.equal(harness.handlers.has(CHANNELS.socialWorkResume), true);
+  assert.equal(harness.handlers.has(CHANNELS.socialWorkFileChange), true);
+  assert.equal(harness.handlers.has(CHANNELS.socialWorkGitReview), true);
   assert.equal(harness.handlers.has(CHANNELS.socialWorkCaseEligible), true);
   assert.equal(harness.handlers.has(CHANNELS.socialCreateAgent), true);
   assert.equal(harness.handlers.has(CHANNELS.socialAgentProjectWork), true);
@@ -433,6 +669,25 @@ test('file requests use ordinary social messages; only task controls retain dire
       'task-1',
     ),
     { accepted: true, taskId: 'task-1' },
+  );
+  const fileChangeInput = {
+    taskId: 'task-1',
+    changeId: 'change-1',
+    action: 'revert',
+  };
+  assert.deepEqual(
+    await harness.handlers.get(CHANNELS.socialWorkFileChange)(
+      { sender: trustedSender },
+      fileChangeInput,
+    ),
+    { id: 'task-1', fileChanges: [] },
+  );
+  assert.deepEqual(
+    await harness.handlers.get(CHANNELS.socialWorkGitReview)(
+      { sender: trustedSender },
+      'task-1',
+    ),
+    { available: false, reason: 'not_a_repository', files: [] },
   );
   assert.deepEqual(
     await harness.handlers.get(CHANNELS.socialWorkCaseEligible)(
@@ -473,6 +728,8 @@ test('file requests use ordinary social messages; only task controls retain dire
   assert.deepEqual(calls, [
     ['stop', 'task-1'],
     ['resume', 'task-1'],
+    ['file-change', fileChangeInput],
+    ['git-review', 'task-1'],
     ['case-eligible', 'task-1', false],
   ]);
   await assert.rejects(
@@ -485,6 +742,7 @@ test('project IPC exposes metadata and preserves lifecycle events for the render
   const harness = createIpcHarness();
   const trustedSender = {};
   const events = [];
+  let recordedReadiness = null;
   const project = {
     id: 'project-1',
     title: '版本定价观察',
@@ -494,7 +752,11 @@ test('project IPC exposes metadata and preserves lifecycle events for the render
     members: [],
   };
   const socialChatService = {
-    getUiState: async () => ({ rooms: [], agents: [] }),
+    getUiState: async () => ({
+      rooms: [],
+      agents: [],
+      projectWork: { available: false, reason: '执行器未就绪。' },
+    }),
     emit: (event) => events.push(event),
   };
   const socialProjectStore = {
@@ -524,12 +786,24 @@ test('project IPC exposes metadata and preserves lifecycle events for the render
     socialChatService,
     socialProjectStore,
     isTrustedSender: (sender) => sender === trustedSender,
+    recordSocialReadiness: (readiness) => {
+      recordedReadiness = readiness;
+    },
   });
 
   assert.deepEqual(
     await harness.handlers.get(CHANNELS.socialState)({ sender: trustedSender }),
-    { rooms: [], agents: [], projects: [project] },
+    {
+      rooms: [],
+      agents: [],
+      projectWork: { available: false, reason: '执行器未就绪。' },
+      projects: [project],
+    },
   );
+  assert.deepEqual(recordedReadiness, {
+    available: false,
+    reason: '执行器未就绪。',
+  });
   assert.deepEqual(
     await harness.handlers.get(CHANNELS.socialProjectSession)(
       { sender: trustedSender },

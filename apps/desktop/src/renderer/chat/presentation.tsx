@@ -68,7 +68,8 @@ export function Icon({
     | 'back'
     | 'menu'
     | 'close'
-    | 'stop';
+    | 'stop'
+    | 'activity';
 }) {
   const paths: Record<typeof name, React.ReactNode> = {
     plus: <path d="M12 5v14M5 12h14" />,
@@ -124,6 +125,7 @@ export function Icon({
     ),
     close: <path d="m6 6 12 12M18 6 6 18" />,
     stop: <rect x="6" y="6" width="12" height="12" rx="2" />,
+    activity: <path d="M3 12h4l2.2-6 4.1 12 2.2-6H21" />,
   };
   return (
     <svg

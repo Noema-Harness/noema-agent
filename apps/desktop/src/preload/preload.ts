@@ -17,6 +17,10 @@ import type {
   NoemaProjectPlanWrite,
   NoemaProjectPlanItemUpdate,
   NoemaProjectPlanPhaseUpdate,
+  NoemaDiagnosticExecution,
+  NoemaDiagnosticTimeline,
+  NoemaDiagnosticExportPreview,
+  NoemaWindowsRunnerCapability,
 } from '../shared/contracts/noema-bridge.d.ts';
 
 const bridge = {
@@ -34,6 +38,27 @@ const bridge = {
     ipcRenderer.invoke('noema:root-state'),
   getSocialState: (): Promise<NoemaSocialState> =>
     ipcRenderer.invoke('noema:social-state'),
+  getWindowsRunnerCapability: (): Promise<NoemaWindowsRunnerCapability> =>
+    ipcRenderer.invoke('noema:windows-runner-capability'),
+  setupWindowsRunner: (): Promise<{
+    supported: boolean;
+    canceled: boolean;
+    reasonCode: string | null;
+  }> => ipcRenderer.invoke('noema:setup-windows-runner'),
+  onWindowsRunnerCapabilityChanged: (
+    listener: (state: NoemaWindowsRunnerCapability) => void,
+  ) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      state: NoemaWindowsRunnerCapability,
+    ) => listener(state);
+    ipcRenderer.on('noema:windows-runner-capability-changed', handler);
+    return () =>
+      ipcRenderer.removeListener(
+        'noema:windows-runner-capability-changed',
+        handler,
+      );
+  },
   getPersonalMemories: (): Promise<NoemaPersonalMemoryList> =>
     ipcRenderer.invoke('noema:personal-memories'),
   setPersonalMemoryEnabled: (enabled: boolean): Promise<boolean> =>
@@ -162,6 +187,13 @@ const bridge = {
     ipcRenderer.invoke('noema:social-work-stop', taskId),
   resumeSocialWorkTask: (taskId: string) =>
     ipcRenderer.invoke('noema:social-work-resume', taskId),
+  reviewSocialWorkFileChange: (input: {
+    taskId: string;
+    changeId: string;
+    action: 'keep' | 'revert';
+  }) => ipcRenderer.invoke('noema:social-work-file-change', input),
+  reviewSocialWorkGitState: (taskId: string) =>
+    ipcRenderer.invoke('noema:social-work-git-review', taskId),
   setSocialWorkCaseEligible: (taskId: string, eligible: boolean) =>
     ipcRenderer.invoke('noema:social-work-case-eligible', taskId, eligible),
   withdrawSocialPracticeCandidate: (taskId: string) =>
@@ -217,6 +249,39 @@ const bridge = {
   }) => ipcRenderer.invoke('noema:update-interaction-adjustment', input),
   withdrawInteractionAdjustment: (id: string) =>
     ipcRenderer.invoke('noema:withdraw-interaction-adjustment', id),
+  getDiagnosticsRecent: (
+    limit = 20,
+  ): Promise<{
+    available: boolean;
+    executions: NoemaDiagnosticExecution[];
+    diagnostics: Record<string, unknown>;
+  }> => ipcRenderer.invoke('noema:diagnostics-recent', limit),
+  getDiagnosticsDatabaseHealth: (): Promise<
+    'healthy' | 'problem' | 'unavailable'
+  > => ipcRenderer.invoke('noema:diagnostics-database-health'),
+  openUserDataDirectory: (): Promise<{
+    opened: boolean;
+    errorCode: string | null;
+  }> => ipcRenderer.invoke('noema:open-user-data-directory'),
+  getDiagnosticsTimeline: (input: {
+    executionId?: string | null;
+    taskId?: string | null;
+    limit?: number;
+  }): Promise<NoemaDiagnosticTimeline> =>
+    ipcRenderer.invoke('noema:diagnostics-timeline', input),
+  previewDiagnosticsExport: (input: {
+    executionId?: string | null;
+    taskId?: string | null;
+  }): Promise<NoemaDiagnosticExportPreview> =>
+    ipcRenderer.invoke('noema:diagnostics-export-preview', input),
+  saveDiagnosticsExport: (
+    previewId: string,
+  ): Promise<{
+    saved: boolean;
+    canceled?: boolean;
+    fileName?: string;
+    errorCode?: string;
+  }> => ipcRenderer.invoke('noema:diagnostics-export-save', previewId),
   onRootEvent: (listener: (event: NoemaRootEvent) => void) => {
     const handler = (
       _event: Electron.IpcRendererEvent,
