@@ -1693,6 +1693,9 @@ export class SocialChatStore {
         FROM social_rooms AS r
         JOIN social_room_members AS rm ON rm.room_id = r.id
         WHERE r.kind = 'direct' AND r.parent_room_id IS NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM social_project_sessions AS ps WHERE ps.room_id = r.id
+          )
           AND rm.agent_id = ?
           AND (SELECT COUNT(*) FROM social_room_members AS member
                WHERE member.room_id = r.id) = 1

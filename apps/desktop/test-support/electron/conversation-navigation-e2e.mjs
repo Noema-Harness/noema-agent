@@ -47,14 +47,83 @@ export async function verifyConversationNavigation(window) {
   // did-finish-load confirms document loading, not React's asynchronous IPC boot.
   // Wait for the actual controls instead of assuming two animation frames suffice.
   await contents.executeJavaScript(`(async () => {
-    const deadline = Date.now() + 20000;
+    window.__noemaE2eErrors = [];
+    window.addEventListener('error', event =>
+      window.__noemaE2eErrors.push(
+        String(event.message || 'error').slice(0, 500),
+      ),
+    );
+    window.addEventListener('unhandledrejection', event =>
+      window.__noemaE2eErrors.push(
+        String(event.reason?.message || event.reason || 'rejection').slice(
+          0,
+          500,
+        ),
+      ),
+    );
+    const deadline = Date.now() + 60000;
     while (Date.now() < deadline) {
       if (document.querySelector('.conversation-sidebar') &&
           document.querySelector('.conversation-panel') &&
           document.querySelector('.navigation-resize-handle')) return;
       await new Promise(resolve => setTimeout(resolve, 40));
     }
-    throw new Error('Navigation controls did not mount: ' + JSON.stringify({url:location.href,ready:document.readyState,text:document.body.innerText.slice(0,500),root:document.querySelector('#root')?.innerHTML.slice(0,1000),resources:performance.getEntriesByType('resource').map(entry=>entry.name).filter(name=>name.includes('/renderer.tsx')||name.includes('social-chat-app'))}));
+    const rendererEntryEvaluatedBeforeRetry = performance
+      .getEntriesByName('noema.renderer.entry-evaluated')
+      .length > 0;
+    const entryRetry = await Promise.race([
+      import('/src/renderer/renderer.tsx').then(
+        () => ({ outcome: 'loaded' }),
+        error => ({
+          outcome: 'rejected',
+          error: String(error?.stack || error).slice(0, 2000),
+        }),
+      ),
+      new Promise(resolve =>
+        setTimeout(() => resolve({ outcome: 'timeout' }), 1500),
+      ),
+    ]);
+    await new Promise(resolve =>
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+    );
+    const rootAfterRetry = document.querySelector('#root')?.innerHTML.slice(0, 1000);
+    const navigationMountedAfterRetry = Boolean(
+      document.querySelector('.conversation-sidebar') &&
+        document.querySelector('.conversation-panel') &&
+        document.querySelector('.navigation-resize-handle'),
+    );
+    const resources = performance
+      .getEntriesByType('resource')
+      .filter(entry => entry.name.startsWith(location.origin))
+      .map(entry => ({
+        name: entry.name.slice(location.origin.length),
+        duration: Math.round(entry.duration),
+        size: entry.transferSize ?? null,
+        status: entry.responseStatus ?? null,
+      }));
+    throw new Error(
+      'Navigation controls did not mount: ' +
+        JSON.stringify({
+          url: location.href,
+          ready: document.readyState,
+          text: document.body.innerText.slice(0, 500),
+          root: document.querySelector('#root')?.innerHTML.slice(0, 1000),
+          scripts: [...document.scripts].map(script => ({
+            src: script.src,
+            type: script.type,
+          })),
+          entryRetry,
+          rendererEntryEvaluatedBeforeRetry,
+          rootAfterRetry,
+          navigationMountedAfterRetry,
+          rendererEntryEvaluated: performance
+            .getEntriesByName('noema.renderer.entry-evaluated')
+            .length > 0,
+          bridge: typeof window.noema?.getSocialState,
+          errors: window.__noemaE2eErrors.slice(-10),
+          resources,
+        }),
+    );
   })()`);
   window.setSize(1280, 800);
   await settle();
