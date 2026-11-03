@@ -1,3 +1,5 @@
+import { developmentRoot } from '../test-support/development-workspace.mjs';
+import { createSocialTestStore } from '../test-support/social-team.mjs';
 import { spawn } from 'node:child_process';
 import Database from 'better-sqlite3';
 import {
@@ -8,13 +10,27 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { verifyWorkspaceChecks } from '../src/workspace-verifier.mjs';
-import { RootStore } from '../src/root-store.mjs';
-import { SocialChatStore } from '../src/social-chat-store.mjs';
+import { verifyWorkspaceChecks } from '../src/main/tools/workspace-verifier.mjs';
+import { RootStore } from '../src/main/storage/root-store.mjs';
 import { configureElectronRuntime } from './electron-runtime.mjs';
+
+const usage = `Noema project-work end-to-end check
+
+Usage:
+  node scripts/social-work-e2e.mjs [--synthetic | --case-only | --live-practice | --live-episodes]
+
+Default mode sends a synthetic project request to the selected live model route
+and may consume upstream quota. Use --synthetic for an offline fixture run.
+Use --case-only only with --synthetic. The live-practice and live-episodes
+modes perform additional model-backed experience checks.
+`;
+
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  console.log(usage);
+  process.exit(0);
+}
 
 configureElectronRuntime();
 
@@ -30,7 +46,7 @@ if (
   throw new Error('Run this check with Node.js 24.21.x.');
 }
 
-const configuredE2eRoot = process.env.NOEMA_E2E_ROOT_DIR ?? tmpdir();
+const configuredE2eRoot = developmentRoot();
 if (!path.isAbsolute(configuredE2eRoot) || !existsSync(configuredE2eRoot)) {
   throw new Error('The isolated E2E root directory must already exist.');
 }
@@ -45,17 +61,11 @@ const workspacePath = path.join(e2eDirectory, 'workspace');
 const databasePath = path.join(e2eDirectory, 'noema.sqlite3');
 const dshUserDataPath = path.join(e2eDirectory, 'dsh-home');
 const resultPath = path.join(e2eDirectory, 'result.json');
-const screenshotTag = Date.now();
-const desktopScreenshotPath = path.join(
-  e2eRoot,
-  `Noema-social-work-desktop-${screenshotTag}.png`,
-);
-const narrowScreenshotPath = path.join(
-  e2eRoot,
-  `Noema-social-work-narrow-${screenshotTag}.png`,
-);
 const marker = `NOEMA-SOCIAL-WORK-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 const syntheticAdapter = process.argv.includes('--synthetic');
+const liveModel =
+  process.env.NOEMA_E2E_MODEL?.trim() ||
+  (syntheticAdapter ? 'synthetic:test' : readSelectedModel());
 const livePractice = process.argv.includes('--live-practice');
 const liveEpisodes = process.argv.includes('--live-episodes');
 const caseOnly = process.argv.includes('--case-only');
@@ -69,6 +79,36 @@ if (
     'Use one compatible E2E mode: synthetic, live-practice, live-episodes, or synthetic --case-only.',
   );
 }
+if (!liveModel) {
+  throw new Error(
+    'No model is selected in the current Noema profile. Select a model in Noema or set NOEMA_E2E_MODEL explicitly.',
+  );
+}
+if (!/^[\w./:-]{1,200}$/u.test(liveModel)) {
+  throw new Error('NOEMA_E2E_MODEL must be a valid model route ID.');
+}
+
+function readSelectedModel() {
+  const appDataPath = process.env.APPDATA;
+  if (!appDataPath) return null;
+  const profileDatabasePath = path.join(appDataPath, 'Noema', 'noema.sqlite3');
+  if (!existsSync(profileDatabasePath)) return null;
+
+  const profileDatabase = new Database(profileDatabasePath, {
+    readonly: true,
+    fileMustExist: true,
+  });
+  try {
+    return (
+      profileDatabase
+        .prepare("SELECT value FROM app_settings WHERE key = 'selected_model'")
+        .get()?.value ?? null
+    );
+  } finally {
+    profileDatabase.close();
+  }
+}
+
 const relativePath = 'NOEMA-E2E-RESULT.txt';
 const verificationChecks = [
   '## 恢复前',
@@ -82,9 +122,8 @@ const verificationChecks = [
 }));
 const prompt = [
   '[NOEMA E2E] 仅在当前临时工作区完成一项小任务。',
-  `创建 ${relativePath}，正文使用简体中文，写一份结构化恢复清单；必须逐字使用二级标题“## 恢复前”“## 执行恢复”“## 恢复后验证”，并逐字包含验收标记 ${marker}。`,
+  `先列出工作区文件，确认 ${relativePath} 不存在；再创建它，用简体中文写一份恢复清单，依次说明“恢复前”“执行恢复”“恢复后验证”，并在文末写入编号 ${marker}。写入后用 read_file 重新读取该文件，核对三个标题和编号都在。`,
   '只修改这个文件；不要读取、写入或运行工作区之外的内容。',
-  `Noema 会在任务结束后独立检查：${JSON.stringify(verificationChecks)}`,
 ].join('\n');
 mkdirSync(e2eDirectory, { recursive: true });
 mkdirSync(workspacePath, { recursive: true });
@@ -139,29 +178,8 @@ if (
 }
 const seedDatabase = new Database(databasePath);
 const seedRootStore = new RootStore(seedDatabase);
-const seedSocialStore = new SocialChatStore(seedDatabase);
-const interactionAdjustmentId = 'e2e-social-coding-adjustment';
-const interactionSource = seedSocialStore.beginTurn({
-  roomId: 'room-noema',
-  agentId: 'noema',
-  text: 'E2E 原话：编码任务先说明真实阻塞，没阻塞就继续到验收。',
-  model: 'e2e-fixture',
-});
-seedSocialStore.appendAssistantDelta(
-  interactionSource.assistantMessageId,
-  '我会区分阻塞与阶段进度。',
-);
-seedSocialStore.completeReply(interactionSource.assistantMessageId);
-seedRootStore.addInteractionAdjustment({
-  id: interactionAdjustmentId,
-  sourceSurface: 'social',
-  sourceRoomId: 'room-noema',
-  sourceTurnId: interactionSource.turnId,
-  scope: 'coding',
-  situation: '编码任务的阶段性进度汇报',
-  behavior: '只有真实阻塞或用户需要决策时才暂停；否则继续到验收。',
-  sourceQuote: '没阻塞就继续到验收',
-});
+seedRootStore.setSelectedModel(liveModel);
+const seedSocialStore = createSocialTestStore(seedDatabase);
 if (!liveEpisodes) {
   seedSocialStore.createSocialWorkTask({
     id: sourceCaseTaskId,
@@ -247,6 +265,43 @@ if (!liveEpisodes) {
     });
   }
 }
+const recoveryFixtureTaskId = 'e2e-room-c-read-only-failure';
+seedSocialStore.createSocialWorkTask({
+  id: recoveryFixtureTaskId,
+  roomId: 'room-engineering-collaboration',
+  agentId: 'engineering-partner',
+  workspacePath,
+  workspaceKey: path
+    .normalize(workspacePath)
+    .replaceAll('/', '\\')
+    .toLocaleLowerCase('en-US'),
+  taskPrompt: '[NOEMA E2E] 读取后模型中断的恢复状态演练。',
+  model: liveModel,
+  executionEngine: 'noema',
+});
+const recoveryStepId = 'e2e-room-c-read-files';
+seedSocialStore.startSocialWorkExecutionStep(recoveryFixtureTaskId, {
+  id: recoveryStepId,
+  toolName: 'list_files',
+  externalCallId: 'e2e-read-files',
+  category: 'read',
+  hasSideEffect: false,
+});
+seedSocialStore.finishSocialWorkExecutionStep(
+  recoveryFixtureTaskId,
+  recoveryStepId,
+  { status: 'succeeded', effectStatus: 'none' },
+);
+seedSocialStore.recordSocialWorkTaskToolAction(recoveryFixtureTaskId, 'read');
+seedSocialStore.finishSocialWorkTask(recoveryFixtureTaskId, {
+  status: 'failed',
+  errorCode: 'provider_unavailable',
+  errorMessage: '模型没有返回后续结果；此次演练没有执行写入或命令。',
+  toolCallCount: 1,
+  verificationStatus: 'not_planned',
+  verificationResults: [],
+  verificationAttempts: 0,
+});
 seedDatabase.close();
 
 const child = spawn(process.execPath, ['scripts/start.mjs'], {
@@ -271,16 +326,12 @@ const child = spawn(process.execPath, ['scripts/start.mjs'], {
     NOEMA_E2E_SOCIAL_WORK_WORKSPACE: workspacePath,
     NOEMA_E2E_SOCIAL_WORK_RESULT_PATH: resultPath,
     NOEMA_E2E_SOCIAL_WORK_CHECKS: JSON.stringify(verificationChecks),
-    NOEMA_E2E_SOCIAL_WORK_CAPTURE_UI: '1',
     ...(syntheticAdapter ? { NOEMA_E2E_SOCIAL_WORK_SYNTHETIC: '1' } : {}),
     ...(livePractice
       ? {
           NOEMA_E2E_SOCIAL_WORK_PROPOSAL_SOURCE_ID: practiceSourceTaskId,
         }
       : {}),
-    NOEMA_SMOKE_CAPTURE_SOCIAL_CHAT: '1',
-    NOEMA_SMOKE_SOCIAL_PROJECT_WORK_PATH: desktopScreenshotPath,
-    NOEMA_SMOKE_SOCIAL_PROJECT_WORK_NARROW_PATH: narrowScreenshotPath,
   },
   stdio: 'inherit',
   windowsHide: true,
@@ -313,11 +364,20 @@ const summary = {
   outcome: result.outcome,
   taskStatus: result.task?.status ?? null,
   verificationStatus: result.task?.verificationStatus ?? null,
+  modelCatalog: result.modelCatalog
+    ? {
+        connected: result.modelCatalog.connected,
+        modelCount: result.modelCatalog.models?.length ?? 0,
+        selectedModel: result.modelCatalog.selectedModel ?? null,
+      }
+    : null,
   independentVerification: independentVerification.status,
   resultText: result.task?.resultText ?? '',
   errorCode: result.task?.errorCode ?? null,
   errorMessage: result.task?.errorMessage ?? result.errorMessage ?? null,
   toolCallCount: result.task?.toolCallCount ?? 0,
+  executionEngine: result.task?.executionEngine ?? null,
+  model: result.task?.model ?? liveModel,
   caseSnapshot: result.task?.caseSnapshot ?? null,
   practiceSnapshot: result.task?.practiceSnapshot ?? null,
   practiceCandidateStatus: result.task?.practiceCandidateStatus ?? null,
@@ -327,7 +387,7 @@ const summary = {
     result.livePracticeProposal?.sourceTaskId ?? practiceSourceTaskId,
   workspacePath,
   childExitCode: exit.code,
-  executionMode: syntheticAdapter ? 'synthetic-adapter' : 'live-dsh',
+  executionMode: syntheticAdapter ? 'synthetic-adapter' : 'live-noema',
   proposalMode: liveEpisodes
     ? 'real-dsh-episodes'
     : livePractice
@@ -339,9 +399,6 @@ const summary = {
   liveEpisodeTasks: result.liveEpisodeTasks ?? null,
   childSignal: exit.signal,
   scratchDirectory: e2eRootDirectory,
-  uiSmoke: result.socialWorkUiSmoke,
-  desktopScreenshotPath,
-  narrowScreenshotPath,
 };
 console.log(JSON.stringify(summary, null, 2));
 
@@ -393,15 +450,9 @@ if (proposalWasEmpty) {
   validationFailed ||=
     result.outcome !== 'finished' ||
     result.task?.status !== 'completed' ||
+    (!syntheticAdapter && result.task?.executionEngine !== 'noema') ||
+    (!syntheticAdapter && result.task?.toolCallCount < 2) ||
     result.task?.verificationStatus !== 'verified' ||
-    result.task?.interactionAdjustmentIds?.includes(interactionAdjustmentId) !==
-      true ||
-    result.task?.interactionAdjustmentSnapshots?.some(
-      (adjustment) =>
-        adjustment.id === interactionAdjustmentId &&
-        adjustment.sourceSurface === 'social' &&
-        adjustment.sourceRoomId === 'room-noema',
-    ) !== true ||
     (practiceDecision !== 'case' &&
       (result.task?.caseSnapshot !== null ||
         result.task?.practiceSnapshot?.sourceTaskId !==
@@ -417,28 +468,7 @@ if (proposalWasEmpty) {
         result.practiceConfirmationEvidence?.at(-1)?.fallbackCaseTaskId !==
           expectedPracticeSourceTaskId)) ||
     !result.practiceConfirmationEvidence?.length ||
-    independentVerification.status !== 'verified' ||
-    !result.socialWorkUiSmoke?.desktop?.taskVisible ||
-    !result.socialWorkUiSmoke?.desktop?.projectModeSelected ||
-    !result.socialWorkUiSmoke?.desktop?.caseControlVisible ||
-    !result.socialWorkUiSmoke?.desktop?.experienceReferenceVisible ||
-    !result.socialWorkUiSmoke?.desktop?.experienceReferenceText?.includes(
-      practiceDecision === 'case' ? 'RELEASE-CHECKLIST.md' : '素材导入说明',
-    ) ||
-    !result.socialWorkUiSmoke?.desktop?.composerVisible ||
-    !result.socialWorkUiSmoke?.desktop?.documentNoOverflow ||
-    !result.socialWorkUiSmoke?.narrow?.taskVisible ||
-    !result.socialWorkUiSmoke?.narrow?.projectModeSelected ||
-    !result.socialWorkUiSmoke?.narrow?.caseControlVisible ||
-    !result.socialWorkUiSmoke?.narrow?.experienceReferenceVisible ||
-    !result.socialWorkUiSmoke?.narrow?.experienceReferenceText?.includes(
-      practiceDecision === 'case' ? 'RELEASE-CHECKLIST.md' : '素材导入说明',
-    ) ||
-    !result.socialWorkUiSmoke?.narrow?.composerVisible ||
-    !result.socialWorkUiSmoke?.narrow?.documentNoOverflow ||
-    !result.socialWorkUiSmoke?.candidateReview?.withdrawn ||
-    result.socialWorkUiSmoke?.candidateReview?.trialVerification !==
-      (practiceDecision === 'case' ? null : 'verified');
+    independentVerification.status !== 'verified';
   if (liveEpisodes) {
     validationFailed ||=
       result.livePracticeProposal?.status !== 'available' ||

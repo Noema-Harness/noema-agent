@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "artifactRoot": ".work",
+  "specificationRoot": "openspec/specs",
+  "currentDocuments": [
+    {
+      "path": "README.md",
+      "purpose": "安装与导航",
+      "updateWhen": "安装方式或入口变化"
+    },
+    {
+      "path": "AGENTS.md",
+      "purpose": "协作与工程入口",
+      "updateWhen": "协作或工程约定变化"
+    },
+    {
+      "path": "CONTRIBUTING.md",
+      "purpose": "外部参与入口",
+      "updateWhen": "贡献方式变化"
+    },
+    {
+      "path": "docs/CURRENT_CONTEXT.md",
+      "purpose": "本轮用户明确要求",
+      "updateWhen": "用户补充或改变明确要求"
+    },
+    {
+      "path": "docs/NOEMA_V1_PLAN.md",
+      "purpose": "Noema 一期权威范围与阶段验收计划",
+      "updateWhen": "一期范围、依赖或完成条件变化"
+    },
+    {
+      "path": "docs/ARCHITECTURE.md",
+      "purpose": "当前源码导航与核对事实",
+      "updateWhen": "源码位置或事实变化"
+    },
+    {
+      "path": "docs/PROJECT_OPERATIONS.md",
+      "purpose": "工作材料与维护入口",
+      "updateWhen": "维护方式变化"
+    },
+    {
+      "path": ".work/README.md",
+      "purpose": "有效过程材料入口",
+      "updateWhen": "工作材料用途变化"
+    }
+  ],
+  "historyRoots": [],
+  "rootDirectories": [
+    ".git",
+    ".codex",
+    ".github",
+    ".work",
+    "apps",
+    "docs",
+    "node_modules",
+    "openspec",
+    "scripts"
+  ],
+  "cleanableArtifacts": [
+    ".work/runs",
+    ".work/scratch"
+  ],
+  "generatedDirectories": [
+    "apps/desktop/.vite",
+    "apps/desktop/out",
+    "coverage",
+    "apps/desktop/coverage"
+  ]
+}

@@ -14,7 +14,12 @@
     "smoke": "npm run smoke --workspace noema-desktop",
     "smoke:package": "npm run smoke:package --workspace noema-desktop",
     "package:desktop": "npm run package --workspace noema-desktop",
-    "make:desktop": "npm run make --workspace noema-desktop"
+    "make:desktop": "npm run make --workspace noema-desktop",
+    "workspace:check": "node scripts/workspace.mjs check",
+    "workspace:clean": "node scripts/workspace.mjs clean",
+    "workspace:test": "node --test scripts/workspace.test.mjs",
+    "source:check": "node scripts/source-structure.mjs",
+    "check": "npm run workspace:check && npm run source:check && npm run lint && npm run typecheck && npm test"
   },
   "engines": {
     "node": ">=24.21 <25"

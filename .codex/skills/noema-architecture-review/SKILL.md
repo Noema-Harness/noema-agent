@@ -1,19 +1,12 @@
 ---
 name: noema-architecture-review
-description: Review a proposed Noema product or architecture change before implementation when it adds a subsystem, persistent state, autonomous behavior, external integration, or major dependency.
+description: Noema 增加子系统、持久状态、自主行为、外部集成或重大依赖时，审查职责与生命周期；不用于例行小修。
 ---
 
-# Noema Architecture Review
+# Noema 架构判断
 
-Use this only for product-shaping or high-impact architecture work; do not apply it to routine edits.
+先明确当前用户要求和预期改善，区分参考方向与已经接受的实施决定。沿源码导航核对现有所有者和调用链，不将既有代码组织升级为不可改变的产品边界。
 
-Before accepting a change:
+新增职责先检查平台、已有代码或成熟实现能否承担。明确状态来源、生命周期、权限、失败恢复和移除方式，比较复用与迁移的真实成本。
 
-1. Name the user problem and the everyday situation it improves. A capability list alone is not a problem statement.
-2. Apply the standalone-app test: why must this responsibility belong to Noema rather than a skill, plugin, existing agent, or small external tool?
-3. Identify the source of truth, owner, lifecycle, permissions, failure behavior, and removal path for every new state or integration.
-4. Prefer one simple, replaceable boundary over a new framework, daemon, abstraction layer, or plugin marketplace unless independent lifecycle or security needs justify it.
-5. Check relevant prior decisions and evidence; separate confirmed facts from accepted assumptions. Intuition may support a reversible decision without an experiment, but do not present it as proven.
-6. If the choice is durable or changes a product invariant, write/update an ADR before implementation. Keep the ADR focused on the decision, alternatives, consequences, and reconsideration trigger.
-
-This review is a design aid, not a mandatory approval checklist for every code change. Keep moving when the decision is reversible and the next step can be safely inspected or rolled back.
+关键取舍记录在实际变更的设计中；未经采用的研究不成为当前指令。没有明确行为变更时，不制造产品规格或替用户选择一期范围。

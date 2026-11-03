@@ -1,15 +1,15 @@
-import { spawn } from 'node:child_process';
 import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+  createDevelopmentDirectory,
+  removeDevelopmentDirectory,
+} from '../test-support/development-workspace.mjs';
+import { spawn } from 'node:child_process';
+import { existsSync, copyFileSync, mkdirSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { RootStore } from '../src/root-store.mjs';
+import Database from 'better-sqlite3';
+import { RootStore } from '../src/main/storage/root-store.mjs';
+import { resolveNoemaDatabasePath } from '../src/main/platform/runtime-paths.mjs';
 import { configureElectronRuntime } from './electron-runtime.mjs';
 
 configureElectronRuntime();
@@ -24,12 +24,16 @@ const forgeCli = path.join(
   'electron-forge.js',
 );
 const timeoutMs = 90_000;
-const smokeDir = mkdtempSync(path.join(tmpdir(), 'noema-desktop-smoke-'));
+const smokeDir = createDevelopmentDirectory('noema-desktop-smoke-');
 const userDataDir = path.join(smokeDir, 'user-data');
 const probeDirectory = path.join(smokeDir, 'catalog-probe');
+const probeUserDataDir = path.join(probeDirectory, 'user-data');
 const loadedMarker = path.join(smokeDir, 'renderer-loaded.json');
 const startupLog = path.join(smokeDir, 'main-started.json');
 const probeFreeLLMAPI = process.env.NOEMA_SMOKE_PROBE_FREELLMAPI === '1';
+const injectedFreeLlmApiCredential = Boolean(
+  process.env.NOEMA_FREELLMAPI_API_KEY?.trim(),
+);
 const probeQuickCapture = process.env.NOEMA_SMOKE_CAPTURE_QUICK_CAPTURE === '1';
 const probeHistoryTrace = process.env.NOEMA_SMOKE_CAPTURE_HISTORY_TRACE === '1';
 const probeTimelineSearch =
@@ -49,10 +53,32 @@ const timelineSearchScreenshotPaths = [
 ].filter((candidate) => typeof candidate === 'string' && candidate.length > 0);
 if (probeFreeLLMAPI) {
   mkdirSync(probeDirectory, { recursive: true });
+  if (!injectedFreeLlmApiCredential) {
+    const appDataDirectory =
+      process.platform === 'win32'
+        ? process.env.APPDATA
+        : process.platform === 'darwin'
+          ? path.join(homedir(), 'Library', 'Application Support')
+          : (process.env.XDG_CONFIG_HOME ?? path.join(homedir(), '.config'));
+    if (!appDataDirectory)
+      throw new Error('Cannot locate the Noema credential profile.');
+    const sourceProfile = path.join(appDataDirectory, 'Noema');
+    for (const relativePath of [
+      'Local State',
+      'credentials/model-provider.key',
+      'credentials/freellmapi.key',
+    ]) {
+      const source = path.join(sourceProfile, relativePath);
+      if (!existsSync(source)) continue;
+      const destination = path.join(probeUserDataDir, relativePath);
+      mkdirSync(path.dirname(destination), { recursive: true });
+      copyFileSync(source, destination);
+    }
+    if (!existsSync(path.join(probeUserDataDir, 'Local State')))
+      throw new Error('Noema credential profile has no Local State file.');
+  }
   const fixture = new RootStore(path.join(probeDirectory, 'root.sqlite3'));
-  fixture.setSelectedModel(
-    process.env.NOEMA_SMOKE_MODEL ?? 'nvidia/nemotron-3-super-120b-a12b:free',
-  );
+  fixture.setSelectedModel(process.env.NOEMA_SMOKE_MODEL ?? 'auto:noema-free');
   fixture.close();
 }
 let historyTraceDatabasePath;
@@ -141,6 +167,7 @@ const childEnvironment = {
   NOEMA_SMOKE_TEST: '1',
   NOEMA_SMOKE_TEST_FILE: loadedMarker,
   NOEMA_SMOKE_LOG_FILE: startupLog,
+  NOEMA_SMOKE_SESSION_DATA_DIR: path.join(smokeDir, 'session-data'),
   ...(probeFreeLLMAPI
     ? {
         NOEMA_E2E_DATABASE_PATH: path.join(probeDirectory, 'root.sqlite3'),
@@ -148,6 +175,7 @@ const childEnvironment = {
           probeDirectory,
           'dsh-user-data',
         ),
+        NOEMA_SMOKE_USER_DATA_DIR: probeUserDataDir,
         NOEMA_SMOKE_REFRESH_MODELS: '1',
         NOEMA_SMOKE_CAPTURE_MODEL_AVAILABILITY: '1',
         ...(process.env.NOEMA_SMOKE_MODEL_AVAILABILITY_SCREENSHOT_PATH
@@ -185,12 +213,16 @@ const childEnvironment = {
       }
     : {}),
 };
-if (probeFreeLLMAPI) delete childEnvironment.NOEMA_SMOKE_USER_DATA_DIR;
 if (probeFreeLLMAPI) {
-  // Use the encrypted key already stored by Noema, and never let an ambient
-  // API-key/base-URL override write into the real userData during this probe.
-  delete childEnvironment.NOEMA_FREELLMAPI_API_KEY;
-  delete childEnvironment.NOEMA_FREELLMAPI_BASE_URL;
+  if (!process.env.NOEMA_SMOKE_MODEL_AVAILABILITY_SCREENSHOT_PATH)
+    childEnvironment.NOEMA_SMOKE_HIDDEN = '1';
+  // The isolated profile lets Electron encrypt an explicitly injected key
+  // without touching the real userData. Otherwise, use the copied encrypted
+  // Noema credential and prevent ambient overrides from changing its route.
+  if (!injectedFreeLlmApiCredential) {
+    delete childEnvironment.NOEMA_FREELLMAPI_API_KEY;
+    delete childEnvironment.NOEMA_FREELLMAPI_BASE_URL;
+  }
   delete childEnvironment.NOEMA_E2E_WORKER_PROMPT;
 }
 const child = spawn(process.execPath, [forgeCli, 'start'], {
@@ -200,15 +232,9 @@ const child = spawn(process.execPath, [forgeCli, 'start'], {
 });
 
 function cleanSmokeDirectory() {
-  const resolved = path.resolve(smokeDir);
-  const tempRoot = path.resolve(tmpdir());
-  if (!resolved.startsWith(`${tempRoot}${path.sep}`)) {
-    throw new Error(
-      `Refusing to remove smoke data outside the temp directory: ${resolved}`,
-    );
-  }
-  rmSync(resolved, { recursive: true, force: true });
+  removeDevelopmentDirectory(smokeDir);
 }
+process.once('exit', cleanSmokeDirectory);
 
 const timeout = setTimeout(() => {
   if (process.platform === 'win32' && child.pid) {
@@ -241,6 +267,16 @@ child.on('exit', (code, signal) => {
       process.exitCode = 1;
       return;
     }
+    if (
+      loaded.socialChat?.agentIds?.join(',') !== 'noema' ||
+      loaded.socialChat?.roomIds?.join(',') !== 'room-noema'
+    ) {
+      console.error(
+        'Fresh Noema must start with its main conversation only, without a demo team.',
+      );
+      process.exitCode = 1;
+      return;
+    }
     if (typeof loaded.url !== 'string' || !loaded.url) {
       console.error(
         'Desktop smoke marker did not contain the loaded renderer URL.',
@@ -255,6 +291,93 @@ child.on('exit', (code, signal) => {
       process.exitCode = 1;
       return;
     }
+    const databasePath = resolveNoemaDatabasePath({
+      userDataPath: userDataDir,
+      isPackaged: true,
+    });
+    let entryEvents = [];
+    try {
+      const diagnosticsDb = new Database(databasePath, { readonly: true });
+      try {
+        entryEvents = diagnosticsDb
+          .prepare(`SELECT application_execution_id AS applicationExecutionId,
+            execution_id AS executionId, module, operation, status, details_json AS detailsJson
+            FROM diagnostic_events WHERE operation IN (
+              'entry.route_selected', 'entry.capability_availability'
+            ) OR module = 'desktop.lifecycle' ORDER BY occurred_at`)
+          .all()
+          .map((event) => ({
+            ...event,
+            details: JSON.parse(event.detailsJson),
+          }));
+      } finally {
+        diagnosticsDb.close();
+      }
+    } catch (error) {
+      console.error('Could not read local diagnostic events:', error);
+      process.exitCode = 1;
+      return;
+    }
+    const routeEvent = entryEvents.find(
+      (event) => event.operation === 'entry.route_selected',
+    );
+    const capabilityEvent = entryEvents.find(
+      (event) => event.operation === 'entry.capability_availability',
+    );
+    if (
+      routeEvent?.details.route !== 'social-chat' ||
+      typeof routeEvent.applicationExecutionId !== 'string' ||
+      routeEvent.applicationExecutionId.length < 16 ||
+      capabilityEvent?.applicationExecutionId !==
+        routeEvent.applicationExecutionId ||
+      !['available', 'unavailable'].includes(capabilityEvent.status)
+    ) {
+      console.error(
+        'Default entry diagnostics did not correlate route and project-work readiness.',
+      );
+      process.exitCode = 1;
+      return;
+    }
+    if (process.platform === 'win32') {
+      const lifecycleOperations = new Set(
+        entryEvents
+          .filter((event) => event.module === 'desktop.lifecycle')
+          .map((event) => event.operation),
+      );
+      const shutdownStarted = entryEvents.find(
+        (event) => event.operation === 'shutdown.started',
+      );
+      const shutdownCompleted = entryEvents.find(
+        (event) => event.operation === 'shutdown.completed',
+      );
+      const requiredOperations = [
+        'tray.ready',
+        'window.hidden',
+        'window.restored',
+        'exit.requested',
+        'shutdown.started',
+        'shutdown.completed',
+      ];
+      if (
+        !loaded.desktopLifecycleSmoke?.trayReady ||
+        !loaded.desktopLifecycleSmoke.hiddenOnClose ||
+        !loaded.desktopLifecycleSmoke.restoredSameWindow ||
+        shutdownStarted?.details.reason !== 'application_exit' ||
+        shutdownCompleted?.details.reason !== 'application_exit' ||
+        requiredOperations.some(
+          (operation) => !lifecycleOperations.has(operation),
+        )
+      ) {
+        console.error(
+          `Desktop tray lifecycle smoke was incomplete: ${JSON.stringify({
+            probe: loaded.desktopLifecycleSmoke,
+            events: [...lifecycleOperations],
+          })}`,
+        );
+        process.exitCode = 1;
+        return;
+      }
+    }
     cleanSmokeDirectory();
     console.log(
       `Desktop startup smoke test passed: renderer loaded at ${loaded.url}.`,
@@ -265,6 +388,17 @@ child.on('exit', (code, signal) => {
     console.log(
       `Quick capture shortcut: ${loaded.quickCaptureShortcut?.accelerator ?? 'unknown'} — ${loaded.quickCaptureShortcut?.registered ? 'registered' : 'unavailable'}`,
     );
+    console.log(
+      `Entry diagnostics: route and project-work readiness share execution ${routeEvent.applicationExecutionId}.`,
+    );
+    console.log(
+      `Workspace task entry: visible as “${loaded.socialChat.workspaceTaskEntry.accessibleName}”; 680px layout ${loaded.socialChat.workspaceTaskNarrowLayout.noHorizontalOverflow ? 'has no horizontal overflow' : 'overflows'}.`,
+    );
+    if (loaded.desktopLifecycleSmoke) {
+      console.log(
+        'Desktop tray lifecycle: tray ready, close hid the window, restore reused it, and shutdown was recorded.',
+      );
+    }
     if (probeQuickCapture) {
       if (
         !loaded.quickCaptureSmoke?.dialogOpen ||
@@ -354,7 +488,7 @@ child.on('exit', (code, signal) => {
     }
     if (probeFreeLLMAPI) {
       console.log(
-        `FreeLLMAPI credential: ${loaded.providerConfigured ? 'configured' : 'missing'}; endpoint: ${loaded.providerBaseUrl ?? 'unknown'}; gateway: ${loaded.connected ? 'connected' : 'unavailable'}${loaded.providerError ? ` — ${loaded.providerError}` : ''}; free routes: ${(loaded.models ?? []).map((model) => `${model.name} [${model.executionStatus ?? (model.routeKind === 'router' ? 'router status unknown' : 'status unavailable')}]`).join(', ') || 'none'}`,
+        `Model provider credential: ${loaded.providerConfigured ? 'configured' : 'missing'}; endpoint: ${loaded.providerBaseUrl ?? 'unknown'}; connection: ${loaded.connected ? 'available' : 'unavailable'}${loaded.providerError ? ` — ${loaded.providerError}` : ''}; models: ${(loaded.models ?? []).map((model) => `${model.name} [${model.executionStatus ?? (model.routeKind === 'router' ? 'router status unknown' : 'status unavailable')}]`).join(', ') || 'none'}`,
       );
       if (
         !loaded.providerConfigured ||
@@ -386,12 +520,12 @@ child.on('exit', (code, signal) => {
         process.exitCode = 1;
       }
       console.log(
-        `FreeLLMAPI model readiness rendered: ${(loaded.modelAvailabilitySmoke?.routes ?? []).map((model) => `${model.name}=${model.executionStatus ?? 'unknown'}`).join(', ')}; narrow layout: ${loaded.modelAvailabilitySmoke?.narrowLayoutValid ? 'fits' : 'not checked'}`,
+        `Model availability rendered: ${(loaded.modelAvailabilitySmoke?.routes ?? []).map((model) => `${model.name}=${model.executionStatus ?? 'unknown'}`).join(', ')}; narrow layout: ${loaded.modelAvailabilitySmoke?.narrowLayoutValid ? 'fits' : 'not checked'}`,
       );
       if (process.env.NOEMA_SMOKE_SOCIAL_CHAT_LIVE === '1') {
         if (!loaded.socialLiveChatSmoke?.verified) {
           console.error(
-            'Synthetic Noema chat did not complete through the selected FreeLLMAPI route.',
+            `Synthetic Noema chat failed (${loaded.socialLiveChatSmoke?.status ?? 'unknown'}): ${loaded.socialLiveChatSmoke?.error || 'response did not match the marker.'}`,
           );
           process.exitCode = 1;
           return;

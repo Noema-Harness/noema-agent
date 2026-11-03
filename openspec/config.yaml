@@ -1,0 +1,10 @@
+schema: spec-driven
+
+context: |
+  正文使用中文，保留 OpenSpec 必需结构标题与 SHALL/MUST 关键字。
+  当前明确要求见 docs/CURRENT_CONTEXT.md；源码导航与维护入口由 .codex/workspace.json 路由。
+  openspec/specs 仅作为现有可观察行为的回归参照，不代表新一期必须包含全部现有功能。
+  只为已授权的实际变更建立 change，不从既有代码、历史提交或参考项目恢复旧规划。
+rules:
+  tasks:
+    - 围绕实际交付结果记录变更和验证，不复制历史任务表。

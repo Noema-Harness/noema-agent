@@ -1,15 +1,16 @@
 ---
 name: noema-project-work
-description: Resume, scope, track, or finish substantial Noema product, architecture, research, or multi-file work through live GitHub Issues and Project state. Use at task start/resumption and completion, not for small mechanical edits.
+description: 续接或交付有实质范围的 Noema 工作时，核对代码现场、当前要求与源码发布；小修不启动完整管理流程。
 ---
 
-# Noema Project Work
+# Noema 项目衔接
 
-1. Read `docs/PROJECT_OPERATIONS.md`. At task start or resumption, inspect `git status`, branch/recent commit, the live Issue and its latest comments, Project status, blockers, and linked decisions. Use those records—not compressed chat summaries or remembered status—to reconstruct what is true now.
-2. Separate authority by subject: current user direction determines whether the work still applies; Issue text/comments describe the current deliverable and checkpoint; Project fields show live workflow state; ADRs record durable decisions. The user has delegated Noema's product-to-delivery lifecycle to the assistant, so decide within that scope without asking about implementation details. Record whether a product decision was user-confirmed or adopted by the assistant under that delegation. Ask only for an unknowable user-specific fact, authority outside this project mandate, or a materially irreversible/high-impact action.
-3. An Issue scopes its present deliverable; it does not freeze future product design. If evidence or user direction invalidates its premise, update/split/reopen/cancel it and its dependencies instead of executing stale acceptance criteria. For substantial work without an issue, create one with `gh issue create -R c3115644151/noema-agent`; do not create an issue for every small edit.
-4. For multi-stage work, keep one latest compact checkpoint in the Issue: completed evidence, unresolved decision, next concrete action. Update at a milestone, direction change, blocker, or handoff; avoid progress narration and duplicate local TODO/status files.
-5. Auto-add is configured for open issues/PRs, but API-created Issue #5 did not appear automatically during setup. Always verify the item exists on Project #6; add it with `gh project item-add 6 --owner c3115644151 --url <issue-url>` if missing, then query the resulting item. If `gh project` reports `unknown owner type`, use GraphQL `addProjectV2ItemById` with the project's ID and the issue/PR node ID. Query fields with `gh project field-list 6 --owner c3115644151 --format json` before editing custom values.
-6. Use the actual lifecycle: Inbox → Backlog → Todo → In Progress → In Review → Done, with Blocked/Canceled as explicit branches. Newly added items start in Inbox; move to Todo only after Definition of Ready. Set Blocked only with a native `blocked by` relationship and a named blocker, not a `status:blocked` label.
-7. On completion, run only relevant checks and record exact results and remaining gaps. Set Status to Done only after acceptance; this automatically closes the issue, and GitHub issue closure also maps to Done. For canceled work, close with the `not planned` reason, then reset Project Status to Canceled.
-8. Never claim that an issue, board update, test, or external operation succeeded unless the command returned success and the resulting state was checked.
+先核对用户最近讨论、Git 状态、分支与未提交工作，再沿 `.codex/workspace.json` 读取本项必要入口。`docs/CURRENT_CONTEXT.md` 保存本轮明确要求，`docs/ARCHITECTURE.md` 只用于定位当前代码。
+
+范围发现先从外部参考源码的实际模块和契约展开，再对照 Noema；不从现有功能、旧提交或旧 Issue 恢复旧规划。参考项目的成熟度和适用性逐项核实，不自动采用其整套架构。源码研究、规划和开发的当前授权以最近用户要求为准。
+
+现有行为参考 `openspec/specs/`，实际变更再使用对应 change。资料和源码交付按 `docs/PROJECT_OPERATIONS.md` 处理；GitHub 保留源码与外部协作，不重复维护内部状态。
+
+GitHub connector 传输异常时使用 `scripts/gh-direct.ps1` / `scripts/git-direct.ps1`。故障按当次证据判断，同步后核对远端 SHA。
+
+本机 shell、连接、截图、打包或模型执行入口按需读 [运行说明](references/runtime.md)。

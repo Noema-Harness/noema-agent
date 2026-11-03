@@ -1,0 +1,450 @@
+diff --git a/vendor/srt-win-src/src/acl.rs b/vendor/srt-win-src/src/acl.rs
+index fe3aca6..32188fe 100644
+--- a/vendor/srt-win-src/src/acl.rs
++++ b/vendor/srt-win-src/src/acl.rs
+@@ -1389,6 +1389,39 @@ pub fn read_dacl_views(target: DaclTarget<'_>) -> Result<Option<Vec<AceView>>> {
+     Ok(Some(out))
+ }
+ 
++/// Whether a root DACL contains an ordinary write allow for a SID
++/// that every local sandbox account belongs to. This intentionally
++/// errs on the side of selecting an extra root: the resulting deny is
++/// scoped to the dedicated sandbox SID, never to other users.
++pub fn has_broad_write_allow(canonical_path: &str) -> Result<bool> {
++    let dacl = read_dacl_views(DaclTarget::Path(canonical_path))?;
++    Ok(has_broad_write_allow_in(dacl.as_deref()))
++}
++
++fn has_broad_write_allow_in(aces: Option<&[AceView]>) -> bool {
++    const EVERYONE: &str = "S-1-1-0";
++    const AUTHENTICATED_USERS: &str = "S-1-5-11";
++    const BUILTIN_USERS: &str = "S-1-5-32-545";
++    const FILE_WRITE_MASK: u32 = 0x0000_0002 // FILE_WRITE_DATA / FILE_ADD_FILE
++        | 0x0000_0004 // FILE_APPEND_DATA / FILE_ADD_SUBDIRECTORY
++        | 0x0000_0010 // FILE_WRITE_EA
++        | 0x0000_0100 // FILE_WRITE_ATTRIBUTES
++        | 0x0001_0000 // DELETE
++        | 0x0004_0000 // WRITE_DAC
++        | 0x0008_0000 // WRITE_OWNER
++        | 0x4000_0000 // GENERIC_WRITE
++        | 0x1000_0000; // GENERIC_ALL
++
++    let trustees = [EVERYONE, AUTHENTICATED_USERS, BUILTIN_USERS];
++    let Some(aces) = aces else {
++        // A null DACL grants full access to everyone.
++        return true;
++    };
++    aces.iter().any(|ace| {
++        !ace.deny && trustees.contains(&ace.sid.as_str()) && ace.mask & FILE_WRITE_MASK != 0
++    })
++}
++
+ /// The trustees whose ACEs on a persistent path belong to this crate.
+ #[derive(Debug, Clone, Copy)]
+ pub struct PersistentTrustees<'a> {
+@@ -3039,4 +3072,27 @@ mod tests {
+         assert_ne!(ow.bits(), 0);
+         assert_eq!(ow.bits() & Mask::WRITE_DAC.bits(), 0);
+     }
++
++    #[test]
++    fn broad_root_write_detection_only_matches_local_wide_allows() {
++        let everyone_create = AceView {
++            deny: false,
++            inherited: false,
++            flags: 0,
++            mask: 0x4, // FILE_ADD_SUBDIRECTORY
++            sid: "S-1-5-11".into(),
++        };
++        let everyone_deny = AceView {
++            deny: true,
++            ..everyone_create.clone()
++        };
++        let private_write = AceView {
++            sid: "S-1-5-21-1-2-3-1001".into(),
++            ..everyone_create.clone()
++        };
++        assert!(has_broad_write_allow_in(Some(&[everyone_create])));
++        assert!(!has_broad_write_allow_in(Some(&[everyone_deny])));
++        assert!(!has_broad_write_allow_in(Some(&[private_write])));
++        assert!(has_broad_write_allow_in(None), "null DACL is open");
++    }
+ }
+diff --git a/vendor/srt-win-src/src/ambient.rs b/vendor/srt-win-src/src/ambient.rs
+index 31f2b19..e42cf32 100644
+--- a/vendor/srt-win-src/src/ambient.rs
++++ b/vendor/srt-win-src/src/ambient.rs
+@@ -1,49 +1,34 @@
+ //! Install-time ambient write-deny targets.
+ //!
+-//! The sandbox-user FS model's confinement premise — "a fresh local
+-//! account has no inherent rights on real-user files" — holds under
+-//! inheritance-protected profiles but NOT in Windows' stock
+-//! world-writable corners: directories whose DACLs grant
+-//! Users/Authenticated Users write access to every local account,
+-//! the sandbox user included. `srt-win install` stamps each of these
+-//! with `(D;OICI;WriteDeny;;;<sb-SID>)` (scoped to the sandbox user
+-//! only; reads unaffected), records them in the state DB
+-//! (`ambient_denies`), and `uninstall` removes them. Recording them
+-//! makes [`crate::state_db`]'s recompose chokepoint fold the deny
+-//! into every converge, so a session grant/stamp/release or crash
+-//! recovery on the same path can never strip an install-time deny.
++//! A fresh local account still inherits access granted to broad local
++//! principals. The installer therefore denies writes to the sandbox
++//! SID on known world-writable Windows directories and on any mounted
++//! local volume root whose DACL grants write access to Everyone,
++//! Authenticated Users, or BUILTIN\\Users. These are additive ACEs
++//! scoped to the dedicated sandbox SID; other users are unaffected.
++//! Recording them in HKLM lets the ACL recompose path preserve the
++//! deny across session grants and recovery. Uninstall removes only
++//! the sandbox SID's ACEs.
+ //!
+-//! Deliberately NOT in this list:
+-//! - Drive roots (`C:\`, `D:\`): semantically fine — inherited denies
+-//!   compose correctly with grants (nearer-ancestor allow wins) — but
+-//!   `SetNamedSecurityInfoW` materializes inheritable ACEs onto every
+-//!   unprotected descendant, so stamping a volume root rewrites DACLs
+-//!   volume-wide at stamp and unstamp time. Tracked separately.
+-//! - Third-party subtrees that sever inheritance and grant Users
+-//!   (`C:\ProgramData\<app>` with its own permissive protected DACL):
+-//!   unreachable by any ancestor stamp; the WRITE_RESTRICTED-token
+-//!   mechanism that would close them wholesale breaks Schannel by
+-//!   LSASS policy (see RESTRICTINGSIDS-RESULTS.md).
++//! A volume-root deny is intentionally conditional: Windows propagates
++//! inheritable ACEs through the volume when applying/removing it, so
++//! installation can take longer on large volumes. It is done once per
++//! install, not per command. A nearer explicit workspace grant remains
++//! usable and is covered by the Windows integration suite.
+ 
++use anyhow::{Result, bail};
+ use std::path::Path;
+ 
+-/// The fixed world-writable system list, resolved against this
+-/// machine's environment. Entries that do not exist on this SKU are
+-/// omitted (e.g. `FxsTmp` is absent on some arm64 builds; `SysWOW64`
+-/// twins exist only where WOW64 is installed).
+-///
+-/// Sources: stock Windows 11 DACLs, verified by probing sandboxed
+-/// writes (each of these accepted a write from the sandbox account
+-/// with zero grants): `%ProgramData%` (`Users:(WD,AD)` + CREATOR
+-/// OWNER), `%PUBLIC%`, and the classic `Users`-writable spool/temp
+-/// dirs under `%SystemRoot%`.
+-pub fn ambient_deny_targets() -> Vec<String> {
++/// Resolve the fixed set of writable Windows locations and inspect
++/// mounted local volume roots. Failure to enumerate or inspect a root
++/// is an install error; silently skipping one would weaken confinement.
++pub fn ambient_deny_targets() -> Result<Vec<String>> {
+     let program_data = std::env::var("ProgramData").unwrap_or_else(|_| r"C:\ProgramData".into());
+     let public = std::env::var("PUBLIC").unwrap_or_else(|_| r"C:\Users\Public".into());
+     let system_root = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
+     let sr = |tail: &str| -> String { format!("{system_root}\\{tail}") };
+ 
+-    let candidates: Vec<String> = vec![
++    let mut candidates: Vec<String> = vec![
+         program_data,
+         public,
+         sr("Temp"),
+@@ -58,10 +43,58 @@ pub fn ambient_deny_targets() -> Vec<String> {
+         sr(r"SysWOW64\com\dmp"),
+         sr(r"SysWOW64\Tasks"),
+     ];
+-    candidates
+-        .into_iter()
+-        .filter(|p| Path::new(p).is_dir())
+-        .collect()
++    candidates.retain(|p| Path::new(p).is_dir());
++
++    candidates.extend(writable_volume_roots()?);
++    candidates.sort_by_key(|p| p.to_ascii_lowercase());
++    candidates.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
++    Ok(candidates)
++}
++
++/// Mounted local volume roots with a broad write allow. Kept separate
++/// from the fixed system-directory set so an unelevated host can reconcile
++/// newly attached volumes without probing protected system ACLs.
++pub fn writable_volume_roots() -> Result<Vec<String>> {
++    let roots = crate::path_id::local_volume_roots();
++    if roots.is_empty() {
++        bail!("could not enumerate any local volume roots");
++    }
++    let mut writable = Vec::new();
++    use windows::Win32::Storage::FileSystem::GetVolumePathNamesForVolumeNameW;
++    for volume in roots {
++        // A GUID root with no mount path is not reachable through
++        // ordinary filesystem paths. All mounted paths are checked;
++        // canonicalization resolves directory mount points to the
++        // volume root they expose.
++        let volume_w = crate::util::wstr(&volume);
++        let mut paths_w = vec![0u16; 32_768];
++        let mut chars = 0u32;
++        unsafe {
++            GetVolumePathNamesForVolumeNameW(
++                windows::core::PCWSTR(volume_w.as_ptr()),
++                Some(&mut paths_w),
++                &mut chars,
++            )
++        }
++        .map_err(|e| anyhow::anyhow!("enumerate mount paths for {volume:?}: {e}"))?;
++        let mut mounted = paths_w[..(chars as usize).min(paths_w.len())]
++            .split(|c| *c == 0)
++            .filter(|part| !part.is_empty())
++            .map(String::from_utf16_lossy)
++            .collect::<Vec<_>>();
++        mounted.sort_by_key(|p| p.to_ascii_lowercase());
++        mounted.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
++        for mount_path in mounted {
++            let (canonical, _) = crate::path_id::canonicalize_path(&mount_path)
++                .map_err(|e| anyhow::anyhow!("inspect mounted volume root {mount_path:?}: {e}"))?;
++            if crate::acl::has_broad_write_allow(&canonical)? {
++                writable.push(canonical);
++            }
++        }
++    }
++    writable.sort_by_key(|p| p.to_ascii_lowercase());
++    writable.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
++    Ok(writable)
+ }
+ 
+ #[cfg(test)]
+@@ -70,19 +103,27 @@ mod tests {
+ 
+     #[test]
+     fn targets_exist_and_are_absolute() {
+-        for t in ambient_deny_targets() {
++        for t in ambient_deny_targets().unwrap() {
++            assert!(Path::new(&t).is_absolute(), "{t} should be absolute");
+             assert!(Path::new(&t).is_dir(), "{t} should exist");
+-            assert!(t.chars().nth(1) == Some(':'), "{t} should be absolute");
+         }
+     }
+ 
+     /// On any Windows box the big three resolve and exist.
+     #[test]
+     fn core_targets_present() {
+-        let ts = ambient_deny_targets();
++        let ts = ambient_deny_targets().unwrap();
+         let has = |frag: &str| ts.iter().any(|t| t.to_ascii_lowercase().contains(frag));
+         assert!(has("programdata"), "ProgramData missing from {ts:?}");
+         assert!(has("public"), "Public missing from {ts:?}");
+         assert!(has(r"\temp"), "Windows\\Temp missing from {ts:?}");
+     }
++
++    #[test]
++    fn writable_volume_roots_are_selected_but_private_roots_are_not() {
++        let targets = ambient_deny_targets().unwrap();
++        for canonical in writable_volume_roots().unwrap() {
++            assert!(targets.iter().any(|p| p.eq_ignore_ascii_case(&canonical)));
++        }
++    }
+ }
+diff --git a/vendor/srt-win-src/src/cli.rs b/vendor/srt-win-src/src/cli.rs
+index 53613c0..4c5dcb3 100644
+--- a/vendor/srt-win-src/src/cli.rs
++++ b/vendor/srt-win-src/src/cli.rs
+@@ -14,6 +14,7 @@
+ //!                                         user-SID-keyed WFP filters
+ //!                                         (one UAC prompt)
+ //!   status                             — combined `{user, wfp}` JSON
++//!   ambient ensure                     — reconcile mounted volume roots
+ //!   user   status | read-cred | trust-ca — inspect the sandbox user
+ //!   wfp    status | verify | uninstall — inspect/probe/remove WFP filters
+ //!   acl    stamp | grant | restore | revoke | recover | forget
+@@ -25,7 +26,9 @@
+ //!   exec   -- <target> [args...]       — spawn under the two-hop
+ //!                                         sandbox-user lockdown
+ //!
+-//! `status` subcommands write one line of JSON to stdout and exit 0.
++//! `status` and `ambient ensure` write one line of JSON to stdout on
++//! success. `ambient ensure` elevates only when its read-only check
++//! finds a newly mounted or drifted writable volume root.
+ //! Mutating subcommands require elevation and write human-readable
+ //! progress to stderr. `exec` propagates the child's exit code.
+ //!
+@@ -197,6 +200,12 @@ enum Cmd {
+         #[arg(long)]
+         sublayer_guid: Option<String>,
+     },
++    /// Reconcile newly mounted world-writable local volumes. Performs
++    /// a read-only fast path and elevates only when a root needs repair.
++    Ambient {
++        #[command(subcommand)]
++        sub: AmbientCmd,
++    },
+     /// Inspect the sandbox user account that `srt-win install`
+     /// provisions (and that the sandboxed child runs as).
+     User {
+@@ -552,6 +561,13 @@ enum UserCmd {
+     },
+ }
+ 
++#[derive(Subcommand)]
++enum AmbientCmd {
++    /// Ensure every currently reachable local volume with broad write
++    /// access carries the sandbox-user-only deny ACE.
++    Ensure,
++}
++
+ #[derive(Subcommand)]
+ enum AclCmd {
+     /// Read `{denyRead:[…], denyWrite:[…]}` from stdin and add an
+@@ -1359,7 +1375,7 @@ fn run(cli: Cli, args: &[OsString]) -> anyhow::Result<()> {
+             let existing = install::read_setup().ok().flatten();
+             // Shared by the early-out completeness check and the
+             // stamping step below (env reads + a stat per entry).
+-            let ambient_targets = srt_win::ambient::ambient_deny_targets();
++            let ambient_targets = srt_win::ambient::ambient_deny_targets()?;
+             let name_changed = existing.as_ref().is_some_and(|s| s.sandbox_user != name);
+             if !force
+                 && let Some(why) = existing
+@@ -1733,6 +1749,68 @@ fn run(cli: Cli, args: &[OsString]) -> anyhow::Result<()> {
+             );
+         }
+ 
++        // ─── ambient volume protection ────────────────────────────
++        Cmd::Ambient {
++            sub: AmbientCmd::Ensure,
++        } => {
++            use srt_win::install;
++            let setup = install::read_setup()?
++                .ok_or_else(|| anyhow!("sandbox user not provisioned"))?;
++            if let Some(why) = install::newer_setup_refusal(setup.marker_version) {
++                return Err(anyhow!("{why}"));
++            }
++            let targets = srt_win::ambient::writable_volume_roots()?;
++            let missing = install::ambient_missing_targets(&setup.sandbox_user_sid, &targets)?;
++            if missing.is_empty() {
++                println!("{}", json!({"state":"complete","checked":targets.len(),"repaired":[]}));
++                return Ok(());
++            }
++
++            if let Some(code) = maybe_self_elevate(args)? {
++                if code != 0 {
++                    std::process::exit(code);
++                }
++                // ShellExecuteEx does not inherit the caller's redirected
++                // stdout. Re-check after the elevated child exits, then emit
++                // the machine-readable result from this unelevated process.
++                let setup = install::read_setup()?
++                    .ok_or_else(|| anyhow!("sandbox user not provisioned"))?;
++                let targets = srt_win::ambient::writable_volume_roots()?;
++                let remaining =
++                    install::ambient_missing_targets(&setup.sandbox_user_sid, &targets)?;
++                if !remaining.is_empty() {
++                    return Err(anyhow!(
++                        "elevated repair returned success but {} writable volume root(s) remain unprotected: {}",
++                        remaining.len(),
++                        remaining.join(", ")
++                    ));
++                }
++                println!(
++                    "{}",
++                    json!({"state":"complete","checked":targets.len(),"repaired":missing})
++                );
++                return Ok(());
++            }
++            // A drive can be mounted/unmounted while UAC is open. Recompute
++            // after elevation so we repair the current set, not a stale scan.
++            let setup = install::read_setup()?
++                .ok_or_else(|| anyhow!("sandbox user not provisioned"))?;
++            let targets = srt_win::ambient::writable_volume_roots()?;
++            let missing = install::ambient_missing_targets(&setup.sandbox_user_sid, &targets)?;
++            let report = install::set_ambient_denies(&setup.sandbox_user_sid, &missing)?;
++            if !report.failed.is_empty() {
++                return Err(anyhow!(
++                    "could not protect {} writable volume root(s): {}",
++                    report.failed.len(),
++                    report.failed.join(", ")
++                ));
++            }
++            println!(
++                "{}",
++                json!({"state":"complete","checked":targets.len(),"repaired":report.applied})
++            );
++        }
++
+         // ─── user ──────────────────────────────────────────────────
+         Cmd::User {
+             sub: UserCmd::Status,
+@@ -3455,6 +3533,19 @@ mod tests {
+         ));
+     }
+ 
++    /// Ambient reconciliation has an explicit nested command so hosts can
++    /// run its read-only fast path before each sandbox session.
++    #[test]
++    fn ambient_ensure_subcommand_parses() {
++        let parsed = Cli::try_parse_from(["srt-win", "ambient", "ensure"]).expect("parse");
++        assert!(matches!(
++            parsed.cmd,
++            Cmd::Ambient {
++                sub: AmbientCmd::Ensure
++            }
++        ));
++    }
++
+     /// `--quiet` on `exec` parses and defaults false. Placement
+     /// before `--` (where the TS wrapper puts it) is accepted.
+     #[test]
+diff --git a/vendor/srt-win-src/src/install.rs b/vendor/srt-win-src/src/install.rs
+index 9466d08..4a67faf 100644
+--- a/vendor/srt-win-src/src/install.rs
++++ b/vendor/srt-win-src/src/install.rs
+@@ -234,17 +234,34 @@ pub fn ambient_deny_recorded(canon: &str) -> bool {
+ /// longer canonicalize are ignored; any error reads as incomplete
+ /// (the idempotent install steps just run).
+ pub fn ambient_complete(sandbox_sid: &str, raw_targets: &[String]) -> bool {
+-    let recorded = match ambient_recorded_paths() {
+-        Ok(v) => v,
+-        Err(_) => return false,
+-    };
+-    raw_targets.iter().all(|raw| {
+-        let Ok((canon, _)) = crate::path_id::canonicalize_path(raw) else {
+-            return true;
++    ambient_missing_targets(sandbox_sid, raw_targets)
++        .is_ok_and(|missing| missing.is_empty())
++}
++
++/// Current roots that are absent from the install record or have lost
++/// their sandbox-only deny ACE. This read-only form lets callers avoid
++/// elevation when the current mounted-volume set is already protected.
++pub fn ambient_missing_targets(
++    sandbox_sid: &str,
++    raw_targets: &[String],
++) -> Result<Vec<String>> {
++    let recorded = ambient_recorded_paths()?;
++    let mut missing = Vec::new();
++    for raw in raw_targets {
++        let (canon, _) = match crate::path_id::canonicalize_path(raw) {
++            Ok(value) => value,
++            // Targets may disappear between discovery and the check.
++            // They cannot be reached by the child process now.
++            Err(crate::path_id::CanonError::NotFound(_)) => continue,
++            Err(error) => return Err(anyhow::anyhow!("inspect ambient target {raw:?}: {error}")),
+         };
+-        recorded.contains(&canon)
+-            && crate::acl::sandbox_deny_present(&canon, sandbox_sid).unwrap_or(false)
+-    })
++        if !recorded.contains(&canon)
++            || !crate::acl::sandbox_deny_present(&canon, sandbox_sid).unwrap_or(false)
++        {
++            missing.push(canon);
++        }
++    }
++    Ok(missing)
+ }
+ 
+ /// Stamp the ambient write-denies: apply `(D;OICI;WriteDeny)` for
+diff --git a/vendor/srt-win-src/src/path_id.rs b/vendor/srt-win-src/src/path_id.rs
+index 0eb6644..f656686 100644
+--- a/vendor/srt-win-src/src/path_id.rs
++++ b/vendor/srt-win-src/src/path_id.rs
+@@ -595,7 +595,7 @@ pub fn on_network_drive(canon: &str) -> bool {
+ /// The root (`\\\\?\\Volume{…}\\`) of every volume on this machine, whether
+ /// it has a drive letter, is mounted only at a folder, or neither.
+ /// Network shares are not volumes and are not among them.
+-fn local_volume_roots() -> Vec<String> {
++pub(crate) fn local_volume_roots() -> Vec<String> {
+     use windows::Win32::Storage::FileSystem::{FindFirstVolumeW, FindNextVolumeW, FindVolumeClose};
+     let mut out = Vec::new();
+     // A volume GUID path is 49 characters and a NUL.

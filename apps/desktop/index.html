@@ -7,12 +7,22 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self';"
     />
-    <meta name="theme-color" content="#f1f3f0" />
-    <link rel="stylesheet" href="./src/index.css" />
+    <meta name="theme-color" content="#fcfcfc" />
+    <link rel="stylesheet" href="./src/renderer/styles/index.css" />
+    <link rel="stylesheet" href="./src/renderer/chat/social-chat-surface.css" />
+    <link
+      rel="stylesheet"
+      href="./src/renderer/projects/project-plan-panel.css"
+    />
+    <link
+      rel="stylesheet"
+      href="./src/renderer/search/global-search-dialog.css"
+    />
+    <link rel="stylesheet" href="./src/renderer/onboarding/first-meeting.css" />
     <title>Noema</title>
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/renderer.tsx"></script>
+    <script type="module" src="/src/renderer/renderer.tsx"></script>
   </body>
 </html>

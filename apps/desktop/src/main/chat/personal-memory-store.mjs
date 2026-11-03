@@ -1,0 +1,269 @@
+import { randomUUID } from 'node:crypto';
+import { isoNow, requireText } from './records.mjs';
+
+const MAX_MEMORY_LENGTH = 2_000;
+const MAX_SEARCH_RESULTS = 5;
+const MAX_SEARCH_CHARACTERS = 4_000;
+
+function normalizeContent(value) {
+  const content = requireText(value, '个人记忆', MAX_MEMORY_LENGTH);
+  return content.trim();
+}
+
+/** @param {import('better-sqlite3').Database} db */
+export class PersonalMemoryStore {
+  constructor(db) {
+    this.db = db;
+  }
+
+  isEnabled() {
+    const row = this.db
+      .prepare(
+        "SELECT value FROM app_settings WHERE key = 'personal_memory_enabled'",
+      )
+      .get();
+    return row?.value !== 'false';
+  }
+
+  setEnabled(enabled) {
+    if (typeof enabled !== 'boolean')
+      throw new TypeError('个人记忆开关必须是布尔值。');
+    this.db
+      .prepare(`
+        INSERT INTO app_settings(key, value, updated_at)
+        VALUES ('personal_memory_enabled', ?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value,
+          updated_at = excluded.updated_at
+      `)
+      .run(String(enabled), isoNow());
+    return this.isEnabled();
+  }
+
+  list() {
+    const items = this.db
+      .prepare(`
+        SELECT m.id, m.content, m.source_kind AS sourceKind,
+               m.source_room_id AS sourceRoomId,
+               m.source_message_id AS sourceMessageId,
+               m.created_at AS createdAt, m.updated_at AS updatedAt,
+               room.title AS sourceRoomTitle,
+               source.created_at AS sourceMessageCreatedAt,
+               source.status AS sourceMessageStatus
+        FROM social_user_memories AS m
+        LEFT JOIN social_rooms AS room ON room.id = m.source_room_id
+        LEFT JOIN social_messages AS source ON source.id = m.source_message_id
+        ORDER BY m.updated_at DESC, m.id
+      `)
+      .all();
+    return { enabled: this.isEnabled(), items };
+  }
+
+  #validateSource(sourceRoomId, sourceMessageId) {
+    if (!sourceRoomId && !sourceMessageId) {
+      return {
+        sourceKind: 'manual',
+        sourceRoomId: null,
+        sourceMessageId: null,
+      };
+    }
+    const roomId = requireText(sourceRoomId, '来源聊天 ID', 200);
+    const messageId = requireText(sourceMessageId, '来源消息 ID', 200);
+    const source = this.db
+      .prepare(`
+        WITH RECURSIVE noema_rooms(id) AS (
+          SELECT id FROM social_rooms WHERE id = 'room-noema' AND kind = 'direct'
+          UNION ALL
+          SELECT child.id FROM social_rooms AS child
+          JOIN noema_rooms AS parent ON child.parent_room_id = parent.id
+        )
+        SELECT m.id, m.room_id AS roomId
+        FROM social_messages AS m
+        JOIN noema_rooms AS room ON room.id = m.room_id
+        WHERE m.id = ? AND m.room_id = ? AND m.role = 'user' AND m.status = 'complete'
+      `)
+      .get(messageId, roomId);
+    if (!source)
+      throw new Error('个人记忆来源必须是 Noema 主聊中的已完成用户消息。');
+    return {
+      sourceKind: 'message',
+      sourceRoomId: roomId,
+      sourceMessageId: messageId,
+    };
+  }
+
+  add({ content, sourceRoomId = null, sourceMessageId = null }) {
+    const normalized = normalizeContent(content);
+    const source = this.#validateSource(sourceRoomId, sourceMessageId);
+    const id = `memory-${randomUUID()}`;
+    const now = isoNow();
+    this.db.transaction(() => {
+      this.db
+        .prepare(`
+          INSERT INTO social_user_memories
+            (id, content, source_kind, source_room_id, source_message_id, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `)
+        .run(
+          id,
+          normalized,
+          source.sourceKind,
+          source.sourceRoomId,
+          source.sourceMessageId,
+          now,
+          now,
+        );
+      this.db
+        .prepare(
+          'INSERT INTO social_user_memories_fts(memory_id, content) VALUES (?, ?)',
+        )
+        .run(id, normalized);
+    })();
+    return this.get(id);
+  }
+
+  update({ id, content, sourceRoomId = null, sourceMessageId = null }) {
+    const memoryId = requireText(id, '个人记忆 ID', 200);
+    const normalized = normalizeContent(content);
+    const source = this.#validateSource(sourceRoomId, sourceMessageId);
+    const now = isoNow();
+    return this.db.transaction(() => {
+      const updated = this.db
+        .prepare(`
+          UPDATE social_user_memories SET content = ?, source_kind = ?,
+            source_room_id = ?, source_message_id = ?, updated_at = ?
+          WHERE id = ?
+        `)
+        .run(
+          normalized,
+          source.sourceKind,
+          source.sourceRoomId,
+          source.sourceMessageId,
+          now,
+          memoryId,
+        );
+      if (updated.changes !== 1) throw new Error('找不到这条个人记忆。');
+      this.db
+        .prepare('DELETE FROM social_user_memories_fts WHERE memory_id = ?')
+        .run(memoryId);
+      this.db
+        .prepare(
+          'INSERT INTO social_user_memories_fts(memory_id, content) VALUES (?, ?)',
+        )
+        .run(memoryId, normalized);
+      return this.get(memoryId);
+    })();
+  }
+
+  delete(id) {
+    const memoryId = requireText(id, '个人记忆 ID', 200);
+    return this.db.transaction(() => {
+      this.db
+        .prepare('DELETE FROM social_user_memories_fts WHERE memory_id = ?')
+        .run(memoryId);
+      return (
+        this.db
+          .prepare('DELETE FROM social_user_memories WHERE id = ?')
+          .run(memoryId).changes === 1
+      );
+    })();
+  }
+
+  get(id) {
+    return (
+      this.db
+        .prepare(`
+          SELECT m.id, m.content, m.source_kind AS sourceKind,
+                 m.source_room_id AS sourceRoomId,
+                 m.source_message_id AS sourceMessageId,
+                 m.created_at AS createdAt, m.updated_at AS updatedAt,
+                 room.title AS sourceRoomTitle,
+                 source.created_at AS sourceMessageCreatedAt,
+                 source.status AS sourceMessageStatus
+          FROM social_user_memories AS m
+          LEFT JOIN social_rooms AS room ON room.id = m.source_room_id
+          LEFT JOIN social_messages AS source ON source.id = m.source_message_id
+          WHERE m.id = ?
+        `)
+        .get(id) ?? null
+    );
+  }
+
+  search(
+    query,
+    { limit = MAX_SEARCH_RESULTS, maxCharacters = MAX_SEARCH_CHARACTERS } = {},
+  ) {
+    if (!this.isEnabled()) return [];
+    const needle = requireText(query, '个人记忆搜索内容', 120)
+      .replace(/[\s\p{P}\p{S}]+/gu, ' ')
+      .trim();
+    if (Array.from(needle.replace(/\s+/gu, '')).length < 2) return [];
+    const safeLimit = Math.max(1, Math.min(MAX_SEARCH_RESULTS, limit));
+    const safeMaxCharacters = Math.max(
+      100,
+      Math.min(MAX_SEARCH_CHARACTERS, maxCharacters),
+    );
+    const phrase = needle
+      .split(/\s+/u)
+      .filter((term) => Array.from(term).length >= 3)
+      .map((term) => `"${term.replace(/"/gu, '""')}"`)
+      .join(' OR ');
+    const rows = phrase
+      ? this.db
+          .prepare(`
+        SELECT m.id, m.content, m.source_kind AS sourceKind,
+               m.source_room_id AS sourceRoomId,
+               m.source_message_id AS sourceMessageId,
+               m.updated_at AS updatedAt,
+               room.title AS sourceRoomTitle,
+               source.created_at AS sourceMessageCreatedAt
+        FROM social_user_memories_fts AS f
+        JOIN social_user_memories AS m ON m.id = f.memory_id
+        LEFT JOIN social_rooms AS room ON room.id = m.source_room_id
+        LEFT JOIN social_messages AS source ON source.id = m.source_message_id
+        WHERE social_user_memories_fts MATCH ?
+        ORDER BY bm25(social_user_memories_fts), m.updated_at DESC
+        LIMIT ?
+      `)
+          .all(phrase, safeLimit)
+      : this.db
+          .prepare(`
+        SELECT m.id, m.content, m.source_kind AS sourceKind,
+               m.source_room_id AS sourceRoomId,
+               m.source_message_id AS sourceMessageId,
+               m.updated_at AS updatedAt,
+               room.title AS sourceRoomTitle,
+               source.created_at AS sourceMessageCreatedAt
+        FROM social_user_memories AS m
+        LEFT JOIN social_rooms AS room ON room.id = m.source_room_id
+        LEFT JOIN social_messages AS source ON source.id = m.source_message_id
+        WHERE ${needle
+          .split(/\s+/u)
+          .filter((term) => Array.from(term).length >= 2)
+          .map(() => 'instr(m.content, ?) > 0')
+          .join(' OR ')}
+        ORDER BY m.updated_at DESC
+        LIMIT ?
+      `)
+          .all(
+            ...needle
+              .split(/\s+/u)
+              .filter((term) => Array.from(term).length >= 2),
+            safeLimit,
+          );
+    const result = [];
+    let totalCharacters = 0;
+    for (const row of rows) {
+      const size = row.content.length;
+      if (totalCharacters + size > safeMaxCharacters) continue;
+      result.push(row);
+      totalCharacters += size;
+    }
+    return result;
+  }
+}
+
+export const PERSONAL_MEMORY_LIMITS = Object.freeze({
+  maxEntryLength: MAX_MEMORY_LENGTH,
+  maxSearchResults: MAX_SEARCH_RESULTS,
+  maxSearchCharacters: MAX_SEARCH_CHARACTERS,
+});

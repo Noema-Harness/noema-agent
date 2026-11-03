@@ -1,3 +1,5 @@
+import { developmentRoot } from '../test-support/development-workspace.mjs';
+import { createSocialTestStore } from '../test-support/social-team.mjs';
 import { spawn } from 'node:child_process';
 import Database from 'better-sqlite3';
 import {
@@ -7,11 +9,9 @@ import {
   readFileSync,
   rmSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { RootStore } from '../src/root-store.mjs';
-import { SocialChatStore } from '../src/social-chat-store.mjs';
+import { RootStore } from '../src/main/storage/root-store.mjs';
 import { configureElectronRuntime } from './electron-runtime.mjs';
 
 configureElectronRuntime();
@@ -28,56 +28,108 @@ if (
   throw new Error('Run this check with Node.js 24.21.x.');
 }
 
-const configuredE2eRoot = process.env.NOEMA_E2E_ROOT_DIR ?? tmpdir();
+const configuredE2eRoot = developmentRoot();
 const liveProviderE2e = process.argv.includes('--live');
+const attachmentsOnly = process.argv.includes('--attachments-only');
 const liveModel = 'auto:noema-free';
 if (!path.isAbsolute(configuredE2eRoot) || !existsSync(configuredE2eRoot)) {
   throw new Error('The isolated E2E root directory must already exist.');
 }
 const e2eRoot = path.resolve(configuredE2eRoot);
-const e2eDirectory = mkdtempSync(path.join(e2eRoot, 'Noema-social-agents-'));
+const runDirectory = mkdtempSync(path.join(e2eRoot, 'Noema-social-agents-'));
+// Scenario data and Electron's profile must be siblings: the runtime rejects
+// either directory containing the other to protect the user's application data.
+const e2eDirectory = path.join(runDirectory, 'scenario');
+mkdirSync(e2eDirectory);
+const electronUserDataDirectory = mkdtempSync(
+  path.join(runDirectory, 'Noema-social-agents-electron-home-'),
+);
 const databasePath = path.join(e2eDirectory, 'noema.sqlite3');
 const dshUserDataPath = path.join(e2eDirectory, 'dsh-home');
 const resultPath = path.join(e2eDirectory, 'result.json');
 const smokeLogPath = path.join(e2eDirectory, 'smoke-log.json');
 const screenshotTag = Date.now();
 const desktopScreenshotPath = path.join(
-  e2eRoot,
+  e2eDirectory,
   `Noema-agent-create-desktop-${screenshotTag}.png`,
 );
 const narrowScreenshotPath = path.join(
-  e2eRoot,
+  e2eDirectory,
   `Noema-agent-create-narrow-${screenshotTag}.png`,
 );
 const contactDesktopScreenshotPath = path.join(
-  e2eRoot,
+  e2eDirectory,
   `Noema-agent-capability-desktop-${screenshotTag}.png`,
 );
 const contactNarrowScreenshotPath = path.join(
-  e2eRoot,
+  e2eDirectory,
   `Noema-agent-capability-narrow-${screenshotTag}.png`,
 );
 const forwardDesktopScreenshotPath = path.join(
-  e2eRoot,
+  e2eDirectory,
   `Noema-cross-room-forward-desktop-${screenshotTag}.png`,
 );
 const forwardNarrowScreenshotPath = path.join(
-  e2eRoot,
+  e2eDirectory,
   `Noema-cross-room-forward-narrow-${screenshotTag}.png`,
 );
-const interactionDesktopScreenshotPath = path.join(
-  e2eRoot,
-  `Noema-interaction-adjustment-desktop-${screenshotTag}.png`,
+const delegationDesktopScreenshotPath = path.join(
+  e2eDirectory,
+  `Noema-specialist-delegation-desktop-${screenshotTag}.png`,
 );
-const interactionNarrowScreenshotPath = path.join(
-  e2eRoot,
-  `Noema-interaction-adjustment-narrow-${screenshotTag}.png`,
+const delegationNarrowScreenshotPath = path.join(
+  e2eDirectory,
+  `Noema-specialist-delegation-narrow-${screenshotTag}.png`,
+);
+const messageSearchScreenshotPath = path.join(
+  e2eDirectory,
+  `Noema-message-search-${screenshotTag}.png`,
+);
+const historyRecallScreenshotPath = path.join(
+  e2eDirectory,
+  `Noema-history-recall-${screenshotTag}.png`,
+);
+const continuationDesktopScreenshotPath = path.join(
+  e2eDirectory,
+  `Noema-continuation-desktop-${screenshotTag}.png`,
+);
+const continuationNarrowScreenshotPath = path.join(
+  e2eDirectory,
+  `Noema-continuation-narrow-${screenshotTag}.png`,
+);
+const continuationRoomDesktopScreenshotPath = path.join(
+  e2eDirectory,
+  `Noema-continuation-room-desktop-${screenshotTag}.png`,
+);
+const continuationRoomNarrowScreenshotPath = path.join(
+  e2eDirectory,
+  `Noema-continuation-room-narrow-${screenshotTag}.png`,
+);
+const agentProfileDesktopScreenshotPath = path.join(
+  e2eDirectory,
+  `Noema-agent-profile-desktop-${screenshotTag}.png`,
+);
+const agentProfileNarrowScreenshotPath = path.join(
+  e2eDirectory,
+  `Noema-agent-profile-narrow-${screenshotTag}.png`,
+);
+const projectScreenshotPath = path.join(
+  e2eDirectory,
+  `Noema-project-space-${screenshotTag}.png`,
+);
+const attachmentDesktopScreenshotPath = path.join(
+  e2eDirectory,
+  `Noema-text-attachment-desktop-${screenshotTag}.png`,
+);
+const attachmentNarrowScreenshotPath = path.join(
+  e2eDirectory,
+  `Noema-text-attachment-narrow-${screenshotTag}.png`,
 );
 mkdirSync(dshUserDataPath, { recursive: true });
 const seedDatabase = new Database(databasePath);
 const seedRoot = new RootStore(seedDatabase);
 if (liveProviderE2e) seedRoot.setSelectedModel(liveModel);
-const seedSocial = new SocialChatStore(seedDatabase);
+const seedSocial = createSocialTestStore(seedDatabase);
 const sourceTurn = seedSocial.beginTurn({
   roomId: 'room-engineering-partner',
   agentId: 'engineering-partner',
@@ -103,7 +155,7 @@ seedSocial.completeReply(unrelatedTurn.assistantMessageId);
 const interactionSource = seedSocial.beginTurn({
   roomId: 'room-noema',
   agentId: 'noema',
-  text: 'E2E 原话标记：分享不愉快经历时，请先问我最在意的部分。',
+  text: '分享不愉快经历时，请先问我最在意的部分。',
   model: 'e2e-forward-seed',
 });
 seedSocial.appendAssistantDelta(
@@ -123,9 +175,11 @@ const child = spawn(process.execPath, ['scripts/start.mjs'], {
       .filter(Boolean)
       .join(path.delimiter),
     NOEMA_SMOKE_TEST: '1',
+    NOEMA_SMOKE_USER_DATA_DIR: electronUserDataDirectory,
     NOEMA_E2E_DATABASE_PATH: databasePath,
     NOEMA_E2E_DSH_USER_DATA_PATH: dshUserDataPath,
     NOEMA_E2E_SOCIAL_AGENT_WORKFLOW: '1',
+    NOEMA_E2E_SOCIAL_ATTACHMENTS_ONLY: attachmentsOnly ? '1' : '0',
     NOEMA_E2E_SOCIAL_AGENT_LIVE: liveProviderE2e ? '1' : '0',
     NOEMA_E2E_SOCIAL_AGENT_LIVE_MODEL: liveProviderE2e ? liveModel : '',
     NOEMA_SMOKE_REFRESH_MODELS: liveProviderE2e ? '1' : '0',
@@ -137,9 +191,25 @@ const child = spawn(process.execPath, ['scripts/start.mjs'], {
     NOEMA_SMOKE_SOCIAL_AGENT_CONTACT_NARROW_PATH: contactNarrowScreenshotPath,
     NOEMA_SMOKE_SOCIAL_FORWARD_DESKTOP_PATH: forwardDesktopScreenshotPath,
     NOEMA_SMOKE_SOCIAL_FORWARD_NARROW_PATH: forwardNarrowScreenshotPath,
-    NOEMA_SMOKE_SOCIAL_ADJUSTMENT_DESKTOP_PATH:
-      interactionDesktopScreenshotPath,
-    NOEMA_SMOKE_SOCIAL_ADJUSTMENT_NARROW_PATH: interactionNarrowScreenshotPath,
+    NOEMA_SMOKE_SOCIAL_DELEGATION_DESKTOP_PATH: delegationDesktopScreenshotPath,
+    NOEMA_SMOKE_SOCIAL_DELEGATION_NARROW_PATH: delegationNarrowScreenshotPath,
+    NOEMA_SMOKE_SOCIAL_SEARCH_PATH: messageSearchScreenshotPath,
+    NOEMA_SMOKE_SOCIAL_HISTORY_RECALL_PATH: historyRecallScreenshotPath,
+    NOEMA_SMOKE_SOCIAL_CONTINUATION_DESKTOP_PATH:
+      continuationDesktopScreenshotPath,
+    NOEMA_SMOKE_SOCIAL_CONTINUATION_NARROW_PATH:
+      continuationNarrowScreenshotPath,
+    NOEMA_SMOKE_SOCIAL_CONTINUATION_ROOM_DESKTOP_PATH:
+      continuationRoomDesktopScreenshotPath,
+    NOEMA_SMOKE_SOCIAL_CONTINUATION_ROOM_NARROW_PATH:
+      continuationRoomNarrowScreenshotPath,
+    NOEMA_SMOKE_SOCIAL_AGENT_PROFILE_PATH: agentProfileDesktopScreenshotPath,
+    NOEMA_SMOKE_SOCIAL_AGENT_PROFILE_NARROW_PATH:
+      agentProfileNarrowScreenshotPath,
+    NOEMA_SMOKE_SOCIAL_PROJECT_PATH: projectScreenshotPath,
+    NOEMA_SMOKE_SOCIAL_ATTACHMENTS_DESKTOP_PATH:
+      attachmentDesktopScreenshotPath,
+    NOEMA_SMOKE_SOCIAL_ATTACHMENTS_NARROW_PATH: attachmentNarrowScreenshotPath,
   },
   stdio: 'inherit',
   windowsHide: true,
@@ -171,6 +241,7 @@ const result = JSON.parse(readFileSync(resultPath, 'utf8'));
 const summary = {
   ...result,
   liveProviderE2e,
+  attachmentsOnly,
   childExitCode: exit.code,
   childSignal: exit.signal,
   scratchDirectory: e2eDirectory,
@@ -180,22 +251,46 @@ const summary = {
   contactNarrowScreenshotPath,
   forwardDesktopScreenshotPath,
   forwardNarrowScreenshotPath,
-  interactionDesktopScreenshotPath,
-  interactionNarrowScreenshotPath,
+  delegationDesktopScreenshotPath,
+  delegationNarrowScreenshotPath,
+  messageSearchScreenshotPath,
+  historyRecallScreenshotPath,
+  continuationDesktopScreenshotPath,
+  continuationNarrowScreenshotPath,
+  continuationRoomDesktopScreenshotPath,
+  continuationRoomNarrowScreenshotPath,
+  agentProfileDesktopScreenshotPath,
+  agentProfileNarrowScreenshotPath,
+  projectScreenshotPath,
+  attachmentDesktopScreenshotPath,
+  attachmentNarrowScreenshotPath,
 };
 console.log(JSON.stringify(summary, null, 2));
 
-if (
+if (attachmentsOnly) {
+  if (
+    result.outcome !== 'passed' ||
+    !result.workflow?.textAttachments?.draftPreservedAfterRemoval ||
+    !result.workflow?.textAttachments?.messagePersisted ||
+    !result.workflow?.textAttachments?.modelReceivedAttachment ||
+    !result.workflow?.textAttachments?.singleModelRequest ||
+    !result.workflow?.textAttachments?.attachmentDraftCleared ||
+    result.workflow?.textAttachments?.desktop?.width < 700 ||
+    result.workflow?.textAttachments?.narrow?.width > 700 ||
+    !result.workflow?.textAttachments?.narrow?.documentNoOverflow ||
+    !existsSync(attachmentDesktopScreenshotPath) ||
+    !existsSync(attachmentNarrowScreenshotPath) ||
+    exit.code !== 0
+  ) {
+    process.exitCode = 1;
+  }
+} else if (
   result.outcome !== 'passed' ||
   !result.workflow?.cancelReturnedFocus ||
   !result.workflow?.initialDirectIsEmpty ||
-  !result.workflow?.interactionAdjustments?.created ||
-  !result.workflow?.interactionAdjustments?.sourceValidated ||
-  !result.workflow?.interactionAdjustments?.usedOnNoemaReply ||
-  !result.workflow?.interactionAdjustments?.updated ||
-  !result.workflow?.interactionAdjustments?.usedUpdatedBehavior ||
-  !result.workflow?.interactionAdjustments?.withdrawn ||
-  !result.workflow?.interactionAdjustments?.notUsedAfterWithdrawal ||
+  !result.workflow?.roomDraftIsolation?.partnerStartedEmpty ||
+  !result.workflow?.roomDraftIsolation?.noemaDraftRestored ||
+  !result.workflow?.roomDraftIsolation?.partnerDraftRestored ||
   !result.workflow?.projectWorkDefaultedOff ||
   !result.workflow?.capabilityWasExplicitlyGranted ||
   !result.workflow?.projectWorkOptInAndReversible ||
@@ -217,6 +312,16 @@ if (
   (liveProviderE2e &&
     !result.workflow?.forwarding?.liveProviderReplyComplete) ||
   !result.workflow?.forwarding?.cancelHadNoSend ||
+  (!liveProviderE2e && !result.workflow?.specialistDelegation?.passed) ||
+  (!liveProviderE2e &&
+    (!result.workflow?.historySearch?.earlierResultReached ||
+      !result.workflow?.historySearch?.crossRoomResultReached ||
+      !result.workflow?.historySearch?.searchClearedAfterOpen ||
+      !existsSync(messageSearchScreenshotPath) ||
+      !result.workflow?.historySearch?.recall?.sourceVisible ||
+      !result.workflow?.historySearch?.recall?.sourceJumped ||
+      result.workflow?.historySearch?.recall?.modelCalls !== 1 ||
+      !existsSync(historyRecallScreenshotPath))) ||
   (!liveProviderE2e &&
     !result.workflow?.forwarding?.currentRoomReplyAttached) ||
   result.workflow?.forwarding?.narrow?.width > 700 ||
@@ -225,14 +330,31 @@ if (
   (liveProviderE2e && !result.workflow?.forwarding?.liveProviderUsed) ||
   !existsSync(forwardDesktopScreenshotPath) ||
   !existsSync(forwardNarrowScreenshotPath) ||
-  !existsSync(interactionDesktopScreenshotPath) ||
-  !existsSync(interactionNarrowScreenshotPath) ||
+  (!liveProviderE2e &&
+    (!existsSync(delegationDesktopScreenshotPath) ||
+      !existsSync(delegationNarrowScreenshotPath))) ||
+  !existsSync(agentProfileDesktopScreenshotPath) ||
+  !existsSync(agentProfileNarrowScreenshotPath) ||
+  !result.workflow?.agentProfileEdit?.identityPreserved ||
+  !result.workflow?.agentProfileEdit?.updatedForFutureReplies ||
+  !result.workflow?.agentProfileEdit?.capabilityPreserved ||
+  !result.workflow?.agentProfileEdit?.historyPreserved ||
   !existsSync(desktopScreenshotPath) ||
   !existsSync(narrowScreenshotPath) ||
   !existsSync(contactDesktopScreenshotPath) ||
   !existsSync(contactNarrowScreenshotPath) ||
+  !existsSync(projectScreenshotPath) ||
   !result.workflow?.contactDesktop?.actionsVisible ||
   !result.workflow?.contactNarrow?.actionsVisible ||
+  !result.workflow?.textAttachments?.messagePersisted ||
+  !result.workflow?.textAttachments?.modelReceivedAttachment ||
+  !result.workflow?.textAttachments?.singleModelRequest ||
+  !result.workflow?.textAttachments?.attachmentDraftCleared ||
+  result.workflow?.textAttachments?.desktop?.width < 700 ||
+  result.workflow?.textAttachments?.narrow?.width > 700 ||
+  !result.workflow?.textAttachments?.narrow?.documentNoOverflow ||
+  !existsSync(attachmentDesktopScreenshotPath) ||
+  !existsSync(attachmentNarrowScreenshotPath) ||
   exit.code !== 0
 ) {
   process.exitCode = 1;
@@ -240,4 +362,5 @@ if (
 
 if (process.exitCode !== 1) {
   rmSync(e2eDirectory, { recursive: true, force: true });
+  rmSync(electronUserDataDirectory, { recursive: true, force: true });
 }
