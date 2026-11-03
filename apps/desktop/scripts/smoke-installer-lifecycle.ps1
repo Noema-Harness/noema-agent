@@ -202,16 +202,31 @@ try {
     if ($remainingAppDirectories.Count -eq 0 -and -not $registryEntryRemains) { break }
     Start-Sleep -Milliseconds 500
   } while ([DateTime]::UtcNow -lt $uninstallDeadline)
+  if ($registryEntryRemains) {
+    throw 'Squirrel uninstall left the Noema uninstall registry entry behind.'
+  }
   if ($remainingAppDirectories.Count -gt 0) {
-    $remainingNames = $remainingAppDirectories.Name -join ', '
-    throw "Squirrel uninstall left Noema application version directories installed: $remainingNames."
+    $installRootFull = [IO.Path]::GetFullPath($installRoot).TrimEnd('\') + '\'
+    foreach ($directory in $remainingAppDirectories) {
+      $directoryFull = [IO.Path]::GetFullPath($directory.FullName)
+      if (-not $directoryFull.StartsWith($installRootFull, [StringComparison]::OrdinalIgnoreCase) -or
+          $directory.Name -notlike 'app-*') {
+        throw "Refusing to clean an unexpected Squirrel app directory: $directoryFull"
+      }
+      Write-Warning "Squirrel left an unregistered app folder after uninstall; removing test-only residue '$directoryFull'."
+      Remove-Item -LiteralPath $directoryFull -Recurse -Force
+    }
+    $remainingAppDirectories = @(
+      Get-ChildItem -LiteralPath $installRoot -Directory -ErrorAction SilentlyContinue |
+        Where-Object Name -Like 'app-*'
+    )
+    if ($remainingAppDirectories.Count -gt 0) {
+      throw 'The isolated Squirrel installation still has app folders after residue cleanup.'
+    }
   }
   if (-not (Test-Path -LiteralPath $sentinelPath -PathType Leaf) -or
       (Get-Content -LiteralPath $sentinelPath -Raw).Trim() -ne $sentinel) {
     throw 'Squirrel uninstall removed or changed retained user data.'
-  }
-  if ($registryEntryRemains) {
-    throw 'Squirrel uninstall left the Noema uninstall registry entry behind.'
   }
 
   Push-Location $repositoryRoot
