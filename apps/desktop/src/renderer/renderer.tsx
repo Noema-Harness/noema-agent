@@ -2,6 +2,7 @@ import React, { lazy, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
 import { SocialChatApp } from './chat/social-chat-app';
 const LegacyDesktopApp = lazy(() => import('./legacy/desktop-app'));
+performance.mark('noema.renderer.entry-evaluated');
 function App() {
   if (typeof window.noema?.getSocialState !== 'function')
     return (
