@@ -664,6 +664,21 @@ const createWindow = () => {
             runtimeInfoText: runtimeInfo?.textContent?.trim() ?? '',
           };
         })()`);
+        const runnerSetupNeeded =
+          diagnosticsLayout?.runnerCapabilityText.includes(
+            '本机隔离设置尚未完成',
+          ) ||
+          diagnosticsLayout?.runnerCapabilityText.includes(
+            '本机网络隔离规则尚未完成检查',
+          );
+        const runnerBaselineUnsupported =
+          diagnosticsLayout?.runnerCapabilityText.includes(
+            '当前 Windows 安全更新未达到受限命令的安全基线',
+          );
+        const expectedRunnerSetupButton =
+          runnerSetupNeeded && !runnerBaselineUnsupported
+            ? '启用或重试设置'
+            : '';
         if (
           !diagnosticsLayout?.visible ||
           !diagnosticsLayout.noHorizontalOverflow ||
@@ -674,7 +689,7 @@ const createWindow = () => {
           !diagnosticsLayout.runnerCapabilityText.includes(
             '无需更新 Windows 即可启动和使用 Noema 桌面应用',
           ) ||
-          diagnosticsLayout.runnerSetupButton !== '' ||
+          diagnosticsLayout.runnerSetupButton !== expectedRunnerSetupButton ||
           diagnosticsLayout.databaseStatusText !== '检查通过。' ||
           !diagnosticsLayout.databaseRecoveryButton.includes(
             '打开数据与备份目录',
