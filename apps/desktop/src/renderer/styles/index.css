@@ -6024,6 +6024,155 @@ select:disabled {
 .core-task-dock-meta {
   color: #8a847a;
 }
+.core-task-pulse {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #728b68;
+  box-shadow: 0 0 0 3px rgb(114 139 104 / 12%);
+  animation: core-task-pulse 1.8s ease-in-out infinite;
+}
+.core-task-pulse[data-status='verifying'] {
+  background: #a17d45;
+  box-shadow: 0 0 0 3px rgb(161 125 69 / 14%);
+}
+@keyframes core-task-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.9);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.core-task-delivery {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 32px;
+  height: auto;
+  margin: 0 0 6px;
+  padding: 0 11px;
+  border: 1px solid #d7e1d1;
+  border-radius: 10px;
+  background: #f2f7ee;
+  color: #40553b;
+  font: inherit;
+  font-size: 11.5px;
+  text-align: left;
+  cursor: pointer;
+  animation: core-task-delivery-in 240ms ease-out;
+}
+.core-task-delivery svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+.core-task-delivery-open {
+  margin-left: auto;
+  color: #708269;
+}
+@keyframes core-task-delivery-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.core-task-ledger {
+  align-self: flex-start;
+  width: 26px;
+  height: 26px;
+  margin: 0 0 6px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: #9a948a;
+  cursor: pointer;
+}
+.core-task-ledger svg {
+  width: 15px;
+  height: 15px;
+}
+.core-task-ledger:hover {
+  border-color: #e3ded5;
+  background: #f4f1ea;
+  color: #4f4a42;
+}
+.core-task-history {
+  width: 100%;
+}
+.core-task-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.core-task-history-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #e5e0d7;
+  border-radius: 10px;
+  background: #fffdf9;
+  color: #3f3c37;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.core-task-history-item:hover {
+  border-color: #c9c1b4;
+  background: #f8f5ef;
+}
+.core-task-history-more {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px dashed #ded8cc;
+  border-radius: 9px;
+  background: transparent;
+  color: #7a746a;
+  font: inherit;
+  font-size: 11px;
+  text-align: center;
+  cursor: pointer;
+}
+.core-task-history-more:hover {
+  border-color: #bdb4a6;
+  color: #4f4a42;
+}
+.core-task-history-main {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+.core-task-history-main strong {
+  font-size: 12px;
+}
+.core-task-history-main span {
+  overflow: hidden;
+  color: #7c766c;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.core-task-history-meta {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+  color: #8a847a;
+  font-size: 11px;
+}
 .core-task-inspector-backdrop {
   position: fixed;
   inset: 0;

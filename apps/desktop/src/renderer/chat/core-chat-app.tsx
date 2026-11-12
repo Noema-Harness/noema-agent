@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type {
@@ -73,6 +73,18 @@ function fileStateLabel(
     case 'unknown':
       return '状态未知';
   }
+}
+
+function isActiveTask(status: NoemaSocialWorkTask['status']) {
+  return (
+    status === 'starting' || status === 'running' || status === 'verifying'
+  );
+}
+
+function isSettledTask(status: NoemaSocialWorkTask['status']) {
+  return (
+    status === 'completed' || status === 'failed' || status === 'interrupted'
+  );
 }
 
 function taskTrace(
@@ -266,6 +278,14 @@ export function CoreChatApp() {
     initialFile: string | null;
   } | null>(null);
   const [inspectedTaskId, setInspectedTaskId] = useState<string | null>(null);
+  const [completedNoticeId, setCompletedNoticeId] = useState<string | null>(
+    null,
+  );
+  const [taskHistoryOpen, setTaskHistoryOpen] = useState(false);
+  const [taskHistoryAll, setTaskHistoryAll] = useState(false);
+  const previousTaskStatus = useRef(
+    new Map<string, NoemaSocialWorkTask['status']>(),
+  );
 
   const visibleTurns = useMemo(
     () =>
@@ -302,6 +322,48 @@ export function CoreChatApp() {
     (inspectedTaskId
       ? workTasks.find((task) => task.id === inspectedTaskId)
       : null) ?? null;
+  const activeTasks = useMemo(
+    () => workTasks.filter((task) => isActiveTask(task.status)),
+    [workTasks],
+  );
+  const settledTasks = useMemo(
+    () => workTasks.filter((task) => isSettledTask(task.status)),
+    [workTasks],
+  );
+  const sortedSettledTasks = useMemo(
+    () =>
+      settledTasks
+        .slice()
+        .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)),
+    [settledTasks],
+  );
+  const visibleSettledTasks = taskHistoryAll
+    ? sortedSettledTasks
+    : sortedSettledTasks.slice(0, 8);
+  const completedNotice =
+    (completedNoticeId
+      ? workTasks.find((task) => task.id === completedNoticeId)
+      : null) ?? null;
+
+  useEffect(() => {
+    let justSettled: NoemaSocialWorkTask | null = null;
+    for (const task of workTasks) {
+      const previous = previousTaskStatus.current.get(task.id);
+      if (
+        previous &&
+        previous !== task.status &&
+        isSettledTask(task.status) &&
+        !justSettled
+      ) {
+        justSettled = task;
+      }
+      previousTaskStatus.current.set(task.id, task.status);
+    }
+    if (!justSettled) return;
+    setCompletedNoticeId(justSettled.id);
+    const timer = window.setTimeout(() => setCompletedNoticeId(null), 8000);
+    return () => window.clearTimeout(timer);
+  }, [workTasks]);
 
   useEffect(() => {
     if (noemaRoom && currentRoom?.id !== noemaRoom.id) selectRoom(noemaRoom);
@@ -656,9 +718,9 @@ export function CoreChatApp() {
       </main>
 
       <footer className="core-composer">
-        {workTasks.length ? (
-          <div className="core-task-dock" aria-label="后台任务">
-            {workTasks.slice(-3).map((task) => (
+        {activeTasks.length ? (
+          <div className="core-task-dock" aria-label="进行中的任务">
+            {activeTasks.slice(-3).map((task) => (
               <NoemaButton
                 className="core-task-dock-item"
                 type="button"
@@ -667,6 +729,11 @@ export function CoreChatApp() {
                 aria-label={`查看 ${agentNameForTask(task)} 的任务`}
                 onClick={() => setInspectedTaskId(task.id)}
               >
+                <span
+                  className="core-task-pulse"
+                  data-status={task.status}
+                  aria-hidden="true"
+                />
                 <span className="core-task-dock-agent">
                   {agentNameForTask(task)}
                 </span>
@@ -682,6 +749,36 @@ export function CoreChatApp() {
               </NoemaButton>
             ))}
           </div>
+        ) : null}
+        {completedNotice ? (
+          <NoemaButton
+            className="core-task-delivery"
+            type="button"
+            onClick={() => setInspectedTaskId(completedNotice.id)}
+          >
+            <Icon name="check" aria-hidden="true" />
+            <span>
+              {agentNameForTask(completedNotice)} 已交付
+              {completedNotice.status === 'completed'
+                ? ''
+                : ` · ${taskStatusLabel(completedNotice.status)}`}
+            </span>
+            <span className="core-task-delivery-open">查看</span>
+          </NoemaButton>
+        ) : null}
+        {settledTasks.length ? (
+          <NoemaButton
+            className="core-task-ledger"
+            type="button"
+            title="交付记录"
+            aria-label="交付记录"
+            onClick={() => {
+              setTaskHistoryAll(false);
+              setTaskHistoryOpen(true);
+            }}
+          >
+            <Icon name="archive" aria-hidden="true" />
+          </NoemaButton>
         ) : null}
         {notice ? (
           <p className="core-notice" role="status">
@@ -767,6 +864,80 @@ export function CoreChatApp() {
         </div>
         <p className="core-hint">Enter 发送 · Shift + Enter 换行</p>
       </footer>
+
+      {taskHistoryOpen ? (
+        <div
+          className="core-task-inspector-backdrop"
+          onClick={() => setTaskHistoryOpen(false)}
+          role="presentation"
+        >
+          <div
+            className="core-task-inspector-wrap"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <section
+              className="core-task-inspector core-task-history"
+              aria-label="交付记录"
+            >
+              <header className="core-task-inspector-head">
+                <div className="core-task-inspector-title">
+                  <strong>交付记录</strong>
+                  <span>{settledTasks.length} 项已结束</span>
+                </div>
+                <button
+                  className="icon-button"
+                  type="button"
+                  aria-label="关闭交付记录"
+                  title="关闭"
+                  onClick={() => setTaskHistoryOpen(false)}
+                >
+                  ×
+                </button>
+              </header>
+              <div className="core-task-inspector-body">
+                <div className="core-task-history-list">
+                  {visibleSettledTasks.map((task) => (
+                    <button
+                      type="button"
+                      key={task.id}
+                      className="core-task-history-item"
+                      onClick={() => {
+                        setTaskHistoryOpen(false);
+                        setInspectedTaskId(task.id);
+                      }}
+                    >
+                      <span className="core-task-history-main">
+                        <strong>{agentNameForTask(task)}</strong>
+                        <span>{task.taskPrompt}</span>
+                      </span>
+                      <span className="core-task-history-meta">
+                        <span
+                          className="core-task-dock-state"
+                          data-status={task.status}
+                        >
+                          {taskStatusLabel(task.status)}
+                        </span>
+                        <span>{task.executionSteps.length} 步</span>
+                      </span>
+                    </button>
+                  ))}
+                  {settledTasks.length > 8 ? (
+                    <button
+                      type="button"
+                      className="core-task-history-more"
+                      onClick={() => setTaskHistoryAll((current) => !current)}
+                    >
+                      {taskHistoryAll
+                        ? '只看最近 8 项'
+                        : `查看全部 ${settledTasks.length} 项`}
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+      ) : null}
 
       {inspectedTask ? (
         <div
