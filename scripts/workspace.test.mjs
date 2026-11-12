@@ -3,7 +3,8 @@ import { fileURLToPath } from "node:url";
 import fs from "node:fs";
 import path from "node:path";
 import assert from "node:assert/strict";
-import { spawnSync, execFileSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
+import { runGit } from "./git-exec.mjs";
 const repositoryRoot = path.resolve(fileURLToPath(new URL("../", import.meta.url)));
 test("workspace tooling previews, confines cleanup and detects stale document entry points", () => {
   const runs = path.join(repositoryRoot, ".work/runs");
@@ -24,10 +25,8 @@ test("workspace tooling previews, confines cleanup and detects stale document en
       fs.mkdirSync(path.join(root, p), { recursive: true });
     fs.mkdirSync(outside);
     fs.writeFileSync(path.join(outside, "keep"), "outside");
-    fs.copyFileSync(
-      path.join(repositoryRoot, "scripts/workspace.mjs"),
-      path.join(root, "scripts/workspace.mjs"),
-    );
+    for (const name of ["workspace.mjs", "git-exec.mjs"])
+      fs.copyFileSync(path.join(repositoryRoot, "scripts", name), path.join(root, "scripts", name));
     const config = {
       currentDocuments: [{ path: "README.md" }],
       historyRoots: ["docs/history"],
@@ -42,7 +41,7 @@ test("workspace tooling previews, confines cleanup and detects stale document en
     fs.writeFileSync(path.join(root, "openspec/specs/example/spec.md"), "# example");
     fs.writeFileSync(path.join(root, ".work/runs", "remove"), "run");
     fs.writeFileSync(path.join(root, ".work/archive", "keep"), "history");
-    execFileSync("git", ["init", "--quiet"], { cwd: root, windowsHide: true, timeout: 5000 });
+    runGit(["init", "--quiet"], { cwd: root, windowsHide: true, timeout: 5000 });
     function run(...args) {
       return spawnSync(process.execPath, ["scripts/workspace.mjs", ...args], {
         cwd: root,

@@ -1,3 +1,6 @@
+import { NoemaButton } from '../ui/noema-button';
+import { NoemaOverlay } from '../ui/noema-overlay';
+import { NoemaIcon } from '../ui/noema-icon';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Command } from 'cmdk';
 import type {
@@ -33,6 +36,14 @@ export function GlobalSearchDialog({
   const [opening, setOpening] = useState(false);
   const [retry, setRetry] = useState(0);
   const version = useRef(0);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const timer = window.setTimeout(
+      () => searchInputRef.current?.focus({ preventScroll: true }),
+      200,
+    );
+    return () => window.clearTimeout(timer);
+  }, []);
   const needle = query.trim();
   const local = useMemo(() => {
     const normalized = needle.toLocaleLowerCase();
@@ -109,12 +120,7 @@ export function GlobalSearchDialog({
       : message.roomTitle;
   };
   return (
-    <div
-      className="dialog-backdrop"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget && !opening) onClose();
-      }}
-    >
+    <NoemaOverlay isOpen onClose={() => !opening && onClose()}>
       <form
         ref={dialogRef}
         className="social-dialog global-search-dialog"
@@ -128,14 +134,14 @@ export function GlobalSearchDialog({
             <h2 id="global-search-title">全局搜索</h2>
             <p>查找成员、项目和所有聊天中的消息。</p>
           </div>
-          <button
+          <NoemaButton
             type="button"
             className="icon-button"
             aria-label="关闭全局搜索"
             onClick={() => onClose()}
           >
-            ×
-          </button>
+            <NoemaIcon name="close" />
+          </NoemaButton>
         </div>
         <Command
           shouldFilter={false}
@@ -144,6 +150,14 @@ export function GlobalSearchDialog({
           disablePointerSelection={opening}
         >
           <Command.Input
+            ref={searchInputRef}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape' && !event.nativeEvent.isComposing) {
+                event.preventDefault();
+                event.stopPropagation();
+                onClose();
+              }
+            }}
             aria-label="搜索联系人、项目和消息"
             placeholder="输入名称或消息内容"
             data-dialog-initial-focus
@@ -249,12 +263,12 @@ export function GlobalSearchDialog({
         {error ? (
           <p role="alert" className="global-search-error">
             {error}{' '}
-            <button
+            <NoemaButton
               type="button"
               onClick={() => setRetry((value) => value + 1)}
             >
               重新搜索
-            </button>
+            </NoemaButton>
           </p>
         ) : null}
         {opening ? (
@@ -263,6 +277,6 @@ export function GlobalSearchDialog({
           </p>
         ) : null}
       </form>
-    </div>
+    </NoemaOverlay>
   );
 }

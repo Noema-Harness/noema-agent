@@ -110,13 +110,7 @@ export interface NoemaBackgroundTask {
   completedAt: string | null;
 }
 
-export interface NoemaRootState {
-  messages: NoemaRootMessage[];
-  captures: NoemaCapture[];
-  workerTasks: NoemaBackgroundTask[];
-  contextImports: NoemaContextImport[];
-  interactionAdjustments: NoemaInteractionAdjustment[];
-  activeTurnId: string | null;
+export interface NoemaProviderState {
   selectedModel: string | null;
   connected: boolean;
   checking: boolean;
@@ -126,6 +120,14 @@ export interface NoemaRootState {
   providerBaseUrl: string;
   providerName: string;
   webSearchConfigured: boolean;
+}
+
+export interface NoemaRootState extends NoemaProviderState {
+  messages: NoemaRootMessage[];
+  workerTasks: NoemaBackgroundTask[];
+  contextImports: NoemaContextImport[];
+  interactionAdjustments: NoemaInteractionAdjustment[];
+  activeTurnId: string | null;
   workspaceDirectory: string | null;
   dshAvailable: boolean;
   dshWorkerAvailable: boolean;
@@ -164,6 +166,7 @@ export interface NoemaDiagnosticEvent {
   status: string;
   errorCode: string | null;
   details: Record<string, string | number | boolean>;
+  detailsStatus: 'complete' | 'filtered' | 'unavailable';
 }
 
 export interface NoemaDiagnosticUsage {
@@ -249,6 +252,9 @@ export interface NoemaDiagnosticExportPreview {
   excluded: string[];
   coverageGaps: string[];
   truncated: boolean;
+  includesTestContext: boolean;
+  testContextTruncated: boolean;
+  testContextRedacted: boolean;
   reportJson: string;
 }
 
@@ -262,6 +268,7 @@ export interface NoemaWindowsRunnerCapability {
   setupActionAvailable: boolean;
   backendId: string | null;
   backendVersion: string | null;
+  policyVersion: number | null;
   protocolVersion: number | null;
   setupStatus: 'ready' | 'unavailable' | 'not_applicable';
 }
@@ -433,7 +440,19 @@ export type NoemaSocialState = Pick<
   agents: NoemaSocialAgent[];
   rooms: NoemaSocialRoom[];
   projects: NoemaSocialProject[];
-  projectWork: { available: boolean; reason: string | null };
+  projectWork: {
+    available: boolean;
+    reasonCode:
+      | 'app_shutting_down'
+      | 'executor_unavailable'
+      | 'provider_unconfigured'
+      | 'model_unselected'
+      | 'provider_checking'
+      | 'provider_unavailable'
+      | 'model_unavailable'
+      | null;
+    reason: string | null;
+  };
 };
 
 export interface NoemaSocialProject {
@@ -472,6 +491,14 @@ export interface NoemaSocialProject {
       errorMessage: string | null;
     }>;
   } | null;
+  unfinished: {
+    queuedDeliveries: number;
+    pendingReports: number;
+    streamingReplies: number;
+    runningTasks: number;
+    unfinishedPlanItems: number;
+    evidenceItems: number;
+  };
   members: Array<{
     agentId: string;
     sessionRoomId: string;
@@ -675,6 +702,65 @@ export interface NoemaSocialProjectSession {
   room: NoemaSocialRoomState;
 }
 
+export interface NoemaSocialWorkCommandBatch {
+  id: string;
+  stepId: string;
+  status:
+    | 'preparing'
+    | 'running'
+    | 'collecting'
+    | 'syncing'
+    | 'completed'
+    | 'partial'
+    | 'conflict'
+    | 'not_applied'
+    | 'unknown';
+  reasonCode: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NoemaWorkspaceFileEntry {
+  name: string;
+  kind: 'file' | 'directory';
+  relativePath: string;
+}
+
+export interface NoemaWorkspaceFileListing {
+  root: string;
+  relativePath: string;
+  entries: NoemaWorkspaceFileEntry[];
+  truncated: boolean;
+}
+
+export interface NoemaWorkspaceFilePreview {
+  relativePath: string;
+  size: number;
+  content: string;
+}
+
+export interface NoemaWorkspaceImagePreview {
+  relativePath: string;
+  size: number;
+  mime: string;
+  dataBase64: string;
+}
+
+export interface NoemaWorkspaceSearchMatch {
+  relativePath: string;
+  kind: 'name' | 'content';
+  line: number;
+  excerpt: string;
+}
+
+export interface NoemaWorkspaceSearchResult {
+  root: string;
+  query: string;
+  matches: NoemaWorkspaceSearchMatch[];
+  truncated: boolean;
+  scannedFiles: number;
+}
+
 export interface NoemaSocialWorkTask {
   id: string;
   roomId: string;
@@ -682,6 +768,7 @@ export interface NoemaSocialWorkTask {
   sourceMessageId: string | null;
   workspacePath: string;
   executionEngine: string;
+  runtimeSessionId: string | null;
   canResume: boolean;
   resumeBlockReason: string | null;
   taskPrompt: string;
@@ -723,10 +810,13 @@ export interface NoemaSocialWorkTask {
       | 'outcome_unknown'
       | 'interrupted';
     effectStatus: 'none' | 'pending' | 'applied' | 'not_applied' | 'unknown';
+    detail?: string | null;
+    output?: string | null;
     startedAt: string;
     completedAt: string | null;
   }>;
   fileChanges: NoemaSocialWorkFileChange[];
+  commandBatches: NoemaSocialWorkCommandBatch[];
   resultText: string;
   errorCode: string | null;
   errorMessage: string | null;
@@ -800,6 +890,38 @@ export interface NoemaSocialWorkTask {
   completedAt: string | null;
 }
 
+export interface NoemaSocialWorkUsage {
+  requests: number;
+  usageReportedRequests: number;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  totalTokens: number | null;
+  reasoningTokens: number | null;
+  models: string[];
+}
+
+export interface NoemaSocialWorkStepDetail {
+  id: string;
+  taskId: string;
+  ordinal: number;
+  toolName: string;
+  argumentsText: string;
+  resultText: string;
+}
+
+export interface NoemaSocialWorkTouchedFile {
+  path: string;
+  toolName: string;
+  ordinal: number;
+}
+
+export interface NoemaConversationExportResult {
+  saved: boolean;
+  path?: string;
+  canceled?: boolean;
+  errorCode?: string;
+}
+
 export interface NoemaSocialWorkFileChange {
   id: string;
   relativePath: string;
@@ -816,6 +938,8 @@ export interface NoemaSocialWorkFileChange {
     | 'kept'
     | 'reverted'
     | 'conflict';
+  origin: 'file_tool' | 'command';
+  commandBatchId: string | null;
   lastStepId: string | null;
   createdAt: string;
   updatedAt: string;
@@ -833,6 +957,40 @@ export interface NoemaSocialWorkGitReview {
   }>;
 }
 
+export interface SocialConversationThread {
+  id: string;
+  startedAt: string;
+  endedAt: string | null;
+  title: string;
+  messageCount: number;
+  updatedAt: string;
+}
+
+export interface SocialConversationBranch {
+  id: string;
+  roomId: string;
+  agentId: string | null;
+  title: string;
+  origin: 'main' | 'fork' | 'legacy';
+  readOnly: boolean;
+  parentBranchId: string | null;
+  forkedFromTurnId: string | null;
+  headTurnId: string | null;
+  headVersion: number;
+  turnCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SocialContinuityState {
+  mode: 'off' | 'shadow' | 'on';
+  roomId: string;
+  activeBranchId: string | null;
+  activeVersion: number;
+  activeBranch: SocialConversationBranch | null;
+  branches: SocialConversationBranch[];
+}
+
 export interface NoemaSocialRoomState {
   room: Pick<
     NoemaSocialRoom,
@@ -847,6 +1005,13 @@ export interface NoemaSocialRoomState {
   >;
   members: NoemaSocialAgent[];
   messages: NoemaSocialMessage[];
+  messageWindow?: {
+    oldestSequence: string | null;
+    newestSequence: string | null;
+    hasEarlier: boolean;
+    hasLater: boolean;
+    targetFound: boolean | null;
+  };
   projectReviews?: NoemaSocialProjectReview[];
   workTasks: NoemaSocialWorkTask[];
 }
@@ -879,6 +1044,19 @@ export type NoemaSocialEvent =
       roomId: string;
       messageId: string;
       delta: string;
+    }
+  | {
+      type: 'chat-trace';
+      roomId: string;
+      messageId: string;
+      taskId?: string;
+      event: {
+        type: 'tool_call' | 'tool_result';
+        name: string | null;
+        status: string | null;
+        stepId?: string | null;
+        detail?: string | null;
+      };
     }
   | {
       type:
@@ -988,65 +1166,54 @@ export interface NoemaCodexPreview {
   sourceStatus: string;
 }
 
-export type NoemaTurnEvent =
-  | { type: 'models-updated' | 'provider-configured' }
-  | { type: 'context-import-updated' }
-  | { type: 'captures-updated' }
-  | { type: 'model-selected'; model: string }
-  | {
-      type: 'turn-started';
-      turnId: string;
-      attempt: number;
-      model: string | null;
-    }
-  | {
-      type: 'turn-context';
-      turnId: string;
-      includedTurns: number;
-      omittedTurns: number;
-      historyCharacters: number;
-    }
-  | { type: 'turn-delta'; turnId: string; attempt: number; delta: string }
-  | {
-      type: 'turn-completed' | 'turn-interrupted';
-      turnId: string;
-      attempt: number;
-    }
-  | {
-      type: 'turn-failed';
-      turnId: string;
-      attempt: number;
-      code: string;
-      message: string;
-    }
-  | { type: 'turn-idle'; turnId: string; attempt: number };
+export type NoemaModelStateEvent =
+  | { type: 'models-updated' | 'provider-configured' | 'web-search-configured' }
+  | { type: 'model-selected'; model: string };
 
-export type NoemaWorkerEvent =
-  | { type: 'workspace-selected'; directory: string }
-  | { type: 'workspace-cleared' }
-  | { type: 'worker-task-updated'; taskId: string }
-  | { type: 'worker-event-started' | 'worker-event-idle'; taskId: string }
-  | {
-      type: 'worker-event-response-delta';
-      taskId: string;
-      delta: string;
-    }
-  | {
-      type: 'worker-event-response-failed';
-      taskId: string;
-      message: string;
-    }
-  | { type: 'interaction-adjustments-updated' };
+export type NoemaLegacyHistoryCategory =
+  | 'root-turns'
+  | 'root-messages'
+  | 'dsh-tasks'
+  | 'captures'
+  | 'context-imports'
+  | 'interaction-adjustments';
 
-export type NoemaRootEvent = NoemaTurnEvent | NoemaWorkerEvent;
-
-export interface NoemaQuickCaptureRequest {
-  returnToPrevious: boolean;
+export interface NoemaLegacyHistoryCategoryInfo {
+  id: NoemaLegacyHistoryCategory;
+  count: number;
 }
 
-export interface NoemaQuickCaptureShortcutStatus {
-  accelerator: string;
-  registered: boolean;
+export interface NoemaLegacyHistoryRecord {
+  id: string;
+  category: NoemaLegacyHistoryCategory;
+  legacyOwner: 'legacy-root' | 'legacy-dsh' | 'legacy-codex';
+  recordStatus: 'complete' | 'partial';
+  truncatedFields: string[];
+  [key: string]: unknown;
+}
+
+export interface NoemaLegacyHistoryPage {
+  category: NoemaLegacyHistoryCategory;
+  records: NoemaLegacyHistoryRecord[];
+  nextCursor: number | null;
+  hasMore: boolean;
+  status: 'available' | 'unavailable';
+}
+
+export interface NoemaLegacyHistoryExportPreview {
+  previewId: string;
+  format: 'noema-legacy-history-v1';
+  createdAt: string;
+  categories: Array<{
+    id: NoemaLegacyHistoryCategory;
+    count: number;
+    sample: NoemaLegacyHistoryRecord | null;
+  }>;
+  totalRecords: number;
+}
+
+export interface NoemaExecutionPermissions {
+  externalFiles: 'read-only' | 'ask' | 'allow';
 }
 
 export interface NoemaBridge {
@@ -1055,8 +1222,25 @@ export interface NoemaBridge {
   ): Promise<boolean>;
   onWindowStateChanged(listener: (maximized: boolean) => void): () => void;
   appVersion: string;
-  getRootState(): Promise<NoemaRootState>;
+  getLegacyHistoryCategories(): Promise<NoemaLegacyHistoryCategoryInfo[]>;
+  getLegacyHistoryPage(input: {
+    category: NoemaLegacyHistoryCategory;
+    cursor?: number | null;
+    limit?: number;
+  }): Promise<NoemaLegacyHistoryPage>;
+  previewLegacyHistoryExport(input: {
+    categories: NoemaLegacyHistoryCategory[];
+  }): Promise<NoemaLegacyHistoryExportPreview>;
+  saveLegacyHistoryExport(previewId: string): Promise<{
+    saved: boolean;
+    canceled: boolean;
+    errorCode: string | null;
+  }>;
   getSocialState(): Promise<NoemaSocialState>;
+  getExecutionPermissions(): Promise<NoemaExecutionPermissions>;
+  setExecutionPermissions(
+    permissions: Partial<NoemaExecutionPermissions>,
+  ): Promise<NoemaExecutionPermissions>;
   getWindowsRunnerCapability(): Promise<NoemaWindowsRunnerCapability>;
   setupWindowsRunner(): Promise<{
     supported: boolean;
@@ -1087,6 +1271,7 @@ export interface NoemaBridge {
   previewDiagnosticsExport(input: {
     executionId?: string | null;
     taskId?: string | null;
+    includeTestContext?: boolean;
   }): Promise<NoemaDiagnosticExportPreview>;
   saveDiagnosticsExport(previewId: string): Promise<{
     saved: boolean;
@@ -1116,21 +1301,45 @@ export interface NoemaBridge {
     dueAt: string;
   }): Promise<NoemaUserFollowup>;
   cancelUserFollowup(id: string): Promise<boolean>;
-  advanceFirstMeeting(
-    action: 'read' | 'enter',
-  ): Promise<NoemaFirstMeetingState>;
-  getSocialRoom(roomId: string): Promise<NoemaSocialRoomState>;
+  getSocialRoom(
+    roomId: string,
+    options?: {
+      limit?: number;
+      beforeSequence?: number;
+      afterSequence?: number;
+      aroundMessageId?: string;
+    },
+  ): Promise<NoemaSocialRoomState>;
+  testArmSocialWorkReverseSnapshot?: (
+    roomId: string,
+    taskId: string,
+  ) => Promise<boolean>;
+  testGetSocialWorkReverseSnapshotStatus?: () => Promise<{
+    firstRequested: boolean;
+    firstReturned: boolean;
+    secondReturned: boolean;
+  }>;
   searchSocialMessages(query: string): Promise<NoemaSocialSearchResult[]>;
+  searchSocialRoomMessages(
+    roomId: string,
+    query: string,
+  ): Promise<NoemaSocialSearchResult[]>;
   createSocialGroup(input: {
     title: string;
     agentIds: string[];
   }): Promise<NoemaSocialRoomState>;
+  chooseProjectWorkspace(): Promise<{
+    workspacePath: string;
+    identity: unknown;
+  } | null>;
   createSocialProject(input: {
     title: string;
     brief: string;
     agentIds: string[];
     originRoomId?: string;
     sourceMessageId?: string | null;
+    workspacePath?: string | null;
+    workspaceIdentity?: unknown;
   }): Promise<NoemaSocialProject>;
   getSocialProjectSession(
     projectId: string,
@@ -1210,6 +1419,33 @@ export interface NoemaBridge {
     agentId: string,
     archived: boolean,
   ): Promise<NoemaSocialAgent>;
+  resetSocialChat(): Promise<boolean>;
+  listSocialConversationThreads(
+    roomId: string,
+  ): Promise<SocialConversationThread[]>;
+  getSocialContinuityState(roomId: string): Promise<SocialContinuityState>;
+  listSocialContinuityBranches(
+    roomId: string,
+  ): Promise<SocialConversationBranch[]>;
+  createSocialContinuityBranch(input: {
+    roomId?: string;
+    fromTurnId?: string | null;
+    title?: string | null;
+  }): Promise<SocialConversationBranch>;
+  switchSocialContinuityBranch(input: {
+    roomId?: string;
+    branchId: string;
+    expectedVersion?: number | null;
+  }): Promise<SocialContinuityState>;
+  createSocialContinuityEditBranch(input: {
+    roomId?: string;
+    messageId: string;
+    title?: string | null;
+  }): Promise<SocialContinuityState>;
+  rewindSocialMessage(
+    roomId: string,
+    messageId: string,
+  ): Promise<{ removed: number }>;
   sendSocialMessage(input: {
     roomId: string;
     agentId: string;
@@ -1237,87 +1473,58 @@ export interface NoemaBridge {
   resumeSocialWorkTask(
     taskId: string,
   ): Promise<{ accepted: boolean; taskId: string; roomId: string }>;
+  continueSocialWorkTask(
+    taskId: string,
+  ): Promise<{ accepted: boolean; taskId: string; roomId: string }>;
+  getSocialWorkUsage(taskId: string): Promise<NoemaSocialWorkUsage | null>;
+  getSocialWorkStepDetail(
+    taskId: string,
+    stepId: string,
+  ): Promise<NoemaSocialWorkStepDetail | null>;
+  getSocialWorkTouchedFiles(
+    taskId: string,
+  ): Promise<NoemaSocialWorkTouchedFile[]>;
+  exportWorkTicket(taskId: string): Promise<NoemaConversationExportResult>;
+  exportConversation(roomId: string): Promise<NoemaConversationExportResult>;
   setSocialWorkCaseEligible(
     taskId: string,
     eligible: boolean,
   ): Promise<NoemaSocialWorkTask>;
   withdrawSocialPracticeCandidate(taskId: string): Promise<NoemaSocialWorkTask>;
-  refreshModels(): Promise<
-    Pick<
-      NoemaRootState,
-      | 'connected'
-      | 'models'
-      | 'selectedModel'
-      | 'error'
-      | 'providerConfigured'
-      | 'providerBaseUrl'
-    >
-  >;
+  listWorkspaceFiles(input: {
+    workspacePath: string;
+    relativePath?: string;
+  }): Promise<NoemaWorkspaceFileListing>;
+  readWorkspaceFile(input: {
+    workspacePath: string;
+    relativePath: string;
+  }): Promise<NoemaWorkspaceFilePreview>;
+  searchWorkspaceFiles(input: {
+    workspacePath: string;
+    query: string;
+  }): Promise<NoemaWorkspaceSearchResult>;
+  readWorkspaceImage(input: {
+    workspacePath: string;
+    relativePath: string;
+  }): Promise<NoemaWorkspaceImagePreview>;
+  openWorkspaceFolder(input: {
+    workspacePath: string;
+  }): Promise<{ root: string }>;
+  refreshModels(): Promise<NoemaProviderState>;
   configureProvider(configuration: {
     baseUrl: string;
     apiKey: string;
-  }): Promise<Partial<NoemaRootState>>;
+  }): Promise<Partial<NoemaProviderState>>;
   configureWebSearch(configuration: {
     apiKey: string;
   }): Promise<{ webSearchConfigured: boolean }>;
   clearWebSearch(): Promise<{ webSearchConfigured: boolean }>;
   selectModel(model: string): Promise<string>;
-  sendMessage(text: string): Promise<{ turnId?: string; canceled?: boolean }>;
-  saveCapture(text: string): Promise<NoemaCapture>;
-  updateCapture(id: string, text: string): Promise<NoemaCapture>;
-  deleteCapture(id: string): Promise<boolean>;
-  discussCapture(id: string): Promise<{ turnId: string }>;
-  retryTurn(
-    turnId: string,
-    model?: string | null,
-  ): Promise<{ turnId: string; attempt: number }>;
-  stopTurn(turnId: string): Promise<boolean>;
-  chooseWorkspace(): Promise<string | null>;
-  clearWorkspace(): Promise<null>;
-  stopBackgroundTask(taskId: string): Promise<boolean>;
-  resumeBackgroundTask(taskId: string): Promise<{
-    accepted: boolean;
-    taskId?: string;
-    sessionId?: string;
-    workspacePath?: string;
-    errorMessage?: string;
-  }>;
-  retryBackgroundEvent(taskId: string): Promise<{
-    accepted: boolean;
-    completed?: boolean;
-    errorMessage?: string | null;
-  }>;
-  listCodexThreads(cursor?: string | null): Promise<NoemaCodexThreadPage>;
-  previewCodexThread(threadId: string): Promise<NoemaCodexPreview>;
-  importCodexThread(input: {
-    threadId: string;
-    expectedSourceUpdatedAt: string | number | null;
-  }): Promise<NoemaContextImport>;
-  removeContextImport(): Promise<boolean>;
-  addSocialInteractionAdjustment(input: {
-    sourceTurnId: string;
-    sourceRoomId: string;
-    scope: 'conversation' | 'coding' | 'both';
-    situation: string;
-    behavior: string;
-    sourceQuote: string;
-  }): Promise<NoemaInteractionAdjustment>;
-  updateInteractionAdjustment(input: {
-    id: string;
-    scope: 'conversation' | 'coding' | 'both';
-    situation: string;
-    behavior: string;
-  }): Promise<NoemaInteractionAdjustment | null>;
-  withdrawInteractionAdjustment(id: string): Promise<boolean>;
-  onRootEvent(listener: (event: NoemaRootEvent) => void): () => void;
+  onModelStateChanged(
+    listener: (event: NoemaModelStateEvent) => void,
+  ): () => void;
   onSocialEvent(listener: (event: NoemaSocialEvent) => void): () => void;
   markSocialChatReady(): Promise<boolean>;
-  onQuickCaptureRequested(
-    listener: (request: NoemaQuickCaptureRequest) => void,
-  ): () => void;
-  getQuickCaptureShortcutStatus(): Promise<NoemaQuickCaptureShortcutStatus | null>;
-  markQuickCaptureReady(): Promise<boolean>;
-  finishQuickCapture(): Promise<boolean>;
 }
 
 declare global {

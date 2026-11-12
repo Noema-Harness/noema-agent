@@ -11,7 +11,7 @@
 use crate::acl;
 use crate::policy::{
     AclGrant, FileIdentity, FilesystemAccessMode, PathRoot, VerifiedAclGrantEvidence,
-    WindowsCommandPolicyV2,
+    WindowsCommandPolicy,
 };
 use std::collections::{HashMap, HashSet};
 use std::ffi::c_void;
@@ -119,7 +119,7 @@ fn validate_capability_grants(
 }
 
 pub fn verify_policy_paths(
-    policy: &WindowsCommandPolicyV2,
+    policy: &WindowsCommandPolicy,
 ) -> Result<VerifiedPolicyPaths, &'static str> {
     let mut handles_by_path = HashMap::new();
     let mut seen_paths = HashMap::new();
@@ -580,10 +580,7 @@ fn object_identity_digest(object_ids: &mut [(u32, u64, u8)]) -> Result<String, &
 impl VerifiedPolicyPaths {
     /// Every filesystem root receives a capability ACL, so inspect every
     /// read root (including write roots) immediately before ACL changes.
-    pub fn scan_filesystem_roots(
-        &self,
-        policy: &WindowsCommandPolicyV2,
-    ) -> Result<(), &'static str> {
+    pub fn scan_filesystem_roots(&self, policy: &WindowsCommandPolicy) -> Result<(), &'static str> {
         for root in &policy.filesystem.read_roots {
             let key = root.path.to_lowercase();
             let root = self

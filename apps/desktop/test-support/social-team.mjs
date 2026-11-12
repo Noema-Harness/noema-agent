@@ -3,8 +3,8 @@ import { SocialChatStore } from '../src/main/chat/social-chat-store.mjs';
 
 // Explicit test data. A real first launch contains only Noema, not a fabricated
 // engineering team or collaboration history. Never import this from app code.
-export function createSocialTestStore(db) {
-  const store = new SocialChatStore(db);
+export function createSocialTestStore(db, options = {}) {
+  const store = new SocialChatStore(db, options);
   const now = new Date().toISOString();
   db.transaction(() => {
     db.prepare(`

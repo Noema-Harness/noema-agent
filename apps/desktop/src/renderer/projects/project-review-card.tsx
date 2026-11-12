@@ -1,3 +1,5 @@
+import { NoemaTextArea } from '../ui/noema-form-controls';
+import { NoemaButton } from '../ui/noema-button';
 import { useState, type FormEvent } from 'react';
 import type { NoemaSocialProjectReview } from '../../shared/contracts/noema-bridge.d.ts';
 
@@ -7,12 +9,14 @@ export function ProjectReviewCard({
   onDraftChange,
   onSubmit,
   disabled,
+  disabledReason,
 }: {
   review: NoemaSocialProjectReview;
   draft: string;
   onDraftChange: (value: string) => void;
   onSubmit: () => Promise<void>;
   disabled: boolean;
+  disabledReason: string;
 }) {
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -52,7 +56,7 @@ export function ProjectReviewCard({
           <label htmlFor={`review-feedback-${review.id}`}>
             你的判断与调整意见
           </label>
-          <textarea
+          <NoemaTextArea
             id={`review-feedback-${review.id}`}
             value={draft}
             onChange={(event) => onDraftChange(event.target.value)}
@@ -63,19 +67,35 @@ export function ProjectReviewCard({
             disabled={submitting}
           />
           {error ? (
-            <p className="dialog-error" role="alert">
+            <p className="review-submit-error" role="alert">
               {error}
             </p>
           ) : null}
           <div className="review-submit">
-            <span>明确反馈交给 Noema；普通聊天不会解除项目等待。</span>
-            <button
+            <div className="review-submit-copy">
+              <span>明确反馈交给 Noema；普通聊天不会解除项目等待。</span>
+              {disabledReason ? (
+                <span
+                  className="review-submit-disabled-reason"
+                  id={`review-feedback-disabled-${review.id}`}
+                  role="status"
+                >
+                  {disabledReason}
+                </span>
+              ) : null}
+            </div>
+            <NoemaButton
               className="primary"
               type="submit"
               disabled={disabled || submitting || !draft.trim()}
+              aria-describedby={
+                disabledReason
+                  ? `review-feedback-disabled-${review.id}`
+                  : undefined
+              }
             >
               {submitting ? '正在提交…' : '发送反馈'}
-            </button>
+            </NoemaButton>
           </div>
         </form>
       )}

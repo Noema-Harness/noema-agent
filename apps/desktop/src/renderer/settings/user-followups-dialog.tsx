@@ -1,3 +1,10 @@
+import {
+  NoemaCheckbox,
+  NoemaInput,
+  NoemaTextArea,
+} from '../ui/noema-form-controls';
+import { NoemaButton } from '../ui/noema-button';
+import { NoemaOverlay } from '../ui/noema-overlay';
 import { Icon } from '../chat/presentation';
 import type { SocialChatController } from '../chat/use-social-chat-controller';
 
@@ -8,6 +15,7 @@ type UserFollowupsDialogModel = Pick<
   | 'closeUserFollowups'
   | 'userFollowupList'
   | 'userFollowupLoading'
+  | 'refreshUserFollowups'
   | 'userFollowupBusy'
   | 'userFollowupError'
   | 'userFollowupTitle'
@@ -21,6 +29,7 @@ type UserFollowupsDialogModel = Pick<
   | 'handleUserFollowupsEnabled'
   | 'saveUserFollowup'
   | 'cancelUserFollowup'
+  | 'openHistorySource'
 >;
 
 function displayDate(value: string) {
@@ -45,6 +54,20 @@ const statusLabel = {
   canceled: '已取消',
 } as const;
 
+function dueStatus(item: {
+  dueAt: string;
+  status: keyof typeof statusLabel;
+  lastError: string | null;
+}) {
+  const overdue =
+    item.status === 'pending' && Date.parse(item.dueAt) <= Date.now();
+  if (item.status === 'pending' && item.lastError) {
+    return { label: '等待重试', state: 'retry' };
+  }
+  if (overdue) return { label: '已逾期，待发送', state: 'overdue' };
+  return { label: statusLabel[item.status], state: item.status };
+}
+
 export function UserFollowupsDialog({
   model,
 }: {
@@ -56,6 +79,7 @@ export function UserFollowupsDialog({
     closeUserFollowups,
     userFollowupList,
     userFollowupLoading,
+    refreshUserFollowups,
     userFollowupBusy,
     userFollowupError,
     userFollowupTitle,
@@ -69,16 +93,12 @@ export function UserFollowupsDialog({
     handleUserFollowupsEnabled,
     saveUserFollowup,
     cancelUserFollowup,
+    openHistorySource,
   } = model;
 
   if (!userFollowupsOpen) return null;
   return (
-    <div
-      className="dialog-backdrop"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) closeUserFollowups();
-      }}
-    >
+    <NoemaOverlay isOpen onClose={closeUserFollowups}>
       <section
         ref={userFollowupDialogRef}
         className="social-dialog user-followups-dialog"
@@ -89,24 +109,24 @@ export function UserFollowupsDialog({
         <div className="dialog-heading">
           <div>
             <h2 id="user-followups-title">回访提醒</h2>
-            <p>一次性本机通知；到期不会调用模型或替你执行操作。</p>
+            <p>到点发一条本机通知，不会调用模型。</p>
           </div>
-          <button
+          <NoemaButton
             className="icon-button"
             type="button"
             aria-label="关闭回访提醒"
             onClick={closeUserFollowups}
           >
             <Icon name="close" />
-          </button>
+          </NoemaButton>
         </div>
 
         <label className="personal-memory-toggle">
           <span>
-            <strong>允许发送回访通知</strong>
-            <small>关闭后保留安排；重新开启或下次启动时补发到期项。</small>
+            <strong>发送回访通知</strong>
+            <small>关闭后保留安排，重新开启会补发。</small>
           </span>
-          <input
+          <NoemaCheckbox
             type="checkbox"
             checked={userFollowupList?.enabled ?? false}
             disabled={userFollowupBusy || userFollowupLoading}
@@ -118,8 +138,8 @@ export function UserFollowupsDialog({
 
         <form className="personal-memory-editor" onSubmit={saveUserFollowup}>
           <label className="dialog-field">
-            <span>{editingUserFollowupId ? '修改回访' : '安排一条回访'}</span>
-            <input
+            <span>{editingUserFollowupId ? '修改回访' : '新建回访'}</span>
+            <NoemaInput
               data-dialog-initial-focus
               value={userFollowupTitle}
               maxLength={80}
@@ -129,19 +149,22 @@ export function UserFollowupsDialog({
             />
           </label>
           <label className="dialog-field">
-            <span>提醒内容</span>
-            <textarea
+            <span>内容</span>
+            <NoemaTextArea
               value={userFollowupBody}
               maxLength={500}
               rows={2}
               required
-              placeholder="到时希望 Noema 提醒你的具体内容"
+              placeholder="要提醒什么"
               onChange={(event) => setUserFollowupBody(event.target.value)}
             />
           </label>
           <label className="dialog-field">
-            <span>提醒时间（本机时间）</span>
-            <input
+            <span>
+              提醒时间（本机时间 ·{' '}
+              {Intl.DateTimeFormat().resolvedOptions().timeZone || '本机时区'}）
+            </span>
+            <NoemaInput
               type="datetime-local"
               value={userFollowupDueAt}
               required
@@ -150,7 +173,7 @@ export function UserFollowupsDialog({
           </label>
           <div className="dialog-actions">
             {editingUserFollowupId ? (
-              <button
+              <NoemaButton
                 className="secondary-action"
                 type="button"
                 disabled={userFollowupBusy}
@@ -162,9 +185,9 @@ export function UserFollowupsDialog({
                 }}
               >
                 取消修改
-              </button>
+              </NoemaButton>
             ) : null}
-            <button
+            <NoemaButton
               className="primary-action"
               type="submit"
               disabled={
@@ -179,8 +202,13 @@ export function UserFollowupsDialog({
                 : editingUserFollowupId
                   ? '保存修改'
                   : '安排回访'}
-            </button>
+            </NoemaButton>
           </div>
+          {userFollowupList && !userFollowupList.enabled ? (
+            <p className="dialog-footnote">
+              通知已暂停。已有回访会保留；重新开启后可继续发送。
+            </p>
+          ) : null}
         </form>
 
         <section
@@ -189,65 +217,107 @@ export function UserFollowupsDialog({
           aria-busy={userFollowupLoading}
         >
           <div className="personal-memory-list-heading">
-            <h3 id="user-followups-list-title">最近安排</h3>
-            <span>{userFollowupList?.items.length ?? 0}</span>
+            <h3 id="user-followups-list-title">全部回访</h3>
+            <span>
+              {userFollowupList ? userFollowupList.items.length : '—'}
+            </span>
           </div>
           {userFollowupLoading ? (
-            <p className="personal-memory-empty">正在读取本机回访…</p>
+            <p className="personal-memory-empty">正在读取…</p>
+          ) : !userFollowupList ? (
+            <div className="personal-memory-load-error">
+              <span>暂时无法显示回访。</span>
+              <NoemaButton
+                type="button"
+                className="secondary-action"
+                disabled={userFollowupBusy || userFollowupLoading}
+                onClick={() => void refreshUserFollowups()}
+              >
+                重试
+              </NoemaButton>
+            </div>
           ) : userFollowupList?.items.length ? (
             <ul>
-              {userFollowupList.items.map((item) => (
-                <li className="personal-memory-item" key={item.id}>
-                  <div className="user-followup-item-heading">
-                    <strong>{item.title}</strong>
-                    <span data-state={item.status}>
-                      {statusLabel[item.status]}
-                    </span>
-                  </div>
-                  <p>{item.body}</p>
-                  <div className="personal-memory-meta">
-                    <span>{displayDate(item.dueAt)}</span>
-                    <span>
-                      {item.sourceMessageId
-                        ? `来自${item.sourceRoomTitle || 'Noema 主聊'} · ${displayDate(item.sourceMessageCreatedAt || item.createdAt)}`
-                        : '手动安排'}
-                    </span>
-                  </div>
-                  {item.lastError ? (
-                    <p className="user-followup-error-note" role="status">
-                      {item.lastError}
-                    </p>
-                  ) : null}
-                  {item.status === 'pending' ? (
-                    <div className="personal-memory-actions">
-                      <button
-                        type="button"
-                        disabled={userFollowupBusy}
-                        onClick={() => {
-                          setEditingUserFollowupId(item.id);
-                          setUserFollowupTitle(item.title);
-                          setUserFollowupBody(item.body);
-                          setUserFollowupDueAt(localInputValue(item.dueAt));
-                        }}
-                      >
-                        修改
-                      </button>
-                      <button
-                        type="button"
-                        disabled={userFollowupBusy}
-                        onClick={() => void cancelUserFollowup(item.id)}
-                      >
-                        取消回访
-                      </button>
+              {userFollowupList.items.map((item) => {
+                const state = dueStatus(item);
+                return (
+                  <li className="personal-memory-item" key={item.id}>
+                    <div className="user-followup-item-heading">
+                      <strong>{item.title}</strong>
+                      <span data-state={state.state}>{state.label}</span>
                     </div>
-                  ) : null}
-                </li>
-              ))}
+                    <p>{item.body}</p>
+                    <div className="personal-memory-meta">
+                      <span>{displayDate(item.dueAt)}</span>
+                      <span>
+                        {item.sourceMessageId
+                          ? item.sourceMessageCreatedAt
+                            ? `来自${item.sourceRoomTitle || 'Noema 主聊'} · ${displayDate(item.sourceMessageCreatedAt)}`
+                            : item.sourceRoomTitle
+                              ? `来自${item.sourceRoomTitle} · 原消息已删除`
+                              : '来源聊天或消息已不可用'
+                          : item.sourceRoomId
+                            ? `${item.sourceRoomTitle || '来源聊天'} · 原消息已删除`
+                            : '手动安排'}
+                      </span>
+                      {item.sourceMessageId &&
+                      item.sourceRoomId &&
+                      item.sourceMessageCreatedAt ? (
+                        <NoemaButton
+                          className="secondary-action personal-memory-source-link"
+                          type="button"
+                          onClick={() => {
+                            closeUserFollowups();
+                            openHistorySource({
+                              id: item.sourceMessageId!,
+                              roomId: item.sourceRoomId!,
+                              roomTitle: item.sourceRoomTitle || 'Noema 主聊',
+                              role: 'user',
+                              createdAt: item.sourceMessageCreatedAt!,
+                              snippet: '',
+                              redacted: false,
+                            });
+                          }}
+                        >
+                          查看来源
+                        </NoemaButton>
+                      ) : null}
+                    </div>
+                    {item.lastError ? (
+                      <p className="user-followup-error-note" role="status">
+                        上次通知未成功，稍后会重试：
+                        {item.lastError}
+                      </p>
+                    ) : null}
+                    {item.status === 'pending' ? (
+                      <div className="personal-memory-actions">
+                        <NoemaButton
+                          type="button"
+                          disabled={userFollowupBusy}
+                          onClick={() => {
+                            setEditingUserFollowupId(item.id);
+                            setUserFollowupTitle(item.title);
+                            setUserFollowupBody(item.body);
+                            setUserFollowupDueAt(localInputValue(item.dueAt));
+                          }}
+                        >
+                          修改
+                        </NoemaButton>
+                        <NoemaButton
+                          type="button"
+                          disabled={userFollowupBusy}
+                          onClick={() => void cancelUserFollowup(item.id)}
+                        >
+                          取消
+                        </NoemaButton>
+                      </div>
+                    ) : null}
+                  </li>
+                );
+              })}
             </ul>
           ) : (
-            <p className="personal-memory-empty">
-              还没有回访。你可以在主聊中明确安排，也可以在这里手动添加。
-            </p>
+            <p className="personal-memory-empty">还没有回访。</p>
           )}
         </section>
         {userFollowupError ? (
@@ -256,6 +326,6 @@ export function UserFollowupsDialog({
           </p>
         ) : null}
       </section>
-    </div>
+    </NoemaOverlay>
   );
 }

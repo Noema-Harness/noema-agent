@@ -1320,3 +1320,269 @@ test('plan summaries mark bounded text and item reads return the complete text',
     db.close();
   }
 });
+
+test('appending a phase preserves acceptance of unchanged completed phases', () => {
+  const { db, projects, project, a } = setup();
+  try {
+    const initial = projects.plans.replace({
+      projectId: project.id,
+      expectedRevision: 0,
+      reason: 'establish research phase',
+      plan: {
+        objective: 'research then build',
+        phases: [
+          {
+            id: 'research',
+            title: 'Research',
+            outcome: 'decision ready research',
+            exitCriteria: 'reviewed findings',
+            dependsOn: [],
+            status: 'pending',
+            evidence: '',
+            workItems: [
+              {
+                id: 'market',
+                title: 'Check demand',
+                ownerAgentId: a,
+                acceptance: 'cite sources',
+                dependsOn: [],
+                status: 'pending',
+                evidence: '',
+                blocker: '',
+              },
+            ],
+          },
+        ],
+      },
+    });
+    const started = projects.plans.updateItem({
+      projectId: project.id,
+      expectedRevision: initial.revision,
+      itemId: 'market',
+      status: 'in_progress',
+      actorAgentId: a,
+      reason: 'start',
+    });
+    const submitted = projects.plans.updateItem({
+      projectId: project.id,
+      expectedRevision: started.revision,
+      itemId: 'market',
+      status: 'submitted',
+      actorAgentId: a,
+      evidence: 'sources checked',
+      evidenceSources: messageEvidence(db, project, a),
+      reason: 'submit',
+    });
+    const done = projects.plans.updateItem({
+      projectId: project.id,
+      expectedRevision: submitted.revision,
+      itemId: 'market',
+      status: 'done',
+      actorAgentId: 'noema',
+      reason: 'accept',
+    });
+    const gated = projects.plans.updatePhase({
+      projectId: project.id,
+      expectedRevision: done.revision,
+      phaseId: 'research',
+      actorAgentId: 'noema',
+      status: 'done',
+      evidence: 'research accepted',
+      reason: 'accept research phase',
+    });
+    const extended = projects.plans.replace({
+      projectId: project.id,
+      expectedRevision: gated.revision,
+      reason: 'append build phase',
+      plan: {
+        objective: 'research then build',
+        phases: [
+          {
+            id: 'research',
+            title: 'Research',
+            outcome: 'decision ready research',
+            exitCriteria: 'reviewed findings',
+            dependsOn: [],
+            status: 'done',
+            evidence: '',
+            workItems: [
+              {
+                id: 'market',
+                title: 'Check demand',
+                ownerAgentId: a,
+                acceptance: 'cite sources',
+                dependsOn: [],
+                status: 'done',
+              },
+            ],
+          },
+          {
+            id: 'build',
+            title: 'Build',
+            outcome: 'working game',
+            exitCriteria: 'playable build',
+            dependsOn: ['research'],
+            status: 'pending',
+            evidence: '',
+            workItems: [
+              {
+                id: 'game',
+                title: 'Write game',
+                ownerAgentId: a,
+                acceptance: 'playable',
+                dependsOn: [],
+                status: 'pending',
+                evidence: '',
+                blocker: '',
+              },
+            ],
+          },
+        ],
+      },
+    });
+    assert.equal(extended.revision, gated.revision + 1);
+    assert.equal(
+      extended.items.find((item) => item.id === 'market').acceptanceRecorded,
+      true,
+    );
+    assert.equal(
+      extended.phases.find((phase) => phase.id === 'build').status,
+      'pending',
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test('summary includes active phase items when earlier phase fills the budget', () => {
+  const { db, projects, project, a, b } = setup();
+  try {
+    const researchItems = Array.from({ length: 24 }, (_, index) => ({
+      id: `research-${index}`,
+      title: `Research item ${index}`,
+      ownerAgentId: a,
+      acceptance: `Acceptance for research item ${index}`,
+      dependsOn: [],
+      status: 'pending',
+      evidence: '',
+      blocker: '',
+    }));
+    let plan = projects.plans.replace({
+      projectId: project.id,
+      expectedRevision: 0,
+      reason: 'create long research phase',
+      plan: {
+        objective: 'long research then build',
+        phases: [
+          {
+            id: 'research',
+            title: 'Research',
+            outcome: 'decision ready research',
+            exitCriteria: 'reviewed findings',
+            dependsOn: [],
+            status: 'pending',
+            evidence: '',
+            workItems: researchItems,
+          },
+        ],
+      },
+    });
+    for (const item of researchItems) {
+      const started = projects.plans.updateItem({
+        projectId: project.id,
+        expectedRevision: plan.revision,
+        itemId: item.id,
+        actorAgentId: a,
+        status: 'in_progress',
+        reason: 'start',
+      });
+      const submitted = projects.plans.updateItem({
+        projectId: project.id,
+        expectedRevision: started.revision,
+        itemId: item.id,
+        actorAgentId: a,
+        status: 'submitted',
+        evidence: `Evidence for ${item.id}`,
+        evidenceSources: messageEvidence(db, project, a),
+        reason: 'submit',
+      });
+      plan = projects.plans.updateItem({
+        projectId: project.id,
+        expectedRevision: submitted.revision,
+        itemId: item.id,
+        status: 'done',
+        actorAgentId: 'noema',
+        reason: 'accept',
+      });
+    }
+    plan = projects.plans.updatePhase({
+      projectId: project.id,
+      expectedRevision: plan.revision,
+      phaseId: 'research',
+      actorAgentId: 'noema',
+      status: 'done',
+      evidence: 'research accepted',
+      reason: 'accept research',
+    });
+    plan = projects.plans.replace({
+      projectId: project.id,
+      expectedRevision: plan.revision,
+      reason: 'append implementation',
+      plan: {
+        objective: 'long research then build',
+        phases: [
+          {
+            id: 'research',
+            title: 'Research',
+            outcome: 'decision ready research',
+            exitCriteria: 'reviewed findings',
+            dependsOn: [],
+            status: 'done',
+            evidence: '',
+            workItems: researchItems.map((item) => ({
+              ...item,
+              status: 'done',
+            })),
+          },
+          {
+            id: 'build',
+            title: 'Build',
+            outcome: 'working game',
+            exitCriteria: 'playable build',
+            dependsOn: ['research'],
+            status: 'pending',
+            evidence: '',
+            workItems: [
+              {
+                id: 'p4-skeleton',
+                title: 'Skeleton',
+                ownerAgentId: b,
+                acceptance: 'playable skeleton',
+                dependsOn: [],
+                status: 'pending',
+                evidence: '',
+                blocker: '',
+              },
+              {
+                id: 'p4-playable',
+                title: 'Playable',
+                ownerAgentId: b,
+                acceptance: 'playable build',
+                dependsOn: ['p4-skeleton'],
+                status: 'pending',
+                evidence: '',
+                blocker: '',
+              },
+            ],
+          },
+        ],
+      },
+    });
+    const summary = projects.plans.forAgent(project.id, 'noema');
+    const ids = summary.items.map((item) => item.id);
+    assert.ok(ids.includes('p4-skeleton'));
+    assert.ok(ids.includes('p4-playable'));
+  } finally {
+    db.close();
+  }
+});

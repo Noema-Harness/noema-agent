@@ -1,8 +1,8 @@
-use crate::policy::{AclGrant, VerifiedAclGrantEvidence, WindowsCommandPolicyV2};
+use crate::policy::{AclGrant, VerifiedAclGrantEvidence, WindowsCommandPolicy};
 use serde::{Deserialize, Serialize};
 
 pub const PROTOCOL_VERSION: u16 = 8;
-pub const POLICY_VERSION: u16 = 2;
+pub const POLICY_VERSION: u16 = 3;
 pub const BACKEND_ID: &str = "noema-codex-windows";
 pub const MINIMUM_WINDOWS_BUILD: u32 = 19_045;
 
@@ -29,7 +29,7 @@ pub enum Operation {
         tool_call_id: String,
         user_data_path: String,
         package_sid: String,
-        policy: WindowsCommandPolicyV2,
+        policy: WindowsCommandPolicy,
         grants: Vec<AclGrant>,
         command: String,
         timeout_ms: u32,

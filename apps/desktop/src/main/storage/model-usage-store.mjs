@@ -63,7 +63,8 @@ export class ModelUsageStore {
   /** @param {import('better-sqlite3').Database} db */
   constructor(db) {
     this.db = db;
-    this.db.exec(`
+    const migrate = this.db.transaction(() => {
+      this.db.exec(`
       CREATE TABLE IF NOT EXISTS model_usage_records (
         id TEXT PRIMARY KEY,
         created_at TEXT NOT NULL,
@@ -107,51 +108,53 @@ export class ModelUsageStore {
       );
       CREATE INDEX IF NOT EXISTS external_usage_records_interaction
         ON external_usage_records(interaction_id, created_at DESC);
-    `);
-    const columns = new Set(
-      this.db
-        .pragma('table_info(model_usage_records)')
-        .map((column) => column.name),
-    );
-    if (!columns.has('cache_write_tokens')) {
-      this.db.exec(`
+      `);
+      const columns = new Set(
+        this.db
+          .pragma('table_info(model_usage_records)')
+          .map((column) => column.name),
+      );
+      if (!columns.has('cache_write_tokens')) {
+        this.db.exec(`
         ALTER TABLE model_usage_records
         ADD COLUMN cache_write_tokens INTEGER
         CHECK (cache_write_tokens IS NULL OR cache_write_tokens >= 0)
       `);
-    }
-    if (!columns.has('tool_definition_characters')) {
-      this.db.exec(`
+      }
+      if (!columns.has('tool_definition_characters')) {
+        this.db.exec(`
         ALTER TABLE model_usage_records
         ADD COLUMN tool_definition_characters INTEGER
         CHECK (tool_definition_characters IS NULL OR tool_definition_characters >= 0)
       `);
-    }
-    if (!columns.has('message_role_characters_json')) {
-      this.db.exec(
-        'ALTER TABLE model_usage_records ADD COLUMN message_role_characters_json TEXT',
-      );
-    }
-    if (!columns.has('interaction_id')) {
-      this.db.exec(`
+      }
+      if (!columns.has('message_role_characters_json')) {
+        this.db.exec(
+          'ALTER TABLE model_usage_records ADD COLUMN message_role_characters_json TEXT',
+        );
+      }
+      if (!columns.has('interaction_id')) {
+        this.db.exec(`
         ALTER TABLE model_usage_records
         ADD COLUMN interaction_id TEXT
       `);
-    }
-    for (const column of ['request_id', 'execution_id', 'turn_id']) {
-      if (!columns.has(column)) {
-        this.db.exec(
-          `ALTER TABLE model_usage_records ADD COLUMN ${column} TEXT`,
-        );
       }
-    }
-    this.db.exec(`
+      for (const column of ['request_id', 'execution_id', 'turn_id']) {
+        if (!columns.has(column)) {
+          this.db.exec(
+            `ALTER TABLE model_usage_records ADD COLUMN ${column} TEXT`,
+          );
+        }
+      }
+      this.db.exec(`
       CREATE INDEX IF NOT EXISTS model_usage_records_interaction
         ON model_usage_records(interaction_id, created_at DESC)
       ;
       CREATE INDEX IF NOT EXISTS model_usage_records_request
         ON model_usage_records(request_id)
     `);
+    });
+    migrate();
     this.insertRecord = this.db.prepare(`
       INSERT INTO model_usage_records (
         id, created_at, provider_host, model, operation, interaction_id,
@@ -451,6 +454,63 @@ export class ModelUsageStore {
           toolCount: hasRequestShape ? row.toolCount : null,
         };
       });
+  }
+
+  /**
+   * Aggregate provider usage for one work interaction without exposing prompts
+   * or completion text.
+   * @param {string} interactionId
+   */
+  getTaskUsage(interactionId) {
+    const id =
+      typeof interactionId === 'string'
+        ? interactionId.trim().slice(0, 120)
+        : '';
+    if (!id) {
+      return {
+        requests: 0,
+        usageReportedRequests: 0,
+        inputTokens: null,
+        outputTokens: null,
+        totalTokens: null,
+        reasoningTokens: null,
+        models: [],
+      };
+    }
+    const rows = this.getForDiagnostics({ taskId: id });
+    let inputTokens = 0;
+    let outputTokens = 0;
+    let reasoningTokens = 0;
+    let usageReportedRequests = 0;
+    let hasInput = false;
+    let hasOutput = false;
+    let hasReasoning = false;
+    const models = new Set();
+    for (const row of rows) {
+      if (row.usageReceived) usageReportedRequests += 1;
+      if (Number.isFinite(row.inputTokens)) {
+        inputTokens += row.inputTokens;
+        hasInput = true;
+      }
+      if (Number.isFinite(row.outputTokens)) {
+        outputTokens += row.outputTokens;
+        hasOutput = true;
+      }
+      if (Number.isFinite(row.reasoningTokens)) {
+        reasoningTokens += row.reasoningTokens;
+        hasReasoning = true;
+      }
+      if (row.model) models.add(row.model);
+    }
+    return {
+      requests: rows.length,
+      usageReportedRequests,
+      inputTokens: hasInput ? inputTokens : null,
+      outputTokens: hasOutput ? outputTokens : null,
+      totalTokens: hasInput && hasOutput ? inputTokens + outputTokens : null,
+      reasoningTokens: hasReasoning ? reasoningTokens : null,
+      models: [...models],
+    };
   }
 
   /** @param {{limit?:number}} [options] */

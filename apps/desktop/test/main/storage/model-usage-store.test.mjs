@@ -49,6 +49,18 @@ test('stores only usage metadata and reports cache hit rate by request operation
     assert.equal(JSON.stringify(rows[0]).includes('response'), false);
     assert.equal(JSON.parse(rows[0].provider_cost_json).total, 0.001);
 
+    const taskUsage = store.getTaskUsage('turn-1');
+    assert.deepEqual(taskUsage, {
+      requests: 1,
+      usageReportedRequests: 1,
+      inputTokens: 100,
+      outputTokens: 20,
+      totalTokens: 120,
+      reasoningTokens: 4,
+      models: ['deepseek-flash'],
+    });
+    assert.equal(store.getTaskUsage('missing').requests, 0);
+
     const [summary] = store.getSummary();
     assert.equal(summary.requests, 1);
     assert.equal(summary.inputTokens, 100);
@@ -189,6 +201,60 @@ test('adds nullable role-shape storage to an existing usage database', () => {
       tool: 0,
       other: 0,
     });
+  } finally {
+    db.close();
+  }
+});
+
+test('rolls back all usage schema changes when an upgrade step fails', () => {
+  const db = new Database(':memory:');
+  try {
+    db.exec(`
+      CREATE TABLE model_usage_records (
+        id TEXT PRIMARY KEY,
+        created_at TEXT NOT NULL,
+        provider_host TEXT NOT NULL,
+        model TEXT NOT NULL,
+        operation TEXT NOT NULL
+      )
+    `);
+    let execCalls = 0;
+    const failingDb = new Proxy(db, {
+      get(target, property) {
+        if (property === 'exec') {
+          return (...args) => {
+            execCalls += 1;
+            if (execCalls === 3) throw new Error('injected migration failure');
+            return target.exec(...args);
+          };
+        }
+        const value = Reflect.get(target, property, target);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+
+    assert.throws(
+      () => new ModelUsageStore(failingDb),
+      /injected migration failure/u,
+    );
+    const columns = db
+      .pragma('table_info(model_usage_records)')
+      .map((column) => column.name);
+    assert.deepEqual(columns, [
+      'id',
+      'created_at',
+      'provider_host',
+      'model',
+      'operation',
+    ]);
+    assert.equal(
+      db
+        .prepare(
+          "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'external_usage_records'",
+        )
+        .get(),
+      undefined,
+    );
   } finally {
     db.close();
   }

@@ -4,6 +4,7 @@ import Database from 'better-sqlite3';
 import { RootStore } from '../../../src/main/storage/root-store.mjs';
 import { SocialChatStore } from '../../../src/main/chat/social-chat-store.mjs';
 import { SocialProjectStore } from '../../../src/main/projects/social-project-store.mjs';
+import { ProjectCollaborationStore } from '../../../src/main/projects/project-collaboration-store.mjs';
 import { SocialChatService } from '../../../src/main/chat/social-chat-service.mjs';
 
 function setup(
@@ -555,7 +556,21 @@ test('submitted work publicly wakes only its named active agent reviewers', asyn
       oldDelivery.planSubmissionRevision,
       plan.items[0].submissionRevision,
     );
-    assert.equal(f.service.collaboration.prepareDelivery(oldDelivery), true);
+    const reopenedSocial = new SocialChatStore(f.db);
+    const reopenedProjects = new SocialProjectStore({
+      db: f.db,
+      socialChatStore: reopenedSocial,
+    });
+    const reopenedCollaboration = new ProjectCollaborationStore({
+      db: f.db,
+      social: reopenedSocial,
+      projects: reopenedProjects,
+    });
+    assert.equal(
+      reopenedCollaboration.prepareDelivery(oldDelivery),
+      true,
+      'a queued reviewer delivery survives store replacement',
+    );
     plan = f.projects.plans.updateItem({
       projectId: f.project.id,
       expectedRevision: plan.revision,

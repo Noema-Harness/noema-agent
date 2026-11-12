@@ -2,7 +2,6 @@ import {
   app,
   BrowserWindow,
   dialog,
-  globalShortcut,
   ipcMain,
   net,
   safeStorage,
@@ -17,6 +16,7 @@ import {
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { EncryptedSecretStore } from './platform/encrypted-secret-store.mjs';
 import { redactSensitiveText } from '../shared/text/sensitive-text.mjs';
 import { resolveElectronProxy } from './platform/electron-proxy.mjs';
@@ -25,15 +25,18 @@ import {
   OpenAICompatibleClient,
   resolveConfiguredModelBaseUrl,
 } from './providers/openai-compatible-client.mjs';
-import {
-  createImportAwareSendMessage,
-  registerRootIpc,
-  CHANNELS,
-} from './ipc/root-ipc.mjs';
+import { registerRootIpc, CHANNELS } from './ipc/root-ipc.mjs';
+import { WorkspaceFileService } from './execution/workspace-file-service.mjs';
+import { registerLegacyHistoryArchiveIpc } from './ipc/legacy-history-archive-ipc.mjs';
 import { RootAgent } from './agents/root-agent.mjs';
 import { RootStore } from './storage/root-store.mjs';
+import { LegacyHistoryArchiveService } from './archive/legacy-history-archive-service.mjs';
+import { saveLegacyHistoryExport } from './archive/save-legacy-history-export.mjs';
 import { ModelUsageStore } from './storage/model-usage-store.mjs';
 import { DiagnosticsEventStore } from './storage/diagnostics-event-store.mjs';
+import { OfficialPluginStateStore } from './plugins/official-plugin-state-store.mjs';
+import { OfficialPluginHost } from './plugins/official-plugin-host.mjs';
+import { officialContractSample } from './plugins/official-contract-sample.mjs';
 import { DiagnosticsQueryService } from './diagnostics/diagnostics-query-service.mjs';
 import { collectDiagnosticsRuntimeInfo } from './diagnostics/diagnostics-runtime-info.mjs';
 import { startupFailureDiagnostic } from './diagnostics/startup-failure-diagnostic.mjs';
@@ -44,12 +47,20 @@ import {
 } from './diagnostics/database-recovery.mjs';
 import { saveDiagnosticsExport } from './diagnostics/save-diagnostics-export.mjs';
 import { SocialChatStore } from './chat/social-chat-store.mjs';
+import {
+  conversationExportFileName,
+  formatConversationMarkdown,
+} from '../shared/export/conversation-markdown.mjs';
+import {
+  formatWorkTicketMarkdown,
+  workTicketExportFileName,
+} from '../shared/export/work-ticket-markdown.mjs';
 import { SOCIAL_SCHEMA_VERSION } from './chat/social-chat-schema.mjs';
 import { SocialProjectStore } from './projects/social-project-store.mjs';
 import { SocialChatService } from './chat/social-chat-service.mjs';
 import { searchAndReadWeb } from './tools/web-search.mjs';
 import { SocialWorkService } from './execution/social-work-service.mjs';
-import { NoemaProjectExecutor } from './execution/noema-project-executor.mjs';
+import { captureWorkspaceIdentity } from './platform/workspace-identity.mjs';
 import { WindowsRunnerAclJournalStore } from './execution/windows-runner-acl-journal.mjs';
 import { WindowsRunnerAclTransactionService } from './execution/windows-runner-acl-transaction.mjs';
 import { WindowsRunnerCapabilityNameStore } from './execution/windows-runner-capability-name-store.mjs';
@@ -62,18 +73,20 @@ import { WINDOWS_RUNNER_PROTOCOL_VERSION } from './execution/windows-runner-nati
 import { WindowsRunnerSetupService } from './execution/windows-runner-setup-service.mjs';
 import { WindowsRunnerSetupStateStore } from './execution/windows-runner-setup-state.mjs';
 import { backupBeforeSocialChatMigration } from './chat/social-chat-migration-backup.mjs';
-import {
-  resolveNoemaDatabasePath,
-  resolveNoemaDshUserDataPath,
-} from './platform/runtime-paths.mjs';
-import {
-  CodexAppServerAdapter,
-  resolveCodexExecutable,
-} from './integrations/codex-app-server-adapter.mjs';
+import { resolveNoemaDatabasePath } from './platform/runtime-paths.mjs';
 import {
   DshHeadlessAdapter,
   resolveDshHeadlessRuntime,
 } from './integrations/dsh-headless-adapter.mjs';
+import { DshChatRuntime } from './runtime/dsh-chat-runtime.mjs';
+import { createNativeChatRuntime } from './runtime/chat-runtime.mjs';
+import { createChatRuntimeRegistry } from './runtime/chat-runtime-registry.mjs';
+import { createWorkRuntimeRegistry } from './runtime/work-runtime-registry.mjs';
+import { NoemaProjectExecutor } from './execution/noema-project-executor.mjs';
+import { createNoemaToolRegistry } from './runtime/noema-tool-registry.mjs';
+import { NoemaToolSession } from './mcp/noema-tool-session.mjs';
+import { createChatTicketTool } from './chat/chat-ticket-tool.mjs';
+import { createNoemaReadTools } from './chat/noema-read-tools.mjs';
 import {
   createWindowPreferences,
   isMainFrameIpcEvent,
@@ -84,12 +97,6 @@ import {
   fitsWithinWorkArea,
   resolveInitialWindowSize,
 } from './platform/window-geometry.mjs';
-import {
-  activateQuickCaptureWindow,
-  focusPrimaryWindow,
-  finishQuickCaptureWindow,
-  registerQuickCaptureShortcut,
-} from './platform/quick-capture-shortcut.mjs';
 import {
   createSocialReplyNotificationHandler,
   createUserFollowupNotificationHandler,
@@ -117,6 +124,7 @@ const {
   testSocialWorkResultPath,
   testSocialWorkChecksJson,
   testSocialWorkSynthetic,
+  testSocialWorkEntry,
   testSocialWorkProposalSourceId,
   testSocialWorkLiveEpisodes,
   testSocialWorkPracticeDecision,
@@ -124,20 +132,32 @@ const {
   testSocialWorkEpisodeAChecks,
   testSocialWorkEpisodeBChecks,
   testSocialAgentWorkflow,
+  testPersonalMemoryLifecycle,
+  testUserFollowupLifecycle,
   testSocialAttachmentsOnly,
   testSocialAgentLiveE2e,
   testSocialAgentLiveModel,
+  testSocialProviderLiveAcceptance,
+  testReadOnlyCredentialDirectory,
   testSocialAgentR0FirstUse,
   testSocialAgentKeepOpen,
   socialAgentE2eResultPath,
   socialAgentDelegationMarker,
+  socialHistoryRecallMarker,
+  socialComposerQueueMarker,
   socialAgentDelegationTask,
   socialAgentDelegationResult,
 } = developmentOptions;
 
 function writeSmokeLog(step: string, details: Record<string, unknown> = {}) {
   const logFile = process.env.NOEMA_SMOKE_LOG_FILE;
-  if (process.env.NOEMA_SMOKE_TEST !== '1' || !logFile) return;
+  const liveProviderTrace = process.env.NOEMA_E2E_SOCIAL_PROVIDER_LIVE === '1';
+  if (
+    (process.env.NOEMA_SMOKE_TEST !== '1' && !liveProviderTrace) ||
+    !logFile
+  ) {
+    return;
+  }
   fs.writeFileSync(logFile, JSON.stringify({ step, ...details }));
 }
 
@@ -160,24 +180,6 @@ function writeRendererHealthLog(
   } catch (error) {
     console.warn('Could not record renderer health event:', error);
   }
-}
-
-function recordAuthorizationDecision(
-  capability: string,
-  decision: 'requested' | 'granted' | 'denied' | 'revoked',
-  reason?: string,
-) {
-  recordDiagnosticEvent({
-    executionId: randomUUID(),
-    parentExecutionId: currentApplicationExecutionId,
-    module: 'authorization',
-    operation: `authorization.${capability}`,
-    status: decision,
-    details: {
-      capability,
-      ...(reason ? { reason } : {}),
-    },
-  });
 }
 
 function beginAuthorizationDecision(capability: string) {
@@ -247,14 +249,55 @@ if (
   app.setPath('sessionData', smokeSessionData);
   delete process.env.NOEMA_SMOKE_SESSION_DATA_DIR;
 }
+if (testSocialProviderLiveAcceptance) {
+  const expectedCredentialDirectory = path.join(
+    app.getPath('appData'),
+    'Noema',
+    'credentials',
+  );
+  const currentUserDataDirectory = path.resolve(
+    path.join(app.getPath('appData'), 'Noema'),
+  );
+  const isolatedUserDataDirectory = path.resolve(app.getPath('userData'));
+  let rendererIsLocal = false;
+  try {
+    const rendererAddress = new URL(testRendererUrl ?? '');
+    rendererIsLocal =
+      rendererAddress.protocol === 'http:' &&
+      ['localhost', '127.0.0.1', '[::1]', '::1'].includes(
+        rendererAddress.hostname,
+      );
+  } catch {
+    rendererIsLocal = false;
+  }
+  if (
+    app.isPackaged ||
+    !testDataArgument ||
+    !testDatabasePath ||
+    !path.isAbsolute(testDatabasePath) ||
+    isPathWithin(currentUserDataDirectory, isolatedUserDataDirectory) ||
+    isPathWithin(isolatedUserDataDirectory, currentUserDataDirectory) ||
+    isPathWithin(isolatedUserDataDirectory, testDatabasePath) ||
+    !testReadOnlyCredentialDirectory ||
+    !path.isAbsolute(testReadOnlyCredentialDirectory) ||
+    path.resolve(testReadOnlyCredentialDirectory).toLowerCase() !==
+      path.resolve(expectedCredentialDirectory).toLowerCase() ||
+    !rendererIsLocal
+  ) {
+    throw new Error(
+      'Live provider acceptance requires an isolated development profile and database, and may only read the current Noema credential directory.',
+    );
+  }
+}
 let mainWindow: BrowserWindow | null = null;
 let desktopLifecycle: ReturnType<typeof createDesktopLifecycle> | null = null;
 const currentApplicationExecutionId = randomUUID();
-let currentEntryRoute: 'social-chat' | 'legacy' | null = null;
+let currentEntryRoute: 'social-chat' | 'legacy-archive' | null = null;
 let entryReadinessRecordedFor: string | null = null;
 let initialWindowFitsWorkArea = false;
 let rootStore: RootStore | null = null;
 let diagnosticsEventStore: DiagnosticsEventStore | null = null;
+let officialPluginHost: OfficialPluginHost | null = null;
 let diagnosticsWriteFailureCount = 0;
 let windowsRunnerCommandSupportGate: {
   supported: boolean;
@@ -329,7 +372,9 @@ function createNoemaTray({
   }
 }
 let unregisterRootIpc: (() => void) | null = null;
+let diagnosticsReadFailureProbeArmed = false;
 let rootAgent: RootAgent | null = null;
+let legacyHistoryArchiveService: LegacyHistoryArchiveService | null = null;
 let socialChatStore: SocialChatStore | null = null;
 let socialProjectStore: SocialProjectStore | null = null;
 let socialChatService: SocialChatService | null = null;
@@ -338,29 +383,46 @@ let socialAgentE2eModelRequests: Array<{
   model: string;
   messages: Array<{ role: string; content: string }>;
 }> = [];
-let quickCaptureShortcutRegistration: ReturnType<
-  typeof registerQuickCaptureShortcut
-> | null = null;
-let quickCaptureReturnToPrevious = false;
-let quickCaptureActive = false;
-let quickCaptureRendererReady = false;
-let pendingQuickCaptureRequest = false;
 let shutdownStarted = false;
 let shutdownComplete = false;
 
+function focusMainWindow(target: BrowserWindow | null) {
+  if (!target || target.isDestroyed()) return;
+  if (target.isMinimized()) target.restore();
+  if (!target.isVisible()) target.show();
+  target.focus();
+}
+
 const pendingFollowupNavigation = createPendingFollowupNavigationDelivery(
-  (target: { roomId: string; messageId: string | null }) => {
+  (target: {
+    roomId: string;
+    messageId: string | null;
+    followupExecutionId?: string;
+  }) => {
     if (
       !mainWindow ||
       mainWindow.isDestroyed() ||
       mainWindow.webContents.isDestroyed()
     )
       return false;
+    const navigationTarget = {
+      roomId: target.roomId,
+      messageId: target.messageId,
+    };
     mainWindow.webContents.send(CHANNELS.socialEvent, {
       type: 'open-followup-source',
-      ...target,
+      ...navigationTarget,
     });
     return true;
+  },
+  (target: { followupExecutionId?: string }) => {
+    if (!target.followupExecutionId) return;
+    recordDiagnosticEvent({
+      executionId: target.followupExecutionId,
+      module: 'social.followup',
+      operation: 'followup.navigation.dispatched',
+      status: 'dispatched',
+    });
   },
 );
 
@@ -389,23 +451,44 @@ ipcMain.handle('noema:window-control', (event, action: unknown) => {
 const createWindow = () => {
   currentEntryRoute = null;
   entryReadinessRecordedFor = null;
-  quickCaptureRendererReady = false;
   pendingFollowupNavigation.resetRenderer();
   const display = screen.getPrimaryDisplay();
   const windowSize = resolveInitialWindowSize(display.workAreaSize);
+  const rendererDevServerUrl = app.isPackaged
+    ? undefined
+    : (testRendererUrl ?? MAIN_WINDOW_VITE_DEV_SERVER_URL);
+  const deferDevelopmentWindowUntilMounted = Boolean(
+    rendererDevServerUrl && !testRendererUrl,
+  );
   mainWindow = new BrowserWindow({
     ...windowSize,
-    show: process.env.NOEMA_SMOKE_HIDDEN !== '1',
+    ...(process.env.NOEMA_SMOKE_TEST === '1'
+      ? { minWidth: 320, minHeight: 420 }
+      : {}),
+    show:
+      process.env.NOEMA_SMOKE_HIDDEN !== '1' &&
+      !deferDevelopmentWindowUntilMounted,
     title: 'Noema',
     frame: false,
     autoHideMenuBar: true,
     backgroundColor: '#fcfcfc',
     webPreferences: createWindowPreferences(
       path.join(__dirname, 'preload.cjs'),
+      !app.isPackaged &&
+        process.env.NOEMA_E2E_SOCIAL_WORK_REVERSE_SNAPSHOT === '1'
+        ? ['--noema-social-work-reverse-snapshot-probe']
+        : [],
     ),
   });
+  const window = mainWindow;
+  let rendererLoadRetryCount = 0;
+  let rendererLoadRetryTimer: NodeJS.Timeout | undefined;
+  let rendererMountCheckTimer: NodeJS.Timeout | undefined;
+  let rendererMountRecoveryCount = 0;
   mainWindow.setMenuBarVisibility(false);
   mainWindow.webContents.on('did-start-loading', () => {
+    if (rendererMountCheckTimer) clearTimeout(rendererMountCheckTimer);
+    rendererMountCheckTimer = undefined;
     pendingFollowupNavigation.resetRenderer();
   });
   mainWindow.webContents.on('unresponsive', () => {
@@ -421,6 +504,37 @@ const createWindow = () => {
       exitCode: details.exitCode,
     });
   });
+  if (rendererDevServerUrl) {
+    mainWindow.webContents.on(
+      'did-fail-load',
+      (_event, errorCode, errorDescription, _validatedUrl, isMainFrame) => {
+        if (
+          !isMainFrame ||
+          (errorCode !== -102 && errorCode !== -118) ||
+          rendererLoadRetryCount >= 60 ||
+          window.isDestroyed() ||
+          rendererLoadRetryTimer
+        )
+          return;
+        rendererLoadRetryCount += 1;
+        writeRendererHealthLog('dev-renderer-load-retry', {
+          attempt: rendererLoadRetryCount,
+          errorCode,
+          errorDescription,
+        });
+        rendererLoadRetryTimer = setTimeout(() => {
+          rendererLoadRetryTimer = undefined;
+          if (window.isDestroyed()) return;
+          void window.loadURL(rendererDevServerUrl).catch((error) => {
+            writeRendererHealthLog('dev-renderer-load-retry-failed', {
+              attempt: rendererLoadRetryCount,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+        }, 500);
+      },
+    );
+  }
   const publishWindowState = () => {
     if (mainWindow && !mainWindow.webContents.isDestroyed())
       mainWindow.webContents.send(
@@ -461,24 +575,92 @@ const createWindow = () => {
       !isInternalNavigation(
         url,
         testRendererUrl ?? MAIN_WINDOW_VITE_DEV_SERVER_URL,
+        pathToFileURL(
+          path.join(
+            __dirname,
+            `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`,
+          ),
+        ).href,
       )
     )
       event.preventDefault();
   });
   mainWindow.on('closed', () => {
+    if (rendererLoadRetryTimer) clearTimeout(rendererLoadRetryTimer);
+    rendererLoadRetryTimer = undefined;
+    if (rendererMountCheckTimer) clearTimeout(rendererMountCheckTimer);
+    rendererMountCheckTimer = undefined;
     mainWindow = null;
-    quickCaptureActive = false;
-    quickCaptureRendererReady = false;
-    pendingQuickCaptureRequest = false;
     pendingFollowupNavigation.resetRenderer();
   });
   desktopLifecycle?.attachWindow(mainWindow);
 
+  if (deferDevelopmentWindowUntilMounted && rendererDevServerUrl) {
+    mainWindow.webContents.on('did-finish-load', () => {
+      if (rendererMountCheckTimer) clearTimeout(rendererMountCheckTimer);
+      rendererMountCheckTimer = setTimeout(() => {
+        rendererMountCheckTimer = undefined;
+        if (window.isDestroyed()) return;
+        void window.webContents
+          .executeJavaScript(`(() => {
+            const root = document.getElementById('root');
+            return {
+              mounted: Boolean(root?.childElementCount),
+              rootChildren: root?.childElementCount ?? 0,
+              entryEvaluated: performance.getEntriesByName('noema.renderer.entry-evaluated').length > 0,
+            };
+          })()`)
+          .then(
+            (status: {
+              mounted: boolean;
+              rootChildren: number;
+              entryEvaluated: boolean;
+            }) => {
+              writeRendererHealthLog(
+                status.mounted ? 'renderer-mounted' : 'renderer-root-empty',
+                status,
+              );
+              if (status.mounted) {
+                if (process.env.NOEMA_SMOKE_HIDDEN !== '1') window.show();
+                return;
+              }
+              if (rendererMountRecoveryCount < 2) {
+                rendererMountRecoveryCount += 1;
+                writeRendererHealthLog('renderer-mount-retry', {
+                  attempt: rendererMountRecoveryCount,
+                  ...status,
+                });
+                void window.loadURL(rendererDevServerUrl).catch((error) => {
+                  writeRendererHealthLog('renderer-mount-retry-failed', {
+                    attempt: rendererMountRecoveryCount,
+                    error:
+                      error instanceof Error ? error.message : String(error),
+                  });
+                });
+                return;
+              }
+              if (process.env.NOEMA_SMOKE_HIDDEN !== '1') window.show();
+            },
+          )
+          .catch((error) => {
+            writeRendererHealthLog('renderer-mount-check-failed', {
+              error: error instanceof Error ? error.message : String(error),
+            });
+            if (process.env.NOEMA_SMOKE_HIDDEN !== '1') window.show();
+          });
+      }, 1_500);
+    });
+  }
+
   mainWindow.webContents.once('did-finish-load', () => {
+    if (rendererLoadRetryTimer) clearTimeout(rendererLoadRetryTimer);
+    rendererLoadRetryTimer = undefined;
     const loadedUrl = mainWindow?.webContents.getURL();
     if (currentApplicationExecutionId && loadedUrl) {
       currentEntryRoute =
-        new URL(loadedUrl).hash === '#legacy' ? 'legacy' : 'social-chat';
+        new URL(loadedUrl).hash === '#archive'
+          ? 'legacy-archive'
+          : 'social-chat';
       recordDiagnosticEvent({
         executionId: currentApplicationExecutionId,
         module: 'desktop.main',
@@ -487,7 +669,6 @@ const createWindow = () => {
         details: { route: currentEntryRoute },
       });
     }
-    if (pendingQuickCaptureRequest) dispatchQuickCaptureRequest();
   });
 
   if (testRendererUrl) {
@@ -506,117 +687,18 @@ const createWindow = () => {
     !testSocialAgentWorkflow
   ) {
     mainWindow.webContents.once('did-finish-load', async () => {
-      let bridgeProbeStage = 'root-state';
+      let bridgeProbeStage = 'social-state';
       try {
         const bridgeState = await mainWindow?.webContents.executeJavaScript(
-          'window.noema.getRootState()',
-        );
-        if (!bridgeState || !Array.isArray(bridgeState.messages)) {
-          throw new Error('Root conversation bridge did not return its state');
-        }
-        bridgeProbeStage = 'social-state';
-        const socialState = await mainWindow?.webContents.executeJavaScript(
           'window.noema.getSocialState()',
         );
         if (
-          !socialState ||
-          !Array.isArray(socialState.agents) ||
-          !Array.isArray(socialState.rooms)
+          !bridgeState ||
+          !Array.isArray(bridgeState.agents) ||
+          !Array.isArray(bridgeState.rooms)
         ) {
           throw new Error(
             'Social chat bridge did not return contacts and rooms',
-          );
-        }
-        bridgeProbeStage = 'workspace-task-entry';
-        await mainWindow?.webContents
-          .executeJavaScript(`new Promise((resolve) => {
-          const deadline = Date.now() + 60_000;
-          const poll = () => {
-            if (document.querySelector('.composer-mode-button') || Date.now() >= deadline) {
-              resolve();
-              return;
-            }
-            requestAnimationFrame(poll);
-          };
-          poll();
-        })`);
-        const workspaceTaskEntry =
-          await mainWindow?.webContents.executeJavaScript(
-            `(() => {
-            const button = document.querySelector('.composer-mode-button');
-            const status = document.querySelector('.composer-mode > span');
-            const rect = button?.getBoundingClientRect();
-            const selectedRoom = document.querySelector(
-              '.room-list-item[aria-current="page"]',
-            );
-            return {
-              visible: Boolean(rect && rect.width > 0 && rect.height > 0),
-              accessibleName: button?.textContent?.trim() ?? '',
-              pressed: button?.getAttribute('aria-pressed'),
-              keyboardFocusable: button?.tabIndex === 0,
-              disabled: Boolean(button?.disabled),
-              statusText: status?.textContent?.trim() ?? '',
-              selectedRoom: selectedRoom?.textContent?.trim() ?? '',
-              messageRoomId:
-                document
-                  .querySelector('.message-thread')
-                  ?.getAttribute('data-room-id') ?? '',
-              emptyChatText:
-                document.querySelector('.empty-chat')?.textContent?.trim() ?? '',
-              composerVisible: Boolean(
-                document.querySelector('.message-composer')?.getBoundingClientRect().height,
-              ),
-            };
-          })()`,
-          );
-        if (
-          !workspaceTaskEntry?.visible ||
-          workspaceTaskEntry.accessibleName !== '工作区任务' ||
-          workspaceTaskEntry.pressed !== 'false' ||
-          !workspaceTaskEntry.keyboardFocusable ||
-          !workspaceTaskEntry.composerVisible ||
-          (!socialState.projectWork.available &&
-            (!workspaceTaskEntry.disabled ||
-              !workspaceTaskEntry.statusText.includes(
-                socialState.projectWork.reason ?? '正在检查工作区任务能力',
-              )))
-        ) {
-          throw new Error(
-            `工作区任务入口默认状态不符合预期：${JSON.stringify(workspaceTaskEntry)}`,
-          );
-        }
-        const originalWindowSize = mainWindow?.getSize();
-        let workspaceTaskNarrowLayout;
-        try {
-          mainWindow?.setSize(680, 720);
-          await mainWindow?.webContents.executeJavaScript(
-            'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
-          );
-          workspaceTaskNarrowLayout = await mainWindow?.webContents
-            .executeJavaScript(`(() => {
-              const button = document.querySelector('.composer-mode-button');
-              const composer = document.querySelector('.message-composer');
-              const rect = button?.getBoundingClientRect();
-              return {
-                visible: Boolean(rect && rect.width > 0 && rect.bottom <= window.innerHeight),
-                composerVisible: Boolean(
-                  composer && composer.getBoundingClientRect().bottom <= window.innerHeight,
-                ),
-                noHorizontalOverflow:
-                  document.documentElement.scrollWidth <= window.innerWidth,
-              };
-            })()`);
-        } finally {
-          if (originalWindowSize)
-            mainWindow?.setSize(originalWindowSize[0], originalWindowSize[1]);
-        }
-        if (
-          !workspaceTaskNarrowLayout?.visible ||
-          !workspaceTaskNarrowLayout.composerVisible ||
-          !workspaceTaskNarrowLayout.noHorizontalOverflow
-        ) {
-          throw new Error(
-            `窄窗口工作区任务入口布局不符合预期：${JSON.stringify(workspaceTaskNarrowLayout)}`,
           );
         }
         bridgeProbeStage = 'diagnostics-view';
@@ -721,7 +803,7 @@ const createWindow = () => {
           document.querySelector('.diagnostics-preview-actions .secondary-action')?.click();
           document.querySelector('[aria-label="关闭运行诊断"]')?.click();
         })()`);
-        const firstRoom = socialState.rooms[0];
+        const firstRoom = bridgeState.rooms[0];
         bridgeProbeStage = 'social-room';
         const socialRoom = firstRoom
           ? await mainWindow?.webContents.executeJavaScript(
@@ -747,14 +829,22 @@ const createWindow = () => {
           );
         }
         bridgeProbeStage = 'smoke-rendering';
-        const quickCaptureSmoke = await runDesktopProbe(
-          'captureQuickCaptureSmokeScreenshots',
+        const socialStartStateScreenshot = await runDesktopProbe(
+          'captureSocialStartStateScreenshot',
+        );
+        const settingsDialogReview = await runDesktopProbe(
+          'captureSettingsDialogReviewScreenshots',
+        );
+        diagnosticsReadFailureProbeArmed =
+          process.env.NOEMA_SMOKE_DIAGNOSTICS_FAILURES === '1';
+        const auxiliarySurfaceReview = await runDesktopProbe(
+          'captureAuxiliarySurfaceReviewScreenshots',
         );
         const historyTraceSmoke = await runDesktopProbe(
           'captureHistoryTraceSmokeScreenshots',
         );
-        const timelineSearchSmoke = await runDesktopProbe(
-          'captureTimelineSearchSmokeScreenshots',
+        const legacyArchiveSmoke = await runDesktopProbe(
+          'captureLegacyArchiveSmokeScreenshots',
         );
         const modelAvailabilitySmoke = await runDesktopProbe(
           'inspectModelAvailabilitySmoke',
@@ -812,15 +902,13 @@ const createWindow = () => {
           windowFitsWorkArea: initialWindowFitsWorkArea,
           rootStateLoaded: true,
           socialChat: {
-            agentCount: socialState.agents.length,
-            roomCount: socialState.rooms.length,
-            agentIds: socialState.agents.map(
+            agentCount: bridgeState.agents.length,
+            roomCount: bridgeState.rooms.length,
+            agentIds: bridgeState.agents.map(
               (agent: { id: string }) => agent.id,
             ),
-            roomIds: socialState.rooms.map((room: { id: string }) => room.id),
+            roomIds: bridgeState.rooms.map((room: { id: string }) => room.id),
             firstRoomOpened: true,
-            workspaceTaskEntry,
-            workspaceTaskNarrowLayout,
           },
           diagnosticsSmoke: {
             visible: diagnosticsLayout.visible,
@@ -849,20 +937,13 @@ const createWindow = () => {
                 }),
               )
             : [],
-          dshAvailable: Boolean(bridgeState.dshAvailable),
-          dshWorkerAvailable: Boolean(bridgeState.dshWorkerAvailable),
-          dshWorkerError: bridgeState.dshWorkerError ?? null,
-          quickCaptureShortcut: quickCaptureShortcutRegistration
-            ? {
-                accelerator: quickCaptureShortcutRegistration.accelerator,
-                registered: quickCaptureShortcutRegistration.registered,
-              }
-            : null,
-          quickCaptureSmoke,
           historyTraceSmoke,
-          timelineSearchSmoke,
+          legacyArchiveSmoke,
           modelAvailabilitySmoke,
           socialChatSmoke,
+          socialStartStateScreenshot,
+          settingsDialogReview,
+          auxiliarySurfaceReview,
           socialLiveChatSmoke,
           diagnosticsRuntime,
           desktopLifecycleSmoke,
@@ -873,6 +954,18 @@ const createWindow = () => {
             process.env.NOEMA_SMOKE_TEST_FILE,
             JSON.stringify(result),
           );
+        }
+        if (process.env.NOEMA_SMOKE_HMR_DONE_FILE) {
+          const deadline = Date.now() + 15_000;
+          while (
+            !fs.existsSync(process.env.NOEMA_SMOKE_HMR_DONE_FILE) &&
+            Date.now() < deadline
+          ) {
+            await new Promise((resolve) => setTimeout(resolve, 50));
+          }
+          if (!fs.existsSync(process.env.NOEMA_SMOKE_HMR_DONE_FILE)) {
+            writeSmokeLog('renderer-hmr-probe-timeout');
+          }
         }
       } catch (error) {
         let rendererBoot: unknown = null;
@@ -922,53 +1015,60 @@ const notifySocialReply = createSocialReplyNotificationHandler({
   disabled: process.env.NOEMA_E2E_SILENT_NOTIFICATIONS === '1',
   openMainWindow: () => {
     if (!mainWindow || mainWindow.isDestroyed()) createWindow();
-    focusPrimaryWindow(mainWindow);
+    focusMainWindow(mainWindow);
   },
 });
+function recordFollowupDiagnosticEvent(event: Record<string, unknown>) {
+  try {
+    recordDiagnosticEvent(event);
+  } catch {
+    // Notification click and navigation must not depend on diagnostics.
+  }
+}
+function openUserFollowupSource({
+  followupId,
+  sourceRoomId,
+  sourceMessageId,
+}: {
+  followupId: string;
+  sourceRoomId: string | null;
+  sourceMessageId: string | null;
+}): boolean {
+  recordFollowupDiagnosticEvent({
+    executionId: followupId,
+    module: 'social.followup',
+    operation: 'followup.notification.clicked',
+    status: 'clicked',
+  });
+  if (!sourceRoomId) {
+    if (!mainWindow || mainWindow.isDestroyed()) createWindow();
+    focusMainWindow(mainWindow);
+    recordFollowupDiagnosticEvent({
+      executionId: followupId,
+      module: 'social.followup',
+      operation: 'followup.navigation.dispatched',
+      status: 'opened_main',
+    });
+    return true;
+  }
+  if (!mainWindow || mainWindow.isDestroyed()) createWindow();
+  focusMainWindow(mainWindow);
+  return pendingFollowupNavigation.request({
+    roomId: sourceRoomId,
+    messageId: sourceMessageId,
+    followupExecutionId: followupId,
+  });
+}
+
 const notifyUserFollowup = createUserFollowupNotificationHandler({
   NotificationClass: Notification,
   disabled: process.env.NOEMA_E2E_SILENT_NOTIFICATIONS === '1',
   openMainWindow: () => {
     if (!mainWindow || mainWindow.isDestroyed()) createWindow();
-    focusPrimaryWindow(mainWindow);
+    focusMainWindow(mainWindow);
   },
-  openFollowupSource: ({
-    sourceRoomId,
-    sourceMessageId,
-  }: {
-    sourceRoomId: string | null;
-    sourceMessageId: string | null;
-  }) => {
-    if (!sourceRoomId) {
-      if (!mainWindow || mainWindow.isDestroyed()) createWindow();
-      focusPrimaryWindow(mainWindow);
-      return;
-    }
-    if (!mainWindow || mainWindow.isDestroyed()) createWindow();
-    focusPrimaryWindow(mainWindow);
-    pendingFollowupNavigation.request({
-      roomId: sourceRoomId,
-      messageId: sourceMessageId,
-    });
-  },
+  openFollowupSource: openUserFollowupSource,
 });
-
-function dispatchQuickCaptureRequest() {
-  if (!mainWindow || mainWindow.isDestroyed() || !quickCaptureRendererReady) {
-    return;
-  }
-  pendingQuickCaptureRequest = false;
-  mainWindow.webContents.send(CHANNELS.quickCaptureRequest, {
-    returnToPrevious: quickCaptureReturnToPrevious,
-  });
-}
-
-function markQuickCaptureReady() {
-  if (!mainWindow || mainWindow.isDestroyed()) return false;
-  quickCaptureRendererReady = true;
-  if (pendingQuickCaptureRequest) dispatchQuickCaptureRequest();
-  return true;
-}
 
 function markSocialChatReady() {
   if (
@@ -979,38 +1079,6 @@ function markSocialChatReady() {
     return false;
   pendingFollowupNavigation.markRendererReady();
   return true;
-}
-
-function openQuickCapture() {
-  if (!mainWindow || mainWindow.isDestroyed()) {
-    quickCaptureReturnToPrevious = true;
-    quickCaptureActive = true;
-    pendingQuickCaptureRequest = true;
-    createWindow();
-    return;
-  }
-  const returnToPrevious = activateQuickCaptureWindow(mainWindow);
-  if (!quickCaptureActive) {
-    quickCaptureReturnToPrevious = returnToPrevious;
-    quickCaptureActive = true;
-  }
-
-  if (mainWindow.webContents.isLoading() || !quickCaptureRendererReady) {
-    pendingQuickCaptureRequest = true;
-    return;
-  }
-  dispatchQuickCaptureRequest();
-}
-
-function finishQuickCapture() {
-  if (!quickCaptureActive) return false;
-  const finished = finishQuickCaptureWindow(
-    mainWindow,
-    quickCaptureReturnToPrevious,
-  );
-  quickCaptureActive = false;
-  quickCaptureReturnToPrevious = false;
-  return finished;
 }
 
 function discoverFreeLLMAPIBaseUrl(appDataPath: string) {
@@ -1088,20 +1156,51 @@ async function startNoema() {
       testDatabasePath,
     });
     rootStore = new RootStore(databasePath);
+    legacyHistoryArchiveService = new LegacyHistoryArchiveService({
+      rootStore,
+    });
     diagnosticsEventStore = new DiagnosticsEventStore(rootStore.db);
+    officialPluginHost = new OfficialPluginHost({
+      definitions: [officialContractSample],
+      stateStore: new OfficialPluginStateStore(rootStore.db),
+      recordDiagnostic: (event: Record<string, unknown>) =>
+        recordDiagnosticEvent(event),
+    });
+    await officialPluginHost.startAll();
     const modelUsageStore = new ModelUsageStore(rootStore.db);
     writeSmokeLog('store-opened');
-    const legacyFreeLlmApiSecretStore = new EncryptedSecretStore({
-      safeStorage,
-      filePath: path.join(
-        app.getPath('userData'),
-        'credentials',
-        'freellmapi.key',
-      ),
-    });
-    const modelProviderCredentialPath = path.join(
+    const defaultCredentialDirectory = path.join(
       app.getPath('userData'),
       'credentials',
+    );
+    let providerCredentialDirectory = defaultCredentialDirectory;
+    if (testSocialProviderLiveAcceptance) {
+      const expectedCredentialDirectory = path.join(
+        app.getPath('appData'),
+        'Noema',
+        'credentials',
+      );
+      if (
+        app.isPackaged ||
+        !testDataArgument ||
+        !testDatabasePath ||
+        !testReadOnlyCredentialDirectory ||
+        !path.isAbsolute(testReadOnlyCredentialDirectory) ||
+        path.resolve(testReadOnlyCredentialDirectory).toLowerCase() !==
+          path.resolve(expectedCredentialDirectory).toLowerCase()
+      ) {
+        throw new Error(
+          'Live provider acceptance requires an isolated development profile and database, and may only read the current Noema credential directory.',
+        );
+      }
+      providerCredentialDirectory = expectedCredentialDirectory;
+    }
+    const legacyFreeLlmApiSecretStore = new EncryptedSecretStore({
+      safeStorage,
+      filePath: path.join(providerCredentialDirectory, 'freellmapi.key'),
+    });
+    const modelProviderCredentialPath = path.join(
+      providerCredentialDirectory,
       'model-provider.key',
     );
     providerSecretStore = new EncryptedSecretStore({
@@ -1164,16 +1263,18 @@ async function startNoema() {
       onRequestEvent: (event) => {
         recordDiagnosticEvent({
           executionId: event.executionId ?? event.interactionId,
+          parentExecutionId: event.parentExecutionId ?? null,
           taskId:
             typeof event.operation === 'string' &&
             ['project_execution', 'member_practice'].includes(event.operation)
-              ? (event.executionId ?? event.interactionId)
+              ? (event.interactionId ?? event.executionId)
               : null,
           turnId: event.turnId ?? event.interactionId,
           requestId: event.requestId,
           module: 'provider',
           operation: `request.${event.phase}`,
           status: event.status,
+          errorCode: event.errorCode ?? undefined,
           details: {
             requestStatus: event.requestStatus,
             elapsedMs: event.elapsedMs,
@@ -1299,6 +1400,8 @@ async function startNoema() {
                 backendId: windowsRunnerCapability.backendId ?? undefined,
                 backendVersion:
                   windowsRunnerCapability.backendVersion ?? undefined,
+                policyVersion:
+                  windowsRunnerCapability.policyVersion ?? undefined,
                 protocolVersion:
                   windowsRunnerCapability.protocolVersion ?? undefined,
                 backendReady: windowsRunnerCapability.backendReady,
@@ -1433,128 +1536,107 @@ async function startNoema() {
         });
       }
     }
-    const noemaProjectExecutor = new NoemaProjectExecutor({
-      provider,
-      ...(process.platform === 'win32'
-        ? {
-            commandSupport: windowsRunnerSupport,
-            commandRunner: async (input) => {
-              if (!windowsRunnerExecution) {
-                const error = new Error('runner_runtime_unavailable');
-                (
-                  error as Error & { code?: string; effectStatus?: string }
-                ).code = 'runner_runtime_unavailable';
-                (
-                  error as Error & { code?: string; effectStatus?: string }
-                ).effectStatus = 'not_applied';
-                throw error;
-              }
-              const result = await windowsRunnerExecution.run(input);
-              if (!result || typeof result !== 'object') {
-                const error = new Error('runner_response_invalid');
-                (
-                  error as Error & { code?: string; effectStatus?: string }
-                ).code = 'runner_response_invalid';
-                (
-                  error as Error & { code?: string; effectStatus?: string }
-                ).effectStatus = 'unknown';
-                throw error;
-              }
-              const exitSummary = `退出码：${result.exitCode}`;
-              const timeoutSummary = result.timedOut
-                ? '\n命令已超时并由沙箱终止。'
-                : '';
-              return {
-                output: `${exitSummary}${timeoutSummary}\n${result.output}`,
-                timedOut: result.timedOut,
-                effectStatus: result.effectStatus,
-              };
-            },
-          }
-        : {}),
-      authorizeAdditionalAccess: async ({
-        command,
-        path: requestedPath,
-        access,
-        reason,
-      }) => {
-        if (!mainWindow || mainWindow.isDestroyed()) return false;
-        const response = await dialog.showMessageBox(mainWindow, {
-          type: 'question',
-          title: '项目命令请求访问工作区外的路径',
-          message: `仅为本次命令${access === 'write' ? '读取并修改' : '读取'}此路径？`,
-          detail: [
-            `路径：${requestedPath}`,
-            `用途：${reason}`,
-            `命令：${command.slice(0, 1_600)}${command.length > 1_600 ? '\n……（命令已截断）' : ''}`,
-            '授权只用于当前这一条命令，命令退出后 Noema 会撤销沙箱路径授权。拒绝不会运行该命令。',
-          ].join('\n\n'),
-          buttons: ['本次允许', '拒绝'],
-          defaultId: 1,
-          cancelId: 1,
-          noLink: true,
-        });
-        return response.response === 0;
-      },
-      authorizeNetwork: async ({ command, host, port }) => {
-        if (!mainWindow || mainWindow.isDestroyed()) return false;
-        const response = await dialog.showMessageBox(mainWindow, {
-          type: 'question',
-          title: '项目命令请求联网',
-          message: `仅为本次命令连接 ${host}:${port}？`,
-          detail: [
-            `目标主机：${host}:${port}`,
-            `命令：${command.slice(0, 1_600)}${command.length > 1_600 ? '\n……（命令已截断）' : ''}`,
-            '拒绝后该连接会被沙箱阻断；允许仅对当前命令有效。',
-          ].join('\n\n'),
-          buttons: ['本次允许', '拒绝'],
-          defaultId: 1,
-          cancelId: 1,
-          noLink: true,
-        });
-        return response.response === 0;
-      },
-    });
-    const codexAdapter = new CodexAppServerAdapter({
-      executable: resolveCodexExecutable(),
-    });
-    let dshAdapter: DshHeadlessAdapter | null = null;
-    let dshRuntimeError: string | null = null;
+    // Prefer the DSH session runtime for work execution. Noema keeps the
+    // ticket/attention layer, while DSH owns the agent loop, tools, session
+    // durability and context management. Fall back to the legacy executor when
+    // the DSH CLI or provider credentials are unavailable.
+    let dshProjectExecutor: DshHeadlessAdapter | null = null;
     try {
-      const runtime = await resolveDshHeadlessRuntime();
-      dshAdapter = new DshHeadlessAdapter({
-        runtime,
-        userDataPath: resolveNoemaDshUserDataPath({
+      const secretStore = providerSecretStore;
+      const rawBaseUrl = secretStore?.getBaseUrl() ?? null;
+      if (
+        secretStore?.isConfigured() &&
+        typeof rawBaseUrl === 'string' &&
+        rawBaseUrl
+      ) {
+        const baseUrl = rawBaseUrl.endsWith('/v1')
+          ? rawBaseUrl
+          : `${rawBaseUrl.replace(/\/+$/u, '')}/v1`;
+        const dshRuntime = await resolveDshHeadlessRuntime();
+        const executionPermission =
+          rootStore?.getExecutionPermissions().externalFiles ?? 'ask';
+        const dshPermissionMode =
+          executionPermission === 'allow'
+            ? 'danger-full-access'
+            : executionPermission === 'read-only'
+              ? 'read-only'
+              : 'workspace-write';
+        dshProjectExecutor = new DshHeadlessAdapter({
+          runtime: dshRuntime,
           userDataPath: app.getPath('userData'),
-          isPackaged: app.isPackaged,
-          testDatabasePath,
-          testDshUserDataPath,
-        }),
-        providerBaseUrl: provider.baseUrl,
-        getApiKey: () => providerSecretStore?.get() ?? null,
-        onUsage: (usage: Record<string, unknown>): void => {
-          modelUsageStore.record(usage);
-        },
-      });
+          providerBaseUrl: baseUrl,
+          getApiKey: () => secretStore.get(),
+          getPermissionMode: () => {
+            const value =
+              rootStore?.getExecutionPermissions().externalFiles ?? 'ask';
+            return value === 'allow'
+              ? 'danger-full-access'
+              : value === 'read-only'
+                ? 'read-only'
+                : 'workspace-write';
+          },
+          onUsage: (usage) => modelUsageStore.record(usage),
+        });
+        recordDiagnosticEvent({
+          module: 'dsh',
+          operation: 'runtime.startup',
+          status: 'ready',
+          details: { phase: 'startup' },
+        });
+        recordDiagnosticEvent({
+          module: 'dsh',
+          operation: 'runtime.permission',
+          status: 'ready',
+          details: { capability: dshPermissionMode },
+        });
+      }
     } catch (error) {
-      dshRuntimeError =
-        error instanceof Error
-          ? error.message
-          : '没有找到可用的 DSH 兼容环境。';
+      const code =
+        typeof (error as { code?: unknown })?.code === 'string'
+          ? (error as { code: string }).code
+          : 'dsh_runtime_unavailable';
+      recordDiagnosticEvent({
+        module: 'dsh',
+        operation: 'runtime.startup',
+        status: 'unavailable',
+        errorCode: code,
+        details: { phase: 'startup' },
+      });
     }
     const agent = new RootAgent({
       store: rootStore,
       provider,
+      recordDiagnosticEvent,
       secretStore: providerSecretStore,
       webSearchSecretStore,
       recordExternalUsage: (record) => modelUsageStore.recordExternal(record),
-      dshAdapter,
-      dshRuntimeError,
-      codexAdapter: codexAdapter.available ? codexAdapter : null,
+      allowRootActions: false,
+      allowHistorySearch: false,
+      recoverInterruptedTurns: false,
       emit: (payload) => {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send(CHANNELS.event, payload);
-        }
+        const eventPayload = payload as {
+          type?: unknown;
+          model?: unknown;
+        };
+        const modelEvents = new Set([
+          'models-updated',
+          'model-selected',
+          'provider-configured',
+          'web-search-configured',
+        ]);
+        if (
+          typeof eventPayload?.type !== 'string' ||
+          !modelEvents.has(eventPayload.type)
+        )
+          return;
+        if (mainWindow && !mainWindow.isDestroyed())
+          mainWindow.webContents.send(CHANNELS.modelStateEvent, {
+            type: eventPayload.type,
+            ...(eventPayload.type === 'model-selected' &&
+            typeof eventPayload.model === 'string'
+              ? { model: eventPayload.model }
+              : {}),
+          });
       },
     });
     rootAgent = agent;
@@ -1567,7 +1649,29 @@ async function startNoema() {
         backupPath: migrationBackupPath,
       });
     }
-    socialChatStore = new SocialChatStore(rootStore.db);
+    socialChatStore = new SocialChatStore(rootStore.db, {
+      workspaceChangeBlobDirectory: path.join(
+        path.dirname(databasePath),
+        'workspace-change-blobs',
+      ),
+    });
+    try {
+      const integrity = socialChatStore.verifyReferencedWorkspaceChangeBlobs();
+      if (integrity.verified || integrity.orphanFilesRemoved) {
+        writeSmokeLog('workspace-change-blobs-verified', integrity);
+      }
+    } catch (error) {
+      recordDiagnosticEvent({
+        executionId: currentApplicationExecutionId,
+        module: 'desktop.store',
+        operation: 'social.command_recovery.integrity',
+        status: 'failed',
+        errorCode: 'workspace_change_blob_integrity_failed',
+        details: {
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
+    }
     recordDiagnosticEvent({
       executionId: currentApplicationExecutionId,
       module: 'desktop.store',
@@ -1578,7 +1682,7 @@ async function startNoema() {
     for (const taskId of socialChatStore.recoveredSocialWorkTaskIds) {
       const recoveryReason =
         socialChatStore.recoveredSocialWorkTaskErrorCode ?? 'app_restarted';
-      recordDiagnosticEvent({
+      recordFollowupDiagnosticEvent({
         executionId: taskId,
         taskId,
         module: 'social.store',
@@ -1633,6 +1737,9 @@ async function startNoema() {
       path.resolve(testDshUserDataPath) !== socialWorkE2eDirectory &&
       fs.existsSync(testSocialWorkWorkspace) &&
       fs.statSync(testSocialWorkWorkspace).isDirectory(),
+    );
+    const socialWorkEntryE2eValid = Boolean(
+      socialWorkE2eValid && testSocialWorkEntry && testSocialWorkSynthetic,
     );
     const socialAgentE2eDirectory =
       testDatabasePath && path.isAbsolute(testDatabasePath)
@@ -1736,7 +1843,7 @@ async function startNoema() {
             const done = (async () => {
               onEvent({ type: 'session', sessionId });
               onEvent({ type: 'status', phase: 'working' });
-              await new Promise((resolve) => setTimeout(resolve, 250));
+              await new Promise((resolve) => setTimeout(resolve, 10_000));
               if (stopped) {
                 return {
                   status: 'interrupted' as const,
@@ -1816,32 +1923,75 @@ async function startNoema() {
         }
       : null) as unknown as DshHeadlessAdapter | null;
     const practiceConfirmationEvidence: Array<Record<string, unknown>> = [];
+    const nativeProjectExecutor = new NoemaProjectExecutor({ provider });
+    const workRuntimes = createWorkRuntimeRegistry({
+      dshRuntime: syntheticSocialWorkAdapter ?? dshProjectExecutor,
+      nativeRuntime: nativeProjectExecutor,
+    });
     socialWorkService = new SocialWorkService({
       store: socialChatStore,
       projectStore: socialProjectStore,
       getSelectedModel: () => rootStore?.getSelectedModel() ?? null,
       assertWorkAllowed: (roomId: string) =>
         socialProjectStore?.assertWorkAllowed(roomId),
-      adapter: syntheticSocialWorkAdapter ?? noemaProjectExecutor,
+      adapter: workRuntimes.forTicket(),
       secretStore: useSyntheticSocialWork
         ? { isConfigured: () => true }
         : providerSecretStore,
       practiceProvider: useSyntheticSocialWork ? null : practiceProvider,
-      recordDiagnosticEvent,
+      recordDiagnosticEvent: (event) =>
+        recordDiagnosticEvent({
+          ...event,
+          ...(event.operation === 'workspace.selection' &&
+          event.status === 'canceled'
+            ? { parentExecutionId: currentApplicationExecutionId }
+            : {}),
+        }),
       defaultVerificationChecks:
         socialWorkE2eValid && testSocialWorkChecksJson
           ? JSON.parse(testSocialWorkChecksJson)
           : [],
-      chooseWorkspace: async ({ reuseCase = false, prompt = '' } = {}) => {
+      chooseWorkspace: async ({
+        reuseCase = false,
+        prompt = '',
+        projectId = null,
+        agentId = null,
+      } = {}) => {
         const recordWorkspaceAuthorization =
           beginAuthorizationDecision('workspace_access');
         if (socialWorkE2eValid) {
+          if (
+            socialWorkEntryE2eValid &&
+            prompt.includes('NOEMA_WORK_ENTRY_CANCEL')
+          ) {
+            return null;
+          }
           recordWorkspaceAuthorization('granted');
           return testSocialWorkWorkspace;
+        }
+        if (!projectId && agentId && agentId !== 'noema') {
+          const agent = socialChatStore?.getAgent(agentId);
+          const directory = ensureAgentDirectory({
+            agentId,
+            name: agent?.name ?? agentId,
+          });
+          recordWorkspaceAuthorization('granted', 'agent_default');
+          return directory;
         }
         const devWorkspaceOverride = !app.isPackaged
           ? process.env.NOEMA_DEV_PROJECT_WORKSPACE_PATH
           : null;
+        if (projectId && socialProjectStore) {
+          const binding = socialProjectStore.getWorkspaceBinding(projectId);
+          if (
+            binding?.valid &&
+            binding.workspacePath &&
+            fs.existsSync(binding.workspacePath)
+          ) {
+            recordWorkspaceAuthorization('granted', 'project_binding');
+            return binding.workspacePath;
+          }
+        }
         if (devWorkspaceOverride) {
           const workspace = path.resolve(devWorkspaceOverride);
           if (
@@ -1890,7 +2040,7 @@ async function startNoema() {
         if (!mainWindow || mainWindow.isDestroyed()) return 'cancel';
         const confirmation = await dialog.showMessageBox(mainWindow, {
           type: 'warning',
-          title: '确认更换项目工作区',
+          title: '更换工作文件夹',
           message:
             '这个项目已绑定到另一个文件夹。是否将项目绑定更换到新文件夹？',
           detail: `当前绑定：${oldPath}\n新选择：${newPath}\n\n更换后，新任务会在新文件夹中执行。已有任务记录与恢复检查点不会迁移。`,
@@ -1989,11 +2139,13 @@ async function startNoema() {
     socialAgentE2eModelRequests = [];
     const socialAgentE2eModel = 'e2e-local-spy';
     const socialChatProvider =
-      socialAgentE2eValid && !testSocialAgentLiveE2e
+      (socialAgentE2eValid || socialWorkEntryE2eValid) &&
+      !testSocialAgentLiveE2e
         ? {
             async *streamChat(input: {
               model: string;
               messages: Array<{ role: string; content: string }>;
+              tools?: Array<{ function?: { name?: string } }>;
               onToolCalls?: (
                 calls: Array<{
                   id: string;
@@ -2003,17 +2155,74 @@ async function startNoema() {
               onRouteMetadata?: (route: string | null) => void;
             }) {
               socialAgentE2eModelRequests.push(input);
-              const history = input.messages.find((message) =>
-                message.content?.includes('"type":"noema_history_recall"'),
-              );
+              const latestUserMessage = [...input.messages]
+                .reverse()
+                .find((message) => message.role === 'user')?.content;
+              if (latestUserMessage?.includes('NOEMA_WORK_ENTRY_')) {
+                const latestUserIndex = input.messages.findLastIndex(
+                  (message) => message.role === 'user',
+                );
+                const hasCurrentToolResult = input.messages
+                  .slice(latestUserIndex + 1)
+                  .some((message) => message.role === 'tool');
+                if (hasCurrentToolResult) {
+                  yield 'NOEMA_WORK_ENTRY_TOOL_HANDLED';
+                  return;
+                }
+                const workToolAvailable = input.tools?.some(
+                  (tool) => tool.function?.name === 'start_project_work',
+                );
+                if (!workToolAvailable) {
+                  yield 'NOEMA_WORK_ENTRY_CHAT_ONLY';
+                  return;
+                }
+                const executor = socialChatStore
+                  ?.listAgents()
+                  .find(
+                    (member: {
+                      id: string;
+                      archivedAt: string | null;
+                      capabilities: string[];
+                    }) =>
+                      !member.archivedAt &&
+                      member.capabilities.includes('project-work'),
+                  );
+                if (!executor) {
+                  throw new Error(
+                    'Synthetic workspace-entry E2E could not find an eligible executor.',
+                  );
+                }
+                input.onToolCalls?.([
+                  {
+                    id: 'e2e-social-work-entry',
+                    function: {
+                      name: 'start_project_work',
+                      arguments: JSON.stringify({
+                        agent_id: executor.id,
+                        task: latestUserMessage,
+                      }),
+                    },
+                  },
+                ]);
+                return;
+              }
+              const history = latestUserMessage?.includes(
+                socialHistoryRecallMarker,
+              )
+                ? input.messages.find((message) =>
+                    message.content?.includes('"type":"noema_history_recall"'),
+                  )
+                : undefined;
               if (history) {
                 input.onRouteMetadata?.('e2e-local-spy');
                 yield '我找到了你提到的旧对话，可以从来源查看原文。';
                 return;
               }
-              const latestUserMessage = [...input.messages]
-                .reverse()
-                .find((message) => message.role === 'user')?.content;
+              if (latestUserMessage?.includes(socialComposerQueueMarker)) {
+                await new Promise((resolve) => setTimeout(resolve, 6_000));
+                yield '输入区队列布局夹具回复已完成。';
+                return;
+              }
               const specialistReport = input.messages.find(
                 (message) => message.role === 'tool',
               );
@@ -2074,7 +2283,11 @@ async function startNoema() {
           : provider;
     const getSocialRootState = async () => {
       const state = await agent.getUiState();
-      if (!socialAgentE2eValid || testSocialAgentLiveE2e) return state;
+      if (
+        (!socialAgentE2eValid && !socialWorkEntryE2eValid) ||
+        testSocialAgentLiveE2e
+      )
+        return state;
       return {
         ...state,
         connected: true,
@@ -2092,34 +2305,207 @@ async function startNoema() {
         providerConfigured: true,
       };
     };
+    const ensureAgentDirectory = ({
+      agentId,
+      name,
+    }: {
+      agentId: string;
+      name: string;
+    }) => {
+      const base =
+        socialAgentE2eValid || socialWorkEntryE2eValid
+          ? path.join(app.getPath('userData'), 'agent-workspaces')
+          : path.join(app.getPath('documents'), 'Noema', 'Agents');
+      const safeName =
+        String(name)
+          .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '-')
+          .trim()
+          .slice(0, 60) || 'agent';
+      const directory = path.join(base, `${safeName}-${agentId.slice(-6)}`);
+      fs.mkdirSync(directory, { recursive: true });
+      return directory;
+    };
+    const chooseProjectWorkspace = async (input?: {
+      source?: string;
+    }): Promise<{
+      workspacePath: string;
+      identity: {
+        version: number;
+        canonicalPath: string;
+        device: string;
+        fileIndex: string;
+      };
+    } | null> => {
+      const recordWorkspaceChoice = (status: 'completed' | 'canceled') =>
+        recordDiagnosticEvent({
+          executionId: randomUUID(),
+          parentExecutionId: currentApplicationExecutionId,
+          module: 'social.project',
+          operation: 'workspace.selection',
+          status,
+          details: { source: input?.source ?? 'project_create' },
+        });
+      if (socialWorkE2eValid && testSocialWorkWorkspace) {
+        const identity = captureWorkspaceIdentity(testSocialWorkWorkspace);
+        if (!identity.ok || !identity.identity) {
+          throw new Error('无法读取 E2E 工作区。');
+        }
+        recordWorkspaceChoice('completed');
+        return {
+          workspacePath: testSocialWorkWorkspace,
+          identity: identity.identity,
+        };
+      }
+      if (socialAgentE2eValid && socialAgentE2eDirectory) {
+        const workspacePath = path.join(
+          socialAgentE2eDirectory,
+          'project-workspace',
+        );
+        fs.mkdirSync(workspacePath, { recursive: true });
+        const identity = captureWorkspaceIdentity(workspacePath);
+        if (!identity.ok || !identity.identity) {
+          throw new Error('无法读取 E2E 工作区。');
+        }
+        recordWorkspaceChoice('completed');
+        return { workspacePath, identity: identity.identity };
+      }
+      const devWorkspaceOverride = !app.isPackaged
+        ? process.env.NOEMA_DEV_PROJECT_WORKSPACE_PATH
+        : null;
+      if (devWorkspaceOverride) {
+        const workspacePath = path.resolve(devWorkspaceOverride);
+        if (!path.isAbsolute(workspacePath) || !fs.existsSync(workspacePath)) {
+          throw new Error(
+            'NOEMA_DEV_PROJECT_WORKSPACE_PATH must point to an existing directory.',
+          );
+        }
+        const identity = captureWorkspaceIdentity(workspacePath);
+        if (!identity.ok || !identity.identity) {
+          throw new Error('无法读取这个文件夹，请换一个目录。');
+        }
+        recordWorkspaceChoice('completed');
+        return { workspacePath, identity: identity.identity };
+      }
+      if (!mainWindow || mainWindow.isDestroyed()) return null;
+      const selection = await dialog.showOpenDialog(mainWindow, {
+        title: '选择工作文件夹',
+        message:
+          '项目成员会读取和修改这个文件夹中的文件，并在其中运行前台命令。请只选择允许 Noema 使用的目录。',
+        buttonLabel: '使用此文件夹',
+        properties: ['openDirectory', 'createDirectory'],
+      });
+      const selectedPath = selection.filePaths[0];
+      if (selection.canceled || !selectedPath) {
+        recordWorkspaceChoice('canceled');
+        return null;
+      }
+      const workspacePath = selectedPath;
+      const identity = captureWorkspaceIdentity(workspacePath);
+      if (!identity.ok || !identity.identity) {
+        throw new Error('无法读取这个文件夹，请换一个目录。');
+      }
+      recordWorkspaceChoice('completed');
+      return { workspacePath, identity: identity.identity };
+    };
+    const nativeChatRuntime = createNativeChatRuntime({
+      provider: socialChatProvider as unknown as {
+        streamChat: (options: object) => AsyncIterable<string>;
+      },
+    });
+    let chatRuntimes = createChatRuntimeRegistry({
+      nativeRuntime: nativeChatRuntime,
+    });
+    let chatToolSession: NoemaToolSession | null = null;
+    if (dshProjectExecutor) {
+      try {
+        // Noema is a machine-scoped personal agent; it has no project workspace.
+        const chatWorkspacePath = app.getPath('home');
+        const chatAssignees = (
+          socialChatStore.listAgents() as Array<{
+            id: string;
+            name: string;
+            archivedAt?: string | null;
+            capabilities: string[];
+          }>
+        ).filter(
+          (agent) =>
+            agent.id !== 'noema' &&
+            !agent.archivedAt &&
+            agent.capabilities.includes('project-work'),
+        );
+        chatToolSession = new NoemaToolSession({
+          registry: createNoemaToolRegistry([
+            createChatTicketTool({
+              availableAssignees: chatAssignees.map((agent) => agent.name),
+              resolveAssignee: (name: string) =>
+                chatAssignees.find((agent) => agent.name === name)?.id ?? null,
+              startTicket: (input: {
+                prompt: string;
+                workspacePath?: string | null;
+                sessionId?: string | null;
+                agentId?: string;
+              }) => socialWorkService!.startTicket(input),
+            }),
+            ...createNoemaReadTools(),
+          ]),
+        });
+        await chatToolSession.start();
+        const dshChatRuntime = new DshChatRuntime({
+          adapter: dshProjectExecutor,
+          workspacePath: chatWorkspacePath,
+          sessionId: rootStore?.getAgentChatSession('noema') ?? null,
+          onSessionId: (sessionId: string) =>
+            rootStore?.setAgentChatSession('noema', sessionId),
+          toolSession: chatToolSession,
+          profile: 'noema',
+        });
+        chatRuntimes = createChatRuntimeRegistry({
+          nativeRuntime: nativeChatRuntime,
+          dshRuntime: dshChatRuntime,
+        });
+      } catch (error) {
+        writeSmokeLog('dsh-chat-runtime-unavailable', {
+          message: String(error instanceof Error ? error.message : error),
+        });
+        chatToolSession = null;
+      }
+    }
     socialChatService = new SocialChatService({
       store: socialChatStore,
       projectStore: socialProjectStore,
       provider: socialChatProvider as OpenAICompatibleClient,
+      chatRuntimes,
       secretStore:
-        socialAgentE2eValid && !testSocialAgentLiveE2e
+        (socialAgentE2eValid || socialWorkEntryE2eValid) &&
+        !testSocialAgentLiveE2e
           ? { isConfigured: () => true }
           : providerSecretStore,
       getSelectedModel: () =>
-        socialAgentE2eValid && !testSocialAgentLiveE2e
+        (socialAgentE2eValid || socialWorkEntryE2eValid) &&
+        !testSocialAgentLiveE2e
           ? socialAgentE2eModel
           : (rootStore?.getSelectedModel() ?? null),
       getRootState: getSocialRootState,
+      ensureAgentWorkspace: ensureAgentDirectory,
+      chooseProjectWorkspace,
       getProjectWorkReadiness: () =>
         socialWorkService?.getReadiness() ?? {
           available: false,
+          reasonCode: 'executor_unavailable',
           reason: '项目工作运行环境尚未初始化。',
         },
       getProjectSessionContext: (roomId, agentId) =>
         socialProjectStore?.getProjectSessionContext(roomId, agentId) ?? null,
       isWebSearchConfigured: () => webSearchSecretStore.isConfigured(),
       recordExternalUsage: (record) => modelUsageStore.recordExternal(record),
+      recordDiagnosticEvent,
       searchPublicSources: (query, signal, maxSources, options) =>
         searchAndReadWeb(query, webSearchSecretStore.get(), {
           signal,
           maxSources,
           ...options,
         }),
+      startTicket: (input) => socialWorkService!.startTicket(input),
       startProjectWork: async ({ dispatchFromNoema, ...input }, signal) => {
         const result = dispatchFromNoema
           ? await socialWorkService!.startTaskFromNoema({ ...input, signal })
@@ -2165,6 +2551,7 @@ async function startNoema() {
       eventStore: diagnosticsEventStore!,
       modelUsageStore,
       socialChatStore: socialChatStore!,
+      rootStore: rootStore!,
       runtimeInfo: collectDiagnosticsRuntimeInfo({
         db: rootStore!.db,
         applicationVersion: app.getVersion(),
@@ -2177,12 +2564,100 @@ async function startNoema() {
       }),
       recordDiagnosticEvent,
     });
-    unregisterRootIpc = registerRootIpc({
+    const workspaceFileService = socialChatStore
+      ? new WorkspaceFileService({
+          isKnownWorkspace: (workspacePath) =>
+            Boolean(
+              socialChatStore!.db
+                .prepare(
+                  'SELECT 1 FROM social_work_tasks WHERE workspace_path = ? LIMIT 1',
+                )
+                .get(workspacePath),
+            ),
+          openPath: (target) => shell.openPath(target),
+        })
+      : null;
+    const unregisterRootHandlers = registerRootIpc({
       ipcMain,
       rootAgent: agent,
       socialChatService,
       socialProjectStore,
       socialWorkService,
+      getWorkTaskUsage: (taskId) => modelUsageStore.getTaskUsage(taskId),
+      getWorkTaskTouchedFiles: (taskId: string) =>
+        socialChatStore?.listSocialWorkTouchedFiles(taskId) ?? [],
+      getWorkTaskStepDetail: (taskId: string, stepId: string) => {
+        const detail = socialChatStore?.getSocialWorkExecutionStepDetail(
+          taskId,
+          stepId,
+        );
+        if (!detail) return null;
+        const clip = (value: string) =>
+          redactSensitiveText(value).snippet.slice(0, 4_000);
+        return {
+          ...detail,
+          argumentsText: clip(detail.argumentsText),
+          resultText: clip(detail.resultText),
+        };
+      },
+      exportConversation: async (roomId: string) => {
+        if (!mainWindow || mainWindow.isDestroyed() || !socialChatStore)
+          return { saved: false, errorCode: 'window_unavailable' };
+        try {
+          const snapshot = socialChatStore.getRoomSnapshot(roomId);
+          const markdown = formatConversationMarkdown(snapshot);
+          const selected = await dialog.showSaveDialog(mainWindow, {
+            title: '导出对话',
+            defaultPath: conversationExportFileName(snapshot.room),
+            filters: [{ name: 'Markdown', extensions: ['md'] }],
+          });
+          if (selected.canceled || !selected.filePath)
+            return { saved: false, canceled: true };
+          await fs.promises.writeFile(selected.filePath, markdown, 'utf8');
+          return { saved: true, path: selected.filePath };
+        } catch (error) {
+          return {
+            saved: false,
+            errorCode: error instanceof Error ? error.message : 'export_failed',
+          };
+        }
+      },
+      exportWorkTicket: async (taskId: string) => {
+        if (!mainWindow || mainWindow.isDestroyed() || !socialChatStore)
+          return { saved: false, errorCode: 'window_unavailable' };
+        try {
+          const task = socialChatStore.getSocialWorkTask(taskId);
+          const usage = modelUsageStore.getTaskUsage(taskId);
+          const markdown = formatWorkTicketMarkdown({ task, usage });
+          const selected = await dialog.showSaveDialog(mainWindow, {
+            title: '导出工单结果',
+            defaultPath: workTicketExportFileName(task),
+            filters: [{ name: 'Markdown', extensions: ['md'] }],
+          });
+          if (selected.canceled || !selected.filePath)
+            return { saved: false, canceled: true };
+          await fs.promises.writeFile(selected.filePath, markdown, 'utf8');
+          return { saved: true, path: selected.filePath };
+        } catch (error) {
+          return {
+            saved: false,
+            errorCode: error instanceof Error ? error.message : 'export_failed',
+          };
+        }
+      },
+      workspaceFileService,
+      chooseProjectWorkspace,
+      resetChatSession: async () => {
+        const reset = socialChatService?.resetChatSession('noema') ?? false;
+        rootStore?.setAgentChatSession('noema', null);
+        return reset;
+      },
+      getExecutionPermissions: () =>
+        rootStore?.getExecutionPermissions() ?? { externalFiles: 'ask' },
+      setExecutionPermissions: (permissions) =>
+        rootStore?.setExecutionPermissions(permissions) ?? {
+          externalFiles: 'ask',
+        },
       diagnosticsQueryService,
       getDiagnosticsDatabaseHealth: () => readDatabaseHealth(rootStore?.db),
       openUserDataDirectory: () =>
@@ -2192,6 +2667,11 @@ async function startNoema() {
         }),
       getWindowsRunnerCapability: () => refreshWindowsRunnerCapability(),
       setupWindowsRunner: () => setupWindowsRunner(),
+      shouldInjectDiagnosticsReadFailures: () =>
+        diagnosticsReadFailureProbeArmed,
+      shouldInjectSocialWorkReverseSnapshot: () =>
+        socialWorkE2eValid &&
+        process.env.NOEMA_E2E_SOCIAL_WORK_REVERSE_SNAPSHOT === '1',
       saveDiagnosticsExport: (previewId) =>
         !mainWindow || mainWindow.isDestroyed()
           ? Promise.resolve({ saved: false, errorCode: 'window_unavailable' })
@@ -2209,72 +2689,6 @@ async function startNoema() {
             }),
       isTrustedSender: (sender) =>
         Boolean(mainWindow && sender === mainWindow.webContents),
-      sendMessage: createImportAwareSendMessage(agent, async (imported) => {
-        const recordImportAuthorization = beginAuthorizationDecision(
-          'imported_context_transmission',
-        );
-        if (!mainWindow || mainWindow.isDestroyed()) {
-          recordImportAuthorization('denied', 'main_window_unavailable');
-          return false;
-        }
-        const consent = await dialog.showMessageBox(mainWindow, {
-          type: 'warning',
-          title: '发送导入的 Codex 上下文',
-          message: `“${imported.title}”的可见对话将随 Noema 本轮及后续对话发送。`,
-          detail:
-            '这份快照保存在本机。确认后，快照和你在 Noema 的近期对话会发往当前选定的模型服务商；上游服务的数据处理政策各不相同。该授权持续有效，直到你在 Noema 移除此快照。移除无法撤回此前已发送的数据；Codex 原会话不会被修改。',
-          buttons: ['取消本次发送', '发送并继续使用此快照'],
-          defaultId: 0,
-          cancelId: 0,
-          noLink: true,
-        });
-        const granted = consent.response === 1;
-        recordImportAuthorization(
-          granted ? 'granted' : 'denied',
-          granted ? undefined : 'user_cancelled',
-        );
-        return granted;
-      }),
-      chooseWorkspace: async () => {
-        const recordLegacyWorkspaceAuthorization = beginAuthorizationDecision(
-          'legacy_workspace_access',
-        );
-        if (!mainWindow || mainWindow.isDestroyed()) {
-          recordLegacyWorkspaceAuthorization(
-            'denied',
-            'main_window_unavailable',
-          );
-          return null;
-        }
-        const disclosure = await dialog.showMessageBox(mainWindow, {
-          type: 'info',
-          title: '后台任务的数据范围',
-          message: '选择工作区会允许后台 DSH agent 读取和修改其中的文件。',
-          detail:
-            '任务指令以及 agent 实际读取的文件内容会发送到当前配置的模型服务商，并按其数据处理条款处理。不要选择包含不应发送给第三方的密钥或敏感资料的目录。你仍可在任务运行时停止它，但停止前的文件改动不会自动回滚。',
-          buttons: ['取消', '继续选择工作区'],
-          defaultId: 1,
-          cancelId: 0,
-          noLink: true,
-        });
-        if (disclosure.response !== 1) {
-          recordLegacyWorkspaceAuthorization('denied', 'disclosure_declined');
-          return null;
-        }
-        const selection = await dialog.showOpenDialog(mainWindow, {
-          title: '选择后台 agent 可访问的工作区',
-          properties: ['openDirectory'],
-          buttonLabel: '允许此文件夹',
-        });
-        const selected = !selection.canceled ? selection.filePaths[0] : null;
-        recordLegacyWorkspaceAuthorization(
-          selected ? 'granted' : 'denied',
-          selected ? undefined : 'user_cancelled',
-        );
-        return selected;
-      },
-      finishQuickCapture,
-      markQuickCaptureReady,
       recordSocialReadiness: (readiness) => {
         if (
           currentEntryRoute !== 'social-chat' ||
@@ -2288,19 +2702,53 @@ async function startNoema() {
           module: 'desktop.main',
           operation: 'entry.capability_availability',
           status: readiness.available ? 'available' : 'unavailable',
-          details: { reason: readiness.reason ? 'capability_unavailable' : '' },
+          details: {
+            reason: readiness.reason ? 'capability_unavailable' : '',
+            ...(readiness.reasonCode
+              ? { reasonCode: readiness.reasonCode }
+              : {}),
+          },
         });
       },
-      recordAuthorization: recordAuthorizationDecision,
       markSocialChatReady,
-      getQuickCaptureShortcutStatus: () =>
-        quickCaptureShortcutRegistration
-          ? {
-              accelerator: quickCaptureShortcutRegistration.accelerator,
-              registered: quickCaptureShortcutRegistration.registered,
-            }
-          : null,
+      recordDiagnosticEvent,
     });
+    const unregisterArchiveHandlers = registerLegacyHistoryArchiveIpc({
+      ipcMain,
+      archiveService: legacyHistoryArchiveService!,
+      saveExport: (previewId) =>
+        !mainWindow || mainWindow.isDestroyed()
+          ? Promise.resolve({
+              saved: false,
+              canceled: false,
+              errorCode: 'window_unavailable',
+            })
+          : saveLegacyHistoryExport({
+              previewId,
+              archiveService: legacyHistoryArchiveService!,
+              selectFile: async () => {
+                const selection = await dialog.showSaveDialog(mainWindow!, {
+                  title: '导出 Noema 历史归档',
+                  defaultPath: `noema-history-${new Date().toISOString().replaceAll(':', '-')}.json`,
+                  filters: [{ name: 'JSON 归档', extensions: ['json'] }],
+                });
+                return {
+                  canceled: selection.canceled,
+                  filePath: selection.filePath,
+                };
+              },
+              createWriteStream: fs.createWriteStream,
+            }),
+      isTrustedSender: (sender) =>
+        Boolean(mainWindow && sender === mainWindow.webContents),
+    });
+    unregisterRootIpc = () => {
+      unregisterRootHandlers();
+      unregisterArchiveHandlers();
+    };
+    if (socialWorkE2eValid && process.platform === 'win32') {
+      desktopLifecycle?.initializeTray();
+    }
     if (
       !app.isPackaged &&
       Boolean(testDatabasePath) &&
@@ -2310,6 +2758,8 @@ async function startNoema() {
         socialAgentE2eValid,
         socialAgentE2eDirectory,
         socialAgentE2eResultPath,
+        testPersonalMemoryLifecycle,
+        testUserFollowupLifecycle,
         testSocialAgentLiveE2e,
         writeSmokeLog,
         agent,
@@ -2318,15 +2768,20 @@ async function startNoema() {
         get mainWindow() {
           return mainWindow;
         },
+        restoreMainWindowForTest: () =>
+          desktopLifecycle?.restoreWindow() ?? false,
         testSocialAgentR0FirstUse,
         testSocialAttachmentsOnly,
         runDesktopProbe,
         testSocialAgentKeepOpen,
         socialWorkE2eValid,
+        socialAgentE2eModelRequests,
         socialWorkE2eDirectory,
         testSocialWorkResultPath,
         testSocialWorkWorkspace,
         testSocialWorkSynthetic,
+        testSocialWorkEntry: socialWorkEntryE2eValid,
+        applicationExecutionId: currentApplicationExecutionId,
         rootStore,
         testSocialWorkLiveEpisodes,
         socialWorkService,
@@ -2362,11 +2817,6 @@ async function startNoema() {
     } else if (process.env.NOEMA_SMOKE_TEST !== '1') {
       void agent.refreshModels();
     }
-    quickCaptureShortcutRegistration = registerQuickCaptureShortcut({
-      shortcutApi: globalShortcut,
-      platform: process.platform,
-      onQuickCapture: openQuickCapture,
-    });
     if (process.platform === 'win32') desktopLifecycle?.initializeTray();
     if (!mainWindow || mainWindow.isDestroyed()) createWindow();
     writeSmokeLog('window-created');
@@ -2440,6 +2890,7 @@ async function beginHostShutdown(
     details: { reason },
   });
   if (!rootAgent) {
+    await officialPluginHost?.stopAll();
     shutdownComplete = true;
     unregisterRootIpc?.();
     desktopLifecycle?.dispose();
@@ -2455,6 +2906,7 @@ async function beginHostShutdown(
     () => rootAgent?.shutdown(),
     () => socialChatService?.shutdown(),
     () => socialWorkService?.shutdown(reason),
+    () => officialPluginHost?.stopAll(),
   ]);
   if (outcome.type === 'timeout') {
     recordDiagnosticEvent({
@@ -2468,8 +2920,6 @@ async function beginHostShutdown(
     shutdownComplete = true;
     unregisterRootIpc?.();
     desktopLifecycle?.dispose();
-    quickCaptureShortcutRegistration?.unregister();
-    quickCaptureShortcutRegistration = null;
     app.exit(1);
     return;
   }
@@ -2516,8 +2966,6 @@ app.on('before-quit', (event) => {
 });
 
 app.on('will-quit', () => {
-  quickCaptureShortcutRegistration?.unregister();
-  quickCaptureShortcutRegistration = null;
   desktopLifecycle?.dispose();
 });
 
@@ -2532,10 +2980,12 @@ async function runDesktopProbe<K extends keyof DesktopProbes>(
     await import('../../test-support/electron/probes');
   const probes = createDesktopProbes({
     mainWindow,
-    openQuickCapture,
-    quickCaptureShortcutRegistration,
+    restoreMainWindowForTest: () => desktopLifecycle?.restoreWindow() ?? false,
     socialAgentE2eModelRequests,
     socialChatService,
+    openFollowupSourceForTest: developmentOptions.testUserFollowupLifecycle
+      ? openUserFollowupSource
+      : null,
     writeSmokeLog,
     options: developmentOptions,
   });

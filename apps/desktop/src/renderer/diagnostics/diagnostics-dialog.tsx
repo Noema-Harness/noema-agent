@@ -1,3 +1,6 @@
+import { NoemaCheckbox, NoemaSelect } from '../ui/noema-form-controls';
+import { NoemaButton } from '../ui/noema-button';
+import { NoemaOverlay } from '../ui/noema-overlay';
 import React, { useEffect, useRef, useState } from 'react';
 import type {
   NoemaDiagnosticExecution,
@@ -7,8 +10,10 @@ import type {
   NoemaWindowsRunnerCapability,
 } from '../../shared/contracts/noema-bridge.d.ts';
 import {
+  formatCacheBreakdownLabel,
   formatMessageRoleCharactersLabel,
   formatRequestShapeLabel,
+  formatTokenUsageLabel,
 } from './request-shape-label.mjs';
 import {
   canOfferWindowsRunnerSetup,
@@ -18,15 +23,18 @@ import { Icon } from '../chat/presentation';
 
 const GAP_LABELS: Record<string, string> = {
   no_persisted_events: '没有找到已保存的执行事件。',
+  test_context_unavailable: '所选执行没有可附带的对话或任务内容。',
   provider_usage_unavailable_or_unlinked:
     '模型用量暂不可用，或尚未关联到请求。',
   provider_usage_not_reported: '服务商没有返回本次 token 用量。',
   timeline_truncated: '时间线已达到显示上限，较早事件未显示。',
   task_owner_record_unavailable: '原 task 状态记录暂不可用。',
+  diagnostic_event_details_unavailable: '部分事件详情损坏或超限，已安全隐藏。',
   os_child_process_lifecycle_not_recorded:
-    '当前不记录操作系统子进程的独立启动与退出事件。',
+    '该 DSH 任务缺少子进程启动或退出记录。',
   business_store_row_writes_not_recorded: '当前不逐条记录业务数据库写入。',
-  legacy_execution_coverage_partial: '旧版执行路径的追踪覆盖不完整。',
+  tool_arguments_and_results_not_recorded:
+    '该轮记录了工具批次，但不会记录工具参数或返回正文。',
 };
 
 function dateTime(value: string) {
@@ -56,9 +64,11 @@ function statusLabel(status: string) {
 export function DiagnosticsDialog({
   open,
   onClose,
+  onOpenLegacyHistory,
 }: {
   open: boolean;
   onClose: () => void;
+  onOpenLegacyHistory: () => void;
 }) {
   const [executions, setExecutions] = useState<NoemaDiagnosticExecution[]>([]);
   const [runtimeInfo, setRuntimeInfo] =
@@ -72,8 +82,14 @@ export function DiagnosticsDialog({
   const [preview, setPreview] = useState<NoemaDiagnosticExportPreview | null>(
     null,
   );
+  const [includeTestContext, setIncludeTestContext] = useState(false);
   const [listLoading, setListLoading] = useState(false);
+  const [listLoadFailed, setListLoadFailed] = useState(false);
   const [timelineLoading, setTimelineLoading] = useState(false);
+  const [timelineLoadFailed, setTimelineLoadFailed] = useState(false);
+  const [timelineRetryVersion, setTimelineRetryVersion] = useState(0);
+  const [eventModuleFilter, setEventModuleFilter] = useState('all');
+  const [eventPhaseFilter, setEventPhaseFilter] = useState('all');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -92,6 +108,7 @@ export function DiagnosticsDialog({
     if (!open) return;
     let current = true;
     setListLoading(true);
+    setListLoadFailed(false);
     setError('');
     void window.noema
       .getDiagnosticsRecent(30)
@@ -106,7 +123,7 @@ export function DiagnosticsDialog({
         }
       })
       .catch(() => {
-        if (current) setError('本机诊断记录暂不可读取。');
+        if (current) setListLoadFailed(true);
       })
       .finally(() => {
         if (current) setListLoading(false);
@@ -203,6 +220,7 @@ export function DiagnosticsDialog({
     if (!open || !selected) return;
     let current = true;
     setTimelineLoading(true);
+    setTimelineLoadFailed(false);
     setTimeline(null);
     setPreview(null);
     setError('');
@@ -215,7 +233,7 @@ export function DiagnosticsDialog({
         if (current) setTimeline(result);
       })
       .catch(() => {
-        if (current) setError('无法读取这条执行时间线。');
+        if (current) setTimelineLoadFailed(true);
       })
       .finally(() => {
         if (current) setTimelineLoading(false);
@@ -223,11 +241,27 @@ export function DiagnosticsDialog({
     return () => {
       current = false;
     };
-  }, [open, selected]);
+  }, [open, selected, timelineRetryVersion]);
+
+  const timelineEvents = timeline?.events ?? [];
+  const eventModules = [
+    ...new Set(timelineEvents.map((event) => event.module)),
+  ].sort((left, right) => left.localeCompare(right));
+  const eventPhases = [
+    ...new Set(timelineEvents.map((event) => event.status)),
+  ].sort((left, right) => left.localeCompare(right));
+  const filteredEvents = timelineEvents.filter(
+    (event) =>
+      (eventModuleFilter === 'all' || event.module === eventModuleFilter) &&
+      (eventPhaseFilter === 'all' || event.status === eventPhaseFilter),
+  );
 
   const close = () => {
     if (saving) return;
     setPreview(null);
+    setIncludeTestContext(false);
+    setEventModuleFilter('all');
+    setEventPhaseFilter('all');
     setNotice('');
     onClose();
   };
@@ -243,7 +277,7 @@ export function DiagnosticsDialog({
     const focusables = () =>
       [
         ...dialog.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+          'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
         ),
       ].filter((item) => item.getClientRects().length > 0);
     requestAnimationFrame(() => {
@@ -289,6 +323,7 @@ export function DiagnosticsDialog({
       const result = await window.noema.previewDiagnosticsExport({
         executionId: selected.executionId,
         taskId: selected.taskId,
+        includeTestContext,
       });
       setPreview(result);
     } catch {
@@ -326,12 +361,7 @@ export function DiagnosticsDialog({
 
   if (!open) return null;
   return (
-    <div
-      className="dialog-backdrop diagnostics-backdrop"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) close();
-      }}
-    >
+    <NoemaOverlay isOpen onClose={close} className="diagnostics-backdrop">
       <section
         ref={dialogRef}
         className="social-dialog diagnostics-dialog"
@@ -346,7 +376,14 @@ export function DiagnosticsDialog({
             <h2 id="diagnostics-title">运行诊断</h2>
             <p>查看执行、模型用量和任务状态。记录只保存在此设备。</p>
           </div>
-          <button
+          <NoemaButton
+            className="secondary-action diagnostics-history-link"
+            type="button"
+            onClick={onOpenLegacyHistory}
+          >
+            历史归档
+          </NoemaButton>
+          <NoemaButton
             className="icon-button"
             type="button"
             aria-label="关闭运行诊断"
@@ -355,7 +392,7 @@ export function DiagnosticsDialog({
             disabled={saving}
           >
             <Icon name="close" />
-          </button>
+          </NoemaButton>
         </header>
 
         <details className="diagnostics-runtime-info">
@@ -395,15 +432,16 @@ export function DiagnosticsDialog({
             </p>
             <p>迁移快照与数据库位于同一目录；诊断不会自动替换或删除文件。</p>
           </div>
-          <button
+          <NoemaButton
             className="secondary-action"
             type="button"
             aria-label="打开 Noema 数据与备份目录"
             onClick={() => void openDataDirectory()}
             disabled={dataDirectoryBusy}
           >
+            <Icon name="folder-open" />
             {dataDirectoryBusy ? '正在打开…' : '打开数据与备份目录'}
-          </button>
+          </NoemaButton>
         </section>
 
         {runnerCapability?.platform === 'win32' ? (
@@ -430,14 +468,14 @@ export function DiagnosticsDialog({
             </div>
             {canOfferWindowsRunnerSetup(runnerCapability) &&
             runnerCapability.backendId ? (
-              <button
+              <NoemaButton
                 className="secondary-action"
                 type="button"
                 onClick={() => void startWindowsRunnerSetup()}
                 disabled={runnerSetupBusy}
               >
                 {runnerSetupBusy ? '正在设置…' : '完成或修复隔离设置'}
-              </button>
+              </NoemaButton>
             ) : null}
           </section>
         ) : runnerStatusError ? (
@@ -451,8 +489,12 @@ export function DiagnosticsDialog({
             <div className="diagnostics-section-heading">
               <h3>最近执行</h3>
               <div className="diagnostics-list-tools">
-                <span>{executions.length}</span>
-                <button
+                <span>
+                  {listLoadFailed && !executions.length
+                    ? '—'
+                    : executions.length}
+                </span>
+                <NoemaButton
                   className="diagnostics-refresh"
                   type="button"
                   aria-label="刷新诊断记录"
@@ -460,46 +502,69 @@ export function DiagnosticsDialog({
                   disabled={listLoading}
                 >
                   刷新
-                </button>
+                </NoemaButton>
               </div>
             </div>
             {listLoading && !executions.length ? (
               <p className="diagnostics-muted">正在读取记录…</p>
+            ) : listLoadFailed && !executions.length ? (
+              <div className="diagnostics-list-retry" role="alert">
+                <span>本机诊断记录暂不可读取。</span>
+                <NoemaButton
+                  className="secondary-action"
+                  type="button"
+                  onClick={() => setRefreshVersion((value) => value + 1)}
+                  disabled={listLoading}
+                >
+                  重试
+                </NoemaButton>
+              </div>
             ) : executions.length ? (
-              <ul>
-                {executions.map((execution) => (
-                  <li key={execution.executionId}>
-                    <button
-                      type="button"
-                      className={`diagnostics-execution${selected?.executionId === execution.executionId ? ' is-selected' : ''}`}
-                      aria-current={
-                        selected?.executionId === execution.executionId
-                          ? 'true'
-                          : undefined
-                      }
-                      onClick={() => {
-                        setSelected(execution);
-                        setNotice('');
-                      }}
-                    >
-                      <span className="diagnostics-execution-title">
-                        {execution.taskId ? '工作区任务' : '聊天执行'}
-                      </span>
-                      <span className="diagnostics-execution-state">
-                        {statusLabel(execution.status)}
-                        <time dateTime={execution.occurredAt}>
-                          {dateTime(execution.occurredAt)}
-                        </time>
-                      </span>
-                      <span className="diagnostics-execution-usage">
-                        {execution.inputTokens === null
-                          ? 'Token 用量未知'
-                          : `输入 ${execution.inputTokens.toLocaleString()} · 输出 ${(execution.outputTokens ?? 0).toLocaleString()}`}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
+              <>
+                {listLoadFailed ? (
+                  <p className="diagnostics-list-stale" role="status">
+                    刷新失败，当前显示上次读取的记录。
+                  </p>
+                ) : null}
+                <ul>
+                  {executions.map((execution) => (
+                    <li key={execution.executionId}>
+                      <NoemaButton
+                        type="button"
+                        className={`diagnostics-execution${selected?.executionId === execution.executionId ? ' is-selected' : ''}`}
+                        aria-current={
+                          selected?.executionId === execution.executionId
+                            ? 'true'
+                            : undefined
+                        }
+                        onClick={() => {
+                          setSelected(execution);
+                          setEventModuleFilter('all');
+                          setEventPhaseFilter('all');
+                          setPreview(null);
+                          setIncludeTestContext(false);
+                          setNotice('');
+                        }}
+                      >
+                        <span className="diagnostics-execution-title">
+                          {execution.taskId ? '工作区任务' : '聊天执行'}
+                        </span>
+                        <span className="diagnostics-execution-state">
+                          {statusLabel(execution.status)}
+                          <time dateTime={execution.occurredAt}>
+                            {dateTime(execution.occurredAt)}
+                          </time>
+                        </span>
+                        <span className="diagnostics-execution-usage">
+                          {execution.inputTokens === null
+                            ? 'Token 用量未知'
+                            : `输入 ${execution.inputTokens.toLocaleString()} · 输出 ${(execution.outputTokens ?? 0).toLocaleString()}`}
+                        </span>
+                      </NoemaButton>
+                    </li>
+                  ))}
+                </ul>
+              </>
             ) : (
               <p className="diagnostics-muted">还没有可显示的执行记录。</p>
             )}
@@ -513,15 +578,48 @@ export function DiagnosticsDialog({
                     <h3>{selected.taskId ? '任务时间线' : '执行时间线'}</h3>
                     <code>{selected.taskId ?? selected.executionId}</code>
                   </div>
-                  <button
+                  <NoemaButton
                     className="secondary-action"
                     type="button"
                     onClick={() => void prepareExport()}
-                    disabled={timelineLoading || saving}
+                    disabled={timelineLoading || timelineLoadFailed || saving}
                   >
                     导出报告
-                  </button>
+                  </NoemaButton>
                 </div>
+
+                {timelineLoadFailed ? (
+                  <div className="diagnostics-list-retry" role="alert">
+                    <span>无法读取这条执行时间线。</span>
+                    <NoemaButton
+                      className="secondary-action"
+                      type="button"
+                      onClick={() =>
+                        setTimelineRetryVersion((value) => value + 1)
+                      }
+                      disabled={timelineLoading}
+                    >
+                      重试时间线
+                    </NoemaButton>
+                  </div>
+                ) : null}
+
+                <label className="diagnostics-context-toggle">
+                  <NoemaCheckbox
+                    type="checkbox"
+                    checked={includeTestContext}
+                    onChange={(event) => {
+                      setIncludeTestContext(event.currentTarget.checked);
+                      setPreview(null);
+                    }}
+                  />
+                  <span>
+                    <strong>附带这次实测的对话与任务内容</strong>
+                    <small>
+                      可能含个人信息、路径或命令文本；先完整预览，再由你选择本地保存。不会自动上传。
+                    </small>
+                  </span>
+                </label>
 
                 {timeline?.task ? (
                   <div className="diagnostics-task-summary">
@@ -568,23 +666,18 @@ export function DiagnosticsDialog({
                         <span>
                           {usage.model} · {usage.operation}
                         </span>
-                        <span>
-                          {usage.inputTokens === null
-                            ? '用量未返回'
-                            : `输入 ${usage.inputTokens.toLocaleString()} · 输出 ${(usage.outputTokens ?? 0).toLocaleString()}`}
-                        </span>
+                        <span>{formatTokenUsageLabel(usage)}</span>
+                        {usage.requestId ? (
+                          <small>请求 ID：{usage.requestId}</small>
+                        ) : null}
                         <small>{formatRequestShapeLabel(usage)}</small>
                         <small>
                           {formatMessageRoleCharactersLabel(
                             usage.messageRoleCharacters,
                           )}
                         </small>
-                        {usage.cachedInputTokens !== null ? (
-                          <small>
-                            缓存输入 {usage.cachedInputTokens.toLocaleString()}{' '}
-                            · 未命中{' '}
-                            {usage.cacheMissTokens?.toLocaleString() ?? '未知'}
-                          </small>
+                        {formatCacheBreakdownLabel(usage) ? (
+                          <small>{formatCacheBreakdownLabel(usage)}</small>
                         ) : null}
                         <time dateTime={usage.createdAt}>
                           {dateTime(usage.createdAt)}
@@ -594,36 +687,148 @@ export function DiagnosticsDialog({
                   </section>
                 ) : null}
 
-                <ol className="diagnostics-event-list" aria-label="诊断事件">
-                  {timeline?.events.map((event) => (
-                    <li key={event.eventId}>
-                      <time dateTime={event.occurredAt}>
-                        {dateTime(event.occurredAt)}
-                      </time>
-                      <div>
-                        <strong>{event.operation}</strong>
-                        <span>
-                          {event.module} · {statusLabel(event.status)}
-                        </span>
-                        {event.errorCode ? (
-                          <code>错误码：{event.errorCode}</code>
-                        ) : null}
-                        {event.details.toolCategory ? (
-                          <small>工具类别：{event.details.toolCategory}</small>
-                        ) : null}
-                        {event.details.effectStatus ? (
-                          <small>副作用：{event.details.effectStatus}</small>
-                        ) : null}
-                      </div>
-                    </li>
-                  ))}
-                </ol>
+                {timeline ? (
+                  <div
+                    className="diagnostics-event-filters"
+                    role="group"
+                    aria-label="筛选诊断事件"
+                  >
+                    <span>
+                      显示 {filteredEvents.length} / {timelineEvents.length}{' '}
+                      条事件
+                    </span>
+                    <NoemaSelect
+                      aria-label="按模块筛选诊断事件"
+                      value={eventModuleFilter}
+                      onChange={(event) =>
+                        setEventModuleFilter(event.currentTarget.value)
+                      }
+                    >
+                      <option value="all">所有模块</option>
+                      {eventModules.map((module) => (
+                        <option value={module} key={module}>
+                          {module}
+                        </option>
+                      ))}
+                    </NoemaSelect>
+                    <NoemaSelect
+                      aria-label="按阶段筛选诊断事件"
+                      value={eventPhaseFilter}
+                      onChange={(event) =>
+                        setEventPhaseFilter(event.currentTarget.value)
+                      }
+                    >
+                      <option value="all">所有阶段</option>
+                      {eventPhases.map((phase) => (
+                        <option value={phase} key={phase}>
+                          {statusLabel(phase)}
+                        </option>
+                      ))}
+                    </NoemaSelect>
+                  </div>
+                ) : null}
+                {timeline && filteredEvents.length ? (
+                  <ol className="diagnostics-event-list" aria-label="诊断事件">
+                    {filteredEvents.map((event) => (
+                      <li key={event.eventId}>
+                        <time dateTime={event.occurredAt}>
+                          {dateTime(event.occurredAt)}
+                        </time>
+                        <div>
+                          <strong>{event.operation}</strong>
+                          <span>
+                            {event.module} · {statusLabel(event.status)}
+                          </span>
+                          {event.errorCode ? (
+                            <code>错误码：{event.errorCode}</code>
+                          ) : null}
+                          {event.requestId ? (
+                            <code>请求 ID：{event.requestId}</code>
+                          ) : null}
+                          {event.toolCallId ? (
+                            <code>工具调用 ID：{event.toolCallId}</code>
+                          ) : null}
+                          {event.parentExecutionId ? (
+                            <small>父执行 ID：{event.parentExecutionId}</small>
+                          ) : null}
+                          {event.details.handoffId ? (
+                            <small>交办 ID：{event.details.handoffId}</small>
+                          ) : null}
+                          {event.details.memberAgentId ? (
+                            <small>
+                              成员 ID：{event.details.memberAgentId}
+                            </small>
+                          ) : null}
+                          {event.details.parentInteractionId ? (
+                            <small>
+                              父回复 ID：{event.details.parentInteractionId}
+                            </small>
+                          ) : null}
+                          {event.details.assistantMessageId ? (
+                            <small>
+                              回复消息 ID：{event.details.assistantMessageId}
+                            </small>
+                          ) : null}
+                          {event.module === 'social.memory' &&
+                          event.details.itemId ? (
+                            <small>记忆 ID：{event.details.itemId}</small>
+                          ) : null}
+                          {event.details.toolCategory ? (
+                            <small>
+                              工具类别：{event.details.toolCategory}
+                            </small>
+                          ) : null}
+                          {event.details.toolName ? (
+                            <small>工具：{event.details.toolName}</small>
+                          ) : null}
+                          {event.details.effectStatus ? (
+                            <small>副作用：{event.details.effectStatus}</small>
+                          ) : null}
+                          {event.detailsStatus === 'filtered' ? (
+                            <small>部分事件详情已按隐私规则过滤</small>
+                          ) : null}
+                          {event.detailsStatus === 'unavailable' ? (
+                            <small>事件详情不可读取，已安全隐藏</small>
+                          ) : null}
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                ) : timeline ? (
+                  <div className="diagnostics-empty diagnostics-filter-empty">
+                    <strong>
+                      {timelineEvents.length
+                        ? '当前筛选没有匹配事件'
+                        : '此执行暂时没有诊断事件'}
+                    </strong>
+                    {timelineEvents.length ? (
+                      <NoemaButton
+                        className="secondary-action"
+                        type="button"
+                        onClick={() => {
+                          setEventModuleFilter('all');
+                          setEventPhaseFilter('all');
+                        }}
+                      >
+                        清除筛选
+                      </NoemaButton>
+                    ) : null}
+                  </div>
+                ) : null}
               </>
             ) : (
               <div className="diagnostics-empty">
-                <strong>暂无执行记录</strong>
+                <strong>
+                  {listLoadFailed
+                    ? '记录暂不可读取'
+                    : executions.length
+                      ? '选择一条执行记录'
+                      : '暂无执行记录'}
+                </strong>
                 <span>
-                  当 Noema 开始处理聊天或工作区任务后，记录会显示在这里。
+                  {listLoadFailed
+                    ? '读取失败不会影响 Noema 的聊天和任务。'
+                    : '当 Noema 开始处理聊天或工作区任务后，记录会显示在这里。'}
                 </span>
               </div>
             )}
@@ -642,6 +847,11 @@ export function DiagnosticsDialog({
                 报告 v{preview.schemaVersion} · {preview.eventCount} 个事件 ·{' '}
                 {preview.usageCount} 条模型用量
               </p>
+              {preview.includesTestContext ? (
+                <p className="diagnostics-context-warning">
+                  此报告包含所选轮次的对话或任务文本，凭据形状内容已尝试脱敏；仍可能含个人信息、路径或命令文本。保存前请检查下方完整预览。
+                </p>
+              ) : null}
               <div className="diagnostics-preview-columns">
                 <section>
                   <strong>包含</strong>
@@ -672,22 +882,22 @@ export function DiagnosticsDialog({
               </details>
             </div>
             <div className="diagnostics-preview-actions">
-              <button
+              <NoemaButton
                 type="button"
                 className="secondary-action"
                 onClick={() => setPreview(null)}
                 disabled={saving}
               >
                 取消
-              </button>
-              <button
+              </NoemaButton>
+              <NoemaButton
                 type="button"
                 className="primary-action"
                 onClick={() => void saveExport()}
                 disabled={saving}
               >
                 {saving ? '正在保存…' : '选择本地位置'}
-              </button>
+              </NoemaButton>
             </div>
           </div>
         ) : null}
@@ -702,6 +912,6 @@ export function DiagnosticsDialog({
           </p>
         ) : null}
       </section>
-    </div>
+    </NoemaOverlay>
   );
 }

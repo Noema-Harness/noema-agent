@@ -14,12 +14,15 @@ import {
   WINDOWS_RUNNER_BACKEND_ID,
   WINDOWS_RUNNER_BACKEND_VERSION,
   WINDOWS_RUNNER_PACKAGE_MANIFEST,
+  WINDOWS_RUNNER_POLICY_VERSION,
   WINDOWS_RUNNER_PROTOCOL_VERSION,
   WINDOWS_RUNNER_RESOURCE_NAME,
 } from '../src/main/execution/windows-runner-package-contract.mjs';
 
 const appDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const packageDirectory = path.join(appDir, 'out', 'Noema-win32-x64');
+const packageDirectory = process.env.NOEMA_PACKAGE_DIR
+  ? path.resolve(process.env.NOEMA_PACKAGE_DIR)
+  : path.join(appDir, 'out', 'Noema-win32-x64');
 const packagedApp = path.join(packageDirectory, 'Noema.exe');
 const resourcesDirectory = path.join(packageDirectory, 'resources');
 const archivePath = path.join(resourcesDirectory, 'app.asar');
@@ -280,6 +283,7 @@ child.on('exit', (code, signal) => {
       !runnerIdentity ||
       runnerIdentity.details.backendVersion !==
         WINDOWS_RUNNER_BACKEND_VERSION ||
+      runnerIdentity.details.policyVersion !== WINDOWS_RUNNER_POLICY_VERSION ||
       runnerIdentity.details.protocolVersion !== WINDOWS_RUNNER_PROTOCOL_VERSION
     ) {
       throw new Error(

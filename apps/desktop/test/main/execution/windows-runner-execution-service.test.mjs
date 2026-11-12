@@ -14,6 +14,12 @@ const inputs = {
   ...identity,
   command: 'npm test',
   workspacePath: 'C:\\Work\\workspace',
+  expectedWorkspaceIdentity: {
+    version: 1,
+    canonicalPath: 'C:\\Work\\workspace',
+    device: '1',
+    fileIndex: '11',
+  },
   timeoutMs: 30_000,
 };
 
@@ -42,10 +48,12 @@ test('Windows runner admission binds authorized roots and all task identities be
     [
       ['C:\\Work\\docs', 'read'],
       ['C:\\Work\\node', 'read'],
-      ['C:\\Work\\workspace', 'write'],
+      ['C:\\Work\\workspace', 'read'],
     ],
   );
   const execute = calls.find(([name]) => name === 'execute')?.[1];
+  assert.equal(execute.policy.filesystem.mode, 'read-only');
+  assert.deepEqual(execute.policy.filesystem.writeRoots, []);
   assert.deepEqual(
     {
       requestId: execute.requestId,
@@ -90,6 +98,26 @@ test('Windows runner admission binds authorized roots and all task identities be
   assert.equal(recorded.includes(inputs.workspacePath), false);
 });
 
+test('Windows runner admission can expose only the mirror as writable', async () => {
+  const calls = [];
+  const service = makeService({ calls });
+
+  const result = await service.run({
+    ...inputs,
+    workspacePath: 'C:\\Work\\workspace',
+    filesystemMode: 'read-write',
+  });
+
+  assert.equal(result.output, 'ok');
+  const execute = calls.find(([name]) => name === 'execute')?.[1];
+  assert.equal(execute.policy.filesystem.mode, 'read-write');
+  assert.equal(execute.policy.filesystem.writeRoots.length, 1);
+  assert.equal(
+    execute.policy.filesystem.writeRoots[0].path,
+    'C:\\Work\\workspace',
+  );
+});
+
 test('Windows runner admission stops before setup and ACL work when readiness is false', async () => {
   const calls = [];
   const service = makeService({
@@ -105,6 +133,45 @@ test('Windows runner admission stops before setup and ACL work when readiness is
     calls.map(([name]) => name),
     ['probe'],
   );
+});
+
+test('Windows runner refuses a replaced task workspace before ACL mutation or child creation', async () => {
+  const calls = [];
+  const events = [];
+  const service = makeService({ calls, events });
+
+  await assert.rejects(
+    service.run({
+      ...inputs,
+      expectedWorkspaceIdentity: {
+        ...inputs.expectedWorkspaceIdentity,
+        fileIndex: '99',
+      },
+    }),
+    { code: 'workspace_identity_changed', effectStatus: 'not_applied' },
+  );
+  assert.deepEqual(
+    calls.map(([name]) => name),
+    ['probe', 'setup'],
+  );
+  assert.ok(
+    events.some(
+      (event) =>
+        event.operation === 'admission_workspace' &&
+        event.errorCode === 'workspace_identity_changed',
+    ),
+  );
+});
+
+test('Windows runner refuses a missing task workspace identity before backend setup', async () => {
+  const calls = [];
+  const service = makeService({ calls });
+
+  await assert.rejects(
+    service.run({ ...inputs, expectedWorkspaceIdentity: null }),
+    { code: 'workspace_identity_unavailable', effectStatus: 'not_applied' },
+  );
+  assert.deepEqual(calls, []);
 });
 
 test('Windows runner admission recovers a pending ACL journal and requires retry', async () => {
@@ -137,6 +204,26 @@ test('Windows runner admission does not widen scope when extra access is denied'
       authorizeAdditionalAccess: async () => false,
     }),
     { code: 'external_access_denied', effectStatus: 'not_applied' },
+  );
+  assert.deepEqual(
+    calls.map(([name]) => name),
+    ['probe', 'setup'],
+  );
+});
+
+test('Windows runner rejects an authorized external write before ACL or child work', async () => {
+  const calls = [];
+  const service = makeService({ calls });
+
+  await assert.rejects(
+    service.run({
+      ...inputs,
+      additionalAccess: [
+        { path: 'C:\\Work\\docs', access: 'write', reason: 'Edit docs' },
+      ],
+      authorizeAdditionalAccess: async () => true,
+    }),
+    { code: 'write_access_unavailable', effectStatus: 'not_applied' },
   );
   assert.deepEqual(
     calls.map(([name]) => name),
@@ -231,7 +318,7 @@ function readyProbe() {
     backend: {
       id: 'noema-codex-windows',
       version: '0.1.0',
-      policyVersion: 2,
+      policyVersion: 3,
       capabilities: {
         filesystemDefaultDeny: true,
         filesystemReadAllowlist: true,

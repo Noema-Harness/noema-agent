@@ -1,14 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 import { redactSensitiveText } from '../../shared/text/sensitive-text.mjs';
-import {
-  runProjectCommandInSandbox,
-  windowsCommandSandboxSupport,
-} from './project-command-sandbox.mjs';
 import { scanWorkspaceFileBoundary } from './workspace-file-boundary.mjs';
 import {
   captureWorkspaceIdentity,
@@ -897,11 +892,11 @@ export class NoemaProjectExecutor {
     provider,
     maxToolRounds = MAX_TOOL_ROUNDS,
     commandTimeoutMs = COMMAND_TIMEOUT_MS,
-    commandRunner = runProjectCommandInSandbox,
-    commandSupport = windowsCommandSandboxSupport(
-      process.platform,
-      os.release(),
-    ),
+    commandRunner = null,
+    commandSupport = {
+      supported: false,
+      reason: 'command_mirror_required',
+    },
     authorizeAdditionalAccess = async (_request) => false,
     authorizeNetwork = async (_request) => false,
     workspaceIdentityCapture = captureWorkspaceIdentity,
@@ -933,6 +928,8 @@ export class NoemaProjectExecutor {
     taskId = randomUUID(),
     executionId = taskId,
     usageInteractionId = taskId,
+    usageExecutionId = executionId,
+    usageTurnId = null,
     onEvent = () => {},
     checkpoint = null,
     workspaceIdentity = null,
@@ -1084,6 +1081,8 @@ export class NoemaProjectExecutor {
             signal: controller.signal,
             usageOperation: 'project_execution',
             usageInteractionId,
+            usageExecutionId,
+            usageTurnId,
             maxTokens: 4_096,
             tools: budgetFinalization
               ? []
@@ -1421,9 +1420,16 @@ export class NoemaProjectExecutor {
             let result;
             try {
               if (parsed.name === 'run_command') {
+                if (!this.commandRunner) {
+                  const error = new Error('command_mirror_required');
+                  error.code = 'command_mirror_required';
+                  error.effectStatus = 'not_applied';
+                  throw error;
+                }
                 result = await this.commandRunner({
                   command: parsed.args.command,
                   workspacePath: workspace,
+                  expectedWorkspaceIdentity: activeWorkspaceIdentity,
                   requestId: stepId,
                   executionId,
                   taskId,

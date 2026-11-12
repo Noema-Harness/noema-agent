@@ -104,6 +104,8 @@ export function inspectSourceStructure(sourceRoot) {
         if (!(name === "main/main.ts" && dependency.kind === "dynamic" && probe))
           errors.push(`Source depends on development material: ${name} -> ${destination}`);
       }
+      if (destination.startsWith("main/legacy/") && !name.startsWith("main/legacy/"))
+        errors.push(`Production imports quarantined runtime: ${name} -> ${destination}`);
       if (layer === "shared" && !external && targetLayer !== "shared")
         errors.push(`Shared code depends on ${targetLayer}: ${name} -> ${destination}`);
       if (

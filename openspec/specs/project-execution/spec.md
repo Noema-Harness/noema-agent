@@ -31,34 +31,57 @@
 - **WHEN** 检查点含尚未确认结果的命令或写入
 - **THEN** 系统不得续接，并要求检查工作区与操作记录
 
-### Requirement: 用户可从 Noema 主聊明确提交工作区任务
-系统 SHALL 在 Noema 主聊提供显式工作区任务模式。用户启用该模式并提交内容时，系统 MUST 保留其任务指令并把本地文件工作意图交给现有项目工作执行链；用户确认工作区前不得创建或声称已启动任务。普通聊天仍是默认模式，且用户可以在发送前退出任务模式。
+### Requirement: 主聊默认不发起本地文件工作
+Noema 主聊 SHALL 只承载普通对话，不提供工作区入口，也不在消息上携带本地文件工作意图。系统 MUST NOT 在未创建项目时为主聊消息启用 `start_project_work`；本地文件工作只能从已绑定工作文件夹的项目会话发起。
 
-#### Scenario: 提交工作区任务请求
-- **WHEN** 用户在 Noema 主聊启用工作区任务模式、填写指令并发送
-- **THEN** 系统将该指令作为明确的本地文件工作委托交给现有项目工作工具链，并在工作区选择确认前不创建任务
+#### Scenario: 主聊发送普通消息
+- **WHEN** 用户在 Noema 主聊发送一条消息
+- **THEN** 该 turn 的模型请求不包含 `start_project_work`，系统不创建 SocialWork task，也不插入工作区指令前缀
 
-#### Scenario: 在发送前退出工作区任务模式
-- **WHEN** 用户启用工作区任务模式后、发送前将其关闭
-- **THEN** 后续提交按普通聊天处理，不携带本地文件工作委托意图
+#### Scenario: 主聊请求文件工作
+- **WHEN** 用户在 Noema 主聊要求修改本机文件但没有项目
+- **THEN** 系统按普通对话回应，并提示需要先创建项目、选择工作文件夹后由项目成员执行
 
-### Requirement: 不可用的工作区任务入口说明阻塞原因
-当项目工作执行器尚未就绪时，系统 MUST 禁用工作区任务模式并向用户说明当前不可用原因，且 MUST NOT 将该委托改送到旧 DSH 路径或未隔离的宿主命令执行。
+### Requirement: 项目创建时绑定工作文件夹
+创建项目 SHALL 要求用户选择工作文件夹，并在同一创建事务中保存路径与身份。未选择或取消选择时 MUST NOT 创建项目。Noema 或用户创建的项目 MUST 使用同一项目绑定，不得为该项目的任一会话静默改用其他目录。
 
-#### Scenario: 项目工作执行器未就绪
-- **WHEN** Noema 主聊中的项目工作 readiness 为不可用
-- **THEN** 工作区任务入口不可启用并呈现 readiness 原因，普通聊天不因此改变
+#### Scenario: 用户选择文件夹创建项目
+- **WHEN** 用户填写项目信息、选择工作文件夹并提交
+- **THEN** 项目与工作文件夹绑定一起保存，成员项目会话在启动任务前即可使用该绑定
 
-### Requirement: 默认工作区入口可用于本机诊断追踪
-系统 SHALL 为应用入口建立 execution ID，并在本机诊断记录中关联默认路由选择、工作区执行器可用性和成功创建的 SocialWork task ID。诊断事件 MUST NOT 包含用户指令、工作区路径、文件正文或凭据。
+#### Scenario: 用户取消选择文件夹
+- **WHEN** 用户打开文件夹选择器后取消，且未选择工作文件夹
+- **THEN** 系统不创建项目，也不创建成员会话或 SocialWork task
 
-#### Scenario: 记录默认入口状态
-- **WHEN** 主窗口载入默认 Noema 主聊并首次读取 social state
-- **THEN** 本机诊断记录包含同一 application execution ID 下的入口路由和项目工作执行器可用状态
+#### Scenario: 项目内的文件任务
+- **WHEN** 项目成员在项目会话中启动文件任务
+- **THEN** 系统使用项目创建时保存的工作文件夹和身份，不弹出新的目录选择，也不回退到主聊或其他目录
 
-#### Scenario: 记录通过入口创建的工作区任务
-- **WHEN** Noema 主聊经现有项目工作链成功创建 SocialWork task
-- **THEN** 本机诊断记录 task ID 并关联当前 application execution ID，且不写入任务指令或工作区路径
+### Requirement: 执行联系人创建时获得默认工作目录
+创建执行联系人时，系统 SHALL 在用户文档目录下建立只属于该联系人的默认工作目录；该目录用于联系人直接承接文件任务时的默认范围。项目任务 MUST 以项目创建时选择的工作文件夹为准，不得被联系人默认目录覆盖。默认目录创建失败 MUST NOT 阻断联系人创建。
+
+#### Scenario: 新建执行联系人
+- **WHEN** 用户创建一名可执行文件任务的联系人
+- **THEN** 系统建立该联系人的默认工作目录，并在联系人资料中保留稳定身份
+
+#### Scenario: 联系人直接执行文件任务
+- **WHEN** 执行联系人承接不隶属项目的文件任务
+- **THEN** 系统使用其默认工作目录，不再要求用户为该任务选择目录
+
+#### Scenario: 联系人参与项目
+- **WHEN** 执行联系人在已绑定工作文件夹的项目会话中工作
+- **THEN** 系统使用项目工作文件夹，默认目录不参与该项目的读写
+
+### Requirement: 工作文件夹选择可用于本机诊断追踪
+系统 SHALL 在本机诊断记录中关联项目工作文件夹选择、取消和项目创建结果，并保留 application execution ID。诊断事件 MUST NOT 包含项目指令、绝对路径、文件正文或凭据。
+
+#### Scenario: 记录项目工作文件夹选择
+- **WHEN** 用户为项目选择工作文件夹并创建成功
+- **THEN** 诊断记录可见 selection 成功与项目创建关联，但不写入绝对路径
+
+#### Scenario: 记录用户取消工作文件夹选择
+- **WHEN** 用户打开工作文件夹选择器后取消
+- **THEN** 同一 application execution ID 下记录脱敏的取消终态，且没有创建项目或 task
 
 ### Requirement: SocialWork task 状态具有唯一持久 owner
 系统 SHALL 以 SocialChatStore 保存的 `social_work_tasks`、`social_work_execution_steps` 和 `social_work_runtime_checkpoints` 作为 SocialWork task、工具副作用、项目结果关联与恢复上下文的持久事实来源。SocialWorkService MUST 编排执行状态转换，SocialChatService MUST 编排项目结果投递；两者对 task 持久状态的修改 MUST 调用 SocialChatStore API。Executor MUST 通过执行事件报告结果，不直接写 durable task state。`phase`、runtime session、step outcome 与 checkpoint 不得替代 task `status`。
@@ -116,27 +139,50 @@
 - **WHEN** 用户明确运行本地 diagnostics CLI
 - **THEN** 导出保留本地文件，不自动上传，并告知调用者该文件可能包含个人对话、任务内容、错误及路径
 
+### Requirement: 执行权限按对象持久化并可在设置中调整
+系统 SHALL 在设置中提供执行权限选项，并按权限对象分别生效：项目工作文件夹固定允许；工作区外文件可选择“每次确认”（默认）或“完全允许”；网络固定禁止。选择“完全允许”时，命令访问工作区外文件 MUST NOT 再弹出逐条原生确认；选择“每次确认”时，每个新路径仍需用户当次授权。权限 MUST 由主进程持久化，renderer MUST 只通过受信 IPC 读写，且不得用单个全局开关放宽网络或项目文件夹边界。
+
+#### Scenario: 工作区外文件选择完全允许
+- **WHEN** 用户把“工作区外文件”设为“完全允许”，随后项目命令读取工作区外路径
+- **THEN** 主进程直接允许该次访问，不显示原生确认窗，命令继续执行
+
+#### Scenario: 工作区外文件保持每次确认
+- **WHEN** 用户未修改权限或把权限设回“每次确认”，命令首次访问新的工作区外路径
+- **THEN** 系统显示当次确认，拒绝时不执行该命令，选择只影响当前命令
+
+#### Scenario: 网络权限不可由文件权限放宽
+- **WHEN** 用户把工作区外文件设为“完全允许”
+- **THEN** 项目命令仍不能联网，设置中的网络状态保持“禁止”
+
 ### Requirement: 人类授权事件可本机追踪且不记录授权内容
-系统 MUST 为工作区访问与导入对话外发 consent 记录 requested、granted、denied、revoked 中实际发生的决策；事件 SHALL 关联当前 application execution ID，且 MUST NOT 记录工作区路径、对话正文或凭据。
+系统 MUST 为仍受支持的工作区与业务操作记录 requested、granted、denied、revoked 中实际发生的授权决策；事件 SHALL 关联当前 application execution ID，且 MUST NOT 记录工作区路径、对话正文或凭据。已退役的 Root/Legacy 操作与历史 imported-context consent 不产生新的授权决策，也不授权未来发送。
 
 #### Scenario: 用户选择或拒绝工作区授权
-- **WHEN** 主进程显示工作区目录选择或 disclosure，随后用户选择、取消或因窗口不可用而拒绝
+- **WHEN** 主进程显示 SocialWork 工作区目录选择或 disclosure，随后用户选择、取消或因窗口不可用而拒绝
 - **THEN** 本机诊断记录能力、决策与有限原因，不记录选择的路径或任务 prompt
 
 #### Scenario: 用户同意或撤回导入对话外发
-- **WHEN** 用户在导入对话首次外发提示中同意/拒绝，或之后移除该导入
-- **THEN** 本机诊断记录 requested/granted/denied/revoked，不记录快照内容或 API key
+- **WHEN** 历史 imported-context consent 记录存在，或旧 renderer 对应 handler 被调用
+- **THEN** 旧 handler fail closed；该记录不授权 provider request，历史 snapshot 不进入 request，且不生成新的授权事件
 
 ### Requirement: 核心执行事件使用版本化且可关联的本机契约
-系统 SHALL 以有版本号的本机事件记录关联应用进程、用户 turn、SocialWork task、provider request、tool call/result 和恢复事实。事件 MUST 用独立字段表达 application execution、operation execution、task、turn、request 与 tool-call identity；默认工作区路径 MUST 从 task execution identity 连到模型请求、工具步骤和恢复事件。查询 MUST 可按 execution/task identity 获得有序的有界事件页。
+系统 SHALL 以有版本号的本机事件记录关联应用进程、SocialWork task、provider request、tool call/result 和恢复事实。事件 MUST 用独立字段表达 application execution、operation execution、task、request 与 tool-call identity；默认工作区路径 MUST 从 task execution identity 连到模型请求、工具步骤和恢复事件。查询 MUST 可按 execution/task identity 获得有序的有界事件页。已退役的 Root turn 与 DSH task 不产生新的活动事件，也不通过启动恢复重新执行；历史事件仅供只读查询。
 
 #### Scenario: one task spans provider and tool events
 - **WHEN** 一个 SocialWork task 调用模型、执行工具并完成/失败
 - **THEN** 事件以同一 task execution ID 关联，provider request 与 tool call 各保留自己的 ID，且不混淆 task 状态记录
 
 #### Scenario: process restart recovers an interrupted task
-- **WHEN** 新 main process 启动并将旧活动 task 恢复为 interrupted
+- **WHEN** 新 main process 启动并将旧活动 SocialWork task 恢复为 interrupted
 - **THEN** 恢复事件使用新的 application execution ID、保留原 task ID，并区分应用退出未完成、系统关机未完成或无退出意图的进程异常退出
+
+#### Scenario: root turn starts and reaches a terminal state
+- **WHEN** 启动恢复检查发现旧 Root turn 或旧活动 Root 操作被请求
+- **THEN** 系统不启动或续接该 turn，不生成 Root 活动事件，并保留已有记录供只读历史查询
+
+#### Scenario: DSH task and child process lifecycle
+- **WHEN** 启动恢复检查发现旧 DSH task/session，或旧 DSH 操作 handler 被调用
+- **THEN** 系统不启动、停止、续接或重试该任务，不生成新的 DSH 活动事件，并保留已有记录供只读历史查询
 
 ### Requirement: 诊断事件受字段白名单、容量和故障隔离约束
 诊断事件 MUST NOT 持久化 prompt、消息正文、workspace path、命令文本、tool arguments/results、credentials 或完整错误正文。事件写入与业务 side-effect MUST 不共享原子成功条件；诊断写入失败 MUST 不阻断 Agent 行为，并增加可查询的本地诊断失败计数。事件保留量 MUST 有严格配置上限。
@@ -173,10 +219,10 @@
 - **THEN** 系统明确显示覆盖缺口，不把缺失数据呈现为零用量或成功状态
 
 ### Requirement: 本机诊断导出默认仅包含安全元数据
-用户 MUST 主动触发诊断导出，并在保存前看到版本、采集范围、排除项和覆盖缺口；报告 MUST 使用版本化结构且 MUST NOT 包含对话正文、prompt、task 结果正文、workspace path、命令文本、凭据或完整错误正文。
+用户 MUST 主动触发诊断导出，并在保存前看到版本、采集范围、排除项和覆盖缺口；默认报告 MUST NOT 包含对话正文、prompt、task 结果正文、workspace path、命令文本、凭据或完整错误正文。用户可在单次导出中明确选择包含所选执行的有限实测上下文；路径或命令若存在于所选正文中须作为敏感资料预览，凭据形状文本 MUST 尝试脱敏，报告 MUST 在本机完整预览后由用户选址保存，且 MUST NOT 自动上传。
 
 #### Scenario: 预览并保存报告
-- **WHEN** 用户查看导出预览并明确选择保存位置
+- **WHEN** 用户未选择实测上下文并查看导出预览后明确选择保存位置
 - **THEN** 系统仅将预览中列出的事件和用量元数据写入本地报告，不自动上传
 
 #### Scenario: 用户取消导出
@@ -186,6 +232,18 @@
 #### Scenario: 报告包含受限字段
 - **WHEN** 输入事件的 details 带有未允许字段或自由文本错误
 - **THEN** 导出沿用本地事件 allowlist/redaction，仅输出有限状态/错误码和安全数值
+
+#### Scenario: 用户选择实测上下文
+- **WHEN** 用户为一条执行勾选实测上下文并生成导出预览
+- **THEN** 报告只包含该执行关联的可见对话轮次与任务输入、结果及有限错误文本，界面完整展示报告与个人信息、路径或命令文本风险提示，凭据形状文本经过脱敏处理
+
+#### Scenario: 用户保存或取消上下文报告
+- **WHEN** 用户确认本地保存或取消导出
+- **THEN** 确认时只写入所选本地文件；取消时不创建文件；两者都不发送到模型服务或远端
+
+#### Scenario: 上下文有内容上限
+- **WHEN** 所选执行上下文超过报告的字段或总量上限
+- **THEN** 系统截断到硬上限并在报告中标记被截断，不读取或导出工作区文件
 
 ### Requirement: 本机诊断检索与导出失败不影响 Agent 工作
 诊断查询、渲染和导出 MUST 与 Agent 执行和 task 状态写入隔离；诊断失败 MUST 显示可理解的本地错误并保留已有业务事实。
@@ -260,15 +318,34 @@ SocialWork task 的持久状态 MUST 由 SocialChatStore 管理，不依赖 rend
 - **THEN** provider 请求继续按原 transport 结果完成或失败，不因诊断错误中断或重试模型请求
 
 ### Requirement: Windows command grants are mapped to exact filesystem policy
-When a Windows command backend is eligible to run a project command, the system SHALL translate the user-approved workspace and external path grants into an OS-enforced filesystem policy before process creation. The policy MUST NOT grant ambient write access or read access outside the workspace and explicitly approved runtime roots.
+When a Windows command backend is eligible, the system SHALL translate the trusted command mode and approved workspace/external grants into an OS-enforced filesystem policy before process creation. The policy MUST NOT grant ambient access outside the workspace and approved runtime roots. Missing or unknown modes MUST be rejected. The command workspace MUST match the immutable SocialWork task identity before ACL mutation or process creation.
+
+#### Scenario: explicit read-only workspace command
+- **WHEN** the trusted main-process caller requests read-only mode with a verified workspace, external read grants, and runtime roots
+- **THEN** the workspace is present in read roots, write roots are empty, every capability ACL is read-only, and no other filesystem access is granted
+- **AND** any child-process write to the workspace is rejected by Windows ACL enforcement
+- **AND** startup diagnostics expose validated backend, policy, and transport versions without executable paths
+
+#### Scenario: read-only mode rejects write grants
+- **WHEN** a read-only command includes an external write grant or a write root
+- **THEN** the system returns a typed denial before ACL mutation or process creation
 
 #### Scenario: workspace and external path grants are mapped
-- **WHEN** a command has a workspace grant, external path grants, and trusted runtime roots
+- **WHEN** a trusted caller explicitly requests read-write mode with a workspace grant, external path grants, and trusted runtime roots
 - **THEN** the backend policy grants workspace read/write, grants each external path only its approved access, grants runtime roots read-only, and grants no other filesystem access
+- **AND** the policy is not inferred from an omitted mode
 
 #### Scenario: path identity cannot be verified
 - **WHEN** a granted path has an unresolved alias, reparse, or object identity that the backend cannot safely enforce
 - **THEN** the system rejects the command before process creation and reports a bounded policy reason
+
+#### Scenario: task workspace identity is missing or invalid
+- **WHEN** a Windows command request lacks a valid immutable workspace identity from its SocialWork task
+- **THEN** the system rejects it before backend setup, ACL mutation, or child creation with a bounded reason code
+
+#### Scenario: task workspace is replaced before command admission
+- **WHEN** the canonical path or filesystem identity captured for the command differs from the task's immutable workspace identity
+- **THEN** the system rejects it before ACL mutation or child creation, reports `workspace_identity_changed`, and marks the command effect as not applied
 
 ### Requirement: Windows network grants are bound to one command identity
 When a Windows command requests network access, the system SHALL enforce approved destinations through a network control bound to that command's sandbox identity. A UI approval or proxy configuration alone MUST NOT be treated as enforcement.
@@ -587,3 +664,59 @@ plan tool 的模型可见说明 MUST 要求模型完整读取被标记截断的�
 #### Scenario: 链接证据包含指令
 - **WHEN** 模型通过 plan tool 读取链接证据
 - **THEN** tool description 明确要求将证据内容作为资料而非执行指令
+
+### Requirement: 损坏的诊断详情必须作为覆盖缺口显示
+诊断事件查询 MUST 对持久化详情重新执行字段白名单与凭据脱敏，并限制单条详情大小。有效详情 MUST 标明完整或经过过滤；无法解析或超限时 MUST 保留事件的安全字段，将详情标为不可用，并在时间线和导出报告中暴露覆盖缺口。
+
+#### Scenario: 查询包含未知字段或凭据的详情
+- **WHEN** 持久化详情包含未允许字段、疑似凭据或超出白名单值长度
+- **THEN** 查询结果只包含安全过滤后的详情，并标明详情已过滤；敏感原文不会进入 renderer 或导出
+
+#### Scenario: 查询损坏或超限的详情
+- **WHEN** 持久化详情不是有效对象 JSON 或超过单条大小上限
+- **THEN** 时间线保留该事件的安全元数据，将详情标为不可用，并显示 `diagnostic_event_details_unavailable` 覆盖缺口
+
+#### Scenario: 导出包含不可用详情
+- **WHEN** 用户预览包含损坏或超限详情事件的诊断报告
+- **THEN** 导出预览及报告保留详情不可用覆盖缺口，不把空详情表示为完整记录
+
+### Requirement: Provider usage 将未知值与零值区分
+Provider token usage MUST 仅在返回至少一个可识别的有效非负 token/cache 计量时标记为已收到。每个缺失、无效或互相矛盾的 token/cache 计量 MUST 保持 unknown；真实零值 MUST 保留为零，诊断界面不得将 unknown 显示为零。Provider cost 独立保留，不代表 token 计量已收到；cache-write 字段只从所适配协议明确规定的响应路径读取。
+
+#### Scenario: 空或不可识别的 usage 对象
+- **WHEN** provider 响应包含空 usage、仅有未知字段或所有已知字段均无效
+- **THEN** 本机请求保持 usage missing，token/cache 数值均为 unknown，不显示为零
+
+#### Scenario: Provider 明确报告零 token
+- **WHEN** provider 对有效 usage 字段明确报告数值 0
+- **THEN** 系统将该字段记录为零并标记 usage 已收到
+
+#### Scenario: Provider 只报告部分计量
+- **WHEN** provider 返回输入或输出 token 的部分有效字段而缺少其它字段
+- **THEN** 有效字段照常展示，缺失字段显示 unknown 而不是零
+
+#### Scenario: Provider 报告或省略 cache-write 计量
+- **WHEN** 响应包含受支持协议的 cache-write 数值，或没有该字段
+- **THEN** 明确返回的数值（包括零）显示在时间线和本地报告中；缺失字段保持 unknown
+
+#### Scenario: 缓存分解与输入总量矛盾
+- **WHEN** provider 报告的缓存命中与未命中合计不等于输入 token 总量，或单项大于总量
+- **THEN** 有矛盾的缓存分解保持 unknown，不静默修正为零或推算命中
+
+### Requirement: Provider requests retain distinct task and segment identities
+Every SocialWork provider request MUST use the durable task ID as its interaction identity and the current execution segment ID as its execution identity. Resuming a task MUST use a new execution identity while keeping the same task identity.
+
+#### Scenario: Resumed task request is attributed to its new segment
+- **WHEN** a user explicitly resumes a permitted task from a checkpoint
+- **THEN** the request and usage records retain the same durable task ID and use the new segment execution ID
+
+### Requirement: Provider request preserves source-turn identity
+When a SocialWork task has an originating Social turn, every provider request MUST retain that turn ID in request and usage records. A missing source turn MUST remain absent rather than being inferred from a later resume action.
+
+#### Scenario: Initial or resumed request retains its source turn
+- **WHEN** a task has an originating Social turn and makes an initial or resumed provider request
+- **THEN** the request and usage records use that original turn ID
+
+#### Scenario: Request diagnostic identity is safe
+- **WHEN** the provider request emits a diagnostic event
+- **THEN** it retains the task and segment IDs and contains no prompt, checkpoint, path, tool argument, command, or result content

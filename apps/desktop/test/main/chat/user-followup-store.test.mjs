@@ -3,6 +3,7 @@ import test from 'node:test';
 import Database from 'better-sqlite3';
 import { RootStore } from '../../../src/main/storage/root-store.mjs';
 import { SocialChatStore } from '../../../src/main/chat/social-chat-store.mjs';
+import { SOCIAL_SCHEMA_VERSION } from '../../../src/main/chat/social-chat-schema.mjs';
 
 function makeStore() {
   const db = new Database(':memory:');
@@ -162,6 +163,9 @@ test('schema v29 upgrades to current follow-ups without changing the existing tr
     db.exec(`
       DROP TABLE social_work_file_change_operations;
       DROP TABLE social_work_file_changes;
+      DROP TABLE IF EXISTS social_work_workspace_write_locks;
+      DROP TABLE IF EXISTS social_work_command_batches;
+      DROP TABLE IF EXISTS social_work_change_blobs;
       ALTER TABLE social_projects DROP COLUMN workspace_identity_json;
       ALTER TABLE social_projects DROP COLUMN workspace_path;
       ALTER TABLE social_work_tasks DROP COLUMN workspace_identity_json;
@@ -179,7 +183,7 @@ test('schema v29 upgrades to current follow-ups without changing the existing tr
       db
         .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
         .get().version,
-      33,
+      SOCIAL_SCHEMA_VERSION,
     );
     assert.equal(
       db.prepare('SELECT COUNT(*) AS count FROM social_messages').get().count,

@@ -1,6 +1,6 @@
 {
   "name": "noema",
-  "version": "0.1.1",
+  "version": "0.7.2",
   "private": true,
   "description": "Noema personal agent",
   "workspaces": [
@@ -17,9 +17,13 @@
     "make:desktop": "npm run make --workspace noema-desktop",
     "workspace:check": "node scripts/workspace.mjs check",
     "workspace:clean": "node scripts/workspace.mjs clean",
-    "workspace:test": "node --test scripts/workspace.test.mjs",
+    "workspace:test": "node --test scripts/workspace.test.mjs scripts/sync-skills.test.mjs scripts/harness-sync.test.mjs",
+    "skills:sync": "node scripts/sync-skills.mjs mirror",
+    "skills:check": "node scripts/sync-skills.mjs check",
+    "harness:check": "node scripts/harness-sync.mjs check",
+    "harness:import": "node scripts/harness-sync.mjs import",
     "source:check": "node scripts/source-structure.mjs",
-    "check": "npm run workspace:check && npm run source:check && npm run lint && npm run typecheck && npm test"
+    "check": "npm run workspace:check && npm run skills:check && npm run source:check && npm run lint && npm run typecheck && npm test"
   },
   "engines": {
     "node": ">=24.21 <25"

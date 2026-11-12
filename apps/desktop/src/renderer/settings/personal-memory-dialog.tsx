@@ -1,3 +1,6 @@
+import { NoemaTextArea } from '../ui/noema-form-controls';
+import { NoemaButton } from '../ui/noema-button';
+import { NoemaOverlay } from '../ui/noema-overlay';
 import { Icon } from '../chat/presentation';
 import type { SocialChatController } from '../chat/use-social-chat-controller';
 
@@ -8,6 +11,7 @@ type PersonalMemoryDialogModel = Pick<
   | 'closePersonalMemories'
   | 'personalMemoryList'
   | 'personalMemoryLoading'
+  | 'refreshPersonalMemories'
   | 'personalMemoryBusy'
   | 'personalMemoryError'
   | 'setPersonalMemoryError'
@@ -20,6 +24,7 @@ type PersonalMemoryDialogModel = Pick<
   | 'handlePersonalMemoryEnabled'
   | 'savePersonalMemory'
   | 'deletePersonalMemory'
+  | 'openHistorySource'
 >;
 
 function displayDate(value: string) {
@@ -40,6 +45,7 @@ export function PersonalMemoryDialog({
     closePersonalMemories,
     personalMemoryList,
     personalMemoryLoading,
+    refreshPersonalMemories,
     personalMemoryBusy,
     personalMemoryError,
     setPersonalMemoryError,
@@ -52,15 +58,11 @@ export function PersonalMemoryDialog({
     handlePersonalMemoryEnabled,
     savePersonalMemory,
     deletePersonalMemory,
+    openHistorySource,
   } = model;
 
   return personalMemoryOpen ? (
-    <div
-      className="dialog-backdrop"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) closePersonalMemories();
-      }}
-    >
+    <NoemaOverlay isOpen onClose={closePersonalMemories}>
       <section
         ref={personalMemoryDialogRef}
         className="social-dialog personal-memory-dialog"
@@ -71,37 +73,42 @@ export function PersonalMemoryDialog({
         <div className="dialog-heading">
           <div>
             <h2 id="personal-memory-title">个人记忆</h2>
-            <p>由你维护，只供 Noema 主聊按需参考。</p>
+            <p>只在 Noema 主聊中使用。</p>
           </div>
-          <button
+          <NoemaButton
             className="icon-button"
             type="button"
             aria-label="关闭个人记忆"
             onClick={closePersonalMemories}
           >
             <Icon name="close" />
-          </button>
+          </NoemaButton>
         </div>
 
-        <label className="personal-memory-toggle">
+        <div className="personal-memory-toggle">
           <span>
-            <strong>允许主聊使用</strong>
-            <small>关闭后保留条目，但不检索或发送给模型。</small>
+            <strong>在对话中参考记忆</strong>
+            <small>关闭后仍保留条目，但不会用于新的回复。</small>
           </span>
-          <input
-            type="checkbox"
-            checked={personalMemoryList?.enabled ?? false}
+          <button
+            className="permission-switch"
+            type="button"
+            role="switch"
+            aria-checked={personalMemoryList?.enabled ?? false}
+            aria-label="在对话中参考记忆"
             disabled={personalMemoryBusy || personalMemoryLoading}
-            onChange={(event) =>
-              void handlePersonalMemoryEnabled(event.target.checked)
+            onClick={() =>
+              void handlePersonalMemoryEnabled(!personalMemoryList?.enabled)
             }
-          />
-        </label>
+          >
+            <span className="permission-switch-thumb" />
+          </button>
+        </div>
 
         <form className="personal-memory-editor" onSubmit={savePersonalMemory}>
           <label className="dialog-field">
             <span>{editingPersonalMemoryId ? '修改记忆' : '添加一条记忆'}</span>
-            <textarea
+            <NoemaTextArea
               autoFocus
               data-dialog-initial-focus
               value={personalMemoryDraft}
@@ -113,7 +120,7 @@ export function PersonalMemoryDialog({
           </label>
           <div className="dialog-actions">
             {editingPersonalMemoryId ? (
-              <button
+              <NoemaButton
                 className="secondary-action"
                 type="button"
                 disabled={personalMemoryBusy}
@@ -123,9 +130,9 @@ export function PersonalMemoryDialog({
                 }}
               >
                 取消修改
-              </button>
+              </NoemaButton>
             ) : null}
-            <button
+            <NoemaButton
               className="primary-action"
               type="submit"
               disabled={personalMemoryBusy || !personalMemoryDraft.trim()}
@@ -135,7 +142,7 @@ export function PersonalMemoryDialog({
                 : editingPersonalMemoryId
                   ? '保存修改'
                   : '添加记忆'}
-            </button>
+            </NoemaButton>
           </div>
           {!personalMemoryList?.enabled ? (
             <p className="dialog-footnote">
@@ -151,10 +158,24 @@ export function PersonalMemoryDialog({
         >
           <div className="personal-memory-list-heading">
             <h3 id="personal-memory-list-title">已保存</h3>
-            <span>{personalMemoryList?.items.length ?? 0}</span>
+            <span>
+              {personalMemoryList ? personalMemoryList.items.length : '—'}
+            </span>
           </div>
           {personalMemoryLoading ? (
             <p className="personal-memory-empty">正在读取本机记忆…</p>
+          ) : !personalMemoryList ? (
+            <div className="personal-memory-load-error">
+              <span>暂时无法显示个人记忆。</span>
+              <NoemaButton
+                type="button"
+                className="secondary-action"
+                disabled={personalMemoryBusy || personalMemoryLoading}
+                onClick={() => void refreshPersonalMemories()}
+              >
+                重试
+              </NoemaButton>
+            </div>
           ) : personalMemoryList?.items.length ? (
             <ul>
               {personalMemoryList.items.map((item) => (
@@ -168,6 +189,29 @@ export function PersonalMemoryDialog({
                           ? `来自${item.sourceRoomTitle || 'Noema 主聊'} · ${displayDate(item.sourceMessageCreatedAt || item.updatedAt)}`
                           : '来源消息已不可用'}
                     </span>
+                    {item.sourceKind === 'message' &&
+                    item.sourceRoomId &&
+                    item.sourceMessageId ? (
+                      <NoemaButton
+                        className="secondary-action personal-memory-source-link"
+                        type="button"
+                        onClick={() => {
+                          closePersonalMemories();
+                          openHistorySource({
+                            id: item.sourceMessageId!,
+                            roomId: item.sourceRoomId!,
+                            roomTitle: item.sourceRoomTitle || 'Noema 主聊',
+                            role: 'user',
+                            createdAt:
+                              item.sourceMessageCreatedAt || item.updatedAt,
+                            snippet: '',
+                            redacted: false,
+                          });
+                        }}
+                      >
+                        查看来源
+                      </NoemaButton>
+                    ) : null}
                     {item.sourceKind === 'manual' ? (
                       <span>更新于 {displayDate(item.updatedAt)}</span>
                     ) : null}
@@ -178,24 +222,24 @@ export function PersonalMemoryDialog({
                       role="group"
                     >
                       <span>删除这条记忆？原聊天仍会保留。</span>
-                      <button
+                      <NoemaButton
                         type="button"
                         disabled={personalMemoryBusy}
                         onClick={() => void deletePersonalMemory(item.id)}
                       >
                         确认删除
-                      </button>
-                      <button
+                      </NoemaButton>
+                      <NoemaButton
                         type="button"
                         disabled={personalMemoryBusy}
                         onClick={() => setDeletingPersonalMemoryId(null)}
                       >
                         取消
-                      </button>
+                      </NoemaButton>
                     </div>
                   ) : (
                     <div className="personal-memory-actions">
-                      <button
+                      <NoemaButton
                         type="button"
                         disabled={personalMemoryBusy}
                         onClick={() => {
@@ -206,8 +250,8 @@ export function PersonalMemoryDialog({
                         }}
                       >
                         修改
-                      </button>
-                      <button
+                      </NoemaButton>
+                      <NoemaButton
                         type="button"
                         disabled={personalMemoryBusy}
                         onClick={() => {
@@ -216,7 +260,7 @@ export function PersonalMemoryDialog({
                         }}
                       >
                         删除
-                      </button>
+                      </NoemaButton>
                     </div>
                   )}
                 </li>
@@ -235,6 +279,6 @@ export function PersonalMemoryDialog({
           </p>
         ) : null}
       </section>
-    </div>
+    </NoemaOverlay>
   ) : null;
 }

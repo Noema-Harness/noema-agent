@@ -18,58 +18,107 @@ test('root store migrates idempotently and persists the selected model', () => {
     store.db
       .prepare('SELECT MAX(version) AS version FROM schema_migrations')
       .get().version,
-    15,
+    16,
   );
   store.setSelectedModel('free-router');
   assert.equal(store.getSelectedModel(), 'free-router');
   store.close();
 });
 
-test('captures remain local-only until an atomic discussion turn is created', () => {
+test('execution permissions persist read-only, ask and allow', () => {
   const store = memoryStore();
-  const saved = store.createCapture('刚才发现了一个值得以后讨论的点');
-  assert.equal(store.getSnapshot().captures[0].content, saved.content);
+  assert.deepEqual(store.getExecutionPermissions(), { externalFiles: 'ask' });
+  assert.deepEqual(
+    store.setExecutionPermissions({ externalFiles: 'read-only' }),
+    { externalFiles: 'read-only' },
+  );
+  assert.deepEqual(store.getExecutionPermissions(), {
+    externalFiles: 'read-only',
+  });
+  assert.deepEqual(store.setExecutionPermissions({ externalFiles: 'allow' }), {
+    externalFiles: 'allow',
+  });
+  assert.deepEqual(store.getExecutionPermissions(), { externalFiles: 'allow' });
+  assert.deepEqual(
+    store.setExecutionPermissions({ externalFiles: 'unexpected' }),
+    {
+      externalFiles: 'ask',
+    },
+  );
+  assert.deepEqual(store.getExecutionPermissions(), { externalFiles: 'ask' });
+  store.close();
+});
 
+test('diagnostics context reads only visible messages from the selected turn', () => {
+  const store = memoryStore();
   const turn = store.beginTurn({
-    id: 'capture-turn',
-    captureId: saved.id,
+    id: 'diagnostic-turn',
+    text: 'selected user test input',
     model: 'free-router',
   });
-  const linked = store.getCapture(saved.id);
-  assert.equal(linked.discussionTurnId, turn.id);
-  assert.equal(
-    store.db
-      .prepare(
-        "SELECT content FROM root_messages WHERE turn_id = ? AND role = 'user'",
-      )
-      .get(turn.id).content,
-    saved.content,
-  );
-  assert.throws(
-    () => store.updateCapture(saved.id, '改写后的内容'),
-    /不能修改/,
-  );
-  assert.throws(
-    () => store.beginTurn({ id: 'second-capture-turn', captureId: saved.id }),
-    /已经开始讨论/,
-  );
+  store.appendAssistant({
+    id: turn.id,
+    attempt: turn.attempt,
+    content: 'selected assistant result',
+  });
+  store.completeTurn(turn.id, turn.attempt);
+  store.beginTurn({
+    id: 'unrelated-turn',
+    text: 'unrelated private message',
+    model: 'free-router',
+  });
 
-  store.deleteCapture(saved.id);
-  assert.equal(store.getCapture(saved.id), null);
-  assert.equal(
-    store.db
-      .prepare(
-        "SELECT content FROM root_messages WHERE turn_id = ? AND role = 'user'",
-      )
-      .get(turn.id).content,
-    '刚才发现了一个值得以后讨论的点',
+  const messages = store.getTurnMessagesForDiagnostics(turn.id);
+  assert.deepEqual(
+    messages.map(({ role, content }) => ({ role, content })),
+    [
+      { role: 'user', content: 'selected user test input' },
+      { role: 'assistant', content: 'selected assistant result' },
+    ],
+  );
+  assert.equal(store.getTurnMessagesForDiagnostics(turn.id, 1).length, 1);
+  store.close();
+});
+
+test('legacy capture rows are readable only through the archive projection', () => {
+  const store = memoryStore();
+  const capturedAt = new Date().toISOString();
+  store.db
+    .prepare(`
+    INSERT INTO captured_moments (id, content, created_at, updated_at)
+    VALUES (?, ?, ?, ?)
+  `)
+    .run('legacy-capture-1', '历史速记正文。', capturedAt, capturedAt);
+  const page = store.listLegacyHistoryPage({ category: 'captures' });
+  assert.equal(page.records[0].id, 'legacy-capture-1');
+  assert.equal(page.records[0].content, '历史速记正文。');
+  assert.equal(store.createCapture, undefined);
+  assert.equal(store.updateCapture, undefined);
+  assert.equal(store.deleteCapture, undefined);
+  assert.equal(store.getCapture, undefined);
+  assert.equal(store.getCaptures, undefined);
+  assert.equal('captures' in store.getSnapshot(), false);
+  assert.throws(
+    () => store.beginTurn({ captureId: 'legacy-capture-1' }),
+    /message/u,
   );
   store.close();
 });
 
 test('unmentioned captures never enter ordinary model context', () => {
   const store = memoryStore();
-  store.createCapture('这段私密速记不应自动进入请求上下文');
+  const timestamp = new Date().toISOString();
+  store.db
+    .prepare(`
+    INSERT INTO captured_moments (id, content, created_at, updated_at)
+    VALUES (?, ?, ?, ?)
+  `)
+    .run(
+      'legacy-capture-private',
+      '这段私密速记不应自动进入请求上下文',
+      timestamp,
+      timestamp,
+    );
   const turn = store.beginTurn({ id: 'ordinary-turn', text: '普通聊天内容' });
   const messages = store.getPromptMessages(turn.id);
   assert.equal(messages.at(-1).content, '普通聊天内容');
@@ -80,17 +129,31 @@ test('unmentioned captures never enter ordinary model context', () => {
   store.close();
 });
 
-test('captures persist across a database reopen', () => {
+test('legacy captures remain queryable after a database reopen', () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'noema-capture-store-'));
   const databasePath = path.join(directory, 'root.sqlite3');
   try {
     const first = new RootStore(databasePath);
-    const capture = first.createCapture('离线重启后仍然能找到这条记录。');
+    const timestamp = new Date().toISOString();
+    first.db
+      .prepare(`
+      INSERT INTO captured_moments (id, content, created_at, updated_at)
+      VALUES (?, ?, ?, ?)
+    `)
+      .run(
+        'legacy-capture-reopen',
+        '离线重启后仍然能找到这条记录。',
+        timestamp,
+        timestamp,
+      );
     first.close();
 
     const reopened = new RootStore(databasePath);
-    assert.equal(reopened.getCapture(capture.id).content, capture.content);
-    assert.equal(reopened.getSnapshot().captures.length, 1);
+    assert.equal(
+      reopened.listLegacyHistoryPage({ category: 'captures' }).records[0]
+        .content,
+      '离线重启后仍然能找到这条记录。',
+    );
     reopened.close();
   } finally {
     rmSync(directory, { recursive: true, force: true });
@@ -256,7 +319,7 @@ test('schema-v12 databases add history delivery status without rewriting prior s
   assert.equal(
     db.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()
       .version,
-    15,
+    16,
   );
   assert.equal(
     db
@@ -305,7 +368,7 @@ test('a schema-v4 database upgrades through interaction and verification state',
     store.db
       .prepare('SELECT MAX(version) AS version FROM schema_migrations')
       .get().version,
-    15,
+    16,
   );
   assert.equal(
     store.db
@@ -426,7 +489,7 @@ test('schema-v9 migration snapshots existing adjustments without guessing older 
   assert.equal(
     db.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()
       .version,
-    15,
+    16,
   );
   assert.deepEqual(readSnapshots('root_messages', 'assistant-2'), expected);
   assert.deepEqual(readSnapshots('root_messages', 'assistant-1'), []);
@@ -487,7 +550,7 @@ test('schema-v9 migration backfills only the latest root attempt and task snapsh
   assert.equal(
     db.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()
       .version,
-    15,
+    16,
   );
   assert.deepEqual(JSON.parse(latestAttempt.snapshots), [
     {
@@ -516,6 +579,114 @@ test('schema-v9 migration backfills only the latest root attempt and task snapsh
       editedAt: null,
     },
   ]);
+  store.close();
+});
+
+test('legacy history pages are fixed-category, bounded, ordered, and read-only', () => {
+  const store = memoryStore();
+  const turn = store.beginTurn({
+    id: 'archive-turn-1',
+    text: '历史用户消息一',
+    model: 'archive-model',
+  });
+  store.appendAssistant({
+    id: turn.id,
+    attempt: turn.attempt,
+    content: '历史助手消息一',
+  });
+  store.completeTurn(turn.id, turn.attempt);
+  const secondTurn = store.beginTurn({
+    id: 'archive-turn-2',
+    text: '历史用户消息二',
+    model: 'archive-model',
+  });
+  store.appendAssistant({
+    id: secondTurn.id,
+    attempt: secondTurn.attempt,
+    content: '历史助手消息二',
+  });
+  store.completeTurn(secondTurn.id, secondTurn.attempt);
+  const captureTimestamp = new Date().toISOString();
+  store.db
+    .prepare(`
+    INSERT INTO captured_moments (id, content, created_at, updated_at)
+    VALUES (?, ?, ?, ?)
+  `)
+    .run('archive-capture', '历史速记', captureTimestamp, captureTimestamp);
+  store.addContextImport({
+    source: 'codex',
+    threadId: 'archive-thread',
+    title: '历史导入',
+    messages: [{ role: 'user', content: '历史快照内容' }],
+  });
+  store.addInteractionAdjustment({
+    id: 'archive-adjustment',
+    sourceTurnId: turn.id,
+    scope: 'coding',
+    situation: '归档测试',
+    behavior: '只读展示',
+    sourceQuote: '历史用户消息一',
+  });
+  store.createBackgroundTask({
+    id: 'archive-task',
+    sourceTurnId: turn.id,
+    workspacePath: 'C:\\ArchiveFixture',
+    model: 'archive-model',
+    prompt: 'legacy task prompt',
+  });
+  const longHistoricalCapture = 'x'.repeat(100_000);
+  store.db
+    .prepare('UPDATE captured_moments SET content = ?')
+    .run(longHistoricalCapture);
+  const boundedCapture = store.listLegacyHistoryPage({ category: 'captures' });
+  const fullCapture = store.listLegacyHistoryPage({
+    category: 'captures',
+    fullText: true,
+  });
+  assert.equal(boundedCapture.records[0].content.length, 100_000);
+  assert.equal(fullCapture.records[0].content.length, 100_000);
+
+  const before = store.getLegacyHistoryCategoryCounts();
+  const firstPage = store.listLegacyHistoryPage({
+    category: 'root-messages',
+    limit: 1,
+  });
+  const secondPage = store.listLegacyHistoryPage({
+    category: 'root-messages',
+    cursor: firstPage.nextCursor,
+    limit: 1,
+  });
+  assert.equal(firstPage.records.length, 1);
+  assert.equal(firstPage.hasMore, true);
+  assert.equal(secondPage.records.length, 1);
+  assert.notEqual(firstPage.records[0].id, secondPage.records[0].id);
+  assert.equal(before['root-turns'], 2);
+  assert.equal(before['root-messages'], 4);
+  assert.equal(before['dsh-tasks'], 1);
+  assert.equal(before.captures, 1);
+  assert.equal(before['context-imports'], 1);
+  assert.equal(before['interaction-adjustments'], 1);
+  assert.deepEqual(store.getLegacyHistoryCategoryCounts(), before);
+  assert.equal(
+    store.db.prepare('SELECT content FROM captured_moments').get().content,
+    longHistoricalCapture,
+  );
+  assert.throws(
+    () =>
+      store.listLegacyHistoryPage({
+        category: 'root_messages; DROP TABLE root_turns',
+      }),
+    /类别无效/,
+  );
+  assert.throws(
+    () => store.listLegacyHistoryPage({ category: 'captures', cursor: -1 }),
+    /分页位置无效/,
+  );
+  const capped = store.listLegacyHistoryPage({
+    category: 'root-turns',
+    limit: 10_000,
+  });
+  assert.equal(capped.records.length, 2);
   store.close();
 });
 

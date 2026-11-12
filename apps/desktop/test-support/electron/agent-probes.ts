@@ -6,8 +6,12 @@ export function createAgentProbes(
   context: DesktopProbeContext,
   attachments: ReturnType<typeof createAttachmentProbes>,
 ) {
-  const { mainWindow, socialAgentE2eModelRequests, socialChatService } =
-    context;
+  const {
+    mainWindow,
+    socialAgentE2eModelRequests,
+    socialChatService,
+    writeSmokeLog,
+  } = context;
   const {
     socialAgentForwardDesktopScreenshotPath,
     socialAgentForwardNarrowScreenshotPath,
@@ -32,8 +36,737 @@ export function createAgentProbes(
     socialAgentProfileDesktopScreenshotPath,
     socialAgentContactDesktopScreenshotPath,
     socialAgentContactNarrowScreenshotPath,
+    socialMessageLayoutDesktopScreenshotPath,
+    socialMessageLayoutNarrowScreenshotPath,
+    socialProjectResultDesktopScreenshotPath,
+    socialProjectResultNarrowScreenshotPath,
+    socialFailureDesktopScreenshotPath,
+    socialFailureNarrowScreenshotPath,
   } = context.options;
   const { captureSocialTextAttachmentsE2e } = attachments;
+  async function captureSocialComposerQueueReview() {
+    const {
+      testSocialAgentLiveE2e,
+      socialComposerQueueMarker,
+      socialComposerQueueDesktopScreenshotPath,
+      socialComposerQueueNarrowScreenshotPath,
+    } = context.options;
+    if (
+      !mainWindow ||
+      mainWindow.isDestroyed() ||
+      testSocialAgentLiveE2e ||
+      !socialComposerQueueDesktopScreenshotPath ||
+      !socialComposerQueueNarrowScreenshotPath
+    ) {
+      return null;
+    }
+    const startRequestCount = socialAgentE2eModelRequests.length;
+    mainWindow.setSize(1280, 800);
+    const started = await mainWindow.webContents
+      .executeJavaScript(`(async () => {
+      const waitFor = async (predicate, label, timeoutMs = 7000) => {
+        const deadline = Date.now() + timeoutMs;
+        while (Date.now() < deadline) {
+          const value = await predicate();
+          if (value) return value;
+          await new Promise((resolve) => setTimeout(resolve, 40));
+        }
+        throw new Error('等待超时：' + label);
+      };
+      const noema = [...document.querySelectorAll('.room-list-item')]
+        .find((item) => item.querySelector('.item-title')?.textContent?.trim() === 'Noema');
+      if (!noema) throw new Error('找不到 Noema 主聊以展示队列状态');
+      noema.click();
+      await waitFor(() => document.querySelector('.room-header .chat-header-title strong')?.textContent?.trim() === 'Noema', 'Noema 主聊');
+      const input = document.querySelector('#social-message-input');
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+      if (!(input instanceof HTMLTextAreaElement) || !setter) throw new Error('找不到 Noema 输入框');
+      const setDraft = (text) => {
+        setter.call(input, text);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      };
+      setDraft(${JSON.stringify(socialComposerQueueMarker)} + ' 等待队列状态显示');
+      document.querySelector('.send-message-button')?.click();
+      const queuedText = 'NOEMA_UI_QUEUE_ITEM ' + '这是一段用于检查窄窗换行和操作区位置的较长待发内容。'.repeat(7);
+      setDraft(queuedText);
+      await waitFor(() => {
+        const stopVisible = [...document.querySelectorAll('.runtime-status button')]
+          .some((button) => button.textContent?.trim() === '停止回复' && !button.disabled);
+        const send = document.querySelector('.send-message-button');
+        return stopVisible && send && !send.disabled;
+      }, '回复中停止操作与发送队列入口').catch(async (error) => {
+        const room = await window.noema.getSocialRoom('room-noema');
+        const userMessage = [...room.messages]
+          .reverse()
+          .find((message) => message.role === 'user' && message.content.includes(${JSON.stringify(socialComposerQueueMarker)}));
+        const assistantMessage = userMessage && room.messages.find(
+          (message) => message.role === 'assistant' && message.turnId === userMessage.turnId,
+        );
+        throw new Error(error.message + '；现场：' + JSON.stringify({
+          runtimeStatus: document.querySelector('.runtime-status')?.textContent?.trim() ?? null,
+          stopButtons: [...document.querySelectorAll('.runtime-status button')].map((button) => ({ text: button.textContent?.trim(), disabled: button.disabled })),
+          sendDisabled: document.querySelector('.send-message-button')?.disabled ?? null,
+          user: userMessage ? { content: userMessage.content, status: userMessage.status } : null,
+          assistant: assistantMessage ? { status: assistantMessage.status, error: assistantMessage.errorMessage } : null,
+          provider: await window.noema.getSocialState().then((state) => ({ connected: state.connected, checking: state.checking, selectedModel: state.selectedModel, error: state.error })),
+        }));
+      });
+      const submit = document.querySelector('.send-message-button');
+      if (!submit || submit.disabled) throw new Error('回复进行中无法加入待发队列');
+      submit.click();
+      await waitFor(() => [...document.querySelectorAll('.queue-row')]
+        .some((row) => row.textContent?.includes('NOEMA_UI_QUEUE_ITEM')), '待发队列项目');
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      return { queuedText };
+    })()`);
+    const inspectAndCapture = async (
+      width: number,
+      height: number,
+      screenshotPath: string,
+      narrow: boolean,
+    ) => {
+      mainWindow!.setSize(width, height);
+      await mainWindow!.webContents.executeJavaScript(
+        'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+      );
+      const state = await mainWindow!.webContents.executeJavaScript(`(() => {
+        const row = [...document.querySelectorAll('.queue-row')]
+          .find((item) => item.textContent?.includes('NOEMA_UI_QUEUE_ITEM'));
+        const text = row?.querySelector('.queue-text');
+        const actions = row?.querySelector('.queue-actions');
+        const stop = [...document.querySelectorAll('.runtime-status button')]
+          .find((button) => button.textContent?.trim() === '停止回复');
+        const shell = document.querySelector('.social-shell');
+        const composer = document.querySelector('.message-composer');
+        const textRect = text?.getBoundingClientRect();
+        const actionRect = actions?.getBoundingClientRect();
+        return {
+          width: window.innerWidth,
+          queueVisible: Boolean(row && row.getClientRects().length),
+          fullQueuedTextAvailable: Boolean(text?.textContent?.includes(${JSON.stringify(started.queuedText)})),
+          queuedTextWraps: Boolean(text && getComputedStyle(text).whiteSpace === 'pre-wrap' && (text.scrollHeight > 36 || text.getBoundingClientRect().height > 36)),
+          queueActionsBelowText: Boolean(textRect && actionRect && actionRect.top >= textRect.bottom - 1),
+          queueActionsDoNotOverlapText: Boolean(textRect && actionRect && (${narrow} ? actionRect.top >= textRect.bottom - 1 : textRect.right <= actionRect.left + 1)),
+          stopVisible: Boolean(stop && !stop.disabled && stop.getClientRects().length),
+          shellNoOverflow: Boolean(shell && shell.scrollWidth <= shell.clientWidth),
+          documentNoOverflow: document.documentElement.scrollWidth <= window.innerWidth,
+          composerVisible: Boolean(
+            composer &&
+              composer.getBoundingClientRect().bottom <= window.innerHeight + 1,
+          ),
+        };
+      })()`);
+      if (
+        state.width !== width ||
+        !state.queueVisible ||
+        !state.fullQueuedTextAvailable ||
+        !state.queuedTextWraps ||
+        !state.queueActionsDoNotOverlapText ||
+        (narrow && !state.queueActionsBelowText) ||
+        !state.stopVisible ||
+        !state.shellNoOverflow ||
+        !state.documentNoOverflow ||
+        !state.composerVisible
+      ) {
+        throw new Error(
+          `Social composer 队列布局不符合预期：${JSON.stringify({ width, state })}`,
+        );
+      }
+      writeSmokeScreenshot(screenshotPath, await mainWindow!.capturePage());
+      return state;
+    };
+    const desktop = await inspectAndCapture(
+      1280,
+      800,
+      socialComposerQueueDesktopScreenshotPath,
+      false,
+    );
+    const narrow = await inspectAndCapture(
+      420,
+      720,
+      socialComposerQueueNarrowScreenshotPath,
+      true,
+    );
+    mainWindow.setSize(1280, 800);
+    const completed = await mainWindow.webContents
+      .executeJavaScript(`(async () => {
+      const deadline = Date.now() + 14_000;
+      while (Date.now() < deadline) {
+        const room = await window.noema.getSocialRoom('room-noema');
+        const firstUser = room.messages.find((message) => message.role === 'user' && message.content.includes(${JSON.stringify(socialComposerQueueMarker)}));
+        const queuedUser = room.messages.find((message) => message.role === 'user' && message.content.includes('NOEMA_UI_QUEUE_ITEM'));
+        const firstReply = firstUser && room.messages.find((message) => message.role === 'assistant' && message.turnId === firstUser.turnId);
+        const queuedReply = queuedUser && room.messages.find((message) => message.role === 'assistant' && message.turnId === queuedUser.turnId);
+        if (firstReply?.status === 'failed' || firstReply?.status === 'interrupted' || queuedReply?.status === 'failed' || queuedReply?.status === 'interrupted') {
+          throw new Error('composer 队列夹具请求未正常完成');
+        }
+        if (firstReply?.status === 'complete' && queuedReply?.status === 'complete') return true;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      throw new Error('composer 队列夹具没有排空');
+    })()`);
+    if (
+      !completed ||
+      socialAgentE2eModelRequests.length !== startRequestCount + 2
+    ) {
+      throw new Error('composer 队列夹具没有恰好完成两个隔离模型请求');
+    }
+    return { desktop, narrow, completed, modelRequestCount: 2 };
+  }
+  async function captureSocialProjectCloseoutReview() {
+    const {
+      socialProjectCloseoutDesktopScreenshotPath,
+      socialProjectCloseoutNarrowScreenshotPath,
+    } = context.options;
+    if (
+      !mainWindow ||
+      mainWindow.isDestroyed() ||
+      !socialProjectCloseoutDesktopScreenshotPath ||
+      !socialProjectCloseoutNarrowScreenshotPath
+    ) {
+      return null;
+    }
+    const openFixture = await mainWindow.webContents
+      .executeJavaScript(`(async () => {
+      const waitFor = async (predicate, label, timeoutMs = 7000) => {
+        const deadline = Date.now() + timeoutMs;
+        while (Date.now() < deadline) {
+          const value = await predicate();
+          if (value) return value;
+          await new Promise((resolve) => setTimeout(resolve, 40));
+        }
+        throw new Error('等待超时：' + label);
+      };
+      const row = [...document.querySelectorAll('.project-list-item')]
+        .find((item) => item.querySelector('.item-title')?.textContent?.trim() === 'UI 项目收尾布局验证');
+      if (!row) throw new Error('找不到隔离的项目收尾 UI 夹具');
+      row.click();
+      await waitFor(() => document.querySelector('.work-head .work-title strong')?.textContent?.trim() === 'UI 项目收尾布局验证', '项目工作区');
+      const delivery = [...document.querySelectorAll('.work-tabs button')]
+        .find((button) => button.textContent?.trim() === '交付');
+      delivery?.click();
+      await waitFor(() => document.querySelector('.project-closeout.needs-attention'), '项目收尾需要处理状态');
+      return Boolean(delivery);
+    })()`);
+    if (!openFixture) throw new Error('没有打开项目交付视图');
+    const inspectAndCapture = async (
+      width: number,
+      height: number,
+      screenshotPath: string,
+      narrow: boolean,
+    ) => {
+      mainWindow!.setSize(width, height);
+      await mainWindow!.webContents.executeJavaScript(
+        'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+      );
+      const state = await mainWindow!.webContents.executeJavaScript(`(() => {
+        const panel = document.querySelector('.project-closeout.needs-attention');
+        const track = panel?.querySelector('.project-closeout-track');
+        const steps = [...(track?.querySelectorAll('.project-closeout-step') ?? [])];
+        const first = steps[0]?.getBoundingClientRect();
+        const second = steps[1]?.getBoundingClientRect();
+        const retry = panel?.querySelector('.project-closeout-actions button');
+        const root = document.querySelector('.social-shell');
+        return {
+          width: window.innerWidth,
+          panelVisible: Boolean(panel && panel.getClientRects().length),
+          failureCopyVisible: panel?.textContent?.includes('成员复盘需要重试') ?? false,
+          retryVisible: Boolean(retry && retry.getClientRects().length && !retry.disabled),
+          trackNoOverflow: Boolean(track && track.scrollWidth <= track.clientWidth),
+          panelNoOverflow: Boolean(panel && panel.scrollWidth <= panel.clientWidth),
+          rootNoOverflow: Boolean(root && root.scrollWidth <= root.clientWidth),
+          documentNoOverflow: document.documentElement.scrollWidth <= window.innerWidth,
+          stepPositions: first && second ? {
+            firstLeft: Math.round(first.left),
+            firstTop: Math.round(first.top),
+            firstBottom: Math.round(first.bottom),
+            secondLeft: Math.round(second.left),
+            secondTop: Math.round(second.top),
+          } : null,
+          stepsHorizontal: Boolean(first && second && second.left > first.left && Math.abs(second.top - first.top) < 4),
+          stepsStacked: Boolean(first && second && second.top >= first.bottom),
+        };
+      })()`);
+      if (
+        state.width !== width ||
+        !state.panelVisible ||
+        !state.failureCopyVisible ||
+        !state.retryVisible ||
+        !state.trackNoOverflow ||
+        !state.panelNoOverflow ||
+        !state.rootNoOverflow ||
+        !state.documentNoOverflow ||
+        (narrow ? !state.stepsStacked : !state.stepsHorizontal)
+      ) {
+        throw new Error(
+          `项目收尾状态布局不符合预期：${JSON.stringify({ width, state })}`,
+        );
+      }
+      writeSmokeScreenshot(screenshotPath, await mainWindow!.capturePage());
+      return state;
+    };
+    const desktop = await inspectAndCapture(
+      1280,
+      800,
+      socialProjectCloseoutDesktopScreenshotPath,
+      false,
+    );
+    const narrow = await inspectAndCapture(
+      420,
+      720,
+      socialProjectCloseoutNarrowScreenshotPath,
+      true,
+    );
+    mainWindow.setSize(1280, 800);
+    return { desktop, narrow };
+  }
+  async function captureSocialProjectPlanReview() {
+    const {
+      socialProjectPlanDesktopScreenshotPath,
+      socialProjectPlanNarrowScreenshotPath,
+    } = context.options;
+    if (
+      !mainWindow ||
+      mainWindow.isDestroyed() ||
+      !socialProjectPlanDesktopScreenshotPath ||
+      !socialProjectPlanNarrowScreenshotPath
+    ) {
+      return null;
+    }
+    const opened = await mainWindow.webContents
+      .executeJavaScript(`(async () => {
+      const waitFor = async (predicate, label, timeoutMs = 7000) => {
+        const deadline = Date.now() + timeoutMs;
+        while (Date.now() < deadline) {
+          const value = await predicate();
+          if (value) return value;
+          await new Promise((resolve) => setTimeout(resolve, 40));
+        }
+        throw new Error('等待超时：' + label);
+      };
+      const row = [...document.querySelectorAll('.project-list-item')]
+        .find((item) => item.querySelector('.item-title')?.textContent?.trim() === 'UI 项目计划全景验证');
+      if (!row) throw new Error('找不到隔离的项目计划 UI 夹具');
+      row.click();
+      await waitFor(() => document.querySelector('.work-head .work-title strong')?.textContent?.trim() === 'UI 项目计划全景验证', '项目计划工作区');
+      const delivery = [...document.querySelectorAll('.work-tabs button')]
+        .find((button) => button.textContent?.trim() === '交付');
+      delivery?.click();
+      await waitFor(() => document.querySelector('.project-plan-objective'), '项目计划');
+      const blocked = [...document.querySelectorAll('.project-plan-phase-stop > button')]
+        .find((button) => button.textContent?.includes('能力基线'));
+      if (!blocked) throw new Error('找不到受阻阶段');
+      blocked.click();
+      await waitFor(() => document.querySelector('.project-plan-phase.state-blocked'), '受阻阶段详情');
+      return true;
+    })()`);
+    if (!opened) throw new Error('没有打开隔离的多阶段项目计划');
+    const inspectAndCapture = async (
+      width: number,
+      height: number,
+      screenshotPath: string,
+      narrow: boolean,
+    ) => {
+      mainWindow!.setSize(width, height);
+      await mainWindow!.webContents.executeJavaScript(
+        'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+      );
+      const state = await mainWindow!.webContents.executeJavaScript(`(() => {
+        const root = document.querySelector('.social-shell');
+        const objective = document.querySelector('.project-plan-objective > strong');
+        const flow = document.querySelector('.project-plan-phase-flow');
+        const phases = [...(flow?.querySelectorAll('.project-plan-phase-stop') ?? [])];
+        const dependency = phases.map((phase) => phase.querySelector('button'))
+          .find((button) => button?.textContent?.includes('恢复与冲突'));
+        const blocked = document.querySelector('.project-plan-phase.state-blocked');
+        const phaseDetail = blocked?.querySelector('.project-plan-phase-name p');
+        const blocker = blocked?.textContent?.includes('来源验收依据出现修订冲突') ?? false;
+        const firstLane = phases[0]?.getBoundingClientRect();
+        const lastLane = phases.at(-1)?.getBoundingClientRect();
+        return {
+          width: window.innerWidth,
+          objectiveComplete: objective?.textContent?.includes('UI-S06-OBJECTIVE-END') ?? false,
+          objectiveUnclamped: objective ? getComputedStyle(objective).webkitLineClamp === 'none' : false,
+          phaseCount: phases.length,
+          dependencyLabelComplete: dependency?.getAttribute('aria-label')?.includes('须先验收：阶段 02、阶段 03') ?? false,
+          blockedDetailVisible: Boolean(blocked && blocked.getClientRects().length && phaseDetail?.textContent?.includes('阶段 01')),
+          conflictCopyVisible: blocker,
+          flowScrollable: Boolean(flow && flow.scrollWidth > flow.clientWidth && flow.tabIndex === 0),
+          flowStacked: Boolean(flow && getComputedStyle(flow).gridAutoFlow === 'row'),
+          rootNoOverflow: Boolean(root && root.scrollWidth <= root.clientWidth + 1),
+          documentNoOverflow: document.documentElement.scrollWidth <= window.innerWidth,
+          phasePositions: firstLane && lastLane ? { firstLeft: Math.round(firstLane.left), firstTop: Math.round(firstLane.top), lastLeft: Math.round(lastLane.left), lastTop: Math.round(lastLane.top) } : null,
+        };
+      })()`);
+      if (
+        state.width !== width ||
+        !state.objectiveComplete ||
+        !state.objectiveUnclamped ||
+        state.phaseCount !== 8 ||
+        !state.dependencyLabelComplete ||
+        !state.blockedDetailVisible ||
+        !state.conflictCopyVisible ||
+        (narrow ? !state.flowStacked : !state.flowScrollable) ||
+        !state.rootNoOverflow ||
+        !state.documentNoOverflow
+      ) {
+        throw new Error(
+          `项目计划状态布局不符合预期：${JSON.stringify({ width, state })}`,
+        );
+      }
+      writeSmokeScreenshot(screenshotPath, await mainWindow!.capturePage());
+      return state;
+    };
+    const desktop = await inspectAndCapture(
+      1280,
+      800,
+      socialProjectPlanDesktopScreenshotPath,
+      false,
+    );
+    const narrow = await inspectAndCapture(
+      420,
+      720,
+      socialProjectPlanNarrowScreenshotPath,
+      true,
+    );
+    const conflict = await mainWindow.webContents
+      .executeJavaScript(`(async () => {
+      const waitFor = async (predicate, label, timeoutMs = 7000) => {
+        const deadline = Date.now() + timeoutMs;
+        while (Date.now() < deadline) {
+          const value = await predicate();
+          if (value) return value;
+          await new Promise((resolve) => setTimeout(resolve, 40));
+        }
+        throw new Error('等待超时：' + label);
+      };
+      const edit = [...document.querySelectorAll('.project-plan-head button')]
+        .find((button) => button.textContent?.trim() === '调整计划');
+      if (!edit) throw new Error('找不到计划调整入口');
+      edit.click();
+      await waitFor(() => document.querySelector('.project-plan-editor'), '计划编辑器');
+      const reasonLabel = [...document.querySelectorAll('.project-plan-editor label')]
+        .find((label) => label.textContent?.includes('本次计划调整的原因'));
+      const reason = reasonLabel?.querySelector('input');
+      if (!reason) throw new Error('找不到计划修订原因输入框');
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+      setter?.call(reason, 'UI 夹具并发修订冲突。');
+      reason.dispatchEvent(new Event('input', { bubbles: true }));
+      const latest = await window.noema.getSocialProjectPlan('e2e-ui-project-plan');
+      await window.noema.replaceSocialProjectPlan({
+        projectId: 'e2e-ui-project-plan',
+        expectedRevision: latest.revision,
+        reason: 'UI 夹具并发更新，用于检查 stale revision 反馈。',
+        plan: {
+          objective: latest.objective + ' 并发版本。',
+          phases: latest.phases,
+        },
+      });
+      document.querySelector('.project-plan-editor')?.requestSubmit();
+      const alert = await waitFor(() => {
+        const candidate = document.querySelector('.project-plan-error[role="alert"]');
+        return candidate?.textContent?.includes('计划已被更新，请重新读取最新版本后再提交。') ? candidate : null;
+      }, '计划修订冲突反馈');
+      return {
+        conflictVisible: alert.textContent.includes('计划已被更新'),
+        reloadLatestVisible: [...alert.querySelectorAll('button')]
+          .some((button) => button.textContent?.trim() === '载入最新计划'),
+      };
+    })()`);
+    mainWindow.setSize(1280, 800);
+    return { desktop, narrow, conflict };
+  }
+  async function captureSocialProjectReviewCard() {
+    const {
+      socialProjectReviewDesktopScreenshotPath,
+      socialProjectReviewNarrowScreenshotPath,
+    } = context.options;
+    if (
+      !mainWindow ||
+      mainWindow.isDestroyed() ||
+      !socialProjectReviewDesktopScreenshotPath ||
+      !socialProjectReviewNarrowScreenshotPath
+    ) {
+      return null;
+    }
+    const navigation = await mainWindow.webContents
+      .executeJavaScript(`(async () => {
+      const waitFor = async (predicate, label, timeoutMs = 7000) => {
+        const deadline = Date.now() + timeoutMs;
+        while (Date.now() < deadline) {
+          const value = await predicate();
+          if (value) return value;
+          await new Promise((resolve) => setTimeout(resolve, 40));
+        }
+        throw new Error('等待超时：' + label);
+      };
+      const projectRow = [...document.querySelectorAll('.project-list-item')]
+        .find((item) => item.querySelector('.item-title')?.textContent?.trim() === 'UI 评审反馈卡验证');
+      if (!projectRow) throw new Error('找不到待评审项目入口');
+      projectRow.click();
+      await waitFor(() => document.querySelector('.work-head .work-title strong')?.textContent?.trim() === 'UI 评审反馈卡验证', '待评审项目空间');
+      const dock = [...document.querySelectorAll('.review-dock button')]
+        .find((button) => button.textContent?.includes('回到评审请求'));
+      if (!dock) throw new Error('待评审项目没有显示回到请求入口');
+      dock.click();
+      await waitFor(() => {
+        const target = [...document.querySelectorAll('.review-request')]
+          .find((entry) => entry.textContent?.includes('UI 评审反馈卡验证'));
+        return document.querySelector('.room-header .chat-header-title strong')?.textContent?.trim() === 'Noema' && target;
+      }, '返回评审请求');
+      const card = [...document.querySelectorAll('.review-request')]
+        .find((entry) => entry.textContent?.includes('UI 评审反馈卡验证'));
+      const feedback = card.querySelector('textarea');
+      await waitFor(() => document.activeElement === feedback, '评审反馈焦点').catch(
+        (error) => {
+          throw new Error(error.message + '；现场：' + JSON.stringify({
+            active: {
+              tagName: document.activeElement?.tagName,
+              id: document.activeElement?.id ?? null,
+              className: document.activeElement?.className ?? null,
+              text: document.activeElement?.textContent?.slice(0, 80) ?? null,
+            },
+            feedbackConnected: Boolean(feedback?.isConnected),
+            feedbackVisible: Boolean(feedback?.getClientRects().length),
+            feedbackDisabled: feedback?.disabled ?? null,
+            feedbackInertAncestor: feedback?.closest('[inert]')?.className ?? null,
+            cardVisible: Boolean(card?.getClientRects().length),
+            focusedElementOutside: document.activeElement !== document.body,
+          }));
+        },
+      );
+      return { dockVisible: true, focusReturned: document.activeElement === feedback };
+    })()`);
+    if (!navigation?.dockVisible || !navigation?.focusReturned) {
+      throw new Error('评审 dock 没有返回并聚焦反馈框');
+    }
+    const inspectAndCapture = async (
+      width: number,
+      height: number,
+      screenshotPath: string,
+    ) => {
+      mainWindow!.setSize(width, height);
+      await mainWindow!.webContents.executeJavaScript(
+        'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+      );
+      const state = await mainWindow!.webContents.executeJavaScript(`(() => {
+        const card = [...document.querySelectorAll('.review-request')]
+          .find((entry) => entry.textContent?.includes('UI 评审反馈卡验证'));
+        const textarea = card?.querySelector('textarea');
+        const label = card?.querySelector('label[for]');
+        const submit = card?.querySelector('button[type="submit"]');
+        const root = document.querySelector('.social-shell');
+        return {
+          width: window.innerWidth,
+          pendingContext: card?.textContent?.includes('等待你的反馈') ?? false,
+          contextLabelMatches: Boolean(textarea && label?.htmlFor === textarea.id),
+          textareaVisible: Boolean(textarea && textarea.getClientRects().length),
+          submitVisible: Boolean(submit && submit.getClientRects().length),
+          explicitFeedbackBoundary: card?.textContent?.includes('普通聊天不会解除项目等待') ?? false,
+          helperDisabledReason: Boolean(card?.querySelector('.review-submit-disabled-reason')),
+          cardNoOverflow: Boolean(card && card.scrollWidth <= card.clientWidth + 1),
+          rootNoOverflow: Boolean(root && root.scrollWidth <= root.clientWidth + 1),
+          documentNoOverflow: document.documentElement.scrollWidth <= window.innerWidth,
+        };
+      })()`);
+      if (
+        state.width !== width ||
+        !state.pendingContext ||
+        !state.contextLabelMatches ||
+        !state.textareaVisible ||
+        !state.submitVisible ||
+        !state.explicitFeedbackBoundary ||
+        !state.cardNoOverflow ||
+        !state.rootNoOverflow ||
+        !state.documentNoOverflow
+      ) {
+        throw new Error(
+          `项目评审反馈卡布局不符合预期：${JSON.stringify({ width, state })}`,
+        );
+      }
+      writeSmokeScreenshot(screenshotPath, await mainWindow!.capturePage());
+      return state;
+    };
+    const desktop = await inspectAndCapture(
+      1280,
+      800,
+      socialProjectReviewDesktopScreenshotPath,
+    );
+    const narrow = await inspectAndCapture(
+      420,
+      720,
+      socialProjectReviewNarrowScreenshotPath,
+    );
+    mainWindow.setSize(1280, 800);
+    return { desktop, narrow, navigation };
+  }
+  async function captureSocialMessageLayoutReview() {
+    if (
+      !mainWindow ||
+      mainWindow.isDestroyed() ||
+      (!socialMessageLayoutDesktopScreenshotPath &&
+        !socialMessageLayoutNarrowScreenshotPath &&
+        !socialProjectResultDesktopScreenshotPath &&
+        !socialProjectResultNarrowScreenshotPath &&
+        !socialFailureDesktopScreenshotPath &&
+        !socialFailureNarrowScreenshotPath)
+    ) {
+      return null;
+    }
+    const selectFixtureRoom = async () => {
+      const selected = await mainWindow!.webContents
+        .executeJavaScript(`(async () => {
+        const waitFor = async (predicate, label) => {
+          const deadline = Date.now() + 5000;
+          while (Date.now() < deadline) {
+            const value = await predicate();
+            if (value) return value;
+            await new Promise((resolve) => setTimeout(resolve, 40));
+          }
+          throw new Error('等待 UI 布局夹具超时：' + label);
+        };
+        const row = [...document.querySelectorAll('.room-list-item')]
+          .find((item) => item.querySelector('.item-title')?.textContent?.trim() === '工程协作');
+        if (!row) throw new Error('找不到 UI 布局夹具聊天');
+        row.click();
+        await waitFor(
+          () => document.querySelector('.room-header .chat-header-title strong')?.textContent?.trim() === '工程协作',
+          '工程协作聊天',
+        );
+        return true;
+      })()`);
+      if (!selected) throw new Error('未能打开 UI 布局夹具聊天');
+    };
+    await selectFixtureRoom();
+    const inspectAndCapture = async (
+      width: number,
+      height: number,
+      selector: 'message' | 'failure' | 'project-result',
+      screenshotPath: string | null,
+      narrow: boolean,
+    ) => {
+      mainWindow!.setSize(width, height);
+      await mainWindow!.webContents.executeJavaScript(
+        'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+      );
+      const state = await mainWindow!.webContents.executeJavaScript(`(() => {
+        const byText = (selector, marker) => [...document.querySelectorAll(selector)]
+          .find((element) => element.textContent?.includes(marker)) ?? null;
+        const target = ${JSON.stringify(selector)} === 'message'
+          ? byText('.chat-message.user-message', 'UI_LAYOUT_FIXTURE：检查引用、转发与执行结果布局。')
+          : ${JSON.stringify(selector)} === 'failure'
+            ? byText('.message-failure', 'UI_LAYOUT_FIXTURE：模型连接中断')
+            : byText('.project-work-card', 'UI_LAYOUT_FIXTURE：桌面与窄窗长 Markdown 结果排版。');
+        const shell = document.querySelector('.social-shell');
+        const panel = document.querySelector('.conversation-panel');
+        const scroll = document.querySelector('.message-thread');
+        const quote = byText('.message-quote', 'LONG_REPLY_REFERENCE_');
+        const forwarded = byText('.forwarded-message-card', 'LONG_FORWARD_REFERENCE_');
+        const table = document.querySelector('.project-work-card .markdown-table-scroll');
+        if (!target || !scroll) {
+          return { available: false, target: Boolean(target), scroll: Boolean(scroll) };
+        }
+        target.scrollIntoView({ block: 'start', inline: 'nearest' });
+        scroll.scrollTop = Math.max(0, scroll.scrollTop - 16);
+        return {
+          available: true,
+          quoteVisible: Boolean(quote),
+          forwardedVisible: Boolean(forwarded),
+          tableKeyboardScrollable: Boolean(table && table.tabIndex === 0),
+          tableHasHorizontalOverflow: Boolean(table && table.scrollWidth > table.clientWidth),
+          failureControlFits: (() => {
+            if (${JSON.stringify(selector)} !== 'failure') return true;
+            const message = target.querySelector('span');
+            const button = target.querySelector('button');
+            if (!message || !button || !button.textContent?.includes('重试')) return false;
+            const messageRect = message.getBoundingClientRect();
+            const buttonRect = button.getBoundingClientRect();
+            const overlaps = messageRect.left < buttonRect.right && messageRect.right > buttonRect.left && messageRect.top < buttonRect.bottom && messageRect.bottom > buttonRect.top;
+            return !overlaps && buttonRect.width > 0 && buttonRect.left >= 0 && buttonRect.right <= window.innerWidth;
+          })(),
+          documentNoOverflow: document.documentElement.scrollWidth <= window.innerWidth,
+          shellNoOverflow: Boolean(shell && shell.scrollWidth <= shell.clientWidth),
+          panelNoOverflow: Boolean(panel && panel.scrollWidth <= panel.clientWidth),
+          targetInViewport: (() => { const rect = target.getBoundingClientRect(); return rect.top < window.innerHeight && rect.bottom > 0; })(),
+        };
+      })()`);
+      await mainWindow!.webContents.executeJavaScript(
+        'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+      );
+      if (
+        !state.available ||
+        !state.documentNoOverflow ||
+        !state.shellNoOverflow ||
+        !state.panelNoOverflow ||
+        !state.targetInViewport ||
+        (selector === 'message' &&
+          (!state.quoteVisible || !state.forwardedVisible)) ||
+        (selector === 'project-result' && !state.tableKeyboardScrollable) ||
+        (narrow &&
+          selector === 'project-result' &&
+          !state.tableHasHorizontalOverflow) ||
+        (selector === 'failure' && !state.failureControlFits)
+      ) {
+        throw new Error(
+          `Social 消息布局夹具不符合预期：${JSON.stringify({ selector, width, state })}`,
+        );
+      }
+      if (screenshotPath) {
+        writeSmokeScreenshot(screenshotPath, await mainWindow!.capturePage());
+      }
+      return state;
+    };
+    const messageDesktop = await inspectAndCapture(
+      1280,
+      800,
+      'message',
+      socialMessageLayoutDesktopScreenshotPath,
+      false,
+    );
+    const messageNarrow = await inspectAndCapture(
+      680,
+      560,
+      'message',
+      socialMessageLayoutNarrowScreenshotPath,
+      true,
+    );
+    const resultDesktop = await inspectAndCapture(
+      1280,
+      800,
+      'project-result',
+      socialProjectResultDesktopScreenshotPath,
+      false,
+    );
+    const resultNarrow = await inspectAndCapture(
+      680,
+      560,
+      'project-result',
+      socialProjectResultNarrowScreenshotPath,
+      true,
+    );
+    const failureDesktop = await inspectAndCapture(
+      1280,
+      800,
+      'failure',
+      socialFailureDesktopScreenshotPath,
+      false,
+    );
+    const failureNarrow = await inspectAndCapture(
+      680,
+      560,
+      'failure',
+      socialFailureNarrowScreenshotPath,
+      true,
+    );
+    return {
+      messageDesktop,
+      messageNarrow,
+      resultDesktop,
+      resultNarrow,
+      failureDesktop,
+      failureNarrow,
+    };
+  }
   async function captureSocialAgentCreationE2e() {
     if (!mainWindow || mainWindow.isDestroyed()) {
       throw new Error('联系人创建测试没有可用窗口。');
@@ -90,6 +823,7 @@ export function createAgentProbes(
         `切换聊天时的草稿隔离不符合预期：${JSON.stringify(roomDraftIsolation)}`,
       );
     }
+    socialAgentE2eModelRequests.length = 0;
     const forwardingSelection = await mainWindow.webContents
       .executeJavaScript(`(async () => {
     const waitFrames = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -115,44 +849,25 @@ export function createAgentProbes(
     const initialTargetCount = (await window.noema.getSocialRoom('room-engineering-collaboration')).messages.length;
     const clickForward = () => {
       const button = [...(findSourceUser()?.querySelectorAll('.message-actions button') ?? [])]
-        .find((candidate) => candidate.textContent?.trim() === '转发');
+        .find((candidate) => candidate.getAttribute('aria-label') === '转发');
       if (!button) throw new Error('来源消息没有显示转发操作');
       button.click();
     };
     clickForward();
-    await waitFor(() => document.querySelector('.forward-selection-toolbar'), '转发消息选择状态');
-    const selectSecondMessage = () => {
-      const secondSource = [...document.querySelectorAll('.chat-message.agent-message')]
-        .find((article) => article.textContent?.includes('收到：我会先核对 OpenAI 官方发布说明'));
-      const button = [...(secondSource?.querySelectorAll('.message-actions button') ?? [])]
-        .find((candidate) => candidate.textContent?.includes('选择转发'));
-      if (!button) throw new Error('无法把同一私聊中的第二条消息加入合并转发');
-      button.click();
-    };
-    selectSecondMessage();
-    await waitFor(
-      () => document.querySelectorAll('.message-actions button.is-selected').length === 2,
-      '取消前选中两条消息',
-    );
-    const selectedBeforeCancel = document.querySelectorAll('.message-actions button.is-selected').length;
-    document.querySelector('.forward-selection-toolbar button:not(.primary-action)')?.click();
-    await waitFor(() => !document.querySelector('.forward-selection-toolbar'), '取消转发选择');
+    await waitFor(() => document.querySelector('.forward-dialog'), '转发目标选择窗口');
+    const selectedCount = document.querySelectorAll('.forward-dialog-preview article').length;
+    const selectedBeforeCancel = selectedCount;
+    document.querySelector('.forward-dialog button[aria-label="取消转发"]')?.click();
+    await waitFor(() => !document.querySelector('.forward-dialog'), '取消转发');
     const targetCountAfterCancel = (await window.noema.getSocialRoom('room-engineering-collaboration')).messages.length;
     const cancelHadNoSend = initialTargetCount === targetCountAfterCancel;
     clickForward();
-    await waitFor(() => document.querySelector('.forward-selection-toolbar'), '重新开始转发');
-    selectSecondMessage();
-    await waitFor(
-      () => document.querySelectorAll('.message-actions button.is-selected').length === 2,
-      '合并转发选中两条消息',
-    );
-    document.querySelector('.forward-selection-toolbar .primary-action')?.click();
-    await waitFor(() => document.querySelector('.forward-dialog'), '转发目标选择窗口');
+    await waitFor(() => document.querySelector('.forward-dialog'), '重新打开转发窗口');
     return {
       sourceTitle: sourceRoom.room.title,
-      selectedCount: document.querySelectorAll('.message-actions button.is-selected').length,
+      selectedCount,
       previewContainsSource: Boolean(document.querySelector('.forward-dialog-preview')?.textContent?.includes('OpenAI 官方发布说明')),
-      previewHasTwoMessages: document.querySelectorAll('.forward-dialog-preview article').length === 2,
+      previewHasTwoMessages: selectedCount === 2,
       targetCanBeChosen: Boolean(document.querySelector('.forward-dialog select option[value="room-engineering-collaboration"]')),
       cancelHadNoSend,
       selectedBeforeCancel,
@@ -167,7 +882,7 @@ export function createAgentProbes(
       const image = await mainWindow.capturePage();
       writeSmokeScreenshot(socialAgentForwardDesktopScreenshotPath, image);
     }
-    mainWindow.setSize(680, 560);
+    mainWindow.setSize(420, 720);
     await mainWindow.webContents.executeJavaScript(
       'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
     );
@@ -192,6 +907,7 @@ export function createAgentProbes(
       !forwardNarrow.dialogVisible ||
       !forwardNarrow.dialogInViewport ||
       !forwardNarrow.dialogNoOverflow ||
+      forwardNarrow.width > 420 ||
       !forwardNarrow.shellNoOverflow ||
       !forwardNarrow.documentNoOverflow
     ) {
@@ -228,7 +944,7 @@ export function createAgentProbes(
     sendButton.click();
     const state = await waitFor(async () => {
       const room = await window.noema.getSocialRoom('room-engineering-collaboration');
-      const user = [...room.messages].reverse().find((message) => message.role === 'user' && message.forwardedSources?.length === 2);
+      const user = [...room.messages].reverse().find((message) => message.role === 'user' && message.forwardedSources?.length === 1);
       return user ? { room, user } : null;
     }, '合并转发消息送达目标聊天');
     await waitFor(
@@ -244,7 +960,7 @@ export function createAgentProbes(
     const userArticle = [...document.querySelectorAll('.chat-message.user-message')]
       .find((article) => article.querySelector('.forwarded-message-card')?.textContent?.includes('OpenAI 官方发布说明'));
     return {
-      bundlePersisted: state.user.forwardedSources.length === 2,
+      bundlePersisted: state.user.forwardedSources.length === 1,
       forwardCreatedAssistant: Boolean(assistantForForward),
       sourceRoom: state.user.forwardedSources[0]?.roomTitle ?? null,
       forwardCardVisible: Boolean(userArticle?.querySelector('.forwarded-message-card')),
@@ -271,19 +987,19 @@ export function createAgentProbes(
     let replyExcerptVisible = false;
     if (!${testSocialAgentLiveE2e}) {
       const replyButton = [...(userArticle?.querySelectorAll('.message-actions button') ?? [])]
-        .find((button) => button.textContent?.trim() === '引用');
+        .find((button) => button.getAttribute('aria-label') === '引用');
       if (!replyButton) throw new Error('转发消息没有当前房间回复入口');
       replyButton.click();
       await waitFor(() => document.querySelector('.draft-quote'), '当前房间回复预览');
       replyExcerptVisible = document.querySelector('.draft-quote')?.textContent?.includes('OpenAI 官方发布说明') ?? false;
     }
     const textarea = document.querySelector('#social-message-input');
-    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set?.call(textarea, '请说说这两条消息的重点。');
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set?.call(textarea, '请说说这条消息的重点。');
     textarea?.dispatchEvent(new Event('input', { bubbles: true }));
     document.querySelector('.message-composer button[type="submit"]')?.click();
     const replied = await waitFor(async () => {
       const room = await window.noema.getSocialRoom('room-engineering-collaboration');
-      const user = [...room.messages].reverse().find((message) => message.role === 'user' && message.content.includes('请说说这两条消息的重点。'));
+      const user = [...room.messages].reverse().find((message) => message.role === 'user' && message.content.includes('请说说这条消息的重点。'));
       const assistant = user ? room.messages.find((message) => message.turnId === user.turnId && message.role === 'assistant') : null;
       if (assistant?.status === 'failed' || assistant?.status === 'interrupted') {
         throw new Error(
@@ -313,7 +1029,7 @@ export function createAgentProbes(
       modelInput.includes('来自「工程搭档」') &&
       modelInput.includes('OpenAI 官方发布说明') &&
       !modelInput.includes('紫水晶') &&
-      modelInput.endsWith('请说说这两条消息的重点。'),
+      modelInput.endsWith('请说说这条消息的重点。'),
     );
     forwardingSent.liveProviderUsed =
       testSocialAgentLiveE2e && socialAgentE2eModelRequests.length === 1;
@@ -324,10 +1040,9 @@ export function createAgentProbes(
     forwardingSent.followUpTriggeredOneResponse =
       !testSocialAgentLiveE2e && socialAgentE2eModelRequests.length === 1;
     if (
-      forwardingSelection.selectedCount !== 2 ||
-      forwardingSelection.selectedBeforeCancel !== 2 ||
+      forwardingSelection.selectedCount !== 1 ||
+      forwardingSelection.selectedBeforeCancel !== 1 ||
       !forwardingSelection.previewContainsSource ||
-      !forwardingSelection.previewHasTwoMessages ||
       !forwardingSelection.targetCanBeChosen ||
       !forwardingSelection.cancelHadNoSend ||
       !forwardingSent.bundlePersisted ||
@@ -837,15 +1552,53 @@ export function createAgentProbes(
       .find((article) => article.textContent?.includes(sourceText));
     const source = await waitFor(sourceMessage, '来源消息');
     const sourceId = source.dataset.messageId;
-    [...source.querySelectorAll('.message-actions button')]
-      .find((button) => button.textContent?.trim() === '转发')?.click();
-    await waitFor(() => document.querySelector('.forward-selection-toolbar'), '消息选择状态');
-    [...document.querySelectorAll('.forward-selection-toolbar button')]
-      .find((button) => button.textContent?.trim() === '开主题')?.click();
-    await waitFor(() => document.querySelector('[aria-labelledby="continuation-title"]'), '主题创建窗口');
-    setValue(document.querySelector('[aria-labelledby="continuation-title"] input'), 'E2E 持续主题');
+    const roomsBeforeCancel = new Set(
+      (await window.noema.getSocialState()).rooms.map((room) => room.id),
+    );
+    const threadTrigger = () => [...source.querySelectorAll('.message-actions button')]
+      .find((button) => button.getAttribute('aria-label') === '开主题');
+    const firstThreadTrigger = threadTrigger();
+    if (!firstThreadTrigger) throw new Error('找不到开主题操作');
+    firstThreadTrigger.focus();
+    firstThreadTrigger.click();
+    const firstDialog = await waitFor(
+      () => document.querySelector('[aria-labelledby="continuation-dialog-title"]'),
+      '主题创建窗口',
+    );
+    const firstPreview = firstDialog.querySelector('.forward-dialog-preview');
+    const previewContainsSource = Boolean(firstPreview?.textContent?.includes(sourceText));
+    const previewHasSourceIdentity =
+      firstPreview?.querySelector('[role="listitem"]')?.textContent?.includes('你') === true;
+    const cancelButton = [...firstDialog.querySelectorAll('button')]
+      .find((button) => button.textContent?.trim() === '取消');
+    if (!cancelButton) throw new Error('主题创建窗口缺少取消操作');
+    cancelButton.click();
+    await waitFor(
+      () => !document.querySelector('[aria-labelledby="continuation-dialog-title"]'),
+      '取消主题创建',
+    );
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    return { sourceId, dialogVisible: Boolean(document.querySelector('[aria-labelledby="continuation-title"]')) };
+    const cancelReturnedFocus = document.activeElement === threadTrigger();
+    const roomsAfterCancel = await window.noema.getSocialState();
+    const cancelHadNoCreate = roomsAfterCancel.rooms.every((room) => roomsBeforeCancel.has(room.id));
+    const secondThreadTrigger = threadTrigger();
+    if (!secondThreadTrigger) throw new Error('取消后开主题操作未恢复');
+    secondThreadTrigger.focus();
+    secondThreadTrigger.click();
+    await waitFor(
+      () => document.querySelector('[aria-labelledby="continuation-dialog-title"]'),
+      '重新打开主题创建窗口',
+    );
+    setValue(document.querySelector('[aria-labelledby="continuation-dialog-title"] input'), 'E2E 持续主题');
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    return {
+      sourceId,
+      dialogVisible: Boolean(document.querySelector('[aria-labelledby="continuation-dialog-title"]')),
+      previewContainsSource,
+      previewHasSourceIdentity,
+      cancelReturnedFocus,
+      cancelHadNoCreate,
+    };
   })()`);
     mainWindow.setSize(1280, 800);
     await mainWindow.webContents.executeJavaScript(
@@ -857,10 +1610,10 @@ export function createAgentProbes(
         await mainWindow.capturePage(),
       );
     }
-    mainWindow.setSize(680, 560);
+    mainWindow.setSize(420, 720);
     const continuationNarrow = await mainWindow.webContents
       .executeJavaScript(`(() => {
-    const dialog = document.querySelector('[aria-labelledby="continuation-title"]');
+    const dialog = document.querySelector('[aria-labelledby="continuation-dialog-title"]');
     const rect = dialog?.getBoundingClientRect();
     const shell = document.querySelector('.social-shell');
     return {
@@ -880,6 +1633,10 @@ export function createAgentProbes(
     }
     if (
       !continuationThreadWorkflow.dialogVisible ||
+      !continuationThreadWorkflow.previewContainsSource ||
+      !continuationThreadWorkflow.previewHasSourceIdentity ||
+      !continuationThreadWorkflow.cancelReturnedFocus ||
+      !continuationThreadWorkflow.cancelHadNoCreate ||
       !continuationNarrow.visible ||
       !continuationNarrow.inViewport ||
       !continuationNarrow.dialogNoOverflow ||
@@ -901,10 +1658,10 @@ export function createAgentProbes(
       }
       throw new Error('等待超时：' + label);
     };
-    const titleInput = document.querySelector('[aria-labelledby="continuation-title"] input');
+    const titleInput = document.querySelector('[aria-labelledby="continuation-dialog-title"] input');
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(titleInput, 'E2E 持续主题');
     titleInput?.dispatchEvent(new Event('input', { bubbles: true }));
-    [...document.querySelectorAll('[aria-labelledby="continuation-title"] button[type="submit"]')][0]?.click();
+    [...document.querySelectorAll('[aria-labelledby="continuation-dialog-title"] button[type="submit"]')][0]?.click();
     await waitFor(() => document.querySelector('.room-header .chat-header-title strong')?.textContent?.trim() === 'E2E 持续主题', '新主题聊天');
     const state = await window.noema.getSocialState();
     const room = state.rooms.find((item) => item.title === 'E2E 持续主题');
@@ -1021,7 +1778,7 @@ export function createAgentProbes(
       await new Promise((resolve) => setTimeout(resolve, 40));
     }
     [...document.querySelectorAll('.settings-administration button')]
-      .find((button) => button.textContent?.trim() === '创建联系人')?.click();
+      .find((button) => button.textContent?.trim() === '新建伙伴')?.click();
     while (Date.now() < deadline && !document.querySelector('#social-agent-name')) {
       await new Promise((resolve) => setTimeout(resolve, 40));
     }
@@ -1089,26 +1846,38 @@ export function createAgentProbes(
       const image = await mainWindow.capturePage();
       writeSmokeScreenshot(socialAgentCreateNarrowScreenshotPath, image);
     }
+    writeSmokeLog('social-agent-create-escape-started');
     mainWindow.setSize(1280, 800);
     await mainWindow.webContents.executeJavaScript(
       'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+    );
+    const initialDialog = await mainWindow.webContents
+      .executeJavaScript(`(() => {
+      window.__noemaEscapeProbe = [];
+      window.__noemaFocusProbe = [];
+      document.addEventListener('keydown', event => window.__noemaEscapeProbe.push({key:event.key, prevented:event.defaultPrevented, active:document.activeElement?.id}));
+      document.addEventListener('focusin', event => window.__noemaFocusProbe.push({tagName:event.target?.tagName, className:event.target?.className, ariaLabel:event.target?.getAttribute?.('aria-label')}));
+      return {
+        focusedName: document.activeElement?.id === 'social-agent-name',
+        fieldCount: document.querySelectorAll('.agent-create-dialog .dialog-field').length,
+        visibleModalCount: [...document.querySelectorAll('[role="dialog"][aria-modal="true"]')].filter(node => node.getClientRects().length).length,
+      };
+    })()`);
+    await mainWindow.webContents.executeJavaScript(
+      `(document.activeElement ?? document.body).dispatchEvent(new KeyboardEvent('keydown', {key:'Escape',bubbles:true,cancelable:true}))`,
     );
     const dialogCancel = await mainWindow.webContents
       .executeJavaScript(`(async () => {
     const waitFrames = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     const deadline = Date.now() + 5000;
-    const initialDialog = {
-      focusedName: document.activeElement?.id === 'social-agent-name',
-      fieldCount: document.querySelectorAll('.agent-create-dialog .dialog-field').length,
-    };
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
     while (Date.now() < deadline && document.querySelector('.agent-create-dialog')) {
       await new Promise((resolve) => setTimeout(resolve, 40));
     }
-    if (document.querySelector('.agent-create-dialog')) throw new Error('Escape 没有关闭创建联系人表单');
+    if (document.querySelector('.agent-create-dialog')) throw new Error('Escape 没有关闭创建联系人表单：' + JSON.stringify({focused: document.activeElement?.id, initialDialog: ${JSON.stringify(initialDialog)}, keyEvents: window.__noemaEscapeProbe}));
     await waitFrames();
     return {
-      initialDialog,
+      initialDialog: ${JSON.stringify(initialDialog)},
+      focusEvents: window.__noemaFocusProbe,
       cancelReturnedFocus: document.activeElement?.classList?.contains('sidebar-settings-button') ?? false,
       cancelFocusTarget: {
         tagName: document.activeElement?.tagName ?? null,
@@ -1118,10 +1887,20 @@ export function createAgentProbes(
       },
     };
   })()`);
+    writeSmokeLog('social-agent-create-escape-finished', {
+      initialDialog,
+      dialogCancel,
+    });
+    writeSmokeLog('social-agent-create-mobile-probe-started');
     mainWindow.setSize(360, 640);
+    writeSmokeLog('social-agent-create-mobile-window-resized', {
+      windowDestroyed: mainWindow.isDestroyed(),
+      windowSize: mainWindow.getSize(),
+    });
     await mainWindow.webContents.executeJavaScript(
       'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
     );
+    writeSmokeLog('social-agent-create-mobile-frame-settled');
     const result = await mainWindow.webContents
       .executeJavaScript(`(async () => {
     const waitFrames = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -1150,16 +1929,12 @@ export function createAgentProbes(
     document.querySelector('.sidebar-settings-button')?.click();
     await waitFor(() => document.querySelector('.settings-dialog'), '移动端连接设置');
     [...document.querySelectorAll('.settings-administration button')]
-      .find((button) => button.textContent?.trim() === '创建联系人')?.click();
+      .find((button) => button.textContent?.trim() === '新建伙伴')?.click();
     await waitFor(() => document.querySelector('#social-agent-name'), '重新打开联系人表单');
     let name = 'E2E 图形观察员';
     setValue(document.querySelector('#social-agent-name'), name);
     setValue(document.querySelector('#social-agent-headline'), '长期观察游戏视觉与交互');
     setValue(document.querySelector('#social-agent-description'), '先和我厘清体验，再讨论如何验证。');
-    const creationCapability = document.querySelector('.agent-capability-choice input');
-    const projectWorkDefaultedOff = creationCapability?.checked === false;
-    creationCapability?.click();
-    await waitFrames();
     document.querySelector('.agent-create-dialog button[type="submit"]')?.click();
     const createdState = await waitFor(async () => {
       const state = await window.noema.getSocialState();
@@ -1171,7 +1946,9 @@ export function createAgentProbes(
       createdState.state.rooms.find((room) => room.kind === 'direct' && room.memberIds.includes(createdState.agent.id)).id,
     );
     const initialDirectIsEmpty = directRoom.messages.length === 1 && directRoom.messages[0].role === 'system';
-    const capabilityWasExplicitlyGranted = createdState.agent.capabilities.includes('project-work');
+    const projectWorkDefaultedOn =
+      createdState.agent.capabilities.includes('project-work');
+    const capabilityWasExplicitlyGranted = projectWorkDefaultedOn;
     document.querySelector('[aria-label="成员资料"]')?.click();
     await waitFor(() => document.querySelector('.work-content h2')?.textContent?.trim() === name, '联系人资料页');
     const projectWorkControl = [...document.querySelectorAll('.asset-row button')]
@@ -1193,8 +1970,7 @@ export function createAgentProbes(
       return agent?.capabilities.includes('project-work') ? state : null;
     }, '重新开启项目工作能力');
     const projectWorkOptInAndReversible =
-      projectWorkDefaultedOff &&
-      capabilityWasExplicitlyGranted &&
+      projectWorkDefaultedOn &&
       projectWorkRevokedState.agents.some(
         (agent) => agent.id === createdState.agent.id && agent.capabilities.length === 0,
       ) &&
@@ -1317,6 +2093,34 @@ export function createAgentProbes(
     [...document.querySelectorAll('.settings-administration button')]
       .find((button) => button.textContent?.trim() === '新建群聊')?.click();
     await waitFor(() => document.querySelector('#social-group-title'), '新群聊表单');
+    await waitFrames();
+    const groupDialogNarrow = (() => {
+      const dialog = document.querySelector('.social-dialog[aria-labelledby="create-group-title"]');
+      const rect = dialog?.getBoundingClientRect();
+      const submit = dialog?.querySelector('button[type="submit"]')?.getBoundingClientRect();
+      const shell = document.querySelector('.social-shell');
+      return {
+        width: window.innerWidth,
+        visible: Boolean(rect && rect.width > 0 && rect.height > 0),
+        inViewport: Boolean(rect && rect.left >= 0 && rect.right <= window.innerWidth && rect.top >= 0 && rect.bottom <= window.innerHeight),
+        titleVisible: Boolean(dialog?.querySelector('#social-group-title')?.getClientRects().length),
+        inviteOptions: dialog?.querySelectorAll('.group-agent-option').length ?? 0,
+        submitReachable: Boolean(rect && submit && submit.top >= rect.top && submit.bottom <= rect.bottom),
+        dialogNoOverflow: Boolean(dialog && dialog.scrollWidth <= dialog.clientWidth),
+        shellNoOverflow: Boolean(shell && shell.scrollWidth <= shell.clientWidth),
+        documentNoOverflow: document.documentElement.scrollWidth <= window.innerWidth,
+      };
+    })();
+    if (
+      !groupDialogNarrow.visible ||
+      !groupDialogNarrow.inViewport ||
+      !groupDialogNarrow.titleVisible ||
+      !groupDialogNarrow.inviteOptions ||
+      !groupDialogNarrow.submitReachable ||
+      !groupDialogNarrow.dialogNoOverflow ||
+      !groupDialogNarrow.shellNoOverflow ||
+      !groupDialogNarrow.documentNoOverflow
+    ) throw new Error('360px 群聊创建窗口不符合布局预期：' + JSON.stringify(groupDialogNarrow));
     const inviteOption = [...document.querySelectorAll('.group-agent-option')]
       .find((option) => option.querySelector('strong')?.textContent?.trim() === name);
     const inviteVisible = Boolean(inviteOption);
@@ -1336,12 +2140,47 @@ export function createAgentProbes(
     [...document.querySelectorAll('.settings-administration button')]
       .find((button) => button.textContent?.trim() === '新建项目')?.click();
     await waitFor(() => document.querySelector('.project-dialog input'), '新项目表单');
+    await waitFrames();
+    const projectDialogNarrow = (() => {
+      const dialog = document.querySelector('.project-dialog');
+      const rect = dialog?.getBoundingClientRect();
+      const submit = dialog?.querySelector('button[type="submit"]')?.getBoundingClientRect();
+      const shell = document.querySelector('.social-shell');
+      return {
+        width: window.innerWidth,
+        visible: Boolean(rect && rect.width > 0 && rect.height > 0),
+        inViewport: Boolean(rect && rect.left >= 0 && rect.right <= window.innerWidth && rect.top >= 0 && rect.bottom <= window.innerHeight),
+        fieldsVisible: Boolean(dialog?.querySelector('input')?.getClientRects().length && dialog?.querySelector('textarea')?.getClientRects().length),
+        memberOptions: dialog?.querySelectorAll('.group-agent-option').length ?? 0,
+        submitReachable: Boolean(rect && submit && submit.top >= rect.top && submit.bottom <= rect.bottom),
+        dialogNoOverflow: Boolean(dialog && dialog.scrollWidth <= dialog.clientWidth),
+        shellNoOverflow: Boolean(shell && shell.scrollWidth <= shell.clientWidth),
+        documentNoOverflow: document.documentElement.scrollWidth <= window.innerWidth,
+      };
+    })();
+    if (
+      !projectDialogNarrow.visible ||
+      !projectDialogNarrow.inViewport ||
+      !projectDialogNarrow.fieldsVisible ||
+      !projectDialogNarrow.memberOptions ||
+      !projectDialogNarrow.submitReachable ||
+      !projectDialogNarrow.dialogNoOverflow ||
+      !projectDialogNarrow.shellNoOverflow ||
+      !projectDialogNarrow.documentNoOverflow
+    ) throw new Error('360px 项目创建窗口不符合布局预期：' + JSON.stringify(projectDialogNarrow));
     setValue(document.querySelector('.project-dialog input'), 'E2E 定价追踪');
     setValue(document.querySelector('.project-dialog textarea'), '比较平台价格并记录变化。');
     const projectMemberOption = [...document.querySelectorAll('.project-dialog .group-agent-option')]
       .find((option) => option.querySelector('strong')?.textContent?.trim() === name);
     if (!projectMemberOption) throw new Error('已创建的专业联系人没有出现在项目成员列表中');
     projectMemberOption.querySelector('input')?.click();
+    const workspacePicker = document.querySelector('.project-workspace-picker');
+    if (!workspacePicker) throw new Error('项目创建窗口缺少工作区选择');
+    workspacePicker.click();
+    await waitFor(
+      () => !document.querySelector('.project-workspace-picker')?.textContent?.includes('选择文件夹'),
+      '工作文件夹选择',
+    );
     document.querySelector('.project-dialog button[type="submit"]')?.click();
     await waitFor(() => document.querySelector('.work-title strong')?.textContent?.trim() === 'E2E 定价追踪' && document.querySelector('.room-header .chat-header-title strong')?.textContent?.trim() === 'Noema', 'Noema 主聊旁的项目工作区');
     [...document.querySelectorAll('.work-tabs button')]
@@ -1387,6 +2226,14 @@ export function createAgentProbes(
     );
     archivedProjectEntry?.click();
     await waitFor(() => document.querySelector('.work-title strong')?.textContent?.trim() === 'E2E 定价追踪', '打开归档项目');
+    [...document.querySelectorAll('.work-tabs button')]
+      .find((button) => button.textContent?.trim() === '交付')?.click();
+    await waitFor(
+      () => document.querySelector('.project-archive-note')?.textContent?.includes('归档时保留'),
+      '归档项目保留内容说明',
+    );
+    const archivedArchiveNote =
+      document.querySelector('.project-archive-note')?.textContent?.trim() ?? '';
     [...document.querySelectorAll('.work-content button')]
       .find((button) => button.textContent?.trim() === '恢复项目')?.click();
     const restoredProjectState = await waitFor(async () => {
@@ -1395,6 +2242,41 @@ export function createAgentProbes(
       return project?.status === 'active' ? state : null;
     }, '项目恢复状态');
     await waitFor(() => document.querySelector('.work-title strong')?.textContent?.trim() === 'E2E 定价追踪', '恢复后的原项目工作区');
+    const parallelWorkspace = await window.noema.chooseProjectWorkspace();
+    if (!parallelWorkspace) throw new Error('并行项目没有选择工作文件夹。');
+    const parallelProject = await window.noema.createSocialProject({
+      title: 'E2E 并行交付',
+      brief: '在不覆盖原项目的前提下并行处理第二项交付。',
+      agentIds: ['noema', createdState.agent.id],
+      workspacePath: parallelWorkspace.workspacePath,
+      workspaceIdentity: parallelWorkspace.identity,
+    });
+    await waitFor(() => document.querySelector('.work-title strong')?.textContent?.trim() === 'E2E 并行交付', '并行项目工作区');
+    const parallelProjectState = await window.noema.getSocialState();
+    const parallelProjectSession = await window.noema.getSocialProjectSession(parallelProject.id, createdState.agent.id);
+    const parallelProjectEntries = [...document.querySelectorAll('.project-list-item')]
+      .map((item) => item.querySelector('.item-title')?.textContent?.trim())
+      .filter(Boolean);
+    [...document.querySelectorAll('.project-list-item')]
+      .find((item) => item.querySelector('.item-title')?.textContent?.trim() === 'E2E 定价追踪')?.click();
+    await waitFor(() => document.querySelector('.work-title strong')?.textContent?.trim() === 'E2E 定价追踪', '切回原项目');
+    const switchedProjectState = await window.noema.getSocialState();
+    const multiProject = {
+      parallelCreated:
+        parallelProjectState.projects.some((candidate) => candidate.id === parallelProject.id) &&
+        parallelProjectState.projects.some((candidate) => candidate.id === projectCreatedState.project.id),
+      parallelListed: ['E2E 定价追踪', 'E2E 并行交付'].every((title) => parallelProjectEntries.includes(title)),
+      parallelGroupSeparate: parallelProject.groupRoomId !== projectCreatedState.project.groupRoomId,
+      parallelSessionSeparate: parallelProjectSession.room.room.id !== projectMemberSession?.sessionRoomId,
+      switchedBack:
+        switchedProjectState.projects.find((candidate) => candidate.id === projectCreatedState.project.id)?.groupRoomId === projectCreatedState.project.groupRoomId &&
+        document.querySelector('.work-title strong')?.textContent?.trim() === 'E2E 定价追踪',
+      bothSessionsPersisted:
+        switchedProjectState.projects
+          .filter((candidate) => candidate.id === projectCreatedState.project.id || candidate.id === parallelProject.id)
+          .every((candidate) =>
+            candidate.members.some((member) => member.agentId === createdState.agent.id && member.status === 'active')),
+    };
     [...document.querySelectorAll('.work-tabs button')]
       .find((button) => button.textContent?.startsWith('成员'))?.click();
     const openMemberSession = await waitFor(() => [...document.querySelectorAll('.member-row')]
@@ -1405,6 +2287,11 @@ export function createAgentProbes(
     const sessionMarker = 'E2E 项目会话请求标记：蓝松石';
     setValue(document.querySelector('#social-message-input'), sessionMarker);
     document.querySelector('.send-message-button')?.click();
+    const composerClearedAfterSend = await waitFor(
+      () => document.querySelector('#social-message-input')?.value === '',
+      '发送后输入框清空',
+      3000,
+    ).then(() => true);
     const projectSessionReply = await waitFor(async () => {
       const room = await window.noema.getSocialRoom(projectMemberSession.sessionRoomId);
       const userMessage = room.messages.find((message) => message.content.includes(sessionMarker));
@@ -1420,13 +2307,16 @@ export function createAgentProbes(
       projectPrivateDmUnchanged,
       archived: archivedProjectState.projects.find((candidate) => candidate.id === projectCreatedState.project.id)?.status === 'archived',
       archivedProjectHidden,
+      archivedArchiveNote,
       restored: restoredProjectState.rooms.some((room) => room.id === projectCreatedState.project.groupRoomId),
       restoredSameSession: restoredProjectState.projects.find((candidate) => candidate.id === projectCreatedState.project.id)?.members.find((member) => member.agentId === createdState.agent.id)?.sessionRoomId === projectMemberSession?.sessionRoomId,
       memberSessionOpened:
         document.querySelector('.room-header .chat-header-title strong')?.textContent?.trim() === name &&
         document.querySelector('.room-header .chat-header-title small')?.textContent?.includes('项目会话') === true,
       memberSessionReplied: projectSessionReply.assistantMessage.status === 'complete',
+      composerClearedAfterSend,
       projectSessionContainsOnlyItsOwnRequest: projectSessionReply.room.messages.some((message) => message.content.includes(sessionMarker)) && !projectSessionReply.room.messages.some((message) => message.content.includes('葡萄柚') || message.content.includes('珊瑚标记')),
+      multiProject,
     };
     return {
       navigationLayout: ${JSON.stringify(navigationLayout)},
@@ -1450,10 +2340,11 @@ export function createAgentProbes(
       dialogNarrow: ${JSON.stringify(dialogNarrow)},
       cancelReturnedFocus,
       cancelFocusTarget,
+      focusEvents: ${JSON.stringify(dialogCancel.focusEvents)},
       agentId: createdState.agent.id,
       createdRoomId: directRoom.room.id,
       initialDirectIsEmpty,
-      projectWorkDefaultedOff,
+      projectWorkDefaultedOn,
       capabilityWasExplicitlyGranted,
       projectWorkOptInAndReversible,
       agentProfileEdit: profileEdit,
@@ -1461,15 +2352,18 @@ export function createAgentProbes(
       archived: Boolean(archivedState.agents.find((agent) => agent.id === createdState.agent.id)?.archivedAt),
       archivedUi,
       archivedInviteExcluded,
+      groupDialogNarrow,
       restored: !restoredState.agents.find((agent) => agent.id === createdState.agent.id)?.archivedAt,
       inviteVisible,
       sameIdentityJoined,
       groupDidNotImportDm,
       projectLifecycle,
+      projectDialogNarrow,
       totalAgents: groupState.agents.length,
       totalRooms: groupState.rooms.length,
     };
   })()`);
+    writeSmokeLog('social-agent-create-mobile-probe-finished');
 
     const projectSessionPrompt =
       socialAgentE2eModelRequests.at(-1)?.messages ?? [];
@@ -1507,12 +2401,20 @@ export function createAgentProbes(
       !result.compactRoomLayout.documentNoOverflow ||
       !result.cancelReturnedFocus ||
       !result.initialDirectIsEmpty ||
-      !result.projectWorkDefaultedOff ||
+      !result.projectWorkDefaultedOn ||
       !result.capabilityWasExplicitlyGranted ||
       !result.projectWorkOptInAndReversible ||
       !result.archived ||
       !result.archivedUi ||
       !result.archivedInviteExcluded ||
+      !result.groupDialogNarrow?.visible ||
+      !result.groupDialogNarrow.inViewport ||
+      !result.groupDialogNarrow.titleVisible ||
+      !result.groupDialogNarrow.inviteOptions ||
+      !result.groupDialogNarrow.submitReachable ||
+      !result.groupDialogNarrow.dialogNoOverflow ||
+      !result.groupDialogNarrow.shellNoOverflow ||
+      !result.groupDialogNarrow.documentNoOverflow ||
       !result.restored ||
       !result.inviteVisible ||
       !result.sameIdentityJoined ||
@@ -1525,15 +2427,52 @@ export function createAgentProbes(
       !result.projectLifecycle.projectPrivateDmUnchanged ||
       !result.projectLifecycle.archived ||
       !result.projectLifecycle.archivedProjectHidden ||
+      !result.projectLifecycle.archivedArchiveNote ||
       !result.projectLifecycle.restored ||
       !result.projectLifecycle.restoredSameSession ||
       !result.projectLifecycle.memberSessionOpened ||
       !result.projectLifecycle.memberSessionReplied ||
+      !result.projectLifecycle.composerClearedAfterSend ||
       !result.projectLifecycle.projectSessionContainsOnlyItsOwnRequest ||
+      !result.projectLifecycle.multiProject?.parallelCreated ||
+      !result.projectLifecycle.multiProject.parallelListed ||
+      !result.projectLifecycle.multiProject.parallelGroupSeparate ||
+      !result.projectLifecycle.multiProject.parallelSessionSeparate ||
+      !result.projectLifecycle.multiProject.switchedBack ||
+      !result.projectLifecycle.multiProject.bothSessionsPersisted ||
+      !result.projectDialogNarrow?.visible ||
+      !result.projectDialogNarrow.inViewport ||
+      !result.projectDialogNarrow.fieldsVisible ||
+      !result.projectDialogNarrow.memberOptions ||
+      !result.projectDialogNarrow.submitReachable ||
+      !result.projectDialogNarrow.dialogNoOverflow ||
+      !result.projectDialogNarrow.shellNoOverflow ||
+      !result.projectDialogNarrow.documentNoOverflow ||
       !result.projectLifecycle.projectSessionModelScope
     ) {
       throw new Error(
-        `用户专业联系人创建流程不符合预期：${JSON.stringify(result)}`,
+        `用户专业联系人创建流程不符合预期：${JSON.stringify({
+          initialDialog: result?.initialDialog,
+          compactRoomLayout: result?.compactRoomLayout,
+          cancelReturnedFocus: result?.cancelReturnedFocus,
+          cancelFocusTarget: result?.cancelFocusTarget,
+          focusEvents: result?.focusEvents,
+          initialDirectIsEmpty: result?.initialDirectIsEmpty,
+          projectWorkDefaultedOn: result?.projectWorkDefaultedOn,
+          capabilityWasExplicitlyGranted:
+            result?.capabilityWasExplicitlyGranted,
+          projectWorkOptInAndReversible: result?.projectWorkOptInAndReversible,
+          archived: result?.archived,
+          archivedUi: result?.archivedUi,
+          archivedInviteExcluded: result?.archivedInviteExcluded,
+          groupDialogNarrow: result?.groupDialogNarrow,
+          restored: result?.restored,
+          inviteVisible: result?.inviteVisible,
+          sameIdentityJoined: result?.sameIdentityJoined,
+          groupDidNotImportDm: result?.groupDidNotImportDm,
+          projectLifecycle: result?.projectLifecycle,
+          projectDialogNarrow: result?.projectDialogNarrow,
+        })}`,
       );
     }
     await mainWindow.webContents.executeJavaScript(`(async () => {
@@ -1735,7 +2674,22 @@ export function createAgentProbes(
       writeSmokeScreenshot(socialAgentContactNarrowScreenshotPath, image);
     }
     const textAttachments = await captureSocialTextAttachmentsE2e();
-    return { ...result, contactDesktop, contactNarrow, textAttachments };
+    const composerQueueReview = await captureSocialComposerQueueReview();
+    const projectCloseoutReview = await captureSocialProjectCloseoutReview();
+    const projectPlanReview = await captureSocialProjectPlanReview();
+    const projectReviewCard = await captureSocialProjectReviewCard();
+    const messageLayoutReview = await captureSocialMessageLayoutReview();
+    return {
+      ...result,
+      contactDesktop,
+      contactNarrow,
+      textAttachments,
+      composerQueueReview,
+      projectCloseoutReview,
+      projectPlanReview,
+      projectReviewCard,
+      messageLayoutReview,
+    };
   }
   return { captureSocialAgentCreationE2e };
 }

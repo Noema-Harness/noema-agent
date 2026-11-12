@@ -8,15 +8,33 @@ const testProfile =
     : undefined;
 
 // https://vitejs.dev/config
-export default defineConfig({
-  plugins: [react()],
+export default defineConfig(({ command }) => ({
+  plugins: [
+    react(),
+    {
+      name: 'noema-development-hmr-csp',
+      transformIndexHtml(html) {
+        if (command !== 'serve') return html;
+        return html.replace(
+          "style-src 'self';",
+          "style-src 'self' 'unsafe-inline';",
+        );
+      },
+    },
+  ],
+  resolve: {
+    dedupe: ['react', 'react-dom'],
+  },
   // Main/preload builds write runtime assets under .vite; they are not
   // renderer sources and must not trigger the renderer dev server's watcher.
   server: {
     // Electron smoke/E2E runs validate the renderer's real bootstrap, not HMR.
     // Disabling HMR also avoids injecting React Refresh's deferred module
     // preamble into the cold-start path under test.
-    hmr: testProfile ? false : undefined,
+    hmr:
+      testProfile && process.env.NOEMA_SMOKE_ENABLE_HMR !== '1'
+        ? false
+        : undefined,
     watch: {
       ignored: ['**/.vite/**'],
     },
@@ -26,6 +44,7 @@ export default defineConfig({
   // the first page load uses a stable optimized module graph.
   optimizeDeps: {
     include: [
+      '@blueprintjs/core',
       'cmdk',
       'pdfjs-dist',
       'react',
@@ -36,4 +55,4 @@ export default defineConfig({
   },
   // Concurrent live and test clients must not rewrite each other's prebundles.
   cacheDir: testProfile ? path.join(testProfile, 'vite-cache') : undefined,
-});
+}));

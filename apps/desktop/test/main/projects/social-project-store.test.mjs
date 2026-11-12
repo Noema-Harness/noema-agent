@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { SOCIAL_SCHEMA_VERSION } from '../../../src/main/chat/social-chat-schema.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -1078,6 +1079,102 @@ test('a removed member can rejoin the same project session without losing its hi
   }
 });
 
+test('queued deliveries and pending member reports block archive and member removal', () => {
+  const stores = makeStores();
+  const member = createMember(stores.socialChatStore);
+  try {
+    const project = createProject(stores, member);
+    const session = stores.socialProjectStore.getProjectSession(
+      project.id,
+      member.agentId,
+    );
+    const groupTurn = stores.socialChatStore.beginTurn({
+      roomId: project.groupRoomId,
+      agentId: 'noema',
+      text: '请成员核对本周的交付。',
+      model: 'test-model',
+    });
+    stores.socialChatStore.completeReply(groupTurn.assistantMessageId);
+    const now = new Date().toISOString();
+    const inboxTurnId = randomUUID();
+    stores.db
+      .prepare(`
+        INSERT INTO social_project_group_inbox
+          (turn_id, project_id, group_room_id, agent_id, session_room_id,
+           group_user_message_id, queued_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `)
+      .run(
+        inboxTurnId,
+        project.id,
+        project.groupRoomId,
+        member.agentId,
+        session.room.room.id,
+        groupTurn.userMessageId,
+        now,
+      );
+
+    const queued = stores.socialProjectStore.getProject(project.id);
+    assert.equal(queued.unfinished.queuedDeliveries, 1);
+    assert.throws(
+      () => stores.socialProjectStore.archiveProject(project.id),
+      /交付在队列/,
+    );
+    assert.throws(
+      () =>
+        stores.socialProjectStore.removeProjectMember(
+          project.id,
+          member.agentId,
+        ),
+      /待处理的交付/,
+    );
+
+    stores.db
+      .prepare('DELETE FROM social_project_group_inbox WHERE turn_id = ?')
+      .run(inboxTurnId);
+    const reportId = randomUUID();
+    stores.db
+      .prepare(`
+        INSERT INTO social_project_reports
+          (id, project_id, source_turn_id, source_user_message_id,
+           source_group_assistant_message_id, agent_id, group_room_id,
+           session_room_id, status, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+      `)
+      .run(
+        reportId,
+        project.id,
+        randomUUID(),
+        groupTurn.userMessageId,
+        groupTurn.assistantMessageId,
+        member.agentId,
+        project.groupRoomId,
+        session.room.room.id,
+        now,
+        now,
+      );
+    assert.equal(
+      stores.socialProjectStore.getProject(project.id).unfinished
+        .pendingReports,
+      1,
+    );
+    assert.throws(
+      () => stores.socialProjectStore.archiveProject(project.id),
+      /待整理的成员结果/,
+    );
+
+    stores.db
+      .prepare('DELETE FROM social_project_reports WHERE id = ?')
+      .run(reportId);
+    const archived = stores.socialProjectStore.archiveProject(project.id);
+    assert.equal(archived.status, 'archived');
+    assert.equal(archived.unfinished.queuedDeliveries, 0);
+    assert.equal(archived.unfinished.pendingReports, 0);
+  } finally {
+    stores.db.close();
+  }
+});
+
 test('schema v11 upgrades to the current schema without deleting chats or re-enabling revoked capabilities', () => {
   const db = new Database(':memory:');
   new RootStore(db);
@@ -1088,6 +1185,9 @@ test('schema v11 upgrades to the current schema without deleting chats or re-ena
     db.exec(`
       DROP TABLE social_work_file_change_operations;
       DROP TABLE social_work_file_changes;
+      DROP TABLE IF EXISTS social_work_workspace_write_locks;
+      DROP TABLE IF EXISTS social_work_command_batches;
+      DROP TABLE IF EXISTS social_work_change_blobs;
       ALTER TABLE social_work_tasks DROP COLUMN workspace_identity_json;
       DROP TABLE social_user_memories_fts;
       DROP INDEX social_user_memories_updated;

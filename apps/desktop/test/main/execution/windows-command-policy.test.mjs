@@ -23,7 +23,7 @@ function request(overrides = {}) {
     backend: {
       id: 'noema-codex-windows',
       version: '0.1.0',
-      policyVersion: 2,
+      policyVersion: 3,
       capabilities,
     },
     requestId: 'test-request-identity-123456',
@@ -40,6 +40,7 @@ function request(overrides = {}) {
     ],
     runtimeReadRoots: [pathRoot('C:\\Program Files\\Noema\\runtime')],
     cwd: pathRoot('C:\\Users\\me\\project\\src'),
+    filesystemMode: 'read-write',
     network: { mode: 'deny' },
     command: 'private command text',
     env: { SECRET: 'private environment value' },
@@ -60,6 +61,8 @@ test('compiles workspace, external and runtime grants to the minimum roots', () 
     pathRoot('C:\\Users\\me\\project'),
     pathRoot('D:\\artifacts\\out'),
   ]);
+  assert.equal(result.policy.filesystem.mode, 'read-write');
+  assert.equal(result.policy.version, 3);
   assert.equal(result.policy.filesystem.defaultDeny, true);
   assert.equal(result.policy.requestId, 'test-request-identity-123456');
   assert.deepEqual(result.policy.environment, {
@@ -87,6 +90,41 @@ test('does not widen read-only external grants into write roots', () => {
   assert.deepEqual(result.policy.filesystem.writeRoots, [
     pathRoot('C:\\Users\\me\\project'),
   ]);
+});
+
+test('read-only mode keeps the workspace readable with no write roots', () => {
+  const result = compileWindowsCommandPolicy(
+    request({
+      filesystemMode: 'read-only',
+      externalAccess: [{ ...pathRoot('C:\\data\\reference'), access: 'read' }],
+    }),
+  );
+  assert.equal(result.ok, true);
+  assert.equal(result.policy.filesystem.mode, 'read-only');
+  assert.deepEqual(result.policy.filesystem.writeRoots, []);
+  assert.ok(
+    result.policy.filesystem.readRoots.some(
+      (root) => root.path === 'C:\\Users\\me\\project',
+    ),
+  );
+});
+
+test('read-only mode rejects external write grants before compiling a policy', () => {
+  assert.deepEqual(
+    compileWindowsCommandPolicy(request({ filesystemMode: 'read-only' })),
+    { ok: false, code: 'write_access_unavailable' },
+  );
+});
+
+test('rejects a missing or unknown filesystem mode', () => {
+  assert.deepEqual(
+    compileWindowsCommandPolicy(request({ filesystemMode: undefined })),
+    { ok: false, code: 'invalid_filesystem_mode' },
+  );
+  assert.deepEqual(
+    compileWindowsCommandPolicy(request({ filesystemMode: 'write-only' })),
+    { ok: false, code: 'invalid_filesystem_mode' },
+  );
 });
 
 test('rejects when required backend policy capability is absent', () => {

@@ -12,7 +12,7 @@ export async function verifyConversationNavigation(window) {
     const separator = document.querySelector('.navigation-resize-handle');
     const rect = sidebar.getBoundingClientRect();
     const handle = separator.getBoundingClientRect();
-    const settings = [...document.querySelectorAll('[aria-label="连接与模型设置"]')]
+    const settings = [...document.querySelectorAll('[aria-label="设置"]')]
       .filter(node => node.getBoundingClientRect().width > 0 && !node.closest('[inert]'));
     return {
       collapsed: document.querySelector('.social-body').classList.contains('navigation-collapsed'),
@@ -212,7 +212,13 @@ export async function verifyConversationNavigation(window) {
   await contents.executeJavaScript(
     `document.dispatchEvent(new KeyboardEvent('keydown', {key:'k', ctrlKey:true, bubbles:true}))`,
   );
-  await settle();
+  await contents.executeJavaScript(`(async () => {
+    const deadline = Date.now() + 1500;
+    while (Date.now() < deadline) {
+      if (document.activeElement?.getAttribute('aria-label') === '搜索联系人、项目和消息') return;
+      await new Promise(resolve => setTimeout(resolve, 25));
+    }
+  })()`);
   state = await inspect();
   check(
     state.collapsed &&

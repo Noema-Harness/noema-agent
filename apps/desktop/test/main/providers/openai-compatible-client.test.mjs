@@ -5,6 +5,7 @@ import {
   DEFAULT_MODEL_BASE_URL,
   ModelProviderError,
   normalizeBaseUrl,
+  parseDsmlToolCalls,
   resolveConfiguredModelBaseUrl,
 } from '../../../src/main/providers/openai-compatible-client.mjs';
 
@@ -191,8 +192,127 @@ test('buffers automatic router replies so FreeLLMAPI can fail over before delive
   assert.doesNotMatch(JSON.stringify(requestEvents), /完整回复|请回答/u);
 });
 
+test('propagates a parent execution identity on every provider request event', async () => {
+  const requestEvents = [];
+  const client = new OpenAICompatibleClient({
+    getApiKey: () => 'test-key',
+    legacyFreeRouteMode: true,
+    onRequestEvent: (event) => requestEvents.push(event),
+    fetchImpl: async () =>
+      Response.json(
+        {
+          choices: [
+            {
+              message: { role: 'assistant', content: '成员结果' },
+              finish_reason: 'stop',
+            },
+          ],
+        },
+        { headers: { 'X-Routed-Via': 'ovh/model' } },
+      ),
+  });
+  for await (const _delta of client.streamChat({
+    model: 'auto:noema-free',
+    messages: [{ role: 'user', content: '交办任务正文' }],
+    signal: new AbortController().signal,
+    usageParentExecutionId: 'parent-social-turn',
+  })) {
+    /* consume */
+  }
+
+  assert.ok(requestEvents.length > 0);
+  assert.deepEqual(
+    requestEvents.map((event) => event.parentExecutionId),
+    requestEvents.map(() => 'parent-social-turn'),
+  );
+  assert.doesNotMatch(JSON.stringify(requestEvents), /交办任务正文|成员结果/u);
+});
+
+test('bounds provider connection time and records a safe timeout terminal', async () => {
+  const requestEvents = [];
+  const usageRecords = [];
+  const client = new OpenAICompatibleClient({
+    getApiKey: () => 'test-key',
+    requestTimeoutMs: 20,
+    onRequestEvent: (event) => requestEvents.push(event),
+    onUsage: (usage) => usageRecords.push(usage),
+    fetchImpl: (_url, { signal }) =>
+      new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason), {
+          once: true,
+        });
+      }),
+  });
+
+  await assert.rejects(
+    async () => {
+      for await (const _delta of client.streamChat({
+        model: 'test-model',
+        messages: [{ role: 'user', content: 'private prompt marker' }],
+        signal: new AbortController().signal,
+      })) {
+        /* no output expected */
+      }
+    },
+    (error) => error.code === 'request_timeout',
+  );
+
+  const terminal = requestEvents.find((event) => event.phase === 'failed');
+  assert.equal(terminal?.requestStatus, 'failed');
+  assert.equal(terminal?.errorCode, 'request_timeout');
+  assert.equal(usageRecords.at(-1)?.requestStatus, 'failed');
+  assert.doesNotMatch(
+    JSON.stringify({ requestEvents, usageRecords }),
+    /private prompt marker|test-key/u,
+  );
+});
+
+test('bounds a stalled response body and distinguishes it from user cancellation', async () => {
+  const requestEvents = [];
+  const client = new OpenAICompatibleClient({
+    getApiKey: () => 'test-key',
+    requestTimeoutMs: 20,
+    onRequestEvent: (event) => requestEvents.push(event),
+    fetchImpl: async (_url, { signal }) => {
+      const body = new ReadableStream({
+        start(controller) {
+          signal.addEventListener(
+            'abort',
+            () => controller.error(signal.reason),
+            {
+              once: true,
+            },
+          );
+        },
+      });
+      return new Response(body, {
+        headers: { 'content-type': 'text/event-stream' },
+      });
+    },
+  });
+
+  await assert.rejects(
+    async () => {
+      for await (const _delta of client.streamChat({
+        model: 'test-model',
+        messages: [{ role: 'user', content: 'wait for stream' }],
+        signal: new AbortController().signal,
+      })) {
+        /* no output expected */
+      }
+    },
+    (error) => error.code === 'request_timeout',
+  );
+
+  const terminal = requestEvents.find((event) => event.phase === 'failed');
+  assert.equal(terminal?.requestStatus, 'failed');
+  assert.equal(terminal?.errorCode, 'request_timeout');
+  assert.ok(!requestEvents.some((event) => event.phase === 'interrupted'));
+});
+
 test('preserves tool calls for buffered automatic router replies', async () => {
   let receivedCalls;
+  let receivedRequestId;
   let requestBody;
   const client = new OpenAICompatibleClient({
     getApiKey: () => 'test-key',
@@ -232,8 +352,9 @@ test('preserves tool calls for buffered automatic router replies', async () => {
       type: 'function',
       function: { name: 'delegate_task' },
     },
-    onToolCalls: (calls) => {
+    onToolCalls: (calls, requestId) => {
       receivedCalls = calls;
+      receivedRequestId = requestId;
     },
   })) {
     deltas.push(delta);
@@ -246,6 +367,7 @@ test('preserves tool calls for buffered automatic router replies', async () => {
     function: { name: 'delegate_task' },
   });
   assert.deepEqual(deltas, []);
+  assert.match(receivedRequestId, /^[0-9a-f-]{36}$/iu);
   assert.deepEqual(receivedCalls, [
     {
       id: 'call_1',
@@ -358,6 +480,7 @@ test('assembles streamed FreeLLMAPI tool-call deltas without exposing arguments 
   });
   let requestBody;
   let receivedCalls;
+  let receivedRequestId;
   let receivedRoute;
   const client = new OpenAICompatibleClient({
     getApiKey: () => 'test-key',
@@ -379,8 +502,9 @@ test('assembles streamed FreeLLMAPI tool-call deltas without exposing arguments 
       type: 'function',
       function: { name: 'delegate_task' },
     },
-    onToolCalls: (calls) => {
+    onToolCalls: (calls, requestId) => {
       receivedCalls = calls;
+      receivedRequestId = requestId;
     },
     onRouteMetadata: (route) => {
       receivedRoute = route;
@@ -396,6 +520,7 @@ test('assembles streamed FreeLLMAPI tool-call deltas without exposing arguments 
   });
   assert.equal(requestBody.max_tokens, 1024);
   assert.deepEqual(text, []);
+  assert.match(receivedRequestId, /^[0-9a-f-]{36}$/iu);
   assert.deepEqual(receivedCalls, [
     {
       id: 'call_1',
@@ -469,6 +594,7 @@ test('captures DeepSeek terminal streaming usage without changing the returned t
     requestId: recordedUsage.requestId,
     executionId: 'execution-cost-group',
     turnId: 'turn-cost-group',
+    parentExecutionId: null,
     model: 'deepseek-flash',
     providerHost: 'api.deepseek.com',
     operation: 'root_chat',
@@ -496,6 +622,7 @@ test('captures DeepSeek terminal streaming usage without changing the returned t
     outputTokens: 5,
     cachedInputTokens: 64,
     cacheMissTokens: 36,
+    cacheWriteTokens: null,
     reasoningTokens: 2,
     providerCost: null,
   });
@@ -595,7 +722,10 @@ test('normalizes cached input from standard OpenAI-compatible usage details', as
         usage: {
           prompt_tokens: 80,
           completion_tokens: 12,
-          prompt_tokens_details: { cached_tokens: 32 },
+          prompt_tokens_details: {
+            cached_tokens: 32,
+            cache_write_tokens: 5,
+          },
           cost: { input: 0.01, output: 0.02 },
         },
         choices: [{ message: { role: 'assistant', content: 'ok' } }],
@@ -615,8 +745,104 @@ test('normalizes cached input from standard OpenAI-compatible usage details', as
   assert.equal(recordedUsage.inputTokens, 80);
   assert.equal(recordedUsage.cachedInputTokens, 32);
   assert.equal(recordedUsage.cacheMissTokens, 48);
+  assert.equal(recordedUsage.cacheWriteTokens, 5);
   assert.equal(recordedUsage.outputTokens, 12);
   assert.deepEqual(recordedUsage.providerCost, { input: 0.01, output: 0.02 });
+});
+
+test('treats empty or invalid usage as missing and preserves reported zero', async () => {
+  const run = async (usage) => {
+    let recordedUsage;
+    const requestEvents = [];
+    const client = new OpenAICompatibleClient({
+      getApiKey: () => 'test-key',
+      onUsage: (record) => {
+        recordedUsage = record;
+      },
+      onRequestEvent: (event) => requestEvents.push(event),
+      fetchImpl: async () =>
+        new Response(
+          `data: ${JSON.stringify({
+            usage,
+            choices: [{ delta: { content: 'ok' } }],
+          })}\n\ndata: [DONE]\n`,
+        ),
+    });
+    for await (const _delta of client.streamChat({
+      model: 'test-model',
+      messages: [{ role: 'user', content: 'x' }],
+      signal: new AbortController().signal,
+      usageOperation: 'social_turn',
+    })) {
+      /* buffered response */
+    }
+    return { recordedUsage, requestEvents };
+  };
+
+  const missing = await run({ prompt_tokens: '100', private_metric: 7 });
+  assert.equal(missing.recordedUsage.usageReceived, false);
+  assert.equal(missing.recordedUsage.inputTokens, null);
+  assert.equal(missing.recordedUsage.outputTokens, null);
+  assert.ok(
+    missing.requestEvents.some((event) => event.phase === 'usage_missing'),
+  );
+
+  const zero = await run({
+    prompt_tokens: 0,
+    completion_tokens: 0,
+    prompt_tokens_details: { cache_write_tokens: 0 },
+  });
+  assert.equal(zero.recordedUsage.usageReceived, true);
+  assert.equal(zero.recordedUsage.inputTokens, 0);
+  assert.equal(zero.recordedUsage.outputTokens, 0);
+  assert.equal(zero.recordedUsage.cacheWriteTokens, 0);
+
+  const partial = await run({
+    completion_tokens_details: { reasoning_tokens: 9 },
+  });
+  assert.equal(partial.recordedUsage.usageReceived, true);
+  assert.equal(partial.recordedUsage.inputTokens, null);
+  assert.equal(partial.recordedUsage.outputTokens, null);
+  assert.equal(partial.recordedUsage.reasoningTokens, 9);
+
+  const costOnly = await run({ cost: 0.25 });
+  assert.equal(costOnly.recordedUsage.usageReceived, false);
+  assert.equal(costOnly.recordedUsage.providerCost, 0.25);
+});
+
+test('drops contradictory cache hit and miss breakdown instead of guessing', async () => {
+  let recordedUsage;
+  const client = new OpenAICompatibleClient({
+    getApiKey: () => 'test-key',
+    onUsage: (usage) => {
+      recordedUsage = usage;
+    },
+    fetchImpl: async () =>
+      new Response(
+        `data: ${JSON.stringify({
+          usage: {
+            prompt_tokens: 100,
+            completion_tokens: 4,
+            prompt_cache_hit_tokens: 70,
+            prompt_cache_miss_tokens: 40,
+          },
+          choices: [{ delta: { content: 'ok' } }],
+        })}\n\ndata: [DONE]\n`,
+      ),
+  });
+  for await (const _delta of client.streamChat({
+    model: 'deepseek-flash',
+    messages: [{ role: 'user', content: 'x' }],
+    signal: new AbortController().signal,
+    usageOperation: 'social_turn',
+  })) {
+    /* buffered response */
+  }
+
+  assert.equal(recordedUsage.usageReceived, true);
+  assert.equal(recordedUsage.inputTokens, 100);
+  assert.equal(recordedUsage.cachedInputTokens, null);
+  assert.equal(recordedUsage.cacheMissTokens, null);
 });
 
 test('records failed attempts even when the provider returns no usage', async () => {
@@ -842,7 +1068,7 @@ test('repairs one malformed streamed tool call and releases the first stream bef
   );
 });
 
-test('bounds malformed tool-call correction to one additional model request', async () => {
+test('bounds malformed tool-call correction to two additional model requests', async () => {
   let requestCount = 0;
   const client = new OpenAICompatibleClient({
     getApiKey: () => 'test-key',
@@ -886,7 +1112,7 @@ test('bounds malformed tool-call correction to one additional model request', as
     (error) =>
       error instanceof ModelProviderError && error.code === 'invalid_tool_call',
   );
-  assert.equal(requestCount, 2);
+  assert.equal(requestCount, 3);
 });
 
 test('streams OpenAI-compatible SSE across arbitrary network chunk boundaries', async () => {
@@ -964,7 +1190,7 @@ test('rejects a stream that closes without FreeLLMAPI terminal marker', async ()
 
 test('bounds streamed response bytes and cancels before accepting tool calls', async () => {
   let canceled = false;
-  const oversizedEvent = `data: {"choices":[{"delta":{"content":"${'a'.repeat(1_000_000)}"}}]}\n\n`;
+  const oversizedEvent = `data: {"choices":[{"delta":{"content":"${'a'.repeat(8_000_000)}"}}]}\n\n`;
   const body = new ReadableStream({
     start(controller) {
       controller.enqueue(new TextEncoder().encode(oversizedEvent));
@@ -1033,7 +1259,7 @@ test('bounds buffered router responses while preserving the size error', async (
   let canceled = false;
   const body = new ReadableStream({
     start(controller) {
-      controller.enqueue(new Uint8Array(1_000_001));
+      controller.enqueue(new Uint8Array(8_000_001));
     },
     cancel() {
       canceled = true;
@@ -1357,6 +1583,23 @@ test('preserves a bounded HTTP Retry-After hint for safe project recovery', asyn
     (error) =>
       error.code === 'rate_limited' && error.retryAfterSeconds === null,
   );
+});
+
+test('parses leaked DSML tool markup into executable tool calls', () => {
+  const calls = parseDsmlToolCalls(
+    '<｜｜DSML｜｜ calls><｜｜DSML｜｜ invoke name="start_project_work"><｜｜DSML｜｜ parameter name="project_id" string="true">project-1</｜｜DSML｜｜ parameter><｜｜DSML｜｜ parameter name="agent_id" string="true">agent-1</｜｜DSML｜｜ parameter><｜｜DSML｜｜ parameter name="task" string="true">check index.html</｜｜DSML｜｜ parameter></｜｜DSML｜｜ invoke></｜｜DSML｜｜ calls>',
+  );
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].function.name, 'start_project_work');
+  assert.deepEqual(JSON.parse(calls[0].function.arguments), {
+    project_id: 'project-1',
+    agent_id: 'agent-1',
+    task: 'check index.html',
+  });
+});
+
+test('ignores ordinary text that only mentions DSML', () => {
+  assert.deepEqual(parseDsmlToolCalls('No tool call here.'), []);
 });
 
 test('classifies an oversized model request without exposing gateway diagnostics', async () => {

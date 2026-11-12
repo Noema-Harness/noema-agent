@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { execFileSync } from "node:child_process";
+import { runGit } from "./git-exec.mjs";
 
 const root = path.resolve(fileURLToPath(new URL("../", import.meta.url)));
 const config = JSON.parse(fs.readFileSync(path.join(root, ".codex", "workspace.json"), "utf8"));
@@ -72,9 +72,7 @@ if (command === "check") {
         errors.push(`Broken link in ${name}: ${link}`);
     }
   }
-  const tracked = execFileSync("git", ["ls-files", "-z"], { cwd: root, encoding: "utf8" }).split(
-    "\0",
-  );
+  const tracked = runGit(["ls-files", "-z"], { cwd: root, encoding: "utf8" }).split("\0");
   for (const name of tracked) {
     if (within(name, config.artifactRoot) && name !== `${config.artifactRoot}/README.md`)
       errors.push(`Process material tracked as source: ${name}`);

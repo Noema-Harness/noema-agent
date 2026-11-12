@@ -11,6 +11,17 @@ const MAX_RECORDED_ROUTES_PER_MESSAGE = 16;
 const MAX_HISTORY_SOURCES_PER_MESSAGE = 4;
 const MAX_HISTORY_SOURCE_EXCERPT_LENGTH = 320;
 const MAX_RECORDED_TOOL_ACTIONS_PER_TASK = 32;
+const LEGACY_HISTORY_PAGE_MAX = 50;
+const LEGACY_HISTORY_TEXT_PREVIEW_MAX = 100_001;
+const LEGACY_HISTORY_JSON_PREVIEW_MAX = 1_000_001;
+const LEGACY_HISTORY_CATEGORIES = new Set([
+  'root-turns',
+  'root-messages',
+  'dsh-tasks',
+  'captures',
+  'context-imports',
+  'interaction-adjustments',
+]);
 const TOOL_ACTION_CATEGORIES = new Set([
   'read',
   'write',
@@ -19,6 +30,10 @@ const TOOL_ACTION_CATEGORIES = new Set([
   'list',
   'other',
 ]);
+
+function legacyHistoryPreviewColumn(column, fullText, maxLength) {
+  return fullText ? column : `substr(${column}, 1, ${maxLength})`;
+}
 
 function hydrateBackgroundTask(row) {
   if (!row) return null;
@@ -776,92 +791,213 @@ export class RootStore {
       });
       applyExternalSourceSnapshotsSchema();
     }
-    if (currentVersion > 15)
+    if (currentVersion < 16) {
+      const applyOfficialPluginSchema = this.db.transaction(() => {
+        this.db.exec(`
+          CREATE TABLE official_plugin_preferences (
+            plugin_id TEXT PRIMARY KEY,
+            enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+            updated_at TEXT NOT NULL
+          );
+
+          CREATE TABLE official_plugin_state (
+            plugin_id TEXT NOT NULL,
+            state_key TEXT NOT NULL,
+            value_json TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (plugin_id, state_key)
+          );
+
+          CREATE TABLE official_plugin_schemas (
+            plugin_id TEXT PRIMARY KEY,
+            state_version INTEGER NOT NULL CHECK (state_version >= 0),
+            updated_at TEXT NOT NULL
+          );
+
+          INSERT INTO schema_migrations (version, applied_at) VALUES (16, '${nowIso()}');
+        `);
+      });
+      applyOfficialPluginSchema();
+    }
+    if (currentVersion > 16)
       throw new Error(
         `Database schema ${currentVersion} is newer than this Noema build supports`,
       );
   }
 
-  createCapture(content) {
-    const normalized = requireText(
-      content,
-      'capture',
-      MAX_MESSAGE_LENGTH,
-    ).trim();
-    if (!normalized) throw new TypeError('速记不能为空。');
-    const id = randomUUID();
-    const timestamp = nowIso();
-    this.db
-      .prepare(`
-        INSERT INTO captured_moments (id, content, created_at, updated_at)
-        VALUES (?, ?, ?, ?)
-      `)
-      .run(id, normalized, timestamp, timestamp);
-    return this.getCapture(id);
-  }
-
-  getCapture(id) {
-    const row = this.db
-      .prepare(`
-        SELECT id, content, created_at AS createdAt, updated_at AS updatedAt,
-               discussion_turn_id AS discussionTurnId
-        FROM captured_moments WHERE id = ?
-      `)
-      .get(id);
-    return row ?? null;
-  }
-
-  getCaptures() {
-    return this.db
-      .prepare(`
-        SELECT id, content, created_at AS createdAt, updated_at AS updatedAt,
-               discussion_turn_id AS discussionTurnId
-        FROM captured_moments ORDER BY seq ASC
-      `)
-      .all();
-  }
-
-  updateCapture(id, content) {
-    requireText(id, 'capture id', 200);
-    const normalized = requireText(
-      content,
-      'capture',
-      MAX_MESSAGE_LENGTH,
-    ).trim();
-    if (!normalized) throw new TypeError('速记不能为空。');
-    const result = this.db
-      .prepare(`
-        UPDATE captured_moments SET content = ?, updated_at = ?
-        WHERE id = ? AND discussion_turn_id IS NULL
-      `)
-      .run(normalized, nowIso(), id);
-    if (!result.changes) {
-      if (!this.getCapture(id)) throw new Error('这条速记已不存在。');
-      throw new Error('已开始讨论的速记不能修改。');
+  /**
+   * Reads a bounded page from one fixed legacy-history category. This method
+   * intentionally exposes no generic SQL, table name, or write operation.
+   * @param {{category:string,cursor?:number|null,limit?:number}} input
+   */
+  listLegacyHistoryPage({
+    category,
+    cursor = null,
+    limit = 20,
+    fullText = false,
+  }) {
+    if (!LEGACY_HISTORY_CATEGORIES.has(category)) {
+      throw new TypeError('历史记录类别无效。');
     }
-    return this.getCapture(id);
+    if (cursor !== null && (!Number.isSafeInteger(cursor) || cursor < 0)) {
+      throw new TypeError('历史记录分页位置无效。');
+    }
+    if (!Number.isSafeInteger(limit) || limit < 1) {
+      throw new TypeError('历史记录分页大小无效。');
+    }
+    if (typeof fullText !== 'boolean') {
+      throw new TypeError('历史记录读取模式无效。');
+    }
+    const pageSize = Math.min(limit, LEGACY_HISTORY_PAGE_MAX);
+    const previewText = (column) =>
+      legacyHistoryPreviewColumn(
+        column,
+        fullText,
+        LEGACY_HISTORY_TEXT_PREVIEW_MAX,
+      );
+    const previewJson = (column) =>
+      legacyHistoryPreviewColumn(
+        column,
+        fullText,
+        LEGACY_HISTORY_JSON_PREVIEW_MAX,
+      );
+    if (category === 'context-imports') {
+      if (cursor !== null && cursor > 0) {
+        return { records: [], nextCursor: null, hasMore: false };
+      }
+      const row = this.db
+        .prepare(`
+          SELECT 1 AS seq, id, source, source_thread_id AS sourceThreadId,
+            title, working_directory AS workingDirectory,
+            source_updated_at AS sourceUpdatedAt, captured_at AS capturedAt,
+            ${previewJson('snapshot_json')} AS snapshotJson, message_count AS messageCount,
+            character_count AS characterCount, omitted_items AS omittedItems,
+            omitted_turns AS omittedTurns, omitted_messages AS omittedMessages,
+            older_turns_omitted AS olderTurnsOmitted, consented_at AS consentedAt
+          FROM root_context_imports
+          WHERE id = 'active'
+        `)
+        .get();
+      return {
+        records: row ? [row] : [],
+        nextCursor: null,
+        hasMore: false,
+      };
+    }
+
+    const queries = {
+      'root-turns': `
+        SELECT seq, id, conversation_id AS conversationId,
+          user_message_id AS userMessageId, model, status, attempt,
+          context_turns AS contextTurns,
+          context_omitted_turns AS contextOmittedTurns,
+          context_characters AS contextCharacters,
+          error_code AS errorCode, ${previewText('error_message')} AS errorMessage,
+          created_at AS createdAt, updated_at AS updatedAt,
+          completed_at AS completedAt
+        FROM root_turns WHERE seq > ? ORDER BY seq ASC LIMIT ?
+      `,
+      'root-messages': `
+        SELECT seq, id, turn_id AS turnId, role, ${previewText('content')} AS content, status,
+          attempt, model, ${previewJson('routed_via_json')} AS routedViaJson,
+          route_metadata_status AS routeMetadataStatus,
+          ${previewJson('interaction_adjustment_ids_json')} AS interactionAdjustmentIdsJson,
+          ${previewJson('interaction_adjustment_snapshots_json')} AS interactionAdjustmentSnapshotsJson,
+          ${previewJson('history_sources_json')} AS historySourcesJson,
+          ${previewJson('external_sources_json')} AS externalSourcesJson,
+          external_sources_included AS externalSourcesIncluded,
+          history_search_status AS historySearchStatus,
+          history_sources_included AS historySourcesIncluded,
+          created_at AS createdAt, updated_at AS updatedAt
+        FROM root_messages WHERE seq > ? ORDER BY seq ASC LIMIT ?
+      `,
+      'dsh-tasks': `
+        SELECT seq, id, source_turn_id AS sourceTurnId, harness,
+          ${previewText('workspace_path')} AS workspacePath, model, ${previewText('prompt')} AS prompt, session_id AS sessionId,
+          status, phase, tool_call_count AS toolCallCount, ${previewText('result_text')} AS resultText,
+          error_code AS errorCode, ${previewText('error_message')} AS errorMessage,
+          event_status AS eventStatus, event_created_at AS eventCreatedAt,
+          event_delivered_at AS eventDeliveredAt,
+          ${previewText('noema_response')} AS noemaResponse,
+          noema_response_status AS noemaResponseStatus,
+          ${previewText('noema_response_error')} AS noemaResponseError,
+          noema_response_model AS noemaResponseModel,
+          ${previewJson('verification_checks_json')} AS verificationChecksJson,
+          verification_status AS verificationStatus,
+          ${previewJson('verification_results_json')} AS verificationResultsJson,
+          verification_attempts AS verificationAttempts,
+          ${previewJson('interaction_adjustment_ids_json')} AS interactionAdjustmentIdsJson,
+          ${previewJson('interaction_adjustment_snapshots_json')} AS interactionAdjustmentSnapshotsJson,
+          ${previewJson('tool_action_categories_json')} AS toolActionCategoriesJson,
+          tool_actions_truncated AS toolActionsTruncated,
+          created_at AS createdAt, started_at AS startedAt,
+          updated_at AS updatedAt, completed_at AS completedAt
+        FROM background_tasks WHERE seq > ? ORDER BY seq ASC LIMIT ?
+      `,
+      captures: `
+        SELECT seq, id, ${previewText('content')} AS content, created_at AS createdAt,
+          updated_at AS updatedAt, discussion_turn_id AS discussionTurnId
+        FROM captured_moments WHERE seq > ? ORDER BY seq ASC LIMIT ?
+      `,
+      'interaction-adjustments': `
+        SELECT seq, id, source_surface AS sourceSurface,
+          source_room_id AS sourceRoomId, source_turn_id AS sourceTurnId,
+          scope, ${previewText('situation')} AS situation, ${previewText('behavior')} AS behavior, status, created_at AS createdAt,
+          withdrawn_at AS withdrawnAt, ${previewText('source_quote')} AS sourceQuote,
+          original_scope AS originalScope,
+          original_situation AS originalSituation,
+          original_behavior AS originalBehavior, user_edited AS userEdited,
+          edited_at AS editedAt
+        FROM interaction_adjustments WHERE seq > ? ORDER BY seq ASC LIMIT ?
+      `,
+    };
+    const rows = this.db
+      .prepare(queries[category])
+      .all(cursor ?? 0, pageSize + 1);
+    const hasMore = rows.length > pageSize;
+    const records = rows
+      .slice(0, pageSize)
+      .map((row) =>
+        category === 'interaction-adjustments'
+          ? { ...row, userEdited: Boolean(row.userEdited) }
+          : row,
+      );
+    return {
+      records,
+      nextCursor: hasMore ? (records.at(-1)?.seq ?? null) : null,
+      hasMore,
+    };
   }
 
-  deleteCapture(id) {
-    requireText(id, 'capture id', 200);
-    return (
-      this.db.prepare('DELETE FROM captured_moments WHERE id = ?').run(id)
-        .changes === 1
-    );
+  getLegacyHistoryCategoryCounts() {
+    const counts = {};
+    for (const [category, table] of [
+      ['root-turns', 'root_turns'],
+      ['root-messages', 'root_messages'],
+      ['dsh-tasks', 'background_tasks'],
+      ['captures', 'captured_moments'],
+      ['interaction-adjustments', 'interaction_adjustments'],
+    ]) {
+      counts[category] = this.db
+        .prepare(`SELECT COUNT(*) AS count FROM ${table}`)
+        .get().count;
+    }
+    counts['context-imports'] = this.db
+      .prepare(
+        "SELECT COUNT(*) AS count FROM root_context_imports WHERE id = 'active'",
+      )
+      .get().count;
+    return counts;
   }
 
-  /** @param {{id?: string, text?: string, captureId?: string, model?: string | null}} input */
-  beginTurn({ id = randomUUID(), text, captureId = null, model = null }) {
-    if (!captureId) requireText(text, 'message');
+  /** @param {{id?: string, text: string, model?: string | null}} input */
+  beginTurn({ id = randomUUID(), text, model = null }) {
+    requireText(text, 'message');
     if (model !== null) requireText(model, 'model', 200);
     const timestamp = nowIso();
     const userMessageId = randomUUID();
     const assistantMessageId = randomUUID();
     const transaction = this.db.transaction(() => {
-      const capture = captureId ? this.getCapture(captureId) : null;
-      if (captureId && !capture) throw new Error('这条速记已不存在。');
-      if (capture?.discussionTurnId) throw new Error('这条速记已经开始讨论。');
-      const messageText = capture ? capture.content : text;
       const active = this.db
         .prepare("SELECT id FROM root_turns WHERE status = 'streaming' LIMIT 1")
         .get();
@@ -877,22 +1013,13 @@ export class RootStore {
         INSERT INTO root_messages (id, turn_id, role, content, status, attempt, model, created_at, updated_at)
         VALUES (?, ?, 'user', ?, 'complete', 1, ?, ?, ?)
       `)
-        .run(userMessageId, id, messageText, model, timestamp, timestamp);
+        .run(userMessageId, id, text, model, timestamp, timestamp);
       this.db
         .prepare(`
         INSERT INTO root_messages (id, turn_id, role, content, status, attempt, model, route_metadata_status, created_at, updated_at)
         VALUES (?, ?, 'assistant', '', 'streaming', 1, ?, 'pending', ?, ?)
       `)
         .run(assistantMessageId, id, model, timestamp, timestamp);
-      if (capture) {
-        const linked = this.db
-          .prepare(`
-            UPDATE captured_moments SET discussion_turn_id = ?, updated_at = ?
-            WHERE id = ? AND discussion_turn_id IS NULL
-          `)
-          .run(id, timestamp, capture.id);
-        if (linked.changes !== 1) throw new Error('这条速记已被其他讨论接管。');
-      }
     });
     transaction();
     return { id, userMessageId, assistantMessageId, attempt: 1, model };
@@ -1201,7 +1328,6 @@ export class RootStore {
       .get();
     return {
       messages,
-      captures: this.getCaptures(),
       workerTasks,
       contextImports: this.getContextImports(),
       interactionAdjustments: this.getInteractionAdjustments(),
@@ -2396,6 +2522,20 @@ export class RootStore {
     );
   }
 
+  /** Returns only visible messages for one turn for an explicit local diagnostics export. */
+  getTurnMessagesForDiagnostics(id, limit = 9) {
+    const boundedLimit = Math.max(1, Math.min(9, Math.floor(limit)));
+    return this.db
+      .prepare(`
+        SELECT role, content, status, attempt, created_at AS createdAt
+        FROM root_messages
+        WHERE turn_id = ?
+        ORDER BY attempt ASC, CASE role WHEN 'user' THEN 0 ELSE 1 END
+        LIMIT ?
+      `)
+      .all(requireText(id, 'turn ID', 200), boundedLimit);
+  }
+
   getSelectedModel() {
     return (
       this.db
@@ -2420,6 +2560,72 @@ export class RootStore {
       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
     `)
       .run(model, timestamp);
+  }
+
+  getAgentChatSession(agentId) {
+    const key = `agent_chat_session:${requireText(agentId, 'agent ID', 120)}`;
+    return (
+      this.db.prepare('SELECT value FROM app_settings WHERE key = ?').get(key)
+        ?.value ?? null
+    );
+  }
+
+  setAgentChatSession(agentId, sessionId) {
+    const key = `agent_chat_session:${requireText(agentId, 'agent ID', 120)}`;
+    if (sessionId === null) {
+      this.db.prepare('DELETE FROM app_settings WHERE key = ?').run(key);
+      return;
+    }
+    requireText(sessionId, 'session ID', 128);
+    this.db
+      .prepare(`
+        INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+      `)
+      .run(key, sessionId, nowIso());
+  }
+
+  /** @returns {{externalFiles: 'read-only' | 'ask' | 'allow'}} */
+  getExecutionPermissions() {
+    const raw = this.db
+      .prepare(
+        "SELECT value FROM app_settings WHERE key = 'execution_permissions'",
+      )
+      .get()?.value;
+    if (!raw) return { externalFiles: 'ask' };
+    try {
+      const parsed = JSON.parse(raw);
+      return {
+        externalFiles:
+          parsed?.externalFiles === 'allow' ||
+          parsed?.externalFiles === 'read-only'
+            ? parsed.externalFiles
+            : 'ask',
+      };
+    } catch {
+      return { externalFiles: 'ask' };
+    }
+  }
+
+  /**
+   * @param {{ externalFiles?: 'read-only' | 'ask' | 'allow' }} permissions
+   * @returns {{externalFiles: 'read-only' | 'ask' | 'allow'}}
+   */
+  setExecutionPermissions(permissions) {
+    const clean = {
+      externalFiles:
+        permissions?.externalFiles === 'allow' ||
+        permissions?.externalFiles === 'read-only'
+          ? permissions.externalFiles
+          : 'ask',
+    };
+    this.db
+      .prepare(`
+      INSERT INTO app_settings (key, value, updated_at) VALUES ('execution_permissions', ?, ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+    `)
+      .run(JSON.stringify(clean), nowIso());
+    return clean;
   }
 
   close() {

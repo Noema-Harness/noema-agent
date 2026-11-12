@@ -167,6 +167,37 @@ export class SocialProjectStore {
     })();
   }
 
+  #projectUnfinished(projectId) {
+    const counts = this.db
+      .prepare(`
+        SELECT
+          (SELECT COUNT(*) FROM social_project_group_inbox
+           WHERE project_id = ?) AS queuedDeliveries,
+          (SELECT COUNT(*) FROM social_project_reports
+           WHERE project_id = ? AND status IN ('pending', 'processing'))
+            AS pendingReports,
+          (SELECT COUNT(*) FROM social_messages
+           WHERE status = 'streaming' AND room_id IN (
+             SELECT room_id FROM social_project_sessions WHERE project_id = ?
+             UNION SELECT group_room_id FROM social_projects WHERE id = ?
+           )) AS streamingReplies,
+          (SELECT COUNT(*) FROM social_work_tasks
+           WHERE status IN ('starting', 'running', 'verifying') AND room_id IN (
+             SELECT room_id FROM social_project_sessions WHERE project_id = ?
+             UNION SELECT group_room_id FROM social_projects WHERE id = ?
+           )) AS runningTasks
+      `)
+      .get(projectId, projectId, projectId, projectId, projectId, projectId);
+    const plan = this.plans.get(projectId);
+    const unfinishedPlanItems = plan.items.filter(
+      (item) => !['done', 'canceled'].includes(item.status),
+    ).length;
+    const evidenceItems = plan.items.filter(
+      (item) => (item.evidenceRefs?.length ?? 0) > 0,
+    ).length;
+    return { ...counts, unfinishedPlanItems, evidenceItems };
+  }
+
   #hydrateProject(project, { includeGroup = true } = {}) {
     const members = this.db
       .prepare(`
@@ -211,6 +242,7 @@ export class SocialProjectStore {
         ? { group: this.socialChatStore.getRoomSnapshot(project.groupRoomId) }
         : {}),
       members,
+      unfinished: this.#projectUnfinished(project.id),
     };
   }
 
@@ -742,11 +774,19 @@ export class SocialProjectStore {
     originRoomId = 'room-noema',
     sourceMessageId = null,
     agentIds,
+    workspacePath = null,
+    workspaceIdentity = null,
   }) {
     const projectId = requireText(id, '项目 ID', 200);
     const normalizedTitle = requireText(title, '项目名称', 120);
     const normalizedBrief = requireText(brief, '项目说明', 40_000);
     requireText(originRoomId, '来源聊天 ID', 200);
+    const normalizedWorkspacePath = workspacePath
+      ? requireText(workspacePath, '项目工作区路径', 4_000)
+      : null;
+    if (normalizedWorkspacePath && !isWorkspaceIdentity(workspaceIdentity)) {
+      throw new Error('项目工作区身份无效。');
+    }
     if (
       !Array.isArray(agentIds) ||
       agentIds.length < 2 ||
@@ -824,8 +864,9 @@ export class SocialProjectStore {
         .prepare(`
           INSERT INTO social_projects
             (id, title, brief, origin_room_id, source_message_id,
-             group_room_id, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             group_room_id, workspace_path, workspace_identity_json,
+             created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `)
         .run(
           projectId,
@@ -834,6 +875,8 @@ export class SocialProjectStore {
           originRoomId,
           normalizedSourceMessageId,
           groupRoomId,
+          normalizedWorkspacePath,
+          normalizedWorkspacePath ? JSON.stringify(workspaceIdentity) : null,
           now,
           now,
         );
@@ -880,6 +923,8 @@ export class SocialProjectStore {
     brief,
     originRoomId = 'room-noema',
     sourceMessageId = null,
+    workspacePath = null,
+    workspaceIdentity = null,
     members,
   }) {
     requireText(originRoomId, '来源聊天 ID', 200);
@@ -990,6 +1035,8 @@ export class SocialProjectStore {
           brief,
           originRoomId,
           sourceMessageId,
+          workspacePath,
+          workspaceIdentity,
           agentIds,
         });
       }
@@ -1066,6 +1113,15 @@ export class SocialProjectStore {
     const project = this.getProject(projectId);
     if (project.status === 'archived')
       throw new Error('请先恢复项目，再调整成员。');
+    const queued = this.db
+      .prepare(`
+        SELECT 1 FROM social_project_group_inbox
+        WHERE project_id = ? AND agent_id = ? LIMIT 1
+      `)
+      .get(projectId, agentId);
+    if (queued) {
+      throw new Error('这位成员还有待处理的交付，处理或停止后再移除。');
+    }
     const active = this.db
       .prepare(`
         SELECT 1
@@ -1296,6 +1352,13 @@ export class SocialProjectStore {
         .get(projectId)
     ) {
       throw new Error('成员经历整理尚未全部完成，不能归档。');
+    }
+    const unfinished = this.#projectUnfinished(projectId);
+    if (unfinished.queuedDeliveries > 0) {
+      throw new Error('项目仍有成员交付在队列中，处理或停止后才能归档。');
+    }
+    if (unfinished.pendingReports > 0) {
+      throw new Error('项目仍有待整理的成员结果，完成后才能归档。');
     }
     const active = this.db
       .prepare(`

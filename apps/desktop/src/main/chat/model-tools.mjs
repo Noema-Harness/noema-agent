@@ -53,6 +53,44 @@ export function projectWorkTool(agents) {
   };
 }
 
+export function workTicketTool() {
+  return {
+    type: 'function',
+    function: {
+      name: 'start_work_ticket',
+      description:
+        'Start one self-contained local work item when the user has explicitly asked Noema to do or change something, not merely discussed it. This is the default execution path: one prompt, one workspace, one executor session, no project, team, group, or plan. If the user has not chosen a folder yet, the app will ask; do not claim execution has started until the tool confirms it. Any request that creates, writes, edits, moves or deletes files, or asks for a terminal command with side effects, must use this tool; Noema’s own terminal is read-only and must not be used to request elevated permission or tell the user to run the command manually. To continue an earlier ticket, pass its session_id and workspace_path from the execution card; otherwise omit both. You must pass the exact name of a real visible member as assignee; choose a specialist whose domain fits. If no member fits, stop and ask the user to create one. Never invent an assignee and never omit it. Do not use for questions, advice, planning, code snippets, or brainstorming. For multi-stage work, start the first concrete piece and report its real result.',
+      parameters: {
+        type: 'object',
+        properties: {
+          task: {
+            type: 'string',
+            description:
+              'A bounded, self-contained task preserving the user’s outcome, constraints, and acceptance checks. Describe the work, not a destination path; do not embed an absolute workspace path. The app supplies the executor workspace for a new ticket.',
+          },
+          session_id: {
+            type: 'string',
+            description:
+              'Optional DSH session id from an earlier execution card, only when the user asks to continue that work. Requires workspace_path.',
+          },
+          workspace_path: {
+            type: 'string',
+            description:
+              'Optional absolute workspace path from an earlier execution card. Required with session_id; omit for a new ticket so the app can ask.',
+          },
+          assignee: {
+            type: 'string',
+            description:
+              'Optional exact name of an existing visible member who should own this work. Choose a specialist whose domain fits. Do not invent a name; omit only when no existing member fits.',
+          },
+        },
+        required: ['task'],
+        additionalProperties: false,
+      },
+    },
+  };
+}
+
 export function specialistDelegationTool() {
   const properties = {
     task: {
@@ -63,10 +101,15 @@ export function specialistDelegationTool() {
     new_agent: {
       type: 'object',
       properties: {
-        name: { type: 'string', description: '短而可长期使用的联系人名称。' },
+        name: {
+          type: 'string',
+          description:
+            '用现实中通用的职业、职位或专业头衔命名（如“前端工程师”“质量工程师”“3D 交互设计师”），不要用某个项目的任务名、功能位或交付物命名；名称应能跨项目复用。不要编造仿真人类姓名或身份，除非用户明确要求。',
+        },
         headline: {
           type: 'string',
-          description: '可随经历拓展的专业范围，不是一次任务岗位。',
+          description:
+            '现实职业或专业方向的简短说明，可在不同项目中复用，不是一次任务岗位。',
         },
         description: {
           type: 'string',
@@ -100,10 +143,15 @@ export function specialistDelegationTool() {
 
 export function projectTeamTool({ projectWorkReady }) {
   const newAgentProperties = {
-    name: { type: 'string', description: '短而可长期使用的联系人名称。' },
+    name: {
+      type: 'string',
+      description:
+        '用现实中通用的职业、职位或专业头衔命名（如“前端工程师”“质量工程师”“3D 交互设计师”），不要用某个项目的任务名、功能位或交付物命名；名称应能跨项目复用。不要编造仿真人类姓名或身份，除非用户明确要求。',
+    },
     headline: {
       type: 'string',
-      description: '可随经历拓展的专业范围，而非单次项目岗位。',
+      description:
+        '现实职业或专业方向的简短说明，可在不同项目中复用，不是单次项目岗位。',
     },
     description: {
       type: 'string',
@@ -127,6 +175,7 @@ export function projectTeamTool({ projectWorkReady }) {
         '当用户已明确交付的工作确需至少两种独立专业分工，并要求形成共同、可跟踪的交付物时使用；交付物可以是决策型研究或实施计划，不必等到开始写代码。复杂度取决于工作流是否需要不同专业判断，不取决于最终文档长短。不要把跨专业且需要跟踪的委托压成一个专家私聊、再由 Noema 临时拼答案。普通交流或单一专业意见继续留在聊天或交给一位联系人。若用户已允许带假设推进，不再把可标注、可核实的未知资料设成开工前提；将其记入项目范围和计划并开始可逆工作。',
         '新项目至少需要两位成员；续接已有项目时可只增补一位合适成员。若工作项因缺少工具能力而受阻，先检查项目文件执行器是否可用；可用时，可在原项目增补一位 project_work 成员，再把工作项交给他，不要把成员能力缺口当成外部阻塞。新增成员收到加入公告，不重复发送项目启动公告。建组或增补成员都不表示工作已完成。',
         '优先复用职责合适的活跃联系人；仅当现有列表确实缺少角色时才创建新联系人。新联系人名称与长期定位应描述可持续拓展的资产，不要为一次小任务造人。',
+        '新建成员必须使用现实中通用的职业、职位或专业头衔命名（如“前端工程师”“质量工程师”“3D 交互设计师”），不得用一次性项目任务名、功能位或交付物命名；名称和定位都要能跨项目复用。不要编造仿真人类姓名或身份，除非用户明确要求使用人名或人设。',
         '续接已有项目时，使用当前项目工具上下文中列出的 exact existing_project_id。',
       ].join('\n'),
       parameters: {
@@ -276,7 +325,7 @@ export function userFollowupTool() {
 }
 
 export function shouldExposePersonalMemoryTool(text) {
-  return /记住|记下来|记一下|保存记忆|更新记忆|修改记忆|忘记|忘掉|删除记忆|删除这条|删掉这条|移除记忆|你(?:还)?记得我|我(?:之前|以前)说过|根据你对我的了解|结合你对我的了解|考虑我的(?:偏好|习惯|目标)|我的(?:偏好|习惯|目标)|我喜欢|我不喜欢|remember (?:that|when|what)|what do you remember|forget (?:that|what)|based on what you know about me/iu.test(
+  return /记住|记下来|记一下|保存记忆|更新记忆|修改记忆|忘记|忘掉|删除记忆|删除这条|删掉这条|移除记忆|我保存的(?:不可信)?(?:个人|用户)?(?:资料|记忆)|你(?:还)?记得我|我(?:之前|以前)说过|根据你对我的了解|结合你对我的了解|考虑我的(?:偏好|习惯|目标)|我的(?:偏好|习惯|目标)|我喜欢|我不喜欢|remember (?:that|when|what)|what do you remember|forget (?:that|what)|based on what you know about me/iu.test(
     String(text ?? ''),
   );
 }
@@ -624,6 +673,7 @@ export function projectToolChoicesContext({
 
 export const NOEMA_STABLE_ACTION_GUIDANCE = [
   '分享、倾诉、快乐、烦恼和漫谈本身就有意义。自然参与当下交流，不默认把一个想法当成隐含需求，也不把所有讨论转为需求澄清。只有实际形成委托时才组织工作。澄清委托要像对话，不像问卷：先挑一个最可能改变目标、责任或验收的未知点来问，再根据回答决定是否需要下一问；其余可逆细节只有在用户允许按假设推进时才记录假设并继续。',
+  '当用户明确要求你实际做一件本机工作时，直接调用 start_work_ticket，让工作在当前对话里开始；不要要求用户去填表、打开独立窗口或另写一段委托。独立工作不要先建项目、团队或计划，也不要用已有项目承接；不要用一段实施说明或“已开始”代替工具调用。工作区未选时应用会询问，确认前不要声称已经开始。普通交流、建议、方案讨论和只回答一个问题不走这条路。',
   '用用户此刻的意图和你承担的责任区分交流与受托工作，不按产物是文字还是代码分类。交流、共创和判断可以留在主聊；用户明确交付需要查证、持续推进或独立专业贡献的工作后，组织合适执行者。缺少细节时，先判断能否带着明确假设开展安全、可逆的工作；用户已允许按假设继续，就把未知项保留在工作计划中并实际推进，不再重复索取这些资料。只有答案会改变目标、授权范围或重大不可逆代价时，才先等用户决定。不要用一份直接生成的文字冒充实际调查；未查证的受众、价格和成本判断必须保留为假设。',
   '用户直接要求搜索/核实多个来源并提交汇总时，这本身就是明确委托；研究范围宽时，先按宽范围作一轮侦察，不让用户替你挑研究分支。有可用研究能力时，按独立工作流选择执行者并立即行动，不再询问是否委托或组队。外部研究能力未配置时，直接说明缺少哪项配置、为什么当前无法核实来源；不把这个阻碍伪装成组队需求，也不再追问范围。分享一个想法、讨论是否值得调查、或只问一个可直接回答的问题，仍留在主聊。',
 ].join('\n');
@@ -637,6 +687,7 @@ export function noemaActionGuidance(
   { existingProjectActionsAvailable = true, calculatorAvailable = true } = {},
 ) {
   return [
+    '模型创建执行成员时，必须使用现实中通用的职业、职位或专业头衔（如“前端工程师”“质量工程师”“3D 交互设计师”），不得用当前项目的任务名、功能位或交付物命名；成员的名称和专业定位都应能跨项目复用。不要自行编造仿真人类姓名或身份，只有用户明确要求时才使用人名或人设。',
     calculatorAvailable
       ? '涉及会影响结论的算术时，先调用 calculate_expression 核对表达式，再报告数字；计算器只核验运算，不验证输入数字、来源或假设。'
       : '',

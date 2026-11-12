@@ -134,8 +134,18 @@ test('packaged runner rejects missing/mismatched manifest and extra resources', 
       'noema-windows-runner.json',
     );
     const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
-    manifest.backendVersion = '9.9.9';
+    manifest.policyVersion = 2;
     await writeFile(manifestPath, JSON.stringify(manifest));
+    assert.throws(resolve, { code: 'runner_manifest_mismatch' });
+    await stageWindowsRunnerResource({
+      sourceExecutable: source,
+      destinationDirectory: resourceDirectory,
+      platform: 'win32',
+      arch: 'x64',
+    });
+    const currentManifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+    currentManifest.backendVersion = '9.9.9';
+    await writeFile(manifestPath, JSON.stringify(currentManifest));
     assert.throws(resolve, { code: 'runner_manifest_mismatch' });
     await stageWindowsRunnerResource({
       sourceExecutable: source,

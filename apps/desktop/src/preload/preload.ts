@@ -1,13 +1,11 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type {
-  NoemaQuickCaptureRequest,
-  NoemaQuickCaptureShortcutStatus,
   NoemaPersonalMemory,
   NoemaPersonalMemoryList,
   NoemaUserFollowupList,
   NoemaUserFollowup,
-  NoemaRootEvent,
-  NoemaRootState,
+  NoemaModelStateEvent,
+  NoemaProviderState,
   NoemaSocialEvent,
   NoemaSocialProjectSession,
   NoemaSocialSearchResult,
@@ -20,7 +18,15 @@ import type {
   NoemaDiagnosticExecution,
   NoemaDiagnosticTimeline,
   NoemaDiagnosticExportPreview,
+  NoemaExecutionPermissions,
   NoemaWindowsRunnerCapability,
+  NoemaLegacyHistoryCategory,
+  NoemaLegacyHistoryCategoryInfo,
+  NoemaLegacyHistoryPage,
+  NoemaLegacyHistoryExportPreview,
+  SocialConversationThread,
+  SocialConversationBranch,
+  SocialContinuityState,
 } from '../shared/contracts/noema-bridge.d.ts';
 
 const bridge = {
@@ -34,10 +40,30 @@ const bridge = {
     return () => ipcRenderer.removeListener('noema:window-state', handle);
   },
   appVersion: process.env.npm_package_version ?? '0.1.0',
-  getRootState: (): Promise<NoemaRootState> =>
-    ipcRenderer.invoke('noema:root-state'),
+  getLegacyHistoryCategories: (): Promise<NoemaLegacyHistoryCategoryInfo[]> =>
+    ipcRenderer.invoke('noema:legacy-history-categories'),
+  getLegacyHistoryPage: (input: {
+    category: NoemaLegacyHistoryCategory;
+    cursor?: number | null;
+    limit?: number;
+  }): Promise<NoemaLegacyHistoryPage> =>
+    ipcRenderer.invoke('noema:legacy-history-page', input),
+  previewLegacyHistoryExport: (input: {
+    categories: NoemaLegacyHistoryCategory[];
+  }): Promise<NoemaLegacyHistoryExportPreview> =>
+    ipcRenderer.invoke('noema:legacy-history-export-preview', input),
+  saveLegacyHistoryExport: (
+    previewId: string,
+  ): Promise<{ saved: boolean; canceled: boolean; errorCode: string | null }> =>
+    ipcRenderer.invoke('noema:legacy-history-export-save', previewId),
   getSocialState: (): Promise<NoemaSocialState> =>
     ipcRenderer.invoke('noema:social-state'),
+  getExecutionPermissions: (): Promise<NoemaExecutionPermissions> =>
+    ipcRenderer.invoke('noema:execution-permissions'),
+  setExecutionPermissions: (
+    permissions: Partial<NoemaExecutionPermissions>,
+  ): Promise<NoemaExecutionPermissions> =>
+    ipcRenderer.invoke('noema:set-execution-permissions', permissions),
   getWindowsRunnerCapability: (): Promise<NoemaWindowsRunnerCapability> =>
     ipcRenderer.invoke('noema:windows-runner-capability'),
   setupWindowsRunner: (): Promise<{
@@ -91,20 +117,35 @@ const bridge = {
     ipcRenderer.invoke('noema:update-user-followup', input),
   cancelUserFollowup: (id: string): Promise<boolean> =>
     ipcRenderer.invoke('noema:cancel-user-followup', id),
-  advanceFirstMeeting: (action: 'read' | 'enter') =>
-    ipcRenderer.invoke('noema:first-meeting-progress', action),
-  getSocialRoom: (roomId: string): Promise<NoemaSocialRoomState> =>
-    ipcRenderer.invoke('noema:social-room', roomId),
+  getSocialRoom: (
+    roomId: string,
+    options?: {
+      limit?: number;
+      beforeSequence?: number;
+      afterSequence?: number;
+      aroundMessageId?: string;
+    },
+  ): Promise<NoemaSocialRoomState> =>
+    ipcRenderer.invoke('noema:social-room', roomId, options),
   searchSocialMessages: (query: string): Promise<NoemaSocialSearchResult[]> =>
     ipcRenderer.invoke('noema:social-search-messages', query),
+  searchSocialRoomMessages: (
+    roomId: string,
+    query: string,
+  ): Promise<NoemaSocialSearchResult[]> =>
+    ipcRenderer.invoke('noema:social-search-room-messages', roomId, query),
   createSocialGroup: (input: { title: string; agentIds: string[] }) =>
     ipcRenderer.invoke('noema:social-create-group', input),
+  chooseProjectWorkspace: () =>
+    ipcRenderer.invoke('noema:social-choose-project-workspace'),
   createSocialProject: (input: {
     title: string;
     brief: string;
     agentIds: string[];
     originRoomId?: string;
     sourceMessageId?: string | null;
+    workspacePath?: string | null;
+    workspaceIdentity?: unknown;
   }) => ipcRenderer.invoke('noema:social-create-project', input),
   getSocialProjectSession: (projectId: string, agentId: string) =>
     ipcRenderer.invoke(
@@ -167,6 +208,56 @@ const bridge = {
     ipcRenderer.invoke('noema:social-agent-project-work', agentId, enabled),
   setSocialAgentArchived: (agentId: string, archived: boolean) =>
     ipcRenderer.invoke('noema:social-agent-archive', agentId, archived),
+  resetSocialChat: () =>
+    ipcRenderer.invoke('noema:social-reset-chat') as Promise<boolean>,
+  listSocialConversationThreads: (roomId: string) =>
+    ipcRenderer.invoke('noema:social-conversation-threads', roomId) as Promise<
+      SocialConversationThread[]
+    >,
+  getSocialContinuityState: (roomId: string) =>
+    ipcRenderer.invoke(
+      'noema:social-continuity-state',
+      roomId,
+    ) as Promise<SocialContinuityState>,
+  listSocialContinuityBranches: (roomId: string) =>
+    ipcRenderer.invoke('noema:social-continuity-branches', roomId) as Promise<
+      SocialConversationBranch[]
+    >,
+  createSocialContinuityBranch: (input: {
+    roomId?: string;
+    fromTurnId?: string | null;
+    title?: string | null;
+  }) =>
+    ipcRenderer.invoke(
+      'noema:social-continuity-create-branch',
+      input,
+    ) as Promise<SocialConversationBranch>,
+  switchSocialContinuityBranch: (input: {
+    roomId?: string;
+    branchId: string;
+    expectedVersion?: number | null;
+  }) =>
+    ipcRenderer.invoke(
+      'noema:social-continuity-switch-branch',
+      input,
+    ) as Promise<SocialContinuityState>,
+  createSocialContinuityEditBranch: (input: {
+    roomId?: string;
+    messageId: string;
+    title?: string | null;
+  }) =>
+    ipcRenderer.invoke(
+      'noema:social-continuity-edit-branch',
+      input,
+    ) as Promise<SocialContinuityState>,
+  rewindSocialMessage: (roomId: string, messageId: string) =>
+    ipcRenderer.invoke(
+      'noema:social-rewind-message',
+      roomId,
+      messageId,
+    ) as Promise<{
+      removed: number;
+    }>,
   sendSocialMessage: (input: {
     roomId: string;
     agentId: string;
@@ -187,6 +278,18 @@ const bridge = {
     ipcRenderer.invoke('noema:social-work-stop', taskId),
   resumeSocialWorkTask: (taskId: string) =>
     ipcRenderer.invoke('noema:social-work-resume', taskId),
+  continueSocialWorkTask: (taskId: string) =>
+    ipcRenderer.invoke('noema:social-work-continue', taskId),
+  getSocialWorkUsage: (taskId: string) =>
+    ipcRenderer.invoke('noema:social-work-usage', taskId),
+  getSocialWorkStepDetail: (taskId: string, stepId: string) =>
+    ipcRenderer.invoke('noema:social-work-step-detail', taskId, stepId),
+  getSocialWorkTouchedFiles: (taskId: string) =>
+    ipcRenderer.invoke('noema:social-work-touched-files', taskId),
+  exportWorkTicket: (taskId: string) =>
+    ipcRenderer.invoke('noema:social-work-export', taskId),
+  exportConversation: (roomId: string) =>
+    ipcRenderer.invoke('noema:social-export', roomId),
   reviewSocialWorkFileChange: (input: {
     taskId: string;
     changeId: string;
@@ -198,57 +301,32 @@ const bridge = {
     ipcRenderer.invoke('noema:social-work-case-eligible', taskId, eligible),
   withdrawSocialPracticeCandidate: (taskId: string) =>
     ipcRenderer.invoke('noema:social-practice-withdraw', taskId),
-  refreshModels: () => ipcRenderer.invoke('noema:refresh-models'),
-  configureProvider: (configuration: { baseUrl: string; apiKey: string }) =>
+  listWorkspaceFiles: (input: {
+    workspacePath: string;
+    relativePath?: string;
+  }) => ipcRenderer.invoke('noema:workspace-files', input),
+  readWorkspaceFile: (input: { workspacePath: string; relativePath: string }) =>
+    ipcRenderer.invoke('noema:workspace-file', input),
+  searchWorkspaceFiles: (input: { workspacePath: string; query: string }) =>
+    ipcRenderer.invoke('noema:workspace-search', input),
+  readWorkspaceImage: (input: {
+    workspacePath: string;
+    relativePath: string;
+  }) => ipcRenderer.invoke('noema:workspace-image', input),
+  openWorkspaceFolder: (input: { workspacePath: string }) =>
+    ipcRenderer.invoke('noema:workspace-open-folder', input),
+  refreshModels: (): Promise<NoemaProviderState> =>
+    ipcRenderer.invoke('noema:refresh-models'),
+  configureProvider: (configuration: {
+    baseUrl: string;
+    apiKey: string;
+  }): Promise<Partial<NoemaProviderState>> =>
     ipcRenderer.invoke('noema:configure-provider', configuration),
   configureWebSearch: (configuration: { apiKey: string }) =>
     ipcRenderer.invoke('noema:configure-web-search', configuration),
   clearWebSearch: () => ipcRenderer.invoke('noema:clear-web-search'),
   selectModel: (model: string) =>
     ipcRenderer.invoke('noema:select-model', model),
-  sendMessage: (text: string) => ipcRenderer.invoke('noema:send-message', text),
-  saveCapture: (text: string) => ipcRenderer.invoke('noema:save-capture', text),
-  updateCapture: (id: string, text: string) =>
-    ipcRenderer.invoke('noema:update-capture', id, text),
-  deleteCapture: (id: string) => ipcRenderer.invoke('noema:delete-capture', id),
-  discussCapture: (id: string) =>
-    ipcRenderer.invoke('noema:discuss-capture', id),
-  retryTurn: (turnId: string, model?: string | null) =>
-    ipcRenderer.invoke('noema:retry-turn', turnId, model ?? null),
-  stopTurn: (turnId: string) => ipcRenderer.invoke('noema:stop-turn', turnId),
-  chooseWorkspace: () => ipcRenderer.invoke('noema:choose-workspace'),
-  clearWorkspace: () => ipcRenderer.invoke('noema:clear-workspace'),
-  stopBackgroundTask: (taskId: string) =>
-    ipcRenderer.invoke('noema:stop-background-task', taskId),
-  resumeBackgroundTask: (taskId: string) =>
-    ipcRenderer.invoke('noema:resume-background-task', taskId),
-  retryBackgroundEvent: (taskId: string) =>
-    ipcRenderer.invoke('noema:retry-worker-event', taskId),
-  listCodexThreads: (cursor?: string | null) =>
-    ipcRenderer.invoke('noema:list-codex-threads', cursor ?? null),
-  previewCodexThread: (threadId: string) =>
-    ipcRenderer.invoke('noema:preview-codex-thread', threadId),
-  importCodexThread: (input: {
-    threadId: string;
-    expectedSourceUpdatedAt: string | number | null;
-  }) => ipcRenderer.invoke('noema:import-codex-thread', input),
-  removeContextImport: () => ipcRenderer.invoke('noema:remove-context-import'),
-  addSocialInteractionAdjustment: (input: {
-    sourceTurnId: string;
-    sourceRoomId: string;
-    scope: 'conversation' | 'coding' | 'both';
-    situation: string;
-    behavior: string;
-    sourceQuote: string;
-  }) => ipcRenderer.invoke('noema:add-social-interaction-adjustment', input),
-  updateInteractionAdjustment: (input: {
-    id: string;
-    scope: 'conversation' | 'coding' | 'both';
-    situation: string;
-    behavior: string;
-  }) => ipcRenderer.invoke('noema:update-interaction-adjustment', input),
-  withdrawInteractionAdjustment: (id: string) =>
-    ipcRenderer.invoke('noema:withdraw-interaction-adjustment', id),
   getDiagnosticsRecent: (
     limit = 20,
   ): Promise<{
@@ -272,6 +350,7 @@ const bridge = {
   previewDiagnosticsExport: (input: {
     executionId?: string | null;
     taskId?: string | null;
+    includeTestContext?: boolean;
   }): Promise<NoemaDiagnosticExportPreview> =>
     ipcRenderer.invoke('noema:diagnostics-export-preview', input),
   saveDiagnosticsExport: (
@@ -282,13 +361,13 @@ const bridge = {
     fileName?: string;
     errorCode?: string;
   }> => ipcRenderer.invoke('noema:diagnostics-export-save', previewId),
-  onRootEvent: (listener: (event: NoemaRootEvent) => void) => {
+  onModelStateChanged: (listener: (event: NoemaModelStateEvent) => void) => {
     const handler = (
       _event: Electron.IpcRendererEvent,
-      payload: NoemaRootEvent,
+      payload: NoemaModelStateEvent,
     ) => listener(payload);
-    ipcRenderer.on('noema:root-event', handler);
-    return () => ipcRenderer.removeListener('noema:root-event', handler);
+    ipcRenderer.on('noema:model-state-event', handler);
+    return () => ipcRenderer.removeListener('noema:model-state-event', handler);
   },
   onSocialEvent: (listener: (event: NoemaSocialEvent) => void) => {
     const handler = (
@@ -300,23 +379,31 @@ const bridge = {
   },
   markSocialChatReady: (): Promise<boolean> =>
     ipcRenderer.invoke('noema:mark-social-chat-ready'),
-  onQuickCaptureRequested: (
-    listener: (request: NoemaQuickCaptureRequest) => void,
-  ) => {
-    const handler = (
-      _event: Electron.IpcRendererEvent,
-      request: NoemaQuickCaptureRequest,
-    ) => listener(request);
-    ipcRenderer.on('noema:quick-capture-request', handler);
-    return () =>
-      ipcRenderer.removeListener('noema:quick-capture-request', handler);
-  },
-  getQuickCaptureShortcutStatus:
-    (): Promise<NoemaQuickCaptureShortcutStatus | null> =>
-      ipcRenderer.invoke('noema:quick-capture-shortcut-status'),
-  markQuickCaptureReady: () =>
-    ipcRenderer.invoke('noema:mark-quick-capture-ready'),
-  finishQuickCapture: () => ipcRenderer.invoke('noema:finish-quick-capture'),
 };
 
-contextBridge.exposeInMainWorld('noema', bridge);
+const socialWorkRaceProbeBridge = process.argv.includes(
+  '--noema-social-work-reverse-snapshot-probe',
+)
+  ? {
+      testArmSocialWorkReverseSnapshot: (
+        roomId: string,
+        taskId: string,
+      ): Promise<boolean> =>
+        ipcRenderer.invoke(
+          'noema:test-arm-social-work-reverse-snapshot',
+          roomId,
+          taskId,
+        ),
+      testGetSocialWorkReverseSnapshotStatus: (): Promise<{
+        firstRequested: boolean;
+        firstReturned: boolean;
+        secondReturned: boolean;
+      }> =>
+        ipcRenderer.invoke('noema:test-social-work-reverse-snapshot-status'),
+    }
+  : {};
+
+contextBridge.exposeInMainWorld('noema', {
+  ...bridge,
+  ...socialWorkRaceProbeBridge,
+});

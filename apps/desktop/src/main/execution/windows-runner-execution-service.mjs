@@ -3,6 +3,10 @@ import { realpath as defaultRealpath } from 'node:fs/promises';
 import { compileWindowsCommandPolicy } from './windows-command-policy.mjs';
 import { captureWindowsPathIdentity } from './windows-path-identity.mjs';
 import { createWindowsRunnerCapabilityGrants } from './windows-runner-capability-grants.mjs';
+import {
+  compareWorkspaceIdentities,
+  isWorkspaceIdentity,
+} from '../platform/workspace-identity.mjs';
 
 const TRACE_ID = /^[A-Za-z0-9_.:-]{1,160}$/u;
 const REQUEST_ID = /^[A-Za-z0-9_-]{16,128}$/u;
@@ -66,6 +70,8 @@ export class WindowsRunnerExecutionService {
     toolCallId,
     command,
     workspacePath,
+    expectedWorkspaceIdentity,
+    filesystemMode = 'read-only',
     timeoutMs,
     additionalAccess = [],
     authorizeAdditionalAccess = async () => false,
@@ -82,6 +88,7 @@ export class WindowsRunnerExecutionService {
       !command.trim() ||
       command.length > 8_000 ||
       command.includes('\0') ||
+      !['read-only', 'read-write'].includes(filesystemMode) ||
       !Number.isSafeInteger(timeoutMs) ||
       timeoutMs < 1 ||
       timeoutMs > 180_000 ||
@@ -94,6 +101,14 @@ export class WindowsRunnerExecutionService {
     }
     if (signal?.aborted) {
       throw executionServiceError('command_aborted', identity, 'not_applied');
+    }
+
+    if (!isWorkspaceIdentity(expectedWorkspaceIdentity)) {
+      return this.#deny(
+        'workspace_identity_unavailable',
+        'workspace',
+        identity,
+      );
     }
 
     this.#emit(identity, 'admission_started', 'started');
@@ -140,6 +155,21 @@ export class WindowsRunnerExecutionService {
     );
     if (!workspace) {
       return this.#deny('path_identity_unavailable', 'path', identity);
+    }
+    const capturedWorkspaceIdentity = {
+      version: expectedWorkspaceIdentity.version,
+      canonicalPath: workspace.path,
+      device: workspace.fileIdentity.volumeSerialNumber,
+      fileIndex: workspace.fileIdentity.fileIndex,
+    };
+    if (
+      !compareWorkspaceIdentities(
+        expectedWorkspaceIdentity,
+        capturedWorkspaceIdentity,
+        'win32',
+      )
+    ) {
+      return this.#deny('workspace_identity_changed', 'workspace', identity);
     }
     const externalAccess = [];
     for (const request of additionalAccess) {
@@ -199,6 +229,7 @@ export class WindowsRunnerExecutionService {
       externalAccess,
       runtimeReadRoots: runtimeRoots,
       cwd: workspace,
+      filesystemMode,
       network: { mode: 'deny' },
     });
     if (!compiled.ok) {

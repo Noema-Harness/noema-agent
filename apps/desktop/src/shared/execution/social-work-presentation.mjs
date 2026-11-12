@@ -216,9 +216,25 @@ export function socialWorkExecutionStepPresentation(step) {
   } else if (step.effectStatus === 'not_applied') {
     effectLabel = '工具调用未执行该次写入';
   }
+  const toolLabel =
+    typeof step.toolName === 'string' &&
+    /^[A-Za-z][A-Za-z0-9_.:-]{0,63}$/u.test(step.toolName)
+      ? step.toolName
+      : '';
+  const startedAt = Date.parse(step.startedAt ?? '');
+  const completedAt = Date.parse(step.completedAt ?? '');
+  const durationMs = completedAt - startedAt;
+  const durationLabel =
+    Number.isFinite(durationMs) && durationMs >= 0 && durationMs <= 86_400_000
+      ? durationMs < 1_000
+        ? `${durationMs}ms`
+        : `${(durationMs / 1_000).toFixed(durationMs < 10_000 ? 1 : 0)}s`
+      : '';
   return {
     categoryLabel: categoryLabels[step.category] ?? '其他操作',
     statusLabel: statusLabels[step.status] ?? '状态未知',
     effectLabel,
+    toolLabel,
+    durationLabel,
   };
 }

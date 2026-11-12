@@ -1,39 +1,18 @@
+import { randomUUID } from 'node:crypto';
 import { isMainFrameIpcEvent } from '../platform/window-security.mjs';
 
 const CHANNELS = Object.freeze({
-  state: 'noema:root-state',
   models: 'noema:refresh-models',
   configureProvider: 'noema:configure-provider',
   configureWebSearch: 'noema:configure-web-search',
   clearWebSearch: 'noema:clear-web-search',
   selectModel: 'noema:select-model',
-  send: 'noema:send-message',
-  saveCapture: 'noema:save-capture',
-  updateCapture: 'noema:update-capture',
-  deleteCapture: 'noema:delete-capture',
-  discussCapture: 'noema:discuss-capture',
-  retry: 'noema:retry-turn',
-  stop: 'noema:stop-turn',
-  chooseWorkspace: 'noema:choose-workspace',
-  clearWorkspace: 'noema:clear-workspace',
-  stopWorker: 'noema:stop-background-task',
-  resumeWorker: 'noema:resume-background-task',
-  retryWorkerEvent: 'noema:retry-worker-event',
-  listCodexThreads: 'noema:list-codex-threads',
-  previewCodexThread: 'noema:preview-codex-thread',
-  importCodexThread: 'noema:import-codex-thread',
-  removeContextImport: 'noema:remove-context-import',
-  addSocialInteractionAdjustment: 'noema:add-social-interaction-adjustment',
-  updateInteractionAdjustment: 'noema:update-interaction-adjustment',
-  withdrawInteractionAdjustment: 'noema:withdraw-interaction-adjustment',
-  quickCaptureRequest: 'noema:quick-capture-request',
-  quickCaptureShortcutStatus: 'noema:quick-capture-shortcut-status',
-  markQuickCaptureReady: 'noema:mark-quick-capture-ready',
   markSocialChatReady: 'noema:mark-social-chat-ready',
-  finishQuickCapture: 'noema:finish-quick-capture',
-  event: 'noema:root-event',
+  modelStateEvent: 'noema:model-state-event',
   socialEvent: 'noema:social-event',
   socialState: 'noema:social-state',
+  executionPermissions: 'noema:execution-permissions',
+  setExecutionPermissions: 'noema:set-execution-permissions',
   personalMemories: 'noema:personal-memories',
   personalMemoryEnabled: 'noema:personal-memory-enabled',
   addPersonalMemory: 'noema:add-personal-memory',
@@ -44,11 +23,23 @@ const CHANNELS = Object.freeze({
   addUserFollowup: 'noema:add-user-followup',
   updateUserFollowup: 'noema:update-user-followup',
   cancelUserFollowup: 'noema:cancel-user-followup',
-  firstMeetingProgress: 'noema:first-meeting-progress',
   socialRoom: 'noema:social-room',
+  socialConversationThreads: 'noema:social-conversation-threads',
+  socialContinuityState: 'noema:social-continuity-state',
+  socialContinuityBranches: 'noema:social-continuity-branches',
+  socialContinuityCreateBranch: 'noema:social-continuity-create-branch',
+  socialContinuitySwitchBranch: 'noema:social-continuity-switch-branch',
+  socialContinuityEditBranch: 'noema:social-continuity-edit-branch',
+  socialRewindMessage: 'noema:social-rewind-message',
+  testArmSocialWorkReverseSnapshot:
+    'noema:test-arm-social-work-reverse-snapshot',
+  testSocialWorkReverseSnapshotStatus:
+    'noema:test-social-work-reverse-snapshot-status',
   socialSearchMessages: 'noema:social-search-messages',
+  socialSearchRoomMessages: 'noema:social-search-room-messages',
   socialCreateGroup: 'noema:social-create-group',
   socialCreateProject: 'noema:social-create-project',
+  socialChooseProjectWorkspace: 'noema:social-choose-project-workspace',
   socialProjectSession: 'noema:social-project-session',
   socialProjectPlan: 'noema:social-project-plan',
   socialProjectPlanEvidence: 'noema:social-project-plan-evidence',
@@ -67,13 +58,25 @@ const CHANNELS = Object.freeze({
   socialUpdateAgentProfile: 'noema:social-update-agent-profile',
   socialAgentProjectWork: 'noema:social-agent-project-work',
   socialAgentArchive: 'noema:social-agent-archive',
+  socialResetChat: 'noema:social-reset-chat',
   socialSend: 'noema:social-send',
   socialForward: 'noema:social-forward',
   socialStop: 'noema:social-stop',
   socialRetry: 'noema:social-retry',
   socialWorkStop: 'noema:social-work-stop',
   socialWorkResume: 'noema:social-work-resume',
+  socialWorkContinue: 'noema:social-work-continue',
+  socialWorkUsage: 'noema:social-work-usage',
+  socialWorkStepDetail: 'noema:social-work-step-detail',
+  socialWorkTouchedFiles: 'noema:social-work-touched-files',
   socialWorkFileChange: 'noema:social-work-file-change',
+  socialWorkExport: 'noema:social-work-export',
+  socialExport: 'noema:social-export',
+  workspaceFiles: 'noema:workspace-files',
+  workspaceFile: 'noema:workspace-file',
+  workspaceSearch: 'noema:workspace-search',
+  workspaceImage: 'noema:workspace-image',
+  workspaceOpenFolder: 'noema:workspace-open-folder',
   socialWorkGitReview: 'noema:social-work-git-review',
   socialWorkCaseEligible: 'noema:social-work-case-eligible',
   socialPracticeWithdraw: 'noema:social-practice-withdraw',
@@ -88,8 +91,8 @@ const CHANNELS = Object.freeze({
 });
 
 /**
- * Registers only the narrow root-conversation operations that the renderer needs.
- * @param {{ipcMain: {handle: Function, removeHandler: Function}, rootAgent: object, socialChatService?:object, socialProjectStore?:object, socialWorkService?:object, diagnosticsQueryService?:object, getDiagnosticsDatabaseHealth?:()=>string, openUserDataDirectory?:()=>Promise<object>,saveDiagnosticsExport?:(previewId:string)=>Promise<object>, getWindowsRunnerCapability?:()=>object,setupWindowsRunner?:()=>Promise<object>, isTrustedSender: (sender: object) => boolean,chooseWorkspace?:()=>Promise<string|null>,sendMessage?:(text:string)=>Promise<object>|object,retryTurn?:(turnId:string,model:string|null)=>Promise<object>|object,finishQuickCapture?:()=>boolean,getQuickCaptureShortcutStatus?:()=>object|null,markQuickCaptureReady?:()=>boolean,markSocialChatReady?:()=>boolean,recordAuthorization?:(capability:string,decision:'requested'|'granted'|'denied'|'revoked',reason?:string)=>void,recordSocialReadiness?:(readiness:{available:boolean,reason:string|null})=>void}} options
+ * Registers shared provider/model operations and Social-owned operations.
+ * @param {{ipcMain: {handle: Function, removeHandler: Function}, rootAgent: object, socialChatService?:object, socialProjectStore?:object, socialWorkService?:object, getWorkTaskUsage?:(taskId:string)=>{requests:number,usageReportedRequests:number,inputTokens:number|null,outputTokens:number|null,totalTokens:number|null,reasoningTokens:number|null,models:string[]}|null, getWorkTaskStepDetail?:(taskId:string,stepId:string)=>object|null, getWorkTaskTouchedFiles?:(taskId:string)=>Array<{path:string,toolName:string,ordinal:number}>, exportWorkTicket?:(taskId:string)=>Promise<{saved:boolean,path?:string,canceled?:boolean,errorCode?:string}>, exportConversation?:(roomId:string)=>Promise<{saved:boolean,path?:string,canceled?:boolean,errorCode?:string}>, workspaceFileService?:{list:(input:{workspacePath:string,relativePath?:string})=>Promise<object>,read:(input:{workspacePath:string,relativePath:string})=>Promise<object>,search:(input:{workspacePath:string,query:string})=>Promise<object>,readImage:(input:{workspacePath:string,relativePath:string})=>Promise<object>,openFolder:(input:{workspacePath:string})=>Promise<object>}|null, chooseProjectWorkspace?:()=>Promise<{workspacePath:string,identity:object}|null>, resetChatSession?:()=>Promise<boolean>|boolean, getExecutionPermissions?:()=>{externalFiles:'read-only'|'ask'|'allow'}, setExecutionPermissions?:(permissions:{externalFiles?:'read-only'|'ask'|'allow'})=>{externalFiles:'read-only'|'ask'|'allow'}, diagnosticsQueryService?:object, getDiagnosticsDatabaseHealth?:()=>string, openUserDataDirectory?:()=>Promise<object>,saveDiagnosticsExport?:(previewId:string)=>Promise<object>, getWindowsRunnerCapability?:()=>object,setupWindowsRunner?:()=>Promise<object>, shouldInjectDiagnosticsReadFailures?:()=>boolean, shouldInjectSocialWorkReverseSnapshot?:()=>boolean, isTrustedSender: (sender: object) => boolean,markSocialChatReady?:()=>boolean,recordSocialReadiness?:(readiness:{available:boolean,reasonCode:string|null,reason:string|null})=>void,recordDiagnosticEvent?:(event:Record<string,unknown>)=>boolean|void}} options
  */
 export function registerRootIpc({
   ipcMain,
@@ -97,6 +100,22 @@ export function registerRootIpc({
   socialChatService = null,
   socialProjectStore = null,
   socialWorkService = null,
+  getWorkTaskUsage = () => null,
+  getWorkTaskStepDetail = () => null,
+  getWorkTaskTouchedFiles = () => [],
+  exportWorkTicket = async () => ({
+    saved: false,
+    errorCode: 'unavailable',
+  }),
+  exportConversation = async () => ({
+    saved: false,
+    errorCode: 'unavailable',
+  }),
+  workspaceFileService = null,
+  chooseProjectWorkspace = async () => null,
+  resetChatSession = null,
+  getExecutionPermissions = () => ({ externalFiles: 'ask' }),
+  setExecutionPermissions = () => ({ externalFiles: 'ask' }),
   diagnosticsQueryService = null,
   getDiagnosticsDatabaseHealth = () => 'unavailable',
   openUserDataDirectory = async () => ({
@@ -108,15 +127,9 @@ export function registerRootIpc({
     errorCode: 'unavailable',
   }),
   isTrustedSender,
-  chooseWorkspace = async () => null,
-  sendMessage = (text) => rootAgent.sendMessage({ text }),
-  retryTurn = (turnId, model) => rootAgent.retryTurn({ turnId, model }),
-  finishQuickCapture = () => false,
-  getQuickCaptureShortcutStatus = () => null,
-  markQuickCaptureReady = () => false,
   markSocialChatReady = () => false,
-  recordAuthorization = () => {},
   recordSocialReadiness = () => {},
+  recordDiagnosticEvent = () => false,
   getWindowsRunnerCapability = () => ({
     platform: 'not_applicable',
     supported: false,
@@ -125,6 +138,7 @@ export function registerRootIpc({
     reasonCode: null,
     backendId: null,
     backendVersion: null,
+    policyVersion: null,
     protocolVersion: null,
     setupStatus: 'not_applicable',
   }),
@@ -133,7 +147,10 @@ export function registerRootIpc({
     canceled: false,
     reasonCode: 'runner_unavailable',
   }),
+  shouldInjectDiagnosticsReadFailures = () => false,
+  shouldInjectSocialWorkReverseSnapshot = () => false,
 }) {
+  let socialWorkReverseSnapshotProbe = null;
   const register = (channel, handler) => {
     ipcMain.handle(channel, async (event, ...args) => {
       if (!isTrustedSender(event.sender) || !isMainFrameIpcEvent(event))
@@ -142,15 +159,81 @@ export function registerRootIpc({
     });
   };
 
-  register(CHANNELS.state, () => rootAgent.getUiState());
+  const recordPersonalMemoryIpc = (operation, callback) => {
+    const executionId = randomUUID();
+    try {
+      const result = callback();
+      try {
+        recordDiagnosticEvent({
+          executionId,
+          module: 'social.memory',
+          operation: `settings.${operation}`,
+          status: 'completed',
+        });
+      } catch {
+        // Personal memory behavior does not depend on diagnostics availability.
+      }
+      return result;
+    } catch (error) {
+      try {
+        recordDiagnosticEvent({
+          executionId,
+          module: 'social.memory',
+          operation: `settings.${operation}`,
+          status: 'failed',
+          errorCode: 'personal_memory_operation_failed',
+        });
+      } catch {
+        // Keep the original store error visible to the trusted renderer.
+      }
+      throw error;
+    }
+  };
+
+  const recordUserFollowupIpc = (operation, callback) => {
+    const executionId = randomUUID();
+    try {
+      const result = callback();
+      try {
+        recordDiagnosticEvent({
+          executionId,
+          module: 'social.followup',
+          operation: `settings.${operation}`,
+          status:
+            operation === 'cancel' && result === false
+              ? 'no_effect'
+              : 'completed',
+        });
+      } catch {
+        // Follow-up data changes do not depend on diagnostics availability.
+      }
+      return result;
+    } catch (error) {
+      try {
+        recordDiagnosticEvent({
+          executionId,
+          module: 'social.followup',
+          operation: `settings.${operation}`,
+          status: 'failed',
+          errorCode: 'user_followup_operation_failed',
+        });
+      } catch {
+        // Preserve the original store error for the trusted renderer.
+      }
+      throw error;
+    }
+  };
+
   register(CHANNELS.windowsRunnerCapability, () =>
     getWindowsRunnerCapability(),
   );
   register(CHANNELS.setupWindowsRunner, () => setupWindowsRunner());
+  register(CHANNELS.executionPermissions, () => getExecutionPermissions());
+  register(CHANNELS.setExecutionPermissions, (permissions) =>
+    setExecutionPermissions(permissions),
+  );
+
   if (socialChatService) {
-    register(CHANNELS.firstMeetingProgress, (action) =>
-      socialChatService.store.advanceFirstMeeting(action),
-    );
     register(CHANNELS.socialState, async () => {
       const state = await socialChatService.getUiState();
       recordSocialReadiness(state.projectWork);
@@ -161,47 +244,145 @@ export function registerRootIpc({
       };
     });
     register(CHANNELS.personalMemories, () =>
-      socialChatService.store.personalMemories.list(),
+      recordPersonalMemoryIpc('list', () =>
+        socialChatService.store.personalMemories.list(),
+      ),
     );
     register(CHANNELS.personalMemoryEnabled, (enabled) =>
-      socialChatService.store.personalMemories.setEnabled(enabled),
+      recordPersonalMemoryIpc('enabled', () =>
+        socialChatService.store.personalMemories.setEnabled(enabled),
+      ),
     );
     register(CHANNELS.addPersonalMemory, (content) =>
-      socialChatService.store.personalMemories.add({ content }),
+      recordPersonalMemoryIpc('add', () =>
+        socialChatService.store.personalMemories.add({ content }),
+      ),
     );
     register(CHANNELS.updatePersonalMemory, ({ id, content }) =>
-      socialChatService.store.personalMemories.update({ id, content }),
+      recordPersonalMemoryIpc('update', () =>
+        socialChatService.store.personalMemories.update({ id, content }),
+      ),
     );
     register(CHANNELS.deletePersonalMemory, (id) =>
-      socialChatService.store.personalMemories.delete(id),
+      recordPersonalMemoryIpc('delete', () =>
+        socialChatService.store.personalMemories.delete(id),
+      ),
     );
     register(CHANNELS.userFollowups, () =>
-      socialChatService.store.userFollowups.list(),
+      recordUserFollowupIpc('list', () =>
+        socialChatService.store.userFollowups.list(),
+      ),
     );
     register(CHANNELS.userFollowupsEnabled, (enabled) => {
-      const result = socialChatService.store.userFollowups.setEnabled(enabled);
-      if (result) socialChatService.scheduleUserFollowups();
-      return result;
+      return recordUserFollowupIpc('enabled', () => {
+        const result =
+          socialChatService.store.userFollowups.setEnabled(enabled);
+        if (result) socialChatService.scheduleUserFollowups();
+        return result;
+      });
     });
     register(CHANNELS.addUserFollowup, (input) => {
-      const item = socialChatService.store.userFollowups.add(input);
-      socialChatService.scheduleUserFollowups();
-      return item;
+      return recordUserFollowupIpc('add', () => {
+        const item = socialChatService.store.userFollowups.add(input);
+        socialChatService.scheduleUserFollowups();
+        return item;
+      });
     });
     register(CHANNELS.updateUserFollowup, (input) => {
-      const item = socialChatService.store.userFollowups.update(input);
-      socialChatService.scheduleUserFollowups();
-      return item;
+      return recordUserFollowupIpc('update', () => {
+        const item = socialChatService.store.userFollowups.update(input);
+        socialChatService.scheduleUserFollowups();
+        return item;
+      });
     });
     register(CHANNELS.cancelUserFollowup, (id) =>
-      socialChatService.store.userFollowups.cancel(id),
+      recordUserFollowupIpc('cancel', () =>
+        socialChatService.store.userFollowups.cancel(id),
+      ),
     );
-    register(CHANNELS.socialRoom, (roomId) => ({
-      ...socialChatService.store.getRoomSnapshot(roomId),
-      projectReviews: socialProjectStore?.listReviewsForRoom(roomId) ?? [],
-    }));
+    register(CHANNELS.testArmSocialWorkReverseSnapshot, (roomId, taskId) => {
+      if (
+        !shouldInjectSocialWorkReverseSnapshot() ||
+        typeof roomId !== 'string' ||
+        typeof taskId !== 'string'
+      )
+        return false;
+      socialWorkReverseSnapshotProbe = {
+        roomId,
+        taskId,
+        firstRequested: false,
+        firstReturned: false,
+        secondReturned: false,
+      };
+      return true;
+    });
+    register(CHANNELS.testSocialWorkReverseSnapshotStatus, () => {
+      if (!shouldInjectSocialWorkReverseSnapshot())
+        return {
+          firstRequested: false,
+          firstReturned: false,
+          secondReturned: false,
+        };
+      return {
+        firstRequested: socialWorkReverseSnapshotProbe?.firstRequested === true,
+        firstReturned: socialWorkReverseSnapshotProbe?.firstReturned === true,
+        secondReturned: socialWorkReverseSnapshotProbe?.secondReturned === true,
+      };
+    });
+    register(CHANNELS.socialRoom, async (roomId, options = { limit: 200 }) => {
+      const snapshot = {
+        ...socialChatService.store.getRoomSnapshot(roomId, options),
+        projectReviews: socialProjectStore?.listReviewsForRoom(roomId) ?? [],
+      };
+      const probe = socialWorkReverseSnapshotProbe;
+      if (
+        !shouldInjectSocialWorkReverseSnapshot() ||
+        !probe ||
+        probe.roomId !== roomId ||
+        !snapshot.workTasks?.some((task) => task.id === probe.taskId)
+      )
+        return snapshot;
+      if (!probe.firstRequested) {
+        probe.firstRequested = true;
+        const stale = structuredClone(snapshot);
+        const task = stale.workTasks.find(
+          (candidate) => candidate.id === probe.taskId,
+        );
+        task.status = 'running';
+        task.phase = 'model_request';
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        probe.firstReturned = true;
+        return stale;
+      }
+      if (!probe.secondReturned) probe.secondReturned = true;
+      return snapshot;
+    });
+    register(CHANNELS.socialConversationThreads, (roomId) =>
+      socialChatService.store.listConversationThreads(roomId),
+    );
+    register(CHANNELS.socialContinuityState, (roomId) =>
+      socialChatService.store.continuityGetState(roomId),
+    );
+    register(CHANNELS.socialContinuityBranches, (roomId) =>
+      socialChatService.store.continuityListBranches(roomId),
+    );
+    register(CHANNELS.socialContinuityCreateBranch, (input) =>
+      socialChatService.store.continuityCreateBranch(input),
+    );
+    register(CHANNELS.socialContinuitySwitchBranch, (input) =>
+      socialChatService.store.continuitySwitchBranch(input),
+    );
+    register(CHANNELS.socialContinuityEditBranch, (input) =>
+      socialChatService.store.continuityCreateEditBranch(input),
+    );
+    register(CHANNELS.socialRewindMessage, (roomId, messageId) =>
+      socialChatService.store.rewindConversationToMessage(roomId, messageId),
+    );
     register(CHANNELS.socialSearchMessages, (query) =>
       socialChatService.store.searchMessages(query),
+    );
+    register(CHANNELS.socialSearchRoomMessages, (roomId, query) =>
+      socialChatService.store.searchRoomMessages(roomId, query),
     );
     register(CHANNELS.socialCreateGroup, (input) => {
       const room = socialChatService.store.createGroup(input);
@@ -211,8 +392,18 @@ export function registerRootIpc({
       });
       return room;
     });
+    register(CHANNELS.socialChooseProjectWorkspace, () =>
+      chooseProjectWorkspace(),
+    );
     register(CHANNELS.socialCreateProject, (input) => {
       if (!socialProjectStore) throw new Error('项目存储尚未初始化。');
+      if (
+        typeof input?.workspacePath !== 'string' ||
+        !input.workspacePath.trim() ||
+        input?.workspaceIdentity == null
+      ) {
+        throw new Error('请选择项目工作文件夹。');
+      }
       const project = socialProjectStore.createProject(input);
       socialChatService.emit({
         type: 'chat-room-created',
@@ -360,6 +551,10 @@ export function registerRootIpc({
     register(CHANNELS.socialAgentArchive, (agentId, archived) =>
       socialChatService.setAgentArchived(agentId, archived),
     );
+    register(CHANNELS.socialResetChat, async () => {
+      if (!resetChatSession) throw new Error('会话重置尚未就绪。');
+      return resetChatSession();
+    });
     register(CHANNELS.socialSend, (input) =>
       socialChatService.sendMessage(input),
     );
@@ -373,12 +568,24 @@ export function registerRootIpc({
       socialChatService.retryReply(messageId),
     );
   }
+  register(CHANNELS.socialWorkUsage, (taskId) => getWorkTaskUsage(taskId));
+  register(CHANNELS.socialWorkStepDetail, (taskId, stepId) =>
+    getWorkTaskStepDetail(taskId, stepId),
+  );
+  register(CHANNELS.socialWorkTouchedFiles, (taskId) =>
+    getWorkTaskTouchedFiles(taskId),
+  );
+  register(CHANNELS.socialWorkExport, (taskId) => exportWorkTicket(taskId));
+  register(CHANNELS.socialExport, (roomId) => exportConversation(roomId));
   if (socialWorkService) {
     register(CHANNELS.socialWorkStop, (taskId) =>
       socialWorkService.stopTask(taskId),
     );
     register(CHANNELS.socialWorkResume, (taskId) =>
       socialWorkService.resumeTask(taskId),
+    );
+    register(CHANNELS.socialWorkContinue, (taskId) =>
+      socialWorkService.continueTicket(taskId),
     );
     register(CHANNELS.socialWorkFileChange, (input) =>
       socialWorkService.reviewFileChange(input),
@@ -393,17 +600,47 @@ export function registerRootIpc({
       socialWorkService.revokePracticeCandidate(taskId),
     );
   }
-  if (diagnosticsQueryService) {
-    register(CHANNELS.diagnosticsRecent, (limit) =>
-      diagnosticsQueryService.listRecent(limit),
+  if (workspaceFileService) {
+    register(CHANNELS.workspaceFiles, (input) =>
+      workspaceFileService.list(input),
     );
+    register(CHANNELS.workspaceFile, (input) =>
+      workspaceFileService.read(input),
+    );
+    register(CHANNELS.workspaceSearch, (input) =>
+      workspaceFileService.search(input),
+    );
+    register(CHANNELS.workspaceImage, (input) =>
+      workspaceFileService.readImage(input),
+    );
+    register(CHANNELS.workspaceOpenFolder, (input) =>
+      workspaceFileService.openFolder(input),
+    );
+  }
+  if (diagnosticsQueryService) {
+    let injectedRecentReadFailure = false;
+    let injectedTimelineReadFailure = false;
+    register(CHANNELS.diagnosticsRecent, (limit) => {
+      if (shouldInjectDiagnosticsReadFailures() && !injectedRecentReadFailure) {
+        injectedRecentReadFailure = true;
+        throw new Error('e2e_recent_read_failure');
+      }
+      return diagnosticsQueryService.listRecent(limit);
+    });
     register(CHANNELS.diagnosticsDatabaseHealth, () =>
       getDiagnosticsDatabaseHealth(),
     );
     register(CHANNELS.openUserDataDirectory, () => openUserDataDirectory());
-    register(CHANNELS.diagnosticsTimeline, (input) =>
-      diagnosticsQueryService.getTimeline(input),
-    );
+    register(CHANNELS.diagnosticsTimeline, (input) => {
+      if (
+        shouldInjectDiagnosticsReadFailures() &&
+        !injectedTimelineReadFailure
+      ) {
+        injectedTimelineReadFailure = true;
+        throw new Error('e2e_timeline_read_failure');
+      }
+      return diagnosticsQueryService.getTimeline(input);
+    });
     register(CHANNELS.diagnosticsExportPreview, (input) =>
       diagnosticsQueryService.getExportPreview(input),
     );
@@ -420,112 +657,15 @@ export function registerRootIpc({
   );
   register(CHANNELS.clearWebSearch, () => rootAgent.clearWebSearch());
   register(CHANNELS.selectModel, (model) => rootAgent.setModel(model));
-  register(CHANNELS.send, (text) => sendMessage(text));
-  register(CHANNELS.saveCapture, (text) => rootAgent.saveCapture(text));
-  register(CHANNELS.updateCapture, (id, text) =>
-    rootAgent.updateCapture(id, text),
-  );
-  register(CHANNELS.deleteCapture, (id) => rootAgent.deleteCapture(id));
-  register(CHANNELS.discussCapture, (id) => rootAgent.discussCapture(id));
-  register(CHANNELS.retry, (turnId, model) => retryTurn(turnId, model));
-  register(CHANNELS.stop, (turnId) => rootAgent.stopTurn(turnId));
-  register(CHANNELS.chooseWorkspace, async () => {
-    const directory = await chooseWorkspace();
-    return directory ? rootAgent.setWorkspaceDirectory(directory) : null;
-  });
-  register(CHANNELS.stopWorker, (taskId) =>
-    rootAgent.stopBackgroundTask(taskId),
-  );
-  register(CHANNELS.resumeWorker, (taskId) =>
-    rootAgent.resumeBackgroundTask(taskId),
-  );
-  register(CHANNELS.retryWorkerEvent, (taskId) =>
-    rootAgent.retryBackgroundEvent(taskId),
-  );
-  register(CHANNELS.clearWorkspace, () => {
-    try {
-      const result = rootAgent.clearWorkspaceDirectory();
-      recordAuthorization('legacy_workspace_access', 'revoked');
-      return result;
-    } catch (error) {
-      recordAuthorization(
-        'legacy_workspace_access',
-        'denied',
-        'operation_blocked',
-      );
-      throw error;
-    }
-  });
-  register(CHANNELS.listCodexThreads, (cursor) =>
-    rootAgent.listCodexThreads(cursor ?? null),
-  );
-  register(CHANNELS.previewCodexThread, (threadId) =>
-    rootAgent.previewCodexThread(threadId),
-  );
-  register(CHANNELS.importCodexThread, (input) =>
-    rootAgent.importCodexThread(input),
-  );
-  register(CHANNELS.removeContextImport, () => {
-    const result = rootAgent.removeContextImport();
-    if (result) recordAuthorization('imported_context_transmission', 'revoked');
-    return result;
-  });
-  register(CHANNELS.addSocialInteractionAdjustment, (input) =>
-    rootAgent.addSocialInteractionAdjustment(input),
-  );
-  register(CHANNELS.updateInteractionAdjustment, (input) =>
-    rootAgent.updateInteractionAdjustment(input),
-  );
-  register(CHANNELS.withdrawInteractionAdjustment, (id) =>
-    rootAgent.withdrawInteractionAdjustment(id),
-  );
-  register(CHANNELS.finishQuickCapture, () => finishQuickCapture());
-  register(CHANNELS.quickCaptureShortcutStatus, () =>
-    getQuickCaptureShortcutStatus(),
-  );
-  register(CHANNELS.markQuickCaptureReady, () => markQuickCaptureReady());
   register(CHANNELS.markSocialChatReady, () => markSocialChatReady());
 
   return () => {
     for (const channel of Object.values(CHANNELS)) {
-      if (
-        channel !== CHANNELS.event &&
-        channel !== CHANNELS.quickCaptureRequest
-      ) {
+      if (channel !== CHANNELS.modelStateEvent) {
         ipcMain.removeHandler(channel);
       }
     }
   };
-}
-
-/**
- * Requires explicit transmission consent before a selected external snapshot
- * can enter any configured model-provider root turn.
- * @param {object} rootAgent
- * @param {(snapshot:{title:string})=>Promise<boolean>} confirmTransmission
- */
-export function createImportAwareAction(rootAgent, confirmTransmission) {
-  return async (action) => {
-    const imported = rootAgent.getUnconsentedContextImport();
-    if (imported) {
-      if (!(await confirmTransmission(imported))) return { canceled: true };
-      rootAgent.consentToContextImportTransmission();
-    }
-    return action();
-  };
-}
-
-/**
- * @param {object} rootAgent
- * @param {(snapshot:{title:string})=>Promise<boolean>} confirmTransmission
- * @returns {(text:string)=>Promise<object>|object}
- */
-export function createImportAwareSendMessage(rootAgent, confirmTransmission) {
-  const runWithConsent = createImportAwareAction(
-    rootAgent,
-    confirmTransmission,
-  );
-  return (text) => runWithConsent(() => rootAgent.sendMessage({ text }));
 }
 
 export { CHANNELS };

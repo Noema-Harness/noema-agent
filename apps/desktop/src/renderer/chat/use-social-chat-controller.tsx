@@ -1,3 +1,4 @@
+import { NoemaButton } from '../ui/noema-button';
 import {
   type FormEvent,
   type KeyboardEvent,
@@ -41,8 +42,39 @@ import type {
   NoemaSocialState,
   NoemaSocialWorkTask,
   NoemaSocialWorkGitReview,
+  NoemaExecutionPermissions,
+  SocialContinuityState,
 } from '../../shared/contracts/noema-bridge.d.ts';
 import { Icon, AgentMark } from './presentation';
+
+function socialErrorMessage(error: unknown, fallback: string) {
+  const message =
+    error instanceof Error && error.message.trim() ? error.message : fallback;
+  return (
+    message
+      .replace(/^Error invoking remote method '[^']+':\s*(?:Error:\s*)?/u, '')
+      .trim() || fallback
+  );
+}
+
+function scrollMessageIntoView(
+  scroller: HTMLElement | null,
+  target: HTMLElement | null | undefined,
+) {
+  if (!scroller || !target || !scroller.contains(target)) return;
+  const scrollerRect = scroller.getBoundingClientRect();
+  const targetRect = target.getBoundingClientRect();
+  const targetTop = targetRect.top - scrollerRect.top + scroller.scrollTop;
+  const preferredOffset = Math.max(
+    24,
+    (scroller.clientHeight - targetRect.height) * 0.4,
+  );
+  scroller.scrollTo({
+    top: Math.max(0, targetTop - preferredOffset),
+    behavior: 'smooth',
+  });
+}
+
 type QueuedMessage = {
   id: string;
   roomId: string;
@@ -59,10 +91,10 @@ type ProjectSessionsState = {
 export function useSocialChatController() {
   const [state, setState] = useState<NoemaSocialState | null>(null);
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
-  const [workspaceTaskMode, setWorkspaceTaskMode] = useState(false);
-  useEffect(() => {
-    setWorkspaceTaskMode(false);
-  }, [activeRoomId]);
+  const activeRoomIdRef = useRef(activeRoomId);
+  activeRoomIdRef.current = activeRoomId;
+  const socialStateRequestSequenceRef = useRef(0);
+  const socialStateRef = useRef<NoemaSocialState | null>(null);
   const [projectWorkspaceId, setProjectWorkspaceId] = useState<string | null>(
     null,
   );
@@ -77,7 +109,14 @@ export function useSocialChatController() {
     return window.noema.onWindowStateChanged?.(setWindowMaximized);
   }, []);
   const [roomState, setRoomState] = useState<NoemaSocialRoomState | null>(null);
+  const [continuity, setContinuity] = useState<SocialContinuityState | null>(
+    null,
+  );
+  const [historyPageLoading, setHistoryPageLoading] = useState(false);
+  const [historyPageError, setHistoryPageError] = useState('');
   const [draftsByRoom, setDraftsByRoom] = useState<Record<string, string>>({});
+  const draftsByRoomRef = useRef(draftsByRoom);
+  draftsByRoomRef.current = draftsByRoom;
   const [queuedMessagesByRoom, setQueuedMessagesByRoom] = useState<
     Record<string, QueuedMessage[]>
   >({});
@@ -93,7 +132,6 @@ export function useSocialChatController() {
   const [replyTarget, setReplyTarget] = useState<NoemaSocialReplySource | null>(
     null,
   );
-  const [forwardSelectionActive, setForwardSelectionActive] = useState(false);
   const [selectedForwardMessageIds, setSelectedForwardMessageIds] = useState<
     string[]
   >([]);
@@ -113,26 +151,66 @@ export function useSocialChatController() {
   const globalSearchTriggerRef = useRef<HTMLButtonElement>(null);
   const globalSearchReturnFocusRef = useRef<HTMLElement | null>(null);
   const globalNavigationSequence = useRef(0);
+  const pendingRoomTargetRef = useRef<{
+    roomId: string;
+    messageId: string;
+  } | null>(null);
+  const pendingHistoryPrependRef = useRef<{
+    roomId: string;
+    scrollTop: number;
+    scrollHeight: number;
+  } | null>(null);
   const [conversationSearchQuery, setConversationSearchQuery] = useState('');
+  const [conversationSearchResponse, setConversationSearchResponse] = useState<{
+    roomId: string;
+    query: string;
+    items: NoemaSocialSearchResult[];
+  }>({ roomId: '', query: '', items: [] });
+  const [conversationSearchLoading, setConversationSearchLoading] =
+    useState(false);
+  const [conversationSearchError, setConversationSearchError] = useState('');
+  const [conversationSearchRetry, setConversationSearchRetry] = useState(0);
+  const conversationSearchRequestRef = useRef(0);
   const [
     pendingConversationSearchNavigation,
     setPendingConversationSearchNavigation,
-  ] = useState<{ messageId: string; roomId: string; query: string } | null>(
-    null,
-  );
+  ] = useState<{
+    messageId: string;
+    roomId: string;
+    query: string;
+  } | null>(null);
   const [activeConversationSearchMatch, setActiveConversationSearchMatch] =
-    useState<{ messageId: string; roomId: string; query: string } | null>(null);
+    useState<{
+      messageId: string;
+      roomId: string;
+      query: string;
+    } | null>(null);
   const [notice, setNotice] = useState('');
   const [draftAttachmentsByRoom, setDraftAttachmentsByRoom] = useState<
     Record<string, File[]>
   >({});
+  const draftAttachmentsByRoomRef = useRef(draftAttachmentsByRoom);
+  draftAttachmentsByRoomRef.current = draftAttachmentsByRoom;
   const [busy, setBusy] = useState(false);
+  const [liveTrace, setLiveTrace] = useState<{
+    roomId: string;
+    messageId: string;
+    taskId?: string;
+    events: Array<{
+      type: string;
+      name: string | null;
+      status: string | null;
+      stepId?: string | null;
+      detail?: string | null;
+      output?: string | null;
+    }>;
+    done?: boolean;
+  } | null>(null);
   const [showRoomList, setShowRoomList] = useState(false);
   const navigation = useConversationNavigation();
   const shellRef = useRef<HTMLElement>(null);
   useScrollActivity(shellRef);
   const selectRoom = useCallback((room: NoemaSocialRoom) => {
-    setWorkspaceTaskMode(false);
     setShowJumpToLatest(false);
     setArchivedProjectsOpen(false);
     setActiveProjectSession(null);
@@ -141,7 +219,6 @@ export function useSocialChatController() {
     shouldFollowRef.current = true;
     setActiveRoomId(room.id);
     setReplyTarget(null);
-    setForwardSelectionActive(false);
     setSelectedForwardMessageIds([]);
     setShowRoomList(false);
     setNotice('');
@@ -150,6 +227,10 @@ export function useSocialChatController() {
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
   const [projectTitle, setProjectTitle] = useState('');
   const [projectBrief, setProjectBrief] = useState('');
+  const [newProjectWorkspace, setNewProjectWorkspace] = useState<{
+    workspacePath: string;
+    identity: unknown;
+  } | null>(null);
   const [projectAgentIds, setProjectAgentIds] = useState<string[]>([]);
   const [projectBusy, setProjectBusy] = useState(false);
   const [archivedProjectsOpen, setArchivedProjectsOpen] = useState(false);
@@ -162,6 +243,12 @@ export function useSocialChatController() {
   const [createAgentOpen, setCreateAgentOpen] = useState(false);
   const [editingAgentId, setEditingAgentId] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [executionPermissions, setExecutionPermissionsState] =
+    useState<NoemaExecutionPermissions>({ externalFiles: 'ask' });
+  const [executionPermissionsBusy, setExecutionPermissionsBusy] =
+    useState(false);
+  const [executionPermissionsError, setExecutionPermissionsError] =
+    useState('');
   const [personalMemoryOpen, setPersonalMemoryOpen] = useState(false);
   const [personalMemoryList, setPersonalMemoryList] =
     useState<NoemaPersonalMemoryList | null>(null);
@@ -187,25 +274,25 @@ export function useSocialChatController() {
   const [editingUserFollowupId, setEditingUserFollowupId] = useState<
     string | null
   >(null);
-  const [firstMeetingReplay, setFirstMeetingReplay] = useState(false);
-  const firstMeetingEntryVisible = Boolean(
-    state?.firstMeeting &&
-    state.firstMeeting.stage !== 'complete' &&
-    !state.firstMeeting.enteredAt,
-  );
   const [editProviderConfig, setEditProviderConfig] = useState(false);
   const [groupTitle, setGroupTitle] = useState('');
   const [groupAgentIds, setGroupAgentIds] = useState<string[]>(['noema']);
   const [agentName, setAgentName] = useState('');
+  const [agentNameError, setAgentNameError] = useState('');
   const [agentHeadline, setAgentHeadline] = useState('');
   const [agentDescription, setAgentDescription] = useState('');
-  const [agentProjectWork, setAgentProjectWork] = useState(false);
+  const [agentProjectWork, setAgentProjectWork] = useState(true);
   const [creatingAgent, setCreatingAgent] = useState(false);
   const [updatingAgentProfile, setUpdatingAgentProfile] = useState(false);
   const [updatingAgentId, setUpdatingAgentId] = useState<string | null>(null);
   const [providerBaseUrl, setProviderBaseUrl] = useState('');
   const [providerApiKey, setProviderApiKey] = useState('');
   const [savingProvider, setSavingProvider] = useState(false);
+  const [refreshingProvider, setRefreshingProvider] = useState(false);
+  const [providerFeedback, setProviderFeedback] = useState<{
+    kind: 'error' | 'success';
+    message: string;
+  } | null>(null);
   const [webSearchApiKey, setWebSearchApiKey] = useState('');
   const [savingWebSearch, setSavingWebSearch] = useState(false);
   const [switchingModel, setSwitchingModel] = useState(false);
@@ -226,6 +313,9 @@ export function useSocialChatController() {
   const agentTriggerRef = useRef<HTMLButtonElement>(null);
   const editAgentTriggerRef = useRef<HTMLButtonElement>(null);
   const settingsTriggerRef = useRef<HTMLButtonElement>(null);
+  const agentDialogReturnTargetRef = useRef<'settings' | 'edit'>('settings');
+  const personalMemoryTriggerRef = useRef<HTMLButtonElement>(null);
+  const userFollowupTriggerRef = useRef<HTMLButtonElement>(null);
   const shouldFollowRef = useRef(true);
   const loadSequenceRef = useRef(0);
   const queueDispatchingRef = useRef<string | null>(null);
@@ -327,7 +417,12 @@ export function useSocialChatController() {
     });
   };
   const refreshState = useCallback(async () => {
+    const sequence = ++socialStateRequestSequenceRef.current;
     const next = await window.noema.getSocialState();
+    if (sequence !== socialStateRequestSequenceRef.current) {
+      return socialStateRef.current ?? next;
+    }
+    socialStateRef.current = next;
     setState(next);
     setProviderBaseUrl(next.providerBaseUrl);
     const projectSessionStillActive = activeProjectSession
@@ -359,27 +454,70 @@ export function useSocialChatController() {
     setCreateProjectOpen(false);
     setProjectTitle('');
     setProjectBrief('');
+    setNewProjectWorkspace(null);
     setProjectAgentIds([]);
     requestAnimationFrame(() => projectTriggerRef.current?.focus());
   }, []);
   const closeAgentDialog = useCallback(() => {
-    const returnToEdit = Boolean(editingAgentId);
+    agentDialogReturnTargetRef.current = editingAgentId ? 'edit' : 'settings';
     setCreateAgentOpen(false);
     setEditingAgentId(null);
     setAgentName('');
+    setAgentNameError('');
     setAgentHeadline('');
     setAgentDescription('');
-    setAgentProjectWork(false);
-    requestAnimationFrame(() =>
-      (returnToEdit
-        ? editAgentTriggerRef
-        : settingsTriggerRef
-      ).current?.focus(),
-    );
+    setAgentProjectWork(true);
+    window.setTimeout(() => {
+      const target =
+        agentDialogReturnTargetRef.current === 'edit'
+          ? (editAgentTriggerRef.current ??
+            document.querySelector<HTMLButtonElement>(
+              '[data-agent-edit-trigger]',
+            ))
+          : (settingsTriggerRef.current ??
+            document.querySelector<HTMLButtonElement>(
+              '.sidebar-settings-button',
+            ));
+      target?.focus({ preventScroll: true });
+    }, 0);
   }, [editingAgentId]);
+  useEffect(() => {
+    if (!settingsOpen) return;
+    let active = true;
+    void window.noema
+      .getExecutionPermissions()
+      .then((permissions) => {
+        if (active) setExecutionPermissionsState(permissions);
+      })
+      .catch(() => {
+        if (active) setExecutionPermissionsError('无法读取执行权限。');
+      });
+    return () => {
+      active = false;
+    };
+  }, [settingsOpen]);
+  const handleExecutionPermissionsChange = useCallback(
+    async (patch: Partial<NoemaExecutionPermissions>) => {
+      const previous = executionPermissions;
+      setExecutionPermissionsState({ ...previous, ...patch });
+      setExecutionPermissionsBusy(true);
+      setExecutionPermissionsError('');
+      try {
+        const saved = await window.noema.setExecutionPermissions(patch);
+        setExecutionPermissionsState(saved);
+      } catch {
+        setExecutionPermissionsState(previous);
+        setExecutionPermissionsError('没有保存，请再试一次。');
+      } finally {
+        setExecutionPermissionsBusy(false);
+      }
+    },
+    [executionPermissions],
+  );
   const closeSettingsDialog = useCallback(() => {
     setSettingsOpen(false);
     setEditProviderConfig(false);
+    setProviderFeedback(null);
     requestAnimationFrame(() => settingsTriggerRef.current?.focus());
   }, []);
   const refreshPersonalMemories = useCallback(async () => {
@@ -406,7 +544,7 @@ export function useSocialChatController() {
     setPersonalMemoryDraft('');
     setEditingPersonalMemoryId(null);
     setDeletingPersonalMemoryId(null);
-    requestAnimationFrame(() => settingsTriggerRef.current?.focus());
+    requestAnimationFrame(() => personalMemoryTriggerRef.current?.focus());
   }, []);
   const handlePersonalMemoryEnabled = useCallback(
     async (enabled: boolean) => {
@@ -501,7 +639,7 @@ export function useSocialChatController() {
     setUserFollowupBody('');
     setUserFollowupDueAt('');
     setEditingUserFollowupId(null);
-    requestAnimationFrame(() => settingsTriggerRef.current?.focus());
+    requestAnimationFrame(() => userFollowupTriggerRef.current?.focus());
   }, []);
   const handleUserFollowupsEnabled = useCallback(
     async (enabled: boolean) => {
@@ -587,7 +725,6 @@ export function useSocialChatController() {
   const cancelForward = useCallback(() => {
     const originMessageId = forwardOriginMessageId.current;
     forwardOriginMessageId.current = null;
-    setForwardSelectionActive(false);
     setSelectedForwardMessageIds([]);
     setForwardDialogOpen(false);
     setForwardTargetRoomId('');
@@ -632,17 +769,146 @@ export function useSocialChatController() {
     setConversationSearchQuery('');
     setConversationSearchOpen(true);
   };
-  const loadRoom = useCallback(async (roomId: string) => {
-    const sequence = ++loadSequenceRef.current;
-    try {
-      const next = await window.noema.getSocialRoom(roomId);
-      if (sequence === loadSequenceRef.current) {
-        setRoomState(next);
+  const loadRoom = useCallback(
+    async (
+      roomId: string,
+      options: {
+        limit?: number;
+        beforeSequence?: number;
+        aroundMessageId?: string;
+      } = { limit: 200 },
+    ) => {
+      const sequence = ++loadSequenceRef.current;
+      try {
+        const next = await window.noema.getSocialRoom(roomId, options);
+        if (
+          sequence === loadSequenceRef.current &&
+          activeRoomIdRef.current === roomId
+        ) {
+          if (options.aroundMessageId) shouldFollowRef.current = false;
+          if (
+            options.aroundMessageId &&
+            next.messageWindow?.targetFound === false
+          ) {
+            setPendingScrollMessageId(null);
+            setPendingConversationSearchNavigation(null);
+            setNotice('这条历史来源已移除，无法跳转到原消息。');
+            return;
+          }
+          setRoomState(next);
+          setHistoryPageError('');
+          void window.noema
+            .getSocialContinuityState(roomId)
+            .then((nextContinuity) => {
+              if (
+                sequence === loadSequenceRef.current &&
+                activeRoomIdRef.current === roomId
+              ) {
+                setContinuity(nextContinuity);
+              }
+            })
+            .catch(() => {
+              if (sequence === loadSequenceRef.current) setContinuity(null);
+            });
+        }
+      } catch (error) {
+        if (
+          sequence === loadSequenceRef.current &&
+          activeRoomIdRef.current === roomId
+        ) {
+          if (options.beforeSequence !== undefined) {
+            setHistoryPageError(
+              error instanceof Error
+                ? error.message
+                : '无法读取更早的聊天记录。',
+            );
+          } else {
+            if (options.aroundMessageId)
+              setPendingConversationSearchNavigation(null);
+            setNotice(
+              error instanceof Error ? error.message : '无法打开这个聊天。',
+            );
+          }
+        }
       }
+    },
+    [],
+  );
+  const loadEarlierMessages = useCallback(async () => {
+    const current = roomState;
+    const roomId = activeRoomId;
+    const oldest = current?.messageWindow?.oldestSequence;
+    if (
+      !roomId ||
+      current?.room.id !== roomId ||
+      !current.messageWindow?.hasEarlier ||
+      !oldest ||
+      historyPageLoading
+    )
+      return;
+    setHistoryPageLoading(true);
+    setHistoryPageError('');
+    shouldFollowRef.current = false;
+    const scroller = conversationRef.current;
+    pendingHistoryPrependRef.current = scroller
+      ? {
+          roomId,
+          scrollTop: scroller.scrollTop,
+          scrollHeight: scroller.scrollHeight,
+        }
+      : null;
+    try {
+      const earlier = await window.noema.getSocialRoom(roomId, {
+        limit: 200,
+        beforeSequence: Number(oldest),
+      });
+      if (activeRoomIdRef.current !== roomId) {
+        pendingHistoryPrependRef.current = null;
+        return;
+      }
+      setRoomState((latest) => {
+        if (latest?.room.id !== roomId) return latest;
+        const known = new Set(latest.messages.map((message) => message.id));
+        const messages = [
+          ...earlier.messages.filter((message) => !known.has(message.id)),
+          ...latest.messages,
+        ];
+        return {
+          ...latest,
+          messages,
+          messageWindow: {
+            oldestSequence:
+              earlier.messageWindow?.oldestSequence ??
+              latest.messageWindow?.oldestSequence ??
+              null,
+            newestSequence:
+              latest.messageWindow?.newestSequence ??
+              earlier.messageWindow?.newestSequence ??
+              null,
+            hasEarlier: earlier.messageWindow?.hasEarlier ?? false,
+            hasLater: true,
+            targetFound: earlier.messageWindow?.targetFound ?? null,
+          },
+        };
+      });
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : '无法打开这个聊天。');
+      pendingHistoryPrependRef.current = null;
+      setHistoryPageError(
+        error instanceof Error ? error.message : '无法读取更早的聊天记录。',
+      );
+    } finally {
+      if (activeRoomIdRef.current === roomId) setHistoryPageLoading(false);
     }
-  }, []);
+  }, [activeRoomId, historyPageLoading, roomState]);
+  useLayoutEffect(() => {
+    const anchor = pendingHistoryPrependRef.current;
+    const scroller = conversationRef.current;
+    if (!anchor || !scroller || roomState?.room.id !== anchor.roomId) return;
+    scroller.scrollTop =
+      anchor.scrollTop +
+      Math.max(0, scroller.scrollHeight - anchor.scrollHeight);
+    pendingHistoryPrependRef.current = null;
+  }, [roomState?.messages.length, roomState?.room.id]);
   useEffect(() => {
     void refreshState().catch((error) =>
       setNotice(
@@ -651,7 +917,19 @@ export function useSocialChatController() {
     );
   }, [refreshState]);
   useEffect(() => {
-    if (activeRoomId) void loadRoom(activeRoomId);
+    if (!activeRoomId) return;
+    setHistoryPageLoading(false);
+    setHistoryPageError('');
+    if (pendingHistoryPrependRef.current?.roomId !== activeRoomId)
+      pendingHistoryPrependRef.current = null;
+    const target = pendingRoomTargetRef.current;
+    if (target?.roomId === activeRoomId) {
+      pendingRoomTargetRef.current = null;
+      void loadRoom(activeRoomId, {
+        limit: 200,
+        aroundMessageId: target.messageId,
+      });
+    } else void loadRoom(activeRoomId);
   }, [activeRoomId, loadRoom]);
   useEffect(() => {
     const AudioContextClass = window.AudioContext;
@@ -680,6 +958,68 @@ export function useSocialChatController() {
   useEffect(() => {
     const unsubscribe = window.noema.onSocialEvent(
       (event: NoemaSocialEvent) => {
+        if (event.type === 'chat-trace') {
+          setLiveTrace((current) => {
+            if (
+              current?.roomId !== event.roomId ||
+              current?.messageId !== event.messageId
+            ) {
+              return {
+                roomId: event.roomId,
+                messageId: event.messageId,
+                taskId: event.taskId,
+                events: [event.event],
+                done: false,
+              };
+            }
+            const stepId = event.event.stepId;
+            if (event.event.type === 'tool_result' && stepId) {
+              const index = current.events.findIndex(
+                (item) => item.stepId === stepId,
+              );
+              if (index >= 0) {
+                const events = current.events.slice();
+                events[index] = {
+                  ...events[index],
+                  type: 'tool_result',
+                  status: event.event.status,
+                };
+                return { ...current, events };
+              }
+            }
+            return {
+              ...current,
+              events: [...current.events, event.event].slice(-16),
+            };
+          });
+          return;
+        }
+        if (event.type === 'chat-turn-started') {
+          setLiveTrace((current) => {
+            if (
+              current?.roomId === event.roomId &&
+              current.taskId &&
+              current.events.length > 0
+            ) {
+              return current;
+            }
+            return {
+              roomId: event.roomId,
+              messageId: event.assistantMessageId,
+              events: [],
+            };
+          });
+          return;
+        }
+        if (
+          event.type === 'chat-turn-completed' ||
+          event.type === 'chat-turn-interrupted'
+        ) {
+          setLiveTrace((current) =>
+            current ? { ...current, done: true } : current,
+          );
+          return;
+        }
         if (event.type === 'chat-message-delta') {
           setRoomState((current) => {
             if (!current || current.room.id !== event.roomId) return current;
@@ -693,6 +1033,15 @@ export function useSocialChatController() {
             };
           });
           return;
+        }
+        if (event.type === 'project-work-updated') {
+          const status = event.task.status;
+          setLiveTrace((current) =>
+            current?.taskId === event.task.id &&
+            ['completed', 'failed', 'interrupted'].includes(status)
+              ? { ...current, done: true }
+              : current,
+          );
         }
         void refreshState().catch(() => {});
         if (event.type === 'project-growth-archived') {
@@ -727,22 +1076,36 @@ export function useSocialChatController() {
               setNotice('无法打开回访来源聊天。');
               return;
             }
-            if (target.messageId) setPendingScrollMessageId(target.messageId);
-            selectRoom(target.room);
+            if (target.messageId) {
+              setPendingScrollMessageId(target.messageId);
+              if (activeRoomId === target.room.id) {
+                void loadRoom(target.room.id, {
+                  limit: 200,
+                  aroundMessageId: target.messageId,
+                });
+              } else {
+                pendingRoomTargetRef.current = {
+                  roomId: target.room.id,
+                  messageId: target.messageId,
+                };
+                selectRoom(target.room);
+                shouldFollowRef.current = false;
+              }
+            } else selectRoom(target.room);
           })
           .catch(() => setNotice('无法打开回访来源聊天。'));
       },
     );
     void window.noema.markSocialChatReady().catch(() => {});
     return unsubscribe;
-  }, [selectRoom]);
+  }, [activeRoomId, loadRoom, selectRoom]);
   useEffect(() => {
-    const unsubscribe = window.noema.onRootEvent((event) => {
+    const unsubscribe = window.noema.onModelStateChanged((event) => {
       if (
         event.type === 'models-updated' ||
         event.type === 'model-selected' ||
         event.type === 'provider-configured' ||
-        event.type === 'interaction-adjustments-updated'
+        event.type === 'web-search-configured'
       ) {
         void refreshState().catch(() => {});
       }
@@ -751,7 +1114,6 @@ export function useSocialChatController() {
   }, [refreshState]);
   useEffect(() => {
     const focusSearch = (event: globalThis.KeyboardEvent) => {
-      if (firstMeetingReplay) return;
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
         if (event.defaultPrevented || event.isComposing) return;
         event.preventDefault();
@@ -762,7 +1124,7 @@ export function useSocialChatController() {
     };
     window.addEventListener('keydown', focusSearch);
     return () => window.removeEventListener('keydown', focusSearch);
-  }, [globalSearchOpen, openGlobalSearch, firstMeetingReplay]);
+  }, [globalSearchOpen, openGlobalSearch]);
   useEffect(() => {
     if (!navigation.narrow || !showRoomList) return;
     const dismissNavigation = (event: globalThis.KeyboardEvent) => {
@@ -804,20 +1166,26 @@ export function useSocialChatController() {
       ? userFollowupDialogRef.current
       : personalMemoryOpen
         ? personalMemoryDialogRef.current
-        : dialogRef.current;
-    if (!dialog) return;
+        : ([
+            ...document.querySelectorAll<HTMLElement>(
+              '[role="dialog"][aria-modal="true"]',
+            ),
+          ].find((candidate) => candidate.getClientRects().length > 0) ??
+          dialogRef.current);
     const focusableSelector =
       'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
     const focusables = () =>
-      [...dialog.querySelectorAll<HTMLElement>(focusableSelector)].filter(
-        (element) => element.getClientRects().length > 0,
-      );
-    const focusFrame = requestAnimationFrame(() => {
-      const initial =
-        dialog.querySelector<HTMLElement>('[data-dialog-initial-focus]') ??
-        focusables()[0];
-      initial?.focus();
-    });
+      [
+        ...(dialog?.querySelectorAll<HTMLElement>(focusableSelector) ?? []),
+      ].filter((element) => element.getClientRects().length > 0);
+    const focusFrame = dialog
+      ? requestAnimationFrame(() => {
+          const initial =
+            dialog.querySelector<HTMLElement>('[data-dialog-initial-focus]') ??
+            focusables()[0];
+          initial?.focus();
+        })
+      : 0;
     const onDialogKeyDown = (event: globalThis.KeyboardEvent) => {
       if (event.defaultPrevented || event.isComposing) return;
       if (event.key === 'Escape') {
@@ -835,6 +1203,7 @@ export function useSocialChatController() {
         return;
       }
       if (event.key !== 'Tab') return;
+      if (!dialog) return;
       const items = focusables();
       if (!items.length) {
         event.preventDefault();
@@ -895,20 +1264,19 @@ export function useSocialChatController() {
   }, [roomState?.messages, roomState?.workTasks]);
   useLayoutEffect(() => {
     if (!pendingScrollMessageId || roomState?.room.id !== activeRoomId) return;
+    if (roomState.messageWindow?.targetFound == null) return;
     const frame = requestAnimationFrame(() => {
+      const reviewSelector = `[data-review-message-id="${pendingScrollMessageId}"]`;
+      const feedbackSelector = `${reviewSelector} textarea`;
+      const messageSelector = `[data-message-id="${pendingScrollMessageId}"]`;
       const target =
-        document.querySelector<HTMLElement>(
-          `[data-review-message-id="${pendingScrollMessageId}"]`,
-        ) ??
-        document.querySelector<HTMLElement>(
-          `[data-message-id="${pendingScrollMessageId}"]`,
-        );
-      target?.scrollIntoView({ block: 'center' });
-      const feedback = document.querySelector<HTMLElement>(
-        `[data-review-message-id="${pendingScrollMessageId}"] textarea`,
-      );
+        document.querySelector<HTMLElement>(reviewSelector) ??
+        document.querySelector<HTMLElement>(messageSelector);
+      if (!target) return;
+      scrollMessageIntoView(conversationRef.current, target);
+      const feedback = document.querySelector<HTMLElement>(feedbackSelector);
       feedback?.focus({ preventScroll: true });
-      if (!feedback && target) {
+      if (!feedback && target.isConnected) {
         target.tabIndex = -1;
         target.focus({ preventScroll: true });
       }
@@ -921,17 +1289,17 @@ export function useSocialChatController() {
     if (
       !navigation ||
       navigation.roomId !== activeRoomId ||
-      roomState?.room.id !== navigation.roomId
+      roomState?.room.id !== navigation.roomId ||
+      roomState.messageWindow?.targetFound == null
     )
       return;
     const frame = requestAnimationFrame(() => {
       const target = Array.from(
         document.querySelectorAll<HTMLElement>('[data-message-id]'),
       ).find((message) => message.dataset.messageId === navigation.messageId);
-      target?.scrollIntoView({ block: 'center' });
-      if (target) {
-        setActiveConversationSearchMatch(navigation);
-      }
+      if (!target) return;
+      scrollMessageIntoView(conversationRef.current, target);
+      setActiveConversationSearchMatch(navigation);
       setPendingConversationSearchNavigation(null);
     });
     return () => cancelAnimationFrame(frame);
@@ -952,7 +1320,9 @@ export function useSocialChatController() {
     return highlightMessageMatches(body, match.query);
   }, [activeConversationSearchMatch, activeRoomId, roomState?.messages]);
   useEffect(() => {
-    setActiveConversationSearchMatch(null);
+    setActiveConversationSearchMatch((match) =>
+      match?.roomId === activeRoomId ? match : null,
+    );
     setPendingConversationSearchNavigation((navigation) =>
       navigation?.roomId === activeRoomId ? navigation : null,
     );
@@ -989,9 +1359,11 @@ export function useSocialChatController() {
         roomId: currentRoom.id,
         query,
       });
+      shouldFollowRef.current = false;
       closeConversationSearch();
+      void loadRoom(currentRoom.id, { limit: 200, aroundMessageId: messageId });
     },
-    [closeConversationSearch, conversationSearchQuery, currentRoom],
+    [closeConversationSearch, conversationSearchQuery, currentRoom, loadRoom],
   );
   const members = roomState?.room.id === activeRoomId ? roomState.members : [];
   const messages =
@@ -1204,13 +1576,54 @@ export function useSocialChatController() {
     activeProjectSession.roomId === currentRoom?.id &&
     activeProject?.id === activeProjectSession.projectId,
   );
-  const conversationSearchResults = conversationSearchQuery.trim()
-    ? messages.filter((message) =>
-        message.content
-          .toLocaleLowerCase()
-          .includes(conversationSearchQuery.trim().toLocaleLowerCase()),
-      )
-    : [];
+  useEffect(() => {
+    const request = ++conversationSearchRequestRef.current;
+    const query = conversationSearchQuery.trim();
+    const roomId = currentRoom?.id;
+    setConversationSearchError('');
+    if (!conversationSearchOpen || !query || !roomId) {
+      setConversationSearchLoading(false);
+      setConversationSearchResponse({ roomId: roomId ?? '', query, items: [] });
+      return;
+    }
+    setConversationSearchLoading(true);
+    const timer = window.setTimeout(() => {
+      void window.noema
+        .searchSocialRoomMessages(roomId, query)
+        .then((items) => {
+          if (request === conversationSearchRequestRef.current)
+            setConversationSearchResponse({ roomId, query, items });
+        })
+        .catch((error: unknown) => {
+          if (request === conversationSearchRequestRef.current) {
+            setConversationSearchResponse({ roomId, query, items: [] });
+            setConversationSearchError(
+              error instanceof Error ? error.message : '当前聊天搜索失败。',
+            );
+          }
+        })
+        .finally(() => {
+          if (request === conversationSearchRequestRef.current)
+            setConversationSearchLoading(false);
+        });
+    }, 160);
+    return () => {
+      clearTimeout(timer);
+      conversationSearchRequestRef.current++;
+    };
+  }, [
+    conversationSearchOpen,
+    conversationSearchQuery,
+    conversationSearchRetry,
+    currentRoom?.id,
+  ]);
+  const conversationSearchResults =
+    conversationSearchResponse.roomId === currentRoom?.id &&
+    conversationSearchResponse.query === conversationSearchQuery.trim()
+      ? conversationSearchResponse.items
+      : [];
+  const retryConversationSearch = () =>
+    setConversationSearchRetry((attempt) => attempt + 1);
   const renderRoomListItem = (room: NoemaSocialRoom) => {
     const agent = messageAgent.get(room.memberIds[0] ?? '');
     const selected =
@@ -1219,11 +1632,12 @@ export function useSocialChatController() {
       !archivedProjectsOpen &&
       room.id === activeRoomId;
     return (
-      <button
+      <NoemaButton
         key={room.id}
         type="button"
         className={`index-item room-list-item ${selected ? 'selected' : ''}`}
         aria-current={selected ? 'page' : undefined}
+        title={room.title}
         onClick={() => selectRoom(room)}
       >
         {room.kind === 'direct' && agent ? (
@@ -1236,52 +1650,101 @@ export function useSocialChatController() {
         <span>
           <span className="item-title">{room.title}</span>
           <small>
-            {room.kind === 'direct'
-              ? agent?.kind === 'core'
-                ? '你的个人伙伴'
-                : agent?.headline || '常驻私聊'
-              : room.preview?.text || '独立的群聊记录'}
+            {room.kind === 'direct' ? (
+              agent?.kind === 'core' ? (
+                '你的个人伙伴'
+              ) : (
+                <>
+                  {agent?.capabilities?.includes('project-work') ? (
+                    <span className="member-capability">可执行</span>
+                  ) : null}
+                  {agent?.headline || '常驻私聊'}
+                </>
+              )
+            ) : (
+              room.preview?.text || '独立的群聊记录'
+            )}
           </small>
         </span>
-      </button>
+      </NoemaButton>
     );
   };
   const openAgentWorkspace = (agentId: string) => {
-    setWorkspaceTaskMode(false);
     setArchivedProjectsOpen(false);
     setProjectWorkspaceId(null);
     setAgentWorkspaceId(agentId);
     setActiveProjectSession(null);
     setReplyTarget(null);
-    setForwardSelectionActive(false);
     setSelectedForwardMessageIds([]);
     setActiveRoomId('room-noema');
     setShowRoomList(false);
     shouldFollowRef.current = true;
-    const homeRoom = rooms.find((room) => room.id === 'room-noema');
-    if (homeRoom) void loadRoom(homeRoom.id);
   };
   const openHistorySource = (source: NoemaSocialHistorySource) => {
     const room = rooms.find((candidate) => candidate.id === source.roomId);
-    if (!room) return;
+    if (!room) {
+      setNotice('这条历史来源所在的聊天空间已不可用。');
+      return;
+    }
     setPendingScrollMessageId(source.id);
-    selectRoom(room);
+    if (activeRoomId === room.id) {
+      void loadRoom(room.id, { limit: 200, aroundMessageId: source.id });
+    } else {
+      pendingRoomTargetRef.current = { roomId: room.id, messageId: source.id };
+      selectRoom(room);
+      shouldFollowRef.current = false;
+    }
   };
-  const handleSend = async (event?: FormEvent) => {
+  const focusPendingReviewFeedback = (messageId: string) => {
+    const feedbackSelector = `[data-review-message-id="${messageId}"] textarea`;
+    const targetSelector = `[data-review-message-id="${messageId}"]`;
+    const focusFeedback = () => {
+      const feedback = document.querySelector<HTMLElement>(feedbackSelector);
+      if (!feedback?.isConnected || !feedback.getClientRects().length) {
+        return false;
+      }
+      scrollMessageIntoView(conversationRef.current, feedback);
+      feedback.focus({ preventScroll: true });
+      return true;
+    };
+    if (focusFeedback()) return;
+    const observer = new MutationObserver(() => {
+      if (focusFeedback()) {
+        observer.disconnect();
+        window.clearTimeout(timeout);
+        setPendingScrollMessageId(null);
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    const timeout = window.setTimeout(() => {
+      observer.disconnect();
+      const target = document.querySelector<HTMLElement>(targetSelector);
+      if (target?.isConnected) {
+        target.tabIndex = -1;
+        target.focus({ preventScroll: true });
+      }
+      setPendingScrollMessageId(null);
+    }, 5_000);
+  };
+  const handleSend = async (
+    event?: FormEvent,
+    overrideText?: string,
+    options?: { fromEdit?: boolean },
+  ) => {
     event?.preventDefault();
+    const sourceText = overrideText ?? draft;
     if (
       !currentRoom ||
       !currentRecipient ||
-      (!draft.trim() && draftAttachments.length === 0) ||
-      busy ||
-      forwardSelectionActive
+      (!sourceText.trim() && draftAttachments.length === 0) ||
+      (busy && !activeReply && !options?.fromEdit)
     ) {
       return;
     }
     const routing =
       currentRoom.kind === 'group' &&
       activeProject?.groupRoomId !== currentRoom.id
-        ? resolveGroupRecipient(draft, members, currentRecipient.id)
+        ? resolveGroupRecipient(sourceText, members, currentRecipient.id)
         : { agent: currentRecipient, error: null };
     if (routing.error) {
       setNotice(routing.error);
@@ -1293,8 +1756,7 @@ export function useSocialChatController() {
       return;
     }
     const roomId = currentRoom.id;
-    const startsWorkspaceTask = workspaceTaskMode && roomId === 'room-noema';
-    const text = draft;
+    const text = sourceText;
     const persistentProjectQueue =
       currentRoom.kind === 'group' && activeProject?.groupRoomId === roomId;
     if (
@@ -1302,7 +1764,7 @@ export function useSocialChatController() {
       !persistentProjectQueue &&
       currentRoomQueue.length >= 20
     ) {
-      setNotice('当前聊天最多暂存 20 条待发消息。');
+      setNotice('最多暂存 20 条待发消息。');
       return;
     }
     setBusy(true);
@@ -1316,9 +1778,7 @@ export function useSocialChatController() {
             maxCharacters: MAX_CHAT_ATTACHMENT_CHARACTERS,
           }),
       });
-      const messageText = startsWorkspaceTask
-        ? `请在本机工作区执行以下任务：\n\n${preparedMessage}`
-        : preparedMessage;
+      const messageText = preparedMessage;
       if (activeReply && !persistentProjectQueue) {
         setQueuedMessagesByRoom((current) => {
           const queue = current[roomId] ?? [];
@@ -1340,33 +1800,30 @@ export function useSocialChatController() {
         setRoomDraft(roomId, '');
         clearDraftAttachments(roomId);
         setReplyTarget(null);
-        if (startsWorkspaceTask) setWorkspaceTaskMode(false);
         if (draftRef.current) draftRef.current.style.height = 'auto';
-        setNotice('已加入当前聊天的发送队列。');
+        setNotice('已加入队列。');
         return;
       }
       shouldFollowRef.current = true;
+      setLiveTrace(null);
       const sent = await window.noema.sendSocialMessage({
         roomId,
         agentId: recipient.id,
         text: messageText,
         replyToMessageId: replyTarget?.id ?? null,
       });
-      if (roomId === 'room-noema' && firstMeetingEntryVisible) {
-        try {
-          const progress = await window.noema.advanceFirstMeeting('enter');
-          setState((current) =>
-            current ? { ...current, firstMeeting: progress } : current,
-          );
-        } catch {
-          // A sent message must not be reported as failed if this optional
-          // first-use marker could not be saved.
-        }
+      const currentAttachments =
+        draftAttachmentsByRoomRef.current[roomId] ?? [];
+      const attachmentsUnchanged =
+        currentAttachments.length === draftAttachments.length &&
+        currentAttachments.every(
+          (file, index) => file === draftAttachments[index],
+        );
+      if (draftsByRoomRef.current[roomId] === text && attachmentsUnchanged) {
+        setRoomDraft(roomId, '');
+        clearDraftAttachments(roomId);
       }
-      setRoomDraft(roomId, '');
-      clearDraftAttachments(roomId);
       setReplyTarget(null);
-      if (startsWorkspaceTask) setWorkspaceTaskMode(false);
       if (draftRef.current) draftRef.current.style.height = 'auto';
       if (sent.queued) {
         setNotice('群消息已保存；点名成员会在当前工作边界收到。');
@@ -1379,6 +1836,56 @@ export function useSocialChatController() {
     } finally {
       setBusy(false);
       (draftRef.current ?? groupDraftRef.current)?.focus();
+    }
+  };
+  const switchContinuityBranch = async (branchId: string) => {
+    if (!currentRoom || !continuity || busy || activeReply) return;
+    try {
+      setBusy(true);
+      setNotice('');
+      const next = await window.noema.switchSocialContinuityBranch({
+        roomId: currentRoom.id,
+        branchId,
+        expectedVersion: continuity.activeVersion,
+      });
+      setContinuity(next);
+      await loadRoom(currentRoom.id);
+    } catch (error) {
+      setNotice(
+        error instanceof Error ? error.message : '分支没有切换，请重试。',
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+  const rewindAndResend = async (messageId: string, text: string) => {
+    if (!currentRoom || busy || activeReply) return;
+    try {
+      setBusy(true);
+      setNotice('');
+      const continuity = await window.noema.getSocialContinuityState(
+        currentRoom.id,
+      );
+      if (continuity.mode === 'on') {
+        const nextContinuity =
+          await window.noema.createSocialContinuityEditBranch({
+            roomId: currentRoom.id,
+            messageId,
+            title: text,
+          });
+        setContinuity(nextContinuity);
+      } else {
+        await window.noema.rewindSocialMessage(currentRoom.id, messageId);
+      }
+      setLiveTrace(null);
+      await loadRoom(currentRoom.id);
+      await handleSend(undefined, text, { fromEdit: true });
+    } catch (error) {
+      setNotice(
+        error instanceof Error ? error.message : '修改没有生效，请重试。',
+      );
+    } finally {
+      setBusy(false);
     }
   };
   useEffect(() => {
@@ -1454,39 +1961,8 @@ export function useSocialChatController() {
       [currentRoom.id]: latestAssistantMessage.id,
     }));
   };
-  const beginForwardSelection = (message: NoemaSocialMessage) => {
-    if (
-      !currentRoom ||
-      !['user', 'assistant'].includes(message.role) ||
-      message.status !== 'complete'
-    ) {
-      return;
-    }
-    forwardOriginMessageId.current = message.id;
-    setForwardSelectionActive(true);
-    setSelectedForwardMessageIds([message.id]);
-    requestAnimationFrame(() => {
-      document
-        .querySelector<HTMLElement>(
-          `[data-message-id="${message.id}"] .message-actions button`,
-        )
-        ?.focus();
-    });
-  };
-  const toggleForwardMessage = (message: NoemaSocialMessage) => {
-    setSelectedForwardMessageIds((current) => {
-      if (current.includes(message.id)) {
-        return current.filter((id) => id !== message.id);
-      }
-      if (current.length >= 20) {
-        setNotice('一次最多合并转发 20 条消息。');
-        return current;
-      }
-      return [...current, message.id];
-    });
-  };
-  const openForwardDialog = () => {
-    if (!currentRoom || selectedForwardMessageIds.length === 0) return;
+  const openForwardDialog = (messageIds = selectedForwardMessageIds) => {
+    if (!currentRoom || messageIds.length === 0) return;
     const targetRooms = rooms.filter(
       (room) =>
         room.id !== currentRoom.id &&
@@ -1496,11 +1972,34 @@ export function useSocialChatController() {
     );
     const targetRoom = targetRooms[0];
     if (!targetRoom) {
-      setNotice('没有可接收转发消息的聊天。');
+      setNotice('没有可转发的聊天。');
       return;
     }
     setForwardTargetRoomId(targetRoom.id);
     setForwardDialogOpen(true);
+  };
+  const forwardMessage = (message: NoemaSocialMessage) => {
+    if (
+      !currentRoom ||
+      !['user', 'assistant'].includes(message.role) ||
+      message.status !== 'complete'
+    ) {
+      return;
+    }
+    forwardOriginMessageId.current = message.id;
+    setSelectedForwardMessageIds([message.id]);
+    openForwardDialog([message.id]);
+  };
+  const startThread = (message: NoemaSocialMessage) => {
+    if (message.role !== 'user' || message.status !== 'complete') return;
+    if (document.activeElement instanceof HTMLButtonElement) {
+      threadTriggerRef.current = document.activeElement;
+    }
+    forwardOriginMessageId.current = message.id;
+    setSelectedForwardMessageIds([message.id]);
+    const initial = message.content.replace(/\s+/gu, ' ').trim().slice(0, 80);
+    setThreadTitle(initial || '未命名主题');
+    setThreadDialogOpen(true);
   };
   const openThreadDialog = () => {
     const first = selectedForwardMessages[0];
@@ -1640,6 +2139,14 @@ export function useSocialChatController() {
       );
     }
   };
+  const handleContinueProjectWork = async (task: NoemaSocialWorkTask) => {
+    try {
+      await window.noema.continueSocialWorkTask(task.id);
+      await loadRoom(task.roomId);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : '这项工单无法继续。');
+    }
+  };
   const handleReviewProjectFileChange = async (
     task: NoemaSocialWorkTask,
     changeId: string,
@@ -1759,13 +2266,29 @@ export function useSocialChatController() {
       setBusy(false);
     }
   };
+  const chooseProjectWorkspace = async () => {
+    setProjectBusy(true);
+    setNotice('');
+    try {
+      const selection = await window.noema.chooseProjectWorkspace();
+      if (selection) setNewProjectWorkspace(selection);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : '没有选择文件夹。');
+    } finally {
+      setProjectBusy(false);
+    }
+  };
   const handleCreateProject = async (event: FormEvent) => {
     event.preventDefault();
     const eligibleAgentIds = projectAgentIds.filter((agentId) =>
       activeAgents.some((agent) => agent.id === agentId),
     );
     if (!eligibleAgentIds.length) {
-      setNotice('项目至少需要一位未归档的专业联系人。');
+      setNotice('项目至少需要一位专业联系人。');
+      return;
+    }
+    if (!newProjectWorkspace) {
+      setNotice('先选择工作文件夹。');
       return;
     }
     setProjectBusy(true);
@@ -1775,6 +2298,8 @@ export function useSocialChatController() {
         title: projectTitle.trim(),
         brief: projectBrief.trim(),
         agentIds: ['noema', ...eligibleAgentIds],
+        workspacePath: newProjectWorkspace.workspacePath,
+        workspaceIdentity: newProjectWorkspace.identity,
       });
       closeProjectDialog();
       const next = await refreshState();
@@ -1817,7 +2342,6 @@ export function useSocialChatController() {
     setProjectTab('group');
     setActiveProjectSession(null);
     setReplyTarget(null);
-    setForwardSelectionActive(false);
     setSelectedForwardMessageIds([]);
     shouldFollowRef.current = false;
     if (activeRoomId !== projectWorkspace.groupRoomId)
@@ -1847,7 +2371,6 @@ export function useSocialChatController() {
       setRoomState(session.room);
       setActiveRoomId(session.room.room.id);
       setReplyTarget(null);
-      setForwardSelectionActive(false);
       setSelectedForwardMessageIds([]);
       setShowRoomList(false);
     } catch (error) {
@@ -1861,10 +2384,17 @@ export function useSocialChatController() {
     message?: NoemaSocialSearchResult,
   ) => {
     const navigation = globalNavigationSequence.current;
-    const source = await window.noema.getSocialRoom(roomId);
+    const source = await window.noema.getSocialRoom(
+      roomId,
+      message ? { limit: 200, aroundMessageId: message.id } : { limit: 200 },
+    );
     if (navigation !== globalNavigationSequence.current)
       throw new DOMException('搜索已关闭。', 'AbortError');
-    if (message && !source.messages.some((item) => item.id === message.id))
+    if (
+      message &&
+      (source.messageWindow?.targetFound === false ||
+        !source.messages.some((item) => item.id === message.id))
+    )
       throw new Error('这条消息已移除，请重新搜索。');
     const project = projects.find(
       (item) =>
@@ -1884,14 +2414,16 @@ export function useSocialChatController() {
     setAgentWorkspaceId(null);
     setArchivedProjectsOpen(false);
     setReplyTarget(null);
-    setForwardSelectionActive(false);
     setSelectedForwardMessageIds([]);
     shouldFollowRef.current = !message;
-    setRoomState(source);
+    if (activeRoomId === roomId) setRoomState(source);
+    else if (message)
+      pendingRoomTargetRef.current = { roomId, messageId: message.id };
     setActiveRoomId(roomId);
     setShowRoomList(false);
-    if (message) setPendingScrollMessageId(message.id);
-    else requestAnimationFrame(() => draftRef.current?.focus());
+    if (message) {
+      setPendingScrollMessageId(message.id);
+    } else requestAnimationFrame(() => draftRef.current?.focus());
   };
   const restoreCurrentProject = async (project: NoemaSocialProject) => {
     if (projectStatusBusy) return;
@@ -1939,6 +2471,10 @@ export function useSocialChatController() {
       setProjectStatusBusy(false);
     }
   };
+  const handleAgentNameChange = (value: string) => {
+    setAgentName(value);
+    if (agentNameError) setAgentNameError('');
+  };
   const handleCreateAgent = async (event: FormEvent) => {
     event.preventDefault();
     setCreatingAgent(true);
@@ -1948,27 +2484,32 @@ export function useSocialChatController() {
         name: agentName.trim(),
         headline: agentHeadline.trim(),
         description: agentDescription.trim(),
-        projectWork: agentProjectWork,
+        projectWork: true,
       });
       setCreateAgentOpen(false);
       setAgentName('');
+      setAgentNameError('');
       setAgentHeadline('');
       setAgentDescription('');
-      setAgentProjectWork(false);
+      setAgentProjectWork(true);
       setActiveRoomId(room.room.id);
       setShowRoomList(false);
       await Promise.all([refreshState(), loadRoom(room.room.id)]);
       requestAnimationFrame(() => draftRef.current?.focus());
     } catch (error) {
-      setNotice(
-        error instanceof Error ? error.message : '联系人没有创建成功。',
-      );
+      const message = socialErrorMessage(error, '联系人没有创建成功。');
+      if (/已有联系人使用这个名称/u.test(message)) {
+        setAgentNameError(message);
+      } else {
+        setNotice(message);
+      }
     } finally {
       setCreatingAgent(false);
     }
   };
   const openAgentProfileEditor = (agent: NoemaSocialAgent) => {
     setAgentName(agent.name);
+    setAgentNameError('');
     setAgentHeadline(agent.headline);
     setAgentDescription(agent.description);
     setEditingAgentId(agent.id);
@@ -1987,6 +2528,7 @@ export function useSocialChatController() {
       });
       setEditingAgentId(null);
       setAgentName('');
+      setAgentNameError('');
       setAgentHeadline('');
       setAgentDescription('');
       if (activeRoomId) {
@@ -1995,9 +2537,12 @@ export function useSocialChatController() {
       setNotice('资料已更新；之后开始的新回复会使用这些资料。');
       requestAnimationFrame(() => editAgentTriggerRef.current?.focus());
     } catch (error) {
-      setNotice(
-        error instanceof Error ? error.message : '联系人资料没有更新。',
-      );
+      const message = socialErrorMessage(error, '联系人资料没有更新。');
+      if (/已有联系人使用这个名称/u.test(message)) {
+        setAgentNameError(message);
+      } else {
+        setNotice(message);
+      }
     } finally {
       setUpdatingAgentProfile(false);
     }
@@ -2064,6 +2609,7 @@ export function useSocialChatController() {
     }
   };
   const beginProviderEdit = () => {
+    setProviderFeedback(null);
     setEditProviderConfig(true);
     requestAnimationFrame(() =>
       requestAnimationFrame(() =>
@@ -2073,10 +2619,40 @@ export function useSocialChatController() {
       ),
     );
   };
+  const refreshProviderModels = async () => {
+    setRefreshingProvider(true);
+    setProviderFeedback(null);
+    try {
+      const result = await window.noema.refreshModels();
+      await refreshState();
+      if (
+        result.error ||
+        result.connected !== true ||
+        (result.models?.length ?? 0) === 0
+      ) {
+        setProviderFeedback({
+          kind: 'error',
+          message:
+            result.error ??
+            '连接未建立或没有可用模型。请检查服务地址、网络和凭据。',
+        });
+      } else {
+        setProviderFeedback({ kind: 'success', message: '模型列表已更新。' });
+      }
+    } catch (error) {
+      setProviderFeedback({
+        kind: 'error',
+        message:
+          error instanceof Error ? error.message : '重新检查失败，请重试。',
+      });
+    } finally {
+      setRefreshingProvider(false);
+    }
+  };
   const handleProviderSave = async (event: FormEvent) => {
     event.preventDefault();
     setSavingProvider(true);
-    setNotice('');
+    setProviderFeedback(null);
     try {
       const result = await window.noema.configureProvider({
         baseUrl: providerBaseUrl,
@@ -2084,14 +2660,28 @@ export function useSocialChatController() {
       });
       setProviderApiKey('');
       setEditProviderConfig(false);
-      setSettingsOpen(false);
       await refreshState();
+      if (
+        result.error ||
+        result.connected !== true ||
+        (result.models?.length ?? 0) === 0
+      ) {
+        setProviderFeedback({
+          kind: 'error',
+          message:
+            result.error ??
+            '连接未建立或没有可用模型。请检查服务地址、网络和凭据。',
+        });
+        return;
+      }
+      setSettingsOpen(false);
       requestAnimationFrame(() => settingsTriggerRef.current?.focus());
-      if (result.error) setNotice(result.error);
     } catch (error) {
-      setNotice(
-        error instanceof Error ? error.message : '连接没有保存，请重试。',
-      );
+      setProviderFeedback({
+        kind: 'error',
+        message:
+          error instanceof Error ? error.message : '连接没有保存，请重试。',
+      });
     } finally {
       setSavingProvider(false);
     }
@@ -2211,12 +2801,22 @@ export function useSocialChatController() {
       setBusy(false);
     }
   };
+  const resetChat = async () => {
+    const reset = await window.noema.resetSocialChat();
+    if (!reset) return false;
+    setLiveTrace(null);
+    setNotice('已开始新会话，之前的上下文不再带入。');
+    await loadRoom('room-noema');
+    return true;
+  };
+
   return {
-    workspaceTaskMode,
-    setWorkspaceTaskMode,
+    resetChat,
+    liveTrace,
     messageAgent,
     handleStopProjectWork,
     handleResumeProjectWork,
+    handleContinueProjectWork,
     handleReviewProjectFileChange,
     handleReviewProjectGitState,
     gitReviewsByTask,
@@ -2228,6 +2828,7 @@ export function useSocialChatController() {
     selectRoom,
     setReplyTarget,
     cancelForward,
+    forwardMessage,
     setRoomDraft,
     draftRef,
     conversationTurns,
@@ -2240,13 +2841,15 @@ export function useSocialChatController() {
     activeProject,
     activeProjectSession,
     currentRoom,
-    forwardSelectionActive,
     currentRecipient,
     currentRecipientArchived,
     draft,
     draftAttachments,
     busy,
     roomState,
+    historyPageLoading,
+    historyPageError,
+    loadEarlierMessages,
     noemaRoom,
     conversationRef,
     shouldFollowRef,
@@ -2255,19 +2858,20 @@ export function useSocialChatController() {
     viewingProjectSession,
     messages,
     workTasks,
-    firstMeetingEntryVisible,
     setState,
     handleRetry,
     openHistorySource,
+    focusPendingReviewFeedback,
     selectedForwardMessageIds,
-    beginForwardSelection,
     childThreads,
-    toggleForwardMessage,
     draftsByRoom,
     submitProjectReview,
     activeReply,
     showJumpToLatest,
     handleSend,
+    rewindAndResend,
+    continuity,
+    switchContinuityBranch,
     notice,
     setNotice,
     providerWarning,
@@ -2275,6 +2879,7 @@ export function useSocialChatController() {
     state,
     threadTriggerRef,
     openThreadDialog,
+    startThread,
     openForwardDialog,
     replyTarget,
     currentQueuePaused,
@@ -2310,6 +2915,8 @@ export function useSocialChatController() {
     setAgentWorkspaceId,
     archivedProjects,
     settingsTriggerRef,
+    personalMemoryTriggerRef,
+    userFollowupTriggerRef,
     personalMemoryDialogRef,
     userFollowupDialogRef,
     setProjectTab,
@@ -2341,13 +2948,15 @@ export function useSocialChatController() {
     openGlobalSearchSource,
     conversationSearchOpen,
     closeConversationSearch,
+    activeConversationSearchMatch,
     conversationSearchRef,
     conversationSearchQuery,
     setConversationSearchQuery,
     conversationSearchResults,
+    conversationSearchLoading,
+    conversationSearchError,
+    retryConversationSearch,
     navigateToConversationSearchResult,
-    firstMeetingReplay,
-    setFirstMeetingReplay,
     forwardDialogOpen,
     handleForward,
     selectedForwardMessages,
@@ -2370,6 +2979,8 @@ export function useSocialChatController() {
     editingAgent,
     agentName,
     setAgentName,
+    agentNameError,
+    handleAgentNameChange,
     creatingAgent,
     updatingAgentProfile,
     agentHeadline,
@@ -2393,16 +3004,24 @@ export function useSocialChatController() {
     setProjectTitle,
     projectBrief,
     setProjectBrief,
+    newProjectWorkspace,
+    setNewProjectWorkspace,
+    chooseProjectWorkspace,
     projectAgentIds,
     setProjectAgentIds,
     projectBusy,
     settingsOpen,
+    executionPermissions,
+    executionPermissionsBusy,
+    executionPermissionsError,
+    handleExecutionPermissionsChange,
     closeSettingsDialog,
     openPersonalMemories,
     personalMemoryOpen,
     closePersonalMemories,
     personalMemoryList,
     personalMemoryLoading,
+    refreshPersonalMemories,
     personalMemoryBusy,
     personalMemoryError,
     setPersonalMemoryError,
@@ -2420,6 +3039,7 @@ export function useSocialChatController() {
     closeUserFollowups,
     userFollowupList,
     userFollowupLoading,
+    refreshUserFollowups,
     userFollowupBusy,
     userFollowupError,
     setUserFollowupError,
@@ -2435,7 +3055,12 @@ export function useSocialChatController() {
     saveUserFollowup,
     cancelUserFollowup,
     handleProviderSave,
+    refreshProviderModels,
+    refreshingProvider,
+    providerFeedback,
+    setProviderFeedback,
     agentTriggerRef,
+    editAgentTriggerRef,
     setCreateAgentOpen,
     groupTriggerRef,
     setCreateGroupOpen,

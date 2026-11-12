@@ -6,6 +6,7 @@ import {
   WINDOWS_RUNNER_PACKAGE_MANIFEST,
   WINDOWS_RUNNER_BACKEND_ID,
   WINDOWS_RUNNER_BACKEND_VERSION,
+  WINDOWS_RUNNER_POLICY_VERSION,
   WINDOWS_RUNNER_PROTOCOL_VERSION,
 } from '../src/main/execution/windows-runner-package-contract.mjs';
 
@@ -55,9 +56,10 @@ export async function stageWindowsRunnerResource({
     throw packageError('runner_package_copy_mismatch');
   }
   const manifest = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     backendId: WINDOWS_RUNNER_BACKEND_ID,
     backendVersion: WINDOWS_RUNNER_BACKEND_VERSION,
+    policyVersion: WINDOWS_RUNNER_POLICY_VERSION,
     protocolVersion: WINDOWS_RUNNER_PROTOCOL_VERSION,
     platform: 'win32',
     arch: 'x64',
@@ -84,10 +86,11 @@ export function validateWindowsRunnerPackageManifest(manifest, expectedSha256) {
   return Boolean(
     manifest &&
     Object.keys(manifest).sort().join(',') ===
-      'arch,backendId,backendVersion,executable,platform,protocolVersion,schemaVersion,sha256' &&
-    manifest.schemaVersion === 1 &&
+      'arch,backendId,backendVersion,executable,platform,policyVersion,protocolVersion,schemaVersion,sha256' &&
+    manifest.schemaVersion === 2 &&
     manifest.backendId === WINDOWS_RUNNER_BACKEND_ID &&
     manifest.backendVersion === WINDOWS_RUNNER_BACKEND_VERSION &&
+    manifest.policyVersion === WINDOWS_RUNNER_POLICY_VERSION &&
     manifest.protocolVersion === WINDOWS_RUNNER_PROTOCOL_VERSION &&
     manifest.platform === 'win32' &&
     manifest.arch === 'x64' &&

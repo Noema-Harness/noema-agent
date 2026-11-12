@@ -1,11 +1,27 @@
 import { SOCIAL_SCHEMA_VERSION } from './social-chat-schema.mjs';
 import {
+  addConversationContinuitySchema,
+  backfillConversationContinuity,
+} from './conversation-continuity.mjs';
+import {
   LEGACY_FILE_TASK_GUIDANCE,
   FILE_TASK_GUIDANCE,
   isoNow,
 } from './records.mjs';
 
-export function migrateSocialChatSchema(db) {
+export function migrateSocialChatSchema(
+  db,
+  { targetVersion = SOCIAL_SCHEMA_VERSION } = {},
+) {
+  if (
+    !Number.isInteger(targetVersion) ||
+    targetVersion < 1 ||
+    targetVersion > SOCIAL_SCHEMA_VERSION
+  ) {
+    throw new Error(
+      `Social chat target schema ${targetVersion} is outside the supported range.`,
+    );
+  }
   db.exec(`
       CREATE TABLE IF NOT EXISTS social_schema_migrations (
         version INTEGER PRIMARY KEY,
@@ -16,9 +32,9 @@ export function migrateSocialChatSchema(db) {
     db
       .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
       .get()?.version ?? 0;
-  if (current > SOCIAL_SCHEMA_VERSION) {
+  if (current > targetVersion) {
     throw new Error(
-      `Social chat schema ${current} is newer than this Noema build supports.`,
+      `Social chat schema ${current} is newer than the requested target ${targetVersion}.`,
     );
   }
   if (current < 1) {
@@ -884,6 +900,206 @@ export function migrateSocialChatSchema(db) {
           INSERT INTO social_schema_migrations(version, applied_at)
             VALUES (33, '${isoNow()}');
         `);
+    })();
+  }
+  if (current < 34 && targetVersion >= 34) {
+    db.transaction(() => {
+      db.exec(`
+          CREATE TABLE social_work_command_batches (
+            id TEXT PRIMARY KEY,
+            task_id TEXT NOT NULL REFERENCES social_work_tasks(id) ON DELETE CASCADE,
+            step_id TEXT NOT NULL REFERENCES social_work_execution_steps(id) ON DELETE CASCADE,
+            workspace_key TEXT NOT NULL CHECK (length(workspace_key) = 64),
+            mirror_key TEXT NOT NULL UNIQUE,
+            status TEXT NOT NULL CHECK (status IN (
+              'preparing', 'running', 'collecting', 'syncing', 'completed',
+              'partial', 'conflict', 'unknown', 'not_applied'
+            )),
+            workspace_identity_json TEXT NOT NULL,
+            base_manifest_hash TEXT,
+            final_manifest_hash TEXT,
+            reason_code TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE (task_id, step_id)
+          );
+          CREATE INDEX social_work_command_batches_workspace_state
+            ON social_work_command_batches(workspace_key, status, created_at);
+
+          CREATE TABLE social_work_change_blobs (
+            hash TEXT PRIMARY KEY CHECK (length(hash) = 64),
+            size_bytes INTEGER NOT NULL CHECK (size_bytes >= 0),
+            created_at TEXT NOT NULL
+          );
+
+          ALTER TABLE social_work_file_change_operations
+            RENAME TO social_work_file_change_operations_v33;
+          CREATE TABLE social_work_file_change_operations_v33_copy AS
+            SELECT * FROM social_work_file_change_operations_v33;
+          DROP TABLE social_work_file_change_operations_v33;
+
+          ALTER TABLE social_work_file_changes
+            RENAME TO social_work_file_changes_v33;
+          CREATE TABLE social_work_file_changes (
+            id TEXT PRIMARY KEY,
+            task_id TEXT NOT NULL REFERENCES social_work_tasks(id) ON DELETE CASCADE,
+            relative_path TEXT NOT NULL,
+            original_exists INTEGER NOT NULL CHECK (original_exists IN (0, 1)),
+            original_bytes BLOB,
+            original_hash TEXT,
+            original_blob_hash TEXT,
+            original_blob_size INTEGER CHECK (original_blob_size IS NULL OR original_blob_size >= 0),
+            latest_hash TEXT,
+            latest_exists INTEGER NOT NULL DEFAULT 1 CHECK (latest_exists IN (0, 1)),
+            diff_text TEXT NOT NULL DEFAULT '',
+            diff_truncated INTEGER NOT NULL DEFAULT 0 CHECK (diff_truncated IN (0, 1)),
+            state TEXT NOT NULL CHECK (
+              state IN ('pending', 'applied', 'unknown', 'not_applied', 'kept', 'reverted', 'conflict')
+            ),
+            pending_before_hash TEXT,
+            pending_after_hash TEXT,
+            pending_after_exists INTEGER CHECK (
+              pending_after_exists IS NULL OR pending_after_exists IN (0, 1)
+            ),
+            pending_diff_text TEXT,
+            pending_diff_truncated INTEGER CHECK (
+              pending_diff_truncated IS NULL OR pending_diff_truncated IN (0, 1)
+            ),
+            pending_step_id TEXT REFERENCES social_work_execution_steps(id) ON DELETE SET NULL,
+            last_step_id TEXT REFERENCES social_work_execution_steps(id) ON DELETE SET NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            CHECK (
+              (original_exists = 1 AND original_hash IS NOT NULL AND
+                (original_bytes IS NOT NULL OR original_blob_hash IS NOT NULL OR
+                 state IN ('kept', 'reverted', 'not_applied', 'conflict')))
+              OR (original_exists = 0 AND original_bytes IS NULL AND
+                  original_hash IS NULL AND original_blob_hash IS NULL)
+            ),
+            CHECK (
+              (state = 'pending' AND pending_step_id IS NOT NULL AND
+                pending_after_exists IS NOT NULL)
+              OR (state <> 'pending' AND pending_step_id IS NULL AND
+                  pending_after_exists IS NULL)
+            )
+          );
+          INSERT INTO social_work_file_changes (
+            id, task_id, relative_path, original_exists, original_bytes,
+            original_hash, latest_hash, latest_exists, diff_text, diff_truncated,
+            state, pending_before_hash, pending_after_hash, pending_after_exists,
+            pending_diff_text, pending_diff_truncated, pending_step_id,
+            last_step_id, created_at, updated_at, original_blob_hash,
+            original_blob_size
+          )
+          SELECT id, task_id, relative_path, original_exists, original_bytes,
+                 original_hash, latest_hash,
+                 CASE WHEN latest_hash IS NOT NULL THEN 1 ELSE 0 END,
+                 diff_text, diff_truncated, state, pending_before_hash,
+                 pending_after_hash,
+                 CASE WHEN state = 'pending' THEN 1 ELSE NULL END,
+                 pending_diff_text, pending_diff_truncated, pending_step_id,
+                 last_step_id, created_at, updated_at, NULL, NULL
+          FROM social_work_file_changes_v33;
+          DROP TABLE social_work_file_changes_v33;
+          CREATE INDEX social_work_file_changes_task_order
+            ON social_work_file_changes(task_id, created_at, relative_path);
+          CREATE UNIQUE INDEX social_work_file_changes_one_open_path
+            ON social_work_file_changes(task_id, relative_path)
+            WHERE state IN ('pending', 'applied', 'unknown', 'conflict');
+
+          CREATE TABLE social_work_file_change_operations (
+            id TEXT PRIMARY KEY,
+            change_id TEXT NOT NULL REFERENCES social_work_file_changes(id) ON DELETE CASCADE,
+            task_id TEXT NOT NULL REFERENCES social_work_tasks(id) ON DELETE CASCADE,
+            step_id TEXT NOT NULL REFERENCES social_work_execution_steps(id) ON DELETE CASCADE,
+            command_batch_id TEXT REFERENCES social_work_command_batches(id) ON DELETE SET NULL,
+            ordinal INTEGER NOT NULL CHECK (ordinal > 0),
+            before_hash TEXT,
+            after_hash TEXT,
+            before_blob_hash TEXT,
+            after_blob_hash TEXT,
+            state TEXT NOT NULL CHECK (state IN ('pending', 'applied', 'not_applied', 'unknown')),
+            created_at TEXT NOT NULL,
+            completed_at TEXT,
+            UNIQUE (change_id, ordinal),
+            UNIQUE (step_id, change_id)
+          );
+          INSERT INTO social_work_file_change_operations (
+            id, change_id, task_id, step_id, ordinal, before_hash,
+            after_hash, before_blob_hash, after_blob_hash, state, created_at, completed_at
+          )
+          SELECT id, change_id, task_id, step_id, ordinal, before_hash,
+                 after_hash, NULL, NULL, state, created_at, completed_at
+          FROM social_work_file_change_operations_v33_copy;
+          DROP TABLE social_work_file_change_operations_v33_copy;
+          CREATE INDEX social_work_file_change_operations_task
+            ON social_work_file_change_operations(task_id, created_at, id);
+          CREATE INDEX social_work_file_change_operations_batch
+            ON social_work_file_change_operations(command_batch_id, change_id, ordinal);
+
+          CREATE TABLE social_work_workspace_write_locks (
+            workspace_key TEXT PRIMARY KEY CHECK (length(workspace_key) = 64),
+            task_id TEXT NOT NULL REFERENCES social_work_tasks(id) ON DELETE CASCADE,
+            command_batch_id TEXT NOT NULL UNIQUE
+              REFERENCES social_work_command_batches(id) ON DELETE CASCADE,
+            acquired_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+          );
+
+          INSERT INTO social_schema_migrations(version, applied_at)
+            VALUES (34, '${isoNow()}');
+        `);
+    })();
+  }
+  if (current < 35 && targetVersion >= 35) {
+    db.transaction(() => {
+      db.prepare(`
+        UPDATE social_agents
+        SET capabilities_json = '["project-work"]'
+        WHERE id = 'noema'
+      `).run();
+      db.prepare(
+        'INSERT INTO social_schema_migrations(version, applied_at) VALUES (35, ?)',
+      ).run(isoNow());
+    })();
+  }
+  if (current < 36 && targetVersion >= 36) {
+    db.transaction(() => {
+      const now = isoNow();
+      db.prepare(`
+        INSERT INTO social_agents (
+          id, name, kind, headline, description, system_prompt,
+          capabilities_json, created_at, updated_at
+        ) VALUES (?, ?, 'specialist', ?, ?, ?, '["project-work"]', ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          name = excluded.name,
+          kind = excluded.kind,
+          headline = excluded.headline,
+          description = excluded.description,
+          system_prompt = excluded.system_prompt,
+          capabilities_json = excluded.capabilities_json,
+          updated_at = excluded.updated_at
+      `).run(
+        'noema-executor',
+        '执行者',
+        '按工单独立执行本机任务',
+        '接收一张明确工单，在指定工作区内执行并如实报告，不参与项目、团队或群聊。',
+        '你是 Noema 的执行者。独立完成一张工单：先检查工作区现状，再直接实现用户要求。不要创建项目团队、群聊或计划阶段。只修改所选工作区内的文件，使用工具后如实报告已完成的动作、验证结果和未验证的部分。',
+        now,
+        now,
+      );
+      db.prepare(
+        'INSERT INTO social_schema_migrations(version, applied_at) VALUES (36, ?)',
+      ).run(now);
+    })();
+  }
+  if (current < 37 && targetVersion >= 37) {
+    db.transaction(() => {
+      addConversationContinuitySchema(db);
+      backfillConversationContinuity(db);
+      db.prepare(
+        'INSERT INTO social_schema_migrations(version, applied_at) VALUES (37, ?)',
+      ).run(isoNow());
     })();
   }
 }

@@ -4,6 +4,7 @@ import path from 'node:path';
 import {
   WINDOWS_RUNNER_BACKEND_ID,
   WINDOWS_RUNNER_BACKEND_VERSION,
+  WINDOWS_RUNNER_POLICY_VERSION,
   WINDOWS_RUNNER_PACKAGE_MANIFEST,
   WINDOWS_RUNNER_PROTOCOL_VERSION,
   WINDOWS_RUNNER_RESOURCE_NAME,
@@ -135,6 +136,7 @@ function verifyPackagedRunnerManifest({
     'backendVersion',
     'executable',
     'platform',
+    'policyVersion',
     'protocolVersion',
     'schemaVersion',
     'sha256',
@@ -146,9 +148,10 @@ function verifyPackagedRunnerManifest({
   if (
     keys.length !== expectedKeys.length ||
     keys.some((key, index) => key !== expectedKeys[index]) ||
-    manifest.schemaVersion !== 1 ||
+    manifest.schemaVersion !== 2 ||
     manifest.backendId !== WINDOWS_RUNNER_BACKEND_ID ||
     manifest.backendVersion !== WINDOWS_RUNNER_BACKEND_VERSION ||
+    manifest.policyVersion !== WINDOWS_RUNNER_POLICY_VERSION ||
     manifest.protocolVersion !== WINDOWS_RUNNER_PROTOCOL_VERSION ||
     manifest.platform !== 'win32' ||
     manifest.arch !== 'x64' ||

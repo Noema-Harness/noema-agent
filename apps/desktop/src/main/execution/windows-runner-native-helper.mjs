@@ -4,12 +4,14 @@ import { isValidWindowsRunnerPackageSid } from './windows-runner-setup-state.mjs
 import {
   WINDOWS_RUNNER_BACKEND_ID,
   WINDOWS_RUNNER_BACKEND_VERSION,
+  WINDOWS_RUNNER_POLICY_VERSION,
   WINDOWS_RUNNER_PROTOCOL_VERSION,
 } from './windows-runner-package-contract.mjs';
 
 export {
   WINDOWS_RUNNER_BACKEND_ID,
   WINDOWS_RUNNER_BACKEND_VERSION,
+  WINDOWS_RUNNER_POLICY_VERSION,
   WINDOWS_RUNNER_PROTOCOL_VERSION,
 };
 export const WINDOWS_RUNNER_MAX_IPC_BYTES = 2 * 1024 * 1024;
@@ -144,7 +146,7 @@ export class WindowsRunnerNativeHelper {
       !isValidWindowsRunnerPackageSid(packageSid) ||
       !isRecord(policy) ||
       policy.requestId !== requestId ||
-      policy.version !== 2 ||
+      policy.version !== WINDOWS_RUNNER_POLICY_VERSION ||
       !isRecord(policy.backend) ||
       policy.backend.id !== WINDOWS_RUNNER_BACKEND_ID ||
       policy.backend.version !== this.expectedBackendVersion ||
@@ -831,6 +833,13 @@ function parseProbeResponse(bytes, expectedRequestId, expectedBackendVersion) {
     throw helperError('runner_helper_response_invalid');
   }
   const result = response.result;
+  if (
+    result.type === 'probe' &&
+    Number.isSafeInteger(result.policyVersion) &&
+    result.policyVersion !== WINDOWS_RUNNER_POLICY_VERSION
+  ) {
+    throw helperError('policy_version_unsupported');
+  }
   if (result.type === 'probe_unavailable') {
     if (
       !hasExactKeys(result, ['type', 'code']) ||
@@ -881,7 +890,7 @@ function parseProbeResponse(bytes, expectedRequestId, expectedBackendVersion) {
     ]) ||
     result.backendId !== WINDOWS_RUNNER_BACKEND_ID ||
     result.backendVersion !== expectedBackendVersion ||
-    result.policyVersion !== 2 ||
+    result.policyVersion !== WINDOWS_RUNNER_POLICY_VERSION ||
     typeof result.ready !== 'boolean' ||
     !Array.isArray(result.blockers) ||
     result.blockers.length > blockers.size ||

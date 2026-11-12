@@ -97,7 +97,7 @@ try {
       ),
     30000,
   );
-  await capture('first-meeting.png');
+  await capture('social-first-use.png');
   db = new Database(database, { readonly: true });
   await send(
     'sharing',

@@ -1,8 +1,13 @@
-import React, { lazy, Suspense } from 'react';
+import React from 'react';
 import { createRoot } from 'react-dom/client';
-import { SocialChatApp } from './chat/social-chat-app';
-const LegacyDesktopApp = lazy(() => import('./legacy/desktop-app'));
+import { FocusStyleManager } from '@blueprintjs/core';
+import { CoreChatApp } from './chat/core-chat-app';
+import { LegacyHistoryArchiveDialog } from './archive/legacy-history-archive-dialog';
 performance.mark('noema.renderer.entry-evaluated');
+FocusStyleManager.onlyShowFocusOnTabs();
+if (import.meta.env.DEV && import.meta.env.VITE_NOEMA_SMOKE_HMR === '1') {
+  void import('./hmr-smoke.css');
+}
 function App() {
   if (typeof window.noema?.getSocialState !== 'function')
     return (
@@ -20,12 +25,36 @@ function App() {
         </section>
       </main>
     );
-  return window.location.hash === '#legacy' ? (
-    <Suspense fallback={null}>
-      <LegacyDesktopApp />
-    </Suspense>
+  if (window.location.hash === '#legacy') {
+    window.history.replaceState(
+      null,
+      '',
+      `${window.location.pathname}${window.location.search}`,
+    );
+  }
+  return window.location.hash === '#archive' ? (
+    <LegacyArchiveRoute />
   ) : (
-    <SocialChatApp />
+    <CoreChatApp />
+  );
+}
+
+function LegacyArchiveRoute() {
+  const [open, setOpen] = React.useState(true);
+  return open ? (
+    <LegacyHistoryArchiveDialog
+      open
+      onClose={() => {
+        window.history.replaceState(
+          null,
+          '',
+          `${window.location.pathname}${window.location.search}`,
+        );
+        setOpen(false);
+      }}
+    />
+  ) : (
+    <CoreChatApp />
   );
 }
 createRoot(document.getElementById('root')!).render(

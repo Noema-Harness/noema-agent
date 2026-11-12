@@ -5,8 +5,14 @@ const DEFAULT_MODEL_BASE_URL = 'https://api.deepseek.com/v1';
 // explicitly raise it for work that needs a longer response.
 const DEFAULT_MAX_OUTPUT_TOKENS = 1024;
 // Bound both streamed deltas and buffered router replies if a gateway ignores
-// max_tokens or never sends the terminal SSE marker.
-const MAX_MODEL_RESPONSE_BYTES = 1_000_000;
+// max_tokens or never sends the terminal SSE marker. The byte budget includes
+// hidden reasoning deltas, which can legitimately exceed the visible answer by
+// an order of magnitude on long tool-use turns.
+const MAX_MODEL_RESPONSE_BYTES = 8_000_000;
+// A provider request includes connection setup and response-body consumption.
+// The caller signal still represents user cancellation; this deadline bounds
+// a stalled fetch/SSE stream without conflating the two outcomes.
+const MAX_PROVIDER_REQUEST_DURATION_MS = 180_000;
 
 /** @param {string} baseUrl */
 export function getProviderName(baseUrl) {
@@ -156,12 +162,13 @@ export function normalizeBaseUrl(value) {
 }
 
 export class OpenAICompatibleClient {
-  /** @param {{baseUrl?:string,getApiKey:()=>string|null,fetchImpl?:typeof fetch,legacyFreeRouteMode?:boolean,onUsage?:(usage:Record<string,unknown>)=>void,onRequestEvent?:(event:Record<string,unknown>)=>void}} options */
+  /** @param {{baseUrl?:string,getApiKey:()=>string|null,fetchImpl?:typeof fetch,legacyFreeRouteMode?:boolean,requestTimeoutMs?:number,onUsage?:(usage:Record<string,unknown>)=>void,onRequestEvent?:(event:Record<string,unknown>)=>void}} options */
   constructor({
     baseUrl = DEFAULT_MODEL_BASE_URL,
     getApiKey,
     fetchImpl = fetch,
     legacyFreeRouteMode = false,
+    requestTimeoutMs = MAX_PROVIDER_REQUEST_DURATION_MS,
     onUsage = () => {},
     onRequestEvent = () => {},
   }) {
@@ -172,6 +179,12 @@ export class OpenAICompatibleClient {
     this.getApiKey = getApiKey;
     this.fetch = fetchImpl;
     this.legacyFreeRouteMode = legacyFreeRouteMode === true;
+    this.requestTimeoutMs =
+      Number.isInteger(requestTimeoutMs) &&
+      requestTimeoutMs >= 1 &&
+      requestTimeoutMs <= 600_000
+        ? requestTimeoutMs
+        : MAX_PROVIDER_REQUEST_DURATION_MS;
     this.onUsage = typeof onUsage === 'function' ? onUsage : () => {};
     this.onRequestEvent =
       typeof onRequestEvent === 'function' ? onRequestEvent : () => {};
@@ -270,7 +283,7 @@ export class OpenAICompatibleClient {
 
   /**
    * Streams text deltas from an OpenAI-compatible chat endpoint.
-   * @param {{model:string,messages:Array<object>,signal:AbortSignal,maxTokens?:number,tools?:Array<object>,toolChoice?:string|object,onToolCalls?:(calls:Array<object>)=>void,onRouteMetadata?:(route:string|null)=>void,toolCallCorrectionAttempt?:boolean,usageOperation?:string,usageInteractionId?:string|null,usageExecutionId?:string|null,usageTurnId?:string|null}} input
+   * @param {{model:string,messages:Array<object>,signal:AbortSignal,maxTokens?:number,tools?:Array<object>,toolChoice?:string|object,onToolCalls?:(calls:Array<object>,requestId:string)=>void,onRouteMetadata?:(route:string|null)=>void,toolCallCorrectionAttempt?:number,usageOperation?:string,usageInteractionId?:string|null,usageExecutionId?:string|null,usageTurnId?:string|null,usageParentExecutionId?:string|null}} input
    * @returns {AsyncGenerator<string,void,void>}
    */
   async *streamChat({
@@ -282,11 +295,12 @@ export class OpenAICompatibleClient {
     toolChoice = 'auto',
     onToolCalls = () => {},
     onRouteMetadata = () => {},
-    toolCallCorrectionAttempt = false,
+    toolCallCorrectionAttempt = 0,
     usageOperation = 'unspecified',
     usageInteractionId = null,
     usageExecutionId = null,
     usageTurnId = null,
+    usageParentExecutionId = null,
   }) {
     const key = this.requireApiKey();
     const useBufferedRouterResponse =
@@ -304,6 +318,11 @@ export class OpenAICompatibleClient {
       turnId:
         typeof usageTurnId === 'string' && usageTurnId.trim()
           ? usageTurnId.trim().slice(0, 120)
+          : null,
+      parentExecutionId:
+        typeof usageParentExecutionId === 'string' &&
+        usageParentExecutionId.trim()
+          ? usageParentExecutionId.trim().slice(0, 120)
           : null,
       model,
       providerHost,
@@ -323,11 +342,17 @@ export class OpenAICompatibleClient {
     };
     const startedAt = Date.now();
     let firstOutputReported = false;
-    const emitRequestEvent = (phase, status, requestStatus = status) => {
+    const emitRequestEvent = (
+      phase,
+      status,
+      requestStatus = status,
+      errorCode = null,
+    ) => {
       try {
         this.onRequestEvent({
           requestId: requestMetadata.requestId,
           executionId: requestMetadata.executionId,
+          parentExecutionId: requestMetadata.parentExecutionId,
           turnId: requestMetadata.turnId,
           interactionId: requestMetadata.interactionId,
           operation: requestMetadata.operation,
@@ -335,6 +360,7 @@ export class OpenAICompatibleClient {
           status,
           requestStatus,
           elapsedMs: Math.max(0, Date.now() - startedAt),
+          ...(typeof errorCode === 'string' ? { errorCode } : {}),
         });
       } catch {
         // Diagnostics must never change provider request or tool behavior.
@@ -346,19 +372,34 @@ export class OpenAICompatibleClient {
       emitRequestEvent('first_output', 'running', 'running');
     };
     let usageReported = false;
-    const recordUsage = (status, usage) => {
+    const recordUsage = (status, usage, errorCode = null) => {
       if (usageReported) return;
       usageReported = true;
       const usageReceived = normalizeProviderUsage(usage).usageReceived;
       if (!usageReceived) {
-        emitRequestEvent('usage_missing', 'unknown', status);
+        emitRequestEvent('usage_missing', 'unknown', status, errorCode);
       }
-      emitRequestEvent(status, status, status);
+      emitRequestEvent(status, status, status, errorCode);
       reportUsage(
         this.onUsage,
         { ...requestMetadata, requestStatus: status },
         usage,
       );
+    };
+    const deadlineSignal = AbortSignal.timeout(this.requestTimeoutMs);
+    const requestSignal = AbortSignal.any([signal, deadlineSignal]);
+    const deadlineExceeded = () => deadlineSignal.aborted && !signal.aborted;
+    const requestErrorCode = (error, fallback) => {
+      if (deadlineExceeded() || error?.name === 'TimeoutError') {
+        return 'request_timeout';
+      }
+      if (signal.aborted || error?.name === 'AbortError') {
+        return 'request_cancelled';
+      }
+      const code = error?.code;
+      return typeof code === 'string' && /^[a-z0-9_.-]{1,80}$/i.test(code)
+        ? code
+        : fallback;
     };
     emitRequestEvent('started', 'running', 'running');
     let response;
@@ -380,17 +421,18 @@ export class OpenAICompatibleClient {
             : {}),
           ...(tools?.length ? { tools, tool_choice: toolChoice } : {}),
         }),
-        signal,
+        signal: requestSignal,
       });
     } catch (error) {
+      const timedOut = deadlineExceeded() || error?.name === 'TimeoutError';
+      const cancelled = signal.aborted || error?.name === 'AbortError';
       recordUsage(
-        signal.aborted || error?.name === 'AbortError'
-          ? 'interrupted'
-          : 'failed',
+        cancelled && !timedOut ? 'interrupted' : 'failed',
         null,
+        requestErrorCode(error, 'provider_transport_error'),
       );
-      if (signal.aborted || error?.name === 'AbortError') throw error;
-      if (error?.name === 'TimeoutError') {
+      if (cancelled && !timedOut) throw error;
+      if (timedOut) {
         throw new ModelProviderError(
           'request_timeout',
           '模型服务请求超时。消息已保留，可以重试。',
@@ -406,11 +448,11 @@ export class OpenAICompatibleClient {
       );
     }
     if (!response.ok) {
-      recordUsage('failed', null);
+      recordUsage('failed', null, 'provider_http_error');
       throw await mapHttpError(response);
     }
     if (!response.body) {
-      recordUsage('failed', null);
+      recordUsage('failed', null, 'invalid_response');
       throw new ModelProviderError(
         'invalid_response',
         '模型服务没有返回可读取的回复流。',
@@ -433,7 +475,20 @@ export class OpenAICompatibleClient {
       try {
         body = JSON.parse(await readBoundedResponseText(response));
       } catch (error) {
-        recordUsage('failed', null);
+        const timedOut = deadlineExceeded() || error?.name === 'TimeoutError';
+        const cancelled = signal.aborted || error?.name === 'AbortError';
+        recordUsage(
+          cancelled && !timedOut ? 'interrupted' : 'failed',
+          null,
+          requestErrorCode(error, 'invalid_response'),
+        );
+        if (cancelled && !timedOut) throw error;
+        if (timedOut) {
+          throw new ModelProviderError(
+            'request_timeout',
+            '模型服务请求超时。消息已保留，可以重试。',
+          );
+        }
         if (error instanceof ModelProviderError) throw error;
         throw new ModelProviderError(
           'invalid_response',
@@ -441,7 +496,7 @@ export class OpenAICompatibleClient {
         );
       }
       if (body?.error) {
-        recordUsage('failed', body?.usage);
+        recordUsage('failed', body?.usage, 'provider_error');
         throw new ModelProviderError(
           'provider_error',
           '模型服务未能完成请求。可以稍后重试或切换模型。',
@@ -451,7 +506,7 @@ export class OpenAICompatibleClient {
       const text = extractMessageText(choice?.message);
       const calls = choice?.message?.tool_calls;
       if (!text && (!Array.isArray(calls) || calls.length === 0)) {
-        recordUsage('failed', body?.usage);
+        recordUsage('failed', body?.usage, 'empty_reply');
         throw new ModelProviderError(
           'empty_reply',
           '模型没有返回文字或工具调用。消息已保留，可以重试。',
@@ -467,7 +522,7 @@ export class OpenAICompatibleClient {
           );
         } catch (error) {
           if (
-            !toolCallCorrectionAttempt &&
+            toolCallCorrectionAttempt < 2 &&
             tools?.length &&
             isRecoverableToolCallArgumentsError(error)
           ) {
@@ -481,17 +536,23 @@ export class OpenAICompatibleClient {
               toolChoice,
               onToolCalls,
               onRouteMetadata,
-              toolCallCorrectionAttempt: true,
+              toolCallCorrectionAttempt: toolCallCorrectionAttempt + 1,
               usageOperation,
               usageInteractionId,
               usageExecutionId,
               usageTurnId,
+              usageParentExecutionId,
             });
             return;
           }
           throw error;
         }
-        onToolCalls(finalizedCalls);
+        onToolCalls(finalizedCalls, requestMetadata.requestId);
+      } else {
+        const dsmlCalls = parseDsmlToolCalls(text);
+        if (dsmlCalls.length) {
+          onToolCalls(dsmlCalls, requestMetadata.requestId);
+        }
       }
       if (text) yield text;
       return;
@@ -584,7 +645,7 @@ export class OpenAICompatibleClient {
           finalizedCalls = finalizeToolCalls(toolCalls);
         } catch (error) {
           if (
-            !toolCallCorrectionAttempt &&
+            toolCallCorrectionAttempt < 2 &&
             tools?.length &&
             isRecoverableToolCallArgumentsError(error)
           ) {
@@ -598,18 +659,34 @@ export class OpenAICompatibleClient {
           }
         }
         if (finalizedCalls) {
-          onToolCalls(finalizedCalls);
+          onToolCalls(finalizedCalls, requestMetadata.requestId);
+        }
+      } else {
+        const dsmlCalls = parseDsmlToolCalls(responseText);
+        if (dsmlCalls.length) {
+          onToolCalls(dsmlCalls, requestMetadata.requestId);
         }
       }
       recordUsage('completed', finalUsage);
     } catch (error) {
       recordUsage(
-        signal.aborted || error?.name === 'AbortError'
-          ? 'interrupted'
-          : 'failed',
+        signal.aborted && !deadlineExceeded() ? 'interrupted' : 'failed',
         finalUsage,
+        requestErrorCode(error, 'provider_stream_error'),
       );
-      if (signal.aborted || error?.name === 'AbortError') throw error;
+      if (signal.aborted && !deadlineExceeded()) throw error;
+      if (deadlineExceeded()) {
+        throw new ModelProviderError(
+          'request_timeout',
+          '模型服务请求超时。已收到的内容会保留，可以重试。',
+        );
+      }
+      if (error?.name === 'TimeoutError') {
+        throw new ModelProviderError(
+          'request_timeout',
+          '模型服务请求超时。已收到的内容会保留，可以重试。',
+        );
+      }
       if (error instanceof ModelProviderError) throw error;
       const failure = describeTransportFailure(error);
       if (
@@ -628,7 +705,16 @@ export class OpenAICompatibleClient {
       throw error;
     } finally {
       if (!usageReported) {
-        recordUsage(signal.aborted ? 'interrupted' : 'failed', finalUsage);
+        const timedOut = deadlineExceeded();
+        recordUsage(
+          signal.aborted && !timedOut ? 'interrupted' : 'failed',
+          finalUsage,
+          timedOut
+            ? 'request_timeout'
+            : signal.aborted
+              ? 'request_cancelled'
+              : null,
+        );
       }
       if (!sawDone) {
         try {
@@ -653,11 +739,12 @@ export class OpenAICompatibleClient {
         toolChoice,
         onToolCalls,
         onRouteMetadata,
-        toolCallCorrectionAttempt: true,
+        toolCallCorrectionAttempt: toolCallCorrectionAttempt + 1,
         usageOperation,
         usageInteractionId,
         usageExecutionId,
         usageTurnId,
+        usageParentExecutionId,
       });
     }
   }
@@ -756,6 +843,7 @@ function normalizeProviderUsage(usage) {
       outputTokens: null,
       cachedInputTokens: null,
       cacheMissTokens: null,
+      cacheWriteTokens: null,
       reasoningTokens: null,
       providerCost: null,
     };
@@ -767,7 +855,11 @@ function normalizeProviderUsage(usage) {
       usage.prompt_tokens_details?.cached_tokens ??
       usage.input_tokens_details?.cached_tokens,
   );
-  const cachedInputTokens =
+  const cacheWriteTokens = nonNegativeInteger(
+    usage.prompt_tokens_details?.cache_write_tokens ??
+      usage.input_tokens_details?.cache_write_tokens,
+  );
+  let cachedInputTokens =
     inputTokens !== null && reportedCachedInputTokens > inputTokens
       ? null
       : reportedCachedInputTokens;
@@ -780,34 +872,50 @@ function normalizeProviderUsage(usage) {
     (inputTokens !== null && cachedInputTokens !== null
       ? Math.max(0, inputTokens - cachedInputTokens)
       : null);
-  if (
+  const cacheBreakdownContradictory =
     inputTokens !== null &&
-    cachedInputTokens !== null &&
-    cacheMissTokens !== null &&
-    cachedInputTokens + cacheMissTokens !== inputTokens
-  ) {
+    ((reportedCachedInputTokens !== null &&
+      reportedCachedInputTokens > inputTokens) ||
+      (cacheMissTokens !== null && cacheMissTokens > inputTokens) ||
+      (cachedInputTokens !== null &&
+        cacheMissTokens !== null &&
+        cachedInputTokens + cacheMissTokens !== inputTokens));
+  if (cacheBreakdownContradictory) {
+    cachedInputTokens = null;
     cacheMissTokens = null;
   }
   const reasoningTokens = nonNegativeInteger(
     usage.completion_tokens_details?.reasoning_tokens ?? usage.reasoning_tokens,
   );
   const providerCost = usage.cost ?? usage.total_cost ?? null;
+  const normalizedProviderCost =
+    providerCost !== null &&
+    typeof providerCost === 'object' &&
+    !Array.isArray(providerCost) &&
+    Object.keys(providerCost).length > 0
+      ? providerCost
+      : (nonNegativeInteger(providerCost) ??
+        (typeof providerCost === 'number' &&
+        Number.isFinite(providerCost) &&
+        providerCost >= 0
+          ? providerCost
+          : null));
+  const usageReceived =
+    inputTokens !== null ||
+    outputTokens !== null ||
+    reportedCachedInputTokens !== null ||
+    explicitMissTokens !== null ||
+    cacheWriteTokens !== null ||
+    reasoningTokens !== null;
   return {
-    usageReceived: true,
+    usageReceived,
     inputTokens,
     outputTokens,
     cachedInputTokens,
     cacheMissTokens,
+    cacheWriteTokens,
     reasoningTokens,
-    providerCost:
-      providerCost !== null && typeof providerCost === 'object'
-        ? providerCost
-        : (nonNegativeInteger(providerCost) ??
-          (typeof providerCost === 'number' &&
-          Number.isFinite(providerCost) &&
-          providerCost >= 0
-            ? providerCost
-            : null)),
+    providerCost: normalizedProviderCost,
   };
 }
 
@@ -843,6 +951,58 @@ function extractMessageText(message) {
       .join('');
   }
   return '';
+}
+
+const DSML_MARK = '[|｜]{1,3}\\s*DSML\\s*[|｜]{1,3}';
+const DSML_INVOKE_RE = new RegExp(
+  `<${DSML_MARK}\\s*invoke\\s+name="([^"]+)">([\\s\\S]*?)<\\/${DSML_MARK}\\s*invoke>`,
+  'gi',
+);
+const DSML_PARAMETER_RE = new RegExp(
+  `<${DSML_MARK}\\s*parameter\\s+name="([^"]+)"(?:\\s+string="(true|false)")?>([\\s\\S]*?)<\\/${DSML_MARK}\\s*parameter>`,
+  'gi',
+);
+
+function decodeDsmlText(value) {
+  return String(value)
+    .replaceAll('&quot;', '"')
+    .replaceAll('&apos;', "'")
+    .replaceAll('&lt;', '<')
+    .replaceAll('&gt;', '>')
+    .replaceAll('&amp;', '&');
+}
+
+export function parseDsmlToolCalls(text) {
+  if (typeof text !== 'string' || !new RegExp(DSML_MARK).test(text)) return [];
+  const calls = [];
+  let match;
+  DSML_INVOKE_RE.lastIndex = 0;
+  while ((match = DSML_INVOKE_RE.exec(text))) {
+    const name = match[1]?.trim();
+    if (!name) continue;
+    const args = {};
+    DSML_PARAMETER_RE.lastIndex = 0;
+    let parameter;
+    while ((parameter = DSML_PARAMETER_RE.exec(match[2]))) {
+      const key = parameter[1];
+      const raw = decodeDsmlText(parameter[3].trim());
+      if (parameter[2] === 'true') {
+        args[key] = raw;
+        continue;
+      }
+      try {
+        args[key] = JSON.parse(raw);
+      } catch {
+        args[key] = raw;
+      }
+    }
+    calls.push({
+      id: `call_dsml_${calls.length + 1}_${Date.now()}`,
+      type: 'function',
+      function: { name, arguments: JSON.stringify(args) },
+    });
+  }
+  return calls;
 }
 
 function collectToolCallDeltas(payload, toolCalls) {

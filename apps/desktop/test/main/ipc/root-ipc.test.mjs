@@ -1,10 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {
-  CHANNELS,
-  createImportAwareSendMessage,
-  registerRootIpc,
-} from '../../../src/main/ipc/root-ipc.mjs';
+import { CHANNELS, registerRootIpc } from '../../../src/main/ipc/root-ipc.mjs';
 
 function createIpcHarness() {
   const handlers = new Map();
@@ -27,360 +23,237 @@ function createIpcHarness() {
   };
 }
 
-test('registers only named root-agent actions and rejects non-window senders', async () => {
+test('retired Root and Quick Capture IPC is absent while shared provider IPC remains gated', async () => {
   const harness = createIpcHarness();
+  const trustedSender = { mainFrame: { parent: null } };
+  const calls = [];
   const rootAgent = {
-    getUiState: async () => ({ messages: [] }),
-    refreshModels: async () => ({ models: [] }),
-    configureProvider: async (configuration) => configuration,
+    refreshModels: async () => (calls.push('refresh'), { models: [] }),
+    configureProvider: async (configuration) => (
+      calls.push('provider'),
+      configuration
+    ),
+    configureWebSearch: async () => ({ webSearchConfigured: true }),
+    clearWebSearch: async () => ({ webSearchConfigured: false }),
     setModel: async (model) => model,
-    sendMessage: ({ text }) => ({ turnId: text }),
-    saveCapture: (text) => ({ id: text }),
-    updateCapture: (id, text) => ({ id, content: text }),
-    deleteCapture: (id) => id === 'capture-1',
-    discussCapture: (id) => ({ turnId: id }),
-    retryTurn: ({ turnId }) => ({ turnId }),
-    stopTurn: async () => true,
-    setWorkspaceDirectory: (directory) => directory,
-    clearWorkspaceDirectory: () => null,
-    stopBackgroundTask: async () => true,
-    resumeBackgroundTask: async (taskId) => ({ accepted: true, taskId }),
-    retryBackgroundEvent: async (taskId) => ({
-      accepted: true,
-      completed: true,
-      taskId,
-    }),
-    listCodexThreads: async () => [],
-    previewCodexThread: async (threadId) => ({ threadId }),
-    importCodexThread: async (input) => input,
-    removeContextImport: () => true,
-    addSocialInteractionAdjustment: async (input) => input,
-    updateInteractionAdjustment: async (input) => input,
-    withdrawInteractionAdjustment: (id) => id === 'adjustment-1',
   };
-  const trustedSender = {};
-  let quickCaptureFinished = 0;
-  let quickCaptureReady = 0;
-  let socialChatReady = 0;
-  const authorizationEvents = [];
-  const diagnosticCalls = [];
   const unregister = registerRootIpc({
     ipcMain: harness.ipcMain,
     rootAgent,
-    diagnosticsQueryService: {
-      listRecent: (limit) => {
-        diagnosticCalls.push(['recent', limit]);
-        return { executions: [] };
-      },
-      getTimeline: (input) => {
-        diagnosticCalls.push(['timeline', input]);
-        return { events: [] };
-      },
-      getExportPreview: (input) => {
-        diagnosticCalls.push(['preview', input]);
-        return { previewId: 'preview-1' };
-      },
-    },
-    getDiagnosticsDatabaseHealth: () => 'healthy',
-    openUserDataDirectory: async () => ({
-      opened: true,
-      errorCode: null,
-    }),
-    saveDiagnosticsExport: async (previewId) => {
-      diagnosticCalls.push(['save', previewId]);
-      return { saved: true };
-    },
     isTrustedSender: (sender) => sender === trustedSender,
-    recordAuthorization: (...event) => authorizationEvents.push(event),
-    chooseWorkspace: async () => 'D:\\Scratch',
-    finishQuickCapture: () => {
-      quickCaptureFinished += 1;
-      return true;
-    },
-    getQuickCaptureShortcutStatus: () => ({
-      accelerator: 'Control+Alt+N',
-      registered: true,
-    }),
-    markQuickCaptureReady: () => {
-      quickCaptureReady += 1;
-      return true;
-    },
-    markSocialChatReady: () => {
-      socialChatReady += 1;
-      return true;
-    },
   });
-
+  const retiredChannels = [
+    'noema:root-state',
+    'noema:send-message',
+    'noema:save-capture',
+    'noema:update-capture',
+    'noema:delete-capture',
+    'noema:discuss-capture',
+    'noema:retry-turn',
+    'noema:stop-turn',
+    'noema:choose-workspace',
+    'noema:clear-workspace',
+    'noema:stop-background-task',
+    'noema:resume-background-task',
+    'noema:retry-worker-event',
+    'noema:list-codex-threads',
+    'noema:preview-codex-thread',
+    'noema:import-codex-thread',
+    'noema:remove-context-import',
+    'noema:add-social-interaction-adjustment',
+    'noema:update-interaction-adjustment',
+    'noema:withdraw-interaction-adjustment',
+    'noema:quick-capture-request',
+    'noema:quick-capture-shortcut-status',
+    'noema:mark-quick-capture-ready',
+    'noema:finish-quick-capture',
+  ];
+  for (const channel of retiredChannels) {
+    assert.equal(
+      harness.handlers.has(channel),
+      false,
+      `${channel} must be retired`,
+    );
+  }
+  assert.equal(harness.handlers.has(CHANNELS.models), true);
+  assert.equal(harness.handlers.has(CHANNELS.configureProvider), true);
+  assert.equal(harness.handlers.has(CHANNELS.selectModel), true);
   assert.deepEqual(
-    [...harness.handlers.keys()].sort(),
-    [
-      CHANNELS.models,
-      CHANNELS.configureProvider,
-      CHANNELS.configureWebSearch,
-      CHANNELS.clearWebSearch,
-      CHANNELS.retry,
-      CHANNELS.selectModel,
-      CHANNELS.send,
-      CHANNELS.saveCapture,
-      CHANNELS.updateCapture,
-      CHANNELS.deleteCapture,
-      CHANNELS.discussCapture,
-      CHANNELS.state,
-      CHANNELS.stop,
-      CHANNELS.chooseWorkspace,
-      CHANNELS.clearWorkspace,
-      CHANNELS.stopWorker,
-      CHANNELS.resumeWorker,
-      CHANNELS.retryWorkerEvent,
-      CHANNELS.listCodexThreads,
-      CHANNELS.previewCodexThread,
-      CHANNELS.importCodexThread,
-      CHANNELS.removeContextImport,
-      CHANNELS.addSocialInteractionAdjustment,
-      CHANNELS.updateInteractionAdjustment,
-      CHANNELS.withdrawInteractionAdjustment,
-      CHANNELS.quickCaptureShortcutStatus,
-      CHANNELS.markQuickCaptureReady,
-      CHANNELS.markSocialChatReady,
-      CHANNELS.finishQuickCapture,
-      CHANNELS.diagnosticsRecent,
-      CHANNELS.diagnosticsTimeline,
-      CHANNELS.diagnosticsDatabaseHealth,
-      CHANNELS.openUserDataDirectory,
-      CHANNELS.diagnosticsExportPreview,
-      CHANNELS.diagnosticsExportSave,
-      CHANNELS.windowsRunnerCapability,
-      CHANNELS.setupWindowsRunner,
-    ].sort(),
-  );
-  assert.deepEqual(
-    await harness.handlers.get(CHANNELS.send)(
-      { sender: trustedSender },
-      'hello',
-    ),
-    {
-      turnId: 'hello',
-    },
-  );
-  assert.deepEqual(
-    await harness.handlers.get(CHANNELS.saveCapture)(
-      { sender: trustedSender },
-      'note',
-    ),
-    { id: 'note' },
-  );
-  assert.deepEqual(
-    await harness.handlers.get(CHANNELS.updateCapture)(
-      { sender: trustedSender },
-      'capture-1',
-      'edited',
-    ),
-    { id: 'capture-1', content: 'edited' },
-  );
-  assert.equal(
-    await harness.handlers.get(CHANNELS.deleteCapture)(
-      { sender: trustedSender },
-      'capture-1',
-    ),
-    true,
-  );
-  assert.deepEqual(
-    await harness.handlers.get(CHANNELS.discussCapture)(
-      { sender: trustedSender },
-      'capture-1',
-    ),
-    { turnId: 'capture-1' },
-  );
-  assert.equal(
-    await harness.handlers.get(CHANNELS.chooseWorkspace)({
-      sender: trustedSender,
-    }),
-    'D:\\Scratch',
-  );
-  assert.equal(
-    await harness.handlers.get(CHANNELS.clearWorkspace)({
-      sender: trustedSender,
-    }),
-    null,
-  );
-  assert.deepEqual(authorizationEvents, [
-    ['legacy_workspace_access', 'revoked'],
-  ]);
-  assert.equal(
-    await harness.handlers.get(CHANNELS.removeContextImport)({
-      sender: trustedSender,
-    }),
-    true,
-  );
-  assert.deepEqual(authorizationEvents, [
-    ['legacy_workspace_access', 'revoked'],
-    ['imported_context_transmission', 'revoked'],
-  ]);
-  assert.equal(
-    await harness.handlers.get(CHANNELS.withdrawInteractionAdjustment)(
-      { sender: trustedSender },
-      'adjustment-1',
-    ),
-    true,
-  );
-  const socialAdjustment = {
-    sourceTurnId: 'social-turn-1',
-    sourceRoomId: 'room-noema',
-    scope: 'conversation',
-    situation: '用户分享一段经历',
-    behavior: '先自然回应，再继续交流。',
-    sourceQuote: '继续交流',
-  };
-  assert.deepEqual(
-    await harness.handlers.get(CHANNELS.addSocialInteractionAdjustment)(
-      { sender: trustedSender },
-      socialAdjustment,
-    ),
-    socialAdjustment,
-  );
-  assert.equal(
-    await harness.handlers.get(CHANNELS.finishQuickCapture)({
-      sender: trustedSender,
-    }),
-    true,
-  );
-  assert.equal(quickCaptureFinished, 1);
-  assert.deepEqual(
-    await harness.handlers.get(CHANNELS.quickCaptureShortcutStatus)({
-      sender: trustedSender,
-    }),
-    { accelerator: 'Control+Alt+N', registered: true },
-  );
-  assert.equal(
-    await harness.handlers.get(CHANNELS.markQuickCaptureReady)({
-      sender: trustedSender,
-    }),
-    true,
-  );
-  assert.equal(quickCaptureReady, 1);
-  assert.equal(
-    await harness.handlers.get(CHANNELS.markSocialChatReady)({
-      sender: trustedSender,
-    }),
-    true,
-  );
-  assert.equal(socialChatReady, 1);
-  assert.deepEqual(
-    await harness.handlers.get(CHANNELS.updateInteractionAdjustment)(
-      { sender: trustedSender },
-      {
-        id: 'adjustment-1',
-        scope: 'both',
-        situation: 'test situation',
-        behavior: 'test behavior',
-      },
-    ),
-    {
-      id: 'adjustment-1',
-      scope: 'both',
-      situation: 'test situation',
-      behavior: 'test behavior',
-    },
-  );
-  assert.deepEqual(
-    await harness.handlers.get(CHANNELS.resumeWorker)(
-      { sender: trustedSender },
-      'task-1',
-    ),
-    { accepted: true, taskId: 'task-1' },
-  );
-  assert.deepEqual(
-    await harness.handlers.get(CHANNELS.retryWorkerEvent)(
-      { sender: trustedSender },
-      'task-1',
-    ),
-    { accepted: true, completed: true, taskId: 'task-1' },
-  );
-  assert.deepEqual(
-    await harness.handlers.get(CHANNELS.diagnosticsRecent)(
-      { sender: trustedSender },
-      12,
-    ),
-    { executions: [] },
-  );
-  assert.deepEqual(
-    await harness.handlers.get(CHANNELS.diagnosticsTimeline)(
-      { sender: trustedSender },
-      { taskId: 'task-1' },
-    ),
-    { events: [] },
-  );
-  assert.equal(
-    await harness.handlers.get(CHANNELS.diagnosticsDatabaseHealth)({
-      sender: trustedSender,
-    }),
-    'healthy',
-  );
-  assert.deepEqual(
-    await harness.handlers.get(CHANNELS.openUserDataDirectory)(
-      { sender: trustedSender },
-      'C:\\attacker-selected-path',
-    ),
-    { opened: true, errorCode: null },
-  );
-  assert.deepEqual(
-    await harness.handlers.get(CHANNELS.diagnosticsExportPreview)(
-      { sender: trustedSender },
-      { taskId: 'task-1' },
-    ),
-    { previewId: 'preview-1' },
-  );
-  assert.deepEqual(
-    await harness.handlers.get(CHANNELS.diagnosticsExportSave)(
-      { sender: trustedSender },
-      'preview-1',
-    ),
-    { saved: true },
-  );
-  assert.deepEqual(diagnosticCalls, [
-    ['recent', 12],
-    ['timeline', { taskId: 'task-1' }],
-    ['preview', { taskId: 'task-1' }],
-    ['save', 'preview-1'],
-  ]);
-  await assert.rejects(
-    harness.handlers.get(CHANNELS.state)({ sender: {} }),
-    /未授权/,
+    await harness.handlers.get(CHANNELS.models)({ sender: trustedSender }),
+    { models: [] },
   );
   await assert.rejects(
-    harness.handlers.get(CHANNELS.diagnosticsRecent)({ sender: {} }),
-    /未授权/,
-  );
-  await assert.rejects(
-    harness.handlers.get(CHANNELS.openUserDataDirectory)({ sender: {} }),
-    /未授权/,
-  );
-  await assert.rejects(
-    harness.handlers.get(CHANNELS.finishQuickCapture)({ sender: {} }),
-    /未授权/,
-  );
-  await assert.rejects(
-    harness.handlers.get(CHANNELS.quickCaptureShortcutStatus)({ sender: {} }),
-    /未授权/,
-  );
-  await assert.rejects(
-    harness.handlers.get(CHANNELS.markQuickCaptureReady)({ sender: {} }),
-    /未授权/,
-  );
-  await assert.rejects(
-    harness.handlers.get(CHANNELS.updateInteractionAdjustment)(
+    harness.handlers.get(CHANNELS.configureProvider)(
       { sender: {} },
-      {
-        id: 'adjustment-1',
-        scope: 'both',
-        situation: 'unauthorized edit',
-        behavior: 'must not be saved',
-      },
+      { apiKey: 'nope' },
     ),
-    /未授权/,
+    /未授权/u,
   );
+  assert.deepEqual(calls, ['refresh']);
   unregister();
   assert.equal(harness.handlers.size, 0);
+});
+
+test('execution file permissions default to ask and persist an explicit allow', async () => {
+  const harness = createIpcHarness();
+  const trustedSender = { mainFrame: { parent: null } };
+  let permissions = { externalFiles: 'ask' };
+  const unregister = registerRootIpc({
+    ipcMain: harness.ipcMain,
+    rootAgent: {},
+    getExecutionPermissions: () => permissions,
+    setExecutionPermissions: (next) => {
+      permissions = {
+        externalFiles: next?.externalFiles === 'allow' ? 'allow' : 'ask',
+      };
+      return permissions;
+    },
+    isTrustedSender: (sender) => sender === trustedSender,
+  });
+  assert.deepEqual(
+    await harness.handlers.get(CHANNELS.executionPermissions)({
+      sender: trustedSender,
+    }),
+    { externalFiles: 'ask' },
+  );
+  assert.deepEqual(
+    await harness.handlers.get(CHANNELS.setExecutionPermissions)(
+      { sender: trustedSender },
+      { externalFiles: 'allow' },
+    ),
+    { externalFiles: 'allow' },
+  );
+  assert.deepEqual(
+    await harness.handlers.get(CHANNELS.executionPermissions)({
+      sender: trustedSender,
+    }),
+    { externalFiles: 'allow' },
+  );
+  unregister();
+});
+
+test('project and member mutations reject untrusted or child frames before touching stores', async () => {
+  const harness = createIpcHarness();
+  const trustedSender = { mainFrame: { parent: null } };
+  const calls = [];
+  const unregister = registerRootIpc({
+    ipcMain: harness.ipcMain,
+    rootAgent: {},
+    isTrustedSender: (sender) => sender === trustedSender,
+    socialProjectStore: {
+      archiveProject: (projectId) => {
+        calls.push(['archive', projectId]);
+        return { id: projectId, groupRoomId: 'group' };
+      },
+      restoreProject: (projectId) => {
+        calls.push(['restore', projectId]);
+        return { id: projectId, groupRoomId: 'group' };
+      },
+    },
+    socialChatService: {
+      emit: () => {},
+      setAgentArchived: (agentId, archived) => {
+        calls.push(['agent-archive', agentId, archived]);
+        return { id: agentId };
+      },
+    },
+  });
+  try {
+    for (const event of [
+      { sender: {} },
+      {
+        sender: trustedSender,
+        senderFrame: { parent: trustedSender.mainFrame },
+      },
+    ]) {
+      await assert.rejects(
+        harness.handlers.get(CHANNELS.socialArchiveProject)(
+          event,
+          'project-forged',
+        ),
+        /未授权/u,
+      );
+      await assert.rejects(
+        harness.handlers.get(CHANNELS.socialAgentArchive)(
+          event,
+          'agent-forged',
+          true,
+        ),
+        /未授权/u,
+      );
+    }
+    assert.deepEqual(calls, []);
+    await harness.handlers.get(CHANNELS.socialArchiveProject)(
+      { sender: trustedSender },
+      'project-real',
+    );
+    await harness.handlers.get(CHANNELS.socialAgentArchive)(
+      { sender: trustedSender },
+      'agent-real',
+      true,
+    );
+    assert.deepEqual(calls, [
+      ['archive', 'project-real'],
+      ['agent-archive', 'agent-real', true],
+    ]);
+  } finally {
+    unregister();
+  }
+});
+
+test('room history and scoped search IPC forward only bounded query inputs to the Social store', async () => {
+  const harness = createIpcHarness();
+  const trustedSender = { mainFrame: { parent: null } };
+  const calls = [];
+  const unregister = registerRootIpc({
+    ipcMain: harness.ipcMain,
+    rootAgent: { getUiState: async () => ({}) },
+    socialChatService: {
+      store: {
+        getRoomSnapshot: (roomId, options) => (
+          calls.push(['room', roomId, options]),
+          { room: { id: roomId }, messages: [] }
+        ),
+        searchRoomMessages: (roomId, query) => (
+          calls.push(['search', roomId, query]),
+          []
+        ),
+      },
+    },
+    isTrustedSender: (sender) => sender === trustedSender,
+  });
+  try {
+    const invoke = (channel, ...args) =>
+      harness.handlers.get(channel)({ sender: trustedSender }, ...args);
+    await invoke(CHANNELS.socialRoom, 'room-noema');
+    await invoke(CHANNELS.socialRoom, 'room-noema', {
+      limit: 200,
+      beforeSequence: 400,
+    });
+    await invoke(
+      CHANNELS.socialSearchRoomMessages,
+      'room-noema',
+      'earlier text',
+    );
+    await assert.rejects(
+      harness.handlers.get(CHANNELS.socialSearchRoomMessages)(
+        {
+          sender: trustedSender,
+          senderFrame: { parent: trustedSender.mainFrame },
+        },
+        'room-noema',
+        'forbidden frame',
+      ),
+      /未授权的应用窗口请求/u,
+    );
+    assert.deepEqual(calls, [
+      ['room', 'room-noema', { limit: 200 }],
+      ['room', 'room-noema', { limit: 200, beforeSequence: 400 }],
+      ['search', 'room-noema', 'earlier text'],
+    ]);
+  } finally {
+    unregister();
+  }
 });
 
 test('Windows runner capability and setup IPC are main-frame gated', async () => {
@@ -439,7 +312,7 @@ test('rejects IPC from a child frame hosted in the trusted window', async () => 
   let diagnosticReads = 0;
   const unregister = registerRootIpc({
     ipcMain: harness.ipcMain,
-    rootAgent: { getUiState: () => ({ messages: [] }) },
+    rootAgent: { refreshModels: () => ({ models: [] }) },
     diagnosticsQueryService: {
       listRecent: () => {
         diagnosticReads += 1;
@@ -449,13 +322,6 @@ test('rejects IPC from a child frame hosted in the trusted window', async () => 
     isTrustedSender: (sender) => sender === trustedSender,
   });
   try {
-    await assert.rejects(
-      harness.handlers.get(CHANNELS.state)({
-        sender: trustedSender,
-        senderFrame: { parent: trustedSender.mainFrame },
-      }),
-      /未授权的应用窗口请求/u,
-    );
     await assert.rejects(
       harness.handlers.get(CHANNELS.diagnosticsRecent)({
         sender: trustedSender,
@@ -469,38 +335,11 @@ test('rejects IPC from a child frame hosted in the trusted window', async () => 
   }
 });
 
-test('workspace selection cancellation creates no legacy workspace grant', async () => {
-  const harness = createIpcHarness();
-  const trustedSender = { mainFrame: { parent: null } };
-  let workspaceChanges = 0;
-  const unregister = registerRootIpc({
-    ipcMain: harness.ipcMain,
-    rootAgent: {
-      getUiState: () => ({ messages: [] }),
-      setWorkspaceDirectory: () => {
-        workspaceChanges += 1;
-      },
-    },
-    isTrustedSender: (sender) => sender === trustedSender,
-    chooseWorkspace: async () => null,
-  });
-  try {
-    assert.equal(
-      await harness.handlers.get(CHANNELS.chooseWorkspace)({
-        sender: trustedSender,
-      }),
-      null,
-    );
-    assert.equal(workspaceChanges, 0);
-  } finally {
-    unregister();
-  }
-});
-
 test('personal memory management is exposed only through trusted desktop IPC', async () => {
   const harness = createIpcHarness();
   const trustedSender = {};
   const calls = [];
+  const diagnosticEvents = [];
   const memories = {
     list: () => ({ enabled: true, items: [] }),
     setEnabled: (enabled) => (calls.push(['enabled', enabled]), enabled),
@@ -515,6 +354,10 @@ test('personal memory management is exposed only through trusted desktop IPC', a
     ipcMain: harness.ipcMain,
     rootAgent: { getUiState: async () => ({}) },
     socialChatService: { store: { personalMemories: memories } },
+    recordDiagnosticEvent: (event) => {
+      diagnosticEvents.push(event);
+      throw new Error('diagnostics unavailable');
+    },
     isTrustedSender: (sender) => sender === trustedSender,
   });
   const invoke = (channel, ...args) =>
@@ -540,47 +383,168 @@ test('personal memory management is exposed only through trusted desktop IPC', a
     ['update', { id: 'memory-1', content: '已修正。' }],
     ['delete', 'memory-1'],
   ]);
+  assert.deepEqual(
+    diagnosticEvents.map(({ module, operation, status, details }) => ({
+      module,
+      operation,
+      status,
+      details,
+    })),
+    ['list', 'enabled', 'add', 'update', 'delete'].map((operation) => ({
+      module: 'social.memory',
+      operation: `settings.${operation}`,
+      status: 'completed',
+      details: undefined,
+    })),
+  );
+  assert.doesNotMatch(JSON.stringify(diagnosticEvents), /一条本地记忆|已修正/u);
   await assert.rejects(
     harness.handlers.get(CHANNELS.personalMemories)({ sender: {} }),
     /未授权/u,
   );
 });
 
-test('Codex import sends nothing until transmission consent and remains revocable', async () => {
-  let consented = false;
-  let sends = 0;
-  let prompts = 0;
-  const rootAgent = {
-    getUnconsentedContextImport: () =>
-      consented ? null : { title: '测试会话' },
-    consentToContextImportTransmission: () => {
-      consented = true;
+test('personal memory IPC keeps store behavior when diagnostics fail and redacts store errors', async () => {
+  const harness = createIpcHarness();
+  const trustedSender = {};
+  const diagnosticEvents = [];
+  registerRootIpc({
+    ipcMain: harness.ipcMain,
+    rootAgent: { getUiState: async () => ({}) },
+    socialChatService: {
+      store: {
+        personalMemories: {
+          add: ({ content }) => {
+            if (content === 'force failure')
+              throw new Error('private memory body must not be logged');
+            return { id: 'memory-1', content };
+          },
+        },
+      },
     },
-    sendMessage: ({ text }) => {
-      sends += 1;
-      return { turnId: text };
+    recordDiagnosticEvent: (event) => {
+      diagnosticEvents.push(event);
+      throw new Error('diagnostics unavailable');
     },
+    isTrustedSender: (sender) => sender === trustedSender,
+  });
+  const invoke = (channel, ...args) =>
+    harness.handlers.get(channel)({ sender: trustedSender }, ...args);
+
+  assert.deepEqual(
+    await invoke(CHANNELS.addPersonalMemory, 'sensitive memory text'),
+    { id: 'memory-1', content: 'sensitive memory text' },
+  );
+  await assert.rejects(
+    invoke(CHANNELS.addPersonalMemory, 'force failure'),
+    /private memory body must not be logged/u,
+  );
+  assert.deepEqual(
+    diagnosticEvents.map(({ module, operation, status, errorCode }) => ({
+      module,
+      operation,
+      status,
+      errorCode,
+    })),
+    [
+      {
+        module: 'social.memory',
+        operation: 'settings.add',
+        status: 'completed',
+        errorCode: undefined,
+      },
+      {
+        module: 'social.memory',
+        operation: 'settings.add',
+        status: 'failed',
+        errorCode: 'personal_memory_operation_failed',
+      },
+    ],
+  );
+  assert.doesNotMatch(
+    JSON.stringify(diagnosticEvents),
+    /sensitive memory text|private memory body/u,
+  );
+});
+
+test('user follow-up settings IPC records content-free actions under separate execution IDs', async () => {
+  const harness = createIpcHarness();
+  const trustedSender = {};
+  const diagnosticEvents = [];
+  const calls = [];
+  const followups = {
+    list: () => ({ enabled: true, items: [] }),
+    setEnabled: (enabled) => enabled,
+    add: (input) => ({ id: 'followup-1', ...input }),
+    update: (input) => ({ id: input.id, ...input }),
+    cancel: () => false,
   };
-  const cancel = createImportAwareSendMessage(rootAgent, async () => {
-    prompts += 1;
-    return false;
+  const unregister = registerRootIpc({
+    ipcMain: harness.ipcMain,
+    rootAgent: { getUiState: async () => ({}) },
+    socialChatService: {
+      store: { userFollowups: followups },
+      scheduleUserFollowups: () => calls.push('schedule'),
+    },
+    recordDiagnosticEvent: (event) => {
+      diagnosticEvents.push(event);
+      throw new Error('diagnostics unavailable');
+    },
+    isTrustedSender: (sender) => sender === trustedSender,
   });
-  assert.deepEqual(await cancel('不应发送'), { canceled: true });
-  assert.equal(sends, 0);
-  assert.equal(consented, false);
+  const invoke = (channel, ...args) =>
+    harness.handlers.get(channel)({ sender: trustedSender }, ...args);
+  try {
+    await invoke(CHANNELS.userFollowups);
+    await invoke(CHANNELS.userFollowupsEnabled, true);
+    await invoke(CHANNELS.userFollowupsEnabled, false);
+    await invoke(CHANNELS.addUserFollowup, {
+      title: 'PRIVATE_FOLLOWUP_TITLE',
+      body: 'PRIVATE_FOLLOWUP_BODY',
+      dueAt: '2026-11-06T08:00:00.000Z',
+    });
+    await invoke(CHANNELS.updateUserFollowup, {
+      id: 'followup-1',
+      title: 'PRIVATE_FOLLOWUP_TITLE_UPDATED',
+      body: 'PRIVATE_FOLLOWUP_BODY_UPDATED',
+      dueAt: '2026-11-06T09:00:00.000Z',
+    });
+    assert.equal(
+      await invoke(CHANNELS.cancelUserFollowup, 'followup-1'),
+      false,
+    );
 
-  const approve = createImportAwareSendMessage(rootAgent, async (snapshot) => {
-    prompts += 1;
-    assert.equal(snapshot.title, '测试会话');
-    return true;
-  });
-  assert.deepEqual(await approve('允许发送'), { turnId: '允许发送' });
-  assert.equal(consented, true);
-  assert.equal(sends, 1);
-
-  assert.deepEqual(await approve('之后继续'), { turnId: '之后继续' });
-  assert.equal(prompts, 2);
-  assert.equal(sends, 2);
+    assert.deepEqual(
+      diagnosticEvents.map(({ module, operation, status }) => ({
+        module,
+        operation,
+        status,
+      })),
+      [
+        ['list', 'completed'],
+        ['enabled', 'completed'],
+        ['enabled', 'completed'],
+        ['add', 'completed'],
+        ['update', 'completed'],
+        ['cancel', 'no_effect'],
+      ].map(([operation, status]) => ({
+        module: 'social.followup',
+        operation: `settings.${operation}`,
+        status,
+      })),
+    );
+    assert.equal(
+      new Set(diagnosticEvents.map((event) => event.executionId)).size,
+      diagnosticEvents.length,
+    );
+    assert.deepEqual(calls, ['schedule', 'schedule', 'schedule']);
+    assert.doesNotMatch(
+      JSON.stringify(diagnosticEvents),
+      /PRIVATE_FOLLOWUP_TITLE|PRIVATE_FOLLOWUP_BODY|followup-1/u,
+    );
+  } finally {
+    unregister();
+  }
 });
 
 test('file requests use ordinary social messages; only task controls retain direct trusted IPC', async () => {
@@ -755,7 +719,11 @@ test('project IPC exposes metadata and preserves lifecycle events for the render
     getUiState: async () => ({
       rooms: [],
       agents: [],
-      projectWork: { available: false, reason: '执行器未就绪。' },
+      projectWork: {
+        available: false,
+        reasonCode: 'executor_unavailable',
+        reason: '执行器未就绪。',
+      },
     }),
     emit: (event) => events.push(event),
   };
@@ -796,12 +764,17 @@ test('project IPC exposes metadata and preserves lifecycle events for the render
     {
       rooms: [],
       agents: [],
-      projectWork: { available: false, reason: '执行器未就绪。' },
+      projectWork: {
+        available: false,
+        reasonCode: 'executor_unavailable',
+        reason: '执行器未就绪。',
+      },
       projects: [project],
     },
   );
   assert.deepEqual(recordedReadiness, {
     available: false,
+    reasonCode: 'executor_unavailable',
     reason: '执行器未就绪。',
   });
   assert.deepEqual(
@@ -822,6 +795,8 @@ test('project IPC exposes metadata and preserves lifecycle events for the render
       title: project.title,
       brief: project.brief,
       agentIds: ['noema', 'researcher'],
+      workspacePath: 'C:\\noema-test-workspace',
+      workspaceIdentity: { path: 'C:\\noema-test-workspace', key: 'test' },
     },
   );
   assert.equal(created.groupRoomId, project.groupRoomId);

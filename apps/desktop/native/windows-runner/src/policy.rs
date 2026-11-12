@@ -12,7 +12,7 @@ const ALLOWED_ENVIRONMENT_NAMES: [&str; 6] = [
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct WindowsCommandPolicyV2 {
+pub struct WindowsCommandPolicy {
     pub version: u16,
     pub backend: BackendIdentity,
     pub request_id: String,
@@ -33,9 +33,17 @@ pub struct BackendIdentity {
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct FilesystemPolicy {
+    pub mode: FilesystemMode,
     pub read_roots: Vec<PathRoot>,
     pub write_roots: Vec<PathRoot>,
     pub default_deny: bool,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum FilesystemMode {
+    ReadOnly,
+    ReadWrite,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -103,7 +111,7 @@ pub enum NetworkMode {
     PromptPerDestination,
 }
 
-impl WindowsCommandPolicyV2 {
+impl WindowsCommandPolicy {
     /// Validate the serialized D2 policy shape before any backend preparation.
     /// The serialized file identity must still match the native object handle before ACL use.
     pub fn validate(&self, request_id: &str) -> Result<(), &'static str> {
@@ -122,10 +130,15 @@ impl WindowsCommandPolicyV2 {
         if !self.filesystem.default_deny {
             return Err("filesystem_default_deny_required");
         }
+        let write_roots_valid = match self.filesystem.mode {
+            FilesystemMode::ReadOnly => self.filesystem.write_roots.is_empty(),
+            FilesystemMode::ReadWrite => {
+                !self.filesystem.write_roots.is_empty() && self.filesystem.write_roots.len() <= 5
+            }
+        };
         if self.filesystem.read_roots.is_empty()
             || self.filesystem.read_roots.len() > 37
-            || self.filesystem.write_roots.is_empty()
-            || self.filesystem.write_roots.len() > 5
+            || !write_roots_valid
         {
             return Err("filesystem_policy_invalid");
         }
@@ -133,7 +146,10 @@ impl WindowsCommandPolicyV2 {
         let write_roots = validate_roots(&self.filesystem.write_roots)?;
         let workspace_key = self.workspace_root.path.to_ascii_lowercase();
         if !read_roots.contains(&workspace_key)
-            || !write_roots.contains(&workspace_key)
+            || (self.filesystem.mode == FilesystemMode::ReadWrite
+                && !write_roots.contains(&workspace_key))
+            || (self.filesystem.mode == FilesystemMode::ReadOnly
+                && write_roots.contains(&workspace_key))
             || write_roots.iter().any(|root| !read_roots.contains(root))
         {
             return Err("filesystem_policy_invalid");

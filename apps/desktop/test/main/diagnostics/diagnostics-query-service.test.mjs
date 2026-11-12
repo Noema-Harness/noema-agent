@@ -12,6 +12,7 @@ function createService({
   now,
   recordDiagnosticEvent,
   runtimeInfo = null,
+  rootStore = null,
 } = {}) {
   const db = new Database(':memory:');
   const eventStore = new DiagnosticsEventStore(db, { maxEvents });
@@ -21,11 +22,207 @@ function createService({
     modelUsageStore,
     recordDiagnosticEvent,
     socialChatStore: task ? { getSocialWorkTask: () => task } : null,
+    rootStore,
     runtimeInfo,
     now,
   });
   return { db, eventStore, modelUsageStore, service };
 }
+
+test('personal memory diagnostics are queryable by execution identity without exporting content', () => {
+  const memorySentinel = 'PRIVATE_MEMORY_BODY_SENTINEL';
+  const querySentinel = 'PRIVATE_MEMORY_QUERY_SENTINEL';
+  const sourceSentinel = 'PRIVATE_SOURCE_MESSAGE_SENTINEL';
+  const { db, eventStore, service } = createService();
+  try {
+    eventStore.record({
+      applicationExecutionId: 'app-memory',
+      executionId: 'turn-memory-settings',
+      module: 'social.memory',
+      operation: 'settings.add',
+      status: 'completed',
+      details: {
+        memoryText: memorySentinel,
+        query: querySentinel,
+        sourceMessage: sourceSentinel,
+      },
+    });
+    eventStore.record({
+      applicationExecutionId: 'app-memory',
+      executionId: 'turn-memory-chat',
+      turnId: 'turn-memory-chat',
+      requestId: 'request-memory-chat',
+      toolCallId: 'call-memory-chat',
+      module: 'social.memory',
+      operation: 'memory.retrieval',
+      status: 'hit',
+    });
+
+    const timeline = service.getTimeline({
+      executionId: 'turn-memory-chat',
+    });
+    assert.equal(timeline.events.length, 1);
+    assert.equal(timeline.events[0].requestId, 'request-memory-chat');
+    assert.equal(timeline.events[0].toolCallId, 'call-memory-chat');
+
+    const preview = service.getExportPreview({
+      executionId: 'turn-memory-settings',
+    });
+    assert.equal(preview.executionId, 'turn-memory-settings');
+    assert.doesNotMatch(
+      preview.reportJson,
+      /PRIVATE_MEMORY_BODY_SENTINEL|PRIVATE_MEMORY_QUERY_SENTINEL|PRIVATE_SOURCE_MESSAGE_SENTINEL/u,
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test('follow-up lifecycle query follows the stable execution and excludes reminder content', () => {
+  const title = 'PRIVATE_FOLLOWUP_TITLE_SENTINEL';
+  const body = 'PRIVATE_FOLLOWUP_BODY_SENTINEL';
+  const source = 'PRIVATE_FOLLOWUP_SOURCE_SENTINEL';
+  const { db, eventStore, service } = createService();
+  try {
+    eventStore.record({
+      applicationExecutionId: 'app-followup',
+      executionId: 'followup-execution-1',
+      parentExecutionId: 'social-turn-1',
+      turnId: 'social-turn-1',
+      requestId: 'request-followup-1',
+      toolCallId: 'call-followup-1',
+      module: 'social.followup',
+      operation: 'followup.schedule',
+      status: 'created',
+      details: { title, body, source },
+    });
+    eventStore.record({
+      applicationExecutionId: 'app-followup',
+      executionId: 'followup-execution-1',
+      module: 'social.followup',
+      operation: 'followup.delivery.claimed',
+      status: 'claimed',
+    });
+    const timeline = service.getTimeline({
+      executionId: 'followup-execution-1',
+    });
+    assert.deepEqual(
+      timeline.events.map((event) => event.operation),
+      ['followup.schedule', 'followup.delivery.claimed'],
+    );
+    assert.equal(timeline.events[0].parentExecutionId, 'social-turn-1');
+    assert.equal(timeline.events[0].requestId, 'request-followup-1');
+    const preview = service.getExportPreview({
+      executionId: 'followup-execution-1',
+    });
+    assert.doesNotMatch(
+      preview.reportJson,
+      /PRIVATE_FOLLOWUP_(TITLE|BODY|SOURCE)_SENTINEL/u,
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test('Noema workspace entry trace connects readiness, picker cancellation and created task without exposing task content', () => {
+  const taskPrompt = 'PRIVATE_WORKSPACE_TASK_PROMPT_SENTINEL';
+  const workspacePath = 'C:\\PRIVATE_WORKSPACE_PATH_SENTINEL';
+  const { db, eventStore, service } = createService({
+    task: {
+      id: 'workspace-entry-task',
+      status: 'completed',
+      verificationStatus: 'verified',
+      errorCode: null,
+      executionEngine: 'noema',
+      taskPrompt,
+      workspacePath,
+      resultText: 'PRIVATE_WORKSPACE_RESULT_SENTINEL',
+      errorMessage: null,
+      executionSteps: [],
+    },
+  });
+  try {
+    eventStore.record({
+      applicationExecutionId: 'app-workspace-entry',
+      executionId: 'app-workspace-entry',
+      module: 'desktop.main',
+      operation: 'entry.route_selected',
+      status: 'observed',
+    });
+    eventStore.record({
+      applicationExecutionId: 'app-workspace-entry',
+      executionId: 'app-workspace-entry',
+      module: 'desktop.main',
+      operation: 'entry.capability_availability',
+      status: 'available',
+    });
+    eventStore.record({
+      applicationExecutionId: 'app-workspace-entry',
+      parentExecutionId: 'app-workspace-entry',
+      module: 'social.work',
+      operation: 'workspace.selection',
+      status: 'canceled',
+      details: { reasonCode: 'user_cancelled' },
+    });
+    eventStore.record({
+      applicationExecutionId: 'app-workspace-entry',
+      executionId: 'workspace-entry-task',
+      parentExecutionId: 'app-workspace-entry',
+      taskId: 'workspace-entry-task',
+      module: 'social.work',
+      operation: 'task.created_from_entry',
+      status: 'starting',
+    });
+    eventStore.record({
+      applicationExecutionId: 'app-workspace-entry',
+      executionId: 'workspace-entry-task',
+      taskId: 'workspace-entry-task',
+      module: 'social.work',
+      operation: 'task.finished',
+      status: 'completed',
+    });
+
+    const entryTimeline = service.getTimeline({
+      executionId: 'app-workspace-entry',
+    });
+    assert.deepEqual(
+      entryTimeline.events.map((event) => event.operation),
+      [
+        'entry.route_selected',
+        'entry.capability_availability',
+        'workspace.selection',
+        'task.created_from_entry',
+      ],
+    );
+    assert.equal(entryTimeline.task?.id, 'workspace-entry-task');
+    assert.equal(entryTimeline.events[2].status, 'canceled');
+    assert.equal(
+      entryTimeline.events[3].parentExecutionId,
+      'app-workspace-entry',
+    );
+
+    const taskTimeline = service.getTimeline({
+      taskId: 'workspace-entry-task',
+    });
+    assert.equal(taskTimeline.events.at(-1)?.operation, 'task.finished');
+    assert.ok(
+      taskTimeline.events.every(
+        (event) => event.applicationExecutionId === 'app-workspace-entry',
+      ),
+    );
+
+    const preview = service.getExportPreview({
+      executionId: 'app-workspace-entry',
+    });
+    assert.match(preview.reportJson, /workspace-entry-task/u);
+    assert.doesNotMatch(
+      preview.reportJson,
+      /PRIVATE_WORKSPACE_(TASK_PROMPT|PATH|RESULT)_SENTINEL/u,
+    );
+  } finally {
+    db.close();
+  }
+});
 
 test('timeline joins usage by stable request id and projects only safe task fields', () => {
   const secretPrompt = 'PRIVATE_PROMPT_SENTINEL';
@@ -87,6 +284,7 @@ test('timeline joins usage by stable request id and projects only safe task fiel
       outputTokens: 8,
       cachedInputTokens: 50,
       cacheMissTokens: 20,
+      cacheWriteTokens: 3,
       requestCharacters: 4_000,
       messageRoleCharacters: {
         system: 1_000,
@@ -120,6 +318,7 @@ test('timeline joins usage by stable request id and projects only safe task fiel
       (row) => row.requestId === 'request-legacy',
     );
     assert.equal(currentUsage.inputTokens, 70);
+    assert.equal(currentUsage.cacheWriteTokens, 3);
     assert.equal(currentUsage.requestCharacters, 4_000);
     assert.deepEqual(currentUsage.messageRoleCharacters, {
       system: 1_000,
@@ -147,11 +346,16 @@ test('timeline joins usage by stable request id and projects only safe task fiel
     const preview = service.getExportPreview({ taskId: 'task-1' });
     assert.equal(preview.eventCount, 2);
     assert.equal(preview.usageCount, 2);
+    assert.equal(preview.includesTestContext, false);
     const json = service.consumeExportPreview(preview.previewId);
     assert.equal(typeof json, 'string');
     assert.equal(preview.reportJson, json);
+    assert.ok(
+      JSON.parse(json).usage.some((usage) => usage.cacheWriteTokens === 3),
+    );
     assert.equal(json.includes('requestCharacters'), false);
     assert.equal(json.includes('messageRoleCharacters'), false);
+    assert.equal(JSON.parse(json).testContext, undefined);
     for (const sentinel of [
       secretPrompt,
       secretPath,
@@ -161,7 +365,7 @@ test('timeline joins usage by stable request id and projects only safe task fiel
     ]) {
       assert.equal(json.includes(sentinel), false, sentinel);
     }
-    assert.match(json, /os_child_process_lifecycle_not_recorded/u);
+    assert.match(json, /business_store_row_writes_not_recorded/u);
     assert.equal(service.consumeExportPreview(preview.previewId), null);
   } finally {
     db.close();
@@ -209,6 +413,171 @@ test('runtime manifest is returned locally and included in the reviewed export',
   }
 });
 
+test('test context is opt-in, limited to the selected turn/task, and redacted', () => {
+  const token = 'sk-abcdefghijklmnopqrstuvwxyz012345';
+  const { db, eventStore, service } = createService({
+    task: {
+      id: 'task-1',
+      status: 'failed',
+      verificationStatus: 'unavailable',
+      errorCode: 'verification_unavailable',
+      executionEngine: 'noema',
+      taskPrompt: `Check this test case; api_key=${token} ${'x'.repeat(17_000)}`,
+      resultText: 'The command stopped before writing.',
+      errorMessage: 'Expected one file.',
+      workspacePath: 'C:\\PRIVATE_PATH',
+      executionSteps: [],
+    },
+    rootStore: {
+      getTurnMessagesForDiagnostics: () => [
+        {
+          role: 'user',
+          status: 'complete',
+          attempt: 1,
+          content: 'Please reproduce the failure.',
+        },
+        {
+          role: 'assistant',
+          status: 'complete',
+          attempt: 1,
+          content: 'I found the cause.',
+        },
+      ],
+    },
+  });
+  try {
+    eventStore.record({
+      applicationExecutionId: 'app-1',
+      executionId: 'task-1',
+      taskId: 'task-1',
+      turnId: 'turn-1',
+      module: 'social.work',
+      operation: 'task.finished',
+      status: 'failed',
+    });
+    const preview = service.getExportPreview({ taskId: 'task-1' });
+    assert.equal(preview.includesTestContext, false);
+    const contextPreview = service.getExportPreview({
+      taskId: 'task-1',
+      includeTestContext: true,
+    });
+    const report = JSON.parse(contextPreview.reportJson);
+    assert.equal(contextPreview.includesTestContext, true);
+    assert.equal(report.testContext.messages.length, 2);
+    assert.equal(
+      report.testContext.messages[0].content,
+      'Please reproduce the failure.',
+    );
+    assert.match(report.testContext.task.prompt, /已隐藏疑似凭据/u);
+    assert.equal(report.testContext.task.prompt.length, 16_000);
+    assert.equal(contextPreview.testContextTruncated, true);
+    assert.equal(
+      report.testContext.task.result,
+      'The command stopped before writing.',
+    );
+    assert.equal(report.testContext.redacted, true);
+    assert.equal(report.task.taskPrompt, undefined);
+    assert.equal(report.testContext.task.workspacePath, undefined);
+    assert.equal(contextPreview.reportJson.includes(token), false);
+    assert.equal(contextPreview.reportJson.includes('PRIVATE_PATH'), false);
+    service.discardExportPreview(preview.previewId);
+    service.discardExportPreview(contextPreview.previewId);
+  } finally {
+    db.close();
+  }
+});
+
+test('RootAgent timeline includes correlated DSH process and task evidence', () => {
+  const dshTask = {
+    id: 'dsh-task-1',
+    sourceTurnId: 'turn-1',
+    status: 'completed',
+    harness: 'dsh',
+    prompt: 'Create and verify the requested test fixture.',
+    resultText: 'Fixture created and checked.',
+    errorCode: null,
+    errorMessage: null,
+    createdAt: '2026-11-04T01:00:00.000Z',
+    updatedAt: '2026-11-04T01:00:02.000Z',
+    completedAt: '2026-11-04T01:00:02.000Z',
+  };
+  const rootStore = {
+    getTurnMessagesForDiagnostics: () => [
+      {
+        role: 'user',
+        status: 'complete',
+        attempt: 1,
+        content: 'Please make a small test fixture.',
+      },
+      {
+        role: 'assistant',
+        status: 'complete',
+        attempt: 1,
+        content: 'The fixture is ready.',
+      },
+    ],
+    getBackgroundTask: (id) => (id === dshTask.id ? dshTask : null),
+    getBackgroundTaskForTurn: (id) => (id === 'turn-1' ? dshTask : null),
+  };
+  const { db, eventStore, modelUsageStore, service } = createService({
+    rootStore,
+  });
+  try {
+    for (const [operation, status, taskId] of [
+      ['turn.started', 'started', null],
+      ['task.started', 'started', dshTask.id],
+      ['process.started', 'started', dshTask.id],
+      ['process.exited', 'completed', dshTask.id],
+      ['task.finished', 'completed', dshTask.id],
+      ['turn.completed', 'completed', null],
+    ]) {
+      eventStore.record({
+        applicationExecutionId: 'app-1',
+        executionId: taskId ?? 'turn-1',
+        parentExecutionId: taskId ? 'turn-1' : null,
+        taskId,
+        turnId: 'turn-1',
+        module:
+          operation.startsWith('process.') || taskId ? 'dsh' : 'root.agent',
+        operation,
+        status,
+      });
+    }
+    modelUsageStore.record({
+      interactionId: dshTask.id,
+      model: 'test-model',
+      providerHost: 'api.example.test',
+      operation: 'dsh_worker_step',
+      requestStatus: 'completed',
+      usageReceived: true,
+      inputTokens: 44,
+      outputTokens: 11,
+    });
+
+    const timeline = service.getTimeline({ executionId: 'turn-1' });
+    assert.equal(timeline.task.id, dshTask.id);
+    assert.equal(timeline.task.executionEngine, 'dsh');
+    assert.ok(
+      timeline.events.some((event) => event.operation === 'process.exited'),
+    );
+    assert.equal(timeline.usage[0].interactionId, dshTask.id);
+    assert.equal(
+      timeline.coverageGaps.includes('os_child_process_lifecycle_not_recorded'),
+      false,
+    );
+    const preview = service.getExportPreview({
+      executionId: 'turn-1',
+      includeTestContext: true,
+    });
+    const report = JSON.parse(preview.reportJson);
+    assert.equal(report.testContext.task.prompt, dshTask.prompt);
+    assert.equal(report.testContext.task.result, dshTask.resultText);
+    service.discardExportPreview(preview.previewId);
+  } finally {
+    db.close();
+  }
+});
+
 test('timeline marks empty and truncated data as coverage gaps', () => {
   const { db, eventStore, service } = createService();
   try {
@@ -227,13 +596,50 @@ test('timeline marks empty and truncated data as coverage gaps', () => {
     assert.equal(timeline.truncated, true);
     assert.ok(timeline.coverageGaps.includes('timeline_truncated'));
     assert.ok(
-      timeline.coverageGaps.includes('os_child_process_lifecycle_not_recorded'),
-    );
-    assert.ok(
       service
         .getTimeline({ taskId: 'missing-task' })
         .coverageGaps.includes('no_persisted_events'),
     );
+  } finally {
+    db.close();
+  }
+});
+
+test('unavailable event details remain a visible timeline and export gap', () => {
+  const { db, eventStore, service } = createService();
+  try {
+    eventStore.record({
+      applicationExecutionId: 'app-1',
+      executionId: 'task-damaged-details',
+      taskId: 'task-damaged-details',
+      module: 'social.work',
+      operation: 'task.finished',
+      status: 'completed',
+      details: { route: 'social' },
+    });
+    db.prepare(
+      'UPDATE diagnostic_events SET details_json = ? WHERE execution_id = ?',
+    ).run('{PRIVATE_PROMPT_SENTINEL', 'task-damaged-details');
+
+    const timeline = service.getTimeline({ taskId: 'task-damaged-details' });
+    assert.equal(timeline.events.length, 1);
+    assert.equal(timeline.events[0].detailsStatus, 'unavailable');
+    assert.ok(
+      timeline.coverageGaps.includes('diagnostic_event_details_unavailable'),
+    );
+    assert.equal(JSON.stringify(timeline).includes('PRIVATE_PROMPT'), false);
+
+    const preview = service.getExportPreview({
+      taskId: 'task-damaged-details',
+    });
+    assert.equal(preview.schemaVersion, 3);
+    assert.ok(
+      preview.coverageGaps.includes('diagnostic_event_details_unavailable'),
+    );
+    assert.ok(
+      preview.reportJson.includes('diagnostic_event_details_unavailable'),
+    );
+    assert.equal(preview.reportJson.includes('PRIVATE_PROMPT'), false);
   } finally {
     db.close();
   }
@@ -281,6 +687,89 @@ test('timeline retains ordered provider request lifecycle phases by request iden
     );
     assert.equal(timeline.usage[0].usageReceived, false);
     assert.equal(timeline.usage[0].inputTokens, null);
+  } finally {
+    db.close();
+  }
+});
+
+test('task diagnostics and export group provider usage across distinct resume segments', () => {
+  const { db, eventStore, modelUsageStore, service } = createService();
+  try {
+    for (const [index, executionId] of [
+      'segment-initial',
+      'segment-resume-1',
+    ].entries()) {
+      const requestId = `request-${executionId}`;
+      eventStore.record({
+        applicationExecutionId: 'app-resume-trace',
+        executionId,
+        parentExecutionId: 'task-resume-trace',
+        taskId: 'task-resume-trace',
+        turnId: 'source-turn-resume-trace',
+        requestId,
+        module: 'provider',
+        operation: 'request.completed',
+        status: 'completed',
+        details: {
+          prompt: `PRIVATE_PROMPT_${executionId}`,
+          workspacePath: `PRIVATE_PATH_${executionId}`,
+          commandText: `PRIVATE_COMMAND_${executionId}`,
+        },
+        occurredAt: new Date(Date.UTC(2026, 10, 6, 0, 0, index)).toISOString(),
+      });
+      modelUsageStore.record({
+        requestId,
+        executionId,
+        interactionId: 'task-resume-trace',
+        turnId: 'source-turn-resume-trace',
+        operation: 'project_execution',
+        requestStatus: 'completed',
+        usageReceived: true,
+        inputTokens: 41 + index,
+        outputTokens: 9,
+      });
+    }
+
+    const taskTimeline = service.getTimeline({ taskId: 'task-resume-trace' });
+    assert.deepEqual(
+      taskTimeline.events.map((event) => event.executionId),
+      ['segment-initial', 'segment-resume-1'],
+    );
+    assert.deepEqual(
+      taskTimeline.usage.map((row) => row.executionId),
+      ['segment-initial', 'segment-resume-1'],
+    );
+    assert.ok(
+      taskTimeline.usage.every(
+        (row) =>
+          row.interactionId === 'task-resume-trace' &&
+          row.turnId === 'source-turn-resume-trace',
+      ),
+    );
+
+    const segmentTimeline = service.getTimeline({
+      executionId: 'segment-resume-1',
+    });
+    assert.equal(segmentTimeline.taskId, 'task-resume-trace');
+    assert.deepEqual(
+      segmentTimeline.usage.map((row) => row.requestId),
+      ['request-segment-resume-1'],
+    );
+
+    const preview = service.getExportPreview({ taskId: 'task-resume-trace' });
+    const report = JSON.parse(preview.reportJson);
+    assert.equal(preview.usageCount, 2);
+    assert.deepEqual(
+      report.usage.map((row) => row.executionId),
+      ['segment-initial', 'segment-resume-1'],
+    );
+    assert.ok(
+      report.usage.every((row) => row.turnId === 'source-turn-resume-trace'),
+    );
+    assert.doesNotMatch(
+      preview.reportJson,
+      /PRIVATE_PROMPT|PRIVATE_PATH|PRIVATE_COMMAND/u,
+    );
   } finally {
     db.close();
   }

@@ -228,6 +228,8 @@ test('execution history explains uncertain side effects without exposing tool in
       categoryLabel: '写入',
       statusLabel: '执行结果不确定',
       effectLabel: '操作结果不确定；继续前先检查已有文件改动',
+      toolLabel: '',
+      durationLabel: '',
     },
   );
   assert.deepEqual(
@@ -240,6 +242,25 @@ test('execution history explains uncertain side effects without exposing tool in
       categoryLabel: '命令',
       statusLabel: '已返回结果',
       effectLabel: '命令可能已改动项目；继续前先检查工作区',
+      toolLabel: '',
+      durationLabel: '',
+    },
+  );
+  assert.deepEqual(
+    socialWorkExecutionStepPresentation({
+      toolName: 'read_file',
+      category: 'read',
+      status: 'succeeded',
+      effectStatus: 'none',
+      startedAt: '2026-11-09T10:00:00.000Z',
+      completedAt: '2026-11-09T10:00:00.250Z',
+    }),
+    {
+      categoryLabel: '读取',
+      statusLabel: '已返回结果',
+      effectLabel: '',
+      toolLabel: 'read_file',
+      durationLabel: '250ms',
     },
   );
 });

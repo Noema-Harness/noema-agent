@@ -29,63 +29,103 @@ function createSecretStore(configured = true) {
   };
 }
 
-test('saving a capture is local and does not request model output', () => {
+test('retired legacy startup leaves active Root history rows unchanged', () => {
   const store = new RootStore(':memory:');
-  let modelCalls = 0;
-  const agent = new RootAgent({
-    store,
-    provider: {
-      baseUrl: 'http://127.0.0.1:31415/v1',
-      async *streamChat() {
-        modelCalls += 1;
-        yield 'unexpected';
-      },
-    },
-    secretStore: createSecretStore(),
+  const turn = store.beginTurn({ text: '历史任务', model: 'old-model' });
+  const before = store.getTurn(turn.id);
+  store.createBackgroundTask({
+    id: 'retired-dsh-task',
+    sourceTurnId: turn.id,
+    workspacePath: 'C:\\ArchiveFixture',
+    model: 'old-model',
+    prompt: '历史后台任务',
   });
-  const capture = agent.saveCapture('只记录，不开始对话');
-  assert.equal(capture.content, '只记录，不开始对话');
-  assert.equal(modelCalls, 0);
-  assert.equal(store.getSnapshot().messages.length, 0);
-  assert.equal(store.getSnapshot().captures.length, 1);
+  const beforeBackgroundTask = store.getBackgroundTask('retired-dsh-task');
+  new RootAgent({
+    store,
+    provider: {},
+    secretStore: createSecretStore(),
+    recoverInterruptedTurns: false,
+  });
+  assert.deepEqual(store.getTurn(turn.id), before);
+  assert.deepEqual(
+    store.getBackgroundTask('retired-dsh-task'),
+    beforeBackgroundTask,
+  );
   store.close();
 });
 
-test('discussing a capture sends its exact text as one root turn and preserves provenance', async () => {
+test('retired Quick Capture mutations are absent from RootAgent', () => {
   const store = new RootStore(':memory:');
-  store.setSelectedModel('free-router');
-  const capture = store.createCapture('这个念头原文不能被重新概括。');
-  let request;
+  const agent = new RootAgent({
+    store,
+    provider: {},
+    secretStore: createSecretStore(),
+    recoverInterruptedTurns: false,
+  });
+  assert.equal(agent.saveCapture, undefined);
+  assert.equal(agent.updateCapture, undefined);
+  assert.equal(agent.deleteCapture, undefined);
+  assert.equal(agent.discussCapture, undefined);
+  store.close();
+});
+
+test('root turn diagnostic lifecycle is linked and excludes conversation text', async () => {
+  const store = new RootStore(':memory:');
+  store.setSelectedModel('test-model');
+  const events = [];
   const agent = new RootAgent({
     store,
     provider: {
       baseUrl: 'http://127.0.0.1:31415/v1',
-      async listModels() {
-        return [{ name: 'free-router', label: '测试路由' }];
-      },
-      async *streamChat(input) {
-        request = input;
-        yield '我们可以从这里聊起。';
+      listModels: async () => [{ name: 'test-model' }],
+      async *streamChat() {
+        yield 'private assistant reply';
       },
     },
     secretStore: createSecretStore(),
+    recordDiagnosticEvent: (event) => events.push(event),
   });
-
-  const { turnId } = agent.discussCapture(capture.id);
+  const result = agent.sendMessage({ text: 'private user test input' });
   await agent.active.done;
 
-  assert.equal(request.messages.at(-1).content, capture.content);
-  assert.equal(store.getCapture(capture.id).discussionTurnId, turnId);
+  assert.ok(events.some((event) => event.operation === 'turn.started'));
+  assert.ok(events.some((event) => event.operation === 'turn.completed'));
+  assert.ok(events.every((event) => event.executionId === result.turnId));
+  assert.ok(events.every((event) => event.turnId === result.turnId));
   assert.equal(
-    store.getSnapshot().messages.filter((message) => message.role === 'user')
-      .length,
-    1,
+    JSON.stringify(events).includes('private user test input'),
+    false,
   );
   assert.equal(
-    store.getSnapshot().messages.find((message) => message.role === 'user')
-      .content,
-    capture.content,
+    JSON.stringify(events).includes('private assistant reply'),
+    false,
   );
+  store.close();
+});
+
+test('DSH diagnostics reject untrusted phases and terminal labels', () => {
+  const store = new RootStore(':memory:');
+  const events = [];
+  const agent = new RootAgent({
+    store,
+    provider: {},
+    secretStore: createSecretStore(),
+    recordDiagnosticEvent: (event) => events.push(event),
+  });
+  agent.onDshEvent({
+    type: 'process.exited',
+    taskId: 'dsh-task',
+    status: 'PRIVATE_STATUS',
+    phase: 'PRIVATE_PHASE',
+    errorCode: 'private error message',
+  });
+
+  assert.equal(events[0].status, 'unknown');
+  assert.equal(events[0].errorCode, undefined);
+  assert.equal(JSON.stringify(events).includes('PRIVATE_STATUS'), false);
+  assert.equal(JSON.stringify(events).includes('PRIVATE_PHASE'), false);
+  assert.equal(JSON.stringify(events).includes('private error message'), false);
   store.close();
 });
 
@@ -346,7 +386,17 @@ test('searches old root dialogue on request and discloses the exact source', asy
     });
     store.completeTurn(turn.id, 1);
   }
-  store.createCapture('未讨论速记：Minecraft 碰撞箱的私人草稿');
+  store.db
+    .prepare(`
+    INSERT INTO captured_moments (id, content, created_at, updated_at)
+    VALUES (?, ?, ?, ?)
+  `)
+    .run(
+      'legacy-capture-fixture',
+      '未讨论速记：Minecraft 碰撞箱的私人草稿',
+      new Date().toISOString(),
+      new Date().toISOString(),
+    );
 
   const requests = [];
   const provider = {
@@ -407,7 +457,7 @@ test('searches old root dialogue on request and discloses the exact source', asy
   assert.equal(assistant.historySearchStatus, 'found');
   assert.equal(assistant.historySourcesIncluded, true);
   assert.equal(
-    store.getSnapshot().captures[0].content,
+    store.listLegacyHistoryPage({ category: 'captures' }).records[0].content,
     '未讨论速记：Minecraft 碰撞箱的私人草稿',
   );
   store.close();

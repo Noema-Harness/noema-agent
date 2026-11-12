@@ -85,7 +85,7 @@ test('worker patch uses the selected model through a generic compatible provider
   assert.match(patch, /model: "auto:noema-free"/);
   assert.match(patch, /- id: llm-pi-ai[\s\S]*api: openai-completions/);
   assert.match(patch, /baseURL: "http:\/\/127\.0\.0\.1:31415\/v1"/);
-  assert.match(patch, /defaultMaxTokens: 8192/);
+  assert.match(patch, /defaultMaxTokens: 32768/);
   assert.doesNotMatch(patch, /provider: deepseek-official/);
   const selectedModelPatch = makeNoemaDshWorkerPatch(
     'deepseek-flash',
@@ -95,9 +95,9 @@ test('worker patch uses the selected model through a generic compatible provider
   assert.match(selectedModelPatch, /model: "deepseek-flash"/);
   assert.match(selectedModelPatch, /id: "deepseek-flash"/);
   assert.match(patch, /- id: tool-pwsh\n  disabled: false/);
-  assert.match(patch, /- id: tool-jobs\n  disabled: true/);
+  assert.doesNotMatch(patch, /- id: tool-jobs\n  disabled: true/);
+  assert.doesNotMatch(patch, /- id: tool-subagent\n  disabled: true/);
   assert.match(patch, /- id: tool-web\n  disabled: true/);
-  assert.match(patch, /- id: tool-subagent\n  disabled: true/);
   assert.throws(
     () => makeNoemaDshWorkerPatch('', 'http://127.0.0.1:31415/v1'),
     TypeError,
@@ -109,6 +109,90 @@ test('worker patch uses the selected model through a generic compatible provider
   assert.throws(
     () => makeNoemaDshWorkerPatch(model, 'not a URL'),
     (error) => error.code === 'model_provider_base_url_invalid',
+  );
+});
+
+test('worker patch disables direct file tools for product chat profiles', () => {
+  const patch = makeNoemaDshWorkerPatch(
+    routerModel,
+    'http://127.0.0.1:31415/v1',
+    { profile: 'noema' },
+  );
+  assert.match(patch, /- id: tool-pwsh\n  disabled: false/);
+  assert.match(patch, /- id: tool-fs\n  disabled: true/);
+  assert.doesNotMatch(patch, /tool-str-replace-editor/);
+});
+
+test('product chat profiles are forced into read-only permission mode', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'noema-dsh-readonly-'));
+  const child = new FakeChild();
+  let launch;
+  try {
+    const adapter = new DshHeadlessAdapter({
+      runtime: { nodeExecutable: 'node.exe', dshBin: 'dsh/lib/bin.js' },
+      userDataPath: path.join(directory, 'user-data'),
+      providerBaseUrl: 'http://127.0.0.1:31415/v1',
+      getApiKey: () => 'test-free-key',
+      getPermissionMode: () => 'workspace-write',
+      profile: 'noema',
+      env: { PATH: 'C:\\node' },
+      spawnImpl: (executable, args, options) => {
+        launch = { executable, args, options };
+        return child;
+      },
+    });
+    const handle = await adapter.startTask({
+      taskId: 'task-readonly',
+      usageInteractionId: 'parent-result',
+      workspacePath: path.join(directory, 'workspace'),
+      task: 'Read a file.',
+      model: routerModel,
+    });
+    assert.equal(launch.options.env.DSH_PERMISSION_MODE, 'read-only');
+    child.emit('spawn');
+    child.stdout.write('{"type":"session","sessionId":"session-readonly"}\n');
+    handle.stop();
+    child.emit('close', 1, null);
+    await handle.done.catch(() => {});
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('worker patch attaches a loopback MCP server for Noema tools', () => {
+  const patch = makeNoemaDshWorkerPatch(
+    routerModel,
+    'http://127.0.0.1:31415/v1',
+    {
+      mcpServers: [
+        {
+          serverName: 'noema',
+          url: 'http://127.0.0.1:43917/mcp',
+          headers: { Authorization: 'Bearer test-token' },
+        },
+      ],
+    },
+  );
+  assert.match(patch, /- insert:\n    - id: mcp-noema/);
+  assert.match(patch, /name: '@deepseek-ai\/dsh-mcp-client'/);
+  assert.match(patch, /serverName: noema/);
+  assert.match(patch, /transport: streamable-http/);
+  assert.match(patch, /url: "http:\/\/127\.0\.0\.1:43917\/mcp"/);
+  assert.match(patch, /Authorization: "Bearer test-token"/);
+  assert.match(patch, /failOnStartupError: true/);
+  assert.throws(
+    () =>
+      makeNoemaDshWorkerPatch(routerModel, 'http://127.0.0.1:31415/v1', {
+        mcpServers: [{ serverName: 'bad name', url: 'http://127.0.0.1' }],
+      }),
+    TypeError,
+  );
+  assert.throws(
+    () =>
+      makeNoemaDshWorkerPatch(routerModel, 'http://127.0.0.1:31415/v1', {
+        mcpServers: [{ serverName: 'noema', url: 'file:///tmp/mcp' }],
+      }),
+    TypeError,
   );
 });
 
@@ -173,11 +257,36 @@ test('discovers DSH without launching its profile as a preflight side effect', a
     dshBin: 'C:\\fake-npm\\node_modules\\@deepseek-ai\\dsh\\lib\\bin.js',
     npmPrefix: 'C:\\fake-npm',
     version: '0.1.0',
+    source: 'external',
   });
   assert.equal(
     calls.some((call) => call.args.includes('--profile')),
     false,
   );
+});
+
+test('prefers the pinned DSH runtime bundled with the app', async () => {
+  const checked = [];
+  const runtime = await resolveDshHeadlessRuntime({
+    env: {},
+    resourcesPath: 'C:\\app\\resources',
+    accessImpl: async (candidate) => checked.push(candidate),
+    readFileImpl: async () => '{"version":"0.1.7-rc.2"}',
+    execFileImpl: async (executable, args) => {
+      assert.equal(args[0], '--version');
+      assert.equal(executable, 'C:\\app\\resources\\dsh-runtime\\node.exe');
+      return { stdout: 'v24.21.0' };
+    },
+  });
+  assert.deepEqual(runtime, {
+    nodeExecutable: 'C:\\app\\resources\\dsh-runtime\\node.exe',
+    dshBin:
+      'C:\\app\\resources\\dsh-runtime\\node_modules\\@deepseek-ai\\dsh\\lib\\bin.js',
+    npmPrefix: 'C:\\app\\resources\\dsh-runtime',
+    version: '0.1.7-rc.2',
+    source: 'bundled',
+  });
+  assert.equal(checked.length, 2);
 });
 
 test('worker process streams safe status events and reports the final result', async () => {
@@ -221,11 +330,12 @@ test('worker process streams safe status events and reports the final result', a
     assert.equal(launch.args.includes('--json'), true);
     const patchArg = launch.args[launch.args.indexOf('--patch') + 1];
     const patch = readFileSync(patchArg, 'utf8');
-    assert.match(patch, /- id: llm-pi-ai[\s\S]*defaultMaxTokens: 8192/);
+    assert.match(patch, /- id: llm-pi-ai[\s\S]*defaultMaxTokens: 32768/);
     assert.match(patch, /apiKeyEnv: NOEMA_MODEL_API_KEY/);
     assert.match(patch, /baseURL: "http:\/\/127\.0\.0\.1:31415\/v1"/);
     assert.match(patch, /tool-pwsh/);
 
+    child.emit('spawn');
     child.stdout.write(
       '{"type":"session","sessionId":"session-test"}\n' +
         '{"type":"status","phase":"turn_start"}\n' +
@@ -246,6 +356,7 @@ test('worker process streams safe status events and reports the final result', a
     assert.deepEqual(
       observed.map((event) => event.type),
       [
+        'process.started',
         'session',
         'status',
         'status',
@@ -254,16 +365,20 @@ test('worker process streams safe status events and reports the final result', a
         'tool-call',
         'tool-result',
         'final',
+        'process.exited',
       ],
     );
-    assert.equal(observed[3].category, 'write');
-    assert.equal(observed[3].hasSideEffect, true);
-    assert.equal(observed[3].stepId, observed[4].stepId);
-    assert.equal(observed[4].effectStatus, 'applied');
-    assert.equal(observed[5].category, 'command');
-    assert.equal(observed[5].hasSideEffect, true);
-    assert.equal(observed[5].stepId, observed[6].stepId);
-    assert.equal(observed[6].effectStatus, 'unknown');
+    assert.equal(observed[0].pid, undefined);
+    assert.equal(observed.at(-1).exitCode, 0);
+    assert.equal(observed.at(-1).status, 'completed');
+    assert.equal(observed[4].category, 'write');
+    assert.equal(observed[4].hasSideEffect, true);
+    assert.equal(observed[4].stepId, observed[5].stepId);
+    assert.equal(observed[5].effectStatus, 'applied');
+    assert.equal(observed[6].category, 'command');
+    assert.equal(observed[6].hasSideEffect, true);
+    assert.equal(observed[6].stepId, observed[7].stepId);
+    assert.equal(observed[7].effectStatus, 'unknown');
     assert.deepEqual(usageRecords, [
       {
         providerHost: '127.0.0.1',
@@ -363,6 +478,74 @@ test('stopping a running DSH worker terminates it and returns an interruption', 
     assert.equal(result.status, 'interrupted');
     assert.equal(result.errorCode, null);
     assert.equal(result.workspaceMutationStatus, 'none');
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('full external-file permission lifts the DSH worker sandbox', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'noema-dsh-permission-'));
+  const child = new FakeChild();
+  let spawnOptions = null;
+  try {
+    const adapter = new DshHeadlessAdapter({
+      runtime: { nodeExecutable: 'node.exe', dshBin: 'dsh/lib/bin.js' },
+      userDataPath: path.join(directory, 'user-data'),
+      providerBaseUrl: 'http://127.0.0.1:31415/v1',
+      getApiKey: () => 'test-free-key',
+      getPermissionMode: () => 'danger-full-access',
+      spawnImpl: (_command, _args, options) => {
+        spawnOptions = options;
+        return child;
+      },
+    });
+    const handle = await adapter.startTask({
+      taskId: 'task-permission',
+      workspacePath: path.join(directory, 'workspace'),
+      task: 'Check permission mode.',
+      model: routerModel,
+      timeoutMs: 10_000,
+    });
+    child.stdout.write('{"type":"session","sessionId":"session-permission"}\n');
+    await handle.started;
+
+    assert.equal(spawnOptions.env.DSH_PERMISSION_MODE, 'danger-full-access');
+    handle.stop();
+    await handle.done;
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('read-only permission reaches the DSH worker', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'noema-dsh-read-only-'));
+  const child = new FakeChild();
+  let spawnOptions = null;
+  try {
+    const adapter = new DshHeadlessAdapter({
+      runtime: { nodeExecutable: 'node.exe', dshBin: 'dsh/lib/bin.js' },
+      userDataPath: path.join(directory, 'user-data'),
+      providerBaseUrl: 'http://127.0.0.1:31415/v1',
+      getApiKey: () => 'test-free-key',
+      getPermissionMode: () => 'read-only',
+      spawnImpl: (_command, _args, options) => {
+        spawnOptions = options;
+        return child;
+      },
+    });
+    const handle = await adapter.startTask({
+      taskId: 'task-read-only',
+      workspacePath: path.join(directory, 'workspace'),
+      task: 'Check read-only permission.',
+      model: routerModel,
+      timeoutMs: 10_000,
+    });
+    child.stdout.write('{"type":"session","sessionId":"session-read-only"}\n');
+    await handle.started;
+
+    assert.equal(spawnOptions.env.DSH_PERMISSION_MODE, 'read-only');
+    handle.stop();
+    await handle.done;
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

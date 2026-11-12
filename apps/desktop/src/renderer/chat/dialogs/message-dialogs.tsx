@@ -1,9 +1,49 @@
+import { NoemaSelect, NoemaInput } from '../../ui/noema-form-controls';
+import { NoemaButton } from '../../ui/noema-button';
+import { NoemaOverlay } from '../../ui/noema-overlay';
 import { timeLabel, Icon } from '../presentation';
 import type { SocialChatController } from '../use-social-chat-controller';
+import type {
+  NoemaSocialAgent,
+  NoemaSocialMessage,
+} from '../../../shared/contracts/noema-bridge.d.ts';
+
+export function MessageSourcePreview({
+  messages,
+  messageAgent,
+  label,
+}: {
+  messages: NoemaSocialMessage[];
+  messageAgent: Map<string, NoemaSocialAgent>;
+  label: string;
+}) {
+  return (
+    <div className="forward-dialog-preview" role="list" aria-label={label}>
+      {messages.map((message) => (
+        <article key={message.id} role="listitem">
+          <strong>
+            {message.senderAgentId
+              ? (messageAgent.get(message.senderAgentId)?.name ?? 'Noema')
+              : message.role === 'user'
+                ? '你'
+                : (messageAgent.get(message.agentId ?? '')?.name ?? '联系人')}
+          </strong>
+          <time dateTime={message.createdAt}>
+            {timeLabel(message.createdAt)}
+          </time>
+          <p>
+            {message.forwardedSources.length
+              ? `已转发 ${message.forwardedSources.length} 条消息`
+              : message.content}
+          </p>
+        </article>
+      ))}
+    </div>
+  );
+}
 
 type ConversationSearchDialogModel = Pick<
   SocialChatController,
-  | 'messageAgent'
   | 'currentRoom'
   | 'navigateToConversationSearchResult'
   | 'dialogRef'
@@ -13,6 +53,9 @@ type ConversationSearchDialogModel = Pick<
   | 'conversationSearchQuery'
   | 'setConversationSearchQuery'
   | 'conversationSearchResults'
+  | 'conversationSearchLoading'
+  | 'conversationSearchError'
+  | 'retryConversationSearch'
 >;
 export function ConversationSearchDialog({
   model,
@@ -20,7 +63,6 @@ export function ConversationSearchDialog({
   model: ConversationSearchDialogModel;
 }) {
   const {
-    messageAgent,
     currentRoom,
     navigateToConversationSearchResult,
     dialogRef,
@@ -30,14 +72,12 @@ export function ConversationSearchDialog({
     conversationSearchQuery,
     setConversationSearchQuery,
     conversationSearchResults,
+    conversationSearchLoading,
+    conversationSearchError,
+    retryConversationSearch,
   } = model;
   return conversationSearchOpen ? (
-    <div
-      className="dialog-backdrop"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) closeConversationSearch();
-      }}
-    >
+    <NoemaOverlay isOpen onClose={closeConversationSearch}>
       <form
         ref={dialogRef}
         className="social-dialog conversation-search-dialog"
@@ -54,19 +94,19 @@ export function ConversationSearchDialog({
               」，不会搜索其他聊天。
             </p>
           </div>
-          <button
+          <NoemaButton
             className="icon-button"
             type="button"
             aria-label="关闭搜索"
             onClick={closeConversationSearch}
           >
             <Icon name="close" />
-          </button>
+          </NoemaButton>
         </div>
         <label className="dialog-field conversation-search-field">
           <span>关键词</span>
-          <input
-            ref={conversationSearchRef}
+          <NoemaInput
+            inputRef={conversationSearchRef}
             data-dialog-initial-focus
             type="search"
             aria-label="搜索当前聊天"
@@ -82,9 +122,18 @@ export function ConversationSearchDialog({
         >
           {!conversationSearchQuery.trim() ? (
             <p>仅搜索当前聊天，不会把其他私聊交给 Noema。</p>
+          ) : conversationSearchLoading ? (
+            <p role="status">正在搜索当前聊天…</p>
+          ) : conversationSearchError ? (
+            <p role="alert">
+              {conversationSearchError}{' '}
+              <NoemaButton type="button" onClick={retryConversationSearch}>
+                重试
+              </NoemaButton>
+            </p>
           ) : conversationSearchResults.length ? (
             conversationSearchResults.map((message) => (
-              <button
+              <NoemaButton
                 className="conversation-search-result"
                 type="button"
                 key={message.id}
@@ -92,28 +141,21 @@ export function ConversationSearchDialog({
                   navigateToConversationSearchResult(message.id);
                 }}
               >
-                <strong>
-                  {message.senderAgentId
-                    ? (messageAgent.get(message.senderAgentId)?.name ?? 'Noema')
-                    : message.role === 'user'
-                      ? '你'
-                      : (messageAgent.get(message.agentId ?? '')?.name ??
-                        '联系人')}
-                </strong>
+                <strong>{message.sender}</strong>
                 <time dateTime={message.createdAt}>
                   {timeLabel(message.createdAt)}
                 </time>
                 <span>
                   {message.content.replace(/\s+/gu, ' ').slice(0, 220)}
                 </span>
-              </button>
+              </NoemaButton>
             ))
           ) : (
             <p>当前对话中没有找到匹配消息。</p>
           )}
         </div>
       </form>
-    </div>
+    </NoemaOverlay>
   ) : null;
 }
 
@@ -152,12 +194,7 @@ export function ForwardMessageDialog({
     forwardTargetRoom,
   } = model;
   return forwardDialogOpen ? (
-    <div
-      className="dialog-backdrop"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) cancelForward();
-      }}
-    >
+    <NoemaOverlay isOpen onClose={cancelForward}>
       <form
         ref={dialogRef}
         className="social-dialog forward-dialog"
@@ -174,40 +211,23 @@ export function ForwardMessageDialog({
               {currentRoom?.title ?? '当前聊天'}」
             </p>
           </div>
-          <button
+          <NoemaButton
             className="icon-button"
             type="button"
             aria-label="取消转发"
             onClick={cancelForward}
           >
             <Icon name="close" />
-          </button>
+          </NoemaButton>
         </div>
-        <div className="forward-dialog-preview">
-          {selectedForwardMessages.map((message) => (
-            <article key={message.id}>
-              <strong>
-                {message.senderAgentId
-                  ? (messageAgent.get(message.senderAgentId)?.name ?? 'Noema')
-                  : message.role === 'user'
-                    ? '你'
-                    : (messageAgent.get(message.agentId ?? '')?.name ??
-                      '联系人')}
-              </strong>
-              <time dateTime={message.createdAt}>
-                {timeLabel(message.createdAt)}
-              </time>
-              <p>
-                {message.forwardedSources.length
-                  ? `已转发 ${message.forwardedSources.length} 条消息`
-                  : message.content}
-              </p>
-            </article>
-          ))}
-        </div>
+        <MessageSourcePreview
+          messages={selectedForwardMessages}
+          messageAgent={messageAgent}
+          label="转发消息预览"
+        />
         <label className="dialog-field">
           <span>转发到</span>
-          <select
+          <NoemaSelect
             value={forwardTargetRoomId}
             onChange={(event) => chooseForwardRoom(event.target.value)}
             required
@@ -222,21 +242,19 @@ export function ForwardMessageDialog({
                   .join('、')}
               </option>
             ))}
-          </select>
+          </NoemaSelect>
         </label>
-        <p className="dialog-footnote">
-          转发只会把消息送到目标聊天，不会自动触发回复。需要讨论时，再像平常一样发送一条消息。
-        </p>
+        <p className="dialog-footnote">转发后不会自动回复。</p>
         <div className="dialog-actions">
-          <button
+          <NoemaButton
             className="secondary-action"
             type="button"
             onClick={cancelForward}
             disabled={forwardBusy}
           >
             取消
-          </button>
-          <button
+          </NoemaButton>
+          <NoemaButton
             className="primary-action"
             type="submit"
             disabled={
@@ -246,9 +264,9 @@ export function ForwardMessageDialog({
             }
           >
             {forwardBusy ? '正在转发…' : '转发'}
-          </button>
+          </NoemaButton>
         </div>
       </form>
-    </div>
+    </NoemaOverlay>
   ) : null;
 }

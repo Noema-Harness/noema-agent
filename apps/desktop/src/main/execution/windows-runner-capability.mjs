@@ -21,6 +21,7 @@ export function createWindowsRunnerCapabilityReport({
       backendId: null,
       backendVersion: null,
       protocolVersion: null,
+      policyVersion: null,
       setupStatus: 'not_applicable',
     });
   }
@@ -75,6 +76,10 @@ export function createWindowsRunnerCapabilityReport({
       typeof backend?.version === 'string' &&
       /^\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?$/u.test(backend.version)
         ? backend.version
+        : null,
+    policyVersion:
+      Number.isSafeInteger(backend?.policyVersion) && backend.policyVersion > 0
+        ? backend.policyVersion
         : null,
     protocolVersion:
       Number.isSafeInteger(protocolVersion) && protocolVersion > 0

@@ -10,6 +10,7 @@ import {
   projectToolChoicesContext,
   projectWorkTool,
   specialistDelegationTool,
+  noemaActionGuidance,
   personalMemoryTool,
   shouldExposePersonalMemoryTool,
 } from '../../../src/main/chat/model-tools.mjs';
@@ -59,6 +60,23 @@ function toolSchemas(data) {
 
 test('project tool schemas stay stable when project, member, work-item, and URL values change', () => {
   assert.deepEqual(toolSchemas(fixture('one')), toolSchemas(fixture('two')));
+});
+
+test('model-created specialists and project members use reusable profession names', () => {
+  const specialistName =
+    specialistDelegationTool().function.parameters.properties.new_agent
+      .properties.name.description;
+  const projectMemberName = projectTeamTool({ projectWorkReady: true }).function
+    .parameters.properties.members.items.properties.new_agent.properties.name
+    .description;
+  const guidance = noemaActionGuidance(true, [], true, true, true);
+
+  for (const description of [specialistName, projectMemberName, guidance]) {
+    assert.match(description, /通用.*职业/u);
+    assert.match(description, /跨项目复用/u);
+    assert.match(description, /不要.*仿真人类姓名或身份/u);
+    assert.match(description, /用户明确要求/u);
+  }
 });
 
 test('personal memory tool is explicit, small, and only exposed for memory-relevant turns', () => {

@@ -1,5 +1,6 @@
 import { createSocialTestStore } from '../../../test-support/social-team.mjs';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import {
   existsSync,
   mkdirSync,
@@ -12,6 +13,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import Database from 'better-sqlite3';
 import { RootStore } from '../../../src/main/storage/root-store.mjs';
@@ -22,10 +24,10 @@ import { NoemaProjectExecutor } from '../../../src/main/execution/noema-project-
 import { captureWorkspaceIdentity } from '../../../src/main/platform/workspace-identity.mjs';
 import { DiagnosticsEventStore } from '../../../src/main/storage/diagnostics-event-store.mjs';
 
-function makeStore() {
+function makeStore(options = {}) {
   const db = new Database(':memory:');
   new RootStore(db);
-  return { db, store: createSocialTestStore(db) };
+  return { db, store: createSocialTestStore(db, options) };
 }
 
 function createWorkService(options) {
@@ -398,8 +400,42 @@ test('new-model execution cannot start until a provider model is selected', asyn
   try {
     assert.deepEqual(service.getReadiness(), {
       available: false,
+      reasonCode: 'model_unselected',
       reason: '请先在设置中选择一个当前可用的模型。',
     });
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});
+
+test('project-work readiness returns stable codes for every unavailable owner', async () => {
+  const { db, store } = makeStore();
+  let adapter = makeAdapter();
+  let configured = true;
+  let model = 'test-model';
+  const service = new SocialWorkService({
+    store,
+    adapter,
+    secretStore: { isConfigured: () => configured },
+    getSelectedModel: () => model,
+    chooseWorkspace: async () => null,
+  });
+  try {
+    assert.deepEqual(service.getReadiness(), {
+      available: true,
+      reasonCode: null,
+      reason: null,
+    });
+    model = null;
+    assert.equal(service.getReadiness().reasonCode, 'model_unselected');
+    configured = false;
+    assert.equal(service.getReadiness().reasonCode, 'provider_unconfigured');
+    adapter = null;
+    service.adapter = adapter;
+    assert.equal(service.getReadiness().reasonCode, 'executor_unavailable');
+    await service.shutdown();
+    assert.equal(service.getReadiness().reasonCode, 'app_shutting_down');
   } finally {
     await service.shutdown();
     db.close();
@@ -649,7 +685,7 @@ test('social work keeps the stable friend and only includes the issuing room con
     );
     const room = store.getRoomSnapshot('room-engineering-collaboration');
     assert.equal(room.workTasks.length, 1);
-    assert.equal(room.workTasks[0].runtimeSessionId, undefined);
+    assert.equal(room.workTasks[0].runtimeSessionId, 'session-room-task');
     assert.equal(
       room.workTasks[0].workspacePath,
       realpathSync.native(workspace),
@@ -1137,7 +1173,7 @@ test('a cross-room task receives only one bounded, redacted, verified case when 
     const room = store.getRoomSnapshot('room-engineering-collaboration');
     assert.equal(room.workTasks[0].caseSnapshot?.taskId, first.taskId);
     assert.equal(room.workTasks[0].caseReuseRequested, true);
-    assert.equal(room.workTasks[0].runtimeSessionId, undefined);
+    assert.equal(room.workTasks[0].runtimeSessionId, 'session-room-task');
 
     await service.setCaseEligible(first.taskId, false);
     assert.equal(store.getSocialWorkTask(first.taskId).caseEligible, false);
@@ -1358,25 +1394,52 @@ test('a verified case transfer can propose, trial, and revoke one bounded practi
 
 test('canceling the workspace picker starts no DSH task and writes no task record', async () => {
   const { db, store } = makeStore();
+  const eventStore = new DiagnosticsEventStore(db);
   let launches = 0;
+  const applicationExecutionId = 'entry-cancel-test';
   const service = createWorkService({
     store,
     adapter: makeAdapter({ onStart: () => launches++ }),
     secretStore: { isConfigured: () => true },
+    recordDiagnosticEvent: (event) =>
+      eventStore.record({
+        applicationExecutionId,
+        parentExecutionId:
+          event.operation === 'workspace.selection'
+            ? applicationExecutionId
+            : null,
+        ...event,
+      }),
     chooseWorkspace: async () => null,
   });
   try {
-    const result = await service.startTask({
-      roomId: 'room-engineering-partner',
+    const source = store.beginTurn({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: '执行并随后取消目录选择的私密委托。',
+      model: 'test-model',
+    });
+    const result = await service.startTaskFromNoema({
+      roomId: 'room-noema',
       agentId: 'engineering-partner',
       prompt: '不要开始，因为用户取消了文件夹选择。',
+      sourceMessageId: source.userMessageId,
     });
     assert.deepEqual(result, {
       accepted: false,
       reason: '已取消选择项目文件夹。',
     });
     assert.equal(launches, 0);
-    assert.equal(store.listRoomWorkTasks('room-engineering-partner').length, 0);
+    assert.equal(store.listRoomWorkTasks('room-noema').length, 0);
+    const trace = eventStore.query({ executionId: applicationExecutionId });
+    assert.equal(trace.length, 1);
+    assert.equal(trace[0].turnId, source.turnId);
+    assert.equal(trace[0].module, 'social.work');
+    assert.equal(trace[0].operation, 'workspace.selection');
+    assert.equal(trace[0].status, 'canceled');
+    assert.equal(trace[0].taskId, null);
+    assert.deepEqual(trace[0].details, { reasonCode: 'user_cancelled' });
+    assert.doesNotMatch(JSON.stringify(trace), /私密委托|不要开始/u);
   } finally {
     await service.shutdown();
     db.close();
@@ -1682,6 +1745,172 @@ test('a restarted Noema task resumes from durable model-boundary messages', asyn
     }
   } finally {
     db.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('separate process restarts preserve one task across distinct resume segments', async () => {
+  const directory = mkdtempSync(
+    path.join(tmpdir(), 'noema-multi-process-resume-'),
+  );
+  const workspacePath = path.join(directory, 'workspace');
+  const databasePath = path.join(directory, 'noema.sqlite3');
+  mkdirSync(workspacePath);
+  const workspace = captureWorkspaceIdentity(workspacePath);
+  const taskId = 'multi-reopen-resume-task';
+  let db = new Database(databasePath);
+  new RootStore(db);
+  let store = createSocialTestStore(db);
+  const source = store.beginTurn({
+    roomId: 'room-engineering-partner',
+    agentId: 'engineering-partner',
+    text: '用于关联恢复请求身份的源消息。',
+    model: 'test-model',
+  });
+  store.createSocialWorkTask({
+    id: taskId,
+    roomId: 'room-engineering-partner',
+    agentId: 'engineering-partner',
+    workspacePath: workspace.identity.canonicalPath,
+    workspaceKey: workspace.workspaceKey,
+    workspaceIdentity: workspace.identity,
+    taskPrompt: '继续同一条长期任务，不重放已完成工具。',
+    sourceMessageId: source.userMessageId,
+    model: 'test-model',
+    executionEngine: 'noema',
+  });
+  store.setSocialWorkTaskSession(taskId, 'multi-reopen-session');
+  store.startSocialWorkExecutionStep(taskId, {
+    id: 'multi-reopen-read-step',
+    externalCallId: 'multi-reopen-read',
+    toolName: 'list_files',
+    category: 'read',
+    hasSideEffect: false,
+  });
+  store.finishSocialWorkExecutionStep(taskId, 'multi-reopen-read-step', {
+    status: 'succeeded',
+    effectStatus: 'none',
+    resultContent: JSON.stringify({ files: ['existing.txt'] }),
+  });
+  store.saveSocialWorkRuntimeCheckpoint(taskId, {
+    messages: [
+      { role: 'system', content: 'internal-system-marker' },
+      { role: 'user', content: 'private-task-instruction-marker' },
+      {
+        role: 'assistant',
+        content: null,
+        tool_calls: [
+          {
+            id: 'multi-reopen-read',
+            type: 'function',
+            function: {
+              name: 'list_files',
+              arguments: JSON.stringify({ path: '.' }),
+            },
+          },
+        ],
+      },
+      {
+        role: 'tool',
+        tool_call_id: 'multi-reopen-read',
+        content: JSON.stringify({ files: ['existing.txt'] }),
+      },
+    ],
+    round: 1,
+    toolCallCount: 1,
+    phase: 'failed',
+    resumePhase: 'ready_for_model',
+  });
+  store.finishSocialWorkTask(taskId, {
+    status: 'failed',
+    errorCode: 'provider_unavailable',
+    errorMessage: '模型服务暂不可用。',
+    toolCallCount: 1,
+  });
+  db.close();
+
+  try {
+    const childScript = fileURLToPath(
+      new URL(
+        '../../../test-support/social-work-resume-child.mjs',
+        import.meta.url,
+      ),
+    );
+    const childResults = [];
+    for (const mode of ['fail', 'complete']) {
+      const childResultPath = path.join(directory, `${mode}-resume.json`);
+      const child = spawnSync(
+        process.execPath,
+        [
+          childScript,
+          mode,
+          databasePath,
+          workspacePath,
+          taskId,
+          childResultPath,
+        ],
+        { encoding: 'utf8', timeout: 45_000, windowsHide: true },
+      );
+      assert.equal(child.error, undefined, child.stderr || String(child.error));
+      assert.equal(child.status, 0, child.stderr || child.stdout);
+      childResults.push(JSON.parse(readFileSync(childResultPath, 'utf8')));
+    }
+    const [failedResume, completedResume] = childResults;
+    assert.equal(failedResume.status, 'failed');
+    assert.equal(failedResume.canResume, true);
+    assert.equal(failedResume.toolCallCount, 1);
+    assert.equal(failedResume.lastMessageRole, 'tool');
+    assert.equal(failedResume.lastToolCallId, 'multi-reopen-read');
+    assert.equal(completedResume.taskId, taskId);
+    assert.equal(completedResume.status, 'completed');
+    assert.equal(completedResume.toolCallCount, 1);
+    assert.equal(completedResume.lastMessageRole, 'tool');
+    assert.equal(completedResume.lastToolCallId, 'multi-reopen-read');
+
+    db = new Database(databasePath);
+    new RootStore(db);
+    store = createSocialTestStore(db);
+    const reopenedDiagnostics = new DiagnosticsEventStore(db);
+    const trace = reopenedDiagnostics.query({ taskId });
+    const resumed = trace.filter((event) => event.operation === 'task.resumed');
+    assert.equal(resumed.length, 2);
+    assert.deepEqual(
+      resumed.map((event) => event.taskId),
+      [taskId, taskId],
+    );
+    assert.deepEqual(
+      resumed.map((event) => event.parentExecutionId),
+      [taskId, taskId],
+    );
+    const resumedExecutionIds = resumed.map((event) => event.executionId);
+    assert.ok(resumedExecutionIds.every(Boolean));
+    assert.notEqual(resumedExecutionIds[0], resumedExecutionIds[1]);
+    assert.deepEqual(failedResume.requestIdentity, {
+      usageExecutionId: resumedExecutionIds[0],
+      usageInteractionId: taskId,
+      usageTurnId: source.turnId,
+    });
+    assert.deepEqual(completedResume.requestIdentity, {
+      usageExecutionId: resumedExecutionIds[1],
+      usageInteractionId: taskId,
+      usageTurnId: source.turnId,
+    });
+    for (const executionId of resumedExecutionIds) {
+      assert.ok(
+        trace.some(
+          (event) =>
+            event.executionId === executionId &&
+            event.taskId === taskId &&
+            event.operation === 'task.finished',
+        ),
+      );
+    }
+    assert.doesNotMatch(
+      JSON.stringify(trace),
+      /internal-system-marker|private-task-instruction-marker|private transient provider detail/u,
+    );
+  } finally {
+    if (db.open) db.close();
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -2563,6 +2792,201 @@ test('a user-created specialist with explicit project-work capability uses the e
     assert.match(starts[0].task, /你具备项目文件任务能力/u);
   } finally {
     await service.shutdown();
+    db.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('a command change is reverted through the existing review owner', async () => {
+  const workspace = mkdtempSync(path.join(tmpdir(), 'noema-command-review-'));
+  const target = path.join(workspace, 'result.txt');
+  writeFileSync(target, 'before');
+  const identity = captureWorkspaceIdentity(workspace);
+  assert.equal(identity.ok, true);
+  const { db, store } = makeStore({
+    workspaceChangeBlobDirectory: path.join(workspace, '.blobs'),
+  });
+  try {
+    store.createSocialWorkTask({
+      id: 'task-command-review',
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      workspacePath: workspace,
+      workspaceKey: 'workspace-command-review',
+      workspaceIdentity: identity.identity,
+      taskPrompt: '在隔离副本里修改文件。',
+      model: 'test-model',
+    });
+    store.setSocialWorkTaskSession(
+      'task-command-review',
+      'session-command-review',
+    );
+    store.startSocialWorkExecutionStep('task-command-review', {
+      id: 'step-command-review',
+      category: 'command',
+      toolName: 'run_command',
+      hasSideEffect: true,
+    });
+    const batch = store.beginSocialWorkCommandBatch({
+      taskId: 'task-command-review',
+      stepId: 'step-command-review',
+    });
+    store.transitionSocialWorkCommandBatch({
+      taskId: 'task-command-review',
+      batchId: batch.id,
+      status: 'running',
+    });
+    store.transitionSocialWorkCommandBatch({
+      taskId: 'task-command-review',
+      batchId: batch.id,
+      status: 'collecting',
+    });
+    const [change] = store.prepareSocialWorkCommandChanges({
+      taskId: 'task-command-review',
+      batchId: batch.id,
+      stepId: 'step-command-review',
+      changes: [
+        {
+          relativePath: 'result.txt',
+          beforeBytes: Buffer.from('before'),
+          afterBytes: Buffer.from('after'),
+          diffText: '-before\n+after',
+          diffTruncated: false,
+        },
+      ],
+    });
+    writeFileSync(target, 'after');
+    store.completeSocialWorkFileChange({
+      taskId: 'task-command-review',
+      stepId: 'step-command-review',
+      changeId: change.changeId,
+      operationId: change.operationId,
+      actualHash: change.afterHash,
+    });
+    store.transitionSocialWorkCommandBatch({
+      taskId: 'task-command-review',
+      batchId: batch.id,
+      status: 'syncing',
+    });
+    store.transitionSocialWorkCommandBatch({
+      taskId: 'task-command-review',
+      batchId: batch.id,
+      status: 'completed',
+    });
+    store.finishSocialWorkTask('task-command-review', {
+      status: 'completed',
+      resultText: '完成。',
+    });
+
+    const service = createWorkService({
+      store,
+      secretStore: { isConfigured: () => true },
+      chooseWorkspace: async () => workspace,
+    });
+    const task = await service.reviewFileChange({
+      taskId: 'task-command-review',
+      changeId: change.changeId,
+      action: 'revert',
+    });
+    assert.equal(readFileSync(target, 'utf8'), 'before');
+    assert.equal(task.fileChanges[0].state, 'reverted');
+    assert.equal(task.fileChanges[0].origin, 'command');
+  } finally {
+    db.close();
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('continuing an interrupted DSH ticket reuses its session and workspace', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'noema-continue-ticket-'));
+  const workspace = captureWorkspaceIdentity(directory);
+  const { db, store } = makeStore();
+  let started = null;
+  try {
+    db.prepare(
+      `UPDATE social_agents SET capabilities_json = '["project-work"]' WHERE id = 'noema'`,
+    ).run();
+    store.createSocialWorkTask({
+      id: 'continue-ticket',
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      workspacePath: workspace.identity.canonicalPath,
+      workspaceKey: workspace.workspaceKey,
+      workspaceIdentity: workspace.identity,
+      taskPrompt: '完成未结束的工单。',
+      model: 'test-model',
+      executionEngine: 'dsh',
+    });
+    store.finishSocialWorkTask('continue-ticket', {
+      status: 'interrupted',
+      runtimeSessionId: 'session-continue',
+      errorCode: 'process_crash',
+      toolCallCount: 2,
+    });
+    const service = createWorkService({
+      store,
+      adapter: makeAdapter({ onStart: (input) => (started = input) }),
+      secretStore: { isConfigured: () => true },
+      chooseWorkspace: async () => workspace.identity.canonicalPath,
+    });
+
+    const task = await service.continueTicket('continue-ticket');
+
+    assert.notEqual(task.id, 'continue-ticket');
+    assert.equal(started.sessionId, 'session-continue');
+    assert.equal(started.workspacePath, workspace.identity.canonicalPath);
+    assert.match(started.task, /继续完成上一轮未完成的任务/u);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  } finally {
+    db.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('continuing a completed DSH ticket starts a new turn in the same session', async () => {
+  const directory = mkdtempSync(
+    path.join(tmpdir(), 'noema-continue-completed-'),
+  );
+  const workspace = captureWorkspaceIdentity(directory);
+  const { db, store } = makeStore();
+  let started = null;
+  try {
+    db.prepare(
+      `UPDATE social_agents SET capabilities_json = '["project-work"]' WHERE id = 'noema'`,
+    ).run();
+    store.createSocialWorkTask({
+      id: 'completed-ticket',
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      workspacePath: workspace.identity.canonicalPath,
+      workspaceKey: workspace.workspaceKey,
+      workspaceIdentity: workspace.identity,
+      taskPrompt: '已经完成的工单。',
+      model: 'test-model',
+      executionEngine: 'dsh',
+    });
+    store.finishSocialWorkTask('completed-ticket', {
+      status: 'completed',
+      runtimeSessionId: 'session-completed',
+      resultText: '第一轮已完成。',
+      toolCallCount: 3,
+    });
+    const service = createWorkService({
+      store,
+      adapter: makeAdapter({ onStart: (input) => (started = input) }),
+      secretStore: { isConfigured: () => true },
+      chooseWorkspace: async () => workspace.identity.canonicalPath,
+    });
+
+    const task = await service.continueTicket('completed-ticket');
+
+    assert.notEqual(task.id, 'completed-ticket');
+    assert.equal(started.sessionId, 'session-completed');
+    assert.equal(started.workspacePath, workspace.identity.canonicalPath);
+    assert.match(started.task, /在上一轮已完成结果的基础上继续/u);
+    assert.match(started.task, /只做本轮新增要求/u);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  } finally {
     db.close();
     rmSync(directory, { recursive: true, force: true });
   }

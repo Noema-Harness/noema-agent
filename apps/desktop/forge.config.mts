@@ -15,12 +15,14 @@ import { stageWindowsRunnerResource } from './scripts/windows-runner-resource.mj
 import {
   WINDOWS_RUNNER_BACKEND_ID,
   WINDOWS_RUNNER_BACKEND_VERSION,
+  WINDOWS_RUNNER_POLICY_VERSION,
   WINDOWS_RUNNER_PROTOCOL_VERSION,
 } from './src/main/execution/windows-runner-package-contract.mjs';
 
 const appRoot = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 const electronChecksums = require('electron/checksums.json');
+const extraResources = [path.join(appRoot, 'assets', 'noema-tray-icon.png')];
 const jsdomStylesheet = path.resolve(
   path.dirname(require.resolve('jsdom')),
   'jsdom/browser/default-stylesheet.css',
@@ -33,7 +35,7 @@ const config: ForgeConfig = {
       (!file.startsWith('/.vite') ||
         file.startsWith('/native/windows-runner/target/')),
     prune: false,
-    extraResource: [path.join(appRoot, 'assets', 'noema-tray-icon.png')],
+    extraResource: extraResources,
     asar: {
       unpack: '**/node_modules/@vscode/ripgrep-*/bin/**',
     },
@@ -161,6 +163,10 @@ const config: ForgeConfig = {
               `^pub const PROTOCOL_VERSION: u16 = ${WINDOWS_RUNNER_PROTOCOL_VERSION};$`,
               'mu',
             ).test(protocolSource) &&
+            new RegExp(
+              `^pub const POLICY_VERSION: u16 = ${WINDOWS_RUNNER_POLICY_VERSION};$`,
+              'mu',
+            ).test(protocolSource) &&
             protocolSource.includes(
               `pub const BACKEND_ID: &str = "${WINDOWS_RUNNER_BACKEND_ID}";`,
             );
@@ -213,7 +219,7 @@ const config: ForgeConfig = {
   rebuildConfig: {},
   makers: [
     new MakerSquirrel({}),
-    new MakerZIP({}, ['darwin']),
+    new MakerZIP({}, ['darwin', 'win32']),
     new MakerRpm({}),
     new MakerDeb({}),
   ],

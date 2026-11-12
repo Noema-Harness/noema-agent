@@ -1,16 +1,36 @@
 import { createSocialTestStore } from '../../../test-support/social-team.mjs';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
 import Database from 'better-sqlite3';
+import { fileURLToPath } from 'node:url';
 import { RootStore } from '../../../src/main/storage/root-store.mjs';
 import { SocialChatStore } from '../../../src/main/chat/social-chat-store.mjs';
+import { DiagnosticsEventStore } from '../../../src/main/storage/diagnostics-event-store.mjs';
 import { SOCIAL_SCHEMA_VERSION } from '../../../src/main/chat/social-chat-schema.mjs';
+import { migrateSocialChatSchema } from '../../../src/main/chat/migrations.mjs';
+import { MAX_COMMAND_CHANGE_PATHS } from '../../../src/main/execution/workspace-command-quotas.mjs';
 
 function makeStores() {
   const db = new Database(':memory:');
   new RootStore(db);
   const social = createSocialTestStore(db);
   return { db, social };
+}
+
+function makeCommandStores() {
+  const db = new Database(':memory:');
+  new RootStore(db);
+  const blobDirectory = mkdtempSync(
+    path.join(tmpdir(), 'noema-command-blobs-'),
+  );
+  const social = createSocialTestStore(db, {
+    workspaceChangeBlobDirectory: blobDirectory,
+  });
+  return { db, social, blobDirectory };
 }
 
 function insertLegacyMessage(db, { id, text, role = 'user' }) {
@@ -28,6 +48,105 @@ function insertLegacyMessage(db, { id, text, role = 'user' }) {
     VALUES (?, ?, ?, ?, 'complete', 1, 'test-model', ?, ?)
   `).run(id, turnId, role, text, now, now);
 }
+
+test('legacy first-meeting progress remains readable without write operations', () => {
+  const { db, social } = makeStores();
+  const legacy = {
+    version: 1,
+    stage: 'complete',
+    introducedAt: '2026-10-27T00:00:00.000Z',
+    enteredAt: '2026-10-27T00:00:01.000Z',
+  };
+  try {
+    db.prepare(
+      'INSERT INTO app_settings(key, value, updated_at) VALUES(?,?,?)',
+    ).run('first_meeting', JSON.stringify(legacy), '2026-10-27T00:00:01.000Z');
+    assert.deepEqual(social.getFirstMeetingState(), legacy);
+    assert.equal(social.advanceFirstMeeting, undefined);
+    assert.deepEqual(social.getSnapshot().firstMeeting, legacy);
+  } finally {
+    db.close();
+  }
+});
+
+test('room message windows paginate by stable sequence and report stale targets', () => {
+  const { db, social } = makeStores();
+  try {
+    const turns = Array.from({ length: 3 }, (_, index) => {
+      const turn = social.beginTurn({
+        roomId: 'room-noema',
+        agentId: 'noema',
+        text: `window-query-${index}`,
+        model: 'test-model',
+      });
+      social.appendAssistantDelta(
+        turn.assistantMessageId,
+        `window-answer-${index}`,
+      );
+      social.completeReply(turn.assistantMessageId);
+      return turn;
+    });
+    const otherRoom = social.createAgent({
+      name: '范围测试成员',
+      headline: '范围测试',
+      description: '用于检查当前聊天搜索范围。',
+    });
+    social.beginTurn({
+      roomId: otherRoom.room.id,
+      agentId: otherRoom.members[0].id,
+      text: 'window-query-0',
+      model: 'test-model',
+    });
+    const latest = social.getRoomSnapshot('room-noema', { limit: 2 });
+    assert.equal(latest.messages.length, 2);
+    assert.equal(latest.messageWindow.hasEarlier, true);
+
+    const earlier = social.getRoomSnapshot('room-noema', {
+      limit: 2,
+      beforeSequence: Number(latest.messageWindow.oldestSequence),
+    });
+    assert.equal(earlier.messages.length, 2);
+    assert.equal(
+      earlier.messages.some((message) =>
+        latest.messages.some((newer) => newer.id === message.id),
+      ),
+      false,
+    );
+
+    const around = social.getRoomSnapshot('room-noema', {
+      limit: 2,
+      aroundMessageId: turns[0].userMessageId,
+    });
+    assert.equal(around.messageWindow.targetFound, true);
+    assert.ok(
+      around.messages.some((message) => message.id === turns[0].userMessageId),
+    );
+    assert.ok(
+      social
+        .searchRoomMessages('room-noema', 'window-query-0')
+        .some((message) => message.id === turns[0].userMessageId),
+    );
+    assert.equal(
+      social
+        .searchRoomMessages('room-noema', 'window-query-0')
+        .some((message) => message.roomId === otherRoom.room.id),
+      false,
+    );
+
+    const missing = social.getRoomSnapshot('room-noema', {
+      limit: 2,
+      aroundMessageId: 'removed-source-message',
+    });
+    assert.equal(missing.messageWindow.targetFound, false);
+    assert.deepEqual(missing.messages, []);
+    assert.throws(
+      () => social.getRoomSnapshot('room-noema', { limit: 201 }),
+      /1–200/u,
+    );
+  } finally {
+    db.close();
+  }
+});
 
 test('a fresh installation starts with only the real Noema conversation', () => {
   const db = new Database(':memory:');
@@ -622,6 +741,94 @@ test('unexpected process loss interrupts active work but preserves terminal outc
     }
   } finally {
     db.close();
+  }
+});
+
+test('a new process recovers active SocialWork without replaying an unknown side effect', () => {
+  const directory = mkdtempSync(
+    path.join(tmpdir(), 'noema-social-work-process-crash-'),
+  );
+  const databasePath = path.join(directory, 'noema.sqlite3');
+  const resultPath = path.join(directory, 'recovery.json');
+  let db = new Database(databasePath);
+  try {
+    new RootStore(db);
+    const social = createSocialTestStore(db);
+    const events = new DiagnosticsEventStore(db);
+    social.createSocialWorkTask({
+      id: 'task-process-crash',
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      workspacePath: 'C:\\scratch\\process-crash',
+      workspaceKey: 'c:\\scratch\\process-crash',
+      taskPrompt: '模拟进程意外结束时仍在运行的命令。',
+      model: 'test-model',
+    });
+    social.setSocialWorkTaskSession(
+      'task-process-crash',
+      'session-process-crash',
+    );
+    social.startSocialWorkExecutionStep('task-process-crash', {
+      id: 'step-process-crash',
+      externalCallId: 'call-process-crash',
+      toolName: 'run_command',
+      category: 'command',
+      hasSideEffect: true,
+    });
+    events.record({
+      applicationExecutionId: 'process-before-crash',
+      executionId: 'task-process-crash',
+      taskId: 'task-process-crash',
+      module: 'social.work',
+      operation: 'task.started',
+      status: 'running',
+    });
+    db.close();
+
+    const childScript = fileURLToPath(
+      new URL(
+        '../../../test-support/social-work-crash-recovery-child.mjs',
+        import.meta.url,
+      ),
+    );
+    const child = spawnSync(
+      process.execPath,
+      [childScript, databasePath, resultPath],
+      {
+        encoding: 'utf8',
+        timeout: 30_000,
+        windowsHide: true,
+      },
+    );
+    assert.equal(child.error, undefined, child.stderr || String(child.error));
+    assert.equal(child.status, 0, child.stderr || child.stdout);
+    const childResult = JSON.parse(readFileSync(resultPath, 'utf8'));
+    assert.deepEqual(childResult.recoveredTaskIds, ['task-process-crash']);
+    assert.equal(childResult.status, 'interrupted');
+    assert.equal(childResult.errorCode, 'process_crash');
+    assert.equal(childResult.canResume, false);
+    assert.deepEqual(childResult.executionSteps, [
+      { status: 'outcome_unknown', effectStatus: 'unknown' },
+    ]);
+
+    db = new Database(databasePath);
+    const recoveredStore = new SocialChatStore(db);
+    const recoveredEvents = new DiagnosticsEventStore(db);
+    assert.deepEqual(recoveredStore.recoveredSocialWorkTaskIds, []);
+    const timeline = recoveredEvents.query({ taskId: 'task-process-crash' });
+    assert.deepEqual(
+      timeline.map((event) => event.operation),
+      ['task.started', 'task.recovered'],
+    );
+    assert.equal(timeline[1].applicationExecutionId, 'process-after-crash');
+    assert.equal(timeline[1].errorCode, 'process_crash');
+    assert.equal(
+      timeline.some((event) => event.operation === 'task.resumed'),
+      false,
+    );
+  } finally {
+    if (db.open) db.close();
+    rmSync(directory, { recursive: true, force: true });
   }
 });
 
@@ -1223,11 +1430,13 @@ test('project work records safe tool outcomes and marks in-flight writes unknown
     assert.deepEqual(Object.keys(task.executionSteps[1]).sort(), [
       'category',
       'completedAt',
+      'detail',
       'effectStatus',
       'externalCallId',
       'hasSideEffect',
       'id',
       'ordinal',
+      'output',
       'startedAt',
       'status',
       'taskId',
@@ -1367,6 +1576,9 @@ test('social chat schema v1 upgrades additively to project-work state', () => {
       DROP TABLE application_shutdown_intent;
       DROP TABLE social_work_file_change_operations;
       DROP TABLE social_work_file_changes;
+      DROP TABLE IF EXISTS social_work_workspace_write_locks;
+      DROP TABLE IF EXISTS social_work_command_batches;
+      DROP TABLE IF EXISTS social_work_change_blobs;
       DELETE FROM social_schema_migrations WHERE version >= 28;
       ALTER TABLE social_work_tasks DROP COLUMN project_plan_item_id;
       ALTER TABLE social_work_tasks DROP COLUMN project_result_pending;
@@ -1494,6 +1706,9 @@ test('social schema v7 adds retry snapshots without rewriting the last known att
       DROP TABLE application_shutdown_intent;
       DROP TABLE social_work_file_change_operations;
       DROP TABLE social_work_file_changes;
+      DROP TABLE IF EXISTS social_work_workspace_write_locks;
+      DROP TABLE IF EXISTS social_work_command_batches;
+      DROP TABLE IF EXISTS social_work_change_blobs;
       DELETE FROM social_schema_migrations WHERE version >= 28;
       ALTER TABLE social_work_tasks DROP COLUMN project_plan_item_id;
       ALTER TABLE social_work_tasks DROP COLUMN project_result_pending;
@@ -1572,6 +1787,764 @@ test('social schema v7 adds retry snapshots without rewriting the last known att
     );
   } finally {
     db.close();
+  }
+});
+
+test('social schema v34 preserves v33 file-change ledger rows', () => {
+  const db = new Database(':memory:');
+  db.pragma('foreign_keys = ON');
+  try {
+    new RootStore(db);
+    migrateSocialChatSchema(db, { targetVersion: 33 });
+    const now = '2026-11-07T00:00:00.000Z';
+    const beforeHash = 'a'.repeat(64);
+    const afterHash = 'b'.repeat(64);
+    db.prepare(`
+      INSERT INTO social_agents
+        (id, name, kind, headline, description, system_prompt, created_at, updated_at)
+      VALUES ('noema', 'Noema', 'core', '', '', '', ?, ?)
+    `).run(now, now);
+    db.prepare(`
+      INSERT INTO social_rooms (id, kind, title, created_at, updated_at)
+      VALUES ('room-noema', 'direct', 'Noema', ?, ?)
+    `).run(now, now);
+    db.prepare(`
+      INSERT INTO social_work_tasks
+        (id, room_id, agent_id, workspace_path, workspace_key, task_prompt,
+         model, runtime, status, verification_status, created_at, updated_at)
+      VALUES ('task-v34', 'room-noema', 'noema', 'C:/workspace', ?, 'work',
+        'test-model', 'dsh', 'running', 'not_planned', ?, ?)
+    `).run('c'.repeat(64), now, now);
+    db.prepare(`
+      INSERT INTO social_work_execution_steps
+        (id, task_id, ordinal, tool_name, category, has_side_effect,
+         status, effect_status, started_at)
+      VALUES ('step-v34', 'task-v34', 1, 'write_file', 'write', 1,
+        'succeeded', 'applied', ?)
+    `).run(now);
+    db.prepare(`
+      INSERT INTO social_work_file_changes
+        (id, task_id, relative_path, original_exists, original_bytes,
+         original_hash, latest_hash, diff_text, state, created_at, updated_at)
+      VALUES ('change-v34', 'task-v34', 'src/a.js', 1, ?, ?, ?, 'diff',
+        'applied', ?, ?)
+    `).run(Buffer.from('before'), beforeHash, afterHash, now, now);
+    db.prepare(`
+      INSERT INTO social_work_file_change_operations
+        (id, change_id, task_id, step_id, ordinal, before_hash, after_hash,
+         state, created_at)
+      VALUES ('operation-v34', 'change-v34', 'task-v34', 'step-v34', 1, ?, ?,
+        'applied', ?)
+    `).run(beforeHash, afterHash, now);
+
+    migrateSocialChatSchema(db);
+    const change = db
+      .prepare(`
+      SELECT latest_exists AS latestExists, pending_after_exists AS pendingAfterExists,
+             original_blob_hash AS originalBlobHash
+      FROM social_work_file_changes WHERE id = 'change-v34'
+    `)
+      .get();
+    assert.deepEqual(change, {
+      latestExists: 1,
+      pendingAfterExists: null,
+      originalBlobHash: null,
+    });
+    const operation = db
+      .prepare(`
+      SELECT command_batch_id AS commandBatchId, before_hash AS beforeHash,
+             after_hash AS afterHash
+      FROM social_work_file_change_operations WHERE id = 'operation-v34'
+    `)
+      .get();
+    assert.deepEqual(operation, {
+      commandBatchId: null,
+      beforeHash,
+      afterHash,
+    });
+    assert.equal(
+      db
+        .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
+        .get().version,
+      SOCIAL_SCHEMA_VERSION,
+    );
+    assert.deepEqual(db.pragma('foreign_key_check'), []);
+    assert.doesNotThrow(() => migrateSocialChatSchema(db));
+  } finally {
+    db.close();
+  }
+});
+
+test('a command batch owns one workspace, stores recovery blobs and releases cleanly', () => {
+  const { db, social, blobDirectory } = makeCommandStores();
+  const identity = {
+    version: 1,
+    canonicalPath: 'C:\\workspace',
+    device: '1',
+    fileIndex: '2',
+  };
+  try {
+    social.createSocialWorkTask({
+      id: 'task-command',
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      workspacePath: identity.canonicalPath,
+      workspaceKey: 'workspace-command',
+      workspaceIdentity: identity,
+      taskPrompt: '运行命令并记录普通文件变更。',
+      model: 'test-model',
+    });
+    social.setSocialWorkTaskSession('task-command', 'session-command');
+    social.startSocialWorkExecutionStep('task-command', {
+      id: 'step-command',
+      category: 'command',
+      toolName: 'run_command',
+      hasSideEffect: true,
+    });
+    const batch = social.beginSocialWorkCommandBatch({
+      taskId: 'task-command',
+      stepId: 'step-command',
+    });
+    assert.equal(batch.status, 'preparing');
+    assert.equal(batch.workspaceIdentity.canonicalPath, identity.canonicalPath);
+
+    const base = social.putSocialWorkCommandManifest({
+      taskId: 'task-command',
+      batchId: batch.id,
+      kind: 'base',
+      bytes: Buffer.from('base-manifest'),
+    });
+    assert.ok(base.baseManifestHash);
+    assert.deepEqual(
+      social.readSocialWorkCommandBlob({
+        taskId: 'task-command',
+        batchId: batch.id,
+        hash: base.baseManifestHash,
+      }),
+      Buffer.from('base-manifest'),
+    );
+
+    social.createSocialWorkTask({
+      id: 'task-command-2',
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      workspacePath: identity.canonicalPath,
+      workspaceKey: 'workspace-command-2',
+      workspaceIdentity: identity,
+      taskPrompt: '同一工作区的第二批命令。',
+      model: 'test-model',
+    });
+    social.setSocialWorkTaskSession('task-command-2', 'session-command-2');
+    social.startSocialWorkExecutionStep('task-command-2', {
+      id: 'step-command-2',
+      category: 'command',
+      toolName: 'run_command',
+      hasSideEffect: true,
+    });
+    assert.throws(
+      () =>
+        social.beginSocialWorkCommandBatch({
+          taskId: 'task-command-2',
+          stepId: 'step-command-2',
+        }),
+      /此工作区有一批文件变更/u,
+    );
+
+    social.transitionSocialWorkCommandBatch({
+      taskId: 'task-command',
+      batchId: batch.id,
+      status: 'running',
+    });
+    social.transitionSocialWorkCommandBatch({
+      taskId: 'task-command',
+      batchId: batch.id,
+      status: 'collecting',
+    });
+    const prepared = social.prepareSocialWorkCommandChanges({
+      taskId: 'task-command',
+      batchId: batch.id,
+      stepId: 'step-command',
+      changes: [
+        {
+          relativePath: 'src/a.js',
+          beforeBytes: Buffer.from('before'),
+          afterBytes: Buffer.from('after'),
+          diffText: '-before\n+after',
+          diffTruncated: false,
+        },
+        {
+          relativePath: 'src/deleted.js',
+          beforeBytes: Buffer.from('old'),
+          afterBytes: null,
+          diffText: '-old',
+          diffTruncated: false,
+        },
+        {
+          relativePath: 'src/created.bin',
+          beforeBytes: null,
+          afterBytes: Buffer.from([0, 1, 2]),
+          diffText: 'binary',
+          diffTruncated: true,
+        },
+        {
+          relativePath: 'src/same.js',
+          beforeBytes: Buffer.from('same'),
+          afterBytes: Buffer.from('same'),
+          diffText: '',
+          diffTruncated: false,
+        },
+      ],
+    });
+    assert.equal(prepared.length, 3);
+    const listed = social.listSocialWorkCommandBatchChanges(
+      'task-command',
+      batch.id,
+    );
+    assert.equal(listed.length, 3);
+    const created = listed.find(
+      (change) => change.relativePath === 'src/created.bin',
+    );
+    assert.ok(created.afterBlobHash);
+    assert.deepEqual(
+      social.readSocialWorkCommandBlob({
+        taskId: 'task-command',
+        batchId: batch.id,
+        hash: created.afterBlobHash,
+      }),
+      Buffer.from([0, 1, 2]),
+    );
+
+    const final = social.putSocialWorkCommandManifest({
+      taskId: 'task-command',
+      batchId: batch.id,
+      kind: 'final',
+      bytes: Buffer.from('final-manifest'),
+    });
+    assert.ok(final.finalManifestHash);
+    social.transitionSocialWorkCommandBatch({
+      taskId: 'task-command',
+      batchId: batch.id,
+      status: 'syncing',
+    });
+    const completed = social.transitionSocialWorkCommandBatch({
+      taskId: 'task-command',
+      batchId: batch.id,
+      status: 'completed',
+    });
+    assert.equal(completed.status, 'completed');
+    assert.equal(completed.baseManifestHash, null);
+    assert.equal(completed.finalManifestHash, null);
+    const integrity = social.verifyReferencedWorkspaceChangeBlobs();
+    assert.ok(integrity.verified >= 2);
+    assert.ok(integrity.orphanFilesRemoved >= 3);
+    const firstA = prepared.find((entry) => entry.relativePath === 'src/a.js');
+    assert.ok(firstA);
+    social.completeSocialWorkFileChange({
+      taskId: 'task-command',
+      stepId: 'step-command',
+      changeId: firstA.changeId,
+      operationId: firstA.operationId,
+      actualHash: firstA.afterHash,
+    });
+
+    social.startSocialWorkExecutionStep('task-command', {
+      id: 'step-command-repeat',
+      category: 'command',
+      toolName: 'run_command',
+      hasSideEffect: true,
+    });
+    const repeated = social.beginSocialWorkCommandBatch({
+      taskId: 'task-command',
+      stepId: 'step-command-repeat',
+    });
+    social.transitionSocialWorkCommandBatch({
+      taskId: 'task-command',
+      batchId: repeated.id,
+      status: 'running',
+    });
+    social.transitionSocialWorkCommandBatch({
+      taskId: 'task-command',
+      batchId: repeated.id,
+      status: 'collecting',
+    });
+    social.prepareSocialWorkCommandChanges({
+      taskId: 'task-command',
+      batchId: repeated.id,
+      stepId: 'step-command-repeat',
+      changes: [
+        {
+          relativePath: 'src/a.js',
+          beforeBytes: Buffer.from('after'),
+          afterBytes: Buffer.from('again'),
+          diffText: '-after\n+again',
+          diffTruncated: false,
+        },
+      ],
+    });
+    const repeatedChanges = social.listSocialWorkCommandBatchChanges(
+      'task-command',
+      repeated.id,
+    );
+    assert.equal(repeatedChanges.length, 1);
+    assert.equal(repeatedChanges[0].ordinal, 2);
+    social.transitionSocialWorkCommandBatch({
+      taskId: 'task-command',
+      batchId: repeated.id,
+      status: 'not_applied',
+    });
+
+    const second = social.beginSocialWorkCommandBatch({
+      taskId: 'task-command-2',
+      stepId: 'step-command-2',
+    });
+    assert.equal(second.status, 'preparing');
+    const notApplied = social.transitionSocialWorkCommandBatch({
+      taskId: 'task-command-2',
+      batchId: second.id,
+      status: 'not_applied',
+    });
+    assert.equal(notApplied.status, 'not_applied');
+  } finally {
+    db.close();
+    rmSync(blobDirectory, { recursive: true, force: true });
+  }
+});
+
+test('startup reconciliation closes preparing batches and quarantines uncertain batches', () => {
+  const { db, social, blobDirectory } = makeCommandStores();
+  const identityFor = (suffix) => ({
+    version: 1,
+    canonicalPath: `C:\\workspace-startup-${suffix}`,
+    device: '5',
+    fileIndex: '6',
+  });
+  const createBatch = (
+    suffix,
+    start = true,
+    identity = identityFor(suffix),
+  ) => {
+    const taskId = `task-startup-${suffix}`;
+    const stepId = `step-startup-${suffix}`;
+    social.createSocialWorkTask({
+      id: taskId,
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      workspacePath: identity.canonicalPath,
+      workspaceKey: `workspace-startup-${suffix}`,
+      workspaceIdentity: identity,
+      taskPrompt: '启动恢复测试。',
+      model: 'test-model',
+    });
+    social.setSocialWorkTaskSession(taskId, `session-startup-${suffix}`);
+    social.startSocialWorkExecutionStep(taskId, {
+      id: stepId,
+      category: 'command',
+      toolName: 'run_command',
+      hasSideEffect: true,
+    });
+    return {
+      taskId,
+      stepId,
+      batch: start
+        ? social.beginSocialWorkCommandBatch({ taskId, stepId })
+        : null,
+    };
+  };
+  try {
+    const preparing = createBatch('preparing');
+    social.putSocialWorkCommandManifest({
+      taskId: preparing.taskId,
+      batchId: preparing.batch.id,
+      kind: 'base',
+      bytes: Buffer.from('startup-base'),
+    });
+    const running = createBatch('running');
+    social.transitionSocialWorkCommandBatch({
+      taskId: running.taskId,
+      batchId: running.batch.id,
+      status: 'running',
+    });
+
+    const recovered = social.recoverInterruptedCommandBatches();
+    assert.deepEqual(
+      new Set(recovered),
+      new Set([preparing.batch.id, running.batch.id]),
+    );
+
+    const preparingAfter = social.getSocialWorkCommandBatch(
+      preparing.taskId,
+      preparing.batch.id,
+    );
+    assert.equal(preparingAfter.status, 'not_applied');
+    assert.equal(preparingAfter.reasonCode, 'app_restarted');
+    assert.equal(preparingAfter.baseManifestHash, null);
+    assert.equal(
+      db
+        .prepare(
+          'SELECT COUNT(*) AS count FROM social_work_workspace_write_locks WHERE task_id = ?',
+        )
+        .get(preparing.taskId).count,
+      0,
+    );
+
+    const runningAfter = social.getSocialWorkCommandBatch(
+      running.taskId,
+      running.batch.id,
+    );
+    assert.equal(runningAfter.status, 'unknown');
+    assert.equal(runningAfter.reasonCode, 'app_restarted');
+    assert.equal(
+      db
+        .prepare(
+          'SELECT COUNT(*) AS count FROM social_work_workspace_write_locks WHERE task_id = ?',
+        )
+        .get(running.taskId).count,
+      1,
+    );
+
+    const blocked = createBatch('blocked', false, identityFor('running'));
+    assert.throws(
+      () =>
+        social.beginSocialWorkCommandBatch({
+          taskId: blocked.taskId,
+          stepId: blocked.stepId,
+        }),
+      /此工作区有一批文件变更/u,
+    );
+    const settled = social.transitionSocialWorkCommandBatch({
+      taskId: running.taskId,
+      batchId: running.batch.id,
+      status: 'not_applied',
+    });
+    assert.equal(settled.status, 'not_applied');
+    assert.equal(
+      db
+        .prepare(
+          'SELECT COUNT(*) AS count FROM social_work_workspace_write_locks WHERE task_id = ?',
+        )
+        .get(running.taskId).count,
+      0,
+    );
+  } finally {
+    db.close();
+    rmSync(blobDirectory, { recursive: true, force: true });
+  }
+});
+
+test('a command batch rejects invalid transitions and preserves locks across recovery', () => {
+  const { db, social, blobDirectory } = makeCommandStores();
+  const identity = {
+    version: 1,
+    canonicalPath: 'C:\\workspace-recovery',
+    device: '3',
+    fileIndex: '4',
+  };
+  const createBatch = (suffix) => {
+    const taskId = `task-recovery-${suffix}`;
+    const stepId = `step-recovery-${suffix}`;
+    social.createSocialWorkTask({
+      id: taskId,
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      workspacePath: identity.canonicalPath,
+      workspaceKey: `workspace-recovery-${suffix}`,
+      workspaceIdentity: identity,
+      taskPrompt: '恢复路径测试。',
+      model: 'test-model',
+    });
+    social.setSocialWorkTaskSession(taskId, `session-recovery-${suffix}`);
+    social.startSocialWorkExecutionStep(taskId, {
+      id: stepId,
+      category: 'command',
+      toolName: 'run_command',
+      hasSideEffect: true,
+    });
+    return {
+      taskId,
+      stepId,
+      batch: social.beginSocialWorkCommandBatch({ taskId, stepId }),
+    };
+  };
+  try {
+    const first = createBatch('one');
+    assert.throws(
+      () =>
+        social.transitionSocialWorkCommandBatch({
+          taskId: first.taskId,
+          batchId: first.batch.id,
+          status: 'completed',
+        }),
+      (error) =>
+        error.code === 'workspace_command_batch_transition_invalid' &&
+        error.message.includes('恢复记录已保留'),
+    );
+    social.transitionSocialWorkCommandBatch({
+      taskId: first.taskId,
+      batchId: first.batch.id,
+      status: 'running',
+    });
+    social.transitionSocialWorkCommandBatch({
+      taskId: first.taskId,
+      batchId: first.batch.id,
+      status: 'collecting',
+    });
+    assert.throws(
+      () =>
+        social.prepareSocialWorkCommandChanges({
+          taskId: first.taskId,
+          batchId: first.batch.id,
+          stepId: first.stepId,
+          changes: [
+            {
+              relativePath: 'src/duplicate.js',
+              beforeBytes: null,
+              afterBytes: Buffer.from('one'),
+              diffText: '+one',
+              diffTruncated: false,
+            },
+            {
+              relativePath: 'src/duplicate.js',
+              beforeBytes: null,
+              afterBytes: Buffer.from('two'),
+              diffText: '+two',
+              diffTruncated: false,
+            },
+          ],
+        }),
+      (error) => error.code === 'workspace_command_changes_duplicate_path',
+    );
+    assert.equal(
+      social.listSocialWorkCommandBatchChanges(first.taskId, first.batch.id)
+        .length,
+      0,
+    );
+    assert.ok(social.collectUnreferencedWorkspaceChangeBlobs().removed >= 1);
+    social.transitionSocialWorkCommandBatch({
+      taskId: first.taskId,
+      batchId: first.batch.id,
+      status: 'conflict',
+      reasonCode: 'copy_race',
+    });
+    assert.equal(
+      social.getSocialWorkCommandBatch(first.taskId, first.batch.id).status,
+      'conflict',
+    );
+    assert.throws(() => createBatch('blocked'), /此工作区有一批文件变更/u);
+    social.transitionSocialWorkCommandBatch({
+      taskId: first.taskId,
+      batchId: first.batch.id,
+      status: 'syncing',
+    });
+    social.transitionSocialWorkCommandBatch({
+      taskId: first.taskId,
+      batchId: first.batch.id,
+      status: 'partial',
+    });
+    const completed = social.transitionSocialWorkCommandBatch({
+      taskId: first.taskId,
+      batchId: first.batch.id,
+      status: 'completed',
+    });
+    assert.equal(completed.status, 'completed');
+    const afterRecovery = createBatch('after');
+    assert.equal(afterRecovery.batch.status, 'preparing');
+    social.transitionSocialWorkCommandBatch({
+      taskId: afterRecovery.taskId,
+      batchId: afterRecovery.batch.id,
+      status: 'unknown',
+      reasonCode: 'process_state_unprovable',
+    });
+    const cleaned = social.transitionSocialWorkCommandBatch({
+      taskId: afterRecovery.taskId,
+      batchId: afterRecovery.batch.id,
+      status: 'not_applied',
+      reasonCode: 'reviewed_not_applied',
+    });
+    assert.equal(cleaned.status, 'not_applied');
+  } finally {
+    db.close();
+    rmSync(blobDirectory, { recursive: true, force: true });
+  }
+});
+
+test('a command batch enforces path and recovery storage limits before recording', () => {
+  const { db, social, blobDirectory } = makeCommandStores();
+  const identity = {
+    version: 1,
+    canonicalPath: 'C:\\workspace-limits',
+    device: '5',
+    fileIndex: '6',
+  };
+  const taskId = 'task-limits';
+  const stepId = 'step-limits';
+  try {
+    social.createSocialWorkTask({
+      id: taskId,
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      workspacePath: identity.canonicalPath,
+      workspaceKey: 'workspace-limits',
+      workspaceIdentity: identity,
+      taskPrompt: '边界测试。',
+      model: 'test-model',
+    });
+    social.setSocialWorkTaskSession(taskId, 'session-limits');
+    social.startSocialWorkExecutionStep(taskId, {
+      id: stepId,
+      category: 'command',
+      toolName: 'run_command',
+      hasSideEffect: true,
+    });
+    const batch = social.beginSocialWorkCommandBatch({ taskId, stepId });
+    const now = new Date().toISOString();
+    const seededHash = 'b'.repeat(64);
+    db.prepare(`
+      INSERT INTO social_work_change_blobs(hash, size_bytes, created_at)
+      VALUES (?, ?, ?)
+    `).run(seededHash, 2 * 1024 * 1024 * 1024, now);
+    db.prepare(`
+      INSERT INTO social_work_file_changes (
+        id, task_id, relative_path, original_exists, original_bytes,
+        original_hash, original_blob_hash, original_blob_size, latest_hash,
+        latest_exists, diff_text, diff_truncated, state, last_step_id,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, 1, NULL, ?, ?, ?, ?, 1, '', 0, 'applied', ?, ?, ?)
+    `).run(
+      'change-seeded-huge',
+      taskId,
+      'src/huge.bin',
+      seededHash,
+      seededHash,
+      2 * 1024 * 1024 * 1024,
+      seededHash,
+      stepId,
+      now,
+      now,
+    );
+    assert.throws(
+      () =>
+        social.putSocialWorkCommandManifest({
+          taskId,
+          batchId: batch.id,
+          kind: 'base',
+          bytes: Buffer.from('manifest'),
+        }),
+      (error) => error.code === 'workspace_change_blob_quota_exceeded',
+    );
+
+    social.transitionSocialWorkCommandBatch({
+      taskId,
+      batchId: batch.id,
+      status: 'running',
+    });
+    social.transitionSocialWorkCommandBatch({
+      taskId,
+      batchId: batch.id,
+      status: 'collecting',
+    });
+    assert.throws(
+      () =>
+        social.prepareSocialWorkCommandChanges({
+          taskId,
+          batchId: batch.id,
+          stepId,
+          changes: Array.from(
+            { length: MAX_COMMAND_CHANGE_PATHS + 1 },
+            (_, index) => ({
+              relativePath: `src/path-${index}.js`,
+              beforeBytes: null,
+              afterBytes: Buffer.from(String(index)),
+              diffText: '',
+              diffTruncated: false,
+            }),
+          ),
+        }),
+      (error) => error.code === 'workspace_command_changes_invalid',
+    );
+    social.transitionSocialWorkCommandBatch({
+      taskId,
+      batchId: batch.id,
+      status: 'not_applied',
+    });
+  } finally {
+    db.close();
+    rmSync(blobDirectory, { recursive: true, force: true });
+  }
+});
+
+test('a failed startup integrity scan blocks new command batches', () => {
+  const { db, social, blobDirectory } = makeCommandStores();
+  const identity = {
+    version: 1,
+    canonicalPath: 'C:\\workspace',
+    device: '1',
+    fileIndex: '2',
+  };
+  try {
+    social.createSocialWorkTask({
+      id: 'task-integrity',
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      workspacePath: identity.canonicalPath,
+      workspaceKey: 'workspace-integrity',
+      workspaceIdentity: identity,
+      taskPrompt: '验证恢复资料完整性阻断。',
+      model: 'test-model',
+    });
+    social.setSocialWorkTaskSession('task-integrity', 'session-integrity');
+    social.startSocialWorkExecutionStep('task-integrity', {
+      id: 'step-integrity',
+      category: 'command',
+      toolName: 'run_command',
+      hasSideEffect: true,
+    });
+    const batch = social.beginSocialWorkCommandBatch({
+      taskId: 'task-integrity',
+      stepId: 'step-integrity',
+    });
+    const base = social.putSocialWorkCommandManifest({
+      taskId: 'task-integrity',
+      batchId: batch.id,
+      kind: 'base',
+      bytes: Buffer.from('base-manifest'),
+    });
+    writeFileSync(
+      path.join(blobDirectory, `${base.baseManifestHash}.blob`),
+      Buffer.from('tampered-data'),
+    );
+    assert.throws(
+      () => social.verifyReferencedWorkspaceChangeBlobs(),
+      (error) => error.code === 'workspace_change_blob_corrupt',
+    );
+
+    social.createSocialWorkTask({
+      id: 'task-integrity-2',
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      workspacePath: identity.canonicalPath,
+      workspaceKey: 'workspace-integrity-2',
+      workspaceIdentity: identity,
+      taskPrompt: '完整性失败后不能启动新批次。',
+      model: 'test-model',
+    });
+    social.setSocialWorkTaskSession('task-integrity-2', 'session-integrity-2');
+    social.startSocialWorkExecutionStep('task-integrity-2', {
+      id: 'step-integrity-2',
+      category: 'command',
+      toolName: 'run_command',
+      hasSideEffect: true,
+    });
+    assert.throws(
+      () =>
+        social.beginSocialWorkCommandBatch({
+          taskId: 'task-integrity-2',
+          stepId: 'step-integrity-2',
+        }),
+      (error) => error.code === 'workspace_change_blob_integrity_failed',
+    );
+  } finally {
+    db.close();
+    rmSync(blobDirectory, { recursive: true, force: true });
   }
 });
 
@@ -2193,6 +3166,15 @@ test('editing a specialist updates future identity across rooms without changing
     });
     const agentId = created.members[0].id;
     const roomId = created.room.id;
+    assert.throws(
+      () =>
+        social.createAgent({
+          name: '新闻观察者',
+          headline: '另一个方向',
+          description: '不能创建同名联系人。',
+        }),
+      /已有联系人使用这个名称/u,
+    );
     const firstMessage = created.messages[0].id;
     const group = social.createGroup({
       title: '跨平台订阅研究',
@@ -2301,6 +3283,134 @@ test('a reply can be retried after failure without duplicating its user turn', (
       ],
     );
     assert.equal(reply?.interactionAdjustmentSnapshots.length, 0);
+  } finally {
+    db.close();
+  }
+});
+
+test('execution step detail exposes arguments and result for one step', () => {
+  const { db, social } = makeStores();
+  try {
+    social.createSocialWorkTask({
+      id: 'task-step-detail',
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      workspacePath: 'C:\\scratch\\step-detail',
+      workspaceKey: 'c:\\scratch\\step-detail',
+      taskPrompt: '查看步骤详情。',
+      model: 'auto:noema-free',
+    });
+    social.startSocialWorkExecutionStep('task-step-detail', {
+      id: 'step-detail',
+      toolName: 'read_file',
+      category: 'read',
+      hasSideEffect: false,
+      arguments: '{"path":"a.txt"}',
+    });
+    social.finishSocialWorkExecutionStep('task-step-detail', 'step-detail', {
+      status: 'succeeded',
+      effectStatus: 'none',
+      resultContent: '{"content":"hello"}',
+    });
+
+    const detail = social.getSocialWorkExecutionStepDetail(
+      'task-step-detail',
+      'step-detail',
+    );
+    assert.equal(detail?.toolName, 'read_file');
+    assert.match(detail?.argumentsText ?? '', /"path": "a\.txt"/);
+    assert.match(detail?.resultText ?? '', /"content": "hello"/);
+    assert.equal(
+      social.getSocialWorkExecutionStepDetail('task-step-detail', 'missing'),
+      null,
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test('touched files include write and edit paths only', () => {
+  const { db, social } = makeStores();
+  try {
+    social.createSocialWorkTask({
+      id: 'task-touched-files',
+      roomId: 'room-engineering-partner',
+      agentId: 'engineering-partner',
+      workspacePath: 'C:\\scratch\\touched-files',
+      workspaceKey: 'c:\\scratch\\touched-files',
+      taskPrompt: '列出改动文件。',
+      model: 'auto:noema-free',
+    });
+    const steps = [
+      ['step-write-a', 'write', '{"path":"src/a.js","content":"a"}'],
+      ['step-write-a-again', 'write', '{"path":"src/a.js","content":"b"}'],
+      ['step-edit-b', 'edit', '{"path":"src\\\\b.js","old":"a","new":"b"}'],
+      ['step-read-c', 'read', '{"path":"src/c.js"}'],
+      ['step-absolute', 'write', '{"path":"C:\\\\outside.txt","content":"x"}'],
+      ['step-traversal', 'write', '{"path":"../outside.txt","content":"x"}'],
+    ];
+    for (const [id, toolName, args] of steps) {
+      social.startSocialWorkExecutionStep('task-touched-files', {
+        id,
+        toolName,
+        category: toolName === 'read' ? 'read' : 'write',
+        hasSideEffect: toolName !== 'read',
+        arguments: args,
+      });
+    }
+    assert.deepEqual(social.listSocialWorkTouchedFiles('task-touched-files'), [
+      { path: 'src/a.js', toolName: 'write', ordinal: 1 },
+      { path: 'src/b.js', toolName: 'edit', ordinal: 3 },
+    ]);
+  } finally {
+    db.close();
+  }
+});
+
+test('conversation threads expose titles and rewind only the active thread', () => {
+  const { db, social } = makeStores();
+  try {
+    const first = social.beginTurn({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: 'first question',
+      model: 'test-model',
+    });
+    social.appendAssistantDelta(first.assistantMessageId, 'first answer');
+    social.completeReply(first.assistantMessageId);
+    social.createConversationBoundary();
+    const second = social.beginTurn({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: 'second question',
+      model: 'test-model',
+    });
+    social.appendAssistantDelta(second.assistantMessageId, 'second answer');
+    social.completeReply(second.assistantMessageId);
+
+    const threads = social.listConversationThreads('room-noema');
+    assert.equal(threads.length, 2);
+    assert.equal(threads[1].title, 'second question');
+    assert.equal(threads[1].messageCount, 2);
+    assert.ok(threads[1].updatedAt);
+    assert.throws(
+      () =>
+        social.rewindConversationToMessage('room-noema', first.userMessageId),
+      /历史会话只读/,
+    );
+    assert.deepEqual(
+      social.rewindConversationToMessage('room-noema', second.userMessageId),
+      { removed: 2 },
+    );
+    const messages = social.getRoomSnapshot('room-noema').messages;
+    assert.equal(
+      messages.some((message) => message.id === second.userMessageId),
+      false,
+    );
+    assert.equal(
+      messages.some((message) => message.id === first.userMessageId),
+      true,
+    );
   } finally {
     db.close();
   }

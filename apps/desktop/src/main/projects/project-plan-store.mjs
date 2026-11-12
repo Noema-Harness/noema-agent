@@ -953,9 +953,18 @@ export class ProjectPlanStore {
         parentId = itemsById.get(parentId)?.parentId ?? null;
       }
     }
-    const candidates = [...plan.items].sort(
-      (a, b) => Number(own.has(b.id)) - Number(own.has(a.id)),
+    const activePhase = plan.phases.find(
+      (phase) => phase.status !== 'done' && phase.status !== 'canceled',
     );
+    const activePhaseId = activePhase?.id ?? null;
+    const candidates = [...plan.items].sort((a, b) => {
+      const priority = (item) => {
+        if (item.phaseId === activePhaseId) return 0;
+        if (own.has(item.id)) return 1;
+        return 2;
+      };
+      return priority(a) - priority(b);
+    });
     const items = [];
     let length = 0;
     for (const item of candidates) {
@@ -1280,10 +1289,6 @@ export class ProjectPlanStore {
     return this.db.transaction(() => {
       const current = this.get(input.projectId);
       const normalizedPlan = normalizePlanInput(input.plan);
-      // Report malformed plan structure before workflow-transition errors so
-      // callers can correct the underlying plan rather than seeing a masking
-      // status error first.
-      this.validate(input.projectId, normalizedPlan);
       const priorPhases = new Map(
         current.phases.map((phase) => [phase.id, phase]),
       );
@@ -1291,10 +1296,54 @@ export class ProjectPlanStore {
         current.items.map((item) => [item.id, item.submittedByAgentId ?? null]),
       );
       const priorItems = new Map(current.items.map((item) => [item.id, item]));
-      for (const phase of normalizedPlan?.phases ?? [])
+      const plan = Array.isArray(normalizedPlan?.phases)
+        ? {
+            ...normalizedPlan,
+            phases: normalizedPlan.phases.map((phase) => ({
+              ...phase,
+              evidence:
+                phase.status === 'done'
+                  ? (priorPhases.get(phase.id)?.evidence ?? phase.evidence)
+                  : phase.evidence,
+              workItems: Array.isArray(phase.workItems)
+                ? phase.workItems.map((item) => ({
+                    ...item,
+                    ...(priorItems.get(item.id) &&
+                    ['submitted', 'done'].includes(
+                      priorItems.get(item.id).status,
+                    )
+                      ? {
+                          acceptance: priorItems.get(item.id).acceptance,
+                          ownerAgentId: priorItems.get(item.id).ownerAgentId,
+                          dependsOn: priorItems.get(item.id).dependsOn,
+                          reviewerIds: priorItems.get(item.id).reviewerIds,
+                        }
+                      : {}),
+                    submittedByAgentId: priorSubmitters.get(item.id) ?? null,
+                    submittedAt: priorItems.get(item.id)?.submittedAt ?? null,
+                    submissionRevision:
+                      priorItems.get(item.id)?.submissionRevision ?? null,
+                    evidence: ['submitted', 'done'].includes(item.status)
+                      ? (priorItems.get(item.id)?.evidence ?? item.evidence)
+                      : item.evidence,
+                    evidenceRefs: priorItems.get(item.id)?.evidenceRefs ?? [],
+                    evidenceReviews: ['submitted', 'done'].includes(item.status)
+                      ? (priorItems.get(item.id)?.evidenceReviews ?? [])
+                      : [],
+                    evidenceReview:
+                      item.status === 'done'
+                        ? (priorItems.get(item.id)?.evidenceReview ?? null)
+                        : null,
+                  }))
+                : phase.workItems,
+            })),
+          }
+        : normalizedPlan;
+      this.validate(input.projectId, plan);
+      for (const phase of plan?.phases ?? [])
         if (phase.status !== (priorPhases.get(phase.id)?.status ?? 'pending'))
           throw Error('计划编辑不能改变阶段验收状态；请使用阶段验收操作。');
-      for (const phase of normalizedPlan?.phases ?? [])
+      for (const phase of plan?.phases ?? [])
         for (const item of phase.workItems ?? []) {
           const prior = priorItems.get(item.id);
           if (
@@ -1327,31 +1376,6 @@ export class ProjectPlanStore {
               '提交后的核验名单不能直接更改；请先重开工作项，再由负责人重新提交。',
             );
         }
-      const plan = Array.isArray(normalizedPlan?.phases)
-        ? {
-            ...normalizedPlan,
-            phases: normalizedPlan.phases.map((phase) => ({
-              ...phase,
-              workItems: Array.isArray(phase.workItems)
-                ? phase.workItems.map((item) => ({
-                    ...item,
-                    submittedByAgentId: priorSubmitters.get(item.id) ?? null,
-                    submittedAt: priorItems.get(item.id)?.submittedAt ?? null,
-                    submissionRevision:
-                      priorItems.get(item.id)?.submissionRevision ?? null,
-                    evidenceRefs: priorItems.get(item.id)?.evidenceRefs ?? [],
-                    evidenceReviews: ['submitted', 'done'].includes(item.status)
-                      ? (priorItems.get(item.id)?.evidenceReviews ?? [])
-                      : [],
-                    evidenceReview:
-                      item.status === 'done'
-                        ? (priorItems.get(item.id)?.evidenceReview ?? null)
-                        : null,
-                  }))
-                : phase.workItems,
-            })),
-          }
-        : normalizedPlan;
       const candidate = { ...plan, items: flatten(plan.phases) };
       const priorStatuses = new Map(
         current.items.map((item) => [item.id, item.status]),

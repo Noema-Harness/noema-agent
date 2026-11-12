@@ -13,6 +13,9 @@ import {
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { verifyWorkspaceChecks } from '../src/main/tools/workspace-verifier.mjs';
+import { SocialChatStore } from '../src/main/chat/social-chat-store.mjs';
+import { captureWorkspaceIdentity } from '../src/main/platform/workspace-identity.mjs';
+import { DiagnosticsEventStore } from '../src/main/storage/diagnostics-event-store.mjs';
 import { RootStore } from '../src/main/storage/root-store.mjs';
 import { configureElectronRuntime } from './electron-runtime.mjs';
 
@@ -127,6 +130,14 @@ const prompt = [
 ].join('\n');
 mkdirSync(e2eDirectory, { recursive: true });
 mkdirSync(workspacePath, { recursive: true });
+const capturedWorkspace = captureWorkspaceIdentity(workspacePath);
+if (!capturedWorkspace.ok || !capturedWorkspace.identity) {
+  throw new Error(
+    'Could not capture the isolated SocialWork workspace identity.',
+  );
+}
+const fixtureWorkspaceIdentity = capturedWorkspace.identity;
+const fixtureWorkspaceKey = capturedWorkspace.workspaceKey;
 
 // Seed two independently checked tasks so the real renderer-to-service run in
 // room C exercises a candidate practice derived from a verified case transfer.
@@ -179,17 +190,17 @@ if (
 const seedDatabase = new Database(databasePath);
 const seedRootStore = new RootStore(seedDatabase);
 seedRootStore.setSelectedModel(liveModel);
-const seedSocialStore = createSocialTestStore(seedDatabase);
+const seedSocialStore = createSocialTestStore(seedDatabase, {
+  workspaceChangeBlobDirectory: path.join(e2eDirectory, 'seed-command-blobs'),
+});
 if (!liveEpisodes) {
   seedSocialStore.createSocialWorkTask({
     id: sourceCaseTaskId,
     roomId: 'room-engineering-collaboration',
     agentId: 'engineering-partner',
     workspacePath,
-    workspaceKey: path
-      .normalize(workspacePath)
-      .replaceAll('/', '\\')
-      .toLocaleLowerCase('en-US'),
+    workspaceKey: fixtureWorkspaceKey,
+    workspaceIdentity: fixtureWorkspaceIdentity,
     taskPrompt:
       '请整理一份素材导入说明，逐字使用三个指定二级标题及失败恢复步骤。',
     model: 'e2e-fixture',
@@ -207,10 +218,7 @@ if (!liveEpisodes) {
   }
   const basisCase = seedSocialStore.findReusableCase({
     agentId: 'engineering-partner',
-    workspaceKey: path
-      .normalize(workspacePath)
-      .replaceAll('/', '\\')
-      .toLocaleLowerCase('en-US'),
+    workspaceKey: fixtureWorkspaceKey,
     excludeRoomId: 'room-engineering-partner',
   });
   if (!basisCase || basisCase.taskId !== sourceCaseTaskId) {
@@ -221,10 +229,8 @@ if (!liveEpisodes) {
     roomId: 'room-engineering-partner',
     agentId: 'engineering-partner',
     workspacePath,
-    workspaceKey: path
-      .normalize(workspacePath)
-      .replaceAll('/', '\\')
-      .toLocaleLowerCase('en-US'),
+    workspaceKey: fixtureWorkspaceKey,
+    workspaceIdentity: fixtureWorkspaceIdentity,
     taskPrompt: practiceSourcePrompt,
     model: 'e2e-fixture',
     verificationChecks: practiceSourceChecks,
@@ -271,10 +277,8 @@ seedSocialStore.createSocialWorkTask({
   roomId: 'room-engineering-collaboration',
   agentId: 'engineering-partner',
   workspacePath,
-  workspaceKey: path
-    .normalize(workspacePath)
-    .replaceAll('/', '\\')
-    .toLocaleLowerCase('en-US'),
+  workspaceKey: fixtureWorkspaceKey,
+  workspaceIdentity: fixtureWorkspaceIdentity,
   taskPrompt: '[NOEMA E2E] 读取后模型中断的恢复状态演练。',
   model: liveModel,
   executionEngine: 'noema',
@@ -302,6 +306,195 @@ seedSocialStore.finishSocialWorkTask(recoveryFixtureTaskId, {
   verificationResults: [],
   verificationAttempts: 0,
 });
+const commandReviewTaskId = 'e2e-room-e-command-review';
+seedSocialStore.createSocialWorkTask({
+  id: commandReviewTaskId,
+  roomId: 'room-engineering-collaboration',
+  agentId: 'engineering-partner',
+  workspacePath,
+  workspaceKey: fixtureWorkspaceKey,
+  workspaceIdentity: fixtureWorkspaceIdentity,
+  taskPrompt: '[NOEMA E2E] Command batch review projection.',
+  model: liveModel,
+  executionEngine: 'noema',
+});
+seedSocialStore.setSocialWorkTaskSession(
+  commandReviewTaskId,
+  'e2e-command-review-session',
+);
+seedSocialStore.startSocialWorkExecutionStep(commandReviewTaskId, {
+  id: 'e2e-command-review-step',
+  toolName: 'run_command',
+  category: 'command',
+  hasSideEffect: true,
+});
+const commandReviewBatch = seedSocialStore.beginSocialWorkCommandBatch({
+  taskId: commandReviewTaskId,
+  stepId: 'e2e-command-review-step',
+});
+seedSocialStore.transitionSocialWorkCommandBatch({
+  taskId: commandReviewTaskId,
+  batchId: commandReviewBatch.id,
+  status: 'running',
+});
+seedSocialStore.transitionSocialWorkCommandBatch({
+  taskId: commandReviewTaskId,
+  batchId: commandReviewBatch.id,
+  status: 'collecting',
+});
+const [commandReviewChange] = seedSocialStore.prepareSocialWorkCommandChanges({
+  taskId: commandReviewTaskId,
+  batchId: commandReviewBatch.id,
+  stepId: 'e2e-command-review-step',
+  changes: [
+    {
+      relativePath: 'COMMAND-REVIEW.txt',
+      beforeBytes: null,
+      afterBytes: Buffer.from('review'),
+      diffText: '+review',
+      diffTruncated: false,
+    },
+  ],
+});
+writeFileSync(path.join(workspacePath, 'COMMAND-REVIEW.txt'), 'review');
+seedSocialStore.completeSocialWorkFileChange({
+  taskId: commandReviewTaskId,
+  stepId: 'e2e-command-review-step',
+  changeId: commandReviewChange.changeId,
+  operationId: commandReviewChange.operationId,
+  actualHash: commandReviewChange.afterHash,
+});
+seedSocialStore.transitionSocialWorkCommandBatch({
+  taskId: commandReviewTaskId,
+  batchId: commandReviewBatch.id,
+  status: 'syncing',
+});
+seedSocialStore.transitionSocialWorkCommandBatch({
+  taskId: commandReviewTaskId,
+  batchId: commandReviewBatch.id,
+  status: 'completed',
+});
+seedSocialStore.startSocialWorkExecutionStep(commandReviewTaskId, {
+  id: 'e2e-command-partial-step',
+  toolName: 'run_command',
+  category: 'command',
+  hasSideEffect: true,
+});
+const commandPartialBatch = seedSocialStore.beginSocialWorkCommandBatch({
+  taskId: commandReviewTaskId,
+  stepId: 'e2e-command-partial-step',
+});
+seedSocialStore.transitionSocialWorkCommandBatch({
+  taskId: commandReviewTaskId,
+  batchId: commandPartialBatch.id,
+  status: 'running',
+});
+seedSocialStore.transitionSocialWorkCommandBatch({
+  taskId: commandReviewTaskId,
+  batchId: commandPartialBatch.id,
+  status: 'collecting',
+});
+const [commandPartialChange] = seedSocialStore.prepareSocialWorkCommandChanges({
+  taskId: commandReviewTaskId,
+  batchId: commandPartialBatch.id,
+  stepId: 'e2e-command-partial-step',
+  changes: [
+    {
+      relativePath: 'COMMAND-PARTIAL.txt',
+      beforeBytes: null,
+      afterBytes: Buffer.from('partial'),
+      diffText: '+partial',
+      diffTruncated: false,
+    },
+  ],
+});
+writeFileSync(path.join(workspacePath, 'COMMAND-PARTIAL.txt'), 'partial');
+seedSocialStore.completeSocialWorkFileChange({
+  taskId: commandReviewTaskId,
+  stepId: 'e2e-command-partial-step',
+  changeId: commandPartialChange.changeId,
+  operationId: commandPartialChange.operationId,
+  actualHash: commandPartialChange.afterHash,
+});
+seedSocialStore.transitionSocialWorkCommandBatch({
+  taskId: commandReviewTaskId,
+  batchId: commandPartialBatch.id,
+  status: 'syncing',
+});
+seedSocialStore.transitionSocialWorkCommandBatch({
+  taskId: commandReviewTaskId,
+  batchId: commandPartialBatch.id,
+  status: 'partial',
+  reasonCode: 'writeback_partial',
+});
+seedSocialStore.finishSocialWorkTask(commandReviewTaskId, {
+  status: 'completed',
+  resultText: 'Command batch review fixture.',
+});
+const handoffParentExecutionId = 'e2e-handoff-parent-turn';
+const handoffMemberExecutionId = 'e2e-handoff-member-turn';
+const handoffParentInteractionId = 'e2e-handoff-parent-message';
+const handoffId = 'e2e-handoff-user-message';
+const handoffRequestId = 'e2e-handoff-request';
+const seedDiagnostics = new DiagnosticsEventStore(seedDatabase);
+seedDiagnostics.record({
+  applicationExecutionId: 'e2e-handoff-application',
+  executionId: handoffMemberExecutionId,
+  parentExecutionId: handoffParentExecutionId,
+  turnId: handoffMemberExecutionId,
+  module: 'social.handoff',
+  operation: 'handoff.started',
+  status: 'running',
+  details: {
+    handoffId,
+    memberAgentId: 'engineering-partner',
+    parentInteractionId: handoffParentInteractionId,
+  },
+});
+seedDiagnostics.record({
+  applicationExecutionId: 'e2e-handoff-application',
+  executionId: handoffMemberExecutionId,
+  parentExecutionId: handoffParentExecutionId,
+  turnId: handoffMemberExecutionId,
+  module: 'social.handoff',
+  operation: 'handoff.completed',
+  status: 'completed',
+  details: {
+    handoffId,
+    memberAgentId: 'engineering-partner',
+    parentInteractionId: handoffParentInteractionId,
+  },
+});
+seedDiagnostics.record({
+  applicationExecutionId: 'e2e-handoff-application',
+  executionId: handoffMemberExecutionId,
+  parentExecutionId: handoffParentExecutionId,
+  turnId: handoffMemberExecutionId,
+  requestId: handoffRequestId,
+  module: 'provider',
+  operation: 'provider.request.completed',
+  status: 'completed',
+  details: { requestStatus: 'completed' },
+});
+const startupRecoveryTaskId = 'e2e-room-d-startup-recovery';
+seedSocialStore.createSocialWorkTask({
+  id: startupRecoveryTaskId,
+  roomId: 'room-engineering-collaboration',
+  agentId: 'engineering-partner',
+  workspacePath,
+  workspaceKey: fixtureWorkspaceKey,
+  workspaceIdentity: fixtureWorkspaceIdentity,
+  taskPrompt: '[NOEMA E2E] 应用重启后的活动任务恢复。',
+  model: liveModel,
+  executionEngine: 'noema',
+});
+seedSocialStore.startSocialWorkExecutionStep(startupRecoveryTaskId, {
+  id: 'e2e-room-d-command-in-flight',
+  toolName: 'run_command',
+  externalCallId: 'e2e-command-in-flight',
+  category: 'command',
+  hasSideEffect: true,
+});
 seedDatabase.close();
 
 const child = spawn(process.execPath, ['scripts/start.mjs'], {
@@ -312,9 +505,13 @@ const child = spawn(process.execPath, ['scripts/start.mjs'], {
       .filter(Boolean)
       .join(path.delimiter),
     NOEMA_SMOKE_TEST: '1',
+    NOEMA_SMOKE_REFRESH_MODELS: '0',
     NOEMA_E2E_DATABASE_PATH: databasePath,
     NOEMA_E2E_DSH_USER_DATA_PATH: dshUserDataPath,
     NOEMA_E2E_SOCIAL_WORK_PROMPT: prompt,
+    NOEMA_E2E_SOCIAL_AGENT_WORKFLOW: '0',
+    NOEMA_E2E_SOCIAL_AGENT_LIVE: '0',
+    NOEMA_E2E_SOCIAL_PROVIDER_LIVE: '0',
     NOEMA_E2E_SOCIAL_WORK_SOURCE_PROMPT: practiceSourcePrompt,
     NOEMA_E2E_SOCIAL_WORK_LIVE_EPISODES: liveEpisodes ? '1' : '0',
     NOEMA_E2E_SOCIAL_WORK_PRACTICE_DECISION:
@@ -327,6 +524,7 @@ const child = spawn(process.execPath, ['scripts/start.mjs'], {
     NOEMA_E2E_SOCIAL_WORK_RESULT_PATH: resultPath,
     NOEMA_E2E_SOCIAL_WORK_CHECKS: JSON.stringify(verificationChecks),
     ...(syntheticAdapter ? { NOEMA_E2E_SOCIAL_WORK_SYNTHETIC: '1' } : {}),
+    NOEMA_E2E_SOCIAL_WORK_REVERSE_SNAPSHOT: syntheticAdapter ? '1' : '0',
     ...(livePractice
       ? {
           NOEMA_E2E_SOCIAL_WORK_PROPOSAL_SOURCE_ID: practiceSourceTaskId,
@@ -356,6 +554,44 @@ if (!existsSync(resultPath)) {
   throw new Error(`No social-work E2E result was written in ${e2eDirectory}.`);
 }
 const result = JSON.parse(readFileSync(resultPath, 'utf8'));
+const recoveryDatabase = new Database(databasePath);
+let startupRecovery;
+try {
+  new RootStore(recoveryDatabase);
+  const recoveredSocialStore = new SocialChatStore(recoveryDatabase);
+  const recoveryEvents = new DiagnosticsEventStore(recoveryDatabase).query({
+    taskId: startupRecoveryTaskId,
+  });
+  const recoveredTask = recoveredSocialStore.getSocialWorkTask(
+    startupRecoveryTaskId,
+  );
+  startupRecovery = {
+    taskId: recoveredTask.id,
+    status: recoveredTask.status,
+    errorCode: recoveredTask.errorCode,
+    canResume: recoveredTask.canResume,
+    executionSteps: recoveredTask.executionSteps.map(
+      ({ status, effectStatus }) => ({ status, effectStatus }),
+    ),
+    events: recoveryEvents.map(
+      ({
+        executionId,
+        operation,
+        status,
+        errorCode,
+        applicationExecutionId,
+      }) => ({
+        executionId,
+        operation,
+        status,
+        errorCode,
+        applicationExecutionId,
+      }),
+    ),
+  };
+} finally {
+  recoveryDatabase.close();
+}
 const independentVerification = verifyWorkspaceChecks(
   workspacePath,
   verificationChecks,
@@ -364,6 +600,12 @@ const summary = {
   outcome: result.outcome,
   taskStatus: result.task?.status ?? null,
   verificationStatus: result.task?.verificationStatus ?? null,
+  backgroundProjection: result.backgroundProjection ?? null,
+  taskStatusWhileHidden: result.taskStatusWhileHidden ?? null,
+  activeRendererProjection: result.activeRendererProjection ?? null,
+  rendererProjection: result.rendererProjection ?? null,
+  startupRecoveryProjection: result.startupRecoveryProjection ?? null,
+  startupRecovery,
   modelCatalog: result.modelCatalog
     ? {
         connected: result.modelCatalog.connected,
@@ -435,6 +677,19 @@ const liveEpisodeHistoryValid =
     );
   })();
 let validationFailed = exit.code !== 0;
+validationFailed ||=
+  startupRecovery?.taskId !== startupRecoveryTaskId ||
+  startupRecovery?.status !== 'interrupted' ||
+  startupRecovery?.errorCode !== 'process_crash' ||
+  startupRecovery?.canResume !== false ||
+  JSON.stringify(startupRecovery?.executionSteps) !==
+    JSON.stringify([{ status: 'outcome_unknown', effectStatus: 'unknown' }]) ||
+  startupRecovery?.events?.length !== 1 ||
+  startupRecovery.events[0]?.operation !== 'task.recovered' ||
+  startupRecovery.events[0]?.executionId !== startupRecoveryTaskId ||
+  startupRecovery.events[0]?.status !== 'interrupted' ||
+  startupRecovery.events[0]?.errorCode !== 'process_crash' ||
+  !startupRecovery.events[0]?.applicationExecutionId;
 if (proposalWasEmpty) {
   validationFailed ||=
     result.livePracticeProposal?.status !== 'none' ||
@@ -453,6 +708,31 @@ if (proposalWasEmpty) {
     (!syntheticAdapter && result.task?.executionEngine !== 'noema') ||
     (!syntheticAdapter && result.task?.toolCallCount < 2) ||
     result.task?.verificationStatus !== 'verified' ||
+    (syntheticAdapter &&
+      (result.backgroundProjection?.taskId !== result.task?.id ||
+        result.backgroundProjection?.windowHidden !== true ||
+        !['starting', 'running', 'verifying'].includes(
+          result.taskStatusWhileHidden,
+        ) ||
+        result.activeRendererProjection?.taskId !== result.task?.id ||
+        result.activeRendererProjection?.roomId !== result.task?.roomId ||
+        result.activeRendererProjection?.sameTaskRetained !== true)) ||
+    (syntheticAdapter &&
+      (result.startupRecoveryProjection?.taskId !== startupRecoveryTaskId ||
+        result.startupRecoveryProjection?.initialStatus !== 'interrupted' ||
+        result.startupRecoveryProjection?.staleEventDidNotRegress !== true ||
+        result.startupRecoveryProjection?.reloadRestoredDurableStatus !==
+          true)) ||
+    result.rendererProjection?.taskId !== result.task?.id ||
+    result.rendererProjection?.roomId !== result.task?.roomId ||
+    result.rendererProjection?.staleEventSeen !== true ||
+    result.rendererProjection?.staleEventDidNotRegress !== true ||
+    result.rendererProjection?.reversedSnapshotDidNotRegress !== true ||
+    result.rendererProjection?.reloadRestoredDurableStatus !== true ||
+    result.rendererProjection?.diagnostics?.taskId !== result.task?.id ||
+    result.rendererProjection?.diagnostics?.eventCount < 1 ||
+    result.rendererProjection?.diagnostics?.usageLinked !== true ||
+    result.rendererProjection?.diagnostics?.exportLinkedAndRedacted !== true ||
     (practiceDecision !== 'case' &&
       (result.task?.caseSnapshot !== null ||
         result.task?.practiceSnapshot?.sourceTaskId !==

@@ -56,3 +56,25 @@ test('source boundaries reject process leaks, broken imports, cycles and restore
     removeDevelopmentDirectory(directory);
   }
 });
+
+test('production modules cannot import a quarantined runtime', () => {
+  const directory = createDevelopmentDirectory('source-legacy-boundary-');
+  const sourceRoot = path.join(directory, 'src');
+  function write(name, content) {
+    const file = path.join(sourceRoot, name);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, content);
+  }
+  try {
+    write('main/main.ts', "import './legacy/old-runtime.mjs';");
+    write('preload/preload.ts', "import { contextBridge } from 'electron';");
+    write('renderer/renderer.tsx', "import '../shared/value';");
+    write('shared/value.mjs', 'export const value = 1;');
+    write('main/legacy/old-runtime.mjs', 'export const legacy = true;');
+
+    const errors = inspectSourceStructure(sourceRoot).errors.join('\n');
+    assert.ok(errors.includes('Production imports quarantined runtime'));
+  } finally {
+    removeDevelopmentDirectory(directory);
+  }
+});

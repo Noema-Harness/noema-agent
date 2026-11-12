@@ -1,3 +1,10 @@
+import {
+  NoemaCheckbox,
+  NoemaInput,
+  NoemaTextArea,
+} from '../../ui/noema-form-controls';
+import { NoemaButton } from '../../ui/noema-button';
+import { NoemaOverlay } from '../../ui/noema-overlay';
 import { Icon, AgentMark } from '../presentation';
 import type { SocialChatController } from '../use-social-chat-controller';
 
@@ -11,15 +18,14 @@ type AgentEditorDialogModel = Pick<
   | 'handleCreateAgent'
   | 'editingAgent'
   | 'agentName'
-  | 'setAgentName'
+  | 'agentNameError'
+  | 'handleAgentNameChange'
   | 'creatingAgent'
   | 'updatingAgentProfile'
   | 'agentHeadline'
   | 'setAgentHeadline'
   | 'agentDescription'
   | 'setAgentDescription'
-  | 'agentProjectWork'
-  | 'setAgentProjectWork'
 >;
 export function AgentEditorDialog({
   model,
@@ -35,22 +41,20 @@ export function AgentEditorDialog({
     handleCreateAgent,
     editingAgent,
     agentName,
-    setAgentName,
+    agentNameError,
+    handleAgentNameChange,
     creatingAgent,
     updatingAgentProfile,
     agentHeadline,
     setAgentHeadline,
     agentDescription,
     setAgentDescription,
-    agentProjectWork,
-    setAgentProjectWork,
   } = model;
-  return createAgentOpen || editingAgentId ? (
-    <div
-      className="dialog-backdrop"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) closeAgentDialog();
-      }}
+  return (
+    <NoemaOverlay
+      isOpen={createAgentOpen || Boolean(editingAgentId)}
+      onClose={closeAgentDialog}
+      canEscapeKeyClose
     >
       <form
         ref={dialogRef}
@@ -67,53 +71,67 @@ export function AgentEditorDialog({
         <div className="dialog-heading">
           <div>
             <h2 id="create-agent-title">
-              {editingAgentId ? '编辑联系人资料' : '创建专业联系人'}
+              {editingAgentId ? '编辑联系人' : '新建联系人'}
             </h2>
             <p>
               {editingAgentId
-                ? `正在编辑${editingAgent?.name ?? '联系人'}。身份和聊天记录会保留。`
-                : '给它一个可以长期实践的领域，而不是一次任务。'}
+                ? `修改${editingAgent?.name ?? '联系人'}的资料，聊天记录不变。`
+                : '让它在某个领域长期协助你。'}
             </p>
           </div>
-          <button
+          <NoemaButton
             className="icon-button"
             type="button"
             aria-label="关闭"
             onClick={closeAgentDialog}
           >
             <Icon name="close" />
-          </button>
+          </NoemaButton>
         </div>
         <label className="dialog-field">
           <span>联系人名称</span>
-          <input
+          <NoemaInput
             autoFocus
             data-dialog-initial-focus
             id="social-agent-name"
             value={agentName}
             maxLength={60}
-            placeholder="例如：林间观察员"
-            onChange={(event) => setAgentName(event.target.value)}
+            placeholder="例如：前端工程师"
+            onChange={(event) => handleAgentNameChange(event.target.value)}
+            aria-invalid={Boolean(agentNameError)}
+            aria-describedby={
+              agentNameError ? 'social-agent-name-error' : undefined
+            }
             required
             disabled={creatingAgent || updatingAgentProfile}
           />
+          <small>用通用职业或头衔命名，能跨项目复用。</small>
+          {agentNameError ? (
+            <small
+              className="dialog-error"
+              id="social-agent-name-error"
+              role="alert"
+            >
+              {agentNameError}
+            </small>
+          ) : null}
         </label>
         <label className="dialog-field">
-          <span>长期专业范围</span>
-          <input
+          <span>职业 / 专业领域</span>
+          <NoemaInput
             id="social-agent-headline"
             value={agentHeadline}
             maxLength={140}
-            placeholder="例如：长期研究 Godot 游戏开发与项目迭代"
+            placeholder="例如：Web 前端、3D 交互与可视化"
             onChange={(event) => setAgentHeadline(event.target.value)}
             required
             disabled={creatingAgent || updatingAgentProfile}
           />
-          <small>尽量写一类可持续积累的实践，不写单次待办。</small>
+          <small>可在不同项目中复用的专业方向。</small>
         </label>
         <label className="dialog-field">
-          <span>你希望它如何与你合作</span>
-          <textarea
+          <span>协作方式</span>
+          <NoemaTextArea
             id="social-agent-description"
             value={agentDescription}
             maxLength={800}
@@ -124,37 +142,21 @@ export function AgentEditorDialog({
             disabled={creatingAgent || updatingAgentProfile}
           />
         </label>
-        {!editingAgentId ? (
-          <label className="agent-capability-choice">
-            <input
-              type="checkbox"
-              checked={agentProjectWork}
-              onChange={(event) => setAgentProjectWork(event.target.checked)}
-              disabled={creatingAgent}
-            />
-            <span>
-              <strong>允许它承接项目文件任务</strong>
-              <small>
-                默认关闭。开启后，你可以在对话中委托文件任务，启动前会请你选择工作目录。
-              </small>
-            </span>
-          </label>
-        ) : null}
         <p className="dialog-footnote">
           {editingAgentId
-            ? '资料保存在本机，不会调用模型。更新会影响之后在该联系人的各个聊天中开始的新回复；历史消息不变。专业范围是你的设定，不代表其能力已经验证。'
-            : '创建时资料只保存在本机，不调用模型。以后在这里聊天时，专业范围与合作方式会随消息发送给当前模型。专业范围是你的设定，不代表其能力已经验证。'}
+            ? '资料只保存在本机，修改后对新回复生效。'
+            : '资料只保存在本机。创建后会开始私聊；项目任务会使用项目选定的文件夹。'}
         </p>
         <div className="dialog-actions">
-          <button
+          <NoemaButton
             className="secondary-action"
             type="button"
             onClick={closeAgentDialog}
             disabled={creatingAgent || updatingAgentProfile}
           >
             取消
-          </button>
-          <button
+          </NoemaButton>
+          <NoemaButton
             className="primary-action"
             type="submit"
             disabled={
@@ -171,12 +173,12 @@ export function AgentEditorDialog({
                 ? '正在保存…'
                 : editingAgentId
                   ? '保存资料'
-                  : '创建联系人并开始私聊'}
-          </button>
+                  : '创建并开始聊天'}
+          </NoemaButton>
         </div>
       </form>
-    </div>
-  ) : null;
+    </NoemaOverlay>
+  );
 }
 
 type GroupEditorDialogModel = Pick<
@@ -212,12 +214,7 @@ export function GroupEditorDialog({
     toggleGroupAgent,
   } = model;
   return createGroupOpen ? (
-    <div
-      className="dialog-backdrop"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) closeGroupDialog();
-      }}
-    >
+    <NoemaOverlay isOpen onClose={closeGroupDialog}>
       <form
         ref={dialogRef}
         className="social-dialog"
@@ -231,18 +228,18 @@ export function GroupEditorDialog({
             <h2 id="create-group-title">新建群聊</h2>
             <p>把同一位联系人带进新的聊天空间。</p>
           </div>
-          <button
+          <NoemaButton
             className="icon-button"
             type="button"
             aria-label="关闭"
             onClick={closeGroupDialog}
           >
             <Icon name="close" />
-          </button>
+          </NoemaButton>
         </div>
         <label className="dialog-field">
           <span>群聊名称</span>
-          <input
+          <NoemaInput
             autoFocus
             data-dialog-initial-focus
             id="social-group-title"
@@ -257,7 +254,7 @@ export function GroupEditorDialog({
           <legend>邀请联系人</legend>
           {activeAgents.map((agent) => (
             <label key={agent.id} className="group-agent-option">
-              <input
+              <NoemaCheckbox
                 type="checkbox"
                 checked={groupAgentIds.includes(agent.id)}
                 onChange={() => toggleGroupAgent(agent.id)}
@@ -279,14 +276,14 @@ export function GroupEditorDialog({
           群聊会有独立记录；不会把各自私聊的历史带进来。
         </p>
         <div className="dialog-actions">
-          <button
+          <NoemaButton
             className="secondary-action"
             type="button"
             onClick={closeGroupDialog}
           >
             取消
-          </button>
-          <button
+          </NoemaButton>
+          <NoemaButton
             className="primary-action"
             type="submit"
             disabled={
@@ -298,10 +295,10 @@ export function GroupEditorDialog({
             }
           >
             {busy ? '正在创建…' : '创建群聊'}
-          </button>
+          </NoemaButton>
         </div>
       </form>
-    </div>
+    </NoemaOverlay>
   ) : null;
 }
 
@@ -316,6 +313,8 @@ type ProjectEditorDialogModel = Pick<
   | 'setProjectTitle'
   | 'projectBrief'
   | 'setProjectBrief'
+  | 'newProjectWorkspace'
+  | 'chooseProjectWorkspace'
   | 'projectAgentIds'
   | 'setProjectAgentIds'
   | 'projectBusy'
@@ -335,17 +334,14 @@ export function ProjectEditorDialog({
     setProjectTitle,
     projectBrief,
     setProjectBrief,
+    newProjectWorkspace,
+    chooseProjectWorkspace,
     projectAgentIds,
     setProjectAgentIds,
     projectBusy,
   } = model;
   return createProjectOpen ? (
-    <div
-      className="dialog-backdrop"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) closeProjectDialog();
-      }}
-    >
+    <NoemaOverlay isOpen onClose={closeProjectDialog}>
       <form
         ref={dialogRef}
         className="social-dialog project-dialog"
@@ -356,21 +352,21 @@ export function ProjectEditorDialog({
       >
         <div className="dialog-heading">
           <div>
-            <h2 id="create-project-title">建立项目空间</h2>
-            <p>项目群聊与成员各自的项目会话会分开保存。</p>
+            <h2 id="create-project-title">新建项目</h2>
+            <p>群聊讨论，成员在各自的项目会话中执行。</p>
           </div>
-          <button
+          <NoemaButton
             className="icon-button"
             type="button"
             aria-label="关闭"
             onClick={closeProjectDialog}
           >
             <Icon name="close" />
-          </button>
+          </NoemaButton>
         </div>
         <label className="dialog-field">
           <span>项目名称</span>
-          <input
+          <NoemaInput
             autoFocus
             data-dialog-initial-focus
             value={projectTitle}
@@ -381,23 +377,36 @@ export function ProjectEditorDialog({
           />
         </label>
         <label className="dialog-field">
-          <span>目标与背景</span>
-          <textarea
+          <span>目标</span>
+          <NoemaTextArea
             value={projectBrief}
             maxLength={40000}
             rows={4}
-            placeholder="说明预期结果、已知背景或需要遵守的边界。"
+            placeholder="要完成什么，有哪些限制。"
             onChange={(event) => setProjectBrief(event.target.value)}
             required
           />
         </label>
+        <div className="dialog-field">
+          <span>工作文件夹</span>
+          <NoemaButton
+            type="button"
+            className="project-workspace-picker"
+            onClick={() => void chooseProjectWorkspace()}
+            disabled={projectBusy}
+          >
+            <Icon name="folder-open" />
+            <span>{newProjectWorkspace?.workspacePath ?? '选择文件夹'}</span>
+          </NoemaButton>
+          <small>成员可在这里读写文件。</small>
+        </div>
         <fieldset className="group-agent-picker">
           <legend>初始成员</legend>
           {activeAgents
             .filter((agent) => agent.id !== 'noema')
             .map((agent) => (
               <label key={agent.id} className="group-agent-option">
-                <input
+                <NoemaCheckbox
                   type="checkbox"
                   checked={projectAgentIds.includes(agent.id)}
                   onChange={() =>
@@ -425,27 +434,28 @@ export function ProjectEditorDialog({
           Noema 会加入项目群；每位成员的项目上下文与常驻私聊相互独立。
         </p>
         <div className="dialog-actions">
-          <button
+          <NoemaButton
             className="secondary-action"
             type="button"
             onClick={closeProjectDialog}
           >
             取消
-          </button>
-          <button
+          </NoemaButton>
+          <NoemaButton
             className="primary-action"
             type="submit"
             disabled={
               projectBusy ||
               !projectTitle.trim() ||
               !projectBrief.trim() ||
+              !newProjectWorkspace ||
               projectAgentIds.length === 0
             }
           >
             {projectBusy ? '正在建立…' : '建立项目'}
-          </button>
+          </NoemaButton>
         </div>
       </form>
-    </div>
+    </NoemaOverlay>
   ) : null;
 }

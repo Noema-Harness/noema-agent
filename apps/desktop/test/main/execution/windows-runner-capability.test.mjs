@@ -12,6 +12,7 @@ test('Windows capability report exposes only safe identity and readiness fields'
         backend: {
           id: 'noema-codex-windows',
           version: '0.1.0',
+          policyVersion: 3,
           path: 'C:\\secret\\runner.exe',
         },
       },
@@ -28,6 +29,7 @@ test('Windows capability report exposes only safe identity and readiness fields'
       setupActionAvailable: false,
       backendId: 'noema-codex-windows',
       backendVersion: '0.1.0',
+      policyVersion: 3,
       protocolVersion: 8,
       setupStatus: 'ready',
     },
@@ -50,6 +52,7 @@ test('Windows capability report bounds error reasons and versions', () => {
   assert.equal(report.setupActionAvailable, false);
   assert.equal(report.backendId, null);
   assert.equal(report.backendVersion, null);
+  assert.equal(report.policyVersion, null);
   assert.equal(report.protocolVersion, null);
   assert.equal(report.setupStatus, 'unavailable');
 });
@@ -123,6 +126,7 @@ test('non-Windows hosts report that Windows runner setup does not apply', () => 
       setupActionAvailable: false,
       backendId: null,
       backendVersion: null,
+      policyVersion: null,
       protocolVersion: null,
       setupStatus: 'not_applicable',
     },

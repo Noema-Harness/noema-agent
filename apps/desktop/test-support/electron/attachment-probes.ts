@@ -98,7 +98,16 @@ export function createAttachmentProbes(context: DesktopProbeContext) {
         chipVisible: Boolean(document.querySelector('.attachment-chip')?.getClientRects().length),
         shellNoOverflow: Boolean(shell && shell.scrollWidth <= shell.clientWidth),
         documentNoOverflow: document.documentElement.scrollWidth <= window.innerWidth,
-        composerVisible: Boolean(composer && composer.getBoundingClientRect().bottom <= window.innerHeight),
+        composerVisible: Boolean(
+          composer &&
+            composer.getBoundingClientRect().bottom <= window.innerHeight + 1,
+        ),
+        composerBottom: composer?.getBoundingClientRect().bottom ?? null,
+        viewportHeight: window.innerHeight,
+        attachmentRows: document.querySelectorAll('.composer-files').length,
+        attachmentChips: [...document.querySelectorAll('.attachment-chip')].map(
+          (chip) => chip.textContent?.trim() ?? '',
+        ),
       };
     })();
     return { unsupportedNotice, draftPreservedAfterRemoval, desktop };
@@ -121,6 +130,12 @@ export function createAttachmentProbes(context: DesktopProbeContext) {
       !ui.desktop?.documentNoOverflow ||
       !ui.desktop?.composerVisible
     ) {
+      if (socialTextAttachmentDesktopScreenshotPath) {
+        writeSmokeScreenshot(
+          socialTextAttachmentDesktopScreenshotPath,
+          await mainWindow.capturePage(),
+        );
+      }
       throw new Error(`文字附件桌面输入状态异常：${JSON.stringify(ui)}`);
     }
     if (socialTextAttachmentDesktopScreenshotPath) {

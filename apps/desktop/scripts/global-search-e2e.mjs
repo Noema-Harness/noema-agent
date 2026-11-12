@@ -4,7 +4,6 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
-import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import Database from 'better-sqlite3';
 import { RootStore } from '../src/main/storage/root-store.mjs';
@@ -15,7 +14,6 @@ import { connect } from './electron-cdp.mjs';
 
 // Synthetic local history only. Never connects a model or changes the real profile.
 configureElectronRuntime();
-const require = createRequire(import.meta.url);
 const appDirectory = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '..',
@@ -53,6 +51,16 @@ const main = message(
   'noema',
   'main-needle **main-needle** 只在主聊天中。',
 );
+const stale = message(
+  'room-noema',
+  'noema',
+  'stale-source-needle 仅用于验证结果被删除后的恢复反馈。',
+);
+// Each fixture turn creates a user and assistant message; 102 turns plus the
+// two seeded turns gives 208 messages, enough to verify the 200-message page.
+for (let index = 0; index < 102; index++) {
+  message('room-noema', 'noema', `分页填充 ${index}`);
+}
 const resident = message(
   agent.room.id,
   agentId,
@@ -88,23 +96,21 @@ const probe = http.createServer();
 await new Promise((resolve) => probe.listen(0, '127.0.0.1', resolve));
 const port = probe.address().port;
 await new Promise((resolve) => probe.close(resolve));
-const env = { ...process.env, NOEMA_E2E_DATABASE_PATH: database };
+const env = {
+  ...process.env,
+  NOEMA_E2E_DATABASE_PATH: database,
+  NOEMA_E2E_SOCIAL_AGENT_WORKFLOW: '1',
+  NOEMA_SMOKE_TEST: '1',
+  NOEMA_SMOKE_USER_DATA_DIR: path.join(scratch, 'home'),
+  NOEMA_DEV_REMOTE_DEBUGGING_PORT: String(port),
+};
 delete env.ELECTRON_RUN_AS_NODE;
-delete env.NOEMA_SMOKE_TEST;
-const child = spawn(
-  require('electron'),
-  [
-    '.',
-    `--noema-e2e-user-data-dir=${path.join(scratch, 'home')}`,
-    `--noema-e2e-port=${port}`,
-  ],
-  {
-    cwd: appDirectory,
-    env,
-    windowsHide: true,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  },
-);
+const child = spawn(process.execPath, ['scripts/start.mjs'], {
+  cwd: appDirectory,
+  env,
+  windowsHide: true,
+  stdio: ['ignore', 'pipe', 'pipe'],
+});
 let diagnostics = '';
 child.stderr.on('data', (data) => {
   diagnostics = (diagnostics + data).slice(-4000);
@@ -124,6 +130,32 @@ try {
   }
   if (!target) throw Error(`No debugger: ${diagnostics}`);
   cdp = await connect(target.webSocketDebuggerUrl);
+  await cdp.call('Page.enable');
+  await cdp.call('Runtime.enable');
+  const frameTree = await cdp.call('Page.getFrameTree');
+  console.log(
+    JSON.stringify({
+      targetUrl: target.url,
+      frameUrl: frameTree.frameTree.frame.url,
+    }),
+  );
+  const healthPath = path.join(scratch, 'home', 'renderer-health.jsonl');
+  const mountDeadline = Date.now() + 60_000;
+  while (Date.now() < mountDeadline) {
+    if (
+      fs.existsSync(healthPath) &&
+      fs.readFileSync(healthPath, 'utf8').includes('"event":"renderer-mounted"')
+    )
+      break;
+    if (child.exitCode !== null)
+      throw Error(`Noema exited before renderer mount: ${diagnostics}`);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  if (
+    !fs.existsSync(healthPath) ||
+    !fs.readFileSync(healthPath, 'utf8').includes('"event":"renderer-mounted"')
+  )
+    throw Error(`Renderer did not mount: ${diagnostics}`);
   await cdp.call('Emulation.setDeviceMetricsOverride', {
     width: 1264,
     height: 850,
@@ -131,6 +163,26 @@ try {
     mobile: false,
   });
   await wait(`document.querySelector('[aria-label="搜索成员或项目"]')`);
+  await wait(
+    `document.querySelector('[data-room-id="room-noema"] .history-page-control button')`,
+  );
+  const firstHistoryWindow = await evaluate(
+    `document.querySelectorAll('[data-room-id="room-noema"] [data-message-id]').length`,
+  );
+  assert.ok(firstHistoryWindow > 0 && firstHistoryWindow <= 200);
+  console.log('[global-search-e2e] initial history rendered');
+  await evaluate(
+    `document.querySelector('[data-room-id="room-noema"] .history-page-control button').click()`,
+  );
+  await wait(
+    `document.querySelectorAll('[data-room-id="room-noema"] [data-message-id]').length>${firstHistoryWindow}`,
+  );
+  assert.ok(
+    (await evaluate(
+      `document.querySelectorAll('[data-room-id="room-noema"] [data-message-id]').length`,
+    )) <= 400,
+  );
+  console.log('[global-search-e2e] history pagination rendered');
   await evaluate(
     `window.__searchErrors=[];window.addEventListener('error',e=>window.__searchErrors.push(e.message));window.addEventListener('unhandledrejection',e=>window.__searchErrors.push(String(e.reason)))`,
   );
@@ -139,7 +191,11 @@ try {
     `document.querySelector('[aria-label="搜索成员或项目"]').focus()`,
   );
   await key('k', 'KeyK', 2);
+  console.log('[global-search-e2e] shortcut dispatched');
+  await wait(`document.querySelector('.global-search-dialog')`);
+  console.log('[global-search-e2e] search dialog rendered');
   await wait(`document.activeElement?.matches('[cmdk-input]')`);
+  console.log('[global-search-e2e] search input focused');
   assert.equal(
     await evaluate(`document.querySelectorAll('[role=dialog]').length`),
     1,
@@ -189,6 +245,25 @@ try {
   await wait(
     `!document.querySelector('.global-search-error') && document.querySelector('[cmdk-item]')?.textContent.includes('member-needle')`,
   );
+  console.log('[global-search-e2e] search retry rendered');
+  await key('Escape', 'Escape');
+  // A result removed after search stays open with an actionable source error.
+  await open();
+  await query('stale-source-needle');
+  await wait(
+    `document.querySelector('[cmdk-item]')?.textContent.includes('stale-source-needle')`,
+  );
+  db.prepare('DELETE FROM social_messages WHERE id = ?').run(stale.id);
+  await key('ArrowDown', 'ArrowDown');
+  await key('Enter', 'Enter');
+  await wait(
+    `document.querySelector('.global-search-error')?.textContent.includes('这条消息已移除')`,
+  );
+  assert.equal(
+    await evaluate(`Boolean(document.querySelector('.global-search-dialog'))`),
+    true,
+  );
+  await screenshot('global-stale-source.png');
   await key('Escape', 'Escape');
   // Each result navigates to the original room and focuses the exact message.
   for (const [needle, source] of [
@@ -206,7 +281,7 @@ try {
     await key('ArrowDown', 'ArrowDown');
     await key('Enter', 'Enter');
     await wait(
-      `!document.querySelector('.global-search-dialog') && document.activeElement?.dataset.messageId===${JSON.stringify(source.id)}`,
+      `!document.querySelector('.global-search-dialog') && document.activeElement?.dataset.messageId===${JSON.stringify(source.id)} && (()=>{const r=document.activeElement.getBoundingClientRect();return r.height>0&&r.top<innerHeight&&r.bottom>0})()`,
     );
     const visible = await evaluate(
       `(()=>{const r=document.activeElement.getBoundingClientRect();return r.height>0&&r.top<innerHeight&&r.bottom>0})()`,
@@ -222,6 +297,7 @@ try {
       );
     }
   }
+  console.log('[global-search-e2e] source navigation rendered');
   await open();
   await query('resident-needle');
   await wait(`document.querySelectorAll('[cmdk-item]').length===2`);
@@ -234,19 +310,19 @@ try {
   );
   // Current-room search excludes the original member DM; navigation filter never searches message bodies.
   await evaluate(
-    `document.querySelector('[aria-label="查找当前对话"]').click()`,
+    `document.querySelector('[aria-label="搜索当前聊天"]').click()`,
   );
   await wait(`document.querySelector('[aria-label="搜索当前聊天"]')`);
-  await set('[aria-label="搜索当前聊天"]', 'group-needle');
+  await set('input[aria-label="搜索当前聊天"]', 'group-needle');
   await wait(
     `document.querySelector('.conversation-search-results')?.textContent.includes('没有找到')`,
   );
   await key('Escape', 'Escape');
   await evaluate(
-    `document.querySelector('[aria-label="查找当前对话"]').click()`,
+    `document.querySelector('[aria-label="搜索当前聊天"]').click()`,
   );
   await wait(`document.querySelector('[aria-label="搜索当前聊天"]')`);
-  await set('[aria-label="搜索当前聊天"]', 'main-needle');
+  await set('input[aria-label="搜索当前聊天"]', 'main-needle');
   await wait(
     `document.querySelector('.conversation-search-result')?.textContent.includes('main-needle')`,
   );
@@ -263,10 +339,68 @@ try {
     ['main-needle', 'main-needle'],
   );
   await screenshot('current-chat-search-hit.png');
-  await evaluate(
-    `document.querySelector('[aria-label="查找当前对话"]').click()`,
+  await wait(
+    `!document.querySelector('.conversation-search-dialog') && CSS.highlights.get('noema-current-chat-search')?.size===2`,
   );
-  await wait(`!CSS.highlights.has('noema-current-chat-search')`);
+  console.log('[global-search-e2e] current-chat search rendered');
+  await cdp.call('Emulation.setDeviceMetricsOverride', {
+    width: 420,
+    height: 720,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  await evaluate(
+    `document.querySelector('[aria-label="搜索当前聊天"]').click()`,
+  );
+  await wait(`document.querySelector('[aria-label="搜索当前聊天"]')`);
+  await set('input[aria-label="搜索当前聊天"]', 'main-needle');
+  await wait(
+    `document.querySelector('.conversation-search-result')?.textContent.includes('main-needle')`,
+  );
+  const currentSearchNarrow = await evaluate(`(()=>{
+    const dialog=document.querySelector('.conversation-search-dialog');
+    const results=dialog?.querySelector('.conversation-search-results');
+    const rect=dialog?.getBoundingClientRect();
+    return {
+      viewport:innerWidth,
+      dialogInsideViewport:Boolean(rect&&rect.left>=0&&rect.right<=innerWidth),
+      documentNoOverflow:document.documentElement.scrollWidth<=innerWidth,
+      resultsInsideDialog:Boolean(dialog&&results&&results.scrollWidth<=results.clientWidth+1),
+      hitVisible:Boolean(document.querySelector('.conversation-search-result')?.getClientRects().length),
+    };
+  })()`);
+  assert.deepEqual(currentSearchNarrow, {
+    viewport: 420,
+    dialogInsideViewport: true,
+    documentNoOverflow: true,
+    resultsInsideDialog: true,
+    hitVisible: true,
+  });
+  await screenshot('current-chat-search-narrow.png');
+  await key('Escape', 'Escape');
+  await cdp.call('Emulation.setDeviceMetricsOverride', {
+    width: 1264,
+    height: 850,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  await evaluate(
+    `document.querySelector('[aria-label="搜索当前聊天"]').click()`,
+  );
+  await wait(`document.querySelector('[aria-label="搜索当前聊天"]')`);
+  await set('input[aria-label="搜索当前聊天"]', 'scoped-search-failure');
+  db.exec('ALTER TABLE social_messages RENAME TO room_search_fault_fixture');
+  await wait(
+    `document.querySelector('.conversation-search-results [role=alert]')`,
+  );
+  db.exec('ALTER TABLE room_search_fault_fixture RENAME TO social_messages');
+  await evaluate(
+    `Array.from(document.querySelectorAll('.conversation-search-results [role=alert] button')).find(button=>button.textContent.includes('重试'))?.click()`,
+  );
+  await wait(
+    `document.querySelector('.conversation-search-results')?.textContent.includes('没有找到') && !document.querySelector('.conversation-search-results [role=alert]')`,
+  );
+  console.log('[global-search-e2e] current-chat error recovery rendered');
   await key('Escape', 'Escape');
   await set('[aria-label="搜索成员或项目"]', 'group-needle');
   assert.equal(
@@ -295,18 +429,37 @@ try {
   );
   // Narrow-window dialog stays inside the viewport and accepts keyboard closure.
   await cdp.call('Emulation.setDeviceMetricsOverride', {
-    width: 700,
-    height: 850,
+    width: 420,
+    height: 720,
     deviceScaleFactor: 1,
     mobile: false,
   });
   await open();
   await query('needle');
   await wait(`document.querySelectorAll('[cmdk-item]').length>4`);
-  assert.equal(
-    await evaluate(`document.documentElement.scrollWidth<=innerWidth`),
-    true,
-  );
+  const narrowLayout = await evaluate(`(()=>{
+    const dialog=document.querySelector('.global-search-dialog');
+    const list=dialog?.querySelector('[cmdk-list]');
+    const rect=dialog?.getBoundingClientRect();
+    const sources=[...(dialog?.querySelectorAll('.global-search-source')??[])];
+    return {
+      viewport:innerWidth,
+      dialogInsideViewport:Boolean(rect&&rect.left>=0&&rect.right<=innerWidth),
+      documentNoOverflow:document.documentElement.scrollWidth<=innerWidth,
+      resultListScrollable:Boolean(list&&list.scrollHeight>list.clientHeight),
+      sourceRowsInsideDialog:Boolean(rect&&sources.every(source=>{
+        const row=source.getBoundingClientRect();
+        return row.left>=rect.left&&row.right<=rect.right;
+      })),
+    };
+  })()`);
+  assert.deepEqual(narrowLayout, {
+    viewport: 420,
+    dialogInsideViewport: true,
+    documentNoOverflow: true,
+    resultListScrollable: true,
+    sourceRowsInsideDialog: true,
+  });
   await screenshot('global-narrow.png');
   await key('Escape', 'Escape');
   assert.deepEqual(await evaluate('window.__searchErrors'), []);
@@ -326,6 +479,7 @@ try {
       await evaluate(`document.body.innerText.slice(-2400)`).catch(() => ''),
     );
   }
+  if (diagnostics) console.error('Electron:', diagnostics);
   throw error;
 } finally {
   cdp?.close();
@@ -334,11 +488,24 @@ try {
 }
 
 async function evaluate(expression) {
-  const r = await cdp.call('Runtime.evaluate', {
-    expression,
-    awaitPromise: true,
-    returnByValue: true,
-  });
+  let r;
+  try {
+    r = await cdp.call(
+      'Runtime.evaluate',
+      {
+        expression,
+        awaitPromise: true,
+        returnByValue: true,
+      },
+      60_000,
+    );
+  } catch (error) {
+    console.error(
+      '[global-search-e2e] renderer evaluation stalled:',
+      expression.replace(/\s+/gu, ' ').slice(0, 220),
+    );
+    throw error;
+  }
   if (r.exceptionDetails) throw Error(JSON.stringify(r.exceptionDetails));
   return r.result.value;
 }
@@ -374,6 +541,9 @@ async function set(selector, value) {
 }
 async function query(value) {
   await set('[cmdk-input]', value);
+  await evaluate(
+    `(()=>{const n=document.querySelector('[cmdk-input]');n.setSelectionRange(n.value.length,n.value.length)})()`,
+  );
 }
 async function screenshot(name) {
   const r = await cdp.call('Page.captureScreenshot', {

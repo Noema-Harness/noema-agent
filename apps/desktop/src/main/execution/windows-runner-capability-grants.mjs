@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { stat as defaultStat } from 'node:fs/promises';
+import { WINDOWS_RUNNER_POLICY_VERSION } from './windows-runner-package-contract.mjs';
 
 const MAX_READ_ROOTS = 37;
 const MAX_WRITE_ROOTS = 5;
@@ -16,14 +17,18 @@ export async function createWindowsRunnerCapabilityGrants(
   if (
     !policy ||
     typeof policy !== 'object' ||
-    policy.version !== 2 ||
+    policy.version !== WINDOWS_RUNNER_POLICY_VERSION ||
     !policy.filesystem ||
+    !['read-only', 'read-write'].includes(policy.filesystem.mode) ||
     policy.filesystem.defaultDeny !== true ||
     !Array.isArray(policy.filesystem.readRoots) ||
     !Array.isArray(policy.filesystem.writeRoots) ||
     policy.filesystem.readRoots.length === 0 ||
     policy.filesystem.readRoots.length > MAX_READ_ROOTS ||
-    policy.filesystem.writeRoots.length === 0 ||
+    (policy.filesystem.mode === 'read-only' &&
+      policy.filesystem.writeRoots.length !== 0) ||
+    (policy.filesystem.mode === 'read-write' &&
+      policy.filesystem.writeRoots.length === 0) ||
     policy.filesystem.writeRoots.length > MAX_WRITE_ROOTS ||
     !capabilityNameStore ||
     typeof capabilityNameStore.getOrCreate !== 'function' ||

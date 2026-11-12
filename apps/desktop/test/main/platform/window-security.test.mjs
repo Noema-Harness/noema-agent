@@ -31,12 +31,59 @@ test('IPC accepts only the current top-level renderer frame', () => {
   );
 });
 
-test('navigation stays in the app; only HTTPS links are handed to the system browser', () => {
+test('navigation is limited to the configured renderer entry; HTTPS links may open externally', () => {
   assert.equal(
     isInternalNavigation('http://localhost:5173/', 'http://localhost:5173/'),
     true,
   );
-  assert.equal(isInternalNavigation('file:///app/index.html', undefined), true);
+  assert.equal(
+    isInternalNavigation(
+      'http://localhost:5173/#social',
+      'http://localhost:5173/',
+    ),
+    true,
+  );
+  assert.equal(
+    isInternalNavigation(
+      'http://localhost:5173/other',
+      'http://localhost:5173/',
+    ),
+    false,
+  );
+  assert.equal(
+    isInternalNavigation(
+      'http://user@localhost:5173/',
+      'http://localhost:5173/',
+    ),
+    false,
+  );
+  assert.equal(
+    isInternalNavigation(
+      'http://localhost:5173/',
+      'http://user@localhost:5173/',
+    ),
+    false,
+  );
+  assert.equal(
+    isInternalNavigation('file:///app/index.html', undefined),
+    false,
+  );
+  assert.equal(
+    isInternalNavigation(
+      'file:///app/index.html#social',
+      undefined,
+      'file:///app/index.html',
+    ),
+    true,
+  );
+  assert.equal(
+    isInternalNavigation(
+      'file:///app/other.html',
+      undefined,
+      'file:///app/index.html',
+    ),
+    false,
+  );
   assert.equal(
     isInternalNavigation('https://example.com', 'http://localhost:5173/'),
     false,

@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { WINDOWS_RUNNER_POLICY_VERSION } from './windows-runner-package-contract.mjs';
 
 const REQUIRED_CAPABILITIES = [
   'filesystemDefaultDeny',
@@ -135,6 +136,7 @@ export function compileWindowsCommandPolicy(input) {
     externalAccess,
     runtimeReadRoots,
     cwd,
+    filesystemMode,
   } = input;
   if (
     !backend ||
@@ -142,9 +144,12 @@ export function compileWindowsCommandPolicy(input) {
     !backend.id.trim() ||
     typeof backend.version !== 'string' ||
     !backend.version.trim() ||
-    backend.policyVersion !== 2
+    backend.policyVersion !== WINDOWS_RUNNER_POLICY_VERSION
   ) {
     return denial('backend_identity_unavailable');
+  }
+  if (!['read-only', 'read-write'].includes(filesystemMode)) {
+    return denial('invalid_filesystem_mode');
   }
   if (
     typeof requestId !== 'string' ||
@@ -178,7 +183,11 @@ export function compileWindowsCommandPolicy(input) {
   }
 
   const readRoots = new Map([[pathKey(workspaceRoot.path), workspaceRoot]]);
-  const writeRoots = new Map([[pathKey(workspaceRoot.path), workspaceRoot]]);
+  const writeRoots = new Map(
+    filesystemMode === 'read-write'
+      ? [[pathKey(workspaceRoot.path), workspaceRoot]]
+      : [],
+  );
   const externalRoots = [];
   for (const grant of externalAccess) {
     if (
@@ -190,6 +199,9 @@ export function compileWindowsCommandPolicy(input) {
     }
     const root = validatedRoot(grant);
     if (!root) return denial('path_identity_unverified');
+    if (filesystemMode === 'read-only' && grant.access === 'write') {
+      return denial('write_access_unavailable');
+    }
     if (isWithin(workspaceRoot.path, root.path)) continue;
     if (isWithin(root.path, workspaceRoot.path)) {
       return denial('external_grant_contains_workspace');
@@ -229,11 +241,12 @@ export function compileWindowsCommandPolicy(input) {
   return {
     ok: true,
     policy: {
-      version: 2,
+      version: WINDOWS_RUNNER_POLICY_VERSION,
       backend: { id: backend.id, version: backend.version },
       requestId,
       workspaceRoot: pathRoot(workspaceRoot),
       filesystem: {
+        mode: filesystemMode,
         readRoots: [...readRoots.values()]
           .sort((a, b) => pathKey(a.path).localeCompare(pathKey(b.path)))
           .map(pathRoot),

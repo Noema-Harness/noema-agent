@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { execFile, spawn } from 'node:child_process';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
@@ -8,10 +8,10 @@ const execFileAsync = promisify(execFile);
 const MAX_TASK_LENGTH = 40_000;
 const MAX_EVENT_LINE_BYTES = 512_000;
 const MAX_FINAL_TEXT_LENGTH = 100_000;
-const MAX_TOOL_CALLS = 12;
+const MAX_TOOL_CALLS = 40;
 const MAX_REPEAT_TOOL_CALLS = 3;
 const INVALID_ARGUMENT_REPAIR_THRESHOLD = MAX_REPEAT_TOOL_CALLS - 1;
-const DSH_WORKER_MAX_TOKENS = 8_192;
+const DSH_WORKER_MAX_TOKENS = 32_768;
 
 export class DshHeadlessError extends Error {
   /** @param {string} code @param {string} message */
@@ -24,19 +24,38 @@ export class DshHeadlessError extends Error {
 
 /**
  * Returns the DSH CLI and a Node runtime capable of starting it.
- * @param {{env?:NodeJS.ProcessEnv,platform?:NodeJS.Platform,execFileImpl?:typeof execFileAsync}} [options]
+ * A pinned runtime inside the application resources wins over PATH so a
+ * consumer install never depends on a separately installed DSH or Node.
+ * @param {{env?:NodeJS.ProcessEnv,platform?:NodeJS.Platform,execFileImpl?:typeof execFileAsync,readFileImpl?:typeof readFile,accessImpl?:typeof access,resourcesPath?:string}} [options]
  */
 export async function resolveDshHeadlessRuntime({
   env = process.env,
   platform = process.platform,
   execFileImpl = execFileAsync,
   readFileImpl = readFile,
+  accessImpl = access,
+  resourcesPath = process.resourcesPath,
 } = {}) {
   if (platform !== 'win32') {
     throw new DshHeadlessError(
       'dsh_platform_unsupported',
       'Noema 的首个 DSH 连接目前只支持 Windows 上的 DSH CLI。',
     );
+  }
+
+  const bundledRoot = env.NOEMA_DSH_BUNDLE_DIR
+    ? path.resolve(env.NOEMA_DSH_BUNDLE_DIR)
+    : resourcesPath
+      ? path.join(resourcesPath, 'dsh-runtime')
+      : null;
+  if (bundledRoot) {
+    const bundled = await resolveBundledDshRuntime({
+      root: bundledRoot,
+      execFileImpl,
+      readFileImpl,
+      accessImpl,
+    });
+    if (bundled) return bundled;
   }
 
   let shimPath;
@@ -124,6 +143,7 @@ export async function resolveDshHeadlessRuntime({
           dshBin,
           npmPrefix,
           version: packageVersion,
+          source: 'external',
         };
       }
     } catch {
@@ -134,6 +154,56 @@ export async function resolveDshHeadlessRuntime({
     'dsh_node_unavailable',
     'Noema 找到了 DSH，但没有找到可运行它的 Node.js 24.21+。',
   );
+}
+
+async function resolveBundledDshRuntime({
+  root,
+  execFileImpl,
+  readFileImpl,
+  accessImpl,
+}) {
+  const nodeExecutable = path.join(root, 'node.exe');
+  const npmPrefix = root;
+  const dshBin = path.join(
+    npmPrefix,
+    'node_modules',
+    '@deepseek-ai',
+    'dsh',
+    'lib',
+    'bin.js',
+  );
+  const packagePath = path.join(
+    npmPrefix,
+    'node_modules',
+    '@deepseek-ai',
+    'dsh',
+    'package.json',
+  );
+  try {
+    await Promise.all([accessImpl(nodeExecutable), accessImpl(dshBin)]);
+    const packageVersion = JSON.parse(
+      await readFileImpl(packagePath, 'utf8'),
+    ).version;
+    if (typeof packageVersion !== 'string' || !packageVersion.trim()) {
+      return null;
+    }
+    const { stdout } = await execFileImpl(nodeExecutable, ['--version'], {
+      encoding: 'utf8',
+      timeout: 3_000,
+      windowsHide: true,
+    });
+    if (!supportsDshNodeVersion(stdout)) return null;
+    return {
+      nodeExecutable,
+      dshBin,
+      npmPrefix,
+      version: packageVersion,
+      source: 'bundled',
+    };
+  } catch {
+    // A missing or incomplete bundle falls back to the developer runtime.
+    return null;
+  }
 }
 
 function supportsDshNodeVersion(output) {
@@ -199,8 +269,13 @@ export function parseDshRateLimitRetryAfterSeconds(stderr) {
  * YAML scalars so a local gateway URL cannot change the patch structure.
  * @param {string} model
  * @param {string} baseURL
+ * @param {{mcpServers?:Array<{serverName:string,url:string,headers?:Record<string,string>}>,profile?:string}} [options]
  */
-export function makeNoemaDshWorkerPatch(model, baseURL) {
+export function makeNoemaDshWorkerPatch(
+  model,
+  baseURL,
+  { mcpServers = [], profile = 'executor' } = {},
+) {
   if (typeof model !== 'string' || !model.trim() || model.length > 200) {
     throw new TypeError('DSH worker model must be a non-empty model name');
   }
@@ -224,6 +299,49 @@ export function makeNoemaDshWorkerPatch(model, baseURL) {
   }
   const modelScalar = JSON.stringify(model);
   const baseUrlScalar = JSON.stringify(baseURL);
+  // Product profiles may inspect through the read-only shell, but only the
+  // executor gets the filesystem mutation surface. The adapter also forces a
+  // read-only permission mode for every non-executor profile.
+  const fileAccessEnabled = profile === 'executor';
+  const mcpEntries = [];
+  for (const server of mcpServers) {
+    const serverName =
+      typeof server?.serverName === 'string' ? server.serverName : '';
+    if (!/^[A-Za-z0-9_-]{1,32}$/.test(serverName)) {
+      throw new TypeError('DSH MCP server name is invalid');
+    }
+    let parsedUrl;
+    try {
+      parsedUrl = new URL(server.url);
+    } catch {
+      throw new TypeError('DSH MCP server URL is invalid');
+    }
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+      throw new TypeError('DSH MCP server URL must use HTTP or HTTPS');
+    }
+    mcpEntries.push(
+      `    - id: mcp-${serverName.toLowerCase()}`,
+      "      name: '@deepseek-ai/dsh-mcp-client'",
+      '      config:',
+      `        serverName: ${serverName}`,
+      '        transport: streamable-http',
+      `        url: ${JSON.stringify(server.url)}`,
+    );
+    const headers = Object.entries(server.headers ?? {}).filter(
+      ([key, value]) => key && typeof value === 'string',
+    );
+    if (headers.length) {
+      mcpEntries.push('        headers:');
+      for (const [key, value] of headers) {
+        mcpEntries.push(`          ${key}: ${JSON.stringify(value)}`);
+      }
+    }
+    mcpEntries.push(
+      '        failOnStartupError: true',
+      '        toolCallTimeoutMs: 60000',
+    );
+  }
+  const mcpPatch = mcpEntries.length ? ['- insert:', ...mcpEntries] : [];
   return [
     '- id: agent-default-model',
     '  config:',
@@ -241,12 +359,13 @@ export function makeNoemaDshWorkerPatch(model, baseURL) {
     `        defaultMaxTokens: ${DSH_WORKER_MAX_TOKENS}`,
     '        models:',
     `          - id: ${modelScalar}`,
-    // dsh-base provides the sandbox-consuming PowerShell executor on Windows;
-    // keep command execution available for project checks but never expose jobs.
+    // dsh-base provides the sandbox-consuming PowerShell executor on Windows.
+    // Product profiles keep the shell for bounded inspection under the forced
+    // read-only permission mode; only the executor gets filesystem mutation.
     '- id: tool-pwsh',
     '  disabled: false',
-    '- id: tool-jobs',
-    '  disabled: true',
+    '- id: tool-fs',
+    `  disabled: ${!fileAccessEnabled}`,
     '- id: web',
     '  disabled: true',
     '- id: web-search-deepseek',
@@ -255,16 +374,7 @@ export function makeNoemaDshWorkerPatch(model, baseURL) {
     '  disabled: true',
     '- id: tool-web',
     '  disabled: true',
-    '- id: tool-subagent',
-    '  disabled: true',
-    '- id: tool-subagent-control',
-    '  disabled: true',
-    '- id: tool-subagent-list-agents',
-    '  disabled: true',
-    '- id: tool-subagent-fork',
-    '  disabled: true',
-    '- id: tool-jobs',
-    '  disabled: true',
+    ...mcpPatch,
     '',
   ].join('\n');
 }
@@ -382,25 +492,31 @@ export function normalizeDshReportedUsage(value) {
  */
 export class DshHeadlessAdapter {
   /**
-   * @param {{runtime:{nodeExecutable:string,dshBin:string},userDataPath:string,providerBaseUrl:string,getApiKey:()=>string|null,onUsage?:(usage:Record<string,unknown>)=>void,env?:NodeJS.ProcessEnv,spawnImpl?:typeof spawn}} options
+   * @param {{runtime:{nodeExecutable:string,dshBin:string},userDataPath:string,providerBaseUrl:string,getApiKey:()=>string|null,getPermissionMode?:()=>string,onUsage?:(usage:Record<string,unknown>)=>void,env?:NodeJS.ProcessEnv,spawnImpl?:typeof spawn,mcpServers?:Array<{serverName:string,url:string,headers?:Record<string,string>}>,profile?:string}} options
    */
   constructor({
     runtime,
     userDataPath,
     providerBaseUrl,
     getApiKey,
+    getPermissionMode = () => 'workspace-write',
     onUsage = () => {},
     env = process.env,
     spawnImpl = spawn,
+    mcpServers = [],
+    profile = 'executor',
   }) {
     this.executionEngine = 'dsh';
     this.runtime = runtime;
     this.userDataPath = path.resolve(userDataPath);
     this.providerBaseUrl = providerBaseUrl;
     this.getApiKey = getApiKey;
+    this.getPermissionMode = getPermissionMode;
     this.onUsage = typeof onUsage === 'function' ? onUsage : () => {};
     this.env = env;
     this.spawnImpl = spawnImpl;
+    this.mcpServers = Array.isArray(mcpServers) ? mcpServers : [];
+    this.profile = profile;
   }
 
   async startTask({
@@ -412,6 +528,8 @@ export class DshHeadlessAdapter {
     sessionId = null,
     onEvent = () => {},
     timeoutMs = 30 * 60 * 1000,
+    mcpServers = this.mcpServers,
+    profile = this.profile,
   }) {
     if (
       typeof task !== 'string' ||
@@ -454,17 +572,32 @@ export class DshHeadlessAdapter {
     const patchPath = path.join(patchDirectory, `${taskId}.cordis.patch.yml`);
     await writeFile(
       patchPath,
-      makeNoemaDshWorkerPatch(model, this.providerBaseUrl),
+      makeNoemaDshWorkerPatch(model, this.providerBaseUrl, {
+        mcpServers,
+        profile,
+      }),
       {
         encoding: 'utf8',
         flag: 'wx',
       },
     );
 
+    const requestedPermissionMode = this.getPermissionMode?.();
+    const permissionMode =
+      requestedPermissionMode === 'danger-full-access'
+        ? 'danger-full-access'
+        : requestedPermissionMode === 'read-only'
+          ? 'read-only'
+          : 'workspace-write';
+    // Product chat may read, search and inspect, but never mutate through a
+    // shell or filesystem tool. Only the executor gets the user's workspace mode.
+    const effectivePermissionMode =
+      profile === 'executor' ? permissionMode : 'read-only';
     const processEnv = makeLocalWorkerEnvironment({
       parent: this.env,
       userDataPath: this.userDataPath,
       apiKey,
+      permissionMode: effectivePermissionMode,
     });
     const args = [
       this.runtime.dshBin,
@@ -499,8 +632,13 @@ export class DshHeadlessAdapter {
   }
 }
 
-/** @param {{parent:NodeJS.ProcessEnv,userDataPath:string,apiKey:string}} options */
-function makeLocalWorkerEnvironment({ parent, userDataPath, apiKey }) {
+/** @param {{parent:NodeJS.ProcessEnv,userDataPath:string,apiKey:string,permissionMode?:string}} options */
+function makeLocalWorkerEnvironment({
+  parent,
+  userDataPath,
+  apiKey,
+  permissionMode = 'workspace-write',
+}) {
   const allowedNames = [
     'APPDATA',
     'COMSPEC',
@@ -524,7 +662,11 @@ function makeLocalWorkerEnvironment({ parent, userDataPath, apiKey }) {
     if (parent[name]) env[name] = parent[name];
   }
   env.DSH_HOME = path.join(userDataPath, 'dsh-home');
-  env.DSH_PERMISSION_MODE = 'workspace-write';
+  env.DSH_PERMISSION_MODE = ['read-only', 'danger-full-access'].includes(
+    permissionMode,
+  )
+    ? permissionMode
+    : 'workspace-write';
   env.NOEMA_MODEL_API_KEY = apiKey;
   env.NO_PROXY = '127.0.0.1,localhost,::1';
   env.no_proxy = '127.0.0.1,localhost,::1';
@@ -546,8 +688,12 @@ function createRunHandle({
   providerHost,
   onUsage,
 }) {
+  const startedAt = Date.now();
+  let processSpawned = false;
+  let timedOut = false;
   let sessionId = requestedSessionId;
   let finalText = '';
+  let turnEndReason = null;
   let errorMessage = null;
   let stderrTail = '';
   let toolCallCount = 0;
@@ -612,7 +758,23 @@ function createRunHandle({
 
   const emit = (event) => {
     try {
-      onEvent({ taskId, ...event });
+      const { arguments: toolArguments, resultContent, ...visible } = event;
+      const payload = { taskId, ...visible };
+      // Tool payloads are for the local execution ledger, not diagnostics.
+      // Keep them non-enumerable so event dumps cannot leak command content.
+      if (toolArguments !== undefined) {
+        Object.defineProperty(payload, 'arguments', {
+          value: toolArguments,
+          enumerable: false,
+        });
+      }
+      if (resultContent !== undefined) {
+        Object.defineProperty(payload, 'resultContent', {
+          value: resultContent,
+          enumerable: false,
+        });
+      }
+      onEvent(payload);
     } catch (error) {
       console.error('Noema could not publish a DSH worker event:', error);
     }
@@ -674,6 +836,13 @@ function createRunHandle({
           pendingModelSteps = Math.max(0, pendingModelSteps - 1);
           recordStepUsage('completed', event.usage);
         }
+        if (
+          phase === 'turn_end' &&
+          event.reason &&
+          typeof event.reason === 'object'
+        ) {
+          turnEndReason = event.reason;
+        }
         emit({
           type: 'status',
           phase,
@@ -715,6 +884,10 @@ function createRunHandle({
           externalCallId: callId,
           category,
           hasSideEffect,
+          arguments:
+            event.input === undefined
+              ? null
+              : JSON.stringify(event.input).slice(0, 32_000),
         });
         if (
           toolCallCount > MAX_TOOL_CALLS ||
@@ -778,6 +951,10 @@ function createRunHandle({
           stepId: executionStep?.stepId ?? null,
           category: executionStep?.category ?? 'other',
           hasSideEffect: executionStep?.hasSideEffect ?? false,
+          resultContent:
+            typeof event.result === 'string'
+              ? event.result.slice(0, 100_000)
+              : JSON.stringify(event.result ?? null).slice(0, 100_000),
           effectStatus: !executionStep?.hasSideEffect
             ? 'none'
             : event.status === 'completed' &&
@@ -854,11 +1031,26 @@ function createRunHandle({
     '后台 DSH 任务超过允许的运行时间，已停止。',
   );
   timeoutHandle = setTimeout(() => {
+    timedOut = true;
     stopRequested = true;
+    emit({ type: 'process.timeout' });
     stopForError(timeoutError);
   }, timeoutMs);
 
+  child.on('spawn', () => {
+    processSpawned = true;
+    emit({ type: 'process.started' });
+  });
+
   child.on('error', (error) => {
+    if (!processSpawned) {
+      emit({
+        type: 'process.spawn_failed',
+        errorCode:
+          typeof error?.code === 'string' ? error.code : 'spawn_failed',
+        elapsedMs: Date.now() - startedAt,
+      });
+    }
     flushPendingModelSteps('failed');
     lineError ??= new DshHeadlessError(
       'dsh_process_error',
@@ -898,6 +1090,19 @@ function createRunHandle({
           ),
       );
     }
+    if (processSpawned) {
+      emit({
+        type: 'process.exited',
+        status: stopRequested
+          ? 'interrupted'
+          : code === 0 && finalText
+            ? 'completed'
+            : 'failed',
+        exitCode: Number.isInteger(code) ? code : null,
+        elapsedMs: Date.now() - startedAt,
+        timedOut,
+      });
+    }
     if (doneResolved) return;
     doneResolved = true;
 
@@ -917,33 +1122,36 @@ function createRunHandle({
       rejectedStatus && rejectedStatus !== '408' && rejectedStatus !== '429',
     );
     const retryAfterSeconds = parseDshRateLimitRetryAfterSeconds(safeStderr);
+    const maxTokensExhausted = turnEndReason?.kind === 'max-tokens';
     resolveDone({
       status,
       sessionId,
       result: finalText,
       exitCode: code,
       signal,
-      errorCode:
-        lineError?.code ??
-        (rateLimited
-          ? 'dsh_rate_limited'
-          : providerRejected
-            ? 'dsh_provider_rejected'
-            : status === 'failed'
-              ? 'dsh_process_failed'
-              : null),
-      errorMessage:
-        lineError?.message ??
-        (rateLimited
-          ? retryAfterSeconds
-            ? `DSH 免费模型池限流；最早约 ${retryAfterSeconds} 秒后可续做。`
-            : 'DSH 免费模型池仍在限流，但没有可安全采用的短时冷却窗口。'
-          : providerRejected
-            ? `模型服务拒绝请求（HTTP ${rejectedStatus}）；不会自动重试，以免重复消耗额度。`
-            : status === 'failed'
-              ? safeStderr.slice(-1_000) ||
-                `DSH 任务未完成（退出码 ${code ?? 'unknown'}）。`
-              : null),
+      errorCode: maxTokensExhausted
+        ? 'dsh_max_tokens'
+        : (lineError?.code ??
+          (rateLimited
+            ? 'dsh_rate_limited'
+            : providerRejected
+              ? 'dsh_provider_rejected'
+              : status === 'failed'
+                ? 'dsh_process_failed'
+                : null)),
+      errorMessage: maxTokensExhausted
+        ? `模型在单步中耗尽输出上限（${DSH_WORKER_MAX_TOKENS} tokens），未产生工具调用。可从检查点继续，或把任务拆小。`
+        : (lineError?.message ??
+          (rateLimited
+            ? retryAfterSeconds
+              ? `DSH 免费模型池限流；最早约 ${retryAfterSeconds} 秒后可续做。`
+              : 'DSH 免费模型池仍在限流，但没有可安全采用的短时冷却窗口。'
+            : providerRejected
+              ? `模型服务拒绝请求（HTTP ${rejectedStatus}）；不会自动重试，以免重复消耗额度。`
+              : status === 'failed'
+                ? safeStderr.slice(-1_000) ||
+                  `DSH 任务未完成（退出码 ${code ?? 'unknown'}）。`
+                : null)),
       retryAfterSeconds,
       toolCallCount,
       workspaceMutationStatus: getWorkspaceMutationStatus(),

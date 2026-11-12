@@ -1,8 +1,8 @@
 use crate::appcontainer::{derive_capability_name, derive_package_sid};
 use crate::parse_request;
 use crate::policy::{
-    BackendIdentity, EnvironmentPolicy, FileIdentity, FilesystemPolicy, NetworkMode, NetworkPolicy,
-    PathRoot, WindowsCommandPolicyV2,
+    BackendIdentity, EnvironmentPolicy, FileIdentity, FilesystemMode, FilesystemPolicy,
+    NetworkMode, NetworkPolicy, PathRoot, WindowsCommandPolicy,
 };
 use crate::protocol::{Operation, RequestEnvelope, ResultFrame, parse_readiness_response};
 use crate::{
@@ -1075,7 +1075,7 @@ fn execute_rejects_capability_grants_that_do_not_match_current_policy() {
 }
 
 #[test]
-fn serialized_d2_policy_rejects_incomplete_unknown_and_unsupported_identity() {
+fn serialized_policy_v3_rejects_incomplete_unknown_and_unsupported_identity() {
     let mut missing = execute_fixture_value();
     missing["operation"]["policy"]
         .as_object_mut()
@@ -1507,7 +1507,7 @@ fn unsupported_protocol_versions_are_denied_before_operation_dispatch() {
     ));
 }
 
-pub(crate) fn valid_policy() -> WindowsCommandPolicyV2 {
+pub(crate) fn valid_policy() -> WindowsCommandPolicy {
     let root = || PathRoot {
         path: "C:\\workspace".to_string(),
         file_identity: FileIdentity {
@@ -1515,8 +1515,8 @@ pub(crate) fn valid_policy() -> WindowsCommandPolicyV2 {
             file_index: "1".to_string(),
         },
     };
-    WindowsCommandPolicyV2 {
-        version: 2,
+    WindowsCommandPolicy {
+        version: 3,
         backend: BackendIdentity {
             id: crate::protocol::BACKEND_ID.to_string(),
             version: "0.1.0".to_string(),
@@ -1524,6 +1524,7 @@ pub(crate) fn valid_policy() -> WindowsCommandPolicyV2 {
         request_id: "execution_request_01".to_string(),
         workspace_root: root(),
         filesystem: FilesystemPolicy {
+            mode: FilesystemMode::ReadWrite,
             read_roots: vec![root()],
             write_roots: vec![root()],
             default_deny: true,
@@ -1547,6 +1548,150 @@ pub(crate) fn valid_policy() -> WindowsCommandPolicyV2 {
     }
 }
 
+#[test]
+fn native_read_only_policy_requires_workspace_read_and_yields_no_write_capability() {
+    let mut policy = valid_policy();
+    policy.filesystem.mode = FilesystemMode::ReadOnly;
+    policy.filesystem.write_roots.clear();
+
+    assert_eq!(policy.validate("execution_request_01"), Ok(()));
+    let grants = grants_for_policy(&policy);
+    assert_eq!(grants.len(), 1);
+    assert_eq!(grants[0].access, crate::policy::FilesystemAccessMode::Read);
+    assert_eq!(
+        policy.verified_capability_names(&grants),
+        Ok(vec![grants[0].capability_name.clone()])
+    );
+}
+
+#[cfg(windows)]
+#[test]
+#[ignore = "target-machine AppContainer zero-write acceptance; uses only disposable temporary paths"]
+fn windows_live_appcontainer_read_only_policy_denies_workspace_writes() {
+    assert_eq!(
+        std::env::var("NOEMA_RUN_APPCONTAINER_READ_ONLY_ACCEPTANCE").as_deref(),
+        Ok("1"),
+        "set NOEMA_RUN_APPCONTAINER_READ_ONLY_ACCEPTANCE=1 to run the temporary-root acceptance"
+    );
+    let platform = crate::windows_probe::read_platform().expect("read current Windows version");
+    assert!(
+        platform.major == 10
+            && platform.minor == 0
+            && platform.build >= crate::protocol::MINIMUM_WINDOWS_BUILD
+            && platform.architecture == "x86_64",
+        "read-only acceptance requires supported Windows 10 x64"
+    );
+    let package_sid = crate::appcontainer::derive_package_sid().expect("derive runner package SID");
+    crate::appcontainer::probe_profile(&package_sid).expect("Noema AppContainer profile is ready");
+
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock after epoch")
+        .as_nanos();
+    let roots = TemporaryAclProbeRoots::new(nonce);
+    let workspace = roots.path.join("workspace");
+    std::fs::create_dir(&workspace).expect("create isolated workspace fixture");
+    let outside_sentinel = roots.path.join("outside-sentinel.txt");
+    std::fs::write(&outside_sentinel, "unchanged").expect("create outside sentinel");
+    let read_file = workspace.join("readable.txt");
+    std::fs::write(&read_file, "read-only-proof").expect("create workspace read fixture");
+    let denied_workspace_write = workspace.join("must-not-exist.txt");
+    let denied_outside_write = roots.path.join("must-not-exist-outside.txt");
+
+    let mut policy = valid_policy();
+    policy.filesystem.mode = FilesystemMode::ReadOnly;
+    policy.filesystem.write_roots.clear();
+    set_policy_root(&mut policy, &workspace);
+    assert_eq!(policy.validate("execution_request_01"), Ok(()));
+    let grants = grants_for_policy(&policy);
+    assert_eq!(grants.len(), 1);
+    assert_eq!(grants[0].access, crate::policy::FilesystemAccessMode::Read);
+    let capabilities = policy
+        .verified_capability_names(&grants)
+        .expect("read-only ACL grants match the native policy");
+    let evidence = crate::run_windows_acl_operation(&grants, true)
+        .expect("reconcile and verify only the disposable workspace ACL");
+    assert_eq!(evidence.len(), 1);
+    assert!(evidence[0].object_count > 0);
+    assert_eq!(evidence[0].object_count, evidence[0].acl_verified_count);
+    assert!(evidence[0].inheritance_verified);
+
+    let system_root = std::env::var("SystemRoot").expect("SystemRoot is available");
+    let working_directory = Path::new(&system_root).join("System32");
+    let working_directory = working_directory
+        .to_str()
+        .expect("System32 path is valid UTF-8 for this test");
+    let environment_names = [
+        "SystemRoot",
+        "WINDIR",
+        "TEMP",
+        "TMP",
+        "PATH",
+        "LOCALAPPDATA",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect::<Vec<_>>();
+    let read_command = format!(
+        "type {}",
+        crate::process::quote_windows_argument(
+            &read_file.as_os_str().encode_wide().collect::<Vec<_>>()
+        )
+    );
+    let read_result = crate::process::run_appcontainer_command(
+        &package_sid,
+        &capabilities,
+        &read_command,
+        working_directory,
+        &environment_names,
+        5_000,
+    )
+    .unwrap_or_else(|failure| panic!("read-only child failed: {}", failure.code));
+    assert_eq!(read_result.exit_code, 0);
+    assert!(String::from_utf8_lossy(&read_result.stdout).contains("read-only-proof"));
+
+    let workspace_arg = crate::process::quote_windows_argument(
+        &denied_workspace_write
+            .as_os_str()
+            .encode_wide()
+            .collect::<Vec<_>>(),
+    );
+    let outside_arg = crate::process::quote_windows_argument(
+        &denied_outside_write
+            .as_os_str()
+            .encode_wide()
+            .collect::<Vec<_>>(),
+    );
+    let write_command = format!("echo denied > {workspace_arg} & echo denied > {outside_arg}");
+    let write_result = crate::process::run_appcontainer_command(
+        &package_sid,
+        &capabilities,
+        &write_command,
+        working_directory,
+        &environment_names,
+        5_000,
+    )
+    .unwrap_or_else(|failure| panic!("write-denial child failed: {}", failure.code));
+    assert!(!write_result.timed_out);
+    assert!(
+        !denied_workspace_write.exists(),
+        "read-only capability must not write into the workspace"
+    );
+    assert!(
+        !denied_outside_write.exists(),
+        "read-only capability must not write outside the workspace"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&outside_sentinel).expect("outside sentinel remains readable"),
+        "unchanged",
+        "the outside sentinel must remain unchanged"
+    );
+    eprintln!(
+        "live_acceptance=appcontainer_read_only workspace_read=allowed workspace_write=denied outside_write=denied acl_roots={}",
+        evidence.len()
+    );
+}
+
 fn create_test_root() -> PathBuf {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -1557,7 +1702,7 @@ fn create_test_root() -> PathBuf {
     path
 }
 
-fn set_policy_root(policy: &mut WindowsCommandPolicyV2, path: &Path) {
+fn set_policy_root(policy: &mut WindowsCommandPolicy, path: &Path) {
     let path = path.to_string_lossy().into_owned();
     let identity = crate::path_identity::file_identity_for_directory(Path::new(&path))
         .expect("test directory has a native file identity");
@@ -1579,7 +1724,7 @@ fn set_policy_root(policy: &mut WindowsCommandPolicyV2, path: &Path) {
             .expect("test directory has a native file identity");
 }
 
-fn grants_for_policy(policy: &WindowsCommandPolicyV2) -> Vec<crate::policy::AclGrant> {
+fn grants_for_policy(policy: &WindowsCommandPolicy) -> Vec<crate::policy::AclGrant> {
     policy
         .filesystem
         .read_roots
@@ -1600,7 +1745,14 @@ fn grants_for_policy(policy: &WindowsCommandPolicyV2) -> Vec<crate::policy::AclG
             crate::policy::AclGrant {
                 path: root.path.clone(),
                 file_identity: root.file_identity.clone(),
-                capability_name: format!("Noema.Write.{index:064x}"),
+                capability_name: format!(
+                    "Noema.{}.{index:064x}",
+                    if access == crate::policy::FilesystemAccessMode::Write {
+                        "Write"
+                    } else {
+                        "Read"
+                    }
+                ),
                 access,
                 is_directory: true,
             }
@@ -1649,7 +1801,7 @@ const SERIALIZED_EXECUTE_FIXTURE: &str = r#"{
         "toolCallId": "call-01",
         "userDataPath": "C:\\Users\\fixture\\AppData\\Roaming\\Noema",
         "policy": {
-            "version": 2,
+            "version": 3,
             "backend": {
                 "id": "noema-codex-windows",
                 "version": "0.1.0"
@@ -1660,6 +1812,7 @@ const SERIALIZED_EXECUTE_FIXTURE: &str = r#"{
                 "fileIdentity": { "volumeSerialNumber": "1", "fileIndex": "1" }
             },
             "filesystem": {
+                "mode": "read-write",
                 "readRoots": [{
                     "path": "C:\\workspace",
                     "fileIdentity": { "volumeSerialNumber": "1", "fileIndex": "1" }
@@ -1710,7 +1863,7 @@ const READY_READINESS_FIXTURE: &str = r#"{
         "type": "probe",
         "backendId": "noema-codex-windows",
         "backendVersion": "0.1.0",
-        "policyVersion": 2,
+        "policyVersion": 3,
         "ready": true,
         "blockers": [],
         "setupStatus": "ready",

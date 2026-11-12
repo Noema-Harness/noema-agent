@@ -146,6 +146,9 @@ test('schema v28 upgrades to personal memory without changing older data', () =>
       ALTER TABLE social_work_tasks DROP COLUMN workspace_identity_json;
       DROP TABLE social_work_file_change_operations;
       DROP TABLE social_work_file_changes;
+      DROP TABLE IF EXISTS social_work_workspace_write_locks;
+      DROP TABLE IF EXISTS social_work_command_batches;
+      DROP TABLE IF EXISTS social_work_change_blobs;
       DROP TABLE social_user_memories_fts;
       DROP INDEX social_user_memories_updated;
       DROP TABLE social_user_memories;

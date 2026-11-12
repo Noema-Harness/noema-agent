@@ -3,10 +3,13 @@ import { redactSensitiveText } from '../../shared/text/sensitive-text.mjs';
 
 export const DIAGNOSTIC_EVENT_SCHEMA_VERSION = 1;
 export const DEFAULT_DIAGNOSTIC_EVENT_LIMIT = 20_000;
+const MAX_DIAGNOSTIC_DETAILS_JSON_LENGTH = 16_384;
 
 const DETAIL_KEYS = new Set([
   'route',
   'capability',
+  'permissionMode',
+  'decision',
   'reason',
   'requestStatus',
   'elapsedMs',
@@ -24,6 +27,7 @@ const DETAIL_KEYS = new Set([
   'phase',
   'backendId',
   'backendVersion',
+  'policyVersion',
   'protocolVersion',
   'backendReady',
   'capabilityStatus',
@@ -31,6 +35,21 @@ const DETAIL_KEYS = new Set([
   'verificationStatus',
   'reasonCode',
   'schemaVersion',
+  'attempt',
+  'toolCallCount',
+  'pluginId',
+  'handoffId',
+  'memberAgentId',
+  'parentInteractionId',
+  'projectId',
+  'planRevision',
+  'itemId',
+  'submissionRevision',
+  'reviewerIds',
+  'outboxTurnId',
+  'roomId',
+  'assistantMessageId',
+  'userMessageId',
 ]);
 
 function boundedId(value) {
@@ -45,20 +64,57 @@ function boundedCode(value) {
     : null;
 }
 
-function safeDetails(details = {}) {
+function sanitizeDetails(details = {}) {
   const safe = {};
+  let filtered = false;
+  if (!details || typeof details !== 'object' || Array.isArray(details)) {
+    return { details: safe, filtered: true };
+  }
   for (const [key, value] of Object.entries(details)) {
-    if (!DETAIL_KEYS.has(key)) continue;
+    if (!DETAIL_KEYS.has(key)) {
+      filtered = true;
+      continue;
+    }
     if (typeof value === 'string') {
-      safe[key] = redactSensitiveText(value).snippet.slice(0, 160);
+      const safeValue = redactSensitiveText(value).snippet.slice(0, 160);
+      safe[key] = safeValue;
+      filtered ||= safeValue !== value;
     } else if (
       typeof value === 'boolean' ||
       (typeof value === 'number' && Number.isFinite(value))
     ) {
       safe[key] = value;
+    } else {
+      filtered = true;
     }
   }
-  return JSON.stringify(safe);
+  return { details: safe, filtered };
+}
+
+function safeDetails(details = {}) {
+  return JSON.stringify(sanitizeDetails(details).details);
+}
+
+function readSafeDetails(value) {
+  if (
+    typeof value !== 'string' ||
+    value.length > MAX_DIAGNOSTIC_DETAILS_JSON_LENGTH
+  ) {
+    return { details: {}, status: 'unavailable' };
+  }
+  try {
+    const details = JSON.parse(value);
+    if (!details || typeof details !== 'object' || Array.isArray(details)) {
+      return { details: {}, status: 'unavailable' };
+    }
+    const sanitized = sanitizeDetails(details);
+    return {
+      details: sanitized.details,
+      status: sanitized.filtered ? 'filtered' : 'complete',
+    };
+  } catch {
+    return { details: {}, status: 'unavailable' };
+  }
 }
 
 /** Local, bounded event ledger. A failed diagnostics write never escapes into the caller. */
@@ -83,7 +139,7 @@ export class DiagnosticsEventStore {
     `);
     this.deleteOldest = this.db.prepare(`
       DELETE FROM diagnostic_events WHERE event_id IN (
-        SELECT event_id FROM diagnostic_events ORDER BY occurred_at ASC LIMIT ?
+        SELECT event_id FROM diagnostic_events ORDER BY occurred_at ASC, rowid ASC LIMIT ?
       )
     `);
   }
@@ -212,7 +268,7 @@ export class DiagnosticsEventStore {
         ? this.db
             .prepare(`SELECT * FROM diagnostic_events
           WHERE execution_id = ? OR task_id = ? OR parent_execution_id = ?
-          ORDER BY occurred_at DESC, event_id DESC LIMIT ?`)
+          ORDER BY occurred_at DESC, rowid DESC LIMIT ?`)
             .all(
               boundedId(executionId),
               boundedId(taskId),
@@ -223,29 +279,33 @@ export class DiagnosticsEventStore {
           ? this.db
               .prepare(`SELECT * FROM diagnostic_events
             WHERE execution_id = ? OR parent_execution_id = ?
-            ORDER BY occurred_at DESC, event_id DESC LIMIT ?`)
+            ORDER BY occurred_at DESC, rowid DESC LIMIT ?`)
               .all(boundedId(executionId), boundedId(executionId), boundedLimit)
           : this.db
               .prepare(`SELECT * FROM diagnostic_events
-            WHERE task_id = ? ORDER BY occurred_at DESC, event_id DESC LIMIT ?`)
+              WHERE task_id = ? ORDER BY occurred_at DESC, rowid DESC LIMIT ?`)
               .all(boundedId(taskId), boundedLimit);
-    return rows.reverse().map((row) => ({
-      eventId: row.event_id,
-      schemaVersion: row.schema_version,
-      occurredAt: row.occurred_at,
-      applicationExecutionId: row.application_execution_id,
-      executionId: row.execution_id,
-      parentExecutionId: row.parent_execution_id,
-      taskId: row.task_id,
-      turnId: row.turn_id,
-      requestId: row.request_id,
-      toolCallId: row.tool_call_id,
-      module: row.module,
-      operation: row.operation,
-      status: row.status,
-      errorCode: row.error_code,
-      details: JSON.parse(row.details_json),
-    }));
+    return rows.reverse().map((row) => {
+      const safeDetails = readSafeDetails(row.details_json);
+      return {
+        eventId: row.event_id,
+        schemaVersion: row.schema_version,
+        occurredAt: row.occurred_at,
+        applicationExecutionId: row.application_execution_id,
+        executionId: row.execution_id,
+        parentExecutionId: row.parent_execution_id,
+        taskId: row.task_id,
+        turnId: row.turn_id,
+        requestId: row.request_id,
+        toolCallId: row.tool_call_id,
+        module: row.module,
+        operation: row.operation,
+        status: row.status,
+        errorCode: row.error_code,
+        details: safeDetails.details,
+        detailsStatus: safeDetails.status,
+      };
+    });
   }
 
   listRecentExecutions(limit = 50) {

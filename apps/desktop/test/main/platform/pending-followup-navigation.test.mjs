@@ -44,3 +44,34 @@ test('retains a target when the renderer is unavailable and sends it after recov
   assert.equal(delivery.markRendererReady(), true);
   assert.deepEqual(sent, [{ roomId: 'room-noema', messageId: 'm1' }]);
 });
+
+test('reports follow-up navigation only after dispatch and isolates diagnostic failure', () => {
+  const sent = [];
+  const dispatched = [];
+  const delivery = createPendingFollowupNavigationDelivery(
+    (target) => {
+      sent.push(target);
+      return true;
+    },
+    (target) => {
+      dispatched.push(target);
+      throw new Error('diagnostics unavailable');
+    },
+  );
+
+  delivery.request({
+    roomId: 'room-noema',
+    messageId: 'message-1',
+    followupExecutionId: 'followup-execution-1',
+  });
+  assert.deepEqual(dispatched, []);
+  assert.equal(delivery.markRendererReady(), true);
+  assert.deepEqual(sent, [
+    {
+      roomId: 'room-noema',
+      messageId: 'message-1',
+      followupExecutionId: 'followup-execution-1',
+    },
+  ]);
+  assert.deepEqual(dispatched, sent);
+});

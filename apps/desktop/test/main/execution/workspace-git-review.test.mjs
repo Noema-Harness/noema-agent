@@ -6,9 +6,17 @@ import path from 'node:path';
 import test from 'node:test';
 import { captureWorkspaceIdentity } from '../../../src/main/platform/workspace-identity.mjs';
 import { reviewWorkspaceGitState } from '../../../src/main/execution/workspace-git-review.mjs';
+import { resolveGitExecutable } from '../../../../../scripts/git-exec.mjs';
+
+const gitExecutable = resolveGitExecutable();
+process.env.PATH = `${path.dirname(gitExecutable)}${path.delimiter}${process.env.PATH ?? ''}`;
 
 function runGit(cwd, args) {
-  execFileSync('git', args, { cwd, stdio: 'ignore', windowsHide: true });
+  execFileSync(gitExecutable, args, {
+    cwd,
+    stdio: 'ignore',
+    windowsHide: true,
+  });
 }
 
 function makeRepository() {
@@ -28,16 +36,24 @@ test('Git review presents tracked and untracked diffs without modifying the inde
     writeFileSync(path.join(workspace, 'tracked.txt'), 'after\n');
     writeFileSync(path.join(workspace, 'new.txt'), 'untracked\n');
     const identity = captureWorkspaceIdentity(workspace).identity;
-    const before = execFileSync('git', ['status', '--porcelain=v1', '-z'], {
-      cwd: workspace,
-    });
+    const before = execFileSync(
+      gitExecutable,
+      ['status', '--porcelain=v1', '-z'],
+      {
+        cwd: workspace,
+      },
+    );
     const review = await reviewWorkspaceGitState({
       workspacePath: workspace,
       expectedIdentity: identity,
     });
-    const after = execFileSync('git', ['status', '--porcelain=v1', '-z'], {
-      cwd: workspace,
-    });
+    const after = execFileSync(
+      gitExecutable,
+      ['status', '--porcelain=v1', '-z'],
+      {
+        cwd: workspace,
+      },
+    );
     assert.equal(review.available, true);
     assert.equal(review.source, 'current_workspace');
     assert.deepEqual(review.files.map((file) => file.relativePath).sort(), [

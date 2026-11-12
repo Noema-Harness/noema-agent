@@ -1476,6 +1476,47 @@ test('Noema executor stops after a command returns an unknown side effect', asyn
   }
 });
 
+test('Noema executor fails closed without a command mirror runner', async () => {
+  const directory = mkdtempSync(
+    path.join(tmpdir(), 'noema-command-no-runner-'),
+  );
+  const workspace = path.join(directory, 'workspace');
+  mkdirSync(workspace);
+  const provider = makeProvider([
+    {
+      calls: [
+        toolCall('call-no-runner', 'run_command', {
+          command: 'echo bypass > bypass.txt',
+        }),
+      ],
+    },
+    { text: '不应在没有镜像执行器时继续。' },
+  ]);
+  const events = [];
+  try {
+    const executor = makeExecutor({
+      provider,
+      commandSupport: { supported: true },
+    });
+    const handle = await executor.startTask({
+      workspacePath: workspace,
+      task: '执行检查',
+      model: 'test-model',
+      onEvent: (event) => events.push(event),
+    });
+    const outcome = await handle.done;
+    const toolResult = events.find((event) => event.type === 'tool-result');
+
+    assert.equal(outcome.status, 'completed');
+    assert.equal(provider.callCount, 2);
+    assert.equal(toolResult.status, 'error');
+    assert.equal(toolResult.effectStatus, 'not_applied');
+    assert.equal(existsSync(path.join(workspace, 'bypass.txt')), false);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('Noema executor stops after native cleanup becomes unknown', async () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'noema-command-cleanup-'));
   const workspace = path.join(directory, 'workspace');
@@ -1569,6 +1610,7 @@ test('Noema executor does not repeat a side-effecting command with a new call ID
           executionId: input.executionId,
           taskId: input.taskId,
           toolCallId: input.toolCallId,
+          expectedWorkspaceIdentity: input.expectedWorkspaceIdentity,
         };
         return runRawCommandForTest(input);
       },
@@ -1594,6 +1636,12 @@ test('Noema executor does not repeat a side-effecting command with a new call ID
     assert.match(commandIdentity.taskId, /^[0-9a-f-]{36}$/u);
     assert.equal(commandIdentity.executionId, 'resume-segment-42');
     assert.equal(commandIdentity.toolCallId, 'command-1');
+    assert.equal(
+      commandIdentity.expectedWorkspaceIdentity.canonicalPath,
+      workspace,
+    );
+    assert.ok(commandIdentity.expectedWorkspaceIdentity.device);
+    assert.ok(commandIdentity.expectedWorkspaceIdentity.fileIndex);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

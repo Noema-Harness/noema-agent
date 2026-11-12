@@ -1,3 +1,6 @@
+import { NoemaSelect, NoemaInput } from '../ui/noema-form-controls';
+import { NoemaButton } from '../ui/noema-button';
+import { NoemaOverlay } from '../ui/noema-overlay';
 import { Icon } from '../chat/presentation';
 import type { SocialChatController } from '../chat/use-social-chat-controller';
 
@@ -7,12 +10,13 @@ type PartnerSettingsDialogModel = Pick<
   | 'state'
   | 'activeModel'
   | 'dialogRef'
-  | 'setFirstMeetingReplay'
   | 'settingsOpen'
   | 'closeSettingsDialog'
-  | 'openPersonalMemories'
-  | 'openUserFollowups'
   | 'handleProviderSave'
+  | 'refreshProviderModels'
+  | 'refreshingProvider'
+  | 'providerFeedback'
+  | 'setProviderFeedback'
   | 'agentTriggerRef'
   | 'setCreateAgentOpen'
   | 'groupTriggerRef'
@@ -34,6 +38,10 @@ type PartnerSettingsDialogModel = Pick<
   | 'setWebSearchApiKey'
   | 'handleWebSearchSave'
   | 'savingProvider'
+  | 'executionPermissions'
+  | 'executionPermissionsBusy'
+  | 'executionPermissionsError'
+  | 'handleExecutionPermissionsChange'
 >;
 export function PartnerSettingsDialog({
   model,
@@ -45,12 +53,13 @@ export function PartnerSettingsDialog({
     state,
     activeModel,
     dialogRef,
-    setFirstMeetingReplay,
     settingsOpen,
     closeSettingsDialog,
-    openPersonalMemories,
-    openUserFollowups,
     handleProviderSave,
+    refreshProviderModels,
+    refreshingProvider,
+    providerFeedback,
+    setProviderFeedback,
     agentTriggerRef,
     setCreateAgentOpen,
     groupTriggerRef,
@@ -72,14 +81,16 @@ export function PartnerSettingsDialog({
     setWebSearchApiKey,
     handleWebSearchSave,
     savingProvider,
+    executionPermissions,
+    executionPermissionsBusy,
+    executionPermissionsError,
+    handleExecutionPermissionsChange,
   } = model;
+  const settingsFeedback =
+    providerFeedback ??
+    (state?.error ? { kind: 'error' as const, message: state.error } : null);
   return settingsOpen ? (
-    <div
-      className="dialog-backdrop"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) closeSettingsDialog();
-      }}
-    >
+    <NoemaOverlay isOpen={settingsOpen} onClose={closeSettingsDialog}>
       <form
         ref={dialogRef}
         className="social-dialog settings-dialog"
@@ -90,273 +101,332 @@ export function PartnerSettingsDialog({
       >
         <div className="dialog-heading">
           <div>
-            <h2 id="connection-settings-title">连接与模型</h2>
-            <p>消息保存在本机，并发送到这里选择的模型服务。</p>
+            <h2 id="connection-settings-title">设置</h2>
+            <p>模型、记忆、提醒和搜索。</p>
           </div>
-          <button
+          <NoemaButton
             className="icon-button"
             type="button"
             aria-label="关闭"
             onClick={closeSettingsDialog}
           >
             <Icon name="close" />
-          </button>
+          </NoemaButton>
         </div>
-        <div className="settings-administration">
-          <button
-            type="button"
-            onClick={() => {
-              setSettingsOpen(false);
-              setFirstMeetingReplay(true);
-            }}
-          >
-            重看初次相遇
-          </button>
-          <button
-            type="button"
-            ref={agentTriggerRef}
-            onClick={() => {
-              setSettingsOpen(false);
-              setCreateAgentOpen(true);
-            }}
-          >
-            创建联系人
-          </button>
-          <button
-            type="button"
-            ref={groupTriggerRef}
-            onClick={() => {
-              setSettingsOpen(false);
-              setCreateGroupOpen(true);
-            }}
-          >
-            新建群聊
-          </button>
-          <button
-            type="button"
-            ref={projectTriggerRef}
-            onClick={() => {
-              setSettingsOpen(false);
-              setCreateProjectOpen(true);
-            }}
-          >
-            新建项目
-          </button>
-        </div>
-        {state?.providerConfigured && !editProviderConfig ? (
-          <div className="connection-summary">
-            <span>
-              <i className={state.connected ? 'is-connected' : ''} />
-              {state.connected
-                ? `${state.providerName} 已连接`
-                : `${state.providerName} 已配置，当前连接不可用`}
-            </span>
-            <button
+        <div className="settings-dialog-scroll">
+          <div className="settings-administration">
+            <NoemaButton
               type="button"
-              data-dialog-initial-focus={
-                modelOptions.length === 0 ? true : undefined
-              }
-              onClick={beginProviderEdit}
+              ref={agentTriggerRef}
+              onClick={() => {
+                setSettingsOpen(false);
+                setCreateAgentOpen(true);
+              }}
             >
-              更改配置
-            </button>
-          </div>
-        ) : (
-          <>
-            <label className="dialog-field">
-              <span>模型服务地址</span>
-              <input
-                autoFocus
-                data-dialog-initial-focus
-                value={providerBaseUrl}
-                onChange={(event) => setProviderBaseUrl(event.target.value)}
-                placeholder="https://api.deepseek.com/v1 或本机兼容接口"
-                required
-              />
-            </label>
-            <label className="dialog-field">
-              <span>API Key</span>
-              <input
-                type="password"
-                autoComplete="new-password"
-                value={providerApiKey}
-                onChange={(event) => setProviderApiKey(event.target.value)}
-                placeholder={
-                  state?.providerConfigured
-                    ? '输入新 Key 以替换当前凭据'
-                    : '粘贴服务商提供的 API Key'
-                }
-                required
-              />
-            </label>
-          </>
-        )}
-        <label className="dialog-field">
-          <span>当前对话模型</span>
-          <select
-            aria-label="在设置中选择对话模型"
-            data-dialog-initial-focus={
-              state?.providerConfigured && !editProviderConfig
-                ? modelOptions.length > 0
-                : undefined
-            }
-            value={activeModel}
-            disabled={modelOptions.length === 0 || switchingModel}
-            onChange={(event) => void handleModelChange(event.target.value)}
-          >
-            {activeModel &&
-            !modelOptions.some((model) => model.name === activeModel) ? (
-              <option value={activeModel} disabled>
-                {activeModel} · 当前目录未列出
-              </option>
-            ) : null}
-            {modelOptions.map((model) => (
-              <option
-                key={model.name}
-                value={model.name}
-                disabled={
-                  model.executionStatus === 'exhausted' ||
-                  model.executionStatus === 'needsKey'
-                }
-              >
-                {model.label}
-                {model.executionStatus === 'ready'
-                  ? ' · 最近可用'
-                  : model.executionStatus === 'exhausted'
-                    ? ' · 暂不可用'
-                    : model.executionStatus === 'needsKey'
-                      ? ' · 需密钥'
-                      : ' · 状态未知'}
-              </option>
-            ))}
-          </select>
-        </label>
-        <p className="dialog-footnote">
-          本机服务可使用 HTTP，远程服务必须使用
-          HTTPS。模型服务会按各自政策处理请求内容。
-        </p>
-        <section
-          className="settings-provider-section personal-memory-settings-entry"
-          aria-labelledby="personal-memory-settings-title"
-        >
-          <div>
-            <h3 id="personal-memory-settings-title">个人记忆</h3>
-            <p>由你决定保存什么；Noema 主聊只在相关时检索。</p>
-          </div>
-          <button
-            className="secondary-action"
-            type="button"
-            onClick={openPersonalMemories}
-          >
-            管理个人记忆
-          </button>
-        </section>
-        <section
-          className="settings-provider-section personal-memory-settings-entry"
-          aria-labelledby="user-followups-settings-title"
-        >
-          <div>
-            <h3 id="user-followups-settings-title">回访提醒</h3>
-            <p>只在你安排或接受后创建，到期通过本机通知提醒。</p>
-          </div>
-          <button
-            className="secondary-action"
-            type="button"
-            onClick={openUserFollowups}
-          >
-            管理回访
-          </button>
-        </section>
-        <section
-          className="settings-provider-section"
-          aria-labelledby="web-search-settings-title"
-        >
-          <div>
-            <h3 id="web-search-settings-title">网页搜索（Tavily）</h3>
-            <p>
-              只在你问到近期信息或明确要求查找来源时使用。搜索词会发送给
-              Tavily；每轮最多一次，使用基础搜索，最多读取 3
-              个候选网页。成功读取的正文来源会保存在对应答复中。具体额度与费用由你的
-              Tavily 账户方案决定；Noema 不会自动升级或重试。
-            </p>
-          </div>
-          {state?.webSearchConfigured ? (
-            <div className="connection-summary">
-              <span>
-                <i />
-                Tavily 密钥已加密保存在本机
-              </span>
-              <button
-                type="button"
-                disabled={savingWebSearch}
-                onClick={() => void handleWebSearchClear()}
-              >
-                移除
-              </button>
-            </div>
-          ) : null}
-          <label className="dialog-field">
-            <span>
-              {state?.webSearchConfigured ? '替换 API Key' : 'Tavily API Key'}
-            </span>
-            <input
-              type="password"
-              autoComplete="new-password"
-              value={webSearchApiKey}
-              onChange={(event) => setWebSearchApiKey(event.target.value)}
-              placeholder={
-                state?.webSearchConfigured
-                  ? '输入新 Key 以替换'
-                  : '配置后启用来源搜索'
-              }
-              disabled={savingWebSearch}
-            />
-          </label>
-          <div className="dialog-actions">
-            <button
-              className="secondary-action"
+              <Icon name="user-add" />
+              新建伙伴
+            </NoemaButton>
+            <NoemaButton
               type="button"
-              disabled={savingWebSearch || !webSearchApiKey.trim()}
-              onClick={() => void handleWebSearchSave()}
+              ref={groupTriggerRef}
+              onClick={() => {
+                setSettingsOpen(false);
+                setCreateGroupOpen(true);
+              }}
             >
-              {savingWebSearch ? '正在保存…' : '保存搜索密钥'}
-            </button>
+              <Icon name="users" />
+              新建群聊
+            </NoemaButton>
+            <NoemaButton
+              type="button"
+              ref={projectTriggerRef}
+              onClick={() => {
+                setSettingsOpen(false);
+                setCreateProjectOpen(true);
+              }}
+            >
+              <Icon name="project" />
+              新建项目
+            </NoemaButton>
           </div>
-        </section>
-        {state?.error ? (
-          <p className="dialog-error" role="status">
-            {state.error}
-          </p>
-        ) : null}
-        <div className="dialog-actions">
           {state?.providerConfigured && !editProviderConfig ? (
-            <button
-              className="primary-action"
-              type="button"
-              onClick={closeSettingsDialog}
-            >
-              完成
-            </button>
+            <div className="connection-summary">
+              <span role="status" aria-live="polite">
+                <i
+                  className={state.connected ? 'is-connected' : ''}
+                  aria-hidden="true"
+                />
+                {state.connected
+                  ? `${state.providerName} 已连接`
+                  : `${state.providerName} 已配置，当前连接不可用`}
+              </span>
+              <div className="connection-summary-actions">
+                <NoemaButton
+                  type="button"
+                  data-dialog-initial-focus={
+                    modelOptions.length === 0 ? true : undefined
+                  }
+                  disabled={refreshingProvider || state.checking}
+                  onClick={() => void refreshProviderModels()}
+                >
+                  {refreshingProvider || state.checking
+                    ? '正在检查…'
+                    : '重新检查'}
+                </NoemaButton>
+                <NoemaButton type="button" onClick={beginProviderEdit}>
+                  更改配置
+                </NoemaButton>
+              </div>
+            </div>
           ) : (
             <>
-              <button
+              <label className="dialog-field">
+                <span>服务地址</span>
+                <NoemaInput
+                  autoFocus
+                  data-dialog-initial-focus
+                  value={providerBaseUrl}
+                  onChange={(event) => {
+                    setProviderFeedback(null);
+                    setProviderBaseUrl(event.target.value);
+                  }}
+                  placeholder="https://api.deepseek.com/v1 或本机兼容接口"
+                  required
+                />
+              </label>
+              <label className="dialog-field">
+                <span>API 密钥</span>
+                <NoemaInput
+                  type="password"
+                  autoComplete="new-password"
+                  value={providerApiKey}
+                  onChange={(event) => {
+                    setProviderFeedback(null);
+                    setProviderApiKey(event.target.value);
+                  }}
+                  placeholder={
+                    state?.providerConfigured
+                      ? '输入新密钥以替换'
+                      : '粘贴服务商提供的 API 密钥'
+                  }
+                  required
+                  disabled={savingProvider}
+                />
+                {state?.providerConfigured ? (
+                  <small>已保存的密钥不会显示；输入新密钥会替换。</small>
+                ) : null}
+              </label>
+            </>
+          )}
+          <label className="dialog-field">
+            <span>对话模型</span>
+            <NoemaSelect
+              aria-label="在设置中选择对话模型"
+              data-dialog-initial-focus={
+                state?.providerConfigured && !editProviderConfig
+                  ? modelOptions.length > 0
+                  : undefined
+              }
+              value={activeModel}
+              disabled={modelOptions.length === 0 || switchingModel}
+              onChange={(event) => void handleModelChange(event.target.value)}
+            >
+              {modelOptions.length === 0 && !activeModel ? (
+                <option value="" disabled>
+                  连接后显示可用模型
+                </option>
+              ) : null}
+              {activeModel &&
+              !modelOptions.some((model) => model.name === activeModel) ? (
+                <option value={activeModel} disabled>
+                  {activeModel} · 当前目录未列出
+                </option>
+              ) : null}
+              {modelOptions.map((model) => (
+                <option
+                  key={model.name}
+                  value={model.name}
+                  disabled={
+                    model.executionStatus === 'exhausted' ||
+                    model.executionStatus === 'needsKey'
+                  }
+                >
+                  {model.label}
+                  {model.executionStatus === 'ready'
+                    ? ' · 最近可用'
+                    : model.executionStatus === 'exhausted'
+                      ? ' · 暂不可用'
+                      : model.executionStatus === 'needsKey'
+                        ? ' · 需密钥'
+                        : ' · 状态未知'}
+                </option>
+              ))}
+            </NoemaSelect>
+          </label>
+          <p className="dialog-footnote">
+            远程服务请使用 HTTPS。发送内容由模型服务商处理。
+          </p>
+          <section
+            className="settings-provider-section"
+            aria-labelledby="web-search-settings-title"
+          >
+            <div>
+              <h3 id="web-search-settings-title">网页搜索</h3>
+              <p>需要最新信息时使用。搜索词会发送给 Tavily。</p>
+            </div>
+            {state?.webSearchConfigured ? (
+              <div className="connection-summary">
+                <span>
+                  <i />
+                  Tavily 密钥已加密保存在本机
+                </span>
+                <NoemaButton
+                  type="button"
+                  disabled={savingWebSearch}
+                  onClick={() => void handleWebSearchClear()}
+                >
+                  移除
+                </NoemaButton>
+              </div>
+            ) : null}
+            <label className="dialog-field">
+              <span>
+                {state?.webSearchConfigured
+                  ? '替换 API 密钥'
+                  : 'Tavily API 密钥'}
+              </span>
+              <NoemaInput
+                type="password"
+                autoComplete="new-password"
+                value={webSearchApiKey}
+                onChange={(event) => setWebSearchApiKey(event.target.value)}
+                placeholder={
+                  state?.webSearchConfigured
+                    ? '输入新密钥以替换'
+                    : '配置后启用来源搜索'
+                }
+                disabled={savingWebSearch}
+              />
+            </label>
+            <div className="dialog-actions">
+              <NoemaButton
                 className="secondary-action"
+                type="button"
+                disabled={savingWebSearch || !webSearchApiKey.trim()}
+                onClick={() => void handleWebSearchSave()}
+              >
+                {savingWebSearch ? '正在保存…' : '保存搜索密钥'}
+              </NoemaButton>
+            </div>
+          </section>
+          <section
+            className="settings-provider-section"
+            aria-labelledby="execution-permissions-title"
+          >
+            <div>
+              <h3 id="execution-permissions-title">执行权限</h3>
+              <p>决定 Noema 命令和 DSH 执行器能访问什么。</p>
+            </div>
+            <div className="permission-row">
+              <div>
+                <strong>项目文件夹</strong>
+                <small>
+                  {executionPermissions.externalFiles === 'read-only'
+                    ? '执行器只读取项目文件，不能写入。'
+                    : '成员可读写自己项目里的文件。'}
+                </small>
+              </div>
+              <span className="permission-fixed">
+                {executionPermissions.externalFiles === 'read-only'
+                  ? '只读'
+                  : '允许'}
+              </span>
+            </div>
+            <label className="dialog-field">
+              <span>文件访问</span>
+              <NoemaSelect
+                aria-label="选择文件访问权限"
+                value={executionPermissions.externalFiles}
+                disabled={executionPermissionsBusy}
+                onChange={(event) =>
+                  void handleExecutionPermissionsChange({
+                    externalFiles:
+                      event.target.value === 'allow' ||
+                      event.target.value === 'read-only'
+                        ? event.target.value
+                        : 'ask',
+                  })
+                }
+              >
+                <option value="read-only">只读</option>
+                <option value="ask">工作区读写（外部确认）</option>
+                <option value="allow">完全访问</option>
+              </NoemaSelect>
+            </label>
+            <div className="permission-row">
+              <div>
+                <strong>网络</strong>
+                <small>项目命令暂时不能联网。</small>
+              </div>
+              <span className="permission-fixed">禁止</span>
+            </div>
+            {executionPermissionsError ? (
+              <p className="settings-form-feedback is-error" role="alert">
+                {executionPermissionsError}
+              </p>
+            ) : (
+              <p className="dialog-footnote">
+                {executionPermissions.externalFiles === 'allow'
+                  ? 'Noema 和 DSH 执行器都不再逐条确认工作区外文件；网络仍禁止。'
+                  : executionPermissions.externalFiles === 'read-only'
+                    ? 'Noema 和 DSH 执行器只能读取文件，不能写入；网络仍禁止。'
+                    : 'Noema 和 DSH 执行器可写项目文件夹，访问外部文件时请求确认。'}
+              </p>
+            )}
+          </section>
+        </div>
+        <div className="settings-dialog-footer">
+          {settingsFeedback ? (
+            <p
+              className={`settings-form-feedback is-${settingsFeedback.kind}`}
+              role={settingsFeedback.kind === 'error' ? 'alert' : 'status'}
+              aria-live={
+                settingsFeedback.kind === 'error' ? 'assertive' : 'polite'
+              }
+            >
+              {settingsFeedback.message}
+            </p>
+          ) : null}
+          <div className="dialog-actions settings-dialog-actions">
+            {state?.providerConfigured && !editProviderConfig ? (
+              <NoemaButton
+                className="primary-action"
                 type="button"
                 onClick={closeSettingsDialog}
               >
-                取消
-              </button>
-              <button
-                className="primary-action"
-                type="submit"
-                disabled={savingProvider || !providerApiKey.trim()}
-              >
-                {savingProvider ? '正在检查…' : '保存并检查模型'}
-              </button>
-            </>
-          )}
+                完成
+              </NoemaButton>
+            ) : (
+              <>
+                <NoemaButton
+                  className="secondary-action"
+                  type="button"
+                  onClick={closeSettingsDialog}
+                >
+                  取消
+                </NoemaButton>
+                <NoemaButton
+                  className="primary-action"
+                  type="submit"
+                  disabled={savingProvider || !providerApiKey.trim()}
+                >
+                  {savingProvider ? '正在检查…' : '保存并检查模型'}
+                </NoemaButton>
+              </>
+            )}
+          </div>
         </div>
       </form>
-    </div>
+    </NoemaOverlay>
   ) : null;
 }

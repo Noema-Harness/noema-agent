@@ -4,50 +4,50 @@
   "specificationRoot": "openspec/specs",
   "currentDocuments": [
     {
-      "path": "README.md",
-      "purpose": "安装与导航",
-      "updateWhen": "安装方式或入口变化"
-    },
-    {
       "path": "AGENTS.md",
-      "purpose": "协作与工程入口",
-      "updateWhen": "协作或工程约定变化"
+      "purpose": "项目维护宪法",
+      "updateWhen": "项目维护约定或产品不变量变化"
     },
     {
-      "path": "CONTRIBUTING.md",
-      "purpose": "外部参与入口",
-      "updateWhen": "贡献方式变化"
+      "path": "README.md",
+      "purpose": "项目入口与文档地图",
+      "updateWhen": "安装方式、目录或文档入口变化"
     },
     {
-      "path": "docs/CURRENT_CONTEXT.md",
-      "purpose": "本轮用户明确要求",
-      "updateWhen": "用户补充或改变明确要求"
+      "path": "docs/PRODUCT.md",
+      "purpose": "产品定义、模型与边界",
+      "updateWhen": "用户、问题、产品方向、模型或非目标变化"
     },
     {
-      "path": "docs/NOEMA_V1_PLAN.md",
-      "purpose": "Noema 一期权威范围与阶段验收计划",
-      "updateWhen": "一期范围、依赖或完成条件变化"
+      "path": "docs/SYSTEM.md",
+      "purpose": "系统结构、模块与数据边界",
+      "updateWhen": "模块职责、数据模型、依赖或执行边界变化"
     },
     {
-      "path": "docs/ARCHITECTURE.md",
-      "purpose": "当前源码导航与核对事实",
-      "updateWhen": "源码位置或事实变化"
+      "path": "docs/BEHAVIOR.md",
+      "purpose": "可观察行为与验收标准",
+      "updateWhen": "交互、错误、恢复、权限或验收标准变化"
     },
     {
-      "path": "docs/PROJECT_OPERATIONS.md",
-      "purpose": "工作材料与维护入口",
-      "updateWhen": "维护方式变化"
+      "path": "docs/DECISIONS.md",
+      "purpose": "长期决定与理由",
+      "updateWhen": "做出、替代或撤销长期决定时追加"
     },
     {
-      "path": ".work/README.md",
-      "purpose": "有效过程材料入口",
-      "updateWhen": "工作材料用途变化"
+      "path": "docs/OPERATIONS.md",
+      "purpose": "开发、检查、打包、安装与回滚",
+      "updateWhen": "命令、环境、发布流程或诊断方式变化"
+    },
+    {
+      "path": "docs/STATUS.md",
+      "purpose": "当前版本、可用性、已知问题与下一步",
+      "updateWhen": "交付节点、阻塞或验证状态变化"
     }
   ],
-  "historyRoots": [],
   "rootDirectories": [
     ".git",
     ".codex",
+    ".dsh",
     ".github",
     ".work",
     "apps",

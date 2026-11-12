@@ -24,13 +24,13 @@ export async function connect(url) {
     pending.clear();
   });
   return {
-    call(method, params = {}) {
+    call(method, params = {}, timeoutMs = 15_000) {
       return new Promise((resolve, reject) => {
         const key = ++id;
         const timer = setTimeout(() => {
           pending.delete(key);
           reject(new Error(`Debugger timeout: ${method}`));
-        }, 15000);
+        }, timeoutMs);
         pending.set(key, { resolve, reject, timer });
         socket.send(JSON.stringify({ id: key, method, params }));
       });

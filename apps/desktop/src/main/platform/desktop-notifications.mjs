@@ -70,6 +70,7 @@ export function createUserFollowupNotificationHandler({
       });
       notification.once('click', () =>
         openFollowupSource({
+          followupId: event.id,
           sourceRoomId: event.sourceRoomId ?? null,
           sourceMessageId: event.sourceMessageId ?? null,
         }),

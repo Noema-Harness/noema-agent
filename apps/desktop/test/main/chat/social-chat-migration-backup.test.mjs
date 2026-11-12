@@ -164,6 +164,9 @@ test('social schema v27 upgrades to the current version without losing existing 
       DROP TABLE application_shutdown_intent;
       DROP TABLE social_work_file_change_operations;
       DROP TABLE social_work_file_changes;
+      DROP TABLE IF EXISTS social_work_workspace_write_locks;
+      DROP TABLE IF EXISTS social_work_command_batches;
+      DROP TABLE IF EXISTS social_work_change_blobs;
       DELETE FROM social_schema_migrations WHERE version >= 28;
     `);
 

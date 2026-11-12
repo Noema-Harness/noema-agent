@@ -393,7 +393,7 @@ test('native capability probe returns a fail-closed typed report', async () => {
         type: 'probe',
         backendId: 'noema-codex-windows',
         backendVersion: '0.1.0',
-        policyVersion: 2,
+        policyVersion: 3,
         ready: true,
         blockers: [],
         setupStatus: 'ready',
@@ -434,7 +434,7 @@ test('deny-only readiness does not require the unimplemented network broker', as
       type: 'probe',
       backendId: 'noema-codex-windows',
       backendVersion: '0.1.0',
-      policyVersion: 2,
+      policyVersion: 3,
       ready: true,
       blockers: [],
       setupStatus: 'ready',
@@ -473,7 +473,7 @@ test('native capability probe rejects unknown fields and mismatched identity', a
       type: 'probe',
       backendId: 'noema-codex-windows',
       backendVersion: '0.1.0',
-      policyVersion: 2,
+      policyVersion: 3,
       ready: false,
       blockers: ['sandbox_setup_unavailable'],
       setupStatus: 'incomplete',
@@ -504,17 +504,32 @@ test('native capability probe rejects unknown fields and mismatched identity', a
   });
 });
 
+test('native capability probe reports a stale policy version explicitly', async () => {
+  const helper = makeHelper(({ request }) => ({
+    protocolVersion: 8,
+    requestId: request.requestId,
+    result: {
+      ...readyProbeResponse(request.requestId).result,
+      policyVersion: 2,
+    },
+  }));
+  await assert.rejects(helper.probeCommandBackend({ requestId: operationId }), {
+    code: 'policy_version_unsupported',
+  });
+});
+
 test('native execute transport binds the request, policy, grants and bounded command result', async () => {
   const root = {
     path: grant.path,
     fileIdentity: grant.fileIdentity,
   };
   const policy = {
-    version: 2,
+    version: 3,
     backend: { id: 'noema-codex-windows', version: '0.1.0' },
     requestId: operationId,
     workspaceRoot: root,
     filesystem: {
+      mode: 'read-write',
       readRoots: [root],
       writeRoots: [root],
       defaultDeny: true,
@@ -743,6 +758,33 @@ test('native execute transport rejects malformed results and invalid request bou
   assert.equal(started, 2);
 });
 
+test('native execute rejects a stale policy version before starting the helper', async () => {
+  let started = false;
+  const helper = new WindowsRunnerNativeHelper({
+    executablePath: 'C:\\Noema\\native\\noema-windows-runner.exe',
+    env: { SystemRoot: 'C:\\Windows' },
+    spawnImpl() {
+      started = true;
+      throw new Error('helper must not start for a stale policy');
+    },
+  });
+
+  await assert.rejects(
+    helper.executeSandboxCommand({
+      requestId: operationId,
+      ...traceIdentity,
+      userDataPath: setupUserDataPath,
+      packageSid,
+      policy: { ...validExecutePolicy(), version: 2 },
+      grants: [grant],
+      command: 'echo x',
+      timeoutMs: 5_000,
+    }),
+    { code: 'runner_helper_request_invalid' },
+  );
+  assert.equal(started, false);
+});
+
 test('native execute does not submit a command when the Windows platform is unsupported', async () => {
   const operations = [];
   const helper = makeHelper(({ request }) => {
@@ -923,11 +965,12 @@ test('native execute abort after spawn reports an unknown effect and releases ch
 function validExecutePolicy() {
   const root = { path: grant.path, fileIdentity: grant.fileIdentity };
   return {
-    version: 2,
+    version: 3,
     backend: { id: 'noema-codex-windows', version: '0.1.0' },
     requestId: operationId,
     workspaceRoot: root,
     filesystem: {
+      mode: 'read-write',
       readRoots: [root],
       writeRoots: [root],
       defaultDeny: true,
@@ -956,7 +999,7 @@ function readyProbeResponse(requestId) {
       type: 'probe',
       backendId: 'noema-codex-windows',
       backendVersion: '0.1.0',
-      policyVersion: 2,
+      policyVersion: 3,
       ready: true,
       blockers: [],
       setupStatus: 'ready',

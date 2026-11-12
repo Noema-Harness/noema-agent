@@ -14,17 +14,27 @@ type DevelopmentScenarioContext = {
   socialAgentE2eValid: boolean;
   socialAgentE2eDirectory: string | null;
   socialAgentE2eResultPath: DesktopDevelopmentOptions['socialAgentE2eResultPath'];
+  testPersonalMemoryLifecycle: DesktopDevelopmentOptions['testPersonalMemoryLifecycle'];
+  testUserFollowupLifecycle: DesktopDevelopmentOptions['testUserFollowupLifecycle'];
   testSocialAgentLiveE2e: DesktopDevelopmentOptions['testSocialAgentLiveE2e'];
   writeSmokeLog: (step: string, details?: Record<string, unknown>) => void;
   agent: RootAgent;
   testSocialAgentLiveModel: DesktopDevelopmentOptions['testSocialAgentLiveModel'];
   createWindow: () => void;
   mainWindow: BrowserWindow | null;
+  restoreMainWindowForTest: () => boolean;
   testSocialAgentR0FirstUse: DesktopDevelopmentOptions['testSocialAgentR0FirstUse'];
   testSocialAttachmentsOnly: DesktopDevelopmentOptions['testSocialAttachmentsOnly'];
   runDesktopProbe: DesktopProbeRunner;
   testSocialAgentKeepOpen: DesktopDevelopmentOptions['testSocialAgentKeepOpen'];
   socialWorkE2eValid: boolean;
+  testSocialWorkEntry: boolean;
+  applicationExecutionId: string;
+  socialAgentE2eModelRequests: Array<{
+    model: string;
+    messages: Array<{ role: string; content: string }>;
+    tools?: Array<{ function?: { name?: string } }>;
+  }>;
   socialWorkE2eDirectory: string | null;
   testSocialWorkResultPath: DesktopDevelopmentOptions['testSocialWorkResultPath'];
   testSocialWorkWorkspace: DesktopDevelopmentOptions['testSocialWorkWorkspace'];
@@ -64,10 +74,35 @@ export async function runDevelopmentScenarios(
     if (!window) throw new Error('Development scenario window is unavailable');
     return window;
   }
+  async function ensureRendererReady() {
+    if (!context.mainWindow || context.mainWindow.isDestroyed()) {
+      context.createWindow();
+    }
+    const deadline = Date.now() + 20_000;
+    while (Date.now() < deadline) {
+      const window = context.mainWindow;
+      if (!window || window.isDestroyed()) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        continue;
+      }
+      try {
+        const ready = await window.webContents.executeJavaScript(
+          "document.readyState !== 'loading' && Boolean(window.noema?.getSocialRoom && window.noema?.getDiagnosticsTimeline)",
+        );
+        if (ready) return;
+      } catch {
+        // The preload bridge is not available until the renderer finishes loading.
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    throw new Error('SocialWork E2E renderer bridge did not become ready.');
+  }
   const {
     socialAgentE2eValid,
     socialAgentE2eDirectory,
     socialAgentE2eResultPath,
+    testPersonalMemoryLifecycle,
+    testUserFollowupLifecycle,
     testSocialAgentLiveE2e,
     writeSmokeLog,
     agent,
@@ -78,6 +113,9 @@ export async function runDevelopmentScenarios(
     runDesktopProbe,
     testSocialAgentKeepOpen,
     socialWorkE2eValid,
+    testSocialWorkEntry,
+    applicationExecutionId,
+    socialAgentE2eModelRequests,
     socialWorkE2eDirectory,
     testSocialWorkResultPath,
     testSocialWorkWorkspace,
@@ -234,7 +272,7 @@ export async function runDevelopmentScenarios(
           };
           contents.on('did-finish-load', loaded);
         });
-        const workflow = testSocialAttachmentsOnly
+        const baseWorkflow = testSocialAttachmentsOnly
           ? {
               textAttachments: await runDesktopProbe(
                 'captureSocialTextAttachmentsE2e',
@@ -243,6 +281,26 @@ export async function runDevelopmentScenarios(
           : testSocialAgentR0FirstUse
             ? await runDesktopProbe('captureSocialR0FirstUseE2e')
             : await runDesktopProbe('captureSocialAgentCreationE2e');
+        const workflow =
+          testPersonalMemoryLifecycle || testUserFollowupLifecycle
+            ? {
+                ...(baseWorkflow as Record<string, unknown>),
+                ...(testPersonalMemoryLifecycle
+                  ? {
+                      personalMemoryLifecycle: await runDesktopProbe(
+                        'verifyPersonalMemoryLifecycle',
+                      ),
+                    }
+                  : {}),
+                ...(testUserFollowupLifecycle
+                  ? {
+                      userFollowupLifecycle: await runDesktopProbe(
+                        'verifyUserFollowupLifecycle',
+                      ),
+                    }
+                  : {}),
+              }
+            : baseWorkflow;
         fs.writeFileSync(
           resultPath,
           JSON.stringify({ outcome: 'passed', workflow }, null, 2),
@@ -259,6 +317,8 @@ export async function runDevelopmentScenarios(
               outcome: 'failed',
               errorMessage:
                 error instanceof Error ? error.message.slice(0, 8_000) : null,
+              errorStack:
+                error instanceof Error ? error.stack?.slice(0, 16_000) : null,
             },
             null,
             2,
@@ -279,7 +339,216 @@ export async function runDevelopmentScenarios(
       const liveEpisodeTasks: Array<Record<string, unknown>> = [];
       let modelCatalog: Awaited<ReturnType<typeof agent.refreshModels>> | null =
         null;
+      let startupRecoveryProjection: unknown = null;
       try {
+        let workspaceEntryEvidence: Record<string, unknown> | null = null;
+        if (testSocialWorkEntry) {
+          if (!testSocialWorkSynthetic) {
+            throw new Error(
+              'Workspace-entry UI acceptance requires the offline synthetic executor.',
+            );
+          }
+          await ensureRendererReady();
+          const taskCount = () =>
+            Number(
+              socialChatStore!.db
+                .prepare('SELECT COUNT(*) AS count FROM social_work_tasks')
+                .get().count,
+            );
+          const beforeEntryCount = taskCount();
+          const commonPrompt = 'NOEMA_WORK_ENTRY_SAME_PROMPT';
+          const normalChat = await runDesktopProbe(
+            'submitSocialWorkEntryFromRenderer',
+            {
+              workspaceTaskMode: false,
+              prompt: commonPrompt,
+              expectedReply: 'NOEMA_WORK_ENTRY_CHAT_ONLY',
+              expectNewTask: false,
+              knownTaskIds: [],
+            },
+          );
+          const afterNormalChatCount = taskCount();
+          if (afterNormalChatCount !== beforeEntryCount) {
+            throw new Error(
+              'The same prompt in ordinary chat created a workspace task.',
+            );
+          }
+          const workspaceTask = await runDesktopProbe(
+            'submitSocialWorkEntryFromRenderer',
+            {
+              workspaceTaskMode: true,
+              prompt: commonPrompt,
+              expectedReply: '已从这条对话启动项目工作。',
+              expectNewTask: true,
+              knownTaskIds: [],
+            },
+          );
+          if (!workspaceTask.newTaskId) {
+            throw new Error('Workspace mode did not create a SocialWork task.');
+          }
+          const completedEntryTask = await socialWorkService!.waitForTask(
+            workspaceTask.newTaskId,
+          );
+          if (completedEntryTask.status !== 'completed') {
+            throw new Error(
+              'Renderer-created workspace task did not complete synthetically.',
+            );
+          }
+          const afterCreatedCount = taskCount();
+          if (afterCreatedCount !== beforeEntryCount + 1) {
+            throw new Error(
+              'Workspace mode created an unexpected number of tasks.',
+            );
+          }
+          const canceledPrompt = 'NOEMA_WORK_ENTRY_CANCEL';
+          const pickerCanceled = await runDesktopProbe(
+            'submitSocialWorkEntryFromRenderer',
+            {
+              workspaceTaskMode: true,
+              prompt: canceledPrompt,
+              expectedReply: '已取消选择项目文件夹。',
+              expectNewTask: false,
+              knownTaskIds: [workspaceTask.newTaskId],
+            },
+          );
+          if (taskCount() !== afterCreatedCount) {
+            throw new Error(
+              'Canceling workspace selection left an orphan task.',
+            );
+          }
+          const latestUserText = (
+            request: (typeof socialAgentE2eModelRequests)[number],
+          ) =>
+            request.messages.findLast((message) => message.role === 'user')
+              ?.content ?? '';
+          const ordinaryRequest = socialAgentE2eModelRequests.findLast(
+            (request) => latestUserText(request) === commonPrompt,
+          );
+          const enabledRequest = socialAgentE2eModelRequests.findLast(
+            (request) =>
+              latestUserText(request).startsWith(
+                '请在本机工作区执行以下任务：',
+              ) && latestUserText(request).endsWith(commonPrompt),
+          );
+          const canceledRequest = socialAgentE2eModelRequests.findLast(
+            (request) =>
+              latestUserText(request).startsWith(
+                '请在本机工作区执行以下任务：',
+              ) && latestUserText(request).endsWith(canceledPrompt),
+          );
+          const exposesWorkTool = (request: typeof ordinaryRequest) =>
+            Boolean(
+              request?.tools?.some(
+                (tool) => tool.function?.name === 'start_project_work',
+              ),
+            );
+          if (
+            !ordinaryRequest ||
+            !enabledRequest ||
+            !canceledRequest ||
+            exposesWorkTool(ordinaryRequest) ||
+            !exposesWorkTool(enabledRequest) ||
+            !exposesWorkTool(canceledRequest)
+          ) {
+            throw new Error(
+              'The renderer workspace mode did not control model tool admission.',
+            );
+          }
+          const entryDiagnostics = await runDesktopProbe(
+            'verifySocialWorkEntryDiagnostics',
+            {
+              applicationExecutionId,
+              taskId: workspaceTask.newTaskId,
+              workspacePath,
+              handoffParentExecutionId: 'e2e-handoff-parent-turn',
+              handoffMemberExecutionId: 'e2e-handoff-member-turn',
+              handoffParentInteractionId: 'e2e-handoff-parent-message',
+              handoffId: 'e2e-handoff-user-message',
+              handoffRequestId: 'e2e-handoff-request',
+            },
+          );
+          const commandReviewTask = socialChatStore!.getSocialWorkTask(
+            'e2e-room-e-command-review',
+          );
+          const commandReviewProjection = await runDesktopProbe(
+            'verifySocialWorkDurableProjection',
+            {
+              roomId: commandReviewTask.roomId,
+              taskId: commandReviewTask.id,
+              expectedStatus: 'completed',
+              expectedCommandBatchStatus: 'partial',
+              expectedCommandOrigin: true,
+              requireDiagnostics: false,
+            },
+          );
+          const specialistProfile = await runDesktopProbe(
+            'verifySpecialistProfileFromRenderer',
+            {
+              name: 'S6-01 职责验证员',
+              updatedName: 'S6-01 职责验证员·更新',
+            },
+          );
+          workspaceEntryEvidence = {
+            applicationExecutionId,
+            ordinaryChat: normalChat,
+            commandReviewProjection,
+            specialistProfile,
+            modelToolAdmission: {
+              sameUnderlyingText:
+                latestUserText(enabledRequest).replace(
+                  '请在本机工作区执行以下任务：\n\n',
+                  '',
+                ) === commonPrompt,
+              ordinaryChatExcludesWorkTool: !exposesWorkTool(ordinaryRequest),
+              enabledModeIncludesWorkTool: exposesWorkTool(enabledRequest),
+              pickerCancelIncludesWorkTool: exposesWorkTool(canceledRequest),
+            },
+            task: {
+              id: completedEntryTask.id,
+              status: completedEntryTask.status,
+            },
+            pickerCanceled,
+            taskCount: {
+              before: beforeEntryCount,
+              afterOrdinaryChat: afterNormalChatCount,
+              afterWorkspaceTask: afterCreatedCount,
+              afterPickerCancel: taskCount(),
+            },
+            diagnostics: entryDiagnostics,
+          };
+        }
+        if (testSocialWorkSynthetic) {
+          const recoveryTaskId = 'e2e-room-d-startup-recovery';
+          const recoveredTask =
+            socialChatStore!.getSocialWorkTask(recoveryTaskId);
+          if (
+            recoveredTask.status !== 'interrupted' ||
+            recoveredTask.errorCode !== 'process_crash' ||
+            recoveredTask.canResume ||
+            recoveredTask.executionSteps.some(
+              ({
+                status,
+                effectStatus,
+              }: {
+                status: string;
+                effectStatus: string;
+              }) => status !== 'outcome_unknown' || effectStatus !== 'unknown',
+            )
+          ) {
+            throw new Error(
+              'Startup recovery did not preserve an unknown command outcome.',
+            );
+          }
+          await ensureRendererReady();
+          startupRecoveryProjection = await runDesktopProbe(
+            'verifySocialWorkDurableProjection',
+            {
+              roomId: recoveredTask.roomId,
+              taskId: recoveredTask.id,
+              expectedStatus: recoveredTask.status,
+            },
+          );
+        }
         if (!testSocialWorkSynthetic) {
           modelCatalog = await agent.refreshModels();
           const selectedModel = rootStore!.getSelectedModel();
@@ -503,6 +772,8 @@ export async function runDevelopmentScenarios(
             JSON.stringify(
               {
                 outcome: 'practice_proposal_none',
+                startupRecoveryProjection,
+                workspaceEntryEvidence,
                 livePracticeProposal,
                 practiceConfirmationEvidence,
                 liveEpisodeTasks,
@@ -526,8 +797,50 @@ export async function runDevelopmentScenarios(
             : [],
         });
         const taskId = started.accepted ? (started.taskId ?? null) : null;
+        const backgroundProjection =
+          taskId && testSocialWorkSynthetic
+            ? await runDesktopProbe('hideWindowDuringSocialWork', {
+                roomId: 'room-engineering-collaboration',
+                taskId,
+              })
+            : null;
+        const taskWhileHidden =
+          taskId && testSocialWorkSynthetic
+            ? socialChatStore!.getSocialWorkTask(taskId)
+            : null;
+        if (
+          backgroundProjection &&
+          !['starting', 'running', 'verifying'].includes(
+            taskWhileHidden?.status ?? '',
+          )
+        ) {
+          throw new Error(
+            'SocialWork task stopped when its window was hidden.',
+          );
+        }
+        if (backgroundProjection && !context.restoreMainWindowForTest()) {
+          throw new Error(
+            'Noema could not restore the hidden SocialWork window.',
+          );
+        }
+        const activeRendererProjection =
+          taskId && testSocialWorkSynthetic
+            ? await runDesktopProbe('verifySocialWorkActiveProjection', {
+                roomId: 'room-engineering-collaboration',
+                taskId,
+              })
+            : null;
         const task = taskId
           ? await socialWorkService!.waitForTask(taskId)
+          : null;
+        const rendererProjection = task
+          ? await runDesktopProbe('verifySocialWorkDurableProjection', {
+              roomId: task.roomId,
+              taskId: task.id,
+              expectedStatus: task.status,
+              workspacePath,
+              privateSentinel: task.taskPrompt,
+            })
           : null;
         fs.writeFileSync(
           resultPath,
@@ -535,6 +848,12 @@ export async function runDevelopmentScenarios(
             {
               outcome: task ? 'finished' : 'preflight_failed',
               task,
+              backgroundProjection,
+              taskStatusWhileHidden: taskWhileHidden?.status ?? null,
+              activeRendererProjection,
+              rendererProjection,
+              startupRecoveryProjection,
+              workspaceEntryEvidence,
               modelCatalog,
               workspacePath,
               livePracticeProposal,
@@ -548,6 +867,12 @@ export async function runDevelopmentScenarios(
           { encoding: 'utf8', flag: 'wx' },
         );
       } catch (error) {
+        if (error instanceof Error) {
+          console.error(
+            'Isolated SocialWork E2E failed:',
+            error.stack ?? error.message,
+          );
+        }
         fs.writeFileSync(
           resultPath,
           JSON.stringify(
@@ -563,6 +888,55 @@ export async function runDevelopmentScenarios(
                   : 'social_work_e2e_failed',
               errorMessage:
                 error instanceof Error ? error.message.slice(0, 1_000) : null,
+              entryModelRequests: socialAgentE2eModelRequests.map(
+                (request) => ({
+                  model: request.model,
+                  userMessageIsCommonPrompt:
+                    request.messages.findLast(
+                      (message) => message.role === 'user',
+                    )?.content === 'NOEMA_WORK_ENTRY_SAME_PROMPT',
+                  userMessageHasTaskModePrefix:
+                    request.messages
+                      .findLast((message) => message.role === 'user')
+                      ?.content.startsWith('请在本机工作区执行以下任务：') ??
+                    false,
+                  userMessageIsCancelPrompt:
+                    request.messages.findLast(
+                      (message) => message.role === 'user',
+                    )?.content === 'NOEMA_WORK_ENTRY_CANCEL',
+                  toolNames:
+                    request.tools?.map(
+                      (tool) => tool.function?.name ?? 'unknown',
+                    ) ?? [],
+                }),
+              ),
+              entryMessages: testSocialWorkEntry
+                ? socialChatStore!.db
+                    .prepare(
+                      "SELECT role, status, content FROM social_messages WHERE room_id = 'room-noema' ORDER BY seq DESC LIMIT 8",
+                    )
+                    .all()
+                    .map(
+                      (message: {
+                        role: string;
+                        status: string;
+                        content: string;
+                      }) => ({
+                        role: message.role,
+                        status: message.status,
+                        contentLength: message.content.length,
+                        containsEntryMarker:
+                          message.content.includes('NOEMA_WORK_ENTRY_'),
+                        containsExpectedReply:
+                          message.content.includes(
+                            'NOEMA_WORK_ENTRY_CHAT_ONLY',
+                          ) ||
+                          message.content.includes(
+                            'NOEMA_WORK_ENTRY_TOOL_HANDLED',
+                          ),
+                      }),
+                    )
+                : [],
               livePracticeProposal,
               practiceConfirmationEvidence,
               liveEpisodeTasks,

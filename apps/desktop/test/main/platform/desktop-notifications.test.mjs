@@ -216,6 +216,7 @@ test('due follow-up notification click returns its stored source to Noema', () =
   });
   notifications[0].emit('click');
   assert.deepEqual(destination, {
+    followupId: 'followup-1',
     sourceRoomId: 'room-noema',
     sourceMessageId: 'source-message-1',
   });

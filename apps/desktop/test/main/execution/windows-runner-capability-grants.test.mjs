@@ -11,8 +11,9 @@ const readonlyRoot = {
   fileIdentity: { volumeSerialNumber: '77', fileIndex: '202' },
 };
 const policy = {
-  version: 2,
+  version: 3,
   filesystem: {
+    mode: 'read-write',
     readRoots: [workspace, readonlyRoot],
     writeRoots: [workspace],
     defaultDeny: true,
@@ -39,8 +40,11 @@ function dependencies({ stats = new Map(), failSid = false } = {}) {
           throw Object.assign(new Error('unavailable'), {
             code: 'capability_sid_record_untrusted',
           });
-        return access === 'write'
-          ? 'Noema.Write.1111111111111111111111111111111111111111111111111111111111111111'
+        if (access === 'write') {
+          return 'Noema.Write.1111111111111111111111111111111111111111111111111111111111111111';
+        }
+        return identity.fileIndex === '101'
+          ? 'Noema.Read.1111111111111111111111111111111111111111111111111111111111111111'
           : 'Noema.Read.2222222222222222222222222222222222222222222222222222222222222222';
       },
     },
@@ -86,13 +90,64 @@ test('compiles one effective capability name per root and upgrades writable root
   );
 });
 
+test('accepts zero write roots only for explicit read-only mode', async () => {
+  const deps = dependencies({
+    stats: new Map([
+      [workspace.path.toLowerCase(), statFor(workspace, { directory: true })],
+      [readonlyRoot.path.toLowerCase(), statFor(readonlyRoot)],
+    ]),
+  });
+  const result = await createWindowsRunnerCapabilityGrants(
+    {
+      version: 3,
+      filesystem: {
+        mode: 'read-only',
+        readRoots: [workspace, readonlyRoot],
+        writeRoots: [],
+        defaultDeny: true,
+      },
+    },
+    deps,
+  );
+  assert.equal(result.ok, true);
+  assert.deepEqual(
+    result.grants.map(({ access }) => access),
+    ['read', 'read'],
+  );
+  assert.deepEqual(
+    deps.calls.map(({ access }) => access),
+    ['read', 'read'],
+  );
+});
+
+test('rejects read-only policy containing any write root before creating capability names', async () => {
+  const deps = dependencies();
+  assert.deepEqual(
+    await createWindowsRunnerCapabilityGrants(
+      {
+        version: 3,
+        filesystem: {
+          mode: 'read-only',
+          readRoots: [workspace],
+          writeRoots: [workspace],
+          defaultDeny: true,
+        },
+      },
+      deps,
+    ),
+    { ok: false, code: 'capability_grant_policy_invalid' },
+  );
+  assert.equal(deps.calls.length, 0);
+});
+
 test('rejects write roots outside the read allowlist before creating capability names', async () => {
   const deps = dependencies();
   assert.deepEqual(
     await createWindowsRunnerCapabilityGrants(
       {
-        version: 2,
+        version: 3,
         filesystem: {
+          mode: 'read-write',
           readRoots: [workspace],
           writeRoots: [readonlyRoot],
           defaultDeny: true,
@@ -118,8 +173,9 @@ test('rejects stale native identity and object aliases before creating capabilit
     (
       await createWindowsRunnerCapabilityGrants(
         {
-          version: 2,
+          version: 3,
           filesystem: {
+            mode: 'read-write',
             readRoots: [workspace],
             writeRoots: [workspace],
             defaultDeny: true,
@@ -133,8 +189,9 @@ test('rejects stale native identity and object aliases before creating capabilit
   assert.equal(stale.calls.length, 0);
 
   const aliasPolicy = {
-    version: 2,
+    version: 3,
     filesystem: {
+      mode: 'read-write',
       readRoots: [
         workspace,
         { ...readonlyRoot, fileIdentity: workspace.fileIdentity },
@@ -166,8 +223,9 @@ test('fails closed when the persisted capability name cannot be read or created'
   assert.deepEqual(
     await createWindowsRunnerCapabilityGrants(
       {
-        version: 2,
+        version: 3,
         filesystem: {
+          mode: 'read-write',
           readRoots: [workspace],
           writeRoots: [workspace],
           defaultDeny: true,
