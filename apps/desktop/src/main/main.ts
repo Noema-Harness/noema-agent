@@ -11,6 +11,7 @@ import {
   Notification,
 } from 'electron';
 import { createNoemaTray } from './app/tray';
+import { createMainWindow } from './app/window';
 import { writeSmokeLog } from './testing/smoke-log';
 import { scheduleRendererSmoke } from './testing/renderer-smoke';
 import { randomUUID } from 'node:crypto';
@@ -282,7 +283,6 @@ let desktopLifecycle: ReturnType<typeof createDesktopLifecycle> | null = null;
 const currentApplicationExecutionId = randomUUID();
 let currentEntryRoute: 'social-chat' | 'legacy-archive' | null = null;
 let entryReadinessRecordedFor: string | null = null;
-let initialWindowFitsWorkArea = false;
 let rootStore: RootStore | null = null;
 let diagnosticsEventStore: DiagnosticsEventStore | null = null;
 let officialPluginHost: OfficialPluginHost | null = null;
@@ -408,263 +408,54 @@ ipcMain.handle('noema:window-control', (event, action: unknown) => {
 });
 
 const createWindow = () => {
-  currentEntryRoute = null;
-  entryReadinessRecordedFor = null;
-  pendingFollowupNavigation.resetRenderer();
-  const display = screen.getPrimaryDisplay();
-  const windowSize = resolveInitialWindowSize(display.workAreaSize);
-  const rendererDevServerUrl = app.isPackaged
-    ? undefined
-    : (testRendererUrl ?? MAIN_WINDOW_VITE_DEV_SERVER_URL);
-  const deferDevelopmentWindowUntilMounted = Boolean(
-    rendererDevServerUrl && !testRendererUrl,
-  );
-  mainWindow = new BrowserWindow({
-    ...windowSize,
-    ...(process.env.NOEMA_SMOKE_TEST === '1'
-      ? { minWidth: 320, minHeight: 420 }
-      : {}),
-    show:
-      process.env.NOEMA_SMOKE_HIDDEN !== '1' &&
-      !deferDevelopmentWindowUntilMounted,
-    title: 'Noema',
-    frame: false,
-    autoHideMenuBar: true,
-    backgroundColor: '#fcfcfc',
-    webPreferences: createWindowPreferences(
-      path.join(__dirname, 'preload.cjs'),
-      !app.isPackaged &&
-        process.env.NOEMA_E2E_SOCIAL_WORK_REVERSE_SNAPSHOT === '1'
-        ? ['--noema-social-work-reverse-snapshot-probe']
-        : [],
-    ),
-  });
-  const window = mainWindow;
-  let rendererLoadRetryCount = 0;
-  let rendererLoadRetryTimer: NodeJS.Timeout | undefined;
-  let rendererMountCheckTimer: NodeJS.Timeout | undefined;
-  let rendererMountRecoveryCount = 0;
-  mainWindow.setMenuBarVisibility(false);
-  mainWindow.webContents.on('did-start-loading', () => {
-    if (rendererMountCheckTimer) clearTimeout(rendererMountCheckTimer);
-    rendererMountCheckTimer = undefined;
-    pendingFollowupNavigation.resetRenderer();
-  });
-  mainWindow.webContents.on('unresponsive', () => {
-    writeRendererHealthLog('unresponsive');
-  });
-  mainWindow.webContents.on('responsive', () => {
-    writeRendererHealthLog('responsive');
-  });
-  mainWindow.webContents.on('render-process-gone', (_event, details) => {
-    pendingFollowupNavigation.resetRenderer();
-    writeRendererHealthLog('render-process-gone', {
-      reason: details.reason,
-      exitCode: details.exitCode,
-    });
-  });
-  if (rendererDevServerUrl) {
-    mainWindow.webContents.on(
-      'did-fail-load',
-      (_event, errorCode, errorDescription, _validatedUrl, isMainFrame) => {
-        if (
-          !isMainFrame ||
-          (errorCode !== -102 && errorCode !== -118) ||
-          rendererLoadRetryCount >= 60 ||
-          window.isDestroyed() ||
-          rendererLoadRetryTimer
-        )
-          return;
-        rendererLoadRetryCount += 1;
-        writeRendererHealthLog('dev-renderer-load-retry', {
-          attempt: rendererLoadRetryCount,
-          errorCode,
-          errorDescription,
-        });
-        rendererLoadRetryTimer = setTimeout(() => {
-          rendererLoadRetryTimer = undefined;
-          if (window.isDestroyed()) return;
-          void window.loadURL(rendererDevServerUrl).catch((error) => {
-            writeRendererHealthLog('dev-renderer-load-retry-failed', {
-              attempt: rendererLoadRetryCount,
-              error: error instanceof Error ? error.message : String(error),
-            });
-          });
-        }, 500);
-      },
-    );
-  }
-  const publishWindowState = () => {
-    if (mainWindow && !mainWindow.webContents.isDestroyed())
-      mainWindow.webContents.send(
-        'noema:window-state',
-        mainWindow.isMaximized(),
-      );
-  };
-  mainWindow.on('maximize', publishWindowState);
-  mainWindow.on('unmaximize', publishWindowState);
-  initialWindowFitsWorkArea = fitsWithinWorkArea(
-    mainWindow.getBounds(),
-    display.workArea,
-  );
-
-  mainWindow.webContents.on(
-    'console-message',
-    (details, legacyLevel, legacyMessage, legacyLine, legacySource) => {
-      if (details.level !== 'error' && legacyLevel !== 3) return;
-      const message = details.message ?? legacyMessage;
-      const source = details.sourceId ?? legacySource;
-      const line = details.lineNumber ?? legacyLine;
-      writeRendererHealthLog('console-error', {
-        message: redactSensitiveText(message).snippet.slice(0, 2_000),
-        source: path.basename(source ?? ''),
-        line,
-      });
-      if (process.env.NOEMA_SMOKE_TEST === '1') {
-        console.error('Noema renderer error:', message, source, line);
-      }
+  createMainWindow({
+    dirname: __dirname,
+    testRendererUrl,
+    devServerUrl: MAIN_WINDOW_VITE_DEV_SERVER_URL,
+    viteName: MAIN_WINDOW_VITE_NAME,
+    testSocialWorkPrompt: Boolean(testSocialWorkPrompt),
+    testSocialAgentWorkflow: Boolean(testSocialAgentWorkflow),
+    socialWorkReverseSnapshotProbe:
+      process.env.NOEMA_E2E_SOCIAL_WORK_REVERSE_SNAPSHOT === '1',
+    desktopLifecycle,
+    pendingFollowupNavigation,
+    recordDiagnosticEvent,
+    writeRendererHealthLog,
+    setMainWindow: (window) => {
+      mainWindow = window;
     },
-  );
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (shouldOpenExternally(url)) void shell.openExternal(url);
-    return { action: 'deny' };
-  });
-  mainWindow.webContents.on('will-navigate', (event, url) => {
-    if (
-      !isInternalNavigation(
-        url,
-        testRendererUrl ?? MAIN_WINDOW_VITE_DEV_SERVER_URL,
-        pathToFileURL(
-          path.join(
-            __dirname,
-            `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`,
-          ),
-        ).href,
-      )
-    )
-      event.preventDefault();
-  });
-  mainWindow.on('closed', () => {
-    if (rendererLoadRetryTimer) clearTimeout(rendererLoadRetryTimer);
-    rendererLoadRetryTimer = undefined;
-    if (rendererMountCheckTimer) clearTimeout(rendererMountCheckTimer);
-    rendererMountCheckTimer = undefined;
-    mainWindow = null;
-    pendingFollowupNavigation.resetRenderer();
-  });
-  desktopLifecycle?.attachWindow(mainWindow);
-
-  if (deferDevelopmentWindowUntilMounted && rendererDevServerUrl) {
-    mainWindow.webContents.on('did-finish-load', () => {
-      if (rendererMountCheckTimer) clearTimeout(rendererMountCheckTimer);
-      rendererMountCheckTimer = setTimeout(() => {
-        rendererMountCheckTimer = undefined;
-        if (window.isDestroyed()) return;
-        void window.webContents
-          .executeJavaScript(`(() => {
-            const root = document.getElementById('root');
-            return {
-              mounted: Boolean(root?.childElementCount),
-              rootChildren: root?.childElementCount ?? 0,
-              entryEvaluated: performance.getEntriesByName('noema.renderer.entry-evaluated').length > 0,
-            };
-          })()`)
-          .then(
-            (status: {
-              mounted: boolean;
-              rootChildren: number;
-              entryEvaluated: boolean;
-            }) => {
-              writeRendererHealthLog(
-                status.mounted ? 'renderer-mounted' : 'renderer-root-empty',
-                status,
-              );
-              if (status.mounted) {
-                if (process.env.NOEMA_SMOKE_HIDDEN !== '1') window.show();
-                return;
-              }
-              if (rendererMountRecoveryCount < 2) {
-                rendererMountRecoveryCount += 1;
-                writeRendererHealthLog('renderer-mount-retry', {
-                  attempt: rendererMountRecoveryCount,
-                  ...status,
-                });
-                void window.loadURL(rendererDevServerUrl).catch((error) => {
-                  writeRendererHealthLog('renderer-mount-retry-failed', {
-                    attempt: rendererMountRecoveryCount,
-                    error:
-                      error instanceof Error ? error.message : String(error),
-                  });
-                });
-                return;
-              }
-              if (process.env.NOEMA_SMOKE_HIDDEN !== '1') window.show();
+    resetEntryReadiness: () => {
+      entryReadinessRecordedFor = null;
+    },
+    setEntryRoute: (route) => {
+      currentEntryRoute = route;
+    },
+    getApplicationExecutionId: () => currentApplicationExecutionId,
+    smoke: {
+      enabled: process.env.NOEMA_SMOKE_TEST === '1',
+      hidden: process.env.NOEMA_SMOKE_HIDDEN === '1',
+      run: (window, fits) => {
+        scheduleRendererSmoke(
+          {
+            restoreMainWindowForTest: () =>
+              desktopLifecycle?.restoreWindow() ?? false,
+            hasTray: () => desktopLifecycle?.hasTray ?? false,
+            runProbe: runDesktopProbe as unknown as (
+              name: string,
+              ...args: unknown[]
+            ) => Promise<unknown>,
+            writeSmokeLog,
+            armDiagnosticsReadFailure: (armed) => {
+              diagnosticsReadFailureProbeArmed = armed;
             },
-          )
-          .catch((error) => {
-            writeRendererHealthLog('renderer-mount-check-failed', {
-              error: error instanceof Error ? error.message : String(error),
-            });
-            if (process.env.NOEMA_SMOKE_HIDDEN !== '1') window.show();
-          });
-      }, 1_500);
-    });
-  }
-
-  mainWindow.webContents.once('did-finish-load', () => {
-    if (rendererLoadRetryTimer) clearTimeout(rendererLoadRetryTimer);
-    rendererLoadRetryTimer = undefined;
-    const loadedUrl = mainWindow?.webContents.getURL();
-    if (currentApplicationExecutionId && loadedUrl) {
-      currentEntryRoute =
-        new URL(loadedUrl).hash === '#archive'
-          ? 'legacy-archive'
-          : 'social-chat';
-      recordDiagnosticEvent({
-        executionId: currentApplicationExecutionId,
-        module: 'desktop.main',
-        operation: 'entry.route_selected',
-        status: 'observed',
-        details: { route: currentEntryRoute },
-      });
-    }
-  });
-
-  if (testRendererUrl) {
-    void mainWindow.loadURL(testRendererUrl);
-  } else if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-    void mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
-  } else {
-    void mainWindow.loadFile(
-      path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
-    );
-  }
-
-  if (
-    process.env.NOEMA_SMOKE_TEST === '1' &&
-    !testSocialWorkPrompt &&
-    !testSocialAgentWorkflow
-  ) {
-    if (!mainWindow) throw new Error('Smoke window is unavailable');
-    scheduleRendererSmoke(
-      {
-        restoreMainWindowForTest: () =>
-          desktopLifecycle?.restoreWindow() ?? false,
-        hasTray: () => Boolean(desktopLifecycle?.hasTray),
-        runProbe: runDesktopProbe as unknown as (
-          name: string,
-          ...args: unknown[]
-        ) => Promise<unknown>,
-        writeSmokeLog,
-        armDiagnosticsReadFailure: (armed) => {
-          diagnosticsReadFailureProbeArmed = armed;
-        },
+          },
+          window,
+          app,
+          fits,
+        );
       },
-      mainWindow,
-      app,
-      initialWindowFitsWorkArea,
-    );
-  }
+    },
+  });
 };
 
 desktopLifecycle = createDesktopLifecycle({
