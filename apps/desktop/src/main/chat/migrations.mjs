@@ -1102,4 +1102,22 @@ export function migrateSocialChatSchema(
       ).run(isoNow());
     })();
   }
+  if (current < 38 && targetVersion >= 38) {
+    db.transaction(() => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS conversation_archives (
+          id TEXT PRIMARY KEY,
+          room_id TEXT NOT NULL REFERENCES social_rooms(id) ON DELETE CASCADE,
+          reason TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          payload_json TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_conversation_archives_room
+          ON conversation_archives(room_id, created_at DESC);
+      `);
+      db.prepare(
+        'INSERT INTO social_schema_migrations(version, applied_at) VALUES (38, ?)',
+      ).run(isoNow());
+    })();
+  }
 }

@@ -144,7 +144,8 @@ SQLite 是主要产品事实源；`.work/` 只放过程材料。Agent 个体事�
 - `social_messages`、`social_rooms`、`social_agents`：对话、房间、Agent 身份。
 - `social_projects`、`social_work_tasks`、`social_work_execution_steps`：项目、工单、执行步骤。
 - `social_work_file_changes`、`file_change_operations`、`command_batches`：文件与命令证据（当前部分场景为空）。
-- `conversation_branches`、`conversation_turns`、`conversation_active_branch`：连续时间线/检查点（schema 37）；当前产品路径只保留单一可见时间线，分支不暴露。
+- `conversation_branches`、`conversation_turns`、`conversation_active_branch`：连续时间线/检查点（schema 38）；当前产品路径只保留单一可见时间线，分支不暴露。
+- `conversation_archives`：编辑/重发前的不可变消息+分支+回合快照；恢复时先把当前线存为 `pre_restore`，再切换 HEAD。
 - `memories`、`settings`：记忆与配置；密钥在加密存储，不进入对话或日志。
 - 工作区身份、文件边界和滚动恢复由 `social_projects`/workspace identity 记录。
 - `<Agent Home>/events.jsonl`：追加式个体事件流，当前记录 Noema 回合开始/完成/失败/中断；序号单调，读取按游标，不能更新或删除。
@@ -162,8 +163,8 @@ SQLite 是主要产品事实源；`.work/` 只放过程材料。Agent 个体事�
 
 ## 9. 现状与目标
 
-已交付：Core Chat 单对话、流式回复、消息操作、历史、设置；工单派发与执行轨迹；DSH/native；Windows Runner；SQLite；任务 dock、完成事件和交付记录；0.7.2 的工作区路由与 DSH 非 JSON 容错；阶段 1 的 AgentRuntime 最小核心、Noema 回合事件日志和 Noema 工具调用内联轨迹；阶段 2 的单 HEAD 用户截断重发、助手原位编辑与会话失效。
+已交付：Core Chat 单对话、流式回复、消息操作、历史、设置；工单派发与执行轨迹；DSH/native；Windows Runner；SQLite；任务 dock、完成事件和交付记录；0.7.2 的工作区路由与 DSH 非 JSON 容错；阶段 1 的 AgentRuntime 最小核心、Noema 回合事件日志和 Noema 工具调用内联轨迹；阶段 2 的单 HEAD 用户截断重发、助手原位编辑、会话失效，以及编辑/重发前的不可变消息/回合归档。
 
-未交付：执行者可见常驻私聊、常驻会话/项目 fork 拓扑、岗位库/团队/团队负责人/项目负责人、六模块实现、ContextCompiler、Memory Store、完整任务证据。
+未交付：归档恢复的产品入口、工作区文件回滚、执行者可见常驻私聊、常驻会话/项目 fork 拓扑、岗位库/团队/团队负责人/项目负责人、六模块实现、ContextCompiler、Memory Store、完整任务证据。
 
 版本、测试、安装和下一步只写在 [STATUS](STATUS.md)，不在本文件重复。

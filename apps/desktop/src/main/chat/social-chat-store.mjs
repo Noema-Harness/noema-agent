@@ -4418,6 +4418,112 @@ export class SocialChatStore {
     return threads;
   }
 
+  createConversationArchive(roomId, reason = 'edit') {
+    requireText(roomId, '房间 ID', 200);
+    requireText(reason, '存档原因', 80);
+    const messages = this.db
+      .prepare(
+        'SELECT * FROM social_messages WHERE room_id = ? ORDER BY seq ASC',
+      )
+      .all(roomId);
+    const branches = this.db
+      .prepare('SELECT * FROM conversation_branches WHERE room_id = ?')
+      .all(roomId);
+    const turns = this.db
+      .prepare(
+        `SELECT t.* FROM conversation_turns t
+         JOIN conversation_branches b ON b.id = t.branch_id
+         WHERE b.room_id = ?`,
+      )
+      .all(roomId);
+    const activeBranch = this.db
+      .prepare('SELECT * FROM conversation_active_branch WHERE room_id = ?')
+      .get(roomId);
+    const id = randomUUID();
+    this.db
+      .prepare(
+        `INSERT INTO conversation_archives
+           (id, room_id, reason, created_at, payload_json)
+         VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(
+        id,
+        roomId,
+        reason,
+        new Date().toISOString(),
+        JSON.stringify({
+          version: 1,
+          messages,
+          branches,
+          turns,
+          activeBranch: activeBranch ?? null,
+        }),
+      );
+    return { id, messages: messages.length, turns: turns.length };
+  }
+
+  restoreConversationArchive(archiveId) {
+    requireText(archiveId, '存档 ID', 200);
+    const archive = this.db
+      .prepare(
+        `SELECT room_id AS roomId, payload_json AS payload
+         FROM conversation_archives WHERE id = ?`,
+      )
+      .get(archiveId);
+    if (!archive) throw new Error('找不到要恢复的历史存档。');
+    const payload = JSON.parse(archive.payload);
+    if (payload?.version !== 1) throw new Error('历史存档格式不受支持。');
+    const insertRows = (table, rows) => {
+      if (!Array.isArray(rows) || !rows.length) return;
+      const columns = this.db
+        .prepare(`PRAGMA table_info(${table})`)
+        .all()
+        .map((column) => column.name);
+      const statement = this.db.prepare(
+        `INSERT INTO ${table} (${columns.join(',')})
+         VALUES (${columns.map(() => '?').join(',')})`,
+      );
+      for (const row of rows) {
+        statement.run(...columns.map((column) => row[column] ?? null));
+      }
+    };
+    return this.db.transaction(() => {
+      const restorePoint = this.createConversationArchive(
+        archive.roomId,
+        'pre_restore',
+      );
+      this.db.pragma('defer_foreign_keys = ON');
+      this.db
+        .prepare('DELETE FROM conversation_active_branch WHERE room_id = ?')
+        .run(archive.roomId);
+      this.db
+        .prepare(
+          `DELETE FROM conversation_turns
+           WHERE branch_id IN (
+             SELECT id FROM conversation_branches WHERE room_id = ?
+           )`,
+        )
+        .run(archive.roomId);
+      this.db
+        .prepare('DELETE FROM conversation_branches WHERE room_id = ?')
+        .run(archive.roomId);
+      this.db
+        .prepare('DELETE FROM social_messages WHERE room_id = ?')
+        .run(archive.roomId);
+      insertRows('conversation_branches', payload.branches);
+      insertRows('social_messages', payload.messages);
+      insertRows('conversation_turns', payload.turns);
+      if (payload.activeBranch) {
+        insertRows('conversation_active_branch', [payload.activeBranch]);
+      }
+      return {
+        messages: payload.messages.length,
+        turns: payload.turns.length,
+        archiveId: restorePoint.id,
+      };
+    })();
+  }
+
   rewindConversationToMessage(roomId, messageId) {
     requireText(messageId, '消息 ID', 200);
     const boundary = this.latestConversationBoundary(roomId);
@@ -4439,6 +4545,7 @@ export class SocialChatStore {
       .get(roomId, target.createdAt);
     if (task) throw new Error('这条消息之后有执行任务，不能修改。');
     return this.db.transaction(() => {
+      const archive = this.createConversationArchive(roomId, 'user_edit');
       this.branches.truncateActiveBranchForRewind(
         roomId,
         messageId,
@@ -4450,7 +4557,10 @@ export class SocialChatStore {
            WHERE room_id = ? AND seq >= ?`,
         )
         .run(roomId, target.seq);
-      return { removed: Number(result.changes ?? 0) };
+      return {
+        removed: Number(result.changes ?? 0),
+        archiveId: archive.id,
+      };
     })();
   }
 
@@ -4470,14 +4580,20 @@ export class SocialChatStore {
       throw new Error('这条回复还没有完成，不能修改。');
     if (boundary && target.seq <= boundary.seq)
       throw new Error('历史会话只读，不能修改。');
-    const result = this.db
-      .prepare(
-        `UPDATE social_messages
-         SET content = ?, updated_at = ?
-         WHERE room_id = ? AND id = ? AND role = 'assistant'`,
-      )
-      .run(content.trim(), new Date().toISOString(), roomId, messageId);
-    return { updated: Number(result.changes ?? 0) };
+    return this.db.transaction(() => {
+      const archive = this.createConversationArchive(roomId, 'assistant_edit');
+      const result = this.db
+        .prepare(
+          `UPDATE social_messages
+           SET content = ?, updated_at = ?
+           WHERE room_id = ? AND id = ? AND role = 'assistant'`,
+        )
+        .run(content.trim(), new Date().toISOString(), roomId, messageId);
+      return {
+        updated: Number(result.changes ?? 0),
+        archiveId: archive.id,
+      };
+    })();
   }
 
   getContext(

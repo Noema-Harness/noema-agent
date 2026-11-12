@@ -3380,14 +3380,13 @@ test('assistant messages can be edited in place without changing the timeline', 
     social.completeReply(turn.assistantMessageId);
     const before = social.getRoomSnapshot('room-noema').messages;
 
-    assert.deepEqual(
-      social.editAssistantMessage(
-        'room-noema',
-        turn.assistantMessageId,
-        'edited answer',
-      ),
-      { updated: 1 },
+    const edited = social.editAssistantMessage(
+      'room-noema',
+      turn.assistantMessageId,
+      'edited answer',
     );
+    assert.equal(edited.updated, 1);
+    assert.ok(edited.archiveId);
 
     const after = social.getRoomSnapshot('room-noema').messages;
     assert.equal(after.length, before.length);
@@ -3398,6 +3397,15 @@ test('assistant messages can be edited in place without changing the timeline', 
     assert.equal(
       after.find((message) => message.id === turn.assistantMessageId)?.content,
       'edited answer',
+    );
+    const restored = social.restoreConversationArchive(edited.archiveId);
+    assert.equal(restored.messages, before.length);
+    assert.equal(
+      social
+        .getRoomSnapshot('room-noema')
+        .messages.find((message) => message.id === turn.assistantMessageId)
+        ?.content,
+      'original answer',
     );
     assert.throws(
       () =>
@@ -3444,10 +3452,12 @@ test('conversation threads expose titles and rewind only the active thread', () 
         social.rewindConversationToMessage('room-noema', first.userMessageId),
       /历史会话只读/,
     );
-    assert.deepEqual(
-      social.rewindConversationToMessage('room-noema', second.userMessageId),
-      { removed: 2 },
+    const rewound = social.rewindConversationToMessage(
+      'room-noema',
+      second.userMessageId,
     );
+    assert.equal(rewound.removed, 2);
+    assert.ok(rewound.archiveId);
     const messages = social.getRoomSnapshot('room-noema').messages;
     assert.equal(
       messages.some((message) => message.id === second.userMessageId),
@@ -3455,6 +3465,13 @@ test('conversation threads expose titles and rewind only the active thread', () 
     );
     assert.equal(
       messages.some((message) => message.id === first.userMessageId),
+      true,
+    );
+    const restored = social.restoreConversationArchive(rewound.archiveId);
+    assert.equal(restored.messages, 5);
+    const restoredMessages = social.getRoomSnapshot('room-noema').messages;
+    assert.equal(
+      restoredMessages.some((message) => message.id === second.userMessageId),
       true,
     );
   } finally {
