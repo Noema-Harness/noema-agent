@@ -795,6 +795,13 @@ function createRunHandle({
     try {
       event = parseDshHeadlessEvent(line);
     } catch (error) {
+      // DSH plugins and MCP clients may print diagnostics to stdout. The
+      // headless protocol itself is JSON-lines; a plain-text line is not a
+      // protocol event and must not abort a task that already produced work.
+      if (!line.trimStart().startsWith('{')) {
+        console.warn('Noema ignored a non-JSON DSH diagnostic line.');
+        return;
+      }
       stopForError(error);
       return;
     }
