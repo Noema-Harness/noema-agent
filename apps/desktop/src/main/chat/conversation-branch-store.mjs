@@ -219,13 +219,6 @@ export class ConversationBranchStore {
       )
       .get(active.branchId, messageId);
     if (!turn) return;
-    const later = this.db
-      .prepare(
-        `SELECT 1 FROM conversation_turns
-         WHERE branch_id = ? AND ordinal > ? LIMIT 1`,
-      )
-      .get(active.branchId, turn.ordinal);
-    if (later) throw new Error('只能修改最近一条消息。');
     this.db
       .prepare(
         `DELETE FROM conversation_turns

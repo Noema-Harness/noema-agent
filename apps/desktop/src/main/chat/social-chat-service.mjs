@@ -684,6 +684,20 @@ export class SocialChatService {
     return this.chatRuntimeSessions.resetChatSession(agentId);
   }
 
+  editAssistantMessage(roomId, messageId, content) {
+    const result = this.store.editAssistantMessage(roomId, messageId, content);
+    if (result.updated) {
+      this.chatRuntimeSessions.invalidateChatSession('noema', roomId);
+    }
+    return result;
+  }
+
+  rewindConversationToMessage(roomId, messageId) {
+    const result = this.store.rewindConversationToMessage(roomId, messageId);
+    this.chatRuntimeSessions.invalidateChatSession('noema', roomId);
+    return result;
+  }
+
   createChatTicketSession() {
     return this.chatRuntimeSessions.createChatTicketSession();
   }

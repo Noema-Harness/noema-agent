@@ -1447,6 +1447,11 @@ export interface NoemaBridge {
     roomId: string,
     messageId: string,
   ): Promise<{ removed: number }>;
+  editSocialAssistantMessage(
+    roomId: string,
+    messageId: string,
+    content: string,
+  ): Promise<{ updated: number }>;
   sendSocialMessage(input: {
     roomId: string;
     agentId: string;

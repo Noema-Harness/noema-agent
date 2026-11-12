@@ -258,6 +258,17 @@ const bridge = {
     ) as Promise<{
       removed: number;
     }>,
+  editSocialAssistantMessage: (
+    roomId: string,
+    messageId: string,
+    content: string,
+  ) =>
+    ipcRenderer.invoke(
+      'noema:social-edit-assistant-message',
+      roomId,
+      messageId,
+      content,
+    ) as Promise<{ updated: number }>,
   sendSocialMessage: (input: {
     roomId: string;
     agentId: string;

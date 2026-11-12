@@ -3367,6 +3367,52 @@ test('touched files include write and edit paths only', () => {
   }
 });
 
+test('assistant messages can be edited in place without changing the timeline', () => {
+  const { db, social } = makeStores();
+  try {
+    const turn = social.beginTurn({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: 'edit target',
+      model: 'test-model',
+    });
+    social.appendAssistantDelta(turn.assistantMessageId, 'original answer');
+    social.completeReply(turn.assistantMessageId);
+    const before = social.getRoomSnapshot('room-noema').messages;
+
+    assert.deepEqual(
+      social.editAssistantMessage(
+        'room-noema',
+        turn.assistantMessageId,
+        'edited answer',
+      ),
+      { updated: 1 },
+    );
+
+    const after = social.getRoomSnapshot('room-noema').messages;
+    assert.equal(after.length, before.length);
+    assert.deepEqual(
+      after.map((message) => message.id),
+      before.map((message) => message.id),
+    );
+    assert.equal(
+      after.find((message) => message.id === turn.assistantMessageId)?.content,
+      'edited answer',
+    );
+    assert.throws(
+      () =>
+        social.editAssistantMessage(
+          'room-noema',
+          turn.userMessageId,
+          'not allowed',
+        ),
+      /只能修改 Noema 的回复/,
+    );
+  } finally {
+    db.close();
+  }
+});
+
 test('conversation threads expose titles and rewind only the active thread', () => {
   const { db, social } = makeStores();
   try {

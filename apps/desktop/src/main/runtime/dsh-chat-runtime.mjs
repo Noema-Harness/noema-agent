@@ -89,6 +89,11 @@ export class DshChatRuntime {
     this.freshSession = true;
   }
 
+  invalidateSession() {
+    this.sessionId = null;
+    this.freshSession = false;
+  }
+
   async *streamChat({
     messages,
     model = this.model,

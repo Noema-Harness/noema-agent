@@ -4454,6 +4454,32 @@ export class SocialChatStore {
     })();
   }
 
+  editAssistantMessage(roomId, messageId, content) {
+    requireText(messageId, '消息 ID', 200);
+    requireText(content, '回复内容', 100_000);
+    const boundary = this.latestConversationBoundary(roomId);
+    const target = this.db
+      .prepare(
+        `SELECT seq, role, status FROM social_messages
+         WHERE room_id = ? AND id = ?`,
+      )
+      .get(roomId, messageId);
+    if (!target) throw new Error('找不到要修改的回复。');
+    if (target.role !== 'assistant') throw new Error('只能修改 Noema 的回复。');
+    if (target.status !== 'complete')
+      throw new Error('这条回复还没有完成，不能修改。');
+    if (boundary && target.seq <= boundary.seq)
+      throw new Error('历史会话只读，不能修改。');
+    const result = this.db
+      .prepare(
+        `UPDATE social_messages
+         SET content = ?, updated_at = ?
+         WHERE room_id = ? AND id = ? AND role = 'assistant'`,
+      )
+      .run(content.trim(), new Date().toISOString(), roomId, messageId);
+    return { updated: Number(result.changes ?? 0) };
+  }
+
   getContext(
     roomId,
     {

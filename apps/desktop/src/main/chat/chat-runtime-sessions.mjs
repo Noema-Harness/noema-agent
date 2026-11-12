@@ -44,6 +44,15 @@ export class ChatRuntimeSessions {
     return true;
   }
 
+  invalidateChatSession(agentId = 'noema', roomId = 'room-noema') {
+    const runtime = this.chatRuntimeFor(agentId, roomId);
+    if (typeof runtime.invalidateSession === 'function') {
+      runtime.invalidateSession();
+      return;
+    }
+    if (typeof runtime.resetSession === 'function') runtime.resetSession();
+  }
+
   createChatTicketSession() {
     if (typeof this.startTicket !== 'function') {
       throw new ModelProviderError(

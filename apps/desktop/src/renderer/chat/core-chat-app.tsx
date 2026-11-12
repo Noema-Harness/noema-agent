@@ -313,7 +313,7 @@ export function CoreChatApp() {
     handleComposerKeyDown,
     handleSend,
     rewindAndResend,
-    continuity,
+    saveAssistantEdit,
     handleStop,
     handleRetry,
     busy,
@@ -506,15 +506,18 @@ export function CoreChatApp() {
   const saveEdit = async (message: NoemaSocialMessage) => {
     const text = editingText.trim();
     if (!text) return;
+    if (message.role === 'assistant') {
+      setEditingMessageId(null);
+      setEditingText('');
+      await saveAssistantEdit(message.id, text);
+      return;
+    }
     const items = conversationTurns.flatMap((turn) => turn.items);
     const index = items.findIndex(
       (item) => item.kind === 'message' && item.message.id === message.id,
     );
     const later = index >= 0 && index < items.length - 1;
-    const notice =
-      continuity?.mode === 'on'
-        ? '修改这条消息会新建一个分支并重新发送，原对话保留。继续吗？'
-        : '修改这条消息会回退它之后的对话，然后重新发送。继续吗？';
+    const notice = '修改这条消息会丢弃它之后的对话，然后重新发送。继续吗？';
     if (later && !window.confirm(notice)) return;
     setEditingMessageId(null);
     setEditingText('');
@@ -594,7 +597,7 @@ export function CoreChatApp() {
                   disabled={!editingText.trim() || busy || Boolean(activeReply)}
                   onClick={() => void saveEdit(message)}
                 >
-                  保存并发送
+                  {user ? '保存并发送' : '保存'}
                 </NoemaButton>
               </div>
             </div>
@@ -629,7 +632,9 @@ export function CoreChatApp() {
             text={message.content}
             onQuote={quoteMessage}
             onEdit={
-              user && !busy && !activeReply
+              (user || (!user && message.status === 'complete')) &&
+              !busy &&
+              !activeReply
                 ? () => {
                     setEditingMessageId(message.id);
                     setEditingText(message.content);

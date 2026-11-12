@@ -1837,51 +1837,38 @@ export function useSocialChatController() {
       (draftRef.current ?? groupDraftRef.current)?.focus();
     }
   };
-  const switchContinuityBranch = async (branchId: string) => {
-    if (!currentRoom || !continuity || busy || activeReply) return;
-    try {
-      setBusy(true);
-      setNotice('');
-      const next = await window.noema.switchSocialContinuityBranch({
-        roomId: currentRoom.id,
-        branchId,
-        expectedVersion: continuity.activeVersion,
-      });
-      setContinuity(next);
-      await loadRoom(currentRoom.id);
-    } catch (error) {
-      setNotice(
-        error instanceof Error ? error.message : '分支没有切换，请重试。',
-      );
-    } finally {
-      setBusy(false);
-    }
-  };
   const rewindAndResend = async (messageId: string, text: string) => {
     if (!currentRoom || busy || activeReply) return;
     try {
       setBusy(true);
       setNotice('');
-      const continuity = await window.noema.getSocialContinuityState(
-        currentRoom.id,
-      );
-      if (continuity.mode === 'on') {
-        const nextContinuity =
-          await window.noema.createSocialContinuityEditBranch({
-            roomId: currentRoom.id,
-            messageId,
-            title: text,
-          });
-        setContinuity(nextContinuity);
-      } else {
-        await window.noema.rewindSocialMessage(currentRoom.id, messageId);
-      }
+      await window.noema.rewindSocialMessage(currentRoom.id, messageId);
       setLiveTrace(null);
       await loadRoom(currentRoom.id);
       await handleSend(undefined, text, { fromEdit: true });
     } catch (error) {
       setNotice(
-        error instanceof Error ? error.message : '修改没有生效，请重试。',
+        error instanceof Error ? error.message : '消息没有修改，请重试。',
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+  const saveAssistantEdit = async (messageId: string, text: string) => {
+    if (!currentRoom || busy || activeReply) return;
+    try {
+      setBusy(true);
+      setNotice('');
+      await window.noema.editSocialAssistantMessage(
+        currentRoom.id,
+        messageId,
+        text,
+      );
+      setLiveTrace(null);
+      await loadRoom(currentRoom.id);
+    } catch (error) {
+      setNotice(
+        error instanceof Error ? error.message : '回复没有修改，请重试。',
       );
     } finally {
       setBusy(false);
@@ -2869,8 +2856,8 @@ export function useSocialChatController() {
     showJumpToLatest,
     handleSend,
     rewindAndResend,
+    saveAssistantEdit,
     continuity,
-    switchContinuityBranch,
     notice,
     setNotice,
     providerWarning,
