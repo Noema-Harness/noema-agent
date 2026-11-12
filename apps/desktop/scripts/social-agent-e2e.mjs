@@ -1,3 +1,6 @@
+// STATUS: RETIRED (2026-11-12). This harness targets the removed social
+// navigation/room shell. It is not part of release verification; keep it only
+// as a reference for restoring that surface with real tests.
 import { developmentRoot } from '../test-support/development-workspace.mjs';
 import { createSocialTestStore } from '../test-support/social-team.mjs';
 import { spawn } from 'node:child_process';

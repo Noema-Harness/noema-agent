@@ -58,6 +58,7 @@
   - `apps/desktop/src/renderer/chat/chat-start-state.tsx`
 - **旧执行器回退**：`apps/desktop/src/main/execution/noema-project-executor.mjs` 仍被 `apps/desktop/src/main/main.ts:85`、`main.ts:1926` 和 `apps/desktop/src/main/execution/work-runtime-registry.mjs:36-42` 引用；只在 DSH 不可用时使用，属于 legacy fallback，不是可删死代码。
 - **判定规则**：零入引用不等于可删。只有同时满足“无动态/测试入口、无未来产品用途、无数据/恢复依赖”才删除；其余保留并登记。当前没有新增的确定可删产品文件；此前的 `settingsOpen`/no-op JSX、临时文件已清理。
+- **退役验证资产（2026-11-12）**：`apps/desktop/scripts/social-agent-e2e.mjs`、`apps/desktop/test-support/electron/agent-probes.ts`、`apps/desktop/test-support/electron/conversation-navigation-e2e.mjs` 面向已移除的会话导航/房间界面，已从 `package.json` 的发布验证入口移除，文件保留作恢复该界面时的参考。它们不是当前产品测试，不得作为发布验收。
 
 ## 下一步
 
