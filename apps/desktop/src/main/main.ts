@@ -40,7 +40,6 @@ import {
 } from './diagnostics/database-recovery.mjs';
 import { saveDiagnosticsExport } from './diagnostics/save-diagnostics-export.mjs';
 import { SocialChatStore } from './chat/social-chat-store.mjs';
-import { createChatExportRuntime } from './app/chat-export-runtime';
 import { SOCIAL_SCHEMA_VERSION } from './chat/social-chat-schema.mjs';
 import { SocialProjectStore } from './projects/social-project-store.mjs';
 import { SocialChatService } from './chat/social-chat-service.mjs';
@@ -52,6 +51,7 @@ import {
 } from './app/windows-runner-runtime';
 import { createSocialE2eRuntime } from './testing/social-e2e-runtime';
 import {
+  createChatExportRuntime,
   createSocialStateRuntime,
   createSocialWorkDialogs,
   createSocialWorkServiceRuntime,

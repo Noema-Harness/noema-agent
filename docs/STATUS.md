@@ -1,6 +1,6 @@
 # STATUS
 
-最后更新：2026-11-12 12:30（Asia/Shanghai）
+最后更新：2026-11-12 12:52（Asia/Shanghai）
 
 ## 版本
 
@@ -32,7 +32,7 @@
 - **个体 Agent 模型**：D-014 已定目标（六模块、能力条目、Compiler 组装、成长需候选/评估/影子/版本化）；0.7.1 没有能力库、记忆层或 Context 编译，仍是提示词、工具和旧 room/branch。文档已同步，实现未开始。
 - **编辑/回退**：语义已定：用户消息编辑截断其后并重发；任意助手回复可原地编辑，修改进入上下文，后续消息保留。编辑/回退前的旧线进入不可变存档；回退同步恢复工作区，检测到用户手动改动冲突时停止。0.7.2 仍未实现：renderer 的 `saveEdit`/`rewindAndResend` 和 `core-chat-app.tsx` 仍创建分支（分支栏已移除），助手回复不可编辑；后端 `rewindConversationToMessage` 只完成了部分清理。
 - **分支 UI**：0.7.2 源码已移除分支栏；编辑重发仍创建分支，不能作为产品交互验收。
-- **验证**：2026-11-12 模块合并后运行完整 `npm run check` 通过 **847/847**，27.26s；安装版 `0.7.2` 已启动验证，但安装包早于本轮合并，需重新打包验证。编辑/回退功能仍未达到 BEHAVIOR 的目标。
+- **验证**：2026-11-12 将对话导出并入社交运行时后，完整 `npm run check` 通过 **847/847**，26.76s；`out-export` 打包冒烟通过，但未生成安装包。安装版 `0.7.2` 早于本轮合并，需重新打包验证。编辑/回退功能仍未达到 BEHAVIOR 的目标。
 - **打包**：0.7.2 安装包已生成并完成本机安装；Setup 170,379,776 字节，SHA256 `C266D9F3FA58D2343AB84FC364DB0E4F90B40FD87FF974768E7C4C87E8C021F2`；安装版 exe SHA256 `0AD5D0727BBBFC00E99F7FC8E5E9F9A02500DD6720DC9A97FD4B9C6B75548C19`。产物未签名。
 - **工作区清理**：`.work/research` 仍被 `DeepSeek Harness.exe` 占用（约 166 MB），未删除；其余 `.work` 大目录已移到外部归档。
 - **长期能力**：ContextCompiler、Memory Store、ModuleHost 热重载均未交付；云端和跨设备当前不承诺。
@@ -40,7 +40,7 @@
 ## 已知问题与风险
 
 - 模型/工具失败时必须保留用户消息和已有文件，不能自动宣称完成；当前实现仍需逐场景验证。
-- 主界面已收成一个对话；主进程现有 9 个 `app/`、`testing/` 模块：`window`（含托盘）、`social-runtime`、`chat-export`、`agent`、`provider`、`windows-runner`、`renderer-smoke`、`social-e2e`、`synthetic-provider`；`main.ts` 1,303 行，仍持有启动、服务装配和 IPC 组合。
+- 主界面已收成一个对话；主进程现有 8 个 `app/`、`testing/` 模块：`window`（含托盘）、`social-runtime`（会话、工作服务、导出）、`agent`、`provider`、`windows-runner`、`renderer-smoke`（含冒烟日志）、`social-e2e`、`synthetic-provider`；`main.ts` 1,303 行，仍持有启动、服务装配和 IPC 组合。
 - 旧文档已备份到 `C:\Users\NUC\Desktop\Noema-archive-2026-11-11\pre-doc-reset-2026-11-11`，仓库内旧入口已删除。
 - 文档路由固定为 8 份仓库文档；`workspace:check` 已通过（8 份当前文档、0 错误）。
 
@@ -62,7 +62,7 @@
 
 ## 下一步
 
-1. 先合并已有薄模块、删除重复/空转路径，再处理剩余 IPC 组合；不再新增 `app/`、`testing/` 模块，每片保持 847 全绿。
+1. 主进程模块已从 13 个合并到 8 个；继续审计重复/空转路径和剩余 IPC 组合，不再新增 `app/`、`testing/` 模块，每片保持 847 全绿。
 2. 恢复单执行者闭环和真实任务验收；在这些完成前不宣称 Noema 已可长期交付。
 3. 单独处理 `.work` 过程材料和旧参考源码，不与产品源码混放。
 
