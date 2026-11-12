@@ -2,7 +2,6 @@ import { createHash, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { visibleProjectGroupText } from '../../shared/chat/project-group-public-text.mjs';
 import { normalizeInteractionAdjustmentSnapshots } from '../storage/root-store.mjs';
-import { searchTranscriptHistory } from '../../shared/search/transcript-search.mjs';
 import {
   beginContinuityTurn,
   closeContinuityTurn,
@@ -845,9 +844,6 @@ export class SocialChatStore {
           `)
           .get(roomId, sequence),
       );
-    const cursorFor = (rows, key) =>
-      rows.length ? String(rows[key].seq) : null;
-
     let rows;
     let targetFound = null;
     if (typeof options.aroundMessageId === 'string') {

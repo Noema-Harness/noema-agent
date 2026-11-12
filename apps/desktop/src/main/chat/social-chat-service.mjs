@@ -6,7 +6,6 @@ import {
 
 import { createHash, randomUUID } from 'node:crypto';
 import { userReferencesPastNoemaContext } from '../../shared/search/transcript-search.mjs';
-import { resolveGroupRecipient } from '../../shared/chat/group-mentions.mjs';
 import { ProjectCollaborationStore } from '../projects/project-collaboration-store.mjs';
 import {
   CALCULATE_EXPRESSION_TOOL,

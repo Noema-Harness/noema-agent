@@ -6,7 +6,6 @@ import {
   safeStorage,
   session,
   shell,
-  screen,
   Notification,
 } from 'electron';
 import { createNoemaTray } from './app/tray';
@@ -17,7 +16,6 @@ import { scheduleRendererSmoke } from './testing/renderer-smoke';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { EncryptedSecretStore } from './platform/encrypted-secret-store.mjs';
 import { redactSensitiveText } from '../shared/text/sensitive-text.mjs';
 import { resolveElectronProxy } from './platform/electron-proxy.mjs';
@@ -66,10 +64,7 @@ import { createSocialE2eRuntime } from './testing/social-e2e-runtime';
 import { createSocialWorkDialogs } from './app/social-work-dialogs';
 import { backupBeforeSocialChatMigration } from './chat/social-chat-migration-backup.mjs';
 import { resolveNoemaDatabasePath } from './platform/runtime-paths.mjs';
-import {
-  DshHeadlessAdapter,
-  resolveDshHeadlessRuntime,
-} from './integrations/dsh-headless-adapter.mjs';
+import { createAgentRuntime } from './app/agent-runtime';
 import { DshChatRuntime } from './runtime/dsh-chat-runtime.mjs';
 import { createNativeChatRuntime } from './runtime/chat-runtime.mjs';
 import { createChatRuntimeRegistry } from './runtime/chat-runtime-registry.mjs';
@@ -79,16 +74,7 @@ import { createNoemaToolRegistry } from './runtime/noema-tool-registry.mjs';
 import { NoemaToolSession } from './mcp/noema-tool-session.mjs';
 import { createChatTicketTool } from './chat/chat-ticket-tool.mjs';
 import { createNoemaReadTools } from './chat/noema-read-tools.mjs';
-import {
-  createWindowPreferences,
-  isMainFrameIpcEvent,
-  isInternalNavigation,
-  shouldOpenExternally,
-} from './platform/window-security.mjs';
-import {
-  fitsWithinWorkArea,
-  resolveInitialWindowSize,
-} from './platform/window-geometry.mjs';
+import { isMainFrameIpcEvent } from './platform/window-security.mjs';
 import {
   createSocialReplyNotificationHandler,
   createUserFollowupNotificationHandler,
@@ -605,105 +591,14 @@ async function startNoema() {
     // ticket/attention layer, while DSH owns the agent loop, tools, session
     // durability and context management. Fall back to the legacy executor when
     // the DSH CLI or provider credentials are unavailable.
-    let dshProjectExecutor: DshHeadlessAdapter | null = null;
-    try {
-      const secretStore = providerSecretStore;
-      const rawBaseUrl = secretStore?.getBaseUrl() ?? null;
-      if (
-        secretStore?.isConfigured() &&
-        typeof rawBaseUrl === 'string' &&
-        rawBaseUrl
-      ) {
-        const baseUrl = rawBaseUrl.endsWith('/v1')
-          ? rawBaseUrl
-          : `${rawBaseUrl.replace(/\/+$/u, '')}/v1`;
-        const dshRuntime = await resolveDshHeadlessRuntime();
-        const executionPermission =
-          rootStore?.getExecutionPermissions().externalFiles ?? 'ask';
-        const dshPermissionMode =
-          executionPermission === 'allow'
-            ? 'danger-full-access'
-            : executionPermission === 'read-only'
-              ? 'read-only'
-              : 'workspace-write';
-        dshProjectExecutor = new DshHeadlessAdapter({
-          runtime: dshRuntime,
-          userDataPath: app.getPath('userData'),
-          providerBaseUrl: baseUrl,
-          getApiKey: () => secretStore.get(),
-          getPermissionMode: () => {
-            const value =
-              rootStore?.getExecutionPermissions().externalFiles ?? 'ask';
-            return value === 'allow'
-              ? 'danger-full-access'
-              : value === 'read-only'
-                ? 'read-only'
-                : 'workspace-write';
-          },
-          onUsage: (usage) => modelUsageStore.record(usage),
-        });
-        recordDiagnosticEvent({
-          module: 'dsh',
-          operation: 'runtime.startup',
-          status: 'ready',
-          details: { phase: 'startup' },
-        });
-        recordDiagnosticEvent({
-          module: 'dsh',
-          operation: 'runtime.permission',
-          status: 'ready',
-          details: { capability: dshPermissionMode },
-        });
-      }
-    } catch (error) {
-      const code =
-        typeof (error as { code?: unknown })?.code === 'string'
-          ? (error as { code: string }).code
-          : 'dsh_runtime_unavailable';
-      recordDiagnosticEvent({
-        module: 'dsh',
-        operation: 'runtime.startup',
-        status: 'unavailable',
-        errorCode: code,
-        details: { phase: 'startup' },
-      });
-    }
-    const agent = new RootAgent({
-      store: rootStore,
-      provider,
+    const agentRuntime = await createAgentRuntime({
+      rootStore,
+      providerRuntime,
+      userDataPath: app.getPath('userData'),
+      getMainWindow: () => mainWindow,
       recordDiagnosticEvent,
-      secretStore: providerSecretStore,
-      webSearchSecretStore,
-      recordExternalUsage: (record) => modelUsageStore.recordExternal(record),
-      allowRootActions: false,
-      allowHistorySearch: false,
-      recoverInterruptedTurns: false,
-      emit: (payload) => {
-        const eventPayload = payload as {
-          type?: unknown;
-          model?: unknown;
-        };
-        const modelEvents = new Set([
-          'models-updated',
-          'model-selected',
-          'provider-configured',
-          'web-search-configured',
-        ]);
-        if (
-          typeof eventPayload?.type !== 'string' ||
-          !modelEvents.has(eventPayload.type)
-        )
-          return;
-        if (mainWindow && !mainWindow.isDestroyed())
-          mainWindow.webContents.send(CHANNELS.modelStateEvent, {
-            type: eventPayload.type,
-            ...(eventPayload.type === 'model-selected' &&
-            typeof eventPayload.model === 'string'
-              ? { model: eventPayload.model }
-              : {}),
-          });
-      },
     });
+    const { dshProjectExecutor, rootAgent: agent } = agentRuntime;
     rootAgent = agent;
     const migrationBackupPath = await backupBeforeSocialChatMigration({
       db: rootStore.db,
