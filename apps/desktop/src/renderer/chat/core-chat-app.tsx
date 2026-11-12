@@ -87,6 +87,69 @@ function isSettledTask(status: NoemaSocialWorkTask['status']) {
   );
 }
 
+type DeliveryEventStatus = 'completed' | 'failed' | 'interrupted';
+
+interface DeliveryEvent {
+  taskId: string;
+  agentName: string;
+  status: DeliveryEventStatus;
+  at: string;
+}
+
+const DELIVERY_EVENTS_STORAGE_KEY = 'noema.delivery-events.v1';
+
+function readDeliveryEvents(): DeliveryEvent[] {
+  try {
+    const raw = window.localStorage.getItem(DELIVERY_EVENTS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((entry): entry is DeliveryEvent => {
+        if (!entry || typeof entry !== 'object') return false;
+        const event = entry as Partial<DeliveryEvent>;
+        return (
+          typeof event.taskId === 'string' &&
+          typeof event.agentName === 'string' &&
+          typeof event.at === 'string' &&
+          (event.status === 'completed' ||
+            event.status === 'failed' ||
+            event.status === 'interrupted')
+        );
+      })
+      .slice(-8);
+  } catch {
+    return [];
+  }
+}
+
+type TimelineEntry =
+  | {
+      kind: 'message';
+      at: string;
+      key: string;
+      order: number;
+      message: NoemaSocialMessage;
+    }
+  | {
+      kind: 'event';
+      at: string;
+      key: string;
+      order: number;
+      event: DeliveryEvent;
+    };
+
+function deliveryEventLabel(status: DeliveryEventStatus) {
+  switch (status) {
+    case 'completed':
+      return '已交付';
+    case 'failed':
+      return '未完成';
+    case 'interrupted':
+      return '已中断';
+  }
+}
+
 function taskTrace(
   task: NoemaSocialWorkTask,
   live: ReturnType<typeof useSocialChatController>['liveTrace'],
@@ -283,6 +346,8 @@ export function CoreChatApp() {
   );
   const [taskHistoryOpen, setTaskHistoryOpen] = useState(false);
   const [taskHistoryAll, setTaskHistoryAll] = useState(false);
+  const [deliveryEvents, setDeliveryEvents] =
+    useState<DeliveryEvent[]>(readDeliveryEvents);
   const previousTaskStatus = useRef(
     new Map<string, NoemaSocialWorkTask['status']>(),
   );
@@ -297,6 +362,36 @@ export function CoreChatApp() {
         .filter((turn) => turn.items.length > 0),
     [conversationTurns],
   );
+
+  const timelineEntries = useMemo(() => {
+    let order = 0;
+    const entries: TimelineEntry[] = [];
+    for (const turn of visibleTurns) {
+      for (const item of turn.items) {
+        if (item.kind !== 'message') continue;
+        entries.push({
+          kind: 'message',
+          at: item.message.createdAt,
+          key: `message:${item.message.id}`,
+          order: order++,
+          message: item.message,
+        });
+      }
+    }
+    for (const event of deliveryEvents) {
+      entries.push({
+        kind: 'event',
+        at: event.at,
+        key: `event:${event.taskId}`,
+        order: order++,
+        event,
+      });
+    }
+    return entries.sort(
+      (left, right) =>
+        left.at.localeCompare(right.at) || left.order - right.order,
+    );
+  }, [deliveryEvents, visibleTurns]);
 
   const workTasks = useMemo(() => {
     const seen = new Set<string>();
@@ -346,24 +441,63 @@ export function CoreChatApp() {
       : null) ?? null;
 
   useEffect(() => {
-    let justSettled: NoemaSocialWorkTask | null = null;
+    const settledNow: Array<{
+      task: NoemaSocialWorkTask;
+      status: DeliveryEventStatus;
+    }> = [];
     for (const task of workTasks) {
       const previous = previousTaskStatus.current.get(task.id);
       if (
         previous &&
         previous !== task.status &&
-        isSettledTask(task.status) &&
-        !justSettled
+        (task.status === 'completed' ||
+          task.status === 'failed' ||
+          task.status === 'interrupted')
       ) {
-        justSettled = task;
+        settledNow.push({ task, status: task.status });
       }
       previousTaskStatus.current.set(task.id, task.status);
     }
-    if (!justSettled) return;
-    setCompletedNoticeId(justSettled.id);
+    if (!settledNow.length) return;
+    const latest = settledNow[settledNow.length - 1];
+    setCompletedNoticeId(latest.task.id);
+    setDeliveryEvents((current) => {
+      const next = [...current];
+      for (const { task, status } of settledNow) {
+        if (next.some((event) => event.taskId === task.id)) continue;
+        next.push({
+          taskId: task.id,
+          agentName: agentNames.get(task.agentId) ?? '执行者',
+          status,
+          at: task.updatedAt,
+        });
+      }
+      return next.slice(-8);
+    });
     const timer = window.setTimeout(() => setCompletedNoticeId(null), 8000);
     return () => window.clearTimeout(timer);
-  }, [workTasks]);
+  }, [agentNames, workTasks]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        DELIVERY_EVENTS_STORAGE_KEY,
+        JSON.stringify(deliveryEvents),
+      );
+    } catch {
+      // Notification persistence is best effort; the delivery ledger remains durable.
+    }
+  }, [deliveryEvents]);
+
+  useEffect(() => {
+    if (!deliveryEvents.length || !shouldFollowRef.current) return;
+    const element = conversationRef.current;
+    if (!element) return;
+    const frame = window.requestAnimationFrame(() => {
+      element.scrollTop = element.scrollHeight;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [conversationRef, deliveryEvents.length, shouldFollowRef]);
 
   useEffect(() => {
     if (noemaRoom && currentRoom?.id !== noemaRoom.id) selectRoom(noemaRoom);
@@ -687,19 +821,47 @@ export function CoreChatApp() {
           {historyPageLoading ? (
             <p className="request-explanation">正在读取更早的消息…</p>
           ) : null}
-          {!historyPageLoading && visibleTurns.length === 0 ? (
+          {!historyPageLoading && timelineEntries.length === 0 ? (
             <div className="core-empty">
               <h1>有什么想做的？</h1>
               <p>直接说结果，Noema 会安排执行并在这里展示过程。</p>
             </div>
           ) : null}
-          {visibleTurns.map((turn) => (
-            <React.Fragment key={turn.id}>
-              {turn.items.map((item) =>
-                item.kind === 'message' ? renderMessage(item.message) : null,
-              )}
-            </React.Fragment>
-          ))}
+          {timelineEntries.map((entry) =>
+            entry.kind === 'message' ? (
+              <React.Fragment key={entry.key}>
+                {renderMessage(entry.message)}
+              </React.Fragment>
+            ) : (
+              <div
+                className="core-task-event"
+                data-status={entry.event.status}
+                key={entry.key}
+                role="status"
+              >
+                <span className="core-task-event-icon" aria-hidden="true">
+                  <Icon
+                    name={
+                      entry.event.status === 'completed' ? 'check' : 'close'
+                    }
+                  />
+                </span>
+                <span className="core-task-event-text">
+                  <strong>{entry.event.agentName}</strong>
+                  {deliveryEventLabel(entry.event.status)}
+                </span>
+                <NoemaButton
+                  className="core-task-event-action"
+                  type="button"
+                  title="查看任务结果"
+                  aria-label={`查看 ${entry.event.agentName} 的任务结果`}
+                  onClick={() => setInspectedTaskId(entry.event.taskId)}
+                >
+                  查看结果
+                </NoemaButton>
+              </div>
+            ),
+          )}
         </div>
         {showJumpToLatest ? (
           <NoemaButton
