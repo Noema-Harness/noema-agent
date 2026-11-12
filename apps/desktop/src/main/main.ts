@@ -55,7 +55,6 @@ import { SocialProjectStore } from './projects/social-project-store.mjs';
 import { SocialChatService } from './chat/social-chat-service.mjs';
 import { searchAndReadWeb } from './tools/web-search.mjs';
 import { SocialWorkService } from './execution/social-work-service.mjs';
-import { captureWorkspaceIdentity } from './platform/workspace-identity.mjs';
 import {
   createWindowsRunnerRuntime,
   type WindowsRunnerRuntime,
@@ -708,7 +707,18 @@ async function startNoema() {
       ensureAgentDirectory,
       beginWorkspaceAuthorization: () =>
         beginAuthorizationDecision('workspace_access'),
+      recordProjectWorkspaceSelection: (status, source) =>
+        recordDiagnosticEvent({
+          executionId: randomUUID(),
+          parentExecutionId: currentApplicationExecutionId,
+          module: 'social.project',
+          operation: 'workspace.selection',
+          status,
+          details: { source },
+        }),
       socialWorkE2eValid,
+      socialAgentE2eValid,
+      socialAgentE2eDirectory,
       socialWorkEntryE2eValid,
       testSocialWorkWorkspace,
       testSocialWorkPracticeDecision: testSocialWorkPracticeDecision as
@@ -946,88 +956,7 @@ async function startNoema() {
       fs.mkdirSync(directory, { recursive: true });
       return directory;
     }
-    const chooseProjectWorkspace = async (input?: {
-      source?: string;
-    }): Promise<{
-      workspacePath: string;
-      identity: {
-        version: number;
-        canonicalPath: string;
-        device: string;
-        fileIndex: string;
-      };
-    } | null> => {
-      const recordWorkspaceChoice = (status: 'completed' | 'canceled') =>
-        recordDiagnosticEvent({
-          executionId: randomUUID(),
-          parentExecutionId: currentApplicationExecutionId,
-          module: 'social.project',
-          operation: 'workspace.selection',
-          status,
-          details: { source: input?.source ?? 'project_create' },
-        });
-      if (socialWorkE2eValid && testSocialWorkWorkspace) {
-        const identity = captureWorkspaceIdentity(testSocialWorkWorkspace);
-        if (!identity.ok || !identity.identity) {
-          throw new Error('无法读取 E2E 工作区。');
-        }
-        recordWorkspaceChoice('completed');
-        return {
-          workspacePath: testSocialWorkWorkspace,
-          identity: identity.identity,
-        };
-      }
-      if (socialAgentE2eValid && socialAgentE2eDirectory) {
-        const workspacePath = path.join(
-          socialAgentE2eDirectory,
-          'project-workspace',
-        );
-        fs.mkdirSync(workspacePath, { recursive: true });
-        const identity = captureWorkspaceIdentity(workspacePath);
-        if (!identity.ok || !identity.identity) {
-          throw new Error('无法读取 E2E 工作区。');
-        }
-        recordWorkspaceChoice('completed');
-        return { workspacePath, identity: identity.identity };
-      }
-      const devWorkspaceOverride = !app.isPackaged
-        ? process.env.NOEMA_DEV_PROJECT_WORKSPACE_PATH
-        : null;
-      if (devWorkspaceOverride) {
-        const workspacePath = path.resolve(devWorkspaceOverride);
-        if (!path.isAbsolute(workspacePath) || !fs.existsSync(workspacePath)) {
-          throw new Error(
-            'NOEMA_DEV_PROJECT_WORKSPACE_PATH must point to an existing directory.',
-          );
-        }
-        const identity = captureWorkspaceIdentity(workspacePath);
-        if (!identity.ok || !identity.identity) {
-          throw new Error('无法读取这个文件夹，请换一个目录。');
-        }
-        recordWorkspaceChoice('completed');
-        return { workspacePath, identity: identity.identity };
-      }
-      if (!mainWindow || mainWindow.isDestroyed()) return null;
-      const selection = await dialog.showOpenDialog(mainWindow, {
-        title: '选择工作文件夹',
-        message:
-          '项目成员会读取和修改这个文件夹中的文件，并在其中运行前台命令。请只选择允许 Noema 使用的目录。',
-        buttonLabel: '使用此文件夹',
-        properties: ['openDirectory', 'createDirectory'],
-      });
-      const selectedPath = selection.filePaths[0];
-      if (selection.canceled || !selectedPath) {
-        recordWorkspaceChoice('canceled');
-        return null;
-      }
-      const workspacePath = selectedPath;
-      const identity = captureWorkspaceIdentity(workspacePath);
-      if (!identity.ok || !identity.identity) {
-        throw new Error('无法读取这个文件夹，请换一个目录。');
-      }
-      recordWorkspaceChoice('completed');
-      return { workspacePath, identity: identity.identity };
-    };
+    const chooseProjectWorkspace = socialWorkDialogs.chooseProjectWorkspace;
     const nativeChatRuntime = createNativeChatRuntime({
       provider: socialChatProvider as unknown as {
         streamChat: (options: object) => AsyncIterable<string>;

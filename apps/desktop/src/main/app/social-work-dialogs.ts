@@ -1,8 +1,16 @@
 import { dialog, type BrowserWindow } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
+import { captureWorkspaceIdentity } from '../platform/workspace-identity.mjs';
 
 type WorkspaceTarget = string;
+
+interface WorkspaceIdentity {
+  version: number;
+  canonicalPath: string;
+  device: string;
+  fileIndex: string;
+}
 
 interface SocialChatStoreLike {
   getAgent(agentId: string): { name?: string } | null | undefined;
@@ -40,7 +48,13 @@ export interface SocialWorkDialogsOptions {
     outcome: 'granted' | 'denied',
     reason?: string,
   ) => void;
+  recordProjectWorkspaceSelection: (
+    status: 'completed' | 'canceled',
+    source: string,
+  ) => void;
   socialWorkE2eValid: boolean;
+  socialAgentE2eValid: boolean;
+  socialAgentE2eDirectory: string | null;
   socialWorkEntryE2eValid: boolean;
   testSocialWorkWorkspace: WorkspaceTarget | null;
   testSocialWorkPracticeDecision: PracticeDecision | null;
@@ -55,6 +69,9 @@ export interface SocialWorkDialogs {
     projectId?: string | null;
     agentId?: string | null;
   }) => Promise<WorkspaceTarget | null>;
+  chooseProjectWorkspace: (input?: {
+    source?: string;
+  }) => Promise<{ workspacePath: string; identity: WorkspaceIdentity } | null>;
   confirmWorkspaceRebind: (input: {
     projectId: string;
     oldPath: string;
@@ -77,7 +94,10 @@ export function createSocialWorkDialogs(
     socialProjectStore,
     ensureAgentDirectory,
     beginWorkspaceAuthorization,
+    recordProjectWorkspaceSelection,
     socialWorkE2eValid,
+    socialAgentE2eValid,
+    socialAgentE2eDirectory,
     socialWorkEntryE2eValid,
     testSocialWorkWorkspace,
     testSocialWorkPracticeDecision,
@@ -240,8 +260,60 @@ export function createSocialWorkDialogs(
       return decision;
     };
 
+  const chooseProjectWorkspace: SocialWorkDialogs['chooseProjectWorkspace'] =
+    async (input) => {
+      const source = input?.source ?? 'project_create';
+      const acceptWorkspace = (workspacePath: string) => {
+        const identity = captureWorkspaceIdentity(workspacePath);
+        if (!identity.ok || !identity.identity) {
+          throw new Error('无法读取这个文件夹，请换一个目录。');
+        }
+        recordProjectWorkspaceSelection('completed', source);
+        return { workspacePath, identity: identity.identity };
+      };
+      if (socialWorkE2eValid && testSocialWorkWorkspace) {
+        return acceptWorkspace(testSocialWorkWorkspace);
+      }
+      if (socialAgentE2eValid && socialAgentE2eDirectory) {
+        const workspacePath = path.join(
+          socialAgentE2eDirectory,
+          'project-workspace',
+        );
+        fs.mkdirSync(workspacePath, { recursive: true });
+        return acceptWorkspace(workspacePath);
+      }
+      const devWorkspaceOverride = !app.isPackaged
+        ? process.env.NOEMA_DEV_PROJECT_WORKSPACE_PATH
+        : null;
+      if (devWorkspaceOverride) {
+        const workspacePath = path.resolve(devWorkspaceOverride);
+        if (!path.isAbsolute(workspacePath) || !fs.existsSync(workspacePath)) {
+          throw new Error(
+            'NOEMA_DEV_PROJECT_WORKSPACE_PATH must point to an existing directory.',
+          );
+        }
+        return acceptWorkspace(workspacePath);
+      }
+      const mainWindow = getMainWindow();
+      if (!mainWindow || mainWindow.isDestroyed()) return null;
+      const selection = await dialog.showOpenDialog(mainWindow, {
+        title: '选择工作文件夹',
+        message:
+          '项目成员会读取和修改这个文件夹中的文件，并在其中运行前台命令。请只选择允许 Noema 使用的目录。',
+        buttonLabel: '使用此文件夹',
+        properties: ['openDirectory', 'createDirectory'],
+      });
+      const selectedPath = selection.filePaths[0];
+      if (selection.canceled || !selectedPath) {
+        recordProjectWorkspaceSelection('canceled', source);
+        return null;
+      }
+      return acceptWorkspace(selectedPath);
+    };
+
   return {
     chooseWorkspace,
+    chooseProjectWorkspace,
     confirmWorkspaceRebind,
     confirmPracticeCandidate,
   };
