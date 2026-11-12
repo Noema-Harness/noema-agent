@@ -49,14 +49,16 @@ import {
   createWindowsRunnerRuntime,
   type WindowsRunnerRuntime,
 } from './app/windows-runner-runtime';
-import { createSocialE2eRuntime } from './testing/social-e2e-runtime';
+import {
+  createSocialE2eRuntime,
+  createSyntheticSocialChatProvider,
+} from './testing/social-e2e-runtime';
 import {
   createChatExportRuntime,
   createSocialStateRuntime,
   createSocialWorkDialogs,
   createSocialWorkServiceRuntime,
 } from './app/social-runtime';
-import { createSyntheticSocialChatProvider } from './testing/synthetic-social-chat-provider';
 import { backupBeforeSocialChatMigration } from './chat/social-chat-migration-backup.mjs';
 import { resolveNoemaDatabasePath } from './platform/runtime-paths.mjs';
 import { createAgentRuntime } from './app/agent-runtime';
