@@ -3,7 +3,6 @@ import {
   BrowserWindow,
   dialog,
   ipcMain,
-  net,
   safeStorage,
   session,
   shell,
@@ -12,6 +11,7 @@ import {
 } from 'electron';
 import { createNoemaTray } from './app/tray';
 import { createMainWindow } from './app/window';
+import { createProviderRuntime } from './app/provider-runtime';
 import { writeSmokeLog } from './testing/smoke-log';
 import { scheduleRendererSmoke } from './testing/renderer-smoke';
 import { randomUUID } from 'node:crypto';
@@ -22,10 +22,7 @@ import { EncryptedSecretStore } from './platform/encrypted-secret-store.mjs';
 import { redactSensitiveText } from '../shared/text/sensitive-text.mjs';
 import { resolveElectronProxy } from './platform/electron-proxy.mjs';
 import { createPendingFollowupNavigationDelivery } from './platform/pending-followup-navigation.mjs';
-import {
-  OpenAICompatibleClient,
-  resolveConfiguredModelBaseUrl,
-} from './providers/openai-compatible-client.mjs';
+import { OpenAICompatibleClient } from './providers/openai-compatible-client.mjs';
 import { registerRootIpc, CHANNELS } from './ipc/root-ipc.mjs';
 import { WorkspaceFileService } from './execution/workspace-file-service.mjs';
 import { registerLegacyHistoryArchiveIpc } from './ipc/legacy-history-archive-ipc.mjs';
@@ -33,7 +30,6 @@ import { RootAgent } from './agents/root-agent.mjs';
 import { RootStore } from './storage/root-store.mjs';
 import { LegacyHistoryArchiveService } from './archive/legacy-history-archive-service.mjs';
 import { saveLegacyHistoryExport } from './archive/save-legacy-history-export.mjs';
-import { ModelUsageStore } from './storage/model-usage-store.mjs';
 import { DiagnosticsEventStore } from './storage/diagnostics-event-store.mjs';
 import { OfficialPluginStateStore } from './plugins/official-plugin-state-store.mjs';
 import { OfficialPluginHost } from './plugins/official-plugin-host.mjs';
@@ -544,23 +540,6 @@ function markSocialChatReady() {
   return true;
 }
 
-function discoverFreeLLMAPIBaseUrl(appDataPath: string) {
-  try {
-    const configPath = path.join(appDataPath, 'FreeLLMAPI', 'config.json');
-    const configuration = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    if (
-      Number.isInteger(configuration.port) &&
-      configuration.port > 0 &&
-      configuration.port <= 65_535
-    ) {
-      return `http://127.0.0.1:${configuration.port}/v1`;
-    }
-  } catch {
-    // Use FreeLLMAPI's documented default when the desktop configuration is absent.
-  }
-  return 'http://127.0.0.1:3001/v1';
-}
-
 function isPathWithin(directory: string, candidate: string) {
   const relative = path.relative(
     path.resolve(directory),
@@ -630,124 +609,21 @@ async function startNoema() {
         recordDiagnosticEvent(event),
     });
     await officialPluginHost.startAll();
-    const modelUsageStore = new ModelUsageStore(rootStore.db);
     writeSmokeLog('store-opened');
-    const defaultCredentialDirectory = path.join(
-      app.getPath('userData'),
-      'credentials',
-    );
-    let providerCredentialDirectory = defaultCredentialDirectory;
-    if (testSocialProviderLiveAcceptance) {
-      const expectedCredentialDirectory = path.join(
-        app.getPath('appData'),
-        'Noema',
-        'credentials',
-      );
-      if (
-        app.isPackaged ||
-        !testDataArgument ||
-        !testDatabasePath ||
-        !testReadOnlyCredentialDirectory ||
-        !path.isAbsolute(testReadOnlyCredentialDirectory) ||
-        path.resolve(testReadOnlyCredentialDirectory).toLowerCase() !==
-          path.resolve(expectedCredentialDirectory).toLowerCase()
-      ) {
-        throw new Error(
-          'Live provider acceptance requires an isolated development profile and database, and may only read the current Noema credential directory.',
-        );
-      }
-      providerCredentialDirectory = expectedCredentialDirectory;
-    }
-    const legacyFreeLlmApiSecretStore = new EncryptedSecretStore({
+    const providerRuntime = createProviderRuntime({
+      app,
       safeStorage,
-      filePath: path.join(providerCredentialDirectory, 'freellmapi.key'),
+      rootStore,
+      writeSmokeLog,
+      recordDiagnosticEvent,
+      testSocialProviderLiveAcceptance,
+      testDataArgument: testDataArgument ?? null,
+      testDatabasePath: testDatabasePath ?? null,
+      testReadOnlyCredentialDirectory: testReadOnlyCredentialDirectory ?? null,
+      testSocialAgentR0FirstUse,
     });
-    const modelProviderCredentialPath = path.join(
-      providerCredentialDirectory,
-      'model-provider.key',
-    );
-    providerSecretStore = new EncryptedSecretStore({
-      safeStorage,
-      filePath: modelProviderCredentialPath,
-      fallbackStores: [legacyFreeLlmApiSecretStore],
-    });
-    const webSearchSecretStore = new EncryptedSecretStore({
-      safeStorage,
-      filePath: path.join(
-        app.getPath('userData'),
-        'credentials',
-        'web-search.key',
-      ),
-    });
-    const envModelBaseUrl = process.env.NOEMA_MODEL_BASE_URL;
-    const injectedModelApiKey = process.env.NOEMA_MODEL_API_KEY;
-    const allowIsolatedModelCredential = Boolean(
-      testSocialAgentR0FirstUse && testDatabasePath,
-    );
-    writeSmokeLog('model-provider-credential-source', {
-      isolatedCredentialProvided: Boolean(injectedModelApiKey),
-      isolatedModelTestEnabled: allowIsolatedModelCredential,
-    });
-    if (injectedModelApiKey && allowIsolatedModelCredential) {
-      providerSecretStore.setConfiguration({
-        apiKey: injectedModelApiKey,
-        baseUrl: envModelBaseUrl ?? 'https://api.deepseek.com',
-      });
-    }
-    delete process.env.NOEMA_MODEL_API_KEY;
-    delete process.env.NOEMA_MODEL_BASE_URL;
-    if (process.env.NOEMA_FREELLMAPI_API_KEY) {
-      legacyFreeLlmApiSecretStore.set(process.env.NOEMA_FREELLMAPI_API_KEY);
-      delete process.env.NOEMA_FREELLMAPI_API_KEY;
-    }
-    const explicitLegacyBaseUrl = process.env.NOEMA_FREELLMAPI_BASE_URL;
-    const hasLegacyFreeLlmApiCredential =
-      legacyFreeLlmApiSecretStore.isConfigured();
-    const legacyFreeLlmApiBaseUrl = hasLegacyFreeLlmApiCredential
-      ? (explicitLegacyBaseUrl ??
-        discoverFreeLLMAPIBaseUrl(app.getPath('appData')))
-      : null;
-    const hasCurrentProviderCredential = fs.existsSync(
-      modelProviderCredentialPath,
-    );
-    const configuredBaseUrl = resolveConfiguredModelBaseUrl({
-      hasCurrentProviderCredential,
-      currentProviderBaseUrl: providerSecretStore.getBaseUrl(),
-      legacyFreeLlmApiBaseUrl,
-    });
-    const useLegacyFreeLlmApi =
-      !hasCurrentProviderCredential && Boolean(legacyFreeLlmApiBaseUrl);
-    const provider = new OpenAICompatibleClient({
-      baseUrl: configuredBaseUrl,
-      legacyFreeRouteMode: useLegacyFreeLlmApi,
-      getApiKey: () => providerSecretStore?.get() ?? null,
-      fetchImpl: (input, init) =>
-        net.fetch(input instanceof URL ? input.toString() : input, init),
-      onRequestEvent: (event) => {
-        recordDiagnosticEvent({
-          executionId: event.executionId ?? event.interactionId,
-          parentExecutionId: event.parentExecutionId ?? null,
-          taskId:
-            typeof event.operation === 'string' &&
-            ['project_execution', 'member_practice'].includes(event.operation)
-              ? (event.interactionId ?? event.executionId)
-              : null,
-          turnId: event.turnId ?? event.interactionId,
-          requestId: event.requestId,
-          module: 'provider',
-          operation: `request.${event.phase}`,
-          status: event.status,
-          errorCode: event.errorCode ?? undefined,
-          details: {
-            requestStatus: event.requestStatus,
-            elapsedMs: event.elapsedMs,
-          },
-        });
-      },
-      onUsage: (usage) => {
-        modelUsageStore.record(usage);
-      },
-    });
+    const { provider, modelUsageStore, webSearchSecretStore } = providerRuntime;
+    providerSecretStore = providerRuntime.providerSecretStore;
     let windowsRunnerExecution: WindowsRunnerExecutionService | null = null;
     let windowsRunnerSupport: { supported: boolean; reason?: string } =
       resolveWindowsRunnerCommandSupport({
