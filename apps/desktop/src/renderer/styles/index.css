@@ -5963,43 +5963,6 @@ select:disabled {
   color: #8a847a;
   font-size: 10.5px;
 }
-.core-task-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 10px;
-}
-.core-task-action {
-  min-height: 30px;
-  height: auto;
-  padding: 0 12px;
-  border: 1px solid #d9d4ca;
-  border-radius: 8px;
-  background: #fbfaf7;
-  color: #2f2c28;
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-}
-.core-task-action:first-child {
-  border-color: #2f2c28;
-  background: #2f2c28;
-  color: #fff;
-}
-.core-task-action:hover:not(:disabled) {
-  border-color: #8f887c;
-  background: #f0ede7;
-  color: #2f2c28;
-}
-.core-task-action:first-child:hover:not(:disabled) {
-  border-color: #1f1f1d;
-  background: #1f1f1d;
-  color: #fff;
-}
-.core-task-action:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
 .core-task-note {
   margin: 8px 0 0;
   color: #8a643b;
@@ -6016,18 +5979,156 @@ select:disabled {
   line-height: 1.55;
   overflow-wrap: anywhere;
 }
+.core-task-dock {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 8px;
+  overflow-x: auto;
+}
+.core-task-dock-item {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  height: auto;
+  padding: 0 11px;
+  border: 1px solid #ddd8cf;
+  border-radius: 999px;
+  background: #f7f4ed;
+  color: #3f3c37;
+  font: inherit;
+  font-size: 11.5px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.core-task-dock-item:hover {
+  border-color: #bdb6aa;
+  background: #f0ede7;
+}
+.core-task-dock-agent {
+  font-weight: 600;
+}
+.core-task-dock-state {
+  color: #6f6a61;
+}
+.core-task-dock-state[data-status='running'],
+.core-task-dock-state[data-status='starting'],
+.core-task-dock-state[data-status='verifying'] {
+  color: #4d6646;
+}
+.core-task-dock-state[data-status='failed'],
+.core-task-dock-state[data-status='interrupted'] {
+  color: #8a3d32;
+}
+.core-task-dock-meta {
+  color: #8a847a;
+}
+.core-task-inspector-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  justify-content: flex-end;
+  padding: 16px;
+  background: rgb(31 29 25 / 28%);
+}
+.core-task-inspector-wrap {
+  display: flex;
+  width: min(560px, 100%);
+  max-height: 100%;
+}
+.core-task-inspector {
+  display: flex;
+  width: 100%;
+  max-height: calc(100vh - 32px);
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid #ddd8cf;
+  border-radius: 16px;
+  background: #fbfaf7;
+  box-shadow: 0 24px 60px rgb(35 31 24 / 18%);
+}
+.core-task-inspector-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid #ebe6de;
+}
+.core-task-inspector-avatar {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 50%;
+  background: #e8f0e8;
+  color: #35675d;
+  font-size: 14px;
+  font-weight: 600;
+}
+.core-task-inspector-title {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+.core-task-inspector-title strong {
+  color: #2a2824;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.core-task-inspector-title > span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #8a847a;
+  font-size: 11px;
+}
+.core-task-inspector-title .core-task-status {
+  margin-left: 0;
+}
+.core-task-inspector-body {
+  overflow-y: auto;
+  padding: 14px 16px 18px;
+}
+.core-task-prompt {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border: 1px solid #e4e0d8;
+  border-radius: 8px;
+  background: #f4f1ea;
+}
+.core-task-prompt summary {
+  color: #6f6a61;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.core-task-prompt p {
+  margin: 8px 0 0;
+  color: #4b4842;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
 @media (max-width: 640px) {
+  .core-task-inspector-backdrop {
+    padding: 0;
+  }
+  .core-task-inspector-wrap {
+    width: 100%;
+  }
+  .core-task-inspector {
+    max-height: 100vh;
+    border-radius: 0;
+  }
   .core-task-file {
     gap: 8px;
   }
   .core-task-file small {
     max-width: 40%;
     overflow-wrap: anywhere;
-  }
-  .core-task-actions {
-    display: grid;
-  }
-  .core-task-action {
-    width: 100%;
   }
 }

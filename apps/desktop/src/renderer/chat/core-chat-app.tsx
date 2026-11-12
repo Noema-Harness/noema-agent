@@ -29,7 +29,7 @@ function taskStatusLabel(status: NoemaSocialWorkTask['status']) {
     case 'verifying':
       return '核验中';
     case 'completed':
-      return '已完成';
+      return '执行完成';
     case 'failed':
       return '未完成';
     case 'interrupted':
@@ -50,7 +50,7 @@ function taskVerificationLabel(
     case 'pending':
       return '待核验';
     case 'not_planned':
-      return '未核验';
+      return '未独立核验';
   }
 }
 
@@ -241,8 +241,6 @@ export function CoreChatApp() {
     continuity,
     handleStop,
     handleRetry,
-    handleResumeProjectWork,
-    handleContinueProjectWork,
     busy,
     activeReply,
     providerReady,
@@ -258,6 +256,7 @@ export function CoreChatApp() {
     setShowJumpToLatest,
     showJumpToLatest,
     historyPageLoading,
+    agents,
   } = controller;
 
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
@@ -266,11 +265,43 @@ export function CoreChatApp() {
     path: string;
     initialFile: string | null;
   } | null>(null);
+  const [inspectedTaskId, setInspectedTaskId] = useState<string | null>(null);
 
   const visibleTurns = useMemo(
-    () => conversationTurns.filter((turn) => turn.items.length > 0),
+    () =>
+      conversationTurns
+        .map((turn) => ({
+          ...turn,
+          items: turn.items.filter((item) => item.kind === 'message'),
+        }))
+        .filter((turn) => turn.items.length > 0),
     [conversationTurns],
   );
+
+  const workTasks = useMemo(() => {
+    const seen = new Set<string>();
+    const tasks: NoemaSocialWorkTask[] = [];
+    for (const turn of conversationTurns) {
+      for (const item of turn.items) {
+        if (item.kind === 'work-task' && !seen.has(item.task.id)) {
+          seen.add(item.task.id);
+          tasks.push(item.task);
+        }
+      }
+    }
+    return tasks;
+  }, [conversationTurns]);
+
+  const agentNames = useMemo(
+    () => new Map(agents.map((agent) => [agent.id, agent.name])),
+    [agents],
+  );
+  const agentNameForTask = (task: NoemaSocialWorkTask) =>
+    agentNames.get(task.agentId) ?? '执行者';
+  const inspectedTask =
+    (inspectedTaskId
+      ? workTasks.find((task) => task.id === inspectedTaskId)
+      : null) ?? null;
 
   useEffect(() => {
     if (noemaRoom && currentRoom?.id !== noemaRoom.id) selectRoom(noemaRoom);
@@ -315,7 +346,7 @@ export function CoreChatApp() {
 
   const renderMessage = (message: NoemaSocialMessage) => {
     if (message.role === 'system') return null;
-    const hasWorkTask = visibleTurns.some((turn) =>
+    const hasWorkTask = conversationTurns.some((turn) =>
       turn.items.some((item) => item.kind === 'work-task'),
     );
     if (
@@ -415,38 +446,48 @@ export function CoreChatApp() {
     );
   };
 
-  const renderTask = (task: NoemaSocialWorkTask) => {
+  const renderTaskInspector = (task: NoemaSocialWorkTask) => {
     const trace = taskTrace(task, liveTrace);
-    const canResume =
-      task.canResume &&
-      (task.status === 'failed' || task.status === 'interrupted');
-    const canContinue =
-      task.status === 'completed' &&
-      Boolean(task.runtimeSessionId && task.workspacePath);
-    const blockedResume =
-      !canResume &&
-      Boolean(task.resumeBlockReason) &&
-      (task.status === 'failed' || task.status === 'interrupted');
     const openWorkspace = (initialFile: string | null = null) => {
       if (!task.workspacePath) return;
       setTaskWorkspace({ path: task.workspacePath, initialFile });
     };
     return (
-      <article
-        className="message assistant agent-message chat-message core-message core-task"
-        key={task.id}
+      <section
+        className="core-task-inspector"
+        role="dialog"
+        aria-modal="true"
+        aria-label="任务详情"
       >
-        <div className="byline">
-          <span className="message-author-mark" aria-hidden="true">
-            <Icon name="noema" />
+        <header className="core-task-inspector-head">
+          <span className="core-task-inspector-avatar" aria-hidden="true">
+            {agentNameForTask(task).slice(0, 1)}
           </span>
-          <strong>Noema</strong>
-          <span>{messageTime(task.updatedAt)}</span>
-          <span className="core-task-status" data-status={task.status}>
-            {taskStatusLabel(task.status)}
-          </span>
-        </div>
-        <div className="message-content">
+          <div className="core-task-inspector-title">
+            <strong>{agentNameForTask(task)}</strong>
+            <span>
+              <span className="core-task-status" data-status={task.status}>
+                {taskStatusLabel(task.status)}
+              </span>
+              {' · '}
+              {task.executionSteps.length} 步
+            </span>
+          </div>
+          <NoemaButton
+            className="icon-button"
+            type="button"
+            title="关闭任务详情"
+            aria-label="关闭任务详情"
+            onClick={() => setInspectedTaskId(null)}
+          >
+            <Icon name="close" />
+          </NoemaButton>
+        </header>
+        <div className="core-task-inspector-body">
+          <details className="core-task-prompt">
+            <summary>任务说明</summary>
+            <p>{task.taskPrompt}</p>
+          </details>
           {trace ? (
             <TurnTrace
               events={trace.events}
@@ -505,36 +546,11 @@ export function CoreChatApp() {
           {task.status === 'failed' && task.errorMessage ? (
             <p className="core-task-error">{task.errorMessage}</p>
           ) : null}
-          {canResume || canContinue ? (
-            <div className="core-task-actions">
-              {canResume ? (
-                <NoemaButton
-                  className="core-task-action"
-                  type="button"
-                  disabled={busy || Boolean(activeReply)}
-                  onClick={() => void handleResumeProjectWork(task)}
-                >
-                  从检查点继续
-                </NoemaButton>
-              ) : null}
-              {canContinue ? (
-                <NoemaButton
-                  className="core-task-action"
-                  type="button"
-                  disabled={busy || Boolean(activeReply)}
-                  onClick={() => void handleContinueProjectWork(task)}
-                >
-                  继续这项任务
-                </NoemaButton>
-              ) : null}
-            </div>
-          ) : null}
-          {blockedResume ? (
+          {task.resumeBlockReason ? (
             <p className="core-task-note">{task.resumeBlockReason}</p>
           ) : null}
         </div>
-        <MessageActions text={task.resultText ?? ''} onQuote={quoteMessage} />
-      </article>
+      </section>
     );
   };
 
@@ -617,23 +633,9 @@ export function CoreChatApp() {
           ) : null}
           {visibleTurns.map((turn) => (
             <React.Fragment key={turn.id}>
-              {turn.items
-                .filter(
-                  (item) =>
-                    !(
-                      item.kind === 'message' &&
-                      item.message.role === 'assistant' &&
-                      /工单受理|已开始这项工作|已交给/.test(
-                        item.message.content,
-                      ) &&
-                      turn.items.some((next) => next.kind === 'work-task')
-                    ),
-                )
-                .map((item) =>
-                  item.kind === 'message'
-                    ? renderMessage(item.message)
-                    : renderTask(item.task),
-                )}
+              {turn.items.map((item) =>
+                item.kind === 'message' ? renderMessage(item.message) : null,
+              )}
             </React.Fragment>
           ))}
         </div>
@@ -654,6 +656,33 @@ export function CoreChatApp() {
       </main>
 
       <footer className="core-composer">
+        {workTasks.length ? (
+          <div className="core-task-dock" aria-label="后台任务">
+            {workTasks.slice(-3).map((task) => (
+              <NoemaButton
+                className="core-task-dock-item"
+                type="button"
+                key={task.id}
+                title={task.taskPrompt}
+                aria-label={`查看 ${agentNameForTask(task)} 的任务`}
+                onClick={() => setInspectedTaskId(task.id)}
+              >
+                <span className="core-task-dock-agent">
+                  {agentNameForTask(task)}
+                </span>
+                <span
+                  className="core-task-dock-state"
+                  data-status={task.status}
+                >
+                  {taskStatusLabel(task.status)}
+                </span>
+                <span className="core-task-dock-meta">
+                  {task.executionSteps.length} 步
+                </span>
+              </NoemaButton>
+            ))}
+          </div>
+        ) : null}
         {notice ? (
           <p className="core-notice" role="status">
             {notice}
@@ -739,6 +768,20 @@ export function CoreChatApp() {
         <p className="core-hint">Enter 发送 · Shift + Enter 换行</p>
       </footer>
 
+      {inspectedTask ? (
+        <div
+          className="core-task-inspector-backdrop"
+          onClick={() => setInspectedTaskId(null)}
+          role="presentation"
+        >
+          <div
+            className="core-task-inspector-wrap"
+            onClick={(event) => event.stopPropagation()}
+          >
+            {renderTaskInspector(inspectedTask)}
+          </div>
+        </div>
+      ) : null}
       <PartnerSettingsDialog model={controller} />
       {taskWorkspace ? (
         <WorkspaceFilesDialog
