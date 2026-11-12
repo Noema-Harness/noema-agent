@@ -5,43 +5,38 @@
   "currentDocuments": [
     {
       "path": "AGENTS.md",
-      "purpose": "项目维护宪法",
-      "updateWhen": "项目维护约定或产品不变量变化"
+      "purpose": "文档权限、维护触发器与工程治理",
+      "updateWhen": "治理、维护流程或工程边界变化"
     },
     {
       "path": "README.md",
-      "purpose": "项目入口与文档地图",
+      "purpose": "项目入口、快速开始与文档地图",
       "updateWhen": "安装方式、目录或文档入口变化"
     },
     {
       "path": "docs/PRODUCT.md",
-      "purpose": "产品定义、模型与边界",
-      "updateWhen": "用户、问题、产品方向、模型或非目标变化"
+      "purpose": "产品定义、角色、可观察行为与验收",
+      "updateWhen": "用户、问题、产品模型、行为或验收变化"
     },
     {
-      "path": "docs/SYSTEM.md",
-      "purpose": "系统结构、模块与数据边界",
-      "updateWhen": "模块职责、数据模型、依赖或执行边界变化"
-    },
-    {
-      "path": "docs/BEHAVIOR.md",
-      "purpose": "可观察行为与验收标准",
-      "updateWhen": "交互、错误、恢复、权限或验收标准变化"
+      "path": "docs/ARCHITECTURE.md",
+      "purpose": "分层、对象、模块、数据与执行边界",
+      "updateWhen": "模块边界、schema、执行路径、运行时或代码地图变化"
     },
     {
       "path": "docs/DECISIONS.md",
-      "purpose": "长期决定与理由",
+      "purpose": "长期决定、替代方案、理由与重审条件",
       "updateWhen": "做出、替代或撤销长期决定时追加"
     },
     {
       "path": "docs/OPERATIONS.md",
-      "purpose": "开发、检查、打包、安装与回滚",
+      "purpose": "环境、开发、检查、打包、安装、回滚与诊断",
       "updateWhen": "命令、环境、发布流程或诊断方式变化"
     },
     {
       "path": "docs/STATUS.md",
-      "purpose": "当前版本、可用性、已知问题与下一步",
-      "updateWhen": "交付节点、阻塞或验证状态变化"
+      "purpose": "当前版本、证据、缺口、限制与下一步",
+      "updateWhen": "交付、打包、验证或阻塞状态变化"
     }
   ],
   "rootDirectories": [

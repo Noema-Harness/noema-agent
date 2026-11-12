@@ -79,13 +79,13 @@ npm run smoke:package --workspace noema-desktop
 - `apps/desktop/package.json`
 - `package-lock.json` 的根包/desktop 条目
 
-当前已安装的 0.7.1 位于：
+当前已安装的 0.7.2 位于：
 
 ```text
-C:\Users\NUC\AppData\Local\noema_desktop\app-0.7.1\Noema.exe
+C:\Users\NUC\AppData\Local\noema_desktop\app-0.7.2\Noema.exe
 ```
 
-0.6.9 是回退版本。安装/升级前关闭 Noema，必要时关闭占用 `app.asar` 的宿主进程（历史上曾由 DeepSeek Harness 持有句柄）；不要用强制结束代替确认占用。
+已安装版本不一定包含当前源码；源码相对已安装版本的差异见 [STATUS](STATUS.md)。0.6.9 是回退版本。安装/升级前关闭 Noema，必要时确认占用 `app.asar` 的宿主进程（历史上曾由 DeepSeek Harness 持有句柄）；不要用强制结束代替确认占用。
 
 Squirrel 升级失败时先检查：
 
@@ -126,4 +126,4 @@ Squirrel 升级失败时先检查：
 - **端口/数据库被占用**：关闭旧进程，确认没有第二个 Noema 实例；不要删除数据库来“修复”。
 - **模型不可用**：在设置中检查连接、模型和密钥；不要把网络失败说成任务完成。
 - **工单不执行**：确认承接人、工作区和运行诊断；执行环境不可用时如实提示，不自动伪造结果。
-- **文档检查失败**：只保留八份固定仓库文档，清理旧路由和归档目录，再运行 `workspace:check`。
+- **文档检查失败**：只保留五份 `docs/` 权威文档、README 和 AGENTS，清理旧路由和归档目录，再运行 `workspace:check`。

@@ -1,71 +1,62 @@
 # STATUS
 
-最后更新：2026-11-12 19:24（Asia/Shanghai）
+Authority: 本文件是 Noema 当前版本、验证证据、已知缺口、未交付项和下一步的唯一权威来源。
+Update when: 交付节点、安装/打包、关键验证结果、阻塞或优先级变化。
+Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结构与数据边界（见 [ARCHITECTURE](ARCHITECTURE.md)）；长期决定（见 [DECISIONS](DECISIONS.md)）；命令与发布步骤（见 [OPERATIONS](OPERATIONS.md)）；维护规则（见 [AGENTS](../AGENTS.md)）。
 
-## 版本
+最后更新：2026-11-13
 
-- 源码版本：**0.7.2**
-- 已安装版本：**0.7.2**，路径 `C:\Users\NUC\AppData\Local\noema_desktop\app-0.7.2\Noema.exe`
-- 可回退版本：**0.6.9**；0.7.1 安装包保留在 `.work/releases`。
-- 0.7.2 已完成重新打包、安装和启动验证，安装版包含主聊工单工作区路由和 DSH 非 JSON 诊断容错；它仍是实验版本，不是稳定发布。
+## 版本与源码
+
+- 源码版本：`0.7.2`。
+- 当前源码基线：`463d817 feat: surface task delivery events in chat`；文档重构在其后单独提交。
+- 最近交付：`463d817` 任务完成事件 + 本地持久化；`4f21ac3` 任务 dock 生命周期/胶囊/交付记录；`2b742a1` 移除聊天流内任务卡。
+- 文档收敛：五份权威文档 + README/AGENTS；`BEHAVIOR`/`SYSTEM` 已合并删除，`.codex/workspace.json` 为 7 个当前入口。
+- 已安装：`0.7.2`，路径 `C:\Users\NUC\AppData\Local\noema_desktop\app-0.7.2\Noema.exe`。该安装早于任务卡/生命周期/完成事件三个提交，不包含当前源码 UI。
+- 本轮没有重新打包或安装；0.7.2 之后不再更新安装包。发布构建只在准备分发时进行。
 
 ## 当前可用
 
-- Core Chat 单对话、流式回复、消息操作（复制/引用/重试）、历史查看、设置入口。
-- SQLite 本机持久化；用户数据、密钥和日志不进入仓库。
-- 工单派发与执行轨迹：Noema 不直接写文件，执行结果回到原对话。
-- DSH headless 优先、native 回退；Windows Runner 负责本机命令边界。
-- Phase 1 连续时间线基础：schema 37、检查点、活动分支头、启动恢复；默认开启仅限 `room-noema`。
-- 文档初始化：README、PRODUCT、SYSTEM、BEHAVIOR、DECISIONS、OPERATIONS、STATUS 和项目 AGENTS 已重建；用户 AGENTS 已更新。仓库只保留 8 份仓库文档，旧文档已移入外部归档。
-- 产品校准同步（2026-11-11）：Q1–Q11 与 Q13 的已确认答案已写入 PRODUCT/BEHAVIOR/DECISIONS/README/项目 AGENTS：一个账号；执行者可见常驻私聊；专家/群聊/项目按需可见；项目是临时复杂输出、团队长期；只做本地；桌面 + 手机远程界面；主动关怀后置；Noema 不直接写文件；编辑/回退采用单 HEAD + 存档。Q14 及之后仍未关闭。
-- 组织模型同步（2026-11-12）：D-013 已写入岗位库、一个岗位一个长期 Agent、团队长期/项目临时、负责人由 Noema 从岗位库产生且先于团队；同岗位不按人数复制，项目执行用 fork；团队负责人可请求招聘，Agent 不能直接创建 Agent。D-011 同步为所有执行者（含团队负责人）都按项目 fork；MVP 阶段一个团队同一时间只推进一个项目。实现未开始。
-- 角色模型同步（2026-11-11）：D-012 已写入岗位与项目角色分离；项目负责人默认纯协调，不直接承接工作项，兼任必须显式记录。
-- 个体框架同步（2026-11-12）：D-014 已写入 Noema 与执行者共用的六模块（Core/Policy/Competence/Tool Grants/Memory/Context）、Compiler 是组装过程、能力条目是最小可执行单位、岗位包属于组织层；实现未开始。
+- Core Chat：单对话、流式回复、停止、消息复制/引用/转发/主题、历史只读、搜索。
+- 任务执行：自然语言派发、工单受理、执行者/工作区、DSH headless 优先、native 回退、Windows Runner、执行轨迹和结果。
+- 任务 UI：活跃任务 dock、8 秒完成胶囊、交付记录、点开执行者任务详情；完成事件不追加第二条 Noema 回复。
+- 完成事件：每个任务一条，完成/失败/中断分别标记；最近 8 条写入 `localStorage`，刷新后保留；损坏/不可用时回退为空，不影响交付记录。
+- 0.7.2 已包含工作区路由和 DSH 非 JSON 容错；真实 inventory/orders 任务已验证文件修改和测试通过。
 
-## 当前不完整
+## 验证
 
-- **产品文档校准**：Q1–Q11、Q13 已同步；Q14 及之后的问题尚未逐条关闭。当前不能把文档当成完整产品规格。
-- **执行者可见私聊**：目标已写入 PRODUCT/BEHAVIOR/DECISIONS，但 0.7.1 仍把执行者放在后台，用户不能直接打开；尚未实现。
-- **会话分层**：目标已定（常驻会话 + 项目 fork（含团队负责人）+ 归档复盘 + Noema 不加入），0.7.1 仍是旧 room/branch 结构，尚未实现。
-- **项目负责人**：目标已定（岗位与项目角色分离；默认只协调、不直接执行；可显式兼任一个工作项）。0.7.1 没有独立项目负责人模型，仍按旧 room/branch 运行。
-- **岗位库与团队模型**：D-013 已定目标（一个现实岗位一个长期 Agent；团队长期、项目临时；负责人先于团队；同岗位不按人数复制；项目执行 fork）。0.7.1 没有岗位库、团队负责人、临时项目或项目 fork 的独立实现，仍是旧 room/branch。
-- **个体 Agent 模型**：D-014 已定目标（六模块、能力条目、Compiler 组装、成长需候选/评估/影子/版本化）；0.7.1 没有能力库、记忆层或 Context 编译，仍是提示词、工具和旧 room/branch。文档已同步，实现未开始。
-- **编辑/回退**：语义已定：用户消息编辑截断其后并重发；任意助手回复可原地编辑，修改进入上下文，后续消息保留。编辑/回退前的旧线进入不可变存档；回退同步恢复工作区，检测到用户手动改动冲突时停止。0.7.2 仍未实现：renderer 的 `saveEdit`/`rewindAndResend` 和 `core-chat-app.tsx` 仍创建分支（分支栏已移除），助手回复不可编辑；后端 `rewindConversationToMessage` 只完成了部分清理。
-- **分支 UI**：0.7.2 源码已移除分支栏；编辑重发仍创建分支，不能作为产品交互验收。
-- **验证**：2026-11-12 完整 `npm run check` 通过 **847/847**，29.42s。真实文件任务 inventory 与 orders 均通过可见执行者完成：正确选择项目工作区、读写文件、运行测试并返回结果；orders 最终回复完整，未再出现 `dsh_invalid_json`。当前仍缺少任务记录中的文件变更/独立验收字段。编辑/回退功能仍未达到 BEHAVIOR 的目标。
-- **打包**：0.7.2 当前源码已生成安装包并完成本机安装；Setup 170,392,064 字节，SHA256 `195332CCA13188C8110517D780E472ECEEB53DF44DF9E1734659AF08C56CA822`；安装版 exe SHA256 `B42DC7F5C185410426A87DBF647C4F55A3364B115F2A4018A3E3BFFC1C688E25`，`app.asar` `D5BAE3B4BB65FC3AD53F271A120891401F58F1FD24EAE23224D077AEB77E6D63`。产物未签名。
-- **工作区清理**：`.work/research` 仍被 `DeepSeek Harness.exe` 占用（约 166 MB），未删除；其余 `.work` 大目录已移到外部归档。
-- **长期能力**：ContextCompiler、Memory Store、ModuleHost 热重载均未交付；云端和跨设备当前不承诺。
+- `npm run check`：**847/847，0 fail，39,847.9507ms**（文档重构后最后一次全量）。
+- `npm run typecheck`：通过。
+- 真实任务：`orders` 双缺陷修复（`orders tests passed`）、`inventory` `totalValue` 修复、任务完成事件、刷新持久化、执行者详情。
+- 这些是工程/产品自查证据，不等于用户最终验收；最终验收以真实使用和用户判断为准。
 
-## 已知问题与风险
+## 未交付（按目标文档）
 
-- 模型/工具失败时必须保留用户消息和已有文件，不能自动宣称完成；当前实现仍需逐场景验证。
-- 主界面已收成一个对话；主进程现有 7 个 `app/`、`testing/` 模块：`window`（含托盘）、`social-runtime`（会话、工作服务、导出）、`agent`、`provider`、`windows-runner`、`renderer-smoke`（含冒烟日志）、`social-e2e`（含合成测试 Provider）；`main.ts` 1,303 行，仍持有启动、服务装配和 IPC 组合。
-- 旧文档已备份到 `C:\Users\NUC\Desktop\Noema-archive-2026-11-11\pre-doc-reset-2026-11-11`，仓库内旧入口已删除。
-- 文档路由固定为 8 份仓库文档；`workspace:check` 已通过（8 份当前文档、0 错误）。
+1. **执行者可见私聊**：当前执行者仍是后台身份；用户不能在私聊里直接看到其工作过程，`@Noema` 切换尚不存在。
+2. **会话拓扑**：仍使用旧 room/branch 结构；常驻会话、项目 fork、团队共享上下文、项目结束归档/复盘未实现。
+3. **岗位库/团队/项目负责人**：组织对象和长期团队、岗位复用、团队负责人、项目负责人尚未落地。
+4. **六模块**：Core/Policy/Competence/Tool Grants/Memory/Context 仍是目标；ContextCompiler、Memory Store、ModuleHost 热重载未交付。
+5. **编辑/回退**：用户消息编辑仍走分支结构；助手回复原地编辑和单 HEAD 回退未完成。
+6. **证据完整性**：部分执行路径的 `social_work_file_changes`、`file_change_operations`、`command_batches` 为空，任务验收仍依赖步骤/文本证据。
+7. **任务卡迁移**：旧 0.7.2 会话/项目中的任务卡是否迁移或仅归档，尚未定案。
 
-## 半废弃代码登记（2026-11-12）
+## 已知限制
 
-这些代码当前没有产品入口，但保留用于后续重做；不得按死代码删除。恢复时必须同时补回真实入口、验收场景和测试，不能只把组件挂回界面。
-
-- **暂缓的界面模块**（文件头已标注 `DORMANT (2026-11-12)`）：
-  - `apps/desktop/src/renderer/search/global-search-dialog.tsx`
-  - `apps/desktop/src/renderer/diagnostics/diagnostics-dialog.tsx`
-  - `apps/desktop/src/renderer/settings/personal-memory-dialog.tsx`
-  - `apps/desktop/src/renderer/settings/user-followups-dialog.tsx`
-  - `apps/desktop/src/renderer/projects/project-plan-panel.tsx`
-  - `apps/desktop/src/renderer/projects/project-review-card.tsx`
-  - `apps/desktop/src/renderer/chat/chat-start-state.tsx`
-- **旧执行器回退**：`apps/desktop/src/main/execution/noema-project-executor.mjs` 仍被 `apps/desktop/src/main/main.ts` 顶部导入和 `apps/desktop/src/main/execution/work-runtime-registry.mjs:36-42` 引用；只在 DSH 不可用时使用，属于 legacy fallback，不是可删死代码。
-- **判定规则**：零入引用不等于可删。只有同时满足“无动态/测试入口、无未来产品用途、无数据/恢复依赖”才删除；其余保留并登记。当前没有新增的确定可删产品文件；此前的 `settingsOpen`/no-op JSX、临时文件已清理。
-- **退役验证资产（2026-11-12）**：`apps/desktop/scripts/social-agent-e2e.mjs`、`apps/desktop/test-support/electron/agent-probes.ts`、`apps/desktop/test-support/electron/conversation-navigation-e2e.mjs` 面向已移除的会话导航/房间界面，已从 `package.json` 的发布验证入口移除，文件保留作恢复该界面时的参考。它们不是当前产品测试，不得作为发布验收。
+- 完成事件是 renderer 级 `localStorage`，按浏览器/应用数据隔离；交付记录/SQLite 才是任务事实源。
+- 任务 dock 只展示活跃任务；历史通过交付记录查看。
+- 旧完整 social UI 不再挂载，七个 renderer 模块保留为 dormant；旧 `noema-project-executor.mjs` 保留为 fallback。不要仅凭零引用删除，恢复需要真实入口和验收。
+- `main.ts` 仍是组合根（约 1,303 行，7 个 main 模块）；main/service/UI 的进一步拆分以真实缺口为驱动，不做无验收的大搬迁。
+- 旧 `docs/BEHAVIOR.md`/`SYSTEM.md` 已合并进 PRODUCT/ARCHITECTURE 并删除；`.codex/workspace.json` 已收敛为五份权威文档 + README/AGENTS。
 
 ## 下一步
 
-1. 主进程模块已从 13 个合并到 7 个；当前 0.7.2 已重新打包、安装并通过两条真实文件任务。继续审计剩余 IPC 组合，不再新增 `app/`、`testing/` 模块，每片保持 847 全绿。
-2. 扩大真实文件任务覆盖（多文件、恢复、权限、长上下文），补齐任务记录的文件变更与独立验收字段；在这些完成前不宣称 Noema 已可长期交付。
-3. 单独处理 `.work` 过程材料和旧参考源码，不与产品源码混放。
+1. 把 Noema 自身工具调用内联到主对话回复下；普通回答不显示轨迹。
+2. 落地执行者可见常驻私聊、常驻会话/项目 fork 和 `@Noema` 切换。
+3. 落地岗位库、长期团队、团队负责人、项目负责人；项目结束归档/复盘。
+4. 用六模块和 ContextCompiler 替换当前提示词/工具/上下文拼装。
+5. 完成单 HEAD 的用户消息截断重发、助手回复原地编辑和回退。
+6. 补齐任务文件/命令证据，再做最终验收与分发构建。
 
 ## 交付判断
 
-当前 0.7.2 为可安装的实验版本：核心对话、可见执行链、项目工作区、文件读写/测试回传已跑通，847 项检查通过；主进程仍在收口，任务证据字段、恢复/权限/长上下文尚未完整验收。可做受控试用，不能称为完成品。详见 [BEHAVIOR](BEHAVIOR.md) 与 [DECISIONS](DECISIONS.md)。
+当前是可日常使用的 0.7.2 工程版，不是已完成 V1。核心对话和执行链路可用；组织层、会话拓扑、六模块、编辑/回退和证据完整性仍是未交付项。任何“完成”结论必须有文件/命令/测试证据，不能以模型自述或计划代替。
