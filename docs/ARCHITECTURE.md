@@ -63,6 +63,14 @@ renderer (React)
 
 当前实现仍是旧 `room/branch` 结构：用户看不到执行者常驻私聊，项目 fork、团队共享上下文、岗位库和项目负责人尚未落地。目标结构不是现状。
 
+### 3.2 当前实现（阶段 1）
+
+- `apps/desktop/src/main/agents/agent-runtime-core.mjs` 提供最小不可变核心：`agentId`、角色、Agent Home、工作区、记忆/会话命名空间、工具授权、运行时适配器、追加式 JSONL 事件日志（`<Agent Home>/events.jsonl`）。事件只有 append/read，没有更新或删除。
+- `createAgentRuntimePair` 在 `userData/agents/noema` 和 `userData/agents/noema-executor/workspace` 创建两个独立个体环境；测试覆盖隔离、持久化、序号恢复、并发追加和非法输入。
+- 当前只有 Noema 主对话接入运行时事件：`SocialChatService` 在 `turn.started/completed/failed/interrupted` 写入 Noema 的日志；读取失败只记录诊断，不影响回复。Core Chat 不经过 `RootAgent`，`RootAgent` 上的旧事件桥不再作为当前路径。
+- Noema 自身工具调用通过 `chat-trace` 内联在回复下方；普通回答没有工具时不显示轨迹。工具调用和结果以 `stepId` 成对保存，渲染层不把结果覆盖掉调用。
+- 仍有限制：执行者实际执行仍由 `SocialWorkService`/DSH 承担，执行者核心已创建但还没有自己的运行事件；岗位库、团队、项目、Git 历史、六模块均未实现。
+
 ## 4. 六模块与能力
 
 Noema 和执行者共用同一套个体结构：
@@ -97,6 +105,7 @@ Noema 和执行者共用同一套个体结构：
 ```
 
 - 普通回答不建工单，不显示假轨迹。
+- Noema 自身工具调用按 `stepId` 内联显示调用和结果；没有工具调用时不显示轨迹。
 - 需要执行时，Noema 说明承接人、目标、工作区和当前状态；工单受理是异步的。
 - 执行者完成后，任务记录保存路径、文件变更、命令输出和未验证项；主对话只显示 Noema 的回复和一条完成事件，不复制执行者全文。
 - 任务完成/失败/中断时生成一条内联事件；事件可打开执行者任务详情。事件不是第二条助手回复。
@@ -109,6 +118,7 @@ apps/desktop/src/main/
   app/                       窗口、social-runtime、agent、provider、runner、smoke/e2e 模块
   ipc/                       root IPC 参数解析与转发
   chat/                      Core Chat 回合、social chat service、store、连续性
+  agents/                    AgentRuntime 核心、事件日志；RootAgent 为旧路径
   projects/                  项目、团队、岗位/成员、计划与验收
   execution/                 SocialWorkService、work runtime、DSH/native、Windows Runner
   models/                    模型 provider 与工具协议
@@ -128,7 +138,7 @@ apps/desktop/src/shared/     跨进程契约与 bridge 类型
 
 ## 7. 数据与持久化
 
-SQLite 是唯一产品事实源；`.work/` 只放过程材料。
+SQLite 是主要产品事实源；`.work/` 只放过程材料。Agent 个体事件日志是每个 Agent Home 下的追加式 JSONL，用于个体运行审计，不替代工单/消息事实表。
 
 - `social_messages`、`social_rooms`、`social_agents`：对话、房间、Agent 身份。
 - `social_projects`、`social_work_tasks`、`social_work_execution_steps`：项目、工单、执行步骤。
@@ -136,6 +146,7 @@ SQLite 是唯一产品事实源；`.work/` 只放过程材料。
 - `conversation_branches`、`conversation_turns`、`conversation_active_branch`：连续时间线/检查点（schema 37）。
 - `memories`、`settings`：记忆与配置；密钥在加密存储，不进入对话或日志。
 - 工作区身份、文件边界和滚动恢复由 `social_projects`/workspace identity 记录。
+- `<Agent Home>/events.jsonl`：追加式个体事件流，当前记录 Noema 回合开始/完成/失败/中断；序号单调，读取按游标，不能更新或删除。
 
 数据迁移必须可回滚；启动时 schema 失败应阻止继续写入，不能静默降级。
 
@@ -150,7 +161,7 @@ SQLite 是唯一产品事实源；`.work/` 只放过程材料。
 
 ## 9. 现状与目标
 
-已交付：Core Chat 单对话、流式回复、消息操作、历史、设置；工单派发与执行轨迹；DSH/native；Windows Runner；SQLite；任务 dock、完成事件和交付记录；0.7.2 的工作区路由与 DSH 非 JSON 容错。
+已交付：Core Chat 单对话、流式回复、消息操作、历史、设置；工单派发与执行轨迹；DSH/native；Windows Runner；SQLite；任务 dock、完成事件和交付记录；0.7.2 的工作区路由与 DSH 非 JSON 容错；阶段 1 的 AgentRuntime 最小核心、Noema 回合事件日志和 Noema 工具调用内联轨迹。
 
 未交付：执行者可见常驻私聊、常驻会话/项目 fork 拓扑、岗位库/团队/团队负责人/项目负责人、六模块实现、ContextCompiler、Memory Store、单 HEAD 编辑/回退、完整任务证据。
 
