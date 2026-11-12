@@ -1,6 +1,6 @@
 # STATUS
 
-最后更新：2026-11-12 13:20（Asia/Shanghai）
+最后更新：2026-11-12 13:26（Asia/Shanghai）
 
 ## 版本
 
@@ -33,7 +33,7 @@
 - **编辑/回退**：语义已定：用户消息编辑截断其后并重发；任意助手回复可原地编辑，修改进入上下文，后续消息保留。编辑/回退前的旧线进入不可变存档；回退同步恢复工作区，检测到用户手动改动冲突时停止。0.7.2 仍未实现：renderer 的 `saveEdit`/`rewindAndResend` 和 `core-chat-app.tsx` 仍创建分支（分支栏已移除），助手回复不可编辑；后端 `rewindConversationToMessage` 只完成了部分清理。
 - **分支 UI**：0.7.2 源码已移除分支栏；编辑重发仍创建分支，不能作为产品交互验收。
 - **验证**：2026-11-12 将对话导出和合成测试 Provider 分别并入社交运行时、社交 E2E 后，完整 `npm run check` 通过 **847/847**，27.30s。7 模块源码已在 `apps/desktop/out-7` 重新打包并通过冒烟；`Noema.exe` SHA256 `632ABD3EA460D33788D00FA504C120B47E31660943D8B927736C2D3687693C05`，`app.asar` `E1A29FB723949F8A3E12E20D7DDB7F45DAA8AE1A53BECC854B1DA12465D3B5D9`。安装版 `0.7.2` 早于本轮合并。编辑/回退功能仍未达到 BEHAVIOR 的目标。
-- **打包**：0.7.2 安装包已生成并完成本机安装；Setup 170,379,776 字节，SHA256 `C266D9F3FA58D2343AB84FC364DB0E4F90B40FD87FF974768E7C4C87E8C021F2`；安装版 exe SHA256 `0AD5D0727BBBFC00E99F7FC8E5E9F9A02500DD6720DC9A97FD4B9C6B75548C19`。产物未签名。
+- **打包**：0.7.2 的 7 模块版本已生成安装包并完成本机安装；Setup 170,391,040 字节，SHA256 `9F0E7235DC592EF85D000B99FFE52E94F3525379BA1BC5E495D9630267ED6881`；安装版 exe SHA256 `632ABD3EA460D33788D00FA504C120B47E31660943D8B927736C2D3687693C05`，`app.asar` `E1A29FB723949F8A3E12E20D7DDB7F45DAA8AE1A53BECC854B1DA12465D3B5D9`。产物未签名。
 - **工作区清理**：`.work/research` 仍被 `DeepSeek Harness.exe` 占用（约 166 MB），未删除；其余 `.work` 大目录已移到外部归档。
 - **长期能力**：ContextCompiler、Memory Store、ModuleHost 热重载均未交付；云端和跨设备当前不承诺。
 
