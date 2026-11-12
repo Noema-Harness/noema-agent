@@ -14,7 +14,9 @@ const forgeCli = path.join(
   'dist',
   'electron-forge.js',
 );
-const child = spawn(process.execPath, [forgeCli, 'start'], {
+const appArgs = process.argv.slice(2);
+const forgeArgs = appArgs.length ? ['start', '--', ...appArgs] : ['start'];
+const child = spawn(process.execPath, [forgeCli, ...forgeArgs], {
   cwd: appDir,
   env: process.env,
   stdio: 'inherit',

@@ -2937,6 +2937,7 @@ export class SocialChatService {
               prompt: `${task}${TICKET_FINAL_REPLY_GUIDE}`,
               workspacePath: continuedWorkspacePath,
               sessionId: continuedSessionId,
+              roomId,
               ...(assigneeAgent ? { agentId: assigneeAgent.id } : {}),
             });
           } catch (error) {
@@ -3912,6 +3913,7 @@ export class SocialChatService {
           result = await this.startTicket({
             prompt: run.text,
             workspacePath: null,
+            roomId,
           });
         } catch {
           result = null;

@@ -318,11 +318,11 @@ function buildTaskPrompt({
 
 /**
  * Owns room-scoped project work while treating the executor as an adapter.
- * @param {{store:import('./social-chat-store.mjs').SocialChatStore,projectStore?:import('./social-project-store.mjs').SocialProjectStore|null,adapter:{executionEngine?:string,startTask:(input:any)=>any}|null,secretStore:{isConfigured:()=>boolean},getSelectedModel?:()=>string|null,practiceProvider?:import('./openai-compatible-client.mjs').OpenAICompatibleClient|null,chooseWorkspace:(options?:{reuseCase?:boolean,prompt?:string,projectId?:string|null,agentId?:string|null})=>Promise<string|null>,confirmPracticeCandidate?:(input:{candidate:{sourceTaskId:string,basisTaskId:string,basisRoomTitle:string,basisTaskPrompt:string,roomTitle:string,trigger:string,action:string,limits:string},taskPrompt:string,caseSnapshot:{taskId:string,taskPrompt:string}|null})=>Promise<'trial'|'case'|'cancel'>,assertWorkAllowed?:(roomId:string)=>void,emit?:(event:object)=>void,recordDiagnosticEvent?:(event:Record<string,unknown>)=>void}} options
+ * @param {{store:import('./social-chat-store.mjs').SocialChatStore,projectStore?:import('./social-project-store.mjs').SocialProjectStore|null,adapter:{executionEngine?:string,startTask:(input:any)=>any}|null,secretStore:{isConfigured:()=>boolean},getSelectedModel?:()=>string|null,practiceProvider?:import('./openai-compatible-client.mjs').OpenAICompatibleClient|null,chooseWorkspace:(options?:{reuseCase?:boolean,prompt?:string,projectId?:string|null,agentId?:string|null,roomId?:string|null})=>Promise<string|null>,confirmPracticeCandidate?:(input:{candidate:{sourceTaskId:string,basisTaskId:string,basisRoomTitle:string,basisTaskPrompt:string,roomTitle:string,trigger:string,action:string,limits:string},taskPrompt:string,caseSnapshot:{taskId:string,taskPrompt:string}|null})=>Promise<'trial'|'case'|'cancel'>,assertWorkAllowed?:(roomId:string)=>void,emit?:(event:object)=>void,recordDiagnosticEvent?:(event:Record<string,unknown>)=>void}} options
  */
 export class SocialWorkService {
   /**
-   * @param {{store:import('./social-chat-store.mjs').SocialChatStore,projectStore?:import('./social-project-store.mjs').SocialProjectStore|null,adapter:{executionEngine?:string,startTask:(input:any)=>any}|null,secretStore:{isConfigured:()=>boolean},getSelectedModel?:()=>string|null,practiceProvider?:import('./openai-compatible-client.mjs').OpenAICompatibleClient|null,chooseWorkspace:(options?:{reuseCase?:boolean,prompt?:string,projectId?:string|null,agentId?:string|null})=>Promise<string|null>,confirmWorkspaceRebind?:(input:{projectId:string,oldPath:string,newPath:string})=>Promise<'rebind'|'cancel'>,confirmPracticeCandidate?:(input:{candidate:{sourceTaskId:string,basisTaskId:string,basisRoomTitle:string,basisTaskPrompt:string,roomTitle:string,trigger:string,action:string,limits:string},taskPrompt:string,caseSnapshot:{taskId:string,taskPrompt:string}|null})=>Promise<'trial'|'case'|'cancel'>,defaultVerificationChecks?:unknown,delayImpl?:(milliseconds:number,signal:AbortSignal)=>Promise<boolean>,assertWorkAllowed?:(roomId:string)=>void,emit?:(event:object)=>void,recordDiagnosticEvent?:(event:Record<string,unknown>)=>void}} options
+   * @param {{store:import('./social-chat-store.mjs').SocialChatStore,projectStore?:import('./social-project-store.mjs').SocialProjectStore|null,adapter:{executionEngine?:string,startTask:(input:any)=>any}|null,secretStore:{isConfigured:()=>boolean},getSelectedModel?:()=>string|null,practiceProvider?:import('./openai-compatible-client.mjs').OpenAICompatibleClient|null,chooseWorkspace:(options?:{reuseCase?:boolean,prompt?:string,projectId?:string|null,agentId?:string|null,roomId?:string|null})=>Promise<string|null>,confirmWorkspaceRebind?:(input:{projectId:string,oldPath:string,newPath:string})=>Promise<'rebind'|'cancel'>,confirmPracticeCandidate?:(input:{candidate:{sourceTaskId:string,basisTaskId:string,basisRoomTitle:string,basisTaskPrompt:string,roomTitle:string,trigger:string,action:string,limits:string},taskPrompt:string,caseSnapshot:{taskId:string,taskPrompt:string}|null})=>Promise<'trial'|'case'|'cancel'>,defaultVerificationChecks?:unknown,delayImpl?:(milliseconds:number,signal:AbortSignal)=>Promise<boolean>,assertWorkAllowed?:(roomId:string)=>void,emit?:(event:object)=>void,recordDiagnosticEvent?:(event:Record<string,unknown>)=>void}} options
    */
   constructor({
     store,
@@ -408,7 +408,7 @@ export class SocialWorkService {
   /**
    * Work-first entry point: one prompt, one folder, one executor session.
    * No project, team, group chat, or plan is created.
-   * @param {{prompt:string,workspacePath?:string|null,sessionId?:string|null,verificationChecks?:unknown,agentId?:string}} [input]
+   * @param {{prompt:string,workspacePath?:string|null,sessionId?:string|null,verificationChecks?:unknown,agentId?:string,roomId?:string}} [input]
    */
   startTicket({
     prompt,
@@ -416,9 +416,10 @@ export class SocialWorkService {
     sessionId = null,
     verificationChecks,
     agentId = 'noema-executor',
+    roomId = 'room-noema',
   } = {}) {
     return this.startTask({
-      roomId: 'room-noema',
+      roomId,
       agentId,
       prompt,
       workspacePath,
@@ -537,6 +538,7 @@ export class SocialWorkService {
         prompt: prompt.trim(),
         projectId,
         agentId,
+        roomId,
       }));
     signal?.throwIfAborted();
     if (!workspaceSelection) {

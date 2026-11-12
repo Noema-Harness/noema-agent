@@ -80,6 +80,7 @@ export interface SocialWorkDialogs {
     prompt?: string;
     projectId?: string | null;
     agentId?: string | null;
+    roomId?: string | null;
   }) => Promise<WorkspaceTarget | null>;
   chooseProjectWorkspace: (input?: {
     source?: string;
@@ -122,6 +123,7 @@ export function createSocialWorkDialogs(
     prompt = '',
     projectId = null,
     agentId = null,
+    roomId = null,
   } = {}) => {
     const recordWorkspaceAuthorization = beginWorkspaceAuthorization();
     if (socialWorkE2eValid) {
@@ -134,7 +136,12 @@ export function createSocialWorkDialogs(
       recordWorkspaceAuthorization('granted');
       return testSocialWorkWorkspace;
     }
-    if (!projectId && agentId && agentId !== 'noema') {
+    if (
+      roomId !== 'room-noema' &&
+      !projectId &&
+      agentId &&
+      agentId !== 'noema'
+    ) {
       const agent = socialChatStore?.getAgent(agentId);
       const directory = ensureAgentDirectory({
         agentId,
