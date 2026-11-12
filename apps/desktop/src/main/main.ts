@@ -9,10 +9,9 @@ import {
   shell,
   screen,
   Notification,
-  Menu,
-  Tray,
-  nativeImage,
 } from 'electron';
+import { createNoemaTray } from './app/tray';
+import { writeSmokeLog } from './testing/smoke-log';
 import { scheduleRendererSmoke } from './testing/renderer-smoke';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
@@ -149,18 +148,6 @@ const {
   socialAgentDelegationTask,
   socialAgentDelegationResult,
 } = developmentOptions;
-
-function writeSmokeLog(step: string, details: Record<string, unknown> = {}) {
-  const logFile = process.env.NOEMA_SMOKE_LOG_FILE;
-  const liveProviderTrace = process.env.NOEMA_E2E_SOCIAL_PROVIDER_LIVE === '1';
-  if (
-    (process.env.NOEMA_SMOKE_TEST !== '1' && !liveProviderTrace) ||
-    !logFile
-  ) {
-    return;
-  }
-  fs.writeFileSync(logFile, JSON.stringify({ step, ...details }));
-}
 
 function writeRendererHealthLog(
   event: string,
@@ -343,35 +330,6 @@ function recordDiagnosticEvent(event: Record<string, unknown>) {
   return recorded;
 }
 
-function createNoemaTray({
-  onOpen,
-  onQuit,
-}: {
-  onOpen: () => unknown;
-  onQuit: () => void;
-}) {
-  const iconPath = app.isPackaged
-    ? path.join(process.resourcesPath, 'noema-tray-icon.png')
-    : path.join(app.getAppPath(), 'assets', 'noema-tray-icon.png');
-  const icon = nativeImage.createFromPath(iconPath);
-  if (icon.isEmpty()) throw new Error('tray_icon_unavailable');
-  const tray = new Tray(icon);
-  try {
-    tray.setToolTip('Noema');
-    tray.setContextMenu(
-      Menu.buildFromTemplate([
-        { label: '打开 Noema', click: onOpen },
-        { type: 'separator' },
-        { label: '退出 Noema', click: onQuit },
-      ]),
-    );
-    tray.on('click', onOpen);
-    return tray;
-  } catch (error) {
-    tray.destroy();
-    throw error;
-  }
-}
 let unregisterRootIpc: (() => void) | null = null;
 let diagnosticsReadFailureProbeArmed = false;
 let rootAgent: RootAgent | null = null;
@@ -2672,20 +2630,10 @@ async function beginHostShutdown(
   app.quit();
 }
 
-app.on('before-quit', (event) => {
-  desktopLifecycle?.markQuitting();
-  if (shutdownComplete) return;
-  event.preventDefault();
-  void beginHostShutdown('application_exit');
-});
-
-app.on('will-quit', () => {
-  desktopLifecycle?.dispose();
-});
-
 type DesktopProbes = ReturnType<
   typeof import('../../test-support/electron/probes').createDesktopProbes
 >;
+// source-structure permits this test-support dynamic bridge only from main.ts.
 async function runDesktopProbe<K extends keyof DesktopProbes>(
   name: K,
   ...args: Parameters<DesktopProbes[K]>
@@ -2708,3 +2656,14 @@ async function runDesktopProbe<K extends keyof DesktopProbes>(
   ) => ReturnType<DesktopProbes[K]>;
   return (await invoke(...args)) as Awaited<ReturnType<DesktopProbes[K]>>;
 }
+
+app.on('before-quit', (event) => {
+  desktopLifecycle?.markQuitting();
+  if (shutdownComplete) return;
+  event.preventDefault();
+  void beginHostShutdown('application_exit');
+});
+
+app.on('will-quit', () => {
+  desktopLifecycle?.dispose();
+});
