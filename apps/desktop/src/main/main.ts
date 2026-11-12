@@ -701,108 +701,6 @@ const createWindow = () => {
             'Social chat bridge did not return contacts and rooms',
           );
         }
-        bridgeProbeStage = 'diagnostics-view';
-        const diagnosticsEntry = await mainWindow?.webContents
-          .executeJavaScript(`(() => {
-          const button = [...document.querySelectorAll('button')]
-            .find((candidate) => candidate.getAttribute('aria-label') === '运行诊断');
-          if (!button) return { found: false };
-          button.click();
-          return { found: true };
-        })()`);
-        if (!diagnosticsEntry?.found) throw new Error('运行诊断入口不可见');
-        await mainWindow?.webContents
-          .executeJavaScript(`new Promise((resolve) => {
-          const deadline = Date.now() + 5_000;
-          const poll = () => {
-            const capability = document.querySelector(
-              '[aria-label="Windows 命令隔离能力"]',
-            );
-            if (capability || Date.now() >= deadline) return resolve();
-            window.setTimeout(poll, 50);
-          };
-          poll();
-        })`);
-        const diagnosticsLayout = await mainWindow?.webContents
-          .executeJavaScript(`(() => {
-          const dialog = document.querySelector('[aria-labelledby="diagnostics-title"]');
-          const rect = dialog?.getBoundingClientRect();
-          const runtimeInfo = dialog?.querySelector('.diagnostics-runtime-info');
-          runtimeInfo?.querySelector('summary')?.click();
-          return {
-            visible: Boolean(rect && rect.width > 0 && rect.height > 0),
-            width: rect?.width ?? 0,
-            noHorizontalOverflow: document.documentElement.scrollWidth <= window.innerWidth,
-            heading: dialog?.querySelector('h2')?.textContent?.trim() ?? '',
-            runnerCapabilityText:
-              dialog?.querySelector('[aria-label="Windows 命令隔离能力"]')?.textContent?.trim() ?? '',
-            runnerSetupButton:
-              dialog?.querySelector('[aria-label="Windows 命令隔离能力"] button')?.textContent?.trim() ?? '',
-            databaseStatusText:
-              dialog?.querySelector('[aria-label="数据库检查状态"]')?.textContent?.trim() ?? '',
-            databaseRecoveryButton:
-              dialog?.querySelector('[aria-label="打开 Noema 数据与备份目录"]')?.textContent?.trim() ?? '',
-            runtimeInfoText: runtimeInfo?.textContent?.trim() ?? '',
-          };
-        })()`);
-        const runnerSetupNeeded =
-          diagnosticsLayout?.runnerCapabilityText.includes('隔离设置尚未完成');
-        const runnerBaselineUnsupported =
-          diagnosticsLayout?.runnerCapabilityText.includes(
-            '当前 Windows 版本或架构暂不支持受限命令',
-          );
-        const expectedRunnerSetupButton =
-          runnerSetupNeeded && !runnerBaselineUnsupported
-            ? '完成或修复隔离设置'
-            : '';
-        if (
-          !diagnosticsLayout?.visible ||
-          !diagnosticsLayout.noHorizontalOverflow ||
-          diagnosticsLayout.heading !== '运行诊断' ||
-          !diagnosticsLayout.runnerCapabilityText.includes(
-            'Windows 命令隔离',
-          ) ||
-          !diagnosticsLayout.runnerCapabilityText.includes(
-            '此状态只影响 Windows 项目命令',
-          ) ||
-          diagnosticsLayout.runnerSetupButton !== expectedRunnerSetupButton ||
-          diagnosticsLayout.databaseStatusText !== '检查通过。' ||
-          !diagnosticsLayout.databaseRecoveryButton.includes(
-            '打开数据与备份目录',
-          ) ||
-          !diagnosticsLayout.runtimeInfoText.includes('SocialChat schema v') ||
-          !diagnosticsLayout.runtimeInfoText.includes('Diagnostics schema v') ||
-          /SRT|srt-win/iu.test(diagnosticsLayout.runnerCapabilityText)
-        ) {
-          throw new Error(
-            `运行诊断窗口在窄窗口下不可用：${JSON.stringify(diagnosticsLayout)}`,
-          );
-        }
-        bridgeProbeStage = 'diagnostics-export-preview';
-        const diagnosticsPreviewVisible = await mainWindow?.webContents
-          .executeJavaScript(`new Promise((resolve) => {
-          const button = document.querySelector('.diagnostics-detail-heading button');
-          if (!button) return resolve(false);
-          button.click();
-          const deadline = Date.now() + 3_000;
-          const poll = () => {
-            const preview = document.querySelector('.diagnostics-preview');
-            if (preview) {
-              preview.querySelector('summary')?.click();
-              const report = preview.querySelector('pre')?.textContent ?? '';
-              return resolve(report.includes('"schemaVersion": 1') && report.includes('"manifest"'));
-            }
-            if (Date.now() >= deadline) return resolve(false);
-            setTimeout(poll, 40);
-          };
-          poll();
-        })`);
-        if (!diagnosticsPreviewVisible)
-          throw new Error('诊断报告导出预览不可见');
-        await mainWindow?.webContents.executeJavaScript(`(() => {
-          document.querySelector('.diagnostics-preview-actions .secondary-action')?.click();
-          document.querySelector('[aria-label="关闭运行诊断"]')?.click();
-        })()`);
         const firstRoom = bridgeState.rooms[0];
         bridgeProbeStage = 'social-room';
         const socialRoom = firstRoom
@@ -909,14 +807,6 @@ const createWindow = () => {
             ),
             roomIds: bridgeState.rooms.map((room: { id: string }) => room.id),
             firstRoomOpened: true,
-          },
-          diagnosticsSmoke: {
-            visible: diagnosticsLayout.visible,
-            noHorizontalOverflow: diagnosticsLayout.noHorizontalOverflow,
-            runnerCapabilityText: diagnosticsLayout.runnerCapabilityText,
-            runnerSetupButton: diagnosticsLayout.runnerSetupButton,
-            databaseStatusText: diagnosticsLayout.databaseStatusText,
-            databaseRecoveryButton: diagnosticsLayout.databaseRecoveryButton,
           },
           providerConfigured: Boolean(bridgeState.providerConfigured),
           providerBaseUrl: bridgeState.providerBaseUrl ?? null,

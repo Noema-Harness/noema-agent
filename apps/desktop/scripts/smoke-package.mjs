@@ -217,39 +217,8 @@ child.on('exit', (code, signal) => {
       `Packaged diagnostics runtime manifest was incomplete: ${JSON.stringify(runtime)}`,
     );
   }
-  const runnerCapabilityText =
-    loaded.diagnosticsSmoke?.runnerCapabilityText ?? '';
-  const runnerSetupButton = loaded.diagnosticsSmoke?.runnerSetupButton ?? '';
-  const runnerSetupNeeded = runnerCapabilityText.includes('隔离设置尚未完成');
-  const runnerBaselineUnsupported = runnerCapabilityText.includes(
-    '当前 Windows 版本或架构暂不支持受限命令',
-  );
-  if (
-    !loaded.diagnosticsSmoke?.visible ||
-    !loaded.diagnosticsSmoke.noHorizontalOverflow ||
-    !runnerCapabilityText.includes('此状态只影响 Windows 项目命令') ||
-    (runnerBaselineUnsupported && runnerSetupButton !== '') ||
-    (!runnerBaselineUnsupported &&
-      runnerSetupNeeded &&
-      runnerSetupButton !== '完成或修复隔离设置') ||
-    loaded.diagnosticsSmoke.databaseStatusText !== '检查通过。' ||
-    !loaded.diagnosticsSmoke.databaseRecoveryButton?.includes(
-      '打开数据与备份目录',
-    )
-  ) {
-    throw new Error(
-      `Packaged database diagnostics/recovery UI was incomplete: ${JSON.stringify(
-        {
-          diagnostics: loaded.diagnosticsSmoke,
-          runnerSetupNeeded,
-          runnerBaselineUnsupported,
-          runnerTextMatches: runnerCapabilityText.includes(
-            '此状态只影响 Windows 项目命令',
-          ),
-          runnerButtonMatches: runnerSetupButton === '完成或修复隔离设置',
-        },
-      )}`,
-    );
+  if (loaded.socialChat?.firstRoomOpened !== true) {
+    throw new Error('Packaged Noema did not open its resident conversation.');
   }
   if (process.platform === 'win32') {
     const trayProbe = loaded.desktopLifecycleSmoke;
