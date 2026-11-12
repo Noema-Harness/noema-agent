@@ -58,17 +58,10 @@ import { SocialChatService } from './chat/social-chat-service.mjs';
 import { searchAndReadWeb } from './tools/web-search.mjs';
 import { SocialWorkService } from './execution/social-work-service.mjs';
 import { captureWorkspaceIdentity } from './platform/workspace-identity.mjs';
-import { WindowsRunnerAclJournalStore } from './execution/windows-runner-acl-journal.mjs';
-import { WindowsRunnerAclTransactionService } from './execution/windows-runner-acl-transaction.mjs';
-import { WindowsRunnerCapabilityNameStore } from './execution/windows-runner-capability-name-store.mjs';
-import { WindowsRunnerExecutionService } from './execution/windows-runner-execution-service.mjs';
-import { WindowsRunnerNativeHelper } from './execution/windows-runner-native-helper.mjs';
-import { resolveWindowsRunnerNativeHelper } from './execution/windows-runner-resource.mjs';
-import { resolveWindowsRunnerCommandSupport } from './execution/windows-runner-command-support.mjs';
-import { createWindowsRunnerCapabilityReport } from './execution/windows-runner-capability.mjs';
-import { WINDOWS_RUNNER_PROTOCOL_VERSION } from './execution/windows-runner-native-helper.mjs';
-import { WindowsRunnerSetupService } from './execution/windows-runner-setup-service.mjs';
-import { WindowsRunnerSetupStateStore } from './execution/windows-runner-setup-state.mjs';
+import {
+  createWindowsRunnerRuntime,
+  type WindowsRunnerRuntime,
+} from './app/windows-runner-runtime';
 import { backupBeforeSocialChatMigration } from './chat/social-chat-migration-backup.mjs';
 import { resolveNoemaDatabasePath } from './platform/runtime-paths.mjs';
 import {
@@ -283,27 +276,7 @@ let rootStore: RootStore | null = null;
 let diagnosticsEventStore: DiagnosticsEventStore | null = null;
 let officialPluginHost: OfficialPluginHost | null = null;
 let diagnosticsWriteFailureCount = 0;
-let windowsRunnerCommandSupportGate: {
-  supported: boolean;
-  reason?: string;
-} | null = null;
-let windowsRunnerCapability = createWindowsRunnerCapabilityReport({
-  platform: process.platform,
-  support: { supported: false, reason: 'runner_startup_not_checked' },
-});
-let refreshWindowsRunnerCapability: (
-  identity?: Record<string, unknown>,
-) => Promise<typeof windowsRunnerCapability> = async () =>
-  windowsRunnerCapability;
-let setupWindowsRunner: () => Promise<{
-  supported: boolean;
-  canceled: boolean;
-  reasonCode: string | null;
-}> = async () => ({
-  supported: false,
-  canceled: false,
-  reasonCode: 'runner_unavailable',
-});
+let windowsRunnerRuntime: WindowsRunnerRuntime | null = null;
 let providerSecretStore: EncryptedSecretStore | null = null;
 
 function recordDiagnosticEvent(event: Record<string, unknown>) {
@@ -317,11 +290,7 @@ function recordDiagnosticEvent(event: Record<string, unknown>) {
   });
   if (!recorded) {
     diagnosticsWriteFailureCount += 1;
-    if (windowsRunnerCommandSupportGate) {
-      windowsRunnerCommandSupportGate.supported = false;
-      windowsRunnerCommandSupportGate.reason =
-        'Noema 诊断记录不可用；为保留执行链路，命令未启动。';
-    }
+    windowsRunnerRuntime?.markDiagnosticsUnavailable();
   }
   return recorded;
 }
@@ -624,257 +593,12 @@ async function startNoema() {
     });
     const { provider, modelUsageStore, webSearchSecretStore } = providerRuntime;
     providerSecretStore = providerRuntime.providerSecretStore;
-    let windowsRunnerExecution: WindowsRunnerExecutionService | null = null;
-    let windowsRunnerSupport: { supported: boolean; reason?: string } =
-      resolveWindowsRunnerCommandSupport({
-        unavailableCode: 'runner_startup_not_checked',
-      });
-    if (process.platform === 'win32') {
-      try {
-        const userDataPath = app.getPath('userData');
-        const helperPath = resolveWindowsRunnerNativeHelper({
-          platform: process.platform,
-          arch: process.arch,
-          isPackaged: app.isPackaged,
-          resourcesPath: process.resourcesPath,
-          appPath: app.getAppPath(),
-        });
-        const helper = new WindowsRunnerNativeHelper({
-          executablePath: helperPath,
-        });
-        const setupStateStore = new WindowsRunnerSetupStateStore({
-          userDataPath,
-        });
-        const setupService = new WindowsRunnerSetupService({
-          stateStore: setupStateStore,
-          helper,
-          onEvent: (event) => {
-            recordDiagnosticEvent({
-              executionId: event.operationId,
-              module: 'windows_runner',
-              operation: event.type ?? 'setup_event',
-              status: event.type?.endsWith('_failed') ? 'error' : 'observed',
-              errorCode: event.code,
-              details: { phase: event.stage },
-            });
-          },
-        });
-        let lastCapabilitySignature = '';
-        refreshWindowsRunnerCapability = async (identity) => {
-          let backendReadiness;
-          let setupReadiness;
-          try {
-            [backendReadiness, setupReadiness] = await Promise.all([
-              helper.probeCommandBackend({ requestId: randomUUID() }),
-              setupService.verifyReady(),
-            ]);
-            windowsRunnerSupport = resolveWindowsRunnerCommandSupport({
-              backendReadiness,
-              setupReadiness,
-              diagnosticsReady: diagnosticsWriteFailureCount === 0,
-            });
-            if (windowsRunnerCommandSupportGate) {
-              Object.assign(
-                windowsRunnerCommandSupportGate,
-                windowsRunnerSupport,
-              );
-            } else {
-              windowsRunnerCommandSupportGate = windowsRunnerSupport;
-            }
-            windowsRunnerCapability = createWindowsRunnerCapabilityReport({
-              platform: process.platform,
-              support: windowsRunnerSupport,
-              backendReadiness,
-              setupReadiness,
-              protocolVersion: WINDOWS_RUNNER_PROTOCOL_VERSION,
-            });
-          } catch (error) {
-            const code =
-              typeof (error as { code?: unknown })?.code === 'string'
-                ? (error as { code: string }).code
-                : 'runner_runtime_unavailable';
-            windowsRunnerSupport = resolveWindowsRunnerCommandSupport({
-              unavailableCode: code,
-            });
-            if (windowsRunnerCommandSupportGate) {
-              Object.assign(
-                windowsRunnerCommandSupportGate,
-                windowsRunnerSupport,
-              );
-            } else {
-              windowsRunnerCommandSupportGate = windowsRunnerSupport;
-            }
-            windowsRunnerCapability = createWindowsRunnerCapabilityReport({
-              platform: process.platform,
-              support: windowsRunnerSupport,
-            });
-          }
-          const signature = JSON.stringify(windowsRunnerCapability);
-          if (signature !== lastCapabilitySignature) {
-            recordDiagnosticEvent({
-              executionId:
-                typeof identity?.executionId === 'string'
-                  ? identity.executionId
-                  : undefined,
-              taskId:
-                typeof identity?.taskId === 'string'
-                  ? identity.taskId
-                  : undefined,
-              requestId:
-                typeof identity?.requestId === 'string'
-                  ? identity.requestId
-                  : undefined,
-              toolCallId:
-                typeof identity?.toolCallId === 'string'
-                  ? identity.toolCallId
-                  : undefined,
-              module: 'windows_runner',
-              operation:
-                lastCapabilitySignature === ''
-                  ? 'capability.initialized'
-                  : 'capability.changed',
-              status: windowsRunnerCapability.status,
-              errorCode: windowsRunnerCapability.reasonCode ?? undefined,
-              details: {
-                backendId: windowsRunnerCapability.backendId ?? undefined,
-                backendVersion:
-                  windowsRunnerCapability.backendVersion ?? undefined,
-                policyVersion:
-                  windowsRunnerCapability.policyVersion ?? undefined,
-                protocolVersion:
-                  windowsRunnerCapability.protocolVersion ?? undefined,
-                backendReady: windowsRunnerCapability.backendReady,
-                capabilityStatus: windowsRunnerCapability.status,
-              },
-            });
-            lastCapabilitySignature = signature;
-            if (mainWindow && !mainWindow.isDestroyed()) {
-              mainWindow.webContents.send(
-                'noema:windows-runner-capability-changed',
-                windowsRunnerCapability,
-              );
-            }
-          }
-          return windowsRunnerCapability;
-        };
-        setupWindowsRunner = async () => {
-          if (!mainWindow || mainWindow.isDestroyed()) {
-            return {
-              supported: false,
-              canceled: false,
-              reasonCode: 'main_window_unavailable',
-            };
-          }
-          const currentCapability = await refreshWindowsRunnerCapability();
-          if (!currentCapability.setupActionAvailable) {
-            return {
-              supported: currentCapability.supported,
-              canceled: false,
-              reasonCode:
-                currentCapability.reasonCodes[0] ??
-                currentCapability.reasonCode ??
-                'runner_setup_not_actionable',
-            };
-          }
-          try {
-            await setupService.reconcile();
-            const report = await refreshWindowsRunnerCapability();
-            return {
-              supported: report.supported,
-              canceled: false,
-              reasonCode: report.reasonCode,
-            };
-          } catch (error) {
-            await refreshWindowsRunnerCapability();
-            const code =
-              typeof (error as { code?: unknown })?.code === 'string' &&
-              /^[a-z0-9_]{1,96}$/u.test((error as { code: string }).code)
-                ? (error as { code: string }).code
-                : 'setup_failed';
-            return {
-              supported: false,
-              canceled: false,
-              reasonCode: code,
-            };
-          }
-        };
-        const aclJournalStore = new WindowsRunnerAclJournalStore({
-          userDataPath,
-        });
-        const aclTransaction = new WindowsRunnerAclTransactionService({
-          journalStore: aclJournalStore,
-          helper,
-          recordEvent: (event) => {
-            recordDiagnosticEvent({
-              executionId: event.executionId,
-              taskId: event.taskId,
-              requestId: event.requestId,
-              toolCallId: event.toolCallId,
-              module: 'windows_runner',
-              operation: event.operation,
-              status: event.reasonCode ? 'error' : event.stage,
-              errorCode: event.reasonCode,
-              details: { phase: event.stage },
-            });
-          },
-        });
-        const capabilityNameStore = new WindowsRunnerCapabilityNameStore({
-          userDataPath,
-        });
-        windowsRunnerExecution = new WindowsRunnerExecutionService({
-          helper,
-          setupService,
-          aclTransaction,
-          capabilityNameStore,
-          userDataPath,
-          recordEvent: (event) => {
-            recordDiagnosticEvent(event);
-            const backendStateChanged =
-              event.operation === 'backend_probe' &&
-              windowsRunnerCapability.backendReady !==
-                (event.status === 'ready');
-            const setupStateChanged =
-              event.operation === 'setup_verify' &&
-              (windowsRunnerCapability.setupStatus === 'ready') !==
-                (event.status === 'ready');
-            if (backendStateChanged || setupStateChanged) {
-              void refreshWindowsRunnerCapability(event);
-            }
-          },
-        });
-
-        // Read-only checks only. Startup never mutates the current user's
-        // AppContainer profile or durable setup state.
-        const report = await refreshWindowsRunnerCapability();
-        recordDiagnosticEvent({
-          module: 'windows_runner',
-          operation: 'startup_readiness',
-          status: report.supported ? 'ready' : 'unavailable',
-          errorCode: report.reasonCode ?? undefined,
-          details: { phase: 'startup' },
-        });
-      } catch (error) {
-        const code =
-          typeof (error as { code?: unknown })?.code === 'string'
-            ? (error as { code: string }).code
-            : 'runner_runtime_unavailable';
-        windowsRunnerSupport = resolveWindowsRunnerCommandSupport({
-          unavailableCode: code,
-        });
-        windowsRunnerCommandSupportGate = windowsRunnerSupport;
-        windowsRunnerCapability = createWindowsRunnerCapabilityReport({
-          platform: process.platform,
-          support: windowsRunnerSupport,
-        });
-        recordDiagnosticEvent({
-          module: 'windows_runner',
-          operation: 'startup_readiness',
-          status: 'error',
-          errorCode: code,
-          details: { phase: 'startup' },
-        });
-      }
-    }
+    windowsRunnerRuntime = await createWindowsRunnerRuntime({
+      app,
+      getMainWindow: () => mainWindow,
+      recordDiagnosticEvent,
+      getDiagnosticsWriteFailureCount: () => diagnosticsWriteFailureCount,
+    });
     // Prefer the DSH session runtime for work execution. Noema keeps the
     // ticket/attention layer, while DSH owns the agent loop, tools, session
     // durability and context management. Fall back to the legacy executor when
@@ -2004,8 +1728,8 @@ async function startNoema() {
           shell,
           userDataPath: app.getPath('userData'),
         }),
-      getWindowsRunnerCapability: () => refreshWindowsRunnerCapability(),
-      setupWindowsRunner: () => setupWindowsRunner(),
+      getWindowsRunnerCapability: () => windowsRunnerRuntime!.refresh(),
+      setupWindowsRunner: () => windowsRunnerRuntime!.setup(),
       shouldInjectDiagnosticsReadFailures: () =>
         diagnosticsReadFailureProbeArmed,
       shouldInjectSocialWorkReverseSnapshot: () =>
