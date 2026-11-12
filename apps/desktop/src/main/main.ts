@@ -42,14 +42,7 @@ import {
 } from './diagnostics/database-recovery.mjs';
 import { saveDiagnosticsExport } from './diagnostics/save-diagnostics-export.mjs';
 import { SocialChatStore } from './chat/social-chat-store.mjs';
-import {
-  conversationExportFileName,
-  formatConversationMarkdown,
-} from '../shared/export/conversation-markdown.mjs';
-import {
-  formatWorkTicketMarkdown,
-  workTicketExportFileName,
-} from '../shared/export/work-ticket-markdown.mjs';
+import { createChatExportRuntime } from './app/chat-export-runtime';
 import { SOCIAL_SCHEMA_VERSION } from './chat/social-chat-schema.mjs';
 import { SocialProjectStore } from './projects/social-project-store.mjs';
 import { SocialChatService } from './chat/social-chat-service.mjs';
@@ -958,6 +951,11 @@ async function startNoema() {
           openPath: (target) => shell.openPath(target),
         })
       : null;
+    const chatExportRuntime = createChatExportRuntime({
+      getMainWindow: () => mainWindow,
+      socialChatStore,
+      modelUsageStore,
+    });
     const unregisterRootHandlers = registerRootIpc({
       ipcMain,
       rootAgent: agent,
@@ -981,51 +979,8 @@ async function startNoema() {
           resultText: clip(detail.resultText),
         };
       },
-      exportConversation: async (roomId: string) => {
-        if (!mainWindow || mainWindow.isDestroyed() || !socialChatStore)
-          return { saved: false, errorCode: 'window_unavailable' };
-        try {
-          const snapshot = socialChatStore.getRoomSnapshot(roomId);
-          const markdown = formatConversationMarkdown(snapshot);
-          const selected = await dialog.showSaveDialog(mainWindow, {
-            title: '导出对话',
-            defaultPath: conversationExportFileName(snapshot.room),
-            filters: [{ name: 'Markdown', extensions: ['md'] }],
-          });
-          if (selected.canceled || !selected.filePath)
-            return { saved: false, canceled: true };
-          await fs.promises.writeFile(selected.filePath, markdown, 'utf8');
-          return { saved: true, path: selected.filePath };
-        } catch (error) {
-          return {
-            saved: false,
-            errorCode: error instanceof Error ? error.message : 'export_failed',
-          };
-        }
-      },
-      exportWorkTicket: async (taskId: string) => {
-        if (!mainWindow || mainWindow.isDestroyed() || !socialChatStore)
-          return { saved: false, errorCode: 'window_unavailable' };
-        try {
-          const task = socialChatStore.getSocialWorkTask(taskId);
-          const usage = modelUsageStore.getTaskUsage(taskId);
-          const markdown = formatWorkTicketMarkdown({ task, usage });
-          const selected = await dialog.showSaveDialog(mainWindow, {
-            title: '导出工单结果',
-            defaultPath: workTicketExportFileName(task),
-            filters: [{ name: 'Markdown', extensions: ['md'] }],
-          });
-          if (selected.canceled || !selected.filePath)
-            return { saved: false, canceled: true };
-          await fs.promises.writeFile(selected.filePath, markdown, 'utf8');
-          return { saved: true, path: selected.filePath };
-        } catch (error) {
-          return {
-            saved: false,
-            errorCode: error instanceof Error ? error.message : 'export_failed',
-          };
-        }
-      },
+      exportConversation: chatExportRuntime.exportConversation,
+      exportWorkTicket: chatExportRuntime.exportWorkTicket,
       workspaceFileService,
       chooseProjectWorkspace,
       resetChatSession: async () => {
