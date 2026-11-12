@@ -61,6 +61,8 @@ import {
 } from './app/windows-runner-runtime';
 import { createSocialE2eRuntime } from './testing/social-e2e-runtime';
 import { createSocialWorkDialogs } from './app/social-work-dialogs';
+import { createSocialStateRuntime } from './app/social-state';
+import { createSocialWorkServiceRuntime } from './app/social-work-service-runtime';
 import { createSyntheticSocialChatProvider } from './testing/synthetic-social-chat-provider';
 import { backupBeforeSocialChatMigration } from './chat/social-chat-migration-backup.mjs';
 import { resolveNoemaDatabasePath } from './platform/runtime-paths.mjs';
@@ -700,6 +702,17 @@ async function startNoema() {
       dshRuntime: syntheticSocialWorkAdapter ?? dshProjectExecutor,
       nativeRuntime: nativeProjectExecutor,
     });
+    const socialAgentE2eModel = 'e2e-local-spy';
+    const { getSocialRootState, ensureAgentDirectory } =
+      createSocialStateRuntime({
+        app,
+        getRootAgentState: () => agent.getUiState(),
+        socialAgentE2eValid,
+        socialWorkEntryE2eValid,
+        testSocialAgentLiveE2e,
+        e2eModel: socialAgentE2eModel,
+      });
+
     const socialWorkDialogs = createSocialWorkDialogs({
       app,
       getMainWindow: () => mainWindow,
@@ -730,32 +743,24 @@ async function startNoema() {
       testSocialWorkLiveEpisodes,
       practiceConfirmationEvidence,
     });
-    socialWorkService = new SocialWorkService({
+    socialWorkService = createSocialWorkServiceRuntime({
       store: socialChatStore,
       projectStore: socialProjectStore,
-      getSelectedModel: () => rootStore?.getSelectedModel() ?? null,
-      assertWorkAllowed: (roomId: string) =>
-        socialProjectStore?.assertWorkAllowed(roomId),
+      dialogs: socialWorkDialogs,
       adapter: workRuntimes.forTicket(),
       secretStore: useSyntheticSocialWork
         ? { isConfigured: () => true }
         : providerSecretStore,
       practiceProvider: useSyntheticSocialWork ? null : practiceProvider,
-      recordDiagnosticEvent: (event) =>
-        recordDiagnosticEvent({
-          ...event,
-          ...(event.operation === 'workspace.selection' &&
-          event.status === 'canceled'
-            ? { parentExecutionId: currentApplicationExecutionId }
-            : {}),
-        }),
-      defaultVerificationChecks:
-        socialWorkE2eValid && testSocialWorkChecksJson
-          ? JSON.parse(testSocialWorkChecksJson)
-          : [],
-      chooseWorkspace: socialWorkDialogs.chooseWorkspace,
-      confirmWorkspaceRebind: socialWorkDialogs.confirmWorkspaceRebind,
-      confirmPracticeCandidate: socialWorkDialogs.confirmPracticeCandidate,
+      getSelectedModel: () => rootStore?.getSelectedModel() ?? null,
+      assertWorkAllowed: (roomId: string) =>
+        socialProjectStore?.assertWorkAllowed(roomId),
+      socialWorkE2eValid,
+      testSocialWorkChecksJson,
+      recordDiagnosticEvent: recordDiagnosticEvent as (
+        event: Record<string, unknown>,
+      ) => void,
+      currentApplicationExecutionId,
       emit: (payload) => {
         if (
           'type' in payload &&
@@ -769,7 +774,6 @@ async function startNoema() {
       },
     });
     socialAgentE2eModelRequests = [];
-    const socialAgentE2eModel = 'e2e-local-spy';
     const socialChatProvider = createSyntheticSocialChatProvider({
       provider,
       store: socialChatStore,
@@ -783,50 +787,6 @@ async function startNoema() {
       delegationTask: socialAgentDelegationTask,
       delegationResult: socialAgentDelegationResult,
     });
-    const getSocialRootState = async () => {
-      const state = await agent.getUiState();
-      if (
-        (!socialAgentE2eValid && !socialWorkEntryE2eValid) ||
-        testSocialAgentLiveE2e
-      )
-        return state;
-      return {
-        ...state,
-        connected: true,
-        checking: false,
-        models: [
-          {
-            name: socialAgentE2eModel,
-            label: 'E2E 本机测试模型',
-            routeKind: 'direct' as const,
-            executionStatus: 'ready' as const,
-          },
-        ],
-        selectedModel: socialAgentE2eModel,
-        error: null,
-        providerConfigured: true,
-      };
-    };
-    function ensureAgentDirectory({
-      agentId,
-      name,
-    }: {
-      agentId: string;
-      name: string;
-    }): string {
-      const base =
-        socialAgentE2eValid || socialWorkEntryE2eValid
-          ? path.join(app.getPath('userData'), 'agent-workspaces')
-          : path.join(app.getPath('documents'), 'Noema', 'Agents');
-      const safeName =
-        String(name)
-          .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '-')
-          .trim()
-          .slice(0, 60) || 'agent';
-      const directory = path.join(base, `${safeName}-${agentId.slice(-6)}`);
-      fs.mkdirSync(directory, { recursive: true });
-      return directory;
-    }
     const chooseProjectWorkspace = socialWorkDialogs.chooseProjectWorkspace;
     const nativeChatRuntime = createNativeChatRuntime({
       provider: socialChatProvider as unknown as {
