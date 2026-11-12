@@ -1056,6 +1056,7 @@ export type NoemaSocialEvent =
         status: string | null;
         stepId?: string | null;
         detail?: string | null;
+        output?: string | null;
       };
     }
   | {

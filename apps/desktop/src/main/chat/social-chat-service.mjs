@@ -386,14 +386,14 @@ function compactProjectPlanWriteReceipt(plan, operation, input) {
 
 /**
  * Sends room-scoped turns to a replaceable chat provider.
- * @param {{store:import('./social-chat-store.mjs').SocialChatStore,provider:import('./openai-compatible-client.mjs').OpenAICompatibleClient,secretStore:{isConfigured:()=>boolean},getSelectedModel:()=>string|null,getRootState:()=>Promise<SocialProviderState>,projectStore?:import('./social-project-store.mjs').SocialProjectStore|null,getProjectSessionContext?:(roomId:string,agentId:string)=>{projectId:string,title:string,brief:string,sourceMessageId:string|null,status:string,agentId:string,roomId:string,groupRoomId:string}|null,getProjectWorkReadiness?:()=>{available:boolean,reasonCode:string|null,reason:string|null},isWebSearchConfigured?:()=>boolean,searchPublicSources?:(query:string,signal:AbortSignal,maxSources?:number,options?:{onUsage?:(usage:{requestStatus:string,usageUnits?:number,usageUnit:string,providerRequestId?:string})=>void})=>Promise<object>,recordExternalUsage?:(record:Record<string,unknown>)=>void,recordDiagnosticEvent?:(event:Record<string,unknown>)=>boolean|void,fetchProjectSource?:(url:string,options:object)=>Promise<object>,startTicket?:(input:{prompt:string,workspacePath?:string|null,sessionId?:string|null})=>Promise<{accepted:boolean,taskId?:string,reason?:string}>,startProjectWork?:(input:{roomId:string,agentId:string,dispatchFromNoema:boolean,prompt:string,sourceMessageId:string},signal:AbortSignal)=>Promise<{accepted:boolean,taskId?:string,reason?:string}>,ensureAgentWorkspace?:(input:{agentId:string,name:string})=>void,chooseProjectWorkspace?:(input:{source:string,title:string})=>Promise<{workspacePath:string,identity:object}|null>,chatRuntime?:{streamChat:(options:object)=>AsyncIterable<string>}|null,chatRuntimes?:{get:(kind:string)=>{kind:string,streamChat:(options:object)=>AsyncIterable<string>},forMainChat:(input:{agentId:string,roomId:string,preferred?:string})=>{kind:string,streamChat:(options:object)=>AsyncIterable<string>},preferredKind:string}|null,emit?:(event:object)=>void}} options
+ * @param {{store:import('./social-chat-store.mjs').SocialChatStore,provider:import('./openai-compatible-client.mjs').OpenAICompatibleClient,secretStore:{isConfigured:()=>boolean},getSelectedModel:()=>string|null,getRootState:()=>Promise<SocialProviderState>,projectStore?:import('./social-project-store.mjs').SocialProjectStore|null,getProjectSessionContext?:(roomId:string,agentId:string)=>{projectId:string,title:string,brief:string,sourceMessageId:string|null,status:string,agentId:string,roomId:string,groupRoomId:string}|null,getProjectWorkReadiness?:()=>{available:boolean,reasonCode:string|null,reason:string|null},isWebSearchConfigured?:()=>boolean,searchPublicSources?:(query:string,signal:AbortSignal,maxSources?:number,options?:{onUsage?:(usage:{requestStatus:string,usageUnits?:number,usageUnit:string,providerRequestId?:string})=>void})=>Promise<object>,recordExternalUsage?:(record:Record<string,unknown>)=>void,recordDiagnosticEvent?:(event:Record<string,unknown>)=>boolean|void,fetchProjectSource?:(url:string,options:object)=>Promise<object>,startTicket?:(input:{prompt:string,workspacePath?:string|null,sessionId?:string|null})=>Promise<{accepted:boolean,taskId?:string,reason?:string}>,startProjectWork?:(input:{roomId:string,agentId:string,dispatchFromNoema:boolean,prompt:string,sourceMessageId:string},signal:AbortSignal)=>Promise<{accepted:boolean,taskId?:string,reason?:string}>,ensureAgentWorkspace?:(input:{agentId:string,name:string})=>void,chooseProjectWorkspace?:(input:{source:string,title:string})=>Promise<{workspacePath:string,identity:object}|null>,chatRuntime?:{streamChat:(options:object)=>AsyncIterable<string>}|null,chatRuntimes?:{get:(kind:string)=>{kind:string,streamChat:(options:object)=>AsyncIterable<string>},forMainChat:(input:{agentId:string,roomId:string,preferred?:string})=>{kind:string,streamChat:(options:object)=>AsyncIterable<string>},preferredKind:string}|null,agentRuntimes?:{noema:{appendEvent:(event:{type:string,payload:object})=>Promise<unknown>}}|null,emit?:(event:object)=>void}} options
  */
 const TICKET_FINAL_REPLY_GUIDE =
   '\n\n最终答复面向用户：先用一两句话说明结果，再列出关键文件路径和仍未验证的事项。不要重复逐条工具调用、命令输出或大表格；这些已经由执行记录展示。';
 
 export class SocialChatService {
   /**
-   * @param {{store:import('./social-chat-store.mjs').SocialChatStore,provider:import('./openai-compatible-client.mjs').OpenAICompatibleClient,secretStore:{isConfigured:()=>boolean},getSelectedModel:()=>string|null,getRootState:()=>Promise<SocialProviderState>,projectStore?:import('./social-project-store.mjs').SocialProjectStore|null,getProjectSessionContext?:(roomId:string,agentId:string)=>{projectId:string,title:string,brief:string,sourceMessageId:string|null,status:string,agentId:string,roomId:string,groupRoomId:string}|null,getProjectWorkReadiness?:()=>{available:boolean,reasonCode:string|null,reason:string|null},isWebSearchConfigured?:()=>boolean,searchPublicSources?:(query:string,signal:AbortSignal,maxSources?:number,options?:{onUsage?:(usage:{requestStatus:string,usageUnits?:number,usageUnit:string,providerRequestId?:string})=>void})=>Promise<object>,recordExternalUsage?:(record:Record<string,unknown>)=>void,recordDiagnosticEvent?:(event:Record<string,unknown>)=>boolean|void,fetchProjectSource?:(url:string,options:object)=>Promise<object>,startTicket?:(input:{prompt:string,workspacePath?:string|null,sessionId?:string|null})=>Promise<{accepted:boolean,taskId?:string,reason?:string}>,startProjectWork?:(input:{roomId:string,agentId:string,dispatchFromNoema:boolean,prompt:string,sourceMessageId:string},signal:AbortSignal)=>Promise<{accepted:boolean,taskId?:string,reason?:string}>,ensureAgentWorkspace?:(input:{agentId:string,name:string})=>void,chooseProjectWorkspace?:(input:{source:string,title:string})=>Promise<{workspacePath:string,identity:object}|null>,chatRuntime?:{streamChat:(options:object)=>AsyncIterable<string>}|null,chatRuntimes?:{get:(kind:string)=>{kind:string,streamChat:(options:object)=>AsyncIterable<string>},forMainChat:(input:{agentId:string,roomId:string,preferred?:string})=>{kind:string,streamChat:(options:object)=>AsyncIterable<string>},preferredKind:string}|null,emit?:(event:object)=>void}} options
+   * @param {{store:import('./social-chat-store.mjs').SocialChatStore,provider:import('./openai-compatible-client.mjs').OpenAICompatibleClient,secretStore:{isConfigured:()=>boolean},getSelectedModel:()=>string|null,getRootState:()=>Promise<SocialProviderState>,projectStore?:import('./social-project-store.mjs').SocialProjectStore|null,getProjectSessionContext?:(roomId:string,agentId:string)=>{projectId:string,title:string,brief:string,sourceMessageId:string|null,status:string,agentId:string,roomId:string,groupRoomId:string}|null,getProjectWorkReadiness?:()=>{available:boolean,reasonCode:string|null,reason:string|null},isWebSearchConfigured?:()=>boolean,searchPublicSources?:(query:string,signal:AbortSignal,maxSources?:number,options?:{onUsage?:(usage:{requestStatus:string,usageUnits?:number,usageUnit:string,providerRequestId?:string})=>void})=>Promise<object>,recordExternalUsage?:(record:Record<string,unknown>)=>void,recordDiagnosticEvent?:(event:Record<string,unknown>)=>boolean|void,fetchProjectSource?:(url:string,options:object)=>Promise<object>,startTicket?:(input:{prompt:string,workspacePath?:string|null,sessionId?:string|null})=>Promise<{accepted:boolean,taskId?:string,reason?:string}>,startProjectWork?:(input:{roomId:string,agentId:string,dispatchFromNoema:boolean,prompt:string,sourceMessageId:string},signal:AbortSignal)=>Promise<{accepted:boolean,taskId?:string,reason?:string}>,ensureAgentWorkspace?:(input:{agentId:string,name:string})=>void,chooseProjectWorkspace?:(input:{source:string,title:string})=>Promise<{workspacePath:string,identity:object}|null>,chatRuntime?:{streamChat:(options:object)=>AsyncIterable<string>}|null,chatRuntimes?:{get:(kind:string)=>{kind:string,streamChat:(options:object)=>AsyncIterable<string>},forMainChat:(input:{agentId:string,roomId:string,preferred?:string})=>{kind:string,streamChat:(options:object)=>AsyncIterable<string>},preferredKind:string}|null,agentRuntimes?:{noema:{appendEvent:(event:{type:string,payload:object})=>Promise<unknown>}}|null,emit?:(event:object)=>void}} options
    */
   constructor({
     store,
@@ -419,10 +419,12 @@ export class SocialChatService {
     chooseProjectWorkspace = null,
     chatRuntime = null,
     chatRuntimes = null,
+    agentRuntimes = null,
     emit = () => {},
   }) {
     this.store = store;
     this.provider = provider;
+    this.agentRuntimes = agentRuntimes;
     this.chatRuntimes = chatRuntimes;
     this.chatRuntime = chatRuntimes
       ? chatRuntimes.get(chatRuntimes.preferredKind)
@@ -721,6 +723,34 @@ export class SocialChatService {
     );
   }
 
+  async recordAgentTurnEvent(run, type, payload = {}) {
+    if (
+      !this.agentRuntimes?.noema ||
+      run.agentId !== 'noema' ||
+      run.roomId !== 'room-noema'
+    ) {
+      return;
+    }
+    try {
+      await this.agentRuntimes.noema.appendEvent({
+        type,
+        payload: {
+          turnId: run.turnId,
+          attempt: Number.isInteger(run.attempt) ? run.attempt : 1,
+          ...(typeof run.model === 'string' ? { model: run.model } : {}),
+          ...payload,
+        },
+      });
+    } catch {
+      this.recordDiagnosticEvent({
+        module: 'agent.runtime',
+        operation: 'event.append',
+        status: 'failed',
+        details: { agentId: 'noema', eventType: type },
+      });
+    }
+  }
+
   recordUserFollowupEvent(input) {
     return this.diagnostics.recordUserFollowupEvent(input);
   }
@@ -754,7 +784,22 @@ export class SocialChatService {
   }
 
   beginSocialToolTrace(run, calls, requestId) {
-    return this.diagnostics.beginSocialToolTrace(run, calls, requestId);
+    const result = this.diagnostics.beginSocialToolTrace(run, calls, requestId);
+    for (const call of calls ?? []) {
+      if (typeof call?.id !== 'string' || !call.id) continue;
+      const name =
+        typeof call.function?.name === 'string' ? call.function.name : null;
+      this.emitRunEvent(run, 'chat-trace', {
+        event: {
+          type: 'tool_call',
+          name,
+          status: 'running',
+          stepId: call.id,
+          detail: traceDetailForTool(name, call.function?.arguments),
+        },
+      });
+    }
+    return result;
   }
 
   skipSocialToolTrace(run, calls) {
@@ -762,7 +807,38 @@ export class SocialChatService {
   }
 
   finishSocialToolTrace(run, messages, options = {}) {
-    return this.diagnostics.finishSocialToolTrace(run, messages, options);
+    const pending = Array.isArray(run.pendingSocialToolTrace)
+      ? run.pendingSocialToolTrace.slice()
+      : [];
+    const result = this.diagnostics.finishSocialToolTrace(
+      run,
+      messages,
+      options,
+    );
+    for (const trace of pending) {
+      if (!trace?.toolCallId) continue;
+      const toolMessage = messages?.find(
+        (message) =>
+          message.role === 'tool' && message.tool_call_id === trace.toolCallId,
+      );
+      const completed =
+        Boolean(toolMessage) ||
+        (options.completedCallIds ?? []).includes(trace.toolCallId);
+      const output =
+        toolMessage && typeof toolMessage.content === 'string'
+          ? toolMessage.content.slice(0, 4_000)
+          : null;
+      this.emitRunEvent(run, 'chat-trace', {
+        event: {
+          type: 'tool_result',
+          name: trace.toolName,
+          status: completed && !options.interrupted ? 'completed' : 'failed',
+          stepId: trace.toolCallId,
+          output,
+        },
+      });
+    }
+    return result;
   }
 
   get userFollowupDrain() {
@@ -1718,6 +1794,7 @@ export class SocialChatService {
       run.retried ? 'reply.retried' : 'reply.started',
       'running',
     );
+    await this.recordAgentTurnEvent(run, 'turn.started');
     const turnAllowsProjectWork =
       roomId !== 'room-noema' || Boolean(run.projectReportData);
     try {
@@ -3985,6 +4062,9 @@ export class SocialChatService {
             );
         }
       }
+      await this.recordAgentTurnEvent(run, 'turn.completed', {
+        empty: content.trim().length === 0,
+      });
       this.emitRunEvent(run, 'chat-turn-completed', {
         empty: content.trim().length === 0,
       });
@@ -4008,6 +4088,7 @@ export class SocialChatService {
             'interrupted',
             'reply_interrupted',
           );
+          await this.recordAgentTurnEvent(run, 'turn.interrupted');
           this.emitRunEvent(run, 'chat-turn-interrupted', { message });
         }
       } else {
@@ -4018,6 +4099,7 @@ export class SocialChatService {
         if (this.setRunReplyStatus(run, 'failed', code, message)) {
           this.recordSocialChatEvent(run, 'reply.failed', 'failed', code);
         }
+        await this.recordAgentTurnEvent(run, 'turn.failed', { code });
         this.emitRunEvent(run, 'chat-turn-failed', { code, message });
       }
     } finally {

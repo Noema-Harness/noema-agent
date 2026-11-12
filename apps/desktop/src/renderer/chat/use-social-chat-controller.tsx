@@ -12,6 +12,7 @@ import {
 import * as pdfjs from 'pdfjs-dist';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { useConversationNavigation } from './use-conversation-navigation';
+import type { LiveTraceEvent } from './turn-trace';
 import { resolveFollowupNavigationTarget } from './followup-navigation.mjs';
 import { highlightMessageMatches } from './search-highlights';
 import { useScrollActivity } from '../shared/use-scroll-activity';
@@ -196,14 +197,7 @@ export function useSocialChatController() {
     roomId: string;
     messageId: string;
     taskId?: string;
-    events: Array<{
-      type: string;
-      name: string | null;
-      status: string | null;
-      stepId?: string | null;
-      detail?: string | null;
-      output?: string | null;
-    }>;
+    events: LiveTraceEvent[];
     done?: boolean;
   } | null>(null);
   const [showRoomList, setShowRoomList] = useState(false);
@@ -973,16 +967,20 @@ export function useSocialChatController() {
               };
             }
             const stepId = event.event.stepId;
-            if (event.event.type === 'tool_result' && stepId) {
+            if (stepId) {
               const index = current.events.findIndex(
-                (item) => item.stepId === stepId,
+                (item) =>
+                  item.stepId === stepId && item.type === event.event.type,
               );
               if (index >= 0) {
                 const events = current.events.slice();
                 events[index] = {
                   ...events[index],
-                  type: 'tool_result',
-                  status: event.event.status,
+                  type: event.event.type,
+                  status: event.event.status ?? events[index].status,
+                  name: event.event.name ?? events[index].name,
+                  detail: event.event.detail ?? events[index].detail,
+                  output: event.event.output ?? events[index].output,
                 };
                 return { ...current, events };
               }
@@ -996,12 +994,13 @@ export function useSocialChatController() {
         }
         if (event.type === 'chat-turn-started') {
           setLiveTrace((current) => {
-            if (
-              current?.roomId === event.roomId &&
-              current.taskId &&
-              current.events.length > 0
-            ) {
-              return current;
+            if (current?.roomId === event.roomId) {
+              if (
+                current.messageId === event.assistantMessageId ||
+                (current.taskId && current.events.length > 0)
+              ) {
+                return current;
+              }
             }
             return {
               roomId: event.roomId,

@@ -1,4 +1,5 @@
 import type { BrowserWindow } from 'electron';
+import { createAgentRuntimePair } from '../agents/agent-runtime-core.mjs';
 import { RootAgent } from '../agents/root-agent.mjs';
 import {
   DshHeadlessAdapter,
@@ -26,6 +27,7 @@ export interface AgentRuntimeOptions {
 export interface AgentRuntime {
   dshProjectExecutor: DshHeadlessAdapter | null;
   rootAgent: RootAgent;
+  agentRuntimes: Awaited<ReturnType<typeof createAgentRuntimePair>>;
 }
 
 export async function createAgentRuntime(
@@ -108,6 +110,48 @@ export async function createAgentRuntime(
     });
   }
 
+  const chatBackend = {
+    kind: 'native' as const,
+    streamChat: (options: Parameters<typeof provider.streamChat>[0]) =>
+      provider.streamChat(options),
+  };
+  const agentRuntimes = await createAgentRuntimePair({
+    userDataPath,
+    noemaRuntime: chatBackend,
+    executorRuntime: chatBackend,
+  });
+  const recordRootTurnEvent = (payload: Record<string, unknown>) => {
+    const coreType =
+      payload.type === 'turn-started'
+        ? 'turn.started'
+        : payload.type === 'turn-completed'
+          ? 'turn.completed'
+          : payload.type === 'turn-failed'
+            ? 'turn.failed'
+            : null;
+    if (!coreType) return;
+    void agentRuntimes.noema
+      .appendEvent({
+        type: coreType,
+        payload: {
+          turnId: payload.turnId,
+          attempt: payload.attempt,
+          ...(typeof payload.model === 'string'
+            ? { model: payload.model }
+            : {}),
+          ...(typeof payload.code === 'string' ? { code: payload.code } : {}),
+        },
+      })
+      .catch(() => {
+        recordDiagnosticEvent({
+          module: 'agent.runtime',
+          operation: 'event.append',
+          status: 'failed',
+          details: { agentId: 'noema', eventType: coreType },
+        });
+      });
+  };
+
   const rootAgent = new RootAgent({
     store: rootStore,
     provider,
@@ -123,11 +167,9 @@ export async function createAgentRuntime(
         type?: unknown;
         model?: unknown;
       };
-      if (
-        typeof eventPayload?.type !== 'string' ||
-        !MODEL_EVENTS.has(eventPayload.type)
-      )
-        return;
+      if (typeof eventPayload?.type !== 'string') return;
+      recordRootTurnEvent(eventPayload as Record<string, unknown>);
+      if (!MODEL_EVENTS.has(eventPayload.type)) return;
       const mainWindow = getMainWindow();
       if (mainWindow && !mainWindow.isDestroyed())
         mainWindow.webContents.send(CHANNELS.modelStateEvent, {
@@ -140,5 +182,5 @@ export async function createAgentRuntime(
     },
   });
 
-  return { dshProjectExecutor, rootAgent };
+  return { dshProjectExecutor, rootAgent, agentRuntimes };
 }

@@ -594,7 +594,11 @@ async function startNoema() {
       getMainWindow: () => mainWindow,
       recordDiagnosticEvent,
     });
-    const { dshProjectExecutor, rootAgent: agent } = agentRuntime;
+    const {
+      dshProjectExecutor,
+      rootAgent: agent,
+      agentRuntimes,
+    } = agentRuntime;
     rootAgent = agent;
     const migrationBackupPath = await backupBeforeSocialChatMigration({
       db: rootStore.db,
@@ -850,6 +854,7 @@ async function startNoema() {
       projectStore: socialProjectStore,
       provider: socialChatProvider as OpenAICompatibleClient,
       chatRuntimes,
+      agentRuntimes,
       secretStore:
         (socialAgentE2eValid || socialWorkEntryE2eValid) &&
         !testSocialAgentLiveE2e

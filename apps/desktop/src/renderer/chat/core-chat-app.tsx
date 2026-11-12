@@ -608,6 +608,11 @@ export function CoreChatApp() {
           ) : streaming ? (
             <span className="typing-state">正在回复…</span>
           ) : null}
+          {!user &&
+          liveTrace?.messageId === message.id &&
+          liveTrace.events.length ? (
+            <TurnTrace events={liveTrace.events} done={liveTrace.done} />
+          ) : null}
           {message.status === 'interrupted' ? (
             <p className="request-explanation">
               本轮回复没有完成。消息已保留，你可以重试。
