@@ -8,11 +8,9 @@ import {
   shell,
   Notification,
 } from 'electron';
-import { createNoemaTray } from './app/tray';
-import { createMainWindow } from './app/window';
+import { createMainWindow, createNoemaTray } from './app/window';
 import { createProviderRuntime } from './app/provider-runtime';
-import { writeSmokeLog } from './testing/smoke-log';
-import { scheduleRendererSmoke } from './testing/renderer-smoke';
+import { scheduleRendererSmoke, writeSmokeLog } from './testing/renderer-smoke';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -53,9 +51,11 @@ import {
   type WindowsRunnerRuntime,
 } from './app/windows-runner-runtime';
 import { createSocialE2eRuntime } from './testing/social-e2e-runtime';
-import { createSocialWorkDialogs } from './app/social-work-dialogs';
-import { createSocialStateRuntime } from './app/social-state';
-import { createSocialWorkServiceRuntime } from './app/social-work-service-runtime';
+import {
+  createSocialStateRuntime,
+  createSocialWorkDialogs,
+  createSocialWorkServiceRuntime,
+} from './app/social-runtime';
 import { createSyntheticSocialChatProvider } from './testing/synthetic-social-chat-provider';
 import { backupBeforeSocialChatMigration } from './chat/social-chat-migration-backup.mjs';
 import { resolveNoemaDatabasePath } from './platform/runtime-paths.mjs';
@@ -392,7 +392,6 @@ const createWindow = () => {
               name: string,
               ...args: unknown[]
             ) => Promise<unknown>,
-            writeSmokeLog,
             armDiagnosticsReadFailure: (armed) => {
               diagnosticsReadFailureProbeArmed = armed;
             },

@@ -1,6 +1,9 @@
 import { dialog, type BrowserWindow } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
+import { SocialWorkService } from '../execution/social-work-service.mjs';
+import type { SocialChatStore } from '../chat/social-chat-store.mjs';
+import type { SocialProjectStore } from '../projects/social-project-store.mjs';
 import { captureWorkspaceIdentity } from '../platform/workspace-identity.mjs';
 
 type WorkspaceTarget = string;
@@ -317,4 +320,139 @@ export function createSocialWorkDialogs(
     confirmWorkspaceRebind,
     confirmPracticeCandidate,
   };
+}
+
+export interface SocialStateRuntimeOptions {
+  app: { getPath(name: string): string };
+  getRootAgentState: () => Promise<Record<string, unknown>>;
+  socialAgentE2eValid: boolean;
+  socialWorkEntryE2eValid: boolean;
+  testSocialAgentLiveE2e: boolean;
+  e2eModel: string;
+}
+
+export function createSocialStateRuntime(options: SocialStateRuntimeOptions) {
+  const {
+    app,
+    getRootAgentState,
+    socialAgentE2eValid,
+    socialWorkEntryE2eValid,
+    testSocialAgentLiveE2e,
+    e2eModel,
+  } = options;
+
+  const getSocialRootState = async () => {
+    const state = await getRootAgentState();
+    if (
+      (!socialAgentE2eValid && !socialWorkEntryE2eValid) ||
+      testSocialAgentLiveE2e
+    ) {
+      return state;
+    }
+    return {
+      ...state,
+      connected: true,
+      checking: false,
+      models: [
+        {
+          name: e2eModel,
+          label: 'E2E 本机测试模型',
+          routeKind: 'direct' as const,
+          executionStatus: 'ready' as const,
+        },
+      ],
+      selectedModel: e2eModel,
+      error: null,
+      providerConfigured: true,
+    };
+  };
+
+  function ensureAgentDirectory({
+    agentId,
+    name,
+  }: {
+    agentId: string;
+    name: string;
+  }): string {
+    const base =
+      socialAgentE2eValid || socialWorkEntryE2eValid
+        ? path.join(app.getPath('userData'), 'agent-workspaces')
+        : path.join(app.getPath('documents'), 'Noema', 'Agents');
+    const safeName =
+      String(name)
+        .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '-')
+        .trim()
+        .slice(0, 60) || 'agent';
+    const directory = path.join(base, `${safeName}-${agentId.slice(-6)}`);
+    fs.mkdirSync(directory, { recursive: true });
+    return directory;
+  }
+
+  return { getSocialRootState, ensureAgentDirectory };
+}
+
+type SocialWorkServiceOptions = ConstructorParameters<
+  typeof SocialWorkService
+>[0];
+
+export interface SocialWorkServiceRuntimeOptions {
+  store: SocialChatStore;
+  projectStore: SocialProjectStore;
+  dialogs: SocialWorkDialogs;
+  adapter: SocialWorkServiceOptions['adapter'];
+  secretStore: SocialWorkServiceOptions['secretStore'];
+  practiceProvider: SocialWorkServiceOptions['practiceProvider'];
+  getSelectedModel: () => string | null;
+  assertWorkAllowed: (roomId: string) => void;
+  socialWorkE2eValid: boolean;
+  testSocialWorkChecksJson: string | null;
+  recordDiagnosticEvent: (event: Record<string, unknown>) => void;
+  currentApplicationExecutionId: string | null;
+  emit: (event: object) => void;
+}
+
+export function createSocialWorkServiceRuntime(
+  options: SocialWorkServiceRuntimeOptions,
+): SocialWorkService {
+  const {
+    store,
+    projectStore,
+    dialogs,
+    adapter,
+    secretStore,
+    practiceProvider,
+    getSelectedModel,
+    assertWorkAllowed,
+    socialWorkE2eValid,
+    testSocialWorkChecksJson,
+    recordDiagnosticEvent,
+    currentApplicationExecutionId,
+    emit,
+  } = options;
+
+  return new SocialWorkService({
+    store,
+    projectStore,
+    getSelectedModel,
+    assertWorkAllowed,
+    adapter,
+    secretStore,
+    practiceProvider,
+    recordDiagnosticEvent: (event) =>
+      recordDiagnosticEvent({
+        ...event,
+        ...(event.operation === 'workspace.selection' &&
+        event.status === 'canceled'
+          ? { parentExecutionId: currentApplicationExecutionId }
+          : {}),
+      }),
+    defaultVerificationChecks:
+      socialWorkE2eValid && testSocialWorkChecksJson
+        ? JSON.parse(testSocialWorkChecksJson)
+        : [],
+    chooseWorkspace: dialogs.chooseWorkspace,
+    confirmWorkspaceRebind: dialogs.confirmWorkspaceRebind,
+    confirmPracticeCandidate: dialogs.confirmPracticeCandidate,
+    emit,
+  });
 }

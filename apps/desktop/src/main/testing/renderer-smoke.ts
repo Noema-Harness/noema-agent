@@ -5,9 +5,23 @@ export type RendererSmokeDeps = {
   restoreMainWindowForTest: () => boolean;
   hasTray: () => boolean;
   runProbe: (name: string, ...args: unknown[]) => Promise<unknown>;
-  writeSmokeLog: (step: string, details?: Record<string, unknown>) => void;
   armDiagnosticsReadFailure: (armed: boolean) => void;
 };
+
+export function writeSmokeLog(
+  step: string,
+  details: Record<string, unknown> = {},
+) {
+  const logFile = process.env.NOEMA_SMOKE_LOG_FILE;
+  const liveProviderTrace = process.env.NOEMA_E2E_SOCIAL_PROVIDER_LIVE === '1';
+  if (
+    (process.env.NOEMA_SMOKE_TEST !== '1' && !liveProviderTrace) ||
+    !logFile
+  ) {
+    return;
+  }
+  fs.writeFileSync(logFile, JSON.stringify({ step, ...details }));
+}
 
 /** Drives the packaged/dev renderer smoke scenario after the window loads. */
 export function scheduleRendererSmoke(
@@ -161,7 +175,7 @@ export function scheduleRendererSmoke(
         diagnosticsRuntime,
         desktopLifecycleSmoke,
       };
-      deps.writeSmokeLog('renderer-loaded', result);
+      writeSmokeLog('renderer-loaded', result);
       if (process.env.NOEMA_SMOKE_TEST_FILE) {
         fs.writeFileSync(
           process.env.NOEMA_SMOKE_TEST_FILE,
@@ -177,7 +191,7 @@ export function scheduleRendererSmoke(
           await new Promise((resolve) => setTimeout(resolve, 50));
         }
         if (!fs.existsSync(process.env.NOEMA_SMOKE_HMR_DONE_FILE)) {
-          deps.writeSmokeLog('renderer-hmr-probe-timeout');
+          writeSmokeLog('renderer-hmr-probe-timeout');
         }
       }
     } catch (error) {
@@ -197,7 +211,7 @@ export function scheduleRendererSmoke(
             }))()`,
         );
       } catch {}
-      deps.writeSmokeLog('renderer-bridge-failed', {
+      writeSmokeLog('renderer-bridge-failed', {
         stage: bridgeProbeStage,
         error: error instanceof Error ? error.message : String(error),
         rendererBoot,
