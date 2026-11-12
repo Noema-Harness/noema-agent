@@ -1,3 +1,8 @@
+/**
+ * DORMANT (2026-11-12): no current renderer entrypoint.
+ * Retained intentionally for a future start-state redesign; do not delete as dead code.
+ * Revive only together with a real product entrypoint and acceptance case.
+ */
 import React from 'react';
 import { NoemaButton } from '../ui/noema-button';
 import { NoemaSpinner } from '../ui/noema-spinner';

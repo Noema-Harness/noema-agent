@@ -1,3 +1,8 @@
+/**
+ * DORMANT (2026-11-12): no current renderer entrypoint.
+ * Retained intentionally for the future project-review surface; do not delete as dead code.
+ * Revive only together with a real product entrypoint and acceptance case.
+ */
 import { NoemaTextArea } from '../ui/noema-form-controls';
 import { NoemaButton } from '../ui/noema-button';
 import { useState, type FormEvent } from 'react';

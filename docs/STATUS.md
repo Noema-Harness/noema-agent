@@ -1,6 +1,6 @@
 # STATUS
 
-最后更新：2026-11-12 03:50（Asia/Shanghai）
+最后更新：2026-11-12 09:10（Asia/Shanghai）
 
 ## 版本
 
@@ -32,7 +32,7 @@
 - **个体 Agent 模型**：D-014 已定目标（六模块、能力条目、Compiler 组装、成长需候选/评估/影子/版本化）；0.7.1 没有能力库、记忆层或 Context 编译，仍是提示词、工具和旧 room/branch。文档已同步，实现未开始。
 - **编辑/回退**：语义已定：用户消息编辑截断其后并重发；任意助手回复可原地编辑，修改进入上下文，后续消息保留。编辑/回退前的旧线进入不可变存档；回退同步恢复工作区，检测到用户手动改动冲突时停止。0.7.1 仍未实现：renderer 的 `saveEdit`/`rewindAndResend` 和 `core-chat-app.tsx` 仍创建分支并显示分支栏，助手回复不可编辑；后端 `rewindConversationToMessage` 只完成了部分清理。
 - **分支 UI**：0.7.1 仍暴露实验性分支栏；不能作为产品交互验收。
-- **验证**：2026-11-11 运行完整 `npm run check` 通过 **847/847**。2026-11-12 D-011/D-013 文档编辑后运行 `npm run workspace:check` 为 8 份当前文档、0 错误，`git diff --check` 干净；未重跑完整 `npm run check`。编辑/回退功能仍未达到 BEHAVIOR 的目标。
+- **验证**：2026-11-12 提交 `fafce31` 后运行完整 `npm run check` 通过 **847/847**，35.18s；D-011/D-013/D-014 文档编辑后 `npm run workspace:check` 为 8 份当前文档、0 错误，`git diff --check` 干净。编辑/回退功能仍未达到 BEHAVIOR 的目标。
 - **打包**：0.7.2 没有安装包；0.7.1 安装包已验证可用。0.7.0 是旧的 shadow 版本，不应使用。
 - **工作区清理**：`.work/research` 仍被 `DeepSeek Harness.exe` 占用（约 166 MB），未删除；其余 `.work` 大目录已移到外部归档。
 - **长期能力**：ContextCompiler、Memory Store、ModuleHost 热重载均未交付；云端和跨设备当前不承诺。
@@ -43,6 +43,21 @@
 - 旧社交/项目/团队代码仍在仓库中，主界面已收成一个对话；结构收口未完成。
 - 旧文档已备份到 `C:\Users\NUC\Desktop\Noema-archive-2026-11-11\pre-doc-reset-2026-11-11`，仓库内旧入口已删除。
 - 文档路由固定为 8 份仓库文档；`workspace:check` 已通过（8 份当前文档、0 错误）。
+
+## 半废弃代码登记（2026-11-12）
+
+这些代码当前没有产品入口，但保留用于后续重做；不得按死代码删除。恢复时必须同时补回真实入口、验收场景和测试，不能只把组件挂回界面。
+
+- **暂缓的界面模块**（文件头已标注 `DORMANT (2026-11-12)`）：
+  - `apps/desktop/src/renderer/search/global-search-dialog.tsx`
+  - `apps/desktop/src/renderer/diagnostics/diagnostics-dialog.tsx`
+  - `apps/desktop/src/renderer/settings/personal-memory-dialog.tsx`
+  - `apps/desktop/src/renderer/settings/user-followups-dialog.tsx`
+  - `apps/desktop/src/renderer/projects/project-plan-panel.tsx`
+  - `apps/desktop/src/renderer/projects/project-review-card.tsx`
+  - `apps/desktop/src/renderer/chat/chat-start-state.tsx`
+- **旧执行器回退**：`apps/desktop/src/main/execution/noema-project-executor.mjs` 仍被 `apps/desktop/src/main/main.ts:85`、`main.ts:1926` 和 `apps/desktop/src/main/execution/work-runtime-registry.mjs:36-42` 引用；只在 DSH 不可用时使用，属于 legacy fallback，不是可删死代码。
+- **判定规则**：零入引用不等于可删。只有同时满足“无动态/测试入口、无未来产品用途、无数据/恢复依赖”才删除；其余保留并登记。当前没有新增的确定可删产品文件；此前的 `settingsOpen`/no-op JSX、临时文件已清理。
 
 ## 下一步
 

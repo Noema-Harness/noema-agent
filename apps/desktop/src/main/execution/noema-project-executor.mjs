@@ -1,3 +1,8 @@
+/**
+ * LEGACY FALLBACK (2026-11-12): not the primary runtime.
+ * Used only when DSH is unavailable or selected as the native fallback.
+ * Keep until the native fallback path is removed by a product decision.
+ */
 import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';

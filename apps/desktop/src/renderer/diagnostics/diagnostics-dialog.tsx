@@ -1,3 +1,8 @@
+/**
+ * DORMANT (2026-11-12): no current renderer entrypoint.
+ * Retained intentionally for a future diagnostics surface; do not delete as dead code.
+ * Revive only together with a real product entrypoint and acceptance case.
+ */
 import { NoemaCheckbox, NoemaSelect } from '../ui/noema-form-controls';
 import { NoemaButton } from '../ui/noema-button';
 import { NoemaOverlay } from '../ui/noema-overlay';
