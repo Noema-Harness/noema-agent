@@ -9,7 +9,7 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 ## 版本与源码
 
 - 源码版本：`0.7.2`。
-- 当前源码基线：`480954a feat: single-HEAD message editing and assistant edits`；上一基线 `41b5230 docs: record stage 2 editing`。
+- 当前源码基线：`b703397 feat: archive conversation history before edits`；上一基线 `480954a feat: single-HEAD message editing and assistant edits`。
 - 最近交付：阶段 2 单 HEAD 用户消息截断重发、助手回复原位编辑、会话失效，以及编辑/重发前的不可变消息/回合存档；阶段 1 AgentRuntime 核心、Noema 回合事件日志、Noema 工具调用内联轨迹；`463d817` 任务完成事件 + 本地持久化；`4f21ac3` 任务 dock 生命周期/胶囊/交付记录；`2b742a1` 移除聊天流内任务卡。
 - 文档收敛：五份权威文档 + README/AGENTS；`BEHAVIOR`/`SYSTEM` 已合并删除，`.codex/workspace.json` 为 7 个当前入口；D-016/D-017 已记录 Agent 核心分层与团队审批 A。
 - 已安装：`0.7.2`，路径 `C:\Users\NUC\AppData\Local\noema_desktop\app-0.7.2\Noema.exe`。该安装早于任务卡/生命周期/完成事件三个提交，不包含当前源码 UI。
