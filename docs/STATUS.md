@@ -40,7 +40,7 @@
 ## 已知问题与风险
 
 - 模型/工具失败时必须保留用户消息和已有文件，不能自动宣称完成；当前实现仍需逐场景验证。
-- 旧社交/项目/团队代码仍在仓库中，主界面已收成一个对话；结构收口未完成。
+- 主界面已收成一个对话；主进程装配正在按行为保持的切片收口，`main.ts` 仍持有启动、服务装配和 IPC 组合，旧社交/项目界面已登记为暂缓模块。
 - 旧文档已备份到 `C:\Users\NUC\Desktop\Noema-archive-2026-11-11\pre-doc-reset-2026-11-11`，仓库内旧入口已删除。
 - 文档路由固定为 8 份仓库文档；`workspace:check` 已通过（8 份当前文档、0 错误）。
 
@@ -56,18 +56,18 @@
   - `apps/desktop/src/renderer/projects/project-plan-panel.tsx`
   - `apps/desktop/src/renderer/projects/project-review-card.tsx`
   - `apps/desktop/src/renderer/chat/chat-start-state.tsx`
-- **旧执行器回退**：`apps/desktop/src/main/execution/noema-project-executor.mjs` 仍被 `apps/desktop/src/main/main.ts:85`、`main.ts:1926` 和 `apps/desktop/src/main/execution/work-runtime-registry.mjs:36-42` 引用；只在 DSH 不可用时使用，属于 legacy fallback，不是可删死代码。
+- **旧执行器回退**：`apps/desktop/src/main/execution/noema-project-executor.mjs` 仍被 `apps/desktop/src/main/main.ts` 顶部导入和 `apps/desktop/src/main/execution/work-runtime-registry.mjs:36-42` 引用；只在 DSH 不可用时使用，属于 legacy fallback，不是可删死代码。
 - **判定规则**：零入引用不等于可删。只有同时满足“无动态/测试入口、无未来产品用途、无数据/恢复依赖”才删除；其余保留并登记。当前没有新增的确定可删产品文件；此前的 `settingsOpen`/no-op JSX、临时文件已清理。
 - **退役验证资产（2026-11-12）**：`apps/desktop/scripts/social-agent-e2e.mjs`、`apps/desktop/test-support/electron/agent-probes.ts`、`apps/desktop/test-support/electron/conversation-navigation-e2e.mjs` 面向已移除的会话导航/房间界面，已从 `package.json` 的发布验证入口移除，文件保留作恢复该界面时的参考。它们不是当前产品测试，不得作为发布验收。
 
 ## 下一步
 
-1. 先继续文档校准：逐条关闭 Q14 及之后的问题；对 D-013 的 Agent 多团队、fork 经验回写、单执行者项目等未决项逐条澄清后再改文档；不执行产品改动。团队并行多项目在 MVP 阶段明确不做，等核心链路可用后再评估。
-2. 用户决定冻结在 0.6.9 的最小可用形态，还是继续当前重建；这个决定不由实现自动推进。
-3. 若继续：实现两种编辑语义、不可变存档和工作区回退，移除分支栏；不要先做 UI 美化。
-4. 完成后再打包 0.7.2，安装验证，并保留 0.6.9 回退。
-5. 单独处理 `.work/research` 的占用，再完成 `.work` 清理。
+1. 继续主进程装配收口：把启动、服务图、IPC 组合拆到 `apps/desktop/src/main/app`；每片保持 847 全绿，不做大爆炸式目录迁移。
+2. 更新 `docs/SYSTEM.md` 的代码地图和当前运行时说明，使其与 0.7.2 源码一致。
+3. 完成 0.7.2 打包、安装和真实启动验证；保留 0.7.1 回退，不把“打包通过”当成“安装验收通过”。
+4. 恢复单执行者闭环和真实任务验收；在这些完成前不宣称 Noema 已可长期交付。
+5. 单独处理 `.work` 过程材料和旧参考源码，不与产品源码混放。
 
 ## 交付判断
 
-当前可以用于本机开发和受控试用，不能称为完成品。用户可观察的核心对话和执行链可用；编辑/回退已定语义但未实现，产品方向和安装包仍是未完成项。详见 [BEHAVIOR](BEHAVIOR.md) 与 [DECISIONS](DECISIONS.md)。
+当前处于 0.7.2 工作区重构中：核心对话、执行链和打包冒烟可用，847 项检查通过；主进程仍在收口，0.7.2 尚未安装验收，单执行者闭环未恢复。可本机开发与受控试用，不能称为完成品。详见 [BEHAVIOR](BEHAVIOR.md) 与 [DECISIONS](DECISIONS.md)。

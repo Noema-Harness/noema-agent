@@ -27,13 +27,15 @@ Noema 和每个执行者共用同一套六模块，不是两套人格：
 
 Compiler 是组装过程，不是第七个模块。岗位包是组织层组合，不属于个体六模块。Noema 偏 Policy、编排、治理和用户关系；执行者偏 Competence、岗位/团队/项目工具和领域记忆。
 
-当前 0.7.1 没有这套模型，仍是提示词、工具和旧 room/branch 结构；它属于目标架构，不是已实现能力。
+当前 0.7.2 源码仍是提示词、工具和服务组合；这套六模块是目标模型，不是已实现能力。
 
 ## 代码地图
 
 ```text
 apps/desktop/src/main/          Electron 主进程
-  main.ts                       应用启动、窗口、IPC 装配、模型/运行时选择
+  main.ts                       启动、服务图、IPC 组合和生命周期
+  app/                          窗口/托盘/模型运行时/Agent 运行时/Social 状态与工作服务装配
+  testing/                      打包冒烟、E2E fixture 和测试桥接
   ipc/root-ipc.mjs              renderer 可调用的 IPC 通道
   chat/                         Core Chat、会话、上下文、连续时间线
   projects/                     项目、团队、计划、项目工作
