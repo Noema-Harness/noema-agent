@@ -303,6 +303,8 @@ export function CoreChatApp() {
     noemaRoom,
     currentRoom,
     openAgentConversation,
+    rooms,
+    selectRoom,
     conversationTurns,
     draft,
     setDraft,
@@ -363,6 +365,28 @@ export function CoreChatApp() {
         }))
         .filter((turn) => turn.items.length > 0),
     [conversationTurns],
+  );
+
+  const directRoomByAgent = useMemo(() => {
+    const result = new Map<string, (typeof rooms)[number]>();
+    for (const room of rooms) {
+      if (room.kind !== 'direct') continue;
+      for (const memberId of room.memberIds) {
+        if (memberId !== 'noema') result.set(memberId, room);
+      }
+    }
+    return result;
+  }, [rooms]);
+
+  const switcherAgents = useMemo(
+    () =>
+      agents.filter(
+        (agent) =>
+          agent.id !== 'noema' &&
+          !agent.archivedAt &&
+          directRoomByAgent.has(agent.id),
+      ),
+    [agents, directRoomByAgent],
   );
 
   const timelineEntries = useMemo(() => {
@@ -577,6 +601,11 @@ export function CoreChatApp() {
           <span>{messageTime(message.createdAt)}</span>
         </div>
         <div className="message-content">
+          {!user &&
+          liveTrace?.messageId === message.id &&
+          liveTrace.events.length ? (
+            <TurnTrace events={liveTrace.events} done={liveTrace.done} />
+          ) : null}
           {editingMessageId === message.id ? (
             <div className="message-editor">
               <textarea
@@ -615,11 +644,6 @@ export function CoreChatApp() {
             </ReactMarkdown>
           ) : streaming ? (
             <span className="typing-state">正在回复…</span>
-          ) : null}
-          {!user &&
-          liveTrace?.messageId === message.id &&
-          liveTrace.events.length ? (
-            <TurnTrace events={liveTrace.events} done={liveTrace.done} />
           ) : null}
           {message.status === 'interrupted' ? (
             <p className="request-explanation">
@@ -782,17 +806,34 @@ export function CoreChatApp() {
   return (
     <div className="core-shell">
       <header className="core-topbar">
-        <div className="core-brand">
-          <Icon name="noema" />
-          <strong>
-            {currentRoom?.kind === 'direct' && currentRoom.id !== noemaRoom?.id
-              ? currentRoom.title
-              : 'Noema'}
-          </strong>
+        <div className="core-top-left">
           {currentRoom?.kind === 'direct' &&
           currentRoom.id !== noemaRoom?.id ? (
-            <small>常驻私聊</small>
+            <NoemaButton
+              className="icon-button core-back"
+              type="button"
+              title="返回 Noema"
+              aria-label="返回 Noema"
+              onClick={() => {
+                if (noemaRoom) selectRoom(noemaRoom);
+              }}
+            >
+              <Icon name="back" />
+            </NoemaButton>
           ) : null}
+          <div className="core-brand">
+            <Icon name="noema" />
+            <strong>
+              {currentRoom?.kind === 'direct' &&
+              currentRoom.id !== noemaRoom?.id
+                ? currentRoom.title
+                : 'Noema'}
+            </strong>
+            {currentRoom?.kind === 'direct' &&
+            currentRoom.id !== noemaRoom?.id ? (
+              <small>常驻私聊</small>
+            ) : null}
+          </div>
         </div>
         <div className="core-top-actions">
           {latestArchive ? (
@@ -851,6 +892,42 @@ export function CoreChatApp() {
           </div>
         </div>
       </header>
+
+      {switcherAgents.length > 0 ? (
+        <nav className="core-agent-switcher" aria-label="切换对话">
+          <button
+            className={`core-agent-chip${
+              currentRoom?.id === noemaRoom?.id ? ' active' : ''
+            }`}
+            type="button"
+            onClick={() => {
+              if (noemaRoom) selectRoom(noemaRoom);
+            }}
+          >
+            <span className="core-agent-initial">
+              <Icon name="noema" />
+            </span>
+            Noema
+          </button>
+          {switcherAgents.map((agent) => (
+            <button
+              className={`core-agent-chip${
+                directRoomByAgent.get(agent.id)?.id === currentRoom?.id
+                  ? ' active'
+                  : ''
+              }`}
+              type="button"
+              key={agent.id}
+              onClick={() => openAgentConversation(agent.id)}
+            >
+              <span className="core-agent-initial">
+                {agent.name.trim().slice(0, 1) || '执'}
+              </span>
+              {agent.name}
+            </button>
+          ))}
+        </nav>
+      ) : null}
 
       <main
         className="core-thread"
