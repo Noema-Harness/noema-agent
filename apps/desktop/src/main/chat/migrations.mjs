@@ -1131,4 +1131,30 @@ export function migrateSocialChatSchema(
       ).run(isoNow());
     })();
   }
+  if (current < 40 && targetVersion >= 40) {
+    db.transaction(() => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS project_team_proposals (
+          id TEXT PRIMARY KEY,
+          room_id TEXT NOT NULL,
+          source_message_id TEXT,
+          title TEXT NOT NULL,
+          brief TEXT NOT NULL,
+          lead_agent_id TEXT,
+          members_json TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'pending',
+          project_id TEXT,
+          decision_reason TEXT,
+          created_at TEXT NOT NULL,
+          decided_at TEXT,
+          FOREIGN KEY (room_id) REFERENCES social_rooms(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_project_team_proposals_room
+          ON project_team_proposals(room_id, created_at DESC);
+      `);
+      db.prepare(
+        'INSERT INTO social_schema_migrations(version, applied_at) VALUES (40, ?)',
+      ).run(isoNow());
+    })();
+  }
 }

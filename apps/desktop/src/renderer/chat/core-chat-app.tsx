@@ -302,7 +302,6 @@ export function CoreChatApp() {
   const {
     noemaRoom,
     currentRoom,
-    selectRoom,
     openAgentConversation,
     conversationTurns,
     draft,

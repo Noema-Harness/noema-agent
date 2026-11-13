@@ -28,6 +28,104 @@ export class SocialProjectStore {
     this.recoverProjectGrowthMembers();
   }
 
+  createTeamProposal({
+    roomId,
+    sourceMessageId = null,
+    title,
+    brief,
+    leadAgentId = null,
+    members,
+  }) {
+    requireText(roomId, '来源聊天 ID', 200);
+    const proposalTitle = requireText(title, '项目名称', 120);
+    const proposalBrief = requireText(brief, '项目说明', 8_000);
+    if (!Array.isArray(members) || members.length < 2 || members.length > 6) {
+      throw new TypeError('新项目团队提案需要 2 至 6 位专业成员。');
+    }
+    const proposalMembers = members.map((member) => {
+      if (!member || typeof member !== 'object') {
+        throw new TypeError('项目成员说明无效。');
+      }
+      if (typeof member.task !== 'string' || !member.task.trim()) {
+        throw new TypeError('每项分工必须说明任务。');
+      }
+      const hasAgent = typeof member.agentId === 'string';
+      const hasNew = member.newAgent && typeof member.newAgent === 'object';
+      if (hasAgent === Boolean(hasNew)) {
+        throw new TypeError('每项分工必须选择现有成员或创建新成员。');
+      }
+      return hasAgent
+        ? { agentId: member.agentId, task: member.task.trim() }
+        : { newAgent: member.newAgent, task: member.task.trim() };
+    });
+    const id = randomUUID();
+    const now = isoNow();
+    this.db
+      .prepare(`
+        INSERT INTO project_team_proposals
+          (id, room_id, source_message_id, title, brief, lead_agent_id,
+           members_json, status, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+      `)
+      .run(
+        id,
+        roomId,
+        sourceMessageId,
+        proposalTitle,
+        proposalBrief,
+        leadAgentId,
+        JSON.stringify(proposalMembers),
+        now,
+      );
+    return this.getTeamProposal(id);
+  }
+
+  getTeamProposal(proposalId) {
+    requireText(proposalId, '团队提案 ID', 200);
+    const row = this.db
+      .prepare('SELECT * FROM project_team_proposals WHERE id = ?')
+      .get(proposalId);
+    if (!row) return null;
+    return {
+      id: row.id,
+      roomId: row.room_id,
+      sourceMessageId: row.source_message_id,
+      title: row.title,
+      brief: row.brief,
+      leadAgentId: row.lead_agent_id,
+      members: JSON.parse(row.members_json),
+      status: row.status,
+      projectId: row.project_id,
+      decisionReason: row.decision_reason,
+      createdAt: row.created_at,
+      decidedAt: row.decided_at,
+    };
+  }
+
+  decideTeamProposal(
+    proposalId,
+    decision,
+    { projectId = null, reason = null } = {},
+  ) {
+    requireText(proposalId, '团队提案 ID', 200);
+    if (!['approved', 'rejected'].includes(decision)) {
+      throw new TypeError('团队提案决定无效。');
+    }
+    const proposal = this.getTeamProposal(proposalId);
+    if (!proposal) throw new Error('团队提案不存在。');
+    if (proposal.status !== 'pending') {
+      throw new Error('团队提案已经处理。');
+    }
+    this.db
+      .prepare(`
+        UPDATE project_team_proposals
+        SET status = ?, project_id = ?, decision_reason = ?, decided_at = ?
+        WHERE id = ? AND status = 'pending'
+      `)
+      .run(decision, projectId, reason, isoNow(), proposalId);
+    return this.getTeamProposal(proposalId);
+  }
+
   listProjects({ includeArchived = true } = {}) {
     const projects = this.db
       .prepare(`

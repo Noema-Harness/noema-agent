@@ -667,6 +667,56 @@ test('growth retry refuses to replay a failed turn after it changed member asset
   }
 });
 
+test('a team proposal stays pending until explicitly decided', () => {
+  const stores = makeStores();
+  const existing = createMember(stores.socialChatStore, '研究员');
+  try {
+    const proposal = stores.socialProjectStore.createTeamProposal({
+      roomId: 'room-noema',
+      title: '价格追踪器',
+      brief: '持续核对模型 API 价格与来源。',
+      leadAgentId: existing.agentId,
+      members: [
+        { agentId: existing.agentId, task: '核对价格来源。' },
+        {
+          newAgent: {
+            name: '成本分析师',
+            headline: '模型成本比较',
+            description: '对比模型 API 的定价口径并注明来源。',
+          },
+          task: '整理各平台的计价单位。',
+        },
+      ],
+    });
+    assert.equal(proposal.status, 'pending');
+    assert.equal(proposal.projectId, null);
+    assert.equal(proposal.members.length, 2);
+    assert.equal(
+      stores.socialProjectStore.getTeamProposal(proposal.id).members.length,
+      2,
+    );
+
+    const rejected = stores.socialProjectStore.decideTeamProposal(
+      proposal.id,
+      'rejected',
+      { reason: '先不组队。' },
+    );
+    assert.equal(rejected.status, 'rejected');
+    assert.equal(rejected.projectId, null);
+    assert.throws(
+      () =>
+        stores.socialProjectStore.decideTeamProposal(
+          proposal.id,
+          'approved',
+          {},
+        ),
+      /已经处理/u,
+    );
+  } finally {
+    stores.db.close();
+  }
+});
+
 test('forming a project team atomically creates missing members and their project sessions', () => {
   const stores = makeStores();
   const existing = createMember(stores.socialChatStore, '研究员');

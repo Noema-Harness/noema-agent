@@ -123,7 +123,6 @@ export function createSocialWorkDialogs(
     prompt = '',
     projectId = null,
     agentId = null,
-    roomId = null,
   } = {}) => {
     const recordWorkspaceAuthorization = beginWorkspaceAuthorization();
     if (socialWorkE2eValid) {

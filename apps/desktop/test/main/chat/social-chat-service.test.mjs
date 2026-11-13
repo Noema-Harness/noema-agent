@@ -1157,7 +1157,7 @@ test('ordinary Noema conversation omits existing-project tools and restores them
       .map((message) => message.content)
       .join('\n');
     assert.match(casualGuidance, /只有实际形成委托时才组织工作/u);
-    assert.match(casualGuidance, /create_project_team/u);
+    assert.match(casualGuidance, /propose_project_team/u);
     assert.doesNotMatch(casualGuidance, /calculate_expression/u);
     assert.doesNotMatch(casualGuidance, /明确要求继续或落实已有项目行动/u);
     assert.doesNotMatch(casualGuidance, /本地文件工作默认需要用户明确委托/u);

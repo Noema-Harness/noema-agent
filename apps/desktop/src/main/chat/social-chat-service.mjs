@@ -21,6 +21,8 @@ import {
   workTicketTool,
   specialistDelegationTool,
   projectTeamTool,
+  projectTeamProposalTool,
+  projectTeamApprovalTool,
   projectReviewTool,
   completeProjectTool,
   memberAssetsTool,
@@ -1915,14 +1917,45 @@ export class SocialChatService {
         (roomId !== 'room-noema' || exposeProjectActions || !this.startTicket),
       );
       const projectTeamAction = teamToolAvailable
-        ? projectTeamTool({
-            projectWorkReady: Boolean(
-              this.startProjectWork && this.getProjectWorkReadiness().available,
-            ),
-          })
+        ? noemaProjectGroup
+          ? projectTeamTool({
+              projectWorkReady: Boolean(
+                this.startProjectWork &&
+                this.getProjectWorkReadiness().available,
+              ),
+            })
+          : projectTeamProposalTool({
+              projectWorkReady: Boolean(
+                this.startProjectWork &&
+                this.getProjectWorkReadiness().available,
+              ),
+            })
         : null;
+      const projectTeamApprovalAction =
+        teamToolAvailable && !noemaProjectGroup
+          ? projectTeamApprovalTool()
+          : null;
       const projectWorkReadiness = this.getProjectWorkReadiness();
       const currentProject = teamProjects[0] ?? null;
+      const projectTeamContinuationAction =
+        teamToolAvailable && !noemaProjectGroup && currentProject
+          ? (() => {
+              const action = projectTeamTool({
+                projectWorkReady: Boolean(
+                  this.startProjectWork && projectWorkReadiness.available,
+                ),
+              });
+              action.function.description +=
+                ' Continue an existing project by adding or updating members; existing_project_id is required. New projects must use propose_project_team instead.';
+              action.function.parameters.required = [
+                ...new Set([
+                  ...(action.function.parameters.required ?? []),
+                  'existing_project_id',
+                ]),
+              ];
+              return action;
+            })()
+          : null;
       const projectWorkProjects = teamProjects.filter(
         (project) => project.status === 'active',
       );
@@ -2096,6 +2129,10 @@ export class SocialChatService {
         ...(projectWorkAction ? [projectWorkAction] : []),
         ...(specialistTool ? [specialistTool] : []),
         ...(projectTeamAction ? [projectTeamAction] : []),
+        ...(projectTeamContinuationAction
+          ? [projectTeamContinuationAction]
+          : []),
+        ...(projectTeamApprovalAction ? [projectTeamApprovalAction] : []),
         ...(exposeProjectActions && reviewTool ? [reviewTool] : []),
         ...(exposeProjectActions
           ? this.projectTools(run)
@@ -3175,6 +3212,103 @@ export class SocialChatService {
             delta: statusText,
           });
           content += statusText;
+        } else if (toolName === 'propose_project_team') {
+          if (
+            !projectTeamAction ||
+            agentId !== 'noema' ||
+            roomId !== 'room-noema' ||
+            typeof input?.title !== 'string' ||
+            typeof input?.brief !== 'string' ||
+            !Array.isArray(input.members)
+          ) {
+            throw new ModelProviderError(
+              'social_tool_invalid',
+              '项目团队提案无效；没有创建项目。',
+            );
+          }
+          const proposal = this.projectStore.createTeamProposal({
+            roomId,
+            sourceMessageId: run.userMessageId,
+            title: input.title,
+            brief: input.brief,
+            leadAgentId: input.lead_agent_id ?? null,
+            members: input.members,
+          });
+          return {
+            ok: true,
+            status: 'awaiting_approval',
+            proposalId: proposal.id,
+            projectCreated: false,
+            message:
+              '团队方案已保存，项目尚未创建。把负责人和成员展示给用户，默认选项为确认；用户确认后再调用 decide_project_team。',
+          };
+        } else if (toolName === 'decide_project_team') {
+          if (
+            !projectTeamApprovalAction ||
+            agentId !== 'noema' ||
+            roomId !== 'room-noema'
+          ) {
+            throw new ModelProviderError(
+              'social_tool_invalid',
+              '项目团队审批无效；没有创建项目。',
+            );
+          }
+          const proposal = this.projectStore.getTeamProposal(
+            input?.proposal_id,
+          );
+          if (!proposal || proposal.roomId !== roomId) {
+            throw new ModelProviderError(
+              'social_tool_invalid',
+              '团队提案不存在；没有创建项目。',
+            );
+          }
+          if (proposal.status !== 'pending') {
+            throw new ModelProviderError(
+              'social_tool_invalid',
+              '团队提案已经处理。',
+            );
+          }
+          if (input?.decision !== 'approve') {
+            const rejected = this.projectStore.decideTeamProposal(
+              proposal.id,
+              'rejected',
+              { reason: input?.reason ?? null },
+            );
+            return { ok: true, status: rejected.status, projectCreated: false };
+          }
+          const workspace = await this.chooseProjectWorkspace?.({
+            source: 'team_proposal',
+            title: proposal.title,
+          });
+          if (!workspace?.workspacePath || !workspace.identity) {
+            throw new ModelProviderError(
+              'project_workspace_required',
+              '请选择项目工作文件夹。',
+            );
+          }
+          const formed = this.projectStore.formProjectTeam({
+            title: proposal.title,
+            brief: proposal.brief,
+            originRoomId: proposal.roomId,
+            sourceMessageId: proposal.sourceMessageId,
+            workspacePath: workspace.workspacePath,
+            workspaceIdentity: workspace.identity,
+            leadAgentId: proposal.leadAgentId,
+            members: proposal.members,
+          });
+          const approved = this.projectStore.decideTeamProposal(
+            proposal.id,
+            'approved',
+            { projectId: formed.project.id },
+          );
+          return {
+            ok: true,
+            status: approved.status,
+            proposalId: proposal.id,
+            project: formed.project,
+            members: formed.members,
+            projectCreated: true,
+          };
         } else if (toolName === 'create_project_team') {
           const toolCallId = toolCalls[0]?.id;
           const continuingFromProjectGroup = Boolean(

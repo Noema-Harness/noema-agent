@@ -237,6 +237,57 @@ export function projectTeamTool({ projectWorkReady }) {
   };
 }
 
+export function projectTeamProposalTool({ projectWorkReady }) {
+  const base = projectTeamTool({ projectWorkReady });
+  const parameters = {
+    ...base.function.parameters,
+    properties: { ...base.function.parameters.properties },
+    required: ['title', 'brief', 'members'],
+  };
+  delete parameters.properties.existing_project_id;
+  parameters.properties.members = {
+    ...parameters.properties.members,
+    minItems: 2,
+    maxItems: 6,
+    description: '拟议团队 2–6 位成员；每项必须说明初步职责。',
+  };
+  return {
+    ...base,
+    function: {
+      ...base.function,
+      name: 'propose_project_team',
+      description:
+        '当委托确实需要多个独立专业工作流并形成共同交付物时，先提出团队方案，不要直接建组。方案包含项目标题、说明、负责人和 2–6 位成员；这只是提案，项目尚未创建。把提案完整展示给用户；用户确认后才可调用 decide_project_team，默认选项是确认。普通交流、单一专业意见或用户尚未委托的工作不要提案。',
+      parameters,
+    },
+  };
+}
+
+export function projectTeamApprovalTool() {
+  return {
+    type: 'function',
+    function: {
+      name: 'decide_project_team',
+      description:
+        '批准或拒绝一个待确认的项目团队提案。只有用户明确同意后批准；默认应把“确认”作为第一选项并等待用户选择。批准后才创建项目、成员和项目会话。',
+      parameters: {
+        type: 'object',
+        properties: {
+          proposal_id: { type: 'string', description: '待确认的团队提案 ID。' },
+          decision: {
+            type: 'string',
+            enum: ['approve', 'reject'],
+            description: '用户选择：批准或拒绝。',
+          },
+          reason: { type: 'string', description: '拒绝时的简短原因。' },
+        },
+        required: ['proposal_id', 'decision'],
+        additionalProperties: false,
+      },
+    },
+  };
+}
+
 export function projectResearchTool() {
   return {
     type: 'function',
@@ -705,17 +756,17 @@ export function noemaActionGuidance(
       : existingProjectActionsAvailable &&
           projectTeamAvailable &&
           projectFileEngineAvailable
-        ? '项目文件执行器已就绪，但还没有可选的文件执行成员。复杂项目确需组队时，可在 create_project_team 创建成员并赋予 project_work；创建完成前不要声称已检查文件。'
+        ? '项目文件执行器已就绪，但还没有可选的文件执行成员。复杂项目确需组队时，先用 propose_project_team 提出成员方案；用户确认后再用 decide_project_team 批准。创建完成前不要声称已检查文件。'
         : existingProjectActionsAvailable
           ? '当前没有可用的项目文件执行能力。不要声称能在本机项目中检查或修改文件。'
           : '',
     specialistAgents.length
-      ? '仅当一项边界清晰的独立知识工作适合由一位联系人完成，且预期收益值得两次额外推理成本时，才调用 delegate_to_specialist。若委托需要多个独立专业工作流及共同、可跟踪的交付物（包括决策型研究或实施计划），改用 create_project_team，不能由一个联系人包办后让 Noema 临时汇总。任务由选定联系人在其常驻私聊中完成，Noema 收到报告后形成最终回复。不要把 Noema 主聊历史交给联系人；它只会看到自己的常驻私聊历史和本次交办。不得为普通交流或形式上的多 agent 协作调用。将报告作为协作材料加以核对并结合当前上下文作答；不要把原始报告直接当作 Noema 回复。若报告显示未投递或执行未完成，必须如实说明，不能声称已完成。若报告实质影响结论，可简洁说明协助者。'
+      ? '仅当一项边界清晰的独立知识工作适合由一位联系人完成，且预期收益值得两次额外推理成本时，才调用 delegate_to_specialist。若委托需要多个独立专业工作流及共同、可跟踪的交付物（包括决策型研究或实施计划），先改用 propose_project_team 提案，不能由一个联系人包办后让 Noema 临时汇总。任务由选定联系人在其常驻私聊中完成，Noema 收到报告后形成最终回复。不要把 Noema 主聊历史交给联系人；它只会看到自己的常驻私聊历史和本次交办。不得为普通交流或形式上的多 agent 协作调用。将报告作为协作材料加以核对并结合当前上下文作答；不要把原始报告直接当作 Noema 回复。若报告显示未投递或执行未完成，必须如实说明，不能声称已完成。若报告实质影响结论，可简洁说明协助者。'
       : projectTeamAvailable
-        ? '当前联系人列表为空。明确委托的单专业知识任务可通过 delegate_to_specialist 创建长期可拓展的联系人并在同一操作中交办；需要多个独立专业工作流和共同计划的委托才使用 create_project_team。'
+        ? '当前联系人列表为空。明确委托的单专业知识任务可通过 delegate_to_specialist 创建长期可拓展的联系人并在同一操作中交办；需要多个独立专业工作流和共同计划的委托才使用 propose_project_team 提案并由用户确认。'
         : '当前联系人列表为空。明确委托的单专业知识任务可通过 delegate_to_specialist 创建长期可拓展的联系人并在同一操作中交办；需要多个独立专业工作流和共同计划的委托需要团队能力。',
     projectTeamAvailable
-      ? '当已委托工作包含彼此独立、都影响交付质量的专业工作流，并要求形成共同、可跟踪的交付物时，才调用 create_project_team；交付物可以是决策型研究或实施计划，不必等到开始开发，且不能先压成一个专家私聊再由你临时拼答案。判断依据是专业分工，而非最终产物长度。先复用合适联系人；缺位时才创建长期可拓展的成员。若用户允许按假设推进，把未知项写入项目范围与计划并开展可逆工作，不重复追问。工具只建立共同背景和初步职责，不等待成员回答。共享计划按“项目结果→阶段成果与退出条件→有负责人的团队工作项”组织；近期阶段拆细，远期阶段保留粗粒度。阶段依赖和工作项依赖都必须明确；工作项完成不自动等于阶段通过，阶段出口须有可核验依据后由你或用户验收。通过公开消息显式 @ 推进；需要多方共同了解时可 @所有人，但不要求轮流确认。单人短任务走私聊委托；同一项目续接不重复建群。只有所有未取消工作项均已验收、所有未取消阶段均已验收、至少有一个真实交付、没有待用户评审且没有运行中的工作时，调用 complete_project 启动成员各自在项目会话中的一次经历自审；不要把成员自审或批次启动说成项目归档。'
+      ? '当已委托工作包含彼此独立、都影响交付质量的专业工作流，并要求形成共同、可跟踪的交付物时，才调用 propose_project_team 提出团队方案；交付物可以是决策型研究或实施计划，不必等到开始开发，且不能先压成一个专家私聊再由你临时拼答案。提案后把负责人和成员完整展示给用户，默认选项应为确认；只有用户确认后才调用 decide_project_team 批准。判断依据是专业分工，而非最终产物长度。先复用合适联系人；缺位时才创建长期可拓展的成员。若用户允许按假设推进，把未知项写入项目范围与计划并开展可逆工作，不重复追问。工具只建立共同背景和初步职责，不等待成员回答。共享计划按“项目结果→阶段成果与退出条件→有负责人的团队工作项”组织；近期阶段拆细，远期阶段保留粗粒度。阶段依赖和工作项依赖都必须明确；工作项完成不自动等于阶段通过，阶段出口须有可核验依据后由你或用户验收。通过公开消息显式 @ 推进；需要多方共同了解时可 @所有人，但不要求轮流确认。单人短任务走私聊委托；同一项目续接不重复建群。只有所有未取消工作项均已验收、所有未取消阶段均已验收、至少有一个真实交付、没有待用户评审且没有运行中的工作时，调用 complete_project 启动成员各自在项目会话中的一次经历自审；不要把成员自审或批次启动说成项目归档。'
       : '',
     webSearchConfigured
       ? '当前已配置网页搜索。仅当用户原始委托与成员本次分派都明确要求公开资料核查时，成员才会在项目群任务中获得研究工具；来源只会作为实际读取的页面记录，不扩大到私人对话内容。'

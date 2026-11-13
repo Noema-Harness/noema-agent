@@ -1718,9 +1718,9 @@ test('an uncommitted idea stays in Noema chat while team creation is available',
 
     assert.ok(
       request.tools.some(
-        (entry) => entry.function.name === 'create_project_team',
+        (entry) => entry.function.name === 'propose_project_team',
       ),
-      'team capability is present but does not imply a project should be created',
+      'team proposal capability is present but does not imply a project should be created',
     );
     const noemaPrompt = request.messages
       .filter((message) => message.role === 'system')
