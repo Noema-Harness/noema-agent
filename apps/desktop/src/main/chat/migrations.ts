@@ -1135,6 +1135,83 @@ export function migrateSocialChatSchema(
       ).run(isoNow());
     })();
   }
+  if (current < 41 && targetVersion >= 41) {
+    db.transaction(() => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS job_templates (
+          id TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          role TEXT NOT NULL,
+          headline TEXT NOT NULL,
+          description TEXT NOT NULL,
+          version INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          archived_at TEXT
+        );
+      `);
+      const agentColumns = db
+        .prepare('PRAGMA table_info(social_agents)')
+        .all() as Array<{ name: string }>;
+      if (!agentColumns.some((column) => column.name === 'job_template_id')) {
+        db.exec(
+          'ALTER TABLE social_agents ADD COLUMN job_template_id TEXT REFERENCES job_templates(id) ON DELETE SET NULL',
+        );
+      }
+      if (
+        !agentColumns.some((column) => column.name === 'job_template_version')
+      ) {
+        db.exec(
+          'ALTER TABLE social_agents ADD COLUMN job_template_version INTEGER',
+        );
+      }
+      const now = isoNow();
+      const insert = db.prepare(`
+        INSERT OR IGNORE INTO job_templates
+          (id, title, role, headline, description, version, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+      `);
+      insert.run(
+        'frontend-engineer',
+        '前端工程师',
+        '前端工程',
+        'Web 前端实现与静态交付',
+        '负责界面、交互、状态管理、浏览器兼容与静态文件交付；按项目要求实现并自测。',
+        now,
+        now,
+      );
+      insert.run(
+        'quality-engineer',
+        '质量工程师',
+        '质量工程',
+        '独立验收与自动化检查',
+        '只读验收交付物，逐项给出通过、不通过或未验证的结论与证据，不修改交付物。',
+        now,
+        now,
+      );
+      insert.run(
+        '3d-engineer',
+        '3D 开发工程师',
+        '实时 3D',
+        'WebGL 与实时 3D 实现',
+        '负责实时 3D、WebGL 场景、交互与性能实现，按项目要求完成可运行交付。',
+        now,
+        now,
+      );
+      insert.run(
+        'technical-researcher',
+        '技术可行性研究员',
+        '技术研究',
+        '技术可行性与方案研究',
+        '负责技术路线、约束和可行性研究，区分已验证结论、推断和未知项。',
+        now,
+        now,
+      );
+      db.prepare(
+        'INSERT INTO social_schema_migrations(version, applied_at) VALUES (41, ?)',
+      ).run(now);
+    })();
+  }
   if (current < 40 && targetVersion >= 40) {
     db.transaction(() => {
       db.exec(`
@@ -1159,6 +1236,69 @@ export function migrateSocialChatSchema(
       db.prepare(
         'INSERT INTO social_schema_migrations(version, applied_at) VALUES (40, ?)',
       ).run(isoNow());
+    })();
+  }
+  if (current < 42 && targetVersion >= 42) {
+    db.transaction(() => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS social_teams (
+          id TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          brief TEXT NOT NULL DEFAULT '',
+          status TEXT NOT NULL DEFAULT 'active',
+          lead_agent_id TEXT,
+          group_room_id TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          archived_at TEXT,
+          FOREIGN KEY (group_room_id) REFERENCES social_rooms(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_social_teams_status
+          ON social_teams(status, updated_at DESC);
+        CREATE TABLE IF NOT EXISTS social_team_members (
+          team_id TEXT NOT NULL,
+          agent_id TEXT NOT NULL,
+          role TEXT NOT NULL DEFAULT 'member',
+          joined_at TEXT NOT NULL,
+          removed_at TEXT,
+          PRIMARY KEY (team_id, agent_id),
+          FOREIGN KEY (team_id) REFERENCES social_teams(id) ON DELETE CASCADE
+        );
+      `);
+      const projectColumns = db
+        .prepare('PRAGMA table_info(social_projects)')
+        .all() as Array<{ name: string }>;
+      if (!projectColumns.some((column) => column.name === 'team_id')) {
+        db.exec('ALTER TABLE social_projects ADD COLUMN team_id TEXT');
+      }
+      const now = isoNow();
+      db.prepare(`
+        INSERT OR IGNORE INTO social_teams
+          (id, title, brief, status, lead_agent_id, group_room_id,
+           created_at, updated_at, archived_at)
+        SELECT 'team-' || p.id, p.title, p.brief,
+               CASE WHEN p.status = 'archived' THEN 'archived' ELSE 'active' END,
+               p.lead_agent_id, p.group_room_id, p.created_at, p.updated_at,
+               p.archived_at
+        FROM social_projects AS p
+      `).run();
+      db.prepare(`
+        UPDATE social_projects
+        SET team_id = 'team-' || id
+        WHERE team_id IS NULL
+      `).run();
+      db.prepare(`
+        INSERT OR IGNORE INTO social_team_members
+          (team_id, agent_id, role, joined_at, removed_at)
+        SELECT 'team-' || s.project_id, s.agent_id,
+               CASE WHEN s.agent_id = p.lead_agent_id THEN 'lead' ELSE 'member' END,
+               s.joined_at, s.removed_at
+        FROM social_project_sessions AS s
+        JOIN social_projects AS p ON p.id = s.project_id
+      `).run();
+      db.prepare(
+        'INSERT INTO social_schema_migrations(version, applied_at) VALUES (42, ?)',
+      ).run(now);
     })();
   }
 }

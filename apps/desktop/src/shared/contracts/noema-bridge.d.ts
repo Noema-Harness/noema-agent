@@ -440,6 +440,7 @@ export type NoemaSocialState = Pick<
   agents: NoemaSocialAgent[];
   rooms: NoemaSocialRoom[];
   projects: NoemaSocialProject[];
+  teams?: NoemaSocialTeam[];
   projectWork: {
     available: boolean;
     reasonCode:
@@ -455,6 +456,27 @@ export type NoemaSocialState = Pick<
   };
 };
 
+export interface NoemaSocialTeam {
+  id: string;
+  title: string;
+  brief: string;
+  status: 'active' | 'archived';
+  leadAgentId: string | null;
+  groupRoomId: string;
+  projectId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  archivedAt: string | null;
+  members: Array<{
+    agentId: string;
+    role: 'lead' | 'member';
+    name: string;
+    headline: string;
+    kind: 'noema' | 'specialist';
+    agentArchivedAt: string | null;
+  }>;
+}
+
 export interface NoemaSocialProject {
   id: string;
   title: string;
@@ -463,6 +485,7 @@ export interface NoemaSocialProject {
   originRoomId: string;
   sourceMessageId: string | null;
   groupRoomId: string;
+  leadAgentId: string | null;
   createdAt: string;
   updatedAt: string;
   archivedAt: string | null;

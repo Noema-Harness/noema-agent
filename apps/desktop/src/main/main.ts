@@ -42,6 +42,7 @@ import { saveDiagnosticsExport } from './diagnostics/save-diagnostics-export.ts'
 import { SocialChatStore } from './chat/social-chat-store.mjs';
 import { SOCIAL_SCHEMA_VERSION } from './chat/social-chat-schema.ts';
 import { SocialProjectStore } from './projects/social-project-store.mjs';
+import { SocialTeamStore } from './chat/social-team-store.ts';
 import { SocialChatService } from './chat/social-chat-service.mjs';
 import { searchAndReadWeb } from './tools/web-search.mjs';
 import { SocialWorkService } from './execution/social-work-service.mjs';
@@ -70,6 +71,7 @@ import { NoemaProjectExecutor } from './execution/noema-project-executor.mjs';
 import { createNoemaToolRegistry } from './runtime/noema-tool-registry.ts';
 import { NoemaToolSession } from './mcp/noema-tool-session.ts';
 import { createChatTicketTool } from './chat/chat-ticket-tool.ts';
+import { createProjectTeamTools } from './chat/project-team-tools.ts';
 import { createNoemaReadTools } from './chat/noema-read-tools.mjs';
 import { isMainFrameIpcEvent } from './platform/window-security.ts';
 import {
@@ -286,6 +288,7 @@ let rootAgent: RootAgent | null = null;
 let legacyHistoryArchiveService: LegacyHistoryArchiveService | null = null;
 let socialChatStore: SocialChatStore | null = null;
 let socialProjectStore: SocialProjectStore | null = null;
+let socialTeamStore: SocialTeamStore | null = null;
 let socialChatService: SocialChatService | null = null;
 let socialWorkService: SocialWorkService | null = null;
 let socialAgentE2eModelRequests: Array<{
@@ -656,6 +659,7 @@ async function startNoema() {
       db: rootStore.db,
       socialChatStore,
     });
+    socialTeamStore = new SocialTeamStore({ db: rootStore.db });
     const socialE2e = createSocialE2eRuntime({
       app,
       provider,
@@ -825,6 +829,12 @@ async function startNoema() {
                 agentId?: string;
               }) => socialWorkService!.startTicket(input),
             }),
+            ...createProjectTeamTools({
+              propose: (input: object) =>
+                socialChatService!.proposeProjectTeamFromTool(input),
+              decide: (input: object) =>
+                socialChatService!.decideProjectTeamFromTool(input),
+            }),
             ...createNoemaReadTools(),
           ]),
         });
@@ -967,6 +977,7 @@ async function startNoema() {
       rootAgent: agent,
       socialChatService,
       socialProjectStore,
+      socialTeamStore,
       socialWorkService,
       getWorkTaskUsage: (taskId) => modelUsageStore.getTaskUsage(taskId),
       getWorkTaskTouchedFiles: (taskId: string) =>

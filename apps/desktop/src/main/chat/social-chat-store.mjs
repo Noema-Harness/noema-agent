@@ -521,11 +521,69 @@ export class SocialChatStore {
     if (room.closedAt) throw new Error('这个主题已结束；重新打开后才能继续。');
   }
 
-  createAgent({ name, headline, description, projectWork = false }) {
-    const normalizedName = requireText(name, '联系人名称', 60);
+  getJobTemplate(jobTemplateId) {
+    const id = requireText(jobTemplateId, '岗位模板 ID', 120);
+    const template = this.db
+      .prepare(`
+        SELECT id, title, role, headline, description, version
+        FROM job_templates
+        WHERE id = ? AND archived_at IS NULL
+      `)
+      .get(id);
+    if (!template) throw new Error('岗位模板不存在或已归档。');
+    return template;
+  }
+
+  updateJobTemplate({ jobTemplateId, title, headline, description }) {
+    const current = this.getJobTemplate(jobTemplateId);
+    const normalizedTitle = requireText(title, '岗位名称', 60);
     const normalizedHeadline = requireText(headline, '专业范围', 140);
     const normalizedDescription = requireText(description, '合作方式', 800);
-    if (typeof projectWork !== 'boolean') {
+    const now = isoNow();
+    this.db
+      .prepare(`
+        UPDATE job_templates
+        SET title = ?, headline = ?, description = ?,
+            version = version + 1, updated_at = ?
+        WHERE id = ?
+      `)
+      .run(
+        normalizedTitle,
+        normalizedHeadline,
+        normalizedDescription,
+        now,
+        current.id,
+      );
+    return this.getJobTemplate(current.id);
+  }
+
+  createAgent({
+    name,
+    headline,
+    description,
+    projectWork = false,
+    jobTemplateId = null,
+    job_template_id = null,
+  }) {
+    const templateId = jobTemplateId ?? job_template_id ?? null;
+    const template = templateId ? this.getJobTemplate(templateId) : null;
+    const normalizedName = requireText(
+      name ?? template?.title,
+      '联系人名称',
+      60,
+    );
+    const normalizedHeadline = requireText(
+      template?.headline ?? headline,
+      '专业范围',
+      140,
+    );
+    const normalizedDescription = requireText(
+      template?.description ?? description,
+      '合作方式',
+      800,
+    );
+    const normalizedProjectWork = template ? true : projectWork;
+    if (typeof normalizedProjectWork !== 'boolean') {
       throw new TypeError('项目工作能力必须明确选择。');
     }
     const duplicate = this.db
@@ -538,12 +596,12 @@ export class SocialChatStore {
     const agentId = `agent-${randomUUID()}`;
     const roomId = `room-${randomUUID()}`;
     const now = isoNow();
-    const capabilities = projectWork ? ['project-work'] : [];
+    const capabilities = normalizedProjectWork ? ['project-work'] : [];
     const systemPrompt = specialistSystemPrompt({
       name: normalizedName,
       headline: normalizedHeadline,
       description: normalizedDescription,
-      projectWork,
+      projectWork: normalizedProjectWork,
     });
 
     this.db.transaction(() => {
@@ -551,8 +609,9 @@ export class SocialChatStore {
         .prepare(`
           INSERT INTO social_agents
             (id, name, kind, headline, description, system_prompt,
-             capabilities_json, created_at, updated_at)
-          VALUES (?, ?, 'specialist', ?, ?, ?, ?, ?, ?)
+             capabilities_json, job_template_id, job_template_version,
+             created_at, updated_at)
+          VALUES (?, ?, 'specialist', ?, ?, ?, ?, ?, ?, ?, ?)
         `)
         .run(
           agentId,
@@ -561,6 +620,8 @@ export class SocialChatStore {
           normalizedDescription,
           systemPrompt,
           JSON.stringify(capabilities),
+          template?.id ?? null,
+          template?.version ?? null,
           now,
           now,
         );

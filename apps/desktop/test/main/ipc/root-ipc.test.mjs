@@ -770,6 +770,7 @@ test('project IPC exposes metadata and preserves lifecycle events for the render
         reason: '执行器未就绪。',
       },
       projects: [project],
+      teams: [],
     },
   );
   assert.deepEqual(recordedReadiness, {

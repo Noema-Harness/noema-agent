@@ -116,7 +116,7 @@ function shouldExposeExistingProjectTools(run, roomHistory, projects) {
   )
     return false;
   if (
-    /(?:项目|计划(?:表|进度)?|阶段|工作项|团队|项目组|派单|评审|群聊|项目工作区)/u.test(
+    /(?:项目|计划(?:表|进度)?|阶段|工作项|团队|项目组|组队|组建|派单|评审|群聊|项目工作区)/u.test(
       recentText,
     ) ||
     /(?:核验|验收|审核).{0,12}(?:提交|成果|依据)/u.test(recentText)
@@ -132,7 +132,7 @@ function shouldExposeExistingProjectTools(run, roomHistory, projects) {
         (message) => message.role === 'user' && message.content !== recentText,
       )?.content;
     if (
-      /(?:项目|计划(?:表|进度)?|阶段|工作项|团队|项目组|评审|群聊)/u.test(
+      /(?:项目|计划(?:表|进度)?|阶段|工作项|团队|项目组|组队|组建|评审|群聊)/u.test(
         previousUserText || '',
       )
     )
@@ -712,6 +712,94 @@ export class SocialChatService {
 
   createChatTicketSession() {
     return this.chatRuntimeSessions.createChatTicketSession();
+  }
+
+  /**
+   * MCP adapter used by the DSH runtime, which cannot receive dynamic tools.
+   * Mirrors the native proposal/approval contract.
+   */
+  proposeProjectTeamFromTool(input) {
+    if (
+      !input ||
+      typeof input.title !== 'string' ||
+      typeof input.brief !== 'string' ||
+      !Array.isArray(input.members)
+    ) {
+      throw new ModelProviderError(
+        'social_tool_invalid',
+        '项目团队提案无效；没有创建项目。',
+      );
+    }
+    const proposal = this.projectStore.createTeamProposal({
+      roomId: 'room-noema',
+      sourceMessageId: null,
+      title: input.title,
+      brief: input.brief,
+      leadAgentId: input.lead_agent_id ?? null,
+      members: input.members,
+    });
+    return {
+      ok: true,
+      status: 'awaiting_approval',
+      proposalId: proposal.id,
+      projectCreated: false,
+      message:
+        '团队方案已保存，项目尚未创建。把负责人和成员展示给用户，默认选项为确认；用户确认后再调用 decide_project_team。',
+    };
+  }
+
+  async decideProjectTeamFromTool(input) {
+    const proposal = this.projectStore.getTeamProposal(input?.proposal_id);
+    if (!proposal || proposal.roomId !== 'room-noema') {
+      throw new ModelProviderError(
+        'social_tool_invalid',
+        '团队提案不存在；没有创建项目。',
+      );
+    }
+    if (proposal.status !== 'pending') {
+      throw new ModelProviderError('social_tool_invalid', '团队提案已经处理。');
+    }
+    if (input?.decision !== 'approve') {
+      const rejected = this.projectStore.decideTeamProposal(
+        proposal.id,
+        'rejected',
+        { reason: input?.reason ?? null },
+      );
+      return { ok: true, status: rejected.status, projectCreated: false };
+    }
+    const workspace = await this.chooseProjectWorkspace?.({
+      source: 'team_proposal',
+      title: proposal.title,
+    });
+    if (!workspace?.workspacePath || !workspace.identity) {
+      throw new ModelProviderError(
+        'project_workspace_required',
+        '请选择项目工作文件夹。',
+      );
+    }
+    const formed = this.projectStore.formProjectTeam({
+      title: proposal.title,
+      brief: proposal.brief,
+      originRoomId: proposal.roomId,
+      sourceMessageId: proposal.sourceMessageId,
+      workspacePath: workspace.workspacePath,
+      workspaceIdentity: workspace.identity,
+      leadAgentId: proposal.leadAgentId,
+      members: proposal.members,
+    });
+    const approved = this.projectStore.decideTeamProposal(
+      proposal.id,
+      'approved',
+      { projectId: formed.project.id },
+    );
+    return {
+      ok: true,
+      status: approved.status,
+      proposalId: proposal.id,
+      project: formed.project,
+      members: formed.members,
+      projectCreated: true,
+    };
   }
 
   recordSocialToolEvent(run, trace, phase, status, details = {}) {
@@ -1913,8 +2001,7 @@ export class SocialChatService {
         agentId === 'noema' &&
         (roomId === 'room-noema' || noemaProjectGroup) &&
         this.projectStore &&
-        !run.reviewContext &&
-        (roomId !== 'room-noema' || exposeProjectActions || !this.startTicket),
+        !run.reviewContext,
       );
       const projectTeamAction = teamToolAvailable
         ? noemaProjectGroup
@@ -1997,17 +2084,29 @@ export class SocialChatService {
         this.startProjectWork &&
         run.projectContext?.status !== 'awaiting_user',
       );
-      const forcedToolChoice = mustProvisionProjectWorkMember
+      const explicitTeamProposalRequest = Boolean(
+        teamToolAvailable &&
+        !noemaProjectGroup &&
+        projectTeamAction &&
+        /(?:组建|组队|团队)/u.test(run.text || '') &&
+        !/(?:确认|批准|同意|拒绝|取消)/u.test(run.text || ''),
+      );
+      const forcedToolChoice = explicitTeamProposalRequest
         ? {
             type: 'function',
-            function: { name: 'create_project_team' },
+            function: { name: 'propose_project_team' },
           }
-        : mustResumeWithExistingProjectWorkMember
+        : mustProvisionProjectWorkMember
           ? {
               type: 'function',
-              function: { name: 'start_project_work' },
+              function: { name: 'create_project_team' },
             }
-          : undefined;
+          : mustResumeWithExistingProjectWorkMember
+            ? {
+                type: 'function',
+                function: { name: 'start_project_work' },
+              }
+            : undefined;
       run.projectExecutionRecovery = Boolean(
         mustProvisionProjectWorkMember ||
         mustResumeWithExistingProjectWorkMember,

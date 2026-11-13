@@ -336,6 +336,8 @@ export function CoreChatApp() {
     showJumpToLatest,
     historyPageLoading,
     agents,
+    projects,
+    teams,
   } = controller;
 
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
@@ -350,6 +352,12 @@ export function CoreChatApp() {
   );
   const [taskHistoryOpen, setTaskHistoryOpen] = useState(false);
   const [taskHistoryAll, setTaskHistoryAll] = useState(false);
+  const [section, setSection] = useState<
+    'chat' | 'teams' | 'projects' | 'members'
+  >('chat');
+  const [returnSection, setReturnSection] = useState<
+    'teams' | 'projects' | 'members' | null
+  >(null);
   const [deliveryEvents, setDeliveryEvents] =
     useState<DeliveryEvent[]>(readDeliveryEvents);
   const previousTaskStatus = useRef(
@@ -378,16 +386,61 @@ export function CoreChatApp() {
     return result;
   }, [rooms]);
 
-  const switcherAgents = useMemo(
-    () =>
-      agents.filter(
-        (agent) =>
-          agent.id !== 'noema' &&
-          !agent.archivedAt &&
-          directRoomByAgent.has(agent.id),
-      ),
-    [agents, directRoomByAgent],
+  const activeTeams = useMemo(
+    () => teams.filter((team) => team.status !== 'archived'),
+    [teams],
   );
+  const currentTeam = useMemo(
+    () =>
+      activeTeams.find((team) => team.groupRoomId === currentRoom?.id) ?? null,
+    [activeTeams, currentRoom?.id],
+  );
+  const switcherAgents = useMemo(() => {
+    const teamAgentIds = currentTeam
+      ? new Set(currentTeam.members.map((member) => member.agentId))
+      : null;
+    return agents.filter(
+      (agent) =>
+        agent.id !== 'noema' &&
+        !agent.archivedAt &&
+        directRoomByAgent.has(agent.id) &&
+        (!teamAgentIds || teamAgentIds.has(agent.id)),
+    );
+  }, [agents, currentTeam, directRoomByAgent]);
+
+  const activeProjects = useMemo(
+    () => projects.filter((project) => project.status !== 'archived'),
+    [projects],
+  );
+  const visibleMembers = useMemo(
+    () => agents.filter((agent) => agent.id !== 'noema' && !agent.archivedAt),
+    [agents],
+  );
+  const roomById = useMemo(
+    () => new Map(rooms.map((room) => [room.id, room])),
+    [rooms],
+  );
+  const agentById = useMemo(
+    () => new Map(agents.map((agent) => [agent.id, agent])),
+    [agents],
+  );
+  const openTeamGroup = (groupRoomId: string, from: 'teams' | 'projects') => {
+    const room = roomById.get(groupRoomId);
+    if (!room) return;
+    selectRoom(room);
+    setReturnSection(from);
+    setSection('chat');
+  };
+  const openMemberChat = (agentId: string) => {
+    openAgentConversation(agentId);
+    setReturnSection('members');
+    setSection('chat');
+  };
+  const leaveSection = () => {
+    setSection('chat');
+    setReturnSection(null);
+    if (noemaRoom) selectRoom(noemaRoom);
+  };
 
   const timelineEntries = useMemo(() => {
     let order = 0;
@@ -802,460 +855,704 @@ export function CoreChatApp() {
 
   const sendDisabled =
     !providerReady || busy || (!draft.trim() && draftAttachments.length === 0);
+  const isExecutorDirect =
+    currentRoom?.kind === 'direct' && currentRoom.id !== noemaRoom?.id;
+  const isGroupRoom = currentRoom?.kind === 'group';
+  const canReturnFromChat = section === 'chat' && returnSection !== null;
+  const title =
+    section === 'teams'
+      ? '团队'
+      : section === 'projects'
+        ? '项目'
+        : section === 'members'
+          ? '成员'
+          : currentRoom?.title || 'Noema';
+  const subtitle =
+    section === 'chat'
+      ? isExecutorDirect
+        ? '常驻私聊'
+        : isGroupRoom
+          ? '群聊'
+          : null
+      : null;
 
   return (
-    <div className="core-shell">
-      <header className="core-topbar">
-        <div className="core-top-left">
-          {currentRoom?.kind === 'direct' &&
-          currentRoom.id !== noemaRoom?.id ? (
+    <div className="core-app">
+      <aside className="core-sidebar" aria-label="主导航">
+        <div className="core-sidebar-brand">
+          <Icon name="noema" />
+          <strong>Noema</strong>
+        </div>
+        <nav className="core-sidebar-nav">
+          <button
+            className="core-nav-item"
+            data-active={section === 'chat'}
+            type="button"
+            aria-current={section === 'chat' ? 'page' : undefined}
+            onClick={leaveSection}
+          >
+            <Icon name="thread" />
+            <span>对话</span>
+          </button>
+          <button
+            className="core-nav-item"
+            data-active={section === 'teams'}
+            type="button"
+            aria-current={section === 'teams' ? 'page' : undefined}
+            onClick={() => setSection('teams')}
+          >
+            <Icon name="users" />
+            <span>团队</span>
+            <small>{activeTeams.length}</small>
+          </button>
+          <button
+            className="core-nav-item"
+            data-active={section === 'projects'}
+            type="button"
+            aria-current={section === 'projects' ? 'page' : undefined}
+            onClick={() => setSection('projects')}
+          >
+            <Icon name="project" />
+            <span>项目</span>
+            <small>{activeProjects.length}</small>
+          </button>
+          <button
+            className="core-nav-item"
+            data-active={section === 'members'}
+            type="button"
+            aria-current={section === 'members' ? 'page' : undefined}
+            onClick={() => setSection('members')}
+          >
+            <Icon name="user-add" />
+            <span>成员</span>
+            <small>{visibleMembers.length}</small>
+          </button>
+        </nav>
+        <div className="core-sidebar-foot">
+          <span className="core-status-dot" data-ready={providerReady} />
+          {providerReady ? '本地运行' : '模型未连接'}
+        </div>
+      </aside>
+      <div className="core-shell" data-section={section}>
+        <header className="core-topbar">
+          <div className="core-top-left">
+            {canReturnFromChat ? (
+              <NoemaButton
+                className="icon-button core-back"
+                type="button"
+                title={`返回${returnSection === 'teams' ? '团队' : returnSection === 'projects' ? '项目' : '成员'}`}
+                aria-label={`返回${returnSection === 'teams' ? '团队' : returnSection === 'projects' ? '项目' : '成员'}`}
+                onClick={() => {
+                  if (!returnSection) return;
+                  setSection(returnSection);
+                  setReturnSection(null);
+                }}
+              >
+                <Icon name="back" />
+              </NoemaButton>
+            ) : isExecutorDirect ? (
+              <NoemaButton
+                className="icon-button core-back"
+                type="button"
+                title="返回 Noema"
+                aria-label="返回 Noema"
+                onClick={() => {
+                  if (noemaRoom) selectRoom(noemaRoom);
+                }}
+              >
+                <Icon name="back" />
+              </NoemaButton>
+            ) : null}
+            <div className="core-brand">
+              <Icon name="noema" />
+              <strong>{title}</strong>
+              {subtitle ? <small>{subtitle}</small> : null}
+            </div>
+          </div>
+          <div className="core-top-actions">
+            {latestArchive ? (
+              <NoemaButton
+                className="icon-button"
+                type="button"
+                title="恢复修改前版本"
+                aria-label="恢复修改前版本"
+                disabled={busy || Boolean(activeReply)}
+                onClick={() => void restoreLatestArchive()}
+              >
+                <Icon name="restore" />
+              </NoemaButton>
+            ) : null}
             <NoemaButton
-              className="icon-button core-back"
+              className="icon-button"
               type="button"
-              title="返回 Noema"
-              aria-label="返回 Noema"
+              title="设置"
+              aria-label="设置"
+              onClick={() => setSettingsOpen(true)}
+            >
+              <Icon name="settings" />
+            </NoemaButton>
+            <div className="window-controls" aria-label="窗口控件">
+              <NoemaButton
+                className="window-control"
+                type="button"
+                title="最小化"
+                aria-label="最小化"
+                onClick={() => void window.noema.controlWindow('minimize')}
+              >
+                <Icon name="minus" />
+              </NoemaButton>
+              <NoemaButton
+                className="window-control"
+                type="button"
+                title={windowMaximized ? '还原窗口' : '最大化'}
+                aria-label={windowMaximized ? '还原窗口' : '最大化'}
+                onClick={() =>
+                  void window.noema
+                    .controlWindow('maximize')
+                    .then(setWindowMaximized)
+                }
+              >
+                <Icon name={windowMaximized ? 'restore' : 'maximize'} />
+              </NoemaButton>
+              <NoemaButton
+                className="window-control close-control"
+                type="button"
+                title="关闭窗口"
+                aria-label="关闭窗口"
+                onClick={() => void window.noema.controlWindow('close')}
+              >
+                <Icon name="close" />
+              </NoemaButton>
+            </div>
+          </div>
+        </header>
+
+        {switcherAgents.length > 0 ? (
+          <nav className="core-agent-switcher" aria-label="切换对话">
+            <button
+              className={`core-agent-chip${
+                currentRoom?.id === noemaRoom?.id ? ' active' : ''
+              }`}
+              type="button"
               onClick={() => {
                 if (noemaRoom) selectRoom(noemaRoom);
               }}
             >
-              <Icon name="back" />
-            </NoemaButton>
-          ) : null}
-          <div className="core-brand">
-            <Icon name="noema" />
-            <strong>
-              {currentRoom?.kind === 'direct' &&
-              currentRoom.id !== noemaRoom?.id
-                ? currentRoom.title
-                : 'Noema'}
-            </strong>
-            {currentRoom?.kind === 'direct' &&
-            currentRoom.id !== noemaRoom?.id ? (
-              <small>常驻私聊</small>
-            ) : null}
-          </div>
-        </div>
-        <div className="core-top-actions">
-          {latestArchive ? (
-            <NoemaButton
-              className="icon-button"
-              type="button"
-              title="恢复修改前版本"
-              aria-label="恢复修改前版本"
-              disabled={busy || Boolean(activeReply)}
-              onClick={() => void restoreLatestArchive()}
-            >
-              <Icon name="restore" />
-            </NoemaButton>
-          ) : null}
-          <NoemaButton
-            className="icon-button"
-            type="button"
-            title="设置"
-            aria-label="设置"
-            onClick={() => setSettingsOpen(true)}
-          >
-            <Icon name="settings" />
-          </NoemaButton>
-          <div className="window-controls" aria-label="窗口控件">
-            <NoemaButton
-              className="window-control"
-              type="button"
-              title="最小化"
-              aria-label="最小化"
-              onClick={() => void window.noema.controlWindow('minimize')}
-            >
-              <Icon name="minus" />
-            </NoemaButton>
-            <NoemaButton
-              className="window-control"
-              type="button"
-              title={windowMaximized ? '还原窗口' : '最大化'}
-              aria-label={windowMaximized ? '还原窗口' : '最大化'}
-              onClick={() =>
-                void window.noema
-                  .controlWindow('maximize')
-                  .then(setWindowMaximized)
-              }
-            >
-              <Icon name={windowMaximized ? 'restore' : 'maximize'} />
-            </NoemaButton>
-            <NoemaButton
-              className="window-control close-control"
-              type="button"
-              title="关闭窗口"
-              aria-label="关闭窗口"
-              onClick={() => void window.noema.controlWindow('close')}
-            >
-              <Icon name="close" />
-            </NoemaButton>
-          </div>
-        </div>
-      </header>
-
-      {switcherAgents.length > 0 ? (
-        <nav className="core-agent-switcher" aria-label="切换对话">
-          <button
-            className={`core-agent-chip${
-              currentRoom?.id === noemaRoom?.id ? ' active' : ''
-            }`}
-            type="button"
-            onClick={() => {
-              if (noemaRoom) selectRoom(noemaRoom);
-            }}
-          >
-            <span className="core-agent-initial">
-              <Icon name="noema" />
-            </span>
-            Noema
-          </button>
-          {switcherAgents.map((agent) => (
-            <button
-              className={`core-agent-chip${
-                directRoomByAgent.get(agent.id)?.id === currentRoom?.id
-                  ? ' active'
-                  : ''
-              }`}
-              type="button"
-              key={agent.id}
-              onClick={() => openAgentConversation(agent.id)}
-            >
               <span className="core-agent-initial">
-                {agent.name.trim().slice(0, 1) || '执'}
+                <Icon name="noema" />
               </span>
-              {agent.name}
+              Noema
             </button>
-          ))}
-        </nav>
-      ) : null}
+            {switcherAgents.map((agent) => (
+              <button
+                className={`core-agent-chip${
+                  directRoomByAgent.get(agent.id)?.id === currentRoom?.id
+                    ? ' active'
+                    : ''
+                }`}
+                type="button"
+                key={agent.id}
+                onClick={() => openAgentConversation(agent.id)}
+              >
+                <span className="core-agent-initial">
+                  {agent.name.trim().slice(0, 1) || '执'}
+                </span>
+                {agent.name}
+              </button>
+            ))}
+          </nav>
+        ) : null}
 
-      <main
-        className="core-thread"
-        ref={conversationRef}
-        onScroll={(event) => {
-          const element = event.currentTarget;
-          shouldFollowRef.current =
-            element.scrollHeight - element.scrollTop - element.clientHeight <
-            60;
-          setShowJumpToLatest(!shouldFollowRef.current);
-        }}
-      >
-        <div className="core-thread-inner">
-          {historyPageLoading ? (
-            <p className="request-explanation">正在读取更早的消息…</p>
+        <main
+          className="core-thread"
+          ref={conversationRef}
+          onScroll={(event) => {
+            const element = event.currentTarget;
+            shouldFollowRef.current =
+              element.scrollHeight - element.scrollTop - element.clientHeight <
+              60;
+            setShowJumpToLatest(!shouldFollowRef.current);
+          }}
+        >
+          <div className="core-thread-inner">
+            {historyPageLoading ? (
+              <p className="request-explanation">正在读取更早的消息…</p>
+            ) : null}
+            {!historyPageLoading && timelineEntries.length === 0 ? (
+              <div className="core-empty">
+                <h1>
+                  {currentRoom?.kind === 'direct' &&
+                  currentRoom.id !== noemaRoom?.id
+                    ? currentRoom.title
+                    : '有什么想做的？'}
+                </h1>
+                <p>
+                  {currentRoom?.kind === 'direct' &&
+                  currentRoom.id !== noemaRoom?.id
+                    ? '这里是你们的常驻私聊；任务执行记录仍留在对应任务里。'
+                    : '直接说结果，Noema 会安排执行并在这里展示过程。'}
+                </p>
+              </div>
+            ) : null}
+            {timelineEntries.map((entry) =>
+              entry.kind === 'message' ? (
+                <React.Fragment key={entry.key}>
+                  {renderMessage(entry.message)}
+                </React.Fragment>
+              ) : (
+                <div
+                  className="core-task-event"
+                  data-status={entry.event.status}
+                  key={entry.key}
+                  role="status"
+                >
+                  <span className="core-task-event-icon" aria-hidden="true">
+                    <Icon
+                      name={
+                        entry.event.status === 'completed' ? 'check' : 'close'
+                      }
+                    />
+                  </span>
+                  <span className="core-task-event-text">
+                    <strong>{entry.event.agentName}</strong>
+                    {deliveryEventLabel(entry.event.status)}
+                  </span>
+                  <NoemaButton
+                    className="core-task-event-action"
+                    type="button"
+                    title="查看任务结果"
+                    aria-label={`查看 ${entry.event.agentName} 的任务结果`}
+                    onClick={() => setInspectedTaskId(entry.event.taskId)}
+                  >
+                    查看结果
+                  </NoemaButton>
+                </div>
+              ),
+            )}
+          </div>
+          {showJumpToLatest ? (
+            <NoemaButton
+              className="jump-to-latest"
+              type="button"
+              onClick={() => {
+                const element = conversationRef.current;
+                if (!element) return;
+                element.scrollTop = element.scrollHeight;
+                setShowJumpToLatest(false);
+              }}
+            >
+              回到最新消息
+            </NoemaButton>
           ) : null}
-          {!historyPageLoading && timelineEntries.length === 0 ? (
-            <div className="core-empty">
-              <h1>
-                {currentRoom?.kind === 'direct' &&
-                currentRoom.id !== noemaRoom?.id
-                  ? currentRoom.title
-                  : '有什么想做的？'}
-              </h1>
-              <p>
-                {currentRoom?.kind === 'direct' &&
-                currentRoom.id !== noemaRoom?.id
-                  ? '这里是你们的常驻私聊；任务执行记录仍留在对应任务里。'
-                  : '直接说结果，Noema 会安排执行并在这里展示过程。'}
-              </p>
+        </main>
+
+        <footer className="core-composer">
+          {activeTasks.length ? (
+            <div className="core-task-dock" aria-label="进行中的任务">
+              {activeTasks.slice(-3).map((task) => (
+                <NoemaButton
+                  className="core-task-dock-item"
+                  type="button"
+                  key={task.id}
+                  title={task.taskPrompt}
+                  aria-label={`查看 ${agentNameForTask(task)} 的任务`}
+                  onClick={() => setInspectedTaskId(task.id)}
+                >
+                  <span
+                    className="core-task-pulse"
+                    data-status={task.status}
+                    aria-hidden="true"
+                  />
+                  <span className="core-task-dock-agent">
+                    {agentNameForTask(task)}
+                  </span>
+                  <span
+                    className="core-task-dock-state"
+                    data-status={task.status}
+                  >
+                    {taskStatusLabel(task.status)}
+                  </span>
+                  <span className="core-task-dock-meta">
+                    {task.executionSteps.length} 步
+                  </span>
+                </NoemaButton>
+              ))}
             </div>
           ) : null}
-          {timelineEntries.map((entry) =>
-            entry.kind === 'message' ? (
-              <React.Fragment key={entry.key}>
-                {renderMessage(entry.message)}
-              </React.Fragment>
-            ) : (
-              <div
-                className="core-task-event"
-                data-status={entry.event.status}
-                key={entry.key}
-                role="status"
-              >
-                <span className="core-task-event-icon" aria-hidden="true">
-                  <Icon
-                    name={
-                      entry.event.status === 'completed' ? 'check' : 'close'
-                    }
-                  />
-                </span>
-                <span className="core-task-event-text">
-                  <strong>{entry.event.agentName}</strong>
-                  {deliveryEventLabel(entry.event.status)}
-                </span>
-                <NoemaButton
-                  className="core-task-event-action"
-                  type="button"
-                  title="查看任务结果"
-                  aria-label={`查看 ${entry.event.agentName} 的任务结果`}
-                  onClick={() => setInspectedTaskId(entry.event.taskId)}
-                >
-                  查看结果
-                </NoemaButton>
-              </div>
-            ),
-          )}
-        </div>
-        {showJumpToLatest ? (
-          <NoemaButton
-            className="jump-to-latest"
-            type="button"
-            onClick={() => {
-              const element = conversationRef.current;
-              if (!element) return;
-              element.scrollTop = element.scrollHeight;
-              setShowJumpToLatest(false);
-            }}
-          >
-            回到最新消息
-          </NoemaButton>
-        ) : null}
-      </main>
-
-      <footer className="core-composer">
-        {activeTasks.length ? (
-          <div className="core-task-dock" aria-label="进行中的任务">
-            {activeTasks.slice(-3).map((task) => (
-              <NoemaButton
-                className="core-task-dock-item"
-                type="button"
-                key={task.id}
-                title={task.taskPrompt}
-                aria-label={`查看 ${agentNameForTask(task)} 的任务`}
-                onClick={() => setInspectedTaskId(task.id)}
-              >
-                <span
-                  className="core-task-pulse"
-                  data-status={task.status}
-                  aria-hidden="true"
-                />
-                <span className="core-task-dock-agent">
-                  {agentNameForTask(task)}
-                </span>
-                <span
-                  className="core-task-dock-state"
-                  data-status={task.status}
-                >
-                  {taskStatusLabel(task.status)}
-                </span>
-                <span className="core-task-dock-meta">
-                  {task.executionSteps.length} 步
-                </span>
-              </NoemaButton>
-            ))}
-          </div>
-        ) : null}
-        {completedNotice ? (
-          <NoemaButton
-            className="core-task-delivery"
-            type="button"
-            onClick={() => setInspectedTaskId(completedNotice.id)}
-          >
-            <Icon name="check" aria-hidden="true" />
-            <span>
-              {agentNameForTask(completedNotice)} 已交付
-              {completedNotice.status === 'completed'
-                ? ''
-                : ` · ${taskStatusLabel(completedNotice.status)}`}
-            </span>
-            <span className="core-task-delivery-open">查看</span>
-          </NoemaButton>
-        ) : null}
-        {settledTasks.length ? (
-          <NoemaButton
-            className="core-task-ledger"
-            type="button"
-            title="交付记录"
-            aria-label="交付记录"
-            onClick={() => {
-              setTaskHistoryAll(false);
-              setTaskHistoryOpen(true);
-            }}
-          >
-            <Icon name="archive" aria-hidden="true" />
-          </NoemaButton>
-        ) : null}
-        {notice ? (
-          <p className="core-notice" role="status">
-            {notice}
-          </p>
-        ) : null}
-        {!providerReady ? (
-          <div className="core-provider-warning">
-            <span>{providerWarning ?? '还没有连接模型。'}</span>
+          {completedNotice ? (
             <NoemaButton
-              className="secondary"
+              className="core-task-delivery"
               type="button"
-              onClick={() => setSettingsOpen(true)}
+              onClick={() => setInspectedTaskId(completedNotice.id)}
             >
-              连接模型
-            </NoemaButton>
-          </div>
-        ) : null}
-        {draftAttachments.length ? (
-          <div className="core-attachments">
-            {draftAttachments.map((attachment, index) => (
-              <span key={`${attachment.name}-${index}`}>
-                {attachment.name}
-                <button
-                  type="button"
-                  aria-label={`移除 ${attachment.name}`}
-                  onClick={() => removeDraftAttachment(index)}
-                >
-                  ×
-                </button>
+              <Icon name="check" aria-hidden="true" />
+              <span>
+                {agentNameForTask(completedNotice)} 已交付
+                {completedNotice.status === 'completed'
+                  ? ''
+                  : ` · ${taskStatusLabel(completedNotice.status)}`}
               </span>
-            ))}
-          </div>
-        ) : null}
-        <div className="core-composer-box">
-          <textarea
-            ref={draftRef}
-            value={draft}
-            placeholder="说说你正在想的事…"
-            rows={2}
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={handleComposerKeyDown}
-          />
-          <div className="core-composer-actions">
-            <input
-              ref={attachmentInputRef}
-              type="file"
-              hidden
-              multiple
-              onChange={(event) => {
-                void addDraftAttachments(event.target.files);
-                event.target.value = '';
-              }}
-            />
-            <NoemaButton
-              className="icon-button"
-              type="button"
-              title="添加附件"
-              aria-label="添加附件"
-              onClick={() => attachmentInputRef.current?.click()}
-            >
-              <Icon name="attach" />
+              <span className="core-task-delivery-open">查看</span>
             </NoemaButton>
-            {busy || activeReply ? (
+          ) : null}
+          {settledTasks.length ? (
+            <NoemaButton
+              className="core-task-ledger"
+              type="button"
+              title="交付记录"
+              aria-label="交付记录"
+              onClick={() => {
+                setTaskHistoryAll(false);
+                setTaskHistoryOpen(true);
+              }}
+            >
+              <Icon name="archive" aria-hidden="true" />
+            </NoemaButton>
+          ) : null}
+          {notice ? (
+            <p className="core-notice" role="status">
+              {notice}
+            </p>
+          ) : null}
+          {!providerReady ? (
+            <div className="core-provider-warning">
+              <span>{providerWarning ?? '还没有连接模型。'}</span>
               <NoemaButton
                 className="secondary"
                 type="button"
-                onClick={() => void handleStop()}
+                onClick={() => setSettingsOpen(true)}
               >
-                停止
+                连接模型
               </NoemaButton>
-            ) : (
+            </div>
+          ) : null}
+          {draftAttachments.length ? (
+            <div className="core-attachments">
+              {draftAttachments.map((attachment, index) => (
+                <span key={`${attachment.name}-${index}`}>
+                  {attachment.name}
+                  <button
+                    type="button"
+                    aria-label={`移除 ${attachment.name}`}
+                    onClick={() => removeDraftAttachment(index)}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          ) : null}
+          <div className="core-composer-box">
+            <textarea
+              ref={draftRef}
+              value={draft}
+              placeholder="说说你正在想的事…"
+              rows={2}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={handleComposerKeyDown}
+            />
+            <div className="core-composer-actions">
+              <input
+                ref={attachmentInputRef}
+                type="file"
+                hidden
+                multiple
+                onChange={(event) => {
+                  void addDraftAttachments(event.target.files);
+                  event.target.value = '';
+                }}
+              />
               <NoemaButton
-                className="primary core-send"
+                className="icon-button"
                 type="button"
-                disabled={sendDisabled}
-                onClick={() => void handleSend()}
+                title="添加附件"
+                aria-label="添加附件"
+                onClick={() => attachmentInputRef.current?.click()}
               >
-                <Icon name="send" />
+                <Icon name="attach" />
               </NoemaButton>
-            )}
-          </div>
-        </div>
-        <p className="core-hint">Enter 发送 · Shift + Enter 换行</p>
-      </footer>
-
-      {taskHistoryOpen ? (
-        <div
-          className="core-task-inspector-backdrop"
-          onClick={() => setTaskHistoryOpen(false)}
-          role="presentation"
-        >
-          <div
-            className="core-task-inspector-wrap"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <section
-              className="core-task-inspector core-task-history"
-              aria-label="交付记录"
-            >
-              <header className="core-task-inspector-head">
-                <div className="core-task-inspector-title">
-                  <strong>交付记录</strong>
-                  <span>{settledTasks.length} 项已结束</span>
-                </div>
-                <button
-                  className="icon-button"
+              {busy || activeReply ? (
+                <NoemaButton
+                  className="secondary"
                   type="button"
-                  aria-label="关闭交付记录"
-                  title="关闭"
-                  onClick={() => setTaskHistoryOpen(false)}
+                  onClick={() => void handleStop()}
                 >
-                  ×
-                </button>
-              </header>
-              <div className="core-task-inspector-body">
-                <div className="core-task-history-list">
-                  {visibleSettledTasks.map((task) => (
-                    <button
-                      type="button"
-                      key={task.id}
-                      className="core-task-history-item"
-                      onClick={() => {
-                        setTaskHistoryOpen(false);
-                        setInspectedTaskId(task.id);
-                      }}
-                    >
-                      <span className="core-task-history-main">
-                        <strong>{agentNameForTask(task)}</strong>
-                        <span>{task.taskPrompt}</span>
-                      </span>
-                      <span className="core-task-history-meta">
-                        <span
-                          className="core-task-dock-state"
-                          data-status={task.status}
-                        >
-                          {taskStatusLabel(task.status)}
-                        </span>
-                        <span>{task.executionSteps.length} 步</span>
-                      </span>
-                    </button>
-                  ))}
-                  {settledTasks.length > 8 ? (
-                    <button
-                      type="button"
-                      className="core-task-history-more"
-                      onClick={() => setTaskHistoryAll((current) => !current)}
-                    >
-                      {taskHistoryAll
-                        ? '只看最近 8 项'
-                        : `查看全部 ${settledTasks.length} 项`}
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-            </section>
+                  停止
+                </NoemaButton>
+              ) : (
+                <NoemaButton
+                  className="primary core-send"
+                  type="button"
+                  disabled={sendDisabled}
+                  onClick={() => void handleSend()}
+                >
+                  <Icon name="send" />
+                </NoemaButton>
+              )}
+            </div>
           </div>
-        </div>
-      ) : null}
+          <p className="core-hint">Enter 发送 · Shift + Enter 换行</p>
+        </footer>
 
-      {inspectedTask ? (
-        <div
-          className="core-task-inspector-backdrop"
-          onClick={() => setInspectedTaskId(null)}
-          role="presentation"
-        >
+        {section !== 'chat' ? (
+          <main className="core-page" aria-label={title}>
+            <header className="core-page-head">
+              <div>
+                <h1>{title}</h1>
+                <p>
+                  {section === 'teams'
+                    ? '长期协作的人与他们的团队群。'
+                    : section === 'projects'
+                      ? '有目标、计划和交付物的项目。'
+                      : '可以随时直接对话的联系人。'}
+                </p>
+              </div>
+            </header>
+            <div className="core-page-body">
+              {section === 'teams' ? (
+                activeTeams.length ? (
+                  <div className="core-card-grid">
+                    {activeTeams.map((team) => {
+                      const lead = team.leadAgentId
+                        ? agentById.get(team.leadAgentId)?.name
+                        : null;
+                      const project = team.projectId
+                        ? activeProjects.find(
+                            (candidate) => candidate.id === team.projectId,
+                          )
+                        : null;
+                      const canOpen = roomById.has(team.groupRoomId);
+                      return (
+                        <article className="core-card" key={team.id}>
+                          <header>
+                            <div>
+                              <h2>{team.title}</h2>
+                              <span>{team.members.length} 位成员</span>
+                            </div>
+                            <span className="core-tag">团队</span>
+                          </header>
+                          <p>{team.brief || '暂无说明。'}</p>
+                          <dl className="core-card-meta">
+                            <div>
+                              <dt>负责人</dt>
+                              <dd>{lead ?? '未指定'}</dd>
+                            </div>
+                            <div>
+                              <dt>项目</dt>
+                              <dd>{project?.title ?? '独立团队'}</dd>
+                            </div>
+                          </dl>
+                          <button
+                            className="core-card-action"
+                            type="button"
+                            disabled={!canOpen}
+                            onClick={() =>
+                              openTeamGroup(team.groupRoomId, 'teams')
+                            }
+                          >
+                            {canOpen ? '打开团队群' : '团队群不可用'}
+                          </button>
+                        </article>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="core-empty">
+                    <strong>还没有团队</strong>
+                    <span>团队会出现在这里，并拥有自己的团队群。</span>
+                  </div>
+                )
+              ) : null}
+              {section === 'projects' ? (
+                activeProjects.length ? (
+                  <div className="core-card-grid">
+                    {activeProjects.map((project) => {
+                      const lead = project.leadAgentId
+                        ? agentById.get(project.leadAgentId)?.name
+                        : null;
+                      const canOpen = roomById.has(project.groupRoomId);
+                      return (
+                        <article className="core-card" key={project.id}>
+                          <header>
+                            <div>
+                              <h2>{project.title}</h2>
+                              <span>{project.members.length} 位成员</span>
+                            </div>
+                            <span className="core-tag">项目</span>
+                          </header>
+                          <p>{project.brief || '暂无说明。'}</p>
+                          <dl className="core-card-meta">
+                            <div>
+                              <dt>负责人</dt>
+                              <dd>{lead ?? '未指定'}</dd>
+                            </div>
+                            <div>
+                              <dt>状态</dt>
+                              <dd>
+                                {project.status === 'active'
+                                  ? '进行中'
+                                  : '等待反馈'}
+                              </dd>
+                            </div>
+                          </dl>
+                          <button
+                            className="core-card-action"
+                            type="button"
+                            disabled={!canOpen}
+                            onClick={() =>
+                              openTeamGroup(project.groupRoomId, 'projects')
+                            }
+                          >
+                            {canOpen ? '打开项目群' : '项目群不可用'}
+                          </button>
+                        </article>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="core-empty">
+                    <strong>还没有项目</strong>
+                    <span>
+                      项目会出现在这里，并拥有自己的工作文件夹和群聊。
+                    </span>
+                  </div>
+                )
+              ) : null}
+              {section === 'members' ? (
+                visibleMembers.length ? (
+                  <div className="core-member-list">
+                    {visibleMembers.map((agent) => {
+                      const canOpen = directRoomByAgent.has(agent.id);
+                      return (
+                        <button
+                          className="core-member-row"
+                          type="button"
+                          key={agent.id}
+                          disabled={!canOpen}
+                          onClick={() => openMemberChat(agent.id)}
+                        >
+                          <span className="core-member-avatar">
+                            {agent.name.slice(0, 1)}
+                          </span>
+                          <span className="core-member-copy">
+                            <strong>{agent.name}</strong>
+                            <small>{agent.headline}</small>
+                          </span>
+                          <span className="core-member-action">
+                            {canOpen ? '私聊' : '不可用'}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="core-empty">
+                    <strong>还没有成员</strong>
+                    <span>新建联系人后，可以直接从这里开始对话。</span>
+                  </div>
+                )
+              ) : null}
+            </div>
+          </main>
+        ) : null}
+
+        {taskHistoryOpen ? (
           <div
-            className="core-task-inspector-wrap"
-            onClick={(event) => event.stopPropagation()}
+            className="core-task-inspector-backdrop"
+            onClick={() => setTaskHistoryOpen(false)}
+            role="presentation"
           >
-            {renderTaskInspector(inspectedTask)}
+            <div
+              className="core-task-inspector-wrap"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <section
+                className="core-task-inspector core-task-history"
+                aria-label="交付记录"
+              >
+                <header className="core-task-inspector-head">
+                  <div className="core-task-inspector-title">
+                    <strong>交付记录</strong>
+                    <span>{settledTasks.length} 项已结束</span>
+                  </div>
+                  <button
+                    className="icon-button"
+                    type="button"
+                    aria-label="关闭交付记录"
+                    title="关闭"
+                    onClick={() => setTaskHistoryOpen(false)}
+                  >
+                    ×
+                  </button>
+                </header>
+                <div className="core-task-inspector-body">
+                  <div className="core-task-history-list">
+                    {visibleSettledTasks.map((task) => (
+                      <button
+                        type="button"
+                        key={task.id}
+                        className="core-task-history-item"
+                        onClick={() => {
+                          setTaskHistoryOpen(false);
+                          setInspectedTaskId(task.id);
+                        }}
+                      >
+                        <span className="core-task-history-main">
+                          <strong>{agentNameForTask(task)}</strong>
+                          <span>{task.taskPrompt}</span>
+                        </span>
+                        <span className="core-task-history-meta">
+                          <span
+                            className="core-task-dock-state"
+                            data-status={task.status}
+                          >
+                            {taskStatusLabel(task.status)}
+                          </span>
+                          <span>{task.executionSteps.length} 步</span>
+                        </span>
+                      </button>
+                    ))}
+                    {settledTasks.length > 8 ? (
+                      <button
+                        type="button"
+                        className="core-task-history-more"
+                        onClick={() => setTaskHistoryAll((current) => !current)}
+                      >
+                        {taskHistoryAll
+                          ? '只看最近 8 项'
+                          : `查看全部 ${settledTasks.length} 项`}
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              </section>
+            </div>
           </div>
-        </div>
-      ) : null}
-      <PartnerSettingsDialog model={controller} />
-      {taskWorkspace ? (
-        <WorkspaceFilesDialog
-          workspacePath={taskWorkspace.path}
-          initialFile={taskWorkspace.initialFile}
-          onClose={() => setTaskWorkspace(null)}
-        />
-      ) : null}
+        ) : null}
+
+        {inspectedTask ? (
+          <div
+            className="core-task-inspector-backdrop"
+            onClick={() => setInspectedTaskId(null)}
+            role="presentation"
+          >
+            <div
+              className="core-task-inspector-wrap"
+              onClick={(event) => event.stopPropagation()}
+            >
+              {renderTaskInspector(inspectedTask)}
+            </div>
+          </div>
+        ) : null}
+        <PartnerSettingsDialog model={controller} />
+        {taskWorkspace ? (
+          <WorkspaceFilesDialog
+            workspacePath={taskWorkspace.path}
+            initialFile={taskWorkspace.initialFile}
+            onClose={() => setTaskWorkspace(null)}
+          />
+        ) : null}
+      </div>
     </div>
   );
 }
