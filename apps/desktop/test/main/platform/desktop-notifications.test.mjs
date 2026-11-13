@@ -106,10 +106,14 @@ test('does not show empty or unsupported notifications', () => {
 test('notification click reopens and focuses Noema through the supplied callback', () => {
   const { NotificationClass, notifications } = createNotificationClass();
   let opened = 0;
+  let target = null;
   const handle = createSocialReplyNotificationHandler({
     NotificationClass,
     getWindow: () => null,
-    openMainWindow: () => opened++,
+    openMainWindow: (next) => {
+      opened++;
+      target = next;
+    },
   });
 
   handle({ type: 'chat-turn-completed', roomId: 'r', messageId: 'm' });
@@ -122,6 +126,7 @@ test('notification click reopens and focuses Noema through the supplied callback
   });
   notifications[0].emit('click');
   assert.equal(opened, 1);
+  assert.deepEqual(target, { roomId: 'r', messageId: 'm' });
 });
 
 test('notification API failures never break chat event delivery', () => {

@@ -1,0 +1,31 @@
+name: 功能
+description: 提出一个可验收的产品能力
+title: "[功能] "
+labels: ["enhancement", "type:product"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 要解决的问题
+      description: 描述用户当前遇到的真实困难，而不是先给方案。
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: 期望结果
+      description: 完成后用户能做什么、看到什么。
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: 范围与不做的事
+      description: 明确本次边界，避免把相关但独立的工作混进来。
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 验收方式
+      description: 可复现的步骤、证据或测试命令。
+    validations:
+      required: true

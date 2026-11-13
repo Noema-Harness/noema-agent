@@ -1589,7 +1589,9 @@ test('Noema executor stops without starting another model request', async () => 
 });
 
 test('Noema executor does not repeat a side-effecting command with a new call ID', async () => {
-  const directory = mkdtempSync(path.join(tmpdir(), 'noema-project-executor-'));
+  const directory = realpathSync.native(
+    mkdtempSync(path.join(tmpdir(), 'noema-project-executor-')),
+  );
   const workspace = path.join(directory, 'workspace');
   mkdirSync(workspace);
   const command = 'echo x>>count.txt';

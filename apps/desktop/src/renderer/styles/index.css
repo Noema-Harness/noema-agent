@@ -5428,13 +5428,10 @@ select:disabled {
   color: #1f1f1d;
   overflow: hidden;
 }
-.core-shell[data-section='teams'] .core-agent-switcher,
 .core-shell[data-section='teams'] .core-thread,
 .core-shell[data-section='teams'] .core-composer,
-.core-shell[data-section='projects'] .core-agent-switcher,
 .core-shell[data-section='projects'] .core-thread,
 .core-shell[data-section='projects'] .core-composer,
-.core-shell[data-section='members'] .core-agent-switcher,
 .core-shell[data-section='members'] .core-thread,
 .core-shell[data-section='members'] .core-composer {
   display: none;
@@ -5677,65 +5674,6 @@ select:disabled {
 }
 .core-back {
   flex: 0 0 auto;
-}
-.core-agent-switcher {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 42px;
-  padding: 6px 16px;
-  overflow-x: auto;
-  border-bottom: 1px solid #e4e1da;
-  background: #fbfaf8;
-  scrollbar-width: none;
-}
-.core-agent-switcher::-webkit-scrollbar {
-  display: none;
-}
-.core-agent-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  flex: 0 0 auto;
-  height: 30px;
-  padding: 0 10px 0 6px;
-  border: 1px solid #ded9cf;
-  border-radius: 999px;
-  background: transparent;
-  color: #4a473f;
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-}
-.core-agent-chip:hover {
-  background: #f1eee8;
-}
-.core-agent-chip.active {
-  border-color: #1f1f1d;
-  background: #1f1f1d;
-  color: #fff;
-}
-.core-agent-initial {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: #ebe7df;
-  color: #46423a;
-  font-size: 10px;
-  font-weight: 600;
-  overflow: hidden;
-}
-.core-agent-chip.active .core-agent-initial {
-  background: #3c3a34;
-  color: #fff;
-}
-.core-agent-initial svg {
-  width: 13px;
-  height: 13px;
 }
 .core-top-actions {
   display: flex;
@@ -6025,6 +5963,94 @@ select:disabled {
   gap: 12px;
   font-size: 12px;
   color: #7c4b2e;
+}
+.core-confirm-wrap {
+  width: min(560px, calc(100% - 48px));
+  margin: 12vh auto 32px;
+}
+.core-confirm-dialog {
+  border: 1px solid #d9d4ca;
+  border-radius: 18px;
+  background: #fbfaf7;
+  box-shadow: 0 24px 64px rgba(36, 32, 26, 0.18);
+  overflow: hidden;
+}
+.core-confirm-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 20px 22px 16px;
+  border-bottom: 1px solid #e4e1da;
+}
+.core-confirm-head strong {
+  display: block;
+  font-size: 17px;
+  font-weight: 620;
+  letter-spacing: -0.01em;
+}
+.core-confirm-head span {
+  display: block;
+  margin-top: 5px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: #77736b;
+}
+.core-confirm-body {
+  display: grid;
+  gap: 12px;
+  padding: 18px 22px 20px;
+}
+.core-diff-block {
+  border: 1px solid #e1ded6;
+  border-radius: 12px;
+  background: #f5f3ee;
+  padding: 10px 12px;
+}
+.core-diff-block[data-tone='new'] {
+  background: #fff;
+}
+.core-diff-block > span {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 11px;
+  color: #8a857b;
+}
+.core-diff-block p {
+  margin: 0;
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  line-height: 1.65;
+}
+.core-confirm-warning {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: #8a4d2f;
+}
+.core-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 22px 18px;
+  border-top: 1px solid #e4e1da;
+}
+.core-confirm-actions .text-button {
+  height: 34px;
+  padding: 0 16px;
+  border: 1px solid #d9d4ca;
+  border-radius: 9px;
+  background: #fff;
+  font-size: 12.5px;
+  color: #4f4b44;
+}
+.core-confirm-actions .text-button.primary {
+  border-color: #26231f;
+  background: #26231f;
+  color: #fff;
 }
 .core-composer {
   flex: 0 0 auto;

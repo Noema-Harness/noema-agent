@@ -428,9 +428,17 @@ const notifySocialReply = createSocialReplyNotificationHandler({
   NotificationClass: Notification,
   getWindow: () => mainWindow,
   disabled: process.env.NOEMA_E2E_SILENT_NOTIFICATIONS === '1',
-  openMainWindow: () => {
+  openMainWindow: ({
+    roomId,
+    messageId,
+  }: {
+    roomId: string | null;
+    messageId: string | null;
+  }) => {
     if (!mainWindow || mainWindow.isDestroyed()) createWindow();
     focusMainWindow(mainWindow);
+    if (!roomId) return false;
+    return pendingFollowupNavigation.request({ roomId, messageId });
   },
 });
 function recordFollowupDiagnosticEvent(event: Record<string, unknown>) {

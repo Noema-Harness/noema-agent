@@ -22,6 +22,7 @@ type NotificationEvent = {
   type?: unknown;
   notifyUser?: boolean;
   empty?: boolean;
+  roomId?: unknown;
   messageId?: string | null;
   id?: unknown;
   title?: unknown;
@@ -46,7 +47,10 @@ export function createSocialReplyNotificationHandler({
     isDestroyed: () => boolean;
     isFocused: () => boolean;
   } | null;
-  openMainWindow: () => void;
+  openMainWindow: (target: {
+    roomId: string | null;
+    messageId: string | null;
+  }) => unknown;
   disabled?: boolean;
 }) {
   const notifiedMessageIds = new Set<string>();
@@ -69,7 +73,13 @@ export function createSocialReplyNotificationHandler({
 
     try {
       const notification = new NotificationClass(REPLY_NOTIFICATION);
-      notification.once('click', openMainWindow);
+      notification.once('click', () =>
+        openMainWindow({
+          roomId: typeof event.roomId === 'string' ? event.roomId : null,
+          messageId:
+            typeof event.messageId === 'string' ? event.messageId : null,
+        }),
+      );
       notification.show();
       if (event.messageId) {
         notifiedMessageIds.add(event.messageId);

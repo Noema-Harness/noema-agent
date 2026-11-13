@@ -360,6 +360,13 @@ export function CoreChatApp() {
   >(null);
   const [deliveryEvents, setDeliveryEvents] =
     useState<DeliveryEvent[]>(readDeliveryEvents);
+  const [pendingEdit, setPendingEdit] = useState<{
+    message: NoemaSocialMessage;
+    text: string;
+    later: boolean;
+  } | null>(null);
+  const [restoreConfirmOpen, setRestoreConfirmOpen] = useState(false);
+  const editTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const previousTaskStatus = useRef(
     new Map<string, NoemaSocialWorkTask['status']>(),
   );
@@ -369,7 +376,9 @@ export function CoreChatApp() {
       conversationTurns
         .map((turn) => ({
           ...turn,
-          items: turn.items.filter((item) => item.kind === 'message'),
+          items: turn.items.filter(
+            (item) => item.kind === 'message' && item.message.role !== 'system',
+          ),
         }))
         .filter((turn) => turn.items.length > 0),
     [conversationTurns],
@@ -390,24 +399,6 @@ export function CoreChatApp() {
     () => teams.filter((team) => team.status !== 'archived'),
     [teams],
   );
-  const currentTeam = useMemo(
-    () =>
-      activeTeams.find((team) => team.groupRoomId === currentRoom?.id) ?? null,
-    [activeTeams, currentRoom?.id],
-  );
-  const switcherAgents = useMemo(() => {
-    const teamAgentIds = currentTeam
-      ? new Set(currentTeam.members.map((member) => member.agentId))
-      : null;
-    return agents.filter(
-      (agent) =>
-        agent.id !== 'noema' &&
-        !agent.archivedAt &&
-        directRoomByAgent.has(agent.id) &&
-        (!teamAgentIds || teamAgentIds.has(agent.id)),
-    );
-  }, [agents, currentTeam, directRoomByAgent]);
-
   const activeProjects = useMemo(
     () => projects.filter((project) => project.status !== 'archived'),
     [projects],
@@ -433,7 +424,7 @@ export function CoreChatApp() {
   };
   const openMemberChat = (agentId: string) => {
     openAgentConversation(agentId);
-    setReturnSection('members');
+    setReturnSection(null);
     setSection('chat');
   };
   const leaveSection = () => {
@@ -578,13 +569,28 @@ export function CoreChatApp() {
     return () => window.cancelAnimationFrame(frame);
   }, [conversationRef, deliveryEvents.length, shouldFollowRef]);
 
+  useEffect(() => {
+    if (!editingMessageId) return;
+    const frame = window.requestAnimationFrame(() => {
+      const area = editTextareaRef.current;
+      if (!area) return;
+      area.focus();
+      const end = area.value.length;
+      area.setSelectionRange(end, end);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [editingMessageId]);
+
   const saveEdit = async (message: NoemaSocialMessage) => {
     const text = editingText.trim();
     if (!text) return;
-    if (message.role === 'assistant') {
+    if (text === message.content.trim()) {
       setEditingMessageId(null);
       setEditingText('');
-      await saveAssistantEdit(message.id, text);
+      return;
+    }
+    if (message.role === 'assistant') {
+      setPendingEdit({ message, text, later: false });
       return;
     }
     const items = conversationTurns.flatMap((turn) => turn.items);
@@ -592,11 +598,20 @@ export function CoreChatApp() {
       (item) => item.kind === 'message' && item.message.id === message.id,
     );
     const later = index >= 0 && index < items.length - 1;
-    const notice = '修改这条消息会丢弃它之后的对话，然后重新发送。继续吗？';
-    if (later && !window.confirm(notice)) return;
+    setPendingEdit({ message, text, later });
+  };
+
+  const confirmPendingEdit = async () => {
+    const pending = pendingEdit;
+    if (!pending) return;
+    setPendingEdit(null);
     setEditingMessageId(null);
     setEditingText('');
-    await rewindAndResend(message.id, text);
+    if (pending.message.role === 'assistant') {
+      await saveAssistantEdit(pending.message.id, pending.text);
+      return;
+    }
+    await rewindAndResend(pending.message.id, pending.text);
   };
 
   const quoteMessage = (text: string) => {
@@ -662,10 +677,10 @@ export function CoreChatApp() {
           {editingMessageId === message.id ? (
             <div className="message-editor">
               <textarea
+                ref={editTextareaRef}
                 value={editingText}
                 onChange={(event) => setEditingText(event.target.value)}
                 rows={Math.min(8, Math.max(2, editingText.split('\n').length))}
-                autoFocus
               />
               <div className="message-editor-actions">
                 <NoemaButton
@@ -858,7 +873,8 @@ export function CoreChatApp() {
   const isExecutorDirect =
     currentRoom?.kind === 'direct' && currentRoom.id !== noemaRoom?.id;
   const isGroupRoom = currentRoom?.kind === 'group';
-  const canReturnFromChat = section === 'chat' && returnSection !== null;
+  const canReturnFromChat =
+    section === 'chat' && returnSection !== null && !isExecutorDirect;
   const title =
     section === 'teams'
       ? '团队'
@@ -977,7 +993,7 @@ export function CoreChatApp() {
                 title="恢复修改前版本"
                 aria-label="恢复修改前版本"
                 disabled={busy || Boolean(activeReply)}
-                onClick={() => void restoreLatestArchive()}
+                onClick={() => setRestoreConfirmOpen(true)}
               >
                 <Icon name="restore" />
               </NoemaButton>
@@ -1026,42 +1042,6 @@ export function CoreChatApp() {
             </div>
           </div>
         </header>
-
-        {switcherAgents.length > 0 ? (
-          <nav className="core-agent-switcher" aria-label="切换对话">
-            <button
-              className={`core-agent-chip${
-                currentRoom?.id === noemaRoom?.id ? ' active' : ''
-              }`}
-              type="button"
-              onClick={() => {
-                if (noemaRoom) selectRoom(noemaRoom);
-              }}
-            >
-              <span className="core-agent-initial">
-                <Icon name="noema" />
-              </span>
-              Noema
-            </button>
-            {switcherAgents.map((agent) => (
-              <button
-                className={`core-agent-chip${
-                  directRoomByAgent.get(agent.id)?.id === currentRoom?.id
-                    ? ' active'
-                    : ''
-                }`}
-                type="button"
-                key={agent.id}
-                onClick={() => openAgentConversation(agent.id)}
-              >
-                <span className="core-agent-initial">
-                  {agent.name.trim().slice(0, 1) || '执'}
-                </span>
-                {agent.name}
-              </button>
-            ))}
-          </nav>
-        ) : null}
 
         <main
           className="core-thread"
@@ -1544,6 +1524,138 @@ export function CoreChatApp() {
             </div>
           </div>
         ) : null}
+        {pendingEdit ? (
+          <div
+            className="core-task-inspector-backdrop"
+            onClick={() => setPendingEdit(null)}
+            role="presentation"
+          >
+            <div
+              className="core-confirm-wrap"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <section
+                className="core-confirm-dialog"
+                role="dialog"
+                aria-modal="true"
+                aria-label={
+                  pendingEdit.message.role === 'assistant'
+                    ? '确认修改回复'
+                    : '确认修改消息'
+                }
+              >
+                <header className="core-confirm-head">
+                  <div>
+                    <strong>
+                      {pendingEdit.message.role === 'assistant'
+                        ? '修改这条回复'
+                        : '修改这条消息'}
+                    </strong>
+                    <span>确认后会替换原文，不会保留刚才的编辑草稿。</span>
+                  </div>
+                  <button
+                    className="icon-button"
+                    type="button"
+                    aria-label="关闭修改确认"
+                    title="关闭"
+                    onClick={() => setPendingEdit(null)}
+                  >
+                    ×
+                  </button>
+                </header>
+                <div className="core-confirm-body">
+                  <div className="core-diff-block">
+                    <span>原文</span>
+                    <p>{pendingEdit.message.content}</p>
+                  </div>
+                  <div className="core-diff-block" data-tone="new">
+                    <span>新文</span>
+                    <p>{pendingEdit.text}</p>
+                  </div>
+                  {pendingEdit.later ? (
+                    <p className="core-confirm-warning">
+                      这条消息之后的对话会被移除，然后重新发送。
+                    </p>
+                  ) : null}
+                </div>
+                <footer className="core-confirm-actions">
+                  <NoemaButton
+                    className="text-button"
+                    type="button"
+                    onClick={() => setPendingEdit(null)}
+                  >
+                    取消
+                  </NoemaButton>
+                  <NoemaButton
+                    className="text-button primary"
+                    type="button"
+                    onClick={() => void confirmPendingEdit()}
+                  >
+                    {pendingEdit.message.role === 'assistant'
+                      ? '保存'
+                      : '保存并发送'}
+                  </NoemaButton>
+                </footer>
+              </section>
+            </div>
+          </div>
+        ) : null}
+
+        {restoreConfirmOpen ? (
+          <div
+            className="core-task-inspector-backdrop"
+            onClick={() => setRestoreConfirmOpen(false)}
+            role="presentation"
+          >
+            <div
+              className="core-confirm-wrap"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <section
+                className="core-confirm-dialog"
+                role="dialog"
+                aria-modal="true"
+                aria-label="确认恢复修改前版本"
+              >
+                <header className="core-confirm-head">
+                  <div>
+                    <strong>恢复修改前版本？</strong>
+                    <span>当前对话会被丢弃，然后回到存档内容。</span>
+                  </div>
+                  <button
+                    className="icon-button"
+                    type="button"
+                    aria-label="关闭恢复确认"
+                    title="关闭"
+                    onClick={() => setRestoreConfirmOpen(false)}
+                  >
+                    ×
+                  </button>
+                </header>
+                <footer className="core-confirm-actions">
+                  <NoemaButton
+                    className="text-button"
+                    type="button"
+                    onClick={() => setRestoreConfirmOpen(false)}
+                  >
+                    取消
+                  </NoemaButton>
+                  <NoemaButton
+                    className="text-button primary"
+                    type="button"
+                    onClick={() => {
+                      setRestoreConfirmOpen(false);
+                      void restoreLatestArchive();
+                    }}
+                  >
+                    恢复
+                  </NoemaButton>
+                </footer>
+              </section>
+            </div>
+          </div>
+        ) : null}
+
         <PartnerSettingsDialog model={controller} />
         {taskWorkspace ? (
           <WorkspaceFilesDialog

@@ -14,6 +14,11 @@
       "updateWhen": "安装方式、目录或文档入口变化"
     },
     {
+      "path": "CONTRIBUTING.md",
+      "purpose": "分支、评审、合并与发布协作约定",
+      "updateWhen": "协作流程、评审责任或合并策略变化"
+    },
+    {
       "path": "docs/PRODUCT.md",
       "purpose": "产品定义、角色、可观察行为与验收",
       "updateWhen": "用户、问题、产品模型、行为或验收变化"
