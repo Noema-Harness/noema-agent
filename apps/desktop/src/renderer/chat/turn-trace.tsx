@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 export type LiveTraceEvent = {
   type: 'tool_call' | 'tool_result';
@@ -74,8 +74,13 @@ export function TurnTrace({
   done?: boolean;
   durationMs?: number | null;
 }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(() => !done);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const touched = useRef(false);
+  useEffect(() => {
+    if (!done || touched.current) return;
+    setOpen(false);
+  }, [done]);
   const rows = rowsOf(events);
   if (!rows.length) return null;
   const duration = durationText(durationMs);
@@ -93,7 +98,10 @@ export function TurnTrace({
         type="button"
         className="turn-trace-head"
         aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => {
+          touched.current = true;
+          setOpen((value) => !value);
+        }}
       >
         <span className="turn-trace-live" aria-hidden="true" />
         <span>{summary}</span>
@@ -101,7 +109,7 @@ export function TurnTrace({
           {open ? '−' : '+'}
         </span>
       </button>
-      {open ? (
+      <div className={`turn-trace-body${open ? ' is-open' : ''}`}>
         <div className="turn-trace-list">
           {rows.map((row) => {
             const isOpen = expanded === row.id;
@@ -138,7 +146,7 @@ export function TurnTrace({
             );
           })}
         </div>
-      ) : null}
+      </div>
     </section>
   );
 }

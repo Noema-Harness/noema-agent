@@ -5822,9 +5822,23 @@ select:disabled {
   font-size: 14px;
   line-height: 1;
 }
+.turn-trace-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0.35;
+  transition:
+    grid-template-rows 220ms ease,
+    opacity 180ms ease;
+}
+.turn-trace-body.is-open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
 .turn-trace-list {
   display: grid;
   gap: 2px;
+  min-height: 0;
+  overflow: hidden;
 }
 .turn-trace-step {
   min-width: 0;
