@@ -4,16 +4,16 @@ Authority: 本文件是 Noema 当前版本、验证证据、已知缺口、未�
 Update when: 交付节点、安装/打包、关键验证结果、阻塞或优先级变化。
 Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结构与数据边界（见 [ARCHITECTURE](ARCHITECTURE.md)）；长期决定（见 [DECISIONS](DECISIONS.md)）；命令与发布步骤（见 [OPERATIONS](OPERATIONS.md)）；维护规则（见 [AGENTS](../AGENTS.md)）。
 
-最后更新：2026-11-13
+最后更新：2026-11-14
 
 ## 版本与源码
 
-- 源码版本：`0.7.2`。
-- 当前源码基线：`996c649 feat: add hidden job templates and project lineage`；上一基线 `d690f37 docs: record DSH team tools and stage 4 approval`。
-- 最近交付：阶段 4 岗位模板与项目招募血缘：schema 41，隐藏岗位库（前端/质量/3D/技术研究四类模板），项目招募可继承模板标题与版本，模板升级不覆写个体；阶段 4 团队提案/审批通过 DSH 可见的 MCP 工具完成（`propose_project_team`/`decide_project_team`），批准后创建项目、团队和负责人；阶段 4 两阶段团队提案/审批（schema 40）、项目显式负责人（schema 39）；阶段 3 任务详情可直接打开执行者常驻私聊；阶段 2 单 HEAD 编辑、助手原位编辑、会话失效、不可变存档与恢复；阶段 1 AgentRuntime 核心、Noema 回合事件日志、内联轨迹；`463d817` 任务完成事件 + 本地持久化；`4f21ac3` 任务 dock；`2b742a1` 移除聊天流内任务卡。
+- 源码版本：`0.7.3`。
+- 当前源码基线：`0b155b3 fix: repair message edit, restore, and return-to-Noema`；上一基线 `94e8525 docs: record job templates and project lineage`。
+- 最近交付：0.7.3 清理生产数据并以便携版交付；修复编辑后直接发送、所有非 Noema 会话返回 Noema、恢复存档的 `temp_store` 崩溃；阶段 4 岗位模板与项目招募血缘：schema 41，隐藏岗位库（前端/质量/3D/技术研究四类模板），项目招募可继承模板标题与版本，模板升级不覆写个体；阶段 4 团队提案/审批通过 DSH 可见的 MCP 工具完成（`propose_project_team`/`decide_project_team`），批准后创建项目、团队和负责人；阶段 4 两阶段团队提案/审批（schema 40）、项目显式负责人（schema 39）；阶段 3 任务详情可直接打开执行者常驻私聊；阶段 2 单 HEAD 编辑、助手原位编辑、会话失效、不可变存档与恢复；阶段 1 AgentRuntime 核心、Noema 回合事件日志、内联轨迹；`463d817` 任务完成事件 + 本地持久化；`4f21ac3` 任务 dock；`2b742a1` 移除聊天流内任务卡。
 - 文档收敛：五份权威文档 + README/AGENTS；`BEHAVIOR`/`SYSTEM` 已合并删除，`.codex/workspace.json` 为 7 个当前入口；D-016/D-017 已记录 Agent 核心分层与团队审批 A。
-- 已安装：`0.7.2`，路径 `C:\Users\NUC\AppData\Local\noema_desktop\app-0.7.2\Noema.exe`。该安装早于任务卡/生命周期/完成事件三个提交，不包含当前源码 UI。
-- 本轮没有重新打包或安装；0.7.2 之后不再更新安装包。发布构建只在准备分发时进行。
+- 已交付：`0.7.3` 便携版，路径 `C:\Users\NUC\AppData\Local\Programs\Noema-0.7.3\Noema.exe`；桌面 `Noema.lnk` 已指向该版本。便携 ZIP 位于 `apps/desktop/out/make/zip/win32/x64/Noema-win32-x64-0.7.3.zip`。
+- 0.7.3 未生成 Squirrel 安装器：Squirrel/NuGet 读取 49.4MB `app.asar` 时返回“无法访问已关闭的流”，改用便携目录交付。旧 0.7.2 安装目录仍保留但不再使用。
 
 ## 当前可用
 
@@ -27,13 +27,13 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 - 团队提案：Noema 主聊新建团队先调用 `propose_project_team`，只写入 `project_team_proposals` 的 pending 记录，不创建项目；用户确认后 `decide_project_team` 才创建项目/团队。项目群内继续项目使用 `create_project_team` 增补成员，不走新建审批。
 - 单 HEAD 编辑：用户消息编辑会删除该消息及之后的对话再重发；助手回复可原位修改且不重发；编辑后自动失效该房间运行时会话，下一轮读取完整历史；分支 ID 不出现在界面。
 - 编辑前存档与恢复：每次用户截断重发或助手原位编辑前，会把消息、分支和回合快照写入 `conversation_archives`；顶栏在存在存档时显示“恢复修改前版本”，恢复前会先把当前线保存为 `pre_restore`，恢复后回到上一条可见时间线。
-- 0.7.2 已包含工作区路由和 DSH 非 JSON 容错；真实 inventory/orders 任务已验证文件修改和测试通过。
+- 0.7.3 已清理全部生产/测试数据；干净 profile 只有 2 个默认 Agent 和 1 个默认房间，0 项目/团队/成员/消息/任务，模型未配置。
 
 ## 验证
 
-- `npm run check`：**856/856，0 fail，36,092.941ms**（岗位模板/项目招募血缘后最后一次全量）。
+- `npm run check`：**857/857，0 fail，29,273.6555ms**（0.7.3 编辑/返回/恢复修复与 `temp_store` 回归测试后）。
 - `npm run typecheck`：通过。
-- `test/main/chat/social-chat-store.test.mjs`：**50/50**，包含助手消息原地编辑、存档恢复和岗位模板版本冻结。
+- `test/main/chat/social-chat-store.test.mjs`：**51/51**，包含助手消息原地编辑、存档恢复保留 `temp_store` 和岗位模板版本冻结。
 - `test/main/chat/conversation-continuity.test.mjs`：**11/11**，schema 41 的迁移与回退断言通过。
 - `test/main/projects/social-project-store.test.mjs` + continuity：**27/27**，包含项目负责人、团队提案 pending、岗位模板招募与个体版本冻结。
 - `test/main/projects/project-collaboration.test.mjs`：**30/30**，包含新团队两阶段提案和已有项目群内增补成员。
@@ -72,4 +72,4 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 ## 交付判断
 
-当前是可日常使用的 0.7.2 工程版，不是已完成 V1。核心对话、单 HEAD 编辑/存档/恢复和执行链路可用；组织层、会话拓扑、六模块、工作区回滚和证据完整性仍是未交付项。任何“完成”结论必须有文件/命令/测试证据，不能以模型自述或计划代替。
+当前是可日常使用的 0.7.3 工程版，不是已完成 V1。核心对话、单 HEAD 编辑/存档/恢复和执行链路可用；组织层、会话拓扑、六模块、工作区回滚和证据完整性仍是未交付项。任何“完成”结论必须有文件/命令/测试证据，不能以模型自述或计划代替。
