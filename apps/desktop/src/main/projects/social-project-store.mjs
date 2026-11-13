@@ -35,6 +35,7 @@ export class SocialProjectStore {
                p.origin_room_id AS originRoomId,
                p.source_message_id AS sourceMessageId,
                p.group_room_id AS groupRoomId,
+               p.lead_agent_id AS leadAgentId,
                p.created_at AS createdAt,
                p.updated_at AS updatedAt,
                p.archived_at AS archivedAt,
@@ -64,6 +65,7 @@ export class SocialProjectStore {
                p.origin_room_id AS originRoomId,
                p.source_message_id AS sourceMessageId,
                p.group_room_id AS groupRoomId,
+               p.lead_agent_id AS leadAgentId,
                p.created_at AS createdAt,
                p.updated_at AS updatedAt,
                p.archived_at AS archivedAt,
@@ -228,8 +230,14 @@ export class SocialProjectStore {
           `)
           .all(growthBatch.id)
       : [];
+    const lead =
+      members.find(
+        (member) => member.agentId === project.leadAgentId && !member.removedAt,
+      ) ?? null;
     return {
       ...project,
+      leadAgentId: lead?.agentId ?? null,
+      leadName: lead?.name ?? null,
       growthBatch: growthBatch
         ? { ...growthBatch, members: growthMembers }
         : null,
@@ -774,6 +782,7 @@ export class SocialProjectStore {
     originRoomId = 'room-noema',
     sourceMessageId = null,
     agentIds,
+    leadAgentId = null,
     workspacePath = null,
     workspaceIdentity = null,
   }) {
@@ -795,6 +804,16 @@ export class SocialProjectStore {
       throw new TypeError('项目需要 Noema 和至少一位专业成员。');
     }
     const uniqueAgentIds = [...new Set(agentIds.map((id) => id.trim()))];
+    const normalizedLeadAgentId = leadAgentId
+      ? requireText(leadAgentId, '项目负责人 ID', 200)
+      : null;
+    if (
+      normalizedLeadAgentId &&
+      normalizedLeadAgentId !== 'noema' &&
+      !uniqueAgentIds.includes(normalizedLeadAgentId)
+    ) {
+      throw new Error('项目负责人必须是项目成员。');
+    }
     if (
       uniqueAgentIds.length !== agentIds.length ||
       !uniqueAgentIds.includes('noema')
@@ -865,8 +884,8 @@ export class SocialProjectStore {
           INSERT INTO social_projects
             (id, title, brief, origin_room_id, source_message_id,
              group_room_id, workspace_path, workspace_identity_json,
-             created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             lead_agent_id, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `)
         .run(
           projectId,
@@ -877,6 +896,7 @@ export class SocialProjectStore {
           groupRoomId,
           normalizedWorkspacePath,
           normalizedWorkspacePath ? JSON.stringify(workspaceIdentity) : null,
+          normalizedLeadAgentId,
           now,
           now,
         );
@@ -925,6 +945,7 @@ export class SocialProjectStore {
     sourceMessageId = null,
     workspacePath = null,
     workspaceIdentity = null,
+    leadAgentId = null,
     members,
   }) {
     requireText(originRoomId, '来源聊天 ID', 200);
@@ -1025,6 +1046,21 @@ export class SocialProjectStore {
         for (const member of resolvedMembers) {
           project = this.addProjectMember(id, member.agentId);
         }
+        if (leadAgentId) {
+          const leadId = requireText(leadAgentId, '项目负责人 ID', 200);
+          if (
+            leadId !== 'noema' &&
+            !project.members.some((member) => member.agentId === leadId)
+          ) {
+            throw new Error('项目负责人必须是项目成员。');
+          }
+          this.db
+            .prepare(
+              'UPDATE social_projects SET lead_agent_id = ?, updated_at = ? WHERE id = ?',
+            )
+            .run(leadId, isoNow(), id);
+          project = this.getProject(id);
+        }
       } else {
         const agentIds = [
           'noema',
@@ -1037,6 +1073,7 @@ export class SocialProjectStore {
           sourceMessageId,
           workspacePath,
           workspaceIdentity,
+          leadAgentId,
           agentIds,
         });
       }

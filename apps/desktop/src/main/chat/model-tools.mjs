@@ -194,6 +194,11 @@ export function projectTeamTool({ projectWorkReady }) {
             description:
               'Exact existing project ID from the current project tool context; omit when creating a new project.',
           },
+          lead_agent_id: {
+            type: 'string',
+            description:
+              '新建项目时可指定一位已在成员中使用 agent_id 的专业成员担任团队负责人；省略则由成员顺序第一人担任。续接项目时可用它更换负责人。',
+          },
           members: {
             type: 'array',
             minItems: 1,

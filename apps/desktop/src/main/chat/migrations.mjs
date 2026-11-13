@@ -1120,4 +1120,15 @@ export function migrateSocialChatSchema(
       ).run(isoNow());
     })();
   }
+  if (current < 39 && targetVersion >= 39) {
+    db.transaction(() => {
+      const columns = db.prepare('PRAGMA table_info(social_projects)').all();
+      if (!columns.some((column) => column.name === 'lead_agent_id')) {
+        db.exec('ALTER TABLE social_projects ADD COLUMN lead_agent_id TEXT');
+      }
+      db.prepare(
+        'INSERT INTO social_schema_migrations(version, applied_at) VALUES (39, ?)',
+      ).run(isoNow());
+    })();
+  }
 }

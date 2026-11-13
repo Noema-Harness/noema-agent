@@ -682,6 +682,7 @@ test('forming a project team atomically creates missing members and their projec
       title: '价格追踪器',
       brief: '持续核对模型 API 价格与来源。',
       sourceMessageId: source.userMessageId,
+      leadAgentId: existing.agentId,
       members: [
         { agentId: existing.agentId, task: '核对价格来源。' },
         {
@@ -696,6 +697,8 @@ test('forming a project team atomically creates missing members and their projec
     });
 
     assert.equal(formed.project.sourceMessageId, source.userMessageId);
+    assert.equal(formed.project.leadAgentId, existing.agentId);
+    assert.equal(formed.project.leadName, '研究员');
     assert.deepEqual(
       formed.project.group.members.map((agent) => agent.id),
       ['noema', existing.agentId, formed.members[1].agentId],

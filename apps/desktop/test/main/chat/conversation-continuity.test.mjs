@@ -36,10 +36,10 @@ function rebuildContinuity(db) {
   backfillConversationContinuity(db);
 }
 
-test('schema 38 backfills one resident timeline with immutable turns', () => {
+test('schema 39 backfills one resident timeline with explicit project lead', () => {
   const { db, social } = makeStores();
   try {
-    assert.equal(SOCIAL_SCHEMA_VERSION, 38);
+    assert.equal(SOCIAL_SCHEMA_VERSION, 39);
     const turn = addCompleteTurn(social, 'first question');
     rebuildContinuity(db);
 

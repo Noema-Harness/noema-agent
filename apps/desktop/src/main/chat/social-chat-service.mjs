@@ -3349,6 +3349,11 @@ export class SocialChatService {
             }
           }
           controller.signal.throwIfAborted();
+          const leadAgentId =
+            typeof input.lead_agent_id === 'string' &&
+            input.lead_agent_id.trim()
+              ? input.lead_agent_id.trim()
+              : null;
           let formed;
           try {
             formed = this.projectStore.formProjectTeam({
@@ -3363,6 +3368,7 @@ export class SocialChatService {
               workspaceIdentity: existingProject
                 ? undefined
                 : (teamWorkspace?.identity ?? undefined),
+              leadAgentId,
               members: assignedMembers,
             });
           } catch (error) {
@@ -3436,6 +3442,8 @@ export class SocialChatService {
                 title: project.title,
                 status: project.status,
                 groupRoomId: project.groupRoomId,
+                leadAgentId: project.leadAgentId,
+                leadName: project.leadName,
               },
               members: members.map((member) => ({
                 agentId: member.agentId,
