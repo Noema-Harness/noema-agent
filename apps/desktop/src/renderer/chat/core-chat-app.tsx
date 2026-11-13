@@ -355,16 +355,8 @@ export function CoreChatApp() {
   const [section, setSection] = useState<
     'chat' | 'teams' | 'projects' | 'members'
   >('chat');
-  const [returnSection, setReturnSection] = useState<
-    'teams' | 'projects' | 'members' | null
-  >(null);
   const [deliveryEvents, setDeliveryEvents] =
     useState<DeliveryEvent[]>(readDeliveryEvents);
-  const [pendingEdit, setPendingEdit] = useState<{
-    message: NoemaSocialMessage;
-    text: string;
-    later: boolean;
-  } | null>(null);
   const [restoreConfirmOpen, setRestoreConfirmOpen] = useState(false);
   const editTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const previousTaskStatus = useRef(
@@ -415,21 +407,18 @@ export function CoreChatApp() {
     () => new Map(agents.map((agent) => [agent.id, agent])),
     [agents],
   );
-  const openTeamGroup = (groupRoomId: string, from: 'teams' | 'projects') => {
+  const openTeamGroup = (groupRoomId: string) => {
     const room = roomById.get(groupRoomId);
     if (!room) return;
     selectRoom(room);
-    setReturnSection(from);
     setSection('chat');
   };
   const openMemberChat = (agentId: string) => {
     openAgentConversation(agentId);
-    setReturnSection(null);
     setSection('chat');
   };
-  const leaveSection = () => {
+  const returnToNoema = () => {
     setSection('chat');
-    setReturnSection(null);
     if (noemaRoom) selectRoom(noemaRoom);
   };
 
@@ -589,29 +578,13 @@ export function CoreChatApp() {
       setEditingText('');
       return;
     }
-    if (message.role === 'assistant') {
-      setPendingEdit({ message, text, later: false });
-      return;
-    }
-    const items = conversationTurns.flatMap((turn) => turn.items);
-    const index = items.findIndex(
-      (item) => item.kind === 'message' && item.message.id === message.id,
-    );
-    const later = index >= 0 && index < items.length - 1;
-    setPendingEdit({ message, text, later });
-  };
-
-  const confirmPendingEdit = async () => {
-    const pending = pendingEdit;
-    if (!pending) return;
-    setPendingEdit(null);
     setEditingMessageId(null);
     setEditingText('');
-    if (pending.message.role === 'assistant') {
-      await saveAssistantEdit(pending.message.id, pending.text);
+    if (message.role === 'assistant') {
+      await saveAssistantEdit(message.id, text);
       return;
     }
-    await rewindAndResend(pending.message.id, pending.text);
+    await rewindAndResend(message.id, text);
   };
 
   const quoteMessage = (text: string) => {
@@ -873,8 +846,10 @@ export function CoreChatApp() {
   const isExecutorDirect =
     currentRoom?.kind === 'direct' && currentRoom.id !== noemaRoom?.id;
   const isGroupRoom = currentRoom?.kind === 'group';
-  const canReturnFromChat =
-    section === 'chat' && returnSection !== null && !isExecutorDirect;
+  const canReturnToNoema =
+    section === 'chat' &&
+    Boolean(currentRoom && noemaRoom) &&
+    currentRoom?.id !== noemaRoom?.id;
   const title =
     section === 'teams'
       ? '团队'
@@ -905,7 +880,7 @@ export function CoreChatApp() {
             data-active={section === 'chat'}
             type="button"
             aria-current={section === 'chat' ? 'page' : undefined}
-            onClick={leaveSection}
+            onClick={returnToNoema}
           >
             <Icon name="thread" />
             <span>对话</span>
@@ -952,29 +927,13 @@ export function CoreChatApp() {
       <div className="core-shell" data-section={section}>
         <header className="core-topbar">
           <div className="core-top-left">
-            {canReturnFromChat ? (
-              <NoemaButton
-                className="icon-button core-back"
-                type="button"
-                title={`返回${returnSection === 'teams' ? '团队' : returnSection === 'projects' ? '项目' : '成员'}`}
-                aria-label={`返回${returnSection === 'teams' ? '团队' : returnSection === 'projects' ? '项目' : '成员'}`}
-                onClick={() => {
-                  if (!returnSection) return;
-                  setSection(returnSection);
-                  setReturnSection(null);
-                }}
-              >
-                <Icon name="back" />
-              </NoemaButton>
-            ) : isExecutorDirect ? (
+            {canReturnToNoema ? (
               <NoemaButton
                 className="icon-button core-back"
                 type="button"
                 title="返回 Noema"
                 aria-label="返回 Noema"
-                onClick={() => {
-                  if (noemaRoom) selectRoom(noemaRoom);
-                }}
+                onClick={returnToNoema}
               >
                 <Icon name="back" />
               </NoemaButton>
@@ -1326,9 +1285,7 @@ export function CoreChatApp() {
                             className="core-card-action"
                             type="button"
                             disabled={!canOpen}
-                            onClick={() =>
-                              openTeamGroup(team.groupRoomId, 'teams')
-                            }
+                            onClick={() => openTeamGroup(team.groupRoomId)}
                           >
                             {canOpen ? '打开团队群' : '团队群不可用'}
                           </button>
@@ -1379,9 +1336,7 @@ export function CoreChatApp() {
                             className="core-card-action"
                             type="button"
                             disabled={!canOpen}
-                            onClick={() =>
-                              openTeamGroup(project.groupRoomId, 'projects')
-                            }
+                            onClick={() => openTeamGroup(project.groupRoomId)}
                           >
                             {canOpen ? '打开项目群' : '项目群不可用'}
                           </button>
@@ -1524,83 +1479,6 @@ export function CoreChatApp() {
             </div>
           </div>
         ) : null}
-        {pendingEdit ? (
-          <div
-            className="core-task-inspector-backdrop"
-            onClick={() => setPendingEdit(null)}
-            role="presentation"
-          >
-            <div
-              className="core-confirm-wrap"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <section
-                className="core-confirm-dialog"
-                role="dialog"
-                aria-modal="true"
-                aria-label={
-                  pendingEdit.message.role === 'assistant'
-                    ? '确认修改回复'
-                    : '确认修改消息'
-                }
-              >
-                <header className="core-confirm-head">
-                  <div>
-                    <strong>
-                      {pendingEdit.message.role === 'assistant'
-                        ? '修改这条回复'
-                        : '修改这条消息'}
-                    </strong>
-                    <span>确认后会替换原文，不会保留刚才的编辑草稿。</span>
-                  </div>
-                  <button
-                    className="icon-button"
-                    type="button"
-                    aria-label="关闭修改确认"
-                    title="关闭"
-                    onClick={() => setPendingEdit(null)}
-                  >
-                    ×
-                  </button>
-                </header>
-                <div className="core-confirm-body">
-                  <div className="core-diff-block">
-                    <span>原文</span>
-                    <p>{pendingEdit.message.content}</p>
-                  </div>
-                  <div className="core-diff-block" data-tone="new">
-                    <span>新文</span>
-                    <p>{pendingEdit.text}</p>
-                  </div>
-                  {pendingEdit.later ? (
-                    <p className="core-confirm-warning">
-                      这条消息之后的对话会被移除，然后重新发送。
-                    </p>
-                  ) : null}
-                </div>
-                <footer className="core-confirm-actions">
-                  <NoemaButton
-                    className="text-button"
-                    type="button"
-                    onClick={() => setPendingEdit(null)}
-                  >
-                    取消
-                  </NoemaButton>
-                  <NoemaButton
-                    className="text-button primary"
-                    type="button"
-                    onClick={() => void confirmPendingEdit()}
-                  >
-                    {pendingEdit.message.role === 'assistant'
-                      ? '保存'
-                      : '保存并发送'}
-                  </NoemaButton>
-                </footer>
-              </section>
-            </div>
-          </div>
-        ) : null}
-
         {restoreConfirmOpen ? (
           <div
             className="core-task-inspector-backdrop"

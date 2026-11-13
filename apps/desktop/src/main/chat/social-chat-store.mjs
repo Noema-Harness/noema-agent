@@ -4539,6 +4539,21 @@ export class SocialChatStore {
 
   restoreConversationArchive(archiveId) {
     requireText(archiveId, '存档 ID', 200);
+    const previousTempStore = Number(
+      this.db.pragma('temp_store', { simple: true }),
+    );
+    const restoreTempStore = [0, 1, 2].includes(previousTempStore)
+      ? previousTempStore
+      : 0;
+    this.db.pragma('temp_store = MEMORY');
+    try {
+      return this.restoreConversationArchiveInTransaction(archiveId);
+    } finally {
+      this.db.pragma(`temp_store = ${restoreTempStore}`);
+    }
+  }
+
+  restoreConversationArchiveInTransaction(archiveId) {
     const archive = this.db
       .prepare(
         `SELECT room_id AS roomId, payload_json AS payload

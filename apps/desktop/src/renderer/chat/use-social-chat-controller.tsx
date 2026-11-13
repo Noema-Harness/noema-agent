@@ -1918,7 +1918,11 @@ export function useSocialChatController() {
       await window.noema.restoreSocialArchive(latestArchive.id);
       setLiveTrace(null);
       await Promise.all([refreshState(), loadRoom(currentRoom.id)]);
-      setLatestArchive(null);
+      setLatestArchive(
+        await window.noema
+          .latestSocialArchive(currentRoom.id)
+          .catch(() => null),
+      );
       setNotice('已恢复修改前版本。');
     } catch (error) {
       setNotice(

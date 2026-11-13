@@ -5674,6 +5674,7 @@ select:disabled {
 }
 .core-back {
   flex: 0 0 auto;
+  -webkit-app-region: no-drag;
 }
 .core-top-actions {
   display: flex;
