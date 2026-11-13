@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { realpathSync } from 'node:fs';
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -6,7 +7,9 @@ import test from 'node:test';
 import { WorkspaceFileService } from '../../../src/main/execution/workspace-file-service.mjs';
 
 test('workspace file service lists and reads a known workspace', async () => {
-  const root = await mkdtemp(path.join(tmpdir(), 'noema-files-'));
+  const root = realpathSync.native(
+    await mkdtemp(path.join(tmpdir(), 'noema-files-')),
+  );
   await mkdir(path.join(root, 'docs'));
   await writeFile(path.join(root, 'readme.txt'), 'hello', 'utf8');
   await writeFile(path.join(root, 'docs', 'note.txt'), 'note', 'utf8');
@@ -33,7 +36,9 @@ test('workspace file service lists and reads a known workspace', async () => {
 });
 
 test('workspace file service previews supported images from a known workspace', async () => {
-  const root = await mkdtemp(path.join(tmpdir(), 'noema-files-'));
+  const root = realpathSync.native(
+    await mkdtemp(path.join(tmpdir(), 'noema-files-')),
+  );
   const png = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
     'base64',
@@ -62,7 +67,9 @@ test('workspace file service previews supported images from a known workspace', 
 });
 
 test('workspace file service rejects unknown roots, traversal and binary files', async () => {
-  const root = await mkdtemp(path.join(tmpdir(), 'noema-files-'));
+  const root = realpathSync.native(
+    await mkdtemp(path.join(tmpdir(), 'noema-files-')),
+  );
   const outside = await mkdtemp(path.join(tmpdir(), 'noema-outside-'));
   await writeFile(path.join(outside, 'secret.txt'), 'secret', 'utf8');
   await writeFile(path.join(root, 'binary.bin'), Buffer.from([0, 1, 2, 0]));
@@ -87,7 +94,9 @@ test('workspace file service rejects unknown roots, traversal and binary files',
 });
 
 test('workspace file service searches names and text inside a known workspace', async () => {
-  const root = await mkdtemp(path.join(tmpdir(), 'noema-files-'));
+  const root = realpathSync.native(
+    await mkdtemp(path.join(tmpdir(), 'noema-files-')),
+  );
   await mkdir(path.join(root, 'src'));
   await mkdir(path.join(root, 'node_modules'));
   await writeFile(
@@ -130,7 +139,9 @@ test('workspace file service searches names and text inside a known workspace', 
 });
 
 test('workspace file service opens only a known workspace folder', async () => {
-  const root = await mkdtemp(path.join(tmpdir(), 'noema-files-'));
+  const root = realpathSync.native(
+    await mkdtemp(path.join(tmpdir(), 'noema-files-')),
+  );
   const opened = [];
   const service = new WorkspaceFileService({
     isKnownWorkspace: (candidate) => path.resolve(candidate) === root,
