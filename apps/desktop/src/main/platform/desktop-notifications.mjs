@@ -31,7 +31,13 @@ export function createSocialReplyNotificationHandler({
 
     try {
       const notification = new NotificationClass(REPLY_NOTIFICATION);
-      notification.once('click', openMainWindow);
+      notification.once('click', () =>
+        openMainWindow({
+          roomId: typeof event.roomId === 'string' ? event.roomId : null,
+          messageId:
+            typeof event.messageId === 'string' ? event.messageId : null,
+        }),
+      );
       notification.show();
       if (event.messageId) {
         notifiedMessageIds.add(event.messageId);

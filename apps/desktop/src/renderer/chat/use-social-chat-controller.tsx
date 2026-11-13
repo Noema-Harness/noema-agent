@@ -1912,12 +1912,6 @@ export function useSocialChatController() {
   };
   const restoreLatestArchive = async () => {
     if (!currentRoom || !latestArchive || busy || activeReply) return;
-    if (
-      !window.confirm(
-        '恢复修改前版本会丢弃当前对话，然后回到存档内容。继续吗？',
-      )
-    )
-      return;
     try {
       setBusy(true);
       setNotice('');
