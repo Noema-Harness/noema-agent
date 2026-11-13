@@ -1,0 +1,10 @@
+# Noema 当前由两位维护者共同负责。
+# 未启用分支保护时，CODEOWNERS 只提供审查提示，不阻止合并。
+
+* @c3115644151 @ichika0130
+
+/.github/ @c3115644151 @ichika0130
+/apps/desktop/src/main/ @c3115644151 @ichika0130
+/apps/desktop/src/renderer/ @c3115644151 @ichika0130
+/openspec/ @c3115644151 @ichika0130
+/docs/ @c3115644151 @ichika0130
