@@ -32,6 +32,8 @@ const CHANNELS = Object.freeze({
   socialContinuityEditBranch: 'noema:social-continuity-edit-branch',
   socialRewindMessage: 'noema:social-rewind-message',
   socialEditAssistantMessage: 'noema:social-edit-assistant-message',
+  socialLatestArchive: 'noema:social-latest-archive',
+  socialRestoreArchive: 'noema:social-restore-archive',
   testArmSocialWorkReverseSnapshot:
     'noema:test-arm-social-work-reverse-snapshot',
   testSocialWorkReverseSnapshotStatus:
@@ -383,6 +385,12 @@ export function registerRootIpc({
       CHANNELS.socialEditAssistantMessage,
       (roomId, messageId, content) =>
         socialChatService.editAssistantMessage(roomId, messageId, content),
+    );
+    register(CHANNELS.socialLatestArchive, (roomId) =>
+      socialChatService.latestConversationArchive(roomId),
+    );
+    register(CHANNELS.socialRestoreArchive, (archiveId) =>
+      socialChatService.restoreConversationArchive(archiveId),
     );
     register(CHANNELS.socialSearchMessages, (query) =>
       socialChatService.store.searchMessages(query),

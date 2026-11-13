@@ -698,6 +698,16 @@ export class SocialChatService {
     return result;
   }
 
+  latestConversationArchive(roomId) {
+    return this.store.latestConversationArchive(roomId);
+  }
+
+  restoreConversationArchive(archiveId) {
+    const result = this.store.restoreConversationArchive(archiveId);
+    this.chatRuntimeSessions.invalidateChatSession('noema', result.roomId);
+    return result;
+  }
+
   createChatTicketSession() {
     return this.chatRuntimeSessions.createChatTicketSession();
   }

@@ -1446,12 +1446,23 @@ export interface NoemaBridge {
   rewindSocialMessage(
     roomId: string,
     messageId: string,
-  ): Promise<{ removed: number }>;
+  ): Promise<{ removed: number; archiveId?: string }>;
   editSocialAssistantMessage(
     roomId: string,
     messageId: string,
     content: string,
-  ): Promise<{ updated: number }>;
+  ): Promise<{ updated: number; archiveId?: string }>;
+  latestSocialArchive(roomId: string): Promise<{
+    id: string;
+    reason: string;
+    createdAt: string;
+  } | null>;
+  restoreSocialArchive(archiveId: string): Promise<{
+    roomId: string;
+    messages: number;
+    turns: number;
+    archiveId: string;
+  }>;
   sendSocialMessage(input: {
     roomId: string;
     agentId: string;

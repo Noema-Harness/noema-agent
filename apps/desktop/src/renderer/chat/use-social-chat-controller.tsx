@@ -187,6 +187,11 @@ export function useSocialChatController() {
       query: string;
     } | null>(null);
   const [notice, setNotice] = useState('');
+  const [latestArchive, setLatestArchive] = useState<{
+    id: string;
+    reason: string;
+    createdAt: string;
+  } | null>(null);
   const [draftAttachmentsByRoom, setDraftAttachmentsByRoom] = useState<
     Record<string, File[]>
   >({});
@@ -925,6 +930,26 @@ export function useSocialChatController() {
       });
     } else void loadRoom(activeRoomId);
   }, [activeRoomId, loadRoom]);
+  useEffect(() => {
+    let alive = true;
+    if (!activeRoomId) {
+      setLatestArchive(null);
+      return () => {
+        alive = false;
+      };
+    }
+    void window.noema
+      .latestSocialArchive(activeRoomId)
+      .then((archive) => {
+        if (alive) setLatestArchive(archive);
+      })
+      .catch(() => {
+        if (alive) setLatestArchive(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [activeRoomId]);
   useEffect(() => {
     const AudioContextClass = window.AudioContext;
     const earcon = createNotificationEarcon(
@@ -1845,6 +1870,11 @@ export function useSocialChatController() {
       await window.noema.rewindSocialMessage(currentRoom.id, messageId);
       setLiveTrace(null);
       await loadRoom(currentRoom.id);
+      setLatestArchive(
+        await window.noema
+          .latestSocialArchive(currentRoom.id)
+          .catch(() => null),
+      );
       await handleSend(undefined, text, { fromEdit: true });
     } catch (error) {
       setNotice(
@@ -1866,9 +1896,38 @@ export function useSocialChatController() {
       );
       setLiveTrace(null);
       await loadRoom(currentRoom.id);
+      setLatestArchive(
+        await window.noema
+          .latestSocialArchive(currentRoom.id)
+          .catch(() => null),
+      );
     } catch (error) {
       setNotice(
         error instanceof Error ? error.message : '回复没有修改，请重试。',
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+  const restoreLatestArchive = async () => {
+    if (!currentRoom || !latestArchive || busy || activeReply) return;
+    if (
+      !window.confirm(
+        '恢复修改前版本会丢弃当前对话，然后回到存档内容。继续吗？',
+      )
+    )
+      return;
+    try {
+      setBusy(true);
+      setNotice('');
+      await window.noema.restoreSocialArchive(latestArchive.id);
+      setLiveTrace(null);
+      await Promise.all([refreshState(), loadRoom(currentRoom.id)]);
+      setLatestArchive(null);
+      setNotice('已恢复修改前版本。');
+    } catch (error) {
+      setNotice(
+        error instanceof Error ? error.message : '没有恢复修改前版本，请重试。',
       );
     } finally {
       setBusy(false);
@@ -2857,6 +2916,8 @@ export function useSocialChatController() {
     handleSend,
     rewindAndResend,
     saveAssistantEdit,
+    latestArchive,
+    restoreLatestArchive,
     continuity,
     notice,
     setNotice,

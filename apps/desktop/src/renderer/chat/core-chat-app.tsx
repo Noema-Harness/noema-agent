@@ -314,6 +314,8 @@ export function CoreChatApp() {
     handleSend,
     rewindAndResend,
     saveAssistantEdit,
+    latestArchive,
+    restoreLatestArchive,
     handleStop,
     handleRetry,
     busy,
@@ -771,6 +773,18 @@ export function CoreChatApp() {
           <strong>Noema</strong>
         </div>
         <div className="core-top-actions">
+          {latestArchive ? (
+            <NoemaButton
+              className="icon-button"
+              type="button"
+              title="恢复修改前版本"
+              aria-label="恢复修改前版本"
+              disabled={busy || Boolean(activeReply)}
+              onClick={() => void restoreLatestArchive()}
+            >
+              <Icon name="restore" />
+            </NoemaButton>
+          ) : null}
           <NoemaButton
             className="icon-button"
             type="button"

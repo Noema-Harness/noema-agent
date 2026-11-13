@@ -4462,6 +4462,20 @@ export class SocialChatStore {
     return { id, messages: messages.length, turns: turns.length };
   }
 
+  latestConversationArchive(roomId) {
+    requireText(roomId, '房间 ID', 200);
+    const row = this.db
+      .prepare(
+        `SELECT id, reason, created_at AS createdAt
+         FROM conversation_archives
+         WHERE room_id = ?
+         ORDER BY created_at DESC
+         LIMIT 1`,
+      )
+      .get(roomId);
+    return row ?? null;
+  }
+
   restoreConversationArchive(archiveId) {
     requireText(archiveId, '存档 ID', 200);
     const archive = this.db
@@ -4517,6 +4531,7 @@ export class SocialChatStore {
         insertRows('conversation_active_branch', [payload.activeBranch]);
       }
       return {
+        roomId: archive.roomId,
         messages: payload.messages.length,
         turns: payload.turns.length,
         archiveId: restorePoint.id,

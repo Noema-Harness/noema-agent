@@ -269,6 +269,19 @@ const bridge = {
       messageId,
       content,
     ) as Promise<{ updated: number }>,
+  latestSocialArchive: (roomId: string) =>
+    ipcRenderer.invoke('noema:social-latest-archive', roomId) as Promise<{
+      id: string;
+      reason: string;
+      createdAt: string;
+    } | null>,
+  restoreSocialArchive: (archiveId: string) =>
+    ipcRenderer.invoke('noema:social-restore-archive', archiveId) as Promise<{
+      roomId: string;
+      messages: number;
+      turns: number;
+      archiveId: string;
+    }>,
   sendSocialMessage: (input: {
     roomId: string;
     agentId: string;
