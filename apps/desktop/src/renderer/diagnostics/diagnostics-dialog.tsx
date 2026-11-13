@@ -19,11 +19,11 @@ import {
   formatMessageRoleCharactersLabel,
   formatRequestShapeLabel,
   formatTokenUsageLabel,
-} from './request-shape-label.mjs';
+} from './request-shape-label.ts';
 import {
   canOfferWindowsRunnerSetup,
   windowsRunnerReasonLabel,
-} from './windows-runner-status.mjs';
+} from './windows-runner-status.ts';
 import { Icon } from '../chat/presentation';
 
 const GAP_LABELS: Record<string, string> = {

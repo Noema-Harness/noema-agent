@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { resolveGroupRecipients } from '../../shared/chat/group-mentions.mjs';
+import { resolveGroupRecipients } from '../../shared/chat/group-mentions.ts';
 import { parseProjectPlanRevision } from './project-plan-store.mjs';
-import { projectGroupPublicText } from '../../shared/chat/project-group-public-text.mjs';
+import { projectGroupPublicText } from '../../shared/chat/project-group-public-text.ts';
 
 const MAX_CHAIN_DISPATCHES = 24;
 const MAX_CHAIN_DEPTH = 8;

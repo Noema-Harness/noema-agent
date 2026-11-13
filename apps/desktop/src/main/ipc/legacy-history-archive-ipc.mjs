@@ -1,4 +1,4 @@
-import { isMainFrameIpcEvent } from '../platform/window-security.mjs';
+import { isMainFrameIpcEvent } from '../platform/window-security.ts';
 
 export const LEGACY_HISTORY_ARCHIVE_CHANNELS = Object.freeze({
   categories: 'noema:legacy-history-categories',

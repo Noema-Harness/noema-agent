@@ -4,17 +4,17 @@ import path from 'node:path';
 import {
   normalizeWorkspaceVerificationChecks,
   verifyWorkspaceChecks,
-} from '../tools/workspace-verifier.mjs';
-import { redactSensitiveText } from '../../shared/search/transcript-search.mjs';
+} from '../tools/workspace-verifier.ts';
+import { redactSensitiveText } from '../../shared/search/transcript-search.ts';
 import {
   captureWorkspaceIdentity,
   compareWorkspaceIdentities,
   isWorkspaceIdentity,
-} from '../platform/workspace-identity.mjs';
+} from '../platform/workspace-identity.ts';
 import { scanWorkspaceFileBoundary } from './workspace-file-boundary.mjs';
 import { reviewWorkspaceGitState } from './workspace-git-review.mjs';
-import { MAX_COMMAND_RECOVERY_BLOB_BYTES } from './workspace-command-quotas.mjs';
-import { normalizeSocialWorkPhase } from '../../shared/execution/social-work-phase.mjs';
+import { MAX_COMMAND_RECOVERY_BLOB_BYTES } from './workspace-command-quotas.ts';
+import { normalizeSocialWorkPhase } from '../../shared/execution/social-work-phase.ts';
 
 const MAX_ROOM_CONTEXT_CHARS = 12_000;
 const MAX_RESULT_CHARS = 100_000;

@@ -53,6 +53,7 @@
 - 开发轮次优先交付一个可直接测试的纵切；完成即停、报告、等反馈，不把多个未验证改动堆在一起。
 - 全量 `npm run check` 在里程碑/交付前运行；日常用受影响单测和 `typecheck`。检查失败先定位，不跳过。
 - `npm run source:check` 维护依赖边界；生产代码不得导入 `test-support`。
+- 新源码只写 TypeScript（D-019）：迁移只改类型、不改行为，只用可擦除语法，导入写 `.ts` 扩展名；每批转换后下调 `scripts/source-structure.mjs` 的 `maxJavaScriptSources`。
 - 当前 shell 是 Windows PowerShell 5.1；脚本不要依赖 `pwsh` 7 专有语法。
 - 不恢复已删除的旧范围、旧 UI 或旧执行器；恢复必须有真实入口、需求和验收。
 - 主进程仍是组合根时，优先做行为保持的提取；不为行数做无验收的大拆分。

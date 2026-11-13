@@ -16,7 +16,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Database from 'better-sqlite3';
 import { RootStore } from '../src/main/storage/root-store.mjs';
-import { resolveNoemaDatabasePath } from '../src/main/platform/runtime-paths.mjs';
+import { resolveNoemaDatabasePath } from '../src/main/platform/runtime-paths.ts';
 import { configureElectronRuntime } from './electron-runtime.mjs';
 
 configureElectronRuntime();

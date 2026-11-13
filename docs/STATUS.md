@@ -33,6 +33,7 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 - `npm run check`：**854/854，0 fail，28,042.6508ms**（阶段 4 两阶段团队提案后最后一次全量）。
 - `npm run typecheck`：通过。
+- 类型覆盖（D-019 TS 迁移）：阶段 0、1 完成。阶段 0：tsconfig 启用 `allowImportingTsExtensions`/`erasableSyntaxOnly`/`verbatimModuleSyntax`，`src/package.json` 标记 ESM，`source:check` 加 `.mjs` 数量棘轮。阶段 1：57 个小文件已改为 `.ts`（只改类型、不改行为；类字段用 `declare` 声明，运行时不新增字段），`src` 下剩余 **67** 个 `.mjs`（棘轮上限 67），全部未受类型检查，含 `social-chat-service`/`social-chat-store`/`root-ipc` 等大文件；与未转换 JS 协作的入口暂用 `ChatRun = Record<string, any>` 等宽类型，待对应模块转换时收紧。类型检查已发现的问题：`transcript-search` 的类型导入指向不存在的路径（JS 下静默为 any，已修正）；`searchAndReadWeb` 的 `apiKey` JSDoc 未覆盖未配置时的 `null`（运行时已校验，已更正 JSDoc）。验证（macOS）：`typecheck`、`oxfmt`、`source:check` 通过；Vite main/preload/renderer 构建通过；Node 26 全量单测 829/854，24 个失败均为 Windows 专属且与改动前逐文件一致；涉及转换模块的 40 个测试文件在 Node 24.22 与 26 上均 164/167（2 个失败为既有 Windows 路径断言，改动前同样失败）。未在 Windows 上重跑 `npm run check`，未做 `electron-forge package`；`lint` 因 lockfile 只含 Windows 原生绑定在 macOS 上无法运行。
 - `test/main/chat/social-chat-store.test.mjs`：**49/49**，包含助手消息原地编辑和编辑/重开后的存档恢复。
 - `test/main/chat/conversation-continuity.test.mjs`：**11/11**，schema 40 的迁移与回退断言通过。
 - `test/main/projects/social-project-store.test.mjs` + continuity：**26/26**，包含项目负责人持久化、`leadName` 和团队提案 pending 状态。

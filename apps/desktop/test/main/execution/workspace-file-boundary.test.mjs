@@ -8,7 +8,7 @@ import {
   MAX_WORKSPACE_FILE_SCAN_DEPTH,
   scanWorkspaceFileBoundary,
 } from '../../../src/main/execution/workspace-file-boundary.mjs';
-import { captureWorkspaceIdentity } from '../../../src/main/platform/workspace-identity.mjs';
+import { captureWorkspaceIdentity } from '../../../src/main/platform/workspace-identity.ts';
 
 function temporaryDirectory() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'noema-file-boundary-'));

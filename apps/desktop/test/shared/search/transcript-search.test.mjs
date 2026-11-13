@@ -4,7 +4,7 @@ import {
   findTranscriptMatches,
   searchTranscriptHistory,
   userReferencesPastNoemaContext,
-} from '../../../src/shared/search/transcript-search.mjs';
+} from '../../../src/shared/search/transcript-search.ts';
 
 test('history recall triggers on an explicit reference to prior conversation, not casual remembering', () => {
   assert.equal(

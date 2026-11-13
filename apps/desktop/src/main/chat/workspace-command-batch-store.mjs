@@ -1,11 +1,11 @@
 ﻿import { createHash, randomUUID } from 'node:crypto';
 import { requireText, isoNow } from './records.mjs';
-import { isWorkspaceIdentity } from '../platform/workspace-identity.mjs';
+import { isWorkspaceIdentity } from '../platform/workspace-identity.ts';
 import {
   MAX_COMMAND_TASK_RECOVERY_BYTES,
   MAX_COMMAND_APP_RECOVERY_BYTES,
-} from '../execution/workspace-command-quotas.mjs';
-import { workspaceFileChangeError } from './workspace-change-error.mjs';
+} from '../execution/workspace-command-quotas.ts';
+import { workspaceFileChangeError } from './workspace-change-error.ts';
 
 const MAX_SOCIAL_WORK_TASK_BLOB_BYTES = MAX_COMMAND_TASK_RECOVERY_BYTES;
 const MAX_SOCIAL_WORK_TOTAL_BLOB_BYTES = MAX_COMMAND_APP_RECOVERY_BYTES;

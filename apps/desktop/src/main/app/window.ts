@@ -9,16 +9,16 @@ import {
 } from 'electron';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { redactSensitiveText } from '../../shared/text/sensitive-text.mjs';
+import { redactSensitiveText } from '../../shared/text/sensitive-text.ts';
 import {
   createWindowPreferences,
   isInternalNavigation,
   shouldOpenExternally,
-} from '../platform/window-security.mjs';
+} from '../platform/window-security.ts';
 import {
   fitsWithinWorkArea,
   resolveInitialWindowSize,
-} from '../platform/window-geometry.mjs';
+} from '../platform/window-geometry.ts';
 
 export type WindowEntryRoute = 'social-chat' | 'legacy-archive';
 

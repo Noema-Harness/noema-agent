@@ -3,7 +3,7 @@ import test from 'node:test';
 import {
   resolveNoemaDatabasePath,
   resolveNoemaDshUserDataPath,
-} from '../../../src/main/platform/runtime-paths.mjs';
+} from '../../../src/main/platform/runtime-paths.ts';
 
 test('only unpackaged E2E runs can redirect the root database', () => {
   assert.equal(

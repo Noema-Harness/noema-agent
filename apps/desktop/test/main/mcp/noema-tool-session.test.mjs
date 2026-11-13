@@ -4,7 +4,7 @@ import test from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
-import { NoemaToolSession } from '../../../src/main/mcp/noema-tool-session.mjs';
+import { NoemaToolSession } from '../../../src/main/mcp/noema-tool-session.ts';
 
 function echoTool() {
   return {

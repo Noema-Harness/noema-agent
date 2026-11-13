@@ -6,7 +6,7 @@ import test from 'node:test';
 import {
   normalizeWorkspaceVerificationChecks,
   verifyWorkspaceChecks,
-} from '../../../src/main/tools/workspace-verifier.mjs';
+} from '../../../src/main/tools/workspace-verifier.ts';
 
 test('workspace verifier checks explicit file existence and content without returning file contents', () => {
   const workspace = mkdtempSync(path.join(tmpdir(), 'noema-verifier-pass-'));

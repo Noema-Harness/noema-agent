@@ -8,11 +8,11 @@ import {
   isSupportedChatAttachment,
   MAX_CHAT_PDF_ATTACHMENT_BYTES,
   prepareChatMessage,
-} from '../../../src/shared/chat/chat-text-attachments.mjs';
+} from '../../../src/shared/chat/chat-text-attachments.ts';
 import {
   MAX_CHAT_PDF_PAGES,
   extractChatPdfText,
-} from '../../../src/shared/chat/chat-pdf-extraction.mjs';
+} from '../../../src/shared/chat/chat-pdf-extraction.ts';
 
 function textFile(name, text, type = 'text/plain') {
   return new File([text], name, { type });

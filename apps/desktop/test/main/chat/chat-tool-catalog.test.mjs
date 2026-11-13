@@ -4,8 +4,8 @@ import test from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
-import { createChatToolDefinitions } from '../../../src/main/chat/chat-tool-catalog.mjs';
-import { NoemaToolSession } from '../../../src/main/mcp/noema-tool-session.mjs';
+import { createChatToolDefinitions } from '../../../src/main/chat/chat-tool-catalog.ts';
+import { NoemaToolSession } from '../../../src/main/mcp/noema-tool-session.ts';
 
 const EXPECTED_TOOL_NAMES = [
   'complete_project',

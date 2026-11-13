@@ -10,7 +10,7 @@ import { WindowsRunnerAclTransactionService } from '../src/main/execution/window
 import { WindowsRunnerCapabilityNameStore } from '../src/main/execution/windows-runner-capability-name-store.mjs';
 import { WindowsRunnerExecutionService } from '../src/main/execution/windows-runner-execution-service.mjs';
 import { WindowsRunnerNativeHelper } from '../src/main/execution/windows-runner-native-helper.mjs';
-import { captureWorkspaceIdentity } from '../src/main/platform/workspace-identity.mjs';
+import { captureWorkspaceIdentity } from '../src/main/platform/workspace-identity.ts';
 import { RootStore } from '../src/main/storage/root-store.mjs';
 import { createSocialTestStore } from '../test-support/social-team.mjs';
 import {

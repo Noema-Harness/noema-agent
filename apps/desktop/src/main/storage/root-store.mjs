@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
-import { normalizeWorkspaceVerificationChecks } from '../tools/workspace-verifier.mjs';
+import { normalizeWorkspaceVerificationChecks } from '../tools/workspace-verifier.ts';
 import { MAX_EXTERNAL_SOURCES_PER_MESSAGE } from '../tools/web-source.mjs';
 
 const MAX_MESSAGE_LENGTH = 100_000;

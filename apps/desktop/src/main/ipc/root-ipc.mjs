@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { isMainFrameIpcEvent } from '../platform/window-security.mjs';
+import { isMainFrameIpcEvent } from '../platform/window-security.ts';
 
 const CHANNELS = Object.freeze({
   models: 'noema:refresh-models',

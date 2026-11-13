@@ -4,7 +4,7 @@ import test from 'node:test';
 import {
   formatWorkTicketMarkdown,
   workTicketExportFileName,
-} from '../../../src/shared/export/work-ticket-markdown.mjs';
+} from '../../../src/shared/export/work-ticket-markdown.ts';
 
 test('formats a ticket with result, steps and usage', () => {
   const markdown = formatWorkTicketMarkdown({

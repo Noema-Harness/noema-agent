@@ -5,7 +5,7 @@ import {
   isMainFrameIpcEvent,
   isInternalNavigation,
   shouldOpenExternally,
-} from '../../../src/main/platform/window-security.mjs';
+} from '../../../src/main/platform/window-security.ts';
 
 test('renderer runs without Node privileges and with process isolation', () => {
   assert.deepEqual(createWindowPreferences('preload.cjs'), {

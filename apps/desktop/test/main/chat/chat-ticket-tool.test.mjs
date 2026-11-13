@@ -4,8 +4,8 @@ import test from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
-import { createChatTicketTool } from '../../../src/main/chat/chat-ticket-tool.mjs';
-import { NoemaToolSession } from '../../../src/main/mcp/noema-tool-session.mjs';
+import { createChatTicketTool } from '../../../src/main/chat/chat-ticket-tool.ts';
+import { NoemaToolSession } from '../../../src/main/mcp/noema-tool-session.ts';
 
 test('start_work_ticket is callable through the real MCP session', async () => {
   const calls = [];

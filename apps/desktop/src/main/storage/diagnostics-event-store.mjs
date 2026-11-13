@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { redactSensitiveText } from '../../shared/text/sensitive-text.mjs';
+import { redactSensitiveText } from '../../shared/text/sensitive-text.ts';
 
 export const DIAGNOSTIC_EVENT_SCHEMA_VERSION = 1;
 export const DEFAULT_DIAGNOSTIC_EVENT_LIMIT = 20_000;

@@ -6,8 +6,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { RootStore } from '../../../src/main/storage/root-store.mjs';
 import { SocialChatStore } from '../../../src/main/chat/social-chat-store.mjs';
-import { backupBeforeSocialChatMigration } from '../../../src/main/chat/social-chat-migration-backup.mjs';
-import { SOCIAL_SCHEMA_VERSION } from '../../../src/main/chat/social-chat-schema.mjs';
+import { backupBeforeSocialChatMigration } from '../../../src/main/chat/social-chat-migration-backup.ts';
+import { SOCIAL_SCHEMA_VERSION } from '../../../src/main/chat/social-chat-schema.ts';
 
 test('the first social migration creates one consistent local SQLite backup', async () => {
   const directory = fs.mkdtempSync(

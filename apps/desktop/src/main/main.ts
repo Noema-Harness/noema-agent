@@ -14,10 +14,10 @@ import { scheduleRendererSmoke, writeSmokeLog } from './testing/renderer-smoke';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { EncryptedSecretStore } from './platform/encrypted-secret-store.mjs';
-import { redactSensitiveText } from '../shared/text/sensitive-text.mjs';
-import { resolveElectronProxy } from './platform/electron-proxy.mjs';
-import { createPendingFollowupNavigationDelivery } from './platform/pending-followup-navigation.mjs';
+import { EncryptedSecretStore } from './platform/encrypted-secret-store.ts';
+import { redactSensitiveText } from '../shared/text/sensitive-text.ts';
+import { resolveElectronProxy } from './platform/electron-proxy.ts';
+import { createPendingFollowupNavigationDelivery } from './platform/pending-followup-navigation.ts';
 import { OpenAICompatibleClient } from './providers/openai-compatible-client.mjs';
 import { registerRootIpc, CHANNELS } from './ipc/root-ipc.mjs';
 import { WorkspaceFileService } from './execution/workspace-file-service.mjs';
@@ -25,22 +25,22 @@ import { registerLegacyHistoryArchiveIpc } from './ipc/legacy-history-archive-ip
 import { RootAgent } from './agents/root-agent.mjs';
 import { RootStore } from './storage/root-store.mjs';
 import { LegacyHistoryArchiveService } from './archive/legacy-history-archive-service.mjs';
-import { saveLegacyHistoryExport } from './archive/save-legacy-history-export.mjs';
+import { saveLegacyHistoryExport } from './archive/save-legacy-history-export.ts';
 import { DiagnosticsEventStore } from './storage/diagnostics-event-store.mjs';
 import { OfficialPluginStateStore } from './plugins/official-plugin-state-store.mjs';
 import { OfficialPluginHost } from './plugins/official-plugin-host.mjs';
-import { officialContractSample } from './plugins/official-contract-sample.mjs';
+import { officialContractSample } from './plugins/official-contract-sample.ts';
 import { DiagnosticsQueryService } from './diagnostics/diagnostics-query-service.mjs';
-import { collectDiagnosticsRuntimeInfo } from './diagnostics/diagnostics-runtime-info.mjs';
-import { startupFailureDiagnostic } from './diagnostics/startup-failure-diagnostic.mjs';
+import { collectDiagnosticsRuntimeInfo } from './diagnostics/diagnostics-runtime-info.ts';
+import { startupFailureDiagnostic } from './diagnostics/startup-failure-diagnostic.ts';
 import {
   openNoemaDataDirectory,
   readDatabaseHealth,
   showDatabaseStartupFailure,
-} from './diagnostics/database-recovery.mjs';
-import { saveDiagnosticsExport } from './diagnostics/save-diagnostics-export.mjs';
+} from './diagnostics/database-recovery.ts';
+import { saveDiagnosticsExport } from './diagnostics/save-diagnostics-export.ts';
 import { SocialChatStore } from './chat/social-chat-store.mjs';
-import { SOCIAL_SCHEMA_VERSION } from './chat/social-chat-schema.mjs';
+import { SOCIAL_SCHEMA_VERSION } from './chat/social-chat-schema.ts';
 import { SocialProjectStore } from './projects/social-project-store.mjs';
 import { SocialChatService } from './chat/social-chat-service.mjs';
 import { searchAndReadWeb } from './tools/web-search.mjs';
@@ -59,23 +59,23 @@ import {
   createSocialWorkDialogs,
   createSocialWorkServiceRuntime,
 } from './app/social-runtime';
-import { backupBeforeSocialChatMigration } from './chat/social-chat-migration-backup.mjs';
-import { resolveNoemaDatabasePath } from './platform/runtime-paths.mjs';
+import { backupBeforeSocialChatMigration } from './chat/social-chat-migration-backup.ts';
+import { resolveNoemaDatabasePath } from './platform/runtime-paths.ts';
 import { createAgentRuntime } from './app/agent-runtime';
-import { DshChatRuntime } from './runtime/dsh-chat-runtime.mjs';
-import { createNativeChatRuntime } from './runtime/chat-runtime.mjs';
-import { createChatRuntimeRegistry } from './runtime/chat-runtime-registry.mjs';
-import { createWorkRuntimeRegistry } from './runtime/work-runtime-registry.mjs';
+import { DshChatRuntime } from './runtime/dsh-chat-runtime.ts';
+import { createNativeChatRuntime } from './runtime/chat-runtime.ts';
+import { createChatRuntimeRegistry } from './runtime/chat-runtime-registry.ts';
+import { createWorkRuntimeRegistry } from './runtime/work-runtime-registry.ts';
 import { NoemaProjectExecutor } from './execution/noema-project-executor.mjs';
-import { createNoemaToolRegistry } from './runtime/noema-tool-registry.mjs';
-import { NoemaToolSession } from './mcp/noema-tool-session.mjs';
-import { createChatTicketTool } from './chat/chat-ticket-tool.mjs';
+import { createNoemaToolRegistry } from './runtime/noema-tool-registry.ts';
+import { NoemaToolSession } from './mcp/noema-tool-session.ts';
+import { createChatTicketTool } from './chat/chat-ticket-tool.ts';
 import { createNoemaReadTools } from './chat/noema-read-tools.mjs';
-import { isMainFrameIpcEvent } from './platform/window-security.mjs';
+import { isMainFrameIpcEvent } from './platform/window-security.ts';
 import {
   createSocialReplyNotificationHandler,
   createUserFollowupNotificationHandler,
-} from './platform/desktop-notifications.mjs';
+} from './platform/desktop-notifications.ts';
 import {
   createDesktopLifecycle,
   waitForDesktopShutdown,

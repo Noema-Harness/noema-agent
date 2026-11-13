@@ -5,7 +5,7 @@ import {
   openNoemaDataDirectory,
   readDatabaseHealth,
   showDatabaseStartupFailure,
-} from '../../../src/main/diagnostics/database-recovery.mjs';
+} from '../../../src/main/diagnostics/database-recovery.ts';
 
 test('database health runs only the read-only quick check and returns bounded states', () => {
   const calls = [];

@@ -21,7 +21,7 @@ import { SocialWorkService } from '../../../src/main/execution/social-work-servi
 import { SocialChatService } from '../../../src/main/chat/social-chat-service.mjs';
 import { SocialProjectStore } from '../../../src/main/projects/social-project-store.mjs';
 import { NoemaProjectExecutor } from '../../../src/main/execution/noema-project-executor.mjs';
-import { captureWorkspaceIdentity } from '../../../src/main/platform/workspace-identity.mjs';
+import { captureWorkspaceIdentity } from '../../../src/main/platform/workspace-identity.ts';
 import { DiagnosticsEventStore } from '../../../src/main/storage/diagnostics-event-store.mjs';
 
 function makeStore(options = {}) {

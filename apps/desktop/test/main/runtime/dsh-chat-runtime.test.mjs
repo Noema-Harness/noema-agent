@@ -4,7 +4,7 @@ import test from 'node:test';
 import {
   DshChatRuntime,
   renderChatTask,
-} from '../../../src/main/runtime/dsh-chat-runtime.mjs';
+} from '../../../src/main/runtime/dsh-chat-runtime.ts';
 
 function adapterWith(result, calls = []) {
   return {

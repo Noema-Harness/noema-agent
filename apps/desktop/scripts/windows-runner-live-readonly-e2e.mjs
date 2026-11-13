@@ -12,7 +12,7 @@ import {
   WINDOWS_RUNNER_POLICY_VERSION,
   WINDOWS_RUNNER_PROTOCOL_VERSION,
 } from '../src/main/execution/windows-runner-package-contract.mjs';
-import { captureWorkspaceIdentity } from '../src/main/platform/workspace-identity.mjs';
+import { captureWorkspaceIdentity } from '../src/main/platform/workspace-identity.ts';
 import {
   createDevelopmentDirectory,
   removeDevelopmentDirectory,

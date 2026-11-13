@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createPendingFollowupNavigationDelivery } from '../../../src/main/platform/pending-followup-navigation.mjs';
+import { createPendingFollowupNavigationDelivery } from '../../../src/main/platform/pending-followup-navigation.ts';
 
 test('holds the latest notification target until the social renderer is ready', () => {
   const sent = [];

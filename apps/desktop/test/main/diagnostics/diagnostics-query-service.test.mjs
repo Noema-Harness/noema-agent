@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import Database from 'better-sqlite3';
 import { DiagnosticsQueryService } from '../../../src/main/diagnostics/diagnostics-query-service.mjs';
-import { saveDiagnosticsExport } from '../../../src/main/diagnostics/save-diagnostics-export.mjs';
+import { saveDiagnosticsExport } from '../../../src/main/diagnostics/save-diagnostics-export.ts';
 import { DiagnosticsEventStore } from '../../../src/main/storage/diagnostics-event-store.mjs';
 import { ModelUsageStore } from '../../../src/main/storage/model-usage-store.mjs';
 

@@ -3,7 +3,7 @@ import { ProjectPlanStore } from './project-plan-store.mjs';
 import {
   isWorkspaceIdentity,
   compareWorkspaceIdentities,
-} from '../platform/workspace-identity.mjs';
+} from '../platform/workspace-identity.ts';
 
 function isoNow() {
   return new Date().toISOString();

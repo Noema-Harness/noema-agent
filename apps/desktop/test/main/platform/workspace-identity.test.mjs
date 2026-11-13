@@ -4,7 +4,7 @@ import {
   captureWorkspaceIdentity,
   compareWorkspaceIdentities,
   isWorkspaceIdentity,
-} from '../../../src/main/platform/workspace-identity.mjs';
+} from '../../../src/main/platform/workspace-identity.ts';
 
 function directoryStat({ directory = true, dev = 7n, ino = 42n } = {}) {
   return {

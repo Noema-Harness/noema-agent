@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createWindowsRunnerCapabilityReport } from '../../../src/main/execution/windows-runner-capability.mjs';
+import { createWindowsRunnerCapabilityReport } from '../../../src/main/execution/windows-runner-capability.ts';
 
 test('Windows capability report exposes only safe identity and readiness fields', () => {
   assert.deepEqual(

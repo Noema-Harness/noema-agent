@@ -28,7 +28,7 @@ npm run check
 
 1. `workspace:check`：文档路由与结构；
 2. `skills:check`：技能镜像；
-3. `source:check`：源码依赖边界；
+3. `source:check`：源码依赖边界，以及 `src` 下 `.mjs` 数量不增加（TS 迁移棘轮）；
 4. `lint`、`typecheck`、`test`。
 
 单独运行：

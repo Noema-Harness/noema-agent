@@ -3,7 +3,7 @@ import path from 'node:path';
 import {
   captureWorkspaceIdentity,
   compareWorkspaceIdentities,
-} from '../platform/workspace-identity.mjs';
+} from '../platform/workspace-identity.ts';
 
 export const MAX_WORKSPACE_FILE_SCAN_ENTRIES = 1_000_000;
 export const MAX_WORKSPACE_FILE_SCAN_DEPTH = 256;

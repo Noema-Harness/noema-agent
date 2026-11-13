@@ -4,7 +4,7 @@ import test from 'node:test';
 import {
   CHAT_RUNTIME_KINDS,
   createChatRuntimeRegistry,
-} from '../../../src/main/runtime/chat-runtime-registry.mjs';
+} from '../../../src/main/runtime/chat-runtime-registry.ts';
 
 function runtime(kind) {
   return {

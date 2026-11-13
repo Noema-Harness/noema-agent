@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   fitsWithinWorkArea,
   resolveInitialWindowSize,
-} from '../../../src/main/platform/window-geometry.mjs';
+} from '../../../src/main/platform/window-geometry.ts';
 
 test('initial Noema window respects a high-DPI display work area', () => {
   assert.deepEqual(resolveInitialWindowSize({ width: 827, height: 573 }), {

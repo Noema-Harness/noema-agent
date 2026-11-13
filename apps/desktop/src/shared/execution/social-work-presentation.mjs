@@ -1,4 +1,4 @@
-import { normalizeSocialWorkPhase } from './social-work-phase.mjs';
+import { normalizeSocialWorkPhase } from './social-work-phase.ts';
 
 /**
  * @param {{status:string,phase?:string|null,errorCode:string|null,verificationStatus:string,executionSteps?:Array<{status:string,category:string}>}} task

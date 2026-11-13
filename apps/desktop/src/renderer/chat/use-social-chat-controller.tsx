@@ -13,19 +13,19 @@ import * as pdfjs from 'pdfjs-dist';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { useConversationNavigation } from './use-conversation-navigation';
 import type { LiveTraceEvent } from './turn-trace';
-import { resolveFollowupNavigationTarget } from './followup-navigation.mjs';
+import { resolveFollowupNavigationTarget } from './followup-navigation.ts';
 import { highlightMessageMatches } from './search-highlights';
 import { useScrollActivity } from '../shared/use-scroll-activity';
-import { resolveGroupRecipient } from '../../shared/chat/group-mentions.mjs';
+import { resolveGroupRecipient } from '../../shared/chat/group-mentions.ts';
 import {
   isSupportedChatAttachment,
   MAX_CHAT_ATTACHMENT_CHARACTERS,
   MAX_CHAT_ATTACHMENT_COUNT,
   maxChatAttachmentBytes,
   prepareChatMessage,
-} from '../../shared/chat/chat-text-attachments.mjs';
-import { extractChatPdfText } from '../../shared/chat/chat-pdf-extraction.mjs';
-import { createNotificationEarcon } from '../notifications/notification-earcon.mjs';
+} from '../../shared/chat/chat-text-attachments.ts';
+import { extractChatPdfText } from '../../shared/chat/chat-pdf-extraction.ts';
+import { createNotificationEarcon } from '../notifications/notification-earcon.ts';
 import type {
   NoemaSocialAgent,
   NoemaPersonalMemoryList,

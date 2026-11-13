@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { resolveWindowsRunnerNativeHelper } from '../../../src/main/execution/windows-runner-resource.mjs';
+import { resolveWindowsRunnerNativeHelper } from '../../../src/main/execution/windows-runner-resource.ts';
 import { stageWindowsRunnerResource } from '../../../scripts/windows-runner-resource.mjs';
 
 function resourceStat(overrides = {}) {

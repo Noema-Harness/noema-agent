@@ -4,7 +4,7 @@ import test from 'node:test';
 import {
   createSocialReplyNotificationHandler,
   createUserFollowupNotificationHandler,
-} from '../../../src/main/platform/desktop-notifications.mjs';
+} from '../../../src/main/platform/desktop-notifications.ts';
 
 function createNotificationClass(supported = true) {
   const notifications = [];

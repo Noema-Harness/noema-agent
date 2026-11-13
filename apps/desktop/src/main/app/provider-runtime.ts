@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { net } from 'electron';
 import type { App, SafeStorage } from 'electron';
-import { EncryptedSecretStore } from '../platform/encrypted-secret-store.mjs';
+import { EncryptedSecretStore } from '../platform/encrypted-secret-store.ts';
 import {
   OpenAICompatibleClient,
   resolveConfiguredModelBaseUrl,

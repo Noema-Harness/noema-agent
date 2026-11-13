@@ -2,9 +2,9 @@ import { normalizeInteractionAdjustmentSnapshots } from '../storage/root-store.m
 import {
   MAX_SOCIAL_WORK_TOOL_CALLS,
   MAX_SOCIAL_WORK_TOOL_ROUNDS,
-} from '../../shared/execution/social-work-limits.mjs';
-import { isWorkspaceIdentity } from '../platform/workspace-identity.mjs';
-import { normalizeSocialWorkPhase } from '../../shared/execution/social-work-phase.mjs';
+} from '../../shared/execution/social-work-limits.ts';
+import { isWorkspaceIdentity } from '../platform/workspace-identity.ts';
+import { normalizeSocialWorkPhase } from '../../shared/execution/social-work-phase.ts';
 
 export const LEGACY_FILE_TASK_GUIDANCE =
   '用户已开启 Noema 的项目文件任务能力。只有当用户明确切换到项目工作并选择目录后，才在该任务中通过现有 DSH 流程操作文件。普通聊天不授权文件操作；每项任务的具体范围以 Noema 显示的目录与数据确认步骤为准。';

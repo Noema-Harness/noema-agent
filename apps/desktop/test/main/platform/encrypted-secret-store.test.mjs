@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { EncryptedSecretStore } from '../../../src/main/platform/encrypted-secret-store.mjs';
+import { EncryptedSecretStore } from '../../../src/main/platform/encrypted-secret-store.ts';
 
 test('stores only encrypted credentials and can replace or clear them', () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'noema-secret-store-'));

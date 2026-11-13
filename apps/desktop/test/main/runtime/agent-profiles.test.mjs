@@ -6,7 +6,7 @@ import {
   getAgentProfile,
   isAgentProfileId,
   resolveAgentProfile,
-} from '../../../src/main/runtime/agent-profiles.mjs';
+} from '../../../src/main/runtime/agent-profiles.ts';
 
 test('defines the four runtime profiles', () => {
   assert.deepEqual(AGENT_PROFILE_IDS, [

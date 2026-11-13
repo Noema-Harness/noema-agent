@@ -4,15 +4,15 @@ import path from 'node:path';
 import { SocialWorkService } from '../execution/social-work-service.mjs';
 import type { SocialChatStore } from '../chat/social-chat-store.mjs';
 import type { SocialProjectStore } from '../projects/social-project-store.mjs';
-import { captureWorkspaceIdentity } from '../platform/workspace-identity.mjs';
+import { captureWorkspaceIdentity } from '../platform/workspace-identity.ts';
 import {
   conversationExportFileName,
   formatConversationMarkdown,
-} from '../../shared/export/conversation-markdown.mjs';
+} from '../../shared/export/conversation-markdown.ts';
 import {
   formatWorkTicketMarkdown,
   workTicketExportFileName,
-} from '../../shared/export/work-ticket-markdown.mjs';
+} from '../../shared/export/work-ticket-markdown.ts';
 import type { ProviderRuntime } from './provider-runtime';
 
 type WorkspaceTarget = string;

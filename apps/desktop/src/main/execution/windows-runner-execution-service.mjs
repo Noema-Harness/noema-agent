@@ -1,12 +1,12 @@
 import path from 'node:path';
 import { realpath as defaultRealpath } from 'node:fs/promises';
 import { compileWindowsCommandPolicy } from './windows-command-policy.mjs';
-import { captureWindowsPathIdentity } from './windows-path-identity.mjs';
+import { captureWindowsPathIdentity } from './windows-path-identity.ts';
 import { createWindowsRunnerCapabilityGrants } from './windows-runner-capability-grants.mjs';
 import {
   compareWorkspaceIdentities,
   isWorkspaceIdentity,
-} from '../platform/workspace-identity.mjs';
+} from '../platform/workspace-identity.ts';
 
 const TRACE_ID = /^[A-Za-z0-9_.:-]{1,160}$/u;
 const REQUEST_ID = /^[A-Za-z0-9_-]{16,128}$/u;

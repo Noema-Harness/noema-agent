@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { MAX_COMMAND_RECOVERY_BLOB_BYTES } from '../execution/workspace-command-quotas.mjs';
+import { MAX_COMMAND_RECOVERY_BLOB_BYTES } from '../execution/workspace-command-quotas.ts';
 
 const BLOB_HASH_PATTERN = /^[a-f0-9]{64}$/u;
 const MAX_BLOB_BYTES = MAX_COMMAND_RECOVERY_BLOB_BYTES;

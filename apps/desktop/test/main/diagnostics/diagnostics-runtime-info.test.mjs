@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import Database from 'better-sqlite3';
-import { collectDiagnosticsRuntimeInfo } from '../../../src/main/diagnostics/diagnostics-runtime-info.mjs';
+import { collectDiagnosticsRuntimeInfo } from '../../../src/main/diagnostics/diagnostics-runtime-info.ts';
 import { DiagnosticsEventStore } from '../../../src/main/storage/diagnostics-event-store.mjs';
 
 test('runtime manifest includes only bounded host fields and applied migration versions', () => {

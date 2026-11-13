@@ -6,7 +6,7 @@ import test from 'node:test';
 import {
   captureWindowsDirectoryIdentity,
   captureWindowsPathIdentity,
-} from '../../../src/main/execution/windows-path-identity.mjs';
+} from '../../../src/main/execution/windows-path-identity.ts';
 
 function directoryStats({ dev = 7n, ino = 13n, directory = true } = {}) {
   return {
