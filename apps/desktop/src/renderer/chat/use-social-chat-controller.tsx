@@ -2424,6 +2424,17 @@ export function useSocialChatController() {
       );
     }
   };
+  const openAgentConversation = (agentId: string) => {
+    const room = rooms.find(
+      (item) => item.kind === 'direct' && item.memberIds.includes(agentId),
+    );
+    if (!room) {
+      setNotice('这个执行者还没有独立会话。');
+      return false;
+    }
+    selectRoom(room);
+    return true;
+  };
   const openGlobalSearchSource = async (
     roomId: string,
     message?: NoemaSocialSearchResult,
@@ -2869,6 +2880,7 @@ export function useSocialChatController() {
     handleWithdrawPracticeCandidate,
     projects,
     openProjectMemberSession,
+    openAgentConversation,
     rooms,
     selectRoom,
     setReplyTarget,

@@ -303,6 +303,7 @@ export function CoreChatApp() {
     noemaRoom,
     currentRoom,
     selectRoom,
+    openAgentConversation,
     conversationTurns,
     draft,
     setDraft,
@@ -501,10 +502,6 @@ export function CoreChatApp() {
     return () => window.cancelAnimationFrame(frame);
   }, [conversationRef, deliveryEvents.length, shouldFollowRef]);
 
-  useEffect(() => {
-    if (noemaRoom && currentRoom?.id !== noemaRoom.id) selectRoom(noemaRoom);
-  }, [currentRoom?.id, noemaRoom, selectRoom]);
-
   const saveEdit = async (message: NoemaSocialMessage) => {
     const text = editingText.trim();
     if (!text) return;
@@ -570,7 +567,14 @@ export function CoreChatApp() {
               <Icon name="noema" />
             </span>
           ) : null}
-          <strong>{user ? '你' : 'Noema'}</strong>
+          <strong>
+            {user
+              ? '你'
+              : currentRoom?.kind === 'direct' &&
+                  currentRoom.id !== noemaRoom?.id
+                ? currentRoom.title
+                : 'Noema'}
+          </strong>
           <span>{messageTime(message.createdAt)}</span>
         </div>
         <div className="message-content">
@@ -682,6 +686,17 @@ export function CoreChatApp() {
             </span>
           </div>
           <NoemaButton
+            className="core-task-inspector-chat"
+            type="button"
+            title="打开执行者会话"
+            onClick={() => {
+              setInspectedTaskId(null);
+              openAgentConversation(task.agentId);
+            }}
+          >
+            会话
+          </NoemaButton>
+          <NoemaButton
             className="icon-button"
             type="button"
             title="关闭任务详情"
@@ -770,7 +785,15 @@ export function CoreChatApp() {
       <header className="core-topbar">
         <div className="core-brand">
           <Icon name="noema" />
-          <strong>Noema</strong>
+          <strong>
+            {currentRoom?.kind === 'direct' && currentRoom.id !== noemaRoom?.id
+              ? currentRoom.title
+              : 'Noema'}
+          </strong>
+          {currentRoom?.kind === 'direct' &&
+          currentRoom.id !== noemaRoom?.id ? (
+            <small>常驻私聊</small>
+          ) : null}
         </div>
         <div className="core-top-actions">
           {latestArchive ? (
@@ -847,8 +870,18 @@ export function CoreChatApp() {
           ) : null}
           {!historyPageLoading && timelineEntries.length === 0 ? (
             <div className="core-empty">
-              <h1>有什么想做的？</h1>
-              <p>直接说结果，Noema 会安排执行并在这里展示过程。</p>
+              <h1>
+                {currentRoom?.kind === 'direct' &&
+                currentRoom.id !== noemaRoom?.id
+                  ? currentRoom.title
+                  : '有什么想做的？'}
+              </h1>
+              <p>
+                {currentRoom?.kind === 'direct' &&
+                currentRoom.id !== noemaRoom?.id
+                  ? '这里是你们的常驻私聊；任务执行记录仍留在对应任务里。'
+                  : '直接说结果，Noema 会安排执行并在这里展示过程。'}
+              </p>
             </div>
           ) : null}
           {timelineEntries.map((entry) =>

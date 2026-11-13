@@ -5351,6 +5351,12 @@ select:disabled {
   width: 18px;
   height: 18px;
 }
+.core-brand small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
 .core-top-actions {
   display: flex;
   align-items: center;
@@ -6295,6 +6301,20 @@ select:disabled {
 }
 .core-task-inspector-title .core-task-status {
   margin-left: 0;
+}
+.core-task-inspector-chat {
+  flex: 0 0 auto;
+  padding: 0 8px;
+  height: 28px;
+  border: 1px solid #ddd6ca;
+  border-radius: 7px;
+  background: #fff;
+  color: #5f594f;
+  font-size: 12px;
+}
+.core-task-inspector-chat:hover {
+  border-color: #b9ae9c;
+  color: #2f2b25;
 }
 .core-task-inspector-body {
   overflow-y: auto;

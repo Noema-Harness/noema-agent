@@ -136,12 +136,7 @@ export function createSocialWorkDialogs(
       recordWorkspaceAuthorization('granted');
       return testSocialWorkWorkspace;
     }
-    if (
-      roomId !== 'room-noema' &&
-      !projectId &&
-      agentId &&
-      agentId !== 'noema'
-    ) {
+    if (!projectId && agentId && agentId !== 'noema') {
       const agent = socialChatStore?.getAgent(agentId);
       const directory = ensureAgentDirectory({
         agentId,
