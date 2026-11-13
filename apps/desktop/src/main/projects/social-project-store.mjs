@@ -977,13 +977,30 @@ export class SocialProjectStore {
       uniqueAgentIds.forEach((agentId, position) =>
         insertGroupMember.run(groupRoomId, agentId, position),
       );
+      const teamId = `team-${projectId}`;
+      this.db
+        .prepare(`
+          INSERT INTO social_teams
+            (id, title, brief, status, lead_agent_id, group_room_id,
+             created_at, updated_at, archived_at)
+          VALUES (?, ?, ?, 'active', ?, ?, ?, ?, NULL)
+        `)
+        .run(
+          teamId,
+          normalizedTitle,
+          normalizedBrief,
+          normalizedLeadAgentId,
+          groupRoomId,
+          now,
+          now,
+        );
       this.db
         .prepare(`
           INSERT INTO social_projects
             (id, title, brief, origin_room_id, source_message_id,
              group_room_id, workspace_path, workspace_identity_json,
-             lead_agent_id, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             lead_agent_id, team_id, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `)
         .run(
           projectId,
@@ -995,6 +1012,7 @@ export class SocialProjectStore {
           normalizedWorkspacePath,
           normalizedWorkspacePath ? JSON.stringify(workspaceIdentity) : null,
           normalizedLeadAgentId,
+          teamId,
           now,
           now,
         );
@@ -1026,10 +1044,20 @@ export class SocialProjectStore {
           (project_id, agent_id, room_id, joined_at)
         VALUES (?, ?, ?, ?)
       `);
+      const insertTeamMember = this.db.prepare(`
+        INSERT INTO social_team_members (team_id, agent_id, role, joined_at)
+        VALUES (?, ?, ?, ?)
+      `);
       for (const { agent, roomId } of sessionRooms) {
         insertSessionRoom.run(roomId, agent.name, now, now);
         insertSessionMember.run(roomId, agent.id);
         insertProjectSession.run(projectId, agent.id, roomId, now);
+        insertTeamMember.run(
+          teamId,
+          agent.id,
+          agent.id === normalizedLeadAgentId ? 'lead' : 'member',
+          now,
+        );
       }
     })();
     return this.getProject(projectId);

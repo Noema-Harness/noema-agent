@@ -1232,4 +1232,67 @@ export function migrateSocialChatSchema(
       ).run(isoNow());
     })();
   }
+  if (current < 42 && targetVersion >= 42) {
+    db.transaction(() => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS social_teams (
+          id TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          brief TEXT NOT NULL DEFAULT '',
+          status TEXT NOT NULL DEFAULT 'active',
+          lead_agent_id TEXT,
+          group_room_id TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          archived_at TEXT,
+          FOREIGN KEY (group_room_id) REFERENCES social_rooms(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_social_teams_status
+          ON social_teams(status, updated_at DESC);
+        CREATE TABLE IF NOT EXISTS social_team_members (
+          team_id TEXT NOT NULL,
+          agent_id TEXT NOT NULL,
+          role TEXT NOT NULL DEFAULT 'member',
+          joined_at TEXT NOT NULL,
+          removed_at TEXT,
+          PRIMARY KEY (team_id, agent_id),
+          FOREIGN KEY (team_id) REFERENCES social_teams(id) ON DELETE CASCADE
+        );
+      `);
+      const projectColumns = db
+        .prepare('PRAGMA table_info(social_projects)')
+        .all();
+      if (!projectColumns.some((column) => column.name === 'team_id')) {
+        db.exec('ALTER TABLE social_projects ADD COLUMN team_id TEXT');
+      }
+      const now = isoNow();
+      db.prepare(`
+        INSERT OR IGNORE INTO social_teams
+          (id, title, brief, status, lead_agent_id, group_room_id,
+           created_at, updated_at, archived_at)
+        SELECT 'team-' || p.id, p.title, p.brief,
+               CASE WHEN p.status = 'archived' THEN 'archived' ELSE 'active' END,
+               p.lead_agent_id, p.group_room_id, p.created_at, p.updated_at,
+               p.archived_at
+        FROM social_projects AS p
+      `).run();
+      db.prepare(`
+        UPDATE social_projects
+        SET team_id = 'team-' || id
+        WHERE team_id IS NULL
+      `).run();
+      db.prepare(`
+        INSERT OR IGNORE INTO social_team_members
+          (team_id, agent_id, role, joined_at, removed_at)
+        SELECT 'team-' || s.project_id, s.agent_id,
+               CASE WHEN s.agent_id = p.lead_agent_id THEN 'lead' ELSE 'member' END,
+               s.joined_at, s.removed_at
+        FROM social_project_sessions AS s
+        JOIN social_projects AS p ON p.id = s.project_id
+      `).run();
+      db.prepare(
+        'INSERT INTO social_schema_migrations(version, applied_at) VALUES (42, ?)',
+      ).run(now);
+    })();
+  }
 }

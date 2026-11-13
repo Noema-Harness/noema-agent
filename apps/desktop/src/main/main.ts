@@ -42,6 +42,7 @@ import { saveDiagnosticsExport } from './diagnostics/save-diagnostics-export.mjs
 import { SocialChatStore } from './chat/social-chat-store.mjs';
 import { SOCIAL_SCHEMA_VERSION } from './chat/social-chat-schema.mjs';
 import { SocialProjectStore } from './projects/social-project-store.mjs';
+import { SocialTeamStore } from './chat/social-team-store.mjs';
 import { SocialChatService } from './chat/social-chat-service.mjs';
 import { searchAndReadWeb } from './tools/web-search.mjs';
 import { SocialWorkService } from './execution/social-work-service.mjs';
@@ -287,6 +288,7 @@ let rootAgent: RootAgent | null = null;
 let legacyHistoryArchiveService: LegacyHistoryArchiveService | null = null;
 let socialChatStore: SocialChatStore | null = null;
 let socialProjectStore: SocialProjectStore | null = null;
+let socialTeamStore: SocialTeamStore | null = null;
 let socialChatService: SocialChatService | null = null;
 let socialWorkService: SocialWorkService | null = null;
 let socialAgentE2eModelRequests: Array<{
@@ -657,6 +659,7 @@ async function startNoema() {
       db: rootStore.db,
       socialChatStore,
     });
+    socialTeamStore = new SocialTeamStore({ db: rootStore.db });
     const socialE2e = createSocialE2eRuntime({
       app,
       provider,
@@ -974,6 +977,7 @@ async function startNoema() {
       rootAgent: agent,
       socialChatService,
       socialProjectStore,
+      socialTeamStore,
       socialWorkService,
       getWorkTaskUsage: (taskId) => modelUsageStore.getTaskUsage(taskId),
       getWorkTaskTouchedFiles: (taskId: string) =>

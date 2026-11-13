@@ -1354,6 +1354,7 @@ export function useSocialChatController() {
   const agents = state?.agents ?? [];
   const activeAgents = agents.filter((agent) => !agent.archivedAt);
   const projects = state?.projects ?? [];
+  const teams = state?.teams ?? [];
   const editingAgent = editingAgentId
     ? (agents.find((agent) => agent.id === editingAgentId) ?? null)
     : null;
@@ -2879,6 +2880,7 @@ export function useSocialChatController() {
     handleDisableCaseReuse,
     handleWithdrawPracticeCandidate,
     projects,
+    teams,
     openProjectMemberSession,
     openAgentConversation,
     rooms,

@@ -39,7 +39,7 @@ function rebuildContinuity(db) {
 test('schema 39 backfills one resident timeline with explicit project lead', () => {
   const { db, social } = makeStores();
   try {
-    assert.equal(SOCIAL_SCHEMA_VERSION, 41);
+    assert.equal(SOCIAL_SCHEMA_VERSION, 42);
     const turn = addCompleteTurn(social, 'first question');
     rebuildContinuity(db);
 
