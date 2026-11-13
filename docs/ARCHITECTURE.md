@@ -61,15 +61,16 @@ renderer (React)
 - **团队负责人**：团队内的头衔，不是岗位库条目；一个管理 Agent 可以同时负责多个团队，团队权限与章程按团队单独授予。
 - **工单**：一次执行的工作单元；有承接人、目标、工作区、步骤、文件变更和结果。工单不是用户维护的任务卡。
 
-当前实现已在旧 `room/branch` 结构上补了执行者常驻私聊入口和项目显式负责人；项目 fork、团队共享上下文、岗位库、负责人提案与默认 A 审批尚未落地。目标结构不是现状。
+当前实现已在旧 `room/branch` 结构上补了执行者常驻私聊入口、项目显式负责人和两阶段团队提案/审批；项目 fork、团队共享上下文、岗位库、负责人自动提案与默认 A 审批尚未落地。目标结构不是现状。
 
-### 3.2 当前实现（阶段 1）
+### 3.2 当前实现（阶段 1–4）
 
 - `apps/desktop/src/main/agents/agent-runtime-core.mjs` 提供最小不可变核心：`agentId`、角色、Agent Home、工作区、记忆/会话命名空间、工具授权、运行时适配器、追加式 JSONL 事件日志（`<Agent Home>/events.jsonl`）。事件只有 append/read，没有更新或删除。
 - `createAgentRuntimePair` 在 `userData/agents/noema` 和 `userData/agents/noema-executor/workspace` 创建两个独立个体环境；测试覆盖隔离、持久化、序号恢复、并发追加和非法输入。
 - 当前只有 Noema 主对话接入运行时事件：`SocialChatService` 在 `turn.started/completed/failed/interrupted` 写入 Noema 的日志；读取失败只记录诊断，不影响回复。Core Chat 不经过 `RootAgent`，`RootAgent` 上的旧事件桥不再作为当前路径。
 - Noema 自身工具调用通过 `chat-trace` 内联在回复下方；普通回答没有工具时不显示轨迹。工具调用和结果以 `stepId` 成对保存，渲染层不把结果覆盖掉调用。
-- 仍有限制：执行者实际执行仍由 `SocialWorkService`/DSH 承担，执行者核心已创建但还没有自己的运行事件；岗位库/模板、负责人提案与 A 审批、项目长期群、Git 历史、六模块均未实现。
+- Noema 主聊创建新团队走两阶段：`propose_project_team` 只写入 `project_team_proposals` 的待决记录，不创建项目；`decide_project_team` 在用户确认后创建项目/团队。项目群内继续使用 `create_project_team` 增补已有项目成员，避免把“继续项目”误当成新建。
+- 仍有限制：执行者实际执行仍由 `SocialWorkService`/DSH 承担，执行者核心已创建但还没有自己的运行事件；岗位库/模板、负责人自动提案与默认 A 审批、项目长期群、Git 历史、六模块均未实现。
 
 ## 4. 六模块与能力
 
@@ -146,8 +147,9 @@ SQLite 是主要产品事实源；`.work/` 只放过程材料。Agent 个体事�
 - `social_messages`、`social_rooms`、`social_agents`：对话、房间、Agent 身份。
 - `social_projects`、`social_work_tasks`、`social_work_execution_steps`：项目、负责人（`lead_agent_id`）、工单、执行步骤。
 - `social_work_file_changes`、`file_change_operations`、`command_batches`：文件与命令证据（当前部分场景为空）。
-- `conversation_branches`、`conversation_turns`、`conversation_active_branch`：连续时间线/检查点（schema 38）；当前产品路径只保留单一可见时间线，分支不暴露。
+- `conversation_branches`、`conversation_turns`、`conversation_active_branch`：连续时间线/检查点（schema 40）；当前产品路径只保留单一可见时间线，分支不暴露。
 - `conversation_archives`：编辑/重发前的不可变消息+分支+回合快照；恢复时先把当前线存为 `pre_restore`，再切换 HEAD。
+- `project_team_proposals`：新建团队的待决提案（标题、简报、负责人、成员 JSON、状态、决定原因）；批准后才创建项目。
 - `memories`、`settings`：记忆与配置；密钥在加密存储，不进入对话或日志。
 - 工作区身份、文件边界和滚动恢复由 `social_projects`/workspace identity 记录。
 - `<Agent Home>/events.jsonl`：追加式个体事件流，当前记录 Noema 回合开始/完成/失败/中断；序号单调，读取按游标，不能更新或删除。
@@ -165,8 +167,8 @@ SQLite 是主要产品事实源；`.work/` 只放过程材料。Agent 个体事�
 
 ## 9. 现状与目标
 
-已交付：Core Chat 单对话、流式回复、消息操作、历史、设置；工单派发与执行轨迹；DSH/native；Windows Runner；SQLite；任务 dock、完成事件和交付记录；0.7.2 的工作区路由与 DSH 非 JSON 容错；阶段 1 的 AgentRuntime 最小核心、Noema 回合事件日志和 Noema 工具调用内联轨迹；阶段 2 的单 HEAD 用户截断重发、助手原位编辑、会话失效、编辑前不可变归档和顶栏恢复；阶段 3 的任务详情→执行者常驻私聊、执行者身份展示和直接专家默认工作区回退。
+已交付：Core Chat 单对话、流式回复、消息操作、历史、设置；工单派发与执行轨迹；DSH/native；Windows Runner；SQLite；任务 dock、完成事件和交付记录；0.7.2 的工作区路由与 DSH 非 JSON 容错；阶段 1 的 AgentRuntime 最小核心、Noema 回合事件日志和 Noema 工具调用内联轨迹；阶段 2 的单 HEAD 用户截断重发、助手原位编辑、会话失效、编辑前不可变归档和顶栏恢复；阶段 3 的任务详情→执行者常驻私聊、执行者身份展示和直接专家默认工作区回退；阶段 4 的项目显式负责人、两阶段团队提案/审批和项目群内继续增补成员。
 
-未交付：`@Noema` 跨房间寻址、执行者自己的 AgentRuntime 事件日志/证据、工作区文件回滚、常驻会话/项目 fork 拓扑、岗位库/模板与招募分层、负责人提案/默认 A 审批、项目长期群、六模块实现、ContextCompiler、Memory Store、完整任务证据。
+未交付：`@Noema` 跨房间寻址、执行者自己的 AgentRuntime 事件日志/证据、工作区文件回滚、常驻会话/项目 fork 拓扑、岗位库/模板与招募分层、负责人自动提案/默认 A 审批 gate、项目长期群、六模块实现、ContextCompiler、Memory Store、完整任务证据。
 
 版本、测试、安装和下一步只写在 [STATUS](STATUS.md)，不在本文件重复。
