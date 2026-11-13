@@ -61,7 +61,7 @@ renderer (React)
 - **团队负责人**：团队内的头衔，不是岗位库条目；一个管理 Agent 可以同时负责多个团队，团队权限与章程按团队单独授予。
 - **工单**：一次执行的工作单元；有承接人、目标、工作区、步骤、文件变更和结果。工单不是用户维护的任务卡。
 
-当前实现仍是旧 `room/branch` 结构：用户看不到执行者常驻私聊，项目 fork、团队共享上下文、岗位库和项目负责人尚未落地。目标结构不是现状。
+当前实现已在旧 `room/branch` 结构上补了执行者常驻私聊入口和项目显式负责人；项目 fork、团队共享上下文、岗位库、负责人提案与默认 A 审批尚未落地。目标结构不是现状。
 
 ### 3.2 当前实现（阶段 1）
 
@@ -69,7 +69,7 @@ renderer (React)
 - `createAgentRuntimePair` 在 `userData/agents/noema` 和 `userData/agents/noema-executor/workspace` 创建两个独立个体环境；测试覆盖隔离、持久化、序号恢复、并发追加和非法输入。
 - 当前只有 Noema 主对话接入运行时事件：`SocialChatService` 在 `turn.started/completed/failed/interrupted` 写入 Noema 的日志；读取失败只记录诊断，不影响回复。Core Chat 不经过 `RootAgent`，`RootAgent` 上的旧事件桥不再作为当前路径。
 - Noema 自身工具调用通过 `chat-trace` 内联在回复下方；普通回答没有工具时不显示轨迹。工具调用和结果以 `stepId` 成对保存，渲染层不把结果覆盖掉调用。
-- 仍有限制：执行者实际执行仍由 `SocialWorkService`/DSH 承担，执行者核心已创建但还没有自己的运行事件；岗位库、团队、项目、Git 历史、六模块均未实现。
+- 仍有限制：执行者实际执行仍由 `SocialWorkService`/DSH 承担，执行者核心已创建但还没有自己的运行事件；岗位库/模板、负责人提案与 A 审批、项目长期群、Git 历史、六模块均未实现。
 
 ## 4. 六模块与能力
 
@@ -144,7 +144,7 @@ apps/desktop/src/shared/     跨进程契约与 bridge 类型
 SQLite 是主要产品事实源；`.work/` 只放过程材料。Agent 个体事件日志是每个 Agent Home 下的追加式 JSONL，用于个体运行审计，不替代工单/消息事实表。
 
 - `social_messages`、`social_rooms`、`social_agents`：对话、房间、Agent 身份。
-- `social_projects`、`social_work_tasks`、`social_work_execution_steps`：项目、工单、执行步骤。
+- `social_projects`、`social_work_tasks`、`social_work_execution_steps`：项目、负责人（`lead_agent_id`）、工单、执行步骤。
 - `social_work_file_changes`、`file_change_operations`、`command_batches`：文件与命令证据（当前部分场景为空）。
 - `conversation_branches`、`conversation_turns`、`conversation_active_branch`：连续时间线/检查点（schema 38）；当前产品路径只保留单一可见时间线，分支不暴露。
 - `conversation_archives`：编辑/重发前的不可变消息+分支+回合快照；恢复时先把当前线存为 `pre_restore`，再切换 HEAD。
@@ -167,6 +167,6 @@ SQLite 是主要产品事实源；`.work/` 只放过程材料。Agent 个体事�
 
 已交付：Core Chat 单对话、流式回复、消息操作、历史、设置；工单派发与执行轨迹；DSH/native；Windows Runner；SQLite；任务 dock、完成事件和交付记录；0.7.2 的工作区路由与 DSH 非 JSON 容错；阶段 1 的 AgentRuntime 最小核心、Noema 回合事件日志和 Noema 工具调用内联轨迹；阶段 2 的单 HEAD 用户截断重发、助手原位编辑、会话失效、编辑前不可变归档和顶栏恢复；阶段 3 的任务详情→执行者常驻私聊、执行者身份展示和直接专家默认工作区回退。
 
-未交付：`@Noema` 跨房间寻址、执行者自己的 AgentRuntime 事件日志/证据、工作区文件回滚、常驻会话/项目 fork 拓扑、岗位库/团队/团队负责人/项目负责人、六模块实现、ContextCompiler、Memory Store、完整任务证据。
+未交付：`@Noema` 跨房间寻址、执行者自己的 AgentRuntime 事件日志/证据、工作区文件回滚、常驻会话/项目 fork 拓扑、岗位库/模板与招募分层、负责人提案/默认 A 审批、项目长期群、六模块实现、ContextCompiler、Memory Store、完整任务证据。
 
 版本、测试、安装和下一步只写在 [STATUS](STATUS.md)，不在本文件重复。

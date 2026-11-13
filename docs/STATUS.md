@@ -9,8 +9,8 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 ## 版本与源码
 
 - 源码版本：`0.7.2`。
-- 当前源码基线：`020b102 feat: open direct executor conversation from task inspector`；上一基线 `326a2fc feat: restore archived conversation lines`。
-- 最近交付：阶段 3 任务详情可直接打开执行者常驻私聊，显示执行者身份并可对话；直接专家任务在缺少显式工作区时落到该执行者的默认目录；阶段 2 单 HEAD 用户消息截断重发、助手回复原位编辑、会话失效、编辑/重发前的不可变消息/回合存档，以及顶栏“恢复修改前版本”；阶段 1 AgentRuntime 核心、Noema 回合事件日志、Noema 工具调用内联轨迹；`463d817` 任务完成事件 + 本地持久化；`4f21ac3` 任务 dock 生命周期/胶囊/交付记录；`2b742a1` 移除聊天流内任务卡。
+- 当前源码基线：`3e19139 feat: add explicit project team lead`；上一基线 `020b102 feat: open direct executor conversation from task inspector`。
+- 最近交付：阶段 4 项目显式负责人（schema 39，`social_projects.lead_agent_id`）；阶段 3 任务详情可直接打开执行者常驻私聊，显示执行者身份并可对话；直接专家任务在缺少显式工作区时落到该执行者的默认目录；阶段 2 单 HEAD 用户消息截断重发、助手回复原位编辑、会话失效、编辑/重发前的不可变消息/回合存档，以及顶栏“恢复修改前版本”；阶段 1 AgentRuntime 核心、Noema 回合事件日志、Noema 工具调用内联轨迹；`463d817` 任务完成事件 + 本地持久化；`4f21ac3` 任务 dock 生命周期/胶囊/交付记录；`2b742a1` 移除聊天流内任务卡。
 - 文档收敛：五份权威文档 + README/AGENTS；`BEHAVIOR`/`SYSTEM` 已合并删除，`.codex/workspace.json` 为 7 个当前入口；D-016/D-017 已记录 Agent 核心分层与团队审批 A。
 - 已安装：`0.7.2`，路径 `C:\Users\NUC\AppData\Local\noema_desktop\app-0.7.2\Noema.exe`。该安装早于任务卡/生命周期/完成事件三个提交，不包含当前源码 UI。
 - 本轮没有重新打包或安装；0.7.2 之后不再更新安装包。发布构建只在准备分发时进行。
@@ -23,16 +23,18 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 - 完成事件：每个任务一条，完成/失败/中断分别标记；最近 8 条写入 `localStorage`，刷新后保留；损坏/不可用时回退为空，不影响交付记录。
 - AgentRuntime 阶段 1：Noema/执行者两个独立 Agent Home；Noema 回合开始/完成/失败/中断写入追加式 `events.jsonl`；Noema 工具调用在回复下方内联显示，普通回答不显示轨迹。
 - 可见执行者：交付记录/任务详情可打开执行者的常驻私聊；标题与消息署名使用执行者姓名，可直接对话。直接专家任务缺少工作区时自动使用该执行者的默认目录。
+- 项目负责人：项目创建/继续时可指定一名 Noema 或项目成员为负责人，项目数据保存 `lead_agent_id`，读取结果带 `leadName`；目前没有负责人提案、默认 A 审批或团队章程。
 - 单 HEAD 编辑：用户消息编辑会删除该消息及之后的对话再重发；助手回复可原位修改且不重发；编辑后自动失效该房间运行时会话，下一轮读取完整历史；分支 ID 不出现在界面。
 - 编辑前存档与恢复：每次用户截断重发或助手原位编辑前，会把消息、分支和回合快照写入 `conversation_archives`；顶栏在存在存档时显示“恢复修改前版本”，恢复前会先把当前线保存为 `pre_restore`，恢复后回到上一条可见时间线。
 - 0.7.2 已包含工作区路由和 DSH 非 JSON 容错；真实 inventory/orders 任务已验证文件修改和测试通过。
 
 ## 验证
 
-- `npm run check`：**853/853，0 fail，30,137.6356ms**（阶段 3 可见执行者后最后一次全量）。
+- `npm run check`：**853/853，0 fail，27,635.2795ms**（项目显式负责人后最后一次全量）。
 - `npm run typecheck`：通过。
 - `test/main/chat/social-chat-store.test.mjs`：**49/49**，包含助手消息原地编辑和编辑/重开后的存档恢复。
-- `test/main/chat/conversation-continuity.test.mjs`：**11/11**，schema 38 的迁移与回退断言通过。
+- `test/main/chat/conversation-continuity.test.mjs`：**11/11**，schema 39 的迁移与回退断言通过。
+- `test/main/projects/social-project-store.test.mjs` + continuity：**26/26**，包含项目负责人持久化与 `leadName` 断言。
 - 真实任务：`orders` 双缺陷修复（`orders tests passed`）、`inventory` `totalValue` 修复、任务完成事件、刷新持久化、执行者详情；Noema 三轮回合事件写入 `events.jsonl`（序号 1–6，开始/完成成对），唯一文件读取的内联 `mcp__noema__read_file` 轨迹可见；真实编辑验证了用户消息截断重发、助手回复原位保存及后续上下文读取；助手和用户编辑后的“恢复修改前版本”均恢复旧时间线，当前线写入 `pre_restore`。
 - 这些是工程/产品自查证据，不等于用户最终验收；最终验收以真实使用和用户判断为准。
 
@@ -40,7 +42,7 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 1. **执行者会话拓扑**：执行者私有常驻会话已可从任务详情打开；`@Noema` 跨房间寻址、执行者自己的 AgentRuntime 事件日志/证据、常驻会话与项目 fork 仍未实现。
 2. **会话拓扑**：仍使用旧 room/branch 结构；常驻会话、项目 fork、团队共享上下文、项目结束归档/复盘未实现。
-3. **岗位库/团队/项目负责人**：组织对象和长期团队、岗位复用、团队负责人、项目负责人尚未落地。
+3. **岗位库/团队**：项目显式负责人已落地；岗位库/模板、招募与模板分层、团队章程、负责人提案、默认 A 审批、项目长期群尚未落地。
 4. **六模块**：Core/Policy/Competence/Tool Grants/Memory/Context 仍是目标；ContextCompiler、Memory Store、ModuleHost 热重载未交付。
 5. **工作区回滚**：对话编辑、不可变存档和恢复入口已交付；工作区文件回滚未实现。对话历史按 D-018 使用 SQLite 不可变快照，不引入外部 Git；分支表仍保留为兼容/检查点。
 6. **证据完整性**：部分执行路径的 `social_work_file_changes`、`file_change_operations`、`command_batches` 为空，任务验收仍依赖步骤/文本证据。
@@ -62,7 +64,7 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 1. **阶段 2：历史与编辑**：编辑语义、不可变存档和恢复入口已交付；存储选择已定为 SQLite 快照（D-018）。剩余工作区文件回滚，放到执行者工作区阶段。
 2. **阶段 3：可见执行者**：任务详情 → 执行者常驻私聊已交付；剩余 `@Noema` 跨房间寻址、执行者自己的 AgentRuntime 事件日志/证据，以及常驻会话/项目 fork。
-3. **阶段 4：组织层**：岗位库模板、招募与模板分层、长期团队、团队负责人提案、默认 A 审批、项目结束归档/复盘。
+3. **阶段 4：组织层**：项目显式负责人已交付；剩余岗位库/模板、招募与模板分层、长期团队、负责人提案、默认 A 审批、项目长期群。
 4. **阶段 5：六模块与前端**：用六模块和 ContextCompiler 替换当前提示词/工具/上下文拼装，再做一次主要前端升级。
 5. **收尾**：补齐任务文件/命令证据，完成最终验收与分发构建。
 
