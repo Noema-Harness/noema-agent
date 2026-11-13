@@ -70,6 +70,7 @@ import { NoemaProjectExecutor } from './execution/noema-project-executor.mjs';
 import { createNoemaToolRegistry } from './runtime/noema-tool-registry.mjs';
 import { NoemaToolSession } from './mcp/noema-tool-session.mjs';
 import { createChatTicketTool } from './chat/chat-ticket-tool.mjs';
+import { createProjectTeamTools } from './chat/project-team-tools.mjs';
 import { createNoemaReadTools } from './chat/noema-read-tools.mjs';
 import { isMainFrameIpcEvent } from './platform/window-security.mjs';
 import {
@@ -824,6 +825,12 @@ async function startNoema() {
                 sessionId?: string | null;
                 agentId?: string;
               }) => socialWorkService!.startTicket(input),
+            }),
+            ...createProjectTeamTools({
+              propose: (input: object) =>
+                socialChatService!.proposeProjectTeamFromTool(input),
+              decide: (input: object) =>
+                socialChatService!.decideProjectTeamFromTool(input),
             }),
             ...createNoemaReadTools(),
           ]),
