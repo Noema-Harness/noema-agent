@@ -1,4 +1,4 @@
-﻿import assert from 'node:assert/strict';
+import assert from 'node:assert/strict';
 import test from 'node:test';
 import Database from 'better-sqlite3';
 import { createSocialTestStore } from '../../../test-support/social-team.mjs';
@@ -39,7 +39,7 @@ function rebuildContinuity(db) {
 test('schema 39 backfills one resident timeline with explicit project lead', () => {
   const { db, social } = makeStores();
   try {
-    assert.equal(SOCIAL_SCHEMA_VERSION, 40);
+    assert.equal(SOCIAL_SCHEMA_VERSION, 41);
     const turn = addCompleteTurn(social, 'first question');
     rebuildContinuity(db);
 

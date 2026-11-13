@@ -3478,3 +3478,40 @@ test('conversation threads expose titles and rewind only the active thread', () 
     db.close();
   }
 });
+
+test('job templates seed lineage and template updates do not rewrite individuals', () => {
+  const { db, social } = makeStores();
+  try {
+    const template = social.getJobTemplate('frontend-engineer');
+    assert.equal(template.version, 1);
+    const created = social.createAgent({
+      name: '模板前端',
+      jobTemplateId: template.id,
+    });
+    const agentId = created.members[0].id;
+    const lineage = db
+      .prepare(
+        'SELECT job_template_id, job_template_version FROM social_agents WHERE id = ?',
+      )
+      .get(agentId);
+    assert.equal(lineage.job_template_id, 'frontend-engineer');
+    assert.equal(lineage.job_template_version, 1);
+
+    const updated = social.updateJobTemplate({
+      jobTemplateId: 'frontend-engineer',
+      title: '前端工程师',
+      headline: 'Web 前端实现与静态交付（新版本）',
+      description: '模板更新后的职责说明。',
+    });
+    assert.equal(updated.version, 2);
+    const after = db
+      .prepare(
+        'SELECT headline, job_template_version FROM social_agents WHERE id = ?',
+      )
+      .get(agentId);
+    assert.equal(after.job_template_version, 1);
+    assert.equal(after.headline, template.headline);
+  } finally {
+    db.close();
+  }
+});

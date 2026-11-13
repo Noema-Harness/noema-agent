@@ -1091,6 +1091,7 @@ export class SocialProjectStore {
           800,
         ),
         projectWork: member.newAgent.projectWork ?? false,
+        jobTemplateId: member.newAgent.job_template_id ?? null,
       };
       if (typeof newAgent.projectWork !== 'boolean') {
         throw new TypeError('新成员的项目工作能力必须是布尔值。');

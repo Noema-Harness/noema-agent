@@ -1131,6 +1131,81 @@ export function migrateSocialChatSchema(
       ).run(isoNow());
     })();
   }
+  if (current < 41 && targetVersion >= 41) {
+    db.transaction(() => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS job_templates (
+          id TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          role TEXT NOT NULL,
+          headline TEXT NOT NULL,
+          description TEXT NOT NULL,
+          version INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          archived_at TEXT
+        );
+      `);
+      const agentColumns = db.prepare('PRAGMA table_info(social_agents)').all();
+      if (!agentColumns.some((column) => column.name === 'job_template_id')) {
+        db.exec(
+          'ALTER TABLE social_agents ADD COLUMN job_template_id TEXT REFERENCES job_templates(id) ON DELETE SET NULL',
+        );
+      }
+      if (
+        !agentColumns.some((column) => column.name === 'job_template_version')
+      ) {
+        db.exec(
+          'ALTER TABLE social_agents ADD COLUMN job_template_version INTEGER',
+        );
+      }
+      const now = isoNow();
+      const insert = db.prepare(`
+        INSERT OR IGNORE INTO job_templates
+          (id, title, role, headline, description, version, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+      `);
+      insert.run(
+        'frontend-engineer',
+        '前端工程师',
+        '前端工程',
+        'Web 前端实现与静态交付',
+        '负责界面、交互、状态管理、浏览器兼容与静态文件交付；按项目要求实现并自测。',
+        now,
+        now,
+      );
+      insert.run(
+        'quality-engineer',
+        '质量工程师',
+        '质量工程',
+        '独立验收与自动化检查',
+        '只读验收交付物，逐项给出通过、不通过或未验证的结论与证据，不修改交付物。',
+        now,
+        now,
+      );
+      insert.run(
+        '3d-engineer',
+        '3D 开发工程师',
+        '实时 3D',
+        'WebGL 与实时 3D 实现',
+        '负责实时 3D、WebGL 场景、交互与性能实现，按项目要求完成可运行交付。',
+        now,
+        now,
+      );
+      insert.run(
+        'technical-researcher',
+        '技术可行性研究员',
+        '技术研究',
+        '技术可行性与方案研究',
+        '负责技术路线、约束和可行性研究，区分已验证结论、推断和未知项。',
+        now,
+        now,
+      );
+      db.prepare(
+        'INSERT INTO social_schema_migrations(version, applied_at) VALUES (41, ?)',
+      ).run(now);
+    })();
+  }
   if (current < 40 && targetVersion >= 40) {
     db.transaction(() => {
       db.exec(`

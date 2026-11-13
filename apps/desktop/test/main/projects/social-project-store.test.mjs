@@ -119,6 +119,63 @@ test('a project creates one shared room and separate hidden member sessions', ()
   }
 });
 
+test('a project recruits a job-template agent and freezes its lineage version', () => {
+  const stores = makeStores();
+  const existing = createMember(stores.socialChatStore);
+  try {
+    stores.socialProjectStore.formProjectTeam({
+      title: '模板招聘项目',
+      brief: '验证岗位模板在项目招聘中的血缘和版本冻结。',
+      members: [
+        { agentId: existing.agentId, task: '提供现有成员职责。' },
+        {
+          newAgent: {
+            name: '模板前端',
+            headline: '不会被模板覆盖',
+            description: '不会被模板覆盖。',
+            job_template_id: 'frontend-engineer',
+          },
+          task: '实现项目界面。',
+        },
+      ],
+    });
+    const recruited = stores.db
+      .prepare("SELECT id FROM social_agents WHERE name = '模板前端'")
+      .get();
+    assert.ok(recruited);
+    const row = stores.db
+      .prepare(
+        `SELECT headline, job_template_id AS jobTemplateId,
+                job_template_version AS jobTemplateVersion
+         FROM social_agents WHERE id = ?`,
+      )
+      .get(recruited.id);
+    assert.equal(row.jobTemplateId, 'frontend-engineer');
+    assert.equal(row.jobTemplateVersion, 1);
+    assert.equal(row.headline, 'Web 前端实现与静态交付');
+    stores.socialChatStore.updateJobTemplate({
+      jobTemplateId: 'frontend-engineer',
+      title: '前端工程师',
+      headline: '更新后的模板标题',
+      description: '更新后的模板说明。',
+    });
+    assert.equal(
+      stores.socialChatStore.getJobTemplate('frontend-engineer').version,
+      2,
+    );
+    const after = stores.db
+      .prepare(
+        `SELECT headline, job_template_version AS jobTemplateVersion
+         FROM social_agents WHERE id = ?`,
+      )
+      .get(recruited.id);
+    assert.equal(after.jobTemplateVersion, 1);
+    assert.equal(after.headline, 'Web 前端实现与静态交付');
+  } finally {
+    stores.db.close();
+  }
+});
+
 test('project workspace binding is durable and cannot change during active project work', () => {
   const stores = makeStores();
   const member = createMember(stores.socialChatStore);

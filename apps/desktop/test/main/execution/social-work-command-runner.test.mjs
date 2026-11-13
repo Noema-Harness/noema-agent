@@ -115,6 +115,7 @@ test('a command runs only in its mirror and writes back per path', async () => {
     store: harness.store,
     runner,
     mirrorRoot: harness.mirrorRoot,
+    freeSpace: () => 64 * 1024 * 1024 * 1024,
   });
   try {
     const result = await commandRunner.run({
@@ -213,6 +214,7 @@ test('Git metadata is read-only, excluded from the mirror, and bound by environm
     store: harness.store,
     runner,
     mirrorRoot: harness.mirrorRoot,
+    freeSpace: () => 64 * 1024 * 1024 * 1024,
   });
   try {
     await commandRunner.run({
@@ -268,6 +270,7 @@ test('a linked Git worktree exposes its git dir and common dir read-only', async
     store: harness.store,
     runner,
     mirrorRoot: harness.mirrorRoot,
+    freeSpace: () => 64 * 1024 * 1024 * 1024,
   });
   try {
     await commandRunner.run({
@@ -369,6 +372,7 @@ test('a per-path writeback conflict preserves applied files and records partial'
     store: harness.store,
     runner,
     mirrorRoot: harness.mirrorRoot,
+    freeSpace: () => 64 * 1024 * 1024 * 1024,
   });
   try {
     await commandRunner.run({
@@ -426,6 +430,7 @@ test('a source edit during the command blocks writeback and retains the mirror',
     store: harness.store,
     runner,
     mirrorRoot: harness.mirrorRoot,
+    freeSpace: () => 64 * 1024 * 1024 * 1024,
   });
   try {
     await assert.rejects(
@@ -556,6 +561,7 @@ test('a timed-out command keeps its mirror and quarantines the batch', async () 
       },
     },
     mirrorRoot: harness.mirrorRoot,
+    freeSpace: () => 64 * 1024 * 1024 * 1024,
   });
   try {
     const result = await commandRunner.run({

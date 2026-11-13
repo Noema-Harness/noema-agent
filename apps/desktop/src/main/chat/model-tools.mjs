@@ -157,6 +157,11 @@ export function projectTeamTool({ projectWorkReady }) {
       type: 'string',
       description: '这位联系人长期的合作方式与职责边界。',
     },
+    job_template_id: {
+      type: 'string',
+      description:
+        '可选：使用隐藏岗位库中的模板 ID（frontend-engineer、quality-engineer、3d-engineer、technical-researcher）。指定后以模板的专业范围/合作方式为准，并记录岗位模板版本。',
+    },
     ...(projectWorkReady
       ? {
           project_work: {
