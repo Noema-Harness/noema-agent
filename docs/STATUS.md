@@ -9,8 +9,8 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 ## 版本与源码
 
 - 源码版本：`0.7.2`。
-- 当前源码基线：`cc96d0f feat: add two-phase project team proposals`；上一基线 `8ce6085 docs: record explicit project team lead`。
-- 最近交付：阶段 4 两阶段团队提案/审批（schema 40，`project_team_proposals`；新建团队先 pending，批准后才创建项目）、项目显式负责人（schema 39，`social_projects.lead_agent_id`）；阶段 3 任务详情可直接打开执行者常驻私聊，显示执行者身份并可对话；直接专家任务在缺少显式工作区时落到该执行者的默认目录；阶段 2 单 HEAD 用户消息截断重发、助手回复原位编辑、会话失效、编辑/重发前的不可变消息/回合存档，以及顶栏“恢复修改前版本”；阶段 1 AgentRuntime 核心、Noema 回合事件日志、Noema 工具调用内联轨迹；`463d817` 任务完成事件 + 本地持久化；`4f21ac3` 任务 dock 生命周期/胶囊/交付记录；`2b742a1` 移除聊天流内任务卡。
+- 当前源码基线：`dce5256 feat: expose team proposal tools to DSH`；上一基线 `7fe4712 fix: collapse completed tool traces`。
+- 最近交付：阶段 4 团队提案/审批通过 DSH 可见的 MCP 工具完成（`propose_project_team`/`decide_project_team`），批准后创建项目、团队和负责人；阶段 4 两阶段团队提案/审批（schema 40，`project_team_proposals`）、项目显式负责人（schema 39，`social_projects.lead_agent_id`）；阶段 3 任务详情可直接打开执行者常驻私聊，显示执行者身份并可对话；直接专家任务在缺少显式工作区时落到该执行者的默认目录；阶段 2 单 HEAD 用户消息截断重发、助手回复原位编辑、会话失效、编辑/重发前的不可变消息/回合存档，以及顶栏“恢复修改前版本”；阶段 1 AgentRuntime 核心、Noema 回合事件日志、Noema 工具调用内联轨迹；`463d817` 任务完成事件 + 本地持久化；`4f21ac3` 任务 dock 生命周期/胶囊/交付记录；`2b742a1` 移除聊天流内任务卡。
 - 文档收敛：五份权威文档 + README/AGENTS；`BEHAVIOR`/`SYSTEM` 已合并删除，`.codex/workspace.json` 为 7 个当前入口；D-016/D-017 已记录 Agent 核心分层与团队审批 A。
 - 已安装：`0.7.2`，路径 `C:\Users\NUC\AppData\Local\noema_desktop\app-0.7.2\Noema.exe`。该安装早于任务卡/生命周期/完成事件三个提交，不包含当前源码 UI。
 - 本轮没有重新打包或安装；0.7.2 之后不再更新安装包。发布构建只在准备分发时进行。
@@ -31,13 +31,13 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 ## 验证
 
-- `npm run check`：**854/854，0 fail，28,042.6508ms**（阶段 4 两阶段团队提案后最后一次全量）。
+- `npm run check`：**854/854，0 fail，36,178.0124ms**（阶段 4 MCP 团队提案/审批后最后一次全量）。
 - `npm run typecheck`：通过。
 - `test/main/chat/social-chat-store.test.mjs`：**49/49**，包含助手消息原地编辑和编辑/重开后的存档恢复。
 - `test/main/chat/conversation-continuity.test.mjs`：**11/11**，schema 40 的迁移与回退断言通过。
 - `test/main/projects/social-project-store.test.mjs` + continuity：**26/26**，包含项目负责人持久化、`leadName` 和团队提案 pending 状态。
 - `test/main/projects/project-collaboration.test.mjs`：**30/30**，包含新团队两阶段提案和已有项目群内增补成员。
-- 真实任务：`orders` 双缺陷修复（`orders tests passed`）、`inventory` `totalValue` 修复、任务完成事件、刷新持久化、执行者详情；Noema 三轮回合事件写入 `events.jsonl`（序号 1–6，开始/完成成对），唯一文件读取的内联 `mcp__noema__read_file` 轨迹可见；真实编辑验证了用户消息截断重发、助手回复原位保存及后续上下文读取；助手和用户编辑后的“恢复修改前版本”均恢复旧时间线，当前线写入 `pre_restore`。
+- 真实任务：`orders` 双缺陷修复（`orders tests passed`）、`inventory` `totalValue` 修复、任务完成事件、刷新持久化、执行者详情；Noema 三轮回合事件写入 `events.jsonl`（序号 1–6，开始/完成成对），唯一文件读取的内联 `mcp__noema__read_file` 轨迹可见；真实编辑验证了用户消息截断重发、助手回复原位保存及后续上下文读取；助手和用户编辑后的“恢复修改前版本”均恢复旧时间线，当前线写入 `pre_restore`；真实团队提案 `5df42335-08d6-43bd-9ed1-430143e901da` 经 `decide_project_team` 批准，创建项目 `project-df76ab4a-6e0b-477e-929a-38fef94913e1`、负责人 `前端工程师` 和两个执行者会话。
 - 这些是工程/产品自查证据，不等于用户最终验收；最终验收以真实使用和用户判断为准。
 
 ## 未交付（按目标文档）
