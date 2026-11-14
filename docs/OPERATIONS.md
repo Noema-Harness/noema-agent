@@ -62,19 +62,19 @@ npm test
 
 四道门槛由 `scripts/maintenance.mjs` 实现：`docs:check` 与 `plan:check` 在 `npm run check` 里，`milestone:check` 在归档前手动跑，`.githooks/pre-commit` 在提交点跑。失败的常见原因与修法：
 
-| 报错 | 修法 |
-| --- | --- |
-| STATUS 源码版本与 package.json 不一致 | 发布/交付后先更新 `docs/STATUS.md` 的版本、基线、验证和未交付 |
-| STATUS 基线不是 HEAD 祖先 | 基线写成当前可解析的提交；重写历史后重取 |
-| 文档里写进了不属于它的内容 | 不是脚本能判的事：每份文档头的 `Does not own` 已写明边界，评审时按边界判断；规划放卡片、状态放 STATUS、架构放 ARCHITECTURE |
-| proposal 缺少 `Plan:` 卡片链接 | 先在看板选卡，再把卡片链接写进 proposal 顶部 |
-| 活动变更超过 1 个 | 已完成的先 `openspec archive <name> --yes`，过期未做的移到 `openspec/changes/archive/` 并写明关闭原因 |
-| 活动变更 tasks 全部完成 | 归档该变更后再开下一个阶段 |
-| `## 待用户决定` 超过 3 项 | 先缩本轮范围；超过 3 项说明计划没切干净 |
-| `[用户]` 验收项勾选没有确认日期 | 只有用户明确确认后才勾选，并写成 `（用户确认：YYYY-MM-DD）` |
-| milestone 报任务未完成 / 有待决问题 / STATUS 不是当天 | 补完任务、拿到用户答案、更新 STATUS 后再归档 |
-| pre-commit 拒绝产品代码提交 | 同一次提交带上计划/状态更新与 specs 增量；未决决策只能等用户回答 |
-| pre-commit 只提示“工具/治理改动不受未决产品决策阻塞” | 正常；工具与文档维护不被产品决策卡住 |
+| 报错                                                  | 修法                                                                                                                       |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| STATUS 源码版本与 package.json 不一致                 | 发布/交付后先更新 `docs/STATUS.md` 的版本、基线、验证和未交付                                                              |
+| STATUS 基线不是 HEAD 祖先                             | 基线写成当前可解析的提交；重写历史后重取                                                                                   |
+| 文档里写进了不属于它的内容                            | 不是脚本能判的事：每份文档头的 `Does not own` 已写明边界，评审时按边界判断；规划放卡片、状态放 STATUS、架构放 ARCHITECTURE |
+| proposal 缺少 `Plan:` 卡片链接                        | 先在看板选卡，再把卡片链接写进 proposal 顶部                                                                               |
+| 活动变更超过 1 个                                     | 已完成的先 `openspec archive <name> --yes`，过期未做的移到 `openspec/changes/archive/` 并写明关闭原因                      |
+| 活动变更 tasks 全部完成                               | 归档该变更后再开下一个阶段                                                                                                 |
+| `## 待用户决定` 超过 3 项                             | 先缩本轮范围；超过 3 项说明计划没切干净                                                                                    |
+| `[用户]` 验收项勾选没有确认日期                       | 只有用户明确确认后才勾选，并写成 `（用户确认：YYYY-MM-DD）`                                                                |
+| milestone 报任务未完成 / 有待决问题 / STATUS 不是当天 | 补完任务、拿到用户答案、更新 STATUS 后再归档                                                                               |
+| pre-commit 拒绝产品代码提交                           | 同一次提交带上计划/状态更新与 specs 增量；未决决策只能等用户回答                                                           |
+| pre-commit 只提示“工具/治理改动不受未决产品决策阻塞”  | 正常；工具与文档维护不被产品决策卡住                                                                                       |
 
 用户验收项写在 tasks.md 里，格式 `- [ ] [用户] <场景> → 证据`；确认后改成 `- [x] [用户] <场景> → 证据（用户确认：YYYY-MM-DD）`。
 
@@ -103,7 +103,6 @@ git config core.hooksPath .githooks
 git config --get core.hooksPath
 ```
 
-
 测试失败时先跑受影响的单文件，避免每次都跑全量：
 
 ```powershell
@@ -128,6 +127,7 @@ npm run make:desktop
 - 如果 `out/Noema-win32-x64/resources/app.asar` 被其他进程锁住（无法改名），脚本会自动改在 `.tmp/forge-out` 重建并打印提示，命令仍然成功；产物路径以日志为准。
 - `make` 产出 Squirrel 安装包（`.tmp/forge-out/make/squirrel.windows/x64` 或 `out/make/...`）；发布产物按版本放到外部 release 目录，不提交。
 - `apps/desktop/out*`、`apps/desktop/.tmp` 是构建产物，不提交。
+- 安装验证注意：Squirrel Setup 先在 `%LOCALAPPDATA%\SquirrelTemp` 解包。本机 360 安全卫士会把未签名程序写用户目录判为拒绝（同一用户令牌下 `cmd /c mkdir` 能建目录，未签名的 `Setup.exe` 或普通 exe 调 `CreateDirectory` 返回“访问被拒绝”），此时 Setup 回退到 `C:\ProgramData\<用户>` 并弹 `Unable to write to … - IT policies may be restricting access to this folder`。验证载荷时可把 `SQUIRREL_TEMP`/`TEMP` 指到可写目录（安装根变成该目录的父级）；真实安装需要用户放行安全软件或给安装包签名。
 
 安装包冒烟：
 
@@ -157,7 +157,8 @@ Squirrel 升级失败时先检查：
 
 - `app-<version>\resources\app.asar` 是否被其他进程占用；
 - 旧版本目录是否仍有长路径/残留文件；
-- 安装日志中的具体删除/重命名错误。
+- 安装日志中的具体删除/重命名错误；
+- Setup 直接弹 `Installation has failed` 时，先查是否安全软件拦截未签名程序写 `%LOCALAPPDATA%`（见「打包」节）。
 
 不要通过覆盖 `app.asar` 假装升级完成；手工部署只作为临时诊断，完成后再走正常安装验证。
 

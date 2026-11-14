@@ -90,5 +90,5 @@
 - [x] 产出并核对 0.7.6 安装包（Setup/nupkg/RELEASES 大小与 sha256 见 `docs/STATUS.md`）
 - [x] 载荷验证：受限令牌下把 `TEMP`/`SQUIRREL_TEMP` 指到工作区运行 `Setup.exe --silent`，`app-0.7.6` 的 `Noema.exe` 版本 0.7.6、`app.asar` 49,477,041 字节与构建一致
 - [x] `docs/OPERATIONS.md` 打包节、`docs/STATUS.md`、`docs/DECISIONS.md`（D-024）同步；看板 C12 贴证据
-- [ ] 真实 `%LOCALAPPDATA%` 安装/跨版本升级演练（受限令牌不可写该目录，需在非受限终端执行）
-
+- [ ] 真实 `%LOCALAPPDATA%` 安装/跨版本升级演练：本机 360 安全卫士阻止未签名程序写用户目录（同令牌下 `cmd` 可建目录、未签名 exe 报“访问被拒绝”），需放行或签名后再验证
+- [ ] [用户] 放行 360 安全卫士后双击 `Noema-0.7.6 Setup.exe`，确认装到 `%LOCALAPPDATA%\noema_desktop`、注册表 `DisplayVersion=0.7.6` 且能启动 → 证据：安装目录、注册表值、窗口截图

@@ -59,8 +59,9 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 - 项目技能清理：删除 3 个项目级技能、`.dsh` 镜像、`scripts/sync-skills.mjs` 与 `skills:sync`/`skills:check`；`workspace:check` OK。
 - 门槛去穷举（2026-11-15）：删除 `docs:check` 里“PRODUCT 出现能力清单即失败”的关键字规则——文档边界由每份文档头的 `Does not own` 与评审承担，脚本只校验机械事实；`maintenance:test` 5/5。
 - `docs/ARCHITECTURE.md` 组织对象对齐 D-019：删掉“团队=长期能力器官/团队负责人/目标结构不是现状”这类计划性表述，只写当前结构与不变量。
-- 未运行：决定 2 落地后的成长门槛实现、0.7.6 真实复盘/成长对话框/任务文件审阅演练、真实 `%LOCALAPPDATA%` 安装与跨版本升级（受限令牌下不可写该目录，见下条）、真实 provider 全链与长时运行。
+- 未运行：决定 2 落地后的成长门槛实现、0.7.6 真实复盘/成长对话框/任务文件审阅演练、真实 `%LOCALAPPDATA%` 安装与跨版本升级（本机安全软件拦截未签名安装包写用户目录，见下条）、真实 provider 全链与长时运行。
 - 安装器构建与载荷验证（2026-11-15）：`npm run make:desktop` 在 `out/` 被外部句柄锁住时自动落到 `.tmp/forge-out` 并成功产出 Setup/nupkg/RELEASES（`out` 锁属本机环境，`out/Noema-win32-x64/resources/app.asar` 无法改名，见已知限制）。把 `TEMP`/`SQUIRREL_TEMP` 指到工作区后运行 `Setup.exe --silent`，Squirrel 把 `app-0.7.6` 落到该根目录：`Noema.exe` ProductVersion/FileVersion 均为 `0.7.6`，`resources/app.asar` 49,477,041 字节、sha256 `AAC1A250C62A66B935928455D7DD693ECA4BF23884E08FF7A2A7C99CC5AB5A39`，与构建产物一致；这是载荷验证，不等于真实用户安装。
+  2026-11-15 用计划任务在普通用户上下文直接跑 `Setup.exe --silent`：Squirrel 在 `%LOCALAPPDATA%\SquirrelTemp` 解包失败，回退到 `C:\ProgramData\NUC`（无管理员权限）后弹 `Unable to write to … IT policies may be restricting access to this folder`。同一用户令牌实测：`cmd.exe` 能在 `%LOCALAPPDATA%` 建目录，而未签名 exe（32 位、带 manifest 也试过）调 `Directory.CreateDirectory` 返回“访问被拒绝”；本机注册的安全软件是 360 安全卫士。结论：构建链路已修好，真实安装被本机安全软件策略拦住，需要用户放行或签名。把 `SQUIRREL_TEMP`/`TEMP` 指到可写目录后可完整装出 `app-0.7.6`（桩程序 292,864 字节、版本 0.7.6，`app-0.7.6\Noema.exe` ProductVersion 0.7.6，nupkg 169,672,685 字节），证明载荷可用。
 
 ## 未交付（按目标文档）
 
@@ -77,6 +78,7 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 ## 已知限制
 
 - 桌面 `Noema.lnk` 指向 0.7.5，便携目录里没有 0.7.6 安装；要验证 0.7.6 必须直接运行 `apps/desktop/out/Noema-win32-x64/Noema.exe`，或在发布时补装。
+- 安装包未签名：本机 360 安全卫士会阻止它写 `%LOCALAPPDATA%`，首次安装需用户手动放行（或发布前签名）；这是策略限制，不是构建缺陷。
 - 0.7.6 的成长记录、成长对话框、任务文件审阅都只在测试中验证过，没有在真实项目上完整走一遍。
 - 成长是“模型在复盘回合里写资产文件”，没有跨项目证据门槛，也不会自动改变成员的核心提示词；它不能当作“已实现成长”来对用户宣称。
 - 完成事件是 renderer 级 `localStorage`，按浏览器/应用数据隔离；交付记录/SQLite 才是任务事实源。
@@ -95,7 +97,7 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 2. **阶段 5 前置：会话拓扑**：`@Noema` 跨房间寻址、执行者事件日志/证据、常驻会话与项目 fork。
 3. **阶段 5：六模块与前端**：用六模块和 ContextCompiler 替换当前提示词/工具/上下文拼装，再做一次主要前端升级。
 4. **收尾**：补工作区文件回滚、任务文件/命令证据完整性，做最终验收与可安装分发（含 Squirrel 或替代安装方式）。
-5. **发布**：0.7.6 需要补发布说明、安装/快捷方式更新和一次真实使用验证，才能算交付。
+5. **发布**：0.7.6 需要补发布说明、安装/快捷方式更新和一次真实使用验证，才能算交付；发布前要决定安装包签名（见 `openspec/changes/organization-growth-model/design.md` 待用户决定 4）。
 
 ## 交付判断
 
