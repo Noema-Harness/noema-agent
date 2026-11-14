@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type {
   NoemaSocialMessage,
+  NoemaSocialProject,
   NoemaSocialWorkTask,
 } from '../../shared/contracts/noema-bridge.d.ts';
 import { NoemaButton } from '../ui/noema-button';
@@ -51,6 +52,27 @@ function taskVerificationLabel(
       return '待核验';
     case 'not_planned':
       return '未独立核验';
+  }
+}
+
+type GrowthMember = NonNullable<
+  NoemaSocialProject['growthBatch']
+>['members'][number];
+
+function growthMemberStatusLabel(status: GrowthMember['status']) {
+  switch (status) {
+    case 'pending':
+      return '等待整理';
+    case 'running':
+      return '整理中';
+    case 'completed':
+      return '已整理';
+    case 'no_change':
+      return '无变化';
+    case 'interrupted':
+      return '已中断';
+    case 'failed':
+      return '失败';
   }
 }
 
@@ -338,6 +360,8 @@ export function CoreChatApp() {
     agents,
     projects,
     teams,
+    projectStatusBusy,
+    retryProjectGrowthMember,
   } = controller;
 
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
@@ -358,6 +382,11 @@ export function CoreChatApp() {
   const [deliveryEvents, setDeliveryEvents] =
     useState<DeliveryEvent[]>(readDeliveryEvents);
   const [restoreConfirmOpen, setRestoreConfirmOpen] = useState(false);
+  const [growthProjectId, setGrowthProjectId] = useState<string | null>(null);
+  const growthProject =
+    (growthProjectId
+      ? projects.find((project) => project.id === growthProjectId)
+      : null) ?? null;
   const editTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const previousTaskStatus = useRef(
     new Map<string, NoemaSocialWorkTask['status']>(),
@@ -1332,14 +1361,25 @@ export function CoreChatApp() {
                               </dd>
                             </div>
                           </dl>
-                          <button
-                            className="core-card-action"
-                            type="button"
-                            disabled={!canOpen}
-                            onClick={() => openTeamGroup(project.groupRoomId)}
-                          >
-                            {canOpen ? '打开项目群' : '项目群不可用'}
-                          </button>
+                          <div className="core-card-actions">
+                            <button
+                              className="core-card-action"
+                              type="button"
+                              disabled={!canOpen}
+                              onClick={() => openTeamGroup(project.groupRoomId)}
+                            >
+                              {canOpen ? '打开项目群' : '项目群不可用'}
+                            </button>
+                            {project.growthBatch ? (
+                              <button
+                                className="core-card-action"
+                                type="button"
+                                onClick={() => setGrowthProjectId(project.id)}
+                              >
+                                成长记录
+                              </button>
+                            ) : null}
+                          </div>
                         </article>
                       );
                     })}
@@ -1527,6 +1567,130 @@ export function CoreChatApp() {
                     }}
                   >
                     恢复
+                  </NoemaButton>
+                </footer>
+              </section>
+            </div>
+          </div>
+        ) : null}
+
+        {growthProject?.growthBatch ? (
+          <div
+            className="core-task-inspector-backdrop"
+            onClick={() => setGrowthProjectId(null)}
+            role="presentation"
+          >
+            <div
+              className="core-confirm-wrap core-growth-wrap"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <section
+                className="core-confirm-dialog core-growth-dialog"
+                role="dialog"
+                aria-modal="true"
+                aria-label="项目成长记录"
+              >
+                <header className="core-confirm-head">
+                  <div>
+                    <strong>成长记录</strong>
+                    <span>
+                      {growthProject.title} · 计划版本{' '}
+                      {growthProject.growthBatch.planRevision} ·{' '}
+                      {growthProject.growthBatch.status === 'completed'
+                        ? '已归档'
+                        : '整理中'}
+                    </span>
+                  </div>
+                  <button
+                    className="icon-button"
+                    type="button"
+                    aria-label="关闭成长记录"
+                    title="关闭"
+                    onClick={() => setGrowthProjectId(null)}
+                  >
+                    ×
+                  </button>
+                </header>
+                <div className="core-growth-body">
+                  <p className="core-growth-intro">
+                    项目结束后，成员会把可复用的经验整理为带来源的资产版本。
+                  </p>
+                  {growthProject.growthBatch.members.length ? (
+                    <div className="core-growth-list">
+                      {growthProject.growthBatch.members.map((member) => (
+                        <article
+                          className="core-growth-member"
+                          key={member.agentId}
+                        >
+                          <header>
+                            <div>
+                              <strong>{member.agentName}</strong>
+                              <span
+                                className={`core-growth-status core-growth-status-${member.status}`}
+                              >
+                                {growthMemberStatusLabel(member.status)}
+                              </span>
+                            </div>
+                            {member.status === 'failed' ||
+                            member.status === 'interrupted' ? (
+                              <button
+                                className="core-card-action"
+                                type="button"
+                                disabled={projectStatusBusy}
+                                onClick={() => {
+                                  if (growthProject) {
+                                    void retryProjectGrowthMember(
+                                      growthProject,
+                                      member.agentId,
+                                    );
+                                  }
+                                }}
+                              >
+                                重新整理
+                              </button>
+                            ) : null}
+                          </header>
+                          <p>
+                            {member.brief?.trim() ||
+                              member.errorMessage ||
+                              '未留下成长说明。'}
+                          </p>
+                          {member.assets.length ? (
+                            <ul className="core-growth-assets">
+                              {member.assets.map((asset) => (
+                                <li key={`${asset.path}:${asset.revision}`}>
+                                  <code>{asset.path}</code>
+                                  <span>
+                                    v{asset.revision}
+                                    {asset.isDeleted ? ' · 已删除' : ''}
+                                  </span>
+                                  {asset.reason ? (
+                                    <small>{asset.reason}</small>
+                                  ) : null}
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <span className="core-growth-muted">
+                              没有改动资产。
+                            </span>
+                          )}
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <span className="core-growth-muted">
+                      这批成长还没有成员记录。
+                    </span>
+                  )}
+                </div>
+                <footer className="core-confirm-actions">
+                  <NoemaButton
+                    className="text-button primary"
+                    type="button"
+                    onClick={() => setGrowthProjectId(null)}
+                  >
+                    关闭
                   </NoemaButton>
                 </footer>
               </section>

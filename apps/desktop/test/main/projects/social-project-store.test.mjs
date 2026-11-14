@@ -342,6 +342,19 @@ test('project growth is keyed to accepted plan revisions and settles each member
       batch.id,
     );
     assert.equal(secondClaim.agentId, batch.members[1].agentId);
+    stores.socialProjectStore.bindProjectGrowthTurn(
+      batch.id,
+      secondClaim.agentId,
+      'growth-turn-second',
+    );
+    stores.socialChatStore.writeAgentAsset({
+      agentId: secondClaim.agentId,
+      path: 'experiences/review.md',
+      content: '把核验方法整理成可复用的经历。',
+      reason: '本轮形成了可复用方法。',
+      sourceTurnId: 'growth-turn-second',
+      sourceProjectId: project.id,
+    });
     state = stores.socialProjectStore.finishProjectGrowthMember(
       batch.id,
       secondClaim.agentId,
@@ -351,6 +364,33 @@ test('project growth is keyed to accepted plan revisions and settles each member
     assert.deepEqual(
       state.members.map((member) => member.status),
       ['no_change', 'completed'],
+    );
+    const noChangeMember = state.members.find(
+      (member) => member.agentId === firstClaim.agentId,
+    );
+    assert.ok(noChangeMember);
+    assert.deepEqual(noChangeMember.assets, []);
+    const completedMember = state.members.find(
+      (member) => member.agentId === secondClaim.agentId,
+    );
+    assert.ok(completedMember);
+    assert.equal(completedMember.brief, '本次核验方法已记录为经历。');
+    assert.deepEqual(completedMember.assets, [
+      {
+        path: 'experiences/review.md',
+        revision: 1,
+        isDeleted: false,
+        reason: '本轮形成了可复用方法。',
+      },
+    ]);
+    assert.equal(
+      stores.socialProjectStore
+        .getProject(project.id)
+        .growthBatch.members.find(
+          (member) => member.agentId === secondClaim.agentId,
+        ).assets[0].path,
+      'experiences/review.md',
+      'project hydration must carry growth asset summaries',
     );
     const firstBriefs = stores.socialProjectStore.getPendingProjectGrowthBriefs(
       firstClaim.agentId,
