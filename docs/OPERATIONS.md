@@ -81,7 +81,7 @@ npm test
 
 ### 规划看板（GitHub Project）
 
-排序与状态只存在于 [GitHub Project「Noema V1 路线」](https://github.com/orgs/Noema-Harness/projects/1)，不在任何文档里镜像。需要 `gh` 已登录且 token 含 `project` scope；看板操作失败（断网、token 过期）只报告并阻塞看板动作，不阻塞代码提交与 `npm run check`。
+排序与状态只存在于 [GitHub Project「Noema V1 路线」](https://github.com/orgs/Noema-Harness/projects/1)，不在任何文档里镜像。看板是组织级 private 项目，已链接到 `Noema-Harness/noema-agent`：从仓库的 Projects 页或组织的 Projects 页都能进入；换新仓库时用 `gh project link 1 --owner <org> --repo <repo>` 建立链接，否则卡片只在组织页可见。需要 `gh` 已登录且 token 含 `project` scope；看板操作失败（断网、token 过期）只报告并阻塞看板动作，不阻塞代码提交与 `npm run check`。
 
 ```powershell
 gh project item-list 1 --owner Noema-Harness --format json   # 看卡片与字段
