@@ -3421,6 +3421,33 @@ test('assistant messages can be edited in place without changing the timeline', 
   }
 });
 
+test('restoring an archive preserves the database temp_store mode', () => {
+  const { db, social } = makeStores();
+  try {
+    const turn = social.beginTurn({
+      roomId: 'room-noema',
+      agentId: 'noema',
+      text: 'temp store target',
+      model: 'test-model',
+    });
+    social.appendAssistantDelta(turn.assistantMessageId, 'original answer');
+    social.completeReply(turn.assistantMessageId);
+    const edited = social.editAssistantMessage(
+      'room-noema',
+      turn.assistantMessageId,
+      'edited answer',
+    );
+
+    db.pragma('temp_store = FILE');
+    const restored = social.restoreConversationArchive(edited.archiveId);
+
+    assert.equal(restored.messages, 2);
+    assert.equal(db.pragma('temp_store', { simple: true }), 1);
+  } finally {
+    db.close();
+  }
+});
+
 test('conversation threads expose titles and rewind only the active thread', () => {
   const { db, social } = makeStores();
   try {
