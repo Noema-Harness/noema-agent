@@ -55,34 +55,36 @@ function makeHarness({
   const store = {
     beginTurn: () => ({ turnId: `turn-${++turnSequence}` }),
   };
-  const scheduler = new ProjectGrowthBatchScheduler({
-    store,
-    projectStore,
-    isShuttingDown: () => false,
-    isPaused: () => false,
-    hasActiveRoom: () => false,
-    hasStreamingReply: () => false,
-    requireReadyModel: () => ({ id: 'test-model' }),
-    getProjectSessionContext: () => ({ status: sessionStatus }),
-    startRun: async (run) => {
-      runs.push(run);
-      inFlight += 1;
-      maxConcurrent = Math.max(maxConcurrent, inFlight);
-      try {
-        if (runDelayMs > 0) {
-          await new Promise((resolve) => setTimeout(resolve, runDelayMs));
+  const createScheduler = () =>
+    new ProjectGrowthBatchScheduler({
+      store,
+      projectStore,
+      isShuttingDown: () => false,
+      isPaused: () => false,
+      hasActiveRoom: () => false,
+      hasStreamingReply: () => false,
+      requireReadyModel: () => ({ id: 'test-model' }),
+      getProjectSessionContext: () => ({ status: sessionStatus }),
+      startRun: async (run) => {
+        runs.push(run);
+        inFlight += 1;
+        maxConcurrent = Math.max(maxConcurrent, inFlight);
+        try {
+          if (runDelayMs > 0) {
+            await new Promise((resolve) => setTimeout(resolve, runDelayMs));
+          }
+          const member = batch.members.find(
+            (item) => item.agentId === run.agentId,
+          );
+          member.status = 'completed';
+        } finally {
+          inFlight -= 1;
         }
-        const member = batch.members.find(
-          (item) => item.agentId === run.agentId,
-        );
-        member.status = 'completed';
-      } finally {
-        inFlight -= 1;
-      }
-    },
-    emit: (event) => events.push(event),
-    formatError: (error) => error.message,
-  });
+      },
+      emit: (event) => events.push(event),
+      formatError: (error) => error.message,
+    });
+  const scheduler = createScheduler();
   return {
     batch,
     events,
@@ -90,6 +92,9 @@ function makeHarness({
     claims,
     runs,
     scheduler,
+    createScheduler,
+    projectStore,
+    store,
     maxConcurrent: () => maxConcurrent,
   };
 }
@@ -139,6 +144,28 @@ test('drain reviews a multi-member batch sequentially with evidence per member',
     events.filter((event) => event.type === 'project-updated').length,
     4,
   );
+});
+
+test('a new scheduler resumes a partially completed batch without repeating members', async () => {
+  const harness = makeHarness({ memberCount: 3 });
+  harness.batch.members[0].status = 'completed';
+  harness.batch.members[0].turnId = 'turn-previous';
+
+  const scheduler = harness.createScheduler();
+  await scheduler.drain(harness.batch.id);
+
+  assert.deepEqual(harness.claims, ['agent-2', 'agent-3']);
+  assert.equal(harness.runs.length, 2);
+  assert.equal(harness.batch.members[0].turnId, 'turn-previous');
+  assert.deepEqual(
+    harness.batch.members.map((member) => member.status),
+    ['completed', 'completed', 'completed'],
+  );
+  assert.equal(
+    new Set(harness.batch.members.map((member) => member.turnId)).size,
+    3,
+  );
+  assert.deepEqual(harness.failures, []);
 });
 
 test('drain fails the member when its project session is unavailable', async () => {
