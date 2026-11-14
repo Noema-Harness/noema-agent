@@ -5,8 +5,8 @@
   "currentDocuments": [
     {
       "path": "AGENTS.md",
-      "purpose": "文档权限、维护触发器与工程治理",
-      "updateWhen": "治理、维护流程或工程边界变化"
+      "purpose": "开发循环、文档所有权、四道门槛与工程边界",
+      "updateWhen": "治理结构、门槛或工程边界变化"
     },
     {
       "path": "README.md",

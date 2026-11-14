@@ -32,7 +32,7 @@ npm run check
 | [DECISIONS](docs/DECISIONS.md) | 哪些长期选择已经做出、为什么、何时重新审视 |
 | [OPERATIONS](docs/OPERATIONS.md) | 怎样开发、检查、打包、安装、回滚和诊断 |
 | [STATUS](docs/STATUS.md) | 当前版本、已验证/未验证、缺口和下一步 |
-| [AGENTS](AGENTS.md) | 维护者/Agent 的治理、文档权限和维护触发器 |
+| [AGENTS](AGENTS.md) | 一轮开发怎样走、各文档拥有什么、四道门槛与工程边界 |
 
 README 只做入口，不拥有产品定义、架构、状态或操作细节。
 
