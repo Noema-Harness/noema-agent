@@ -40,3 +40,16 @@
 - [x] `npm run docs:check`、`npm run plan:check`、`npm run maintenance:test` 通过
 - [ ] `npm run check` 全绿
 - [ ] [用户] 复核维护门槛 v2：确认四道门槛的阻塞边界、待决上限与里程碑定义可用（看 `AGENTS.md` 第 2 节与 `docs/OPERATIONS.md`「维护门槛」）
+
+## 4. 规划迁到看板
+
+规划天生高频变化，放在低维护频率的文档里必然过期（0.7.4–0.7.6 零文档更新就是证据）。产品真值留在文档，排序与状态移到唯一一个 GitHub Project：
+
+- [x] 组织 `Noema-Harness` 建 Project「Noema V1 路线」（Status + 阶段字段，卡片用 issue）
+- [x] C1–C14 各建 `[C<n>]` 卡片加入看板，Done/Todo/In Progress 与当前认知一致
+- [x] `docs/PRODUCT.md` 能力清单删状态列、修正表头、指向看板
+- [x] `docs:check` 要求能力清单带看板链接；`plan:check` 要求 proposal 写 `Plan: <卡片链接>`
+- [x] `AGENTS.md` 一轮循环改为「选卡 → 立项 → 纵切 → 证据 → 卡片 Done 并归档」，文档表登记看板所有权
+- [ ] `docs/DECISIONS.md` 记录 D-022（规划与状态迁到看板，撤销 Issue #130 的“不自造看板”）
+- [ ] Issue #130 改写为迁移说明并关闭
+- [ ] `npm run check` 全绿并提交

@@ -1,5 +1,7 @@
 # Proposal
 
+Plan: https://github.com/orgs/Noema-Harness/projects/1
+
 ## Why
 
 0.7.4–0.7.6 三个版本是在没有活动计划、没有规格增量的情况下发布的：仓库同时挂着 11 个 OpenSpec 变更，`openspec/specs` 里没有任何一条 requirement 描述团队提案、岗位模板、成员资产或项目成长。把维护门槛接入后，下一个阶段的计划不能继续这样空着。

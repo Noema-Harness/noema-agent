@@ -11,8 +11,10 @@ import { resolveGitExecutable } from "./git-exec.mjs";
 //
 // 入口：`npm run docs:check`、`npm run plan:check`、`npm run milestone:check`、
 // `.githooks/pre-commit`。
-// 不变量：一个事实一个权威源；待用户决定的问题未答前不实现相关产品行为；
-// 计划层是 PRODUCT.md 的「V1 能力清单」，OpenSpec changes 只是当前这一步的增量。
+// 不变量：一个事实一个权威源；待用户决定的问题未答前不实现相关产品行为。
+// 三层分工：PRODUCT.md 的能力清单=产品真值（不含状态）；OpenSpec change=本轮增量；
+// GitHub Project=排序与状态（计划源，离线只能校验指向它的链接，不能校验远端卡片）。
+// 所以本脚本校验「链接与引用格式」，不假装能校验看板状态。
 
 const DOCS_PREFIX = "docs/";
 const CODE_PREFIXES = ["apps/desktop/src/", "scripts/"];
@@ -25,6 +27,9 @@ const PROPOSAL_CAPABILITY_HEADING = "## 推进的能力";
 const MAX_PENDING_DECISIONS = 3;
 const USER_TASK_PREFIX = "[用户]";
 const USER_CONFIRMATION = /用户确认：\d{4}-\d{2}-\d{2}/u;
+// 能力清单必须指向规划看板；proposal 必须指向它推进的卡片（看板或 issue 均可）。
+const PLAN_BOARD_URL = /https:\/\/github\.com\/[^\s)|]*\/projects\/\d+/u;
+const PLAN_LINK = /^Plan:\s*https:\/\/github\.com\/\S+/mu;
 
 function readText(file) {
   try {
@@ -100,8 +105,8 @@ export function activeChanges(root) {
   return directoryNames(changesRoot).filter((name) => name !== "archive");
 }
 
-// PRODUCT.md 的「V1 能力清单」是计划层：一行一个可观察能力，含验收方式与状态。
-// id 用 C1、C2…，变更 proposal 必须引用它来说明这一步推进了什么。
+// PRODUCT.md 的「V1 能力清单」是产品真值：一行一个可观察能力与验收方式，不写状态。
+// id 用 C1、C2…，看板上每行对应一张卡片；proposal 必须写 `Plan: <卡片链接>` 并引用它。
 export function capabilityRows(productText) {
   const body = sectionBody(productText, CAPABILITY_HEADING);
   if (body === null) return null;
@@ -177,22 +182,25 @@ export function checkDocuments(root, git) {
   const capabilities = capabilityRows(product);
   if (capabilities === null) {
     errors.push(
-      "docs/PRODUCT.md 缺少「V1 能力清单」：计划层由它承担（一行一个可观察能力、验收方式、当前状态），没有它开发会漂移",
+      "docs/PRODUCT.md 缺少「V1 能力清单」：产品真值由它承担（一行一个可观察能力与验收方式），排序与状态在看板",
     );
   } else {
+    const capabilityBody = sectionBody(product, CAPABILITY_HEADING) ?? "";
+    if (!PLAN_BOARD_URL.test(capabilityBody)) {
+      errors.push(
+        "docs/PRODUCT.md 能力清单缺少 GitHub Project 看板链接：规划与状态只在看板一处，文档必须指向它",
+      );
+    }
     const seen = new Set();
     for (const row of capabilities) {
       if (seen.has(row.id)) errors.push(`docs/PRODUCT.md 能力清单里 ${row.id} 重复`);
       seen.add(row.id);
-      const label = row.cells[0];
+      const [label, observable] = row.cells;
       const acceptance = row.cells.find((cell) => ["自动测试", "用户验收", "自动+用户"].includes(cell));
-      const state = row.cells.find((cell) => ["达成", "部分", "未开始"].includes(cell));
-      if (!label) errors.push(`docs/PRODUCT.md 能力清单 ${row.id} 缺少能力描述`);
+      if (!label) errors.push(`docs/PRODUCT.md 能力清单 ${row.id} 缺少能力名`);
+      if (!observable) errors.push(`docs/PRODUCT.md 能力清单 ${row.id} 缺少可观察结果`);
       if (!acceptance) {
         errors.push(`docs/PRODUCT.md 能力清单 ${row.id} 验收方式必须是「自动测试 / 用户验收 / 自动+用户」`);
-      }
-      if (!state) {
-        errors.push(`docs/PRODUCT.md 能力清单 ${row.id} 状态必须是「达成 / 部分 / 未开始」`);
       }
     }
     if (capabilities.length < 8) {
@@ -296,6 +304,11 @@ export function checkPlan(root, options = {}) {
     const product = readText(path.join(root, "docs", "PRODUCT.md"));
     const ids = capabilityIds(product);
     const proposal = readText(path.join(directory, "proposal.md"));
+    if (!PLAN_LINK.test(proposal ?? "")) {
+      errors.push(
+        `活动变更 ${change} 的 proposal.md 缺少「Plan: <卡片链接>」：排序与状态在 GitHub Project，变更必须指向它推进的卡片`,
+      );
+    }
     const capabilityBody = sectionBody(proposal, PROPOSAL_CAPABILITY_HEADING);
     if (capabilityBody === null) {
       errors.push(

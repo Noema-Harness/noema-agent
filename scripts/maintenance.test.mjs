@@ -20,18 +20,21 @@ const TODAY = localToday();
 const CAPABILITIES = [
   "## V1 能力清单",
   "",
-  "| 能力 | 可观察结果 | 验收方式 | 状态 |",
+  "计划看板：https://github.com/orgs/Noema-Harness/projects/1",
+  "",
+  "| 编号 | 能力 | 可观察结果 | 验收方式 |",
   "| --- | --- | --- | --- |",
-  "| C1 | 单窗口对话 | 流式回复 | 自动测试 | 达成 |",
-  "| C2 | 消息操作 | 复制与引用 | 自动+用户 | 达成 |",
-  "| C3 | 执行者会话 | 实时步骤 | 用户验收 | 部分 |",
-  "| C4 | 工单约束 | 只写授权工作区 | 自动测试 | 达成 |",
-  "| C5 | 项目闭环 | 建项目到归档 | 自动+用户 | 达成 |",
-  "| C6 | 项目成长 | 可追溯经历 | 自动测试 | 部分 |",
-  "| C7 | 组织对象 | 只有 Agent 与项目 | 自动+用户 | 部分 |",
-  "| C8 | 会话拓扑 | 常驻会话加项目分身 | 自动测试 | 未开始 |",
+  "| C1 | 单窗口对话 | 流式回复 | 自动测试 |",
+  "| C2 | 消息操作 | 复制与引用 | 自动+用户 |",
+  "| C3 | 执行者会话 | 实时步骤 | 用户验收 |",
+  "| C4 | 工单约束 | 只写授权工作区 | 自动测试 |",
+  "| C5 | 项目闭环 | 建项目到归档 | 自动+用户 |",
+  "| C6 | 项目成长 | 可追溯经历 | 自动测试 |",
+  "| C7 | 组织对象 | 只有 Agent 与项目 | 自动+用户 |",
+  "| C8 | 会话拓扑 | 常驻会话加项目分身 | 自动测试 |",
   "",
 ].join("\n");
+const BOARD = "https://github.com/orgs/Noema-Harness/projects/1";
 
 function fakeGit({ baseline = true, hooksPath = ".githooks", dirty = false } = {}) {
   return (args) => {
@@ -68,7 +71,11 @@ function makeRoot(holder, overrides = {}) {
   write(root, "openspec/config.yaml", "context: 见 docs/STATUS.md 与 docs/PRODUCT.md\n");
   if (overrides.change !== false) {
     const change = `openspec/changes/${overrides.name ?? "stage-probe"}`;
-    write(root, `${change}/proposal.md`, `# proposal\n\n## 推进的能力\n\n- C1：本轮验证\n`);
+    write(
+      root,
+      `${change}/proposal.md`,
+      `# proposal\n\nPlan: ${BOARD}\n\n## 推进的能力\n\n- C1：本轮验证\n`,
+    );
     write(root, `${change}/design.md`, `# design\n\n## 待用户决定\n\n${overrides.decisions ?? ""}\n`);
     write(root, `${change}/tasks.md`, `# tasks\n\n${overrides.tasks ?? "- [ ] 第一项\n"}`);
     if (overrides.skipSpecs) write(root, `${change}/.openspec.yaml`, "skip_specs: true\n");
@@ -198,26 +205,27 @@ test("the plan lives in the PRODUCT capability list and proposals cite it", () =
     write(root, "docs/PRODUCT.md", `# PRODUCT\n\n${HEADER}\n没有能力清单\n`);
     assert.match(checkDocuments(root, git).errors.join("\n"), /缺少「V1 能力清单」/u);
 
-    const broken = CAPABILITIES.replace("| C2 | 消息操作 | 复制与引用 | 自动+用户 | 达成 |", "| C2 | 消息操作 | 复制与引用 | 随意 | 差不多 |");
+    write(root, "docs/PRODUCT.md", `# PRODUCT\n\n${HEADER}\n${CAPABILITIES.replace(BOARD, "")}`);
+    assert.match(checkDocuments(root, git).errors.join("\n"), /缺少 GitHub Project 看板链接/u);
+
+    const broken = CAPABILITIES.replace("| C2 | 消息操作 | 复制与引用 | 自动+用户 |", "| C2 | 消息操作 | 复制与引用 | 随意 |");
     write(root, "docs/PRODUCT.md", `# PRODUCT\n\n${HEADER}\n${broken}`);
     const brokenErrors = checkDocuments(root, git).errors.join("\n");
     assert.match(brokenErrors, /C2 验收方式必须是/u);
-    assert.match(brokenErrors, /C2 状态必须是/u);
 
     write(root, "docs/PRODUCT.md", `# PRODUCT\n\n${HEADER}\n${CAPABILITIES.replace("| C3 |", "| C1 |")}`);
     assert.match(checkDocuments(root, git).errors.join("\n"), /能力清单里 C1 重复/u);
 
     write(root, "docs/PRODUCT.md", `# PRODUCT\n\n${HEADER}\n${CAPABILITIES}`);
     write(root, "openspec/changes/stage-probe/proposal.md", "# proposal\n\n## What\n\n没什么要说的\n");
-    assert.match(
-      checkPlan(root, { skipSpecValidation: true }).errors.join("\n"),
-      /缺少「## 推进的能力」/u,
-    );
+    const noPlan = checkPlan(root, { skipSpecValidation: true }).errors.join("\n");
+    assert.match(noPlan, /缺少「Plan: <卡片链接>」/u);
+    assert.match(noPlan, /缺少「## 推进的能力」/u);
 
     write(
       root,
       "openspec/changes/stage-probe/proposal.md",
-      "# proposal\n\n## 推进的能力\n\n- C99：不存在的行\n",
+      `# proposal\n\nPlan: ${BOARD}\n\n## 推进的能力\n\n- C99：不存在的行\n`,
     );
     assert.match(
       checkPlan(root, { skipSpecValidation: true }).errors.join("\n"),
@@ -227,14 +235,18 @@ test("the plan lives in the PRODUCT capability list and proposals cite it", () =
     write(
       root,
       "openspec/changes/stage-probe/proposal.md",
-      "# proposal\n\n## 推进的能力\n\n- 维护门槛（治理，不对应能力）\n",
+      `# proposal\n\nPlan: ${BOARD}\n\n## 推进的能力\n\n- 维护门槛（治理，不对应能力）\n`,
     );
     assert.match(
       checkPlan(root, { skipSpecValidation: true }).errors.join("\n"),
       /既没引用能力 id 也没写「无」/u,
     );
 
-    write(root, "openspec/changes/stage-probe/proposal.md", "# proposal\n\n## 推进的能力\n\n- 无：纯文档变更\n");
+    write(
+      root,
+      "openspec/changes/stage-probe/proposal.md",
+      `# proposal\n\nPlan: ${BOARD}\n\n## 推进的能力\n\n- 无：纯文档变更\n`,
+    );
     assert.deepEqual(checkPlan(root, { skipSpecValidation: true }).errors, []);
   }));
 

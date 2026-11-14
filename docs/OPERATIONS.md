@@ -67,7 +67,8 @@ npm test
 | --- | --- |
 | STATUS 源码版本与 package.json 不一致 | 发布/交付后先更新 `docs/STATUS.md` 的版本、基线、验证和未交付 |
 | STATUS 基线不是 HEAD 祖先 | 基线写成当前可解析的提交；重写历史后重取 |
-| PRODUCT 缺少「V1 能力清单」或某行没有验收/状态 | 在 `docs/PRODUCT.md` 补能力行；验收方式只能是“自动测试 / 用户验收 / 自动+用户”，状态只能是“达成 / 部分 / 未开始” |
+| PRODUCT 缺少「V1 能力清单」、某行没有验收方式或缺看板链接 | 在 `docs/PRODUCT.md` 补能力行；验收方式只能是“自动测试 / 用户验收 / 自动+用户”；能力清单必须链接 GitHub Project |
+| proposal 缺少 `Plan:` 卡片链接 | 先在看板选卡，再把卡片链接写进 proposal 顶部 |
 | proposal 缺少「推进的能力」或引用了不存在的 C 编号 | 在 proposal 里写本轮推进的 C 行；纯文档/治理变更写明“无” |
 | 活动变更超过 1 个 | 已完成的先 `openspec archive <name> --yes`，过期未做的移到 `openspec/changes/archive/` 并写明关闭原因 |
 | 活动变更 tasks 全部完成 | 归档该变更后再开下一个阶段 |
@@ -78,6 +79,19 @@ npm test
 | pre-commit 只提示“工具/治理改动不受未决产品决策阻塞” | 正常；工具与文档维护不被产品决策卡住 |
 
 用户验收项写在 tasks.md 里，格式 `- [ ] [用户] <场景> → 证据`；确认后改成 `- [x] [用户] <场景> → 证据（用户确认：YYYY-MM-DD）`。
+
+### 规划看板（GitHub Project）
+
+排序与状态只存在于 [GitHub Project「Noema V1 路线」](https://github.com/orgs/Noema-Harness/projects/1)，不在任何文档里镜像。需要 `gh` 已登录且 token 含 `project` scope；看板操作失败（断网、token 过期）只报告并阻塞看板动作，不阻塞代码提交与 `npm run check`。
+
+```powershell
+gh project item-list 1 --owner Noema-Harness --format json   # 看卡片与字段
+gh project item-edit --id <item-id> --project-id <project-id> `
+  --field-id <status-field-id> --single-select-option-id <option-id>   # 挪状态
+gh issue comment <n> --body "证据：commit <sha>，check 873/873，STATUS 链接"   # 收口证据
+```
+
+每张卡片是 `[C<n>]` issue；收口时先贴证据再关 issue，`npm run check` 的离线门槛只校验 proposal 里的 `Plan:` 链接，不校验远端状态。
 
 首次克隆仓库需要安装提交门槛：
 

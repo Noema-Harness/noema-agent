@@ -2,7 +2,7 @@
 
 一个本地优先的个人 Agent：用户只面对一个 Noema，它理解目标、记住上下文、决定自己回答还是安排执行，并把工作交给可见的执行者完成。不是通用 Agent 框架，也不以聊天功能数量为目标。
 
-当前源码版本 **0.7.2**；可运行性、已验证能力和未交付项见 [STATUS](docs/STATUS.md)。
+当前源码版本、已验证能力和未交付项见 [STATUS](docs/STATUS.md)；V1 能力的排序与进度见 [GitHub Project 看板](https://github.com/orgs/Noema-Harness/projects/1)。
 
 ## 快速开始
 

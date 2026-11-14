@@ -17,7 +17,7 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 - 0.7.4 / 0.7.5 / 0.7.6 均未生成 Squirrel 安装器：NuGet/Squirrel 读取打包 `app.asar` 时返回“无法访问已关闭的流”，继续以便携目录交付。
 - 便携构建：`apps/desktop/out/Noema-win32-x64/Noema.exe`（0.7.6，2026-11-14 22:38，246,819,840 字节）。已装目录只有 `%LOCALAPPDATA%\Programs\Noema-0.7.3|0.7.4|0.7.5`，桌面 `Noema.lnk` 仍指向 Noema-0.7.5，与 0.7.6 源码不同步（见已知限制）。
 - 维护层事实：0.7.4–0.7.6 期间没有任何权威文档更新（`docs/` 最后一次提交仍是 `21380a7 docs: record architecture invariants`，2026-11-14 15:44），`openspec/changes/` 攒了 11 个活动变更、其中 2 个已完成。本轮把文档/计划同步做成会失败的检查：`npm run check` 里的 `docs:check`、`plan:check`，归档前的 `npm run milestone:check`，以及 `.githooks/pre-commit`；11 个变更收敛为 0 后再立项（2 个正式归档并合并规格，9 个移到 `openspec/changes/archive/2026-11-15-*` 并写明关闭原因）。
-- 维护门槛 v2（2026-11-15，按用户对决定 3 的回答落地）：计划层改为 `docs/PRODUCT.md` 的「V1 能力清单」C1–C14，proposal 必须写「推进的能力」；未答决策只阻塞 `apps/desktop/src/` 的产品代码，工具与文档维护放行；行为变更不允许 `skip_specs`；用户验收项格式 `[用户] … （用户确认：YYYY-MM-DD）`；里程碑=归档并需 `milestone:check` 通过。决定与理由见 `docs/DECISIONS.md` D-020。
+- 维护门槛 v2（2026-11-15，按用户对决定 3 的回答落地）：产品真值=`docs/PRODUCT.md` 的「V1 能力清单」C1–C14（能力/可观察结果/验收方式，不含状态）；规划与状态在 [GitHub Project「Noema V1 路线」](https://github.com/orgs/Noema-Harness/projects/1)（14 张 `[C<n>]` 卡片，Done 5 / In Progress 1 / Todo 8）；proposal 必须写 `Plan: <卡片链接>` 与「推进的能力」；未答决策只阻塞 `apps/desktop/src/` 的产品代码，工具与文档维护放行；行为变更不允许 `skip_specs`；用户验收项格式 `[用户] … （用户确认：YYYY-MM-DD）`；里程碑=归档并需 `milestone:check` 通过。决定与理由见 `docs/DECISIONS.md` D-020、D-022。
 - 并行进行中：组织模型与成长机制是唯一活动变更 `openspec/changes/organization-growth-model/`；决定 1（取消独立团队）与决定 3（维护门槛 v2）已定，决定 2（成长证据门槛）仍待用户回答，未答前不改这部分产品代码。
 
 ## 当前可用
@@ -46,18 +46,19 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 ### 本轮验证
 
-- `npm run check`：**873/873，0 fail，35,155ms**（workspace:check、docs:check、plan:check、skills:check、source:check、lint、typecheck、maintenance:test 全部先通过；lint 维持既有 11 条 warning、0 error）。
+- `npm run check`：**873/873，0 fail，34,010ms**（workspace:check、docs:check、plan:check、skills:check、source:check、lint、typecheck、maintenance:test 全部先通过；lint 维持既有 11 条 warning、0 error）。
 - `npm run maintenance:test`：5/5 通过（文档同步、能力清单与引用、待决上限与用户验收、里程碑、按范围阻塞）。
 - `npm run workspace:check`：OK（把 `.archify` 归为生成目录，diagram 过程材料不入仓库）。
-- `npm run docs:check`：OK（5 份权威文档、版本 0.7.6 = package 版本、基线 `f592a9b`、PRODUCT 能力清单 C1–C14 完整、`core.hooksPath=.githooks`）。
-- `npm run plan:check`：OK（活动变更 `organization-growth-model` 15 完成 / 7 未完成；用户验收项 1 项；待用户决定 1 项）。
-- `npm run milestone:check`：按设计拒绝归档（7 个任务未完成、1 项待用户决定），说明里程碑不是“感觉够了”就能过。
+- `npm run docs:check`：OK（5 份权威文档、版本 0.7.6 = package 版本、基线 `f592a9b`、PRODUCT 能力清单 C1–C14 含看板链接与验收方式、`core.hooksPath=.githooks`）。
+- `npm run plan:check`：OK（活动变更 `organization-growth-model` 20 完成 / 10 未完成；用户验收项 1 项；待用户决定 1 项=决定 2 成长证据门槛）。
+- 看板实测：Project #1「Noema V1 路线」14 张卡片 #132–#145；Done 5（C1/C2/C4/C5/C12）、In Progress 1（C7 #138）、Todo 8；阶段字段已按 基础/组织模型/会话拓扑/六模块/收尾 落位；Issue #130 已改写为迁移说明并关闭。
+- `npm run milestone:check`：仍按设计拒绝归档（10 个任务未完成、1 项待用户决定），说明里程碑不是“感觉够了”就能过。
 - `openspec validate --all --strict`：10 passed / 0 failed（9 个规格 + 1 个 `skip_specs` 变更）。
 - 未运行：决定 2 落地后的成长门槛实现、0.7.6 真实复盘/成长对话框/任务文件审阅演练、0.7.6 安装与快捷方式、真实 provider 全链与长时运行。
 
 ## 未交付（按目标文档）
 
-1. **组织模型**：项目/团队目前是同一层包装（团队名取项目名），一个成员也能建团队；团队章程、长期团队（部门）与跨项目复用未定义。当前活动变更 `organization-growth-model` 正在收口，未定项见其 `design.md`。
+1. **组织模型**：D-019 已决定取消独立团队对象（只有项目、负责人、成员），代码仍保留 schema 42 的 `social_teams` 同层包装；团队章程、长期部门与跨项目复用未定义。当前活动变更 `organization-growth-model` 正在收口，未定项见其 `design.md`。
 2. **成长机制**：已能按项目和成员产出可版本化的资产，但“经历 → 候选能力 → 证据/评估 → 启用”的证据门槛、跨项目积累与用户可见的成长差异未实现（D-014 的成长约束尚未满足）。
 3. **执行者会话拓扑**：执行者私有常驻会话已可从任务详情打开；`@Noema` 跨房间寻址、执行者自己的 AgentRuntime 事件日志/证据、常驻会话与项目 fork 仍未实现。
 4. **会话拓扑**：仍使用旧 room/branch 结构；常驻会话、项目 fork、团队共享上下文、项目结束归档/复盘未实现。
@@ -82,9 +83,9 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 ## 下一步
 
-一次只推进一个阶段，顺序由活动 OpenSpec 变更承载；未完成变更归档前不开下一个。
+一次只推进一个阶段，顺序由 GitHub Project 看板承载：「Noema V1 路线」的卡片状态就是当前进度，未完成变更归档前不开下一个。
 
-1. **当前阶段：组织模型与成长机制**（`openspec/changes/organization-growth-model/`）：先把团队/项目建模和成长证据门槛设计定清楚，`design.md` 的「待用户决定」3 项由用户确认后再改代码。
+1. **当前阶段：组织模型与成长机制**（`openspec/changes/organization-growth-model/`，看板卡片 C7 #138）：先把团队/项目建模和成长证据门槛设计定清楚，`design.md` 的「待用户决定」由用户确认后再改代码。
 2. **阶段 5 前置：会话拓扑**：`@Noema` 跨房间寻址、执行者事件日志/证据、常驻会话与项目 fork。
 3. **阶段 5：六模块与前端**：用六模块和 ContextCompiler 替换当前提示词/工具/上下文拼装，再做一次主要前端升级。
 4. **收尾**：补工作区文件回滚、任务文件/命令证据完整性，做最终验收与可安装分发（含 Squirrel 或替代安装方式）。

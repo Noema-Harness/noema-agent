@@ -1,15 +1,15 @@
 # AGENTS
 
-本文件是 Noema 仓库的治理入口。读法：一轮开发就是一个循环——选能力 → 立项 → 纵切实现 → 证据验收 → 里程碑归档；五份文档各拥有循环里的一种事实，四道门槛让“没接上”直接失败。除这套结构外不建任何并行体系。
+本文件是 Noema 仓库的治理入口。读法：一轮开发是一个循环——选卡（看板）→ 立项 → 纵切实现 → 证据验收 → 卡 Done 并归档。三层事实分开：产品真值在 `docs/PRODUCT.md`，本轮增量在 `openspec/changes/`，排序与状态在 [GitHub Project「Noema V1 路线」](https://github.com/orgs/Noema-Harness/projects/1)。四道门槛让“没接上”直接失败；除这三层外不建任何并行体系。
 
 用户级约定在 `C:\Users\NUC\.dsh\AGENTS.md`。冲突顺序：本轮用户要求 > 用户级 > 本文件 > PRODUCT/ARCHITECTURE/DECISIONS > OPERATIONS/STATUS > 旧提交、旧文档、外部参考。代码、测试、诊断是事实证据，但不能替代产品取舍。
 
 ## 1. 一轮怎么走
 
-1. **选能力**：从 `docs/PRODUCT.md`「V1 能力清单」挑本轮推进的 C 行，在 `openspec/changes/<name>/` 立项。proposal 写「推进的能力」，design 写选择与「## 待用户决定」，tasks 写可勾选的纵切。
+1. **选卡**：看板上选本轮推进的卡片（`[C<n>]` issue），把它移到 In Progress，在 `openspec/changes/<name>/` 立项。proposal 写 `Plan: <卡片链接>` 和「推进的能力」；design 写选择与「## 待用户决定」；tasks 写可勾选的纵切。
 2. **开工前**：`npm run plan:check` 必须通过。未答决策只挡产品代码，先做与之无关的部分，不替用户拍板。
 3. **实现**：交付一个可直接测试的纵切，完成即停。机器能判的验收写成自动测试；只有人能判的写成 `- [ ] [用户] <场景> → 证据`。证据（命令、计数、失败原因）写进 tasks 或 STATUS，文档与代码同一提交。
-4. **收口**：`npm run check` 全绿 → `npm run milestone:check` → 归档变更、合并规格增量、更新 STATUS 与能力状态 → 再开下一个变更。
+4. **收口**：`npm run check` 全绿 → `npm run milestone:check` → 归档变更、合并规格增量、更新 STATUS；在卡片评论贴证据（commit sha、check 计数、STATUS 链接），把卡片移到 Done 并关 issue。
 5. **汇报**：用户验收项和待决问题原样带出；用户确认后勾选并写确认日期。
 
 进「待用户决定」的只允许五类，每轮不超过 3 个（超过说明范围没切好）：产品概念与边界、不可逆或难回退的迁移、方案代价差一个量级、只能人判断的验收、对外承诺或额外支出。其余写进 design.md 的「实现选择」，注明维护者判断、用户可推翻。
@@ -25,8 +25,9 @@
 | `docs/OPERATIONS.md` | 环境、开发、检查、打包、安装、回滚、诊断 | 命令、环境、发布流程或诊断方式变化 |
 | `docs/STATUS.md` | 当前版本、已验证证据、缺口、已知限制、下一步 | 每次交付、打包、验证或阻塞变化 |
 | `AGENTS.md` | 治理结构、门槛、工程边界 | 治理或门槛变化 |
+| GitHub Project「Noema V1 路线」 | 规划与状态：排序、阶段、Todo/In Progress/Done、版本 Milestone | 选卡或状态变化时用 `gh` 直接改看板，不在文档里镜像 |
 
-读问题时按表找权威源；交付前更新 STATUS，行为变化同时更新 PRODUCT/ARCHITECTURE 并写 OpenSpec，长期取舍写 DECISIONS。文档里的“当前”必须有代码、测试或运行证据，没有就写未验证。状态、计数、安装路径不进 PRODUCT/ARCHITECTURE/DECISIONS；产品定义与架构理由不进 STATUS/README。
+读问题时按表找权威源；交付前更新 STATUS，行为变化同时更新 PRODUCT/ARCHITECTURE 并写 OpenSpec，长期取舍写 DECISIONS。文档里的“当前”必须有代码、测试或运行证据，没有就写未验证。状态、计数、安装路径不进 PRODUCT/ARCHITECTURE/DECISIONS；产品定义与架构理由不进 STATUS/README；**看板状态不进任何文档**，避免两处计划打架。
 
 ## 3. 四道门槛：不同步就直接失败
 
@@ -34,8 +35,8 @@
 
 | 门槛 | 拦什么 |
 | --- | --- |
-| `npm run docs:check` | 五份文档缺三行头；`docs/` 出现未登记文档；根与 `apps/desktop` 版本不一致；STATUS 的版本/基线/最后更新对不上；钩子没装；config 引用已删文档；能力清单缺验收方式或状态 |
-| `npm run plan:check` | 活动变更多于 1 个；缺 proposal/design/tasks；tasks 全完成却未归档；proposal 没写「推进的能力」；待决超过 3 项；`[用户]` 项没确认日期就勾选 |
+| `npm run docs:check` | 五份文档缺三行头；`docs/` 出现未登记文档；根与 `apps/desktop` 版本不一致；STATUS 的版本/基线/最后更新对不上；钩子没装；config 引用已删文档；能力清单缺验收方式或缺看板链接 |
+| `npm run plan:check` | 活动变更多于 1 个；缺 proposal/design/tasks；tasks 全完成却未归档；proposal 没写 `Plan:` 卡片链接或缺「推进的能力」；待决超过 3 项；`[用户]` 项没确认日期就勾选 |
 | `npm run milestone:check` | 任务没完成；用户验收没确认；还有待决问题；没有规格增量且没声明纯文档变更；STATUS 不是当天更新 |
 | `.githooks/pre-commit` | 产品代码（`apps/desktop/src/`）没带计划/状态；有未答决策；行为变更却标了 `skip_specs`。只改 `scripts/` 或文档时放行 |
 
@@ -56,6 +57,6 @@
 
 ## 5. 不新建并行体系
 
-机制只用五份文档 + OpenSpec + `scripts/maintenance.mjs`：计划在 PRODUCT 的能力清单，变更在 `openspec/changes/`，回归合同在 `openspec/specs/`。不新增 ROADMAP、任务看板、第二套计划或过程规范——那会和权威源断裂，是纯熵增（2026-11-15 用户明确否决过这种做法）。常驻文档固定 5 份 + README + 本文件，one-in-one-out；历史由 Git 保存，过程材料放 `.work/`。
+机制只用三层 + 四道门：产品真值在 PRODUCT 的能力清单，本轮增量在 `openspec/changes/`，回归合同在 `openspec/specs/`，排序与状态在**唯一一个** GitHub Project 看板（`scripts/maintenance.mjs` 只校验指向它的链接，不镜像它）。不新增第二个看板、ROADMAP、第二套计划或过程规范——那会和权威源断裂，是纯熵增（2026-11-15 用户明确否决过这种做法）。常驻文档固定 5 份 + README + 本文件，one-in-one-out；历史由 Git 保存，过程材料放 `.work/`。
 
 本文件只在治理或门槛变化时修改，并保持“一个循环 + 四道门”的结构；治理机制自身的改动不受未决产品决策阻塞。
