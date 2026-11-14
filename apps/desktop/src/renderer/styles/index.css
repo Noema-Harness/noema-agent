@@ -6511,6 +6511,91 @@ select:disabled {
   color: #8a847a;
   font-size: 10.5px;
 }
+.core-task-file-card {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border-bottom: 1px solid #f0ece5;
+}
+.core-task-file-card:last-child {
+  border-bottom: 0;
+}
+.core-task-file-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+.core-task-file-path-button {
+  min-width: 0;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #3f3c37;
+  font: inherit;
+  font-size: 11.5px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.core-task-file-path-button:hover:not(:disabled) {
+  color: #35675d;
+  text-decoration: underline;
+}
+.core-task-file-path-button:disabled {
+  cursor: default;
+}
+.core-task-file-diff {
+  max-height: 190px;
+  margin: 0;
+  overflow: auto;
+  border: 1px solid #e8e2d8;
+  border-radius: 7px;
+  background: #f7f4ee;
+  padding: 6px 0;
+  color: #4b4842;
+  font-family: 'Cascadia Mono', 'SFMono-Regular', Consolas, monospace;
+  font-size: 10.5px;
+  line-height: 1.55;
+  white-space: pre;
+}
+.core-task-file-diff span {
+  display: block;
+  min-height: 16px;
+  padding: 0 8px;
+}
+.core-task-file-diff span[data-diff='add'] {
+  background: #edf6ec;
+  color: #2f6133;
+}
+.core-task-file-diff span[data-diff='remove'] {
+  background: #fbeeec;
+  color: #8d3f36;
+}
+.core-task-file-diff span[data-diff='hunk'] {
+  color: #7c6b4d;
+}
+.core-task-file-note {
+  margin: 0;
+  color: #8a847a;
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+.core-task-file-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.core-task-file-actions .text-button {
+  min-height: 28px;
+  height: 28px;
+  padding: 0 10px;
+  font-size: 11px;
+}
+
 .core-task-note {
   margin: 8px 0 0;
   color: #8a643b;

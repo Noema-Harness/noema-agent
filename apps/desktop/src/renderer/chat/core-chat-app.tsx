@@ -362,6 +362,7 @@ export function CoreChatApp() {
     teams,
     projectStatusBusy,
     retryProjectGrowthMember,
+    handleReviewProjectFileChange,
   } = controller;
 
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
@@ -383,6 +384,26 @@ export function CoreChatApp() {
     useState<DeliveryEvent[]>(readDeliveryEvents);
   const [restoreConfirmOpen, setRestoreConfirmOpen] = useState(false);
   const [growthProjectId, setGrowthProjectId] = useState<string | null>(null);
+  const [reviewingChangeId, setReviewingChangeId] = useState<string | null>(
+    null,
+  );
+  const [fileReviewConfirm, setFileReviewConfirm] = useState<{
+    task: NoemaSocialWorkTask;
+    change: NoemaSocialWorkTask['fileChanges'][number];
+  } | null>(null);
+  const reviewFileChange = async (
+    task: NoemaSocialWorkTask,
+    change: NoemaSocialWorkTask['fileChanges'][number],
+    action: 'keep' | 'revert',
+  ) => {
+    setReviewingChangeId(change.id);
+    try {
+      await handleReviewProjectFileChange(task, change.id, action);
+    } finally {
+      setReviewingChangeId(null);
+      setFileReviewConfirm(null);
+    }
+  };
   const growthProject =
     (growthProjectId
       ? projects.find((project) => project.id === growthProjectId)
@@ -831,21 +852,86 @@ export function CoreChatApp() {
                 </NoemaButton>
               </div>
               <div className="core-task-file-list">
-                {task.fileChanges.map((change) => (
-                  <NoemaButton
-                    className="core-task-file"
-                    type="button"
-                    key={change.id}
-                    title={`查看 ${change.relativePath}`}
-                    disabled={!task.workspacePath}
-                    onClick={() => openWorkspace(change.relativePath)}
-                  >
-                    <span className="core-task-file-path">
-                      {change.relativePath}
-                    </span>
-                    <small>{fileStateLabel(change.state)}</small>
-                  </NoemaButton>
-                ))}
+                {task.fileChanges.map((change) => {
+                  const reviewable = [
+                    'pending',
+                    'applied',
+                    'unknown',
+                    'conflict',
+                  ].includes(change.state);
+                  return (
+                    <div className="core-task-file-card" key={change.id}>
+                      <div className="core-task-file-head">
+                        <NoemaButton
+                          className="core-task-file-path-button"
+                          type="button"
+                          title={`在工作区查看 ${change.relativePath}`}
+                          disabled={!task.workspacePath}
+                          onClick={() => openWorkspace(change.relativePath)}
+                        >
+                          {change.relativePath}
+                        </NoemaButton>
+                        <small>{fileStateLabel(change.state)}</small>
+                      </div>
+                      {change.diffText ? (
+                        <pre
+                          className="core-task-file-diff"
+                          aria-label={`${change.relativePath} 的差异`}
+                        >
+                          {change.diffText.split('\n').map((line, index) => {
+                            const tone =
+                              line.startsWith('+') && !line.startsWith('+++')
+                                ? 'add'
+                                : line.startsWith('-') &&
+                                    !line.startsWith('---')
+                                  ? 'remove'
+                                  : line.startsWith('@@')
+                                    ? 'hunk'
+                                    : 'context';
+                            return (
+                              <span key={index} data-diff={tone}>
+                                {line || ' '}
+                              </span>
+                            );
+                          })}
+                        </pre>
+                      ) : (
+                        <p className="core-task-file-note">
+                          没有可显示的文本差异。
+                        </p>
+                      )}
+                      {change.diffTruncated ? (
+                        <p className="core-task-file-note">
+                          差异过长，已截断显示。
+                        </p>
+                      ) : null}
+                      {reviewable ? (
+                        <div className="core-task-file-actions">
+                          <NoemaButton
+                            className="text-button"
+                            type="button"
+                            disabled={reviewingChangeId === change.id}
+                            onClick={() =>
+                              void reviewFileChange(task, change, 'keep')
+                            }
+                          >
+                            保留修改
+                          </NoemaButton>
+                          <NoemaButton
+                            className="text-button"
+                            type="button"
+                            disabled={reviewingChangeId === change.id}
+                            onClick={() =>
+                              setFileReviewConfirm({ task, change })
+                            }
+                          >
+                            撤回修改
+                          </NoemaButton>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           ) : null}
@@ -1567,6 +1653,71 @@ export function CoreChatApp() {
                     }}
                   >
                     恢复
+                  </NoemaButton>
+                </footer>
+              </section>
+            </div>
+          </div>
+        ) : null}
+
+        {fileReviewConfirm ? (
+          <div
+            className="core-task-inspector-backdrop"
+            onClick={() => setFileReviewConfirm(null)}
+            role="presentation"
+          >
+            <div
+              className="core-confirm-wrap"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <section
+                className="core-confirm-dialog"
+                role="dialog"
+                aria-modal="true"
+                aria-label="确认撤回文件修改"
+              >
+                <header className="core-confirm-head">
+                  <div>
+                    <strong>撤回这次文件修改？</strong>
+                    <span>
+                      {fileReviewConfirm.change.relativePath}{' '}
+                      会恢复到任务开始前的内容。
+                    </span>
+                  </div>
+                  <button
+                    className="icon-button"
+                    type="button"
+                    aria-label="关闭撤回确认"
+                    title="关闭"
+                    onClick={() => setFileReviewConfirm(null)}
+                  >
+                    ×
+                  </button>
+                </header>
+                <p className="core-task-file-note">
+                  建议先查看上方差异。撤回后，这次任务记录仍会保留。
+                </p>
+                <footer className="core-confirm-actions">
+                  <NoemaButton
+                    className="text-button"
+                    type="button"
+                    onClick={() => setFileReviewConfirm(null)}
+                  >
+                    取消
+                  </NoemaButton>
+                  <NoemaButton
+                    className="text-button primary"
+                    type="button"
+                    disabled={reviewingChangeId === fileReviewConfirm.change.id}
+                    onClick={() =>
+                      void reviewFileChange(
+                        fileReviewConfirm.task,
+                        fileReviewConfirm.change,
+                        'revert',
+                      )
+                    }
+                  >
+                    撤回修改
                   </NoemaButton>
                 </footer>
               </section>
