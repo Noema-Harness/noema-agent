@@ -6053,6 +6053,123 @@ select:disabled {
   background: #26231f;
   color: #fff;
 }
+.core-card-actions {
+  align-self: flex-start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.core-growth-wrap {
+  width: min(720px, calc(100% - 48px));
+  margin: 8vh auto 32px;
+}
+.core-growth-dialog {
+  display: flex;
+  flex-direction: column;
+  max-height: min(78vh, 760px);
+}
+.core-growth-body {
+  display: grid;
+  gap: 14px;
+  min-height: 0;
+  padding: 16px 22px 18px;
+  overflow: auto;
+}
+.core-growth-intro {
+  margin: 0;
+  color: #77736b;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+.core-growth-list {
+  display: grid;
+  gap: 12px;
+}
+.core-growth-member {
+  display: grid;
+  gap: 2px;
+  padding: 12px 14px;
+  border: 1px solid #e4e1da;
+  border-radius: 12px;
+  background: #fff;
+}
+.core-growth-member > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.core-growth-member > header > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.core-growth-member strong {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.core-growth-status {
+  padding: 2px 7px;
+  border: 1px solid #dedad2;
+  border-radius: 999px;
+  background: #f7f5f0;
+  color: #7d776d;
+  font-size: 10.5px;
+}
+.core-growth-status-completed {
+  border-color: #bfd6c5;
+  background: #eef6f0;
+  color: #326541;
+}
+.core-growth-status-no_change {
+  color: #8a857b;
+}
+.core-growth-status-failed,
+.core-growth-status-interrupted {
+  border-color: #e4c9bc;
+  background: #fcf1ec;
+  color: #8a4d2f;
+}
+.core-growth-member > p {
+  margin: 8px 0 0;
+  color: #5d5951;
+  font-size: 12.5px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+.core-growth-assets {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.core-growth-assets li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 7px;
+  background: #f7f5f0;
+  font-size: 11.5px;
+}
+.core-growth-assets code {
+  overflow-wrap: anywhere;
+  font-size: 11px;
+}
+.core-growth-assets span {
+  color: #8a857b;
+}
+.core-growth-assets small {
+  flex-basis: 100%;
+  color: #8a857c;
+}
+.core-growth-muted {
+  color: #8a857b;
+  font-size: 12px;
+}
 .core-composer {
   flex: 0 0 auto;
   border-top: 1px solid #e4e1da;
@@ -6394,6 +6511,91 @@ select:disabled {
   color: #8a847a;
   font-size: 10.5px;
 }
+.core-task-file-card {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border-bottom: 1px solid #f0ece5;
+}
+.core-task-file-card:last-child {
+  border-bottom: 0;
+}
+.core-task-file-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+.core-task-file-path-button {
+  min-width: 0;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #3f3c37;
+  font: inherit;
+  font-size: 11.5px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.core-task-file-path-button:hover:not(:disabled) {
+  color: #35675d;
+  text-decoration: underline;
+}
+.core-task-file-path-button:disabled {
+  cursor: default;
+}
+.core-task-file-diff {
+  max-height: 190px;
+  margin: 0;
+  overflow: auto;
+  border: 1px solid #e8e2d8;
+  border-radius: 7px;
+  background: #f7f4ee;
+  padding: 6px 0;
+  color: #4b4842;
+  font-family: 'Cascadia Mono', 'SFMono-Regular', Consolas, monospace;
+  font-size: 10.5px;
+  line-height: 1.55;
+  white-space: pre;
+}
+.core-task-file-diff span {
+  display: block;
+  min-height: 16px;
+  padding: 0 8px;
+}
+.core-task-file-diff span[data-diff='add'] {
+  background: #edf6ec;
+  color: #2f6133;
+}
+.core-task-file-diff span[data-diff='remove'] {
+  background: #fbeeec;
+  color: #8d3f36;
+}
+.core-task-file-diff span[data-diff='hunk'] {
+  color: #7c6b4d;
+}
+.core-task-file-note {
+  margin: 0;
+  color: #8a847a;
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+.core-task-file-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.core-task-file-actions .text-button {
+  min-height: 28px;
+  height: 28px;
+  padding: 0 10px;
+  font-size: 11px;
+}
+
 .core-task-note {
   margin: 8px 0 0;
   color: #8a643b;

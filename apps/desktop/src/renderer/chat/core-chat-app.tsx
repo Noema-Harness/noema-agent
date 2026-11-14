@@ -3,8 +3,10 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type {
   NoemaSocialMessage,
+  NoemaSocialProject,
   NoemaSocialWorkTask,
 } from '../../shared/contracts/noema-bridge.d.ts';
+import { visibleTimelineTurns } from '../../shared/chat/timeline-visibility.ts';
 import { NoemaButton } from '../ui/noema-button';
 import { Icon } from './presentation';
 import { markdownComponents } from './markdown';
@@ -51,6 +53,27 @@ function taskVerificationLabel(
       return '待核验';
     case 'not_planned':
       return '未独立核验';
+  }
+}
+
+type GrowthMember = NonNullable<
+  NoemaSocialProject['growthBatch']
+>['members'][number];
+
+function growthMemberStatusLabel(status: GrowthMember['status']) {
+  switch (status) {
+    case 'pending':
+      return '等待整理';
+    case 'running':
+      return '整理中';
+    case 'completed':
+      return '已整理';
+    case 'no_change':
+      return '无变化';
+    case 'interrupted':
+      return '已中断';
+    case 'failed':
+      return '失败';
   }
 }
 
@@ -338,6 +361,9 @@ export function CoreChatApp() {
     agents,
     projects,
     teams,
+    projectStatusBusy,
+    retryProjectGrowthMember,
+    handleReviewProjectFileChange,
   } = controller;
 
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
@@ -358,21 +384,38 @@ export function CoreChatApp() {
   const [deliveryEvents, setDeliveryEvents] =
     useState<DeliveryEvent[]>(readDeliveryEvents);
   const [restoreConfirmOpen, setRestoreConfirmOpen] = useState(false);
+  const [growthProjectId, setGrowthProjectId] = useState<string | null>(null);
+  const [reviewingChangeId, setReviewingChangeId] = useState<string | null>(
+    null,
+  );
+  const [fileReviewConfirm, setFileReviewConfirm] = useState<{
+    task: NoemaSocialWorkTask;
+    change: NoemaSocialWorkTask['fileChanges'][number];
+  } | null>(null);
+  const reviewFileChange = async (
+    task: NoemaSocialWorkTask,
+    change: NoemaSocialWorkTask['fileChanges'][number],
+    action: 'keep' | 'revert',
+  ) => {
+    setReviewingChangeId(change.id);
+    try {
+      await handleReviewProjectFileChange(task, change.id, action);
+    } finally {
+      setReviewingChangeId(null);
+      setFileReviewConfirm(null);
+    }
+  };
+  const growthProject =
+    (growthProjectId
+      ? projects.find((project) => project.id === growthProjectId)
+      : null) ?? null;
   const editTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const previousTaskStatus = useRef(
     new Map<string, NoemaSocialWorkTask['status']>(),
   );
 
   const visibleTurns = useMemo(
-    () =>
-      conversationTurns
-        .map((turn) => ({
-          ...turn,
-          items: turn.items.filter(
-            (item) => item.kind === 'message' && item.message.role !== 'system',
-          ),
-        }))
-        .filter((turn) => turn.items.length > 0),
+    () => visibleTimelineTurns(conversationTurns),
     [conversationTurns],
   );
 
@@ -802,21 +845,86 @@ export function CoreChatApp() {
                 </NoemaButton>
               </div>
               <div className="core-task-file-list">
-                {task.fileChanges.map((change) => (
-                  <NoemaButton
-                    className="core-task-file"
-                    type="button"
-                    key={change.id}
-                    title={`查看 ${change.relativePath}`}
-                    disabled={!task.workspacePath}
-                    onClick={() => openWorkspace(change.relativePath)}
-                  >
-                    <span className="core-task-file-path">
-                      {change.relativePath}
-                    </span>
-                    <small>{fileStateLabel(change.state)}</small>
-                  </NoemaButton>
-                ))}
+                {task.fileChanges.map((change) => {
+                  const reviewable = [
+                    'pending',
+                    'applied',
+                    'unknown',
+                    'conflict',
+                  ].includes(change.state);
+                  return (
+                    <div className="core-task-file-card" key={change.id}>
+                      <div className="core-task-file-head">
+                        <NoemaButton
+                          className="core-task-file-path-button"
+                          type="button"
+                          title={`在工作区查看 ${change.relativePath}`}
+                          disabled={!task.workspacePath}
+                          onClick={() => openWorkspace(change.relativePath)}
+                        >
+                          {change.relativePath}
+                        </NoemaButton>
+                        <small>{fileStateLabel(change.state)}</small>
+                      </div>
+                      {change.diffText ? (
+                        <pre
+                          className="core-task-file-diff"
+                          aria-label={`${change.relativePath} 的差异`}
+                        >
+                          {change.diffText.split('\n').map((line, index) => {
+                            const tone =
+                              line.startsWith('+') && !line.startsWith('+++')
+                                ? 'add'
+                                : line.startsWith('-') &&
+                                    !line.startsWith('---')
+                                  ? 'remove'
+                                  : line.startsWith('@@')
+                                    ? 'hunk'
+                                    : 'context';
+                            return (
+                              <span key={index} data-diff={tone}>
+                                {line || ' '}
+                              </span>
+                            );
+                          })}
+                        </pre>
+                      ) : (
+                        <p className="core-task-file-note">
+                          没有可显示的文本差异。
+                        </p>
+                      )}
+                      {change.diffTruncated ? (
+                        <p className="core-task-file-note">
+                          差异过长，已截断显示。
+                        </p>
+                      ) : null}
+                      {reviewable ? (
+                        <div className="core-task-file-actions">
+                          <NoemaButton
+                            className="text-button"
+                            type="button"
+                            disabled={reviewingChangeId === change.id}
+                            onClick={() =>
+                              void reviewFileChange(task, change, 'keep')
+                            }
+                          >
+                            保留修改
+                          </NoemaButton>
+                          <NoemaButton
+                            className="text-button"
+                            type="button"
+                            disabled={reviewingChangeId === change.id}
+                            onClick={() =>
+                              setFileReviewConfirm({ task, change })
+                            }
+                          >
+                            撤回修改
+                          </NoemaButton>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           ) : null}
@@ -1332,14 +1440,25 @@ export function CoreChatApp() {
                               </dd>
                             </div>
                           </dl>
-                          <button
-                            className="core-card-action"
-                            type="button"
-                            disabled={!canOpen}
-                            onClick={() => openTeamGroup(project.groupRoomId)}
-                          >
-                            {canOpen ? '打开项目群' : '项目群不可用'}
-                          </button>
+                          <div className="core-card-actions">
+                            <button
+                              className="core-card-action"
+                              type="button"
+                              disabled={!canOpen}
+                              onClick={() => openTeamGroup(project.groupRoomId)}
+                            >
+                              {canOpen ? '打开项目群' : '项目群不可用'}
+                            </button>
+                            {project.growthBatch ? (
+                              <button
+                                className="core-card-action"
+                                type="button"
+                                onClick={() => setGrowthProjectId(project.id)}
+                              >
+                                成长记录
+                              </button>
+                            ) : null}
+                          </div>
                         </article>
                       );
                     })}
@@ -1527,6 +1646,195 @@ export function CoreChatApp() {
                     }}
                   >
                     恢复
+                  </NoemaButton>
+                </footer>
+              </section>
+            </div>
+          </div>
+        ) : null}
+
+        {fileReviewConfirm ? (
+          <div
+            className="core-task-inspector-backdrop"
+            onClick={() => setFileReviewConfirm(null)}
+            role="presentation"
+          >
+            <div
+              className="core-confirm-wrap"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <section
+                className="core-confirm-dialog"
+                role="dialog"
+                aria-modal="true"
+                aria-label="确认撤回文件修改"
+              >
+                <header className="core-confirm-head">
+                  <div>
+                    <strong>撤回这次文件修改？</strong>
+                    <span>
+                      {fileReviewConfirm.change.relativePath}{' '}
+                      会恢复到任务开始前的内容。
+                    </span>
+                  </div>
+                  <button
+                    className="icon-button"
+                    type="button"
+                    aria-label="关闭撤回确认"
+                    title="关闭"
+                    onClick={() => setFileReviewConfirm(null)}
+                  >
+                    ×
+                  </button>
+                </header>
+                <p className="core-task-file-note">
+                  建议先查看上方差异。撤回后，这次任务记录仍会保留。
+                </p>
+                <footer className="core-confirm-actions">
+                  <NoemaButton
+                    className="text-button"
+                    type="button"
+                    onClick={() => setFileReviewConfirm(null)}
+                  >
+                    取消
+                  </NoemaButton>
+                  <NoemaButton
+                    className="text-button primary"
+                    type="button"
+                    disabled={reviewingChangeId === fileReviewConfirm.change.id}
+                    onClick={() =>
+                      void reviewFileChange(
+                        fileReviewConfirm.task,
+                        fileReviewConfirm.change,
+                        'revert',
+                      )
+                    }
+                  >
+                    撤回修改
+                  </NoemaButton>
+                </footer>
+              </section>
+            </div>
+          </div>
+        ) : null}
+
+        {growthProject?.growthBatch ? (
+          <div
+            className="core-task-inspector-backdrop"
+            onClick={() => setGrowthProjectId(null)}
+            role="presentation"
+          >
+            <div
+              className="core-confirm-wrap core-growth-wrap"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <section
+                className="core-confirm-dialog core-growth-dialog"
+                role="dialog"
+                aria-modal="true"
+                aria-label="项目成长记录"
+              >
+                <header className="core-confirm-head">
+                  <div>
+                    <strong>成长记录</strong>
+                    <span>
+                      {growthProject.title} · 计划版本{' '}
+                      {growthProject.growthBatch.planRevision} ·{' '}
+                      {growthProject.growthBatch.status === 'completed'
+                        ? '已归档'
+                        : '整理中'}
+                    </span>
+                  </div>
+                  <button
+                    className="icon-button"
+                    type="button"
+                    aria-label="关闭成长记录"
+                    title="关闭"
+                    onClick={() => setGrowthProjectId(null)}
+                  >
+                    ×
+                  </button>
+                </header>
+                <div className="core-growth-body">
+                  <p className="core-growth-intro">
+                    项目结束后，成员会把可复用的经验整理为带来源的资产版本。
+                  </p>
+                  {growthProject.growthBatch.members.length ? (
+                    <div className="core-growth-list">
+                      {growthProject.growthBatch.members.map((member) => (
+                        <article
+                          className="core-growth-member"
+                          key={member.agentId}
+                        >
+                          <header>
+                            <div>
+                              <strong>{member.agentName}</strong>
+                              <span
+                                className={`core-growth-status core-growth-status-${member.status}`}
+                              >
+                                {growthMemberStatusLabel(member.status)}
+                              </span>
+                            </div>
+                            {member.status === 'failed' ||
+                            member.status === 'interrupted' ? (
+                              <button
+                                className="core-card-action"
+                                type="button"
+                                disabled={projectStatusBusy}
+                                onClick={() => {
+                                  if (growthProject) {
+                                    void retryProjectGrowthMember(
+                                      growthProject,
+                                      member.agentId,
+                                    );
+                                  }
+                                }}
+                              >
+                                重新整理
+                              </button>
+                            ) : null}
+                          </header>
+                          <p>
+                            {member.brief?.trim() ||
+                              member.errorMessage ||
+                              '未留下成长说明。'}
+                          </p>
+                          {member.assets.length ? (
+                            <ul className="core-growth-assets">
+                              {member.assets.map((asset) => (
+                                <li key={`${asset.path}:${asset.revision}`}>
+                                  <code>{asset.path}</code>
+                                  <span>
+                                    v{asset.revision}
+                                    {asset.isDeleted ? ' · 已删除' : ''}
+                                  </span>
+                                  {asset.reason ? (
+                                    <small>{asset.reason}</small>
+                                  ) : null}
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <span className="core-growth-muted">
+                              没有改动资产。
+                            </span>
+                          )}
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <span className="core-growth-muted">
+                      这批成长还没有成员记录。
+                    </span>
+                  )}
+                </div>
+                <footer className="core-confirm-actions">
+                  <NoemaButton
+                    className="text-button primary"
+                    type="button"
+                    onClick={() => setGrowthProjectId(null)}
+                  >
+                    关闭
                   </NoemaButton>
                 </footer>
               </section>

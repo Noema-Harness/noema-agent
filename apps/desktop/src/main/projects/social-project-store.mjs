@@ -318,15 +318,7 @@ export class SocialProjectStore {
       `)
       .get(project.id);
     const growthMembers = growthBatch
-      ? this.db
-          .prepare(`
-            SELECT gm.agent_id AS agentId, a.name AS agentName, gm.status,
-                   gm.error_message AS errorMessage
-            FROM social_project_growth_members AS gm
-            JOIN social_agents AS a ON a.id = gm.agent_id
-            WHERE gm.batch_id = ? ORDER BY gm.created_at, gm.agent_id
-          `)
-          .all(growthBatch.id)
+      ? this.#growthMembers(growthBatch.id)
       : [];
     const lead =
       members.find(
@@ -352,17 +344,7 @@ export class SocialProjectStore {
     };
   }
 
-  getProjectGrowthBatch(batchId) {
-    requireText(batchId, '成长批次 ID', 200);
-    const batch = this.db
-      .prepare(`
-        SELECT id, project_id AS projectId, plan_revision AS planRevision,
-               status, created_at AS createdAt, updated_at AS updatedAt,
-               completed_at AS completedAt, finalized_at AS finalizedAt
-        FROM social_project_growth_batches WHERE id = ?
-      `)
-      .get(batchId);
-    if (!batch) return null;
+  #growthMembers(batchId) {
     const members = this.db
       .prepare(`
         SELECT gm.agent_id AS agentId, a.name AS agentName,
@@ -376,7 +358,49 @@ export class SocialProjectStore {
         WHERE gm.batch_id = ? ORDER BY gm.created_at, gm.agent_id
       `)
       .all(batchId);
-    return { ...batch, members };
+    if (!members.length) return members;
+    const assets = this.db
+      .prepare(`
+        SELECT gm.agent_id AS agentId, gm.turn_id AS turnId,
+               ar.path, ar.revision, ar.is_deleted AS isDeleted, ar.reason
+        FROM social_project_growth_members AS gm
+        JOIN social_agent_asset_revisions AS ar
+          ON ar.agent_id = gm.agent_id AND ar.source_turn_id = gm.turn_id
+        WHERE gm.batch_id = ?
+        ORDER BY gm.created_at, ar.path, ar.revision
+      `)
+      .all(batchId);
+    const assetsByMember = new Map();
+    for (const asset of assets) {
+      const key = `${asset.agentId}\u0000${asset.turnId}`;
+      const list = assetsByMember.get(key) ?? [];
+      list.push({
+        path: asset.path,
+        revision: asset.revision,
+        isDeleted: Boolean(asset.isDeleted),
+        reason: asset.reason,
+      });
+      assetsByMember.set(key, list);
+    }
+    return members.map((member) => ({
+      ...member,
+      assets:
+        assetsByMember.get(`${member.agentId}\u0000${member.turnId}`) ?? [],
+    }));
+  }
+
+  getProjectGrowthBatch(batchId) {
+    requireText(batchId, '成长批次 ID', 200);
+    const batch = this.db
+      .prepare(`
+        SELECT id, project_id AS projectId, plan_revision AS planRevision,
+               status, created_at AS createdAt, updated_at AS updatedAt,
+               completed_at AS completedAt, finalized_at AS finalizedAt
+        FROM social_project_growth_batches WHERE id = ?
+      `)
+      .get(batchId);
+    if (!batch) return null;
+    return { ...batch, members: this.#growthMembers(batchId) };
   }
 
   createProjectGrowthBatch(projectId) {

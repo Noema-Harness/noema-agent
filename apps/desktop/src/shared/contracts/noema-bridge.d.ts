@@ -511,7 +511,20 @@ export interface NoemaSocialProject {
         | 'no_change'
         | 'interrupted'
         | 'failed';
+      sessionRoomId: string | null;
+      turnId: string | null;
+      brief: string | null;
+      errorCode: string | null;
       errorMessage: string | null;
+      createdAt: string;
+      updatedAt: string;
+      completedAt: string | null;
+      assets: Array<{
+        path: string;
+        revision: number;
+        isDeleted: boolean;
+        reason: string;
+      }>;
     }>;
   } | null;
   unfinished: {
