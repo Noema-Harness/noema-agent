@@ -9,8 +9,6 @@ import { resolveGitExecutable } from "./git-exec.mjs";
 // (`~/.dsh`): the global AGENTS.md and the user skills under `~/.codex/skills`.
 // `check` never mutates anything; `import` copies missing or cleanly updatable
 // files and preserves files that were adapted for DSH on purpose.
-//
-// Project skills are a separate, committed mirror: `npm run skills:sync`.
 
 function option(argv, name, fallback) {
   const index = argv.indexOf(`--${name}`);

@@ -4,6 +4,12 @@
 
 当前源码版本、已验证能力和未交付项见 [STATUS](docs/STATUS.md)；V1 能力的排序与进度见 [GitHub Project 看板](https://github.com/orgs/Noema-Harness/projects/1)。
 
+## 它怎么工作
+
+![Noema 架构：你在主聊说清目标，执行者在项目文件夹里动手，产物和证据回到你手里](docs/assets/noema-architecture.png)
+
+一句话进来，主聊只负责理解、编排和汇总；真正动手的是执行者，它只在项目的文件夹里读写，每一步和每个文件改动都留下可回看的记录。对话、项目与记忆留在本机，换模型不换你的数据。想看可缩放、可切换主题的版本：[交互版架构图](docs/assets/noema-architecture.html)。
+
 ## 快速开始
 
 环境：Windows 10/11 x64，Node.js 24.21.x（`>=24.21 <25`），npm。

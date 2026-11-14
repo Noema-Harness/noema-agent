@@ -33,9 +33,8 @@ npm run check
 1. `workspace:check`：文档路由与结构；
 2. `docs:check`：五份权威文档的三行头与路由、版本/基线、git 门槛安装状态；
 3. `plan:check`：OpenSpec 活动变更、`Plan:` 卡片链接、任务清单与未决问题；
-4. `skills:check`：技能镜像；
-5. `source:check`：源码依赖边界；
-6. `lint`、`typecheck`、`maintenance:test`、`test`。
+4. `source:check`：源码依赖边界；
+5. `lint`、`typecheck`、`maintenance:test`、`test`。
 
 里程碑（准备归档变更时）单独运行：
 
@@ -50,8 +49,6 @@ npm run workspace:check
 npm run docs:check
 npm run plan:check
 npm run milestone:check
-npm run skills:sync
-npm run skills:check
 npm run source:check
 npm run typecheck
 npm run lint

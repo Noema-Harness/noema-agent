@@ -65,3 +65,14 @@
 - [x] `docs/DECISIONS.md` 新增 D-023，并修正 D-020/D-022 中“计划层在 PRODUCT”的表述
 - [x] 14 张卡片正文去掉“产品定义：docs/PRODUCT.md「V1 能力清单」”指针
 - [x] `npm run check` 全绿并提交（873/873，`81d81b2`）
+
+## 6. 治理清理与用户向架构图（2026-11-15）
+
+三个项目级技能长期没有作用于开发，且引用的文档早已删除；`skills:check` 只比对镜像，不检查内容引用，等于空转。README 也没有任何图，用户看不到产品怎么工作。
+
+- [x] 删除 `.codex/skills`、`.dsh` 镜像、`scripts/sync-skills.mjs` 及其测试与 `skills:sync`/`skills:check` 脚本
+- [x] `npm run check` 去掉 skills:check；`AGENTS.md`/`docs/OPERATIONS.md`/`docs/STATUS.md` 同步为“项目不自建技能，用户级技能在 DSH 侧维护”
+- [x] 看板 14 张卡片改为统一模板并按证据重标状态（Done 5 / In Progress 6 / Todo 3）
+- [x] 用 Archify 产出只画 Noema 自身范围的用户向架构图：`docs/assets/noema-architecture.html` + `.png`（candidate 与过程材料留在 `.archify/`）
+- [x] README 增加「它怎么工作」图与一句话说明，链接交互版
+- [x] `npm run check` 全绿并提交（873/873，27,908ms）

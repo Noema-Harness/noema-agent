@@ -17,8 +17,9 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 - 0.7.4 / 0.7.5 / 0.7.6 均未生成 Squirrel 安装器：NuGet/Squirrel 读取打包 `app.asar` 时返回“无法访问已关闭的流”，继续以便携目录交付。
 - 便携构建：`apps/desktop/out/Noema-win32-x64/Noema.exe`（0.7.6，2026-11-14 22:38，246,819,840 字节）。已装目录只有 `%LOCALAPPDATA%\Programs\Noema-0.7.3|0.7.4|0.7.5`，桌面 `Noema.lnk` 仍指向 Noema-0.7.5，与 0.7.6 源码不同步（见已知限制）。
 - 维护层事实：0.7.4–0.7.6 期间没有任何权威文档更新（`docs/` 最后一次提交仍是 `21380a7 docs: record architecture invariants`，2026-11-14 15:44），`openspec/changes/` 攒了 11 个活动变更、其中 2 个已完成。本轮把文档/计划同步做成会失败的检查：`npm run check` 里的 `docs:check`、`plan:check`，归档前的 `npm run milestone:check`，以及 `.githooks/pre-commit`；11 个变更收敛为 0 后再立项（2 个正式归档并合并规格，9 个移到 `openspec/changes/archive/2026-11-15-*` 并写明关闭原因）。
-- 维护门槛 v2（2026-11-15，按用户对决定 3 的回答落地）：产品定义=`docs/PRODUCT.md`（不含能力清单与计划，2026-11-15 纠正，见 D-023）；能力清单、排序与状态只在 [GitHub Project「Noema V1 路线」](https://github.com/orgs/Noema-Harness/projects/1)（14 张 `[C<n>]` 卡片，Done 5 / In Progress 1 / Todo 8）；proposal 必须写 `Plan: <卡片链接>`（不校验能力编号）；未答决策只阻塞 `apps/desktop/src/` 的产品代码，工具与文档维护放行；行为变更不允许 `skip_specs`；用户验收项格式 `[用户] … （用户确认：YYYY-MM-DD）`；里程碑=归档并需 `milestone:check` 通过。决定与理由见 `docs/DECISIONS.md` D-020、D-022、D-023。
+- 维护门槛 v2（2026-11-15，按用户对决定 3 的回答落地）：产品定义=`docs/PRODUCT.md`（不含能力清单与计划，2026-11-15 纠正，见 D-023）；能力清单、排序与状态只在 [GitHub Project「Noema V1 路线」](https://github.com/orgs/Noema-Harness/projects/1)（14 张 `[C<n>]` 卡片，Done 5 / In Progress 6 / Todo 3，2026-11-15 按真实证据重标）；proposal 必须写 `Plan: <卡片链接>`（不校验能力编号）；未答决策只阻塞 `apps/desktop/src/` 的产品代码，工具与文档维护放行；行为变更不允许 `skip_specs`；用户验收项格式 `[用户] … （用户确认：YYYY-MM-DD）`；里程碑=归档并需 `milestone:check` 通过。决定与理由见 `docs/DECISIONS.md` D-020、D-022、D-023。
 - 并行进行中：组织模型与成长机制是唯一活动变更 `openspec/changes/organization-growth-model/`；决定 1（取消独立团队）与决定 3（维护门槛 v2）已定，决定 2（成长证据门槛）仍待用户回答，未答前不改这部分产品代码。
+- 治理与展示（2026-11-15）：删除不再作用于开发的项目级技能与 `skills:sync`/`skills:check`（3 个技能都引用已删文档，`apps/desktop/src` 无任何引用）；看板 14 张卡片改为统一模板（能力/可观察结果/验收方式/当前证据/缺口/边界）并按证据重标状态；README 增加只画 Noema 自身范围的用户向架构图（`docs/assets/noema-architecture.png`，附可交互 HTML）。
 
 ## 当前可用
 
@@ -46,14 +47,16 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 ### 本轮验证
 
-- `npm run check`：**873/873，0 fail，34,010ms**（workspace:check、docs:check、plan:check、skills:check、source:check、lint、typecheck、maintenance:test 全部先通过；lint 维持既有 11 条 warning、0 error）。
+- `npm run check`：**873/873，0 fail，27,908ms**（workspace:check、docs:check、plan:check、source:check、lint、typecheck、maintenance:test 全部先通过；lint 维持既有 11 条 warning、0 error；项目技能与 skills:check 已删除）。
 - `npm run maintenance:test`：5/5 通过（文档同步、PRODUCT 不承载计划、Plan 链接、待决上限与用户验收、里程碑、按范围阻塞）。
 - `npm run workspace:check`：OK（把 `.archify` 归为生成目录，diagram 过程材料不入仓库）。
 - `npm run docs:check`：OK（5 份权威文档、版本 0.7.6 = package 版本、基线 `f592a9b`、PRODUCT 不含能力清单与计划、`core.hooksPath=.githooks`）。
-- `npm run plan:check`：OK（活动变更 `organization-growth-model` 20 完成 / 10 未完成；用户验收项 1 项；待用户决定 1 项=决定 2 成长证据门槛）。
-- 看板实测：Project #1「Noema V1 路线」14 张卡片 #132–#145；Done 5（C1/C2/C4/C5/C12）、In Progress 1（C7 #138）、Todo 8；阶段字段已按 基础/组织模型/会话拓扑/六模块/收尾 落位；Issue #130 已改写为迁移说明并关闭。
+- `npm run plan:check`：OK（活动变更 `organization-growth-model` 35 完成 / 8 未完成；用户验收项 1 项；待用户决定 1 项=决定 2 成长证据门槛）。
+- 看板实测：Project #1「Noema V1 路线」14 张卡片 #132–#145；改按证据重标后 Done 5（C1/C2/C4/C5/C14）、In Progress 6（C3/C6/C7/C10/C11/C12）、Todo 3（C8/C9/C13）；阶段字段已按 基础/组织模型/会话拓扑/六模块/收尾 落位；Issue #130 已改写为迁移说明并关闭。
 - `npm run milestone:check`：仍按设计拒绝归档（10 个任务未完成、1 项待用户决定），说明里程碑不是“感觉够了”就能过。
 - `openspec validate --all --strict`：10 passed / 0 failed（9 个规格 + 1 个 `skip_specs` 变更）。
+- 架构图（用户向）：`docs/assets/noema-architecture.html` + `.png`，Archify `finalize` 四道 gate（validate/deliver/check/browser-check）全 pass；只画 Noema 自身范围，不含本地 harness；README「它怎么工作」引用。
+- 项目技能清理：删除 3 个项目级技能、`.dsh` 镜像、`scripts/sync-skills.mjs` 与 `skills:sync`/`skills:check`；`workspace:check` OK。
 - 未运行：决定 2 落地后的成长门槛实现、0.7.6 真实复盘/成长对话框/任务文件审阅演练、0.7.6 安装与快捷方式、真实 provider 全链与长时运行。
 
 ## 未交付（按目标文档）

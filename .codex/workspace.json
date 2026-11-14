@@ -47,7 +47,6 @@
   "rootDirectories": [
     ".archify",
     ".codex",
-    ".dsh",
     ".git",
     ".githooks",
     ".github",

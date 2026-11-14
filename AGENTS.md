@@ -52,7 +52,7 @@
 - **环境**：shell 是 Windows PowerShell 5.1，脚本不依赖 `pwsh` 7 语法；日常用受影响单测加 `typecheck`，里程碑前跑全量 `npm run check`，失败先定位不跳过。
 - **范围**：不恢复已删除的旧范围、旧 UI、旧执行器；恢复要有真实入口、需求和验收。
 - **数据**：源码、用户数据、凭据、参考项目、过程材料分开；`.work/` 只放本机过程材料；写入只经工单与工作区，工作区外按次授权，网络默认禁止。
-- **技能**：`.codex/skills` 是编写源，`.dsh/skills` 是镜像；改完 `npm run skills:sync`，用 `skills:check` 校验；注入漂移用 `harness:check`。
+- **harness**：本机注入漂移用 `npm run harness:check` 检查；项目不自建技能，用户级技能在 DSH 侧维护。
 - **交付**：记录“下次改这里”的入口和验证命令，让下一位 Agent 一次搜索、一个命令接上。
 
 ## 5. 不新建并行体系
