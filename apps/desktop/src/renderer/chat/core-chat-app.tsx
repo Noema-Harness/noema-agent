@@ -6,6 +6,7 @@ import type {
   NoemaSocialProject,
   NoemaSocialWorkTask,
 } from '../../shared/contracts/noema-bridge.d.ts';
+import { visibleTimelineTurns } from '../../shared/chat/timeline-visibility.mjs';
 import { NoemaButton } from '../ui/noema-button';
 import { Icon } from './presentation';
 import { markdownComponents } from './markdown';
@@ -414,15 +415,7 @@ export function CoreChatApp() {
   );
 
   const visibleTurns = useMemo(
-    () =>
-      conversationTurns
-        .map((turn) => ({
-          ...turn,
-          items: turn.items.filter(
-            (item) => item.kind === 'message' && item.message.role !== 'system',
-          ),
-        }))
-        .filter((turn) => turn.items.length > 0),
+    () => visibleTimelineTurns(conversationTurns),
     [conversationTurns],
   );
 
