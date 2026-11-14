@@ -55,6 +55,18 @@
   --icon-inline-size: 18px;
   --icon-inline-gap: 8px;
   --shadow: 0 14px 38px rgb(33 46 39 / 8%);
+  --chat-paper: var(--paper);
+  --chat-paper-alt: var(--paper-muted);
+  --chat-ink: var(--ink);
+  --chat-muted: var(--muted);
+  --chat-line: var(--line);
+  --chat-line-strong: var(--line-strong);
+  --chat-accent: var(--accent);
+  --chat-accent-deep: var(--accent-dark);
+  --chat-danger: var(--danger);
+  --chat-error: var(--danger);
+  --chat-success: var(--success);
+  --chat-warning: var(--warning);
 }
 
 * {
@@ -2773,6 +2785,9 @@ select:disabled {
 .project-dialog {
   width: min(100%, 540px);
 }
+.project-dialog .dialog-footnote {
+  margin-bottom: 44px;
+}
 .project-dialog .dialog-actions {
   position: sticky;
   bottom: 0;
@@ -5443,6 +5458,10 @@ select:disabled {
   padding: 34px clamp(24px, 5vw, 72px) 56px;
 }
 .core-page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
   max-width: 980px;
   margin: 0 auto 26px;
 }
@@ -5457,6 +5476,11 @@ select:disabled {
   color: #757169;
   font-size: 13px;
 }
+.core-page-create {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
 .core-page-body {
   max-width: 980px;
   margin: 0 auto;
@@ -5834,19 +5858,28 @@ select:disabled {
   padding: 32px 0 22px;
 }
 .core-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
   margin-top: 18vh;
   text-align: center;
 }
-.core-empty h1 {
-  margin: 0 0 8px;
+.core-empty h1,
+.core-empty strong {
+  margin: 0;
   font-size: 26px;
   font-weight: 600;
   letter-spacing: -0.02em;
 }
-.core-empty p {
+.core-empty p,
+.core-empty span {
   margin: 0;
   color: #8a847a;
   font-size: 13px;
+}
+.core-empty-action {
+  margin-top: 14px;
 }
 .core-message {
   margin: 0 0 28px;

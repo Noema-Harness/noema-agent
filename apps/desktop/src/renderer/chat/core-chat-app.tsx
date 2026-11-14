@@ -13,6 +13,7 @@ import { markdownComponents } from './markdown';
 import { TurnTrace, type LiveTraceEvent } from './turn-trace';
 import { useSocialChatController } from './use-social-chat-controller';
 import { WorkspaceFilesDialog } from './dialogs/workspace-files-dialog';
+import { AgentEditorDialog, ProjectEditorDialog } from './dialogs/team-dialogs';
 import { PartnerSettingsDialog } from '../settings/partner-settings-dialog';
 
 function messageTime(value: string) {
@@ -364,6 +365,8 @@ export function CoreChatApp() {
     projectStatusBusy,
     retryProjectGrowthMember,
     handleReviewProjectFileChange,
+    setCreateAgentOpen,
+    setCreateProjectOpen,
   } = controller;
 
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
@@ -1354,6 +1357,22 @@ export function CoreChatApp() {
                       : '可以随时直接对话的联系人。'}
                 </p>
               </div>
+              <NoemaButton
+                className="secondary core-page-create"
+                type="button"
+                onClick={() =>
+                  section === 'members'
+                    ? setCreateAgentOpen(true)
+                    : setCreateProjectOpen(true)
+                }
+              >
+                <Icon name="plus" />
+                {section === 'teams'
+                  ? '新建项目'
+                  : section === 'projects'
+                    ? '新建项目'
+                    : '新建联系人'}
+              </NoemaButton>
             </header>
             <div className="core-page-body">
               {section === 'teams' ? (
@@ -1404,7 +1423,16 @@ export function CoreChatApp() {
                 ) : (
                   <div className="core-empty">
                     <strong>还没有团队</strong>
-                    <span>团队会出现在这里，并拥有自己的团队群。</span>
+                    <span>
+                      新建项目后，团队会出现在这里，并拥有自己的团队群。
+                    </span>
+                    <NoemaButton
+                      className="secondary core-empty-action"
+                      type="button"
+                      onClick={() => setCreateProjectOpen(true)}
+                    >
+                      新建项目
+                    </NoemaButton>
                   </div>
                 )
               ) : null}
@@ -1469,6 +1497,13 @@ export function CoreChatApp() {
                     <span>
                       项目会出现在这里，并拥有自己的工作文件夹和群聊。
                     </span>
+                    <NoemaButton
+                      className="secondary core-empty-action"
+                      type="button"
+                      onClick={() => setCreateProjectOpen(true)}
+                    >
+                      新建项目
+                    </NoemaButton>
                   </div>
                 )
               ) : null}
@@ -1503,6 +1538,13 @@ export function CoreChatApp() {
                   <div className="core-empty">
                     <strong>还没有成员</strong>
                     <span>新建联系人后，可以直接从这里开始对话。</span>
+                    <NoemaButton
+                      className="secondary core-empty-action"
+                      type="button"
+                      onClick={() => setCreateAgentOpen(true)}
+                    >
+                      新建联系人
+                    </NoemaButton>
                   </div>
                 )
               ) : null}
@@ -1843,6 +1885,8 @@ export function CoreChatApp() {
         ) : null}
 
         <PartnerSettingsDialog model={controller} />
+        <AgentEditorDialog model={controller} />
+        <ProjectEditorDialog model={controller} />
         {taskWorkspace ? (
           <WorkspaceFilesDialog
             workspacePath={taskWorkspace.path}
