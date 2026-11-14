@@ -1,7 +1,7 @@
 {
   "name": "noema-desktop",
   "productName": "Noema",
-  "version": "0.7.5",
+  "version": "0.7.6",
   "private": true,
   "description": "Noema personal agent desktop application",
   "license": "UNLICENSED",
