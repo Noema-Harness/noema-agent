@@ -1373,6 +1373,7 @@ export interface NoemaBridge {
     title: string;
     brief: string;
     agentIds: string[];
+    leadAgentId?: string | null;
     originRoomId?: string;
     sourceMessageId?: string | null;
     workspacePath?: string | null;
