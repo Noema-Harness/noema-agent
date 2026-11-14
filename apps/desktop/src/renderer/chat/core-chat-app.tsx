@@ -15,6 +15,7 @@ import { useSocialChatController } from './use-social-chat-controller';
 import { WorkspaceFilesDialog } from './dialogs/workspace-files-dialog';
 import { AgentEditorDialog, ProjectEditorDialog } from './dialogs/team-dialogs';
 import { PartnerSettingsDialog } from '../settings/partner-settings-dialog';
+import { ProjectDetailView } from '../projects/project-detail-view';
 
 function messageTime(value: string) {
   return new Date(value).toLocaleTimeString('zh-CN', {
@@ -388,6 +389,10 @@ export function CoreChatApp() {
     useState<DeliveryEvent[]>(readDeliveryEvents);
   const [restoreConfirmOpen, setRestoreConfirmOpen] = useState(false);
   const [growthProjectId, setGrowthProjectId] = useState<string | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
+    null,
+  );
+  const [returnProjectId, setReturnProjectId] = useState<string | null>(null);
   const [reviewingChangeId, setReviewingChangeId] = useState<string | null>(
     null,
   );
@@ -441,6 +446,17 @@ export function CoreChatApp() {
     () => projects.filter((project) => project.status !== 'archived'),
     [projects],
   );
+  const selectedProject = useMemo(
+    () =>
+      selectedProjectId
+        ? (activeProjects.find((project) => project.id === selectedProjectId) ??
+          null)
+        : null,
+    [activeProjects, selectedProjectId],
+  );
+  useEffect(() => {
+    if (selectedProjectId && !selectedProject) setSelectedProjectId(null);
+  }, [selectedProject, selectedProjectId]);
   const visibleMembers = useMemo(
     () => agents.filter((agent) => agent.id !== 'noema' && !agent.archivedAt),
     [agents],
@@ -453,19 +469,34 @@ export function CoreChatApp() {
     () => new Map(agents.map((agent) => [agent.id, agent])),
     [agents],
   );
-  const openTeamGroup = (groupRoomId: string) => {
+  const openTeamGroup = (
+    groupRoomId: string,
+    projectId: string | null = null,
+  ) => {
     const room = roomById.get(groupRoomId);
     if (!room) return;
+    setReturnProjectId(projectId);
     selectRoom(room);
     setSection('chat');
   };
   const openMemberChat = (agentId: string) => {
+    setReturnProjectId(null);
     openAgentConversation(agentId);
     setSection('chat');
   };
   const returnToNoema = () => {
+    setReturnProjectId(null);
     setSection('chat');
     if (noemaRoom) selectRoom(noemaRoom);
+  };
+  const leaveChat = () => {
+    if (returnProjectId) {
+      setSection('projects');
+      setSelectedProjectId(returnProjectId);
+      setReturnProjectId(null);
+      return;
+    }
+    returnToNoema();
   };
 
   const timelineEntries = useMemo(() => {
@@ -961,6 +992,7 @@ export function CoreChatApp() {
     section === 'chat' &&
     Boolean(currentRoom && noemaRoom) &&
     currentRoom?.id !== noemaRoom?.id;
+  const chatBackLabel = returnProjectId ? '返回项目' : '返回 Noema';
   const title =
     section === 'teams'
       ? '团队'
@@ -1001,7 +1033,10 @@ export function CoreChatApp() {
             data-active={section === 'teams'}
             type="button"
             aria-current={section === 'teams' ? 'page' : undefined}
-            onClick={() => setSection('teams')}
+            onClick={() => {
+              setReturnProjectId(null);
+              setSection('teams');
+            }}
           >
             <Icon name="users" />
             <span>团队</span>
@@ -1012,7 +1047,11 @@ export function CoreChatApp() {
             data-active={section === 'projects'}
             type="button"
             aria-current={section === 'projects' ? 'page' : undefined}
-            onClick={() => setSection('projects')}
+            onClick={() => {
+              setReturnProjectId(null);
+              setSection('projects');
+              setSelectedProjectId(null);
+            }}
           >
             <Icon name="project" />
             <span>项目</span>
@@ -1023,7 +1062,10 @@ export function CoreChatApp() {
             data-active={section === 'members'}
             type="button"
             aria-current={section === 'members' ? 'page' : undefined}
-            onClick={() => setSection('members')}
+            onClick={() => {
+              setReturnProjectId(null);
+              setSection('members');
+            }}
           >
             <Icon name="user-add" />
             <span>成员</span>
@@ -1042,9 +1084,9 @@ export function CoreChatApp() {
               <NoemaButton
                 className="icon-button core-back"
                 type="button"
-                title="返回 Noema"
-                aria-label="返回 Noema"
-                onClick={returnToNoema}
+                title={chatBackLabel}
+                aria-label={chatBackLabel}
+                onClick={leaveChat}
               >
                 <Icon name="back" />
               </NoemaButton>
@@ -1344,7 +1386,21 @@ export function CoreChatApp() {
           <p className="core-hint">Enter 发送 · Shift + Enter 换行</p>
         </footer>
 
-        {section !== 'chat' ? (
+        {section === 'projects' && selectedProject ? (
+          <ProjectDetailView
+            key={selectedProject.id}
+            project={selectedProject}
+            agents={agents}
+            canOpenGroup={roomById.has(selectedProject.groupRoomId)}
+            onBack={() => setSelectedProjectId(null)}
+            onOpenGroup={() =>
+              openTeamGroup(selectedProject.groupRoomId, selectedProject.id)
+            }
+            onOpenGrowth={() => setGrowthProjectId(selectedProject.id)}
+          />
+        ) : null}
+
+        {section !== 'chat' && !(section === 'projects' && selectedProject) ? (
           <main className="core-page" aria-label={title}>
             <header className="core-page-head">
               <div>
@@ -1412,7 +1468,9 @@ export function CoreChatApp() {
                             className="core-card-action"
                             type="button"
                             disabled={!canOpen}
-                            onClick={() => openTeamGroup(team.groupRoomId)}
+                            onClick={() =>
+                              openTeamGroup(team.groupRoomId, team.projectId)
+                            }
                           >
                             {canOpen ? '打开团队群' : '团队群不可用'}
                           </button>
@@ -1445,7 +1503,11 @@ export function CoreChatApp() {
                         : null;
                       const canOpen = roomById.has(project.groupRoomId);
                       return (
-                        <article className="core-card" key={project.id}>
+                        <article
+                          className="core-card core-project-card"
+                          key={project.id}
+                          onClick={() => setSelectedProjectId(project.id)}
+                        >
                           <header>
                             <div>
                               <h2>{project.title}</h2>
@@ -1468,12 +1530,24 @@ export function CoreChatApp() {
                               </dd>
                             </div>
                           </dl>
-                          <div className="core-card-actions">
+                          <div
+                            className="core-card-actions"
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            <button
+                              className="core-card-action"
+                              type="button"
+                              onClick={() => setSelectedProjectId(project.id)}
+                            >
+                              查看项目
+                            </button>
                             <button
                               className="core-card-action"
                               type="button"
                               disabled={!canOpen}
-                              onClick={() => openTeamGroup(project.groupRoomId)}
+                              onClick={() =>
+                                openTeamGroup(project.groupRoomId, project.id)
+                              }
                             >
                               {canOpen ? '打开项目群' : '项目群不可用'}
                             </button>
