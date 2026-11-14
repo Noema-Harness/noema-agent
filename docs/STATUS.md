@@ -14,7 +14,7 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
   - 0.7.6（2026-11-14）：项目列表与详情暴露 `成长记录`，可看每名成员的复盘状态、资产路径/修订/删除记录并重试失败成员；项目详情新增工作区页面；项目第一成员自动成为负责人；成长批次中断续接测试。
   - 0.7.5（2026-11-14）：Teams/Projects 页与空态提供 `新建项目`，Members 提供 `新建联系人`；项目/联系人对话框挂到 Core shell 并修主题透明；对话框脚注不再被吸底遮挡。
   - 0.7.4（2026-11-14）：项目成长证据对话框；任务详情按文件展示 diff，可 `保留修改` / `撤回修改`；时间线可见性抽成独立模块并有确定性测试。
-- 0.7.4 / 0.7.5 / 0.7.6 均未生成 Squirrel 安装器：NuGet/Squirrel 读取打包 `app.asar` 时返回“无法访问已关闭的流”，继续以便携目录交付。
+- Squirrel 安装器（2026-11-15 修复）：0.7.4–0.7.6 之前无法出安装器，根因是三条构建环境问题，已由 `apps/desktop/scripts/make.mjs` 固定：受限令牌下 `%TEMP%` 不可写给 NuGet 子进程；electron-winstaller 自带 NuGet 2.8 打包 `app.asar` 抛 `ObjectDisposedException`（已 vendored NuGet 6.11.1 + `vendorDirectory`）；Squirrel 的 `%LOCALAPPDATA%\SquirrelTemp` 与锁文件不可写（改 `SQUIRREL_TEMP` 与固定 TEMP）。0.7.6 安装产物已由 `npm run make:desktop` 生成：`.work/releases/Noema-0.7.6/Noema-0.7.6 Setup.exe`（170,410,496 字节，sha256 `6E773C854FBF6E4B0A39720608737555114E5E95E9F5526F1E05D7A32964BCDC`）、`noema_desktop-0.7.6-full.nupkg`（169,672,685，`43C7BCA5288EEDDF0B63465AAD68807CB41D636CB1B3D0AAB51945070951E618`）、`RELEASES`（84 字节，`98F69C9F3D1D08A710B16844E4C963264FDAF051D01BC4D1BBC3370DE0DD5B08`）。Squirrel 会写入构建时间，同源码两次构建哈希不同。
 - 便携构建：`apps/desktop/out/Noema-win32-x64/Noema.exe`（0.7.6，2026-11-14 22:38，246,819,840 字节）。已装目录只有 `%LOCALAPPDATA%\Programs\Noema-0.7.3|0.7.4|0.7.5`，桌面 `Noema.lnk` 仍指向 Noema-0.7.5，与 0.7.6 源码不同步（见已知限制）。
 - 维护层事实：0.7.4–0.7.6 期间没有任何权威文档更新（`docs/` 最后一次提交仍是 `21380a7 docs: record architecture invariants`，2026-11-14 15:44），`openspec/changes/` 攒了 11 个活动变更、其中 2 个已完成。本轮把文档/计划同步做成会失败的检查：`npm run check` 里的 `docs:check`、`plan:check`，归档前的 `npm run milestone:check`，以及 `.githooks/pre-commit`；11 个变更收敛为 0 后再立项（2 个正式归档并合并规格，9 个移到 `openspec/changes/archive/2026-11-15-*` 并写明关闭原因）。
 - 维护门槛 v2（2026-11-15，按用户对决定 3 的回答落地）：产品定义=`docs/PRODUCT.md`（不含能力清单与计划，2026-11-15 纠正，见 D-023）；能力清单、排序与状态只在 [GitHub Project「Noema V1 路线」](https://github.com/orgs/Noema-Harness/projects/1)（14 张 `[C<n>]` 卡片，Done 5 / In Progress 6 / Todo 3，2026-11-15 按真实证据重标）；proposal 必须写 `Plan: <卡片链接>`（不校验能力编号）；未答决策只阻塞 `apps/desktop/src/` 的产品代码，工具与文档维护放行；行为变更不允许 `skip_specs`；用户验收项格式 `[用户] … （用户确认：YYYY-MM-DD）`；里程碑=归档并需 `milestone:check` 通过。决定与理由见 `docs/DECISIONS.md` D-020、D-022、D-023。
@@ -47,7 +47,7 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 ### 本轮验证
 
-- `npm run check`：**873/873，0 fail，27,908ms**（workspace:check、docs:check、plan:check、source:check、lint、typecheck、maintenance:test 全部先通过；lint 维持既有 11 条 warning、0 error；项目技能与 skills:check 已删除）。
+- `npm run check`：**873/873，0 fail，27,224ms**（workspace:check、docs:check、plan:check、source:check、lint、typecheck、maintenance:test 全部先通过；lint 维持既有 11 条 warning、0 error；项目技能与 skills:check 已删除）。
 - `npm run maintenance:test`：5/5 通过（文档同步、PRODUCT 不承载计划、Plan 链接、待决上限与用户验收、里程碑、按范围阻塞）。
 - `npm run workspace:check`：OK（把 `.archify` 归为生成目录，diagram 过程材料不入仓库）。
 - `npm run docs:check`：OK（5 份权威文档、版本 0.7.6 = package 版本、基线 `f592a9b`、PRODUCT 不含能力清单与计划、`core.hooksPath=.githooks`）。
@@ -57,7 +57,10 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 - `openspec validate --all --strict`：10 passed / 0 failed（9 个规格 + 1 个 `skip_specs` 变更）。
 - 架构图（用户向）：`docs/assets/noema-architecture.html` + `.png`，Archify `finalize` 四道 gate（validate/deliver/check/browser-check）全 pass；只画 Noema 自身范围，不含本地 harness；README「它怎么工作」引用。
 - 项目技能清理：删除 3 个项目级技能、`.dsh` 镜像、`scripts/sync-skills.mjs` 与 `skills:sync`/`skills:check`；`workspace:check` OK。
-- 未运行：决定 2 落地后的成长门槛实现、0.7.6 真实复盘/成长对话框/任务文件审阅演练、0.7.6 安装与快捷方式、真实 provider 全链与长时运行。
+- 门槛去穷举（2026-11-15）：删除 `docs:check` 里“PRODUCT 出现能力清单即失败”的关键字规则——文档边界由每份文档头的 `Does not own` 与评审承担，脚本只校验机械事实；`maintenance:test` 5/5。
+- `docs/ARCHITECTURE.md` 组织对象对齐 D-019：删掉“团队=长期能力器官/团队负责人/目标结构不是现状”这类计划性表述，只写当前结构与不变量。
+- 未运行：决定 2 落地后的成长门槛实现、0.7.6 真实复盘/成长对话框/任务文件审阅演练、真实 `%LOCALAPPDATA%` 安装与跨版本升级（受限令牌下不可写该目录，见下条）、真实 provider 全链与长时运行。
+- 安装器构建与载荷验证（2026-11-15）：`npm run make:desktop` 在 `out/` 被外部句柄锁住时自动落到 `.tmp/forge-out` 并成功产出 Setup/nupkg/RELEASES（`out` 锁属本机环境，`out/Noema-win32-x64/resources/app.asar` 无法改名，见已知限制）。把 `TEMP`/`SQUIRREL_TEMP` 指到工作区后运行 `Setup.exe --silent`，Squirrel 把 `app-0.7.6` 落到该根目录：`Noema.exe` ProductVersion/FileVersion 均为 `0.7.6`，`resources/app.asar` 49,477,041 字节、sha256 `AAC1A250C62A66B935928455D7DD693ECA4BF23884E08FF7A2A7C99CC5AB5A39`，与构建产物一致；这是载荷验证，不等于真实用户安装。
 
 ## 未交付（按目标文档）
 

@@ -180,19 +180,13 @@ test("maintenance tooling enforces document, plan and commit gates", () =>
     assert.match(archived.errors.join("\n"), /必须同时更新 docs\/ 或 openspec\/changes\//u);
   }));
 
-test("the plan lives only on the board; PRODUCT carries no plan and proposals point at a card", () =>
+test("proposals point at the plan card and resident documents stay free of mirrored plans", () =>
   withRoot((holder) => {
     const root = makeRoot(holder);
     const git = fakeGit();
 
-    // Planning content in the resident document library is a second source of truth.
-    write(
-      root,
-      "docs/PRODUCT.md",
-      `# PRODUCT\n\n${HEADER}\n## V1 能力清单\n\n| 编号 | 能力 | 验收方式 |\n| --- | --- | --- |\n| C1 | 单窗口对话 | 自动测试 |\n`,
-    );
-    assert.match(checkDocuments(root, git).errors.join("\n"), /出现能力清单\/计划内容/u);
-    write(root, "docs/PRODUCT.md", `# PRODUCT\n\n${HEADER}\n产品定义。\n`);
+    // Boundaries are stated by each document's header and enforced by review; the gate
+    // only checks mechanical facts, so a clean PRODUCT passes without keyword rules.
     assert.deepEqual(checkDocuments(root, git).errors, []);
 
     // A change must name the card it advances; nothing about ordering or status is mirrored.

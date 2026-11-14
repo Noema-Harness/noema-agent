@@ -266,6 +266,18 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 - 范围：规划载体与门槛校验；不改产品行为。
 - 重新审视：若看板无法承载验收口径（例如需要版本化的详细验收合同），把那部分放进 `openspec/specs/` 的可观察行为，而不是回到 PRODUCT 建清单。
 
+## D-024 安装包构建固定临时目录与 NuGet，不依赖机器策略
+
+- 状态：采用（2026-11-15，用户点名“安装器经常生成失败是工程问题”后修复）；已落地。
+- 决定：
+  - `npm run make:desktop` 走 `apps/desktop/scripts/make.mjs`：构建时把 `TEMP`/`TMP`/`TMPDIR` 固定到 `apps/desktop/.tmp`，把 `SQUIRREL_TEMP` 固定到 `.tmp/squirrel-temp`，并把 `apps/desktop/vendor/squirrel/nuget.exe`（NuGet 6.11.1）铺进临时 vendor 目录交给 MakerSquirrel。
+  - 不依赖系统的 `%TEMP%`、`%LOCALAPPDATA%\SquirrelTemp` 或 electron-winstaller 自带的 NuGet 2.8；受限进程令牌下这三处都可能不可写或自带缺陷。
+  - 默认输出 `out/` 若被外部句柄锁住（无法改名 `out/Noema-win32-x64/resources/app.asar`），脚本自动改在 `.tmp/forge-out` 重建并打印提示，命令不失败；`out*` 与 `.tmp` 都是构建产物，不提交。
+- 替代：继续要求“先关应用/别开编辑器再打包”（把工程问题转嫁给操作者，且无法解释 0.7.4–0.7.6 的连续失败）；升级 electron-winstaller/maker-squirrel 版本（deps 更新面更大，且 NuGet 版本仍不可控）；在 CI 里打安装包而本机不验证（本地无法复现就等于没有修）。
+- 理由：根因是可定位的工程缺陷——NuGet 子进程被拒绝写 `%TEMP%`；NuGet 2.8 的 `System.IO.Packaging` 对高压缩率 part 抛 `ObjectDisposedException`（`app.asar` 必触发）；Squirrel 自建 `SquirrelTemp` 与锁文件同样受策略限制。固定输入比要求环境干净更可靠。
+- 范围：打包与发布链路；不改运行时行为与用户数据。
+- 重新审视：若上游 maker 修复了 NuGet 依赖与临时目录处理，可删掉 vendored NuGet 与 vendor 拷贝；若 `out/` 锁成为常态而非偶发，改为默认输出到独立目录并更新发布说明。
+
 ## 待决
 
 - 文档校准：Q13 已关闭，Q14 及之后尚未逐条关闭。D-011/D-012 已定稿；D-013 部分被 D-016/D-017 取代；D-014/D-016/D-017 已定稿但未实现。

@@ -1,6 +1,6 @@
 # ARCHITECTURE
 
-Authority: 本文件是 Noema 当前系统结构、目标结构、模块职责、数据边界和代码地图的唯一权威来源。
+Authority: 本文件是 Noema 当前系统结构、模块职责、数据边界和代码地图的唯一权威来源。
 Update when: 模块边界、进程/依赖方向、数据库 schema、执行路径、外部运行时或代码地图变化。
 Does not own: 产品定义与用户可观察行为（见 [PRODUCT](PRODUCT.md)）；长期决定的理由（见 [DECISIONS](DECISIONS.md)）；当前版本、测试和交付状态（见 [STATUS](STATUS.md)）；开发/发布命令（见 [OPERATIONS](OPERATIONS.md)）；维护规则（见 [AGENTS](../AGENTS.md)）。
 
@@ -54,14 +54,14 @@ renderer (React)
 
 - **Noema**：一个常驻会话；唯一对用户负责的实体。Noema 不加入团队或项目。
 - **执行者（Executor）**：一个岗位/身份对应一个执行者；一条常驻会话。私聊与团队空间都对接这条会话。
-- **项目 fork**：项目创建后，参与执行者（含团队负责人）从各自最新常驻会话 fork 项目会话；团队负责人保留常驻会话做组合管理。项目结束归档项目会话，整体复盘后回到常驻线。
-- **团队**：长期能力器官；有共享上下文（讨论、决定、交付记录），但不为每个成员复制第三条会话。
-- **项目**：临时输出与固定工作区；有项目负责人、计划、工作项、证据和验收。一个团队 MVP 阶段同时只推进一个项目。
+- **项目 fork**：项目创建后，参与执行者从各自最新常驻会话 fork 项目会话；项目负责人保留常驻会话做协调。项目结束归档项目会话，整体复盘后回到常驻线。
+- **没有独立团队对象**（D-019）：项目本身承载共享上下文、负责人和成员；同一批成员连续做第二个共同项目时才重新审视是否升级为部门。
+- **项目**：协作边界与固定工作区；有项目负责人、计划、工作项、证据和验收。
 - **岗位库**：隐藏的岗位模板库，不是独立人格；一个现实岗位对应一个模板，招募出个体后保留模板来源/版本，不按人数复制同一模板。
-- **团队负责人**：团队内的头衔，不是岗位库条目；一个管理 Agent 可以同时负责多个团队，团队权限与章程按团队单独授予。
+- **项目负责人**：项目内的头衔，不是岗位库条目；一个 Agent 可以同时负责多个项目，权限按项目授予。
 - **工单**：一次执行的工作单元；有承接人、目标、工作区、步骤、文件变更和结果。工单不是用户维护的任务卡。
 
-当前实现已在旧 `room/branch` 结构上补了执行者常驻私聊入口、项目显式负责人和两阶段团队提案/审批；项目 fork、团队共享上下文、岗位库、负责人自动提案与默认 A 审批尚未落地。目标结构不是现状。
+当前实现已在旧 oom/branch 结构上补了执行者常驻私聊入口和项目显式负责人；项目 fork、岗位库、负责人自动提案与默认 A 审批尚未落地。本文件只写结构与不变量，不写路线图；未交付项见 STATUS 与看板。
 
 ### 3.2 当前实现（阶段 1–4）
 
@@ -69,7 +69,7 @@ renderer (React)
 - `createAgentRuntimePair` 在 `userData/agents/noema` 和 `userData/agents/noema-executor/workspace` 创建两个独立个体环境；测试覆盖隔离、持久化、序号恢复、并发追加和非法输入。
 - 当前只有 Noema 主对话接入运行时事件：`SocialChatService` 在 `turn.started/completed/failed/interrupted` 写入 Noema 的日志；读取失败只记录诊断，不影响回复。Core Chat 不经过 `RootAgent`，`RootAgent` 上的旧事件桥不再作为当前路径。
 - Noema 自身工具调用通过 `chat-trace` 内联显示在回复正文上方；普通回答没有工具时不显示轨迹。工具调用和结果以 `stepId` 成对保存，渲染层不把结果覆盖掉调用。
-- Noema 主聊创建新团队走两阶段：`propose_project_team` 只写入 `project_team_proposals` 的待决记录，不创建项目；`decide_project_team` 在用户确认后创建项目/团队。两者作为 MCP 工具注册到 Core Chat 的 `chatToolSession`，因为 DSH 运行时只接收 MCP 工具，不接收动态 `tools`/`toolChoice`。项目群内继续使用 `create_project_team` 增补已有项目成员，避免把“继续项目”误当成新建。
+- Noema 主聊创建项目走两阶段：propose_project_team 只写入 project_team_proposals 的待决记录，不创建项目；decide_project_team 在用户确认后创建项目与成员。两者作为 MCP 工具注册到 Core Chat 的 chatToolSession；项目群内继续使用 create_project_team 增补已有项目成员。
 - 仍有限制：执行者实际执行仍由 `SocialWorkService`/DSH 承担，执行者核心已创建但还没有自己的运行事件；岗位库/模板、负责人自动提案与默认 A 审批、项目长期群、工作区文件回滚、六模块均未实现。对话历史按 D-018 使用 SQLite 不可变快照，不引入外部 Git。
 
 ## 4. 六模块与能力
@@ -86,7 +86,7 @@ Noema 和执行者共用同一套个体结构：
 | Context | 当前回合的上下文组装、预算和连续性摘要 |
 
 - **Context Compiler** 是组装过程，不是第七个模块；它把目标、状态、记忆、文件、工具和最近对话编译成一次调用的上下文。
-- **CapabilityUnit** 是 Competence 的最小可执行单位；岗位包、团队和项目是组织层组合，不进入个体内部。
+- **CapabilityUnit** 是 Competence 的最小可执行单位；岗位包与项目是组织层组合，不进入个体内部。
 - 六模块是目标架构；当前 0.7.2 仍以提示词、工具和旧 room/branch 为主，ContextCompiler、Memory Store、ModuleHost 热重载未交付。
 
 ## 5. 一次执行的路径

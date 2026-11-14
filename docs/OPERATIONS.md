@@ -64,7 +64,7 @@ npm test
 | --- | --- |
 | STATUS 源码版本与 package.json 不一致 | 发布/交付后先更新 `docs/STATUS.md` 的版本、基线、验证和未交付 |
 | STATUS 基线不是 HEAD 祖先 | 基线写成当前可解析的提交；重写历史后重取 |
-| PRODUCT 里出现能力清单或计划内容 | 计划只在看板一处：把表格搬到对应卡片正文，`docs/PRODUCT.md` 只留产品定义与可观察行为 |
+| 文档里写进了不属于它的内容 | 不是脚本能判的事：每份文档头的 `Does not own` 已写明边界，评审时按边界判断；规划放卡片、状态放 STATUS、架构放 ARCHITECTURE |
 | proposal 缺少 `Plan:` 卡片链接 | 先在看板选卡，再把卡片链接写进 proposal 顶部 |
 | 活动变更超过 1 个 | 已完成的先 `openspec archive <name> --yes`，过期未做的移到 `openspec/changes/archive/` 并写明关闭原因 |
 | 活动变更 tasks 全部完成 | 归档该变更后再开下一个阶段 |
@@ -119,8 +119,13 @@ npm run make:desktop
 ```
 
 - `package:desktop` 产出 `apps/desktop/out/Noema-win32-x64`。
-- `make:desktop` 产出 Squirrel 安装包；发布产物按版本放到外部 release 目录，不提交。
-- `apps/desktop/out*` 是构建产物，不提交。
+- `make:desktop` 走 `apps/desktop/scripts/make.mjs`，由它处理三个环境陷阱后再调 `electron-forge make`：
+  - `TEMP`/`TMP`/`TMPDIR` 固定到 `apps/desktop/.tmp`（受限令牌下写系统临时目录会被拒绝，NuGet 子进程会因此失败）；
+  - `SQUIRREL_TEMP` 固定到 `.tmp/squirrel-temp`（Squirrel 默认在 `%LOCALAPPDATA%\SquirrelTemp` 建临时目录，同样可能不可写）；
+  - 把 `apps/desktop/vendor/squirrel/nuget.exe`（NuGet 6.11.1）铺进 `.tmp/squirrel-vendor`，通过 `NOEMA_SQUIRREL_VENDOR` 交给 MakerSquirrel；electron-winstaller 自带的 NuGet 2.8 在打包 `app.asar` 这类高压缩率文件时会抛 `ObjectDisposedException`。
+- 如果 `out/Noema-win32-x64/resources/app.asar` 被其他进程锁住（无法改名），脚本会自动改在 `.tmp/forge-out` 重建并打印提示，命令仍然成功；产物路径以日志为准。
+- `make` 产出 Squirrel 安装包（`.tmp/forge-out/make/squirrel.windows/x64` 或 `out/make/...`）；发布产物按版本放到外部 release 目录，不提交。
+- `apps/desktop/out*`、`apps/desktop/.tmp` 是构建产物，不提交。
 
 安装包冒烟：
 

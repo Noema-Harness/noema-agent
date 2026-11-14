@@ -65,6 +65,8 @@
 - [x] `docs/DECISIONS.md` 新增 D-023，并修正 D-020/D-022 中“计划层在 PRODUCT”的表述
 - [x] 14 张卡片正文去掉“产品定义：docs/PRODUCT.md「V1 能力清单」”指针
 - [x] `npm run check` 全绿并提交（873/873，`81d81b2`）
+- [x] 删除 `docs:check` 里“PRODUCT 出现能力清单即失败”的关键字规则：边界由每份文档头的 `Does not own` 与评审承担，脚本只校验机械事实（用户 2026-11-15 指出穷举是笨办法，根因是文档边界）
+- [x] `docs/ARCHITECTURE.md` 组织对象对齐 D-019：去掉“团队=长期能力器官/团队负责人/目标结构不是现状”这类计划性表述，只写当前结构与不变量
 
 ## 6. 治理清理与用户向架构图（2026-11-15）
 
@@ -76,3 +78,17 @@
 - [x] 用 Archify 产出只画 Noema 自身范围的用户向架构图：`docs/assets/noema-architecture.html` + `.png`（candidate 与过程材料留在 `.archify/`）
 - [x] README 增加「它怎么工作」图与一句话说明，链接交互版
 - [x] `npm run check` 全绿并提交（873/873，27,908ms）
+
+## 7. 安装包构建修复（2026-11-15，用户点名工程问题）
+
+0.7.4–0.7.6 连续三代只交付便携目录，被当作“环境限制”记在 STATUS 里。定位到三个独立工程缺陷：受限令牌下 `%TEMP%` 不可写、electron-winstaller 自带 NuGet 2.8 打包 `app.asar` 抛 `ObjectDisposedException`、Squirrel 自建 `SquirrelTemp` 与锁文件不可写。全部在构建脚本里固定，不要求操作者先关应用。
+
+- [x] `apps/desktop/vendor/squirrel/nuget.exe`（NuGet 6.11.1）+ 说明，替换 electron-winstaller 自带的 2.8
+- [x] `apps/desktop/scripts/make.mjs`：固定 `TEMP`/`TMP`/`TMPDIR`、`SQUIRREL_TEMP`，铺 vendor 目录并导出 `NOEMA_SQUIRREL_VENDOR`
+- [x] `apps/desktop/forge.config.mts` 的 `MakerSquirrel` 接收 `vendorDirectory`；`apps/desktop/package.json` 的 `make` 改为走脚本
+- [x] `out/` 被外部句柄锁住时自动落到 `.tmp/forge-out` 重建，`npm run make:desktop` 仍成功
+- [x] 产出并核对 0.7.6 安装包（Setup/nupkg/RELEASES 大小与 sha256 见 `docs/STATUS.md`）
+- [x] 载荷验证：受限令牌下把 `TEMP`/`SQUIRREL_TEMP` 指到工作区运行 `Setup.exe --silent`，`app-0.7.6` 的 `Noema.exe` 版本 0.7.6、`app.asar` 49,477,041 字节与构建一致
+- [x] `docs/OPERATIONS.md` 打包节、`docs/STATUS.md`、`docs/DECISIONS.md`（D-024）同步；看板 C12 贴证据
+- [ ] 真实 `%LOCALAPPDATA%` 安装/跨版本升级演练（受限令牌不可写该目录，需在非受限终端执行）
+

@@ -15,6 +15,9 @@ import { resolveGitExecutable } from "./git-exec.mjs";
 // 三层分工：PRODUCT.md=产品定义（不承载计划）；OpenSpec change=本轮增量与执行约定；
 // GitHub Project=唯一的计划源（能力、排序、阶段、状态、验收口径都在卡片上）。
 // 计划不在常驻文档里镜像，所以本脚本只校验 change 指向卡片的链接格式，不校验看板状态。
+//
+// 边界不靠关键字穷举：每份文档头部的 `Does not own` 写明它不拥有什么，写错内容属于
+// 评审问题；这里只校验机械可判的事实（文档集合、三行头、版本/基线、钩子、引用存在）。
 
 const DOCS_PREFIX = "docs/";
 const CODE_PREFIXES = ["apps/desktop/src/", "scripts/"];
@@ -159,10 +162,6 @@ export function checkDocuments(root, git) {
   const product = readText(path.join(root, "docs", "PRODUCT.md"));
   if (product === null) {
     errors.push("缺少权威文档：docs/PRODUCT.md");
-  } else if (/^## .*能力清单/mu.test(product)) {
-    errors.push(
-      "docs/PRODUCT.md 出现能力清单/计划内容：规划只在 GitHub Project 一处，常驻文档只写产品定义",
-    );
   }
 
   const hooksPath = git(["config", "--get", "core.hooksPath"]).text.trim();

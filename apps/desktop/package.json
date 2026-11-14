@@ -13,7 +13,7 @@
   "scripts": {
     "start": "node scripts/start.mjs",
     "package": "electron-forge package",
-    "make": "electron-forge make",
+    "make": "node scripts/make.mjs",
     "runtime:stage-dsh": "node scripts/stage-dsh-runtime.mjs",
     "lint": "oxlint && oxfmt --check",
     "lint:fix": "oxlint --fix && oxfmt --write",
