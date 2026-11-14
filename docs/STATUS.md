@@ -16,8 +16,9 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
   - 0.7.4（2026-11-14）：项目成长证据对话框；任务详情按文件展示 diff，可 `保留修改` / `撤回修改`；时间线可见性抽成独立模块并有确定性测试。
 - 0.7.4 / 0.7.5 / 0.7.6 均未生成 Squirrel 安装器：NuGet/Squirrel 读取打包 `app.asar` 时返回“无法访问已关闭的流”，继续以便携目录交付。
 - 便携构建：`apps/desktop/out/Noema-win32-x64/Noema.exe`（0.7.6，2026-11-14 22:38，246,819,840 字节）。已装目录只有 `%LOCALAPPDATA%\Programs\Noema-0.7.3|0.7.4|0.7.5`，桌面 `Noema.lnk` 仍指向 Noema-0.7.5，与 0.7.6 源码不同步（见已知限制）。
-- 维护层事实：0.7.4–0.7.6 期间没有任何权威文档更新（`docs/` 最后一次提交仍是 `21380a7 docs: record architecture invariants`，2026-11-14 15:44），`openspec/changes/` 攒了 11 个活动变更、其中 2 个已完成。本轮把文档/计划同步做成 `npm run check` 与 pre-commit 的硬门槛（见 AGENTS §2、OPERATIONS「维护门槛」），并把 11 个变更收敛为 0 个（2 个正式归档并合并规格，9 个移到 `openspec/changes/archive/2026-11-15-*` 并写明关闭原因）。
-- 并行进行中：组织模型与成长机制已立项为唯一活动变更 `openspec/changes/organization-growth-model/`；其 `design.md` 的「待用户决定」未答前不改这部分产品代码。
+- 维护层事实：0.7.4–0.7.6 期间没有任何权威文档更新（`docs/` 最后一次提交仍是 `21380a7 docs: record architecture invariants`，2026-11-14 15:44），`openspec/changes/` 攒了 11 个活动变更、其中 2 个已完成。本轮把文档/计划同步做成会失败的检查：`npm run check` 里的 `docs:check`、`plan:check`，归档前的 `npm run milestone:check`，以及 `.githooks/pre-commit`；11 个变更收敛为 0 后再立项（2 个正式归档并合并规格，9 个移到 `openspec/changes/archive/2026-11-15-*` 并写明关闭原因）。
+- 维护门槛 v2（2026-11-15，按用户对决定 3 的回答落地）：计划层改为 `docs/PRODUCT.md` 的「V1 能力清单」C1–C14，proposal 必须写「推进的能力」；未答决策只阻塞 `apps/desktop/src/` 的产品代码，工具与文档维护放行；行为变更不允许 `skip_specs`；用户验收项格式 `[用户] … （用户确认：YYYY-MM-DD）`；里程碑=归档并需 `milestone:check` 通过。决定与理由见 `docs/DECISIONS.md` D-020。
+- 并行进行中：组织模型与成长机制是唯一活动变更 `openspec/changes/organization-growth-model/`；决定 1（取消独立团队）与决定 3（维护门槛 v2）已定，决定 2（成长证据门槛）仍待用户回答，未答前不改这部分产品代码。
 
 ## 当前可用
 
@@ -45,11 +46,14 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 ### 本轮验证
 
-- `npm run check`：**873/873，0 fail，37,350ms**（含新增的 `docs:check`、`plan:check`、`maintenance:test`；lint 维持既有 11 条 warning、0 error）。
-- `npm run docs:check`：OK（5 份权威文档、版本 0.7.6 = package 版本、基线 `f592a9b`、`core.hooksPath=.githooks`）。
-- `npm run plan:check`：OK（清空 11 个活动变更后曾报“当前没有活动变更”，随后立项 `organization-growth-model`）。
-- `openspec validate --all --strict`：9 个规格、0 failed。
-- 未运行：0.7.6 真实项目复盘、成长对话框、任务文件审阅的真实演练；0.7.6 安装/桌面快捷方式更新；真实 provider 链路与长时运行。
+- `npm run check`：**873/873，0 fail，35,155ms**（workspace:check、docs:check、plan:check、skills:check、source:check、lint、typecheck、maintenance:test 全部先通过；lint 维持既有 11 条 warning、0 error）。
+- `npm run maintenance:test`：5/5 通过（文档同步、能力清单与引用、待决上限与用户验收、里程碑、按范围阻塞）。
+- `npm run workspace:check`：OK（把 `.archify` 归为生成目录，diagram 过程材料不入仓库）。
+- `npm run docs:check`：OK（5 份权威文档、版本 0.7.6 = package 版本、基线 `f592a9b`、PRODUCT 能力清单 C1–C14 完整、`core.hooksPath=.githooks`）。
+- `npm run plan:check`：OK（活动变更 `organization-growth-model` 15 完成 / 7 未完成；用户验收项 1 项；待用户决定 1 项）。
+- `npm run milestone:check`：按设计拒绝归档（7 个任务未完成、1 项待用户决定），说明里程碑不是“感觉够了”就能过。
+- `openspec validate --all --strict`：10 passed / 0 failed（9 个规格 + 1 个 `skip_specs` 变更）。
+- 未运行：决定 2 落地后的成长门槛实现、0.7.6 真实复盘/成长对话框/任务文件审阅演练、0.7.6 安装与快捷方式、真实 provider 全链与长时运行。
 
 ## 未交付（按目标文档）
 

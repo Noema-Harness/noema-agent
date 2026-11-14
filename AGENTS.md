@@ -42,24 +42,37 @@
 
 2026-11-15 的实际证据：0.7.4–0.7.6 三个版本发布期间 `docs/` 一次都没有更新（STATUS 停在 0.7.3 和旧基线），`openspec/changes/` 同时挂着 11 个活动变更，其中 2 个已经完成但从未归档。计划与状态都没有在指导开发，问题不是“不知道要更新”，而是不同步时没有任何动作会失败。
 
-因此同步被做成会失败的检查，而不是靠自觉：
+因此同步被做成会失败的检查，而不是靠自觉。原则是按用户 2026-11-15 的原话：“硬，但不能导致工作流过于便秘，硬要体现在整体工程意识上，而不是每次做一件事都要照顾到无数事”——所以门槛只拦已知会坏的事，每条都指向修法，且每一轮只有一个正确入口。
 
-- `npm run docs:check`：五份权威文档齐全且带 `Authority/Update when/Does not own` 三行头；`docs/` 没有未登记文档；根与 `apps/desktop` 版本一致；STATUS 的源码版本等于 package 版本、基线是 HEAD 祖先、`最后更新` 存在；`core.hooksPath` 指向 `.githooks`；`openspec/config.yaml` 不引用已删除的文档。
-- `npm run plan:check`：同时至多 1 个活动 OpenSpec 变更；活动变更必须有 proposal/design/tasks；tasks 必须还有未完成项（全部完成就必须归档）；design.md 必须有 `## 待用户决定` 小节；找到 openspec CLI 时顺带跑 `validate --all --strict`。
-- `.githooks/pre-commit`：暂存了 `apps/desktop/src/` 或 `scripts/` 的代码，就必须同时暂存 `docs/` 或 `openspec/changes/` 的更新；活动变更里仍有未勾选的「待用户决定」时直接拒绝提交。
-- 三者都挂在 `npm run check` 上，本地提交门槛与交付门槛是同一套判断；绕过方法只有 `--no-verify`，那等于明说不走这个流程。
+- `npm run docs:check`：五份权威文档齐全且带 `Authority/Update when/Does not own` 三行头；`docs/` 没有未登记文档；根与 `apps/desktop` 版本一致；STATUS 的源码版本等于 package 版本、基线是 HEAD 祖先、`最后更新` 存在；`core.hooksPath` 指向 `.githooks`；`openspec/config.yaml` 不引用已删除的文档；`docs/PRODUCT.md` 的「V1 能力清单」存在且每行有验收方式与状态。
+- `npm run plan:check`：同时至多 1 个活动 OpenSpec 变更；必须有 proposal/design/tasks；tasks 必须还有未完成项；proposal 必须写「推进的能力」并引用真实的 C 编号；`## 待用户决定` 最多 3 项；`[用户]` 验收项勾选必须带用户确认日期。
+- `npm run milestone:check`：里程碑=归档。要求任务全部完成、用户验收项已确认、没有待用户决定、有规格增量（或声明纯文档/治理变更）、STATUS 当天更新。
+- `.githooks/pre-commit`：暂存 `apps/desktop/src/` 的产品代码时，必须同时暂存计划/状态更新、必须有 specs 增量（行为变更不允许 `skip_specs`）、且不能有未答的用户决策；只改 `scripts/` 等工具或文档时放行——机制维护不该被产品决策卡住。
+- 四者都挂在交付路径上；`npm run check` 覆盖前三项，pre-commit 覆盖提交点。绕过方法只有 `--no-verify`，那等于明说不走这个流程。
+
+### 什么该问用户
+
+只有五类问题进 `## 待用户决定`，每轮最多 3 个；超过 3 个说明本轮范围没切好，先缩范围：
+
+1. 产品概念与边界（对象是什么、谁拥有、可见性）；
+2. 不可逆或难回退的迁移（删表、改数据语义、破坏兼容）；
+3. 方案代价差异明显（两条路的成本/风险不在同一量级）；
+4. 只能由人判断的验收（视觉、语气、交互是否自然、是否值得）；
+5. 对外承诺或额外支出。
+
+其余是实现细节，写进 design.md 的「实现选择」并注明“维护者判断、用户可推翻”，不拿琐碎选择占用用户注意力。
 
 ### 每轮开发循环
 
-1. 立项：`openspec/changes/<stage>/` 的 proposal.md 写为什么与改什么，design.md 写设计选择并把未定问题列进 `## 待用户决定`，tasks.md 写可勾选的纵切。
-2. 开工前：`npm run plan:check` 必须通过；`## 待用户决定` 还有未勾项时，只做与该决定无关的工作，不替用户拍板。
-3. 执行中：证据写进 tasks.md 或 STATUS（命令、测试计数、文件、失败原因），不写叙事日记；文档与代码同一提交。
-4. 收口：任务全完成 → 归档变更并合并规格增量 → 再开下一个阶段；阶段交付更新 STATUS 的版本、基线、验证、未交付和下一步。
-5. 汇报：把 `## 待用户决定` 的问题原样带进汇报，等用户回答后再改代码。
+1. 选能力：从 `docs/PRODUCT.md`「V1 能力清单」挑本轮要推进的 C 行，在 `openspec/changes/<stage>/` 立项；proposal 写「推进的能力」，design 写选择与 `## 待用户决定`，tasks 写可勾选纵切。
+2. 开工前：`npm run plan:check` 必须通过；未答决策只挡产品代码，先做与之无关的部分，不替用户拍板。
+3. 执行中：机器能判的验收写成自动测试；只有人能判的写成 `- [ ] [用户] <场景> → 证据`；证据（命令、计数、文件、失败原因）写进 tasks 或 STATUS，不写叙事日记；文档与代码同一提交。
+4. 收口：`npm run check` 全绿 → `npm run milestone:check` → 归档变更、合并规格增量、更新 STATUS 与能力状态 → 再开下一个变更。
+5. 汇报：把用户验收项和 `## 待用户决定` 原样带进汇报；用户确认后勾选并写确认日期。
 
 ### 不新建并行的计划体系
 
-机制只用已有的五份文档 + OpenSpec + `scripts/maintenance.mjs`。不新增 ROADMAP、任务看板、第二套计划文档或“过程规范”：那会和权威源断裂、成为纯熵增（2026-11-15 用户明确否决过这种做法）。
+机制只用已有的五份文档 + OpenSpec + `scripts/maintenance.mjs`。计划层在 `docs/PRODUCT.md` 的能力清单，变更层在 `openspec/changes/`，回归合同在 `openspec/specs/`，别的都不建。不新增 ROADMAP、任务看板、第二套计划文档或“过程规范”：那会和权威源断裂、成为纯熵增（2026-11-15 用户明确否决过这种做法）。
 
 ## 3. 文档预算
 

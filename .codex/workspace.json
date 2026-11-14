@@ -45,6 +45,7 @@
     }
   ],
   "rootDirectories": [
+    ".archify",
     ".codex",
     ".dsh",
     ".git",
@@ -62,9 +63,10 @@
     ".work/scratch"
   ],
   "generatedDirectories": [
+    ".archify",
     "apps/desktop/.vite",
+    "apps/desktop/coverage",
     "apps/desktop/out",
-    "coverage",
-    "apps/desktop/coverage"
+    "coverage"
   ]
 }

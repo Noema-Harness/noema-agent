@@ -3,62 +3,92 @@ import { fileURLToPath } from "node:url";
 import fs from "node:fs";
 import path from "node:path";
 import assert from "node:assert/strict";
-import { activeChanges, checkDocuments, checkPlan, checkPrecommit, pendingDecisions } from "./maintenance.mjs";
+import {
+  activeChanges,
+  checkDocuments,
+  checkMilestone,
+  checkPlan,
+  checkPrecommit,
+  localToday,
+  pendingDecisions,
+} from "./maintenance.mjs";
 
 const repositoryRoot = path.resolve(fileURLToPath(new URL("../", import.meta.url)));
 const DOCS = ["PRODUCT.md", "ARCHITECTURE.md", "DECISIONS.md", "OPERATIONS.md", "STATUS.md"];
 const HEADER = "Authority: 测试\nUpdate when: 测试\nDoes not own: 测试\n";
+const TODAY = localToday();
+const CAPABILITIES = [
+  "## V1 能力清单",
+  "",
+  "| 能力 | 可观察结果 | 验收方式 | 状态 |",
+  "| --- | --- | --- | --- |",
+  "| C1 | 单窗口对话 | 流式回复 | 自动测试 | 达成 |",
+  "| C2 | 消息操作 | 复制与引用 | 自动+用户 | 达成 |",
+  "| C3 | 执行者会话 | 实时步骤 | 用户验收 | 部分 |",
+  "| C4 | 工单约束 | 只写授权工作区 | 自动测试 | 达成 |",
+  "| C5 | 项目闭环 | 建项目到归档 | 自动+用户 | 达成 |",
+  "| C6 | 项目成长 | 可追溯经历 | 自动测试 | 部分 |",
+  "| C7 | 组织对象 | 只有 Agent 与项目 | 自动+用户 | 部分 |",
+  "| C8 | 会话拓扑 | 常驻会话加项目分身 | 自动测试 | 未开始 |",
+  "",
+].join("\n");
 
-function fakeGit({ baseline = true, hooksPath = ".githooks" } = {}) {
+function fakeGit({ baseline = true, hooksPath = ".githooks", dirty = false } = {}) {
   return (args) => {
     if (args[0] === "merge-base") return { ok: baseline, text: "" };
     if (args[0] === "config") return { ok: true, text: `${hooksPath}\n` };
+    if (args[0] === "status") return { ok: true, text: dirty ? " M docs/STATUS.md\n" : "" };
     return { ok: true, text: "" };
   };
 }
 
+function write(root, name, content) {
+  const target = path.join(root, name);
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.writeFileSync(target, content);
+}
+
 function makeRoot(holder, overrides = {}) {
   const root = path.join(holder, "repository");
-  for (const directory of ["docs", ".codex", ".githooks", "openspec/changes", "openspec/specs/example"])
-    fs.mkdirSync(path.join(root, directory), { recursive: true });
-  fs.writeFileSync(
-    path.join(root, ".codex", "workspace.json"),
-    JSON.stringify({ currentDocuments: DOCS.map((name) => ({ path: `docs/${name}` })) }),
+  write(root, ".codex/workspace.json", JSON.stringify({
+    currentDocuments: DOCS.map((name) => ({ path: `docs/${name}` })),
+  }));
+  for (const name of DOCS) write(root, `docs/${name}`, `# ${name}\n\n${HEADER}`);
+  write(root, "package.json", JSON.stringify({ version: "0.7.6" }));
+  write(root, "apps/desktop/package.json", JSON.stringify({ version: "0.7.6" }));
+  write(
+    root,
+    "docs/STATUS.md",
+    `# STATUS\n\n${HEADER}\n源码版本：\`${overrides.version ?? "0.7.6"}\`\n\n当前源码基线：\`f592a9b\`\n\n最后更新：${overrides.updated ?? TODAY}\n`,
   );
-  for (const name of DOCS) fs.writeFileSync(path.join(root, "docs", name), `# ${name}\n\n${HEADER}`);
-  fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ version: "0.7.6" }));
-  fs.mkdirSync(path.join(root, "apps", "desktop"), { recursive: true });
-  fs.writeFileSync(
-    path.join(root, "apps", "desktop", "package.json"),
-    JSON.stringify({ version: "0.7.6" }),
-  );
-  fs.writeFileSync(
-    path.join(root, "docs", "STATUS.md"),
-    `# STATUS\n\n${HEADER}\n源码版本：\`${overrides.version ?? "0.7.6"}\`\n\n当前源码基线：\`f592a9b\`\n\n最后更新：2026-11-15\n`,
-  );
-  fs.writeFileSync(path.join(root, ".githooks", "pre-commit"), "#!/bin/sh\n");
-  fs.writeFileSync(
-    path.join(root, "openspec", "config.yaml"),
-    "context: 见 docs/STATUS.md 与 docs/PRODUCT.md\n",
-  );
+  if (overrides.capabilities !== false) {
+    write(root, "docs/PRODUCT.md", `# PRODUCT\n\n${HEADER}\n${overrides.capabilities ?? CAPABILITIES}`);
+  }
+  write(root, ".githooks/pre-commit", "#!/bin/sh\n");
+  write(root, "openspec/config.yaml", "context: 见 docs/STATUS.md 与 docs/PRODUCT.md\n");
   if (overrides.change !== false) {
-    const change = path.join(root, "openspec", "changes", "stage-probe");
-    fs.mkdirSync(change, { recursive: true });
-    fs.writeFileSync(path.join(change, "proposal.md"), "# proposal\n");
-    fs.writeFileSync(
-      path.join(change, "design.md"),
-      `# design\n\n## 待用户决定\n\n${overrides.decisions ?? ""}\n`,
-    );
-    fs.writeFileSync(path.join(change, "tasks.md"), `# tasks\n\n- [ ] 第一项\n`);
+    const change = `openspec/changes/${overrides.name ?? "stage-probe"}`;
+    write(root, `${change}/proposal.md`, `# proposal\n\n## 推进的能力\n\n- C1：本轮验证\n`);
+    write(root, `${change}/design.md`, `# design\n\n## 待用户决定\n\n${overrides.decisions ?? ""}\n`);
+    write(root, `${change}/tasks.md`, `# tasks\n\n${overrides.tasks ?? "- [ ] 第一项\n"}`);
+    if (overrides.skipSpecs) write(root, `${change}/.openspec.yaml`, "skip_specs: true\n");
   }
   return root;
 }
 
-test("maintenance tooling enforces document, plan and commit gates", () => {
+function withRoot(run) {
   const runs = path.join(repositoryRoot, ".work", "runs");
   fs.mkdirSync(runs, { recursive: true });
   const holder = fs.mkdtempSync(path.join(runs, "maintenance-tooling-"));
   try {
+    run(holder);
+  } finally {
+    fs.rmSync(holder, { recursive: true });
+  }
+}
+
+test("maintenance tooling enforces document, plan and commit gates", () =>
+  withRoot((holder) => {
     const root = makeRoot(holder);
     const git = fakeGit();
     assert.deepEqual(checkDocuments(root, git).errors, []);
@@ -66,28 +96,30 @@ test("maintenance tooling enforces document, plan and commit gates", () => {
     assert.equal(activeChanges(root).length, 1);
 
     // A shipped version that left STATUS behind must fail the gate.
-    fs.writeFileSync(
-      path.join(root, "docs", "STATUS.md"),
-      `# STATUS\n\n${HEADER}\n源码版本：\`0.7.3\`\n\n当前源码基线：\`f592a9b\`\n\n最后更新：2026-11-15\n`,
+    write(
+      root,
+      "docs/STATUS.md",
+      `# STATUS\n\n${HEADER}\n源码版本：\`0.7.3\`\n\n当前源码基线：\`f592a9b\`\n\n最后更新：${TODAY}\n`,
     );
     assert.match(
       checkDocuments(root, git).errors.join("\n"),
       /源码版本 0.7.3 与 package.json 0.7.6 不一致/u,
     );
-    fs.writeFileSync(
-      path.join(root, "docs", "STATUS.md"),
-      `# STATUS\n\n${HEADER}\n源码版本：\`0.7.6\`\n\n当前源码基线：\`f592a9b\`\n\n最后更新：2026-11-15\n`,
+    write(
+      root,
+      "docs/STATUS.md",
+      `# STATUS\n\n${HEADER}\n源码版本：\`0.7.6\`\n\n当前源码基线：\`f592a9b\`\n\n最后更新：${TODAY}\n`,
     );
 
     // An unregistered document is a second source of truth.
-    fs.writeFileSync(path.join(root, "docs", "NOTES.md"), "# notes\n");
+    write(root, "docs/NOTES.md", "# notes\n");
     assert.match(checkDocuments(root, git).errors.join("\n"), /未登记文档 docs\/NOTES.md/u);
     fs.rmSync(path.join(root, "docs", "NOTES.md"));
 
     // Removing a header drops the ownership contract.
-    fs.writeFileSync(path.join(root, "docs", "OPERATIONS.md"), "# OPERATIONS\n");
+    write(root, "docs/OPERATIONS.md", "# OPERATIONS\n");
     assert.match(checkDocuments(root, git).errors.join("\n"), /缺少文档头 Authority:/u);
-    fs.writeFileSync(path.join(root, "docs", "OPERATIONS.md"), `# OPERATIONS\n\n${HEADER}`);
+    write(root, "docs/OPERATIONS.md", `# OPERATIONS\n\n${HEADER}`);
 
     // The document gate must be installed as a real git hook.
     assert.match(
@@ -102,58 +134,48 @@ test("maintenance tooling enforces document, plan and commit gates", () => {
     );
 
     // OpenSpec config must not point at deleted documents.
-    fs.writeFileSync(
-      path.join(root, "openspec", "config.yaml"),
-      "context: 见 docs/CURRENT_CONTEXT.md\n",
-    );
+    write(root, "openspec/config.yaml", "context: 见 docs/CURRENT_CONTEXT.md\n");
     assert.match(
       checkDocuments(root, git).errors.join("\n"),
       /引用了不存在的文档 docs\/CURRENT_CONTEXT.md/u,
     );
-    fs.writeFileSync(path.join(root, "openspec", "config.yaml"), "context: 见 docs/STATUS.md\n");
+    write(root, "openspec/config.yaml", "context: 见 docs/STATUS.md\n");
 
     // Only one planned stage at a time.
-    const second = path.join(root, "openspec", "changes", "stage-two");
-    fs.mkdirSync(second, { recursive: true });
-    for (const name of ["proposal.md", "design.md", "tasks.md"])
-      fs.writeFileSync(path.join(second, name), "# probe\n");
+    write(root, "openspec/changes/stage-two/proposal.md", "# probe\n");
+    for (const name of ["design.md", "tasks.md"]) write(root, `openspec/changes/stage-two/${name}`, "# probe\n");
     assert.match(checkPlan(root, { skipSpecValidation: true }).errors.join("\n"), /必须至多 1 个/u);
-    fs.rmSync(second, { recursive: true });
+    fs.rmSync(path.join(root, "openspec/changes/stage-two"), { recursive: true });
 
     // A finished task list no longer guides development.
-    const change = path.join(root, "openspec", "changes", "stage-probe");
-    fs.writeFileSync(path.join(change, "tasks.md"), "# tasks\n\n- [x] 第一项\n");
-    assert.match(
-      checkPlan(root, { skipSpecValidation: true }).errors.join("\n"),
-      /全部任务已完成/u,
-    );
-    fs.writeFileSync(path.join(change, "tasks.md"), "# tasks\n\n- [ ] 第一项\n- [ ] 第二项\n");
+    const change = "openspec/changes/stage-probe";
+    write(root, `${change}/tasks.md`, "# tasks\n\n- [x] 第一项\n");
+    assert.match(checkPlan(root, { skipSpecValidation: true }).errors.join("\n"), /全部任务已完成/u);
+    write(root, `${change}/tasks.md`, "# tasks\n\n- [ ] 第一项\n- [ ] 第二项\n");
     assert.equal(
       checkPlan(root, { skipSpecValidation: true }).notices.join("\n").includes("0 完成 / 2 未完成"),
       true,
     );
 
-    // Undefined product decisions block code from being committed.
-    fs.writeFileSync(
-      path.join(change, "design.md"),
+    // Undefined product decisions block product code from being committed.
+    write(
+      root,
+      `${change}/design.md`,
       "# design\n\n## 待用户决定\n\n- [ ] 成长机制如何触发\n- [ ] 团队命名规则\n\n## 其他\n",
     );
-    assert.deepEqual(pendingDecisions(fs.readFileSync(path.join(change, "design.md"), "utf8")), [
+    assert.deepEqual(pendingDecisions(fs.readFileSync(path.join(root, change, "design.md"), "utf8")), [
       "成长机制如何触发",
       "团队命名规则",
     ]);
-    const blocked = checkPrecommit(root, {
-      git,
-      stagedPaths: ["apps/desktop/src/main/main.ts"],
-    });
+    const blocked = checkPrecommit(root, { git, stagedPaths: ["apps/desktop/src/main/main.ts"] });
     assert.match(blocked.errors.join("\n"), /必须同时更新 docs\/ 或 openspec\/changes\//u);
     assert.match(blocked.errors.join("\n"), /仍有待用户决定的问题/u);
 
     // Code ships only with a plan update and no open decision.
-    fs.writeFileSync(path.join(change, "design.md"), "# design\n\n## 待用户决定\n");
+    write(root, `${change}/design.md`, "# design\n\n## 待用户决定\n");
     const committed = checkPrecommit(root, {
       git,
-      stagedPaths: ["apps/desktop/src/main/main.ts", `openspec/changes/stage-probe/tasks.md`],
+      stagedPaths: ["apps/desktop/src/main/main.ts", "openspec/changes/stage-probe/tasks.md"],
     });
     assert.deepEqual(committed.errors, []);
 
@@ -166,7 +188,151 @@ test("maintenance tooling enforces document, plan and commit gates", () => {
       ],
     });
     assert.match(archived.errors.join("\n"), /必须同时更新 docs\/ 或 openspec\/changes\//u);
-  } finally {
-    fs.rmSync(holder, { recursive: true });
-  }
-});
+  }));
+
+test("the plan lives in the PRODUCT capability list and proposals cite it", () =>
+  withRoot((holder) => {
+    const root = makeRoot(holder);
+    const git = fakeGit();
+
+    write(root, "docs/PRODUCT.md", `# PRODUCT\n\n${HEADER}\n没有能力清单\n`);
+    assert.match(checkDocuments(root, git).errors.join("\n"), /缺少「V1 能力清单」/u);
+
+    const broken = CAPABILITIES.replace("| C2 | 消息操作 | 复制与引用 | 自动+用户 | 达成 |", "| C2 | 消息操作 | 复制与引用 | 随意 | 差不多 |");
+    write(root, "docs/PRODUCT.md", `# PRODUCT\n\n${HEADER}\n${broken}`);
+    const brokenErrors = checkDocuments(root, git).errors.join("\n");
+    assert.match(brokenErrors, /C2 验收方式必须是/u);
+    assert.match(brokenErrors, /C2 状态必须是/u);
+
+    write(root, "docs/PRODUCT.md", `# PRODUCT\n\n${HEADER}\n${CAPABILITIES.replace("| C3 |", "| C1 |")}`);
+    assert.match(checkDocuments(root, git).errors.join("\n"), /能力清单里 C1 重复/u);
+
+    write(root, "docs/PRODUCT.md", `# PRODUCT\n\n${HEADER}\n${CAPABILITIES}`);
+    write(root, "openspec/changes/stage-probe/proposal.md", "# proposal\n\n## What\n\n没什么要说的\n");
+    assert.match(
+      checkPlan(root, { skipSpecValidation: true }).errors.join("\n"),
+      /缺少「## 推进的能力」/u,
+    );
+
+    write(
+      root,
+      "openspec/changes/stage-probe/proposal.md",
+      "# proposal\n\n## 推进的能力\n\n- C99：不存在的行\n",
+    );
+    assert.match(
+      checkPlan(root, { skipSpecValidation: true }).errors.join("\n"),
+      /引用了 PRODUCT.md 里不存在的 C99/u,
+    );
+
+    write(
+      root,
+      "openspec/changes/stage-probe/proposal.md",
+      "# proposal\n\n## 推进的能力\n\n- 维护门槛（治理，不对应能力）\n",
+    );
+    assert.match(
+      checkPlan(root, { skipSpecValidation: true }).errors.join("\n"),
+      /既没引用能力 id 也没写「无」/u,
+    );
+
+    write(root, "openspec/changes/stage-probe/proposal.md", "# proposal\n\n## 推进的能力\n\n- 无：纯文档变更\n");
+    assert.deepEqual(checkPlan(root, { skipSpecValidation: true }).errors, []);
+  }));
+
+test("pending decisions are capped and user acceptance needs a confirmation date", () =>
+  withRoot((holder) => {
+    const root = makeRoot(holder);
+    const change = "openspec/changes/stage-probe";
+
+    write(
+      root,
+      `${change}/design.md`,
+      "# design\n\n## 待用户决定\n\n- [ ] 一\n- [ ] 二\n- [ ] 三\n- [ ] 四\n",
+    );
+    assert.match(
+      checkPlan(root, { skipSpecValidation: true }).errors.join("\n"),
+      /待用户决定 4 项，超过每轮 3 项的上限/u,
+    );
+
+    write(root, `${change}/design.md`, "# design\n\n## 待用户决定\n\n- [ ] 一\n- [ ] 二\n- [ ] 三\n");
+    assert.deepEqual(checkPlan(root, { skipSpecValidation: true }).errors, []);
+
+    write(root, `${change}/tasks.md`, "# tasks\n\n- [ ] [用户] 看一遍界面是否自然 → 截图\n");
+    const pendingAcceptance = checkPlan(root, { skipSpecValidation: true });
+    assert.deepEqual(pendingAcceptance.errors, []);
+    assert.equal(pendingAcceptance.notices.join("\n").includes("用户验收项 1 项"), true);
+
+    write(root, `${change}/tasks.md`, "# tasks\n\n- [x] [用户] 看一遍界面是否自然 → 截图\n");
+    assert.match(
+      checkPlan(root, { skipSpecValidation: true }).errors.join("\n"),
+      /用户验收项已勾选但缺少「（用户确认：YYYY-MM-DD）」/u,
+    );
+
+    write(
+      root,
+      `${change}/tasks.md`,
+      "# tasks\n\n- [x] [用户] 看一遍界面是否自然 → 截图（用户确认：2026-11-15）\n- [ ] 还要改一处\n",
+    );
+    assert.deepEqual(checkPlan(root, { skipSpecValidation: true }).errors, []);
+  }));
+
+test("a milestone is archivable only when tasks, decisions and evidence line up", () =>
+  withRoot((holder) => {
+    const root = makeRoot(holder, { tasks: "# tasks\n\n- [ ] 第一项\n" });
+    const change = "openspec/changes/stage-probe";
+    const blocked = checkMilestone(root, { git: fakeGit(), today: TODAY });
+    assert.match(blocked.errors.join("\n"), /还有 1 个任务未完成/u);
+
+    write(root, `${change}/tasks.md`, "# tasks\n\n- [x] 第一项\n");
+    write(root, `${change}/design.md`, "# design\n\n## 待用户决定\n\n- [ ] 还没答\n");
+    const decided = checkMilestone(root, { git: fakeGit(), today: TODAY });
+    assert.match(decided.errors.join("\n"), /还有 1 项待用户决定/u);
+    assert.match(decided.errors.join("\n"), /没有 specs 增量/u);
+
+    write(root, `${change}/design.md`, "# design\n\n## 待用户决定\n");
+    write(root, `${change}/specs/probe/spec.md`, "# spec\n");
+    const stale = checkMilestone(root, {
+      git: fakeGit(),
+      today: TODAY,
+      // STATUS 未更新
+    });
+    assert.deepEqual(stale.errors, []);
+
+    write(
+      root,
+      "docs/STATUS.md",
+      `# STATUS\n\n${HEADER}\n源码版本：\`0.7.6\`\n\n当前源码基线：\`f592a9b\`\n\n最后更新：2026-01-01\n`,
+    );
+    assert.match(
+      checkMilestone(root, { git: fakeGit(), today: TODAY }).errors.join("\n"),
+      /今天交付必须更新 STATUS/u,
+    );
+  }));
+
+test("unanswered decisions block product code but not tooling maintenance", () =>
+  withRoot((holder) => {
+    const root = makeRoot(holder, {
+      decisions: "- [ ] 成长机制如何触发\n",
+      skipSpecs: true,
+    });
+    const git = fakeGit();
+
+    const tooling = checkPrecommit(root, {
+      git,
+      stagedPaths: ["scripts/maintenance.mjs", "docs/OPERATIONS.md"],
+    });
+    assert.deepEqual(tooling.errors, []);
+    assert.equal(tooling.notices.join("\n").includes("工具/治理改动不受未决产品决策阻塞"), true);
+
+    const product = checkPrecommit(root, {
+      git,
+      stagedPaths: ["apps/desktop/src/main/main.ts", "openspec/changes/stage-probe/tasks.md"],
+    });
+    assert.match(product.errors.join("\n"), /仍有待用户决定的问题/u);
+
+    write(root, "openspec/changes/stage-probe/design.md", "# design\n\n## 待用户决定\n");
+    const behaviour = checkPrecommit(root, {
+      git,
+      stagedPaths: ["apps/desktop/src/main/main.ts", "openspec/changes/stage-probe/tasks.md"],
+    });
+    assert.match(behaviour.errors.join("\n"), /标记了 skip_specs，但这次提交含产品代码/u);
+  }));

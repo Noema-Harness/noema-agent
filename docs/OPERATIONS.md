@@ -31,11 +31,17 @@ npm run check
 `check` 依次执行：
 
 1. `workspace:check`：文档路由与结构；
-2. `docs:check`：五份权威文档、版本/基线、git 门槛安装状态；
-3. `plan:check`：OpenSpec 活动变更、任务清单与未决问题；
+2. `docs:check`：五份权威文档、V1 能力清单、版本/基线、git 门槛安装状态；
+3. `plan:check`：OpenSpec 活动变更、推进的能力、任务清单与未决问题；
 4. `skills:check`：技能镜像；
 5. `source:check`：源码依赖边界；
 6. `lint`、`typecheck`、`maintenance:test`、`test`。
+
+里程碑（准备归档变更时）单独运行：
+
+```powershell
+npm run milestone:check
+```
 
 单独运行：
 
@@ -43,6 +49,7 @@ npm run check
 npm run workspace:check
 npm run docs:check
 npm run plan:check
+npm run milestone:check
 npm run skills:sync
 npm run skills:check
 npm run source:check
@@ -54,16 +61,23 @@ npm test
 
 ### 维护门槛
 
-`docs:check`、`plan:check` 和 `.githooks/pre-commit` 是同一套判断（`scripts/maintenance.mjs`），失败的常见原因与修法：
+四道门槛由 `scripts/maintenance.mjs` 实现：`docs:check` 与 `plan:check` 在 `npm run check` 里，`milestone:check` 在归档前手动跑，`.githooks/pre-commit` 在提交点跑。失败的常见原因与修法：
 
 | 报错 | 修法 |
 | --- | --- |
 | STATUS 源码版本与 package.json 不一致 | 发布/交付后先更新 `docs/STATUS.md` 的版本、基线、验证和未交付 |
 | STATUS 基线不是 HEAD 祖先 | 基线写成当前可解析的提交；重写历史后重取 |
+| PRODUCT 缺少「V1 能力清单」或某行没有验收/状态 | 在 `docs/PRODUCT.md` 补能力行；验收方式只能是“自动测试 / 用户验收 / 自动+用户”，状态只能是“达成 / 部分 / 未开始” |
+| proposal 缺少「推进的能力」或引用了不存在的 C 编号 | 在 proposal 里写本轮推进的 C 行；纯文档/治理变更写明“无” |
 | 活动变更超过 1 个 | 已完成的先 `openspec archive <name> --yes`，过期未做的移到 `openspec/changes/archive/` 并写明关闭原因 |
 | 活动变更 tasks 全部完成 | 归档该变更后再开下一个阶段 |
-| design.md 缺少 `## 待用户决定` | 补该小节；没有未定项就写“无” |
-| pre-commit 拒绝代码提交 | 同一次提交里带上 `docs/` 或 `openspec/changes/` 的更新；未决问题先问用户再实现 |
+| `## 待用户决定` 超过 3 项 | 先缩本轮范围；超过 3 项说明计划没切干净 |
+| `[用户]` 验收项勾选没有确认日期 | 只有用户明确确认后才勾选，并写成 `（用户确认：YYYY-MM-DD）` |
+| milestone 报任务未完成 / 有待决问题 / STATUS 不是当天 | 补完任务、拿到用户答案、更新 STATUS 后再归档 |
+| pre-commit 拒绝产品代码提交 | 同一次提交带上计划/状态更新与 specs 增量；未决决策只能等用户回答 |
+| pre-commit 只提示“工具/治理改动不受未决产品决策阻塞” | 正常；工具与文档维护不被产品决策卡住 |
+
+用户验收项写在 tasks.md 里，格式 `- [ ] [用户] <场景> → 证据`；确认后改成 `- [x] [用户] <场景> → 证据（用户确认：YYYY-MM-DD）`。
 
 首次克隆仓库需要安装提交门槛：
 
