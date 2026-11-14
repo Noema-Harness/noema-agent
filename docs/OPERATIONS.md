@@ -31,8 +31,8 @@ npm run check
 `check` 依次执行：
 
 1. `workspace:check`：文档路由与结构；
-2. `docs:check`：五份权威文档、V1 能力清单、版本/基线、git 门槛安装状态；
-3. `plan:check`：OpenSpec 活动变更、推进的能力、任务清单与未决问题；
+2. `docs:check`：五份权威文档的三行头与路由、版本/基线、git 门槛安装状态；
+3. `plan:check`：OpenSpec 活动变更、`Plan:` 卡片链接、任务清单与未决问题；
 4. `skills:check`：技能镜像；
 5. `source:check`：源码依赖边界；
 6. `lint`、`typecheck`、`maintenance:test`、`test`。
@@ -67,9 +67,8 @@ npm test
 | --- | --- |
 | STATUS 源码版本与 package.json 不一致 | 发布/交付后先更新 `docs/STATUS.md` 的版本、基线、验证和未交付 |
 | STATUS 基线不是 HEAD 祖先 | 基线写成当前可解析的提交；重写历史后重取 |
-| PRODUCT 缺少「V1 能力清单」、某行没有验收方式或缺看板链接 | 在 `docs/PRODUCT.md` 补能力行；验收方式只能是“自动测试 / 用户验收 / 自动+用户”；能力清单必须链接 GitHub Project |
+| PRODUCT 里出现能力清单或计划内容 | 计划只在看板一处：把表格搬到对应卡片正文，`docs/PRODUCT.md` 只留产品定义与可观察行为 |
 | proposal 缺少 `Plan:` 卡片链接 | 先在看板选卡，再把卡片链接写进 proposal 顶部 |
-| proposal 缺少「推进的能力」或引用了不存在的 C 编号 | 在 proposal 里写本轮推进的 C 行；纯文档/治理变更写明“无” |
 | 活动变更超过 1 个 | 已完成的先 `openspec archive <name> --yes`，过期未做的移到 `openspec/changes/archive/` 并写明关闭原因 |
 | 活动变更 tasks 全部完成 | 归档该变更后再开下一个阶段 |
 | `## 待用户决定` 超过 3 项 | 先缩本轮范围；超过 3 项说明计划没切干净 |

@@ -12,7 +12,7 @@
 
 - [x] 把决定 1 写进 `docs/DECISIONS.md`（D-019，含替代方案与重新审视条件）
 - [ ] 按决定 1 更新 `docs/ARCHITECTURE.md` 的组织对象/会话拓扑一节
-- [x] 按决定 1 更新 `docs/PRODUCT.md` 的团队/项目可观察行为，并新增「V1 能力清单」
+- [x] 按决定 1 更新 `docs/PRODUCT.md` 的团队/项目可观察行为（能力清单不进 PRODUCT，见第 5 节）
 - [ ] 按决定 2 更新成长相关文档
 - [ ] 更新 `docs/STATUS.md` 的未交付与下一步，指向实现变更
 - [ ] `npm run check` 通过并归档本变更
@@ -21,8 +21,8 @@
 
 计划层与规格边界：
 
-- [x] `docs/PRODUCT.md` 增加「V1 能力清单」，能力变更在归档时更新状态
-- [x] `plan:check` 要求 proposal 写「推进的能力」并校验 C 编号存在
+- [x] （已撤销，见第 5 节）曾把「V1 能力清单」放进 `docs/PRODUCT.md`；现改为只留在看板卡片
+- [x] `plan:check` 只要求 proposal 写 `Plan:` 卡片链接（不校验能力编号）
 - [x] `precommit` 要求含 `apps/desktop/src/` 的提交带 specs 增量；`skip_specs` 只允许纯文档/治理变更
 
 决策与验收：
@@ -47,9 +47,21 @@
 
 - [x] 组织 `Noema-Harness` 建 Project「Noema V1 路线」（Status + 阶段字段，卡片用 issue）
 - [x] C1–C14 各建 `[C<n>]` 卡片加入看板，Done/Todo/In Progress 与当前认知一致
-- [x] `docs/PRODUCT.md` 能力清单删状态列、修正表头、指向看板
-- [x] `docs:check` 要求能力清单带看板链接；`plan:check` 要求 proposal 写 `Plan: <卡片链接>`
+- [x] （后被第 5 节取代）曾把能力清单删状态列留在 PRODUCT
+- [x] （后被第 5 节取代）`docs:check` 曾要求能力清单带看板链接
 - [x] `AGENTS.md` 一轮循环改为「选卡 → 立项 → 纵切 → 证据 → 卡片 Done 并归档」，文档表登记看板所有权
-- [ ] `docs/DECISIONS.md` 记录 D-022（规划与状态迁到看板，撤销 Issue #130 的“不自造看板”）
-- [ ] Issue #130 改写为迁移说明并关闭
-- [ ] `npm run check` 全绿并提交
+- [x] `docs/DECISIONS.md` 记录 D-022（规划与状态迁到看板，撤销 Issue #130 的“不自造看板”）
+- [x] Issue #130 改写为迁移说明并关闭
+- [x] `npm run check` 全绿并提交（`a962785`）
+
+## 5. 规划内容只留在看板（2026-11-15 纠正）
+
+用户纠正：规划写进 `docs/PRODUCT.md` 等于给常驻文档增加高频维护项；规划结构变化时该改的是 GitHub，不是文档。规划只允许存在一处。
+
+- [x] `docs/PRODUCT.md` 删除「V1 能力清单」；能力清单只存在于看板卡片正文
+- [x] `docs:check` 增加反向校验：PRODUCT 出现能力清单即失败
+- [x] `plan:check` 收窄为只校验 `Plan:` 卡片链接，删除能力编号校验
+- [x] `AGENTS.md`、`docs/OPERATIONS.md` 同步（PRODUCT 不拥有能力清单；门槛表相应改写）
+- [x] `docs/DECISIONS.md` 新增 D-023，并修正 D-020/D-022 中“计划层在 PRODUCT”的表述
+- [x] 14 张卡片正文去掉“产品定义：docs/PRODUCT.md「V1 能力清单」”指针
+- [x] `npm run check` 全绿并提交（873/873，`81d81b2`）

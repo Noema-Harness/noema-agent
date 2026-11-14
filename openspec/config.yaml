@@ -5,7 +5,7 @@ context: |
   当前交付状态、缺口与下一步见 docs/STATUS.md；产品、架构、长期决定分别由
   docs/PRODUCT.md、docs/ARCHITECTURE.md、docs/DECISIONS.md 拥有。
   openspec/changes 同时只允许一个活动变更：它是本轮增量，不是路线图——排序与状态在
-  GitHub Project「Noema V1 路线」；proposal 写 Plan 卡片链接与推进的能力，design.md 的
+  GitHub Project「Noema V1 路线」；proposal 写 Plan 卡片链接（能力清单只在看板，不写进 docs/），design.md 的
   「待用户决定」小节列出未定问题，tasks.md 按轮勾选；未定问题未答前不提交相关产品代码。
   openspec/specs 记录现有可观察行为，作为回归参照，不代表新一期必须包含全部现有功能。
   只为已授权的实际变更建立 change，不从既有代码、历史提交或参考项目恢复旧规划。
