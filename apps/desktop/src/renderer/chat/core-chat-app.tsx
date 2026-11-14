@@ -442,17 +442,12 @@ export function CoreChatApp() {
     () => teams.filter((team) => team.status !== 'archived'),
     [teams],
   );
-  const activeProjects = useMemo(
-    () => projects.filter((project) => project.status !== 'archived'),
-    [projects],
-  );
   const selectedProject = useMemo(
     () =>
       selectedProjectId
-        ? (activeProjects.find((project) => project.id === selectedProjectId) ??
-          null)
+        ? (projects.find((project) => project.id === selectedProjectId) ?? null)
         : null,
-    [activeProjects, selectedProjectId],
+    [projects, selectedProjectId],
   );
   useEffect(() => {
     if (selectedProjectId && !selectedProject) setSelectedProjectId(null);
@@ -1055,7 +1050,7 @@ export function CoreChatApp() {
           >
             <Icon name="project" />
             <span>项目</span>
-            <small>{activeProjects.length}</small>
+            <small>{projects.length}</small>
           </button>
           <button
             className="core-nav-item"
@@ -1439,7 +1434,7 @@ export function CoreChatApp() {
                         ? agentById.get(team.leadAgentId)?.name
                         : null;
                       const project = team.projectId
-                        ? activeProjects.find(
+                        ? projects.find(
                             (candidate) => candidate.id === team.projectId,
                           )
                         : null;
@@ -1495,9 +1490,9 @@ export function CoreChatApp() {
                 )
               ) : null}
               {section === 'projects' ? (
-                activeProjects.length ? (
+                projects.length ? (
                   <div className="core-card-grid">
-                    {activeProjects.map((project) => {
+                    {projects.map((project) => {
                       const lead = project.leadAgentId
                         ? agentById.get(project.leadAgentId)?.name
                         : null;
@@ -1524,9 +1519,11 @@ export function CoreChatApp() {
                             <div>
                               <dt>状态</dt>
                               <dd>
-                                {project.status === 'active'
-                                  ? '进行中'
-                                  : '等待反馈'}
+                                {project.status === 'archived'
+                                  ? '已归档'
+                                  : project.status === 'active'
+                                    ? '进行中'
+                                    : '等待反馈'}
                               </dd>
                             </div>
                           </dl>

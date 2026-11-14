@@ -6417,6 +6417,11 @@ select:disabled {
   color: #8b877f;
   font-size: 10.5px;
 }
+.core-project-phase-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
 .core-project-items {
   display: flex;
   flex-direction: column;

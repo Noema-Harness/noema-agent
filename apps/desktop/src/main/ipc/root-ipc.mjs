@@ -50,6 +50,7 @@ const CHANNELS = Object.freeze({
   socialReplaceProjectPlan: 'noema:social-replace-project-plan',
   socialUpdateProjectPlanItem: 'noema:social-update-project-plan-item',
   socialUpdateProjectPlanPhase: 'noema:social-update-project-plan-phase',
+  socialCompleteProject: 'noema:social-complete-project',
   socialArchiveProject: 'noema:social-archive-project',
   socialRestoreProject: 'noema:social-restore-project',
   socialRetryProjectGrowthMember: 'noema:social-retry-project-growth-member',
@@ -523,6 +524,10 @@ export function registerRootIpc({
         );
       },
     );
+    register(CHANNELS.socialCompleteProject, (projectId) => {
+      if (!socialProjectStore) throw new Error('项目存储尚未初始化。');
+      return socialChatService.completeProject(projectId);
+    });
     register(CHANNELS.socialArchiveProject, (projectId) => {
       if (!socialProjectStore) throw new Error('项目存储尚未初始化。');
       const project = socialProjectStore.archiveProject(projectId);

@@ -94,6 +94,8 @@ export function ProjectDetailView({
   const [plan, setPlan] = useState<PlanView | null>(null);
   const [planLoading, setPlanLoading] = useState(true);
   const [planError, setPlanError] = useState<string | null>(null);
+  const [actionBusy, setActionBusy] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const requestRef = useRef(0);
 
   const loadPlan = useCallback(async () => {
@@ -115,6 +117,77 @@ export function ProjectDetailView({
       if (request === requestRef.current) setPlanLoading(false);
     }
   }, [project.id]);
+
+  const approveItem = useCallback(
+    async (item: NoemaProjectPlanItem) => {
+      if (!plan || actionBusy) return;
+      setActionBusy(`item:${item.id}`);
+      setActionError(null);
+      try {
+        setPlan(
+          normalizeProjectPlan(
+            await window.noema.updateSocialProjectPlanItem({
+              projectId: project.id,
+              expectedRevision: plan.revision,
+              itemId: item.id,
+              status: 'done',
+              reason: '用户验收工作项',
+            }),
+          ),
+        );
+      } catch (error) {
+        setActionError(
+          error instanceof Error ? error.message : '工作项验收失败。',
+        );
+      } finally {
+        setActionBusy(null);
+      }
+    },
+    [actionBusy, plan, project.id],
+  );
+
+  const completePhase = useCallback(
+    async (phase: NoemaProjectPlanPhase) => {
+      if (!plan || actionBusy) return;
+      setActionBusy(`phase:${phase.id}`);
+      setActionError(null);
+      try {
+        setPlan(
+          normalizeProjectPlan(
+            await window.noema.updateSocialProjectPlanPhase({
+              projectId: project.id,
+              expectedRevision: plan.revision,
+              phaseId: phase.id,
+              status: 'done',
+              evidence: '阶段工作项均已验收。',
+              reason: '用户验收阶段',
+            }),
+          ),
+        );
+      } catch (error) {
+        setActionError(
+          error instanceof Error ? error.message : '阶段验收失败。',
+        );
+      } finally {
+        setActionBusy(null);
+      }
+    },
+    [actionBusy, plan, project.id],
+  );
+
+  const completeProject = useCallback(async () => {
+    if (!plan || actionBusy) return;
+    setActionBusy('project');
+    setActionError(null);
+    try {
+      await window.noema.completeSocialProject(project.id);
+      await loadPlan();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : '完成项目失败。');
+    } finally {
+      setActionBusy(null);
+    }
+  }, [actionBusy, loadPlan, plan, project.id]);
 
   useEffect(() => {
     void loadPlan();
@@ -171,6 +244,14 @@ export function ProjectDetailView({
   const planOnlySummary = plan
     ? `目前只有计划状态可用：版本 ${plan.revision}，工作项 ${plan.progress.done}/${plan.progress.total} 已验收。`
     : '目前只有项目基础资料可用，还没有读到计划状态。';
+  const canComplete = Boolean(
+    plan &&
+    project.status === 'active' &&
+    plan.phaseProgress.total > 0 &&
+    plan.phaseProgress.done === plan.phaseProgress.total &&
+    plan.progress.total > 0 &&
+    plan.progress.done === plan.progress.total,
+  );
 
   return (
     <main
@@ -198,6 +279,16 @@ export function ProjectDetailView({
             >
               {canOpenGroup ? '打开项目群' : '项目群不可用'}
             </button>
+            {canComplete ? (
+              <button
+                className="core-card-action"
+                type="button"
+                disabled={Boolean(actionBusy)}
+                onClick={completeProject}
+              >
+                {actionBusy === 'project' ? '正在完成…' : '完成项目'}
+              </button>
+            ) : null}
             {project.growthBatch ? (
               <button
                 className="core-card-action"
@@ -255,6 +346,15 @@ export function ProjectDetailView({
                   >
                     重试
                   </button>
+                </div>
+              ) : null}
+
+              {actionError ? (
+                <div className="core-project-alert" role="alert">
+                  <div>
+                    <strong>验收失败</strong>
+                    <span>{actionError}</span>
+                  </div>
                 </div>
               ) : null}
 
@@ -385,6 +485,22 @@ export function ProjectDetailView({
                                               阻塞：{item.blocker}
                                             </span>
                                           ) : null}
+                                          {item.status === 'submitted' ? (
+                                            <button
+                                              className="core-project-link-button"
+                                              type="button"
+                                              disabled={
+                                                actionBusy === `item:${item.id}`
+                                              }
+                                              onClick={() =>
+                                                void approveItem(item)
+                                              }
+                                            >
+                                              {actionBusy === `item:${item.id}`
+                                                ? '验收中…'
+                                                : '验收通过'}
+                                            </button>
+                                          ) : null}
                                         </div>
                                       ) : null}
                                     </li>
@@ -397,6 +513,24 @@ export function ProjectDetailView({
                               这一阶段还没有工作项。
                             </p>
                           )}
+
+                          {phase.progress.total > 0 &&
+                          phase.progress.done === phase.progress.total &&
+                          phase.status !== 'done' &&
+                          phase.status !== 'canceled' ? (
+                            <div className="core-project-phase-actions">
+                              <button
+                                className="core-project-link-button"
+                                type="button"
+                                disabled={actionBusy === `phase:${phase.id}`}
+                                onClick={() => void completePhase(phase)}
+                              >
+                                {actionBusy === `phase:${phase.id}`
+                                  ? '验收中…'
+                                  : '通过阶段'}
+                              </button>
+                            </div>
+                          ) : null}
                         </li>
                       ),
                     )}
