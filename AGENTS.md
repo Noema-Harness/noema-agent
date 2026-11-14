@@ -4,7 +4,9 @@
 
 用户级约定在 `C:\Users\NUC\.dsh\AGENTS.md`。冲突顺序：本轮用户要求 > 用户级 > 本文件 > PRODUCT/ARCHITECTURE/DECISIONS > OPERATIONS/STATUS > 旧提交、旧文档、外部参考。代码、测试、诊断是事实证据，但不能替代产品取舍。
 
-## 1. 一轮怎么走
+## 1. 维护者的一轮怎么走（协作者不需要照做）
+
+协作者只受 §2 的事实所有权、§3 交付前的 `npm run check`、§4 工程边界约束；选卡、立项、待决上限是维护者本地的推进方式，不构成对外约定。
 
 1. **选卡**：看板上选本轮推进的卡片（`[C<n>]` issue），把它移到 In Progress，在 `openspec/changes/<name>/` 立项。proposal 写 `Plan: <卡片链接>`；design 写选择与「## 待用户决定」；tasks 写可勾选的纵切。
 2. **开工前**：`npm run plan:check` 必须通过。未答决策只挡产品代码，先做与之无关的部分，不替用户拍板。

@@ -36,6 +36,8 @@ npm run check
 4. `source:check`：源码依赖边界；
 5. `lint`、`typecheck`、`maintenance:test`、`test`。
 
+OpenSpec 规格只写可观察行为，不写测试实现：每个新增或修改的 requirement，在本次 change 的 `tasks.md` 里写一条验证（测试文件名或命令）；归档后证据留在 Git 与看板卡片评论里，不把测试名写回常驻 specs，也不新增第二套测试映射。
+
 里程碑（准备归档变更时）单独运行：
 
 ```powershell
@@ -89,7 +91,7 @@ gh issue comment <n> --body "证据：commit <sha>，check 873/873，STATUS 链�
 
 每张卡片是 `[C<n>]` issue；收口时先贴证据再关 issue，`npm run check` 的离线门槛只校验 proposal 里的 `Plan:` 链接，不校验远端状态。
 
-首次克隆仓库需要安装提交门槛：
+提交门槛只在维护者本机安装，不自动修改协作者配置：git 只在 `core.hooksPath` 指向时才跑仓库里的钩子，新克隆默认没有这道门；协作者靠交付前跑 `npm run check` 保证，同样的检查在 `check` 里也会跑一遍。维护者本机安装：
 
 ```powershell
 git config core.hooksPath .githooks
