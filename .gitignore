@@ -29,6 +29,7 @@ Thumbs.db
 # Logs and temporary files
 .work/*
 !.work/README.md
+.archify/*
 *.log
 .tmp/
 .playwright-cli/
