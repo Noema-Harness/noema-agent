@@ -23,3 +23,9 @@
 ## Impact
 
 影响 `diagnostics-dialog.tsx`、诊断工作台样式、Electron 隔离 UI 探针和 `project-execution` 行为规格；不增加依赖、持久化字段或 IPC 权限。
+
+---
+
+## 归档说明（2026-11-15）
+
+本变更已关闭，不再作为活动计划：剩余任务要么已由后续交付覆盖，要么已被新决定替代（见 `docs/DECISIONS.md` 与 `docs/STATUS.md`），规格增量未合并进 `openspec/specs`。需要继续时按新变更重新立项，不要恢复旧任务表。

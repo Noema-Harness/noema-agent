@@ -33,3 +33,9 @@
 - `apps/desktop/src/main/ipc/root-ipc.mjs`、preload、`noema-bridge.d.ts`：分支列表/切换/派生接口。
 - renderer：分支切换与“从这条消息继续”；移除主界面的新旧对话语义（在默认切换阶段）。
 - 测试：schema 迁移、分支隔离、旧数据回填、CAS、崩溃恢复。
+
+---
+
+## 归档说明（2026-11-15）
+
+本变更已关闭，不再作为活动计划：剩余任务要么已由后续交付覆盖，要么已被新决定替代（见 `docs/DECISIONS.md` 与 `docs/STATUS.md`），规格增量未合并进 `openspec/specs`。需要继续时按新变更重新立项，不要恢复旧任务表。

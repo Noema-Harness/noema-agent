@@ -1,5 +1,9 @@
 # DECISIONS
 
+Authority: 本文件是 Noema 长期决定、替代方案、理由与重新审视条件的唯一权威来源。
+Update when: 做出、替代或撤销长期决定时追加。
+Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结构与数据边界（见 [ARCHITECTURE](ARCHITECTURE.md)）；当前版本、证据与下一步（见 [STATUS](STATUS.md)）；命令与发布步骤（见 [OPERATIONS](OPERATIONS.md)）；维护规则（见 [AGENTS](../AGENTS.md)）。
+
 长期决定按时间追加。每条记录决定、替代方案、理由和重新审视条件；已撤销的决定不删除，追加说明替代关系。
 
 ## D-001 一个可见的 Noema，执行结构不对用户承担最终责任

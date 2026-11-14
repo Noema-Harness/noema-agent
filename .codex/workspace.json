@@ -45,9 +45,10 @@
     }
   ],
   "rootDirectories": [
-    ".git",
     ".codex",
     ".dsh",
+    ".git",
+    ".githooks",
     ".github",
     ".work",
     "apps",

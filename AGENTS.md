@@ -38,6 +38,29 @@
 - 不允许把当前状态、测试计数、安装路径写进 PRODUCT/ARCHITECTURE/DECISIONS；不允许把产品定义或架构理由写进 STATUS/README。
 - 文档里的“当前”必须有代码、测试或运行证据；没有证据就写未验证。
 
+### 维护为什么需要硬门槛
+
+2026-11-15 的实际证据：0.7.4–0.7.6 三个版本发布期间 `docs/` 一次都没有更新（STATUS 停在 0.7.3 和旧基线），`openspec/changes/` 同时挂着 11 个活动变更，其中 2 个已经完成但从未归档。计划与状态都没有在指导开发，问题不是“不知道要更新”，而是不同步时没有任何动作会失败。
+
+因此同步被做成会失败的检查，而不是靠自觉：
+
+- `npm run docs:check`：五份权威文档齐全且带 `Authority/Update when/Does not own` 三行头；`docs/` 没有未登记文档；根与 `apps/desktop` 版本一致；STATUS 的源码版本等于 package 版本、基线是 HEAD 祖先、`最后更新` 存在；`core.hooksPath` 指向 `.githooks`；`openspec/config.yaml` 不引用已删除的文档。
+- `npm run plan:check`：同时至多 1 个活动 OpenSpec 变更；活动变更必须有 proposal/design/tasks；tasks 必须还有未完成项（全部完成就必须归档）；design.md 必须有 `## 待用户决定` 小节；找到 openspec CLI 时顺带跑 `validate --all --strict`。
+- `.githooks/pre-commit`：暂存了 `apps/desktop/src/` 或 `scripts/` 的代码，就必须同时暂存 `docs/` 或 `openspec/changes/` 的更新；活动变更里仍有未勾选的「待用户决定」时直接拒绝提交。
+- 三者都挂在 `npm run check` 上，本地提交门槛与交付门槛是同一套判断；绕过方法只有 `--no-verify`，那等于明说不走这个流程。
+
+### 每轮开发循环
+
+1. 立项：`openspec/changes/<stage>/` 的 proposal.md 写为什么与改什么，design.md 写设计选择并把未定问题列进 `## 待用户决定`，tasks.md 写可勾选的纵切。
+2. 开工前：`npm run plan:check` 必须通过；`## 待用户决定` 还有未勾项时，只做与该决定无关的工作，不替用户拍板。
+3. 执行中：证据写进 tasks.md 或 STATUS（命令、测试计数、文件、失败原因），不写叙事日记；文档与代码同一提交。
+4. 收口：任务全完成 → 归档变更并合并规格增量 → 再开下一个阶段；阶段交付更新 STATUS 的版本、基线、验证、未交付和下一步。
+5. 汇报：把 `## 待用户决定` 的问题原样带进汇报，等用户回答后再改代码。
+
+### 不新建并行的计划体系
+
+机制只用已有的五份文档 + OpenSpec + `scripts/maintenance.mjs`。不新增 ROADMAP、任务看板、第二套计划文档或“过程规范”：那会和权威源断裂、成为纯熵增（2026-11-15 用户明确否决过这种做法）。
+
 ## 3. 文档预算
 
 - 常驻文档固定为 5 份 `docs/` + README + 本文件。新增文档前必须先合并/删除同等权重的旧内容（one-in-one-out）。

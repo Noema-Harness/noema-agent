@@ -22,3 +22,9 @@ Personal memory already has bounded storage, main-chat admission, and settings C
 - Main-process Social chat and trusted root IPC.
 - Existing diagnostics event store and timeline query; no schema migration.
 - Additional source-level tests, held for the complete Stage 2 gate.
+
+---
+
+## 归档说明（2026-11-15）
+
+本变更已关闭，不再作为活动计划：剩余任务要么已由后续交付覆盖，要么已被新决定替代（见 `docs/DECISIONS.md` 与 `docs/STATUS.md`），规格增量未合并进 `openspec/specs`。需要继续时按新变更重新立项，不要恢复旧任务表。

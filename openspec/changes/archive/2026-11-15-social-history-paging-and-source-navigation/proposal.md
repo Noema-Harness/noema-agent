@@ -25,3 +25,9 @@
 ## Impact
 
 `SocialChatStore`、Social room/search IPC 与 preload contract、Social renderer room loading/search navigation、对话历史 UI，以及对应 OpenSpec 行为测试。内部服务继续使用不带分页参数的全量 snapshot 时保持既有行为，renderer 入口始终采用有界读取。
+
+---
+
+## 归档说明（2026-11-15）
+
+本变更已关闭，不再作为活动计划：剩余任务要么已由后续交付覆盖，要么已被新决定替代（见 `docs/DECISIONS.md` 与 `docs/STATUS.md`），规格增量未合并进 `openspec/specs`。需要继续时按新变更重新立项，不要恢复旧任务表。

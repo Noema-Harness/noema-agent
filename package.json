@@ -23,7 +23,10 @@
     "harness:check": "node scripts/harness-sync.mjs check",
     "harness:import": "node scripts/harness-sync.mjs import",
     "source:check": "node scripts/source-structure.mjs",
-    "check": "npm run workspace:check && npm run skills:check && npm run source:check && npm run lint && npm run typecheck && npm test"
+    "check": "npm run workspace:check && npm run docs:check && npm run plan:check && npm run skills:check && npm run source:check && npm run lint && npm run typecheck && npm run maintenance:test && npm test",
+    "docs:check": "node scripts/maintenance.mjs docs",
+    "plan:check": "node scripts/maintenance.mjs plan",
+    "maintenance:test": "node --test scripts/maintenance.test.mjs"
   },
   "engines": {
     "node": ">=24.21 <25"

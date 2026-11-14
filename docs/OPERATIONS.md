@@ -1,5 +1,9 @@
 # OPERATIONS
 
+Authority: 本文件是 Noema 环境、开发、检查、打包、安装、回滚与诊断方式的唯一权威来源。
+Update when: 命令、环境、发布流程或诊断方式变化。
+Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结构与数据边界（见 [ARCHITECTURE](ARCHITECTURE.md)）；长期决定（见 [DECISIONS](DECISIONS.md)）；当前版本与未交付项（见 [STATUS](STATUS.md)）；维护规则（见 [AGENTS](../AGENTS.md)）。
+
 ## 环境
 
 - Windows 10 22H2 x64 或更新版本；当前正式支持 Windows。
@@ -27,21 +31,52 @@ npm run check
 `check` 依次执行：
 
 1. `workspace:check`：文档路由与结构；
-2. `skills:check`：技能镜像；
-3. `source:check`：源码依赖边界；
-4. `lint`、`typecheck`、`test`。
+2. `docs:check`：五份权威文档、版本/基线、git 门槛安装状态；
+3. `plan:check`：OpenSpec 活动变更、任务清单与未决问题；
+4. `skills:check`：技能镜像；
+5. `source:check`：源码依赖边界；
+6. `lint`、`typecheck`、`maintenance:test`、`test`。
 
 单独运行：
 
 ```powershell
 npm run workspace:check
+npm run docs:check
+npm run plan:check
 npm run skills:sync
 npm run skills:check
 npm run source:check
 npm run typecheck
 npm run lint
+npm run maintenance:test
 npm test
 ```
+
+### 维护门槛
+
+`docs:check`、`plan:check` 和 `.githooks/pre-commit` 是同一套判断（`scripts/maintenance.mjs`），失败的常见原因与修法：
+
+| 报错 | 修法 |
+| --- | --- |
+| STATUS 源码版本与 package.json 不一致 | 发布/交付后先更新 `docs/STATUS.md` 的版本、基线、验证和未交付 |
+| STATUS 基线不是 HEAD 祖先 | 基线写成当前可解析的提交；重写历史后重取 |
+| 活动变更超过 1 个 | 已完成的先 `openspec archive <name> --yes`，过期未做的移到 `openspec/changes/archive/` 并写明关闭原因 |
+| 活动变更 tasks 全部完成 | 归档该变更后再开下一个阶段 |
+| design.md 缺少 `## 待用户决定` | 补该小节；没有未定项就写“无” |
+| pre-commit 拒绝代码提交 | 同一次提交里带上 `docs/` 或 `openspec/changes/` 的更新；未决问题先问用户再实现 |
+
+首次克隆仓库需要安装提交门槛：
+
+```powershell
+git config core.hooksPath .githooks
+```
+
+检查是否生效：
+
+```powershell
+git config --get core.hooksPath
+```
+
 
 测试失败时先跑受影响的单文件，避免每次都跑全量：
 

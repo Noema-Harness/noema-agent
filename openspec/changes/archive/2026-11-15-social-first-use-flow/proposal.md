@@ -25,3 +25,9 @@
 
 - SocialChatService 的请求上下文构造、SocialChatStore 的兼容状态读取、preload/IPC 首遇状态写入口、首次使用界面残留文件、相关测试和默认首用 E2E。
 - 不迁移或删除已有 `first_meeting` 设置数据；不改变聊天消息、个人记忆、回访或模型配置状态。
+
+---
+
+## 归档说明（2026-11-15）
+
+本变更已关闭，不再作为活动计划：剩余任务要么已由后续交付覆盖，要么已被新决定替代（见 `docs/DECISIONS.md` 与 `docs/STATUS.md`），规格增量未合并进 `openspec/specs`。需要继续时按新变更重新立项，不要恢复旧任务表。

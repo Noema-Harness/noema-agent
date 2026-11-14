@@ -22,3 +22,9 @@ Social 主聊的 provider 请求有 request ID 和 usage 记录，但工具实�
 ## Impact
 
 影响 `SocialChatService`、OpenAI-compatible provider tool callback、main-process 诊断事件接线、诊断时间线 UI 与对应自动化用例；复用现有本机诊断事件表和详情 allowlist，不新增数据表或网络接口。
+
+---
+
+## 归档说明（2026-11-15）
+
+本变更已关闭，不再作为活动计划：剩余任务要么已由后续交付覆盖，要么已被新决定替代（见 `docs/DECISIONS.md` 与 `docs/STATUS.md`），规格增量未合并进 `openspec/specs`。需要继续时按新变更重新立项，不要恢复旧任务表。

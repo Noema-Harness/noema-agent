@@ -33,3 +33,9 @@ Noema 仍同时保留多套 Agent 循环：RootAgent、SocialChatService 自己�
 - `apps/desktop/src/main/legacy/` 新增隔离目录和边界检查；`npm run source:check` 拒绝生产代码引用。
 - 现有 `NoemaProjectExecutor` 测试和迁移脚本继续引用 legacy 路径，仅用于回归和历史对照。
 - 后续阶段迁移 RootAgent 与 SocialChatService 的模型循环；本阶段不改变 UI、数据库 schema 或用户可见工作流，只先关闭执行层的第二个运行时。
+
+---
+
+## 归档说明（2026-11-15）
+
+本变更已关闭，不再作为活动计划：剩余任务要么已由后续交付覆盖，要么已被新决定替代（见 `docs/DECISIONS.md` 与 `docs/STATUS.md`），规格增量未合并进 `openspec/specs`。需要继续时按新变更重新立项，不要恢复旧任务表。
