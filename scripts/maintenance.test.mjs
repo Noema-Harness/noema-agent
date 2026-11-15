@@ -360,3 +360,53 @@ test("unanswered decisions block product code but not tooling maintenance", () =
     });
     assert.match(behaviour.errors.join("\n"), /标记了 skip_specs，但这次提交含产品代码/u);
   }));
+test("decision entries carry a status, and a pending entry needs a next step", () => {
+  withRoot((holder) => {
+    const root = makeRoot(holder, { change: false });
+    write(
+      root,
+      "docs/DECISIONS.md",
+      `# DECISIONS
+
+${HEADER}
+
+## D-029 一个决定
+
+**状态**：决定（2026-11-15）
+**决定**：做。
+**理由**：因为。
+**重新审视**：如果坏。
+
+## D-030 一个待定
+
+**状态**：待定
+**要定什么**：A 还是 B。
+`,
+    );
+    const incomplete = checkDocuments(root, fakeGit());
+    assert.match(incomplete.errors.join("\n"), /D-030 是待定条目，缺少 \*\*下一步\*\*/u);
+    assert.match(
+      incomplete.errors.join("\n"),
+      /D-030 是待定条目，缺少「\*\*更新\*\*：YYYY-MM-DD」/u,
+    );
+
+    write(
+      root,
+      "docs/DECISIONS.md",
+      `# DECISIONS
+
+${HEADER}
+
+## D-030 一个待定
+
+**状态**：待定
+**要定什么**：A 还是 B。
+**下一步**：C7 立项时定。
+**更新**：2020-01-01
+`,
+    );
+    const stale = checkDocuments(root, fakeGit());
+    assert.equal(stale.errors.length, 0);
+    assert.match(stale.notices.join("\n"), /D-030 待定已 \d+ 天没动/u);
+  });
+});
