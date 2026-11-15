@@ -77,7 +77,7 @@ npm run branches:prune -- --apply # 执行删除
 
 ### 维护门槛
 
-五道门槛由 `scripts/maintenance.mjs`（docs/plan/milestone/pre-commit）与 `scripts/figure.mjs`（架构图同步）实现：`docs:check`、`figure:check`、`plan:check` 在 `npm run check` 里，`milestone:check` 在归档前手动跑，`.githooks/pre-commit` 在提交点跑。失败的常见原因与修法：
+五道门槛由 `scripts/maintenance.mjs`（docs/plan/milestone/pre-commit）与 `scripts/figure.mjs`（架构图同步）实现；入口统一在 `scripts/governance.mjs`：`commit`（提交点，秒级）、`milestone`（一个切口收口时，全量）、`ci`（与 milestone 同源）。`npm run check` 即 `governance milestone`；`docs:check`/`figure:check`/`plan:check` 是同一批规则的单独入口（调试用），`milestone:check` 在归档前手动跑。失败的常见原因与修法：
 
 | 报错                                                  | 修法                                                                                                                                |
 | ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
@@ -109,10 +109,6 @@ npm run branches:prune -- --apply # 执行删除
 - `npm run figure:check` 挂在 `npm run check` 里：架构文档变了而图没重出、产物被手改、README 没引用图，都会直接失败。
 - 不要手改 `noema-architecture.html|png`；finalize 的侧车 json 由 build 自动移出 `docs/assets`，留在 `.work/archify-run/`。
 - 图只画 Noema 产品范围（用户、主聊、执行者、工作区、数据、计划项），不画本机开发 harness。
-
-### CI 是异步验证
-
-全量 `npm run check`（约 40 秒、878 个测试）是**里程碑门槛**：一张看板卡的一个切口完成时跑一次。轮内只跑 `npm run typecheck` 与受影响的测试文件；推送后不等 GitHub Actions 跑完——计划任务和 `npm run inbox` 会在下一轮开场报告红/绿。只有三种情况需要主动看 CI：合并协作者的 PR 前、发布前、收到红色通知后定位。
 
 ### CI 是异步验证
 

@@ -449,3 +449,15 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 **理由**：一轮同步等 10–13 分钟不产生新信息，且把交付节奏绑在远端队列上（2026-11-15 用户明确反对）。收件箱就是为此建的，此前的同步等待等于造了机制却不用。
 **替代**：每轮同步等 CI（被否）；完全不管 CI（会漏掉 Windows runner 与本机差异）。
 **重新审视**：出现本机无法复现的 CI 失败，或收件箱漏报导致红 CI 过夜。
+
+## D-20261115-governance-entry 治理入口收敛为三个 profile
+
+**状态**：决定（2026-11-15）
+
+**决定**：`scripts/governance.mjs` 成为唯一入口：`commit`（提交点，复用 docs+plan，约 0.3 秒）、`milestone`（收口时跑全部本地检查）、`ci`（与 milestone 同一份步骤，避免本地与远端两套）。`npm run check` 即 `governance milestone`，`.githooks/pre-commit` 调 `governance commit`；`docs:check`/`plan:check`/`figure:check`/`tools:test` 保留为调试用单独入口。
+
+**理由**：同一批规则此前被三条路径各自接线（check 链、pre-commit、CI），改一条规则要同步三处；接线不同已经造成过“本地过、CI 不过”（CI 调用已删除的 `workspace:test`）。收敛后 CI 直接复用 `npm run check`，本地与远端同源。规则本身没有删减，这一步只消除重复接线，所以可以单独回滚。
+
+**替代**：继续让三条路径各自拼命令（维护三份顺序）；把规则整体重写进 CI 配置（当前体量下一次改完风险高于收益）。
+
+**重新审视**：若某个 profile 需要不同的步骤集合而非顺序，再拆成独立配置；若子进程开销超过总耗时 20%，改回同进程调用。
