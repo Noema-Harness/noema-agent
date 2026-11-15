@@ -24,6 +24,8 @@
 
 - [ ] 4.1 写明「机制 / 治理变更不属于可逆小动作」，用户级与仓库级冲突以仓库治理为准
 - [ ] 4.2 区分机械约束（门强制）与判断准则（提示词要求），在 AGENTS 与 OPERATIONS 各标一次
+- [x] 4.3 新增项目治理运行手册 `skills/noema-development/SKILL.md`（九步步骤、模板、出口表；规则仍以 AGENTS 为准，不重复）
+- [x] 4.4 `npm run skill:install` 同步到 `~/.dsh/skills`；`docs:check` 校验副本与仓库一致（CI 只提示），`scripts/skill-sync.test.mjs` 覆盖
 
 ## 5. 治理规则（按证据处理）
 
