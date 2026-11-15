@@ -110,6 +110,14 @@ npm run branches:prune -- --apply # 执行删除
 - 不要手改 `noema-architecture.html|png`；finalize 的侧车 json 由 build 自动移出 `docs/assets`，留在 `.work/archify-run/`。
 - 图只画 Noema 产品范围（用户、主聊、执行者、工作区、数据、计划项），不画本机开发 harness。
 
+### CI 是异步验证，不是每轮的门槛
+
+本机 `npm run check` 才是每轮交付的硬门槛（30–40 秒）。推送后不等 GitHub Actions 跑完：计划任务和 `npm run inbox` 会在下一轮开场报告红/绿。只有三种情况需要主动看 CI：合并协作者的 PR 前、发布前、收到红色通知后定位。
+
+### CI 是异步验证，不是每轮的门槛
+
+本机 `npm run check` 才是每轮交付的硬门槛（30–40 秒）。推送后不等 GitHub Actions 跑完：计划任务和 `npm run inbox` 会在下一轮开场报告红/绿。只有三种情况需要主动看 CI：合并协作者的 PR 前、发布前、收到红色通知后定位。
+
 ### GitHub 通知（本地收件箱）
 
 `npm run inbox` 用 `gh` 拉取 main 的 workflow 失败/恢复、open PR 检查状态、issue/PR 新评论与 issue 创建；新事件打印一行并追加到 `.work/github-inbox/pending.md`，状态在 `.work/github-inbox/state.json`（去重键保留最近 500 条）。每轮开始先跑一次；gh 不可用或离线时静默退出，不阻塞任何门槛。
