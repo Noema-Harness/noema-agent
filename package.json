@@ -32,8 +32,9 @@
     "figure:test": "node --test scripts/figure.test.mjs",
     "inbox": "node scripts/github-inbox.mjs --poll",
     "inbox:test": "node --test scripts/github-inbox.test.mjs",
-    "tools:test": "node --test scripts/governance.test.mjs scripts/maintenance.test.mjs scripts/figure.test.mjs scripts/branches.test.mjs scripts/github-inbox.test.mjs scripts/workspace.test.mjs",
-    "governance:test": "node --test scripts/governance.test.mjs"
+    "tools:test": "node --test scripts/governance.test.mjs scripts/maintenance.test.mjs scripts/figure.test.mjs scripts/branches.test.mjs scripts/github-inbox.test.mjs scripts/workspace.test.mjs scripts/skill-sync.test.mjs",
+    "governance:test": "node --test scripts/governance.test.mjs",
+    "skill:install": "node scripts/skill-sync.mjs install"
   },
   "engines": {
     "node": ">=24.21 <25"

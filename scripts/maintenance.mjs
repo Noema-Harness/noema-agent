@@ -3,6 +3,7 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { resolveGitExecutable } from "./git-exec.mjs";
+import { checkSkill } from "./skill-sync.mjs";
 
 // 文档与计划不是事后补写的报告，而是交付门槛的一部分：交付前、提交前都必须
 // 通过这里。`docs` 校验五份权威文档与代码事实同步，`plan` 校验 OpenSpec 只有
@@ -104,7 +105,8 @@ export function planTarget(proposalText) {
 export function pendingDecisions(designText) {
   const body = sectionBody(designText, DECISION_HEADING);
   if (body === null) return null;
-  return [...body.matchAll(/^\s*- \[ \]\s*(.+)$/gmu)].map((match) => match[1].trim());
+  // 两种写法都算：`- [ ] 问题` 与 `- 问题`；不要要求作者记住一种格式，否则门只会拦格式。
+  return [...body.matchAll(/^-[ \t]+(?:\[[ xX]\][ \t]+)?(.+)$/gmu)].map((match) => match[1].trim());
 }
 
 export function activeChanges(root) {
@@ -263,6 +265,9 @@ export function checkDocuments(root, git, options = {}) {
   if (!fs.existsSync(path.join(root, ".githooks", "pre-commit"))) {
     errors.push("缺少 .githooks/pre-commit：提交前门槛被删除");
   }
+  const skill = checkSkill(root, { ci: inCi });
+  errors.push(...skill.errors);
+  notices.push(...skill.notices);
 
   const openspecConfig = readText(path.join(root, "openspec", "config.yaml"));
   if (openspecConfig === null) {

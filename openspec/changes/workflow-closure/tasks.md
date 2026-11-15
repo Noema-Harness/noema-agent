@@ -18,15 +18,19 @@
 - [x] 3.3 增加「三类出口」（AGENTS §3：被否 / 计划门拒绝 / 执行失败 / 验收未过 / CI 红 / 决定被替代）
 - [x] 3.4 开场三问与收口三问写进 AGENTS §1（第 0 步与第 6 步下方）
 - [x] 3.5 `docs/OPERATIONS.md` 开发节指回 AGENTS §1，只保留命令与报错修法（新增一行指针）
+- [ ] 3.7 按用户判断处理「六种文档角色」：删除或压缩（验证：`AGENTS.md` 不再解释文档角色；design.md 有 `## 事实影响` 一节）
 - [ ] 3.6 `npm run check` 全绿
 
 ## 4. 提示词优先级
 
 - [ ] 4.1 写明「机制 / 治理变更不属于可逆小动作」，用户级与仓库级冲突以仓库治理为准
 - [ ] 4.2 区分机械约束（门强制）与判断准则（提示词要求），在 AGENTS 与 OPERATIONS 各标一次
+- [x] 4.3 新增项目治理运行手册 `skills/noema-development/SKILL.md`（九步步骤、模板、出口表；规则仍以 AGENTS 为准，不重复）
+- [x] 4.4 `npm run skill:install` 同步到 `~/.dsh/skills`；`docs:check` 校验副本与仓库一致（CI 只提示），`scripts/skill-sync.test.mjs` 覆盖
 
 ## 5. 治理规则（按证据处理）
 
+- [x] 5.4 `plan:check` 的「待用户决定」原只认 `- [ ]` 勾选写法，改 `- 问题` 时报告“无”；已改为两种都算，并在 `scripts/maintenance.test.mjs` 覆盖
 - [ ] 5.1 4 条「预防」规则逐条补触发证据，或降级为提醒
 - [ ] 5.2 卡片正文三段（现在能做什么 / 还没做 / 证据位置）是否加机械校验，等真实切口后定
 - [ ] 5.3 `node scripts/governance.mjs audit` 输出无「预防」拦截
