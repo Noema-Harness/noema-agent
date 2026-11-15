@@ -540,3 +540,26 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 **维护者判断**：同意“做完再补决定”是形式化；根因是我把每条反馈直接当工单。完全靠自觉无法保证不再发生，所以提议按 B 落地，但保留上述两个例外与只读豁免——否则任何调查都要先等审批，节奏会断。
 
 **更新**：2026-11-16
+
+## D-20261116-platform-layers 与 Windows 解耦：核心、端口、宿主三层
+
+**状态**：待定
+
+**要定什么**：用户 2026-11-15 要求把与 Windows 强耦合的结构解耦，便于统一更新并扩展到 Mac、Linux 和移动端。现状（同日实测）：Electron 只出现在 `src/main/app/*.ts`、`main.ts` 和两个测试辅助里，聊天、项目、存储、Agent 等核心模块不依赖 Electron；界面只经 `shared/contracts/noema-bridge.d.ts`（89 个 IPC 通道）和主进程通信。操作系统耦合集中在：执行后端（Windows Runner 约 7.2k 行 Rust + 4.6k 行 TS/JS，只能 Windows）、打包与安装（Squirrel、`make.mjs`、`smoke-package.mjs`、`.ps1` 安装冒烟）、托盘与生命周期（`main.ts`）、开发环境（PowerShell 约定、钩子无可执行位、锁文件缺 macOS 原生二进制）、约 20 个只能在 Windows 上过的测试和只有 `windows-latest` 的 CI。
+
+**提议的结构**：
+
+1. **核心**（与平台无关）：聊天、项目、Agent、存储、模型服务。规则：不导入 `electron`、`node:child_process`，不比较 `process.platform`，只依赖端口；由 `source:check` 机械校验。
+2. **端口**（接口）：平台事实 `HostPlatform`（`dsh-macos` 已建）、执行后端（在工作区按授权执行命令）、进程启动、路径（用户数据/文稿）、通知与托盘、更新、密钥存储、存储。
+3. **宿主**：桌面宿主（Electron，按系统选择实现：DSH 三个系统都用；Windows Runner 只在 Windows 注册）；之后的远程/移动宿主把同一份 bridge 合约换成网络传输。
+
+**移动端是什么**（需要用户选）：
+
+- A（维护者建议）**伴侣客户端**：手机只跑界面，连到用户电脑或服务器上的 Noema 核心，执行仍在电脑上。前提是把 bridge 的传输从 Electron IPC 抽象出来（再加配对与鉴权）；界面可复用现有 React。
+- B **手机本机独立运行**：iOS 不允许任意子进程，DSH 与命令执行都不可用，`better-sqlite3` 要换实现，实质是另一个产品。
+
+**切法**（批准后各自立项，一刀一个 change）：①执行后端端口 + 核心层导入规则；②打包按系统拆分，CI 改为 Windows/macOS/Linux 矩阵；③约 20 个 Windows 专属测试改成跨平台或按平台跳过；④bridge 传输抽象（移动端/网页端的前提）。
+
+**下一步**：用户确认三点——移动端选 A 还是 B；Linux 是否与 macOS 同批（DSH 的 bash 路径与 deb/rpm 打包已在，未实测）；是否接受“核心不得触碰 Electron 与操作系统”由 `source:check` 强制。确认后把本条改成 `决定`，按切法逐个立项。
+
+**更新**：2026-11-16
