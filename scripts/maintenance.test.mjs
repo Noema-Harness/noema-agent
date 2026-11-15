@@ -277,10 +277,10 @@ test("a milestone is archivable only when tasks, decisions and evidence line up"
     assert.match(blocked.errors.join("\n"), /还有 1 个任务未完成/u);
 
     write(
-          root,
-          `${change}/tasks.md`,
-          "# tasks\n\n- [x] 第一项\n- [x] 卡片证据：https://github.com/Noema-Harness/noema-agent/issues/138#issuecomment-1\n",
-        );
+      root,
+      `${change}/tasks.md`,
+      "# tasks\n\n- [x] 第一项\n- [x] 卡片证据：https://github.com/Noema-Harness/noema-agent/issues/138#issuecomment-1\n",
+    );
     write(root, `${change}/design.md`, "# design\n\n## 待用户决定\n\n- [ ] 还没答\n");
     const decided = checkMilestone(root, { git: fakeGit(), today: TODAY });
     assert.match(decided.errors.join("\n"), /还有 1 项待用户决定/u);

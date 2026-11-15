@@ -41,7 +41,7 @@
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `npm run docs:check`      | 五份文档缺三行头；`docs/` 出现未登记文档；根与 `apps/desktop` 版本不一致；STATUS 的版本/基线/最后更新对不上；钩子没装；config 引用已删文档；DECISIONS 从 D-029 起缺状态或待定缺「下一步/更新」 |
 | `npm run plan:check`      | 活动变更多于 1 个；缺 proposal/design/tasks；tasks 全完成却未归档；proposal 既没写 `Plan:` 卡片链接也没写 `Plan: none`；待决超过 3 项；`[用户]` 项没确认日期就勾选                             |
-| `npm run milestone:check` | 任务没完成；用户验收没确认；还有待决问题；没有规格增量且没声明纯文档变更；产品变更没在 tasks 记卡片证据评论；STATUS 不是当天更新                                                                                                  |
+| `npm run milestone:check` | 任务没完成；用户验收没确认；还有待决问题；没有规格增量且没声明纯文档变更；产品变更没在 tasks 记卡片证据评论；STATUS 不是当天更新                                                               |
 | `npm run figure:check`    | `docs/ARCHITECTURE.md` 改了但架构图没重出；产物被手改；README 没引用图。重出用 `npm run figure:build`                                                                                          |
 | `.githooks/pre-commit`    | 产品代码（`apps/desktop/src/`）没带计划/状态；有未答决策；行为变更却标了 `skip_specs`；治理变更（`Plan: none`）里出现产品代码。只改 `scripts/` 或文档时放行                                    |
 
