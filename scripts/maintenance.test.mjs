@@ -460,6 +460,25 @@ ${HEADER}
   });
 });
 
+test("tooling code pairs with docs, a change or AGENTS.md", () =>
+  withRoot((holder) => {
+    const root = makeRoot(holder);
+    const blocked = checkPrecommit(root, {
+      git: fakeGit(),
+      stagedPaths: ["scripts/governance.mjs"],
+    });
+    assert.match(blocked.errors.join("\n"), /AGENTS\.md 或 openspec\/changes\//u);
+
+    const allowed = checkPrecommit(root, {
+      git: fakeGit(),
+      stagedPaths: ["scripts/governance.mjs", "AGENTS.md"],
+    });
+    assert.equal(
+      allowed.errors.some((line) => /代码改动必须同时更新/u.test(line)),
+      false,
+    );
+  }));
+
 test("a compatibility layer is a reminder, not a blocker", () =>
   withRoot((holder) => {
     const root = makeRoot(holder);

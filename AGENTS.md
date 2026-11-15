@@ -43,7 +43,7 @@
 - **里程碑（约 40 秒）**：`npm run check` → `governance.mjs milestone`，一张卡的一个切口收口时跑一次。含 `docs:check`（五份文档三行头、未登记文档、版本与基线一致、钩子已装、配置引用有效、文档与 CI 引用的脚本真实存在、DECISIONS 状态与必填字段）、`plan:check`（活动变更唯一、proposal/design/tasks 齐全、tasks 未全完成、`Plan:` 链接或 `Plan: none`、用户验收已确认）、`milestone:check`（任务与用户验收完成、无待决、规格增量或声明纯文档、卡片正文已更新、STATUS 当天）、`figure:check`（架构图与 ARCHITECTURE 同步）、`source:check`、lint、typecheck、全部测试。
 - **远端（异步）**：CI 跑的就是里程碑，同一批步骤；推送后不等，收件箱在下一轮开场报告失败。
 
-规则从哪来、怎么退：每条规则登记在 `scripts/governance.mjs` 的 `RULES` 里，写明它支撑五条不变量中的哪一条、防的是哪种已发生的失败、在哪个检查里执行。`node scripts/governance.mjs audit` 打印登记表，并分出「触发过真实失败」「观察期」「提醒」三类。
+规则从哪来、怎么退：每条规则登记在 `scripts/governance.mjs` 的 `RULES` 里（一行一表：`id|不变量|防的失败|触发证据|级别|位置`），写明它支撑五条不变量中的哪一条、防的是哪种已发生的失败、在哪个检查里执行。`node scripts/governance.mjs audit` 打印登记表，并分出「触发过真实失败」「观察期」「提醒」三类。
 
 - 新增规则：说不清一次真实触发（或一条已知会复发且代价高的失败）就不加；加了先标观察期。
 - 退役规则：观察期的规则连续两个里程碑没有触发，降级为提醒；提醒长期没人看就删。没有证据的规则不能长期拦人。

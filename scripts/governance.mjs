@@ -46,240 +46,43 @@ const PROVISIONAL = "观察期";
 // - evidence：真实触发记录；没有触发过写「观察期」，并在里程碑审计里复看
 // - level：block 拦截 / notice 提醒
 // - where：在哪个检查里执行
-export const RULES = [
-  {
-    id: "version-sync",
-    invariant: "事实唯一",
-    prevents: "根包与桌面包版本号漂移，STATUS 说的版本和代码不是一回事",
-    evidence: "2026-11-15 STATUS 写 0.7.3，package.json 是 0.7.6",
-    level: "block",
-    where: "docs:check",
-  },
-  {
-    id: "doc-heads",
-    invariant: "事实唯一",
-    prevents: "权威文档没有职责边界，同一事实被写进两份",
-    evidence: "0.7.x 期间 DECISIONS/OPERATIONS 缺 Authority 头",
-    level: "block",
-    where: "docs:check",
-  },
-  {
-    id: "docs-registered",
-    invariant: "事实唯一",
-    prevents: "docs/ 里长出未登记文档，事实分流到没人维护的地方",
-    evidence: "CURRENT_CONTEXT、HARNESS_ALIGNMENT 等旧文档残留",
-    level: "block",
-    where: "docs:check",
-  },
-  {
-    id: "status-facts",
-    invariant: "事实唯一",
-    prevents: "STATUS 的版本、基线、最后更新与仓库实际不符",
-    evidence: "基线 f592a9b 不是 HEAD 祖先（CI 两次失败）",
-    level: "block",
-    where: "docs:check",
-  },
-  {
-    id: "hooks-installed",
-    invariant: "成本受控",
-    prevents: "本机提交门没装，门槛形同虚设",
-    evidence: "CI 报 core.hooksPath 未设置；CI 下降级为提示",
-    level: "block",
-    where: "docs:check",
-  },
-  {
-    id: "config-doc-refs",
-    invariant: "事实唯一",
-    prevents: "配置或计划引用已删除的文档",
-    evidence: "openspec/config.yaml 引用 docs/CURRENT_CONTEXT.md",
-    level: "block",
-    where: "docs:check",
-  },
-  {
-    id: "documented-scripts",
-    invariant: "事实唯一",
-    prevents: "文档或 CI 引用已删除的 npm 脚本",
-    evidence: 'CI 失败：Missing script "workspace:test"',
-    level: "block",
-    where: "docs:check",
-  },
-  {
-    id: "decision-shape",
-    invariant: "意图可追",
-    prevents: "决定没有状态、悬而不决，或编号互相踩踏",
-    evidence: "同一决定因并行分支改号九次（D-025→D-039）",
-    level: "block",
-    where: "docs:check",
-  },
-  {
-    id: "one-active-change",
-    invariant: "意图可追",
-    prevents: "多个变更并行，范围与意图同时漂移",
-    evidence: "2026-11-15 同时挂着 11 个活动变更",
-    level: "block",
-    where: "plan:check",
-  },
-  {
-    id: "change-files",
-    invariant: "意图可追",
-    prevents: "变更缺 proposal/design/tasks，归档时没有设计可查",
-    evidence: "旧变更归档时没有可回看的取舍记录",
-    level: "block",
-    where: "plan:check",
-  },
-  {
-    id: "tasks-alive",
-    invariant: "意图可追",
-    prevents: "任务全完成却不归档，计划停在半空",
-    evidence: "C6 切片完成后 plan:check 提示先归档",
-    level: "block",
-    where: "plan:check",
-  },
-  {
-    id: "plan-link",
-    invariant: "意图可追",
-    prevents: "变更不指向看板卡片，执行与规划脱钩",
-    evidence: "proposal 缺 Plan:（拦截过一次）",
-    level: "block",
-    where: "plan:check",
-  },
-  {
-    id: "user-acceptance-date",
-    invariant: "结果可验",
-    prevents: "用户验收没确认就勾选成已完成",
-    evidence: "治理变更的 [用户] 项曾被自动勾选",
-    level: "block",
-    where: "plan:check",
-  },
-  {
-    id: "observable-sections",
-    invariant: "结果可验",
-    prevents: "交付说不清用户能看到什么、怎么手测",
-    evidence: `${PROVISIONAL}：2026-11-15 起要求`,
-    level: "block",
-    where: "plan:check",
-  },
-  {
-    id: "milestone-tasks",
-    invariant: "结果可验",
-    prevents: "任务没做完就归档，把半成品当交付",
-    evidence: "治理变更归档前被拦",
-    level: "block",
-    where: "milestone:check",
-  },
-  {
-    id: "milestone-card-body",
-    invariant: "事实唯一",
-    prevents: "交付后卡片正文还是旧状态，用户看不到现在能做什么",
-    evidence: "C6 收尾时卡片正文落后于交付（2026-11-15）",
-    level: "block",
-    where: "milestone:check",
-  },
-  {
-    id: "spec-delta",
-    invariant: "结果可验",
-    prevents: "行为变更没有规格增量，回归没有合同",
-    evidence: "skip_specs 曾被用于行为变更",
-    level: "block",
-    where: "milestone:check",
-  },
-  {
-    id: "status-today",
-    invariant: "事实唯一",
-    prevents: "STATUS 不是当天更新，交付与事实脱节",
-    evidence: "STATUS 曾连续三个版本未更新",
-    level: "block",
-    where: "milestone:check",
-  },
-  {
-    id: "figure-sync",
-    invariant: "事实唯一",
-    prevents: "ARCHITECTURE 改了架构图没重出，入口图与结构不一致",
-    evidence: "figure:check 两次拦到哈希漂移",
-    level: "block",
-    where: "milestone:check",
-  },
-  {
-    id: "plan-before-code",
-    invariant: "意图可追",
-    prevents: "先写代码后补计划，计划变成实现清单",
-    evidence: "2026-11-15 C6 与 delivery-observability 两次",
-    level: "block",
-    where: "pre-commit",
-  },
-  {
-    id: "code-needs-plan",
-    invariant: "意图可追",
-    prevents: "代码提交不带计划或状态更新",
-    evidence: "提交门建立后拦到过",
-    level: "block",
-    where: "pre-commit",
-  },
-  {
-    id: "pending-blocks-product",
-    invariant: "结果可验",
-    prevents: "未答决策下擅自实现产品行为",
-    evidence: "成长证据门槛长期未决期间限制产品实现",
-    level: "block",
-    where: "pre-commit",
-  },
-  {
-    id: "governance-no-product",
-    invariant: "意图可追",
-    prevents: "治理变更夹带产品代码，绕过卡片与规格",
-    evidence: `${PROVISIONAL}：尚无触发`,
-    level: "block",
-    where: "pre-commit",
-  },
-  {
-    id: "skip-specs-product",
-    invariant: "结果可验",
-    prevents: "行为变更标 skip_specs，跳过规格与回归合同",
-    evidence: `${PROVISIONAL}：尚无触发`,
-    level: "block",
-    where: "pre-commit",
-  },
-  {
-    id: "workspace-root-dirs",
-    invariant: "事实唯一",
-    prevents: "仓库根出现未分类目录，过程材料混进版本库",
-    evidence: "新增 .githooks/.archify 时拦到过",
-    level: "block",
-    where: "workspace:check",
-  },
-  {
-    id: "source-boundary",
-    invariant: "变更可逆",
-    prevents: "生产代码导入 test-support，交付物带着测试依赖",
-    evidence: `${PROVISIONAL}：静态检查，尚无违规`,
-    level: "block",
-    where: "source:check",
-  },
-  {
-    id: "branches-cleanup",
-    invariant: "成本受控",
-    prevents: "已合并分支残留在远端，仓库越来越难读",
-    evidence: "PR #131 合并后 ts-migration 分支残留",
-    level: "notice",
-    where: "branches:check",
-  },
-  {
-    id: "compat-layer",
-    invariant: "变更可逆",
-    prevents: "用兼容层掩盖互相调用的架构缺陷",
-    evidence: `${PROVISIONAL}：2026-11-15 新增，改为提醒`,
-    level: "notice",
-    where: "pre-commit",
-  },
-  {
-    id: "inbox-per-round",
-    invariant: "成本受控",
-    prevents: "每轮同步等 CI 或靠用户提醒才发现远端红",
-    evidence: "用户批评每轮等 CI 几十分钟",
-    level: "notice",
-    where: "流程",
-  },
-];
+// 规则登记：id | 支撑的不变量 | 防的失败 | 触发证据 | 级别 | 执行位置
+const RULE_TABLE = `
+version-sync|事实唯一|根包与桌面包版本号漂移，STATUS 说的版本和代码不是一回事|2026-11-15 STATUS 写 0.7.3，package.json 是 0.7.6|block|docs:check
+doc-heads|事实唯一|权威文档没有职责边界，同一事实被写进两份|0.7.x 期间 DECISIONS/OPERATIONS 缺 Authority 头|block|docs:check
+docs-registered|事实唯一|docs/ 里长出未登记文档，事实分流到没人维护的地方|CURRENT_CONTEXT、HARNESS_ALIGNMENT 等旧文档残留|block|docs:check
+status-facts|事实唯一|STATUS 的版本、基线、最后更新与仓库实际不符|基线 f592a9b 不是 HEAD 祖先（CI 两次失败）|block|docs:check
+hooks-installed|成本受控|本机提交门没装，门槛形同虚设|CI 报 core.hooksPath 未设置；CI 下降级为提示|block|docs:check
+config-doc-refs|事实唯一|配置或计划引用已删除的文档|openspec/config.yaml 引用 docs/CURRENT_CONTEXT.md|block|docs:check
+documented-scripts|事实唯一|文档或 CI 引用已删除的 npm 脚本|CI 失败：Missing script "workspace:test"|block|docs:check
+decision-shape|意图可追|决定没有状态、悬而不决，或编号互相踩踏|同一决定因并行分支改号九次（D-025→D-039）|block|docs:check
+one-active-change|意图可追|多个变更并行，范围与意图同时漂移|2026-11-15 同时挂着 11 个活动变更|block|plan:check
+change-files|意图可追|变更缺 proposal/design/tasks，归档时没有设计可查|旧变更归档时没有可回看的取舍记录|block|plan:check
+tasks-alive|意图可追|任务全完成却不归档，计划停在半空|C6 切片完成后 plan:check 提示先归档|block|plan:check
+plan-link|意图可追|变更不指向看板卡片，执行与规划脱钩|proposal 缺 Plan:（拦截过一次）|block|plan:check
+user-acceptance-date|结果可验|用户验收没确认就勾选成已完成|治理变更的 [用户] 项曾被自动勾选|block|plan:check
+observable-sections|结果可验|交付说不清用户能看到什么、怎么手测|观察期：2026-11-15 起要求|block|plan:check
+milestone-tasks|结果可验|任务没做完就归档，把半成品当交付|治理变更归档前被拦|block|milestone:check
+milestone-card-body|事实唯一|交付后卡片正文还是旧状态，用户看不到现在能做什么|C6 收尾时卡片正文落后于交付（2026-11-15）|block|milestone:check
+spec-delta|结果可验|行为变更没有规格增量，回归没有合同|skip_specs 曾被用于行为变更|block|milestone:check
+status-today|事实唯一|STATUS 不是当天更新，交付与事实脱节|STATUS 曾连续三个版本未更新|block|milestone:check
+figure-sync|事实唯一|ARCHITECTURE 改了架构图没重出，入口图与结构不一致|figure:check 两次拦到哈希漂移|block|milestone:check
+plan-before-code|意图可追|先写代码后补计划，计划变成实现清单|2026-11-15 C6 与 delivery-observability 两次|block|pre-commit
+code-needs-plan|意图可追|代码提交不带计划或状态更新|提交门建立后拦到过|block|pre-commit
+pending-blocks-product|结果可验|未答决策下擅自实现产品行为|成长证据门槛长期未决期间限制产品实现|block|pre-commit
+governance-no-product|意图可追|治理变更夹带产品代码，绕过卡片与规格|观察期：尚无触发|block|pre-commit
+skip-specs-product|结果可验|行为变更标 skip_specs，跳过规格与回归合同|观察期：尚无触发|block|pre-commit
+workspace-root-dirs|事实唯一|仓库根出现未分类目录，过程材料混进版本库|新增 .githooks/.archify 时拦到过|block|workspace:check
+source-boundary|变更可逆|生产代码导入 test-support，交付物带着测试依赖|观察期：静态检查，尚无违规|block|source:check
+branches-cleanup|成本受控|已合并分支残留在远端，仓库越来越难读|PR #131 合并后 ts-migration 分支残留|notice|branches:check
+compat-layer|变更可逆|用兼容层掩盖互相调用的架构缺陷|观察期：2026-11-15 新增，改为提醒|notice|pre-commit
+inbox-per-round|成本受控|每轮同步等 CI 或靠用户提醒才发现远端红|用户批评每轮等 CI 几十分钟|notice|流程
+`.trim();
+
+export const RULES = RULE_TABLE.split("\n").map((line) => {
+  const [id, invariant, prevents, evidence, level, where] = line.split("|");
+  return { id, invariant, prevents, evidence, level, where };
+});
 
 export function profileNames() {
   return Object.keys(PROFILES);

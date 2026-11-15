@@ -23,6 +23,7 @@ const DOCS_PREFIX = "docs/";
 const CODE_PREFIXES = ["apps/desktop/src/", "scripts/"];
 const PRODUCT_CODE_PREFIX = "apps/desktop/src/";
 const PLAN_PREFIXES = ["docs/", "openspec/changes/"];
+const TOOLING_PLAN_PREFIXES = ["docs/", "openspec/changes/", "AGENTS.md"];
 const ARCHIVE_PREFIX = "openspec/changes/archive/";
 const DECISION_HEADING = "## 待用户决定";
 const USER_TASK_PREFIX = "[用户]";
@@ -522,16 +523,19 @@ export function checkPrecommit(root, options = {}) {
   const staged = options.stagedPaths ?? stagedPaths(root, git);
   const code = staged.filter((name) => CODE_PREFIXES.some((prefix) => name.startsWith(prefix)));
   if (code.length) {
+    const productCode = code.filter((name) => name.startsWith(PRODUCT_CODE_PREFIX));
+    const planPrefixes = productCode.length ? PLAN_PREFIXES : TOOLING_PLAN_PREFIXES;
     const planned = staged.filter(
       (name) =>
-        !name.startsWith(ARCHIVE_PREFIX) && PLAN_PREFIXES.some((prefix) => name.startsWith(prefix)),
+        !name.startsWith(ARCHIVE_PREFIX) && planPrefixes.some((prefix) => name.startsWith(prefix)),
     );
     if (!planned.length) {
       errors.push(
-        "代码改动必须同时更新 docs/ 或 openspec/changes/ 里的计划与状态：先勾任务或记录证据，再提交",
+        productCode.length
+          ? "产品代码改动必须同时更新 docs/ 或 openspec/changes/ 里的计划与状态：先勾任务或记录证据，再提交"
+          : "工具代码改动必须同时更新 docs/、AGENTS.md 或 openspec/changes/ 里的计划与状态：先勾任务或记录证据，再提交",
       );
     }
-    const productCode = code.filter((name) => name.startsWith(PRODUCT_CODE_PREFIX));
     if (plan.pending.length && productCode.length) {
       errors.push(
         `活动变更仍有待用户决定的问题，相关产品行为不能实现：${plan.pending.join("；")}；工具与文档改动不受此限`,
