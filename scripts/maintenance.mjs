@@ -182,7 +182,7 @@ export function checkDocuments(root, git, options = {}) {
   const notices = [];
   const inCi = options.ci ?? Boolean(process.env.CI);
   const config = readJson(path.join(root, "scripts", "workspace.config.json")) ?? {};
-  const registered = (config.currentDocuments ?? []).map((entry) => entry.path);
+  const registered = config.currentDocuments ?? [];
   const authoritative = registered.filter((name) => name.startsWith(DOCS_PREFIX));
   if (authoritative.length !== 5) {
     errors.push(

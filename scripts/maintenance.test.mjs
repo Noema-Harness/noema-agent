@@ -40,7 +40,7 @@ function makeRoot(holder, overrides = {}) {
     root,
     "scripts/workspace.config.json",
     JSON.stringify({
-      currentDocuments: DOCS.map((name) => ({ path: `docs/${name}` })),
+      currentDocuments: DOCS.map((name) => `docs/${name}`),
     }),
   );
   for (const name of DOCS) write(root, `docs/${name}`, `# ${name}\n\n${HEADER}`);

@@ -53,3 +53,13 @@
 - [x] 未决与积压只落三处（DECISIONS 议题流水 / 看板卡片 / 活动变更），不建本机台账、不镜像 issue（D-028）；AGENTS §1 步骤 0 与 OPERATIONS「议题与积压放在哪」
 - [x] DECISIONS 改为议题流水：每条带 `待定/决定/作废` 状态，待定必须有「下一步」与「更新」，docs:check 校验格式并提醒陈旧条目，原「待决」章节改为 D-030~D-033 条目（D-029）
 - [x] `npm run check` 全绿
+
+## 8. 维护层瘦身（D-034，2026-11-15）
+
+- [x] `scripts/workspace.config.json` 只留路径（schemaVersion 3）：删掉与 AGENTS §2 重复的 purpose/updateWhen；`scripts/workspace.mjs` 与 `scripts/maintenance.mjs` 读纯路径数组，两份测试 fixture 同步
+- [x] check 链收拢为 9 步：四个维护脚本测试合并成 `tools:test`（29 个测试），不再逐个列在链上
+- [x] 删除未接入链的 `scripts/harness-sync.mjs`/`harness-sync.test.mjs`（本机 DSH 注入属 `~/.dsh`，不在仓库加检查）与一次性脚本 `scripts/set-github-issue-body.mjs`
+- [x] `docs/STATUS.md` 改成滚动快照：删掉逐轮验证流水、维护层机制复述、0.7.4–0.7.6 发布细节；未交付只列卡片；补“最近一次验证”“未验证”“交付判断”
+- [x] 修掉扫描发现的失效事实：STATUS 里已不存在的「待决」章节引用、过期的 plan 任务计数
+- [x] 过时事实与重复来源收口：AGENTS 的 harness 条改为“本机 harness 在 `~/.dsh` 维护”，OPERATIONS 检查列表与单独运行列表同步
+- [x] `npm run check` 全绿（873/873，0 fail，31,562ms）
