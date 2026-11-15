@@ -1889,6 +1889,26 @@ export class SocialChatService {
     this.projectGrowth.schedule(batchId);
   }
 
+  completeProject(projectId) {
+    const batch = this.projectStore.createProjectGrowthBatch(projectId);
+    const project = this.projectStore.getProject(projectId);
+    this.emit({
+      type: 'project-updated',
+      projectId: project.id,
+      groupRoomId: project.groupRoomId,
+    });
+    this.scheduleProjectGrowthBatch(batch.id);
+    return {
+      batchId: batch.id,
+      status: batch.status,
+      members: batch.members.map(({ agentId: id, agentName, status }) => ({
+        agentId: id,
+        agentName,
+        status,
+      })),
+    };
+  }
+
   drainProjectGrowthBatch(batchId) {
     return this.projectGrowth.drain(batchId);
   }

@@ -13,7 +13,9 @@ import { markdownComponents } from './markdown';
 import { TurnTrace, type LiveTraceEvent } from './turn-trace';
 import { useSocialChatController } from './use-social-chat-controller';
 import { WorkspaceFilesDialog } from './dialogs/workspace-files-dialog';
+import { AgentEditorDialog, ProjectEditorDialog } from './dialogs/team-dialogs';
 import { PartnerSettingsDialog } from '../settings/partner-settings-dialog';
+import { ProjectDetailView } from '../projects/project-detail-view';
 
 function messageTime(value: string) {
   return new Date(value).toLocaleTimeString('zh-CN', {
@@ -364,6 +366,8 @@ export function CoreChatApp() {
     projectStatusBusy,
     retryProjectGrowthMember,
     handleReviewProjectFileChange,
+    setCreateAgentOpen,
+    setCreateProjectOpen,
   } = controller;
 
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
@@ -385,6 +389,10 @@ export function CoreChatApp() {
     useState<DeliveryEvent[]>(readDeliveryEvents);
   const [restoreConfirmOpen, setRestoreConfirmOpen] = useState(false);
   const [growthProjectId, setGrowthProjectId] = useState<string | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
+    null,
+  );
+  const [returnProjectId, setReturnProjectId] = useState<string | null>(null);
   const [reviewingChangeId, setReviewingChangeId] = useState<string | null>(
     null,
   );
@@ -434,10 +442,16 @@ export function CoreChatApp() {
     () => teams.filter((team) => team.status !== 'archived'),
     [teams],
   );
-  const activeProjects = useMemo(
-    () => projects.filter((project) => project.status !== 'archived'),
-    [projects],
+  const selectedProject = useMemo(
+    () =>
+      selectedProjectId
+        ? (projects.find((project) => project.id === selectedProjectId) ?? null)
+        : null,
+    [projects, selectedProjectId],
   );
+  useEffect(() => {
+    if (selectedProjectId && !selectedProject) setSelectedProjectId(null);
+  }, [selectedProject, selectedProjectId]);
   const visibleMembers = useMemo(
     () => agents.filter((agent) => agent.id !== 'noema' && !agent.archivedAt),
     [agents],
@@ -450,19 +464,34 @@ export function CoreChatApp() {
     () => new Map(agents.map((agent) => [agent.id, agent])),
     [agents],
   );
-  const openTeamGroup = (groupRoomId: string) => {
+  const openTeamGroup = (
+    groupRoomId: string,
+    projectId: string | null = null,
+  ) => {
     const room = roomById.get(groupRoomId);
     if (!room) return;
+    setReturnProjectId(projectId);
     selectRoom(room);
     setSection('chat');
   };
   const openMemberChat = (agentId: string) => {
+    setReturnProjectId(null);
     openAgentConversation(agentId);
     setSection('chat');
   };
   const returnToNoema = () => {
+    setReturnProjectId(null);
     setSection('chat');
     if (noemaRoom) selectRoom(noemaRoom);
+  };
+  const leaveChat = () => {
+    if (returnProjectId) {
+      setSection('projects');
+      setSelectedProjectId(returnProjectId);
+      setReturnProjectId(null);
+      return;
+    }
+    returnToNoema();
   };
 
   const timelineEntries = useMemo(() => {
@@ -958,6 +987,7 @@ export function CoreChatApp() {
     section === 'chat' &&
     Boolean(currentRoom && noemaRoom) &&
     currentRoom?.id !== noemaRoom?.id;
+  const chatBackLabel = returnProjectId ? '返回项目' : '返回 Noema';
   const title =
     section === 'teams'
       ? '团队'
@@ -998,7 +1028,10 @@ export function CoreChatApp() {
             data-active={section === 'teams'}
             type="button"
             aria-current={section === 'teams' ? 'page' : undefined}
-            onClick={() => setSection('teams')}
+            onClick={() => {
+              setReturnProjectId(null);
+              setSection('teams');
+            }}
           >
             <Icon name="users" />
             <span>团队</span>
@@ -1009,18 +1042,25 @@ export function CoreChatApp() {
             data-active={section === 'projects'}
             type="button"
             aria-current={section === 'projects' ? 'page' : undefined}
-            onClick={() => setSection('projects')}
+            onClick={() => {
+              setReturnProjectId(null);
+              setSection('projects');
+              setSelectedProjectId(null);
+            }}
           >
             <Icon name="project" />
             <span>项目</span>
-            <small>{activeProjects.length}</small>
+            <small>{projects.length}</small>
           </button>
           <button
             className="core-nav-item"
             data-active={section === 'members'}
             type="button"
             aria-current={section === 'members' ? 'page' : undefined}
-            onClick={() => setSection('members')}
+            onClick={() => {
+              setReturnProjectId(null);
+              setSection('members');
+            }}
           >
             <Icon name="user-add" />
             <span>成员</span>
@@ -1039,9 +1079,9 @@ export function CoreChatApp() {
               <NoemaButton
                 className="icon-button core-back"
                 type="button"
-                title="返回 Noema"
-                aria-label="返回 Noema"
-                onClick={returnToNoema}
+                title={chatBackLabel}
+                aria-label={chatBackLabel}
+                onClick={leaveChat}
               >
                 <Icon name="back" />
               </NoemaButton>
@@ -1341,7 +1381,21 @@ export function CoreChatApp() {
           <p className="core-hint">Enter 发送 · Shift + Enter 换行</p>
         </footer>
 
-        {section !== 'chat' ? (
+        {section === 'projects' && selectedProject ? (
+          <ProjectDetailView
+            key={selectedProject.id}
+            project={selectedProject}
+            agents={agents}
+            canOpenGroup={roomById.has(selectedProject.groupRoomId)}
+            onBack={() => setSelectedProjectId(null)}
+            onOpenGroup={() =>
+              openTeamGroup(selectedProject.groupRoomId, selectedProject.id)
+            }
+            onOpenGrowth={() => setGrowthProjectId(selectedProject.id)}
+          />
+        ) : null}
+
+        {section !== 'chat' && !(section === 'projects' && selectedProject) ? (
           <main className="core-page" aria-label={title}>
             <header className="core-page-head">
               <div>
@@ -1354,6 +1408,22 @@ export function CoreChatApp() {
                       : '可以随时直接对话的联系人。'}
                 </p>
               </div>
+              <NoemaButton
+                className="secondary core-page-create"
+                type="button"
+                onClick={() =>
+                  section === 'members'
+                    ? setCreateAgentOpen(true)
+                    : setCreateProjectOpen(true)
+                }
+              >
+                <Icon name="plus" />
+                {section === 'teams'
+                  ? '新建项目'
+                  : section === 'projects'
+                    ? '新建项目'
+                    : '新建联系人'}
+              </NoemaButton>
             </header>
             <div className="core-page-body">
               {section === 'teams' ? (
@@ -1364,7 +1434,7 @@ export function CoreChatApp() {
                         ? agentById.get(team.leadAgentId)?.name
                         : null;
                       const project = team.projectId
-                        ? activeProjects.find(
+                        ? projects.find(
                             (candidate) => candidate.id === team.projectId,
                           )
                         : null;
@@ -1393,7 +1463,9 @@ export function CoreChatApp() {
                             className="core-card-action"
                             type="button"
                             disabled={!canOpen}
-                            onClick={() => openTeamGroup(team.groupRoomId)}
+                            onClick={() =>
+                              openTeamGroup(team.groupRoomId, team.projectId)
+                            }
                           >
                             {canOpen ? '打开团队群' : '团队群不可用'}
                           </button>
@@ -1404,20 +1476,33 @@ export function CoreChatApp() {
                 ) : (
                   <div className="core-empty">
                     <strong>还没有团队</strong>
-                    <span>团队会出现在这里，并拥有自己的团队群。</span>
+                    <span>
+                      新建项目后，团队会出现在这里，并拥有自己的团队群。
+                    </span>
+                    <NoemaButton
+                      className="secondary core-empty-action"
+                      type="button"
+                      onClick={() => setCreateProjectOpen(true)}
+                    >
+                      新建项目
+                    </NoemaButton>
                   </div>
                 )
               ) : null}
               {section === 'projects' ? (
-                activeProjects.length ? (
+                projects.length ? (
                   <div className="core-card-grid">
-                    {activeProjects.map((project) => {
+                    {projects.map((project) => {
                       const lead = project.leadAgentId
                         ? agentById.get(project.leadAgentId)?.name
                         : null;
                       const canOpen = roomById.has(project.groupRoomId);
                       return (
-                        <article className="core-card" key={project.id}>
+                        <article
+                          className="core-card core-project-card"
+                          key={project.id}
+                          onClick={() => setSelectedProjectId(project.id)}
+                        >
                           <header>
                             <div>
                               <h2>{project.title}</h2>
@@ -1434,18 +1519,32 @@ export function CoreChatApp() {
                             <div>
                               <dt>状态</dt>
                               <dd>
-                                {project.status === 'active'
-                                  ? '进行中'
-                                  : '等待反馈'}
+                                {project.status === 'archived'
+                                  ? '已归档'
+                                  : project.status === 'active'
+                                    ? '进行中'
+                                    : '等待反馈'}
                               </dd>
                             </div>
                           </dl>
-                          <div className="core-card-actions">
+                          <div
+                            className="core-card-actions"
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            <button
+                              className="core-card-action"
+                              type="button"
+                              onClick={() => setSelectedProjectId(project.id)}
+                            >
+                              查看项目
+                            </button>
                             <button
                               className="core-card-action"
                               type="button"
                               disabled={!canOpen}
-                              onClick={() => openTeamGroup(project.groupRoomId)}
+                              onClick={() =>
+                                openTeamGroup(project.groupRoomId, project.id)
+                              }
                             >
                               {canOpen ? '打开项目群' : '项目群不可用'}
                             </button>
@@ -1469,6 +1568,13 @@ export function CoreChatApp() {
                     <span>
                       项目会出现在这里，并拥有自己的工作文件夹和群聊。
                     </span>
+                    <NoemaButton
+                      className="secondary core-empty-action"
+                      type="button"
+                      onClick={() => setCreateProjectOpen(true)}
+                    >
+                      新建项目
+                    </NoemaButton>
                   </div>
                 )
               ) : null}
@@ -1503,6 +1609,13 @@ export function CoreChatApp() {
                   <div className="core-empty">
                     <strong>还没有成员</strong>
                     <span>新建联系人后，可以直接从这里开始对话。</span>
+                    <NoemaButton
+                      className="secondary core-empty-action"
+                      type="button"
+                      onClick={() => setCreateAgentOpen(true)}
+                    >
+                      新建联系人
+                    </NoemaButton>
                   </div>
                 )
               ) : null}
@@ -1843,6 +1956,8 @@ export function CoreChatApp() {
         ) : null}
 
         <PartnerSettingsDialog model={controller} />
+        <AgentEditorDialog model={controller} />
+        <ProjectEditorDialog model={controller} />
         {taskWorkspace ? (
           <WorkspaceFilesDialog
             workspacePath={taskWorkspace.path}

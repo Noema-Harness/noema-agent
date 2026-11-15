@@ -1,6 +1,6 @@
 {
   "name": "noema",
-  "version": "0.7.4",
+  "version": "0.7.6",
   "private": true,
   "description": "Noema personal agent",
   "workspaces": [
@@ -17,13 +17,15 @@
     "make:desktop": "npm run make --workspace noema-desktop",
     "workspace:check": "node scripts/workspace.mjs check",
     "workspace:clean": "node scripts/workspace.mjs clean",
-    "workspace:test": "node --test scripts/workspace.test.mjs scripts/sync-skills.test.mjs scripts/harness-sync.test.mjs",
-    "skills:sync": "node scripts/sync-skills.mjs mirror",
-    "skills:check": "node scripts/sync-skills.mjs check",
+    "workspace:test": "node --test scripts/workspace.test.mjs scripts/harness-sync.test.mjs",
     "harness:check": "node scripts/harness-sync.mjs check",
     "harness:import": "node scripts/harness-sync.mjs import",
     "source:check": "node scripts/source-structure.mjs",
-    "check": "npm run workspace:check && npm run skills:check && npm run source:check && npm run lint && npm run typecheck && npm test"
+    "check": "npm run workspace:check && npm run docs:check && npm run plan:check && npm run source:check && npm run lint && npm run typecheck && npm run maintenance:test && npm test",
+    "docs:check": "node scripts/maintenance.mjs docs",
+    "plan:check": "node scripts/maintenance.mjs plan",
+    "maintenance:test": "node --test scripts/maintenance.test.mjs",
+    "milestone:check": "node scripts/maintenance.mjs milestone"
   },
   "engines": {
     "node": ">=24.21 <25"

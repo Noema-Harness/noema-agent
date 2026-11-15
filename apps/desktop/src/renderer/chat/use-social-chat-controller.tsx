@@ -2342,6 +2342,7 @@ export function useSocialChatController() {
         title: projectTitle.trim(),
         brief: projectBrief.trim(),
         agentIds: ['noema', ...eligibleAgentIds],
+        leadAgentId: eligibleAgentIds[0],
         workspacePath: newProjectWorkspace.workspacePath,
         workspaceIdentity: newProjectWorkspace.identity,
       });

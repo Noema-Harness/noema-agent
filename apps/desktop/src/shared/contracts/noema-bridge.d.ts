@@ -1373,6 +1373,7 @@ export interface NoemaBridge {
     title: string;
     brief: string;
     agentIds: string[];
+    leadAgentId?: string | null;
     originRoomId?: string;
     sourceMessageId?: string | null;
     workspacePath?: string | null;
@@ -1419,6 +1420,15 @@ export interface NoemaBridge {
   updateSocialProjectPlanPhase(
     input: NoemaProjectPlanPhaseUpdate,
   ): Promise<NoemaProjectPlan>;
+  completeSocialProject(projectId: string): Promise<{
+    batchId: string;
+    status: string;
+    members: Array<{
+      agentId: string;
+      agentName: string;
+      status: string;
+    }>;
+  }>;
   restoreSocialProject(projectId: string): Promise<NoemaSocialProject>;
   retrySocialProjectGrowthMember(
     batchId: string,

@@ -1,5 +1,9 @@
 # OPERATIONS
 
+Authority: 本文件是 Noema 环境、开发、检查、打包、安装、回滚与诊断方式的唯一权威来源。
+Update when: 命令、环境、发布流程或诊断方式变化。
+Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结构与数据边界（见 [ARCHITECTURE](ARCHITECTURE.md)）；长期决定（见 [DECISIONS](DECISIONS.md)）；当前版本与未交付项（见 [STATUS](STATUS.md)）；维护规则（见 [AGENTS](../AGENTS.md)）。
+
 ## 环境
 
 - Windows 10 22H2 x64 或更新版本；当前正式支持 Windows。
@@ -27,20 +31,76 @@ npm run check
 `check` 依次执行：
 
 1. `workspace:check`：文档路由与结构；
-2. `skills:check`：技能镜像；
-3. `source:check`：源码依赖边界，以及 `src` 下 `.mjs` 数量不增加（TS 迁移棘轮）；
-4. `lint`、`typecheck`、`test`。
+2. `docs:check`：五份权威文档的三行头与路由、版本/基线、git 门槛安装状态；
+3. `plan:check`：OpenSpec 活动变更、`Plan:` 卡片链接、任务清单与未决问题；
+4. `source:check`：源码依赖边界，以及 `src` 下 `.mjs` 数量不增加（D-025 TS 迁移棘轮）；
+5. `lint`、`typecheck`、`maintenance:test`、`test`。
+
+OpenSpec 规格只写可观察行为，不写测试实现：每个新增或修改的 requirement，在本次 change 的 `tasks.md` 里写一条验证（测试文件名或命令）；归档后证据留在 Git 与看板卡片评论里，不把测试名写回常驻 specs，也不新增第二套测试映射。
+
+里程碑（准备归档变更时）单独运行：
+
+```powershell
+npm run milestone:check
+```
 
 单独运行：
 
 ```powershell
 npm run workspace:check
-npm run skills:sync
-npm run skills:check
+npm run docs:check
+npm run plan:check
+npm run milestone:check
 npm run source:check
 npm run typecheck
 npm run lint
+npm run maintenance:test
 npm test
+```
+
+### 维护门槛
+
+四道门槛由 `scripts/maintenance.mjs` 实现：`docs:check` 与 `plan:check` 在 `npm run check` 里，`milestone:check` 在归档前手动跑，`.githooks/pre-commit` 在提交点跑。失败的常见原因与修法：
+
+| 报错                                                  | 修法                                                                                                                       |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| STATUS 源码版本与 package.json 不一致                 | 发布/交付后先更新 `docs/STATUS.md` 的版本、基线、验证和未交付                                                              |
+| STATUS 基线不是 HEAD 祖先                             | 基线写成当前可解析的提交；重写历史后重取                                                                                   |
+| 文档里写进了不属于它的内容                            | 不是脚本能判的事：每份文档头的 `Does not own` 已写明边界，评审时按边界判断；规划放卡片、状态放 STATUS、架构放 ARCHITECTURE |
+| proposal 缺少 `Plan:` 卡片链接                        | 先在看板选卡，再把卡片链接写进 proposal 顶部                                                                               |
+| 活动变更超过 1 个                                     | 已完成的先 `openspec archive <name> --yes`，过期未做的移到 `openspec/changes/archive/` 并写明关闭原因                      |
+| 活动变更 tasks 全部完成                               | 归档该变更后再开下一个阶段                                                                                                 |
+| `## 待用户决定` 超过 3 项                             | 先缩本轮范围；超过 3 项说明计划没切干净                                                                                    |
+| `[用户]` 验收项勾选没有确认日期                       | 只有用户明确确认后才勾选，并写成 `（用户确认：YYYY-MM-DD）`                                                                |
+| milestone 报任务未完成 / 有待决问题 / STATUS 不是当天 | 补完任务、拿到用户答案、更新 STATUS 后再归档                                                                               |
+| pre-commit 拒绝产品代码提交                           | 同一次提交带上计划/状态更新与 specs 增量；未决决策只能等用户回答                                                           |
+| pre-commit 只提示“工具/治理改动不受未决产品决策阻塞”  | 正常；工具与文档维护不被产品决策卡住                                                                                       |
+
+用户验收项写在 tasks.md 里，格式 `- [ ] [用户] <场景> → 证据`；确认后改成 `- [x] [用户] <场景> → 证据（用户确认：YYYY-MM-DD）`。
+
+### 规划看板（GitHub Project）
+
+排序与状态只存在于 [GitHub Project「Noema V1 路线」](https://github.com/orgs/Noema-Harness/projects/1)，不在任何文档里镜像。看板是组织级 private 项目，已链接到 `Noema-Harness/noema-agent`：从仓库的 Projects 页或组织的 Projects 页都能进入；换新仓库时用 `gh project link 1 --owner <org> --repo <repo>` 建立链接，否则卡片只在组织页可见。需要 `gh` 已登录且 token 含 `project` scope；看板操作失败（断网、token 过期）只报告并阻塞看板动作，不阻塞代码提交与 `npm run check`。
+
+```powershell
+gh project item-list 1 --owner Noema-Harness --format json   # 看卡片与字段
+gh project item-edit --id <item-id> --project-id <project-id> `
+  --field-id <status-field-id> --single-select-option-id <option-id>   # 挪状态
+gh issue comment <n> --body "证据：commit <sha>，check 873/873，STATUS 链接"   # 收口证据
+```
+
+每张卡片是 `[C<n>]` issue；收口时先贴证据再关 issue，`npm run check` 的离线门槛只校验 proposal 里的 `Plan:` 链接，不校验远端状态。
+
+提交门槛只在维护者本机安装，不自动修改协作者配置：git 只在 `core.hooksPath` 指向时才跑仓库里的钩子，新克隆默认没有这道门；协作者靠交付前跑 `npm run check` 保证，同样的检查在 `check` 里也会跑一遍。维护者本机安装：
+
+```powershell
+git config core.hooksPath .githooks
+```
+
+检查是否生效：
+
+```powershell
+git config --get core.hooksPath
 ```
 
 测试失败时先跑受影响的单文件，避免每次都跑全量：
@@ -60,8 +120,14 @@ npm run make:desktop
 ```
 
 - `package:desktop` 产出 `apps/desktop/out/Noema-win32-x64`。
-- `make:desktop` 产出 Squirrel 安装包；发布产物按版本放到外部 release 目录，不提交。
-- `apps/desktop/out*` 是构建产物，不提交。
+- `make:desktop` 走 `apps/desktop/scripts/make.mjs`，由它处理三个环境陷阱后再调 `electron-forge make`：
+  - `TEMP`/`TMP`/`TMPDIR` 固定到 `apps/desktop/.tmp`（受限令牌下写系统临时目录会被拒绝，NuGet 子进程会因此失败）；
+  - `SQUIRREL_TEMP` 固定到 `.tmp/squirrel-temp`（Squirrel 默认在 `%LOCALAPPDATA%\SquirrelTemp` 建临时目录，同样可能不可写）；
+  - 把 `apps/desktop/vendor/squirrel/nuget.exe`（NuGet 6.11.1）铺进 `.tmp/squirrel-vendor`，通过 `NOEMA_SQUIRREL_VENDOR` 交给 MakerSquirrel；electron-winstaller 自带的 NuGet 2.8 在打包 `app.asar` 这类高压缩率文件时会抛 `ObjectDisposedException`。
+- 如果 `out/Noema-win32-x64/resources/app.asar` 被其他进程锁住（无法改名），脚本会自动改在 `.tmp/forge-out` 重建并打印提示，命令仍然成功；产物路径以日志为准。
+- `make` 产出 Squirrel 安装包（`.tmp/forge-out/make/squirrel.windows/x64` 或 `out/make/...`）；发布产物按版本放到外部 release 目录，不提交。
+- `apps/desktop/out*`、`apps/desktop/.tmp` 是构建产物，不提交。
+- 安装验证注意：Squirrel Setup 先在 `%LOCALAPPDATA%\SquirrelTemp` 解包。本机 360 安全卫士会把未签名程序写用户目录判为拒绝（同一用户令牌下 `cmd /c mkdir` 能建目录，未签名的 `Setup.exe` 或普通 exe 调 `CreateDirectory` 返回“访问被拒绝”），此时 Setup 回退到 `C:\ProgramData\<用户>` 并弹 `Unable to write to … - IT policies may be restricting access to this folder`。验证载荷时可把 `SQUIRREL_TEMP`/`TEMP` 指到可写目录（安装根变成该目录的父级）；真实安装需要用户放行安全软件或给安装包签名。
 
 安装包冒烟：
 
@@ -91,7 +157,8 @@ Squirrel 升级失败时先检查：
 
 - `app-<version>\resources\app.asar` 是否被其他进程占用；
 - 旧版本目录是否仍有长路径/残留文件；
-- 安装日志中的具体删除/重命名错误。
+- 安装日志中的具体删除/重命名错误；
+- Setup 直接弹 `Installation has failed` 时，先查是否安全软件拦截未签名程序写 `%LOCALAPPDATA%`（见「打包」节）。
 
 不要通过覆盖 `app.asar` 假装升级完成；手工部署只作为临时诊断，完成后再走正常安装验证。
 

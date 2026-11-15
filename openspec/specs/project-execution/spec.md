@@ -487,7 +487,7 @@ Workspace identity diagnostics MUST use stable bounded reason codes and MUST NOT
 
 ### Requirement: 项目文件工具限于经过检查的工作区
 
-项目文件工具 MUST 将相对路径解析在当前 task 已绑定的 workspace identity 内。符号链接、reparse point、普通文件硬链接计数大于 1、文件系统元数据查询错误、扫描超出界限或 workspace identity 变化 MUST 在读写发生前拒绝该工具调用。目录搜索 MUST 对它可能读取的 workspace 树应用同一拒绝策略。工具 MUST NOT 通过根目录外路径、别名或文件系统链接读写目录外对象。
+项目文件工具与 SocialWork 命令 MUST 只访问与 task workspace identity 绑定、经主进程复核的工作区对象。文件工具 MUST 拒绝符号链接、reparse point、普通文件硬链接计数大于 1、特殊文件、扫描超限或元数据错误。SocialWork `run_command` MUST 在命令专属隔离副本中运行，且真实工作区不得进入该命令的写 capability。命令副本 MUST 由已通过边界检查的完整工作区快照生成，包含隐藏、未跟踪和被忽略的普通文件；身份、复制内容或限制校验不一致时 MUST 在启动子进程前拒绝。
 
 #### Scenario: 读取普通工作区文件
 - **WHEN** task identity 仍匹配，且 workspace 扫描无 reparse point、hard link 或查询错误
@@ -501,9 +501,21 @@ Workspace identity diagnostics MUST use stable bounded reason codes and MUST NOT
 - **WHEN** 文件工具执行前重新解析的 workspace identity 与 task snapshot 不匹配
 - **THEN** 工具拒绝访问，不跟随替换后的目录继续工作
 
+#### Scenario: 创建命令快照时工作区不稳定或超过界限
+- **WHEN** SocialWork 命令准备副本时发现 workspace identity 变化、源/副本清单不一致、特殊对象、扫描/复制失败或空间/配额不足
+- **THEN** 命令在 child spawn 前拒绝，真实工作区不被修改，诊断只记录有限原因码
+
+#### Scenario: 命令仅在隔离副本写入
+- **WHEN** SocialWork `run_command` 通过执行准入并启动子进程
+- **THEN** cwd 和可写 filesystem capability 只指向该命令副本，真实 workspace 只可读，运行中的副作用不出现在真实目录
+
+#### Scenario: 命令请求写入额外根目录
+- **WHEN** 命令请求对 workspace mirror 之外的路径取得写权限
+- **THEN** 主进程拒绝该写 capability，且不得以宿主权限或另一个 runner 作为回退
+
 ### Requirement: 项目文件写入产生可审阅的持久变更记录
 
-`edit_file` 与 `write_file` MUST 在已授权项目任务中立即应用成功的修改，同时持久记录 workspace-relative path、created/modified 类型、修改前后内容摘要、可审阅的有界文本差异和恢复所需的原始字节。变更记录 MUST 与 task 和 tool step 关联，renderer MUST 向用户展示；诊断事件 MUST NOT 包含路径、哈希、内容、diff 或工具参数。超过恢复存储上限时，写工具 MUST 在修改工作区之前拒绝操作。
+`edit_file`、`write_file` 与 SocialWork 命令写入 MUST 在真实工作区改变前持久记录恢复所需的原始状态。命令 MUST 按 task、命令 step 和相对路径记录来源、base/proposed/current 摘要、恢复材料及有界差异；单个命令可影响多个路径，且所有路径记录归属于同一持久 command batch。记录 MUST 进入现有 SocialWork task/file-change owner，不得创建旁路 task store 或第二套文件审阅/撤回库。诊断 MUST NOT 包含路径、哈希、正文、diff、命令文本或工具参数。
 
 #### Scenario: 新建文件
 - **WHEN** 用户授权的项目任务通过 `write_file` 创建文件并完成写入校验
@@ -521,9 +533,17 @@ Workspace identity diagnostics MUST use stable bounded reason codes and MUST NOT
 - **WHEN** 保存该文件的恢复依据会超过配置的 task 或应用存储上限
 - **THEN** 工具拒绝写入，工作区文件保持原样，并向 Agent 和用户说明限制
 
+#### Scenario: 命令产生多路径变更
+- **WHEN** 一个 SocialWork 命令创建、修改或删除多个普通文件
+- **THEN** 所有路径变更都能追溯到同一 task 与 command step，并在任何真实路径同步前持久保存其恢复材料和 proposed 版本
+
+#### Scenario: 命令崩溃或副作用结果未知
+- **WHEN** 进程树未能确认收束、或持久记录与磁盘状态无法核对
+- **THEN** batch 与路径记录保持 unknown/recovery-needed，保留 mirror 和恢复材料，不重放该命令
+
 ### Requirement: 用户可以保留或安全撤回已结束任务的文件变更
 
-用户 MUST 能在 task 结束后按 workspace-relative path 查看文件工具产生的变更，并明确选择保留或撤回。撤回 MUST 仅在 workspace identity 仍匹配且磁盘当前内容摘要等于记录的最新修改后摘要时写回原始字节；对新建文件只可在内容仍匹配时删除。内容已被用户或其他程序改动、身份无法验证、或原始状态未知时，系统 MUST 拒绝覆盖并说明冲突。多文件撤回可部分成功，MUST 逐文件报告最终状态且不得声称原子回滚。
+用户 MUST 能在 SocialWork task 结束后按工作区相对路径审阅文件工具及命令产生的变更，并明确选择保留或撤回。撤回 MUST 仅在 workspace identity 仍匹配且当前对象仍匹配 Noema 最后确认写入版本时恢复原状态；新建文件仅可在内容仍匹配时删除。用户并发修改、对象替换、身份无法验证或恢复材料未知时 MUST 拒绝覆盖。多路径同步和撤回允许部分成功，但 MUST 逐路径报告结果、保留冲突材料且不得声称批次原子回滚。
 
 #### Scenario: 用户保留文件修改
 - **WHEN** 用户在 task 结束后明确选择保留某个已审阅文件的修改
@@ -541,9 +561,21 @@ Workspace identity diagnostics MUST use stable bounded reason codes and MUST NOT
 - **WHEN** task 含多个文件且撤回时部分文件可恢复、部分文件已发生冲突
 - **THEN** 系统仅恢复符合校验的文件，逐文件显示成功或冲突，不声称整个 task 已完全回滚
 
+#### Scenario: 命令结束后自动同步无冲突变更
+- **WHEN** command/job 的完整进程树已确定收束，且目标路径仍匹配其 base 对象与摘要
+- **THEN** Noema 在工具返回前持久化恢复材料并逐路径同步变更，之后可在 task 审阅中选择保留或撤回
+
+#### Scenario: 写回时检测到并发改动
+- **WHEN** command batch 同步前发现真实文件已偏离 base 对象或摘要
+- **THEN** Noema 不覆盖该路径，将 proposed 版本和必要恢复材料保留为 conflict，其他无冲突路径仍可逐一完成
+
+#### Scenario: 命令写回中断
+- **WHEN** 多路径同步发生错误、磁盘不足或应用崩溃
+- **THEN** Noema 根据持久逐路径状态呈现 applied/conflict/unknown，保留 mirror/备份并阻止副作用未知的自动重跑
+
 ### Requirement: 用户可只读审阅 Git 工作区变更
 
-对于 Git 工作区，Noema MUST 提供只读的 tracked/staged 与未跟踪文件变更审阅，并对无效仓库、超限结果或 Git 查询错误明确显示不可用原因。审阅 MUST NOT 执行 commit、stage、reset、clean、checkout、network 操作或调用外部 diff/textconv。界面 MUST 标明此视图展示当前工作区状态，可能包含 task 开始前已存在的用户变更；不得将其冒称为 task 独占差异。
+对于 Git 工作区，Noema MUST 提供只读的 tracked/staged 与未跟踪文件变更审阅，并对无效仓库、超限结果或 Git 查询错误明确显示不可用原因。审阅 MUST NOT 执行 commit、stage、reset、clean、checkout、network 操作或调用外部 diff/textconv。界面 MUST 标明此视图展示当前工作区状态，可能包含 task 开始前已存在的用户变更；不得将其冒称为 task 独占差异。SocialWork 命令 MUST 将真实 Git metadata（包括 index、refs、config 及仓库管理数据）限制为只读；该 metadata MUST NOT 随 mirror 工作区变更回写。
 
 #### Scenario: 查看 tracked 与未跟踪文件
 - **WHEN** 用户查看绑定 Git workspace 的 task 文件审阅
@@ -556,6 +588,14 @@ Workspace identity diagnostics MUST use stable bounded reason codes and MUST NOT
 #### Scenario: Git 仓库配置包含外部 diff 工具
 - **WHEN** 用户请求查看差异且仓库配置了 external diff 或 textconv
 - **THEN** 审阅仍只用 Noema 内置差异呈现，不调用外部程序
+
+#### Scenario: 命令尝试修改真实 Git metadata
+- **WHEN** SocialWork 命令对真实仓库 index、refs、config 或其他 Git metadata 执行写入
+- **THEN** Windows runner 的文件 capability 拒绝写入，真实 Git metadata 保持不变，命令不会通过环境变量约定绕过此限制
+
+#### Scenario: Git metadata 布局无法安全解析
+- **WHEN** workspace 的 Git metadata/linked-worktree/submodule 布局无法解析并授予只读访问
+- **THEN** Noema 在 spawn 前拒绝该写命令并说明有限原因，不授予真实 Git metadata 写 capability
 
 ### Requirement: 项目任务显示真实的执行阶段
 项目任务 MUST 将实际执行阶段持久化并呈现，使用户能够区分模型请求/响应、模型已请求工具、等待用户授权、工具执行、限流等待、结果核验及终态。阶段说明 MUST 来源于执行链事实；系统 MUST NOT 显示隐藏推理或推测未观察到的活动。
@@ -720,3 +760,140 @@ When a SocialWork task has an originating Social turn, every provider request MU
 #### Scenario: Request diagnostic identity is safe
 - **WHEN** the provider request emits a diagnostic event
 - **THEN** it retains the task and segment IDs and contains no prompt, checkpoint, path, tool argument, command, or result content
+
+### Requirement: Windows runner validates the serialized command policy before preparation
+The native runner MUST strictly decode the bounded D2 policy v2 from IPC and verify protocol, request identity, policy version, fixed backend identity/version, workspace grants, environment policy, and network identity before backend preparation. Every directory root MUST carry a main-process volume/file identity that matches the native no-reparse handle. Missing or unknown fields, changed identities, aliases, and unsupported identities MUST be rejected.
+
+#### Scenario: serialized policy is incomplete or incompatible
+- **WHEN** an execute request omits a policy field, adds an unknown field, or supplies an unsupported policy/backend identity
+- **THEN** the native runner rejects the IPC request before backend preparation
+
+#### Scenario: a root identity differs from the native handle
+- **WHEN** a root's serialized volume/file identity does not match the directory opened by native admission, or two distinct policy roots resolve to the same native directory object
+- **THEN** admission rejects the request before readiness or child creation
+
+### Requirement: Windows runner pins policy directories without following reparses
+Before readiness or preparation, the native runner MUST open each existing workspace, read, write, and working-directory root through a local disk-volume path with reparse traversal disabled, retaining the resulting handles through admission. Any unresolved, missing, non-local, or reparse-backed path MUST be denied.
+
+#### Scenario: a policy path resolves through a junction or cannot be pinned
+- **WHEN** a policy directory is missing, cannot be opened as a local directory, or any path component is a reparse point
+- **THEN** admission returns a bounded path reason and does not proceed to readiness or child creation
+
+### Requirement: Windows runner readiness responses use a strict versioned schema
+Windows runner probe responses MUST include protocol/request identity, backend and policy versions, OS build/UBR/architecture, AppContainer profile/package SID status, filesystem ACL journal status, blockers, and required capabilities. Missing or unknown fields and identity/version mismatches MUST reject the response before command admission. A separate sandbox account, its credentials, and restricted-token status are not v1 prerequisites.
+
+#### Scenario: probe response is incomplete or from an incompatible helper
+- **WHEN** a probe response omits a required field or reports an unsupported protocol, helper, or policy version
+- **THEN** the runner rejects the response with a bounded reason and does not admit the command
+
+### Requirement: Windows command admission requires complete readiness
+The OS baseline, AppContainer profile/setup state, blockers, readiness flag, and all required capabilities MUST pass the current release gate before command admission. Readiness is only a prerequisite and MUST NOT bypass later policy, AppContainer launch, or process-tree controls.
+
+#### Scenario: Windows platform or sandbox setup is unsupported
+- **WHEN** the Windows platform version or architecture is unsupported, or AppContainer setup is not ready
+- **THEN** the runner rejects the command before process creation and reports the relevant readiness reason
+
+#### Scenario: required capability is missing
+- **WHEN** readiness reports any blocker, `ready=false`, or a required capability as unavailable
+- **THEN** the runner rejects the command before process creation
+
+#### Scenario: readiness passes while launch controls remain unimplemented
+- **WHEN** the probe reports a complete readiness snapshot but AppContainer launch or process-tree controls are not implemented and verified
+- **THEN** the runner still denies execution and does not create a child process
+
+#### Scenario: setup marker exists but live AppContainer or enforcement state is stale
+- **WHEN** versioned setup files exist but the AppContainer profile/package SID differs from the helper-verified state, or profile/current-request filesystem grants are missing, inconsistent, or cannot be queried
+- **THEN** readiness remains false with a bounded repair reason, and no command child is created
+
+#### Scenario: process interruption leaves setup in progress
+- **WHEN** the host restarts after AppContainer profile or ACL setup began but before readiness was committed
+- **THEN** startup treats the identity as repair-required, revalidates actual OS state under the setup lock, and denies commands until recovery is complete
+
+### Requirement: AppContainer commands have no network capabilities
+The native runner MUST create command children without AppContainer network capabilities. Network access MUST remain denied unless a future product change explicitly adds a supported network policy and matching enforcement. Readiness MUST NOT depend on Noema-owned persistent machine firewall rules or require elevation to establish network denial.
+
+#### Scenario: command child has no network capability
+- **WHEN** an AppContainer command is launched with only the current request's filesystem capabilities
+- **THEN** Windows denies the child's network access while the host retains ordinary network access
+
+#### Scenario: network denial is unavailable
+- **WHEN** the native runner cannot prove the child uses the fixed AppContainer identity without network capabilities
+- **THEN** command readiness remains false and the command is not created
+
+### Requirement: Windows filesystem roots use unambiguous Win32 path components
+Windows command policy roots MUST reject path components that invoke alternate data streams, Win32 reserved device names, forbidden path characters, dot traversal, or trailing ASCII spaces/periods. This lexical check is only an admission check and MUST NOT replace native handle identity, reparse-point, or hard-link verification.
+
+#### Scenario: a grant uses an ambiguous Win32 path
+- **WHEN** a workspace, external, runtime, or working-directory root contains a colon outside its drive designator, a reserved device component, a forbidden Win32 character, a `.`/`..` component, or a trailing ASCII space/period
+- **THEN** policy compilation or native policy admission rejects it with a bounded path reason before process creation and does not include the path in diagnostics
+
+#### Scenario: a lexically valid grant still has an unresolved filesystem identity
+- **WHEN** the path syntax is valid but native object identity is unresolved, a write root contains any reparse point, scanning fails or exceeds its bounded entry/depth limits, or a regular file at or under a write root has more than one hard link
+- **THEN** the backend rejects the command before process creation and gives an actionable reason, including telling the user to remove or resolve a hard link; lexical validation alone does not mark the path safe
+
+#### Scenario: ACL grant partially applies or rollback fails
+- **WHEN** applying or recovering a sandbox write grant fails for any verified filesystem object, including failure while rolling back earlier ACL changes
+- **THEN** the sandbox identity remains locked and the command is denied until setup recovery verifies the ACL state; a successful root ACL call alone does not prove descendant ACL propagation completed
+
+### Requirement: Windows command starts only after isolation and process controls are ready
+系统 MUST 仅在已编译策略、已确认后端与 setup 能力、隔离 child 已绑定进程树控制并成功完成启动前准备后，才允许 Windows 命令执行。任何策略、隔离、进程树控制或通信准备失败 MUST 阻止命令进入运行态，且 MUST NOT 改用宿主执行。
+
+#### Scenario: backend and process controls are ready
+- **WHEN** Windows 命令的 workspace grant 已编译，backend 与持久 setup 均通过当前能力探测，受限 child 已创建并绑定进程树控制
+- **THEN** 系统允许 child 开始执行，并将 spawn 结果关联到原 tool call、SocialWork task 与诊断 execution
+
+#### Scenario: launch preparation fails
+- **WHEN** policy serialization、AppContainer profile/package SID、capability set、child 创建、Job 绑定或 required pipe 准备任一步失败
+- **THEN** 命令不得进入运行态，不调用宿主 shell；若无法确认 child 未运行或已清理，则将副作用标记为 outcome unknown
+
+### Requirement: Windows command output and terminal outcome remain associated
+Windows runner MUST 将 stdout、stderr、退出码、耗时以及完成、失败、超时或取消原因关联到原 command request 和 tool call。流式输出 MUST 有界；截断时系统 MUST 明确显示截断事实，且不得把部分输出呈现为完整结果。
+
+#### Scenario: command produces output and exits
+- **WHEN** 已隔离的 Windows child 写入 stdout/stderr 并退出
+- **THEN** 系统保留有序、有界的输出及确定的退出结果，并将其交回原执行器记录
+
+#### Scenario: output exceeds the configured bound
+- **WHEN** stdout 或 stderr 达到 Noema 限额
+- **THEN** 系统停止保留超出部分、标明对应流已截断，并继续收束 child 生命周期
+
+### Requirement: Windows command cancellation confirms process-tree cleanup
+系统 MUST 将 Stop、超时和宿主收束映射为同一命令进程树的取消请求，并等待有界清理结果。只有确认 child tree 已退出后才可标记 cancelled/terminated；清理失败或状态未知 MUST 保留 outcome unknown，且 MUST NOT 自动重新执行该命令。
+
+#### Scenario: cancellation terminates the full child tree
+- **WHEN** 用户停止命令或命令超时，且 backend 确认同一 Job 内 child tree 已结束
+- **THEN** 系统记录取消/超时原因、清理完成和最终退出状态，并保留已产生的文件副作用
+
+#### Scenario: cancellation cannot confirm cleanup
+- **WHEN** runner IPC、Job termination 或退出确认失败/超时
+- **THEN** 系统记录 cleanup unknown 与有限原因码，将工具副作用保留为 outcome unknown，并要求显式人工检查后才能继续任务
+
+### Requirement: Windows runner diagnostics trace lifecycle without command contents
+系统 MUST 以同一 request/tool/task identity 关联 probe/readiness、policy 编译、spawn 阶段、child 生命周期、输出截断、cancel/timeout、退出与清理事件。主进程与 native helper 的严格响应 MUST 区分 AppContainer child 是否已 resume、stdout/stderr 的有界采集事实、确定退出以及 cleanup-confirmed/unknown；helper IPC 中断导致结果不确定时必须保留 outcome unknown。常规诊断 MUST NOT 保存命令文本、参数、完整环境变量、工作区路径、输出正文或凭据；仅本地进程标识及有限数值/枚举可按 allowlist 记录。
+
+#### Scenario: inspect a completed Windows command
+- **WHEN** 用户查看本机执行时间线
+- **THEN** 可按 request/tool/task identity 查看 backend、阶段、持续时间、退出/取消/cleanup 结果与截断计数，不显示 command、路径或输出正文
+
+#### Scenario: runner diagnostics sink is unavailable
+- **WHEN** 本机诊断存储不可用
+- **THEN** runner 仍按隔离执行结果完成或失败，不因诊断写入失败改用宿主执行或重放命令
+
+### Requirement: Windows command availability is explained separately from desktop availability
+Noema MUST 在诊断界面将 Windows 命令隔离状态与 Noema 桌面应用可用性区分说明，并呈现全部经主进程验证的有限阻塞原因。界面 MUST 仅在存在可由 setup 修复的 AppContainer profile blocker 且 Windows 平台版本、架构兼容时显示“启用或重试设置”；单独的实现未完成、资源无效、诊断不可用或平台版本/架构不符不得提示用户通过 setup 修复。setup 不触发 UAC。界面说明 MUST NOT 暗示启动或使用 Noema 桌面应用需要 Windows 更新。
+
+#### Scenario: command runner implementation has not passed target verification
+- **WHEN** runner readiness 仅报告 `runner_implementation_incomplete`
+- **THEN** 诊断说明命令隔离尚未完成目标机验证、Noema 桌面应用仍可使用且无需更新 Windows 才能启动，并且不显示 setup 操作
+
+#### Scenario: setup blockers coexist with the implementation hold
+- **WHEN** readiness reports `runner_implementation_incomplete` together with a missing/incomplete AppContainer profile, and the Windows platform version and architecture are supported
+- **THEN** diagnostics lists each blocker and provides profile setup while ordinary command execution remains disabled
+
+#### Scenario: Windows platform version or architecture is unsupported
+- **WHEN** readiness includes `os_baseline_unsupported` alongside setup blockers
+- **THEN** diagnostics explains that the platform is unsupported for restricted commands, leaves Noema desktop usage available, and does not offer setup or trigger UAC
+
+#### Scenario: the informational UBR value cannot be read
+- **WHEN** Windows 10 22H2 x64 platform details are available but the registry UBR value is unavailable
+- **THEN** the runner preserves the detected OS version and architecture, reports UBR as unknown, and does not add a blocker based on the missing UBR value

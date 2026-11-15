@@ -171,6 +171,8 @@ const bridge = {
     ipcRenderer.invoke('noema:social-update-project-plan-item', input),
   updateSocialProjectPlanPhase: (input: NoemaProjectPlanPhaseUpdate) =>
     ipcRenderer.invoke('noema:social-update-project-plan-phase', input),
+  completeSocialProject: (projectId: string) =>
+    ipcRenderer.invoke('noema:social-complete-project', projectId),
   restoreSocialProject: (projectId: string) =>
     ipcRenderer.invoke('noema:social-restore-project', projectId),
   retrySocialProjectGrowthMember: (batchId: string, agentId: string) =>

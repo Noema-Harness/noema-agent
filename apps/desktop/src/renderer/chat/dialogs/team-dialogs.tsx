@@ -431,7 +431,8 @@ export function ProjectEditorDialog({
           ) : null}
         </fieldset>
         <p className="dialog-footnote">
-          Noema 会加入项目群；每位成员的项目上下文与常驻私聊相互独立。
+          Noema
+          会加入项目群；首位选中的成员担任项目负责人，每位成员的项目上下文与常驻私聊相互独立。
         </p>
         <div className="dialog-actions">
           <NoemaButton
