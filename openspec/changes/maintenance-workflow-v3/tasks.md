@@ -63,3 +63,12 @@
 - [x] 修掉扫描发现的失效事实：STATUS 里已不存在的「待决」章节引用、过期的 plan 任务计数
 - [x] 过时事实与重复来源收口：AGENTS 的 harness 条改为“本机 harness 在 `~/.dsh` 维护”，OPERATIONS 检查列表与单独运行列表同步
 - [x] `npm run check` 全绿（873/873，0 fail，31,562ms）
+
+## 9. 文档定位收敛（2026-11-15，用户反馈 STATUS 定位不清）
+
+- [x] `docs/STATUS.md` 只回答“按现有证据今天能说到什么程度”：版本与基线、最后一次验证、未验证、交付判断；删掉“当前可用”“未交付”“已知限制”三张清单
+- [x] 未交付进度交回看板卡片（D-026）；产品行为与边界补进 `docs/PRODUCT.md`（完成提示的事实源、项目与成长记录）
+- [x] 已知限制按性质分流：环境与安装进 `docs/OPERATIONS.md`（Low 完整性、未签名、`out/` 回退），结构实况进 `docs/ARCHITECTURE.md` §9
+- [x] `docs/ARCHITECTURE.md` §9 从“已交付/未交付”清单改为结构边界说明，交付状态不再在两个文档各写一份
+- [x] 改完 ARCHITECTURE 后重出架构图（`figure:build`），`figure:check` OK
+- [x] `npm run check` 全绿（873/873，0 fail，30,758ms）
