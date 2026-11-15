@@ -13,7 +13,7 @@ Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与�
 
 ## 最后一次验证（2026-11-15）
 
-- `npm run check`：**873/873，0 fail，35,208ms**；链为 `workspace:check`（含 `branches:check`）→ `docs:check` → `figure:check` → `plan:check` → `source:check` → `lint` → `typecheck` → `tools:test`（30 个维护脚本测试）→ `test`。
+- `npm run check`：**873/873，0 fail，33,917ms**；链为 `workspace:check`（含 `branches:check`）→ `docs:check` → `figure:check` → `plan:check` → `source:check` → `lint` → `typecheck` → `tools:test`（31 个维护脚本测试）→ `test`。
 - 安装包：`npm run make:desktop` 产出 `Noema-0.7.6 Setup.exe`（170,410,496 字节，sha256 `6E773C854FBF6E4B0A39720608737555114E5E95E9F5526F1E05D7A32964BCDC`）、`noema_desktop-0.7.6-full.nupkg`、`RELEASES`；把 `TEMP`/`SQUIRREL_TEMP` 指到可写目录后 `Setup.exe --silent` 能装出 `app-0.7.6`（载荷验证）。
 - CI：run `43673883619` success（13 分 11 秒），干净 Windows runner 上含 `make:desktop` 与安装/升级/卸载数据保留验证。
 - 架构图：`figure:build` 端到端跑通（Archify 四 gate 全 pass → Edge 截图 → 摘要回写），`figure:check` 保证与 `docs/ARCHITECTURE.md` 同步。

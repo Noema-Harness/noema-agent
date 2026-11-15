@@ -271,6 +271,33 @@ export function checkDocuments(root, git, options = {}) {
       }
     }
   }
+  const documentedScripts = new Set(
+    Object.keys(readJson(path.join(root, "package.json"))?.scripts ?? {}),
+  );
+  const documented = ["AGENTS.md", "README.md", "CONTRIBUTING.md", "docs/OPERATIONS.md"];
+  const workflowDir = path.join(root, ".github", "workflows");
+  if (fs.existsSync(workflowDir)) {
+    for (const entry of fs.readdirSync(workflowDir)) {
+      if (entry.endsWith(".yml") || entry.endsWith(".yaml")) {
+        documented.push(path.posix.join(".github", "workflows", entry));
+      }
+    }
+  }
+  for (const name of documented) {
+    const text = readText(path.join(root, name));
+    if (text === null) continue;
+    for (const match of text.matchAll(/(?<![a-z])npm run ([a-z][a-z0-9:_-]*)/gu)) {
+      const script = match[1];
+      if (documentedScripts.has(script)) continue;
+      const lineStart = text.lastIndexOf("\n", match.index) + 1;
+      const lineEnd = text.indexOf("\n", match.index);
+      const line = text.slice(lineStart, lineEnd === -1 ? undefined : lineEnd);
+      if (line.includes("--workspace")) continue;
+      errors.push(
+        `${name} 引用了不存在的脚本 npm run ${script}：改 package.json 时同步文档与 CI（CI 会先在这里失败）`,
+      );
+    }
+  }
   return { errors, notices };
 }
 
