@@ -44,7 +44,7 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 - 0.7.5 交付口径（历史证据）：868 tests / 868 pass / 0 fail；package + `smoke:package` 通过；干净 profile 显示 `团队 0 / 项目 0 / 成员 0` 且两处 `新建项目` 可见。
 - 0.7.4 交付口径（历史证据）：864 tests / 864 pass / 0 fail；package + `smoke:package` 通过；schema 42 `social_teams` 表零行。
 - 0.7.6 没有发布说明、复检记录或安装验证；现有证据只有源码提交、`npm run check` 当时结果和 `out/` 下的构建产物。
-- 类型覆盖（D-034 TS 迁移）：阶段 0（tsconfig 可擦除语法与 `.ts` 导入、`src/package.json` ESM、`source:check` `.mjs` 棘轮）与阶段 1（小模块转为 `.ts`，只改类型）已在 PR #131 分支完成；`src` 下剩余 **67** 个 `.mjs`（棘轮上限 67），全部未受类型检查，含 `social-chat-service`/`social-chat-store`/`social-work-service`/`root-store`/`root-ipc`；`strict` 未开启，与未转换 JS 的交接处仍有 `ChatRun = Record<string, any>` 等宽类型。类型检查已发现并修正：`transcript-search` 类型导入路径不存在（JS 下静默为 any）；`searchAndReadWeb` 的 `apiKey` JSDoc 未覆盖 `null`（运行时已校验）。下次改这里：`scripts/source-structure.mjs` 的 `maxJavaScriptSources`，验证命令 `npm run typecheck` + `npm run source:check`。
+- 类型覆盖（D-035 TS 迁移）：阶段 0（tsconfig 可擦除语法与 `.ts` 导入、`src/package.json` ESM、`source:check` `.mjs` 棘轮）与阶段 1（小模块转为 `.ts`，只改类型）已在 PR #131 分支完成；`src` 下剩余 **67** 个 `.mjs`（棘轮上限 67），全部未受类型检查，含 `social-chat-service`/`social-chat-store`/`social-work-service`/`root-store`/`root-ipc`；`strict` 未开启，与未转换 JS 的交接处仍有 `ChatRun = Record<string, any>` 等宽类型。类型检查已发现并修正：`transcript-search` 类型导入路径不存在（JS 下静默为 any）；`searchAndReadWeb` 的 `apiKey` JSDoc 未覆盖 `null`（运行时已校验）。下次改这里：`scripts/source-structure.mjs` 的 `maxJavaScriptSources`，验证命令 `npm run typecheck` + `npm run source:check`。
 
 ### 本轮验证
 

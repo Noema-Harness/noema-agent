@@ -34,7 +34,7 @@ npm run check
 2. `docs:check`：五份权威文档的三行头与路由、版本/基线、git 门槛安装状态；
 3. `figure:check`：架构图产物与 `docs/ARCHITECTURE.md` 摘要、README 引用是否同步；
 4. `plan:check`：OpenSpec 活动变更、`Plan:` 卡片链接、任务清单与未决问题；
-5. `source:check`：源码依赖边界，以及 `src` 下 `.mjs` 数量不增加（D-034 TS 迁移棘轮）；
+5. `source:check`：源码依赖边界，以及 `src` 下 `.mjs` 数量不增加（D-035 TS 迁移棘轮）；
 6. `lint`、`typecheck`、`maintenance:test`、`figure:test`、`branches:test`、`inbox:test`、`test`。
 
 OpenSpec 规格只写可观察行为，不写测试实现：每个新增或修改的 requirement，在本次 change 的 `tasks.md` 里写一条验证（测试文件名或命令）；归档后证据留在 Git 与看板卡片评论里，不把测试名写回常驻 specs，也不新增第二套测试映射。
@@ -128,7 +128,7 @@ schtasks /Query /TN NoemaGithubInbox
 
 ### 议题与积压放在哪（D-028/D-029）
 
-只有三处，不另建容器：`docs/DECISIONS.md` 放议题与决定（先追加带状态的条目，`待定` 必须有「下一步」与「更新」日期，有产出后改成 `决定`，没产出就作废删除）；看板卡片放能力、排序与状态；当前活动变更的 `tasks.md` 放本轮执行。发散讨论时先把话题追进 DECISIONS 再继续。
+只有三处，不另建容器：`docs/DECISIONS.md` 放议题与决定（先追加带状态的条目，`待定` 必须有「下一步」与「更新」日期，有产出后改成 `决定`，没产出就直接删掉）；看板卡片放能力、排序与状态；当前活动变更的 `tasks.md` 放本轮执行。发散讨论时先把话题追进 DECISIONS 再继续。
 
 ### 规划看板（GitHub Project）
 

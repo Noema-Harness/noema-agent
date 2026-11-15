@@ -410,3 +410,22 @@ ${HEADER}
     assert.match(stale.notices.join("\n"), /D-030 待定已 \d+ 天没动/u);
   });
 });
+test("a decision marked as dropped is deleted, not kept in the stream", () => {
+  withRoot((holder) => {
+    const root = makeRoot(holder, { change: false });
+    write(
+      root,
+      "docs/DECISIONS.md",
+      `# DECISIONS
+
+${HEADER}
+
+## D-030 一个被放弃的议题
+
+**状态**：作废
+`,
+    );
+    const result = checkDocuments(root, fakeGit());
+    assert.match(result.errors.join("\n"), /标成了作废：没有产出的条目直接删除/u);
+  });
+});
