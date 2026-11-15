@@ -50,5 +50,6 @@
 - [x] 源码规模盘点（168 文件、17 个 >1000 行、6 个 >2000 行）与不确定项清单交给用户决定，不在本轮做大迁移
 - [x] `docs/OPERATIONS.md` 新增「仓库结构与分支卫生」；`CONTRIBUTING.md` 说明残留分支由 `branches:check` 发现
 - [x] `openspec/changes/archive/` 移出仓库（218 个文件），`.gitignore` 忽略该目录；历史由 Git 保存（D-027）
-- [x] 未决与积压只落三处（DECISIONS 待决 / 看板卡片 / 活动变更），不建本机台账、不镜像 issue（D-028）；AGENTS §1 步骤 0 与 OPERATIONS「未决与积压放在哪」
+- [x] 未决与积压只落三处（DECISIONS 议题流水 / 看板卡片 / 活动变更），不建本机台账、不镜像 issue（D-028）；AGENTS §1 步骤 0 与 OPERATIONS「议题与积压放在哪」
+- [x] DECISIONS 改为议题流水：每条带 `待定/决定/作废` 状态，待定必须有「下一步」与「更新」，docs:check 校验格式并提醒陈旧条目，原「待决」章节改为 D-030~D-033 条目（D-029）
 - [x] `npm run check` 全绿

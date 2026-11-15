@@ -113,6 +113,66 @@ export function activeChanges(root) {
 }
 
 // `git` is injected so tests can run without a repository.
+const GOVERNED_DECISION = /^## (D-(\d{3}))\b/u;
+const FIRST_GOVERNED_DECISION = 29;
+
+export function decisionEntries(text) {
+  const entries = [];
+  let current = null;
+  for (const line of String(text).split(/\r?\n/u)) {
+    const head = GOVERNED_DECISION.exec(line);
+    if (head) {
+      if (current) entries.push(current);
+      current = { id: head[1], number: Number(head[2]), body: [] };
+      continue;
+    }
+    if (current) current.body.push(line);
+  }
+  if (current) entries.push(current);
+  return entries.map((entry) => ({
+    id: entry.id,
+    number: entry.number,
+    body: entry.body.join("\n"),
+  }));
+}
+
+// Decisions are an issue stream: entries from D-029 on must declare a status, and a
+// pending entry without an output is not a decision.
+export function checkDecisionEntries(text, { today = localToday(), staleDays = 14 } = {}) {
+  const errors = [];
+  const notices = [];
+  for (const entry of decisionEntries(text)) {
+    if (entry.number < FIRST_GOVERNED_DECISION) continue;
+    const state = /\*\*状态\*\*：\s*(待定|决定|作废)/u.exec(entry.body);
+    if (!state) {
+      errors.push(`${entry.id} 缺少「**状态**：待定/决定/作废」`);
+      continue;
+    }
+    if (state[1] === "待定") {
+      for (const field of ["**要定什么**", "**下一步**"]) {
+        if (!entry.body.includes(field)) errors.push(`${entry.id} 是待定条目，缺少 ${field}`);
+      }
+      const updated = /\*\*更新\*\*：\s*(\d{4}-\d{2}-\d{2})/u.exec(entry.body)?.[1];
+      if (!updated) {
+        errors.push(`${entry.id} 是待定条目，缺少「**更新**：YYYY-MM-DD」`);
+      } else {
+        const age = Math.floor((Date.parse(today) - Date.parse(updated)) / 86_400_000);
+        if (Number.isFinite(age) && age >= staleDays) {
+          notices.push(`${entry.id} 待定已 ${age} 天没动：给出产出，或改成作废`);
+        }
+      }
+      continue;
+    }
+    for (const field of ["**决定**", "**理由**"]) {
+      if (!entry.body.includes(field)) errors.push(`${entry.id} 是${state[1]}条目，缺少 ${field}`);
+    }
+    if (state[1] === "决定" && !entry.body.includes("**重新审视**")) {
+      errors.push(`${entry.id} 是决定条目，缺少 **重新审视**`);
+    }
+  }
+  return { errors, notices };
+}
+
 export function checkDocuments(root, git, options = {}) {
   const errors = [];
   const notices = [];
@@ -137,6 +197,10 @@ export function checkDocuments(root, git, options = {}) {
       }
     }
   }
+  const decisions = readText(path.join(root, "docs", "DECISIONS.md")) ?? "";
+  const decisionReport = checkDecisionEntries(decisions, { today: options.today });
+  errors.push(...decisionReport.errors);
+  notices.push(...decisionReport.notices);
   const allowed = new Set(registered);
   for (const file of markdownFilesUnder(path.join(root, "docs"))) {
     const name = path.relative(root, file).replaceAll("\\", "/");
