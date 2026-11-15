@@ -115,7 +115,6 @@ export function activeChanges(root) {
 // 决定编号 = 日期 + 短名：并行分支各自产出，不抢全局序号（D-20261115-decision-ids）。
 // `D-0xx` 是旧编号，保留历史引用，不再新增。
 const GOVERNED_DECISION = /^## (D-(?:(\d{3})|(\d{8}-[a-z0-9-]+)))\b/u;
-const FIRST_GOVERNED_DECISION = 29;
 
 // 产品变更必须写清用户能观察到什么、怎么手测；收口时抄进卡片正文。
 const OBSERVABLE_SECTIONS = ["## 用户可观察的改变", "## 手测步骤"];
@@ -152,7 +151,6 @@ export function checkDecisionEntries(text) {
   const errors = [];
   const notices = [];
   for (const entry of decisionEntries(text)) {
-    if (entry.number !== null && entry.number < FIRST_GOVERNED_DECISION) continue;
     if (/\*\*状态\*\*：\s*作废/u.test(entry.body)) {
       errors.push(`${entry.id} 标成了作废：没有产出的条目直接删除（Git 保留历史），不要留在流水里`);
       continue;
