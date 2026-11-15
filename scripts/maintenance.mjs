@@ -113,9 +113,19 @@ export function activeChanges(root) {
   return directoryNames(changesRoot).filter((name) => name !== "archive");
 }
 
-// `git` is injected so tests can run without a repository.
-const GOVERNED_DECISION = /^## (D-(\d{3}))\b/u;
+// 决定编号 = 日期 + 短名：并行分支各自产出，不抢全局序号（D-20261115-decision-ids）。
+// `D-0xx` 是旧编号，保留历史引用，不再新增。
+const GOVERNED_DECISION = /^## (D-(?:(\d{3})|(\d{8}-[a-z0-9-]+)))\b/u;
 const FIRST_GOVERNED_DECISION = 29;
+
+// 产品变更必须写清用户能观察到什么、怎么手测；收口时抄进卡片正文。
+const OBSERVABLE_SECTIONS = ["## 用户可观察的改变", "## 手测步骤"];
+
+function sectionHasItems(text, heading) {
+  const body = sectionBody(text, heading);
+  if (body === null) return false;
+  return /^\s*(?:-|\d+\.)\s+\S/mu.test(body);
+}
 
 export function decisionEntries(text) {
   const entries = [];
@@ -124,7 +134,7 @@ export function decisionEntries(text) {
     const head = GOVERNED_DECISION.exec(line);
     if (head) {
       if (current) entries.push(current);
-      current = { id: head[1], number: Number(head[2]), body: [] };
+      current = { id: head[1], number: head[2] ? Number(head[2]) : null, body: [] };
       continue;
     }
     if (current) current.body.push(line);
@@ -143,7 +153,7 @@ export function checkDecisionEntries(text, { today = localToday(), staleDays = 1
   const errors = [];
   const notices = [];
   for (const entry of decisionEntries(text)) {
-    if (entry.number < FIRST_GOVERNED_DECISION) continue;
+    if (entry.number !== null && entry.number < FIRST_GOVERNED_DECISION) continue;
     if (/\*\*状态\*\*：\s*作废/u.test(entry.body)) {
       errors.push(`${entry.id} 标成了作废：没有产出的条目直接删除（Git 保留历史），不要留在流水里`);
       continue;
@@ -419,6 +429,15 @@ export function checkPlan(root, options = {}) {
             : "待用户决定：无",
         );
       }
+      if (planKind === "card") {
+        for (const heading of OBSERVABLE_SECTIONS) {
+          if (!sectionHasItems(design, heading)) {
+            errors.push(
+              `活动变更 ${change} 的 design.md 缺少「${heading}」或内容为空：产品变更要写清用户能观察到的改变与手测步骤，收口时抄进卡片正文`,
+            );
+          }
+        }
+      }
     }
   }
 
@@ -489,6 +508,11 @@ export function checkMilestone(root, options = {}) {
     if (!CARD_EVIDENCE.test(tasks ?? "")) {
       errors.push(
         `产品变更 ${change} 归档前要在 tasks.md 写一条卡片证据评论链接（https://github.com/<owner>/<repo>/issues/<n>#issuecomment-<id>）：commit、check 计数与 STATUS 链接贴到卡片`,
+      );
+    }
+    if (!/更新卡片正文/u.test(tasks ?? "")) {
+      errors.push(
+        `产品变更 ${change} 归档前要在 tasks.md 记一条“更新卡片正文（现在能做什么 + 手测步骤 / 还没做）”：卡片正文是用户同步进度与测试的观察口`,
       );
     }
   } else if (planKind === "governance") {

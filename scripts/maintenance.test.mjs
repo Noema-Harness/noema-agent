@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import {
   activeChanges,
   checkDocuments,
+  checkDecisionEntries,
   checkMilestone,
   checkPlan,
   checkPrecommit,
@@ -66,7 +67,7 @@ function makeRoot(holder, overrides = {}) {
     write(
       root,
       `${change}/design.md`,
-      `# design\n\n## 待用户决定\n\n${overrides.decisions ?? ""}\n`,
+      `# design\n\n## 用户可观察的改变\n\n- 探针行为\n\n## 手测步骤\n\n1. 打开探针\n\n## 待用户决定\n\n${overrides.decisions ?? ""}\n`,
     );
     write(root, `${change}/tasks.md`, `# tasks\n\n${overrides.tasks ?? "- [ ] 第一项\n"}`);
     if (overrides.skipSpecs) write(root, `${change}/.openspec.yaml`, "skip_specs: true\n");
@@ -171,7 +172,7 @@ test("maintenance tooling enforces document, plan and commit gates", () =>
     write(
       root,
       `${change}/design.md`,
-      "# design\n\n## 待用户决定\n\n- [ ] 成长机制如何触发\n- [ ] 团队命名规则\n\n## 其他\n",
+      "# design\n\n## 用户可观察的改变\n\n- 探针行为\n\n## 手测步骤\n\n1. 打开探针\n\n## 待用户决定\n\n- [ ] 成长机制如何触发\n- [ ] 团队命名规则\n\n## 其他\n",
     );
     assert.deepEqual(
       pendingDecisions(fs.readFileSync(path.join(root, change, "design.md"), "utf8")),
@@ -182,7 +183,11 @@ test("maintenance tooling enforces document, plan and commit gates", () =>
     assert.match(blocked.errors.join("\n"), /仍有待用户决定的问题/u);
 
     // Code ships only with a plan update and no open decision.
-    write(root, `${change}/design.md`, "# design\n\n## 待用户决定\n");
+    write(
+      root,
+      `${change}/design.md`,
+      "# design\n\n## 用户可观察的改变\n\n- 探针行为\n\n## 手测步骤\n\n1. 打开探针\n\n## 待用户决定\n",
+    );
     const committed = checkPrecommit(root, {
       git,
       stagedPaths: ["apps/desktop/src/main/main.ts", "openspec/changes/stage-probe/tasks.md"],
@@ -252,7 +257,7 @@ test("pending decisions are capped and user acceptance needs a confirmation date
     write(
       root,
       `${change}/design.md`,
-      "# design\n\n## 待用户决定\n\n- [ ] 一\n- [ ] 二\n- [ ] 三\n- [ ] 四\n",
+      "# design\n\n## 用户可观察的改变\n\n- 探针行为\n\n## 手测步骤\n\n1. 打开探针\n\n## 待用户决定\n\n- [ ] 一\n- [ ] 二\n- [ ] 三\n- [ ] 四\n",
     );
     assert.match(
       checkPlan(root, { skipSpecValidation: true }).errors.join("\n"),
@@ -262,7 +267,7 @@ test("pending decisions are capped and user acceptance needs a confirmation date
     write(
       root,
       `${change}/design.md`,
-      "# design\n\n## 待用户决定\n\n- [ ] 一\n- [ ] 二\n- [ ] 三\n",
+      "# design\n\n## 用户可观察的改变\n\n- 探针行为\n\n## 手测步骤\n\n1. 打开探针\n\n## 待用户决定\n\n- [ ] 一\n- [ ] 二\n- [ ] 三\n",
     );
     assert.deepEqual(checkPlan(root, { skipSpecValidation: true }).errors, []);
 
@@ -295,7 +300,7 @@ test("a milestone is archivable only when tasks, decisions and evidence line up"
     write(
       root,
       `${change}/tasks.md`,
-      "# tasks\n\n- [x] 第一项\n- [x] 卡片证据：https://github.com/Noema-Harness/noema-agent/issues/138#issuecomment-1\n",
+      "# tasks\n\n- [x] 第一项\n- [x] 更新卡片正文：现在能做什么 + 手测步骤\n- [x] 卡片证据：https://github.com/Noema-Harness/noema-agent/issues/138#issuecomment-1\n",
     );
     write(root, `${change}/design.md`, "# design\n\n## 待用户决定\n\n- [ ] 还没答\n");
     const decided = checkMilestone(root, { git: fakeGit(), today: TODAY });
@@ -340,9 +345,32 @@ test("a product change records card evidence before it can be archived", () =>
     write(
       root,
       `${change}/tasks.md`,
-      "# tasks\n\n- [x] 第一项\n- [x] 卡片证据：https://github.com/Noema-Harness/noema-agent/issues/138#issuecomment-1\n",
+      "# tasks\n\n- [x] 第一项\n- [x] 更新卡片正文：现在能做什么 + 手测步骤\n- [x] 卡片证据：https://github.com/Noema-Harness/noema-agent/issues/138#issuecomment-1\n",
     );
     assert.deepEqual(checkMilestone(root, { git: fakeGit(), today: TODAY }).errors, []);
+  }));
+
+test("a decision id carries its date so parallel branches never renumber", () => {
+  const ok = checkDecisionEntries(
+    "## D-20261115-probe\n\n**状态**：决定\n**决定**：x\n**理由**：y\n**重新审视**：z\n",
+    { today: TODAY },
+  );
+  assert.deepEqual(ok.errors, []);
+  const pending = checkDecisionEntries(
+    "## D-20261115-probe\n\n**状态**：待定\n",
+    { today: TODAY },
+  );
+  assert.match(pending.errors.join("\n"), /待定条目，缺少/u);
+});
+
+test("a product change designs what the user can observe and how to test it", () =>
+  withRoot((holder) => {
+    const root = makeRoot(holder);
+    assert.deepEqual(checkPlan(root, { skipSpecValidation: true }).errors, []);
+    write(root, "openspec/changes/stage-probe/design.md", "# design\n\n## 待用户决定\n");
+    const errors = checkPlan(root, { skipSpecValidation: true }).errors.join("\n");
+    assert.match(errors, /用户可观察的改变/u);
+    assert.match(errors, /手测步骤/u);
   }));
 
 test("governance changes declare Plan: none and never ship product code", () =>
