@@ -126,15 +126,9 @@ schtasks /Query /TN NoemaGithubInbox
 
 它只做提醒，不代替 `npm run check`；CI 的正式结论以 GitHub Actions 为准。
 
-### 问题台账（本地讨论）
+### 未决与积压放在哪（D-028）
 
-积压问题不建 issue：这个仓库绝大多数讨论只发生在维护者与本地 agent 之间，云端工单会成为额外的交互成本。台账放本机、随 `.work/` 一起忽略：
-
-- `.work/discussions/LEDGER.md` 是唯一索引，每个 `Q-<id>` 一行；细节在 `.work/discussions/q/<id>.md`。
-- 状态：`open` 等用户决定；`parked` 暂缓并写触发条件；`done` 已定并迁进 `docs/DECISIONS.md` 或看板卡片；`dropped` 作废并写原因。
-- 规则：发散讨论时**先登记再继续**；一轮只推进一个 `open` 项；`open` 超过 12 项时先收敛，不新开问题；登记只写“要定什么 + 建议 + 决定所需事实”，不抄对话。
-- 命令：`npm run questions`（摘要、最久未动项、陈旧提醒）、`npm run questions -- --all`（全部行）、`npm run questions -- --json`。
-- 不在 Git 里：可丢的是过程细节；已定结论必须已在权威文档或卡片上，否则不算 `done`。
+只有三处，不另建容器：`docs/DECISIONS.md` 的「待决」放要用户拍板的；看板卡片放能力、排序与状态（具体问题写成卡片评论）；当前活动变更的 `tasks.md` 放本轮执行。发散讨论时先把话题落到这三处之一，再继续。
 
 ### 规划看板（GitHub Project）
 

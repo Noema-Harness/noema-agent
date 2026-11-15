@@ -24,7 +24,7 @@
     "harness:check": "node scripts/harness-sync.mjs check",
     "harness:import": "node scripts/harness-sync.mjs import",
     "source:check": "node scripts/source-structure.mjs",
-    "check": "npm run workspace:check && npm run docs:check && npm run figure:check && npm run plan:check && npm run source:check && npm run lint && npm run typecheck && npm run maintenance:test && npm run figure:test && npm run branches:test && npm run questions:test && npm run inbox:test && npm test",
+    "check": "npm run workspace:check && npm run docs:check && npm run figure:check && npm run plan:check && npm run source:check && npm run lint && npm run typecheck && npm run maintenance:test && npm run figure:test && npm run branches:test && npm run inbox:test && npm test",
     "docs:check": "node scripts/maintenance.mjs docs",
     "figure:check": "node scripts/figure.mjs check",
     "plan:check": "node scripts/maintenance.mjs plan",
@@ -33,9 +33,7 @@
     "figure:build": "node scripts/figure.mjs build",
     "figure:test": "node --test scripts/figure.test.mjs",
     "inbox": "node scripts/github-inbox.mjs --poll",
-    "inbox:test": "node --test scripts/github-inbox.test.mjs",
-    "questions": "node scripts/questions.mjs",
-    "questions:test": "node --test scripts/questions.test.mjs"
+    "inbox:test": "node --test scripts/github-inbox.test.mjs"
   },
   "engines": {
     "node": ">=24.21 <25"
