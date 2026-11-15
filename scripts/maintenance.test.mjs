@@ -302,6 +302,36 @@ test("a milestone is archivable only when tasks, decisions and evidence line up"
     );
   }));
 
+test("governance changes declare Plan: none and never ship product code", () =>
+  withRoot((holder) => {
+    const root = makeRoot(holder, { skipSpecs: true });
+    const change = "openspec/changes/stage-probe";
+    write(root, `${change}/proposal.md`, "# proposal\n\nPlan: none\n\n## 本轮内容\n\n- 机制维护\n");
+    const git = fakeGit();
+
+    const plan = checkPlan(root, { skipSpecValidation: true });
+    assert.deepEqual(plan.errors, []);
+    assert.equal(plan.planKind, "governance");
+    assert.equal(plan.notices.join("\n").includes("治理变更（Plan: none）"), true);
+
+    const tooling = checkPrecommit(root, {
+      git,
+      stagedPaths: ["scripts/maintenance.mjs", `${change}/tasks.md`],
+    });
+    assert.deepEqual(tooling.errors, []);
+
+    const product = checkPrecommit(root, {
+      git,
+      stagedPaths: ["apps/desktop/src/main/main.ts", `${change}/tasks.md`],
+    });
+    assert.match(product.errors.join("\n"), /Plan: none（治理变更），但这次提交含产品代码/u);
+
+    write(root, `${change}/proposal.md`, "# proposal\n\n## 本轮内容\n\n- 没写计划\n");
+    const missing = checkPlan(root, { skipSpecValidation: true });
+    assert.equal(missing.planKind, null);
+    assert.match(missing.errors.join("\n"), /缺少「Plan:/u);
+  }));
+
 test("unanswered decisions block product code but not tooling maintenance", () =>
   withRoot((holder) => {
     const root = makeRoot(holder, {

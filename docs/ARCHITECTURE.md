@@ -61,7 +61,7 @@ renderer (React)
 - **项目负责人**：项目内的头衔，不是岗位库条目；一个 Agent 可以同时负责多个项目，权限按项目授予。
 - **工单**：一次执行的工作单元；有承接人、目标、工作区、步骤、文件变更和结果。工单不是用户维护的任务卡。
 
-当前实现已在旧 oom/branch 结构上补了执行者常驻私聊入口和项目显式负责人；项目 fork、岗位库、负责人自动提案与默认 A 审批尚未落地。本文件只写结构与不变量，不写路线图；未交付项见 STATUS 与看板。
+当前实现已在旧的 room/branch 结构上补了执行者常驻私聊入口和项目显式负责人；项目 fork、岗位库、负责人自动提案与默认 A 审批尚未落地。本文件只写结构与不变量，不写路线图；未交付项见 STATUS 与看板。
 
 ### 3.2 当前实现（阶段 1–4）
 
@@ -70,7 +70,20 @@ renderer (React)
 - 当前只有 Noema 主对话接入运行时事件：`SocialChatService` 在 `turn.started/completed/failed/interrupted` 写入 Noema 的日志；读取失败只记录诊断，不影响回复。Core Chat 不经过 `RootAgent`，`RootAgent` 上的旧事件桥不再作为当前路径。
 - Noema 自身工具调用通过 `chat-trace` 内联显示在回复正文上方；普通回答没有工具时不显示轨迹。工具调用和结果以 `stepId` 成对保存，渲染层不把结果覆盖掉调用。
 - Noema 主聊创建项目走两阶段：propose_project_team 只写入 project_team_proposals 的待决记录，不创建项目；decide_project_team 在用户确认后创建项目与成员。两者作为 MCP 工具注册到 Core Chat 的 chatToolSession；项目群内继续使用 create_project_team 增补已有项目成员。
-- 仍有限制：执行者实际执行仍由 `SocialWorkService`/DSH 承担，执行者核心已创建但还没有自己的运行事件；岗位库/模板、负责人自动提案与默认 A 审批、项目长期群、工作区文件回滚、六模块均未实现。对话历史按 D-018 使用 SQLite 不可变快照，不引入外部 Git。
+- 仍有限制：执行者实际执行仍由 `SocialWorkService`/DSH 承担，执行者核心已创建但还没有自己的运行事件；专业联系人目前只有 `social_agents` 行与提示词，未接入 `AgentRuntimeCore`；岗位库/模板、负责人自动提案与默认 A 审批、项目长期群、工作区文件回滚、六模块均未实现。对话历史按 D-018 使用 SQLite 不可变快照，不引入外部 Git。
+
+### 3.3 一个个体当前由什么组成（0.7.6）
+
+| 部分 | 存在何处 | 谁能改 |
+| --- | --- | --- |
+| 身份与专业范围 | `social_agents` 的 `name`/`headline`/`description`，拼成 `system_prompt` | 用户或 Noema 建成员/改资料时整段重写，无版本 |
+| 岗位来源 | `social_agents.job_template_id/version`、`job_templates`（4 条播种） | 目前只有建成员工具的 `job_template_id` 参数，无管理入口 |
+| 项目关系 | `social_project_sessions`（`project_id`/`agent_id`/`room_id`/`status`） | 项目创建与成员增补 |
+| 经历与技能 | `social_agent_asset_revisions`：`identity.md`、`instructions.md`、`memory.md`、`experiences/*.md`、`skills/*/SKILL.md`，append-only + 删除墓碑 | 目前只有 `manage_member_assets` 工具；没有用户编辑或撤回界面 |
+| 运行时个体 | `<Agent Home>/events.jsonl`、`AgentRuntimeCore` | 只有 Noema 与执行者接线；专业联系人尚未接入 |
+| 用户记忆 | `social_user_memories`（仅 Noema 主聊按需检索） | 设置界面 |
+
+成长只允许写“经历与技能”的候选条目；定位与协作偏好（`identity.md`/`instructions.md`）需用户批准；核心身份、工具授权、可见性与成员关系只能用户显式修改。
 
 ## 4. 六模块与能力
 
@@ -87,7 +100,7 @@ Noema 和执行者共用同一套个体结构：
 
 - **Context Compiler** 是组装过程，不是第七个模块；它把目标、状态、记忆、文件、工具和最近对话编译成一次调用的上下文。
 - **CapabilityUnit** 是 Competence 的最小可执行单位；岗位包与项目是组织层组合，不进入个体内部。
-- 六模块是目标架构；当前 0.7.2 仍以提示词、工具和旧 room/branch 为主，ContextCompiler、Memory Store、ModuleHost 热重载未交付。
+- 六模块是目标架构；当前 0.7.6 仍以提示词、工具和 room/branch 为主，ContextCompiler、Memory Store、ModuleHost 热重载未交付。
 
 ## 5. 一次执行的路径
 
@@ -150,7 +163,7 @@ SQLite 是主要产品事实源；`.work/` 只放过程材料。Agent 个体事�
 - `conversation_branches`、`conversation_turns`、`conversation_active_branch`：连续时间线/检查点（schema 40）；当前产品路径只保留单一可见时间线，分支不暴露。
 - `conversation_archives`：编辑/重发前的不可变消息+分支+回合快照；恢复时先把当前线存为 `pre_restore`，再切换 HEAD。
 - `project_team_proposals`：新建团队的待决提案（标题、简报、负责人、成员 JSON、状态、决定原因）；批准后才创建项目。
-- `memories`、`settings`：记忆与配置；密钥在加密存储，不进入对话或日志。
+- `social_user_memories`、`app_settings`：Noema 主聊的个人记忆与应用配置；密钥加密存储，不进入对话或日志。
 - 工作区身份、文件边界和滚动恢复由 `social_projects`/workspace identity 记录。
 - `<Agent Home>/events.jsonl`：追加式个体事件流，当前记录 Noema 回合开始/完成/失败/中断；序号单调，读取按游标，不能更新或删除。
 

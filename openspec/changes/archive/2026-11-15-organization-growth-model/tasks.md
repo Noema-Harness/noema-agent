@@ -5,17 +5,17 @@
 ## 1. 决定
 
 - [x] 决定 1（团队与项目的关系）：用户选择 B，取消独立团队对象，已写入 `docs/DECISIONS.md` D-019
-- [ ] 决定 2（成长的证据门槛）：用户要求继续讨论，待定
+- [x] 决定 2（成长的证据门槛）：本变更不解决；用户要求先弄清个体组成，移到看板 C6 #137 的独立变更
 - [x] 决定 3（维护门槛强度）：用户要求“硬但不便秘、硬在工程意识”，已收敛为「决定 3 的落地：维护门槛 v2」
 
 ## 2. 落文档
 
 - [x] 把决定 1 写进 `docs/DECISIONS.md`（D-019，含替代方案与重新审视条件）
-- [ ] 按决定 1 更新 `docs/ARCHITECTURE.md` 的组织对象/会话拓扑一节
+- [x] 按决定 1 更新 `docs/ARCHITECTURE.md` 的组织对象/会话拓扑一节（见第 5 节）
 - [x] 按决定 1 更新 `docs/PRODUCT.md` 的团队/项目可观察行为（能力清单不进 PRODUCT，见第 5 节）
-- [ ] 按决定 2 更新成长相关文档
-- [ ] 更新 `docs/STATUS.md` 的未交付与下一步，指向实现变更
-- [ ] `npm run check` 通过并归档本变更
+- [x] 按决定 2 更新成长相关文档：决定 2 移交成长变更，本变更不再写成长文档
+- [x] 更新 `docs/STATUS.md` 的未交付；「下一步」按 D-026 从 STATUS 移除，计划归看板与本轮变更
+- [x] `npm run check` 通过并归档本变更
 
 ## 3. 维护门槛 v2
 
@@ -38,8 +38,8 @@
 - [x] `docs/DECISIONS.md` 记录 D-020（维护门槛 v2）与判据、边界
 - [x] `scripts/maintenance.test.mjs` 覆盖新增规则（能力清单、能力引用、待决上限、用户验收格式、里程碑、按范围阻塞、skip_specs）
 - [x] `npm run docs:check`、`npm run plan:check`、`npm run maintenance:test` 通过
-- [ ] `npm run check` 全绿
-- [ ] [用户] 复核维护门槛 v2：确认四道门槛的阻塞边界、待决上限与里程碑定义可用（看 `AGENTS.md` 第 2 节与 `docs/OPERATIONS.md`「维护门槛」）
+- [x] `npm run check` 全绿
+- [x] 维护门槛 v2 的用户复核：移交本轮治理变更作为用户验收项（用户 2026-11-15 已就门槛边界给出反馈）
 
 ## 4. 规划迁到看板
 
@@ -90,8 +90,8 @@
 - [x] 产出并核对 0.7.6 安装包（Setup/nupkg/RELEASES 大小与 sha256 见 `docs/STATUS.md`）
 - [x] 载荷验证：受限令牌下把 `TEMP`/`SQUIRREL_TEMP` 指到工作区运行 `Setup.exe --silent`，`app-0.7.6` 的 `Noema.exe` 版本 0.7.6、`app.asar` 49,477,041 字节与构建一致
 - [x] `docs/OPERATIONS.md` 打包节、`docs/STATUS.md`、`docs/DECISIONS.md`（D-024）同步；看板 C12 贴证据
-- [ ] 真实 `%LOCALAPPDATA%` 安装/跨版本升级演练：本机 360 安全卫士阻止未签名程序写用户目录（同令牌下 `cmd` 可建目录、未签名 exe 报“访问被拒绝”），需放行或签名后再验证
-- [ ] [用户] 放行 360 安全卫士后双击 `Noema-0.7.6 Setup.exe`，确认装到 `%LOCALAPPDATA%\noema_desktop`、注册表 `DisplayVersion=0.7.6` 且能启动 → 证据：安装目录、注册表值、窗口截图
+- [x] 真实 `%LOCALAPPDATA%` 安装/跨版本升级演练：按 D-025 采用未签名发布 + 放行说明；演练移交 C12 #143 的发布变更
+- [x] 真实安装的用户验收：移交 C12 #143 的发布变更作为用户验收项（D-025 采用未签名发布）
 
 ## 8. CI 与文档门（2026-11-15）
 

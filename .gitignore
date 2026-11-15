@@ -34,3 +34,10 @@ Thumbs.db
 .tmp/
 .playwright-cli/
 **/target/
+
+# Archify run receipts
+docs/assets/*.finalize.json
+docs/assets/*.finalize-summary.json
+docs/assets/*.delivery.json
+docs/assets/*.browser-check.json
+docs/assets/*.delivery-pending.json

@@ -32,9 +32,10 @@ npm run check
 
 1. `workspace:check`：文档路由与结构；
 2. `docs:check`：五份权威文档的三行头与路由、版本/基线、git 门槛安装状态；
-3. `plan:check`：OpenSpec 活动变更、`Plan:` 卡片链接、任务清单与未决问题；
-4. `source:check`：源码依赖边界；
-5. `lint`、`typecheck`、`maintenance:test`、`test`。
+3. `figure:check`：架构图产物与 `docs/ARCHITECTURE.md` 摘要、README 引用是否同步；
+4. `plan:check`：OpenSpec 活动变更、`Plan:` 卡片链接、任务清单与未决问题；
+5. `source:check`：源码依赖边界；
+6. `lint`、`typecheck`、`maintenance:test`、`figure:test`、`inbox:test`、`test`。
 
 OpenSpec 规格只写可观察行为，不写测试实现：每个新增或修改的 requirement，在本次 change 的 `tasks.md` 里写一条验证（测试文件名或命令）；归档后证据留在 Git 与看板卡片评论里，不把测试名写回常驻 specs，也不新增第二套测试映射。
 
@@ -49,34 +50,66 @@ npm run milestone:check
 ```powershell
 npm run workspace:check
 npm run docs:check
+npm run figure:check
 npm run plan:check
 npm run milestone:check
 npm run source:check
 npm run typecheck
 npm run lint
 npm run maintenance:test
+npm run figure:test
+npm run inbox:test
+npm run inbox
 npm test
 ```
 
 ### 维护门槛
 
-四道门槛由 `scripts/maintenance.mjs` 实现：`docs:check` 与 `plan:check` 在 `npm run check` 里，`milestone:check` 在归档前手动跑，`.githooks/pre-commit` 在提交点跑。失败的常见原因与修法：
+五道门槛由 `scripts/maintenance.mjs`（docs/plan/milestone/pre-commit）与 `scripts/figure.mjs`（架构图同步）实现：`docs:check`、`figure:check`、`plan:check` 在 `npm run check` 里，`milestone:check` 在归档前手动跑，`.githooks/pre-commit` 在提交点跑。失败的常见原因与修法：
 
 | 报错                                                  | 修法                                                                                                                       |
 | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | STATUS 源码版本与 package.json 不一致                 | 发布/交付后先更新 `docs/STATUS.md` 的版本、基线、验证和未交付                                                              |
 | STATUS 基线不是 HEAD 祖先                             | 基线写成当前可解析的提交；重写历史后重取                                                                                   |
 | 文档里写进了不属于它的内容                            | 不是脚本能判的事：每份文档头的 `Does not own` 已写明边界，评审时按边界判断；规划放卡片、状态放 STATUS、架构放 ARCHITECTURE |
-| proposal 缺少 `Plan:` 卡片链接                        | 先在看板选卡，再把卡片链接写进 proposal 顶部                                                                               |
+| proposal 缺少 `Plan:` 卡片链接                        | 产品变更先在看板选卡，再把卡片链接写进 proposal 顶部；纯机制/文档/展示的治理变更写 `Plan: none`，且 diff 不能含 `apps/desktop/src/` |
 | 活动变更超过 1 个                                     | 已完成的先 `openspec archive <name> --yes`，过期未做的移到 `openspec/changes/archive/` 并写明关闭原因                      |
 | 活动变更 tasks 全部完成                               | 归档该变更后再开下一个阶段                                                                                                 |
 | `## 待用户决定` 超过 3 项                             | 先缩本轮范围；超过 3 项说明计划没切干净                                                                                    |
 | `[用户]` 验收项勾选没有确认日期                       | 只有用户明确确认后才勾选，并写成 `（用户确认：YYYY-MM-DD）`                                                                |
 | milestone 报任务未完成 / 有待决问题 / STATUS 不是当天 | 补完任务、拿到用户答案、更新 STATUS 后再归档                                                                               |
+| 架构文档变了但图没重出（figure:check）                | 运行 `npm run figure:build`；不要手改 html/png；README 必须引用 png 与 html                                              |
 | pre-commit 拒绝产品代码提交                           | 同一次提交带上计划/状态更新与 specs 增量；未决决策只能等用户回答                                                           |
 | pre-commit 只提示“工具/治理改动不受未决产品决策阻塞”  | 正常；工具与文档维护不被产品决策卡住                                                                                       |
 
 用户验收项写在 tasks.md 里，格式 `- [ ] [用户] <场景> → 证据`；确认后改成 `- [x] [用户] <场景> → 证据（用户确认：YYYY-MM-DD）`。
+
+计划与状态边界（D-026）：`docs/STATUS.md` 只写已经发生的事实（版本、已验证证据、未交付、已知限制），不写「下一步」；候选与顺序在 GitHub 看板，本轮切口的执行计划在 `openspec/changes/`。写文档时如果想把“接下来做什么”写进 STATUS，改成更新卡片状态，或在活动变更的 tasks 里记。
+
+### 架构图（docs/assets）
+
+用户向架构图是 README 的入口，也是规划的总锚点：图里区分“已实现”和“计划中（灰底 + 虚线区域）”。
+
+- 图源：`docs/assets/noema-architecture.source.json`（Archify candidate + 生成时的 `docs/ARCHITECTURE.md` 摘要 + 产物摘要）。
+- 改了 `docs/ARCHITECTURE.md` 后重出图：`npm run figure:build`（需要本机 Archify 技能和 Edge；finalize 的四道 gate 必须全过）。
+- `npm run figure:check` 挂在 `npm run check` 里：架构文档变了而图没重出、产物被手改、README 没引用图，都会直接失败。
+- 不要手改 `noema-architecture.html|png`；finalize 的侧车 json 由 build 自动移出 `docs/assets`，留在 `.work/archify-run/`。
+- 图只画 Noema 产品范围（用户、主聊、执行者、工作区、数据、计划项），不画本机开发 harness。
+
+### GitHub 通知（本地收件箱）
+
+`npm run inbox` 用 `gh` 拉取 main 的 workflow 失败/恢复、open PR 检查状态、issue/PR 新评论与 issue 创建；新事件打印一行并追加到 `.work/github-inbox/pending.md`，状态在 `.work/github-inbox/state.json`（去重键保留最近 500 条）。每轮开始先跑一次；gh 不可用或离线时静默退出，不阻塞任何门槛。
+
+Windows 计划任务（每 10 分钟，用户身份运行以继承 gh 登录态与代理）：
+
+```powershell
+schtasks /Create /SC MINUTE /MO 10 /TN NoemaGithubInbox ^
+  /TR "node C:\Users\NUC\Desktop\noema\scripts\github-inbox.mjs --poll --quiet" /F
+schtasks /Run /TN NoemaGithubInbox
+schtasks /Query /TN NoemaGithubInbox
+```
+
+它只做提醒，不代替 `npm run check`；CI 的正式结论以 GitHub Actions 为准。
 
 ### 规划看板（GitHub Project）
 
@@ -90,6 +123,8 @@ gh issue comment <n> --body "证据：commit <sha>，check 873/873，STATUS 链�
 ```
 
 每张卡片是 `[C<n>]` issue；收口时先贴证据再关 issue，`npm run check` 的离线门槛只校验 proposal 里的 `Plan:` 链接，不校验远端状态。
+
+工作流：**卡片切口 = 一个 change**。选卡后把卡片移到 In Progress，并在 `openspec/changes/<name>/` 立项；tasks 只拆这次切口（不要把整个阶段塞进一个 change）；收口时归档 change、贴证据、卡片 Done。纯机制/文档/展示的治理变更写 `Plan: none`，不占能力卡，也不能带产品代码（`pre-commit` 会拒绝）。
 
 提交门槛只在维护者本机安装，不自动修改协作者配置：git 只在 `core.hooksPath` 指向时才跑仓库里的钩子，新克隆默认没有这道门；协作者靠交付前跑 `npm run check` 保证，同样的检查在 `check` 里也会跑一遍。维护者本机安装：
 
@@ -153,7 +188,9 @@ npm run smoke:package --workspace noema-desktop
 C:\Users\NUC\AppData\Local\noema_desktop\app-0.7.2\Noema.exe
 ```
 
-已安装版本不一定包含当前源码；源码相对已安装版本的差异见 [STATUS](STATUS.md)。0.6.9 是回退版本。安装/升级前关闭 Noema，必要时确认占用 `app.asar` 的宿主进程（历史上曾由 DeepSeek Harness 持有句柄）；不要用强制结束代替确认占用。
+已安装版本不一定包含当前源码；源码相对已安装版本的差异见 [STATUS](STATUS.md)。0.6.9 是回退版本。
+
+发布口径（D-025）：安装包暂未签名。首次安装可能被安全软件拦截写 `%LOCALAPPDATA%`，需要用户放行，或改用便携目录运行；这不阻塞开发与交付验证，签名留作后续选项。安装/升级前关闭 Noema，必要时确认占用 `app.asar` 的宿主进程（历史上曾由 DeepSeek Harness 持有句柄）；不要用强制结束代替确认占用。
 
 Squirrel 升级失败时先检查：
 

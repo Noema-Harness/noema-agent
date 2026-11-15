@@ -1,8 +1,8 @@
 # STATUS
 
-Authority: 本文件是 Noema 当前版本、验证证据、已知缺口、未交付项和下一步的唯一权威来源。
+Authority: 本文件是 Noema 当前版本、已验证证据、未交付项与已知限制的唯一权威来源。
 Update when: 交付节点、安装/打包、关键验证结果、阻塞或优先级变化。
-Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结构与数据边界（见 [ARCHITECTURE](ARCHITECTURE.md)）；长期决定（见 [DECISIONS](DECISIONS.md)）；命令与发布步骤（见 [OPERATIONS](OPERATIONS.md)）；维护规则（见 [AGENTS](../AGENTS.md)）。
+Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结构与数据边界（见 [ARCHITECTURE](ARCHITECTURE.md)）；长期决定（见 [DECISIONS](DECISIONS.md)）；命令与发布步骤（见 [OPERATIONS](OPERATIONS.md)）；维护规则（见 [AGENTS](../AGENTS.md)）；计划与排序（见 GitHub Project 看板与 `openspec/changes/`，D-026）。
 
 最后更新：2026-11-15
 
@@ -18,8 +18,8 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 - 便携构建：`apps/desktop/out/Noema-win32-x64/Noema.exe`（0.7.6，2026-11-14 22:38，246,819,840 字节）。已装目录只有 `%LOCALAPPDATA%\Programs\Noema-0.7.3|0.7.4|0.7.5`，桌面 `Noema.lnk` 仍指向 Noema-0.7.5，与 0.7.6 源码不同步（见已知限制）。
 - 维护层事实：0.7.4–0.7.6 期间没有任何权威文档更新（`docs/` 最后一次提交仍是 `21380a7 docs: record architecture invariants`，2026-11-14 15:44），`openspec/changes/` 攒了 11 个活动变更、其中 2 个已完成。本轮把文档/计划同步做成会失败的检查：`npm run check` 里的 `docs:check`、`plan:check`，归档前的 `npm run milestone:check`，以及 `.githooks/pre-commit`；11 个变更收敛为 0 后再立项（2 个正式归档并合并规格，9 个移到 `openspec/changes/archive/2026-11-15-*` 并写明关闭原因）。
 - 维护门槛 v2（2026-11-15，按用户对决定 3 的回答落地）：产品定义=`docs/PRODUCT.md`（不含能力清单与计划，2026-11-15 纠正，见 D-023）；能力清单、排序与状态只在 [GitHub Project「Noema V1 路线」](https://github.com/orgs/Noema-Harness/projects/1)（14 张 `[C<n>]` 卡片，Done 5 / In Progress 6 / Todo 3，2026-11-15 按真实证据重标）；proposal 必须写 `Plan: <卡片链接>`（不校验能力编号）；未答决策只阻塞 `apps/desktop/src/` 的产品代码，工具与文档维护放行；行为变更不允许 `skip_specs`；用户验收项格式 `[用户] … （用户确认：YYYY-MM-DD）`；里程碑=归档并需 `milestone:check` 通过。决定与理由见 `docs/DECISIONS.md` D-020、D-022、D-023。
-- 并行进行中：组织模型与成长机制是唯一活动变更 `openspec/changes/organization-growth-model/`；决定 1（取消独立团队）与决定 3（维护门槛 v2）已定，决定 2（成长证据门槛）仍待用户回答，未答前不改这部分产品代码。
-- 治理与展示（2026-11-15）：删除不再作用于开发的项目级技能与 `skills:sync`/`skills:check`（3 个技能都引用已删文档，`apps/desktop/src` 无任何引用）；看板 14 张卡片改为统一模板（能力/可观察结果/验收方式/当前证据/缺口/边界）并按证据重标状态；README 增加只画 Noema 自身范围的用户向架构图（`docs/assets/noema-architecture.png`，附可交互 HTML）。
+- 维护层现状（2026-11-15）：`organization-growth-model` 已归档——组织模型已由 D-019 定案，成长证据门槛移交看板 C6 #137，签名与真实安装移交 C12 #143（D-025）。当前唯一活动变更是治理变更 `maintenance-workflow-v3`（`Plan: none`）：计划三层与 STATUS 边界（D-026）、架构图接入检查（`figure:check`/`figure:build`）、GitHub 通知本地化（`inbox` + Windows 计划任务）。门槛共五道：docs、plan、figure、milestone、pre-commit。
+- 治理与展示（2026-11-15）：删除不再作用于开发的项目级技能与 `skills:sync`/`skills:check`；看板 14 张卡片改为统一模板并按证据重标；README 增加只画 Noema 自身范围的用户向架构图 v2（`docs/assets/noema-architecture.png`，附可交互 HTML，源文件 `docs/assets/noema-architecture.source.json`），图中区分已实现与计划中。
 
 ## 当前可用
 
@@ -47,26 +47,19 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 ### 本轮验证
 
-- `npm run check`：**873/873，0 fail，27,224ms**（workspace:check、docs:check、plan:check、source:check、lint、typecheck、maintenance:test 全部先通过；lint 维持既有 11 条 warning、0 error；项目技能与 skills:check 已删除）。
-- `npm run maintenance:test`：5/5 通过（文档同步、PRODUCT 不承载计划、Plan 链接、待决上限与用户验收、里程碑、按范围阻塞）。
-- `npm run workspace:check`：OK（把 `.archify` 归为生成目录，diagram 过程材料不入仓库）。
-- `npm run docs:check`：OK（5 份权威文档、版本 0.7.6 = package 版本、基线 `f592a9b`、PRODUCT 不含能力清单与计划、`core.hooksPath=.githooks`）。
-- `npm run plan:check`：OK（活动变更 `organization-growth-model` 35 完成 / 8 未完成；用户验收项 1 项；待用户决定 1 项=决定 2 成长证据门槛）。
-- 看板实测：Project #1「Noema V1 路线」14 张卡片 #132–#145；改按证据重标后 Done 5（C1/C2/C4/C5/C14）、In Progress 6（C3/C6/C7/C10/C11/C12）、Todo 3（C8/C9/C13）；阶段字段已按 基础/组织模型/会话拓扑/六模块/收尾 落位；Issue #130 已改写为迁移说明并关闭。
-- `npm run milestone:check`：仍按设计拒绝归档（10 个任务未完成、1 项待用户决定），说明里程碑不是“感觉够了”就能过。
-- `openspec validate --all --strict`：10 passed / 0 failed（9 个规格 + 1 个 `skip_specs` 变更）。
-- 架构图（用户向）：`docs/assets/noema-architecture.html` + `.png`，Archify `finalize` 四道 gate（validate/deliver/check/browser-check）全 pass；只画 Noema 自身范围，不含本地 harness；README「它怎么工作」引用。
-- 项目技能清理：删除 3 个项目级技能、`.dsh` 镜像、`scripts/sync-skills.mjs` 与 `skills:sync`/`skills:check`；`workspace:check` OK。
-- 门槛去穷举（2026-11-15）：删除 `docs:check` 里“PRODUCT 出现能力清单即失败”的关键字规则——文档边界由每份文档头的 `Does not own` 与评审承担，脚本只校验机械事实；`maintenance:test` 5/5。
-- `docs/ARCHITECTURE.md` 组织对象对齐 D-019：删掉“团队=长期能力器官/团队负责人/目标结构不是现状”这类计划性表述，只写当前结构与不变量。
-- 未运行：决定 2 落地后的成长门槛实现、0.7.6 真实复盘/成长对话框/任务文件审阅演练、真实 `%LOCALAPPDATA%` 安装与跨版本升级（本机安全软件拦截未签名安装包写用户目录，见下条）、真实 provider 全链与长时运行。
-- 安装器构建与载荷验证（2026-11-15）：`npm run make:desktop` 在 `out/` 被外部句柄锁住时自动落到 `.tmp/forge-out` 并成功产出 Setup/nupkg/RELEASES（`out` 锁属本机环境，`out/Noema-win32-x64/resources/app.asar` 无法改名，见已知限制）。把 `TEMP`/`SQUIRREL_TEMP` 指到工作区后运行 `Setup.exe --silent`，Squirrel 把 `app-0.7.6` 落到该根目录：`Noema.exe` ProductVersion/FileVersion 均为 `0.7.6`，`resources/app.asar` 49,477,041 字节、sha256 `AAC1A250C62A66B935928455D7DD693ECA4BF23884E08FF7A2A7C99CC5AB5A39`，与构建产物一致；这是载荷验证，不等于真实用户安装。
+- `npm run check`：**873/873，0 fail**（最近一次 35,425ms；收尾前的同轮运行 33,474ms）。链上新增 `figure:check`、`figure:test`、`inbox:test`；`docs:check` OK（5 份文档、版本 0.7.6、基线 `f592a9b`、`core.hooksPath=.githooks`）、`plan:check` OK（治理变更 `maintenance-workflow-v3`：17 完成 / 4 未完成、用户验收 1 项、无待决）、`maintenance:test` 6/6（含治理变更 `Plan: none` 被拒产品代码）、`figure:test` 1/1、`inbox:test` 17/17。
+- 架构图 v2（2026-11-15）：`npm run figure:build` 端到端跑通（Archify finalize 四 gate 全 pass → Edge headless 截 PNG → 回写摘要）；`figure:check` 校验 `docs/assets/noema-architecture.source.json` 里的 ARCHITECTURE 摘要、HTML/PNG 摘要与 README 引用，已接入 `npm run check`。图有 12 个组件、4 张卡片、6 类图例，灰底 + 琥珀虚线区域标出「计划中（尚未实现）」＝六模块、会话 fork、@Noema 跨房间。
+- GitHub 收件箱（2026-11-15）：`scripts/github-inbox.mjs` 拉取 main 的 CI 失败/恢复、open PR 检查状态、新评论与 issue，去重写 `.work/github-inbox/{state.json,pending.md}`；Windows 计划任务 `NoemaGithubInbox` 每 10 分钟运行，`Last Result=0`；首次 poll 记录 main 最新 run `43673883619 success`、三次失败 run 与 PR #131 检查状态。
+- CI（2026-11-15）：main 上 `Desktop checks` 三次失败后修复为绿——`5ea61b5`（CI 里不检查本地钩子、checkout 用 `fetch-depth: 0`）、`e71e9c6`（测试显式指定 CI 模式）；run `43673883619` success，13 分 11 秒，含 `make:desktop` 与安装/升级/卸载数据保留验证。
+- 个体组成（2026-11-15）：`docs/ARCHITECTURE.md` §3.3 新增“一个个体当前由什么组成”（身份、岗位来源、项目关系、经历与技能、运行时个体、用户记忆）与成长可写边界；看板 C6 #137 记录 L0–L3 分层与真实库证据（批次 completed、成员 `no_change`、资产表 0 行、复盘 brief 含未执行的工具调用原文）。
+- 未运行：成长门槛实现、0.7.6 真实复盘/成长对话框/任务文件审阅演练、真实 `%LOCALAPPDATA%` 安装与跨版本升级（本机安全软件拦截未签名安装包写用户目录，见下条）、真实 provider 全链与长时运行。
+- 安装器构建与载荷验证（2026-11-15）：`npm run make:desktop` 在 `out/` 被外部句柄锁住时自动落到 `.tmp/forge-out` 并成功产出 Setup/nupkg/RELEASES（`out` 锁属本机环境，见已知限制）。把 `TEMP`/`SQUIRREL_TEMP` 指到工作区后运行 `Setup.exe --silent`，Squirrel 把 `app-0.7.6` 落到该根目录：`Noema.exe` ProductVersion/FileVersion 均为 `0.7.6`，`resources/app.asar` 49,477,041 字节、sha256 `AAC1A250C62A66B935928455D7DD693ECA4BF23884E08FF7A2A7C99CC5AB5A39`，与构建产物一致；这是载荷验证，不等于真实用户安装。
   2026-11-15 用计划任务在普通用户上下文直接跑 `Setup.exe --silent`：Squirrel 在 `%LOCALAPPDATA%\SquirrelTemp` 解包失败，回退到 `C:\ProgramData\NUC`（无管理员权限）后弹 `Unable to write to … IT policies may be restricting access to this folder`。同一用户令牌实测：`cmd.exe` 能在 `%LOCALAPPDATA%` 建目录，而未签名 exe（32 位、带 manifest 也试过）调 `Directory.CreateDirectory` 返回“访问被拒绝”；本机注册的安全软件是 360 安全卫士。结论：构建链路已修好，真实安装被本机安全软件策略拦住，需要用户放行或签名。把 `SQUIRREL_TEMP`/`TEMP` 指到可写目录后可完整装出 `app-0.7.6`（桩程序 292,864 字节、版本 0.7.6，`app-0.7.6\Noema.exe` ProductVersion 0.7.6，nupkg 169,672,685 字节），证明载荷可用。
 
 ## 未交付（按目标文档）
 
-1. **组织模型**：D-019 已决定取消独立团队对象（只有项目、负责人、成员），代码仍保留 schema 42 的 `social_teams` 同层包装；团队章程、长期部门与跨项目复用未定义。当前活动变更 `organization-growth-model` 正在收口，未定项见其 `design.md`。
-2. **成长机制**：已能按项目和成员产出可版本化的资产，但“经历 → 候选能力 → 证据/评估 → 启用”的证据门槛、跨项目积累与用户可见的成长差异未实现（D-014 的成长约束尚未满足）。
+1. **组织模型**：D-019 已决定取消独立团队对象（只有项目、负责人、成员），代码仍保留 schema 42 的 `social_teams` 同层包装；把成员关系改由 `social_project_sessions` 承担、删除团队表的迁移尚未做（卡片 C7 #138）。
+2. **成长机制**：已能按项目和成员产出可版本化的资产，但“经历 → 候选能力 → 证据/评估 → 启用”的证据门槛、跨项目积累与用户可见的成长差异未实现（D-014 的成长约束尚未满足）。下一步先定义“个体由哪些部分组成”，再定一次项目经历能带来什么；由卡片 C6 #137 的独立变更处理。
 3. **执行者会话拓扑**：执行者私有常驻会话已可从任务详情打开；`@Noema` 跨房间寻址、执行者自己的 AgentRuntime 事件日志/证据、常驻会话与项目 fork 仍未实现。
 4. **会话拓扑**：仍使用旧 room/branch 结构；常驻会话、项目 fork、团队共享上下文、项目结束归档/复盘未实现。
 5. **岗位库/团队剩余**：模板管理 UI、默认 A 的强制确认界面/记录、团队章程、项目长期群尚未落地。
@@ -78,7 +71,7 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 ## 已知限制
 
 - 桌面 `Noema.lnk` 指向 0.7.5，便携目录里没有 0.7.6 安装；要验证 0.7.6 必须直接运行 `apps/desktop/out/Noema-win32-x64/Noema.exe`，或在发布时补装。
-- 安装包未签名：本机 360 安全卫士会阻止它写 `%LOCALAPPDATA%`，首次安装需用户手动放行（或发布前签名）；这是策略限制，不是构建缺陷。
+- 安装包未签名：本机 360 安全卫士会阻止它写 `%LOCALAPPDATA%`，首次安装需用户手动放行；这是策略限制，不是构建缺陷。发布口径按 D-025 采用未签名 + 放行说明，签名留作后续选项。
 - 0.7.6 的成长记录、成长对话框、任务文件审阅都只在测试中验证过，没有在真实项目上完整走一遍。
 - 成长是“模型在复盘回合里写资产文件”，没有跨项目证据门槛，也不会自动改变成员的核心提示词；它不能当作“已实现成长”来对用户宣称。
 - 完成事件是 renderer 级 `localStorage`，按浏览器/应用数据隔离；交付记录/SQLite 才是任务事实源。
@@ -86,18 +79,14 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 - 旧完整 social UI 不再挂载，七个 renderer 模块保留为 dormant；旧 `noema-project-executor.mjs` 保留为 fallback。不要仅凭零引用删除，恢复需要真实入口和验收。
 - AgentRuntime 阶段 1 只接入 Noema 的回合事件和工具轨迹；执行者核心已创建，但执行仍由 `SocialWorkService`/DSH 承担，执行者自己的运行事件尚未接入。可见执行者私聊目前是已有 specialist direct room，不新增独立 AgentRuntime 事件流；`@Noema` 尚未接入。Core Chat 不经过旧 `RootAgent`。
 - 编辑仍是破坏性截断/覆盖：旧用户消息及后续消息被删除，助手旧正文被覆盖；删除/覆盖前已写入 `conversation_archives`，顶栏可恢复最近一次存档，但恢复只回退对话，不随对话回滚工作区文件。
+- 架构图由 `figure:check` 保证与 `docs/ARCHITECTURE.md` 同步：改了架构文档必须运行 `npm run figure:build`（需要本机 Archify 技能与 Edge），CI 只跑 `figure:check`，不重出图。
 - `main.ts` 仍是组合根；main/service/UI 的进一步拆分以真实缺口为驱动，不做无验收的大搬迁。
 - 项目工作区选择在项目创建时完成；项目创建后更换目录仍走对话框，取消选择不改变已有绑定。
+- `apps/desktop/out/Noema-win32-x64/resources/app.asar` 被本机未知句柄锁住，默认 `out/` 构建会回退到 `.tmp/forge-out`（D-024）；这是本机环境问题，CI 的干净 runner 不受影响。
 
-## 下一步
+## 计划在哪
 
-一次只推进一个阶段，顺序由 GitHub Project 看板承载：「Noema V1 路线」的卡片状态就是当前进度，未完成变更归档前不开下一个。
-
-1. **当前阶段：组织模型与成长机制**（`openspec/changes/organization-growth-model/`，看板卡片 C7 #138）：先把团队/项目建模和成长证据门槛设计定清楚，`design.md` 的「待用户决定」由用户确认后再改代码。
-2. **阶段 5 前置：会话拓扑**：`@Noema` 跨房间寻址、执行者事件日志/证据、常驻会话与项目 fork。
-3. **阶段 5：六模块与前端**：用六模块和 ContextCompiler 替换当前提示词/工具/上下文拼装，再做一次主要前端升级。
-4. **收尾**：补工作区文件回滚、任务文件/命令证据完整性，做最终验收与可安装分发（含 Squirrel 或替代安装方式）。
-5. **发布**：0.7.6 需要补发布说明、安装/快捷方式更新和一次真实使用验证，才能算交付；发布前要决定安装包签名（见 `openspec/changes/organization-growth-model/design.md` 待用户决定 4）。
+STATUS 不写计划（D-026）：候选能力与顺序在 [GitHub Project「Noema V1 路线」](https://github.com/orgs/Noema-Harness/projects/1) 的卡片上，卡片状态就是当前进度；本轮切口的执行计划在 `openspec/changes/` 的活动变更里。两者都变化频繁，本文档不镜像。
 
 ## 交付判断
 
