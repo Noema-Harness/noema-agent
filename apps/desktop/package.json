@@ -23,6 +23,7 @@
     "e2e:r0-first-use": "node scripts/r0-first-use-e2e.mjs",
     "e2e:social-provider-live": "node scripts/social-provider-live-e2e.mjs",
     "e2e:windows-runner-readonly-live": "node scripts/windows-runner-live-readonly-e2e.mjs",
+    "e2e:dsh-fake-model": "node scripts/dsh-fake-model-e2e.mjs",
     "e2e:project-plan": "node scripts/project-plan-e2e.mjs",
     "e2e:project-collaboration": "node scripts/project-collaboration-live.mjs",
     "smoke": "node scripts/smoke.mjs",
