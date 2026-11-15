@@ -126,6 +126,16 @@ schtasks /Query /TN NoemaGithubInbox
 
 它只做提醒，不代替 `npm run check`；CI 的正式结论以 GitHub Actions 为准。
 
+### 问题台账（本地讨论）
+
+积压问题不建 issue：这个仓库绝大多数讨论只发生在维护者与本地 agent 之间，云端工单会成为额外的交互成本。台账放本机、随 `.work/` 一起忽略：
+
+- `.work/discussions/LEDGER.md` 是唯一索引，每个 `Q-<id>` 一行；细节在 `.work/discussions/q/<id>.md`。
+- 状态：`open` 等用户决定；`parked` 暂缓并写触发条件；`done` 已定并迁进 `docs/DECISIONS.md` 或看板卡片；`dropped` 作废并写原因。
+- 规则：发散讨论时**先登记再继续**；一轮只推进一个 `open` 项；`open` 超过 12 项时先收敛，不新开问题；登记只写“要定什么 + 建议 + 决定所需事实”，不抄对话。
+- 命令：`npm run questions`（摘要、最久未动项、陈旧提醒）、`npm run questions -- --all`（全部行）、`npm run questions -- --json`。
+- 不在 Git 里：可丢的是过程细节；已定结论必须已在权威文档或卡片上，否则不算 `done`。
+
 ### 规划看板（GitHub Project）
 
 排序与状态只存在于 [GitHub Project「Noema V1 路线」](https://github.com/orgs/Noema-Harness/projects/1)，不在任何文档里镜像。看板是组织级 private 项目，已链接到 `Noema-Harness/noema-agent`：从仓库的 Projects 页或组织的 Projects 页都能进入；换新仓库时用 `gh project link 1 --owner <org> --repo <repo>` 建立链接，否则卡片只在组织页可见。需要 `gh` 已登录且 token 含 `project` scope；看板操作失败（断网、token 过期）只报告并阻塞看板动作，不阻塞代码提交与 `npm run check`。
