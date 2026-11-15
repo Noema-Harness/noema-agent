@@ -276,7 +276,11 @@ test("a milestone is archivable only when tasks, decisions and evidence line up"
     const blocked = checkMilestone(root, { git: fakeGit(), today: TODAY });
     assert.match(blocked.errors.join("\n"), /还有 1 个任务未完成/u);
 
-    write(root, `${change}/tasks.md`, "# tasks\n\n- [x] 第一项\n");
+    write(
+          root,
+          `${change}/tasks.md`,
+          "# tasks\n\n- [x] 第一项\n- [x] 卡片证据：https://github.com/Noema-Harness/noema-agent/issues/138#issuecomment-1\n",
+        );
     write(root, `${change}/design.md`, "# design\n\n## 待用户决定\n\n- [ ] 还没答\n");
     const decided = checkMilestone(root, { git: fakeGit(), today: TODAY });
     assert.match(decided.errors.join("\n"), /还有 1 项待用户决定/u);
@@ -300,6 +304,29 @@ test("a milestone is archivable only when tasks, decisions and evidence line up"
       checkMilestone(root, { git: fakeGit(), today: TODAY }).errors.join("\n"),
       /今天交付必须更新 STATUS/u,
     );
+  }));
+
+test("a product change records card evidence before it can be archived", () =>
+  withRoot((holder) => {
+    const root = makeRoot(holder, { tasks: "# tasks\n\n- [x] 第一项\n" });
+    const change = "openspec/changes/stage-probe";
+    write(root, `${change}/design.md`, "# design\n\n## 待用户决定\n");
+    write(root, `${change}/specs/probe/spec.md`, "# spec\n");
+    write(
+      root,
+      "docs/STATUS.md",
+      `# STATUS\n\n${HEADER}\n源码版本：\`0.7.6\`\n\n当前源码基线：\`f592a9b\`\n\n最后更新：${TODAY}\n`,
+    );
+
+    const missing = checkMilestone(root, { git: fakeGit(), today: TODAY });
+    assert.match(missing.errors.join("\n"), /卡片证据评论链接/u);
+
+    write(
+      root,
+      `${change}/tasks.md`,
+      "# tasks\n\n- [x] 第一项\n- [x] 卡片证据：https://github.com/Noema-Harness/noema-agent/issues/138#issuecomment-1\n",
+    );
+    assert.deepEqual(checkMilestone(root, { git: fakeGit(), today: TODAY }).errors, []);
   }));
 
 test("governance changes declare Plan: none and never ship product code", () =>

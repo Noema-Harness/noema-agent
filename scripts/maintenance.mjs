@@ -29,6 +29,7 @@ const MAX_PENDING_DECISIONS = 3;
 const USER_TASK_PREFIX = "[用户]";
 const USER_CONFIRMATION = /用户确认：\d{4}-\d{2}-\d{2}/u;
 const PLAN_LINK = /^Plan:\s*https:\/\/github\.com\/\S+/mu;
+const CARD_EVIDENCE = /https:\/\/github\.com\/[^\s)|]+\/issues\/\d+#issuecomment-\d+/u;
 const GOVERNANCE_PLAN = /^Plan:\s*none\b/mu;
 
 function readText(file) {
@@ -454,6 +455,17 @@ export function checkMilestone(root, options = {}) {
   }
   if (decisions?.length) {
     errors.push(`还有 ${decisions.length} 项待用户决定，里程碑不能通过：${decisions.join("；")}`);
+  }
+  const proposalText = readText(path.join(directory, "proposal.md")) ?? "";
+  const planKind = planTarget(proposalText);
+  if (planKind === "card") {
+    if (!CARD_EVIDENCE.test(tasks ?? "")) {
+      errors.push(
+        `产品变更 ${change} 归档前要在 tasks.md 写一条卡片证据评论链接（https://github.com/<owner>/<repo>/issues/<n>#issuecomment-<id>）：commit、check 计数与 STATUS 链接贴到卡片`,
+      );
+    }
+  } else if (planKind === "governance") {
+    notices.push("治理变更（Plan: none）：不要求卡片证据评论");
   }
   const specs = markdownFilesUnder(path.join(directory, "specs"));
   if (specs.length === 0) {
