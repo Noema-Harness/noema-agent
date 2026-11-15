@@ -1301,4 +1301,44 @@ export function migrateSocialChatSchema(
       ).run(now);
     })();
   }
+  if (current < 43 && targetVersion >= 43) {
+    db.transaction(() => {
+      // Growth briefs only exist for rounds that actually wrote an asset
+      // revision; history kept truncated tool-call text for `no_change`.
+      db.exec(`
+        CREATE TABLE social_project_growth_members_v43 (
+          batch_id TEXT NOT NULL REFERENCES social_project_growth_batches(id) ON DELETE CASCADE,
+          agent_id TEXT NOT NULL REFERENCES social_agents(id) ON DELETE RESTRICT,
+          session_room_id TEXT NOT NULL REFERENCES social_rooms(id) ON DELETE RESTRICT,
+          status TEXT NOT NULL DEFAULT 'pending'
+            CHECK (status IN ('pending', 'running', 'completed', 'no_change', 'interrupted', 'failed')),
+          turn_id TEXT UNIQUE,
+          brief TEXT,
+          error_code TEXT,
+          error_message TEXT,
+          resident_seen_at TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          completed_at TEXT,
+          PRIMARY KEY (batch_id, agent_id),
+          CHECK ((status IN ('completed', 'no_change')) = (completed_at IS NOT NULL))
+        );
+        INSERT INTO social_project_growth_members_v43
+          (batch_id, agent_id, session_room_id, status, turn_id, brief,
+           error_code, error_message, resident_seen_at,
+           created_at, updated_at, completed_at)
+        SELECT batch_id, agent_id, session_room_id, status, turn_id,
+               CASE WHEN status = 'completed' THEN brief ELSE NULL END,
+               error_code, error_message, resident_seen_at,
+               created_at, updated_at, completed_at
+        FROM social_project_growth_members;
+        DROP TABLE social_project_growth_members;
+        ALTER TABLE social_project_growth_members_v43
+          RENAME TO social_project_growth_members;
+      `);
+      db.prepare(
+        'INSERT INTO social_schema_migrations(version, applied_at) VALUES (43, ?)',
+      ).run(isoNow());
+    })();
+  }
 }

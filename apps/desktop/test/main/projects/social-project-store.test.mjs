@@ -392,30 +392,36 @@ test('project growth is keyed to accepted plan revisions and settles each member
       'experiences/review.md',
       'project hydration must carry growth asset summaries',
     );
-    const firstBriefs = stores.socialProjectStore.getPendingProjectGrowthBriefs(
-      firstClaim.agentId,
-    );
-    assert.equal(firstBriefs.length, 1);
-    assert.equal(firstBriefs[0].text, '本次没有形成新的可复用方法。');
     assert.equal(
-      stores.socialProjectStore.markProjectGrowthBriefsSeen(
-        firstClaim.agentId,
-        [batch.id],
-      ),
-      1,
+      noChangeMember.brief,
+      null,
+      'a review without an asset revision must not keep its text',
     );
     assert.deepEqual(
       stores.socialProjectStore.getPendingProjectGrowthBriefs(
         firstClaim.agentId,
       ),
       [],
+      'a no-change review must not be injected into the resident chat',
     );
-    assert.equal(
+    const secondBriefs =
       stores.socialProjectStore.getPendingProjectGrowthBriefs(
         secondClaim.agentId,
-      ).length,
+      );
+    assert.equal(secondBriefs.length, 1);
+    assert.equal(secondBriefs[0].text, '本次核验方法已记录为经历。');
+    assert.equal(
+      stores.socialProjectStore.markProjectGrowthBriefsSeen(
+        secondClaim.agentId,
+        [batch.id],
+      ),
       1,
-      'one member reading a brief must not mark another member’s brief as seen',
+    );
+    assert.deepEqual(
+      stores.socialProjectStore.getPendingProjectGrowthBriefs(
+        secondClaim.agentId,
+      ),
+      [],
     );
     assert.equal(
       stores.socialProjectStore.createProjectGrowthBatch(project.id).id,

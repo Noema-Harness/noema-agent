@@ -551,7 +551,10 @@ export class SocialProjectStore {
     if (!['completed', 'no_change'].includes(status)) {
       throw new TypeError('成员成长结果状态无效。');
     }
-    const normalizedBrief = requireText(brief, '经历简报', 4_000);
+    const normalizedBrief =
+      status === 'completed' && typeof brief === 'string' && brief.trim()
+        ? requireText(brief, '经历简报', 4_000)
+        : null;
     const now = isoNow();
     return this.db.transaction(() => {
       const existing = this.db
@@ -736,7 +739,8 @@ export class SocialProjectStore {
         FROM social_project_growth_members AS gm
         JOIN social_project_growth_batches AS b ON b.id = gm.batch_id
         JOIN social_projects AS p ON p.id = b.project_id
-        WHERE gm.agent_id = ? AND gm.status IN ('completed', 'no_change')
+        WHERE gm.agent_id = ? AND gm.status = 'completed'
+          AND gm.brief IS NOT NULL AND gm.brief <> ''
           AND gm.resident_seen_at IS NULL
         ORDER BY gm.completed_at DESC, gm.batch_id DESC
       `)

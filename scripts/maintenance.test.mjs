@@ -200,6 +200,22 @@ test("maintenance tooling enforces document, plan and commit gates", () =>
     assert.match(archived.errors.join("\n"), /必须同时更新 docs\/ 或 openspec\/changes\//u);
   }));
 
+test("documented commands must exist, so CI cannot reference a removed script", () =>
+  withRoot((holder) => {
+    const root = makeRoot(holder);
+    write(
+      root,
+      "package.json",
+      `${JSON.stringify({ name: "fixture", version: "0.7.6", scripts: { check: "echo" } }, null, 2)}\n`,
+    );
+    write(root, "README.md", "# README\n\n运行 `npm run workspace:test`。\n");
+    const bad = checkDocuments(root, fakeGit());
+    assert.match(bad.errors.join("\n"), /不存在的脚本 npm run workspace:test/u);
+
+    write(root, "README.md", "# README\n\n运行 `npm run check`；DSH 侧用 `pnpm run dev:web`。\n");
+    assert.deepEqual(checkDocuments(root, fakeGit()).errors, []);
+  }));
+
 test("proposals point at the plan card and resident documents stay free of mirrored plans", () =>
   withRoot((holder) => {
     const root = makeRoot(holder);
