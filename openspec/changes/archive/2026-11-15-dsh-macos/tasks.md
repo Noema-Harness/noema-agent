@@ -21,7 +21,7 @@
 ## 4. 收口
 
 - [x] 4.1 `npm run typecheck` 与受影响测试
-- [ ] 4.2 `npm run check`（本机 lint 缺 oxlint 的 macOS 原生二进制，由 Windows CI 跑；本机用单独安装的原生 oxlint 通过）
+- [x] 4.2 `npm run check`：以 PR #149 的 Windows CI 为准（本机 macOS 上 lint 缺 oxlint 原生二进制、约 20 个 Windows 专属测试按预期失败；分项 typecheck、格式、source/docs/plan/tools 检查本机通过）
 - [x] 4.3 更新 STATUS
 - [x] 4.4 更新卡片正文（现在能做什么 + 手测步骤 / 还没做）
 - [x] 4.5 macOS 上用真实 DSH 跑命令：`npm run e2e:dsh-fake-model`（`scripts/dsh-fake-model-e2e.mjs`，本地假模型驱动 DSH 0.2.2-rc.1 的 bash 工具）4 项全过——可写模式 `ls` 返回工作区清单、`touch` 写入工作区、只读模式拒绝写入、可写模式拒绝写到家目录。原列为 `[用户]`，但“执行轨迹里有 bash 步骤并返回结果”机器可判，改为自动验证（维护者判断，2026-11-16）；在真实模型下派发项目任务的界面手测仍留给用户，见卡片正文。
