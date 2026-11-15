@@ -13,7 +13,7 @@
 1. **选卡并立项**：看板上选本轮推进的卡片（`[C<n>]` issue），移到 In Progress，在 `openspec/changes/<name>/` 立项。proposal 写 `Plan: <卡片链接>`；design 写选择与「## 待用户决定」；tasks 只拆**这一次切口**，不把一个阶段塞进一个 change。纯机制/文档/展示的治理变更写 `Plan: none`，不占能力卡，且不能带 `apps/desktop/src/` 的产品代码。
 2. **开工前**：先看 GitHub 收件箱（`npm run inbox`），有 CI 失败或 PR 变动先处理；然后 `npm run plan:check` 必须通过。未答决策只挡产品代码，先做与之无关的部分，不替用户拍板。
 3. **实现**：交付一个可直接测试的纵切，完成即停。机器能判的验收写成自动测试；只有人能判的写成 `- [ ] [用户] <场景> → 证据`。证据（命令、计数、失败原因）写进 tasks 或 STATUS，文档与代码同一提交。
-4. **收口**：`npm run check` 全绿 → `npm run milestone:check` → 归档变更、合并规格增量、更新 STATUS；在卡片评论贴证据（commit sha、check 计数、STATUS 链接），把卡片移到 Done 并关 issue。
+4. **收口**：`npm run check` 全绿 → `npm run milestone:check` → 归档变更、合并规格增量、更新 STATUS；在卡片评论贴证据（commit sha、check 计数、STATUS 链接），把该评论链接记进 tasks（里程碑会校验），把卡片移到 Done 并关 issue。
 5. **汇报**：开头先给三处摘要——DECISIONS 里待定的条目（编号+一句）、看板 In Progress 哪几张卡、本轮变更剩几项；用户验收项原样带出；用户确认后勾选并写确认日期，同时把对应条目改成 `决定` 并落地产出。
 
 进「待用户决定」的只允许五类，每轮不超过 3 个（超过说明范围没切好）：产品概念与边界、不可逆或难回退的迁移、方案代价差一个量级、只能人判断的验收、对外承诺或额外支出。其余写进 design.md 的「实现选择」，注明维护者判断、用户可推翻。
@@ -41,7 +41,7 @@
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `npm run docs:check`      | 五份文档缺三行头；`docs/` 出现未登记文档；根与 `apps/desktop` 版本不一致；STATUS 的版本/基线/最后更新对不上；钩子没装；config 引用已删文档；DECISIONS 从 D-029 起缺状态或待定缺「下一步/更新」 |
 | `npm run plan:check`      | 活动变更多于 1 个；缺 proposal/design/tasks；tasks 全完成却未归档；proposal 既没写 `Plan:` 卡片链接也没写 `Plan: none`；待决超过 3 项；`[用户]` 项没确认日期就勾选                             |
-| `npm run milestone:check` | 任务没完成；用户验收没确认；还有待决问题；没有规格增量且没声明纯文档变更；STATUS 不是当天更新                                                                                                  |
+| `npm run milestone:check` | 任务没完成；用户验收没确认；还有待决问题；没有规格增量且没声明纯文档变更；产品变更没在 tasks 记卡片证据评论；STATUS 不是当天更新                                                               |
 | `npm run figure:check`    | `docs/ARCHITECTURE.md` 改了但架构图没重出；产物被手改；README 没引用图。重出用 `npm run figure:build`                                                                                          |
 | `.githooks/pre-commit`    | 产品代码（`apps/desktop/src/`）没带计划/状态；有未答决策；行为变更却标了 `skip_specs`；治理变更（`Plan: none`）里出现产品代码。只改 `scripts/` 或文档时放行                                    |
 
@@ -54,7 +54,7 @@
 - **兼容**：只在迁移层处理；渲染层与业务层不留旧字段分支，无效旧数据直接清理。
 - **测试**：优先系统边界（固定 fixture、假 provider、数据库/IPC 契约、真实鼠标事件）；不把模型输出、长等待和人的感觉当自动断言。
 - **依赖与运行时**：不为“更现代”引入无验收的依赖或搬迁；`npm run source:check` 保证生产代码不导入 `test-support`；DSH 是首选执行内核、不是产品身份，native 是回退。
-- **TypeScript**：新源码只写 TypeScript（D-037）；迁移只改类型、不改行为，只用可擦除语法，导入写 `.ts` 扩展名；每批转换后下调 `scripts/source-structure.mjs` 的 `maxJavaScriptSources`。
+- **TypeScript**：新源码只写 TypeScript（D-038）；迁移只改类型、不改行为，只用可擦除语法，导入写 `.ts` 扩展名；每批转换后下调 `scripts/source-structure.mjs` 的 `maxJavaScriptSources`。
 - **环境**：shell 是 Windows PowerShell 5.1，脚本不依赖 `pwsh` 7 语法；日常用受影响单测加 `typecheck`，里程碑前跑全量 `npm run check`，失败先定位不跳过。
 - **范围**：不恢复已删除的旧范围、旧 UI、旧执行器；恢复要有真实入口、需求和验收。
 - **数据**：源码、用户数据、凭据、参考项目、过程材料分开；`.work/` 只放本机过程材料；写入只经工单与工作区，工作区外按次授权，网络默认禁止。

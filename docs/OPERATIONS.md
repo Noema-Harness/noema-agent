@@ -34,7 +34,7 @@ npm run check
 2. `docs:check`：五份权威文档的三行头与路由、版本/基线、git 门槛安装状态；
 3. `figure:check`：架构图产物与 `docs/ARCHITECTURE.md` 摘要、README 引用是否同步；
 4. `plan:check`：OpenSpec 活动变更、`Plan:` 卡片链接、任务清单与未决问题；
-5. `source:check`：源码依赖边界，以及 `src` 下 `.mjs` 数量不增加（D-037 TS 迁移棘轮）；
+5. `source:check`：源码依赖边界，以及 `src` 下 `.mjs` 数量不增加（D-038 TS 迁移棘轮）；
 6. `lint`、`typecheck`、`tools:test`（维护脚本测试）、`test`。
 
 OpenSpec 规格只写可观察行为，不写测试实现：每个新增或修改的 requirement，在本次 change 的 `tasks.md` 里写一条验证（测试文件名或命令）；归档后证据留在 Git 与看板卡片评论里，不把测试名写回常驻 specs，也不新增第二套测试映射。
@@ -90,6 +90,7 @@ npm run branches:prune -- --apply # 执行删除
 | `## 待用户决定` 超过 3 项                             | 先缩本轮范围；超过 3 项说明计划没切干净                                                                                             |
 | `[用户]` 验收项勾选没有确认日期                       | 只有用户明确确认后才勾选，并写成 `（用户确认：YYYY-MM-DD）`                                                                         |
 | milestone 报任务未完成 / 有待决问题 / STATUS 不是当天 | 补完任务、拿到用户答案、更新 STATUS 后再归档                                                                                        |
+| milestone 报产品变更缺卡片证据                        | 把卡片评论链接（`…/issues/<n>#issuecomment-<id>`）写进 tasks；治理变更（`Plan: none`）不需要                                        |
 | 架构文档变了但图没重出（figure:check）                | 运行 `npm run figure:build`；不要手改 html/png；README 必须引用 png 与 html                                                         |
 | pre-commit 拒绝产品代码提交                           | 同一次提交带上计划/状态更新与 specs 增量；未决决策只能等用户回答                                                                    |
 | pre-commit 只提示“工具/治理改动不受未决产品决策阻塞”  | 正常；工具与文档维护不被产品决策卡住                                                                                                |
@@ -140,7 +141,11 @@ gh issue comment <n> --body "证据：commit <sha>，check 873/873，STATUS 链�
 
 每张卡片是 `[C<n>]` issue；收口时先贴证据再关 issue，`npm run check` 的离线门槛只校验 proposal 里的 `Plan:` 链接，不校验远端状态。
 
-工作流：**卡片切口 = 一个 change**。选卡后把卡片移到 In Progress，并在 `openspec/changes/<name>/` 立项；tasks 只拆这次切口（不要把整个阶段塞进一个 change）；收口时归档 change、贴证据、卡片 Done。纯机制/文档/展示的治理变更写 `Plan: none`，不占能力卡，也不能带产品代码（`pre-commit` 会拒绝）。
+状态语义只有两层：卡片 Status 表示**交付状态**——Done 是有自动证据且用户能看到，In Progress 是部分交付（缺口写在卡片正文），Todo 是没开始；**“本轮正在做”由活动变更表示**，同一时刻至多 1 个，不要靠把卡片留在 In Progress 来表示。
+
+工作流：**卡片切口 = 一个 change**。选卡后把卡片移到 In Progress，并在 `openspec/changes/<name>/` 立项；tasks 只拆这次切口（不要把整个阶段塞进一个 change）；收口时归档 change、在卡片贴证据并把评论链接写进 tasks（`milestone:check` 校验）、卡片 Done。纯机制/文档/展示的治理变更写 `Plan: none`，不占能力卡，也不能带产品代码（`pre-commit` 会拒绝）。
+
+三条链路各有一句出口，遇到时照这里走：**接手或会话被压缩**——先跑 `npm run inbox`，再读看板 In Progress、`docs/DECISIONS.md` 待定条目和活动变更 tasks，边界就在这三处（AGENTS §1 步骤 0）。**决定被推翻**——在原条目写 `**被替代**：D-0xx` 指向新条目，不设第三个状态。**归档后发现问题**——开一个新 change（proposal 引用原变更），不改 Git 历史；需要回退版本时按上面「版本与安装」的回滚步骤。
 
 提交门槛只在维护者本机安装，不自动修改协作者配置：git 只在 `core.hooksPath` 指向时才跑仓库里的钩子，新克隆默认没有这道门；协作者靠交付前跑 `npm run check` 保证，同样的检查在 `check` 里也会跑一遍。维护者本机安装：
 
