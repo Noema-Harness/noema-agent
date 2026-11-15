@@ -13,6 +13,8 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 ## 开发
 
+九步循环与每一步写哪份文档见 [AGENTS](../AGENTS.md) §1；本文只写命令、环境与报错修法。
+
 ```powershell
 npm ci
 npm run dev
