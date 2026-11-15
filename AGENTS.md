@@ -12,8 +12,8 @@
 
 1. **选卡并立项**：看板上选本轮推进的卡片（`[C<n>]` issue），移到 In Progress，在 `openspec/changes/<name>/` 立项。proposal 写 `Plan: <卡片链接>`；design 写选择与「## 待用户决定」；tasks 只拆**这一次切口**，不把一个阶段塞进一个 change。纯机制/文档/展示的治理变更写 `Plan: none`，不占能力卡，且不能带 `apps/desktop/src/` 的产品代码。
 2. **开工前**：先看 GitHub 收件箱（`npm run inbox`），有 CI 失败或 PR 变动先处理；然后 `npm run plan:check` 必须通过。未答决策只挡产品代码，先做与之无关的部分，不替用户拍板。
-3. **实现**：交付一个可直接测试的纵切，完成即停。机器能判的验收写成自动测试；只有人能判的写成 `- [ ] [用户] <场景> → 证据`。证据（命令、计数、失败原因）写进 tasks 或 STATUS，文档与代码同一提交。
-4. **收口**：`npm run check` 全绿 → `npm run milestone:check` → 归档变更、合并规格增量、更新 STATUS；在卡片评论贴证据（commit sha、check 计数、STATUS 链接），把该评论链接记进 tasks（里程碑会校验）。推送后不等 CI：本机 `npm run check` 是每轮门槛，GitHub Actions 由收件箱在下一轮开场报告；只有合并 PR、发布或收到红色通知时才主动看。提交信息写明本轮的 change 名与并入的规格文件——归档目录不入库，提交信息、STATUS 与卡片评论是仓库里能查到的计划痕迹。本轮只交付这张卡的一部分时，同一提交里把卡片正文的「已完成 / 缺口」改成当前事实（正文写现在，不写日志），卡片留在 In Progress；整张卡完成才移到 Done 并关 issue。
+3. **实现**：交付一个可直接测试的纵切，完成即停。轮内验证是 `npm run typecheck` 加受影响的测试文件（秒级）；全量 `npm run check` 不在轮内重复跑。机器能判的验收写成自动测试；只有人能判的写成 `- [ ] [用户] <场景> → 证据`。证据（命令、计数、失败原因）写进 tasks 或 STATUS，文档与代码同一提交。
+4. **里程碑收口**（一张卡的一个切口完成时）：`npm run check` 全绿 → `npm run milestone:check` → 归档变更、合并规格增量、更新 STATUS；在卡片评论贴证据（commit sha、check 计数、STATUS 链接），把该评论链接记进 tasks（里程碑会校验）。推送后不等 CI：GitHub Actions 由收件箱在下一轮开场报告；只有合并 PR、发布或收到红色通知时才主动看。提交信息写明本轮的 change 名与并入的规格文件——归档目录不入库，提交信息、STATUS 与卡片评论是仓库里能查到的计划痕迹。本轮只交付这张卡的一部分时，同一提交里把卡片正文的「已完成 / 缺口」改成当前事实（正文写现在，不写日志），卡片留在 In Progress；整张卡完成才移到 Done 并关 issue。
 5. **汇报**：开头先给三处摘要——DECISIONS 里待定的条目（编号+一句）、看板 In Progress 哪几张卡、本轮变更剩几项；用户验收项原样带出；用户确认后勾选并写确认日期，同时把对应条目改成 `决定` 并落地产出。
 
 进「待用户决定」的只允许五类，每轮不超过 3 个（超过说明范围没切好）：产品概念与边界、不可逆或难回退的迁移、方案代价差一个量级、只能人判断的验收、对外承诺或额外支出。其余写进 design.md 的「实现选择」，注明维护者判断、用户可推翻。
@@ -44,6 +44,8 @@
 | `npm run milestone:check` | 任务没完成；用户验收没确认；还有待决问题；没有规格增量且没声明纯文档变更；产品变更没在 tasks 记卡片证据评论；STATUS 不是当天更新                                                                       |
 | `npm run figure:check`    | `docs/ARCHITECTURE.md` 改了但架构图没重出；产物被手改；README 没引用图。重出用 `npm run figure:build`                                                                                                  |
 | `.githooks/pre-commit`    | 产品代码（`apps/desktop/src/`）没带计划/状态；本轮变更的计划还没进 HEAD（计划先于实现）；有未答决策；行为变更却标了 `skip_specs`；治理变更（`Plan: none`）里出现产品代码。只改 `scripts/` 或文档时放行 |
+
+频率：`pre-commit`、`plan:check`、`docs:check`、`figure:check` 是秒级，每次提交或每轮跑；全量 `npm run check` 是**里程碑门槛**——一张卡的一个切口完成时才跑一次。CI 是里程碑之后的异步验证。
 
 三条原则：门槛只拦已知会坏的事，每条都指向修法；未答决策只挡产品行为，不挡机制维护；绕过方法只有 `--no-verify`，那等于明说不走这个流程。具体报错与修法见 `docs/OPERATIONS.md`。
 
