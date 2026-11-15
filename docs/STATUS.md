@@ -23,6 +23,7 @@ Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与�
 - 治理模型（change `governance-model`）：规则登记表 `RULES` 与 `node scripts/governance.mjs audit` 落地（26 条拦截 / 3 条提醒 / 5 条观察期）；兼容层检查降为提醒；无证据规则（待决上限、DECISIONS 五字段必填）已删。新建规则须有一次真实触发记录，观察期规则连续两个里程碑无触发即降级（D-20261115-governance-model）。
 - 规划层与执行层（change `evidence-in-repo`）：`milestone:check` 不再要求卡片证据评论，只要求 tasks 记“更新卡片正文”；14 张能力卡正文统一为「现在能做什么（含手测步骤）/ 还没做 / 边界」并清空 11 条交付评论；交付证据留在提交信息、变更 tasks 与 STATUS（D-20261115-evidence-in-repo，D-037 作废）。
 - 成长写入（change `project-growth-integrity`）：迁移 43 重建 `social_project_growth_members`（`brief` 只在 `completed` 必填，历史 `no_change` 简报已清空）；provider 对“工具调用写成正文”先做一次修正重试，仍失败返回可重试错误；`no_change` 不再保存或注入简报。规格已合并进 `openspec/specs/specialist-agents/spec.md`。
+- DSH 支持 macOS（change `dsh-macos`，C15 #148）：`resolveDshHeadlessRuntime` 在 macOS 上从打包目录 `dsh-runtime/node` 或 PATH 上的 npm 全局 `dsh`（解析到 `@deepseek-ai/dsh/lib/bin.js`）加 Node 24.21+ 启动 DSH；worker 补丁只开宿主平台的 shell 工具（macOS `tool-bash`、Windows `tool-pwsh`），环境白名单按平台。平台事实集中在新模块 `src/main/platform/host-platform.ts`，适配器与 `stage-dsh-runtime.mjs` 不再自己判断平台。本机实测：Mac 版 DSH 0.2.2-rc.1 在 Noema 补丁下 `--dump-config` 显示 `tool-bash` 开、`tool-pwsh`/`pwsh-sandbox` 关；macOS + Node 24 全量 885 个测试 864 过、20 败（均为只在 Windows 上能过的用例，无新增），原先 2 个 Windows 专属的 DSH 查找测试现在任一主机可过。2026-11-15 同机实测：`npm run smoke` 通过，`npm run package` 产出 `Noema-darwin-arm64/Noema.app` 并能启动建库。
 
 ## 未验证
 
@@ -30,6 +31,7 @@ Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与�
 - 真实 `%LOCALAPPDATA%` 安装与跨版本升级：本机工作区带 Low 完整性标签，区内构建的 exe 写不了用户目录；CI 覆盖了这条路径，本机只验证到载荷安装。
 - 真实项目上把成长批次跑通并产出资产：本轮只修写入可靠性（测试覆盖迁移与修正重试），没有在真实 provider 上重跑一次项目复盘；现有真实样本仍是一次 `no_change` 的失败记录。
 - 类型检查覆盖（D-039）：`src` 下仍有 67 个 `.mjs` 不受类型检查（含 `social-chat-service`/`social-chat-store`/`social-work-service`/`root-store`/`root-ipc`），`strict` 未开启；已转换的 `.ts` 由 `npm run typecheck` 覆盖，`source:check` 保证 `.mjs` 数量只减不增。
+- macOS 上装了 DSH 后真实派发一个跑命令的项目任务（本机未全局安装 `@deepseek-ai/dsh`，也没有可用的模型 key）；未签名 Mac 包在别的机器上能否打开；Linux 只走同一条 POSIX 分支，未实测。
 
 ## 交付判断
 

@@ -2,7 +2,7 @@
 
 改动落点：`integrations/dsh-headless-adapter.mjs`（运行时查找、worker 补丁、worker 环境）与 `scripts/stage-dsh-runtime.mjs`。
 共享逻辑不移动：查找、补丁、环境仍在适配器一个文件里，只按平台分支。
-不新增路径或兼容层：Windows 的查找顺序与产物保持不变，macOS 是并列的另一组候选。
+新增一个平台事实模块 `platform/host-platform.ts`，不新增兼容层：Windows 的查找顺序与产物保持不变，macOS 是并列的另一组候选。
 
 ## Context
 
@@ -15,7 +15,7 @@
 
 - **macOS 的 DSH 来源**：PATH 上的 `dsh`（`npm i -g @deepseek-ai/dsh`），解析符号链接得到 `@deepseek-ai/dsh/lib/bin.js`；Node 取 `NOEMA_DSH_NODE`，再取 PATH 上的 `node`，要求 24.21+。打包目录 `resources/dsh-runtime/node` 优先，和 Windows 一致。
 - **不复用 DeepSeek Harness.app 的命令行**：它要用 Harness 自己的 Electron 以 `ELECTRON_RUN_AS_NODE` 启动 `dsh-desktop-host/lib/cli.js`，依赖桌面版内部结构，升级时容易断。
-- **路径按目标平台拼接**：`platform === 'win32' ? path.win32 : path.posix`，让 Windows 与 macOS 的查找逻辑都能在任一主机上单测。
+- **平台事实集中在 `src/main/platform/host-platform.ts`**：路径规则（按目标平台而不是宿主平台）、可执行文件名、npm 全局目录、DSH shell 工具、worker 环境白名单都由 `hostPlatform(id)` 给出，适配器与暂存脚本不再比较 `process.platform`。这是用户 2026-11-15 提出“与 Windows 解耦、便于扩展到 Linux/移动端”后的第一步；整体解耦另行出方案。
 - **Linux**：查找走 POSIX 分支，但本轮只在 macOS 上实测；规格只承诺 macOS。
 
 ## 用户可观察的改变

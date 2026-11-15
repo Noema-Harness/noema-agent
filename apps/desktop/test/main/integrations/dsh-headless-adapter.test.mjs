@@ -8,6 +8,7 @@ import test from 'node:test';
 import {
   DshHeadlessAdapter,
   DshHeadlessError,
+  makeLocalWorkerEnvironment,
   makeNoemaDshWorkerPatch,
   normalizeDshReportedUsage,
   parseDshHeadlessEvent,
@@ -80,7 +81,9 @@ class FakeChild extends EventEmitter {
 
 test('worker patch uses the selected model through a generic compatible provider', () => {
   const model = routerModel;
-  const patch = makeNoemaDshWorkerPatch(model, 'http://127.0.0.1:31415/v1');
+  const patch = makeNoemaDshWorkerPatch(model, 'http://127.0.0.1:31415/v1', {
+    platform: 'win32',
+  });
   assert.match(patch, /provider: noema-model/);
   assert.match(patch, /model: "auto:noema-free"/);
   assert.match(patch, /- id: llm-pi-ai[\s\S]*api: openai-completions/);
@@ -116,11 +119,66 @@ test('worker patch disables direct file tools for product chat profiles', () => 
   const patch = makeNoemaDshWorkerPatch(
     routerModel,
     'http://127.0.0.1:31415/v1',
-    { profile: 'noema' },
+    { profile: 'noema', platform: 'win32' },
   );
   assert.match(patch, /- id: tool-pwsh\n  disabled: false/);
   assert.match(patch, /- id: tool-fs\n  disabled: true/);
   assert.doesNotMatch(patch, /tool-str-replace-editor/);
+});
+
+test('worker patch enables only the host platform shell', () => {
+  const mac = makeNoemaDshWorkerPatch(
+    routerModel,
+    'http://127.0.0.1:31415/v1',
+    {
+      platform: 'darwin',
+    },
+  );
+  assert.match(mac, /- id: tool-bash\n  disabled: false/);
+  assert.doesNotMatch(mac, /tool-pwsh/);
+  const windows = makeNoemaDshWorkerPatch(
+    routerModel,
+    'http://127.0.0.1:31415/v1',
+    { platform: 'win32' },
+  );
+  assert.match(windows, /- id: tool-pwsh\n  disabled: false/);
+  assert.doesNotMatch(windows, /tool-bash/);
+});
+
+test('worker environment keeps only the host platform allowlist', () => {
+  const parent = {
+    HOME: '/Users/someone',
+    TMPDIR: '/var/folders/x/T/',
+    PATH: '/opt/homebrew/bin:/usr/bin:/bin',
+    LANG: 'zh_CN.UTF-8',
+    SHELL: '/bin/zsh',
+    USERPROFILE: 'C:\\Users\\someone',
+    AWS_SECRET_ACCESS_KEY: 'leak',
+    OPENAI_API_KEY: 'leak',
+  };
+  const mac = makeLocalWorkerEnvironment({
+    parent,
+    userDataPath: '/tmp/noema',
+    apiKey: 'model-key',
+    platform: 'darwin',
+  });
+  assert.equal(mac.HOME, '/Users/someone');
+  assert.equal(mac.TMPDIR, '/var/folders/x/T/');
+  assert.equal(mac.PATH, '/opt/homebrew/bin:/usr/bin:/bin');
+  assert.equal(mac.SHELL, '/bin/zsh');
+  assert.equal(mac.USERPROFILE, undefined);
+  assert.equal(mac.AWS_SECRET_ACCESS_KEY, undefined);
+  assert.equal(mac.OPENAI_API_KEY, undefined);
+  assert.equal(mac.NOEMA_MODEL_API_KEY, 'model-key');
+  const windows = makeLocalWorkerEnvironment({
+    parent,
+    userDataPath: 'C:\\noema',
+    apiKey: 'model-key',
+    platform: 'win32',
+  });
+  assert.equal(windows.USERPROFILE, 'C:\\Users\\someone');
+  assert.equal(windows.HOME, undefined);
+  assert.equal(windows.AWS_SECRET_ACCESS_KEY, undefined);
 });
 
 test('product chat profiles are forced into read-only permission mode', async () => {
@@ -249,6 +307,7 @@ test('discovers DSH without launching its profile as a preflight side effect', a
 
   const runtime = await resolveDshHeadlessRuntime({
     env: {},
+    platform: 'win32',
     execFileImpl,
     readFileImpl: async () => '{"version":"0.1.0"}',
   });
@@ -269,6 +328,7 @@ test('prefers the pinned DSH runtime bundled with the app', async () => {
   const checked = [];
   const runtime = await resolveDshHeadlessRuntime({
     env: {},
+    platform: 'win32',
     resourcesPath: 'C:\\app\\resources',
     accessImpl: async (candidate) => checked.push(candidate),
     readFileImpl: async () => '{"version":"0.1.7-rc.2"}',
@@ -289,6 +349,101 @@ test('prefers the pinned DSH runtime bundled with the app', async () => {
   assert.equal(checked.length, 2);
 });
 
+test('macOS prefers the DSH runtime bundled with the app', async () => {
+  const runtime = await resolveDshHeadlessRuntime({
+    env: { PATH: '/usr/bin' },
+    platform: 'darwin',
+    resourcesPath: '/Applications/Noema.app/Contents/Resources',
+    accessImpl: async () => {},
+    readFileImpl: async () => '{"version":"0.2.2-rc.1"}',
+    execFileImpl: async (executable, args) => {
+      assert.deepEqual(args, ['--version']);
+      assert.equal(
+        executable,
+        '/Applications/Noema.app/Contents/Resources/dsh-runtime/node',
+      );
+      return { stdout: 'v24.21.0' };
+    },
+  });
+  assert.deepEqual(runtime, {
+    nodeExecutable:
+      '/Applications/Noema.app/Contents/Resources/dsh-runtime/node',
+    dshBin:
+      '/Applications/Noema.app/Contents/Resources/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/bin.js',
+    npmPrefix: '/Applications/Noema.app/Contents/Resources/dsh-runtime',
+    version: '0.2.2-rc.1',
+    source: 'bundled',
+  });
+});
+
+test('macOS finds an npm-global DSH on PATH without booting a profile', async () => {
+  const calls = [];
+  const runtime = await resolveDshHeadlessRuntime({
+    // `relative` is not absolute and must be ignored; /usr/local/bin/dsh is a
+    // different tool; /opt/homebrew/bin/dsh links to the npm package.
+    env: {
+      PATH: 'relative:/usr/local/bin:/opt/homebrew/bin:/usr/bin',
+      NOEMA_DSH_NODE: '/old/node',
+    },
+    platform: 'darwin',
+    resourcesPath: '/Applications/Noema.app/Contents/Resources',
+    accessImpl: async (candidate) => {
+      if (
+        candidate === '/usr/local/bin/dsh' ||
+        candidate === '/opt/homebrew/bin/dsh'
+      )
+        return;
+      throw Object.assign(new Error('missing'), { code: 'ENOENT' });
+    },
+    realpathImpl: async (candidate) =>
+      candidate === '/opt/homebrew/bin/dsh'
+        ? '/opt/homebrew/lib/node_modules/@deepseek-ai/dsh/lib/bin.js'
+        : '/usr/local/Cellar/other-dsh/bin/dsh',
+    readFileImpl: async (file) => {
+      assert.equal(
+        file,
+        '/opt/homebrew/lib/node_modules/@deepseek-ai/dsh/package.json',
+      );
+      return '{"version":"0.2.2-rc.1"}';
+    },
+    execFileImpl: async (executable, args) => {
+      calls.push({ executable, args });
+      assert.deepEqual(args, ['--version']);
+      if (executable === '/old/node') return { stdout: 'v22.11.0' };
+      if (executable === '/opt/homebrew/bin/node')
+        return { stdout: 'v24.21.0' };
+      throw Object.assign(new Error('missing'), { code: 'ENOENT' });
+    },
+  });
+  assert.deepEqual(runtime, {
+    nodeExecutable: '/opt/homebrew/bin/node',
+    dshBin: '/opt/homebrew/lib/node_modules/@deepseek-ai/dsh/lib/bin.js',
+    npmPrefix: '/opt/homebrew/lib',
+    version: '0.2.2-rc.1',
+    source: 'external',
+  });
+  assert.equal(
+    calls.some((call) => call.args.includes('--profile')),
+    false,
+  );
+});
+
+test('macOS reports a missing DSH instead of an unsupported platform', async () => {
+  await assert.rejects(
+    resolveDshHeadlessRuntime({
+      env: { PATH: '/usr/bin:/bin' },
+      platform: 'darwin',
+      resourcesPath: '/Applications/Noema.app/Contents/Resources',
+      accessImpl: async () => {
+        throw Object.assign(new Error('missing'), { code: 'ENOENT' });
+      },
+      execFileImpl: async () => assert.fail('no process may start'),
+    }),
+    (error) =>
+      error instanceof DshHeadlessError && error.code === 'dsh_not_found',
+  );
+});
+
 test('worker process streams safe status events and reports the final result', async () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'noema-dsh-adapter-'));
   const workspace = path.join(directory, 'workspace');
@@ -305,6 +460,7 @@ test('worker process streams safe status events and reports the final result', a
       getApiKey: () => 'test-free-key',
       onUsage: (record) => usageRecords.push(record),
       env: { PATH: 'C:\\node' },
+      platform: 'win32',
       spawnImpl: (executable, args, options) => {
         launch = { executable, args, options };
         return child;
