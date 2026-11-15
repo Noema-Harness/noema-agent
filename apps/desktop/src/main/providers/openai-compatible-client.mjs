@@ -552,6 +552,35 @@ export class OpenAICompatibleClient {
         const dsmlCalls = parseDsmlToolCalls(text);
         if (dsmlCalls.length) {
           onToolCalls(dsmlCalls, requestMetadata.requestId);
+        } else if (tools?.length) {
+          try {
+            assertUsableToolReply({
+              finishReason: choice?.finish_reason,
+              text,
+            });
+          } catch (error) {
+            if (toolCallCorrectionAttempt < 2) {
+              if (text) yield text;
+              yield* this.streamChat({
+                model,
+                messages: buildTextToolCorrectionMessages(messages, text),
+                signal,
+                maxTokens,
+                tools,
+                toolChoice,
+                onToolCalls,
+                onRouteMetadata,
+                toolCallCorrectionAttempt: toolCallCorrectionAttempt + 1,
+                usageOperation,
+                usageInteractionId,
+                usageExecutionId,
+                usageTurnId,
+                usageParentExecutionId,
+              });
+              return;
+            }
+            throw error;
+          }
         }
       }
       if (text) yield text;
@@ -565,6 +594,7 @@ export class OpenAICompatibleClient {
     let totalBytes = 0;
     const toolCalls = new Map();
     let responseText = '';
+    let finishReason = null;
     let correctionMessages = null;
     let finalUsage = null;
     try {
@@ -599,6 +629,9 @@ export class OpenAICompatibleClient {
               payload.choices[0].delta.tool_calls.length > 0)
           ) {
             reportFirstOutput();
+          }
+          if (typeof payload?.choices?.[0]?.finish_reason === 'string') {
+            finishReason = payload.choices[0].finish_reason;
           }
           if (text) {
             responseText += text;
@@ -665,6 +698,19 @@ export class OpenAICompatibleClient {
         const dsmlCalls = parseDsmlToolCalls(responseText);
         if (dsmlCalls.length) {
           onToolCalls(dsmlCalls, requestMetadata.requestId);
+        } else if (tools?.length) {
+          try {
+            assertUsableToolReply({ finishReason, text: responseText });
+          } catch (error) {
+            if (toolCallCorrectionAttempt < 2) {
+              correctionMessages = buildTextToolCorrectionMessages(
+                messages,
+                responseText,
+              );
+            } else {
+              throw error;
+            }
+          }
         }
       }
       recordUsage('completed', finalUsage);
@@ -963,6 +1009,24 @@ const DSML_PARAMETER_RE = new RegExp(
   'gi',
 );
 
+const DSML_MARK_RE = new RegExp(DSML_MARK);
+
+/**
+ * Removes any tool-call markup a model wrote as plain text; everything from the
+ * first marker onward is transport noise, not part of the answer.
+ * @param {string} text
+ */
+export function stripToolCallMarkup(text) {
+  if (typeof text !== 'string') return '';
+  const marker = text.search(DSML_MARK_RE);
+  if (marker === -1) return text.trim();
+  const start = text[marker - 1] === '<' ? marker - 1 : marker;
+  return text
+    .slice(0, start)
+    .replace(/<[^>]*$/u, '')
+    .trim();
+}
+
 function decodeDsmlText(value) {
   return String(value)
     .replaceAll('&quot;', '"')
@@ -1003,6 +1067,21 @@ export function parseDsmlToolCalls(text) {
     });
   }
   return calls;
+}
+
+function assertUsableToolReply({ finishReason, text }) {
+  if (finishReason === 'length') {
+    throw new ModelProviderError(
+      'response_truncated',
+      '模型输出被长度限制截断，没有执行任何工具调用。消息已保留，可以重试。',
+    );
+  }
+  if (DSML_MARK_RE.test(text)) {
+    throw new ModelProviderError(
+      'tool_call_unparsed',
+      '模型把工具调用写成了文本，本轮没有执行任何工具。消息已保留，可以重试。',
+    );
+  }
 }
 
 function collectToolCallDeltas(payload, toolCalls) {
@@ -1069,6 +1148,19 @@ function isRecoverableToolCallArgumentsError(error) {
     Array.isArray(error.invalidToolCallIds) &&
     error.invalidToolCallIds.length > 0
   );
+}
+
+function buildTextToolCorrectionMessages(messages, responseText) {
+  return [
+    ...messages,
+    { role: 'assistant', content: responseText || null },
+    {
+      role: 'user',
+      content:
+        '你上一次没有发出真实的工具调用：调用被写成了正文文字，或者输出被截断。' +
+        '请只发出这次复盘需要的工具调用；工具调用之后再写不超过 200 字的简述。',
+    },
+  ];
 }
 
 function buildToolCorrectionMessages(messages, responseText, error) {

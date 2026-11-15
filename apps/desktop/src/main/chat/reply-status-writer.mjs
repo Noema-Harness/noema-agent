@@ -1,3 +1,5 @@
+import { stripToolCallMarkup } from '../providers/openai-compatible-client.mjs';
+
 export class ReplyStatusWriter {
   constructor({
     store,
@@ -25,7 +27,8 @@ export class ReplyStatusWriter {
       if (!updated) return false;
       if (status === 'complete') {
         const reply = this.store.getSocialMessage(ids[0]);
-        if (!reply?.content.trim()) return false;
+        const content = reply?.content?.trim() ?? '';
+        if (!content) return false;
         const hasAssetChange = Boolean(
           this.store.db
             .prepare(`
@@ -41,7 +44,11 @@ export class ReplyStatusWriter {
             run.agentId,
             {
               status: hasAssetChange ? 'completed' : 'no_change',
-              brief: reply.content,
+              // Only a real asset revision carries experience; the visible text
+              // is what the resident chat should read later, without tool markup.
+              brief: hasAssetChange
+                ? stripToolCallMarkup(content).slice(0, 4_000) || null
+                : null,
             },
           );
           if (batch.status === 'completed') {

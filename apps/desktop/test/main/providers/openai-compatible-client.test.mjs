@@ -7,6 +7,7 @@ import {
   normalizeBaseUrl,
   parseDsmlToolCalls,
   resolveConfiguredModelBaseUrl,
+  stripToolCallMarkup,
 } from '../../../src/main/providers/openai-compatible-client.mjs';
 
 test('a new model client defaults to the direct HTTPS provider endpoint', () => {
@@ -1631,5 +1632,168 @@ test('classifies an oversized model request without exposing gateway diagnostics
       error.status === 413 &&
       /缩小委托内容/u.test(error.message) &&
       !/private TPM diagnostic|20449|test-key/u.test(error.message),
+  );
+});
+
+function sseChunk(payload) {
+  return `data: ${JSON.stringify(payload)}\n\n`;
+}
+
+function sseResponse(chunks) {
+  const encoder = new TextEncoder();
+  return new Response(
+    new ReadableStream({
+      start(controller) {
+        for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
+        controller.close();
+      },
+    }),
+    { status: 200, headers: { 'content-type': 'text/event-stream' } },
+  );
+}
+
+test('stripToolCallMarkup keeps the visible answer and drops tool markup', () => {
+  const raw =
+    '本次复盘没有需要写入的变化。\n\n<｜｜DSML｜｜ calls><｜｜DSML｜｜ invoke name="manage_member_assets">';
+  assert.equal(stripToolCallMarkup(raw), '本次复盘没有需要写入的变化。');
+  assert.equal(stripToolCallMarkup('普通回复'), '普通回复');
+  assert.equal(stripToolCallMarkup(''), '');
+});
+
+test('rejects a reply that wrote the tool call as text instead of calling it', async () => {
+  const chunks = [
+    sseChunk({ choices: [{ delta: { content: '我先看看自己的资产。' } }] }),
+    sseChunk({
+      choices: [
+        {
+          delta: {
+            content:
+              '<｜｜DSML｜｜ calls><｜｜DSML｜｜ invoke name="manage_member_assets">',
+          },
+        },
+      ],
+    }),
+    'data: [DONE]\n',
+  ];
+  let receivedCalls = null;
+  const client = new OpenAICompatibleClient({
+    getApiKey: () => 'test-key',
+    fetchImpl: async () => sseResponse(chunks),
+  });
+
+  await assert.rejects(
+    async () => {
+      for await (const _delta of client.streamChat({
+        model: 'deepseek-flash',
+        messages: [{ role: 'user', content: '复盘' }],
+        signal: new AbortController().signal,
+        tools: [
+          { type: 'function', function: { name: 'manage_member_assets' } },
+        ],
+        onToolCalls: (calls) => {
+          receivedCalls = calls;
+        },
+      })) {
+        /* text may stream before the markup is known to be unparseable */
+      }
+    },
+    (error) =>
+      error.code === 'tool_call_unparsed' &&
+      /没有执行任何工具/u.test(error.message),
+  );
+  assert.equal(receivedCalls, null);
+});
+
+test('retries once when the model writes the tool call as text', async () => {
+  const first = [
+    sseChunk({ choices: [{ delta: { content: '我先看看自己的资产。' } }] }),
+    sseChunk({
+      choices: [
+        {
+          delta: {
+            content:
+              '<｜｜DSML｜｜ calls><｜｜DSML｜｜ invoke name="manage_member_assets">',
+          },
+        },
+      ],
+    }),
+    'data: [DONE]\n',
+  ];
+  const second = [
+    sseChunk({
+      choices: [
+        {
+          delta: {
+            tool_calls: [
+              {
+                index: 0,
+                id: 'call_retry_1',
+                type: 'function',
+                function: {
+                  name: 'manage_member_assets',
+                  arguments: '{"path":"experiences/pricing.md"}',
+                },
+              },
+            ],
+          },
+        },
+      ],
+    }),
+    sseChunk({ choices: [{ delta: { content: '已记录到经历。' } }] }),
+    'data: [DONE]\n',
+  ];
+  let fetches = 0;
+  const receivedCalls = [];
+  const client = new OpenAICompatibleClient({
+    getApiKey: () => 'test-key',
+    fetchImpl: async () => {
+      fetches += 1;
+      return sseResponse(fetches === 1 ? first : second);
+    },
+  });
+
+  let answer = '';
+  for await (const delta of client.streamChat({
+    model: 'deepseek-flash',
+    messages: [{ role: 'user', content: '复盘' }],
+    signal: new AbortController().signal,
+    tools: [{ type: 'function', function: { name: 'manage_member_assets' } }],
+    onToolCalls: (calls) => receivedCalls.push(...calls),
+  })) {
+    answer += delta;
+  }
+
+  assert.equal(fetches, 2, 'one corrective retry is made');
+  assert.equal(receivedCalls.length, 1);
+  assert.equal(receivedCalls[0].function.name, 'manage_member_assets');
+  assert.match(answer, /已记录到经历。?/u);
+});
+
+test('rejects a truncated tool reply instead of storing the partial text', async () => {
+  const chunks = [
+    sseChunk({ choices: [{ delta: { content: '先确认一下目标' } }] }),
+    sseChunk({ choices: [{ delta: {}, finish_reason: 'length' }] }),
+    'data: [DONE]\n',
+  ];
+  const client = new OpenAICompatibleClient({
+    getApiKey: () => 'test-key',
+    fetchImpl: async () => sseResponse(chunks),
+  });
+
+  await assert.rejects(
+    async () => {
+      for await (const _delta of client.streamChat({
+        model: 'deepseek-flash',
+        messages: [{ role: 'user', content: '复盘' }],
+        signal: new AbortController().signal,
+        tools: [
+          { type: 'function', function: { name: 'manage_member_assets' } },
+        ],
+      })) {
+        /* text may stream before truncation is known */
+      }
+    },
+    (error) =>
+      error.code === 'response_truncated' && /长度限制/u.test(error.message),
   );
 });
