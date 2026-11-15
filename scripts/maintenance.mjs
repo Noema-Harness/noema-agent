@@ -565,6 +565,21 @@ export function checkPrecommit(root, options = {}) {
         `活动变更仍有待用户决定的问题，相关产品行为不能实现：${plan.pending.join("；")}；工具与文档改动不受此限`,
       );
     }
+    if (productCode.length && plan.change) {
+      const committedPlan = git([
+        "ls-tree",
+        "-r",
+        "--name-only",
+        "HEAD",
+        "--",
+        `openspec/changes/${plan.change}`,
+      ]).text.trim();
+      if (!committedPlan) {
+        errors.push(
+          `本轮变更 ${plan.change} 的计划还没有提交：先单独提交 openspec/changes/${plan.change}/（proposal/design/tasks），再提交产品代码；计划先于实现，才有可回看的开工依据`,
+        );
+      }
+    }
     if (productCode.length && plan.planKind === "governance") {
       errors.push(
         `活动变更 ${plan.change} 写的是 Plan: none（治理变更），但这次提交含产品代码：产品行为必须有对应卡片与规格增量`,

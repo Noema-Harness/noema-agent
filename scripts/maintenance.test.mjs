@@ -20,9 +20,17 @@ const HEADER = "Authority: 测试\nUpdate when: 测试\nDoes not own: 测试\n";
 const TODAY = localToday();
 const BOARD = "https://github.com/orgs/Noema-Harness/projects/1";
 
-function fakeGit({ baseline = true, hooksPath = ".githooks", dirty = false } = {}) {
+function fakeGit({
+  baseline = true,
+  hooksPath = ".githooks",
+  dirty = false,
+  committedPlan = true,
+} = {}) {
   return (args) => {
     if (args[0] === "merge-base") return { ok: baseline, text: "" };
+    if (args[0] === "ls-tree") {
+      return { ok: true, text: committedPlan ? "openspec/changes/stage-probe/proposal.md\n" : "" };
+    }
     if (args[0] === "config") return { ok: true, text: `${hooksPath}\n` };
     if (args[0] === "status") return { ok: true, text: dirty ? " M docs/STATUS.md\n" : "" };
     return { ok: true, text: "" };
@@ -356,10 +364,7 @@ test("a decision id carries its date so parallel branches never renumber", () =>
     { today: TODAY },
   );
   assert.deepEqual(ok.errors, []);
-  const pending = checkDecisionEntries(
-    "## D-20261115-probe\n\n**状态**：待定\n",
-    { today: TODAY },
-  );
+  const pending = checkDecisionEntries("## D-20261115-probe\n\n**状态**：待定\n", { today: TODAY });
   assert.match(pending.errors.join("\n"), /待定条目，缺少/u);
 });
 
@@ -371,6 +376,19 @@ test("a product change designs what the user can observe and how to test it", ()
     const errors = checkPlan(root, { skipSpecValidation: true }).errors.join("\n");
     assert.match(errors, /用户可观察的改变/u);
     assert.match(errors, /手测步骤/u);
+  }));
+
+test("product code waits until the round's plan is committed", () =>
+  withRoot((holder) => {
+    const root = makeRoot(holder);
+    const staged = ["apps/desktop/src/main/main.ts", "openspec/changes/stage-probe/tasks.md"];
+    const blocked = checkPrecommit(root, {
+      git: fakeGit({ committedPlan: false }),
+      stagedPaths: staged,
+    });
+    assert.match(blocked.errors.join("\n"), /计划还没有提交/u);
+    const allowed = checkPrecommit(root, { git: fakeGit(), stagedPaths: staged });
+    assert.doesNotMatch(allowed.errors.join("\n"), /计划还没有提交/u);
   }));
 
 test("governance changes declare Plan: none and never ship product code", () =>
