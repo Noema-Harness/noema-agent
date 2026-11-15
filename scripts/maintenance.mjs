@@ -25,7 +25,6 @@ const PRODUCT_CODE_PREFIX = "apps/desktop/src/";
 const PLAN_PREFIXES = ["docs/", "openspec/changes/"];
 const ARCHIVE_PREFIX = "openspec/changes/archive/";
 const DECISION_HEADING = "## 待用户决定";
-const MAX_PENDING_DECISIONS = 3;
 const USER_TASK_PREFIX = "[用户]";
 const USER_CONFIRMATION = /用户确认：\d{4}-\d{2}-\d{2}/u;
 const PLAN_LINK = /^Plan:\s*https:\/\/github\.com\/\S+/mu;
@@ -147,9 +146,9 @@ export function decisionEntries(text) {
   }));
 }
 
-// Decisions are an issue stream: entries from D-029 on must declare a status, and a
-// pending entry without an output is not a decision — it is deleted, not marked.
-export function checkDecisionEntries(text, { today = localToday(), staleDays = 14 } = {}) {
+// Decisions are an issue stream: entries from D-029 on declare a state, and each
+// state needs the one field that makes it useful — what is being decided, or what was decided.
+export function checkDecisionEntries(text) {
   const errors = [];
   const notices = [];
   for (const entry of decisionEntries(text)) {
@@ -163,27 +162,8 @@ export function checkDecisionEntries(text, { today = localToday(), staleDays = 1
       errors.push(`${entry.id} 缺少「**状态**：待定|决定」`);
       continue;
     }
-    if (state[1] === "待定") {
-      for (const field of ["**要定什么**", "**下一步**"]) {
-        if (!entry.body.includes(field)) errors.push(`${entry.id} 是待定条目，缺少 ${field}`);
-      }
-      const updated = /\*\*更新\*\*：\s*(\d{4}-\d{2}-\d{2})/u.exec(entry.body)?.[1];
-      if (!updated) {
-        errors.push(`${entry.id} 是待定条目，缺少「**更新**：YYYY-MM-DD」`);
-      } else {
-        const age = Math.floor((Date.parse(today) - Date.parse(updated)) / 86_400_000);
-        if (Number.isFinite(age) && age >= staleDays) {
-          notices.push(`${entry.id} 待定已 ${age} 天没动：给出产出，或删掉这一条`);
-        }
-      }
-      continue;
-    }
-    for (const field of ["**决定**", "**理由**"]) {
-      if (!entry.body.includes(field)) errors.push(`${entry.id} 是决定条目，缺少 ${field}`);
-    }
-    if (!entry.body.includes("**重新审视**")) {
-      errors.push(`${entry.id} 是决定条目，缺少 **重新审视**`);
-    }
+    const field = state[1] === "待定" ? "**要定什么**" : "**决定**";
+    if (!entry.body.includes(field)) errors.push(`${entry.id} 是${state[1]}条目，缺少 ${field}`);
   }
   return { errors, notices };
 }
@@ -418,11 +398,6 @@ export function checkPlan(root, options = {}) {
         );
       } else {
         pending = decisions;
-        if (decisions.length > MAX_PENDING_DECISIONS) {
-          errors.push(
-            `待用户决定 ${decisions.length} 项，超过每轮 ${MAX_PENDING_DECISIONS} 项的上限：超出的实现细节由维护者决定并写进「实现选择」，不要把决策成本转回用户`,
-          );
-        }
         notices.push(
           decisions.length
             ? `待用户决定 ${decisions.length} 项：${decisions.join("；")}`

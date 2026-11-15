@@ -257,27 +257,10 @@ test("proposals point at the plan card and resident documents stay free of mirro
     assert.deepEqual(checkPlan(root, { skipSpecValidation: true }).errors, []);
   }));
 
-test("pending decisions are capped and user acceptance needs a confirmation date", () =>
+test("user acceptance needs a confirmation date", () =>
   withRoot((holder) => {
     const root = makeRoot(holder);
     const change = "openspec/changes/stage-probe";
-
-    write(
-      root,
-      `${change}/design.md`,
-      "# design\n\n## 用户可观察的改变\n\n- 探针行为\n\n## 手测步骤\n\n1. 打开探针\n\n## 待用户决定\n\n- [ ] 一\n- [ ] 二\n- [ ] 三\n- [ ] 四\n",
-    );
-    assert.match(
-      checkPlan(root, { skipSpecValidation: true }).errors.join("\n"),
-      /待用户决定 4 项，超过每轮 3 项的上限/u,
-    );
-
-    write(
-      root,
-      `${change}/design.md`,
-      "# design\n\n## 用户可观察的改变\n\n- 探针行为\n\n## 手测步骤\n\n1. 打开探针\n\n## 待用户决定\n\n- [ ] 一\n- [ ] 二\n- [ ] 三\n",
-    );
-    assert.deepEqual(checkPlan(root, { skipSpecValidation: true }).errors, []);
 
     write(root, `${change}/tasks.md`, "# tasks\n\n- [ ] [用户] 看一遍界面是否自然 → 截图\n");
     const pendingAcceptance = checkPlan(root, { skipSpecValidation: true });
@@ -449,55 +432,13 @@ test("unanswered decisions block product code but not tooling maintenance", () =
     });
     assert.match(behaviour.errors.join("\n"), /标记了 skip_specs，但这次提交含产品代码/u);
   }));
-test("decision entries carry a status, and a pending entry needs a next step", () => {
-  withRoot((holder) => {
-    const root = makeRoot(holder, { change: false });
-    write(
-      root,
-      "docs/DECISIONS.md",
-      `# DECISIONS
-
-${HEADER}
-
-## D-029 一个决定
-
-**状态**：决定（2026-11-15）
-**决定**：做。
-**理由**：因为。
-**重新审视**：如果坏。
-
-## D-030 一个待定
-
-**状态**：待定
-**要定什么**：A 还是 B。
-`,
-    );
-    const incomplete = checkDocuments(root, fakeGit());
-    assert.match(incomplete.errors.join("\n"), /D-030 是待定条目，缺少 \*\*下一步\*\*/u);
-    assert.match(
-      incomplete.errors.join("\n"),
-      /D-030 是待定条目，缺少「\*\*更新\*\*：YYYY-MM-DD」/u,
-    );
-
-    write(
-      root,
-      "docs/DECISIONS.md",
-      `# DECISIONS
-
-${HEADER}
-
-## D-030 一个待定
-
-**状态**：待定
-**要定什么**：A 还是 B。
-**下一步**：C7 立项时定。
-**更新**：2020-01-01
-`,
-    );
-    const stale = checkDocuments(root, fakeGit());
-    assert.equal(stale.errors.length, 0);
-    assert.match(stale.notices.join("\n"), /D-030 待定已 \d+ 天没动/u);
-  });
+test("a decision states its outcome and a pending item states what is open", () => {
+  const done = checkDecisionEntries("## D-20261115-probe\n\n**状态**：决定\n**决定**：x\n");
+  assert.deepEqual(done.errors, []);
+  const noOutcome = checkDecisionEntries("## D-20261115-probe\n\n**状态**：决定\n");
+  assert.match(noOutcome.errors.join("\n"), /决定条目，缺少 \*\*决定\*\*/u);
+  const pending = checkDecisionEntries("## D-20261115-probe\n\n**状态**：待定\n");
+  assert.match(pending.errors.join("\n"), /待定条目，缺少 \*\*要定什么\*\*/u);
 });
 test("a decision marked as dropped is deleted, not kept in the stream", () => {
   withRoot((holder) => {
