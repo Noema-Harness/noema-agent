@@ -13,6 +13,7 @@ import {
   checkRange,
   localToday,
   reviewQueue,
+  stagedPaths,
 } from "./maintenance.mjs";
 
 const repositoryRoot = path.resolve(fileURLToPath(new URL("../", import.meta.url)));
@@ -672,3 +673,4 @@ test("the commit gate pairs the declared fact kind with the files it changes", (
     });
     assert.match(result.errors.join("\n"), /事实影响写的是「仅执行」/u);
   }));
+
