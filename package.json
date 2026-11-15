@@ -17,14 +17,11 @@
     "make:desktop": "npm run make --workspace noema-desktop",
     "workspace:check": "node scripts/workspace.mjs check && node scripts/branches.mjs check",
     "workspace:clean": "node scripts/workspace.mjs clean",
-    "workspace:test": "node --test scripts/workspace.test.mjs scripts/harness-sync.test.mjs",
     "branches:check": "node scripts/branches.mjs check",
     "branches:prune": "node scripts/branches.mjs prune",
     "branches:test": "node --test scripts/branches.test.mjs",
-    "harness:check": "node scripts/harness-sync.mjs check",
-    "harness:import": "node scripts/harness-sync.mjs import",
     "source:check": "node scripts/source-structure.mjs",
-    "check": "npm run workspace:check && npm run docs:check && npm run figure:check && npm run plan:check && npm run source:check && npm run lint && npm run typecheck && npm run maintenance:test && npm run figure:test && npm run branches:test && npm run inbox:test && npm test",
+    "check": "npm run workspace:check && npm run docs:check && npm run figure:check && npm run plan:check && npm run source:check && npm run lint && npm run typecheck && npm run tools:test && npm test",
     "docs:check": "node scripts/maintenance.mjs docs",
     "figure:check": "node scripts/figure.mjs check",
     "plan:check": "node scripts/maintenance.mjs plan",
@@ -33,7 +30,8 @@
     "figure:build": "node scripts/figure.mjs build",
     "figure:test": "node --test scripts/figure.test.mjs",
     "inbox": "node scripts/github-inbox.mjs --poll",
-    "inbox:test": "node --test scripts/github-inbox.test.mjs"
+    "inbox:test": "node --test scripts/github-inbox.test.mjs",
+    "tools:test": "node --test scripts/maintenance.test.mjs scripts/figure.test.mjs scripts/branches.test.mjs scripts/github-inbox.test.mjs scripts/workspace.test.mjs"
   },
   "engines": {
     "node": ">=24.21 <25"

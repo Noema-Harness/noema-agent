@@ -27,7 +27,7 @@ test("workspace tooling previews, confines cleanup and detects stale document en
     for (const name of ["workspace.mjs", "git-exec.mjs"])
       fs.copyFileSync(path.join(repositoryRoot, "scripts", name), path.join(root, "scripts", name));
     const config = {
-      currentDocuments: [{ path: "README.md" }],
+      currentDocuments: ["README.md"],
       historyRoots: ["docs/history"],
       artifactRoot: ".work",
       specificationRoot: "openspec/specs",

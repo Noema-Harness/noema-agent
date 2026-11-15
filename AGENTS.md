@@ -54,11 +54,11 @@
 - **兼容**：只在迁移层处理；渲染层与业务层不留旧字段分支，无效旧数据直接清理。
 - **测试**：优先系统边界（固定 fixture、假 provider、数据库/IPC 契约、真实鼠标事件）；不把模型输出、长等待和人的感觉当自动断言。
 - **依赖与运行时**：不为“更现代”引入无验收的依赖或搬迁；`npm run source:check` 保证生产代码不导入 `test-support`；DSH 是首选执行内核、不是产品身份，native 是回退。
-- **TypeScript**：新源码只写 TypeScript（D-035）；迁移只改类型、不改行为，只用可擦除语法，导入写 `.ts` 扩展名；每批转换后下调 `scripts/source-structure.mjs` 的 `maxJavaScriptSources`。
+- **TypeScript**：新源码只写 TypeScript（D-037）；迁移只改类型、不改行为，只用可擦除语法，导入写 `.ts` 扩展名；每批转换后下调 `scripts/source-structure.mjs` 的 `maxJavaScriptSources`。
 - **环境**：shell 是 Windows PowerShell 5.1，脚本不依赖 `pwsh` 7 语法；日常用受影响单测加 `typecheck`，里程碑前跑全量 `npm run check`，失败先定位不跳过。
 - **范围**：不恢复已删除的旧范围、旧 UI、旧执行器；恢复要有真实入口、需求和验收。
 - **数据**：源码、用户数据、凭据、参考项目、过程材料分开；`.work/` 只放本机过程材料；写入只经工单与工作区，工作区外按次授权，网络默认禁止。
-- **harness**：本机注入漂移用 `npm run harness:check` 检查；项目不自建技能，用户级技能在 DSH 侧维护。
+- **本机 harness**：DSH 注入与用户级技能在 `~/.dsh` 维护，不在仓库里加检查；项目不自建技能。
 - **交付**：记录“下次改这里”的入口和验证命令，让下一位 Agent 一次搜索、一个命令接上。
 
 ## 5. 不新建并行体系

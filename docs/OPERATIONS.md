@@ -34,8 +34,8 @@ npm run check
 2. `docs:check`：五份权威文档的三行头与路由、版本/基线、git 门槛安装状态；
 3. `figure:check`：架构图产物与 `docs/ARCHITECTURE.md` 摘要、README 引用是否同步；
 4. `plan:check`：OpenSpec 活动变更、`Plan:` 卡片链接、任务清单与未决问题；
-5. `source:check`：源码依赖边界，以及 `src` 下 `.mjs` 数量不增加（D-035 TS 迁移棘轮）；
-6. `lint`、`typecheck`、`maintenance:test`、`figure:test`、`branches:test`、`inbox:test`、`test`。
+5. `source:check`：源码依赖边界，以及 `src` 下 `.mjs` 数量不增加（D-037 TS 迁移棘轮）；
+6. `lint`、`typecheck`、`tools:test`（维护脚本测试）、`test`。
 
 OpenSpec 规格只写可观察行为，不写测试实现：每个新增或修改的 requirement，在本次 change 的 `tasks.md` 里写一条验证（测试文件名或命令）；归档后证据留在 Git 与看板卡片评论里，不把测试名写回常驻 specs，也不新增第二套测试映射。
 
@@ -57,10 +57,7 @@ npm run milestone:check
 npm run source:check
 npm run typecheck
 npm run lint
-npm run maintenance:test
-npm run figure:test
-npm run branches:test
-npm run inbox:test
+npm run tools:test
 npm run inbox
 npm test
 ```

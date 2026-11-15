@@ -1,49 +1,17 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "artifactRoot": ".work",
   "specificationRoot": "openspec/specs",
   "branchBase": "origin/main",
   "currentDocuments": [
-    {
-      "path": "AGENTS.md",
-      "purpose": "开发循环、文档所有权、五道门槛与工程边界",
-      "updateWhen": "治理结构、门槛或工程边界变化"
-    },
-    {
-      "path": "README.md",
-      "purpose": "项目入口、快速开始与文档地图",
-      "updateWhen": "安装方式、目录或文档入口变化"
-    },
-    {
-      "path": "CONTRIBUTING.md",
-      "purpose": "分支、评审、合并与发布协作约定",
-      "updateWhen": "协作流程、评审责任或合并策略变化"
-    },
-    {
-      "path": "docs/PRODUCT.md",
-      "purpose": "产品定义、角色、可观察行为与验收",
-      "updateWhen": "用户、问题、产品模型、行为或验收变化"
-    },
-    {
-      "path": "docs/ARCHITECTURE.md",
-      "purpose": "分层、对象、模块、数据与执行边界",
-      "updateWhen": "模块边界、schema、执行路径、运行时或代码地图变化"
-    },
-    {
-      "path": "docs/DECISIONS.md",
-      "purpose": "长期决定、替代方案、理由与重审条件",
-      "updateWhen": "做出、替代或撤销长期决定时追加"
-    },
-    {
-      "path": "docs/OPERATIONS.md",
-      "purpose": "环境、开发、检查、打包、安装、回滚与诊断",
-      "updateWhen": "命令、环境、发布流程或诊断方式变化"
-    },
-    {
-      "path": "docs/STATUS.md",
-      "purpose": "当前版本、已验证证据、未交付项与已知限制（计划见看板）",
-      "updateWhen": "交付、打包、验证、限制或阻塞变化"
-    }
+    "AGENTS.md",
+    "README.md",
+    "CONTRIBUTING.md",
+    "docs/PRODUCT.md",
+    "docs/ARCHITECTURE.md",
+    "docs/DECISIONS.md",
+    "docs/OPERATIONS.md",
+    "docs/STATUS.md"
   ],
   "rootDirectories": [
     ".archify",

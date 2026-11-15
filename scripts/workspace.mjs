@@ -34,7 +34,7 @@ function filesUnder(directory) {
 
 if (command === "check") {
   const errors = [];
-  const current = new Set(config.currentDocuments.map((entry) => entry.path));
+  const current = new Set(config.currentDocuments);
   if (config.specificationRoot) {
     const specificationFiles = filesUnder(resolve(config.specificationRoot)).filter(
       (file) => path.basename(file) === "spec.md",

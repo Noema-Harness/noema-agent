@@ -377,16 +377,30 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 ## D-034 维护层瘦身（2026-11-15）
 
-**状态**：待定
-**要定什么**：整体扫描后发现维护层有耦合、重复与过重：①机制描述在 AGENTS、OPERATIONS、DECISIONS、STATUS 各写一份，STATUS 已出现两处过时（仍写“待决”章节；plan 计数写 17/4，实际 30/1）；②`scripts/workspace.config.json` 的 purpose/updateWhen 与 AGENTS §2、README 文档地图三处描述同一所有权；③STATUS 的“未交付”“本轮验证”与看板卡片、OPERATIONS 重复，且逐轮累加；④`docs:check` 一个入口串了 7 类事实；⑤check 链 12 步加 4 个独立测试命令，而 `harness:check` 根本不在链上；⑥`github-inbox` 854 行加 384 行测试，占维护脚本 45%，实际需求只是“CI/PR 有变化提醒一次”；⑦`set-github-issue-body.mjs` 是一次性脚本。需要定瘦身范围。
-**候选**：A 只修过时事实（STATUS 两处、删 harness 与一次性脚本），不动结构；B 把重复来源降到一处（机制说明只在 AGENTS 与 OPERATIONS，所有权只在 AGENTS，STATUS 改滚动快照，config 只留路径），检查链收拢成一个 `tools:test`，inbox 收敛到 CI 失败/恢复与 PR 状态变化；C 在 B 上再拆 gate（docs 只查文档事实、决策条目移入 plan）并加“文档引用一致性”检查。
-**建议**：B。A 只止血；C 会把维护项再加回来。
-**下一步**：选定后改 AGENTS、OPERATIONS、STATUS、`scripts/workspace.config.json`、`scripts/*.mjs`、`package.json` 与测试，跑 `npm run check` 并提交。
+**状态**：决定
+**决定**：按 B 的确定部分执行——机制描述只在 `AGENTS.md`（治理循环、门槛、边界）与 `docs/OPERATIONS.md`（命令与修法）；`scripts/workspace.config.json` 只留路径，不再重复 purpose/updateWhen；`docs/STATUS.md` 改成滚动快照（只保留当前结论，不逐轮累加、不镜像看板）；check 链收拢为 9 步，四个维护脚本测试合并成 `tools:test`；删掉未接入链的 `harness-sync`（本机注入属 `~/.dsh`，不进仓库）与一次性脚本 `set-github-issue-body.mjs`。
+**理由**：重复来源会各自漂移（STATUS 已出现两处过时）；能被机器判的只有格式事实，机制说明留一处才可维护。
+**替代**：A 只修过时事实（治标）；C 再拆 gate 并加引用一致性检查（把维护项加回来，暂不做）。
+**重新审视**：同一条机制在 AGENTS 与 OPERATIONS 仍反复分叉，或 `tools:test` 超过 60 秒时，再考虑拆 gate。
 **更新**：2026-11-15
 
-## D-035 主进程逐步迁移到 TypeScript，不整体改写为 Rust
+## D-035 GitHub 收件箱是否瘦身（2026-11-15）
 
-**状态**：决定（2026-11-13；2026-11-15 合并 main 时六次因编号冲突改号：D-019 → D-025 → D-027 → D-028 → D-029 → D-034 → D-035）；阶段 0（基础设施）与阶段 1（小模块）已实现。
+**状态**：待定
+**要定什么**：`scripts/github-inbox.mjs` 854 行 + 测试 384 行，占维护脚本约 34%；能力包括 CI 失败/恢复、PR 检查状态、issue/PR 新评论、toast、`--json`/`--quiet` 输出模式。是否收敛到「CI 失败/恢复 + PR 状态变化」两类，去掉评论通知与 toast？
+**下一步**：等用户回答。倾向保留评论通知（用户明确要求 PR 消息也要通知），只删多余输出模式与 toast。
+**更新**：2026-11-15
+
+## D-036 早期决定条目是否压缩（2026-11-15）
+
+**状态**：待定
+**要定什么**：`docs/DECISIONS.md` 已 377 行，D-001–D-028 多为已落地的历史依据；是否把它们压缩成一行摘要（只留决定与理由），细节交给 Git？
+**下一步**：等用户回答。倾向只压缩已被代码与测试固化、且不再被门槛引用的条目。
+**更新**：2026-11-15
+
+## D-037 主进程逐步迁移到 TypeScript，不整体改写为 Rust
+
+**状态**：决定（2026-11-13；2026-11-15 合并 main 时七次因编号冲突改号：D-019 → D-025 → D-027 → D-028 → D-029 → D-034 → D-035 → D-037）；阶段 0（基础设施）与阶段 1（小模块）已实现。
 **决定**：`src` 下的 `.mjs` 逐批改为 `.ts`，只改类型、不改行为；新代码只写 TypeScript。迁移后的 `.ts` 只用可擦除语法（`erasableSyntaxOnly`、`verbatimModuleSyntax`），导入写显式 `.ts` 扩展名，使 Node 测试运行器可直接加载源码，Vite 照常打包。`src/package.json` 标记 `"type": "module"`；`source:check` 以 `.mjs` 数量棘轮防止回退。测试（`test/**/*.mjs`）暂不迁移。Rust 继续只用于需要直接调用系统接口的组件（Windows Runner）。 范围：主进程/shared/renderer 的源码语言与类型检查；不改变进程结构、外部运行时或测试框架；不开启 `strict`（迁移完成后另行评估）。
 **理由**：产品模型仍在快速变化，Rust 改写会冻结功能数月且性能瓶颈不在 CPU；关键依赖（sandbox-runtime、jsdom/readability、MCP、模型 SDK）以 JS 生态为主。TS 用最小迁移成本补上主进程缺失的类型保护；JSDoc 方案在大文件里可读性差，只作为过渡。
 **替代**：整体改写为 Rust + React（Tauri）；只对 `.mjs` 开 `checkJs` + JSDoc；保持现状。
