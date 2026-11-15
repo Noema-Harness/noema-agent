@@ -18,7 +18,7 @@
 - [x] 3.3 增加「三类出口」（AGENTS §3：被否 / 计划门拒绝 / 执行失败 / 验收未过 / CI 红 / 决定被替代）
 - [x] 3.4 开场三问与收口三问写进 AGENTS §1（第 0 步与第 6 步下方）
 - [x] 3.5 `docs/OPERATIONS.md` 开发节指回 AGENTS §1，只保留命令与报错修法（新增一行指针）
-- [ ] 3.7 按用户判断处理「六种文档角色」：删除或压缩（验证：`AGENTS.md` 不再解释文档角色；design.md 有 `## 事实影响` 一节）
+- [ ] 3.7 删除 AGENTS §2「六种文档角色」，改为 design 强制 `## 事实影响` + milestone 配对校验（验证：`AGENTS.md` 无角色表；违反声明的提交被拒）
 - [ ] 3.6 `npm run check` 全绿
 
 ## 4. 提示词优先级
@@ -27,6 +27,7 @@
 - [ ] 4.2 区分机械约束（门强制）与判断准则（提示词要求），在 AGENTS 与 OPERATIONS 各标一次
 - [x] 4.3 新增项目治理运行手册 `skills/noema-development/SKILL.md`（九步步骤、模板、出口表；规则仍以 AGENTS 为准，不重复）
 - [x] 4.4 `npm run skill:install` 同步到 `~/.dsh/skills`；`docs:check` 校验副本与仓库一致（CI 只提示），`scripts/skill-sync.test.mjs` 覆盖
+- [x] 4.5 按 `D-20261116-governance-extraction` 决定把技能收缩为模板 + 闸门失败对照 + 命令指针，删除与 AGENTS 重复的九步正文（验证：技能正文只指针引用 AGENTS §1）
 
 ## 5. 治理规则（按证据处理）
 
