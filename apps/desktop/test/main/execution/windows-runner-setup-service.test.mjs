@@ -9,7 +9,7 @@ import {
   commitWindowsRunnerSetupReady,
   WindowsRunnerSetupStateStore,
 } from '../../../src/main/execution/windows-runner-setup-state.mjs';
-import { WindowsRunnerSetupService } from '../../../src/main/execution/windows-runner-setup-service.mjs';
+import { WindowsRunnerSetupService } from '../../../src/main/execution/windows-runner-setup-service.ts';
 
 const packageSid = 'S-1-15-2-101-102-103-104-105-106-107';
 const otherPackageSid = 'S-1-15-2-101-102-103-104-105-106-108';

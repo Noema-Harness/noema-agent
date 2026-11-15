@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { MAX_FORWARDED_MESSAGES, isoNow, requireText } from './records.mjs';
+import { MAX_FORWARDED_MESSAGES, isoNow, requireText } from './records.ts';
 
 type SocialChatStore = import('./social-chat-store.mjs').SocialChatStore;
 

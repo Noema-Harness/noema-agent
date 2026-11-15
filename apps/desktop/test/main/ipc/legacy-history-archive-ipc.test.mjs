@@ -3,7 +3,7 @@ import test from 'node:test';
 import {
   LEGACY_HISTORY_ARCHIVE_CHANNELS,
   registerLegacyHistoryArchiveIpc,
-} from '../../../src/main/ipc/legacy-history-archive-ipc.mjs';
+} from '../../../src/main/ipc/legacy-history-archive-ipc.ts';
 
 function createIpcHarness() {
   const handlers = new Map();

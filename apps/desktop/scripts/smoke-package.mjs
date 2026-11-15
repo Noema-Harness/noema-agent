@@ -17,7 +17,7 @@ import {
   WINDOWS_RUNNER_POLICY_VERSION,
   WINDOWS_RUNNER_PROTOCOL_VERSION,
   WINDOWS_RUNNER_RESOURCE_NAME,
-} from '../src/main/execution/windows-runner-package-contract.mjs';
+} from '../src/main/execution/windows-runner-package-contract.ts';
 
 const appDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const packageDirectory = process.env.NOEMA_PACKAGE_DIR

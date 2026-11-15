@@ -4,14 +4,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WindowsRunnerAclJournalStore } from '../src/main/execution/windows-runner-acl-journal.mjs';
-import { WindowsRunnerAclTransactionService } from '../src/main/execution/windows-runner-acl-transaction.mjs';
-import { WindowsRunnerCapabilityNameStore } from '../src/main/execution/windows-runner-capability-name-store.mjs';
+import { WindowsRunnerAclTransactionService } from '../src/main/execution/windows-runner-acl-transaction.ts';
+import { WindowsRunnerCapabilityNameStore } from '../src/main/execution/windows-runner-capability-name-store.ts';
 import { WindowsRunnerExecutionService } from '../src/main/execution/windows-runner-execution-service.mjs';
 import { WindowsRunnerNativeHelper } from '../src/main/execution/windows-runner-native-helper.mjs';
 import {
   WINDOWS_RUNNER_POLICY_VERSION,
   WINDOWS_RUNNER_PROTOCOL_VERSION,
-} from '../src/main/execution/windows-runner-package-contract.mjs';
+} from '../src/main/execution/windows-runner-package-contract.ts';
 import { captureWorkspaceIdentity } from '../src/main/platform/workspace-identity.ts';
 import {
   createDevelopmentDirectory,

@@ -4,7 +4,7 @@ import test from 'node:test';
 import {
   createDesktopLifecycle,
   waitForDesktopShutdown,
-} from '../../../src/main/platform/desktop-lifecycle.mjs';
+} from '../../../src/main/platform/desktop-lifecycle.ts';
 
 function createWindow() {
   const window = new EventEmitter();

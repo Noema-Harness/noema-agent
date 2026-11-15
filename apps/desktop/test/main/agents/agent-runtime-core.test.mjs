@@ -8,7 +8,7 @@ import {
   AGENT_RUNTIME_CORE_VERSION,
   createAgentRuntimeCore,
   createAgentRuntimePair,
-} from '../../../src/main/agents/agent-runtime-core.mjs';
+} from '../../../src/main/agents/agent-runtime-core.ts';
 
 function fakeRuntime() {
   return {

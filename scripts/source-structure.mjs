@@ -9,7 +9,7 @@ const layers = new Set(["main", "preload", "renderer", "shared"]);
 const builtins = new Set(builtinModules.map((name) => name.replace(/^node:/u, "")));
 const extensions = ["", ".ts", ".tsx", ".mjs", ".js", ".d.ts", ".css"];
 // TypeScript migration ratchet: src/**/*.mjs may only shrink. Lower this after each converted batch.
-const maxJavaScriptSources = 67;
+const maxJavaScriptSources = 28;
 
 function walk(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {

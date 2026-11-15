@@ -3,7 +3,7 @@ import test from 'node:test';
 import {
   extractVisibleMessages,
   resolveCodexExecutable,
-} from '../../../src/main/integrations/codex-app-server-adapter.mjs';
+} from '../../../src/main/integrations/codex-app-server-adapter.ts';
 
 test('only visible user text and assistant messages are eligible for import', () => {
   const result = extractVisibleMessages([

@@ -12,7 +12,7 @@ import {
   calculateExpression,
   needsCalculationTool,
 } from '../tools/decimal-calculator.ts';
-import { searchQueryBelongsToText } from '../tools/web-search.mjs';
+import { searchQueryBelongsToText } from '../tools/web-search.ts';
 import { fetchWebSource } from '../tools/web-source.mjs';
 import {
   PROJECT_GROUP_SESSION_CONTEXT,
@@ -35,25 +35,25 @@ import {
   NOEMA_STABLE_ACTION_GUIDANCE,
 } from './model-tools.mjs';
 import { SocialChatDiagnostics } from './social-chat-diagnostics.mjs';
-import { SocialAgentService } from './social-agent-service.mjs';
+import { SocialAgentService } from './social-agent-service.ts';
 import { ProjectToolPolicy } from './project-tool-policy.ts';
-import { ChatRuntimeSessions } from './chat-runtime-sessions.mjs';
+import { ChatRuntimeSessions } from './chat-runtime-sessions.ts';
 import { ProjectSourcePolicy } from './project-source-policy.ts';
-import { RunMessageWriter } from './run-message-writer.mjs';
-import { ChatMessageActions } from './chat-message-actions.mjs';
-import { ChatMessageSender } from './chat-message-sender.mjs';
-import { ChatLifecycle } from './chat-lifecycle.mjs';
+import { RunMessageWriter } from './run-message-writer.ts';
+import { ChatMessageActions } from './chat-message-actions.ts';
+import { ChatMessageSender } from './chat-message-sender.ts';
+import { ChatLifecycle } from './chat-lifecycle.ts';
 import { ReplyStatusWriter } from './reply-status-writer.ts';
-import { ProjectWorkResults } from './project-work-results.mjs';
+import { ProjectWorkResults } from './project-work-results.ts';
 import { UserFollowupDelivery } from './user-followup-delivery.ts';
 import { ProjectReportScheduler } from './project-report-scheduler.ts';
-import { ProjectGrowthBatchScheduler } from './project-growth-batch-scheduler.mjs';
-import { ProjectGroupInboxScheduler } from './project-group-inbox-scheduler.mjs';
-import { ChatUiState } from './chat-ui-state.mjs';
+import { ProjectGrowthBatchScheduler } from './project-growth-batch-scheduler.ts';
+import { ProjectGroupInboxScheduler } from './project-group-inbox-scheduler.ts';
+import { ChatUiState } from './chat-ui-state.ts';
 import { ProjectPlanChangeNotifier } from './project-plan-change-notifier.ts';
-import { SpecialistDelegation } from './specialist-delegation.mjs';
+import { SpecialistDelegation } from './specialist-delegation.ts';
 
-/** @typedef {import('./noema-bridge.d.ts').NoemaProviderState} SocialProviderState */
+/** @typedef {import('../../shared/contracts/noema-bridge.d.ts').NoemaProviderState} SocialProviderState */
 
 function safeError(error) {
   if (error instanceof ModelProviderError) return error.message;
@@ -388,14 +388,14 @@ function compactProjectPlanWriteReceipt(plan, operation, input) {
 
 /**
  * Sends room-scoped turns to a replaceable chat provider.
- * @param {{store:import('./social-chat-store.mjs').SocialChatStore,provider:import('./openai-compatible-client.mjs').OpenAICompatibleClient,secretStore:{isConfigured:()=>boolean},getSelectedModel:()=>string|null,getRootState:()=>Promise<SocialProviderState>,projectStore?:import('./social-project-store.mjs').SocialProjectStore|null,getProjectSessionContext?:(roomId:string,agentId:string)=>{projectId:string,title:string,brief:string,sourceMessageId:string|null,status:string,agentId:string,roomId:string,groupRoomId:string}|null,getProjectWorkReadiness?:()=>{available:boolean,reasonCode:string|null,reason:string|null},isWebSearchConfigured?:()=>boolean,searchPublicSources?:(query:string,signal:AbortSignal,maxSources?:number,options?:{onUsage?:(usage:{requestStatus:string,usageUnits?:number,usageUnit:string,providerRequestId?:string})=>void})=>Promise<object>,recordExternalUsage?:(record:Record<string,unknown>)=>void,recordDiagnosticEvent?:(event:Record<string,unknown>)=>boolean|void,fetchProjectSource?:(url:string,options:object)=>Promise<object>,startTicket?:(input:{prompt:string,workspacePath?:string|null,sessionId?:string|null})=>Promise<{accepted:boolean,taskId?:string,reason?:string}>,startProjectWork?:(input:{roomId:string,agentId:string,dispatchFromNoema:boolean,prompt:string,sourceMessageId:string},signal:AbortSignal)=>Promise<{accepted:boolean,taskId?:string,reason?:string}>,ensureAgentWorkspace?:(input:{agentId:string,name:string})=>void,chooseProjectWorkspace?:(input:{source:string,title:string})=>Promise<{workspacePath:string,identity:object}|null>,chatRuntime?:{streamChat:(options:object)=>AsyncIterable<string>}|null,chatRuntimes?:{get:(kind:string)=>{kind:string,streamChat:(options:object)=>AsyncIterable<string>},forMainChat:(input:{agentId:string,roomId:string,preferred?:string})=>{kind:string,streamChat:(options:object)=>AsyncIterable<string>},preferredKind:string}|null,agentRuntimes?:{noema:{appendEvent:(event:{type:string,payload:object})=>Promise<unknown>}}|null,emit?:(event:object)=>void}} options
+ * @param {{store:import('./social-chat-store.mjs').SocialChatStore,provider:import('../providers/openai-compatible-client.mjs').OpenAICompatibleClient,secretStore:{isConfigured:()=>boolean},getSelectedModel:()=>string|null,getRootState:()=>Promise<SocialProviderState>,projectStore?:import('../projects/social-project-store.mjs').SocialProjectStore|null,getProjectSessionContext?:(roomId:string,agentId:string)=>{projectId:string,title:string,brief:string,sourceMessageId:string|null,status:string,agentId:string,roomId:string,groupRoomId:string}|null,getProjectWorkReadiness?:()=>{available:boolean,reasonCode:string|null,reason:string|null},isWebSearchConfigured?:()=>boolean,searchPublicSources?:(query:string,signal:AbortSignal,maxSources?:number,options?:{onUsage?:(usage:{requestStatus:string,usageUnits?:number,usageUnit:string,providerRequestId?:string})=>void})=>Promise<object>,recordExternalUsage?:(record:Record<string,unknown>)=>void,recordDiagnosticEvent?:(event:Record<string,unknown>)=>boolean|void,fetchProjectSource?:(url:string,options:object)=>Promise<object>,startTicket?:(input:{prompt:string,workspacePath?:string|null,sessionId?:string|null})=>Promise<{accepted:boolean,taskId?:string,reason?:string}>,startProjectWork?:(input:{roomId:string,agentId:string,dispatchFromNoema:boolean,prompt:string,sourceMessageId:string},signal:AbortSignal)=>Promise<{accepted:boolean,taskId?:string,reason?:string}>,ensureAgentWorkspace?:(input:{agentId:string,name:string})=>void,chooseProjectWorkspace?:(input:{source:string,title:string})=>Promise<{workspacePath:string,identity:object}|null>,chatRuntime?:{streamChat:(options:object)=>AsyncIterable<string>}|null,chatRuntimes?:{get:(kind:string)=>{kind:string,streamChat:(options:object)=>AsyncIterable<string>},forMainChat:(input:{agentId:string,roomId:string,preferred?:string})=>{kind:string,streamChat:(options:object)=>AsyncIterable<string>},preferredKind:string}|null,agentRuntimes?:{noema:{appendEvent:(event:{type:string,payload:object})=>Promise<unknown>}}|null,emit?:(event:object)=>void}} options
  */
 const TICKET_FINAL_REPLY_GUIDE =
   '\n\n最终答复面向用户：先用一两句话说明结果，再列出关键文件路径和仍未验证的事项。不要重复逐条工具调用、命令输出或大表格；这些已经由执行记录展示。';
 
 export class SocialChatService {
   /**
-   * @param {{store:import('./social-chat-store.mjs').SocialChatStore,provider:import('./openai-compatible-client.mjs').OpenAICompatibleClient,secretStore:{isConfigured:()=>boolean},getSelectedModel:()=>string|null,getRootState:()=>Promise<SocialProviderState>,projectStore?:import('./social-project-store.mjs').SocialProjectStore|null,getProjectSessionContext?:(roomId:string,agentId:string)=>{projectId:string,title:string,brief:string,sourceMessageId:string|null,status:string,agentId:string,roomId:string,groupRoomId:string}|null,getProjectWorkReadiness?:()=>{available:boolean,reasonCode:string|null,reason:string|null},isWebSearchConfigured?:()=>boolean,searchPublicSources?:(query:string,signal:AbortSignal,maxSources?:number,options?:{onUsage?:(usage:{requestStatus:string,usageUnits?:number,usageUnit:string,providerRequestId?:string})=>void})=>Promise<object>,recordExternalUsage?:(record:Record<string,unknown>)=>void,recordDiagnosticEvent?:(event:Record<string,unknown>)=>boolean|void,fetchProjectSource?:(url:string,options:object)=>Promise<object>,startTicket?:(input:{prompt:string,workspacePath?:string|null,sessionId?:string|null})=>Promise<{accepted:boolean,taskId?:string,reason?:string}>,startProjectWork?:(input:{roomId:string,agentId:string,dispatchFromNoema:boolean,prompt:string,sourceMessageId:string},signal:AbortSignal)=>Promise<{accepted:boolean,taskId?:string,reason?:string}>,ensureAgentWorkspace?:(input:{agentId:string,name:string})=>void,chooseProjectWorkspace?:(input:{source:string,title:string})=>Promise<{workspacePath:string,identity:object}|null>,chatRuntime?:{streamChat:(options:object)=>AsyncIterable<string>}|null,chatRuntimes?:{get:(kind:string)=>{kind:string,streamChat:(options:object)=>AsyncIterable<string>},forMainChat:(input:{agentId:string,roomId:string,preferred?:string})=>{kind:string,streamChat:(options:object)=>AsyncIterable<string>},preferredKind:string}|null,agentRuntimes?:{noema:{appendEvent:(event:{type:string,payload:object})=>Promise<unknown>}}|null,emit?:(event:object)=>void}} options
+   * @param {{store:import('./social-chat-store.mjs').SocialChatStore,provider:import('../providers/openai-compatible-client.mjs').OpenAICompatibleClient,secretStore:{isConfigured:()=>boolean},getSelectedModel:()=>string|null,getRootState:()=>Promise<SocialProviderState>,projectStore?:import('../projects/social-project-store.mjs').SocialProjectStore|null,getProjectSessionContext?:(roomId:string,agentId:string)=>{projectId:string,title:string,brief:string,sourceMessageId:string|null,status:string,agentId:string,roomId:string,groupRoomId:string}|null,getProjectWorkReadiness?:()=>{available:boolean,reasonCode:string|null,reason:string|null},isWebSearchConfigured?:()=>boolean,searchPublicSources?:(query:string,signal:AbortSignal,maxSources?:number,options?:{onUsage?:(usage:{requestStatus:string,usageUnits?:number,usageUnit:string,providerRequestId?:string})=>void})=>Promise<object>,recordExternalUsage?:(record:Record<string,unknown>)=>void,recordDiagnosticEvent?:(event:Record<string,unknown>)=>boolean|void,fetchProjectSource?:(url:string,options:object)=>Promise<object>,startTicket?:(input:{prompt:string,workspacePath?:string|null,sessionId?:string|null})=>Promise<{accepted:boolean,taskId?:string,reason?:string}>,startProjectWork?:(input:{roomId:string,agentId:string,dispatchFromNoema:boolean,prompt:string,sourceMessageId:string},signal:AbortSignal)=>Promise<{accepted:boolean,taskId?:string,reason?:string}>,ensureAgentWorkspace?:(input:{agentId:string,name:string})=>void,chooseProjectWorkspace?:(input:{source:string,title:string})=>Promise<{workspacePath:string,identity:object}|null>,chatRuntime?:{streamChat:(options:object)=>AsyncIterable<string>}|null,chatRuntimes?:{get:(kind:string)=>{kind:string,streamChat:(options:object)=>AsyncIterable<string>},forMainChat:(input:{agentId:string,roomId:string,preferred?:string})=>{kind:string,streamChat:(options:object)=>AsyncIterable<string>},preferredKind:string}|null,agentRuntimes?:{noema:{appendEvent:(event:{type:string,payload:object})=>Promise<unknown>}}|null,emit?:(event:object)=>void}} options
    */
   constructor({
     store,

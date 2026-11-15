@@ -4,7 +4,7 @@ import test from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
-import { NoemaToolServer } from '../../../src/main/mcp/noema-tool-server.mjs';
+import { NoemaToolServer } from '../../../src/main/mcp/noema-tool-server.ts';
 
 test('MCP server exposes only declared tools and returns their result', async () => {
   const server = new NoemaToolServer({

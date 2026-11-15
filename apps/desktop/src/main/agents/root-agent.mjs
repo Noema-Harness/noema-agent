@@ -30,7 +30,7 @@ import {
   searchQueryBelongsToText,
   needsWebSearch,
   searchWeb,
-} from '../tools/web-search.mjs';
+} from '../tools/web-search.ts';
 
 const MAX_AUTOMATIC_TASK_RETRIES = 3;
 const MAX_AUTOMATIC_RETRY_DELAY_MS = 120_000;
@@ -337,7 +337,7 @@ function incompleteWorkerResponse(event) {
 }
 
 export class RootAgent {
-  /** @param {{store:import('./root-store.mjs').RootStore,provider:import('./openai-compatible-client.mjs').OpenAICompatibleClient,secretStore:{get:()=>string|null,getBaseUrl:()=>string|null,isConfigured:()=>boolean,set:(value:string)=>void,setConfiguration:(input:{apiKey:string,baseUrl:string})=>void,clear:()=>void},webSearchSecretStore?:{get:()=>string|null,isConfigured:()=>boolean,set:(value:string)=>void,clear:()=>void},searchWebImpl?:typeof searchWeb,dshAdapter?:import('./dsh-headless-adapter.mjs').DshHeadlessAdapter|null,dshRuntimeError?:string|null,codexAdapter?:import('./codex-app-server-adapter.mjs').CodexAppServerAdapter|null,allowRootActions?:boolean,allowHistorySearch?:boolean,recoverInterruptedTurns?:boolean,fetchWebSourceImpl?:typeof fetchWebSource,recordExternalUsage?:(record:Record<string,unknown>)=>void,recordDiagnosticEvent?:(event:Record<string,unknown>)=>boolean|void,emit?:(event:object)=>void}} options */
+  /** @param {{store:import('../storage/root-store.mjs').RootStore,provider:import('../providers/openai-compatible-client.mjs').OpenAICompatibleClient,secretStore:{get:()=>string|null,getBaseUrl:()=>string|null,isConfigured:()=>boolean,set:(value:string)=>void,setConfiguration:(input:{apiKey:string,baseUrl:string})=>void,clear:()=>void},webSearchSecretStore?:{get:()=>string|null,isConfigured:()=>boolean,set:(value:string)=>void,clear:()=>void},searchWebImpl?:typeof searchWeb,dshAdapter?:import('../integrations/dsh-headless-adapter.mjs').DshHeadlessAdapter|null,dshRuntimeError?:string|null,codexAdapter?:import('../integrations/codex-app-server-adapter.ts').CodexAppServerAdapter|null,allowRootActions?:boolean,allowHistorySearch?:boolean,recoverInterruptedTurns?:boolean,fetchWebSourceImpl?:typeof fetchWebSource,recordExternalUsage?:(record:Record<string,unknown>)=>void,recordDiagnosticEvent?:(event:Record<string,unknown>)=>boolean|void,emit?:(event:object)=>void}} options */
   constructor({
     store,
     provider,

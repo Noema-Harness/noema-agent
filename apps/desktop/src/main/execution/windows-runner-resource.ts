@@ -8,7 +8,7 @@ import {
   WINDOWS_RUNNER_PACKAGE_MANIFEST,
   WINDOWS_RUNNER_PROTOCOL_VERSION,
   WINDOWS_RUNNER_RESOURCE_NAME,
-} from './windows-runner-package-contract.mjs';
+} from './windows-runner-package-contract.ts';
 
 const NATIVE_RUNNER_FILENAME = WINDOWS_RUNNER_RESOURCE_NAME;
 const MAX_NATIVE_RUNNER_BYTES = 64 * 1024 * 1024;

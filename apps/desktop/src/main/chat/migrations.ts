@@ -7,7 +7,7 @@ import {
   LEGACY_FILE_TASK_GUIDANCE,
   FILE_TASK_GUIDANCE,
   isoNow,
-} from './records.mjs';
+} from './records.ts';
 
 export function migrateSocialChatSchema(
   db: import('better-sqlite3').Database,

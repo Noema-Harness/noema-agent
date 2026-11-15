@@ -5,7 +5,7 @@ import {
   socialWorkExecutionStepPresentation,
   socialWorkResultPresentation,
   socialWorkRecoveryPresentation,
-} from '../../../src/shared/execution/social-work-presentation.mjs';
+} from '../../../src/shared/execution/social-work-presentation.ts';
 
 test('project work cards name the recoverable failure instead of hiding it in generic status', () => {
   const cases = [

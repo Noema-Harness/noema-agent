@@ -12,7 +12,7 @@ import {
   removeCommandDirectories,
   writeCommandChange,
 } from './workspace-command-mirror.mjs';
-import { scanWorkspaceFileBoundary } from './workspace-file-boundary.mjs';
+import { scanWorkspaceFileBoundary } from './workspace-file-boundary.ts';
 import { MAX_COMMAND_CHANGE_PATHS } from './workspace-command-quotas.ts';
 
 function runnerError(code, message, effectStatus = 'not_applied') {

@@ -1,15 +1,15 @@
 import type { App, BrowserWindow } from 'electron';
 import { randomUUID } from 'node:crypto';
 import { WindowsRunnerAclJournalStore } from '../execution/windows-runner-acl-journal.mjs';
-import { WindowsRunnerAclTransactionService } from '../execution/windows-runner-acl-transaction.mjs';
-import { WindowsRunnerCapabilityNameStore } from '../execution/windows-runner-capability-name-store.mjs';
+import { WindowsRunnerAclTransactionService } from '../execution/windows-runner-acl-transaction.ts';
+import { WindowsRunnerCapabilityNameStore } from '../execution/windows-runner-capability-name-store.ts';
 import { WindowsRunnerExecutionService } from '../execution/windows-runner-execution-service.mjs';
 import { WindowsRunnerNativeHelper } from '../execution/windows-runner-native-helper.mjs';
 import { resolveWindowsRunnerNativeHelper } from '../execution/windows-runner-resource.ts';
 import { resolveWindowsRunnerCommandSupport } from '../execution/windows-runner-command-support.ts';
 import { createWindowsRunnerCapabilityReport } from '../execution/windows-runner-capability.ts';
 import { WINDOWS_RUNNER_PROTOCOL_VERSION } from '../execution/windows-runner-native-helper.mjs';
-import { WindowsRunnerSetupService } from '../execution/windows-runner-setup-service.mjs';
+import { WindowsRunnerSetupService } from '../execution/windows-runner-setup-service.ts';
 import { WindowsRunnerSetupStateStore } from '../execution/windows-runner-setup-state.mjs';
 
 type WindowsRunnerCapability = ReturnType<

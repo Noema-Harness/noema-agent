@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { WindowsRunnerCapabilityNameStore } from '../../../src/main/execution/windows-runner-capability-name-store.mjs';
+import { WindowsRunnerCapabilityNameStore } from '../../../src/main/execution/windows-runner-capability-name-store.ts';
 
 async function withUserDataPath(run) {
   const directory = fs.mkdtempSync(

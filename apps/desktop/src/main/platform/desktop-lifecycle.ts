@@ -1,0 +1,183 @@
+import { randomUUID } from 'node:crypto';
+import type { App, BrowserWindow } from 'electron';
+
+export const DEFAULT_DESKTOP_SHUTDOWN_TIMEOUT_MS = 12_000;
+
+type LifecycleEventRecorder =
+  | ((event: Record<string, unknown>) => unknown)
+  | null
+  | undefined;
+
+type DesktopTray = { destroy(): void };
+
+export type DesktopShutdownOutcome =
+  | { type: 'settled'; results: PromiseSettledResult<unknown>[] }
+  | { type: 'timeout' };
+
+function safeRecord(
+  recordEvent: LifecycleEventRecorder,
+  operation: string,
+  status: string,
+  errorCode: string | null = null,
+) {
+  try {
+    recordEvent?.({
+      executionId: randomUUID(),
+      module: 'desktop.lifecycle',
+      operation,
+      status,
+      ...(errorCode ? { errorCode } : {}),
+    });
+  } catch {
+    // Lifecycle diagnostics never block window or application control.
+  }
+}
+
+export function createDesktopLifecycle({
+  app,
+  createTray,
+  createWindow,
+  getWindow,
+  recordEvent,
+  onSystemSessionEnd,
+}: {
+  app: Pick<App, 'quit'>;
+  createTray: (handlers: {
+    onOpen: () => boolean;
+    onQuit: () => void;
+  }) => DesktopTray | null | undefined;
+  createWindow: () => BrowserWindow | null | undefined;
+  getWindow: () => BrowserWindow | null | undefined;
+  recordEvent?: LifecycleEventRecorder;
+  onSystemSessionEnd?: (() => void) | null;
+}) {
+  let tray: DesktopTray | null | undefined = null;
+  let quitting = false;
+
+  function restoreWindow() {
+    if (quitting) return false;
+    let window = getWindow();
+    if (!window || window.isDestroyed()) window = createWindow();
+    if (!window || window.isDestroyed()) return false;
+    if (window.isMinimized()) window.restore();
+    window.show();
+    window.focus();
+    safeRecord(recordEvent, 'window.restored', 'observed');
+    return true;
+  }
+
+  function requestQuit() {
+    if (quitting) return;
+    quitting = true;
+    safeRecord(recordEvent, 'exit.requested', 'observed');
+    app.quit();
+  }
+
+  return {
+    initializeTray() {
+      if (tray) return true;
+      try {
+        tray = createTray({
+          onOpen: restoreWindow,
+          onQuit: requestQuit,
+        });
+        if (!tray) throw new Error('tray_unavailable');
+        safeRecord(recordEvent, 'tray.ready', 'completed');
+        return true;
+      } catch {
+        tray = null;
+        safeRecord(
+          recordEvent,
+          'tray.error',
+          'failed',
+          'tray_initialization_failed',
+        );
+        return false;
+      }
+    },
+
+    attachWindow(window: BrowserWindow) {
+      window.on('close', (event) => {
+        if (quitting || !tray) return;
+        event.preventDefault();
+        window.hide();
+        safeRecord(recordEvent, 'window.hidden', 'observed');
+      });
+      window.on('query-session-end', (event) => {
+        if (typeof onSystemSessionEnd !== 'function') return;
+        event.preventDefault();
+        safeRecord(recordEvent, 'system-session-end.requested', 'observed');
+        try {
+          onSystemSessionEnd();
+        } catch {
+          safeRecord(
+            recordEvent,
+            'system-session-end.handler',
+            'failed',
+            'shutdown_handler_failed',
+          );
+        }
+      });
+    },
+
+    restoreWindow,
+
+    onSecondInstance() {
+      const window = getWindow();
+      if (!window || window.isDestroyed()) return false;
+      return restoreWindow();
+    },
+
+    markQuitting() {
+      if (quitting) return false;
+      quitting = true;
+      safeRecord(recordEvent, 'exit.requested', 'observed');
+      return true;
+    },
+
+    onWindowAllClosed() {
+      if (tray || process.platform === 'darwin') return;
+      app.quit();
+    },
+
+    dispose() {
+      if (!tray) return;
+      try {
+        tray.destroy();
+      } catch {
+        // The process is already leaving; tray teardown is best effort.
+      }
+      tray = null;
+    },
+
+    get hasTray() {
+      return Boolean(tray);
+    },
+
+    get isQuitting() {
+      return quitting;
+    },
+  };
+}
+
+export async function waitForDesktopShutdown(
+  operations: Array<() => unknown>,
+  timeoutMs = DEFAULT_DESKTOP_SHUTDOWN_TIMEOUT_MS,
+): Promise<DesktopShutdownOutcome> {
+  const boundedTimeout = Math.max(1, Math.floor(timeoutMs));
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const settled = Promise.allSettled(
+    operations.map((operation) => Promise.resolve().then(operation)),
+  );
+  const outcome = await Promise.race([
+    settled.then((results): DesktopShutdownOutcome => ({
+      type: 'settled',
+      results,
+    })),
+    new Promise<DesktopShutdownOutcome>((resolve) => {
+      timer = setTimeout(() => resolve({ type: 'timeout' }), boundedTimeout);
+    }),
+  ]);
+  clearTimeout(timer);
+  return outcome;
+}

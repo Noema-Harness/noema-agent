@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { compileWindowsCommandPolicy } from '../../../src/main/execution/windows-command-policy.mjs';
+import { compileWindowsCommandPolicy } from '../../../src/main/execution/windows-command-policy.ts';
 
 const capabilities = {
   filesystemDefaultDeny: true,

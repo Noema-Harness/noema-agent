@@ -6,7 +6,7 @@ import {
   WINDOWS_RUNNER_BACKEND_VERSION,
   WINDOWS_RUNNER_POLICY_VERSION,
   WINDOWS_RUNNER_PROTOCOL_VERSION,
-} from './windows-runner-package-contract.mjs';
+} from './windows-runner-package-contract.ts';
 
 export {
   WINDOWS_RUNNER_BACKEND_ID,

@@ -6,7 +6,7 @@ import {
   searchQueryBelongsToText,
   searchWeb,
   WEB_SEARCH_LIMITS,
-} from '../../../src/main/tools/web-search.mjs';
+} from '../../../src/main/tools/web-search.ts';
 
 function response(payload, { status = 200, headers = {} } = {}) {
   return new Response(JSON.stringify(payload), {

@@ -20,14 +20,14 @@ import { resolveElectronProxy } from './platform/electron-proxy.ts';
 import { createPendingFollowupNavigationDelivery } from './platform/pending-followup-navigation.ts';
 import { OpenAICompatibleClient } from './providers/openai-compatible-client.mjs';
 import { registerRootIpc, CHANNELS } from './ipc/root-ipc.mjs';
-import { WorkspaceFileService } from './execution/workspace-file-service.mjs';
-import { registerLegacyHistoryArchiveIpc } from './ipc/legacy-history-archive-ipc.mjs';
+import { WorkspaceFileService } from './execution/workspace-file-service.ts';
+import { registerLegacyHistoryArchiveIpc } from './ipc/legacy-history-archive-ipc.ts';
 import { RootAgent } from './agents/root-agent.mjs';
 import { RootStore } from './storage/root-store.mjs';
-import { LegacyHistoryArchiveService } from './archive/legacy-history-archive-service.mjs';
+import { LegacyHistoryArchiveService } from './archive/legacy-history-archive-service.ts';
 import { saveLegacyHistoryExport } from './archive/save-legacy-history-export.ts';
 import { DiagnosticsEventStore } from './storage/diagnostics-event-store.mjs';
-import { OfficialPluginStateStore } from './plugins/official-plugin-state-store.mjs';
+import { OfficialPluginStateStore } from './plugins/official-plugin-state-store.ts';
 import { OfficialPluginHost } from './plugins/official-plugin-host.mjs';
 import { officialContractSample } from './plugins/official-contract-sample.ts';
 import { DiagnosticsQueryService } from './diagnostics/diagnostics-query-service.mjs';
@@ -44,7 +44,7 @@ import { SOCIAL_SCHEMA_VERSION } from './chat/social-chat-schema.ts';
 import { SocialProjectStore } from './projects/social-project-store.mjs';
 import { SocialTeamStore } from './chat/social-team-store.ts';
 import { SocialChatService } from './chat/social-chat-service.mjs';
-import { searchAndReadWeb } from './tools/web-search.mjs';
+import { searchAndReadWeb } from './tools/web-search.ts';
 import { SocialWorkService } from './execution/social-work-service.mjs';
 import {
   createWindowsRunnerRuntime,
@@ -72,7 +72,7 @@ import { createNoemaToolRegistry } from './runtime/noema-tool-registry.ts';
 import { NoemaToolSession } from './mcp/noema-tool-session.ts';
 import { createChatTicketTool } from './chat/chat-ticket-tool.ts';
 import { createProjectTeamTools } from './chat/project-team-tools.ts';
-import { createNoemaReadTools } from './chat/noema-read-tools.mjs';
+import { createNoemaReadTools } from './chat/noema-read-tools.ts';
 import { isMainFrameIpcEvent } from './platform/window-security.ts';
 import {
   createSocialReplyNotificationHandler,
@@ -81,7 +81,7 @@ import {
 import {
   createDesktopLifecycle,
   waitForDesktopShutdown,
-} from './platform/desktop-lifecycle.mjs';
+} from './platform/desktop-lifecycle.ts';
 import { readDesktopDevelopmentOptions } from './platform/development-options';
 const developmentOptions = readDesktopDevelopmentOptions();
 const {

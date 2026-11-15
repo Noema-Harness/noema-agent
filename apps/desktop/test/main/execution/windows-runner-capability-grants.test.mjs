@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createWindowsRunnerCapabilityGrants } from '../../../src/main/execution/windows-runner-capability-grants.mjs';
+import { createWindowsRunnerCapabilityGrants } from '../../../src/main/execution/windows-runner-capability-grants.ts';
 
 const workspace = {
   path: 'C:\\work\\project',

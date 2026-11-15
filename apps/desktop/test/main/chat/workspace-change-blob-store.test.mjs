@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { WorkspaceChangeBlobStore } from '../../../src/main/chat/workspace-change-blob-store.mjs';
+import { WorkspaceChangeBlobStore } from '../../../src/main/chat/workspace-change-blob-store.ts';
 
 function makeStore(options) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'noema-blobs-'));
