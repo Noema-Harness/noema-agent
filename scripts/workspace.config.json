@@ -2,7 +2,6 @@
   "schemaVersion": 2,
   "artifactRoot": ".work",
   "specificationRoot": "openspec/specs",
-  "historyRoots": ["openspec/changes/archive"],
   "branchBase": "origin/main",
   "currentDocuments": [
     {

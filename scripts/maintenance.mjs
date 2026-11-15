@@ -260,7 +260,7 @@ export function checkPlan(root, options = {}) {
   const active = activeChanges(root);
   if (active.length > 1) {
     errors.push(
-      `活动 OpenSpec 变更必须至多 1 个，当前 ${active.length} 个：${active.join(", ")}；结束的变更移入 openspec/changes/archive/，同一时间只推进一个阶段`,
+      `活动 OpenSpec 变更必须至多 1 个，当前 ${active.length} 个：${active.join(", ")}；结束的变更先归档（openspec archive <name> --yes，归档目录不入库），同一时间只推进一个阶段`,
     );
   }
   if (active.length === 0) {

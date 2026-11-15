@@ -303,6 +303,15 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 - 范围：工作流、文档边界与门槛；不改产品行为。
 - 重新审视：若卡片数量增长到一次交付跨多张卡（切片太碎），把同阶段多张卡合并为一个 change 并在 proposal 里列出，但仍需在卡片侧同步状态。
 
+## D-027 OpenSpec 归档只留本机，仓库只保留 specs 与活动变更
+
+- 状态：采用（2026-11-15，用户确认 archive 可删）。
+- 决定：`openspec/specs/`（当前必须成立的可观察行为）与 `openspec/changes/<活动变更>/`（本轮执行计划）入库；`openspec/changes/archive/` 只留在本机并被 `.gitignore` 忽略，归档后的历史由 Git 提交保存。`openspec archive` 仍用于把规格增量合并进 specs 并把完成的变更移出活动区。
+- 替代：archive 入库（218 个文件，与“历史在 Git”重复）；完全不用 archive（`openspec archive` 会重建该目录，忽略它更省事）。
+- 理由：用户要求仓库只保留与源码和协作相关的内容；archive 是过程材料，Git 已完整保存，再存一份只会给每次归档增加噪声。
+- 范围：仓库内容策略与 `scripts/workspace.config.json`；不改产品行为。
+- 重新审视：若需要在没有 Git 的环境里查阅历史提案，再考虑把 archive 导出到独立归档仓库或发布物。
+
 ## 待决
 
 - 文档校准：Q13 已关闭，Q14 及之后尚未逐条关闭。D-011/D-012 已定稿；D-013 部分被 D-016/D-017 取代；D-014/D-016/D-017 已定稿但未实现。

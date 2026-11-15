@@ -1,3 +1,0 @@
-schema: spec-driven
-created: 2026-11-07
-goal: Add run_command to PE30-33 without reactivating retired Root or DSH writers.
