@@ -23,7 +23,8 @@
     "docs",
     "node_modules",
     "openspec",
-    "scripts"
+    "scripts",
+    "skills"
   ],
   "cleanableArtifacts": [".work/runs", ".work/scratch"],
   "generatedDirectories": [

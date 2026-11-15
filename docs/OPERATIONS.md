@@ -22,6 +22,8 @@ npm run dev
 
 `dev` 启动 Electron Forge 开发模式，renderer 使用 Vite HMR。主进程/预加载修改通常需要重启开发应用；只有 `pnpm run dev:web` 同时运行且改动的是 client plugin 时，页面才会自动重载。
 
+DSH 执行路径的真机检查（不需要模型 key）：先装 DSH（`npm i -g @deepseek-ai/dsh`，Node 24.21+），再在 `apps/desktop` 跑 `npm run e2e:dsh-fake-model`。脚本起一个本地假模型，让 DSH 的 shell 工具执行命令，逐项断言：可写模式能列出并写入工作区、只读模式拒绝写入、可写模式拒绝写到家目录。macOS 与 Windows 都走同一个脚本，shell 工具由 `src/main/platform/host-platform.ts` 决定。
+
 ## 检查
 
 提交前：

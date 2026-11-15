@@ -12,6 +12,7 @@
     "typecheck": "npm run typecheck --workspace noema-desktop",
     "test": "npm test --workspace noema-desktop",
     "smoke": "npm run smoke --workspace noema-desktop",
+    "e2e:dsh-fake-model": "npm run e2e:dsh-fake-model --workspace noema-desktop",
     "smoke:package": "npm run smoke:package --workspace noema-desktop",
     "package:desktop": "npm run package --workspace noema-desktop",
     "make:desktop": "npm run make --workspace noema-desktop",

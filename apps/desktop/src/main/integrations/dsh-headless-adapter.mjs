@@ -1,8 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { execFile, spawn } from 'node:child_process';
-import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { hostPlatform } from '../platform/host-platform.ts';
 
 const execFileAsync = promisify(execFile);
 const MAX_TASK_LENGTH = 40_000;
@@ -26,7 +27,9 @@ export class DshHeadlessError extends Error {
  * Returns the DSH CLI and a Node runtime capable of starting it.
  * A pinned runtime inside the application resources wins over PATH so a
  * consumer install never depends on a separately installed DSH or Node.
- * @param {{env?:NodeJS.ProcessEnv,platform?:NodeJS.Platform,execFileImpl?:typeof execFileAsync,readFileImpl?:typeof readFile,accessImpl?:typeof access,resourcesPath?:string}} [options]
+ * Paths are joined with the target platform's rules (not the host's), so the
+ * Windows and macOS lookups stay testable on either host.
+ * @param {{env?:NodeJS.ProcessEnv,platform?:NodeJS.Platform,execFileImpl?:typeof execFileAsync,readFileImpl?:typeof readFile,accessImpl?:typeof access,realpathImpl?:typeof realpath,resourcesPath?:string}} [options]
  */
 export async function resolveDshHeadlessRuntime({
   env = process.env,
@@ -34,28 +37,35 @@ export async function resolveDshHeadlessRuntime({
   execFileImpl = execFileAsync,
   readFileImpl = readFile,
   accessImpl = access,
+  realpathImpl = realpath,
   resourcesPath = process.resourcesPath,
 } = {}) {
-  if (platform !== 'win32') {
-    throw new DshHeadlessError(
-      'dsh_platform_unsupported',
-      'Noema 的首个 DSH 连接目前只支持 Windows 上的 DSH CLI。',
-    );
-  }
-
+  const host = hostPlatform(platform);
+  const paths = host.paths;
   const bundledRoot = env.NOEMA_DSH_BUNDLE_DIR
-    ? path.resolve(env.NOEMA_DSH_BUNDLE_DIR)
+    ? paths.resolve(env.NOEMA_DSH_BUNDLE_DIR)
     : resourcesPath
-      ? path.join(resourcesPath, 'dsh-runtime')
+      ? paths.join(resourcesPath, 'dsh-runtime')
       : null;
   if (bundledRoot) {
     const bundled = await resolveBundledDshRuntime({
       root: bundledRoot,
+      paths,
+      nodeName: host.executable('node'),
       execFileImpl,
       readFileImpl,
       accessImpl,
     });
     if (bundled) return bundled;
+  }
+  if (host.family === 'posix') {
+    return resolvePosixDshRuntime({
+      env,
+      execFileImpl,
+      readFileImpl,
+      accessImpl,
+      realpathImpl,
+    });
   }
 
   let shimPath;
@@ -79,8 +89,8 @@ export async function resolveDshHeadlessRuntime({
     );
   }
 
-  const npmPrefix = path.dirname(shimPath);
-  const dshBin = path.join(
+  const npmPrefix = paths.dirname(shimPath);
+  const dshBin = paths.join(
     npmPrefix,
     'node_modules',
     '@deepseek-ai',
@@ -88,7 +98,7 @@ export async function resolveDshHeadlessRuntime({
     'lib',
     'bin.js',
   );
-  const packagePath = path.join(
+  const packagePath = paths.join(
     npmPrefix,
     'node_modules',
     '@deepseek-ai',
@@ -127,25 +137,108 @@ export async function resolveDshHeadlessRuntime({
     // An explicit D-drive runtime may still be available.
   }
 
+  const nodeExecutable = await firstSupportedNode(nodeCandidates, {
+    execFileImpl,
+    caseInsensitive: true,
+  });
+  return {
+    nodeExecutable,
+    dshBin,
+    npmPrefix,
+    version: packageVersion,
+    source: 'external',
+  };
+}
+
+/**
+ * macOS (and other POSIX hosts): `npm i -g @deepseek-ai/dsh` links `dsh` on
+ * PATH to the package's `lib/bin.js`; Node comes from NOEMA_DSH_NODE or PATH.
+ * Discovery only reads the filesystem and runs `node --version`; it never boots
+ * a DSH profile.
+ */
+async function resolvePosixDshRuntime({
+  env,
+  execFileImpl,
+  readFileImpl,
+  accessImpl,
+  realpathImpl,
+}) {
+  const directories = (env.PATH ?? '')
+    .split(path.posix.delimiter)
+    .filter((directory) => path.posix.isAbsolute(directory));
+  let dshBin;
+  for (const directory of directories) {
+    const candidate = path.posix.join(directory, 'dsh');
+    try {
+      await accessImpl(candidate);
+      const target = await realpathImpl(candidate);
+      if (target.endsWith('/node_modules/@deepseek-ai/dsh/lib/bin.js')) {
+        dshBin = target;
+        break;
+      }
+    } catch {
+      // Missing or dangling links fall through to the next PATH entry.
+    }
+  }
+  if (!dshBin) {
+    throw new DshHeadlessError(
+      'dsh_not_found',
+      '没有找到 DSH CLI。安装 DSH 后重启 Noema，或继续只用对话功能。',
+    );
+  }
+
+  const packageDirectory = path.posix.dirname(path.posix.dirname(dshBin));
+  let packageVersion;
+  try {
+    packageVersion = JSON.parse(
+      await readFileImpl(
+        path.posix.join(packageDirectory, 'package.json'),
+        'utf8',
+      ),
+    ).version;
+  } catch {
+    throw new DshHeadlessError(
+      'dsh_package_unreadable',
+      '找到了 DSH 启动器，但无法读取安装版本。',
+    );
+  }
+
+  const nodeExecutable = await firstSupportedNode(
+    [
+      env.NOEMA_DSH_NODE,
+      ...directories.map((directory) => path.posix.join(directory, 'node')),
+    ],
+    { execFileImpl, caseInsensitive: false },
+  );
+  return {
+    nodeExecutable,
+    dshBin,
+    // The directory holding node_modules/@deepseek-ai/dsh, as on Windows and
+    // in the bundled runtime (<npm prefix>/lib on POSIX).
+    npmPrefix: path.posix.dirname(
+      path.posix.dirname(path.posix.dirname(packageDirectory)),
+    ),
+    version: packageVersion,
+    source: 'external',
+  };
+}
+
+async function firstSupportedNode(
+  candidates,
+  { execFileImpl, caseInsensitive },
+) {
   const seen = new Set();
-  for (const candidate of nodeCandidates) {
-    if (!candidate || seen.has(candidate.toLowerCase())) continue;
-    seen.add(candidate.toLowerCase());
+  for (const candidate of candidates) {
+    const key = caseInsensitive ? candidate?.toLowerCase() : candidate;
+    if (!candidate || seen.has(key)) continue;
+    seen.add(key);
     try {
       const { stdout } = await execFileImpl(candidate, ['--version'], {
         encoding: 'utf8',
         timeout: 3_000,
         windowsHide: true,
       });
-      if (supportsDshNodeVersion(stdout)) {
-        return {
-          nodeExecutable: candidate,
-          dshBin,
-          npmPrefix,
-          version: packageVersion,
-          source: 'external',
-        };
-      }
+      if (supportsDshNodeVersion(stdout)) return candidate;
     } catch {
       // Skip stale, incompatible, or inaccessible Node installations.
     }
@@ -158,13 +251,15 @@ export async function resolveDshHeadlessRuntime({
 
 async function resolveBundledDshRuntime({
   root,
+  paths,
+  nodeName,
   execFileImpl,
   readFileImpl,
   accessImpl,
 }) {
-  const nodeExecutable = path.join(root, 'node.exe');
+  const nodeExecutable = paths.join(root, nodeName);
   const npmPrefix = root;
-  const dshBin = path.join(
+  const dshBin = paths.join(
     npmPrefix,
     'node_modules',
     '@deepseek-ai',
@@ -172,7 +267,7 @@ async function resolveBundledDshRuntime({
     'lib',
     'bin.js',
   );
-  const packagePath = path.join(
+  const packagePath = paths.join(
     npmPrefix,
     'node_modules',
     '@deepseek-ai',
@@ -269,12 +364,12 @@ export function parseDshRateLimitRetryAfterSeconds(stderr) {
  * YAML scalars so a local gateway URL cannot change the patch structure.
  * @param {string} model
  * @param {string} baseURL
- * @param {{mcpServers?:Array<{serverName:string,url:string,headers?:Record<string,string>}>,profile?:string}} [options]
+ * @param {{mcpServers?:Array<{serverName:string,url:string,headers?:Record<string,string>}>,profile?:string,platform?:NodeJS.Platform}} [options]
  */
 export function makeNoemaDshWorkerPatch(
   model,
   baseURL,
-  { mcpServers = [], profile = 'executor' } = {},
+  { mcpServers = [], profile = 'executor', platform = process.platform } = {},
 ) {
   if (typeof model !== 'string' || !model.trim() || model.length > 200) {
     throw new TypeError('DSH worker model must be a non-empty model name');
@@ -359,10 +454,11 @@ export function makeNoemaDshWorkerPatch(
     `        defaultMaxTokens: ${DSH_WORKER_MAX_TOKENS}`,
     '        models:',
     `          - id: ${modelScalar}`,
-    // dsh-base provides the sandbox-consuming PowerShell executor on Windows.
-    // Product profiles keep the shell for bounded inspection under the forced
-    // read-only permission mode; only the executor gets filesystem mutation.
-    '- id: tool-pwsh',
+    // dsh-base ships a sandboxed shell per host: PowerShell on Windows, bash
+    // elsewhere. Enable only the host's shell. Product profiles keep it for
+    // bounded inspection under the forced read-only permission mode; only the
+    // executor gets filesystem mutation.
+    `- id: ${hostPlatform(platform).dshShellTool}`,
     '  disabled: false',
     '- id: tool-fs',
     `  disabled: ${!fileAccessEnabled}`,
@@ -492,7 +588,7 @@ export function normalizeDshReportedUsage(value) {
  */
 export class DshHeadlessAdapter {
   /**
-   * @param {{runtime:{nodeExecutable:string,dshBin:string},userDataPath:string,providerBaseUrl:string,getApiKey:()=>string|null,getPermissionMode?:()=>string,onUsage?:(usage:Record<string,unknown>)=>void,env?:NodeJS.ProcessEnv,spawnImpl?:typeof spawn,mcpServers?:Array<{serverName:string,url:string,headers?:Record<string,string>}>,profile?:string}} options
+   * @param {{runtime:{nodeExecutable:string,dshBin:string},userDataPath:string,providerBaseUrl:string,getApiKey:()=>string|null,getPermissionMode?:()=>string,onUsage?:(usage:Record<string,unknown>)=>void,env?:NodeJS.ProcessEnv,spawnImpl?:typeof spawn,mcpServers?:Array<{serverName:string,url:string,headers?:Record<string,string>}>,profile?:string,platform?:NodeJS.Platform}} options
    */
   constructor({
     runtime,
@@ -505,6 +601,7 @@ export class DshHeadlessAdapter {
     spawnImpl = spawn,
     mcpServers = [],
     profile = 'executor',
+    platform = process.platform,
   }) {
     this.executionEngine = 'dsh';
     this.runtime = runtime;
@@ -517,6 +614,7 @@ export class DshHeadlessAdapter {
     this.spawnImpl = spawnImpl;
     this.mcpServers = Array.isArray(mcpServers) ? mcpServers : [];
     this.profile = profile;
+    this.platform = platform;
   }
 
   /**
@@ -578,6 +676,7 @@ export class DshHeadlessAdapter {
       makeNoemaDshWorkerPatch(model, this.providerBaseUrl, {
         mcpServers,
         profile,
+        platform: this.platform,
       }),
       {
         encoding: 'utf8',
@@ -601,6 +700,7 @@ export class DshHeadlessAdapter {
       userDataPath: this.userDataPath,
       apiKey,
       permissionMode: effectivePermissionMode,
+      platform: this.platform,
     });
     const args = [
       this.runtime.dshBin,
@@ -635,31 +735,15 @@ export class DshHeadlessAdapter {
   }
 }
 
-/** @param {{parent:NodeJS.ProcessEnv,userDataPath:string,apiKey:string,permissionMode?:string}} options */
-function makeLocalWorkerEnvironment({
+/** @param {{parent:NodeJS.ProcessEnv,userDataPath:string,apiKey:string,permissionMode?:string,platform?:NodeJS.Platform}} options */
+export function makeLocalWorkerEnvironment({
   parent,
   userDataPath,
   apiKey,
   permissionMode = 'workspace-write',
+  platform = process.platform,
 }) {
-  const allowedNames = [
-    'APPDATA',
-    'COMSPEC',
-    'HOMEDRIVE',
-    'HOMEPATH',
-    'LOCALAPPDATA',
-    'OS',
-    'PATH',
-    'PATHEXT',
-    'PROCESSOR_ARCHITECTURE',
-    'SYSTEMROOT',
-    'TEMP',
-    'TMP',
-    'USERDOMAIN',
-    'USERNAME',
-    'USERPROFILE',
-    'WINDIR',
-  ];
+  const allowedNames = hostPlatform(platform).workerEnvironment;
   const env = {};
   for (const name of allowedNames) {
     if (parent[name]) env[name] = parent[name];
