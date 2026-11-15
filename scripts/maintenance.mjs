@@ -105,8 +105,10 @@ export function activeChanges(root) {
 }
 
 // `git` is injected so tests can run without a repository.
-export function checkDocuments(root, git) {
+export function checkDocuments(root, git, options = {}) {
   const errors = [];
+  const notices = [];
+  const inCi = options.ci ?? Boolean(process.env.CI);
   const config = readJson(path.join(root, ".codex", "workspace.json")) ?? {};
   const registered = (config.currentDocuments ?? []).map((entry) => entry.path);
   const authoritative = registered.filter((name) => name.startsWith(DOCS_PREFIX));
@@ -138,7 +140,9 @@ export function checkDocuments(root, git) {
   const packageVersion = readJson(path.join(root, "package.json"))?.version;
   const desktopVersion = readJson(path.join(root, "apps", "desktop", "package.json"))?.version;
   if (packageVersion !== desktopVersion) {
-    errors.push(`版本不一致：package.json ${packageVersion}，apps/desktop/package.json ${desktopVersion}`);
+    errors.push(
+      `版本不一致：package.json ${packageVersion}，apps/desktop/package.json ${desktopVersion}`,
+    );
   }
   const status = readText(path.join(root, "docs", "STATUS.md")) ?? "";
   const recordedVersion = /源码版本：`([^`]+)`/u.exec(status)?.[1];
@@ -164,9 +168,15 @@ export function checkDocuments(root, git) {
     errors.push("缺少权威文档：docs/PRODUCT.md");
   }
 
-  const hooksPath = git(["config", "--get", "core.hooksPath"]).text.trim();
-  if (hooksPath !== ".githooks") {
-    errors.push(`git core.hooksPath 是「${hooksPath || "(未设置)"}」，文档门槛未安装；执行：git config core.hooksPath .githooks`);
+  if (inCi) {
+    notices.push("CI 环境不检查本地提交钩子：协作方不需要安装 core.hooksPath");
+  } else {
+    const hooksPath = git(["config", "--get", "core.hooksPath"]).text.trim();
+    if (hooksPath !== ".githooks") {
+      errors.push(
+        `git core.hooksPath 是「${hooksPath || "(未设置)"}」，文档门槛未安装；执行：git config core.hooksPath .githooks`,
+      );
+    }
   }
   if (!fs.existsSync(path.join(root, ".githooks", "pre-commit"))) {
     errors.push("缺少 .githooks/pre-commit：提交前门槛被删除");
@@ -178,11 +188,13 @@ export function checkDocuments(root, git) {
   } else {
     for (const match of openspecConfig.matchAll(/docs\/[A-Za-z0-9_/-]+\.md/gu)) {
       if (!fs.existsSync(path.join(root, match[0]))) {
-        errors.push(`openspec/config.yaml 引用了不存在的文档 ${match[0]}；文档已合并或删除，配置要跟着改`);
+        errors.push(
+          `openspec/config.yaml 引用了不存在的文档 ${match[0]}；文档已合并或删除，配置要跟着改`,
+        );
       }
     }
   }
-  return { errors };
+  return { errors, notices };
 }
 
 function resolveOpenspecBinary(env) {
@@ -283,7 +295,9 @@ export function checkPlan(root, options = {}) {
     if (design !== null) {
       const decisions = pendingDecisions(design);
       if (decisions === null) {
-        errors.push(`活动变更 ${change} 的 design.md 缺少「${DECISION_HEADING}」小节；未定问题必须在这里列出`);
+        errors.push(
+          `活动变更 ${change} 的 design.md 缺少「${DECISION_HEADING}」小节；未定问题必须在这里列出`,
+        );
       } else {
         pending = decisions;
         if (decisions.length > MAX_PENDING_DECISIONS) {
@@ -314,7 +328,10 @@ export function checkPlan(root, options = {}) {
           stdio: ["ignore", "pipe", "pipe"],
         });
       } catch (error) {
-        const output = `${error.stdout ?? ""}${error.stderr ?? ""}`.trim().split(/\r?\n/u).slice(-8);
+        const output = `${error.stdout ?? ""}${error.stderr ?? ""}`
+          .trim()
+          .split(/\r?\n/u)
+          .slice(-8);
         errors.push(`openspec validate --all --strict 未通过：\n${output.join("\n")}`);
       }
     }
@@ -371,7 +388,9 @@ export function checkMilestone(root, options = {}) {
   const status = readText(path.join(root, "docs", "STATUS.md")) ?? "";
   const updated = /最后更新：(\d{4}-\d{2}-\d{2})/u.exec(status)?.[1];
   if (updated !== today) {
-    errors.push(`docs/STATUS.md 最后更新是 ${updated ?? "缺失"}，今天交付必须更新 STATUS 的版本/基线/验证/下一步`);
+    errors.push(
+      `docs/STATUS.md 最后更新是 ${updated ?? "缺失"}，今天交付必须更新 STATUS 的版本/基线/验证/下一步`,
+    );
   }
   if (!git(["status", "--porcelain"]).text.trim() && !options.allowUnstaged) {
     notices.push("工作树干净：归档前确认 npm run check 已通过，并把计数写进 STATUS");
@@ -389,7 +408,8 @@ export function checkPrecommit(root, options = {}) {
   const code = staged.filter((name) => CODE_PREFIXES.some((prefix) => name.startsWith(prefix)));
   if (code.length) {
     const planned = staged.filter(
-      (name) => !name.startsWith(ARCHIVE_PREFIX) && PLAN_PREFIXES.some((prefix) => name.startsWith(prefix)),
+      (name) =>
+        !name.startsWith(ARCHIVE_PREFIX) && PLAN_PREFIXES.some((prefix) => name.startsWith(prefix)),
     );
     if (!planned.length) {
       errors.push(
@@ -430,7 +450,10 @@ function runGit(root, args) {
 
 function stagedPaths(root, git) {
   const result = git(["diff", "--cached", "--name-only", "-z"]);
-  return result.text.split("\u0000").filter(Boolean).map((name) => name.replaceAll("\\", "/"));
+  return result.text
+    .split("\u0000")
+    .filter(Boolean)
+    .map((name) => name.replaceAll("\\", "/"));
 }
 
 function report(label, result) {
@@ -449,7 +472,11 @@ if (entry === fileURLToPath(import.meta.url)) {
   const root = path.resolve(fileURLToPath(new URL("../", import.meta.url)));
   const command = process.argv[2] ?? "docs";
   const output = (() => {
-    if (command === "docs") return report("docs-check", checkDocuments(root, (args) => runGit(root, args)));
+    if (command === "docs")
+      return report(
+        "docs-check",
+        checkDocuments(root, (args) => runGit(root, args)),
+      );
     if (command === "plan") return report("plan-check", checkPlan(root));
     if (command === "milestone") return report("milestone-check", checkMilestone(root));
     if (command === "precommit") return report("precommit-check", checkPrecommit(root));
