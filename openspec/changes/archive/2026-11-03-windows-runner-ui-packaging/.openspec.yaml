@@ -1,5 +1,0 @@
-schema: spec-driven
-created: 2026-11-03
-goal: Ship one auditable Windows backend resource and a main-process-owned
-  capability/setup experience; missing or changed runtime capability keeps new
-  commands disabled.

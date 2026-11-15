@@ -49,4 +49,5 @@
 - [x] 清理 8 个过时远端分支（`codex/*` 7 个 + `feat/noema-context-margin-prototype`），保留 `ts-migration-phase-0-1`（PR #131）；删除前备份 `.work/archive/branches-2026-11-15.bundle`（7,299,401 字节）与 `branch-inventory.txt`
 - [x] 源码规模盘点（168 文件、17 个 >1000 行、6 个 >2000 行）与不确定项清单交给用户决定，不在本轮做大迁移
 - [x] `docs/OPERATIONS.md` 新增「仓库结构与分支卫生」；`CONTRIBUTING.md` 说明残留分支由 `branches:check` 发现
+- [x] `openspec/changes/archive/` 移出仓库（218 个文件），`.gitignore` 忽略该目录；历史由 Git 保存（D-027）
 - [x] `npm run check` 全绿

@@ -303,9 +303,18 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 - 范围：工作流、文档边界与门槛；不改产品行为。
 - 重新审视：若卡片数量增长到一次交付跨多张卡（切片太碎），把同阶段多张卡合并为一个 change 并在 proposal 里列出，但仍需在卡片侧同步状态。
 
-## D-027 主进程逐步迁移到 TypeScript，不整体改写为 Rust
+## D-027 OpenSpec 归档只留本机，仓库只保留 specs 与活动变更
 
-- 状态：采用（2026-11-13；2026-11-15 合并 main 时两次因编号冲突改号：D-019 → D-025 → D-027）；阶段 0（基础设施）与阶段 1（小模块）已实现。
+- 状态：采用（2026-11-15，用户确认 archive 可删）。
+- 决定：`openspec/specs/`（当前必须成立的可观察行为）与 `openspec/changes/<活动变更>/`（本轮执行计划）入库；`openspec/changes/archive/` 只留在本机并被 `.gitignore` 忽略，归档后的历史由 Git 提交保存。`openspec archive` 仍用于把规格增量合并进 specs 并把完成的变更移出活动区。
+- 替代：archive 入库（218 个文件，与“历史在 Git”重复）；完全不用 archive（`openspec archive` 会重建该目录，忽略它更省事）。
+- 理由：用户要求仓库只保留与源码和协作相关的内容；archive 是过程材料，Git 已完整保存，再存一份只会给每次归档增加噪声。
+- 范围：仓库内容策略与 `scripts/workspace.config.json`；不改产品行为。
+- 重新审视：若需要在没有 Git 的环境里查阅历史提案，再考虑把 archive 导出到独立归档仓库或发布物。
+
+## D-028 主进程逐步迁移到 TypeScript，不整体改写为 Rust
+
+- 状态：采用（2026-11-13；2026-11-15 合并 main 时三次因编号冲突改号：D-019 → D-025 → D-027 → D-028）；阶段 0（基础设施）与阶段 1（小模块）已实现。
 - 决定：`src` 下的 `.mjs` 逐批改为 `.ts`，只改类型、不改行为；新代码只写 TypeScript。迁移后的 `.ts` 只用可擦除语法（`erasableSyntaxOnly`、`verbatimModuleSyntax`），导入写显式 `.ts` 扩展名，使 Node 测试运行器可直接加载源码，Vite 照常打包。`src/package.json` 标记 `"type": "module"`；`source:check` 以 `.mjs` 数量棘轮防止回退。测试（`test/**/*.mjs`）暂不迁移。Rust 继续只用于需要直接调用系统接口的组件（Windows Runner）。
 - 替代：整体改写为 Rust + React（Tauri）；只对 `.mjs` 开 `checkJs` + JSDoc；保持现状。
 - 理由：产品模型仍在快速变化，Rust 改写会冻结功能数月且性能瓶颈不在 CPU；关键依赖（sandbox-runtime、jsdom/readability、MCP、模型 SDK）以 JS 生态为主。TS 用最小迁移成本补上主进程缺失的类型保护；JSDoc 方案在大文件里可读性差，只作为过渡。

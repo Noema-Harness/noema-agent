@@ -40,3 +40,6 @@ docs/assets/*.finalize-summary.json
 docs/assets/*.delivery.json
 docs/assets/*.browser-check.json
 docs/assets/*.delivery-pending.json
+
+# OpenSpec history lives in Git; archive folders are local-only
+openspec/changes/archive/

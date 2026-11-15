@@ -34,7 +34,7 @@ npm run check
 2. `docs:check`：五份权威文档的三行头与路由、版本/基线、git 门槛安装状态；
 3. `figure:check`：架构图产物与 `docs/ARCHITECTURE.md` 摘要、README 引用是否同步；
 4. `plan:check`：OpenSpec 活动变更、`Plan:` 卡片链接、任务清单与未决问题；
-5. `source:check`：源码依赖边界，以及 `src` 下 `.mjs` 数量不增加（D-027 TS 迁移棘轮）；
+5. `source:check`：源码依赖边界，以及 `src` 下 `.mjs` 数量不增加（D-028 TS 迁移棘轮）；
 6. `lint`、`typecheck`、`maintenance:test`、`figure:test`、`branches:test`、`inbox:test`、`test`。
 
 OpenSpec 规格只写可观察行为，不写测试实现：每个新增或修改的 requirement，在本次 change 的 `tasks.md` 里写一条验证（测试文件名或命令）；归档后证据留在 Git 与看板卡片评论里，不把测试名写回常驻 specs，也不新增第二套测试映射。
@@ -88,7 +88,7 @@ npm run branches:prune -- --apply # 执行删除
 | STATUS 基线不是 HEAD 祖先                             | 基线写成当前可解析的提交；重写历史后重取                                                                                            |
 | 文档里写进了不属于它的内容                            | 不是脚本能判的事：每份文档头的 `Does not own` 已写明边界，评审时按边界判断；规划放卡片、状态放 STATUS、架构放 ARCHITECTURE          |
 | proposal 缺少 `Plan:` 卡片链接                        | 产品变更先在看板选卡，再把卡片链接写进 proposal 顶部；纯机制/文档/展示的治理变更写 `Plan: none`，且 diff 不能含 `apps/desktop/src/` |
-| 活动变更超过 1 个                                     | 已完成的先 `openspec archive <name> --yes`，过期未做的移到 `openspec/changes/archive/` 并写明关闭原因                               |
+| 活动变更超过 1 个                                     | 已完成的先 `openspec archive <name> --yes`（归档目录只留本机，不入库）；过期未做的也归档并写明关闭原因                              |
 | 活动变更 tasks 全部完成                               | 归档该变更后再开下一个阶段                                                                                                          |
 | `## 待用户决定` 超过 3 项                             | 先缩本轮范围；超过 3 项说明计划没切干净                                                                                             |
 | `[用户]` 验收项勾选没有确认日期                       | 只有用户明确确认后才勾选，并写成 `（用户确认：YYYY-MM-DD）`                                                                         |

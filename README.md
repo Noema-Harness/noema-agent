@@ -54,7 +54,7 @@ README 只做入口，不拥有产品定义、架构、状态或操作细节。
 apps/desktop/       Electron 主进程、preload、renderer、共享契约
 docs/               五份权威文档
 openspec/specs/     可观察行为的回归规格
-openspec/changes/   本轮执行计划；归档在 changes/archive/
+openspec/changes/   本轮执行计划（归档只留本机，历史由 Git 保存）
 scripts/            仓库级检查、门槛与维护脚本
 ```
 
