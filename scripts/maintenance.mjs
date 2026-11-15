@@ -28,7 +28,6 @@ const DECISION_HEADING = "## 待用户决定";
 const USER_TASK_PREFIX = "[用户]";
 const USER_CONFIRMATION = /用户确认：\d{4}-\d{2}-\d{2}/u;
 const PLAN_LINK = /^Plan:\s*https:\/\/github\.com\/\S+/mu;
-const CARD_EVIDENCE = /https:\/\/github\.com\/[^\s)|]+\/issues\/\d+#issuecomment-\d+/u;
 const GOVERNANCE_PLAN = /^Plan:\s*none\b/mu;
 
 function readText(file) {
@@ -480,11 +479,6 @@ export function checkMilestone(root, options = {}) {
   const proposalText = readText(path.join(directory, "proposal.md")) ?? "";
   const planKind = planTarget(proposalText);
   if (planKind === "card") {
-    if (!CARD_EVIDENCE.test(tasks ?? "")) {
-      errors.push(
-        `产品变更 ${change} 归档前要在 tasks.md 写一条卡片证据评论链接（https://github.com/<owner>/<repo>/issues/<n>#issuecomment-<id>）：commit、check 计数与 STATUS 链接贴到卡片`,
-      );
-    }
     if (!/更新卡片正文/u.test(tasks ?? "")) {
       errors.push(
         `产品变更 ${change} 归档前要在 tasks.md 记一条“更新卡片正文（现在能做什么 + 手测步骤 / 还没做）”：卡片正文是用户同步进度与测试的观察口`,

@@ -318,7 +318,7 @@ test("a milestone is archivable only when tasks, decisions and evidence line up"
     );
   }));
 
-test("a product change records card evidence before it can be archived", () =>
+test("a product change updates the card body before it can be archived", () =>
   withRoot((holder) => {
     const root = makeRoot(holder, { tasks: "# tasks\n\n- [x] 第一项\n" });
     const change = "openspec/changes/stage-probe";
@@ -331,12 +331,12 @@ test("a product change records card evidence before it can be archived", () =>
     );
 
     const missing = checkMilestone(root, { git: fakeGit(), today: TODAY });
-    assert.match(missing.errors.join("\n"), /卡片证据评论链接/u);
+    assert.match(missing.errors.join("\n"), /更新卡片正文/u);
 
     write(
       root,
       `${change}/tasks.md`,
-      "# tasks\n\n- [x] 第一项\n- [x] 更新卡片正文：现在能做什么 + 手测步骤\n- [x] 卡片证据：https://github.com/Noema-Harness/noema-agent/issues/138#issuecomment-1\n",
+      "# tasks\n\n- [x] 第一项\n- [x] 更新卡片正文：现在能做什么 + 手测步骤\n",
     );
     assert.deepEqual(checkMilestone(root, { git: fakeGit(), today: TODAY }).errors, []);
   }));

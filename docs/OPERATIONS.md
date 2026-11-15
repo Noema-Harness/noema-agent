@@ -37,7 +37,7 @@ npm run check
 5. `source:check`：源码依赖边界，以及 `src` 下 `.mjs` 数量不增加（D-039 TS 迁移棘轮）；
 6. `lint`、`typecheck`、`tools:test`（维护脚本测试）、`test`。
 
-OpenSpec 规格只写可观察行为，不写测试实现：每个新增或修改的 requirement，在本次 change 的 `tasks.md` 里写一条验证（测试文件名或命令）；归档后证据留在 Git 与看板卡片评论里，不把测试名写回常驻 specs，也不新增第二套测试映射。
+OpenSpec 规格只写可观察行为，不写测试实现：每个新增或修改的 requirement，在本次 change 的 `tasks.md` 里写一条验证（测试文件名或命令）；归档后证据留在 Git、变更 tasks 与 STATUS 里，不把测试名写回常驻 specs，也不新增第二套测试映射。
 
 里程碑（准备归档变更时）单独运行：
 
@@ -89,7 +89,7 @@ npm run branches:prune -- --apply # 执行删除
 | 活动变更 tasks 全部完成                               | 归档该变更后再开下一个阶段                                                                                                          |
 | `[用户]` 验收项勾选没有确认日期                       | 只有用户明确确认后才勾选，并写成 `（用户确认：YYYY-MM-DD）`                                                                         |
 | milestone 报任务未完成 / 有待决问题 / STATUS 不是当天 | 补完任务、拿到用户答案、更新 STATUS 后再归档                                                                                        |
-| milestone 报产品变更缺卡片证据                        | 把卡片评论链接（`…/issues/<n>#issuecomment-<id>`）写进 tasks；治理变更（`Plan: none`）不需要                                        |
+| milestone 报产品变更没更新卡片正文                    | 在 tasks 写一条“更新卡片正文（现在能做什么 + 手测步骤 / 还没做）”，并真的改卡片正文；治理变更（`Plan: none`）不需要                 |
 | 架构文档变了但图没重出（figure:check）                | 运行 `npm run figure:build`；不要手改 html/png；README 必须引用 png 与 html                                                         |
 | pre-commit 拒绝产品代码提交                           | 同一次提交带上计划/状态更新与 specs 增量；未决决策只能等用户回答                                                                    |
 | pre-commit 报“本轮变更的计划还没有提交”               | 先把 `openspec/changes/<change>/` 单独提交，再提交产品代码；计划先于实现，Git 历史才能证明开工依据                                  |
@@ -131,7 +131,7 @@ schtasks /Query /TN NoemaGithubInbox
 
 ### 议题与积压放在哪（D-028/D-029）
 
-只有三处，不另建容器：`docs/DECISIONS.md` 放议题与决定（先追加带状态的条目，`待定` 写清「要定什么」，有产出后改成 `决定`，没产出就直接删掉；新条目编号 `D-YYYYMMDD-<短名>`，并行分支不抢号）；看板卡片放能力、排序、状态与**每轮交付的观察口**（正文三段：现在能做什么 + 手测步骤 / 还没做 / 证据评论链接）；当前活动变更的 `tasks.md` 放本轮执行。发散讨论时先把话题追进 DECISIONS 再继续。
+只有三处，不另建容器：`docs/DECISIONS.md` 放议题与决定（先追加带状态的条目，`待定` 写清「要定什么」，有产出后改成 `决定`，没产出就直接删掉；新条目编号 `D-YYYYMMDD-<短名>`，并行分支不抢号）；看板卡片放能力、排序、状态与**每轮交付的观察口**（正文三段：现在能做什么 + 手测步骤 / 还没做 / 证据留在仓库）；卡片评论只放讨论与触发条件，不放交付日志；当前活动变更的 `tasks.md` 放本轮执行。发散讨论时先把话题追进 DECISIONS 再继续。
 
 ### 规划看板（GitHub Project）
 
@@ -146,11 +146,11 @@ gh issue comment <n> --body "证据：commit <sha>，check 873/873，STATUS 链�
 
 每张卡片是 `[C<n>]` issue；收口时先贴证据再关 issue，`npm run check` 的离线门槛只校验 proposal 里的 `Plan:` 链接，不校验远端状态。
 
-卡片正文只写现在：交付一段就更新「现在能做什么（含手测步骤）」与「还没做」，不写变更日志；证据评论只追加。产品变更的 `design.md` 必须写「## 用户可观察的改变」与「## 手测步骤」，`plan:check` 会拦缺这两节；`milestone:check` 会拦 tasks 里没有“更新卡片正文”。
+卡片正文只写现在：交付一段就更新「现在能做什么（含手测步骤）」与「还没做」，不写变更日志、不贴交付证据；证据写进提交、tasks 与 STATUS。产品变更的 `design.md` 必须写「## 用户可观察的改变」与「## 手测步骤」，`plan:check` 会拦缺这两节；`milestone:check` 会拦 tasks 里没有“更新卡片正文”。
 
 状态语义只有两层：卡片 Status 表示**交付状态**——Done 是有自动证据且用户能看到，In Progress 是部分交付（缺口写在卡片正文），Todo 是没开始；**“本轮正在做”由活动变更表示**，同一时刻至多 1 个，不要靠把卡片留在 In Progress 来表示。
 
-工作流：**卡片切口 = 一个 change**。选卡后把卡片移到 In Progress，并在 `openspec/changes/<name>/` 立项；tasks 只拆这次切口（不要把整个阶段塞进一个 change）；收口时归档 change、在卡片贴证据并把评论链接写进 tasks（`milestone:check` 校验）、卡片 Done。纯机制/文档/展示的治理变更写 `Plan: none`，不占能力卡，也不能带产品代码（`pre-commit` 会拒绝）。
+工作流：**卡片切口 = 一个 change**。选卡后把卡片移到 In Progress，并在 `openspec/changes/<name>/` 立项；tasks 只拆这次切口（不要把整个阶段塞进一个 change）；收口时归档 change、更新卡片正文（`milestone:check` 校验）、卡片 Done；证据留在仓库，不贴评论。纯机制/文档/展示的治理变更写 `Plan: none`，不占能力卡，也不能带产品代码（`pre-commit` 会拒绝）。
 
 三条链路各有一句出口，遇到时照这里走：**接手或会话被压缩**——先跑 `npm run inbox`，再读看板 In Progress、`docs/DECISIONS.md` 待定条目和活动变更 tasks，边界就在这三处（AGENTS §1 步骤 0）。**决定被推翻**——在原条目写 `**被替代**：D-0xx` 指向新条目，不设第三个状态。**归档后发现问题**——开一个新 change（proposal 引用原变更），不改 Git 历史；需要回退版本时按上面「版本与安装」的回滚步骤。
 

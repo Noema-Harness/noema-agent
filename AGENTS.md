@@ -13,7 +13,7 @@
 1. **选卡并立项**：看板上选本轮推进的卡片（`[C<n>]` issue），移到 In Progress，在 `openspec/changes/<name>/` 立项。proposal 写 `Plan: <卡片链接>`；design 写选择与「## 待用户决定」；tasks 只拆**这一次切口**，不把一个阶段塞进一个 change。纯机制/文档/展示的治理变更写 `Plan: none`，不占能力卡，且不能带 `apps/desktop/src/` 的产品代码。design 开头写三行开工声明：改动落点（哪些模块）、共享逻辑是否要移动、是否新增路径或兼容层。
 2. **开工前**：先看 GitHub 收件箱（`npm run inbox`），有 CI 失败或 PR 变动先处理；然后 `npm run plan:check` 必须通过。未答决策只挡产品代码，先做与之无关的部分，不替用户拍板。
 3. **实现**：交付一个可直接测试的纵切，完成即停。轮内验证是 `npm run typecheck` 加受影响的测试文件（秒级）；全量 `npm run check` 不在轮内重复跑。机器能判的验收写成自动测试；只有人能判的写成 `- [ ] [用户] <场景> → 证据`。证据（命令、计数、失败原因）写进 tasks 或 STATUS，文档与代码同一提交。
-4. **里程碑收口**（一张卡的一个切口完成时）：`npm run check` 全绿 → `npm run milestone:check` → 归档变更、合并规格增量、更新 STATUS；在卡片评论贴证据（commit sha、check 计数、STATUS 链接），把该评论链接记进 tasks（里程碑会校验）。推送后不等 CI：GitHub Actions 由收件箱在下一轮开场报告；只有合并 PR、发布或收到红色通知时才主动看。提交信息写明本轮的 change 名与并入的规格文件——归档目录不入库，提交信息、STATUS 与卡片评论是仓库里能查到的计划痕迹。本轮只交付这张卡的一部分时，同一提交里把卡片正文的「已完成 / 缺口」改成当前事实（正文写现在，不写日志），卡片留在 In Progress；整张卡完成才移到 Done 并关 issue。
+4. **里程碑收口**（一张卡的一个切口完成时）：`npm run check` 全绿 → `npm run milestone:check` → 归档变更、合并规格增量、更新 STATUS；更新卡片正文的「现在能做什么（含手测步骤）/ 还没做」（里程碑会校验）；证据留在仓库（提交、tasks、STATUS），不往卡片评论里追加日志。推送后不等 CI：GitHub Actions 由收件箱在下一轮开场报告；只有合并 PR、发布或收到红色通知时才主动看。提交信息写明本轮的 change 名与并入的规格文件——归档目录不入库，提交信息与 STATUS 是仓库里能查到的执行痕迹。本轮只交付这张卡的一部分时，同一提交里把卡片正文的「已完成 / 缺口」改成当前事实（正文写现在，不写日志），卡片留在 In Progress；整张卡完成才移到 Done 并关 issue。
 5. **汇报**：开头先给三处摘要——DECISIONS 里待定的条目（编号+一句）、看板 In Progress 哪几张卡、本轮变更剩几项；用户验收项原样带出；用户确认后勾选并写确认日期，同时把对应条目改成 `决定` 并落地产出。收尾再答三句自检：这轮有没有在写胶水掩盖结构问题、有没有把举例当需求做成了模块、有没有新增没有证据的规则——有就直说。
 
 进「待用户决定」的只允许五类：产品概念与边界、不可逆或难回退的迁移、方案代价差一个量级、只能人判断的验收、对外承诺或额外支出。其余写进 design.md 的「实现选择」，注明维护者判断、用户可推翻。
@@ -40,7 +40,7 @@
 按“什么时候跑”只分三档：
 
 - **提交时（秒级）**：`.githooks/pre-commit` → `scripts/governance.mjs commit`。拦：产品代码（`apps/desktop/src/`）没带计划/状态、本轮变更的计划还没进 HEAD（计划先于实现）、未答决策下做产品行为、治理变更夹带产品代码、行为变更标 `skip_specs`。只改 `scripts/` 或文档时放行。
-- **里程碑（约 40 秒）**：`npm run check` → `governance.mjs milestone`，一张卡的一个切口收口时跑一次。含 `docs:check`（五份文档三行头、未登记文档、版本与基线一致、钩子已装、配置引用有效、文档与 CI 引用的脚本真实存在、DECISIONS 状态与必填字段）、`plan:check`（活动变更唯一、proposal/design/tasks 齐全、tasks 未全完成、`Plan:` 链接或 `Plan: none`、用户验收已确认）、`milestone:check`（任务与用户验收完成、无待决、规格增量或声明纯文档、卡片证据评论、STATUS 当天）、`figure:check`（架构图与 ARCHITECTURE 同步）、`source:check`、lint、typecheck、全部测试。
+- **里程碑（约 40 秒）**：`npm run check` → `governance.mjs milestone`，一张卡的一个切口收口时跑一次。含 `docs:check`（五份文档三行头、未登记文档、版本与基线一致、钩子已装、配置引用有效、文档与 CI 引用的脚本真实存在、DECISIONS 状态与必填字段）、`plan:check`（活动变更唯一、proposal/design/tasks 齐全、tasks 未全完成、`Plan:` 链接或 `Plan: none`、用户验收已确认）、`milestone:check`（任务与用户验收完成、无待决、规格增量或声明纯文档、卡片正文已更新、STATUS 当天）、`figure:check`（架构图与 ARCHITECTURE 同步）、`source:check`、lint、typecheck、全部测试。
 - **远端（异步）**：CI 跑的就是里程碑，同一批步骤；推送后不等，收件箱在下一轮开场报告失败。
 
 规则从哪来、怎么退：每条规则登记在 `scripts/governance.mjs` 的 `RULES` 里，写明它支撑五条不变量中的哪一条、防的是哪种已发生的失败、在哪个检查里执行。`node scripts/governance.mjs audit` 打印登记表，并分出「触发过真实失败」「观察期」「提醒」三类。
