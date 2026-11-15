@@ -137,15 +137,19 @@ export function decisionEntries(text) {
 }
 
 // Decisions are an issue stream: entries from D-029 on must declare a status, and a
-// pending entry without an output is not a decision.
+// pending entry without an output is not a decision — it is deleted, not marked.
 export function checkDecisionEntries(text, { today = localToday(), staleDays = 14 } = {}) {
   const errors = [];
   const notices = [];
   for (const entry of decisionEntries(text)) {
     if (entry.number < FIRST_GOVERNED_DECISION) continue;
-    const state = /\*\*状态\*\*：\s*(待定|决定|作废)/u.exec(entry.body);
+    if (/\*\*状态\*\*：\s*作废/u.test(entry.body)) {
+      errors.push(`${entry.id} 标成了作废：没有产出的条目直接删除（Git 保留历史），不要留在流水里`);
+      continue;
+    }
+    const state = /\*\*状态\*\*：\s*(待定|决定)/u.exec(entry.body);
     if (!state) {
-      errors.push(`${entry.id} 缺少「**状态**：待定/决定/作废」`);
+      errors.push(`${entry.id} 缺少「**状态**：待定|决定」`);
       continue;
     }
     if (state[1] === "待定") {
@@ -158,15 +162,15 @@ export function checkDecisionEntries(text, { today = localToday(), staleDays = 1
       } else {
         const age = Math.floor((Date.parse(today) - Date.parse(updated)) / 86_400_000);
         if (Number.isFinite(age) && age >= staleDays) {
-          notices.push(`${entry.id} 待定已 ${age} 天没动：给出产出，或改成作废`);
+          notices.push(`${entry.id} 待定已 ${age} 天没动：给出产出，或删掉这一条`);
         }
       }
       continue;
     }
     for (const field of ["**决定**", "**理由**"]) {
-      if (!entry.body.includes(field)) errors.push(`${entry.id} 是${state[1]}条目，缺少 ${field}`);
+      if (!entry.body.includes(field)) errors.push(`${entry.id} 是决定条目，缺少 ${field}`);
     }
-    if (state[1] === "决定" && !entry.body.includes("**重新审视**")) {
+    if (!entry.body.includes("**重新审视**")) {
       errors.push(`${entry.id} 是决定条目，缺少 **重新审视**`);
     }
   }
