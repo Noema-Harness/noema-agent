@@ -1,96 +1,91 @@
 ---
 name: noema-development
-description: 在 Noema 仓库推进一轮开发、立项或收口一个 OpenSpec 变更、或遇到门槛拒绝与 CI 红时使用。给九步操作步骤、模板与命令速查；规则本身以 AGENTS.md 为准，本技能不重复规则。
+description: 在 Noema 仓库推进开发时使用：开一轮、立项三件套模板、闸门失败对照表、收口与出口。给模板与命令；九步流程与规则以 AGENTS.md 为准，本技能不重复规则，两者冲突时以 AGENTS.md 为准。
 ---
 
 # Noema 开发运行手册
 
-定位：`AGENTS.md` 是不变量（常驻、判断用），本技能是操作程序（按需加载、给命令与模板）。两者冲突时以 AGENTS 为准。规则变化改 AGENTS；步骤变化改本文件。
+本技能只放三类东西：**模板**、**失败对照**、**命令指针**。九步流程在 `AGENTS.md` §1；文档角色与出口在 AGENTS §2–§3；所有规则冲突以 AGENTS 为准。
 
-## 0. 开场（每轮先做）
+## 0. 开场
 
 ```powershell
-npm run inbox
+npm run inbox        # GitHub 收件箱：CI 红、PR、被 @
 git log --oneline -3
 git status --short
 ```
 
-再读三处：`docs/STATUS.md` 的「最后一次验证」、`docs/DECISIONS.md` 里 `**状态**：待定` 的条目、看板 In Progress：
+然后读：`docs/STATUS.md` 的「最后一次验证」、`docs/DECISIONS.md` 里状态为 `待定` 的条目、看板 `gh project item-list 1 --owner Noema-Harness --format json`。
 
-```powershell
-gh project item-list 1 --owner Noema-Harness --format json
+## 1. 立项三件套模板
+
+`openspec/changes/<name>/proposal.md`
+
+```markdown
+Plan: <卡片链接>            # 治理变更写 Plan: none，并加 .openspec.yaml 的 skip_specs: true
+
+## 为什么
+<一句话说清要解决的失败或能力缺口，带可核对的事实>
+
+## 改什么
+- <改动点，含影响的文档与脚本>
+
+## 影响
+- 代码：`apps/desktop/...`（无则写“无产品代码”）
+- 文档：<PRODUCT / ARCHITECTURE / DECISIONS / OPERATIONS / STATUS 中实际会动的>
 ```
 
-（阶段字段的键是中文「阶段」；PowerShell 控制台显示乱码但值正确。）
+`design.md`
 
-然后判断这轮落在哪一步：**只读调查**（查到即回）、**需要用户定夺**（先追加 `待定` 条目再讨论）、**已批准的实现**（进立项）。判断不了就停在定性，不写代码。
+```markdown
+## 开工声明
+- 计划先于代码：本变更的提交信息含变更名，tasks 记录证据
+- 事实影响：行为 / 结构 / 取舍 / 仅执行（四选一或多选，各一句依据）
 
-## 1. 立项模板
+## 待用户决定
+- [ ] <问题>：候选 A / B；建议 A；确认前不执行
 
-产品切片：`openspec/changes/<name>/` 三件套。
+## 实现选择
+- <维护者判断，可被推翻>
 
-- `proposal.md`：首行 `Plan: <卡片链接>`；Why / What Changes / Impact / 推进的能力。
-- `design.md`：三行开工声明（改动落点、共享逻辑是否移动、是否新增路径）；选择与理由；`## 待用户决定`（没有就写“无”）；`## 用户可观察的改变`；`## 手测步骤`。
-- `tasks.md`：按切口分节，每项可验收；只有人能判的写 `- [ ] [用户] <场景> → 证据`。
+## 用户可观察的改变
+- <用户能看到的差异>
 
-治理变更：`Plan: none`，`.openspec.yaml` 里 `skip_specs: true`，且不能带 `apps/desktop/src/` 产品代码。
-
-## 2. 过计划门
-
-```powershell
-npm run plan:check
+## 手测步骤
+1. <命令或点击路径>
 ```
 
-失败对照：缺 `Plan:` → proposal 首行；活动变更不唯一 → 归档或关掉旧的；`待定` 超过 3 条 → 先收一条；用户验收未确认 → 补确认日期；治理变更夹带产品代码 → 把产品改动拆到另一个切口。
+`tasks.md`
 
-## 3. 实现与自验
-
-- 一次只做一个纵切；先写失败测试再修，或先写测试断言新行为。
-- 轮内验证：`npm run typecheck` 加受影响的测试文件（`node --test <file>`）。
-- 真机或真实数据跑一次；证据写进 tasks：命令、计数、失败原因、未验证项各一行。
-
-## 4. 收口（每一刀都做）
-
-- 卡片正文三段：**现在能做什么**（含手测步骤）/ **还没做** / **边界**。正文写事实，不写日志。
-- tasks 勾选并附证据；`docs/STATUS.md` 更新本轮验证。
-- 归档提交：
-
-```powershell
-npm run check
-npm run milestone:check
-npx openspec archive <name> --yes
+```markdown
+- [ ] 1.1 <动作>（验证：<命令或可观察结果>）
+- [x] 1.2 <动作>（验证：<命令 + 输出摘要，如 878/878>）
+- [ ] 2.1 [用户] <只有人能判断的验收>（完成后写「用户确认：YYYY-MM-DD」）
 ```
 
-提交信息写明 change 名与并入的规格文件；推送后不等 CI（收件箱在下一轮报告）。
+## 2. 闸门失败对照
 
-## 5. 出口处理（对应 AGENTS §3）
-
-| 出口 | 处理 |
+| 报错 | 修法 |
 | --- | --- |
-| 被否 / 不批 | DECISIONS 记否决理由与触发条件；切回只读，不改代码 |
-| 计划门拒绝 | 补计划；若是规则本身错，登记规则修订 |
-| 执行失败 / 要撤 | 重试或换路；`git revert` 并写原因，不静默丢改动 |
-| 验收未过 | 卡片正文如实回退为事实，缺口进「还没做」，不新开卡 |
-| CI 红 | 下一轮开场从收件箱带出，先修再开新刀 |
-| 决定被替代 | 新条目写「**被替代**：D-xxx」，旧条目只加该字段 |
+| `docs:check` 三行头 / 版本基线 | 补 `Authority/Update when/Does not own`；同步版本号与基线提交 |
+| `plan:check` 缺 `Plan:` 链接 | 卡片变更写卡片链接；治理变更写 `Plan: none` |
+| `plan:check` 缺「用户可观察的改变」/「手测步骤」 | 产品变更两节都不能空，写可执行的手测 |
+| `plan:check` 待用户决定未答 | 先讨论、更新条目；未答前不实现相关产品行为 |
+| `precommit-check` 代码未配对计划 | 同一提交里勾 tasks 或写证据（`docs/`、`openspec/changes/`、`AGENTS.md`） |
+| `milestone:check` 任务未完成 / 缺卡片正文 | 勾完任务、更新卡片正文「现在能做什么 / 还没做」 |
+| `source:check` 依赖越界 | 生产代码不导入 `test-support`；新源码写 TypeScript（D-039） |
+| `figure:check` 图与架构文档不一致 | `npm run figure:build` 重出图，或更新 `docs/ARCHITECTURE.md` 后重建 |
+| CI 红 | 收件箱会在下一轮带回；不等 CI，先看失败步骤日志，按上表修 |
+| 分支已合并 / 陈旧 | `npm run branches:check` 看提示，`npm run branches:prune -- --apply` |
 
-## 6. 命令速查
+## 3. 收口与出口
 
-```powershell
-npm run inbox                  # 远端变化、CI、PR
-npm run plan:check             # 计划门
-npm run check                  # 里程碑：docs/plan/milestone/figure/source/lint/typecheck/tests
-npm run milestone:check        # 收口前置
-node scripts/governance.mjs audit   # 规则登记表与证据分级
-npm run figure:build           # 架构源变了才重出图（本机 Archify + Edge）
-npm run branches:prune         # 已合入分支清理预演（--apply 执行）
-npm run skill:install          # 把本技能同步到 ~/.dsh/skills
-```
+收口顺序：`npm run check` → `milestone:check` → 更新卡片正文与 STATUS → `openspec archive <name> --yes` → 提交（含变更名与数字）→ 推送。
 
-报错含义与修法：`docs/OPERATIONS.md` 的门槛表与「常见问题」。
+出口见 AGENTS §3：被否（条目写否决理由）、计划门拒绝（补计划或认定规则本身错了）、执行失败（重试或换路，`revert` 写原因）、验收未过（卡片回退、缺口重开）、CI 红（下一轮收件箱）、决定被替代（写 `**被替代**：<id>`）。
 
-## 7. 维护本技能
+## 4. 维护
 
-- 只引用 AGENTS 的章节标题与 OPERATIONS 的命令，不复制规则正文。
-- 规则变了改 AGENTS；步骤变了改这里；两者都要在同一提交里对齐。
-- 改完运行 `npm run skill:install`，`docs:check` 会校验已安装副本与仓库文件一致（CI 只提示）。
+- 命令细节只写指针：`npm run` 全部在 `docs/OPERATIONS.md`。
+- 流程规则变了改 `AGENTS.md`；本技能只跟着改模板与对照表，两者同一提交对齐。
+- 改完本文件跑 `npm run skill:install`，`docs:check` 会校验已安装副本的哈希。
