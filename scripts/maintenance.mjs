@@ -542,6 +542,9 @@ export function checkMilestone(root, options = {}) {
   return { errors, notices };
 }
 
+const COMPAT_HEADING = "## 兼容层";
+const COMPAT_FILE = /\/(compat|compatibility|shim|bridge|legacy)([-._][^/]*)?\.(mjs|ts|tsx)$/u;
+
 export function checkPrecommit(root, options = {}) {
   const git = options.git ?? ((args) => runGit(root, args));
   const docs = checkDocuments(root, git);
@@ -589,6 +592,16 @@ export function checkPrecommit(root, options = {}) {
       errors.push(
         `活动变更 ${plan.change} 标记了 skip_specs，但这次提交含产品代码：行为变更必须在变更里写 specs 增量`,
       );
+    }
+    const compatFiles = productCode.filter((name) => COMPAT_FILE.test(`/${name}`));
+    if (compatFiles.length && plan.change) {
+      const design =
+        readText(path.join(root, "openspec", "changes", plan.change, "design.md")) ?? "";
+      if (!(sectionBody(design, COMPAT_HEADING) ?? "").trim()) {
+        errors.push(
+          `这次提交改到了兼容层文件（${compatFiles.join("、")}）：在 design.md 写「${COMPAT_HEADING}」说明谁拥有、什么条件下删除，否则不要加这一层`,
+        );
+      }
     }
     if (!productCode.length && plan.pending.length) {
       plan.notices.push(`工具/治理改动不受未决产品决策阻塞：${plan.pending.join("；")}`);

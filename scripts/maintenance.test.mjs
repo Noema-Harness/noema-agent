@@ -518,3 +518,22 @@ ${HEADER}
     assert.match(result.errors.join("\n"), /标成了作废：没有产出的条目直接删除/u);
   });
 });
+
+test("a compatibility layer needs an owner and a removal condition", () =>
+  withRoot((holder) => {
+    const root = makeRoot(holder);
+    const change = "openspec/changes/stage-probe";
+    const git = fakeGit({ committedPlan: true });
+    const blocked = checkPrecommit(root, {
+      git,
+      stagedPaths: ["apps/desktop/src/main/compat-legacy-writer.ts", `${change}/tasks.md`],
+    });
+    assert.match(blocked.errors.join("\n"), /兼容层/u);
+    const designPath = path.join(root, change, "design.md");
+    fs.appendFileSync(designPath, "\n## 兼容层\n\n- 旧写入器迁移完即删除，由迁移负责人跟踪。\n");
+    const allowed = checkPrecommit(root, {
+      git,
+      stagedPaths: ["apps/desktop/src/main/compat-legacy-writer.ts", `${change}/tasks.md`],
+    });
+    assert.deepEqual(allowed.errors, []);
+  }));
