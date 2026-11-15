@@ -11,7 +11,7 @@ import {
   checkPlan,
   checkPrecommit,
   localToday,
-  pendingDecisions,
+  reviewQueue,
 } from "./maintenance.mjs";
 
 const repositoryRoot = path.resolve(fileURLToPath(new URL("../", import.meta.url)));
@@ -98,7 +98,7 @@ function makeRoot(holder, overrides = {}) {
     write(
       root,
       `${change}/design.md`,
-      `# design\n\n## 用户可观察的改变\n\n- 探针行为\n\n## 手测步骤\n\n1. 打开探针\n\n## 待用户决定\n\n${overrides.decisions ?? ""}\n`,
+      `# design\n\n## 用户可观察的改变\n\n- 探针行为\n\n## 手测步骤\n\n1. 打开探针\n\n## 用户决策\n\n${overrides.decisions ?? "- 无"}\n`,
     );
     write(root, `${change}/tasks.md`, `# tasks\n\n${overrides.tasks ?? "- [ ] 第一项\n"}`);
     if (overrides.skipSpecs) write(root, `${change}/.openspec.yaml`, "skip_specs: true\n");
@@ -199,43 +199,26 @@ test("maintenance tooling enforces document, plan and commit gates", () =>
       true,
     );
 
-    // Undefined product decisions block product code from being committed.
+    // A decision that still waits for the user blocks product code from being committed.
+    const decisionsPath = path.join(root, "docs", "DECISIONS.md");
+    const originalDecisions = fs.readFileSync(decisionsPath, "utf8");
     write(
       root,
-      `${change}/design.md`,
-      "# design\n\n## 用户可观察的改变\n\n- 探针行为\n\n## 手测步骤\n\n1. 打开探针\n\n## 待用户决定\n\n- [ ] 成长机制如何触发\n- [ ] 团队命名规则\n\n## 其他\n",
+      "docs/DECISIONS.md",
+      `# DECISIONS\n\n${HEADER}## D-20261116-awaiting 等待确认的探针\n\n**状态**：待定\n**形态**：轮次\n**阶段**：决策中\n**要定什么**：探针\n**看板**：无\n**来源**：探针\n**阻塞**：无\n**结构**：无\n\n### 1 决策（执行前）\n\n- 要定：探针\n\n### 2 执行（执行中）\n\n- 批次：无\n\n### 3 验收（立项时写 v0，交付前复核更新）\n\n- 项：探针 — 验：无 — 结论：待验收\n`,
     );
-    assert.deepEqual(
-      pendingDecisions(fs.readFileSync(path.join(root, change, "design.md"), "utf8")),
-      ["成长机制如何触发", "团队命名规则"],
-    );
-
-    // Plain bullets count too: the gate must not depend on remembering a checkbox format.
-    write(
-      root,
-      `${change}/design.md`,
-      "# design\n\n## 用户可观察的改变\n\n- 探针行为\n\n## 手测步骤\n\n1. 打开探针\n\n## 待用户决定\n\n- 成长机制如何触发\n- 团队命名规则\n\n## 其他\n",
-    );
-    assert.deepEqual(
-      pendingDecisions(fs.readFileSync(path.join(root, change, "design.md"), "utf8")),
-      ["成长机制如何触发", "团队命名规则"],
-    );
+    assert.equal(reviewQueue(fs.readFileSync(decisionsPath, "utf8")).decide.length, 1);
     const blocked = checkPrecommit(root, { git, stagedPaths: ["apps/desktop/src/main/main.ts"] });
     assert.match(blocked.errors.join("\n"), /必须同时更新 docs\/ 或 openspec\/changes\//u);
-    assert.match(blocked.errors.join("\n"), /仍有待用户决定的问题/u);
+    assert.match(blocked.errors.join("\n"), /还有未获用户确认的决议/u);
 
-    // Code ships only with a plan update and no open decision.
-    write(
-      root,
-      `${change}/design.md`,
-      "# design\n\n## 用户可观察的改变\n\n- 探针行为\n\n## 手测步骤\n\n1. 打开探针\n\n## 待用户决定\n",
-    );
+    // Code ships only with a plan update and no decision waiting for the user.
+    write(root, "docs/DECISIONS.md", originalDecisions);
     const committed = checkPrecommit(root, {
       git,
       stagedPaths: ["apps/desktop/src/main/main.ts", "openspec/changes/stage-probe/tasks.md"],
     });
     assert.deepEqual(committed.errors, []);
-
     // Archive-only edits do not count as a plan update.
     const archived = checkPrecommit(root, {
       git,
@@ -327,12 +310,23 @@ test("a milestone is archivable only when tasks, decisions and evidence line up"
       `${change}/tasks.md`,
       "# tasks\n\n- [x] 第一项\n- [x] 更新卡片正文：现在能做什么 + 手测步骤\n- [x] 卡片证据：https://github.com/Noema-Harness/noema-agent/issues/138#issuecomment-1\n",
     );
-    write(root, `${change}/design.md`, "# design\n\n## 待用户决定\n\n- [ ] 还没答\n");
+    write(root, `${change}/design.md`, "# design\n\n## 用户决策\n\n- 见 D-20261116-awaiting\n");
+    write(
+      root,
+      "docs/DECISIONS.md",
+      `# DECISIONS\n\n${HEADER}## D-20261116-awaiting 等待确认的探针\n\n**状态**：待定\n**形态**：轮次\n**阶段**：决策中\n**要定什么**：探针\n**看板**：无\n**来源**：探针\n**阻塞**：无\n**结构**：无\n\n### 1 决策（执行前）\n\n- 要定：探针\n\n### 2 执行（执行中）\n\n- 批次：无\n\n### 3 验收（立项时写 v0，交付前复核更新）\n\n- 项：探针 — 验：无 — 结论：待验收\n`,
+    );
     const decided = checkMilestone(root, { git: fakeGit(), today: TODAY });
-    assert.match(decided.errors.join("\n"), /还有 1 项待用户决定/u);
+    assert.match(decided.errors.join("\n"), /还有 1 项决议未获用户确认/u);
     assert.match(decided.errors.join("\n"), /没有 specs 增量/u);
 
-    write(root, `${change}/design.md`, "# design\n\n## 待用户决定\n");
+    // Drop the open decision again before checking the archivable path.
+    write(
+      root,
+      "docs/DECISIONS.md",
+      `# DECISIONS\n\n${HEADER}## D-20261116-stage-probe 探针条目\n\n**状态**：决定\n**用户确认**：2026-11-16\n**决定**：探针\n\n${LIFECYCLE("执行中", "changes/stage-probe")}`,
+    );
+    write(root, `${change}/design.md`, "# design\n\n## 用户决策\n\n- 无\n");
     write(root, `${change}/specs/probe/spec.md`, "# spec\n");
     const stale = checkMilestone(root, {
       git: fakeGit(),
@@ -356,7 +350,7 @@ test("a product change updates the card body before it can be archived", () =>
   withRoot((holder) => {
     const root = makeRoot(holder, { tasks: "# tasks\n\n- [x] 第一项\n" });
     const change = "openspec/changes/stage-probe";
-    write(root, `${change}/design.md`, "# design\n\n## 待用户决定\n");
+    write(root, `${change}/design.md`, "# design\n\n## 用户决策\n\n- 无\n");
     write(root, `${change}/specs/probe/spec.md`, "# spec\n");
     write(
       root,
@@ -392,7 +386,7 @@ test("a product change designs what the user can observe and how to test it", ()
   withRoot((holder) => {
     const root = makeRoot(holder);
     assert.deepEqual(checkPlan(root, { skipSpecValidation: true }).errors, []);
-    write(root, "openspec/changes/stage-probe/design.md", "# design\n\n## 待用户决定\n");
+    write(root, "openspec/changes/stage-probe/design.md", "# design\n\n## 用户决策\n\n- 无\n");
     const errors = checkPlan(root, { skipSpecValidation: true }).errors.join("\n");
     assert.match(errors, /用户可观察的改变/u);
     assert.match(errors, /手测步骤/u);
@@ -444,10 +438,15 @@ test("governance changes declare Plan: none and never ship product code", () =>
 test("unanswered decisions block product code but not tooling maintenance", () =>
   withRoot((holder) => {
     const root = makeRoot(holder, {
-      decisions: "- [ ] 成长机制如何触发\n",
+      decisions: "- 见 D-20261116-stage-probe\n",
       skipSpecs: true,
     });
     const git = fakeGit();
+    write(
+      root,
+      "docs/DECISIONS.md",
+      `# DECISIONS\n\n${HEADER}## D-20261116-stage-probe 探针条目\n\n**状态**：决定\n**用户确认**：2026-11-16\n**决定**：探针\n\n${LIFECYCLE("执行中", "changes/stage-probe")}## D-20261116-awaiting 等待确认的探针\n\n**状态**：待定\n**形态**：轮次\n**阶段**：决策中\n**要定什么**：探针\n**看板**：无\n**来源**：探针\n**阻塞**：无\n**结构**：无\n\n### 1 决策（执行前）\n\n- 要定：探针\n\n### 2 执行（执行中）\n\n- 批次：无\n\n### 3 验收（立项时写 v0，交付前复核更新）\n\n- 项：探针 — 验：无 — 结论：待验收\n`,
+    );
 
     const tooling = checkPrecommit(root, {
       git,
@@ -460,9 +459,9 @@ test("unanswered decisions block product code but not tooling maintenance", () =
       git,
       stagedPaths: ["apps/desktop/src/main/main.ts", "openspec/changes/stage-probe/tasks.md"],
     });
-    assert.match(product.errors.join("\n"), /仍有待用户决定的问题/u);
+    assert.match(product.errors.join("\n"), /还有未获用户确认的决议/u);
 
-    write(root, "openspec/changes/stage-probe/design.md", "# design\n\n## 待用户决定\n");
+    write(root, "openspec/changes/stage-probe/design.md", "# design\n\n## 用户决策\n\n- 无\n");
     const behaviour = checkPrecommit(root, {
       git,
       stagedPaths: ["apps/desktop/src/main/main.ts", "openspec/changes/stage-probe/tasks.md"],

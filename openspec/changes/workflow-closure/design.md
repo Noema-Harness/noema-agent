@@ -8,13 +8,13 @@
 
 用五条不变量对照 `node scripts/governance.mjs audit` 的 28 条登记规则（26 拦截 / 2 提醒 / 0 观察期）：
 
-| 不变量 | 覆盖情况 | 缺口 |
-| --- | --- | --- |
-| 意图可追 | 强：decision-shape、plan-link、one-active-change、plan-before-code、code-needs-plan、governance-no-product | 「把反馈直接当工单」没有检测点；「被否 / 撤销」没有约定 |
-| 变更可逆 | 弱：只有 source-boundary（依赖边界） | 撤销提交、卡片回退、迁移回滚、替代决定都无流程位置 |
-| 结果可验 | 强：user-acceptance-date、observable-sections、milestone-tasks、spec-delta、status-today | specs 与测试无绑定；卡片正文只校验「已更新」 |
-| 事实唯一 | 强：version-sync、doc-heads、docs-registered、status-facts、figure-sync 等 9 条 | DECISIONS / 卡片 / tasks 冲突无检测，只靠 AGENTS §2 的表靠人判 |
-| 成本受控 | 中：hooks-installed、branches-cleanup、inbox-per-round | 规则只增不减：4 条「预防」规则从未触发真实失败 |
+| 不变量   | 覆盖情况                                                                                                   | 缺口                                                           |
+| -------- | ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| 意图可追 | 强：decision-shape、plan-link、one-active-change、plan-before-code、code-needs-plan、governance-no-product | 「把反馈直接当工单」没有检测点；「被否 / 撤销」没有约定        |
+| 变更可逆 | 弱：只有 source-boundary（依赖边界）                                                                       | 撤销提交、卡片回退、迁移回滚、替代决定都无流程位置             |
+| 结果可验 | 强：user-acceptance-date、observable-sections、milestone-tasks、spec-delta、status-today                   | specs 与测试无绑定；卡片正文只校验「已更新」                   |
+| 事实唯一 | 强：version-sync、doc-heads、docs-registered、status-facts、figure-sync 等 9 条                            | DECISIONS / 卡片 / tasks 冲突无检测，只靠 AGENTS §2 的表靠人判 |
+| 成本受控 | 中：hooks-installed、branches-cleanup、inbox-per-round                                                     | 规则只增不减：4 条「预防」规则从未触发真实失败                 |
 
 ### B. 工作流编排
 
@@ -68,10 +68,10 @@
 - 决定被替代：新决定写 `**被替代**：D-xxx`，引用旧决定的文档同步。
 - 规则退役：拦截 → 提醒 → 删除；`audit` 输出观察期与提醒清单，里程碑人工确认一次。
 
-## 待用户决定
+## 用户决策
 
-- 先补哪几条缺口、按什么顺序（建议 A 反馈分类 + D 九步 + E 六角色与出口 作为第一个切口；B 逆向链随后；F/G 放到真实切口之后再定）。
-- 真实产品切口是否用 C6「成员经历可查看 / 删除」。
+- 本变更的决策与阶段见 `docs/DECISIONS.md` 的 `D-20261116-workflow-closure`（执行中），不再在本文件里列出待决项。
+- 技能结构见 `D-20261116-governance-extraction`（决策中）；审核入口的验收见 `D-20261116-review-inbox`（待验收）。
 
 ## 实现选择
 

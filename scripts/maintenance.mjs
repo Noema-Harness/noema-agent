@@ -26,7 +26,7 @@ const PRODUCT_CODE_PREFIX = "apps/desktop/src/";
 const PLAN_PREFIXES = ["docs/", "openspec/changes/"];
 const TOOLING_PLAN_PREFIXES = ["docs/", "openspec/changes/", "AGENTS.md"];
 const ARCHIVE_PREFIX = "openspec/changes/archive/";
-const DECISION_HEADING = "## 待用户决定";
+const DECISION_HEADING = "## 用户决策";
 const USER_TASK_PREFIX = "[用户]";
 const USER_CONFIRMATION = /用户确认：\d{4}-\d{2}-\d{2}/u;
 const PLAN_LINK = /^Plan:\s*https:\/\/github\.com\/\S+/mu;
@@ -505,20 +505,12 @@ export function checkPlan(root, options = {}) {
       }
     }
     const design = readText(path.join(directory, "design.md"));
+    if (design !== null && pendingDecisions(design) === null) {
+      errors.push(
+        `活动变更 ${change} 的 design.md 缺少「${DECISION_HEADING}」小节：只列本变更相关的决议编号（D-…）或写“无”；未定问题写在 docs/DECISIONS.md 的条目里`,
+      );
+    }
     if (design !== null) {
-      const decisions = pendingDecisions(design);
-      if (decisions === null) {
-        errors.push(
-          `活动变更 ${change} 的 design.md 缺少「${DECISION_HEADING}」小节；未定问题必须在这里列出`,
-        );
-      } else {
-        pending = decisions;
-        notices.push(
-          decisions.length
-            ? `待用户决定 ${decisions.length} 项：${decisions.join("；")}`
-            : "待用户决定：无",
-        );
-      }
       if (planKind === "card") {
         for (const heading of OBSERVABLE_SECTIONS) {
           if (!sectionHasItems(design, heading)) {
@@ -533,6 +525,7 @@ export function checkPlan(root, options = {}) {
 
   const decisionsText = readText(path.join(root, "docs", "DECISIONS.md")) ?? "";
   const queue = reviewQueue(decisionsText);
+  pending = queue.decide.map((item) => item.id);
   if (queue.decide.length) {
     notices.push(
       `待用户确认 ${queue.decide.length} 项：${queue.decide.map((item) => item.id).join(", ")}`,
@@ -602,12 +595,8 @@ export function checkMilestone(root, options = {}) {
     }
   }
   const design = readText(path.join(directory, "design.md"));
-  const decisions = design === null ? null : pendingDecisions(design);
-  if (design !== null && decisions === null) {
+  if (design !== null && pendingDecisions(design) === null) {
     errors.push(`活动变更 ${change} 的 design.md 缺少「${DECISION_HEADING}」`);
-  }
-  if (decisions?.length) {
-    errors.push(`还有 ${decisions.length} 项待用户决定，里程碑不能通过：${decisions.join("；")}`);
   }
   const proposalText = readText(path.join(directory, "proposal.md")) ?? "";
   const planKind = planTarget(proposalText);
@@ -628,6 +617,12 @@ export function checkMilestone(root, options = {}) {
     }
   }
   const decidedText = readText(path.join(root, "docs", "DECISIONS.md")) ?? "";
+  const openDecisions = reviewQueue(decidedText).decide;
+  if (openDecisions.length) {
+    errors.push(
+      `还有 ${openDecisions.length} 项决议未获用户确认，里程碑不能通过：${openDecisions.map((item) => item.id).join(", ")}`,
+    );
+  }
   const awaiting = reviewQueue(decidedText).accept;
   if (awaiting.length) {
     errors.push(
@@ -681,7 +676,7 @@ export function checkPrecommit(root, options = {}) {
     }
     if (plan.pending.length && productCode.length) {
       errors.push(
-        `活动变更仍有待用户决定的问题，相关产品行为不能实现：${plan.pending.join("；")}；工具与文档改动不受此限`,
+        `还有未获用户确认的决议，相关产品行为不能实现：${plan.pending.join(", ")}；工具与文档改动不受此限`,
       );
     }
     if (productCode.length && plan.change) {
@@ -710,7 +705,7 @@ export function checkPrecommit(root, options = {}) {
       );
     }
     if (!productCode.length && plan.pending.length) {
-      plan.notices.push(`工具/治理改动不受未决产品决策阻塞：${plan.pending.join("；")}`);
+      plan.notices.push(`工具/治理改动不受未决产品决策阻塞：${plan.pending.join(", ")}`);
     }
   }
   const decisionsText = readText(path.join(root, "docs", "DECISIONS.md")) ?? "";
