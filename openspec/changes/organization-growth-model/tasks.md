@@ -96,4 +96,4 @@
 ## 8. CI 与文档门（2026-11-15）
 
 - [x] GitHub Actions 的 `npm run check` 通过：`docs:check` 在 CI 下不再要求本地 `core.hooksPath`（改为提示），workflow checkout 改为 `fetch-depth: 0` 以便校验 STATUS 基线是 HEAD 祖先
-- [x] `scripts/maintenance.test.mjs` 覆盖 CI 模式（无钩子时少一条错误、不出现 `core.hooksPath` 报错）
+- [x] `scripts/maintenance.test.mjs` 覆盖 CI 模式（无钩子时少一条错误、不出现 `core.hooksPath` 报错）；测试显式传 `{ ci: false }`，避免 CI 环境变量改变本地断言
