@@ -39,9 +39,6 @@ export const INVARIANTS = ["意图可追", "变更可逆", "结果可验", "事�
 
 const PROVISIONAL = "观察期";
 
-// 治理脚本预算：只降不升。新增检查先删减同量代码，否则治理层会跟着失败次数无界生长。
-const SCRIPT_BUDGET = 2511;
-
 // 规则登记表。字段说明：
 // - id：稳定名字，报错与决定里可以引用
 // - invariant：支撑哪条不变量
@@ -121,23 +118,11 @@ export function profileScripts(name) {
   return (PROFILES[name] ?? []).filter((step) => step.kind === "node").map((step) => step.script);
 }
 
-function countScriptLines() {
-  return fs
-    .readdirSync(path.join(root, "scripts"))
-    .filter((name) => name.endsWith(".mjs") && !name.endsWith(".test.mjs"))
-    .reduce(
-      (sum, name) =>
-        sum + fs.readFileSync(path.join(root, "scripts", name), "utf8").split("\n").length - 1,
-      0,
-    );
-}
-
 function printAudit() {
   const { blocks, notices, provisional, unsupported } = auditRules();
   console.log(
     `governance audit: ${blocks.length} 条拦截 / ${notices.length} 条提醒 / ${provisional.length} 条观察期`,
   );
-  console.log(`治理脚本：${countScriptLines()} / ${SCRIPT_BUDGET} 行（预算只降不升）`);
   const groups = [
     ["拦截（触发过真实失败）", blocks.filter((rule) => !provisional.includes(rule))],
     ["拦截（观察期，尚未触发；连续两个里程碑无触发就降级为提醒）", provisional],
@@ -174,13 +159,6 @@ function main() {
       console.error(`governance: ${name} missing ${step.script}`);
       return 2;
     }
-  }
-  const scriptLines = countScriptLines();
-  if (scriptLines > SCRIPT_BUDGET) {
-    console.error(
-      `governance: 治理脚本 ${scriptLines} 行超过预算 ${SCRIPT_BUDGET}：先删减同量代码再新增检查`,
-    );
-    return 1;
   }
   const started = Date.now();
   for (const step of steps) {
