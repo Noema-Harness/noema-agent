@@ -85,7 +85,7 @@ Plan: <卡片链接> # 治理变更写 Plan: none，并加 .openspec.yaml 的 sk
 - 计划先于代码：本变更的提交信息含变更名，tasks 记录证据
 - 事实影响：行为 / 结构 / 取舍 / 仅执行（四选一或多选，各一句依据）
 
-## 待用户决定
+## 用户决策
 
 - [ ] <问题>：候选 A / B；建议 A；确认前不执行
 
@@ -117,7 +117,7 @@ Plan: <卡片链接> # 治理变更写 Plan: none，并加 .openspec.yaml 的 sk
 | `docs:check` 三行头 / 版本基线                   | 补 `Authority/Update when/Does not own`；同步版本号与基线提交            |
 | `plan:check` 缺 `Plan:` 链接                     | 卡片变更写卡片链接；治理变更写 `Plan: none`                              |
 | `plan:check` 缺「用户可观察的改变」/「手测步骤」 | 产品变更两节都不能空，写可执行的手测                                     |
-| `plan:check` 待用户决定未答                      | 先讨论、更新条目；未答前不实现相关产品行为                               |
+| 决议条目 `阶段：决策中` 未获确认                 | 先讨论、更新条目；用户确认前不实现相关产品行为                           |
 | `precommit-check` 代码未配对计划                 | 同一提交里勾 tasks 或写证据（`docs/`、`openspec/changes/`、`AGENTS.md`） |
 | `milestone:check` 任务未完成 / 缺卡片正文        | 勾完任务、更新卡片正文「现在能做什么 / 还没做」                          |
 | `source:check` 依赖越界                          | 生产代码不导入 `test-support`；新源码写 TypeScript（D-039）              |
