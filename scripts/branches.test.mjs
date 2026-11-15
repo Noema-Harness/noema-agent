@@ -14,7 +14,7 @@ function branch(name, daysAgo) {
   };
 }
 
-test("merged branches fail the check while old unmerged branches only warn", () => {
+test("merged branches are a cleanup notice, not a failed check", () => {
   const refs = [
     branch("main", 0),
     branch("codex/merged", 3),
@@ -28,11 +28,11 @@ test("merged branches fail the check while old unmerged branches only warn", () 
     isMerged: (b) => b.name === "codex/merged",
     aheadCount: (b) => (b.name === "codex/old-topic" ? 4 : 1),
   });
-  assert.equal(result.errors.length, 1);
-  assert.match(result.errors[0], /codex\/merged 已完全合入/);
+  assert.equal(result.errors.length, 0);
   assert.deepEqual(result.stale, ["codex/merged"]);
-  assert.equal(result.notices.length, 1);
-  assert.match(result.notices[0], /codex\/old-topic 已 90 天未动且未合入（ahead=4）/);
+  assert.equal(result.notices.length, 2);
+  assert.match(result.notices[0], /codex\/merged 已完全合入 origin\/main/);
+  assert.match(result.notices[1], /codex\/old-topic 已 90 天未动且未合入（ahead=4）/);
 });
 
 test("branch refs parse the tab-free format used by for-each-ref", () => {

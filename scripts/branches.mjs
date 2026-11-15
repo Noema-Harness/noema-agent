@@ -2,8 +2,11 @@
 //
 // The plan board says what to build; this file only keeps the branch list from
 // turning into an archaeology site. A branch that is already merged into the
-// base branch is safe to delete, so `check` fails on it. Branches that are
-// merely old are reported as notices: age alone is not a reason to delete
+// base branch is safe to delete, so `check` says so and `prune` deletes it.
+// That is a notice rather than an error: deleting a remote ref needs
+// credentials a commit check does not have, and normal merges (now with
+// "delete branch on merge") leave the ref behind for a moment. Branches that
+// are merely old are notices too: age alone is not a reason to delete
 // someone else's work.
 //
 // Usage:
@@ -38,8 +41,8 @@ export function classifyBranches({ refs, base, isMerged, aheadCount, now, staleD
     // ref that some git versions still list.
     if (branch.ref === base || branch.name === "HEAD" || branch.name === "origin") continue;
     if (isMerged(branch)) {
-      errors.push(
-        `分支 ${branch.name} 已完全合入 ${base}：删除它（git push origin --delete ${branch.name}）`,
+      notices.push(
+        `分支 ${branch.name} 已完全合入 ${base}，仍留在远端：运行 npm run branches:prune -- --apply 删除`,
       );
       stale.push(branch.name);
       continue;

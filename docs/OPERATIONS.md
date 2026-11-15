@@ -49,7 +49,7 @@ npm run milestone:check
 
 ```powershell
 npm run workspace:check
-npm run branches:check
+npm run branches:check             # 已合入或过久未动的分支只提示，不阻塞提交
 npm run docs:check
 npm run figure:check
 npm run plan:check
@@ -69,7 +69,7 @@ npm test
 已合入的分支只是垃圾，直接失败；只是“很久没动”的分支只给提示，因为年龄本身不能证明别人的工作没价值。清理流程：
 
 ```powershell
-npm run branches:prune            # 预演：列出可安全删除的已合入分支
+npm run branches:prune            # 预演：列出可安全删除的已合入分支（check 的提示就是来源）
 npm run branches:prune -- --apply # 执行删除
 ```
 
