@@ -31,7 +31,7 @@ npm run check
 `check` 依次执行：
 
 1. `workspace:check`：文档路由、根目录结构、已合入却残留的远端分支；
-2. `docs:check`：五份权威文档的三行头与路由、版本/基线、git 门槛安装状态；
+2. `docs:check`：五份权威文档的三行头与路由、版本/基线、git 门槛安装状态、决定是否经过待定或用户确认；
 3. `figure:check`：架构图产物与 `docs/ARCHITECTURE.md` 摘要、README 引用是否同步；
 4. `plan:check`：OpenSpec 活动变更、`Plan:` 卡片链接、任务清单与未决问题；
 5. `source:check`：源码依赖边界，以及 `src` 下 `.mjs` 数量不增加（D-039 TS 迁移棘轮）；
@@ -77,7 +77,7 @@ npm run branches:prune -- --apply # 执行删除
 
 ### 维护门槛
 
-门槛分三个频率，入口统一在 `scripts/governance.mjs`：`commit`（提交点，秒级）、`milestone`（一个切口收口时，全量）、`ci`（与 milestone 同源）。`npm run check` 即 `governance milestone`；`docs:check`/`figure:check`/`plan:check` 是同一批规则的单独入口（调试用），`milestone:check` 在归档前手动跑。规则清单登记在 `scripts/governance.mjs` 的 `RULES`：每条规则写明支撑的不变量、防的失败、触发证据与执行位置。`node scripts/governance.mjs audit` 打印登记表并列出观察期规则——连续两个里程碑没有触发就降级为提醒。失败的常见原因与修法：
+门槛分三个频率，入口统一在 `scripts/governance.mjs`：`commit`（提交点，秒级）、`milestone`（一个切口收口时，全量）、`ci`（与 milestone 同源）。`npm run check` 即 `governance milestone`；`docs:check`/`figure:check`/`plan:check` 是同一批规则的单独入口（调试用），`milestone:check` 在归档前手动跑。规则清单登记在 `scripts/governance.mjs` 的 `RULES`：每条规则写明支撑的不变量、防的失败、触发证据与执行位置。`node scripts/governance.mjs audit` 打印登记表并列出观察期规则——连续两个里程碑没有触发就降级为提醒。`scripts/*.mjs`（不含测试）有行数预算且只降不升，超预算里程碑失败。失败的常见原因与修法：
 
 | 报错                                                  | 修法                                                                                                                                |
 | ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
@@ -94,7 +94,8 @@ npm run branches:prune -- --apply # 执行删除
 | pre-commit 拒绝产品代码提交                           | 同一次提交带上计划/状态更新与 specs 增量；未决决策只能等用户回答                                                                    |
 | pre-commit 报“本轮变更的计划还没有提交”               | 先把 `openspec/changes/<change>/` 单独提交，再提交产品代码；计划先于实现，Git 历史才能证明开工依据                                  |
 | pre-commit 只提示“工具/治理改动不受未决产品决策阻塞”  | 正常；工具与文档维护不被产品决策卡住                                                                                                |
-| pre-commit 提示改到了兼容层文件                       | 不是失败：先确认它是否在掩盖结构缺陷；确需过渡就在 design 写 `## 兼容层`（谁拥有、何时删）                                          |
+| 新决定一创建就是 `决定`                               | 新议题先写 `待定`（写清要定什么），下一轮再改 `决定`；用户已经拍板时写「**用户确认**：YYYY-MM-DD」                                  |
+| 治理脚本超出预算                                      | 先删减同量代码再新增检查；预算只降不升，见 `scripts/governance.mjs` 的 `SCRIPT_BUDGET`                                              |
 
 用户验收项写在 tasks.md 里，格式 `- [ ] [用户] <场景> → 证据`；确认后改成 `- [x] [用户] <场景> → 证据（用户确认：YYYY-MM-DD）`。
 

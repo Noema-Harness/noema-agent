@@ -25,9 +25,11 @@ function fakeGit({
   hooksPath = ".githooks",
   dirty = false,
   committedPlan = true,
+  committedDecisions = "",
 } = {}) {
   return (args) => {
     if (args[0] === "merge-base") return { ok: baseline, text: "" };
+    if (args[0] === "show") return { ok: true, text: committedDecisions };
     if (args[0] === "ls-tree") {
       return { ok: true, text: committedPlan ? "openspec/changes/stage-probe/proposal.md\n" : "" };
     }
@@ -479,15 +481,33 @@ test("tooling code pairs with docs, a change or AGENTS.md", () =>
     );
   }));
 
-test("a compatibility layer is a reminder, not a blocker", () =>
+
+test("a new decision waits as pending or carries the user's approval", () =>
   withRoot((holder) => {
     const root = makeRoot(holder);
-    const change = "openspec/changes/stage-probe";
-    const git = fakeGit({ committedPlan: true });
-    const result = checkPrecommit(root, {
-      git,
-      stagedPaths: ["apps/desktop/src/main/compat-legacy-writer.ts", `${change}/tasks.md`],
+    const decision = (fields) =>
+      `# DECISIONS\n\n${HEADER}\n## D-20261116-probe\n\n${fields}\n`;
+
+    write(root, "docs/DECISIONS.md", decision("**状态**：决定\n**决定**：先这样"));
+    assert.match(
+      checkDocuments(root, fakeGit()).errors.join("\n"),
+      /一创建就是决定：新决定先在待定里存一轮/u,
+    );
+
+    write(
+      root,
+      "docs/DECISIONS.md",
+      decision("**状态**：决定\n**用户确认**：2026-11-16\n**决定**：先这样"),
+    );
+    assert.deepEqual(checkDocuments(root, fakeGit()).errors, []);
+
+    write(
+      root,
+      "docs/DECISIONS.md",
+      decision("**状态**：决定\n**决定**：先这样"),
+    );
+    const parked = fakeGit({
+      committedDecisions: decision("**状态**：待定\n**要定什么**：先看看再说"),
     });
-    assert.deepEqual(result.errors, []);
-    assert.match(result.notices.join("\n"), /兼容层/u);
+    assert.deepEqual(checkDocuments(root, parked).errors, []);
   }));

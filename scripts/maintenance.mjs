@@ -147,9 +147,12 @@ export function decisionEntries(text) {
 
 // Decisions are an issue stream: entries from D-029 on declare a state, and each
 // state needs the one field that makes it useful — what is being decided, or what was decided.
-export function checkDecisionEntries(text) {
+export function checkDecisionEntries(text, options = {}) {
   const errors = [];
   const notices = [];
+  const previousIds = new Set(
+    (options.previous ? decisionEntries(options.previous) : []).map((entry) => entry.id),
+  );
   for (const entry of decisionEntries(text)) {
     if (/\*\*状态\*\*：\s*作废/u.test(entry.body)) {
       errors.push(`${entry.id} 标成了作废：没有产出的条目直接删除（Git 保留历史），不要留在流水里`);
@@ -162,6 +165,16 @@ export function checkDecisionEntries(text) {
     }
     const field = state[1] === "待定" ? "**要定什么**" : "**决定**";
     if (!entry.body.includes(field)) errors.push(`${entry.id} 是${state[1]}条目，缺少 ${field}`);
+    if (
+      state[1] === "决定" &&
+      options.previous !== undefined &&
+      !previousIds.has(entry.id) &&
+      !/\*\*用户确认\*\*：\d{4}-\d{2}-\d{2}/u.test(entry.body)
+    ) {
+      errors.push(
+        `${entry.id} 一创建就是决定：新决定先在待定里存一轮（让候选与否决过程可见），或写「**用户确认**：YYYY-MM-DD」表示用户已经拍板`,
+      );
+    }
   }
   return { errors, notices };
 }
@@ -191,7 +204,11 @@ export function checkDocuments(root, git, options = {}) {
     }
   }
   const decisions = readText(path.join(root, "docs", "DECISIONS.md")) ?? "";
-  const decisionReport = checkDecisionEntries(decisions, { today: options.today });
+  const committedDecisions = git(["show", "HEAD:docs/DECISIONS.md"]);
+  const decisionReport = checkDecisionEntries(decisions, {
+    today: options.today,
+    previous: committedDecisions.ok ? committedDecisions.text : "",
+  });
   errors.push(...decisionReport.errors);
   notices.push(...decisionReport.notices);
   const allowed = new Set(registered);
@@ -483,8 +500,6 @@ export function checkMilestone(root, options = {}) {
         `产品变更 ${change} 归档前要在 tasks.md 记一条“更新卡片正文（现在能做什么 + 手测步骤 / 还没做）”：卡片正文是用户同步进度与测试的观察口`,
       );
     }
-  } else if (planKind === "governance") {
-    notices.push("治理变更（Plan: none）：不要求卡片证据评论");
   }
   const specs = markdownFilesUnder(path.join(directory, "specs"));
   if (specs.length === 0) {
@@ -509,9 +524,6 @@ export function checkMilestone(root, options = {}) {
   notices.push("下一步：npm run check 全绿 → 归档变更（合并规格增量）→ 更新 STATUS → 开下一个变更");
   return { errors, notices };
 }
-
-const COMPAT_HEADING = "## 兼容层";
-const COMPAT_FILE = /\/(compat|compatibility|shim|bridge|legacy)([-._][^/]*)?\.(mjs|ts|tsx)$/u;
 
 export function checkPrecommit(root, options = {}) {
   const git = options.git ?? ((args) => runGit(root, args));
@@ -563,16 +575,6 @@ export function checkPrecommit(root, options = {}) {
       errors.push(
         `活动变更 ${plan.change} 标记了 skip_specs，但这次提交含产品代码：行为变更必须在变更里写 specs 增量`,
       );
-    }
-    const compatFiles = productCode.filter((name) => COMPAT_FILE.test(`/${name}`));
-    if (compatFiles.length && plan.change) {
-      const design =
-        readText(path.join(root, "openspec", "changes", plan.change, "design.md")) ?? "";
-      if (!(sectionBody(design, COMPAT_HEADING) ?? "").trim()) {
-        plan.notices.push(
-          `提醒：这次提交改到了兼容层文件（${compatFiles.join("、")}）。如果它在掩盖架构缺陷，先重构；确需过渡，在 design.md 写「${COMPAT_HEADING}」说明谁拥有、什么条件下删除`,
-        );
-      }
     }
     if (!productCode.length && plan.pending.length) {
       plan.notices.push(`工具/治理改动不受未决产品决策阻塞：${plan.pending.join("；")}`);

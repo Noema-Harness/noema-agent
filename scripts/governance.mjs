@@ -39,6 +39,9 @@ export const INVARIANTS = ["意图可追", "变更可逆", "结果可验", "事�
 
 const PROVISIONAL = "观察期";
 
+// 治理脚本预算：只降不升。新增检查先删减同量代码，否则治理层会跟着失败次数无界生长。
+const SCRIPT_BUDGET = 2511;
+
 // 规则登记表。字段说明：
 // - id：稳定名字，报错与决定里可以引用
 // - invariant：支撑哪条不变量
@@ -75,7 +78,6 @@ skip-specs-product|结果可验|行为变更标 skip_specs，跳过规格与回�
 workspace-root-dirs|事实唯一|仓库根出现未分类目录，过程材料混进版本库|新增 .githooks/.archify 时拦到过|block|workspace:check
 source-boundary|变更可逆|生产代码导入 test-support，交付物带着测试依赖|预防：解析一条依赖就是一层耦合，静态检查比事后拆便宜|block|source:check
 branches-cleanup|成本受控|已合并分支残留在远端，仓库越来越难读|PR #131 合并后 ts-migration 分支残留|notice|branches:check
-compat-layer|变更可逆|用兼容层掩盖互相调用的架构缺陷|观察期：2026-11-15 新增，改为提醒|notice|pre-commit
 inbox-per-round|成本受控|每轮同步等 CI 或靠用户提醒才发现远端红|用户批评每轮等 CI 几十分钟|notice|流程
 `.trim();
 
@@ -119,11 +121,23 @@ export function profileScripts(name) {
   return (PROFILES[name] ?? []).filter((step) => step.kind === "node").map((step) => step.script);
 }
 
+function countScriptLines() {
+  return fs
+    .readdirSync(path.join(root, "scripts"))
+    .filter((name) => name.endsWith(".mjs") && !name.endsWith(".test.mjs"))
+    .reduce(
+      (sum, name) =>
+        sum + fs.readFileSync(path.join(root, "scripts", name), "utf8").split("\n").length - 1,
+      0,
+    );
+}
+
 function printAudit() {
   const { blocks, notices, provisional, unsupported } = auditRules();
   console.log(
     `governance audit: ${blocks.length} 条拦截 / ${notices.length} 条提醒 / ${provisional.length} 条观察期`,
   );
+  console.log(`治理脚本：${countScriptLines()} / ${SCRIPT_BUDGET} 行（预算只降不升）`);
   const groups = [
     ["拦截（触发过真实失败）", blocks.filter((rule) => !provisional.includes(rule))],
     ["拦截（观察期，尚未触发；连续两个里程碑无触发就降级为提醒）", provisional],
@@ -160,6 +174,13 @@ function main() {
       console.error(`governance: ${name} missing ${step.script}`);
       return 2;
     }
+  }
+  const scriptLines = countScriptLines();
+  if (scriptLines > SCRIPT_BUDGET) {
+    console.error(
+      `governance: 治理脚本 ${scriptLines} 行超过预算 ${SCRIPT_BUDGET}：先删减同量代码再新增检查`,
+    );
+    return 1;
   }
   const started = Date.now();
   for (const step of steps) {
