@@ -573,8 +573,8 @@ export function checkPrecommit(root, options = {}) {
       const design =
         readText(path.join(root, "openspec", "changes", plan.change, "design.md")) ?? "";
       if (!(sectionBody(design, COMPAT_HEADING) ?? "").trim()) {
-        errors.push(
-          `这次提交改到了兼容层文件（${compatFiles.join("、")}）：在 design.md 写「${COMPAT_HEADING}」说明谁拥有、什么条件下删除，否则不要加这一层`,
+        plan.notices.push(
+          `提醒：这次提交改到了兼容层文件（${compatFiles.join("、")}）。如果它在掩盖架构缺陷，先重构；确需过渡，在 design.md 写「${COMPAT_HEADING}」说明谁拥有、什么条件下删除`,
         );
       }
     }

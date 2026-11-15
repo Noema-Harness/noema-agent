@@ -460,21 +460,15 @@ ${HEADER}
   });
 });
 
-test("a compatibility layer needs an owner and a removal condition", () =>
+test("a compatibility layer is a reminder, not a blocker", () =>
   withRoot((holder) => {
     const root = makeRoot(holder);
     const change = "openspec/changes/stage-probe";
     const git = fakeGit({ committedPlan: true });
-    const blocked = checkPrecommit(root, {
+    const result = checkPrecommit(root, {
       git,
       stagedPaths: ["apps/desktop/src/main/compat-legacy-writer.ts", `${change}/tasks.md`],
     });
-    assert.match(blocked.errors.join("\n"), /兼容层/u);
-    const designPath = path.join(root, change, "design.md");
-    fs.appendFileSync(designPath, "\n## 兼容层\n\n- 旧写入器迁移完即删除，由迁移负责人跟踪。\n");
-    const allowed = checkPrecommit(root, {
-      git,
-      stagedPaths: ["apps/desktop/src/main/compat-legacy-writer.ts", `${change}/tasks.md`],
-    });
-    assert.deepEqual(allowed.errors, []);
+    assert.deepEqual(result.errors, []);
+    assert.match(result.notices.join("\n"), /兼容层/u);
   }));

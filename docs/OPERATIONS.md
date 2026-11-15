@@ -77,7 +77,7 @@ npm run branches:prune -- --apply # 执行删除
 
 ### 维护门槛
 
-五道门槛由 `scripts/maintenance.mjs`（docs/plan/milestone/pre-commit）与 `scripts/figure.mjs`（架构图同步）实现；入口统一在 `scripts/governance.mjs`：`commit`（提交点，秒级）、`milestone`（一个切口收口时，全量）、`ci`（与 milestone 同源）。`npm run check` 即 `governance milestone`；`docs:check`/`figure:check`/`plan:check` 是同一批规则的单独入口（调试用），`milestone:check` 在归档前手动跑。失败的常见原因与修法：
+门槛分三个频率，入口统一在 `scripts/governance.mjs`：`commit`（提交点，秒级）、`milestone`（一个切口收口时，全量）、`ci`（与 milestone 同源）。`npm run check` 即 `governance milestone`；`docs:check`/`figure:check`/`plan:check` 是同一批规则的单独入口（调试用），`milestone:check` 在归档前手动跑。规则清单登记在 `scripts/governance.mjs` 的 `RULES`：每条规则写明支撑的不变量、防的失败、触发证据与执行位置。`node scripts/governance.mjs audit` 打印登记表并列出观察期规则——连续两个里程碑没有触发就降级为提醒。失败的常见原因与修法：
 
 | 报错                                                  | 修法                                                                                                                                |
 | ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
@@ -87,7 +87,6 @@ npm run branches:prune -- --apply # 执行删除
 | proposal 缺少 `Plan:` 卡片链接                        | 产品变更先在看板选卡，再把卡片链接写进 proposal 顶部；纯机制/文档/展示的治理变更写 `Plan: none`，且 diff 不能含 `apps/desktop/src/` |
 | 活动变更超过 1 个                                     | 已完成的先 `openspec archive <name> --yes`（归档目录只留本机，不入库）；过期未做的也归档并写明关闭原因                              |
 | 活动变更 tasks 全部完成                               | 归档该变更后再开下一个阶段                                                                                                          |
-| `## 待用户决定` 超过 3 项                             | 先缩本轮范围；超过 3 项说明计划没切干净                                                                                             |
 | `[用户]` 验收项勾选没有确认日期                       | 只有用户明确确认后才勾选，并写成 `（用户确认：YYYY-MM-DD）`                                                                         |
 | milestone 报任务未完成 / 有待决问题 / STATUS 不是当天 | 补完任务、拿到用户答案、更新 STATUS 后再归档                                                                                        |
 | milestone 报产品变更缺卡片证据                        | 把卡片评论链接（`…/issues/<n>#issuecomment-<id>`）写进 tasks；治理变更（`Plan: none`）不需要                                        |
@@ -95,6 +94,7 @@ npm run branches:prune -- --apply # 执行删除
 | pre-commit 拒绝产品代码提交                           | 同一次提交带上计划/状态更新与 specs 增量；未决决策只能等用户回答                                                                    |
 | pre-commit 报“本轮变更的计划还没有提交”               | 先把 `openspec/changes/<change>/` 单独提交，再提交产品代码；计划先于实现，Git 历史才能证明开工依据                                  |
 | pre-commit 只提示“工具/治理改动不受未决产品决策阻塞”  | 正常；工具与文档维护不被产品决策卡住                                                                                                |
+| pre-commit 提示改到了兼容层文件                       | 不是失败：先确认它是否在掩盖结构缺陷；确需过渡就在 design 写 `## 兼容层`（谁拥有、何时删）                                          |
 
 用户验收项写在 tasks.md 里，格式 `- [ ] [用户] <场景> → 证据`；确认后改成 `- [x] [用户] <场景> → 证据（用户确认：YYYY-MM-DD）`。
 
