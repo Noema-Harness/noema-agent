@@ -3,7 +3,7 @@ import test from 'node:test';
 import {
   visibleTimelineTurn,
   visibleTimelineTurns,
-} from '../../../src/shared/chat/timeline-visibility.mjs';
+} from '../../../src/shared/chat/timeline-visibility.ts';
 
 const user = { kind: 'message', message: { role: 'user', text: 'hello' } };
 const assistant = {

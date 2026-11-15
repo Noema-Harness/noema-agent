@@ -6,14 +6,14 @@ import { createReadStream, createWriteStream } from 'node:fs';
 import {
   captureWorkspaceIdentity,
   compareWorkspaceIdentities,
-} from '../platform/workspace-identity.mjs';
+} from '../platform/workspace-identity.ts';
 import {
   assertCommandMirrorCapacity,
   MAX_COMMAND_MIRROR_BYTES,
   MAX_COMMAND_MIRROR_ENTRIES,
   MAX_COMMAND_RECOVERY_BLOB_BYTES,
-} from './workspace-command-quotas.mjs';
-import { createWorkspaceFileDiff } from './workspace-file-diff.mjs';
+} from './workspace-command-quotas.ts';
+import { createWorkspaceFileDiff } from './workspace-file-diff.ts';
 import {
   scanWorkspaceFileBoundary,
   MAX_WORKSPACE_FILE_SCAN_DEPTH,

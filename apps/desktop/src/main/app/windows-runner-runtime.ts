@@ -5,9 +5,9 @@ import { WindowsRunnerAclTransactionService } from '../execution/windows-runner-
 import { WindowsRunnerCapabilityNameStore } from '../execution/windows-runner-capability-name-store.mjs';
 import { WindowsRunnerExecutionService } from '../execution/windows-runner-execution-service.mjs';
 import { WindowsRunnerNativeHelper } from '../execution/windows-runner-native-helper.mjs';
-import { resolveWindowsRunnerNativeHelper } from '../execution/windows-runner-resource.mjs';
-import { resolveWindowsRunnerCommandSupport } from '../execution/windows-runner-command-support.mjs';
-import { createWindowsRunnerCapabilityReport } from '../execution/windows-runner-capability.mjs';
+import { resolveWindowsRunnerNativeHelper } from '../execution/windows-runner-resource.ts';
+import { resolveWindowsRunnerCommandSupport } from '../execution/windows-runner-command-support.ts';
+import { createWindowsRunnerCapabilityReport } from '../execution/windows-runner-capability.ts';
 import { WINDOWS_RUNNER_PROTOCOL_VERSION } from '../execution/windows-runner-native-helper.mjs';
 import { WindowsRunnerSetupService } from '../execution/windows-runner-setup-service.mjs';
 import { WindowsRunnerSetupStateStore } from '../execution/windows-runner-setup-state.mjs';

@@ -9,7 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listPackage } from '@electron/asar';
 import Database from 'better-sqlite3';
-import { resolveNoemaDatabasePath } from '../src/main/platform/runtime-paths.mjs';
+import { resolveNoemaDatabasePath } from '../src/main/platform/runtime-paths.ts';
 import {
   WINDOWS_RUNNER_BACKEND_ID,
   WINDOWS_RUNNER_BACKEND_VERSION,

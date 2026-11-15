@@ -1,4 +1,4 @@
-import { searchTranscriptHistory } from '../../shared/search/transcript-search.mjs';
+import { searchTranscriptHistory } from '../../shared/search/transcript-search.ts';
 import { hideInternalProjectReportSql, requireText } from './records.mjs';
 
 export class MessageSearchStore {

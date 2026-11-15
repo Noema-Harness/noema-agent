@@ -3,7 +3,7 @@ import path from 'node:path';
 import {
   captureWorkspaceIdentity,
   compareWorkspaceIdentities,
-} from '../platform/workspace-identity.mjs';
+} from '../platform/workspace-identity.ts';
 import {
   collectCommandMirrorChanges,
   createCommandMirror,
@@ -13,7 +13,7 @@ import {
   writeCommandChange,
 } from './workspace-command-mirror.mjs';
 import { scanWorkspaceFileBoundary } from './workspace-file-boundary.mjs';
-import { MAX_COMMAND_CHANGE_PATHS } from './workspace-command-quotas.mjs';
+import { MAX_COMMAND_CHANGE_PATHS } from './workspace-command-quotas.ts';
 
 function runnerError(code, message, effectStatus = 'not_applied') {
   const error = new Error(message);

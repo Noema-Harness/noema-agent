@@ -4,7 +4,7 @@ import test from 'node:test';
 import {
   createNativeChatRuntime,
   resolveChatRuntime,
-} from '../../../src/main/runtime/chat-runtime.mjs';
+} from '../../../src/main/runtime/chat-runtime.ts';
 
 test('native chat runtime forwards stream options to the provider', async () => {
   const calls = [];

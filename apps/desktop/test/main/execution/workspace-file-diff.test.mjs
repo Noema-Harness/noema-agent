@@ -3,7 +3,7 @@ import test from 'node:test';
 import {
   createWorkspaceFileDiff,
   MAX_WORKSPACE_FILE_DIFF_BYTES,
-} from '../../../src/main/execution/workspace-file-diff.mjs';
+} from '../../../src/main/execution/workspace-file-diff.ts';
 
 test('workspace file diff reports created, modified, and deleted text files', () => {
   const created = createWorkspaceFileDiff({

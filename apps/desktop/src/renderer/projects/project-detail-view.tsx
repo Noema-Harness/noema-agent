@@ -18,7 +18,7 @@ import { Icon, projectStatusLabel, timeLabel } from '../chat/presentation';
 import {
   collectDeliverables,
   normalizeProjectPlan,
-} from './project-detail-model.mjs';
+} from './project-detail-model.ts';
 
 type PlanView = NonNullable<ReturnType<typeof normalizeProjectPlan>>;
 

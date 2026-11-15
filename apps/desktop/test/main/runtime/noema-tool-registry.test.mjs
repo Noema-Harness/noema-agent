@@ -4,7 +4,7 @@ import test from 'node:test';
 import {
   NoemaToolRegistry,
   createNoemaToolRegistry,
-} from '../../../src/main/runtime/noema-tool-registry.mjs';
+} from '../../../src/main/runtime/noema-tool-registry.ts';
 
 function tool(name = 'sample_tool') {
   return {

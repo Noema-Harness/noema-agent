@@ -3,7 +3,7 @@ import test from 'node:test';
 import {
   canOfferWindowsRunnerSetup,
   windowsRunnerReasonLabel,
-} from '../../../src/renderer/diagnostics/windows-runner-status.mjs';
+} from '../../../src/renderer/diagnostics/windows-runner-status.ts';
 
 test('keeps the incomplete-runner reason specific to command availability', () => {
   const label = windowsRunnerReasonLabel('runner_implementation_incomplete');

@@ -192,8 +192,12 @@ test('adds nullable role-shape storage to an existing usage database', () => {
     const rows = upgraded.getForDiagnostics({
       executionId: 'migration-execution',
     });
-    assert.equal(rows[0].messageRoleCharacters, null);
-    assert.deepEqual(rows[1].messageRoleCharacters, {
+    // Both records can share a millisecond; the id tie-break is a random UUID,
+    // so look rows up by request rather than by position.
+    const byRequest = new Map(rows.map((row) => [row.requestId, row]));
+    assert.equal(rows.length, 2);
+    assert.equal(byRequest.get('before-upgrade').messageRoleCharacters, null);
+    assert.deepEqual(byRequest.get('after-upgrade').messageRoleCharacters, {
       system: 10,
       developer: 0,
       user: 12,

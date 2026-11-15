@@ -6,7 +6,7 @@ import type {
   NoemaSocialProject,
   NoemaSocialWorkTask,
 } from '../../shared/contracts/noema-bridge.d.ts';
-import { visibleTimelineTurns } from '../../shared/chat/timeline-visibility.mjs';
+import { visibleTimelineTurns } from '../../shared/chat/timeline-visibility.ts';
 import { NoemaButton } from '../ui/noema-button';
 import { Icon } from './presentation';
 import { markdownComponents } from './markdown';

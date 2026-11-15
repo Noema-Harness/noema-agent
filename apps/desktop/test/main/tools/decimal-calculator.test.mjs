@@ -3,7 +3,7 @@ import test from 'node:test';
 import {
   calculateExpression,
   needsCalculationTool,
-} from '../../../src/main/tools/decimal-calculator.mjs';
+} from '../../../src/main/tools/decimal-calculator.ts';
 
 test('offers the calculator only when the message contains arithmetic work', () => {
   assert.equal(

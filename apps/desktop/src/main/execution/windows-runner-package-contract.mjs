@@ -1,3 +1,4 @@
+// @ts-check
 export const WINDOWS_RUNNER_RESOURCE_NAME = 'noema-windows-runner.exe';
 export const WINDOWS_RUNNER_PACKAGE_MANIFEST = 'noema-windows-runner.json';
 export const WINDOWS_RUNNER_BACKEND_ID = 'noema-codex-windows';

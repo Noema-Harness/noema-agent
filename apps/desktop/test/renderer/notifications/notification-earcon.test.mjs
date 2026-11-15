@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createNotificationEarcon } from '../../../src/renderer/notifications/notification-earcon.mjs';
+import { createNotificationEarcon } from '../../../src/renderer/notifications/notification-earcon.ts';
 
 function audioContext(state = 'suspended') {
   const oscillators = [];

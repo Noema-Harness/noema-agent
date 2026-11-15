@@ -8,6 +8,8 @@ const ts = createRequire(path.join(repositoryRoot, "apps/desktop/package.json"))
 const layers = new Set(["main", "preload", "renderer", "shared"]);
 const builtins = new Set(builtinModules.map((name) => name.replace(/^node:/u, "")));
 const extensions = ["", ".ts", ".tsx", ".mjs", ".js", ".d.ts", ".css"];
+// TypeScript migration ratchet: src/**/*.mjs may only shrink. Lower this after each converted batch.
+const maxJavaScriptSources = 67;
 
 function walk(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
@@ -60,6 +62,8 @@ export function inspectSourceStructure(sourceRoot) {
   const errors = [];
   const sources = walk(sourceRoot).filter((file) => /\.(?:[cm]?[jt]s|[jt]sx)$/u.test(file));
   for (const entry of fs.readdirSync(sourceRoot, { withFileTypes: true })) {
+    // Marks src/**/*.ts as ESM for Node type stripping (tests import sources directly).
+    if (entry.isFile() && entry.name === "package.json") continue;
     if (!entry.isDirectory() || !layers.has(entry.name))
       errors.push(`Unclassified source entry: ${entry.name}`);
   }
@@ -135,8 +139,14 @@ export function inspectSourceStructure(sourceRoot) {
     visited.add(file);
   }
   for (const file of graph.keys()) visit(file);
+  const javaScriptSources = sources.filter((file) => /\.[cm]?js$/u.test(file)).length;
+  if (javaScriptSources > maxJavaScriptSources)
+    errors.push(
+      `JavaScript sources grew to ${javaScriptSources} (max ${maxJavaScriptSources}); write new code in TypeScript.`,
+    );
   return {
     sourceFiles: sources.length,
+    javaScriptSources,
     largest: sizes.sort((a, b) => b.lines - a.lines).slice(0, 6),
     errors: [...new Set(errors)],
   };

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import { redactSensitiveText } from '../../shared/text/sensitive-text.mjs';
+import { redactSensitiveText } from '../../shared/text/sensitive-text.ts';
 
 const id = z.string().trim().min(1).max(200);
 export const evidenceSourceSchema = z.discriminatedUnion('kind', [

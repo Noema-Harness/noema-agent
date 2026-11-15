@@ -5,7 +5,7 @@ import {
   MAX_COMMAND_MIRROR_BYTES,
   MAX_COMMAND_MIRROR_ENTRIES,
   MIN_COMMAND_FREE_SPACE_BYTES,
-} from '../../../src/main/execution/workspace-command-quotas.mjs';
+} from '../../../src/main/execution/workspace-command-quotas.ts';
 
 const freeBytes = MAX_COMMAND_MIRROR_BYTES + MIN_COMMAND_FREE_SPACE_BYTES;
 

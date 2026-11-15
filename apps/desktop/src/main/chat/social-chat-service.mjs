@@ -2,16 +2,16 @@ import { ModelProviderError } from '../providers/openai-compatible-client.mjs';
 import {
   createNativeChatRuntime,
   resolveChatRuntime,
-} from '../runtime/chat-runtime.mjs';
+} from '../runtime/chat-runtime.ts';
 
 import { createHash, randomUUID } from 'node:crypto';
-import { userReferencesPastNoemaContext } from '../../shared/search/transcript-search.mjs';
+import { userReferencesPastNoemaContext } from '../../shared/search/transcript-search.ts';
 import { ProjectCollaborationStore } from '../projects/project-collaboration-store.mjs';
 import {
   CALCULATE_EXPRESSION_TOOL,
   calculateExpression,
   needsCalculationTool,
-} from '../tools/decimal-calculator.mjs';
+} from '../tools/decimal-calculator.ts';
 import { searchQueryBelongsToText } from '../tools/web-search.mjs';
 import { fetchWebSource } from '../tools/web-source.mjs';
 import {
@@ -36,21 +36,21 @@ import {
 } from './model-tools.mjs';
 import { SocialChatDiagnostics } from './social-chat-diagnostics.mjs';
 import { SocialAgentService } from './social-agent-service.mjs';
-import { ProjectToolPolicy } from './project-tool-policy.mjs';
+import { ProjectToolPolicy } from './project-tool-policy.ts';
 import { ChatRuntimeSessions } from './chat-runtime-sessions.mjs';
-import { ProjectSourcePolicy } from './project-source-policy.mjs';
+import { ProjectSourcePolicy } from './project-source-policy.ts';
 import { RunMessageWriter } from './run-message-writer.mjs';
 import { ChatMessageActions } from './chat-message-actions.mjs';
 import { ChatMessageSender } from './chat-message-sender.mjs';
 import { ChatLifecycle } from './chat-lifecycle.mjs';
-import { ReplyStatusWriter } from './reply-status-writer.mjs';
+import { ReplyStatusWriter } from './reply-status-writer.ts';
 import { ProjectWorkResults } from './project-work-results.mjs';
-import { UserFollowupDelivery } from './user-followup-delivery.mjs';
-import { ProjectReportScheduler } from './project-report-scheduler.mjs';
+import { UserFollowupDelivery } from './user-followup-delivery.ts';
+import { ProjectReportScheduler } from './project-report-scheduler.ts';
 import { ProjectGrowthBatchScheduler } from './project-growth-batch-scheduler.mjs';
 import { ProjectGroupInboxScheduler } from './project-group-inbox-scheduler.mjs';
 import { ChatUiState } from './chat-ui-state.mjs';
-import { ProjectPlanChangeNotifier } from './project-plan-change-notifier.mjs';
+import { ProjectPlanChangeNotifier } from './project-plan-change-notifier.ts';
 import { SpecialistDelegation } from './specialist-delegation.mjs';
 
 /** @typedef {import('./noema-bridge.d.ts').NoemaProviderState} SocialProviderState */

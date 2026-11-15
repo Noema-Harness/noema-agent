@@ -3,7 +3,7 @@ import test from 'node:test';
 import Database from 'better-sqlite3';
 import { RootStore } from '../../../src/main/storage/root-store.mjs';
 import { SocialChatStore } from '../../../src/main/chat/social-chat-store.mjs';
-import { SOCIAL_SCHEMA_VERSION } from '../../../src/main/chat/social-chat-schema.mjs';
+import { SOCIAL_SCHEMA_VERSION } from '../../../src/main/chat/social-chat-schema.ts';
 
 function makeStore() {
   const db = new Database(':memory:');

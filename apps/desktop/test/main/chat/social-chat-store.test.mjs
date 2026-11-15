@@ -10,9 +10,9 @@ import { fileURLToPath } from 'node:url';
 import { RootStore } from '../../../src/main/storage/root-store.mjs';
 import { SocialChatStore } from '../../../src/main/chat/social-chat-store.mjs';
 import { DiagnosticsEventStore } from '../../../src/main/storage/diagnostics-event-store.mjs';
-import { SOCIAL_SCHEMA_VERSION } from '../../../src/main/chat/social-chat-schema.mjs';
-import { migrateSocialChatSchema } from '../../../src/main/chat/migrations.mjs';
-import { MAX_COMMAND_CHANGE_PATHS } from '../../../src/main/execution/workspace-command-quotas.mjs';
+import { SOCIAL_SCHEMA_VERSION } from '../../../src/main/chat/social-chat-schema.ts';
+import { migrateSocialChatSchema } from '../../../src/main/chat/migrations.ts';
+import { MAX_COMMAND_CHANGE_PATHS } from '../../../src/main/execution/workspace-command-quotas.ts';
 
 function makeStores() {
   const db = new Database(':memory:');

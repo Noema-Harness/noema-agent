@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import Database from 'better-sqlite3';
 import { RootStore } from '../../../src/main/storage/root-store.mjs';
-import { migrateSocialChatSchema } from '../../../src/main/chat/migrations.mjs';
-import { SOCIAL_SCHEMA_VERSION } from '../../../src/main/chat/social-chat-schema.mjs';
+import { migrateSocialChatSchema } from '../../../src/main/chat/migrations.ts';
+import { SOCIAL_SCHEMA_VERSION } from '../../../src/main/chat/social-chat-schema.ts';
 
 const now = '2026-11-14T14:00:00.000Z';
 

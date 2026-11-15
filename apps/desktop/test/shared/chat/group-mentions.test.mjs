@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { resolveGroupRecipient } from '../../../src/shared/chat/group-mentions.mjs';
+import { resolveGroupRecipient } from '../../../src/shared/chat/group-mentions.ts';
 
 const members = [
   { id: 'noema', name: 'Noema' },

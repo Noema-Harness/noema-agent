@@ -18,7 +18,7 @@ import {
   readCommandMirrorManifest,
 } from '../../../src/main/execution/workspace-command-mirror.mjs';
 import { SocialWorkCommandMirrorRunner } from '../../../src/main/execution/social-work-command-runner.mjs';
-import { captureWorkspaceIdentity } from '../../../src/main/platform/workspace-identity.mjs';
+import { captureWorkspaceIdentity } from '../../../src/main/platform/workspace-identity.ts';
 import { RootStore } from '../../../src/main/storage/root-store.mjs';
 import { createSocialTestStore } from '../../../test-support/social-team.mjs';
 

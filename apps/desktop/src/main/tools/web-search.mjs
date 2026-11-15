@@ -207,7 +207,7 @@ export async function searchWeb(
 
 /**
  * @param {string} query
- * @param {string} apiKey
+ * @param {string | null} apiKey Validated by searchWeb; null means not configured.
  * @param {{searchImpl?:typeof searchWeb,fetchSourceImpl?:typeof fetchWebSource,signal?:AbortSignal,maxSources?:number,onUsage?:(usage:{requestStatus:string,usageUnits?:number,usageUnit:string,providerRequestId?:string})=>void}} options
  */
 export async function searchAndReadWeb(

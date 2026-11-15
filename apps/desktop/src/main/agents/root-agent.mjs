@@ -10,16 +10,16 @@ import {
 import {
   normalizeWorkspaceVerificationChecks,
   verifyWorkspaceChecks,
-} from '../tools/workspace-verifier.mjs';
+} from '../tools/workspace-verifier.ts';
 import {
   searchTranscriptHistory,
   userReferencesPastNoemaContext,
-} from '../../shared/search/transcript-search.mjs';
+} from '../../shared/search/transcript-search.ts';
 import {
   CALCULATE_EXPRESSION_TOOL,
   calculateExpression,
   needsCalculationTool,
-} from '../tools/decimal-calculator.mjs';
+} from '../tools/decimal-calculator.ts';
 import {
   extractUserUrls,
   fetchWebSource,

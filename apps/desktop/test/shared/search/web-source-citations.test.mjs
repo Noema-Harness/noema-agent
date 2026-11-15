@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { linkWebSourceCitations } from '../../../src/shared/search/web-source-citations.mjs';
+import { linkWebSourceCitations } from '../../../src/shared/search/web-source-citations.ts';
 
 test('maps model citation markers only to successfully read source URLs', () => {
   const rendered = linkWebSourceCitations(

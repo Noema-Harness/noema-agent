@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createPendingFollowupNavigationDelivery } from '../../../src/main/platform/pending-followup-navigation.mjs';
+import { createPendingFollowupNavigationDelivery } from '../../../src/main/platform/pending-followup-navigation.ts';
 
 const firstTarget = { roomId: 'room-a', messageId: 'message-a' };
 const secondTarget = { roomId: 'room-b', messageId: 'message-b' };

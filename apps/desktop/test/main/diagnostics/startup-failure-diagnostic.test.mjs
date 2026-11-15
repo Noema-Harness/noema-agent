@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { startupFailureDiagnostic } from '../../../src/main/diagnostics/startup-failure-diagnostic.mjs';
+import { startupFailureDiagnostic } from '../../../src/main/diagnostics/startup-failure-diagnostic.ts';
 
 test('startup failures keep only allowlisted error codes and a finite phase', () => {
   const event = startupFailureDiagnostic({

@@ -9,7 +9,11 @@
     "esModuleInterop": true,
     "noImplicitAny": true,
     "sourceMap": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true
   },
   "include": ["src/**/*", "*.ts", "*.mts"]
 }

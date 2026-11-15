@@ -1,7 +1,7 @@
-import { NoemaToolSession } from '../mcp/noema-tool-session.mjs';
+import { NoemaToolSession } from '../mcp/noema-tool-session.ts';
 import { ModelProviderError } from '../providers/openai-compatible-client.mjs';
-import { createNoemaToolRegistry } from '../runtime/noema-tool-registry.mjs';
-import { createChatTicketTool } from './chat-ticket-tool.mjs';
+import { createNoemaToolRegistry } from '../runtime/noema-tool-registry.ts';
+import { createChatTicketTool } from './chat-ticket-tool.ts';
 
 export class ChatRuntimeSessions {
   constructor({

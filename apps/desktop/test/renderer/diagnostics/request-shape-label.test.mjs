@@ -5,7 +5,7 @@ import {
   formatMessageRoleCharactersLabel,
   formatRequestShapeLabel,
   formatTokenUsageLabel,
-} from '../../../src/renderer/diagnostics/request-shape-label.mjs';
+} from '../../../src/renderer/diagnostics/request-shape-label.ts';
 
 test('formats request shape measurements with explicit character units', () => {
   assert.equal(

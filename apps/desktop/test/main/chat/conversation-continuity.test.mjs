@@ -3,7 +3,7 @@ import test from 'node:test';
 import Database from 'better-sqlite3';
 import { createSocialTestStore } from '../../../test-support/social-team.mjs';
 import { RootStore } from '../../../src/main/storage/root-store.mjs';
-import { SOCIAL_SCHEMA_VERSION } from '../../../src/main/chat/social-chat-schema.mjs';
+import { SOCIAL_SCHEMA_VERSION } from '../../../src/main/chat/social-chat-schema.ts';
 import {
   backfillConversationContinuity,
   recoverContinuityTurns,

@@ -1,4 +1,4 @@
-import { resolveGroupRecipient } from '../../shared/chat/group-mentions.mjs';
+import { resolveGroupRecipient } from '../../shared/chat/group-mentions.ts';
 
 export class ChatMessageSender {
   constructor({

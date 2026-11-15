@@ -54,6 +54,7 @@ export class NoemaToolServer {
   #server = null;
   #sessions = new Map();
 
+  /** @param {{tools?: Array<object>, token?: string}} [options] */
   constructor({ tools, token = randomUUID() } = {}) {
     if (!Array.isArray(tools) || tools.length === 0)
       throw new TypeError('At least one Noema tool is required.');

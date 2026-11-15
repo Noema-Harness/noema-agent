@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { redactSensitiveText } from '../../shared/text/sensitive-text.mjs';
+import { redactSensitiveText } from '../../shared/text/sensitive-text.ts';
 
 export const DIAGNOSTICS_EXPORT_SCHEMA_VERSION = 3;
 export const MAX_DIAGNOSTIC_EXECUTIONS = 50;
@@ -459,6 +459,11 @@ export class DiagnosticsQueryService {
     return this.exportPreviews.delete(previewId);
   }
 
+  /**
+   * @param {string} previewId
+   * @param {string} status
+   * @param {string | null} [errorCode]
+   */
   recordExportOutcome(previewId, status, errorCode = null) {
     const preview = this.exportPreviews.get(previewId);
     this.recordAction(

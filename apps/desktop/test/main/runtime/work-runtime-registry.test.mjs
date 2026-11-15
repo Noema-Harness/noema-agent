@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createWorkRuntimeRegistry } from '../../../src/main/runtime/work-runtime-registry.mjs';
+import { createWorkRuntimeRegistry } from '../../../src/main/runtime/work-runtime-registry.ts';
 
 function fakeRuntime(name) {
   return { name, startTask() {}, continueTask() {} };

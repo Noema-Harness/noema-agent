@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { resolveElectronProxy } from '../../../src/main/platform/electron-proxy.mjs';
+import { resolveElectronProxy } from '../../../src/main/platform/electron-proxy.ts';
 
 test('Electron proxy follows explicit HTTP and HTTPS proxy environment settings', () => {
   assert.deepEqual(

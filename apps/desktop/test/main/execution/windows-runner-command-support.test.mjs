@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { resolveWindowsRunnerCommandSupport } from '../../../src/main/execution/windows-runner-command-support.mjs';
+import { resolveWindowsRunnerCommandSupport } from '../../../src/main/execution/windows-runner-command-support.ts';
 
 test('Windows command support opens only from both trusted ready gates', () => {
   assert.deepEqual(

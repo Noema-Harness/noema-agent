@@ -8,21 +8,21 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
-import { redactSensitiveText } from '../../shared/text/sensitive-text.mjs';
+import { redactSensitiveText } from '../../shared/text/sensitive-text.ts';
 import { scanWorkspaceFileBoundary } from './workspace-file-boundary.mjs';
 import {
   captureWorkspaceIdentity,
   compareWorkspaceIdentities,
   isWorkspaceIdentity,
-} from '../platform/workspace-identity.mjs';
+} from '../platform/workspace-identity.ts';
 import {
   createWorkspaceFileDiff,
   workspaceFileContentHash,
-} from './workspace-file-diff.mjs';
+} from './workspace-file-diff.ts';
 import {
   MAX_SOCIAL_WORK_TOOL_CALLS,
   MAX_SOCIAL_WORK_TOOL_ROUNDS,
-} from '../../shared/execution/social-work-limits.mjs';
+} from '../../shared/execution/social-work-limits.ts';
 
 const MAX_TOOL_CALLS = MAX_SOCIAL_WORK_TOOL_CALLS;
 const MAX_TOOL_ROUNDS = MAX_SOCIAL_WORK_TOOL_ROUNDS;

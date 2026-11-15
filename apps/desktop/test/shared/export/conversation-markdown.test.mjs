@@ -3,7 +3,7 @@ import test from 'node:test';
 import {
   conversationExportFileName,
   formatConversationMarkdown,
-} from '../../../src/shared/export/conversation-markdown.mjs';
+} from '../../../src/shared/export/conversation-markdown.ts';
 
 test('formats a conversation with members, roles and failures', () => {
   const markdown = formatConversationMarkdown({

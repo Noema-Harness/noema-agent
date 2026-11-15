@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { scanWorkspaceFileBoundary } from './workspace-file-boundary.mjs';
-import { createWorkspaceFileDiff } from './workspace-file-diff.mjs';
+import { createWorkspaceFileDiff } from './workspace-file-diff.ts';
 
 const MAX_GIT_REVIEW_FILES = 200;
 const MAX_GIT_STATUS_BYTES = 1024 * 1024;

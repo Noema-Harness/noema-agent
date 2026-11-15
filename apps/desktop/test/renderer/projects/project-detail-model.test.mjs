@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   collectDeliverables,
   normalizeProjectPlan,
-} from '../../../src/renderer/projects/project-detail-model.mjs';
+} from '../../../src/renderer/projects/project-detail-model.ts';
 
 test('normalizeProjectPlan keeps an absent plan absent and an empty plan renderable', () => {
   assert.equal(normalizeProjectPlan(null), null);

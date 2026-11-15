@@ -12,9 +12,9 @@ import {
 } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { verifyWorkspaceChecks } from '../src/main/tools/workspace-verifier.mjs';
+import { verifyWorkspaceChecks } from '../src/main/tools/workspace-verifier.ts';
 import { SocialChatStore } from '../src/main/chat/social-chat-store.mjs';
-import { captureWorkspaceIdentity } from '../src/main/platform/workspace-identity.mjs';
+import { captureWorkspaceIdentity } from '../src/main/platform/workspace-identity.ts';
 import { DiagnosticsEventStore } from '../src/main/storage/diagnostics-event-store.mjs';
 import { RootStore } from '../src/main/storage/root-store.mjs';
 import { configureElectronRuntime } from './electron-runtime.mjs';

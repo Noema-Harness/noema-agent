@@ -4,7 +4,7 @@ import { createWriteStream } from 'node:fs';
 import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { saveLegacyHistoryExport } from '../../../src/main/archive/save-legacy-history-export.mjs';
+import { saveLegacyHistoryExport } from '../../../src/main/archive/save-legacy-history-export.ts';
 
 async function createTemporaryDirectory() {
   return mkdtemp(path.join(os.tmpdir(), 'noema-legacy-history-export-'));

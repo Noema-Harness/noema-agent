@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import path from 'node:path';
-import { visibleProjectGroupText } from '../../shared/chat/project-group-public-text.mjs';
+import { visibleProjectGroupText } from '../../shared/chat/project-group-public-text.ts';
 import { normalizeInteractionAdjustmentSnapshots } from '../storage/root-store.mjs';
 import {
   beginContinuityTurn,
@@ -25,7 +25,7 @@ import {
   hydrateMessage,
   hydrateSocialWorkTask,
 } from './records.mjs';
-import { migrateSocialChatSchema } from './migrations.mjs';
+import { migrateSocialChatSchema } from './migrations.ts';
 
 export const CONVERSATION_BOUNDARY_MARKER = 'noema:conversation-boundary';
 import { WorkspaceChangeBlobStore } from './workspace-change-blob-store.mjs';
@@ -34,18 +34,18 @@ import { UserFollowupStore } from './user-followup-store.mjs';
 import { AgentAssetStore } from './agent-asset-store.mjs';
 import { MessageSearchStore } from './message-search-store.mjs';
 import { WorkspaceCommandBatchStore } from './workspace-command-batch-store.mjs';
-import { ContinuationThreadStore } from './continuation-thread-store.mjs';
+import { ContinuationThreadStore } from './continuation-thread-store.ts';
 import { ConversationBranchStore } from './conversation-branch-store.mjs';
 import { MessageForwardStore } from './message-forward-store.mjs';
-import { workspaceFileChangeError } from './workspace-change-error.mjs';
-import { isWorkspaceIdentity } from '../platform/workspace-identity.mjs';
-import { normalizeSocialWorkPhase } from '../../shared/execution/social-work-phase.mjs';
+import { workspaceFileChangeError } from './workspace-change-error.ts';
+import { isWorkspaceIdentity } from '../platform/workspace-identity.ts';
+import { normalizeSocialWorkPhase } from '../../shared/execution/social-work-phase.ts';
 import {
   MAX_COMMAND_CHANGE_PATHS,
   MAX_COMMAND_DIFF_BYTES,
   MAX_COMMAND_TASK_RECOVERY_BYTES,
   MAX_COMMAND_APP_RECOVERY_BYTES,
-} from '../execution/workspace-command-quotas.mjs';
+} from '../execution/workspace-command-quotas.ts';
 
 const MAX_WORKSPACE_FILE_SNAPSHOT_BYTES = 1_000_000;
 const MAX_SOCIAL_WORK_TASK_FILE_CHANGE_BYTES = 20 * 1024 * 1024;
@@ -5145,6 +5145,12 @@ export class SocialChatStore {
     })();
   }
 
+  /**
+   * @param {string} messageId
+   * @param {string} status
+   * @param {string | null} [code]
+   * @param {string | null} [message]
+   */
   finishProjectReport(messageId, status, code = null, message = null) {
     if (!['complete', 'interrupted', 'failed'].includes(status)) {
       throw new TypeError('项目报告状态无效。');

@@ -219,7 +219,7 @@ if (!process.versions.electron) {
   const { SocialChatService } =
     await import('../src/main/chat/social-chat-service.mjs');
   const { EncryptedSecretStore } =
-    await import('../src/main/platform/encrypted-secret-store.mjs');
+    await import('../src/main/platform/encrypted-secret-store.ts');
   const { OpenAICompatibleClient } =
     await import('../src/main/providers/openai-compatible-client.mjs');
   let root,

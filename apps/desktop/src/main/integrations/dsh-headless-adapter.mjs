@@ -519,6 +519,9 @@ export class DshHeadlessAdapter {
     this.profile = profile;
   }
 
+  /**
+   * @param {{workspacePath:string,task:string,model:string,taskId?:string,usageInteractionId?:string,sessionId?:string|null,onEvent?:(event:object)=>void,timeoutMs?:number,mcpServers?:Array<{serverName:string,url:string,headers?:Record<string,string>}>,profile?:string}} input
+   */
   async startTask({
     workspacePath,
     task,

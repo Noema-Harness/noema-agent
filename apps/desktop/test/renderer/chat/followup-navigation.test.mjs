@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveFollowupNavigationTarget } from '../../../src/renderer/chat/followup-navigation.mjs';
+import { resolveFollowupNavigationTarget } from '../../../src/renderer/chat/followup-navigation.ts';
 
 const rooms = [{ id: 'room-noema' }, { id: 'room-project-origin' }];
 
