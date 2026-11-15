@@ -374,3 +374,12 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 **建议**：试点单模块。
 **下一步**：C13 开工时定。
 **更新**：2026-11-15
+
+## D-034 维护层瘦身（2026-11-15）
+
+**状态**：待定
+**要定什么**：整体扫描后发现维护层有耦合、重复与过重：①机制描述在 AGENTS、OPERATIONS、DECISIONS、STATUS 各写一份，STATUS 已出现两处过时（仍写“待决”章节；plan 计数写 17/4，实际 30/1）；②`scripts/workspace.config.json` 的 purpose/updateWhen 与 AGENTS §2、README 文档地图三处描述同一所有权；③STATUS 的“未交付”“本轮验证”与看板卡片、OPERATIONS 重复，且逐轮累加；④`docs:check` 一个入口串了 7 类事实；⑤check 链 12 步加 4 个独立测试命令，而 `harness:check` 根本不在链上；⑥`github-inbox` 854 行加 384 行测试，占维护脚本 45%，实际需求只是“CI/PR 有变化提醒一次”；⑦`set-github-issue-body.mjs` 是一次性脚本。需要定瘦身范围。
+**候选**：A 只修过时事实（STATUS 两处、删 harness 与一次性脚本），不动结构；B 把重复来源降到一处（机制说明只在 AGENTS 与 OPERATIONS，所有权只在 AGENTS，STATUS 改滚动快照，config 只留路径），检查链收拢成一个 `tools:test`，inbox 收敛到 CI 失败/恢复与 PR 状态变化；C 在 B 上再拆 gate（docs 只查文档事实、决策条目移入 plan）并加“文档引用一致性”检查。
+**建议**：B。A 只止血；C 会把维护项再加回来。
+**下一步**：选定后改 AGENTS、OPERATIONS、STATUS、`scripts/workspace.config.json`、`scripts/*.mjs`、`package.json` 与测试，跑 `npm run check` 并提交。
+**更新**：2026-11-15
