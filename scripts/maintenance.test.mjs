@@ -120,14 +120,14 @@ test("maintenance tooling enforces document, plan and commit gates", () =>
     write(root, "docs/OPERATIONS.md", `# OPERATIONS\n\n${HEADER}`);
 
     // CI runners have no local hook; the gate must not fail there.
-    const localHookErrors = checkDocuments(root, fakeGit({ hooksPath: "" })).errors;
+    const localHookErrors = checkDocuments(root, fakeGit({ hooksPath: "" }), { ci: false }).errors;
     const ciErrors = checkDocuments(root, fakeGit({ hooksPath: "" }), { ci: true }).errors;
     assert.equal(ciErrors.length, localHookErrors.length - 1);
     assert.ok(!ciErrors.some((error) => /core\.hooksPath/u.test(error)));
 
     // The document gate must be installed as a real git hook.
     assert.match(
-      checkDocuments(root, fakeGit({ hooksPath: "" })).errors.join("\n"),
+      checkDocuments(root, fakeGit({ hooksPath: "" }), { ci: false }).errors.join("\n"),
       /core.hooksPath 是「\(未设置\)」/u,
     );
     assert.deepEqual(
