@@ -188,6 +188,17 @@ test("maintenance tooling enforces document, plan and commit gates", () =>
       pendingDecisions(fs.readFileSync(path.join(root, change, "design.md"), "utf8")),
       ["成长机制如何触发", "团队命名规则"],
     );
+
+    // Plain bullets count too: the gate must not depend on remembering a checkbox format.
+    write(
+      root,
+      `${change}/design.md`,
+      "# design\n\n## 用户可观察的改变\n\n- 探针行为\n\n## 手测步骤\n\n1. 打开探针\n\n## 待用户决定\n\n- 成长机制如何触发\n- 团队命名规则\n\n## 其他\n",
+    );
+    assert.deepEqual(
+      pendingDecisions(fs.readFileSync(path.join(root, change, "design.md"), "utf8")),
+      ["成长机制如何触发", "团队命名规则"],
+    );
     const blocked = checkPrecommit(root, { git, stagedPaths: ["apps/desktop/src/main/main.ts"] });
     assert.match(blocked.errors.join("\n"), /必须同时更新 docs\/ 或 openspec\/changes\//u);
     assert.match(blocked.errors.join("\n"), /仍有待用户决定的问题/u);

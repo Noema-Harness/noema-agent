@@ -105,7 +105,8 @@ export function planTarget(proposalText) {
 export function pendingDecisions(designText) {
   const body = sectionBody(designText, DECISION_HEADING);
   if (body === null) return null;
-  return [...body.matchAll(/^\s*- \[ \]\s*(.+)$/gmu)].map((match) => match[1].trim());
+  // 两种写法都算：`- [ ] 问题` 与 `- 问题`；不要要求作者记住一种格式，否则门只会拦格式。
+  return [...body.matchAll(/^-[ \t]+(?:\[[ xX]\][ \t]+)?(.+)$/gmu)].map((match) => match[1].trim());
 }
 
 export function activeChanges(root) {
