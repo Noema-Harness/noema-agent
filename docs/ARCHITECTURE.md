@@ -39,14 +39,14 @@ renderer (React)
 
 不可变核心（运行时不可被岗位/模板静默改写，只能显式迁移）：
 
-| 核心项 | 内容 |
-| --- | --- |
-| 身份与生命周期 | 稳定 `agentId`、创建/招募/暂停/归档状态、模板来源和版本 |
-| 个体环境 | 私有会话/上下文、记忆命名空间、Agent Home、工作区绑定 |
-| 授权边界 | 工具授权、工作区/网络范围、默认拒绝和审批规则 |
-| 事件日志 | 追加式、有序的个体事件流；动作、命令、文件、结果、证据都可追溯 |
-| 运行时契约 | 模型/运行时适配接口、工具调用、取消、恢复和错误边界 |
-| 证据与来源 | 结果指向事件、文件、命令和模板版本，不依赖聊天文案 |
+| 核心项         | 内容                                                           |
+| -------------- | -------------------------------------------------------------- |
+| 身份与生命周期 | 稳定 `agentId`、创建/招募/暂停/归档状态、模板来源和版本        |
+| 个体环境       | 私有会话/上下文、记忆命名空间、Agent Home、工作区绑定          |
+| 授权边界       | 工具授权、工作区/网络范围、默认拒绝和审批规则                  |
+| 事件日志       | 追加式、有序的个体事件流；动作、命令、文件、结果、证据都可追溯 |
+| 运行时契约     | 模型/运行时适配接口、工具调用、取消、恢复和错误边界            |
+| 证据与来源     | 结果指向事件、文件、命令和模板版本，不依赖聊天文案             |
 
 分层：不可变核心 → 岗位模板层（岗位提示词、默认工具/技能、评估、UI 元数据）→ 个体层（记忆、会话、工作区、用户覆盖）。官方模板更新只改模板层；个体数据和身份不被覆盖。
 
@@ -74,14 +74,14 @@ renderer (React)
 
 ### 3.3 一个个体当前由什么组成（0.7.6）
 
-| 部分 | 存在何处 | 谁能改 |
-| --- | --- | --- |
-| 身份与专业范围 | `social_agents` 的 `name`/`headline`/`description`，拼成 `system_prompt` | 用户或 Noema 建成员/改资料时整段重写，无版本 |
-| 岗位来源 | `social_agents.job_template_id/version`、`job_templates`（4 条播种） | 目前只有建成员工具的 `job_template_id` 参数，无管理入口 |
-| 项目关系 | `social_project_sessions`（`project_id`/`agent_id`/`room_id`/`status`） | 项目创建与成员增补 |
-| 经历与技能 | `social_agent_asset_revisions`：`identity.md`、`instructions.md`、`memory.md`、`experiences/*.md`、`skills/*/SKILL.md`，append-only + 删除墓碑 | 目前只有 `manage_member_assets` 工具；没有用户编辑或撤回界面 |
-| 运行时个体 | `<Agent Home>/events.jsonl`、`AgentRuntimeCore` | 只有 Noema 与执行者接线；专业联系人尚未接入 |
-| 用户记忆 | `social_user_memories`（仅 Noema 主聊按需检索） | 设置界面 |
+| 部分           | 存在何处                                                                                                                                       | 谁能改                                                       |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| 身份与专业范围 | `social_agents` 的 `name`/`headline`/`description`，拼成 `system_prompt`                                                                       | 用户或 Noema 建成员/改资料时整段重写，无版本                 |
+| 岗位来源       | `social_agents.job_template_id/version`、`job_templates`（4 条播种）                                                                           | 目前只有建成员工具的 `job_template_id` 参数，无管理入口      |
+| 项目关系       | `social_project_sessions`（`project_id`/`agent_id`/`room_id`/`status`）                                                                        | 项目创建与成员增补                                           |
+| 经历与技能     | `social_agent_asset_revisions`：`identity.md`、`instructions.md`、`memory.md`、`experiences/*.md`、`skills/*/SKILL.md`，append-only + 删除墓碑 | 目前只有 `manage_member_assets` 工具；没有用户编辑或撤回界面 |
+| 运行时个体     | `<Agent Home>/events.jsonl`、`AgentRuntimeCore`                                                                                                | 只有 Noema 与执行者接线；专业联系人尚未接入                  |
+| 用户记忆       | `social_user_memories`（仅 Noema 主聊按需检索）                                                                                                | 设置界面                                                     |
 
 成长只允许写“经历与技能”的候选条目；定位与协作偏好（`identity.md`/`instructions.md`）需用户批准；核心身份、工具授权、可见性与成员关系只能用户显式修改。
 
@@ -89,14 +89,14 @@ renderer (React)
 
 Noema 和执行者共用同一套个体结构：
 
-| 模块 | 职责 |
-| --- | --- |
-| Core | 身份、目标、工作循环、回合与状态 |
-| Policy | 权限、授权、风险与拒绝规则 |
-| Competence | 能力条目；可执行、可检查、可回滚 |
-| Tool Grants | 工具注册、授权范围、调用网关 |
-| Memory | 长期记忆、来源、冲突、过期与用户编辑 |
-| Context | 当前回合的上下文组装、预算和连续性摘要 |
+| 模块        | 职责                                   |
+| ----------- | -------------------------------------- |
+| Core        | 身份、目标、工作循环、回合与状态       |
+| Policy      | 权限、授权、风险与拒绝规则             |
+| Competence  | 能力条目；可执行、可检查、可回滚       |
+| Tool Grants | 工具注册、授权范围、调用网关           |
+| Memory      | 长期记忆、来源、冲突、过期与用户编辑   |
+| Context     | 当前回合的上下文组装、预算和连续性摘要 |
 
 - **Context Compiler** 是组装过程，不是第七个模块；它把目标、状态、记忆、文件、工具和最近对话编译成一次调用的上下文。
 - **CapabilityUnit** 是 Competence 的最小可执行单位；岗位包与项目是组织层组合，不进入个体内部。
@@ -178,13 +178,15 @@ SQLite 是主要产品事实源；`.work/` 只放过程材料。Agent 个体事�
 - Windows Runner 使用 AppContainer/命令策略；不把宿主环境当成无边界沙箱。
 - 失败必须保留原始错误、失败步骤和用户消息；中断后不自动重跑未知副作用。
 
-## 9. 现状与目标
+## 9. 结构与交付的边界
 
-已交付：Core Chat 单对话、流式回复、消息操作、历史、设置；工单派发与执行轨迹；DSH/native；Windows Runner；SQLite；任务 dock、完成事件和交付记录；0.7.2 的工作区路由与 DSH 非 JSON 容错；阶段 1 的 AgentRuntime 最小核心、Noema 回合事件日志和 Noema 工具调用内联轨迹；阶段 2 的单 HEAD 用户截断重发、助手原位编辑、会话失效、编辑前不可变归档和顶栏恢复；阶段 3 的任务详情→执行者常驻私聊、执行者身份展示和直接专家默认工作区回退；阶段 4 的项目显式负责人、两阶段团队提案/审批和项目群内继续增补成员。
+本文件写系统现在由什么组成、边界在哪里，不记录交付状态：某项能力能不能对用户宣称，取决于看板卡片状态与 [STATUS](STATUS.md) 的验证证据。
 
-未交付：`@Noema` 跨房间寻址、执行者自己的 AgentRuntime 事件日志/证据、工作区文件回滚、常驻会话/项目 fork 拓扑、岗位库/模板与招募分层、负责人自动提案/默认 A 审批 gate、项目长期群、六模块实现、ContextCompiler、Memory Store、完整任务证据。
+读结构时必须知道的三处实况：
 
-版本、测试、安装和下一步只写在 [STATUS](STATUS.md)，不在本文件重复。
+1. AgentRuntime 只接入 Noema 与执行者；专业联系人仍只有 `social_agents` 一行与拼出来的提示词（§3.3）。
+2. 旧完整 social UI 的 renderer 模块保留为 dormant；`main.ts` 仍是组合根（§6）。
+3. 六模块只有 Core 有代码骨架，Policy / Memory Store / ContextCompiler / ModuleHost 仍是目标（§4）。
 
 ## 10. 架构不变量
 
