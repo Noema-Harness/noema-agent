@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="generator" content="archify 3.2.0">
   <meta name="archify-reader-contract" content="declared-wide-v1">
-  <title>Noema 怎么把一句话变成可验收的结果</title>
+  <title>Noema 架构：一句话如何变成可核对的结果</title>
   <script>
     // Resolve the theme before first paint so light-preference users don't
     // see a dark flash. The toolbar script below re-applies with UI state.
@@ -5194,9 +5194,9 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
            data-preset-badge-blueprint="蓝图 / 修订 01"
            data-preset-badge-editorial="编辑风格 / 现场笔记">
         <div class="pulse-dot"></div>
-        <h1>Noema 怎么把一句话变成可验收的结果</h1>
+        <h1>Noema 架构：一句话如何变成可核对的结果</h1>
       </div>
-      <p class="subtitle">对话与执行分开：你在主聊说清要什么，执行者在项目文件夹里动手，产物和证据回到你手里</p>
+      <p class="subtitle">彩色节点与实线＝已实现；灰色节点与虚线框＝计划中、尚未交付。写入只发生在授权工作区，结果与证据回到主聊。</p>
     </div>
 
 
@@ -5204,9 +5204,9 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
     <!-- Main Diagram -->
     <div class="diagram-container" data-detail-level="read"
          data-preset-badge-editorial-plate="ARCHIFY / 图版 04">
-      <svg viewBox="0 0 1200 410" role="img" lang="zh-CN" aria-labelledby="archify-diagram-title archify-diagram-description" data-animation="trace" data-preset="classic" data-quality-profile="showcase" data-node-ui="" data-diagram-type="architecture" data-reader-fit="authored-height">
-        <title id="archify-diagram-title">Noema 怎么把一句话变成可验收的结果</title>
-        <desc id="archify-diagram-description">对话与执行分开：你在主聊说清要什么，执行者在项目文件夹里动手，产物和证据回到你手里</desc>
+      <svg viewBox="0 0 1240 410" role="img" lang="zh-CN" aria-labelledby="archify-diagram-title archify-diagram-description" data-animation="trace" data-preset="classic" data-quality-profile="showcase" data-node-ui="" data-diagram-type="architecture" data-reader-fit="authored-height">
+        <title id="archify-diagram-title">Noema 架构：一句话如何变成可核对的结果</title>
+        <desc id="archify-diagram-description">彩色节点与实线＝已实现；灰色节点与虚线框＝计划中、尚未交付。写入只发生在授权工作区，结果与证据回到主聊。</desc>
         <!-- Definitions -->
         <defs>
           <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
@@ -5251,141 +5251,233 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <rect width="100%" height="100%" fill="url(#grid)" />
 
         <!-- Boundaries (behind everything) -->
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="0" data-composition-frame-label="项目空间" x="630" y="32" width="540" height="314" rx="12" class="c-region" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="security-group" data-composition-frame-id="0" data-composition-frame-label="授权工作区：只在这里写入" x="1010" y="86" width="226" height="130" rx="8" class="c-security-group" stroke-width="1"/>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="security-group" data-composition-frame-id="1" data-composition-frame-label="可写边界：只有这个文件夹" x="930" y="32" width="240" height="130" rx="8" class="c-security-group" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="1" data-composition-frame-label="计划中（尚未实现）" x="542" y="238" width="686" height="114" rx="12" class="c-region" stroke-width="1"/>
 
         <!-- Connection paths (before components for correct z-order) -->
         <g data-graph-role="automatic-crossover" style="--step:0">
-          <path data-graph-role="automatic-crossover-underlay" d="M 170 102 L 330 102" fill="none" stroke="var(--mask)" stroke-width="5.8" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="you" data-edge-to="chat" data-edge-label="说一句话" data-edge-key="0" data-edge-id="say" data-composition-points="170,102;330,102" data-composition-crossover="halo" data-composition-independent="true" d="M 170 102 L 330 102" class="a-emphasis" data-animate="edge" style="--step:0" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 128 156 L 154 156" fill="none" stroke="var(--mask)" stroke-width="5.8" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="you" data-edge-to="ipc" data-edge-key="0" data-edge-id="say" data-composition-points="128,156;154,156" data-composition-crossover="halo" data-composition-independent="true" d="M 128 156 L 154 156" class="a-emphasis" data-animate="edge" style="--step:0" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:1">
-          <path data-graph-role="automatic-crossover-underlay" d="M 550 102 L 660 102" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="chat" data-edge-to="specialist" data-edge-label="派活（工单）" data-edge-key="1" data-edge-id="delegate" data-composition-points="550,102;660,102" data-composition-crossover="halo" data-composition-independent="true" d="M 550 102 L 660 102" class="a-default" data-animate="edge" style="--step:1" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 276 156 L 302 156" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="ipc" data-edge-to="chat" data-edge-key="1" data-edge-id="gate" data-composition-points="276,156;302,156" data-composition-crossover="halo" data-composition-independent="true" d="M 276 156 L 302 156" class="a-default" data-animate="edge" style="--step:1" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:2">
-          <path data-graph-role="automatic-crossover-underlay" d="M 770 142 L 770 250" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="specialist" data-edge-to="runtime" data-edge-label="调用工具" data-edge-key="2" data-edge-id="tools" data-composition-points="770,142;770,250" data-composition-crossover="halo" data-composition-independent="true" d="M 770 142 L 770 250" class="a-default" data-animate="edge" style="--step:2" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 486 146.9 L 616 146.9" fill="none" stroke="var(--mask)" stroke-width="5.8" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="chat" data-edge-to="exec" data-edge-label="派工单" data-edge-key="2" data-edge-id="dispatch" data-composition-points="486,146.9;616,146.9" data-composition-crossover="halo" data-composition-independent="true" d="M 486 146.9 L 616 146.9" class="a-emphasis" data-animate="edge" style="--step:2" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         </g>
-        <path data-edge-from="runtime" data-edge-to="folder" data-edge-label="读写文件" data-edge-key="3" data-edge-id="files" data-composition-points="880,288;1050,288;1050,142" d="M 880 288 L 1042 288 Q 1050 288 1050 280 L 1050 142" class="a-default" data-animate="edge" style="--step:3" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="specialist" data-edge-to="chat" data-edge-label="结果与证据" data-edge-key="4" data-edge-id="evidence" data-composition-points="770,142;770,190;440,190;440,142" d="M 770 142 L 770 182 Q 770 190 762 190 L 448 190 Q 440 190 440 182 L 440 142" class="a-default" data-animate="edge" style="--step:4" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="chat" data-edge-to="you" data-edge-label="可审的交付" data-edge-key="5" data-edge-id="delivery" data-composition-points="440,62;440,20;105,20;105,70" d="M 440 62 L 440 28 Q 440 20 432 20 L 113 20 Q 105 20 105 28 L 105 70" class="a-dashed" data-animate="edge" style="--step:5" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <g data-graph-role="automatic-crossover" style="--step:3">
+          <path data-graph-role="automatic-crossover-underlay" d="M 616 163 L 486 163" fill="none" stroke="var(--mask)" stroke-width="5.8" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="exec" data-edge-to="chat" data-edge-label="结果回主聊" data-edge-key="3" data-edge-id="reply" data-composition-points="616,163;486,163" data-composition-crossover="halo" data-composition-independent="true" d="M 616 163 L 486 163" class="a-emphasis" data-animate="edge" style="--step:3" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        </g>
+        <g data-graph-role="automatic-crossover" style="--step:4">
+          <path data-graph-role="automatic-crossover-underlay" d="M 394 116 L 394 62 Q 394 54 402 54 L 580 54" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="chat" data-edge-to="model" data-edge-label="模型调用 · HTTPS" data-edge-key="4" data-edge-id="call" data-composition-points="394,116;394,54;580,54" data-composition-crossover="halo" data-composition-independent="true" d="M 394 116 L 394 62 Q 394 54 402 54 L 580 54" class="a-default" data-animate="edge" style="--step:4" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        </g>
+        <g data-graph-role="automatic-crossover" style="--step:5">
+          <path data-graph-role="automatic-crossover-underlay" d="M 788 156 L 814 156" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="exec" data-edge-to="adapt" data-edge-key="5" data-edge-id="run" data-composition-points="788,156;814,156" data-composition-crossover="halo" data-composition-independent="true" d="M 788 156 L 814 156" class="a-default" data-animate="edge" style="--step:5" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        </g>
         <g data-graph-role="automatic-crossover" style="--step:6">
-          <path data-graph-role="automatic-crossover-underlay" d="M 660 288 L 240 288" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="runtime" data-edge-to="data" data-edge-label="记录步骤与改动" data-edge-key="6" data-edge-id="record" data-composition-points="660,288;240,288" data-composition-crossover="halo" data-composition-independent="true" d="M 660 288 L 240 288" class="a-dashed" data-animate="edge" style="--step:6" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 1014 156 L 1040 156" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="adapt" data-edge-to="winfs" data-edge-key="6" data-edge-id="write" data-composition-points="1014,156;1040,156" data-composition-crossover="halo" data-composition-independent="true" d="M 1014 156 L 1040 156" class="a-security" data-animate="edge" style="--step:6" stroke-width="1.5" marker-end="url(#arrowhead-security)"/>
+        </g>
+        <g data-graph-role="automatic-crossover" style="--step:7">
+          <path data-graph-role="automatic-crossover-underlay" d="M 401 196 L 401 280" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="chat" data-edge-to="db" data-edge-key="7" data-edge-id="record" data-composition-points="401,196;401,280" data-composition-crossover="halo" data-composition-independent="true" d="M 401 196 L 401 280" class="a-default" data-animate="edge" style="--step:7" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        </g>
+        <g data-graph-role="automatic-crossover" style="--step:8">
+          <path data-graph-role="automatic-crossover-underlay" d="M 387 196 L 387 230 Q 387 238 379 238 L 156 238 Q 148 238 148 246 L 148 280" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="chat" data-edge-to="events" data-edge-key="8" data-edge-id="events-edge" data-composition-points="387,196;387,238;148,238;148,280" data-composition-crossover="halo" data-composition-independent="true" d="M 387 196 L 387 230 Q 387 238 379 238 L 156 238 Q 148 238 148 246 L 148 280" class="a-default" data-animate="edge" style="--step:8" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        </g>
+        <g data-graph-role="automatic-crossover" style="--step:9">
+          <path data-graph-role="automatic-crossover-underlay" d="M 914 196 L 914 212 Q 914 220 906 220 L 546 220 Q 538 220 538 228 L 538 310 Q 538 318 530 318 L 514 318" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="adapt" data-edge-to="db" data-edge-label="文件变更 · 证据记录" data-edge-key="9" data-edge-id="evidence" data-composition-points="914,196;914,220;538,220;538,318;514,318" data-composition-crossover="halo" data-composition-independent="true" d="M 914 196 L 914 212 Q 914 220 906 220 L 546 220 Q 538 220 538 228 L 538 310 Q 538 318 530 318 L 514 318" class="a-default" data-animate="edge" style="--step:9" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
 
         <!-- Components -->
-        <g id="node-you" data-node-id="you" data-node-label="你" tabindex="0" role="button" aria-label="聚焦你，提一个目标，验收结果, 架构组件" aria-pressed="false" data-node-kind="external" data-node-sublabel="提一个目标，验收结果" data-node-context="架构组件">
-          <title>你 · 提一个目标，验收结果 · 架构组件</title>
-          <rect x="40" y="70" width="130" height="64" rx="8" class="c-mask"/>
-          <rect x="40" y="70" width="130" height="64" rx="8" class="c-external" data-animate="node" style="--step:0" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="person" class="semantic-sigil s-external" transform="translate(46 76) scale(0.6875)">
+        <g id="node-you" data-node-id="you" data-node-label="你" tabindex="0" role="button" aria-label="聚焦你，目标 · 验收, 架构组件" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="目标 · 验收" data-node-context="架构组件">
+          <title>你 · 目标 · 验收 · 架构组件</title>
+          <rect x="36" y="116" width="92" height="80" rx="8" class="c-mask"/>
+          <rect x="36" y="116" width="92" height="80" rx="8" class="c-frontend" data-animate="node" style="--step:0" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="person" class="semantic-sigil s-frontend" transform="translate(42 122) scale(0.6875)">
             <circle cx="8" cy="4.5" r="2.5"/><path d="M3 14v-2a5 5 0 0 1 10 0v2"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="105" y="100" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">你</text>
-        <text data-detail="context" x="105" y="116" class="t-muted" font-size="9" text-anchor="middle">提一个目标，验收结果</text>
+          <text data-node-label="" data-detail-anchor="" x="82" y="154" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">你</text>
+        <text data-detail="context" x="82" y="170" class="t-muted" font-size="9" text-anchor="middle">目标 · 验收</text>
         </g>
 
-        <g id="node-data" data-node-id="data" data-node-label="本机数据" tabindex="0" role="button" aria-label="聚焦本机数据，对话、项目、记忆, 架构组件" aria-pressed="false" data-node-kind="database" data-node-sublabel="对话、项目、记忆" data-node-context="架构组件">
-          <title>本机数据 · 对话、项目、记忆 · 架构组件</title>
-          <rect x="40" y="260" width="200" height="76" rx="8" class="c-mask"/>
-          <rect x="40" y="260" width="200" height="76" rx="8" class="c-database" data-animate="node" style="--step:7" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(46 266) scale(0.6875)">
-            <ellipse cx="8" cy="4" rx="5" ry="2"/>
-            <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
+        <g id="node-ipc" data-node-id="ipc" data-node-label="IPC 白名单" tabindex="0" role="button" aria-label="聚焦IPC 白名单，preload / contextBridge, 架构组件" aria-pressed="false" data-node-kind="security" data-node-sublabel="preload / contextBridge" data-node-context="架构组件">
+          <title>IPC 白名单 · preload / contextBridge · 架构组件</title>
+          <rect x="154" y="116" width="122" height="80" rx="8" class="c-mask"/>
+          <rect x="154" y="116" width="122" height="80" rx="8" class="c-security" data-animate="node" style="--step:1" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(160 122) scale(0.6875)">
+            <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
+            <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="140" y="296" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">本机数据</text>
-        <text data-detail="context" x="140" y="312" class="t-muted" font-size="9" text-anchor="middle">对话、项目、记忆</text>
+          <text data-node-label="" data-detail-anchor="" x="215" y="154" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">IPC 白名单</text>
+        <text data-detail="context" x="215" y="170" class="t-muted" font-size="8.2" text-anchor="middle">preload / contextBridge</text>
         </g>
 
-        <g id="node-chat" data-node-id="chat" data-node-label="主聊 Noema" tabindex="0" role="button" aria-label="聚焦主聊 Noema，理解目标、编排、汇总, 架构组件" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="理解目标、编排、汇总" data-node-context="架构组件">
-          <title>主聊 Noema · 理解目标、编排、汇总 · 架构组件</title>
-          <rect x="330" y="62" width="220" height="80" rx="8" class="c-mask"/>
-          <rect x="330" y="62" width="220" height="80" rx="8" class="c-frontend" data-animate="node" style="--step:1" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(336 68) scale(0.6875)">
+        <g id="node-chat" data-node-id="chat" data-node-label="主聊 Noema" tabindex="0" role="button" aria-label="聚焦主聊 Noema，渲染 + 主进程编排, 架构组件" aria-pressed="false" data-node-kind="backend" data-node-sublabel="渲染 + 主进程编排" data-node-context="架构组件">
+          <title>主聊 Noema · 渲染 + 主进程编排 · 架构组件</title>
+          <rect x="302" y="116" width="184" height="80" rx="8" class="c-mask"/>
+          <rect x="302" y="116" width="184" height="80" rx="8" class="c-backend" data-animate="node" style="--step:2" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-backend" transform="translate(308 122) scale(0.6875)">
             <rect x="2" y="3" width="12" height="10" rx="2"/>
             <path d="M2 6.5h12"/>
             <circle cx="4.1" cy="4.8" r=".7" class="sigil-fill"/>
             <circle cx="6.3" cy="4.8" r=".7" class="sigil-fill"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="440" y="100" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">主聊 Noema</text>
-        <text data-detail="context" x="440" y="116" class="t-muted" font-size="9" text-anchor="middle">理解目标、编排、汇总</text>
+          <text data-node-label="" data-detail-anchor="" x="394" y="154" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">主聊 Noema</text>
+        <text data-detail="context" x="394" y="170" class="t-muted" font-size="9" text-anchor="middle">渲染 + 主进程编排</text>
         </g>
 
-        <g id="node-specialist" data-node-id="specialist" data-node-label="执行者" tabindex="0" role="button" aria-label="聚焦执行者，读文件、跑命令、自检, 项目空间" aria-pressed="false" data-node-kind="backend" data-node-sublabel="读文件、跑命令、自检" data-node-context="项目空间">
-          <title>执行者 · 读文件、跑命令、自检 · 项目空间</title>
-          <rect x="660" y="62" width="220" height="80" rx="8" class="c-mask"/>
-          <rect x="660" y="62" width="220" height="80" rx="8" class="c-backend" data-animate="node" style="--step:2" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(666 68) scale(0.6875)">
+        <g id="node-exec" data-node-id="exec" data-node-label="执行者" tabindex="0" role="button" aria-label="聚焦执行者，一次一个工单 · 授权工作区, 架构组件" aria-pressed="false" data-node-kind="backend" data-node-sublabel="一次一个工单 · 授权工作区" data-node-context="架构组件">
+          <title>执行者 · 一次一个工单 · 授权工作区 · 架构组件</title>
+          <rect x="616" y="116" width="172" height="80" rx="8" class="c-mask"/>
+          <rect x="616" y="116" width="172" height="80" rx="8" class="c-backend" data-animate="node" style="--step:3" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="person" class="semantic-sigil s-backend" transform="translate(622 122) scale(0.6875)">
+            <circle cx="8" cy="4.5" r="2.5"/><path d="M3 14v-2a5 5 0 0 1 10 0v2"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="702" y="154" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">执行者</text>
+        <text data-detail="context" x="702" y="170" class="t-muted" font-size="9" text-anchor="middle">一次一个工单 · 授权工作区</text>
+        </g>
+
+        <g id="node-adapt" data-node-id="adapt" data-node-label="执行内核适配器" tabindex="0" role="button" aria-label="聚焦执行内核适配器，DSH headless 首选 / native 回退, 架构组件" aria-pressed="false" data-node-kind="backend" data-node-sublabel="DSH headless 首选 / native 回退" data-node-context="架构组件">
+          <title>执行内核适配器 · DSH headless 首选 / native 回退 · 架构组件</title>
+          <rect x="814" y="116" width="200" height="80" rx="8" class="c-mask"/>
+          <rect x="814" y="116" width="200" height="80" rx="8" class="c-backend" data-animate="node" style="--step:6" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(820 122) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="770" y="100" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">执行者</text>
-        <text data-detail="context" x="770" y="116" class="t-muted" font-size="9" text-anchor="middle">读文件、跑命令、自检</text>
+          <text data-node-label="" data-detail-anchor="" x="914" y="154" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">执行内核适配器</text>
+        <text data-detail="context" x="914" y="170" class="t-muted" font-size="9" text-anchor="middle">DSH headless 首选 / native 回退</text>
         </g>
 
-        <g id="node-folder" data-node-id="folder" data-node-label="项目工作文件夹" tabindex="0" role="button" aria-label="聚焦项目工作文件夹，你选的目录，产物在这里, 项目空间 › 可写边界：只有这个文件夹" aria-pressed="false" data-node-kind="database" data-node-sublabel="你选的目录，产物在这里" data-node-context="项目空间 › 可写边界：只有这个文件夹">
-          <title>项目工作文件夹 · 你选的目录，产物在这里 · 项目空间 › 可写边界：只有这个文件夹</title>
-          <rect x="960" y="62" width="180" height="80" rx="8" class="c-mask"/>
-          <rect x="960" y="62" width="180" height="80" rx="8" class="c-database" data-animate="node" style="--step:4" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="briefcase" class="semantic-sigil s-database" transform="translate(966 68) scale(0.6875)">
-            <rect x="2" y="5" width="12" height="9" rx="2"/><path d="M5 5V2h6v3M2 9h12M7 9v2h2V9"/>
+        <g id="node-winfs" data-node-id="winfs" data-node-label="Windows 文件与命令" tabindex="0" role="button" aria-label="聚焦Windows 文件与命令，磁盘 · PowerShell, 授权工作区：只在这里写入" aria-pressed="false" data-node-kind="backend" data-node-sublabel="磁盘 · PowerShell" data-node-context="授权工作区：只在这里写入">
+          <title>Windows 文件与命令 · 磁盘 · PowerShell · 授权工作区：只在这里写入</title>
+          <rect x="1040" y="116" width="166" height="80" rx="8" class="c-mask"/>
+          <rect x="1040" y="116" width="166" height="80" rx="8" class="c-backend" data-animate="node" style="--step:7" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="neutral" class="semantic-sigil s-backend" transform="translate(1046 122) scale(0.6875)">
+            <rect x="3" y="3" width="10" height="10" rx="2"/>
+            <circle cx="8" cy="8" r="1.2" class="sigil-fill"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="1050" y="100" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">项目工作文件夹</text>
-        <text data-detail="context" x="1050" y="116" class="t-muted" font-size="9" text-anchor="middle">你选的目录，产物在这里</text>
+          <text data-node-label="" data-detail-anchor="" x="1123" y="154" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Windows 文件与命令</text>
+        <text data-detail="context" x="1123" y="170" class="t-muted" font-size="9" text-anchor="middle">磁盘 · PowerShell</text>
         </g>
 
-        <g id="node-runtime" data-node-id="runtime" data-node-label="执行内核" tabindex="0" role="button" aria-label="聚焦执行内核，DSH 优先，可回退, 项目空间" aria-pressed="false" data-node-kind="backend" data-node-sublabel="DSH 优先，可回退" data-node-context="项目空间">
-          <title>执行内核 · DSH 优先，可回退 · 项目空间</title>
-          <rect x="660" y="250" width="220" height="76" rx="8" class="c-mask"/>
-          <rect x="660" y="250" width="220" height="76" rx="8" class="c-backend" data-animate="node" style="--step:3" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(666 256) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+        <g id="node-model" data-node-id="model" data-node-label="模型服务" tabindex="0" role="button" aria-label="聚焦模型服务，HTTPS · 可换 provider, 架构组件" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="HTTPS · 可换 provider" data-node-context="架构组件">
+          <title>模型服务 · HTTPS · 可换 provider · 架构组件</title>
+          <rect x="580" y="24" width="190" height="60" rx="8" class="c-mask"/>
+          <rect x="580" y="24" width="190" height="60" rx="8" class="c-cloud" data-animate="node" style="--step:5" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(586 30) scale(0.6875)">
+            <path d="M4.3 12.5h7.3a2.4 2.4 0 0 0 .2-4.8 4 4 0 0 0-7.5-1.3A3.1 3.1 0 0 0 4.3 12.5Z"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="770" y="286" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">执行内核</text>
-        <text data-detail="context" x="770" y="302" class="t-muted" font-size="9" text-anchor="middle">DSH 优先，可回退</text>
+          <text data-node-label="" data-detail-anchor="" x="675" y="52" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">模型服务</text>
+        <text data-detail="context" x="675" y="68" class="t-muted" font-size="9" text-anchor="middle">HTTPS · 可换 provider</text>
+        </g>
+
+        <g id="node-events" data-node-id="events" data-node-label="个体事件流" tabindex="0" role="button" aria-label="聚焦个体事件流，events.jsonl · 追加式, 架构组件" aria-pressed="false" data-node-kind="database" data-node-sublabel="events.jsonl · 追加式" data-node-context="架构组件">
+          <title>个体事件流 · events.jsonl · 追加式 · 架构组件</title>
+          <rect x="48" y="280" width="200" height="76" rx="8" class="c-mask"/>
+          <rect x="48" y="280" width="200" height="76" rx="8" class="c-database" data-animate="node" style="--step:9" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(54 286) scale(0.6875)">
+            <ellipse cx="8" cy="4" rx="5" ry="2"/>
+            <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="148" y="316" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">个体事件流</text>
+        <text data-detail="context" x="148" y="332" class="t-muted" font-size="9" text-anchor="middle">events.jsonl · 追加式</text>
+        </g>
+
+        <g id="node-db" data-node-id="db" data-node-label="本机 SQLite" tabindex="0" role="button" aria-label="聚焦本机 SQLite，对话快照/项目/工单/证据/记忆/成长, 架构组件" aria-pressed="false" data-node-kind="database" data-node-sublabel="对话快照/项目/工单/证据/记忆/成长" data-node-context="架构组件">
+          <title>本机 SQLite · 对话快照/项目/工单/证据/记忆/成长 · 架构组件</title>
+          <rect x="274" y="280" width="240" height="76" rx="8" class="c-mask"/>
+          <rect x="274" y="280" width="240" height="76" rx="8" class="c-database" data-animate="node" style="--step:8" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(280 286) scale(0.6875)">
+            <ellipse cx="8" cy="4" rx="5" ry="2"/>
+            <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="394" y="316" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">本机 SQLite</text>
+        <text data-detail="context" x="394" y="332" class="t-muted" font-size="9" text-anchor="middle">对话快照/项目/工单/证据/记忆/成长</text>
+        </g>
+
+        <g id="node-modules" data-node-id="modules" data-node-label="六模块分层" tabindex="0" role="button" aria-label="聚焦六模块分层，Core·Policy·Competence·Tool Grants·Memory·Context, 计划中（尚未实现）" aria-pressed="false" data-node-kind="external" data-node-sublabel="Core·Policy·Competence·Tool Grants·Memory·Context" data-node-tag="计划" data-node-context="计划中（尚未实现）">
+          <title>六模块分层 · Core·Policy·Competence·Tool Grants·Memory·Context · 计划中（尚未实现） · 计划</title>
+          <rect x="572" y="268" width="290" height="64" rx="8" class="c-mask"/>
+          <rect x="572" y="268" width="290" height="64" rx="8" class="c-external" data-animate="node" style="--step:9" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="neutral" class="semantic-sigil s-external" transform="translate(578 274) scale(0.6875)">
+            <rect x="3" y="3" width="10" height="10" rx="2"/>
+            <circle cx="8" cy="8" r="1.2" class="sigil-fill"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="717" y="298" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">六模块分层</text>
+        <text data-detail="context" x="717" y="314" class="t-muted" font-size="9" text-anchor="middle">Core·Policy·Competence·Tool Grants·Memory·Context</text>
+        <text data-detail="fine" x="717" y="324" class="t-external" font-size="7" text-anchor="middle">计划</text>
+        </g>
+
+        <g id="node-fork" data-node-id="fork" data-node-label="会话 fork 拓扑" tabindex="0" role="button" aria-label="聚焦会话 fork 拓扑，项目分身 · 结项回写, 计划中（尚未实现）" aria-pressed="false" data-node-kind="external" data-node-sublabel="项目分身 · 结项回写" data-node-tag="计划" data-node-context="计划中（尚未实现）">
+          <title>会话 fork 拓扑 · 项目分身 · 结项回写 · 计划中（尚未实现） · 计划</title>
+          <rect x="880" y="268" width="170" height="64" rx="8" class="c-mask"/>
+          <rect x="880" y="268" width="170" height="64" rx="8" class="c-external" data-animate="node" style="--step:10" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="neutral" class="semantic-sigil s-external" transform="translate(886 274) scale(0.6875)">
+            <rect x="3" y="3" width="10" height="10" rx="2"/>
+            <circle cx="8" cy="8" r="1.2" class="sigil-fill"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="965" y="298" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">会话 fork 拓扑</text>
+        <text data-detail="context" x="965" y="314" class="t-muted" font-size="9" text-anchor="middle">项目分身 · 结项回写</text>
+        <text data-detail="fine" x="965" y="324" class="t-external" font-size="7" text-anchor="middle">计划</text>
+        </g>
+
+        <g id="node-at" data-node-id="at" data-node-label="@Noema 跨房间" tabindex="0" role="button" aria-label="聚焦@Noema 跨房间，跨房间寻址, 计划中（尚未实现）" aria-pressed="false" data-node-kind="external" data-node-sublabel="跨房间寻址" data-node-tag="计划" data-node-context="计划中（尚未实现）">
+          <title>@Noema 跨房间 · 跨房间寻址 · 计划中（尚未实现） · 计划</title>
+          <rect x="1068" y="268" width="130" height="64" rx="8" class="c-mask"/>
+          <rect x="1068" y="268" width="130" height="64" rx="8" class="c-external" data-animate="node" style="--step:11" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="messagebus" class="semantic-sigil s-external" transform="translate(1074 274) scale(0.6875)">
+            <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/>
+            <circle cx="5" cy="4.5" r="1" class="sigil-fill"/>
+            <circle cx="10.5" cy="8" r="1" class="sigil-fill"/>
+            <circle cx="7" cy="11.5" r="1" class="sigil-fill"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="1133" y="298" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">@Noema 跨房间</text>
+        <text data-detail="context" x="1133" y="314" class="t-muted" font-size="9" text-anchor="middle">跨房间寻址</text>
+        <text data-detail="fine" x="1133" y="324" class="t-external" font-size="7" text-anchor="middle">计划</text>
         </g>
 
         <!-- Connection labels -->
-        <g data-detail="context" data-edge-from="you" data-edge-to="chat" data-edge-label="说一句话" data-edge-key="0" data-edge-id="say">
-          <rect x="225.8" y="82" width="48.4" height="14" rx="3" class="c-mask"/>
-          <text x="250" y="92" class="t-edge-emphasis" font-size="8" text-anchor="middle">说一句话</text>
+
+
+        <g data-detail="context" data-edge-from="chat" data-edge-to="exec" data-edge-label="派工单" data-edge-key="2" data-edge-id="dispatch">
+          <rect x="531.6" y="126.9" width="38.8" height="14" rx="3" class="c-mask"/>
+          <text x="551" y="136.9" class="t-edge-emphasis" font-size="8" text-anchor="middle">派工单</text>
         </g>
-        <g data-detail="context" data-edge-from="chat" data-edge-to="specialist" data-edge-label="派活（工单）" data-edge-key="1" data-edge-id="delegate">
-          <rect x="571.2" y="82" width="67.6" height="14" rx="3" class="c-mask"/>
-          <text x="605" y="92" class="t-edge-default" font-size="8" text-anchor="middle">派活（工单）</text>
+        <g data-detail="context" data-edge-from="exec" data-edge-to="chat" data-edge-label="结果回主聊" data-edge-key="3" data-edge-id="reply">
+          <rect x="522" y="173" width="58" height="14" rx="3" class="c-mask"/>
+          <text x="551" y="183" class="t-edge-emphasis" font-size="8" text-anchor="middle">结果回主聊</text>
         </g>
-        <g data-detail="context" data-edge-from="specialist" data-edge-to="runtime" data-edge-label="调用工具" data-edge-key="2" data-edge-id="tools">
-          <rect x="776" y="189" width="48.4" height="14" rx="3" class="c-mask"/>
-          <text x="800.2" y="199" class="t-edge-default" font-size="8" text-anchor="middle">调用工具</text>
+        <g data-detail="context" data-edge-from="chat" data-edge-to="model" data-edge-label="模型调用 · HTTPS" data-edge-key="4" data-edge-id="call">
+          <rect x="443.6" y="34" width="86.8" height="14" rx="3" class="c-mask"/>
+          <text x="487" y="44" class="t-edge-default" font-size="8" text-anchor="middle">模型调用 · HTTPS</text>
         </g>
-        <g data-detail="context" data-edge-from="runtime" data-edge-to="folder" data-edge-label="读写文件" data-edge-key="3" data-edge-id="files">
-          <rect x="1025.8" y="195" width="48.4" height="14" rx="3" class="c-mask"/>
-          <text x="1050" y="205" class="t-edge-default" font-size="8" text-anchor="middle">读写文件</text>
-        </g>
-        <g data-detail="context" data-edge-from="specialist" data-edge-to="chat" data-edge-label="结果与证据" data-edge-key="4" data-edge-id="evidence">
-          <rect x="576" y="170" width="58" height="14" rx="3" class="c-mask"/>
-          <text x="605" y="180" class="t-edge-default" font-size="8" text-anchor="middle">结果与证据</text>
-        </g>
-        <g data-detail="context" data-edge-from="chat" data-edge-to="you" data-edge-label="可审的交付" data-edge-key="5" data-edge-id="delivery">
-          <rect x="243.5" y="0" width="58" height="14" rx="3" class="c-mask"/>
-          <text x="272.5" y="10" class="t-edge-dashed" font-size="8" text-anchor="middle">可审的交付</text>
-        </g>
-        <g data-detail="context" data-edge-from="runtime" data-edge-to="data" data-edge-label="记录步骤与改动" data-edge-key="6" data-edge-id="record">
-          <rect x="411.4" y="268" width="77.2" height="14" rx="3" class="c-mask"/>
-          <text x="450" y="278" class="t-edge-dashed" font-size="8" text-anchor="middle">记录步骤与改动</text>
+
+
+
+
+        <g data-detail="context" data-edge-from="adapt" data-edge-to="db" data-edge-label="文件变更 · 证据记录" data-edge-key="9" data-edge-id="evidence">
+          <rect x="675.4" y="200" width="101.2" height="14" rx="3" class="c-mask"/>
+          <text x="726" y="210" class="t-edge-default" font-size="8" text-anchor="middle">文件变更 · 证据记录</text>
         </g>
 
         <!-- Boundary labels (foreground masks keep routes out of titles) -->
-        <g data-graph-role="structural-frame-label" data-composition-frame-id="0" data-composition-frame-kind="region" data-composition-frame-label="项目空间">
-          <rect data-graph-role="structural-frame-label-mask" x="634" y="42" width="53.199999999999996" height="16" rx="3" class="c-mask"/>
-          <text data-boundary-label="" x="638" y="55" class="t-cloud" font-size="9" font-weight="600">项目空间</text>
+        <g data-graph-role="structural-frame-label" data-composition-frame-id="0" data-composition-frame-kind="security-group" data-composition-frame-label="授权工作区：只在这里写入">
+          <rect data-graph-role="structural-frame-label-mask" x="1014" y="96" width="139.6" height="16" rx="3" class="c-mask"/>
+          <text data-boundary-label="" x="1018" y="109" class="t-security" font-size="9" font-weight="600">授权工作区：只在这里写入</text>
         </g>
 
-        <g data-graph-role="structural-frame-label" data-composition-frame-id="1" data-composition-frame-kind="security-group" data-composition-frame-label="可写边界：只有这个文件夹">
-          <rect data-graph-role="structural-frame-label-mask" x="934" y="42" width="139.6" height="16" rx="3" class="c-mask"/>
-          <text data-boundary-label="" x="938" y="55" class="t-security" font-size="9" font-weight="600">可写边界：只有这个文件夹</text>
+        <g data-graph-role="structural-frame-label" data-composition-frame-id="1" data-composition-frame-kind="region" data-composition-frame-label="计划中（尚未实现）">
+          <rect data-graph-role="structural-frame-label-mask" x="546" y="248" width="107.2" height="16" rx="3" class="c-mask"/>
+          <text data-boundary-label="" x="550" y="261" class="t-cloud" font-size="9" font-weight="600">计划中（尚未实现）</text>
         </g>
 
         <!-- Legend -->
@@ -5395,17 +5487,25 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
             <rect x="40" y="385" width="16" height="10" rx="2.5" class="c-frontend" stroke-width="1"/>
             <text x="62" y="394" class="t-muted" font-size="10" font-weight="500">界面</text>
           </g>
-          <g data-legend-semantic-kind="backend" data-legend-kind="backend" data-legend-label="执行" data-legend-x="130" data-legend-baseline="394" data-legend-width="68">
+          <g data-legend-semantic-kind="backend" data-legend-kind="backend" data-legend-label="执行与内核" data-legend-x="130" data-legend-baseline="394" data-legend-width="105">
             <rect x="130" y="385" width="16" height="10" rx="2.5" class="c-backend" stroke-width="1"/>
-            <text x="152" y="394" class="t-muted" font-size="10" font-weight="500">执行</text>
+            <text x="152" y="394" class="t-muted" font-size="10" font-weight="500">执行与内核</text>
           </g>
-          <g data-legend-semantic-kind="database" data-legend-kind="database" data-legend-label="本地存储" data-legend-x="220" data-legend-baseline="394" data-legend-width="93">
-            <rect x="220" y="385" width="16" height="10" rx="2.5" class="c-database" stroke-width="1"/>
-            <text x="242" y="394" class="t-muted" font-size="10" font-weight="500">本地存储</text>
+          <g data-legend-semantic-kind="database" data-legend-kind="database" data-legend-label="本机数据" data-legend-x="257" data-legend-baseline="394" data-legend-width="93">
+            <rect x="257" y="385" width="16" height="10" rx="2.5" class="c-database" stroke-width="1"/>
+            <text x="279" y="394" class="t-muted" font-size="10" font-weight="500">本机数据</text>
           </g>
-          <g data-legend-semantic-kind="external" data-legend-kind="external" data-legend-label="外部" data-legend-x="335" data-legend-baseline="394" data-legend-width="68">
-            <rect x="335" y="385" width="16" height="10" rx="2.5" class="c-external" stroke-width="1"/>
-            <text x="357" y="394" class="t-muted" font-size="10" font-weight="500">外部</text>
+          <g data-legend-semantic-kind="cloud" data-legend-kind="cloud" data-legend-label="模型服务" data-legend-x="372" data-legend-baseline="394" data-legend-width="93">
+            <rect x="372" y="385" width="16" height="10" rx="2.5" class="c-cloud" stroke-width="1"/>
+            <text x="394" y="394" class="t-muted" font-size="10" font-weight="500">模型服务</text>
+          </g>
+          <g data-legend-semantic-kind="security" data-legend-kind="security" data-legend-label="边界与门禁" data-legend-x="487" data-legend-baseline="394" data-legend-width="105">
+            <rect x="487" y="385" width="16" height="10" rx="2.5" class="c-security" stroke-width="1"/>
+            <text x="509" y="394" class="t-muted" font-size="10" font-weight="500">边界与门禁</text>
+          </g>
+          <g data-legend-semantic-kind="external" data-legend-kind="external" data-legend-label="计划中（尚未实现）" data-legend-x="614" data-legend-baseline="394" data-legend-width="155">
+            <rect x="614" y="385" width="16" height="10" rx="2.5" class="c-external" stroke-width="1"/>
+            <text x="636" y="394" class="t-muted" font-size="10" font-weight="500">计划中（尚未实现）</text>
           </g>
         </g>
       </svg>
@@ -5591,19 +5691,19 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <h3>对话不等于执行</h3>
         </div>
         <ul>
-          <li>主聊负责理解与编排</li>
-          <li>动手的是执行者，不是 Noema 自己</li>
+          <li>主聊只负责理解、编排与汇总</li>
+          <li>真正动手的是执行者：一次一个工单</li>
         </ul>
       </div>
 
       <div class="card">
         <div class="card-header">
           <div class="card-dot emerald"></div>
-          <h3>只在你的文件夹里动手</h3>
+          <h3>只在你给的文件夹里动手</h3>
         </div>
         <ul>
-          <li>项目创建时你选定文件夹</li>
-          <li>写入经过授权与记录</li>
+          <li>文件与命令写入走工单 + 授权工作区</li>
+          <li>工作区外要你逐次授权</li>
         </ul>
       </div>
 
@@ -5613,8 +5713,8 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <h3>结果可核对</h3>
         </div>
         <ul>
-          <li>执行轨迹与文件改动都能回看</li>
-          <li>交付可以保留或撤回</li>
+          <li>文件变更、命令输出、证据都留痕</li>
+          <li>对话历史是不可变快照，可回看</li>
         </ul>
       </div>
 
@@ -5624,8 +5724,8 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <h3>数据留在本机</h3>
         </div>
         <ul>
-          <li>对话、项目、记忆存本地</li>
-          <li>换模型不换你的数据</li>
+          <li>对话/项目/工单/记忆在本地 SQLite</li>
+          <li>换模型不换你的数据与事件流</li>
         </ul>
       </div>
     </div>

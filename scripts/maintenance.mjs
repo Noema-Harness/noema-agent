@@ -29,6 +29,7 @@ const MAX_PENDING_DECISIONS = 3;
 const USER_TASK_PREFIX = "[用户]";
 const USER_CONFIRMATION = /用户确认：\d{4}-\d{2}-\d{2}/u;
 const PLAN_LINK = /^Plan:\s*https:\/\/github\.com\/\S+/mu;
+const GOVERNANCE_PLAN = /^Plan:\s*none\b/mu;
 
 function readText(file) {
   try {
@@ -91,6 +92,13 @@ function sectionBody(text, heading) {
     body.push(line);
   }
   return body.join("\n");
+}
+
+// 变更指向哪里：卡片链接=推进某张能力卡；none=纯机制/文档治理；null=没写清楚。
+export function planTarget(proposalText) {
+  if (GOVERNANCE_PLAN.test(proposalText ?? "")) return "governance";
+  if (PLAN_LINK.test(proposalText ?? "")) return "card";
+  return null;
 }
 
 export function pendingDecisions(designText) {
@@ -261,6 +269,7 @@ export function checkPlan(root, options = {}) {
   const change = active[0];
   let pending = [];
   let remaining = null;
+  let planKind = null;
   if (change) {
     const directory = path.join(root, "openspec", "changes", change);
     for (const name of ["proposal.md", "design.md", "tasks.md"]) {
@@ -270,10 +279,13 @@ export function checkPlan(root, options = {}) {
     }
 
     const proposal = readText(path.join(directory, "proposal.md"));
-    if (!PLAN_LINK.test(proposal ?? "")) {
+    planKind = planTarget(proposal);
+    if (planKind === null) {
       errors.push(
-        `活动变更 ${change} 的 proposal.md 缺少「Plan: <卡片链接>」：规划只在 GitHub Project 一处，变更必须指向它推进的卡片`,
+        `活动变更 ${change} 的 proposal.md 缺少「Plan: <卡片链接>」或「Plan: none」：规划只在 GitHub Project 一处，变更必须说清推进哪张卡；纯机制/文档治理写 none`,
       );
+    } else if (planKind === "governance") {
+      notices.push(planKindNotice(change));
     }
 
     const tasks = readText(path.join(directory, "tasks.md"));
@@ -336,7 +348,7 @@ export function checkPlan(root, options = {}) {
       }
     }
   }
-  return { errors, notices, change, pending, remaining };
+  return { errors, notices, change, pending, remaining, planKind };
 }
 
 // 里程碑不是“感觉做得差不多了”，而是四个可检查的条件同时成立：
@@ -422,6 +434,11 @@ export function checkPrecommit(root, options = {}) {
         `活动变更仍有待用户决定的问题，相关产品行为不能实现：${plan.pending.join("；")}；工具与文档改动不受此限`,
       );
     }
+    if (productCode.length && plan.planKind === "governance") {
+      errors.push(
+        `活动变更 ${plan.change} 写的是 Plan: none（治理变更），但这次提交含产品代码：产品行为必须有对应卡片与规格增量`,
+      );
+    }
     if (productCode.length && plan.change && skipSpecs(root, plan.change)) {
       errors.push(
         `活动变更 ${plan.change} 标记了 skip_specs，但这次提交含产品代码：行为变更必须在变更里写 specs 增量`,
@@ -483,4 +500,8 @@ if (entry === fileURLToPath(import.meta.url)) {
     throw new Error("Usage: node scripts/maintenance.mjs docs|plan|milestone|precommit");
   })();
   process.exit(output);
+}
+
+function planKindNotice(change) {
+  return `活动变更 ${change} 是治理变更（Plan: none）：不对应能力卡，不能提交产品代码`;
 }

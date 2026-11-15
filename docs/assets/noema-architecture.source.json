@@ -1,0 +1,376 @@
+{
+  "version": 1,
+  "purpose": "Noema 用户向架构图：已实现与计划分层。改 docs/ARCHITECTURE.md 后运行 npm run figure:build 重出图。",
+  "source": {
+    "doc": "docs/ARCHITECTURE.md",
+    "sha256": "9813f8950292f7188cbd14e1e9d693d520b74042e767268ccf969df540cee949"
+  },
+  "assets": {
+    "html": {
+      "path": "docs/assets/noema-architecture.html",
+      "sha256": "08862f5645c207c1c4ac12a2866954e2f4e1fd50075fb6d3801362890e10f17f",
+      "bytes": 850941
+    },
+    "png": {
+      "path": "docs/assets/noema-architecture.png",
+      "sha256": "c4fc2757642facb9786fee00796cdbeba58d9e744e9550ce2496272ee7c718b1",
+      "bytes": 166271
+    }
+  },
+  "updatedAt": "2026-11-15T04:19:50.673Z",
+  "candidate": {
+    "schema_version": 1,
+    "diagram_type": "architecture",
+    "meta": {
+      "title": "Noema 架构：一句话如何变成可核对的结果",
+      "subtitle": "彩色节点与实线＝已实现；灰色节点与虚线框＝计划中、尚未交付。写入只发生在授权工作区，结果与证据回到主聊。",
+      "output": "docs/assets/noema-architecture.html",
+      "locale": "zh-CN",
+      "quality_profile": "showcase",
+      "viewBox": [
+        1240,
+        410
+      ],
+      "legend": {
+        "mode": "auto",
+        "entries": {
+          "frontend": {
+            "label": "界面"
+          },
+          "backend": {
+            "label": "执行与内核"
+          },
+          "database": {
+            "label": "本机数据"
+          },
+          "cloud": {
+            "label": "模型服务"
+          },
+          "security": {
+            "label": "边界与门禁"
+          },
+          "external": {
+            "label": "计划中（尚未实现）"
+          }
+        }
+      }
+    },
+    "components": [
+      {
+        "id": "you",
+        "type": "frontend",
+        "label": "你",
+        "sublabel": "目标 · 验收",
+        "icon": "person",
+        "pos": [
+          36,
+          116
+        ],
+        "size": [
+          92,
+          80
+        ]
+      },
+      {
+        "id": "ipc",
+        "type": "security",
+        "label": "IPC 白名单",
+        "sublabel": "preload / contextBridge",
+        "icon": "security",
+        "pos": [
+          154,
+          116
+        ],
+        "size": [
+          122,
+          80
+        ]
+      },
+      {
+        "id": "chat",
+        "type": "backend",
+        "label": "主聊 Noema",
+        "sublabel": "渲染 + 主进程编排",
+        "icon": "frontend",
+        "pos": [
+          302,
+          116
+        ],
+        "size": [
+          184,
+          80
+        ]
+      },
+      {
+        "id": "exec",
+        "type": "backend",
+        "label": "执行者",
+        "sublabel": "一次一个工单 · 授权工作区",
+        "icon": "person",
+        "pos": [
+          616,
+          116
+        ],
+        "size": [
+          172,
+          80
+        ]
+      },
+      {
+        "id": "adapt",
+        "type": "backend",
+        "label": "执行内核适配器",
+        "sublabel": "DSH headless 首选 / native 回退",
+        "icon": "backend",
+        "pos": [
+          814,
+          116
+        ],
+        "size": [
+          200,
+          80
+        ]
+      },
+      {
+        "id": "winfs",
+        "type": "backend",
+        "label": "Windows 文件与命令",
+        "sublabel": "磁盘 · PowerShell",
+        "icon": "neutral",
+        "pos": [
+          1040,
+          116
+        ],
+        "size": [
+          166,
+          80
+        ]
+      },
+      {
+        "id": "model",
+        "type": "cloud",
+        "label": "模型服务",
+        "sublabel": "HTTPS · 可换 provider",
+        "icon": "cloud",
+        "pos": [
+          580,
+          24
+        ],
+        "size": [
+          190,
+          60
+        ]
+      },
+      {
+        "id": "events",
+        "type": "database",
+        "label": "个体事件流",
+        "sublabel": "events.jsonl · 追加式",
+        "icon": "database",
+        "pos": [
+          48,
+          280
+        ],
+        "size": [
+          200,
+          76
+        ]
+      },
+      {
+        "id": "db",
+        "type": "database",
+        "label": "本机 SQLite",
+        "sublabel": "对话快照/项目/工单/证据/记忆/成长",
+        "icon": "database",
+        "pos": [
+          274,
+          280
+        ],
+        "size": [
+          240,
+          76
+        ]
+      },
+      {
+        "id": "modules",
+        "type": "external",
+        "label": "六模块分层",
+        "sublabel": "Core·Policy·Competence·Tool Grants·Memory·Context",
+        "tag": "计划",
+        "icon": "neutral",
+        "pos": [
+          572,
+          268
+        ],
+        "size": [
+          290,
+          64
+        ]
+      },
+      {
+        "id": "fork",
+        "type": "external",
+        "label": "会话 fork 拓扑",
+        "sublabel": "项目分身 · 结项回写",
+        "tag": "计划",
+        "icon": "neutral",
+        "pos": [
+          880,
+          268
+        ],
+        "size": [
+          170,
+          64
+        ]
+      },
+      {
+        "id": "at",
+        "type": "external",
+        "label": "@Noema 跨房间",
+        "sublabel": "跨房间寻址",
+        "tag": "计划",
+        "icon": "messagebus",
+        "pos": [
+          1068,
+          268
+        ],
+        "size": [
+          130,
+          64
+        ]
+      }
+    ],
+    "boundaries": [
+      {
+        "kind": "security-group",
+        "label": "授权工作区：只在这里写入",
+        "wraps": [
+          "winfs"
+        ]
+      },
+      {
+        "kind": "region",
+        "label": "计划中（尚未实现）",
+        "wraps": [
+          "modules",
+          "fork",
+          "at"
+        ]
+      }
+    ],
+    "connections": [
+      {
+        "id": "say",
+        "from": "you",
+        "to": "ipc",
+        "fromSide": "right",
+        "toSide": "left",
+        "variant": "emphasis"
+      },
+      {
+        "id": "gate",
+        "from": "ipc",
+        "to": "chat",
+        "fromSide": "right",
+        "toSide": "left"
+      },
+      {
+        "id": "dispatch",
+        "from": "chat",
+        "to": "exec",
+        "fromSide": "right",
+        "toSide": "left",
+        "label": "派工单",
+        "variant": "emphasis"
+      },
+      {
+        "id": "reply",
+        "from": "exec",
+        "to": "chat",
+        "fromSide": "left",
+        "toSide": "right",
+        "label": "结果回主聊",
+        "variant": "emphasis"
+      },
+      {
+        "id": "call",
+        "from": "chat",
+        "to": "model",
+        "fromSide": "top",
+        "toSide": "left",
+        "label": "模型调用 · HTTPS"
+      },
+      {
+        "id": "run",
+        "from": "exec",
+        "to": "adapt",
+        "fromSide": "right",
+        "toSide": "left"
+      },
+      {
+        "id": "write",
+        "from": "adapt",
+        "to": "winfs",
+        "fromSide": "right",
+        "toSide": "left",
+        "variant": "security"
+      },
+      {
+        "id": "record",
+        "from": "chat",
+        "to": "db",
+        "fromSide": "bottom",
+        "toSide": "top"
+      },
+      {
+        "id": "events-edge",
+        "from": "chat",
+        "to": "events",
+        "fromSide": "bottom",
+        "toSide": "top"
+      },
+      {
+        "id": "evidence",
+        "from": "adapt",
+        "to": "db",
+        "fromSide": "bottom",
+        "toSide": "right",
+        "label": "文件变更 · 证据记录"
+      }
+    ],
+    "cards": [
+      {
+        "dot": "cyan",
+        "title": "对话不等于执行",
+        "items": [
+          "主聊只负责理解、编排与汇总",
+          "真正动手的是执行者：一次一个工单"
+        ]
+      },
+      {
+        "dot": "emerald",
+        "title": "只在你给的文件夹里动手",
+        "items": [
+          "文件与命令写入走工单 + 授权工作区",
+          "工作区外要你逐次授权"
+        ]
+      },
+      {
+        "dot": "violet",
+        "title": "结果可核对",
+        "items": [
+          "文件变更、命令输出、证据都留痕",
+          "对话历史是不可变快照，可回看"
+        ]
+      },
+      {
+        "dot": "amber",
+        "title": "数据留在本机",
+        "items": [
+          "对话/项目/工单/记忆在本地 SQLite",
+          "换模型不换你的数据与事件流"
+        ]
+      }
+    ]
+  }
+}
