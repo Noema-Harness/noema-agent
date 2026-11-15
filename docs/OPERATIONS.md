@@ -30,12 +30,12 @@ npm run check
 
 `check` 依次执行：
 
-1. `workspace:check`：文档路由与结构；
+1. `workspace:check`：文档路由、根目录结构、已合入却残留的远端分支；
 2. `docs:check`：五份权威文档的三行头与路由、版本/基线、git 门槛安装状态；
 3. `figure:check`：架构图产物与 `docs/ARCHITECTURE.md` 摘要、README 引用是否同步；
 4. `plan:check`：OpenSpec 活动变更、`Plan:` 卡片链接、任务清单与未决问题；
 5. `source:check`：源码依赖边界，以及 `src` 下 `.mjs` 数量不增加（D-027 TS 迁移棘轮）；
-6. `lint`、`typecheck`、`maintenance:test`、`figure:test`、`inbox:test`、`test`。
+6. `lint`、`typecheck`、`maintenance:test`、`figure:test`、`branches:test`、`inbox:test`、`test`。
 
 OpenSpec 规格只写可观察行为，不写测试实现：每个新增或修改的 requirement，在本次 change 的 `tasks.md` 里写一条验证（测试文件名或命令）；归档后证据留在 Git 与看板卡片评论里，不把测试名写回常驻 specs，也不新增第二套测试映射。
 
@@ -49,6 +49,7 @@ npm run milestone:check
 
 ```powershell
 npm run workspace:check
+npm run branches:check
 npm run docs:check
 npm run figure:check
 npm run plan:check
@@ -58,29 +59,43 @@ npm run typecheck
 npm run lint
 npm run maintenance:test
 npm run figure:test
+npm run branches:test
 npm run inbox:test
 npm run inbox
 npm test
 ```
 
+### 仓库结构与分支卫生
+
+根目录、文档登记与生成目录写在 `scripts/workspace.config.json`（仓库文件，随代码评审；不再有 `.codex/` 之类的工具私有目录）。`npm run workspace:check` 会拦：未分类的根目录或根文档、`docs/` 里没登记的 Markdown、`.work/` 里的材料被提交、以及**已经合入 `origin/main` 却还留着的远端分支**。
+
+已合入的分支只是垃圾，直接失败；只是“很久没动”的分支只给提示，因为年龄本身不能证明别人的工作没价值。清理流程：
+
+```powershell
+npm run branches:prune            # 预演：列出可安全删除的已合入分支
+npm run branches:prune -- --apply # 执行删除
+```
+
+删除前默认先备份到一个 bundle；本机备份放 `.work/archive/`，不进仓库。会话中做过的批量清理：`.work/archive/branches-2026-11-15.bundle`（8 个过时分支，7,299,401 字节）与 `.work/archive/branch-inventory.txt`。
+
 ### 维护门槛
 
 五道门槛由 `scripts/maintenance.mjs`（docs/plan/milestone/pre-commit）与 `scripts/figure.mjs`（架构图同步）实现：`docs:check`、`figure:check`、`plan:check` 在 `npm run check` 里，`milestone:check` 在归档前手动跑，`.githooks/pre-commit` 在提交点跑。失败的常见原因与修法：
 
-| 报错                                                  | 修法                                                                                                                       |
-| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| STATUS 源码版本与 package.json 不一致                 | 发布/交付后先更新 `docs/STATUS.md` 的版本、基线、验证和未交付                                                              |
-| STATUS 基线不是 HEAD 祖先                             | 基线写成当前可解析的提交；重写历史后重取                                                                                   |
-| 文档里写进了不属于它的内容                            | 不是脚本能判的事：每份文档头的 `Does not own` 已写明边界，评审时按边界判断；规划放卡片、状态放 STATUS、架构放 ARCHITECTURE |
+| 报错                                                  | 修法                                                                                                                                |
+| ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| STATUS 源码版本与 package.json 不一致                 | 发布/交付后先更新 `docs/STATUS.md` 的版本、基线、验证和未交付                                                                       |
+| STATUS 基线不是 HEAD 祖先                             | 基线写成当前可解析的提交；重写历史后重取                                                                                            |
+| 文档里写进了不属于它的内容                            | 不是脚本能判的事：每份文档头的 `Does not own` 已写明边界，评审时按边界判断；规划放卡片、状态放 STATUS、架构放 ARCHITECTURE          |
 | proposal 缺少 `Plan:` 卡片链接                        | 产品变更先在看板选卡，再把卡片链接写进 proposal 顶部；纯机制/文档/展示的治理变更写 `Plan: none`，且 diff 不能含 `apps/desktop/src/` |
-| 活动变更超过 1 个                                     | 已完成的先 `openspec archive <name> --yes`，过期未做的移到 `openspec/changes/archive/` 并写明关闭原因                      |
-| 活动变更 tasks 全部完成                               | 归档该变更后再开下一个阶段                                                                                                 |
-| `## 待用户决定` 超过 3 项                             | 先缩本轮范围；超过 3 项说明计划没切干净                                                                                    |
-| `[用户]` 验收项勾选没有确认日期                       | 只有用户明确确认后才勾选，并写成 `（用户确认：YYYY-MM-DD）`                                                                |
-| milestone 报任务未完成 / 有待决问题 / STATUS 不是当天 | 补完任务、拿到用户答案、更新 STATUS 后再归档                                                                               |
-| 架构文档变了但图没重出（figure:check）                | 运行 `npm run figure:build`；不要手改 html/png；README 必须引用 png 与 html                                              |
-| pre-commit 拒绝产品代码提交                           | 同一次提交带上计划/状态更新与 specs 增量；未决决策只能等用户回答                                                           |
-| pre-commit 只提示“工具/治理改动不受未决产品决策阻塞”  | 正常；工具与文档维护不被产品决策卡住                                                                                       |
+| 活动变更超过 1 个                                     | 已完成的先 `openspec archive <name> --yes`，过期未做的移到 `openspec/changes/archive/` 并写明关闭原因                               |
+| 活动变更 tasks 全部完成                               | 归档该变更后再开下一个阶段                                                                                                          |
+| `## 待用户决定` 超过 3 项                             | 先缩本轮范围；超过 3 项说明计划没切干净                                                                                             |
+| `[用户]` 验收项勾选没有确认日期                       | 只有用户明确确认后才勾选，并写成 `（用户确认：YYYY-MM-DD）`                                                                         |
+| milestone 报任务未完成 / 有待决问题 / STATUS 不是当天 | 补完任务、拿到用户答案、更新 STATUS 后再归档                                                                                        |
+| 架构文档变了但图没重出（figure:check）                | 运行 `npm run figure:build`；不要手改 html/png；README 必须引用 png 与 html                                                         |
+| pre-commit 拒绝产品代码提交                           | 同一次提交带上计划/状态更新与 specs 增量；未决决策只能等用户回答                                                                    |
+| pre-commit 只提示“工具/治理改动不受未决产品决策阻塞”  | 正常；工具与文档维护不被产品决策卡住                                                                                                |
 
 用户验收项写在 tasks.md 里，格式 `- [ ] [用户] <场景> → 证据`；确认后改成 `- [x] [用户] <场景> → 证据（用户确认：YYYY-MM-DD）`。
 
@@ -161,10 +176,10 @@ npm run make:desktop
   - `TEMP`/`TMP`/`TMPDIR` 固定到 `apps/desktop/.tmp`（受限令牌下写系统临时目录会被拒绝，NuGet 子进程会因此失败）；
   - `SQUIRREL_TEMP` 固定到 `.tmp/squirrel-temp`（Squirrel 默认在 `%LOCALAPPDATA%\SquirrelTemp` 建临时目录，同样可能不可写）；
   - 把 `apps/desktop/vendor/squirrel/nuget.exe`（NuGet 6.11.1）铺进 `.tmp/squirrel-vendor`，通过 `NOEMA_SQUIRREL_VENDOR` 交给 MakerSquirrel；electron-winstaller 自带的 NuGet 2.8 在打包 `app.asar` 这类高压缩率文件时会抛 `ObjectDisposedException`。
-- 如果 `out/Noema-win32-x64/resources/app.asar` 被其他进程锁住（无法改名），脚本会自动改在 `.tmp/forge-out` 重建并打印提示，命令仍然成功；产物路径以日志为准。
+- 如果 `out/Noema-win32-x64/resources/app.asar` 被其他进程锁住（无法改名），脚本会自动改在 `.tmp/forge-out` 重建并打印提示，命令仍然成功；产物路径以日志为准。2026-11-15 实测占用者是 DSH 的宿主进程（只读句柄、不带 `FILE_SHARE_DELETE`），关掉占用方即可回到默认 `out/`；不要用强制结束代替确认占用。
 - `make` 产出 Squirrel 安装包（`.tmp/forge-out/make/squirrel.windows/x64` 或 `out/make/...`）；发布产物按版本放到外部 release 目录，不提交。
 - `apps/desktop/out*`、`apps/desktop/.tmp` 是构建产物，不提交。
-- 安装验证注意：Squirrel Setup 先在 `%LOCALAPPDATA%\SquirrelTemp` 解包。本机 360 安全卫士会把未签名程序写用户目录判为拒绝（同一用户令牌下 `cmd /c mkdir` 能建目录，未签名的 `Setup.exe` 或普通 exe 调 `CreateDirectory` 返回“访问被拒绝”），此时 Setup 回退到 `C:\ProgramData\<用户>` 并弹 `Unable to write to … - IT policies may be restricting access to this folder`。验证载荷时可把 `SQUIRREL_TEMP`/`TEMP` 指到可写目录（安装根变成该目录的父级）；真实安装需要用户放行安全软件或给安装包签名。
+- 安装验证注意：Squirrel Setup 先在 `%LOCALAPPDATA%\SquirrelTemp` 解包。本机仓库目录带 `Low Mandatory Level:(OI)(CI)(NW)` 完整性标签，区内构建的 `Setup.exe` 以 Low IL 运行，写 `%LOCALAPPDATA%`/`C:\ProgramData` 会被内核 MIC 拒绝，此时 Setup 回退到 `C:\ProgramData\<用户>` 并弹 `Unable to write to … - IT policies may be restricting access to this folder`（`icacls <仓库根>` 可看到该标签；`%LOCALAPPDATA%\SquirrelTemp\Squirrel-Install.log` 会有 `Win32Exception (0x80004005): 拒绝访问`）。验证载荷时可把 `SQUIRREL_TEMP`/`TEMP` 指到可写目录（安装根变成该目录的父级）；验证真实安装先把 exe 复制到 `%TEMP%` 再运行（副本没有 Low 标签），或经批准删掉 `apps/desktop/out` 的 Low 标签。
 
 安装包冒烟：
 
@@ -190,14 +205,14 @@ C:\Users\NUC\AppData\Local\noema_desktop\app-0.7.2\Noema.exe
 
 已安装版本不一定包含当前源码；源码相对已安装版本的差异见 [STATUS](STATUS.md)。0.6.9 是回退版本。
 
-发布口径（D-025）：安装包暂未签名。首次安装可能被安全软件拦截写 `%LOCALAPPDATA%`，需要用户放行，或改用便携目录运行；这不阻塞开发与交付验证，签名留作后续选项。安装/升级前关闭 Noema，必要时确认占用 `app.asar` 的宿主进程（历史上曾由 DeepSeek Harness 持有句柄）；不要用强制结束代替确认占用。
+发布口径（D-025）：安装包暂未签名。若安装包放在带 Low 完整性标签的目录（例如本机仓库工作区），双击安装会因 Low IL 写不了 `%LOCALAPPDATA%`；把安装包复制到 `%TEMP%` 或普通用户目录再运行即可，或改用便携目录运行。这与签名无关，签名留作后续选项。安装/升级前关闭 Noema，必要时确认占用 `app.asar` 的宿主进程（2026-11-15 曾由 DSH 宿主进程持有句柄）；不要用强制结束代替确认占用。
 
 Squirrel 升级失败时先检查：
 
 - `app-<version>\resources\app.asar` 是否被其他进程占用；
 - 旧版本目录是否仍有长路径/残留文件；
 - 安装日志中的具体删除/重命名错误；
-- Setup 直接弹 `Installation has failed` 时，先查是否安全软件拦截未签名程序写 `%LOCALAPPDATA%`（见「打包」节）。
+- Setup 直接弹 `Installation has failed` 时，先查 exe 所在目录是否带 Low 完整性标签（`icacls`），必要时把 exe 复制到 `%TEMP%` 再运行（见「打包」节）；再看 `%LOCALAPPDATA%\SquirrelTemp\Squirrel-Install.log`。
 
 不要通过覆盖 `app.asar` 假装升级完成；手工部署只作为临时诊断，完成后再走正常安装验证。
 

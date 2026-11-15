@@ -1,11 +1,13 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "artifactRoot": ".work",
   "specificationRoot": "openspec/specs",
+  "historyRoots": ["openspec/changes/archive"],
+  "branchBase": "origin/main",
   "currentDocuments": [
     {
       "path": "AGENTS.md",
-      "purpose": "开发循环、文档所有权、四道门槛与工程边界",
+      "purpose": "开发循环、文档所有权、五道门槛与工程边界",
       "updateWhen": "治理结构、门槛或工程边界变化"
     },
     {
@@ -40,13 +42,12 @@
     },
     {
       "path": "docs/STATUS.md",
-      "purpose": "当前版本、证据、缺口、限制与下一步",
-      "updateWhen": "交付、打包、验证或阻塞状态变化"
+      "purpose": "当前版本、已验证证据、未交付项与已知限制（计划见看板）",
+      "updateWhen": "交付、打包、验证、限制或阻塞变化"
     }
   ],
   "rootDirectories": [
     ".archify",
-    ".codex",
     ".git",
     ".githooks",
     ".github",
@@ -57,10 +58,7 @@
     "openspec",
     "scripts"
   ],
-  "cleanableArtifacts": [
-    ".work/runs",
-    ".work/scratch"
-  ],
+  "cleanableArtifacts": [".work/runs", ".work/scratch"],
   "generatedDirectories": [
     ".archify",
     "apps/desktop/.vite",

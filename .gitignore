@@ -27,8 +27,7 @@ Thumbs.db
 *.swo
 
 # Logs and temporary files
-.work/*
-!.work/README.md
+.work/
 .archify/*
 *.log
 .tmp/
