@@ -33,10 +33,10 @@
 
 - [x] `docs/DECISIONS.md` 记录 D-025（未签名发布）与 D-026（计划三层、STATUS 不写下一步、治理变更 `Plan: none`）
 - [x] `README.md` 安装节写清未签名安装的放行步骤与 portable 备选
-- [ ] 环境债：`out/` 被未知句柄锁、360 拦截未签名安装包——自主处理结果写进 STATUS 已知限制
+- [x] 环境债已定位并写入 STATUS 已知限制：`out/` 锁 = DSH 宿主进程的只读句柄（关闭后默认 `out/` 恢复）；Setup 写不了 `%LOCALAPPDATA%` = 工作区 `Low Mandatory Level` 完整性标签（复制到 `%TEMP%` 即可安装，与签名无关）；报告 `.work/reports/env-debt.md`
 
 ## 6. 验收
 
 - [x] `npm run check` 全绿（873/873，0 fail，35,425ms；收尾后复跑）
-- [ ] 看板：C12 #143 与 C6 #137 贴本轮证据；治理轮不占能力卡
+- [x] 看板：C12 #143 与 C6 #137 贴本轮证据（C6 comment 6889021474、C12 comment 6885266487）；治理轮不占能力卡
 - [ ] [用户] 复核新的计划边界：STATUS 不再写下一步、治理变更 `Plan: none`、卡片切口=change，确认工作流可执行 → 证据：本变更 tasks 与 `AGENTS.md` §1

@@ -47,14 +47,14 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 ### 本轮验证
 
-- `npm run check`：**873/873，0 fail**（最近一次 35,425ms；收尾前的同轮运行 33,474ms）。链上新增 `figure:check`、`figure:test`、`inbox:test`；`docs:check` OK（5 份文档、版本 0.7.6、基线 `f592a9b`、`core.hooksPath=.githooks`）、`plan:check` OK（治理变更 `maintenance-workflow-v3`：17 完成 / 4 未完成、用户验收 1 项、无待决）、`maintenance:test` 6/6（含治理变更 `Plan: none` 被拒产品代码）、`figure:test` 1/1、`inbox:test` 17/17。
+- `npm run check`：**873/873，0 fail**（环境债修正后的最近一次 33,941ms）。链上新增 `figure:check`、`figure:test`、`inbox:test`；`docs:check` OK（5 份文档、版本 0.7.6、基线 `f592a9b`、`core.hooksPath=.githooks`）、`plan:check` OK（治理变更 `maintenance-workflow-v3`：17 完成 / 4 未完成、用户验收 1 项、无待决）、`maintenance:test` 6/6（含治理变更 `Plan: none` 被拒产品代码）、`figure:test` 1/1、`inbox:test` 17/17。
 - 架构图 v2（2026-11-15）：`npm run figure:build` 端到端跑通（Archify finalize 四 gate 全 pass → Edge headless 截 PNG → 回写摘要）；`figure:check` 校验 `docs/assets/noema-architecture.source.json` 里的 ARCHITECTURE 摘要、HTML/PNG 摘要与 README 引用，已接入 `npm run check`。图有 12 个组件、4 张卡片、6 类图例，灰底 + 琥珀虚线区域标出「计划中（尚未实现）」＝六模块、会话 fork、@Noema 跨房间。
 - GitHub 收件箱（2026-11-15）：`scripts/github-inbox.mjs` 拉取 main 的 CI 失败/恢复、open PR 检查状态、新评论与 issue，去重写 `.work/github-inbox/{state.json,pending.md}`；Windows 计划任务 `NoemaGithubInbox` 每 10 分钟运行，`Last Result=0`；首次 poll 记录 main 最新 run `43673883619 success`、三次失败 run 与 PR #131 检查状态。
 - CI（2026-11-15）：main 上 `Desktop checks` 三次失败后修复为绿——`5ea61b5`（CI 里不检查本地钩子、checkout 用 `fetch-depth: 0`）、`e71e9c6`（测试显式指定 CI 模式）；run `43673883619` success，13 分 11 秒，含 `make:desktop` 与安装/升级/卸载数据保留验证。
 - 个体组成（2026-11-15）：`docs/ARCHITECTURE.md` §3.3 新增“一个个体当前由什么组成”（身份、岗位来源、项目关系、经历与技能、运行时个体、用户记忆）与成长可写边界；看板 C6 #137 记录 L0–L3 分层与真实库证据（批次 completed、成员 `no_change`、资产表 0 行、复盘 brief 含未执行的工具调用原文）。
-- 未运行：成长门槛实现、0.7.6 真实复盘/成长对话框/任务文件审阅演练、真实 `%LOCALAPPDATA%` 安装与跨版本升级（本机安全软件拦截未签名安装包写用户目录，见下条）、真实 provider 全链与长时运行。
+- 未运行：成长门槛实现、0.7.6 真实复盘/成长对话框/任务文件审阅演练、真实 `%LOCALAPPDATA%` 安装与跨版本升级（本机工作区带 Low 完整性标签，工作区内产出的 Setup 无法写 `%LOCALAPPDATA%`；见已知限制）、真实 provider 全链与长时运行。
 - 安装器构建与载荷验证（2026-11-15）：`npm run make:desktop` 在 `out/` 被外部句柄锁住时自动落到 `.tmp/forge-out` 并成功产出 Setup/nupkg/RELEASES（`out` 锁属本机环境，见已知限制）。把 `TEMP`/`SQUIRREL_TEMP` 指到工作区后运行 `Setup.exe --silent`，Squirrel 把 `app-0.7.6` 落到该根目录：`Noema.exe` ProductVersion/FileVersion 均为 `0.7.6`，`resources/app.asar` 49,477,041 字节、sha256 `AAC1A250C62A66B935928455D7DD693ECA4BF23884E08FF7A2A7C99CC5AB5A39`，与构建产物一致；这是载荷验证，不等于真实用户安装。
-  2026-11-15 用计划任务在普通用户上下文直接跑 `Setup.exe --silent`：Squirrel 在 `%LOCALAPPDATA%\SquirrelTemp` 解包失败，回退到 `C:\ProgramData\NUC`（无管理员权限）后弹 `Unable to write to … IT policies may be restricting access to this folder`。同一用户令牌实测：`cmd.exe` 能在 `%LOCALAPPDATA%` 建目录，而未签名 exe（32 位、带 manifest 也试过）调 `Directory.CreateDirectory` 返回“访问被拒绝”；本机注册的安全软件是 360 安全卫士。结论：构建链路已修好，真实安装被本机安全软件策略拦住，需要用户放行或签名。把 `SQUIRREL_TEMP`/`TEMP` 指到可写目录后可完整装出 `app-0.7.6`（桩程序 292,864 字节、版本 0.7.6，`app-0.7.6\Noema.exe` ProductVersion 0.7.6，nupkg 169,672,685 字节），证明载荷可用。
+  2026-11-15 用计划任务在普通用户上下文直接跑 `Setup.exe --silent`：Squirrel 在 `%LOCALAPPDATA%\SquirrelTemp` 解包失败，回退到 `C:\ProgramData\NUC`（无管理员权限）后弹 `Unable to write to … IT policies may be restricting access to this folder`。根因已定位（`.work/reports/env-debt.md`）：仓库目录被加了显式 `Mandatory Label\Low Mandatory Level:(OI)(CI)(NW)`，工作区内构建出的 exe 继承 Low 标签，进程以 Low 完整性运行，被内核 MIC 拒绝写 Medium 的 `%LOCALAPPDATA%`/`ProgramData`（同一 exe 复制到 Desktop 或 `%TEMP%` 后 subauths 从 4096 变 8192，写入成功）；与签名、360、Defender、AppLocker 无关（360 已注册但无进程/服务/驱动）。把 `SQUIRREL_TEMP`/`TEMP` 指到可写目录后可完整装出 `app-0.7.6`（桩程序 292,864 字节、版本 0.7.6，`app-0.7.6\Noema.exe` ProductVersion 0.7.6，nupkg 169,672,685 字节），证明载荷可用。
 
 ## 未交付（按目标文档）
 
@@ -71,7 +71,7 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 ## 已知限制
 
 - 桌面 `Noema.lnk` 指向 0.7.5，便携目录里没有 0.7.6 安装；要验证 0.7.6 必须直接运行 `apps/desktop/out/Noema-win32-x64/Noema.exe`，或在发布时补装。
-- 安装包未签名：本机 360 安全卫士会阻止它写 `%LOCALAPPDATA%`，首次安装需用户手动放行；这是策略限制，不是构建缺陷。发布口径按 D-025 采用未签名 + 放行说明，签名留作后续选项。
+- 本机工作区（`C:\Users\NUC\Desktop\noema`）被加了 Low 完整性标签，区内构建的 Setup 以 Low IL 运行、写不了 `%LOCALAPPDATA%`：验证真实安装需先把 exe 复制到 `%TEMP%` 再运行（副本为 Medium IL）；这与签名无关，发布口径仍按 D-025 未签名 + portable 备选。
 - 0.7.6 的成长记录、成长对话框、任务文件审阅都只在测试中验证过，没有在真实项目上完整走一遍。
 - 成长是“模型在复盘回合里写资产文件”，没有跨项目证据门槛，也不会自动改变成员的核心提示词；它不能当作“已实现成长”来对用户宣称。
 - 完成事件是 renderer 级 `localStorage`，按浏览器/应用数据隔离；交付记录/SQLite 才是任务事实源。
@@ -82,7 +82,7 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 - 架构图由 `figure:check` 保证与 `docs/ARCHITECTURE.md` 同步：改了架构文档必须运行 `npm run figure:build`（需要本机 Archify 技能与 Edge），CI 只跑 `figure:check`，不重出图。
 - `main.ts` 仍是组合根；main/service/UI 的进一步拆分以真实缺口为驱动，不做无验收的大搬迁。
 - 项目工作区选择在项目创建时完成；项目创建后更换目录仍走对话框，取消选择不改变已有绑定。
-- `apps/desktop/out/Noema-win32-x64/resources/app.asar` 被本机未知句柄锁住，默认 `out/` 构建会回退到 `.tmp/forge-out`（D-024）；这是本机环境问题，CI 的干净 runner 不受影响。
+- `apps/desktop/out/Noema-win32-x64/resources/app.asar` 曾被本会话 DSH desktop-host 进程的只读句柄（share mode 不含 `FILE_SHARE_DELETE`）占住，导致 `make` 回退 `.tmp/forge-out`（D-024）；句柄关闭后默认 `out/` 可用。属本机进程占用，不是产品缺陷，CI 不受影响。
 
 ## 计划在哪
 
