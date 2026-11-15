@@ -20,6 +20,22 @@ const HEADER = "Authority: 测试\nUpdate when: 测试\nDoes not own: 测试\n";
 const TODAY = localToday();
 const BOARD = "https://github.com/orgs/Noema-Harness/projects/1";
 
+const LIFECYCLE = (stage = "执行中", batch = "changes/stage-probe") =>
+  [
+    "**形态**：轮次",
+    `**阶段**：${stage}`,
+    "**看板**：无",
+    "**来源**：测试",
+    "**阻塞**：无",
+    "### 1 决策（执行前，可重开）",
+    "- 结论：x（用户确认：2026-11-16）",
+    "### 2 执行（执行中）",
+    `- 批次：${batch}`,
+    "### 3 验收（立项时写 v0，交付前复核更新）",
+    "- 项：x — 手测 — 待验收",
+    "",
+  ].join("\n");
+
 function fakeGit({
   baseline = true,
   hooksPath = ".githooks",
@@ -55,6 +71,11 @@ function makeRoot(holder, overrides = {}) {
     }),
   );
   for (const name of DOCS) write(root, `docs/${name}`, `# ${name}\n\n${HEADER}`);
+  write(
+    root,
+    "docs/DECISIONS.md",
+    `# DECISIONS\n\n${HEADER}\n## D-20261116-stage-probe 探针条目\n\n**状态**：决定\n**用户确认**：2026-11-16\n**决定**：探针\n\n${LIFECYCLE("执行中", `changes/${overrides.name ?? "stage-probe"}`)}`,
+  );
   write(root, "package.json", JSON.stringify({ version: "0.7.6" }));
   write(root, "apps/desktop/package.json", JSON.stringify({ version: "0.7.6" }));
   write(
@@ -356,12 +377,15 @@ test("a product change updates the card body before it can be archived", () =>
 
 test("a decision id carries its date so parallel branches never renumber", () => {
   const ok = checkDecisionEntries(
-    "## D-20261115-probe\n\n**状态**：决定\n**决定**：x\n**理由**：y\n**重新审视**：z\n",
+    `## D-20261115-probe\n\n**状态**：决定\n**决定**：x\n**理由**：y\n**重新审视**：z\n\n${LIFECYCLE()}`,
     { today: TODAY },
   );
   assert.deepEqual(ok.errors, []);
-  const pending = checkDecisionEntries("## D-20261115-probe\n\n**状态**：待定\n", { today: TODAY });
-  assert.match(pending.errors.join("\n"), /待定条目，缺少/u);
+  const pending = checkDecisionEntries(
+    `## D-20261115-probe\n\n**状态**：待定\n**要定什么**：x\n\n${LIFECYCLE("决策中")}`,
+    { today: TODAY },
+  );
+  assert.deepEqual(pending.errors, []);
 });
 
 test("a product change designs what the user can observe and how to test it", () =>
@@ -446,12 +470,32 @@ test("unanswered decisions block product code but not tooling maintenance", () =
     assert.match(behaviour.errors.join("\n"), /标记了 skip_specs，但这次提交含产品代码/u);
   }));
 test("a decision states its outcome and a pending item states what is open", () => {
-  const done = checkDecisionEntries("## D-20261115-probe\n\n**状态**：决定\n**决定**：x\n");
+  const done = checkDecisionEntries(
+    `## D-20261115-probe\n\n**状态**：决定\n**决定**：x\n\n${LIFECYCLE()}`,
+  );
   assert.deepEqual(done.errors, []);
-  const noOutcome = checkDecisionEntries("## D-20261115-probe\n\n**状态**：决定\n");
+  const noOutcome = checkDecisionEntries(`## D-20261115-probe\n\n**状态**：决定\n\n${LIFECYCLE()}`);
   assert.match(noOutcome.errors.join("\n"), /决定条目，缺少 \*\*决定\*\*/u);
-  const pending = checkDecisionEntries("## D-20261115-probe\n\n**状态**：待定\n");
+  const pending = checkDecisionEntries(
+    `## D-20261115-probe\n\n**状态**：待定\n\n${LIFECYCLE("决策中")}`,
+  );
   assert.match(pending.errors.join("\n"), /待定条目，缺少 \*\*要定什么\*\*/u);
+});
+
+test("a dated entry carries its lifecycle fields and keeps stage and state aligned", () => {
+  const missing = checkDecisionEntries("## D-20261116-probe\n\n**状态**：决定\n**决定**：x\n");
+  assert.match(missing.errors.join("\n"), /缺少「\*\*阶段\*\*：…」/u);
+  assert.match(missing.errors.join("\n"), /缺少「### 1 决策」小节/u);
+
+  const misaligned = checkDecisionEntries(
+    `## D-20261116-probe\n\n**状态**：决定\n**决定**：x\n\n${LIFECYCLE("决策中")}`,
+  );
+  assert.match(misaligned.errors.join("\n"), /阶段是决策中，状态应为待定/u);
+
+  const projectWithoutCard = checkDecisionEntries(
+    `## D-20261116-probe\n\n**状态**：决定\n**决定**：x\n\n${LIFECYCLE().replace("**形态**：轮次", "**形态**：专案")}`,
+  );
+  assert.match(projectWithoutCard.errors.join("\n"), /是专案，看板应写/u);
 });
 test("a decision marked as dropped is deleted, not kept in the stream", () => {
   withRoot((holder) => {
@@ -492,12 +536,11 @@ test("tooling code pairs with docs, a change or AGENTS.md", () =>
     );
   }));
 
-
 test("a new decision waits as pending or carries the user's approval", () =>
   withRoot((holder) => {
     const root = makeRoot(holder);
-    const decision = (fields) =>
-      `# DECISIONS\n\n${HEADER}\n## D-20261116-probe\n\n${fields}\n`;
+    const decision = (fields, stage = "执行中") =>
+      `# DECISIONS\n\n${HEADER}\n## D-20261116-probe\n\n${fields}\n${LIFECYCLE(stage)}`;
 
     write(root, "docs/DECISIONS.md", decision("**状态**：决定\n**决定**：先这样"));
     assert.match(
@@ -512,11 +555,7 @@ test("a new decision waits as pending or carries the user's approval", () =>
     );
     assert.deepEqual(checkDocuments(root, fakeGit()).errors, []);
 
-    write(
-      root,
-      "docs/DECISIONS.md",
-      decision("**状态**：决定\n**决定**：先这样"),
-    );
+    write(root, "docs/DECISIONS.md", decision("**状态**：决定\n**决定**：先这样"));
     const parked = fakeGit({
       committedDecisions: decision("**状态**：待定\n**要定什么**：先看看再说"),
     });

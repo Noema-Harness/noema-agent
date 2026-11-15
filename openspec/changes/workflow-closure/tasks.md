@@ -42,6 +42,16 @@
 - [ ] 6.2 对照流程图记录系统差异（哪步没有文档可写、哪个门拦了没恢复路径、哪步被跳过）写回 `design.md`
 - [ ] 6.3 决定工作流图是否入库（`docs/assets/` + README / AGENTS 链接）
 
+## 8. 审核入口与决议条目（2026-11-16，D-20261116-review-inbox）
+
+- [x] 8.1 新增 `scripts/review.mjs`（只读聚合，`npm run review`、`--json`）与 `scripts/review.test.mjs`（2/2）
+- [x] 8.2 `scripts/maintenance.mjs`：日期条目校验字段/阶段/状态（`checkDatedEntry`），`checkPlan`/`checkMilestone`/`checkPrecommit` 三道门（`node --test scripts/maintenance.test.mjs` 18/18）
+- [x] 8.3 `AGENTS.md` §1 改为条目生命周期（决策中 → 执行中 → 待验收 → 已收口）+ 讨论规则 + 唯一审核入口
+- [x] 8.4 DECISIONS 五条条目改写为新格式（decision-scope / decision-lifecycle / governance-extraction / review-inbox / platform-layers），platform-layers 建看板 #151
+- [x] 8.5 `package.json` 加 `review`/`review:test`，`tools:test` 覆盖 review
+- [x] 8.6 `docs/OPERATIONS.md` 写审核入口、条目字段、三道门与失败修法
+- [ ] 8.7 `node scripts/governance.mjs audit` 仍为 26 拦截/2 提醒/0 观察期（新增规则前先登记触发证据）
+
 ## 7. 归档
 
 - [ ] 7.1 `npm run check` 全绿

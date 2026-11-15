@@ -134,7 +134,12 @@ export function decisionEntries(text) {
     const head = GOVERNED_DECISION.exec(line);
     if (head) {
       if (current) entries.push(current);
-      current = { id: head[1], number: head[2] ? Number(head[2]) : null, body: [] };
+      current = {
+        id: head[1],
+        number: head[2] ? Number(head[2]) : null,
+        title: line.slice(head[0].length).trim(),
+        body: [],
+      };
       continue;
     }
     if (current) current.body.push(line);
@@ -143,9 +148,50 @@ export function decisionEntries(text) {
   return entries.map((entry) => ({
     id: entry.id,
     number: entry.number,
+    title: entry.title,
     body: entry.body.join("\n"),
   }));
 }
+
+// 日期编号的条目带生命周期字段；D-0xx 旧条目按历史格式处理，不要求新字段。
+export const ENTRY_FORMS = ["轮次", "专案", "能力·遗留"];
+export const ENTRY_STAGES = ["决策中", "执行中", "待验收", "已收口"];
+
+export function decisionMeta(entry) {
+  const read = (label) => {
+    const match = new RegExp(`\\*\\*${label}\\*\\*：\\s*(.+)`, "u").exec(entry.body);
+    return match ? match[1].trim() : null;
+  };
+  const stage = read("阶段");
+  if (!stage) return null;
+  return {
+    form: read("形态"),
+    stage,
+    card: read("看板"),
+    source: read("来源"),
+    blocker: read("阻塞"),
+    structure: read("结构"),
+    state: /\*\*状态\*\*：\s*(待定|决定)/u.exec(entry.body)?.[1] ?? null,
+  };
+}
+
+// 需要用户动作的条目：决策中（等确认）与待验收（等验收结论）。
+export function reviewQueue(text) {
+  const decide = [];
+  const accept = [];
+  for (const entry of decisionEntries(text)) {
+    const meta = decisionMeta(entry);
+    if (!meta) continue;
+    const item = { id: entry.id, title: entry.title, blocker: meta.blocker, card: meta.card };
+    if (meta.stage === "决策中") decide.push(item);
+    else if (meta.stage === "待验收") accept.push(item);
+  }
+  return { decide, accept };
+}
+
+// Entries dated 2026-11-16 or later carry the lifecycle format (form / stage / board /
+// source / blocker plus 决策 / 执行 / 验收). Earlier entries keep the older stream format.
+const LIFECYCLE_FROM = "20261116";
 
 // Decisions are an issue stream: entries from D-029 on declare a state, and each
 // state needs the one field that makes it useful — what is being decided, or what was decided.
@@ -177,8 +223,57 @@ export function checkDecisionEntries(text, options = {}) {
         `${entry.id} 一创建就是决定：新决定先在待定里存一轮（让候选与否决过程可见），或写「**用户确认**：YYYY-MM-DD」表示用户已经拍板`,
       );
     }
+    const dated = entry.id.replace(/^D-/u, "");
+    if (/^\d{8}-/u.test(dated) && dated.slice(0, 8) >= LIFECYCLE_FROM) {
+      checkDatedEntry(entry, state[1], errors);
+    }
   }
   return { errors, notices };
+}
+
+// 日期编号条目必须能回答“这一轮处在哪一步、卡在哪”：形态、阶段、来源、阻塞固定写，
+// 三层（决策 / 执行 / 验收）固定存在；阶段与状态必须一致，避免“决策中却写已确认”。
+function checkDatedEntry(entry, state, errors) {
+  const meta = decisionMeta(entry) ?? {};
+  const required = ["形态", "阶段", "来源", "阻塞", "看板"];
+  for (const label of required) {
+    if (
+      !meta[
+        label === "形态"
+          ? "form"
+          : label === "阶段"
+            ? "stage"
+            : label === "看板"
+              ? "card"
+              : label === "来源"
+                ? "source"
+                : "blocker"
+      ]
+    ) {
+      errors.push(`${entry.id} 缺少「**${label}**：…」`);
+    }
+  }
+  if (meta.form && !ENTRY_FORMS.includes(meta.form)) {
+    errors.push(`${entry.id} 的形态「${meta.form}」不在 ${ENTRY_FORMS.join(" / ")} 里`);
+  }
+  if (meta.stage && !ENTRY_STAGES.includes(meta.stage)) {
+    errors.push(`${entry.id} 的阶段「${meta.stage}」不在 ${ENTRY_STAGES.join(" / ")} 里`);
+  }
+  if (meta.stage === "决策中" && state !== "待定") {
+    errors.push(`${entry.id} 阶段是决策中，状态应为待定（用户还没确认）`);
+  }
+  if (meta.stage && meta.stage !== "决策中" && state !== "决定") {
+    errors.push(`${entry.id} 阶段是${meta.stage}，状态应为决定（已确认才进入执行）`);
+  }
+  if (meta.form === "专案" && !/^#\d+$/u.test(meta.card ?? "")) {
+    errors.push(`${entry.id} 是专案，看板应写「**看板**：#<issue>」`);
+  }
+  if (meta.form && meta.form !== "专案" && (meta.card ?? "") !== "无") {
+    errors.push(`${entry.id} 不是专案，看板应写「**看板**：无」`);
+  }
+  for (const heading of ["### 1 决策", "### 2 执行", "### 3 验收"]) {
+    if (!entry.body.includes(heading)) errors.push(`${entry.id} 缺少「${heading}」小节`);
+  }
 }
 
 export function checkDocuments(root, git, options = {}) {
@@ -436,6 +531,23 @@ export function checkPlan(root, options = {}) {
     }
   }
 
+  const decisionsText = readText(path.join(root, "docs", "DECISIONS.md")) ?? "";
+  const queue = reviewQueue(decisionsText);
+  if (queue.decide.length) {
+    notices.push(
+      `待用户确认 ${queue.decide.length} 项：${queue.decide.map((item) => item.id).join(", ")}`,
+    );
+  }
+  if (queue.accept.length && active.length === 0) {
+    errors.push(
+      `有 ${queue.accept.length} 项待验收（${queue.accept.map((item) => item.id).join(", ")}）：先请用户确认验收结论，再开新的变更`,
+    );
+  } else if (queue.accept.length) {
+    notices.push(
+      `待验收 ${queue.accept.length} 项：${queue.accept.map((item) => item.id).join(", ")}`,
+    );
+  }
+
   if (!options.skipSpecValidation) {
     const binary = resolveOpenspecBinary(process.env);
     if (!binary) {
@@ -505,6 +617,22 @@ export function checkMilestone(root, options = {}) {
         `产品变更 ${change} 归档前要在 tasks.md 记一条“更新卡片正文（现在能做什么 + 手测步骤 / 还没做）”：卡片正文是用户同步进度与测试的观察口`,
       );
     }
+    const decisionEntriesText = readText(path.join(root, "docs", "DECISIONS.md")) ?? "";
+    const related = decisionEntries(decisionEntriesText).find((entry) =>
+      entry.body.includes(`changes/${change}`),
+    );
+    if (!related) {
+      errors.push(
+        `产品变更 ${change} 没有对应的决议条目：在 docs/DECISIONS.md 建或复用一条日期编号条目，并在「### 2 执行」记录 changes/${change}`,
+      );
+    }
+  }
+  const decidedText = readText(path.join(root, "docs", "DECISIONS.md")) ?? "";
+  const awaiting = reviewQueue(decidedText).accept;
+  if (awaiting.length) {
+    errors.push(
+      `有 ${awaiting.length} 项待验收（${awaiting.map((item) => item.id).join(", ")}）：验收结论确认后才算交付，里程碑不能通过`,
+    );
   }
   const specs = markdownFilesUnder(path.join(directory, "specs"));
   if (specs.length === 0) {
@@ -583,6 +711,16 @@ export function checkPrecommit(root, options = {}) {
     }
     if (!productCode.length && plan.pending.length) {
       plan.notices.push(`工具/治理改动不受未决产品决策阻塞：${plan.pending.join("；")}`);
+    }
+  }
+  const decisionsText = readText(path.join(root, "docs", "DECISIONS.md")) ?? "";
+  const queue = reviewQueue(decisionsText);
+  if (staged.some((name) => name.startsWith(PRODUCT_CODE_PREFIX))) {
+    const blocking = [...queue.decide, ...queue.accept].map((item) => item.id);
+    if (blocking.length) {
+      errors.push(
+        `决议条目还没有用户确认/验收（${blocking.join(", ")}）：先确认再改产品代码；本机门只是兜底，约束在流程`,
+      );
     }
   }
   return { errors, notices: plan.notices, staged };
