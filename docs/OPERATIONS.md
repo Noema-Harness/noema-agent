@@ -103,6 +103,8 @@ git config core.hooksPath .githooks
 git config --get core.hooksPath
 ```
 
+CI（GitHub Actions）不要求安装钩子：`docs:check` 在 `CI` 环境变量为真时只提示、不失败；workflow 用 `actions/checkout` 的 `fetch-depth: 0` 取完整历史，基线祖先判断才能成立。
+
 测试失败时先跑受影响的单文件，避免每次都跑全量：
 
 ```powershell

@@ -92,3 +92,8 @@
 - [x] `docs/OPERATIONS.md` 打包节、`docs/STATUS.md`、`docs/DECISIONS.md`（D-024）同步；看板 C12 贴证据
 - [ ] 真实 `%LOCALAPPDATA%` 安装/跨版本升级演练：本机 360 安全卫士阻止未签名程序写用户目录（同令牌下 `cmd` 可建目录、未签名 exe 报“访问被拒绝”），需放行或签名后再验证
 - [ ] [用户] 放行 360 安全卫士后双击 `Noema-0.7.6 Setup.exe`，确认装到 `%LOCALAPPDATA%\noema_desktop`、注册表 `DisplayVersion=0.7.6` 且能启动 → 证据：安装目录、注册表值、窗口截图
+
+## 8. CI 与文档门（2026-11-15）
+
+- [x] GitHub Actions 的 `npm run check` 通过：`docs:check` 在 CI 下不再要求本地 `core.hooksPath`（改为提示），workflow checkout 改为 `fetch-depth: 0` 以便校验 STATUS 基线是 HEAD 祖先
+- [x] `scripts/maintenance.test.mjs` 覆盖 CI 模式（无钩子时少一条错误、不出现 `core.hooksPath` 报错）

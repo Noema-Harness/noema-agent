@@ -36,9 +36,13 @@ function write(root, name, content) {
 
 function makeRoot(holder, overrides = {}) {
   const root = path.join(holder, "repository");
-  write(root, ".codex/workspace.json", JSON.stringify({
-    currentDocuments: DOCS.map((name) => ({ path: `docs/${name}` })),
-  }));
+  write(
+    root,
+    ".codex/workspace.json",
+    JSON.stringify({
+      currentDocuments: DOCS.map((name) => ({ path: `docs/${name}` })),
+    }),
+  );
   for (const name of DOCS) write(root, `docs/${name}`, `# ${name}\n\n${HEADER}`);
   write(root, "package.json", JSON.stringify({ version: "0.7.6" }));
   write(root, "apps/desktop/package.json", JSON.stringify({ version: "0.7.6" }));
@@ -48,18 +52,22 @@ function makeRoot(holder, overrides = {}) {
     `# STATUS\n\n${HEADER}\n源码版本：\`${overrides.version ?? "0.7.6"}\`\n\n当前源码基线：\`f592a9b\`\n\n最后更新：${overrides.updated ?? TODAY}\n`,
   );
   if (overrides.product !== false) {
-    write(root, "docs/PRODUCT.md", `# PRODUCT\n\n${HEADER}\n${overrides.product ?? "产品定义。\n"}`);
+    write(
+      root,
+      "docs/PRODUCT.md",
+      `# PRODUCT\n\n${HEADER}\n${overrides.product ?? "产品定义。\n"}`,
+    );
   }
   write(root, ".githooks/pre-commit", "#!/bin/sh\n");
   write(root, "openspec/config.yaml", "context: 见 docs/STATUS.md 与 docs/PRODUCT.md\n");
   if (overrides.change !== false) {
     const change = `openspec/changes/${overrides.name ?? "stage-probe"}`;
+    write(root, `${change}/proposal.md`, `# proposal\n\nPlan: ${BOARD}\n\n## 本轮内容\n\n- 验证\n`);
     write(
       root,
-      `${change}/proposal.md`,
-      `# proposal\n\nPlan: ${BOARD}\n\n## 本轮内容\n\n- 验证\n`,
+      `${change}/design.md`,
+      `# design\n\n## 待用户决定\n\n${overrides.decisions ?? ""}\n`,
     );
-    write(root, `${change}/design.md`, `# design\n\n## 待用户决定\n\n${overrides.decisions ?? ""}\n`);
     write(root, `${change}/tasks.md`, `# tasks\n\n${overrides.tasks ?? "- [ ] 第一项\n"}`);
     if (overrides.skipSpecs) write(root, `${change}/.openspec.yaml`, "skip_specs: true\n");
   }
@@ -111,6 +119,12 @@ test("maintenance tooling enforces document, plan and commit gates", () =>
     assert.match(checkDocuments(root, git).errors.join("\n"), /缺少文档头 Authority:/u);
     write(root, "docs/OPERATIONS.md", `# OPERATIONS\n\n${HEADER}`);
 
+    // CI runners have no local hook; the gate must not fail there.
+    const localHookErrors = checkDocuments(root, fakeGit({ hooksPath: "" })).errors;
+    const ciErrors = checkDocuments(root, fakeGit({ hooksPath: "" }), { ci: true }).errors;
+    assert.equal(ciErrors.length, localHookErrors.length - 1);
+    assert.ok(!ciErrors.some((error) => /core\.hooksPath/u.test(error)));
+
     // The document gate must be installed as a real git hook.
     assert.match(
       checkDocuments(root, fakeGit({ hooksPath: "" })).errors.join("\n"),
@@ -133,17 +147,23 @@ test("maintenance tooling enforces document, plan and commit gates", () =>
 
     // Only one planned stage at a time.
     write(root, "openspec/changes/stage-two/proposal.md", "# probe\n");
-    for (const name of ["design.md", "tasks.md"]) write(root, `openspec/changes/stage-two/${name}`, "# probe\n");
+    for (const name of ["design.md", "tasks.md"])
+      write(root, `openspec/changes/stage-two/${name}`, "# probe\n");
     assert.match(checkPlan(root, { skipSpecValidation: true }).errors.join("\n"), /必须至多 1 个/u);
     fs.rmSync(path.join(root, "openspec/changes/stage-two"), { recursive: true });
 
     // A finished task list no longer guides development.
     const change = "openspec/changes/stage-probe";
     write(root, `${change}/tasks.md`, "# tasks\n\n- [x] 第一项\n");
-    assert.match(checkPlan(root, { skipSpecValidation: true }).errors.join("\n"), /全部任务已完成/u);
+    assert.match(
+      checkPlan(root, { skipSpecValidation: true }).errors.join("\n"),
+      /全部任务已完成/u,
+    );
     write(root, `${change}/tasks.md`, "# tasks\n\n- [ ] 第一项\n- [ ] 第二项\n");
     assert.equal(
-      checkPlan(root, { skipSpecValidation: true }).notices.join("\n").includes("0 完成 / 2 未完成"),
+      checkPlan(root, { skipSpecValidation: true })
+        .notices.join("\n")
+        .includes("0 完成 / 2 未完成"),
       true,
     );
 
@@ -153,10 +173,10 @@ test("maintenance tooling enforces document, plan and commit gates", () =>
       `${change}/design.md`,
       "# design\n\n## 待用户决定\n\n- [ ] 成长机制如何触发\n- [ ] 团队命名规则\n\n## 其他\n",
     );
-    assert.deepEqual(pendingDecisions(fs.readFileSync(path.join(root, change, "design.md"), "utf8")), [
-      "成长机制如何触发",
-      "团队命名规则",
-    ]);
+    assert.deepEqual(
+      pendingDecisions(fs.readFileSync(path.join(root, change, "design.md"), "utf8")),
+      ["成长机制如何触发", "团队命名规则"],
+    );
     const blocked = checkPrecommit(root, { git, stagedPaths: ["apps/desktop/src/main/main.ts"] });
     assert.match(blocked.errors.join("\n"), /必须同时更新 docs\/ 或 openspec\/changes\//u);
     assert.match(blocked.errors.join("\n"), /仍有待用户决定的问题/u);
@@ -190,13 +210,21 @@ test("proposals point at the plan card and resident documents stay free of mirro
     assert.deepEqual(checkDocuments(root, git).errors, []);
 
     // A change must name the card it advances; nothing about ordering or status is mirrored.
-    write(root, "openspec/changes/stage-probe/proposal.md", "# proposal\n\n## 本轮内容\n\n- 验证\n");
+    write(
+      root,
+      "openspec/changes/stage-probe/proposal.md",
+      "# proposal\n\n## 本轮内容\n\n- 验证\n",
+    );
     assert.match(
       checkPlan(root, { skipSpecValidation: true }).errors.join("\n"),
       /缺少「Plan: <卡片链接>」/u,
     );
 
-    write(root, "openspec/changes/stage-probe/proposal.md", `# proposal\n\nPlan: ${BOARD}\n\n## 本轮内容\n\n- 验证\n`);
+    write(
+      root,
+      "openspec/changes/stage-probe/proposal.md",
+      `# proposal\n\nPlan: ${BOARD}\n\n## 本轮内容\n\n- 验证\n`,
+    );
     assert.deepEqual(checkPlan(root, { skipSpecValidation: true }).errors, []);
   }));
 
@@ -215,7 +243,11 @@ test("pending decisions are capped and user acceptance needs a confirmation date
       /待用户决定 4 项，超过每轮 3 项的上限/u,
     );
 
-    write(root, `${change}/design.md`, "# design\n\n## 待用户决定\n\n- [ ] 一\n- [ ] 二\n- [ ] 三\n");
+    write(
+      root,
+      `${change}/design.md`,
+      "# design\n\n## 待用户决定\n\n- [ ] 一\n- [ ] 二\n- [ ] 三\n",
+    );
     assert.deepEqual(checkPlan(root, { skipSpecValidation: true }).errors, []);
 
     write(root, `${change}/tasks.md`, "# tasks\n\n- [ ] [用户] 看一遍界面是否自然 → 截图\n");
