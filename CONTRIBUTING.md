@@ -16,7 +16,7 @@ Noema 目前由两位维护者共同开发。`main` 始终保持可构建、可�
 - 关联 Issue 或 OpenSpec change；没有关联时说明原因。
 - UI 或交互改动附截图或录屏；数据、迁移、安装包改动必须写清回滚方式。
 - 作者不合并自己的 PR，至少一位维护者审查。审查意见解决后再合并。
-- 优先 squash merge；合并后删除功能分支。
+- 优先 squash merge；合并后删除功能分支；维护者会用 `npm run branches:check` 检查是否还有已合入 `main` 的残留分支。
 
 ## 检查
 

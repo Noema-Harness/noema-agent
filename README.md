@@ -44,7 +44,7 @@ npm run check
 | [DECISIONS](docs/DECISIONS.md)       | 哪些长期选择已经做出、为什么、何时重新审视            |
 | [OPERATIONS](docs/OPERATIONS.md)     | 怎样开发、检查、打包、安装、回滚和诊断                |
 | [STATUS](docs/STATUS.md)             | 当前版本、已验证/未验证、缺口和已知限制（计划在看板） |
-| [AGENTS](AGENTS.md)                  | 一轮开发怎样走、各文档拥有什么、门槛与工程边界    |
+| [AGENTS](AGENTS.md)                  | 一轮开发怎样走、各文档拥有什么、门槛与工程边界        |
 
 README 只做入口，不拥有产品定义、架构、状态或操作细节。
 
@@ -54,8 +54,8 @@ README 只做入口，不拥有产品定义、架构、状态或操作细节。
 apps/desktop/       Electron 主进程、preload、renderer、共享契约
 docs/               五份权威文档
 openspec/specs/     可观察行为的回归规格
-scripts/            仓库级检查与维护脚本
-.work/              本机过程材料，不提交
+openspec/changes/   本轮执行计划；归档在 changes/archive/
+scripts/            仓库级检查、门槛与维护脚本
 ```
 
-用户数据、凭据、下载的参考源码和构建产物不进入仓库。
+本机过程材料放 `.work/`（整体忽略，不入库）；用户数据、凭据、下载的参考源码和构建产物同样不进入仓库。

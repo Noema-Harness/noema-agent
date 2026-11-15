@@ -117,12 +117,12 @@ export function checkDocuments(root, git, options = {}) {
   const errors = [];
   const notices = [];
   const inCi = options.ci ?? Boolean(process.env.CI);
-  const config = readJson(path.join(root, ".codex", "workspace.json")) ?? {};
+  const config = readJson(path.join(root, "scripts", "workspace.config.json")) ?? {};
   const registered = (config.currentDocuments ?? []).map((entry) => entry.path);
   const authoritative = registered.filter((name) => name.startsWith(DOCS_PREFIX));
   if (authoritative.length !== 5) {
     errors.push(
-      `docs/ 权威文档应为 5 份，当前登记 ${authoritative.length} 份；改 .codex/workspace.json 时同时改 AGENTS.md 文档表`,
+      `docs/ 权威文档应为 5 份，当前登记 ${authoritative.length} 份；改 scripts/workspace.config.json 时同时改 AGENTS.md 文档表`,
     );
   }
   for (const name of authoritative) {

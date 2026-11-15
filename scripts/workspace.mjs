@@ -4,7 +4,9 @@ import { fileURLToPath } from "node:url";
 import { runGit } from "./git-exec.mjs";
 
 const root = path.resolve(fileURLToPath(new URL("../", import.meta.url)));
-const config = JSON.parse(fs.readFileSync(path.join(root, ".codex", "workspace.json"), "utf8"));
+const config = JSON.parse(
+  fs.readFileSync(path.join(root, "scripts", "workspace.config.json"), "utf8"),
+);
 const command = process.argv[2] ?? "check";
 const apply = process.argv.includes("--apply");
 const generated = process.argv.includes("--generated");
@@ -48,7 +50,7 @@ if (command === "check") {
     if (
       file.endsWith(".md") &&
       !current.has(name) &&
-      !config.historyRoots.some((h) => within(name, h))
+      !(config.historyRoots ?? []).some((h) => within(name, h))
     ) {
       errors.push(
         `Unclassified document: ${name}. Maintain it explicitly or keep it in ${config.artifactRoot}.`,
@@ -74,7 +76,7 @@ if (command === "check") {
   }
   const tracked = runGit(["ls-files", "-z"], { cwd: root, encoding: "utf8" }).split("\0");
   for (const name of tracked) {
-    if (within(name, config.artifactRoot) && name !== `${config.artifactRoot}/README.md`)
+    if (within(name, config.artifactRoot))
       errors.push(`Process material tracked as source: ${name}`);
   }
   console.log(

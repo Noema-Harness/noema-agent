@@ -38,7 +38,7 @@ function makeRoot(holder, overrides = {}) {
   const root = path.join(holder, "repository");
   write(
     root,
-    ".codex/workspace.json",
+    "scripts/workspace.config.json",
     JSON.stringify({
       currentDocuments: DOCS.map((name) => ({ path: `docs/${name}` })),
     }),

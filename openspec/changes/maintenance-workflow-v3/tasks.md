@@ -40,3 +40,13 @@
 - [x] `npm run check` 全绿（873/873，0 fail，35,425ms；收尾后复跑）
 - [x] 看板：C12 #143 与 C6 #137 贴本轮证据（C6 comment 6889021474、C12 comment 6885266487）；治理轮不占能力卡
 - [ ] [用户] 复核新的计划边界：STATUS 不再写下一步、治理变更 `Plan: none`、卡片切口=change，确认工作流可执行 → 证据：本变更 tasks 与 `AGENTS.md` §1
+
+## 7. 仓库洁净与分支卫生
+
+- [x] `.work/` 整体不入库：`.gitignore` 改为忽略整个 `.work/`，删除唯一被跟踪的 `.work/README.md`；README 目录表不再把 `.`work 当成仓库内容
+- [x] 删除 `.codex/`：仓库结构与文档登记迁到 `scripts/workspace.config.json`（`scripts/workspace.mjs`、`scripts/maintenance.mjs` 及两份测试同步改路径；补 `historyRoots`）
+- [x] `scripts/branches.mjs` + `branches.test.mjs`：已合入 `origin/main` 的远端分支直接失败，陈旧未合入分支只提示；`prune` 默认预演、`--apply` 才删；`workspace:check` 已串上 `branches:check`
+- [x] 清理 8 个过时远端分支（`codex/*` 7 个 + `feat/noema-context-margin-prototype`），保留 `ts-migration-phase-0-1`（PR #131）；删除前备份 `.work/archive/branches-2026-11-15.bundle`（7,299,401 字节）与 `branch-inventory.txt`
+- [x] 源码规模盘点（168 文件、17 个 >1000 行、6 个 >2000 行）与不确定项清单交给用户决定，不在本轮做大迁移
+- [x] `docs/OPERATIONS.md` 新增「仓库结构与分支卫生」；`CONTRIBUTING.md` 说明残留分支由 `branches:check` 发现
+- [x] `npm run check` 全绿

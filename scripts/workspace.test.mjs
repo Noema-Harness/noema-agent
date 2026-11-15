@@ -15,7 +15,6 @@ test("workspace tooling previews, confines cleanup and detects stale document en
     const outside = path.join(holder, "outside");
     for (const p of [
       "scripts",
-      ".codex",
       "docs",
       "openspec/specs/example",
       ".work/runs",
@@ -32,11 +31,11 @@ test("workspace tooling previews, confines cleanup and detects stale document en
       historyRoots: ["docs/history"],
       artifactRoot: ".work",
       specificationRoot: "openspec/specs",
-      rootDirectories: [".git", ".codex", ".work", "scripts", "docs", "openspec"],
+      rootDirectories: [".git", ".work", "scripts", "docs", "openspec"],
       cleanableArtifacts: [".work/runs", ".work/scratch"],
       generatedDirectories: [],
     };
-    fs.writeFileSync(path.join(root, ".codex/workspace.json"), JSON.stringify(config));
+    fs.writeFileSync(path.join(root, "scripts/workspace.config.json"), JSON.stringify(config));
     fs.writeFileSync(path.join(root, "README.md"), "# probe");
     fs.writeFileSync(path.join(root, "openspec/specs/example/spec.md"), "# example");
     fs.writeFileSync(path.join(root, ".work/runs", "remove"), "run");
