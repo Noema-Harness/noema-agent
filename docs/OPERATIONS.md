@@ -37,7 +37,7 @@ npm run check
 1. `workspace:check`：文档路由、根目录结构、已合入却残留的远端分支；
 2. `docs:check`：五份权威文档的三行头与路由、版本/基线、git 门槛安装状态、决定是否经过待定或用户确认；
 3. `figure:check`：架构图产物与 `docs/ARCHITECTURE.md` 摘要、README 引用是否同步；
-4. `plan:check`：OpenSpec 活动变更、`Plan:` 卡片链接、任务清单与未决问题；PR 上只校验本分支新增的那个变更（base 分支的活动变更按 `GITHUB_BASE_REF` 排除），并且不套用维护者的待决/待验收流程门（由审核人判断相关性）；
+4. `plan:check`：OpenSpec 活动变更、`Plan:` 卡片链接、任务清单与未决问题；PR 上只校验本分支新增的那个变更（base 分支的活动变更按 `GITHUB_BASE_REF` 排除），并且不套用维护者的待决/待验收流程门（由审核人判断相关性），也不要求 PR 先归档自己的变更（归档由维护者合入后执行）；
 5. `source:check`：源码依赖边界，以及 `src` 下 `.mjs` 数量不增加（D-039 TS 迁移棘轮）；
 6. `lint`、`typecheck`、`tools:test`（维护脚本测试）、`test`。
 

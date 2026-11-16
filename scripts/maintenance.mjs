@@ -541,9 +541,13 @@ export function checkPlan(root, options = {}) {
     if (tasks !== null) {
       const open = countTasks(tasks, "open");
       remaining = open;
-      if (open === 0) {
+      if (open === 0 && !options.skipCompletionGate) {
         errors.push(
           `活动变更 ${change} 的全部任务已完成：先跑 npm run milestone:check，归档该变更后再开新变更，否则计划不再指导开发`,
+        );
+      } else if (open === 0) {
+        notices.push(
+          `活动变更 ${change} 的任务已全部完成：归档由维护者在合入后执行，PR 上不要求先归档`,
         );
       }
       notices.push(`活动变更 ${change}：${countTasks(tasks, "done")} 完成 / ${open} 未完成`);
@@ -711,6 +715,7 @@ export function checkPrecommit(root, options = {}) {
     skipSpecValidation: true,
     allowActive: options.allowActive ?? [],
     skipAcceptGate: options.skipAcceptGate ?? false,
+    skipCompletionGate: options.processGate === false,
   });
   const errors = [...docs.errors, ...plan.errors];
   const staged = options.stagedPaths ?? stagedPaths(root, git);
@@ -924,7 +929,15 @@ if (entry === fileURLToPath(import.meta.url)) {
       const allowActive = added.length
         ? activeChanges(root).filter((name) => !added.includes(name))
         : [];
-      return report("plan-check", checkPlan(root, { allowActive }));
+      const prMode = Boolean(base);
+      return report(
+        "plan-check",
+        checkPlan(root, {
+          allowActive,
+          skipAcceptGate: prMode,
+          skipCompletionGate: prMode,
+        }),
+      );
     }
     if (command === "milestone") return report("milestone-check", checkMilestone(root));
     if (command === "precommit") return report("precommit-check", checkPrecommit(root));
