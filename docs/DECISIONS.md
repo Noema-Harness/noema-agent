@@ -838,10 +838,10 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 ## D-20261116-workflow-closure 治理框架收口：九步、条目生命周期与审核入口
 
 **形态**：轮次
-**阶段**：执行中
+**阶段**：待验收
 **看板**：无
 **来源**：用户 2026-11-16 要求复盘治理闭环与工作流编排，并把缺口补齐（m74363 / m74370）
-**阻塞**：`D-20261116-review-inbox` 待验收；`D-20261116-governance-extraction` 决策中
+**阻塞**：无（本条目进入验收；`D-20261116-review-inbox` 与 `D-20261116-collaborator-governance` 仍待用户验收）
 **结构**：AGENTS §1 九步 + 条目生命周期；design 三行开工声明与「事实影响」；`npm run review` 唯一审核入口；`scripts/maintenance.mjs` 三道门；`skills/noema-development/SKILL.md` 模板与出口。
 
 **状态**：决定
@@ -855,7 +855,7 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 - 决定：按九步 + 条目生命周期 + 唯一审核入口收口治理框架；A 先行，B 随后，F/G 待真实切口后定。
 - 结论：先补 A（反馈分类 + 九步 + 角色与出口），B（逆向链）随后，F/G 放到真实切口之后再定；图与结构待真实切口对照后决定是否入库。（用户确认 2026-11-16）
 
-### 2 执行（执行中）
+### 2 执行（2026-11-16 收口）
 
 - 批次：`changes/workflow-closure`；状态：进行中。
 - 已完成：九步（tasks 3.1）、六角色（3.2，待 3.7 删除并改为「事实影响」）、三类出口（3.3）、开场/收口三问（3.4）、OPERATIONS 指针（3.5）、技能模板与同步（4.3–4.5）、审核入口与条目生命周期（第 8 节）、待定解析器修复（5.4）。
@@ -865,7 +865,7 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 - 项：新会话能按 AGENTS §1 九步推进，每一步都有产物 — 读 AGENTS §1、跑 `npm run review` 与 `npm run plan:check` — 结论：待验收
 - 项：文档结构、三道门与技能模板互相对得上 — `npm run docs:check`、`npm run tools:test` — 结论：待验收
-- 项：按流程跑一个真实产品切口（C6 成员经历）并记录系统差异 — tasks 6.1–6.2 — 结论：待验收
+- 项：用已发生的两个真实事件对照九步（C6 收口、PR #149 审核）并记录差异 — `design.md`「真实切口对照」 — 结论：待验收
 
 ## D-20261116-collaborator-governance 协作者契约与 PR 检查平台化
 

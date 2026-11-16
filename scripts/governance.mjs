@@ -61,7 +61,7 @@ change-files|意图可追|变更缺 proposal/design/tasks，归档时没有设�
 tasks-alive|意图可追|任务全完成却不归档，计划停在半空|C6 切片完成后 plan:check 提示先归档|block|plan:check
 plan-link|意图可追|变更不指向看板卡片，执行与规划脱钩|proposal 缺 Plan:（拦截过一次）|block|plan:check
 user-acceptance-date|结果可验|用户验收没确认就勾选成已完成|治理变更的 [用户] 项曾被自动勾选|block|plan:check
-observable-sections|结果可验|交付说不清用户能看到什么、怎么手测|预防：没有这两节，用户只能靠问才知道改了什么|block|plan:check
+observable-sections|结果可验|交付说不清用户能看到什么、怎么手测|观察期：没有这两节用户只能靠问才知道改了什么；2026-11-16 起模板已要求，尚无独立触发记录|block|plan:check
 milestone-tasks|结果可验|任务没做完就归档，把半成品当交付|治理变更归档前被拦|block|milestone:check
 milestone-card-body|事实唯一|交付后卡片正文还是旧状态，用户看不到现在能做什么|C6 收尾时卡片正文落后于交付（2026-11-15）|block|milestone:check
 spec-delta|结果可验|行为变更没有规格增量，回归没有合同|skip_specs 曾被用于行为变更|block|milestone:check
@@ -70,10 +70,10 @@ figure-sync|事实唯一|ARCHITECTURE 改了架构图没重出，入口图与结
 plan-before-code|意图可追|先写代码后补计划，计划变成实现清单|2026-11-15 C6 与 delivery-observability 两次|block|pre-commit
 code-needs-plan|意图可追|代码提交不带计划或状态更新|提交门建立后拦到过|block|pre-commit
 pending-blocks-product|结果可验|未答决策下擅自实现产品行为|成长证据门槛长期未决期间限制产品实现|block|pre-commit
-governance-no-product|意图可追|治理变更夹带产品代码，绕过卡片与规格|预防：绕开卡片与规格就等于没有意图记录|block|pre-commit
-skip-specs-product|结果可验|行为变更标 skip_specs，跳过规格与回归合同|预防：行为变更没有回归合同，下次改动就没有验收基线|block|pre-commit
+governance-no-product|意图可追|治理变更夹带产品代码，绕过卡片与规格|观察期：尚无真实触发；夹带一次就会绕过卡片与规格|block|pre-commit
+skip-specs-product|结果可验|行为变更标 skip_specs，跳过规格与回归合同|观察期：尚无真实触发；行为变更没有回归合同，下次改动就没有验收基线|block|pre-commit
 workspace-root-dirs|事实唯一|仓库根出现未分类目录，过程材料混进版本库|新增 .githooks/.archify 时拦到过|block|workspace:check
-source-boundary|变更可逆|生产代码导入 test-support，交付物带着测试依赖|预防：解析一条依赖就是一层耦合，静态检查比事后拆便宜|block|source:check
+source-boundary|变更可逆|生产代码导入 test-support，交付物带着测试依赖|观察期：尚无真实触发；一条测试依赖就会让交付物与测试环境绑死|block|source:check
 branches-cleanup|成本受控|已合并分支残留在远端，仓库越来越难读|PR #131 合并后 ts-migration 分支残留|notice|branches:check
 inbox-per-round|成本受控|每轮同步等 CI 或靠用户提醒才发现远端红|用户批评每轮等 CI 几十分钟|notice|流程
 `.trim();

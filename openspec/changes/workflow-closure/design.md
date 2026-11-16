@@ -1,5 +1,10 @@
 # 工作流闭环：设计
 
+## 事实影响
+
+- 类别：取舍
+- 依据：只改治理结构、门槛与流程文档；产品行为（`apps/desktop/src/`）与系统结构不变，取舍变化记在 `docs/DECISIONS.md`。
+
 ## Context
 
 2026-11-16 对治理框架做了一次只读复盘，三条线各自的问题如下（证据取自仓库现状与真实事故）：
@@ -85,6 +90,28 @@
 - 落点：`CONTRIBUTING.md`（角色、可改/只能维护者改、PR 必备、CI 覆盖、合并与发布）；`scripts/collaboration.mjs`（`MAINTAINER_ONLY_PATHS` + `guardContribution`，CI job `collaboration`）；PR 模板治理字段；CODEOWNERS 说明。
 - 审核 #149（2026-11-15 合入，macOS DSH 支持）：行为变更有 change 证据（`plan → feat → archive → 移除归档目录`），但三处不符合契约：①作者自行合并（用户已明确不要擅自 merge）；②在 PR 里直接改 `docs/DECISIONS.md`、`docs/STATUS.md`，且决定条目用旧格式；③自造能力编号 C15 与 issue #148，和看板 14 卡不一致。后续：`#148` 去掉 `capability` 标签并关闭；STATUS 里的 C15 引用改成 change 名；`D-20261116-platform-layers` 的用户确认日期待用户核实；specs 的约 230 行空行抖动保留但记录在案。
 - 打包检查拆出：`Desktop checks` 只跑 `npm run check`；`Desktop package` 在触达 `apps/desktop/**` 或锁文件时跑 smoke/打包/安装包，避免文档 PR 背 10 分钟 Windows 打包，同时保住打包回归。
+
+## 真实切口对照（2026-11-16）
+
+用两个已经发生的真实事件对照九步，而不是再跑一个产品切口。
+
+### C6 收口（2026-11-15，project-growth-integrity）
+
+- 跳过的步：立项晚于取证——先探真实库再建 change，计划成了实现清单。
+- 没有文档可写的位置：给下一轮的“证伪”没有位置；失败注入只在 tasks 写一行，没进 DECISIONS。
+- 门拦了但无恢复路径：`milestone:check` 要求“更新卡片正文”，但正文三段不校验真实性，收口时按印象更新。
+- 结论：这次补了 3.7（事实影响前置于立项）与 5.2（不做正文机械校验），保留这条差异作为下次核对锚点。
+
+### 协作者 PR #149（2026-11-16）
+
+- 跳过的步：没有第 1 步定性；作者先 park 提案、后自行写成 `决定`，绕过状态语义。
+- 门拦了但无恢复路径：当时 CI 只有 `verify`，没有 range 与 collaboration，自行 merge 后无法退回“未合入”；现在补了 range + collaboration + 分支保护，并接受“已合入只能前向修正”。
+- 没有文档可写的位置：看板没有对应能力卡（作者自造 C15 #148），规划层缺席；已关闭 #148 并把 STATUS 的 C15 引用改成 change 名。
+- 结论：平台门必要（private Free 无保护时只能靠 CI），但“擅自合并”没有自动检测，只在收件箱里靠人看。
+
+### 工作流图是否入库
+
+- 决定：暂不入库。图已因结构变化重画三次（四 lane → 三 lane → 全图），现在入库会立刻过期；等下一轮真实切口不再改结构时再放 `docs/assets/`、接 README/AGENTS 与 `figure:check`。
 
 ## 用户可观察的改变
 

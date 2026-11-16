@@ -579,3 +579,90 @@ test("a new decision waits as pending or carries the user's approval", () =>
     });
     assert.deepEqual(checkDocuments(root, parked).errors, []);
   }));
+
+test("a dated change declares which kind of fact it changes", () =>
+  withRoot((holder) => {
+    const root = makeRoot(holder);
+    const change = "openspec/changes/stage-probe";
+    write(root, `${change}/.openspec.yaml`, "created: 2026-11-16\nskip_specs: true\n");
+
+    assert.match(
+      checkPlan(root, { skipSpecValidation: true }).errors.join("\n"),
+      /缺少「## 事实影响」/u,
+    );
+
+    write(
+      root,
+      `${change}/design.md`,
+      [
+        "# design",
+        "",
+        "## 事实影响",
+        "",
+        "- 类别：仅执行",
+        "- 依据：只改脚本和文档，产品行为与系统结构不变。",
+        "",
+        "## 用户可观察的改变",
+        "",
+        "- 探针行为",
+        "",
+        "## 手测步骤",
+        "",
+        "1. 打开探针",
+        "",
+        "## 用户决策",
+        "",
+        "- 无",
+        "",
+      ].join("\n"),
+    );
+    assert.deepEqual(checkPlan(root, { skipSpecValidation: true }).errors, []);
+
+    write(
+      root,
+      `${change}/design.md`,
+      "# design\n\n## 事实影响\n\n- 类别：随便\n\n- 依据：\n\n## 用户决策\n\n- 无\n",
+    );
+    const errors = checkPlan(root, { skipSpecValidation: true }).errors.join("\n");
+    assert.match(errors, /类别必须是/u);
+    assert.match(errors, /缺少 - 依据/u);
+  }));
+
+test("the commit gate pairs the declared fact kind with the files it changes", () =>
+  withRoot((holder) => {
+    const root = makeRoot(holder);
+    const change = "openspec/changes/stage-probe";
+    write(root, `${change}/.openspec.yaml`, "created: 2026-11-16\nskip_specs: true\n");
+    write(
+      root,
+      `${change}/design.md`,
+      [
+        "# design",
+        "",
+        "## 事实影响",
+        "",
+        "- 类别：仅执行",
+        "- 依据：只改脚本。",
+        "",
+        "## 用户可观察的改变",
+        "",
+        "- 探针行为",
+        "",
+        "## 手测步骤",
+        "",
+        "1. 打开探针",
+        "",
+        "## 用户决策",
+        "",
+        "- 无",
+        "",
+      ].join("\n"),
+    );
+    const staged = [`${change}/tasks.md`, "apps/desktop/src/main/x.ts"];
+    const result = checkPrecommit(root, {
+      git: fakeGit(),
+      stagedPaths: staged,
+      skipPlanCommitOrder: true,
+    });
+    assert.match(result.errors.join("\n"), /事实影响写的是「仅执行」/u);
+  }));

@@ -27,6 +27,9 @@ const PLAN_PREFIXES = ["docs/", "openspec/changes/"];
 const TOOLING_PLAN_PREFIXES = ["docs/", "openspec/changes/", "AGENTS.md"];
 const ARCHIVE_PREFIX = "openspec/changes/archive/";
 const DECISION_HEADING = "## 用户决策";
+const FACT_HEADING = "## 事实影响";
+const FACT_FROM = "2026-11-16";
+const FACT_KINDS = ["行为", "结构", "取舍", "仅执行"];
 const USER_TASK_PREFIX = "[用户]";
 const USER_CONFIRMATION = /用户确认：\d{4}-\d{2}-\d{2}/u;
 const PLAN_LINK = /^Plan:\s*https:\/\/github\.com\/\S+/mu;
@@ -79,6 +82,43 @@ export function localToday(now) {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${date.getFullYear()}-${month}-${day}`;
+}
+
+// design 的「事实影响」：类别决定这次改动属于哪类事实，配对校验靠它。
+function factImpact(designText) {
+  const body = designText === null ? null : sectionBody(designText, FACT_HEADING);
+  if (body === null) return null;
+  const kind = /^-[ \t]*类别[：:][ \t]*(\S+)/mu.exec(body)?.[1] ?? null;
+  const basis = /^-[ \t]*依据[：:][ \t]*(\S.*)$/mu.exec(body)?.[1]?.trim() ?? null;
+  return { kind, basis };
+}
+
+// 2026-11-16 起的新变更必须写事实影响；旧变更在归档时不再补。
+function factsRequired(root, change) {
+  const meta = readText(path.join(root, "openspec", "changes", change, ".openspec.yaml")) ?? "";
+  const created = /created:\s*(\d{4}-\d{2}-\d{2})/u.exec(meta)?.[1] ?? "";
+  return created >= FACT_FROM;
+}
+
+function checkFactSection(root, change, design, errors) {
+  if (design === null || !factsRequired(root, change)) return;
+  const impact = factImpact(design);
+  if (impact === null) {
+    errors.push(
+      `活动变更 ${change} 的 design.md 缺少「${FACT_HEADING}」：写 - 类别：${FACT_KINDS.join("|")} 和 - 依据：为什么属于这一类`,
+    );
+    return;
+  }
+  if (!FACT_KINDS.includes(impact.kind ?? "")) {
+    errors.push(
+      `活动变更 ${change} 的「${FACT_HEADING}」类别必须是 ${FACT_KINDS.join("/")}，当前「${impact.kind ?? "空"}」`,
+    );
+  }
+  if (!impact.basis) {
+    errors.push(
+      `活动变更 ${change} 的「${FACT_HEADING}」缺少 - 依据：写清这次改动为什么属于该类别`,
+    );
+  }
 }
 
 // 取 markdown 中某个二级标题下的正文，直到下一个二级标题。
@@ -505,6 +545,7 @@ export function checkPlan(root, options = {}) {
       }
     }
     const design = readText(path.join(directory, "design.md"));
+    checkFactSection(root, change, design, errors);
     if (design !== null && pendingDecisions(design) === null) {
       errors.push(
         `活动变更 ${change} 的 design.md 缺少「${DECISION_HEADING}」小节：只列本变更相关的决议编号（D-…）或写“无”；未定问题写在 docs/DECISIONS.md 的条目里`,
@@ -595,6 +636,7 @@ export function checkMilestone(root, options = {}) {
     }
   }
   const design = readText(path.join(directory, "design.md"));
+  checkFactSection(root, change, design, errors);
   if (design !== null && pendingDecisions(design) === null) {
     errors.push(`活动变更 ${change} 的 design.md 缺少「${DECISION_HEADING}」`);
   }
@@ -699,6 +741,26 @@ export function checkPrecommit(root, options = {}) {
       errors.push(
         `活动变更 ${plan.change} 写的是 Plan: none（治理变更），但这次提交含产品代码：产品行为必须有对应卡片与规格增量`,
       );
+    }
+    if (productCode.length && plan.change && factsRequired(root, plan.change)) {
+      const impact = factImpact(
+        readText(path.join(root, "openspec", "changes", plan.change, "design.md")),
+      );
+      if (impact?.kind === "仅执行") {
+        errors.push(
+          `活动变更 ${plan.change} 的事实影响写的是「仅执行」，但这次提交含产品代码：改分类，或把代码拆到行为变更里`,
+        );
+      }
+      if (impact?.kind === "结构" && !staged.includes("docs/ARCHITECTURE.md")) {
+        errors.push(
+          `活动变更 ${plan.change} 的事实影响是「结构」，但这次提交没有更新 docs/ARCHITECTURE.md`,
+        );
+      }
+      if (impact?.kind === "取舍" && !staged.includes("docs/DECISIONS.md")) {
+        errors.push(
+          `活动变更 ${plan.change} 的事实影响是「取舍」，但这次提交没有更新 docs/DECISIONS.md`,
+        );
+      }
     }
     if (productCode.length && plan.change && skipSpecs(root, plan.change)) {
       errors.push(
