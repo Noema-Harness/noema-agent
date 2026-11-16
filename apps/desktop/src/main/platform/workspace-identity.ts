@@ -64,19 +64,28 @@ export function isWorkspaceIdentity(value: any): value is WorkspaceIdentity {
   );
 }
 
+/**
+ * The workspace path as the host's file system compares it: Windows paths are
+ * case-insensitive, so they fold to lower case; other hosts keep the path as is.
+ * Core code uses this instead of checking the platform itself.
+ */
+export function workspacePathKey(
+  identity: Pick<WorkspaceIdentity, 'canonicalPath'>,
+  platform: string = process.platform,
+) {
+  return platform === 'win32'
+    ? identity.canonicalPath.toLocaleLowerCase('en-US')
+    : identity.canonicalPath;
+}
+
 export function compareWorkspaceIdentities(
   left: unknown,
   right: unknown,
   platform: string = process.platform,
 ) {
   if (!isWorkspaceIdentity(left) || !isWorkspaceIdentity(right)) return false;
-  const pathEqual =
-    platform === 'win32'
-      ? left.canonicalPath.toLocaleLowerCase('en-US') ===
-        right.canonicalPath.toLocaleLowerCase('en-US')
-      : left.canonicalPath === right.canonicalPath;
   return (
-    pathEqual &&
+    workspacePathKey(left, platform) === workspacePathKey(right, platform) &&
     left.version === right.version &&
     left.device === right.device &&
     left.fileIndex === right.fileIndex

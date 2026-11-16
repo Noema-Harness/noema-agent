@@ -1,6 +1,9 @@
 ﻿import { createHash, randomUUID } from 'node:crypto';
 import { requireText, isoNow } from './records.ts';
-import { isWorkspaceIdentity } from '../platform/workspace-identity.ts';
+import {
+  isWorkspaceIdentity,
+  workspacePathKey,
+} from '../platform/workspace-identity.ts';
 import {
   MAX_COMMAND_TASK_RECOVERY_BYTES,
   MAX_COMMAND_APP_RECOVERY_BYTES,
@@ -61,10 +64,7 @@ export class WorkspaceCommandBatchStore {
           '项目命令变更记录 owner 不可用；命令没有启动。',
         );
       }
-      const workspacePath =
-        process.platform === 'win32'
-          ? identity.canonicalPath.toLocaleLowerCase('en-US')
-          : identity.canonicalPath;
+      const workspacePath = workspacePathKey(identity);
       const workspaceKey = createHash('sha256')
         .update(
           `noema-workspace-v1

@@ -618,7 +618,7 @@ export class DshHeadlessAdapter {
   }
 
   /**
-   * @param {{workspacePath:string,task:string,model:string,taskId?:string,usageInteractionId?:string,sessionId?:string|null,onEvent?:(event:object)=>void,timeoutMs?:number,mcpServers?:Array<{serverName:string,url:string,headers?:Record<string,string>}>,profile?:string}} input
+   * @param {{workspacePath:string,task:string,model:string,taskId?:string,usageInteractionId?:string,sessionId?:string|null,onEvent?:(event:import('../runtime/work-runtime.ts').WorkRuntimeEvent)=>void,timeoutMs?:number,mcpServers?:Array<{serverName:string,url:string,headers?:Record<string,string>}>,profile?:string}} input
    */
   async startTask({
     workspacePath,

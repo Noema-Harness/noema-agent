@@ -926,6 +926,7 @@ export class NoemaProjectExecutor {
     this.fileChangeJournal = fileChangeJournal;
   }
 
+  /** @param {import('../runtime/work-runtime.ts').WorkTaskInput} input */
   async startTask({
     workspacePath,
     task,

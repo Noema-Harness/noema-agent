@@ -130,17 +130,22 @@ Noema 和执行者共用同一套个体结构：
 ## 6. 代码地图
 
 ```text
-apps/desktop/src/main/
-  main.ts                    启动、服务装配、窗口/托盘、IPC 组合
-  app/                       窗口、social-runtime、agent、provider、runner、smoke/e2e 模块
-  ipc/                       root IPC 参数解析与转发
-  chat/                      Core Chat 回合、social chat service、store、连续性
-  agents/                    AgentRuntime 核心、事件日志；RootAgent 为旧路径
-  projects/                  项目、团队、岗位/成员、计划与验收
-  execution/                 SocialWorkService、work runtime、DSH/native、Windows Runner
-  models/                    模型 provider 与工具协议
-  stores/                    SQLite/root/social/project stores
-  platform/                  workspace identity、ACL、平台适配
+apps/desktop/src/main/                     层：核心 / 端口 / 宿主（D-20261116-platform-layers）
+  main.ts                    宿主  启动、服务装配、窗口/托盘、IPC 组合
+  app/                       宿主  窗口、social-runtime、agent、provider、runner、smoke/e2e 模块
+  platform/                  宿主  workspace identity、host-platform、托盘与生命周期、通知、密钥存储
+  ipc/                       宿主  root IPC 参数解析与转发
+  integrations/              宿主  执行后端适配器：DSH headless、Codex app-server
+  testing/                   宿主  渲染冒烟与 e2e 辅助
+  execution/                 暂例外  SocialWorkService（核心逻辑）与 native 执行器、Windows Runner、git 审查（子进程）同目录，待拆
+  runtime/                   核心  work-runtime.ts（执行后端端口）、work/chat runtime 注册表、Agent 档案
+  chat/                      核心  Core Chat 回合、social chat service、store、连续性
+  agents/                    核心  AgentRuntime 核心、事件日志；RootAgent 为旧路径
+  projects/                  核心  项目、团队、岗位/成员、计划与验收
+  providers/                 核心  模型 provider 与工具协议
+  storage/                   核心  SQLite/root/social/project stores
+  tools/  mcp/  plugins/     核心  计算/搜索/工作区校验工具、MCP 工具服务、官方插件宿主
+  diagnostics/  archive/     核心  诊断查询与数据库恢复、旧历史归档
 apps/desktop/src/preload/    contextBridge API
 apps/desktop/src/renderer/
   chat/core-chat-app.tsx     当前唯一挂载的对话界面
@@ -150,6 +155,8 @@ apps/desktop/src/renderer/
   styles/index.css           当前核心界面样式
 apps/desktop/src/shared/     跨进程契约与 bridge 类型
 ```
+
+三层的依赖方向：宿主装配核心，并把平台事实以参数传入；核心目录（上表标「核心」的目录与 `src/shared`）不导入 `electron`、`child_process`，不比较 `process.platform`，由 `test/main/core-boundary.test.mjs` 检查。执行后端只通过端口 `runtime/work-runtime.ts`（`WorkRuntime.startTask` → `{ started, done, stop }` 与五类事件）与 `SocialWorkService` 对接，DSH（`integrations/dsh-headless-adapter.mjs`）与 native（`execution/noema-project-executor.mjs`）各自声明实现它，由 `main.ts` 交给 `createWorkRuntimeRegistry`。
 
 `main.ts` 仍是启动与组合根；main 下 7 个 `app/`/`testing/` 模块，约 1,303 行。旧 `social-chat-app.tsx`/`workspaces.tsx` 已不再挂载；七个 renderer 模块列入 STATUS 的 dormant registry。不要因为“零引用”直接删除，恢复需要真实入口和验收。
 

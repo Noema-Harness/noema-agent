@@ -38,6 +38,18 @@ export async function openNoemaDataDirectory({
   }
 }
 
+/** The part of a host message box this module uses; the host passes its own. */
+interface MessageBoxRequest {
+  type: 'error';
+  title: string;
+  message: string;
+  detail?: string;
+  buttons: string[];
+  defaultId: number;
+  cancelId: number;
+  noLink: boolean;
+}
+
 export async function showDatabaseStartupFailure({
   dialog,
   shell,
@@ -46,8 +58,8 @@ export async function showDatabaseStartupFailure({
 }: {
   dialog: {
     showMessageBox: (
-      options: import('electron').MessageBoxOptions,
-    ) => Promise<import('electron').MessageBoxReturnValue>;
+      options: MessageBoxRequest,
+    ) => Promise<{ response: number }>;
   };
   shell: { openPath: (path: string) => Promise<string> };
   userDataPath: string;
