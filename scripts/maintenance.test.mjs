@@ -231,9 +231,19 @@ test("maintenance tooling enforces document, plan and commit gates", () =>
       `# DECISIONS\n\n${HEADER}## D-20261116-awaiting 等待确认的探针\n\n${LIFECYCLE("决策中", "无")}\n`,
     );
     assert.equal(reviewQueue(fs.readFileSync(decisionsPath, "utf8")).decide.length, 1);
+    // 只有本变更引用了它，才算“相关产品行为不能实现”。
+    const designPath = path.join(root, `${change}/design.md`);
+    const originalDesign = fs.readFileSync(designPath, "utf8");
+    write(root, `${change}/design.md`, "# design\n\n## 用户决策\n\n- 见 D-20261116-awaiting\n");
     const blocked = checkPrecommit(root, { git, stagedPaths: ["apps/desktop/src/main/main.ts"] });
     assert.match(blocked.errors.join("\n"), /必须同时更新 docs\/ 或 openspec\/changes\//u);
-    assert.match(blocked.errors.join("\n"), /还有未获用户确认的决议/u);
+    assert.match(blocked.errors.join("\n"), /本变更引用的决议未获用户确认/u);
+
+    // 不引用它就不挡：恢复设计后，只有“没带计划”的错。
+    write(root, `${change}/design.md`, originalDesign);
+    const unrelated = checkPrecommit(root, { git, stagedPaths: ["apps/desktop/src/main/main.ts"] });
+    assert.doesNotMatch(unrelated.errors.join("\n"), /未获用户确认/u);
+    assert.match(unrelated.errors.join("\n"), /必须同时更新 docs\/ 或 openspec\/changes\//u);
 
     // Code ships only with a plan update and no decision waiting for the user.
     write(root, "docs/DECISIONS.md", originalDecisions);
@@ -532,11 +542,25 @@ test("unanswered decisions block product code but not tooling maintenance", () =
     assert.deepEqual(tooling.errors, []);
     assert.equal(tooling.notices.join("\n").includes("工具/治理改动不受未决产品决策阻塞"), true);
 
+    // 别的议题待确认不挡本变更：设计里只引用了已确认的 stage-probe。
     const product = checkPrecommit(root, {
       git,
       stagedPaths: ["apps/desktop/src/main/main.ts", "openspec/changes/stage-probe/tasks.md"],
     });
-    assert.match(product.errors.join("\n"), /还有未获用户确认的决议/u);
+    assert.doesNotMatch(product.errors.join("\n"), /未获用户确认/u);
+    assert.match(product.notices.join("\n"), /与本变更无关/u);
+
+    // 引用到待确认的议题时才挡。
+    write(
+      root,
+      "openspec/changes/stage-probe/design.md",
+      "# design\n\n## 用户决策\n\n- 见 D-20261116-awaiting\n",
+    );
+    const referenced = checkPrecommit(root, {
+      git,
+      stagedPaths: ["apps/desktop/src/main/main.ts", "openspec/changes/stage-probe/tasks.md"],
+    });
+    assert.match(referenced.errors.join("\n"), /本变更引用的决议未获用户确认/u);
 
     write(root, "openspec/changes/stage-probe/design.md", "# design\n\n## 用户决策\n\n- 无\n");
     const behaviour = checkPrecommit(root, {

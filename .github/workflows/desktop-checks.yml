@@ -55,5 +55,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24.21.0
+      # github.actor on pull_request is the last pusher, not the PR author: when a
+      # maintainer adds a commit to someone else's branch the gate would flip from
+      # fail to pass. Regression sample: PR #155 run 43862079239 (actor=bot, author=bot,
+      # collaboration fail) vs run 43868086384 (actor=maintainer, author=bot, collaboration pass).
       - name: Only maintainers can change governance paths
-        run: node scripts/collaboration.mjs --actor "${{ github.actor }}" --base "origin/${{ github.base_ref }}"
+        run: node scripts/collaboration.mjs --actor "${{ github.event.pull_request.user.login || github.actor }}" --base "origin/${{ github.base_ref }}"

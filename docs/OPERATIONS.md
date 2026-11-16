@@ -138,7 +138,7 @@ npm run branches:prune -- --apply # 执行删除
 
 三态：`pending`（未送过）→ `delivered`（已注入对话，等处理）→ `done`（处理完）。状态在 `.work/inbox-bridge/state.json`；来源事实由收件箱工具抓取（gh 不可用时静默退出，不阻塞门槛）。
 
-工具不在本仓库：它单独维护在 [Noema-Harness/dsh-inbox-bridge](https://github.com/Noema-Harness/dsh-inbox-bridge)（DSH 插件 `dsh-inbox-bridge`，含 CLI 与 GitHub 抓取）。本仓库只有 `scripts/inbox.mjs` 这个转发器：先看 `INBOX_CLI`，再看同级目录 `..\dsh-inbox-bridge`。
+工具不在本仓库：它单独维护在 [c3115644151/dsh-inbox-bridge](https://github.com/c3115644151/dsh-inbox-bridge)（DSH 插件 `dsh-inbox-bridge`，含 CLI 与 GitHub 抓取）。本仓库只有 `scripts/inbox.mjs` 这个转发器：先看 `INBOX_CLI`，再看同级目录 `..\dsh-inbox-bridge`。
 
 - **只提醒一次不算完**：`delivered` 6 小时内不重复，超过 6 小时仍未 `done` 会再提醒一次（`resurfaceMs` 可配），直到处理完。
 - **自动收口**：同一 workflow+branch 的新 run 成功时，`recovered` 事件会把之前失败事件标 `done`；同一组只保留最新一次失败，不会每条失败都发一遍。
@@ -158,11 +158,11 @@ npm run inbox:ack -- --all-delivered --done    # 清空所有已送达未处理
 运行中注入靠 DSH 插件（同一项目）。安装/更新：
 
 ```powershell
-git clone https://github.com/Noema-Harness/dsh-inbox-bridge C:\Users\NUC\Desktop\dsh-inbox-bridge
+git clone https://github.com/c3115644151/dsh-inbox-bridge C:\Users\NUC\Desktop\dsh-inbox-bridge
 dsh plugin add C:\Users\NUC\Desktop\dsh-inbox-bridge   # 每次更新后重新 add，改完代码要重启 DSH
 ```
 
-配置在 `cordis.patch.yml`（`intervalMs` 默认 45000、`wake` 默认 `first`：用 `followup` 唤醒一个空闲会话，`all` 唤醒全部、`off` 只注入；`resurfaceMs` 默认 6 小时、`offlineReminderMs` 默认 12 小时、`ackHint` 决定通知里教的收口命令；`poll`/`ack` 命令可换成任意来源）。日志：`.work/inbox-bridge/plugin.log`。改插件代码或配置后要重启 DSH 才会生效。
+配置在 `cordis.patch.yml`（`intervalMs` 默认 45000；`delivery` 默认 `quiet`——通知只排队到本轮结束后的下一轮，`wakeup` 才另开一轮且受 `maxConsecutiveWakes` 限制（默认 3，人类发言会重置）；1.x 的 `wake` 键已移除，写了会让插件启动即报错；`resurfaceMs` 默认 6 小时、`offlineReminderMs` 默认 12 小时、`ackHint` 决定通知里教的收口命令；`poll`/`ack` 命令可换成任意来源）。日志：`.work/inbox-bridge/plugin.log`。改插件代码或配置后要重启 DSH 才会生效。
 
 **不要再用 Windows 计划任务**（旧方案每 10 分钟弹一次 node 窗口、且只能等下一轮才看到）；它只做提醒，不代替 `npm run check`，CI 的正式结论以 GitHub Actions 为准。GitHub 网页上的通知状态与本地 `done` 是两套记录：本地 `done` 只表示 agent 已处理，不会改动 GitHub 的未读标记。
 
@@ -232,6 +232,7 @@ node --test test/main/chat/conversation-continuity.test.mjs
 - 分支保护：2026-11-16 仓库转为 public（Free 组织的 public 仓库可以启用保护，标准 runner 免费）。`main` 已开启保护：必须通过 `verify` 与 `collaboration` 检查、至少 1 位维护者审核、新提交 dismiss 旧审核、对话必须解决、禁止 force push 与删除；`enforce_admins: false`，维护者可紧急绕过。核对：`gh api repos/Noema-Harness/noema-agent/branches/main/protection`。
 - CI：`Desktop checks` 在 PR 与 main 推送上都跑 `npm run check`，并用 `range` 步骤把提交门套在 PR diff 上（`node scripts/maintenance.mjs range --base origin/<base>`：产品代码必须带计划/状态，未确认决议不能改产品代码）；另执行 `collaboration` 路径检查；`platform` 在 PR 上用 `--base origin/<base>` 只校验本 PR 新开的 change（base 上已有的未收口仍报错），main 推送要求全树 0 个未收口。`Desktop package` 只在触及 `apps/desktop/**`、`package.json` 或锁文件时（PR）与手动 `workflow_dispatch` 时跑 smoke / 打包 / 安装包验证；发布前用 `gh workflow run "Desktop package"` 跑全流程。
 - Actions 额度：2026-11-16 曾因组织 Free 额度用尽，所有 job 4 秒内失败、注释为「recent account payments have failed or your spending limit needs to be increased」；同日仓库转 public 后标准 runner 免费，故障消失。若再现同类空日志 4 秒失败，先查 `https://github.com/organizations/Noema-Harness/settings/billing/budgets`。
+- 路径检查的身份：PR 上按 **PR 作者**（`github.event.pull_request.user.login`）判定，`main` 推送按推送者（`github.actor`）判定。不能用 `github.actor` 判 PR——它是最后一次推送的人，维护者在协作者分支上补一个 commit 就会把越权 PR 洗绿（回归样本：PR #155 的 run 43862079239 失败、维护者补 commit 后 run 43868086384 通过；修复后第二次也必须是 fail）。
 - 本地预演路径检查：`npm run guard -- --actor <登录名> --base origin/main`；维护者返回放行，协作者触碰维护者路径时列出被拦文件并以退出码 1 结束。
 - 路径清单源码在 `scripts/collaboration.mjs` 的 `MAINTAINER_ONLY_PATHS`（治理机制：`AGENTS.md`、`.github/`、`.githooks/`、`scripts/`、`openspec/config.yaml`、根 `package.json`），改清单时同步 `CONTRIBUTING.md` 的表。
 - 文档门禁不再禁止协作者改文档：路径守卫只管治理机制；文档准确性由审核与 `docs:check` 共同保证，这是 2026-11-16 的决定（用户要求“放开这块限制，重点放在文档改动的审核上”）。
