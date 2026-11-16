@@ -6,11 +6,14 @@
  * was delivered so the same notice is not injected twice. Delivery is not the
  * end: the agent must mark an event done (`npm run inbox:ack --done -- <key>`);
  * if it stays delivered for `resurfaceMs` the notice comes back once.
- * Does not own: fetching the source (the configured poller does), the meaning of
- * "handled" (the ack command decides), or waking an idle agent — inject never
- * wakes the driver.
+ * Delivery respects the agent's turn boundary: events are injected only while the
+ * agent is idle, so they appear at the start of the next real turn instead of
+ * interrupting a running tool loop; a poll that hits a running agent is held and
+ * retried when the run goes idle. Does not own: fetching the source (the
+ * configured poller does), the meaning of "handled" (the ack command decides),
+ * or waking an idle agent — inject never wakes the driver.
  */
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { appendFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -29,6 +32,8 @@ const DEFAULTS = Object.freeze({
   resurfaceMs: 6 * 60 * 60 * 1000,
   /** one reminder at most this often when the workspace has no repo */
   offlineReminderMs: 12 * 60 * 60 * 1000,
+  /** inject while the agent is running (interrupts tool loops; off by default) */
+  injectWhileRunning: false,
   poll: { command: "node", args: ["scripts/inbox-bridge.mjs", "poll"] },
   ack: { command: "node", args: ["scripts/inbox-bridge.mjs", "ack"] },
 });
@@ -55,7 +60,9 @@ export function apply(ctx, config) {
     if (now - lastOfflineNoticeAt < options.offlineReminderMs) return;
     lastOfflineNoticeAt = now;
     const text = formatOfflineNotice(options, reason);
-    for (const agent of agents) {
+    const { ready } = deliveryTargets(agents, options);
+    if (ready.length === 0) return;
+    for (const agent of ready) {
       try {
         agent.inject(buildMessage(0, text, options.label));
       } catch (error) {
@@ -77,9 +84,16 @@ export function apply(ctx, config) {
       }
       const events = payload.events;
       if (events.length === 0) return;
+      const { ready, deferred } = deliveryTargets(agents, options);
+      if (ready.length === 0) {
+        // A running tool loop must not be interrupted: keep the events pending
+        // (no ack) and deliver them when the run goes idle.
+        log(`held ${events.length} event(s): ${deferred.length} agent(s) running`);
+        return;
+      }
       const text = formatEvents(events, options);
       let delivered = 0;
-      for (const agent of agents) {
+      for (const agent of ready) {
         try {
           agent.inject(buildMessage(events.length, text, options.label));
           delivered += 1;
@@ -88,7 +102,10 @@ export function apply(ctx, config) {
         }
       }
       if (delivered > 0) {
-        log(`injected ${events.length} event(s) into ${delivered} agent(s)`);
+        log(
+          `injected ${events.length} event(s) into ${delivered} idle agent(s)` +
+            (deferred.length > 0 ? `; ${deferred.length} running agent(s) skipped` : ""),
+        );
         await ackEvents(options, events, "delivered");
         // Infrastructure failures cannot be fixed by a code change: report once.
         const infra = events.filter((event) => event.kind === "infra");
@@ -118,6 +135,11 @@ export function apply(ctx, config) {
 
   for (const agent of ctx.agents.list()) register(agent);
   ctx.on("agent/created", ({ agent }) => register(agent));
+  ctx.on("agent/status", ({ status }) => {
+    // A run just finished: deliver whatever was held while it was busy, so the
+    // notice is queued for the next turn start instead of mid-run.
+    if (status === "idle") void poll();
+  });
 
   ctx.effect(() => () => {
     if (timer) {
@@ -126,6 +148,22 @@ export function apply(ctx, config) {
     }
     agents.clear();
   });
+}
+
+/**
+ * Split the registered agents by whether they can take a notice now. Idle agents
+ * queue the notice for their next turn; running agents are deferred unless the
+ * config explicitly allows interrupting them.
+ */
+export function deliveryTargets(agents, options) {
+  const ready = [];
+  const deferred = [];
+  const allowRunning = options?.injectWhileRunning === true;
+  for (const agent of agents) {
+    if (allowRunning || agent.status !== "running") ready.push(agent);
+    else deferred.push(agent);
+  }
+  return { ready, deferred };
 }
 
 export function mergeConfig(config) {
@@ -143,7 +181,6 @@ export function mergeConfig(config) {
 /** `owner/name` from `git remote get-url origin`, or null when not connected. */
 export function detectRepo(cwd) {
   try {
-    const { execFileSync } = require("node:child_process");
     const url = String(
       execFileSync("git", ["-C", cwd, "remote", "get-url", "origin"], {
         encoding: "utf8",
@@ -240,6 +277,7 @@ export function formatEvents(events, options = DEFAULTS) {
     "",
     "只在它影响当前工作时处理；处理完运行 `npm run inbox:ack --done -- <key>` 标记完成。",
     "只标 delivered 的事件会在 6 小时后再次提醒；`kind: infra` 的基础设施失败只提醒一次。",
+    "这条通知只在本轮开始前注入；执行中到来的事件会等这次执行结束后再进入下一轮。",
   ].join("\n");
 }
 

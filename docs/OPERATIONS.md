@@ -142,7 +142,7 @@ npm run branches:prune -- --apply # 执行删除
 - **自动收口**：同一 workflow+branch 的新 run 成功时，`recovered` 事件会把之前失败事件标 `done`；同一组只保留最新一次失败，不会每条失败都发一遍。
 - **只报一次的基础设施异常**：`conclusion: startup_failure`（额度、runner 配置等无法靠改代码解决）归为 `kind: infra`，只提醒一次并自动 `done`，不重复打扰。
 - **只收当前仓库**：插件从工作区的 `origin` 推断 `owner/name`（也可配 `repoPath`/`repo`），只拉这个仓库的通知；工作区没连仓库时，插件最多每 12 小时提示一次「收件箱不可用」，请 agent 转告用户。
-- **注入时机**：插件默认每 2 分钟轮询，把新事件经 `agent.inject()` 排队到下一次模型步骤（空闲时排队，等用户下次发言一起进入；执行中则在下一次步骤出现），不会唤醒空闲 agent。
+- **注入时机**：只在一轮开始前注入——插件每 2 分钟轮询，但只在 agent 空闲时把新事件经 `agent.inject()` 排队到下一轮开始；执行中到来的事件先挂起，等本次执行结束后的下一轮再进入，不打断工具循环（`injectWhileRunning: true` 可强制立即注入，默认关闭）。不会唤醒空闲 agent。
 
 ```powershell
 npm run inbox                                  # 列出三态；--json 给脚本用
