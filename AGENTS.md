@@ -69,7 +69,7 @@
 按“什么时候跑”只分三档：
 
 - **提交时（秒级）**：`.githooks/pre-commit` → `scripts/governance.mjs commit`。拦：产品代码（`apps/desktop/src/`）没带计划/状态、本轮变更的计划还没进 HEAD（计划先于实现）、未答决策下做产品行为、治理变更夹带产品代码、行为变更标 `skip_specs`、`## 事实影响` 与实际改动不符。只改 `scripts/` 或文档时放行。
-- **里程碑（约 40 秒）**：`npm run check` → `governance.mjs milestone`，一张卡的一个切口收口时跑一次。含 `docs:check`（五份文档三行头、未登记文档、版本与基线一致、钩子已装、配置引用有效、文档与 CI 引用的脚本真实存在、DECISIONS 每条阶段、字段与三层、已收口条目的用户确认）、`plan:check`（活动变更唯一、三件套齐全、tasks 未全完成、`Plan:` 链接或 `Plan: none`、`## 事实影响` 与 `## 用户决策`、用户验收已确认）、`milestone:check`（任务与用户验收完成、无待决、规格增量或声明纯文档、卡片正文已更新、STATUS 当天）、`figure:check`、`source:check`、lint、typecheck、全部测试。
+- **里程碑（约 40 秒）**：`npm run check` → `governance.mjs milestone`，一张卡的一个切口收口时跑一次。含 `docs:check`（五份文档三行头、未登记文档、版本与基线一致、钩子已装、配置引用有效、文档与 CI 引用的脚本真实存在、DECISIONS 每条阶段、字段与三层、已收口条目的用户确认）、`plan:check`（活动变更唯一、三件套齐全、tasks 未全完成、`Plan:` 链接或 `Plan: none`、`## 事实影响` 与 `## 用户决策`、用户验收已确认）、`milestone:check`（任务与用户验收完成、本变更引用的决议已确认——无关的「决策中」不阻塞这一刀收口、规格增量或声明纯文档、卡片正文已更新、STATUS 当天）、`figure:check`、`source:check`、lint、typecheck、全部测试。
 - **平台（PR，约 1 分钟）**：`Desktop checks` 的 `range` 步骤用 `git diff origin/<base>...HEAD` 跑同一套提交规则（产品代码必须带计划/状态、未确认决议挡产品代码、治理变更不夹带产品代码、事实影响与改动配对）：协作者没装本机钩子也躲不过；`main` 分支保护要求 `platform`/`verify`/`collaboration` 通过并至少一位维护者审核，合并不靠自律。
 - **平台树（`platform` job）**：main 推送与每个 PR 上检查 `openspec/changes/` 没有未收口 change。本地最多同时推进一个变更，**合并进 main 的树必须为 0**：上一刀没收口，下一刀就无处安放。main 上留着未收口 change 时，所有 PR 的 plan/range 门都会显式报「main 上还有未收口 change」——这是规则，不是 bug，要等维护者归档。
 - **远端（异步）**：CI 跑的就是里程碑，同一批步骤；推送后不等，收件箱在下一轮开场报告失败。

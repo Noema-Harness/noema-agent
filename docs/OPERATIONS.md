@@ -91,6 +91,7 @@ npm run branches:prune -- --apply # 执行删除
 | STATUS 基线不是 HEAD 祖先                             | 基线写成当前可解析的提交；重写历史后重取                                                                                            |
 | 文档里写进了不属于它的内容                            | 不是脚本能判的事：每份文档头的 `Does not own` 已写明边界，评审时按边界判断；规划放卡片、状态放 STATUS、架构放 ARCHITECTURE          |
 | proposal 缺少 `Plan:` 卡片链接                        | 产品变更先在看板选卡，再把卡片链接写进 proposal 顶部；纯机制/文档/展示的治理变更写 `Plan: none`，且 diff 不能含 `apps/desktop/src/` |
+| 里程碑报「本变更引用的决议未获用户确认」              | design 的「用户决策」或对应条目的「阻塞」里点名的决议还在 `决策中`                                                                  | 先把那条议题谈成 `决定`，或删掉无关引用；不相关的「决策中」不阻塞这一刀 |
 | 活动变更超过 1 个                                     | 已完成的先 `openspec archive <name> --yes`（归档目录只留本机，不入库）；过期未做的也归档并写明关闭原因                              |
 | main 上还有未收口 change                              | 维护者先归档 main 上的变更；这不是协作者 PR 的问题，等归档后让检查重跑                                                              |
 | 平台不允许未收口 change                               | 归档并删掉 `openspec/changes/<name>/`、把规格增量合并进 `openspec/specs/` 之后再推送或合并                                          |

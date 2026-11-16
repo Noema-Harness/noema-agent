@@ -738,10 +738,10 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 ## D-20261116-workflow-closure 治理框架收口：九步、条目生命周期与审核入口
 
-- **阶段**：待验收
+- **阶段**：已收口
 - **结构**：AGENTS §1 九步 + 条目生命周期；design 三行开工声明与「事实影响」；`npm run review` 唯一审核入口；`scripts/maintenance.mjs` 三道门；`skills/noema-development/SKILL.md` 模板与出口。
 - **来源**：用户 2026-11-16 要求复盘治理闭环与工作流编排，并把缺口补齐（m74363 / m74370）
-- **阻塞**：无（等你验收；相关条目已收口）
+- **阻塞**：无
 
 #### 1 决策
 
@@ -752,15 +752,17 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 #### 2 执行
 
-- 批次：`changes/workflow-closure`；状态：进行中。
+- 批次：`changes/workflow-closure`（已归档，2026-11-16）；状态：已收口。
 - 已完成：九步（tasks 3.1）、六角色（3.2，待 3.7 删除并改为「事实影响」）、三类出口（3.3）、开场/收口三问（3.4）、OPERATIONS 指针（3.5）、技能模板与同步（4.3–4.5）、审核入口与条目生命周期（第 8 节）、待定解析器修复（5.4）。
 - 发现：状态词若表达“是否已决定”，agent 会把自己也算成决定者；改为表达“是否得到用户确认”后语义才唯一。
+- 发现：本条变更在平台门（`platform` job）建立之前就进了平台，属于历史状态；用户 2026-11-16 同意先收口，同时指出方法论部分后续仍值得继续讨论。平台门只约束之后进入平台的变更。
 
 #### 3 验收
 
-- 新会话能按 AGENTS §1 九步推进，每一步都有产物 — 读 AGENTS §1、跑 `npm run review` 与 `npm run plan:check` — 待验收
-- 文档结构、三道门与技能模板互相对得上 — `npm run docs:check`、`npm run tools:test` — 待验收
-- 用已发生的两个真实事件对照九步（C6 收口、PR #149 审核）并记录差异 — `design.md`「真实切口对照」 — 待验收
+- 新会话能按 AGENTS §1 九步推进，每一步都有产物 — 读 AGENTS §1、跑 `npm run review` 与 `npm run plan:check` — 已验收 2026-11-16（用户）
+- 文档结构、三道门与技能模板互相对得上 — `npm run docs:check`、`npm run tools:test` — 已验收 2026-11-16（用户）
+- 用已发生的两个真实事件对照九步（C6 收口、PR #149 审核）并记录差异 — `design.md`「真实切口对照」 — 已验收 2026-11-16（用户）
+- 用户确认：2026-11-16
 
 ## D-20261116-collaborator-governance 协作者契约与 PR 检查平台化
 

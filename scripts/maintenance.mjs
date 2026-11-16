@@ -485,7 +485,8 @@ export function checkPlan(root, options = {}) {
   if (active.length === 0) {
     notices.push("当前没有活动变更：下一轮开始前先在 openspec/changes/ 立项");
   }
-  const change = options.ownChange && active.includes(options.ownChange) ? options.ownChange : active[0];
+  const change =
+    options.ownChange && active.includes(options.ownChange) ? options.ownChange : active[0];
   let pending = [];
   let remaining = null;
   let planKind = null;
@@ -588,6 +589,36 @@ export function checkPlan(root, options = {}) {
 // 里程碑不是“感觉做得差不多了”，而是四个可检查的条件同时成立：
 // 任务全完成（含用户验收确认）、没有未决决策、规格增量存在或有理由跳过、
 // STATUS 更新到今天。全量 check 由这里提示，而不是靠即时判断。
+function decisionIdsIn(text) {
+  const ids = new Set();
+  for (const match of String(text ?? "").matchAll(/D-\d{8}-[a-z0-9-]+|D-\d{3}/gu)) {
+    ids.add(match[0]);
+  }
+  return ids;
+}
+
+// A milestone only answers for the decisions this change points at: the design's
+// 「用户决策」 and the 阻塞 field of the entry that records changes/<name>.
+function referencedDecisionIds(designText, decisionsText, change) {
+  const heading = String(designText ?? "").indexOf(DECISION_HEADING);
+  const section =
+    heading === -1
+      ? ""
+      : String(designText).slice(
+          heading + DECISION_HEADING.length,
+          (() => {
+            const next = String(designText).indexOf("\n## ", heading + DECISION_HEADING.length);
+            return next === -1 ? undefined : next;
+          })(),
+        );
+  const ids = decisionIdsIn(section);
+  for (const entry of decisionEntries(decisionsText)) {
+    if (!entry.body.includes(`changes/${change}`)) continue;
+    for (const id of decisionIdsIn(decisionMeta(entry)?.blocker ?? "")) ids.add(id);
+  }
+  return ids;
+}
+
 export function checkMilestone(root, options = {}) {
   const errors = [];
   const notices = [];
@@ -637,16 +668,18 @@ export function checkMilestone(root, options = {}) {
     }
   }
   const decidedText = readText(path.join(root, "docs", "DECISIONS.md")) ?? "";
-  const openDecisions = reviewQueue(decidedText).decide;
-  if (openDecisions.length) {
+  const queue = reviewQueue(decidedText);
+  const referenced = referencedDecisionIds(design, decidedText, change);
+  const openReferenced = queue.decide.filter((item) => referenced.has(item.id));
+  if (openReferenced.length) {
     errors.push(
-      `还有 ${openDecisions.length} 项决议未获用户确认，里程碑不能通过：${openDecisions.map((item) => item.id).join(", ")}`,
+      `本变更引用的决议未获用户确认，里程碑不能通过：${openReferenced.map((item) => item.id).join(", ")}；其它未决议题不阻塞这一刀收口`,
     );
   }
-  const awaiting = reviewQueue(decidedText).accept;
-  if (awaiting.length) {
+  const awaitingReferenced = queue.accept.filter((item) => referenced.has(item.id));
+  if (awaitingReferenced.length) {
     errors.push(
-      `有 ${awaiting.length} 项待验收（${awaiting.map((item) => item.id).join(", ")}）：验收结论确认后才算交付，里程碑不能通过`,
+      `本变更引用的条目还在待验收（${awaitingReferenced.map((item) => item.id).join(", ")}）：验收结论确认后才算交付`,
     );
   }
   const specs = markdownFilesUnder(path.join(directory, "specs"));

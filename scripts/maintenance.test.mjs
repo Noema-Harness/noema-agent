@@ -309,6 +309,30 @@ test("user acceptance needs a confirmation date", () =>
     assert.deepEqual(checkPlan(root, { skipSpecValidation: true }).errors, []);
   }));
 
+test("unrelated pending decisions do not block a milestone", () =>
+  withRoot((holder) => {
+    const root = makeRoot(holder);
+    const change = "openspec/changes/stage-probe";
+    write(
+      root,
+      `${change}/tasks.md`,
+      "# tasks\n\n- [x] 第一项\n- [x] 更新卡片正文：现在能做什么 + 手测步骤\n",
+    );
+    write(root, `${change}/design.md`, "# design\n\n## 用户决策\n\n- 无\n");
+    write(root, `${change}/specs/probe/spec.md`, "# spec\n");
+    write(
+      root,
+      "docs/DECISIONS.md",
+      `# DECISIONS\n\n${HEADER}## D-20261116-stage-probe 探针条目\n\n${LIFECYCLE("执行中", "changes/stage-probe")}\n\n## D-20261116-unrelated 别的议题\n\n${LIFECYCLE("决策中", "无")}\n`,
+    );
+    const result = checkMilestone(root, { git: fakeGit(), today: TODAY });
+    assert.equal(
+      result.errors.join("\n").includes("D-20261116-unrelated"),
+      false,
+      result.errors.join("\n"),
+    );
+  }));
+
 test("a milestone is archivable only when tasks, decisions and evidence line up", () =>
   withRoot((holder) => {
     const root = makeRoot(holder, { tasks: "# tasks\n\n- [ ] 第一项\n" });
@@ -328,7 +352,7 @@ test("a milestone is archivable only when tasks, decisions and evidence line up"
       `# DECISIONS\n\n${HEADER}## D-20261116-awaiting 等待确认的探针\n\n${LIFECYCLE("决策中", "无")}\n`,
     );
     const decided = checkMilestone(root, { git: fakeGit(), today: TODAY });
-    assert.match(decided.errors.join("\n"), /还有 1 项决议未获用户确认/u);
+    assert.match(decided.errors.join("\n"), /本变更引用的决议未获用户确认/u);
     assert.match(decided.errors.join("\n"), /没有 specs 增量/u);
 
     // Drop the open decision again before checking the archivable path.
