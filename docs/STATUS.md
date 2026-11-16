@@ -40,7 +40,7 @@ Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与�
 
 - DSH 插件 `plugins/inbox-bridge/`（v1.1.0，默认 2 分钟轮询）+ 仓库侧 `scripts/inbox-bridge.mjs`：外部事件注入下一次对话步骤，三态 pending/delivered/done，`npm run inbox:ack` 标记完成。
 - 证据：`node --test scripts/inbox-bridge.test.mjs` 4/4；`node .work/probe-inbox-plugin.mjs` → injected 1 / delivered；插件已安装为 `dsh-inbox-bridge@1.1.0`（重启 DSH 后在真实会话生效）；旧 Windows 计划任务已删除。
-- `npm run inbox` 现在是带状态的列表；旧的 `github-inbox.mjs --poll` 仍是抓取后端。
+- `npm run inbox` 现在是带状态的列表；旧的 `github-inbox.mjs --poll` 仍是抓取后端；来源不可用（gh 掉线/离线）时只打印 `skipped` 并退出 0，不阻塞任何门槛。
 
 ## 未验证
 

@@ -61,7 +61,10 @@ export function apply(ctx, config) {
       if (delivered > 0) {
         log(`injected ${events.length} event(s) into ${delivered} agent(s)`);
         // Mark delivered so the next poll only returns what nobody has seen yet.
-        await ackEvents(options, events.map((event) => event.key));
+        await ackEvents(
+          options,
+          events.map((event) => event.key),
+        );
       }
     } catch (error) {
       log(`poll skipped: ${describe(error)}`);
@@ -155,7 +158,8 @@ function runCommand(spec, options, extraEnv = {}) {
 export function formatEvents(events, options = DEFAULTS) {
   const maxEvents = options.maxEvents ?? 6;
   const lines = events.slice(0, maxEvents).map((event) => `- ${describeEvent(event)}`);
-  if (events.length > maxEvents) lines.push(`- 其余 ${events.length - maxEvents} 条见 \`npm run inbox\``);
+  if (events.length > maxEvents)
+    lines.push(`- 其余 ${events.length - maxEvents} 条见 \`npm run inbox\``);
   return [
     `${options.label ?? "外部收件箱"}（后台轮询，不是用户提问）：`,
     ...lines,

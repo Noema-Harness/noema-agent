@@ -65,18 +65,14 @@ export function pollEvents(root, options = {}) {
   const poller = resolve(root, POLLER_REL);
   if (!existsSync(poller)) throw new Error(`missing poller: ${poller}`);
   const exec = options.execFile ?? execFileSync;
-  const stdout = exec(
-    process.execPath,
-    [poller, "--poll", "--json", "--quiet", "--no-toast"],
-    {
-      cwd: root,
-      env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
-      encoding: "utf8",
-      timeout: options.timeoutMs ?? 45_000,
-      windowsHide: true,
-      maxBuffer: 4 * 1024 * 1024,
-    },
-  );
+  const stdout = exec(process.execPath, [poller, "--poll", "--json", "--quiet", "--no-toast"], {
+    cwd: root,
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+    encoding: "utf8",
+    timeout: options.timeoutMs ?? 45_000,
+    windowsHide: true,
+    maxBuffer: 4 * 1024 * 1024,
+  });
   const payload = JSON.parse(String(stdout));
   const fresh = Array.isArray(payload?.fresh) ? payload.fresh : [];
   return fresh.filter((event) => event && typeof event.key === "string");
@@ -89,6 +85,17 @@ export function describeEvent(event) {
   return `[${kind}] ${ref}${event.title ?? ""}${url}`;
 }
 
+function safePoll(root) {
+  try {
+    return pollEvents(root);
+  } catch (error) {
+    process.stderr.write(
+      `inbox-bridge: poll skipped (${error instanceof Error ? error.message : String(error)})\n`,
+    );
+    return null;
+  }
+}
+
 function main(argv) {
   const root = process.cwd();
   const stateFile = resolve(root, STATE_REL);
@@ -98,7 +105,11 @@ function main(argv) {
   const json = flags.includes("--json");
 
   if (command === "poll") {
-    const events = pollEvents(root);
+    const events = safePoll(root);
+    if (events === null) {
+      process.stdout.write(`${JSON.stringify({ events: [], skipped: true })}\n`);
+      return 0;
+    }
     const { pending } = classify(events, readState(stateFile));
     process.stdout.write(`${JSON.stringify({ events: pending })}\n`);
     return 0;
@@ -109,7 +120,12 @@ function main(argv) {
     const fromArgs = flags.filter((flag) => !flag.startsWith("--"));
     const keys = [...fromEnv, ...fromArgs];
     const done = flags.includes("--done");
-    const { state, marked } = transition(readState(stateFile), keys, done ? "done" : "delivered", at);
+    const { state, marked } = transition(
+      readState(stateFile),
+      keys,
+      done ? "done" : "delivered",
+      at,
+    );
     mkdirSync(dirname(stateFile), { recursive: true });
     writeFileSync(stateFile, `${JSON.stringify(state, null, 2)}\n`, "utf8");
     process.stdout.write(`${JSON.stringify({ marked, status: done ? "done" : "delivered" })}\n`);
@@ -117,7 +133,11 @@ function main(argv) {
   }
 
   if (command === "list") {
-    const events = pollEvents(root);
+    const events = safePoll(root);
+    if (events === null) {
+      process.stdout.write("inbox-bridge: skipped（拉取来源失败；gh 未登录或离线？）\n");
+      return 0;
+    }
     const state = readState(stateFile);
     const groups = classify(events, state);
     if (json) {

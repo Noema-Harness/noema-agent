@@ -29,17 +29,35 @@ test("classify splits events by the state they carry", () => {
     { key: "ci:3", kind: "ci" },
   ];
   const state = {
-    events: { "ci:1": { status: "pending" }, "ci:2": { status: "delivered" }, "ci:3": { status: "done" } },
+    events: {
+      "ci:1": { status: "pending" },
+      "ci:2": { status: "delivered" },
+      "ci:3": { status: "done" },
+    },
   };
   const groups = classify(events, state);
-  assert.deepEqual(groups.pending.map((event) => event.key), ["ci:1"]);
-  assert.deepEqual(groups.delivered.map((event) => event.key), ["ci:2"]);
-  assert.deepEqual(groups.done.map((event) => event.key), ["ci:3"]);
+  assert.deepEqual(
+    groups.pending.map((event) => event.key),
+    ["ci:1"],
+  );
+  assert.deepEqual(
+    groups.delivered.map((event) => event.key),
+    ["ci:2"],
+  );
+  assert.deepEqual(
+    groups.done.map((event) => event.key),
+    ["ci:3"],
+  );
 });
 
 test("an event line keeps kind, ref, title and url", () => {
   assert.equal(
-    describeEvent({ kind: "ci", ref: "run 1", title: "verify failed", url: "https://example.test/1" }),
+    describeEvent({
+      kind: "ci",
+      ref: "run 1",
+      title: "verify failed",
+      url: "https://example.test/1",
+    }),
     "[ci] run 1 verify failed https://example.test/1",
   );
 });
