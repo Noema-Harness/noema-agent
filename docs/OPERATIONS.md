@@ -116,13 +116,19 @@ npm run branches:prune -- --apply # 执行删除
 
 ### 架构图（docs/assets）
 
-用户向架构图是 README 的入口，也是规划的总锚点：图里区分“已实现”和“计划中（灰底 + 虚线区域）”。
+两张图，读者不同：
 
-- 图源：`docs/assets/noema-architecture.source.json`（Archify candidate + 生成时的 `docs/ARCHITECTURE.md` 摘要 + 产物摘要）。
-- 改了 `docs/ARCHITECTURE.md` 后重出图：`npm run figure:build`（需要本机 Archify 技能和 Edge；finalize 的四道 gate 必须全过）。
-- `npm run figure:check` 挂在 `npm run check` 里：架构文档变了而图没重出、产物被手改、README 没引用图，都会直接失败。
-- 不要手改 `noema-architecture.html|png`；finalize 的侧车 json 由 build 自动移出 `docs/assets`，留在 `.work/archify-run/`。
-- 图只画 Noema 产品范围（用户、主聊、执行者、工作区、数据、计划项），不画本机开发 harness。
+| 图 | 读者 | 图源文档 | 入口 | 产物 |
+| --- | --- | --- | --- | --- |
+| 产品架构图 | 用户 | `docs/ARCHITECTURE.md` | `README.md` | `docs/assets/noema-architecture.*` |
+| 治理全景图 | 维护者 | `AGENTS.md` | `AGENTS.md` | `docs/assets/noema-governance.*` |
+
+产品图是 README 的入口，也是规划的总锚点：图里区分“已实现”和“计划中（灰底 + 虚线区域）”；只画 Noema 产品范围，不画本机开发 harness。治理图画治理结构（提示层、事实流、机器门），不进 README。
+
+- 图源是 `*.source.json`（Archify candidate + 生成时的源文档摘要 + 产物摘要）。
+- 改了 `docs/ARCHITECTURE.md` 或 `AGENTS.md` 后重出图：`npm run figure:build`（两张一起；需要本机 Archify 技能和 Edge，finalize 的四道 gate 必须全过）。只重建一张：`node scripts/figure.mjs build governance`。
+- `npm run figure:check` 挂在 `npm run check` 里：源文档变了而图没重出、产物被手改、入口文件（README / AGENTS）没引用图，都会直接失败。
+- 不要手改 `*.html|png`；finalize 的侧车 json 由 build 自动移出 `docs/assets`，留在 `.work/archify-run/`。
 
 ### CI 是异步验证
 

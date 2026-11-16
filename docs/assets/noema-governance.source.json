@@ -1,0 +1,382 @@
+{
+  "version": 1,
+  "candidate": {
+    "schema_version": 1,
+    "diagram_type": "architecture",
+    "meta": {
+      "title": "Noema 治理全景：谁规定、谁决定、谁验证",
+      "subtitle": "提示层只放规则与顺序，模板与命令按需加载；一轮的事实流在中间；机器门在下面，不靠自律。",
+      "output": "docs/assets/noema-governance.html",
+      "locale": "zh-CN",
+      "quality_profile": "showcase",
+      "viewBox": [
+        1240,
+        620
+      ],
+      "legend": {
+        "mode": "auto",
+        "entries": {
+          "external": {
+            "label": "外部输入"
+          },
+          "security": {
+            "label": "决定与门"
+          },
+          "backend": {
+            "label": "计划与执行"
+          },
+          "database": {
+            "label": "事实与证据"
+          },
+          "frontend": {
+            "label": "入口视图"
+          },
+          "messagebus": {
+            "label": "提示与命令"
+          },
+          "cloud": {
+            "label": "平台"
+          }
+        }
+      }
+    },
+    "components": [
+      {
+        "id": "rules",
+        "type": "messagebus",
+        "label": "AGENTS 规则",
+        "sublabel": "常驻 · 每轮必读",
+        "icon": "messagebus",
+        "pos": [
+          205,
+          24
+        ],
+        "size": [
+          140,
+          70
+        ]
+      },
+      {
+        "id": "skill",
+        "type": "messagebus",
+        "label": "技能模板",
+        "sublabel": "按需加载",
+        "icon": "messagebus",
+        "pos": [
+          419,
+          24
+        ],
+        "size": [
+          140,
+          70
+        ]
+      },
+      {
+        "id": "ops",
+        "type": "messagebus",
+        "label": "OPERATIONS",
+        "sublabel": "命令与修法",
+        "icon": "messagebus",
+        "pos": [
+          643,
+          24
+        ],
+        "size": [
+          140,
+          70
+        ]
+      },
+      {
+        "id": "you",
+        "type": "external",
+        "label": "你",
+        "sublabel": "目标 · 反馈 · 验收",
+        "icon": "person",
+        "pos": [
+          40,
+          180
+        ],
+        "size": [
+          100,
+          72
+        ]
+      },
+      {
+        "id": "entry",
+        "type": "security",
+        "label": "DECISIONS",
+        "sublabel": "阶段 · 勾选 · 确认",
+        "icon": "security",
+        "pos": [
+          205,
+          168
+        ],
+        "size": [
+          140,
+          96
+        ]
+      },
+      {
+        "id": "plan",
+        "type": "backend",
+        "label": "卡 + change",
+        "sublabel": "规划层 · 计划层",
+        "icon": "backend",
+        "pos": [
+          419,
+          180
+        ],
+        "size": [
+          140,
+          72
+        ]
+      },
+      {
+        "id": "run",
+        "type": "backend",
+        "label": "九步执行",
+        "sublabel": "一个切口",
+        "icon": "backend",
+        "pos": [
+          643,
+          168
+        ],
+        "size": [
+          150,
+          96
+        ]
+      },
+      {
+        "id": "prove",
+        "type": "database",
+        "label": "交付与证据",
+        "sublabel": "specs · 测试",
+        "icon": "database",
+        "pos": [
+          877,
+          180
+        ],
+        "size": [
+          130,
+          72
+        ]
+      },
+      {
+        "id": "status",
+        "type": "database",
+        "label": "STATUS",
+        "sublabel": "只写事实",
+        "icon": "database",
+        "pos": [
+          1091,
+          180
+        ],
+        "size": [
+          120,
+          72
+        ]
+      },
+      {
+        "id": "review",
+        "type": "frontend",
+        "label": "npm run review",
+        "sublabel": "唯一审核视图",
+        "icon": "frontend",
+        "pos": [
+          205,
+          320
+        ],
+        "size": [
+          140,
+          70
+        ]
+      },
+      {
+        "id": "gates",
+        "type": "security",
+        "label": "机器门",
+        "sublabel": "提交 · 里程碑 · PR",
+        "icon": "security",
+        "pos": [
+          643,
+          320
+        ],
+        "size": [
+          150,
+          86
+        ]
+      },
+      {
+        "id": "platform",
+        "type": "cloud",
+        "label": "平台 CI",
+        "sublabel": "必过 · 分支保护",
+        "icon": "cloud",
+        "pos": [
+          643,
+          440
+        ],
+        "size": [
+          150,
+          70
+        ]
+      }
+    ],
+    "boundaries": [
+      {
+        "kind": "region",
+        "label": "不靠自律：机器门",
+        "wraps": [
+          "gates",
+          "platform"
+        ]
+      }
+    ],
+    "connections": [
+      {
+        "id": "ask",
+        "from": "you",
+        "to": "entry",
+        "fromSide": "right",
+        "toSide": "left",
+        "label": "说一句话",
+        "variant": "emphasis"
+      },
+      {
+        "id": "decide",
+        "from": "entry",
+        "to": "plan",
+        "fromSide": "right",
+        "toSide": "left",
+        "label": "确认后立项"
+      },
+      {
+        "id": "planrun",
+        "from": "plan",
+        "to": "run",
+        "fromSide": "right",
+        "toSide": "left",
+        "label": "计划先于代码",
+        "variant": "emphasis"
+      },
+      {
+        "id": "deliver",
+        "from": "run",
+        "to": "prove",
+        "fromSide": "right",
+        "toSide": "left",
+        "label": "交付与证据"
+      },
+      {
+        "id": "record",
+        "from": "prove",
+        "to": "status",
+        "fromSide": "right",
+        "toSide": "left",
+        "label": "记录事实"
+      },
+      {
+        "id": "rule",
+        "from": "rules",
+        "to": "entry",
+        "fromSide": "bottom",
+        "toSide": "top",
+        "label": "每轮先读",
+        "variant": "dashed"
+      },
+      {
+        "id": "template",
+        "from": "skill",
+        "to": "plan",
+        "fromSide": "bottom",
+        "toSide": "top",
+        "label": "模板",
+        "variant": "dashed"
+      },
+      {
+        "id": "manual",
+        "from": "ops",
+        "to": "gates",
+        "fromSide": "bottom",
+        "toSide": "top",
+        "label": "命令与修法",
+        "variant": "dashed"
+      },
+      {
+        "id": "gate",
+        "from": "run",
+        "to": "gates",
+        "fromSide": "bottom",
+        "toSide": "top",
+        "label": "提交 / 里程碑"
+      },
+      {
+        "id": "ci",
+        "from": "gates",
+        "to": "platform",
+        "fromSide": "bottom",
+        "toSide": "top",
+        "label": "推送后必过"
+      },
+      {
+        "id": "view",
+        "from": "entry",
+        "to": "review",
+        "fromSide": "bottom",
+        "toSide": "top",
+        "label": "视图"
+      }
+    ],
+    "cards": [
+      {
+        "dot": "cyan",
+        "title": "提示层只放判断",
+        "items": [
+          "常驻只留规则与顺序，不写步骤细节",
+          "模板与命令按需加载，别处不重复规定“做”"
+        ]
+      },
+      {
+        "dot": "emerald",
+        "title": "一个事实只有一个主人",
+        "items": [
+          "规则 → AGENTS；模板 → 技能；命令 → OPERATIONS",
+          "状态 → 条目、看板、STATUS，其它位置只链接"
+        ]
+      },
+      {
+        "dot": "rose",
+        "title": "机器门不靠自律",
+        "items": [
+          "提交门、里程碑门、平台门",
+          "每条门失败都给修法，读得到下一步"
+        ]
+      },
+      {
+        "dot": "violet",
+        "title": "审核入口只有一个",
+        "items": [
+          "npm run review 列出待决定与待验收",
+          "条目正文是权威源，勾选后 decisions:sync 收口"
+        ]
+      }
+    ]
+  },
+  "source": {
+    "doc": "AGENTS.md",
+    "sha256": "9d92cbbfb8ff85699f8ba5889cba8fbc1fba6533ba155089703ccf05328f438d"
+  },
+  "assets": {
+    "html": {
+      "path": "docs/assets/noema-governance.html",
+      "sha256": "28111098753a6992d02335af760ff69a8ea26043b6260553c0b1b426a72f7d77",
+      "bytes": 852730
+    },
+    "png": {
+      "path": "docs/assets/noema-governance.png",
+      "sha256": "77ec04881286714e38ad7910b25e1efcfbcc46a633f8042ea1104c31dec62d9e",
+      "bytes": 166321
+    }
+  },
+  "updatedAt": "2026-11-16T03:37:46.295Z"
+}

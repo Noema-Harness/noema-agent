@@ -13,11 +13,11 @@
     },
     "png": {
       "path": "docs/assets/noema-architecture.png",
-      "sha256": "a922a4a1c0c1b66e4924a915dea0af91af92dbdecf9c49e00cbe0fd83d84b71b",
-      "bytes": 166166
+      "sha256": "c4fc2757642facb9786fee00796cdbeba58d9e744e9550ce2496272ee7c718b1",
+      "bytes": 166271
     }
   },
-  "updatedAt": "2026-11-16T03:01:30.346Z",
+  "updatedAt": "2026-11-16T03:37:35.459Z",
   "candidate": {
     "schema_version": 1,
     "diagram_type": "architecture",

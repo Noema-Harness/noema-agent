@@ -4,6 +4,8 @@
 
 三层事实分开：产品定义在 `docs/PRODUCT.md`；本轮执行计划在 `openspec/changes/`；规划与状态只在 [GitHub Project「Noema V1 路线」](https://github.com/orgs/Noema-Harness/projects/1) 一处；`docs/STATUS.md` 只写已经发生的事实（D-026）。卡片切口 = 一个 change：一次交付只拆这一刀。
 
+治理全景图：[PNG](docs/assets/noema-governance.png) · [交互版](docs/assets/noema-governance.html)（维护者向；与 §1–§4 同步，改了治理结构就重出图）。
+
 用户级约定在 `C:\Users\NUC\.dsh\AGENTS.md`。冲突顺序：本轮用户要求 > 用户级 > 本文件 > PRODUCT/ARCHITECTURE/DECISIONS > OPERATIONS/STATUS > 旧提交、旧文档、外部参考。代码、测试、诊断是事实证据，但不能替代产品取舍。
 
 ## 1. 一轮开发：九步
@@ -95,11 +97,11 @@
 - **环境**：shell 是 Windows PowerShell 5.1，脚本不依赖 `pwsh` 7 语法；日常用受影响单测加 `typecheck`，里程碑前跑全量 `npm run check`，失败先定位不跳过。
 - **范围**：不恢复已删除的旧范围、旧 UI、旧执行器；恢复要有真实入口、需求和验收。
 - **数据**：源码、用户数据、凭据、参考项目、过程材料分开；`.work/` 只放本机过程材料；写入只经工单与工作区，工作区外按次授权，网络默认禁止。
-- **本机 harness 与技能**：DSH 注入与用户级技能在 `~/.dsh` 维护；仓库只维护一个治理运行技能 `skills/noema-development/SKILL.md`（九步步骤、条目模板、出口），源在仓库，用 `npm run skill:install` 同步到 `~/.dsh/skills`，`docs:check` 校验副本一致（CI 只提示）。技能只写步骤，规则以本文件为准。
+- **本机 harness 与技能**：DSH 注入与用户级技能在 `~/.dsh` 维护；仓库只维护一个模板技能 `skills/noema-development/SKILL.md`（只放立项三件套与条目骨架，不放流程、门槛、命令），源在仓库，用 `npm run skill:install` 同步到 `~/.dsh/skills`，`docs:check` 校验副本一致（CI 只提示）。技能与本文件冲突时以本文件为准。
 - **交付**：记录“下次改这里”的入口和验证命令，让下一位 Agent 一次搜索、一个命令接上；用户的可观察入口是看板卡片正文（现在能做什么 + 手测步骤 + 还没做），不是聊天记录。
 
 ## 6. 不新建并行体系
 
-机制只用三层 + 三个频率：产品定义在 PRODUCT，本轮执行计划在 `openspec/changes/`，回归合同在 `openspec/specs/`，排序与状态在**唯一一个** GitHub Project 看板（`scripts/maintenance.mjs` 只校验指向它的链接，不镜像它）；STATUS 只记事实，README 的架构图是这套结构的可视化入口。不新增第二个看板、ROADMAP、第二套计划或过程规范——那会和权威源断裂，是纯熵增（2026-11-15 用户明确否决过这种做法）。常驻文档固定 5 份 + README + 本文件，one-in-one-out；历史由 Git 保存，过程材料放 `.work/`。
+机制只用三层 + 三个频率：产品定义在 PRODUCT，本轮执行计划在 `openspec/changes/`，回归合同在 `openspec/specs/`，排序与状态在**唯一一个** GitHub Project 看板（`scripts/maintenance.mjs` 只校验指向它的链接，不镜像它）；STATUS 只记事实；README 的产品架构图与 AGENTS 顶部的治理全景图是这套结构的可视化入口。不新增第二个看板、ROADMAP、第二套计划或过程规范——那会和权威源断裂，是纯熵增（2026-11-15 用户明确否决过这种做法）。常驻文档固定 5 份 + README + 本文件，one-in-one-out；历史由 Git 保存，过程材料放 `.work/`。
 
 本文件只在治理、门槛或工作流结构变化时修改。

@@ -792,3 +792,25 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 - [x] #149 的违规点有结论与后续动作 — design.md「#149 审核结论」
 - [x] 平台保护真的挡住越界 — 协作者视角推一个触碰维护者路径的 PR，应被 `collaboration` 拦且不能自行合并
 - 用户确认：2026-11-16
+
+## 🔧 D-20261116-governance-layers 治理分层：提示层、事实流与机器层
+
+- **阶段**：执行中
+- **结构**：本轮把“怎么做”从三处重复收成三层——提示层（AGENTS 规则、技能模板、OPERATIONS 命令）、事实流（你 → DECISIONS → 卡 + change → 九步执行 → 交付与证据 → STATUS）、机器门（提交/里程碑/PR/平台树）；`figure.mjs` 支持两张图，治理全景图只在 AGENTS 链接。
+- **来源**：用户 2026-11-16 要求优化治理结构层次并补治理架构图。
+- **阻塞**：无
+
+#### 1 决策
+
+- 决定：技能只留模板；流程、门槛、出口、命令各归一处；新增治理全景图，与产品图分开读者。
+
+#### 2 执行
+
+- 批次：changes/governance-layers
+- 发现：单图工具改造后，AGENTS 一改就会触发治理图漂移——图源与入口都在 AGENTS，这是对的，但要在 §1 末尾写明“改了治理结构就重出图”。
+
+#### 3 验收
+
+- [ ] `npm run review` 只列三类待办 — `npm run review`
+- [ ] 治理图能看到提示层/事实流/机器门 — 打开 `docs/assets/noema-governance.html`
+- [ ] 技能只剩模板 — 读 `skills/noema-development/SKILL.md`

@@ -30,7 +30,7 @@
     "maintenance:test": "node --test scripts/maintenance.test.mjs",
     "milestone:check": "node scripts/maintenance.mjs milestone",
     "platform:check": "node scripts/maintenance.mjs platform",
-    "figure:build": "node scripts/figure.mjs build",
+    "figure:build": "node scripts/figure.mjs build all",
     "figure:test": "node --test scripts/figure.test.mjs",
     "inbox": "node scripts/inbox-bridge.mjs list",
     "inbox:test": "node --test scripts/github-inbox.test.mjs scripts/inbox-bridge.test.mjs",

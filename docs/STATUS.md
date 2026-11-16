@@ -13,7 +13,7 @@ Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与�
 
 ## 最后一次验证（2026-11-16）
 
-- `npm run check`（= `governance milestone`）：**885/885，0 fail，49,991ms**；链为 `workspace:check` → `branches:check` → `docs:check` → `figure:check` → `plan:check` → `source:check` → `lint` → `typecheck` → `tools:test`（39 个维护脚本测试）→ `test`。
+- `npm run check`（= `governance milestone`）：**887/887，0 fail，57,287ms**；链为 `workspace:check` → `branches:check` → `docs:check` → `figure:check` → `plan:check` → `source:check` → `lint` → `typecheck` → `tools:test`（39 个维护脚本测试）→ `test`。
 - 安装包：`npm run make:desktop` 产出 `Noema-0.7.6 Setup.exe`（170,410,496 字节，sha256 `6E773C854FBF6E4B0A39720608737555114E5E95E9F5526F1E05D7A32964BCDC`）、`noema_desktop-0.7.6-full.nupkg`、`RELEASES`；把 `TEMP`/`SQUIRREL_TEMP` 指到可写目录后 `Setup.exe --silent` 能装出 `app-0.7.6`（载荷验证）。
 - CI：run `43699905215` success（9.9 分钟，commit `ed11513`），干净 Windows runner 上含 `make:desktop` 与安装/升级/卸载数据保留验证。
 - 架构图：`figure:build` 端到端跑通（Archify 四 gate 全 pass → Edge 截图 → 摘要回写），`figure:check` 保证与 `docs/ARCHITECTURE.md` 同步。
@@ -41,6 +41,12 @@ Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与�
 - DSH 插件 `plugins/inbox-bridge/`（v1.1.0，默认 2 分钟轮询）+ 仓库侧 `scripts/inbox-bridge.mjs`：外部事件注入下一次对话步骤，三态 pending/delivered/done，`npm run inbox:ack` 标记完成。
 - 证据：`node --test scripts/inbox-bridge.test.mjs` 4/4；`node .work/probe-inbox-plugin.mjs` → injected 1 / delivered；插件已安装为 `dsh-inbox-bridge@1.1.0`（重启 DSH 后在真实会话生效）；旧 Windows 计划任务已删除。
 - `npm run inbox` 现在是带状态的列表；旧的 `github-inbox.mjs --poll` 仍是抓取后端；来源不可用（gh 掉线/离线）时只打印 `skipped` 并退出 0，不阻塞任何门槛。
+
+## 治理分层（2026-11-16）
+
+- 技能只留模板（立项三件套 + 决议条目骨架），流程/门槛/出口/命令各归 AGENTS 与 OPERATIONS。
+- `scripts/figure.mjs` 支持两张图；新增治理全景图 `docs/assets/noema-governance.*`（提示层 / 事实流 / 机器门），AGENTS 顶部链接，不进 README。
+- 条目验收项可勾选，勾完 `npm run decisions:sync` 自动收口；`npm run review` 显示勾选进度。
 
 ## 未验证
 
