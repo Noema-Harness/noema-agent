@@ -36,7 +36,9 @@ jobs:
   # （`apps/desktop/test/support/platform-cases.mjs` 的 `windowsOnly`），跳过原因会出现在日志里；
   # 其余失败一律是真回归，和 `verify` 一起构成 PR 合并门（D-20261116-platform-layers 第③刀）。
   portable:
-    if: github.event_name == 'pull_request'
+    # 只在 main 推送时跳过（推送走 verify + platform 的快速路径）；
+    # PR 与手动 workflow_dispatch 都跑，发布前可用它确认整棵树的 Ubuntu 结果。
+    if: github.event_name != 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
