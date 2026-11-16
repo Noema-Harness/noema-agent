@@ -20,11 +20,20 @@ import {
 } from '../src/main/execution/windows-runner-package-contract.ts';
 
 const appDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const targetPlatform = process.platform;
 const packageDirectory = process.env.NOEMA_PACKAGE_DIR
   ? path.resolve(process.env.NOEMA_PACKAGE_DIR)
-  : path.join(appDir, 'out', 'Noema-win32-x64');
-const packagedApp = path.join(packageDirectory, 'Noema.exe');
-const resourcesDirectory = path.join(packageDirectory, 'resources');
+  : path.join(appDir, 'out', `Noema-${targetPlatform}-${process.arch}`);
+const packagedApp =
+  targetPlatform === 'win32'
+    ? path.join(packageDirectory, 'Noema.exe')
+    : targetPlatform === 'darwin'
+      ? path.join(packageDirectory, 'Noema.app', 'Contents', 'MacOS', 'Noema')
+      : path.join(packageDirectory, 'Noema');
+const resourcesDirectory =
+  targetPlatform === 'darwin'
+    ? path.join(packageDirectory, 'Noema.app', 'Contents', 'Resources')
+    : path.join(packageDirectory, 'resources');
 const archivePath = path.join(resourcesDirectory, 'app.asar');
 const timeoutMs = 60_000;
 
@@ -58,52 +67,61 @@ if (missingDependencies.length > 0) {
   );
 }
 
-const runnerResourceDirectory = path.join(resourcesDirectory, 'windows-runner');
-const runnerEntries = readdirSync(runnerResourceDirectory).sort();
-if (
-  runnerEntries.length !== 2 ||
-  runnerEntries[0] !== WINDOWS_RUNNER_RESOURCE_NAME ||
-  runnerEntries[1] !== WINDOWS_RUNNER_PACKAGE_MANIFEST ||
-  existsSync(path.join(resourcesDirectory, 'srt-win')) ||
-  [...archiveEntries].some(
-    (entry) =>
-      entry.includes('@anthropic-ai/sandbox-runtime') ||
-      entry.includes('srt-win'),
-  )
-) {
-  throw new Error(
-    `Windows package contains an unexpected runner resource set: ${runnerEntries.join(', ')}`,
+if (targetPlatform === 'win32') {
+  const runnerResourceDirectory = path.join(
+    resourcesDirectory,
+    'windows-runner',
   );
-}
-const runnerExecutable = readFileSync(
-  path.join(runnerResourceDirectory, WINDOWS_RUNNER_RESOURCE_NAME),
-);
-const runnerManifest = JSON.parse(
-  readFileSync(
-    path.join(runnerResourceDirectory, WINDOWS_RUNNER_PACKAGE_MANIFEST),
-    'utf8',
-  ),
-);
-const runnerDigest = createHash('sha256')
-  .update(runnerExecutable)
-  .digest('hex');
-if (
-  runnerManifest.backendId !== WINDOWS_RUNNER_BACKEND_ID ||
-  runnerManifest.backendVersion !== WINDOWS_RUNNER_BACKEND_VERSION ||
-  runnerManifest.protocolVersion !== WINDOWS_RUNNER_PROTOCOL_VERSION ||
-  runnerManifest.platform !== 'win32' ||
-  runnerManifest.arch !== 'x64' ||
-  runnerManifest.executable !== WINDOWS_RUNNER_RESOURCE_NAME ||
-  runnerManifest.sha256 !== runnerDigest
-) {
-  throw new Error('Packaged Windows runner identity or digest does not match.');
-}
-if (
-  archiveEntries.has(
-    'native/windows-runner/target/x86_64-pc-windows-msvc/release/noema-windows-runner.exe',
-  )
-) {
-  throw new Error('Native runner build output was duplicated inside app.asar.');
+  const runnerEntries = readdirSync(runnerResourceDirectory).sort();
+  if (
+    runnerEntries.length !== 2 ||
+    runnerEntries[0] !== WINDOWS_RUNNER_RESOURCE_NAME ||
+    runnerEntries[1] !== WINDOWS_RUNNER_PACKAGE_MANIFEST ||
+    existsSync(path.join(resourcesDirectory, 'srt-win')) ||
+    [...archiveEntries].some(
+      (entry) =>
+        entry.includes('@anthropic-ai/sandbox-runtime') ||
+        entry.includes('srt-win'),
+    )
+  ) {
+    throw new Error(
+      `Windows package contains an unexpected runner resource set: ${runnerEntries.join(', ')}`,
+    );
+  }
+  const runnerExecutable = readFileSync(
+    path.join(runnerResourceDirectory, WINDOWS_RUNNER_RESOURCE_NAME),
+  );
+  const runnerManifest = JSON.parse(
+    readFileSync(
+      path.join(runnerResourceDirectory, WINDOWS_RUNNER_PACKAGE_MANIFEST),
+      'utf8',
+    ),
+  );
+  const runnerDigest = createHash('sha256')
+    .update(runnerExecutable)
+    .digest('hex');
+  if (
+    runnerManifest.backendId !== WINDOWS_RUNNER_BACKEND_ID ||
+    runnerManifest.backendVersion !== WINDOWS_RUNNER_BACKEND_VERSION ||
+    runnerManifest.protocolVersion !== WINDOWS_RUNNER_PROTOCOL_VERSION ||
+    runnerManifest.platform !== 'win32' ||
+    runnerManifest.arch !== 'x64' ||
+    runnerManifest.executable !== WINDOWS_RUNNER_RESOURCE_NAME ||
+    runnerManifest.sha256 !== runnerDigest
+  ) {
+    throw new Error(
+      'Packaged Windows runner identity or digest does not match.',
+    );
+  }
+  if (
+    archiveEntries.has(
+      'native/windows-runner/target/x86_64-pc-windows-msvc/release/noema-windows-runner.exe',
+    )
+  ) {
+    throw new Error(
+      'Native runner build output was duplicated inside app.asar.',
+    );
+  }
 }
 
 const smokeDirectory = createDevelopmentDirectory('noema-package-smoke-');
@@ -127,7 +145,14 @@ Object.assign(childEnvironment, {
 delete childEnvironment.NOEMA_FREELLMAPI_API_KEY;
 delete childEnvironment.NOEMA_FREELLMAPI_BASE_URL;
 
-const child = spawn(packagedApp, ['--enable-logging=stderr'], {
+const launchArguments = ['--enable-logging=stderr'];
+if (targetPlatform === 'linux') {
+  // CI runs as an unprivileged user without user namespaces; Electron's own
+  // sandbox aborts the launch before the app can start. This flag belongs to
+  // the test harness only, never to the product.
+  launchArguments.push('--no-sandbox');
+}
+const child = spawn(packagedApp, launchArguments, {
   cwd: path.dirname(packagedApp),
   env: childEnvironment,
   stdio: 'inherit',

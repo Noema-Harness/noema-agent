@@ -1,7 +1,7 @@
 name: Desktop package
 
-# 打包与安装包验证昂贵（Windows runner 约 10 分钟）：只在触及桌面端的 PR 与手动触发时跑。
-# 发布前由维护者用 workflow_dispatch 手动跑一次全流程。
+# 打包昂贵（每个平台约 5–10 分钟）：只在触及桌面端的 PR 与手动触发时跑。
+# 每个平台各自打包并冒烟自己的产物；Windows 额外验证 Squirrel 安装生命周期。
 on:
   pull_request:
     paths:
@@ -16,7 +16,12 @@ concurrency:
 
 jobs:
   package:
-    runs-on: windows-latest
+    name: package (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -26,17 +31,32 @@ jobs:
           node-version: 24.21.0
           cache: npm
       - run: npm ci
-      - run: npm run smoke
+      - name: Install Linux display and packaging tools
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y xvfb rpm
+      - name: Development startup smoke
+        if: runner.os == 'Windows'
+        run: npm run smoke
       - run: npm run package:desktop
-      - run: npm run smoke:package
+      - name: Packaged startup smoke (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a npm run smoke:package
+      - name: Packaged startup smoke
+        if: runner.os != 'Linux'
+        run: npm run smoke:package
       - run: npm run make:desktop
       - name: Verify Squirrel install, upgrade, and uninstall data retention
+        if: runner.os == 'Windows'
         shell: pwsh
         run: npm run smoke:installer --workspace noema-desktop
-      - uses: actions/upload-artifact@v4
+      - name: Upload portable package
         if: success() && github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
         with:
-          name: noema-windows-portable-${{ github.sha }}
-          path: apps/desktop/out/Noema-win32-x64/
+          name: noema-portable-${{ matrix.os }}-${{ github.sha }}
+          path: |
+            apps/desktop/out/Noema-win32-x64/
+            apps/desktop/out/Noema-linux-x64/
+            apps/desktop/out/Noema-darwin-*/
           if-no-files-found: error
           retention-days: 7

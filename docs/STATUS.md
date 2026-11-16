@@ -61,10 +61,11 @@ Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与�
 ## 平台解耦（2026-11-17）
 
 - 第①刀（PR #162，`c329d84`）：新增执行后端端口 `apps/desktop/src/main/runtime/work-runtime.ts`（`WorkRuntime.startTask` → `{ started, done, stop }` + 五类事件），DSH 与 native 后端各声明实现；`platform/workspace-identity.ts` 的 `workspacePathKey()` 收拢 Windows 路径折叠；`diagnostics/database-recovery.ts` 去掉 Electron 类型引用；`main/chat`、stores 等核心目录不再比较 `process.platform`。
+- 第②刀（change `package-ci-matrix`，2026-11-17）：`apps/desktop/scripts/smoke-package.mjs` 按宿主平台解析产物（win32 `Noema.exe`、linux `Noema`、darwin `Noema.app/Contents/MacOS/Noema`，默认目录 `out/Noema-<platform>-<arch>`），Windows runner 与托盘断言只在 win32 执行；`Desktop package` 改为 `windows-latest`/`ubuntu-latest`/`macos-latest` 矩阵，三平台各自 `package:desktop` + 产物冒烟 + `make`（Linux 装 `xvfb`/`rpm`，冒烟用 `xvfb-run`），Windows 保留 dev smoke 与 Squirrel 安装生命周期；artifact 按平台命名。产品仍只发布 Windows 包。
 - 第③刀（change `platform-windows-only-tests`，2026-11-17）：新增 `apps/desktop/test/support/platform-cases.mjs` 的 `windowsOnly(reason)`（非 Windows 输出 `Windows-only: <原因>` 并跳过，Windows 上照常执行）；12 条 Ubuntu 失败用例按 CI 日志逐条标记（盘符 `path.resolve`/`path.isAbsolute` 2 条、`C:\` 绝对路径 1 条、`\` 分隔符/`..\` 越界/`cmd.exe` 进程树 5 条、`cd /d` 命令 1 条、`path.win32` 校验 3 条）；`portable` job 去掉 `continue-on-error`，PR 上 Ubuntu 测试失败即拦。Windows 用例集合不变；本机 `npm run check` **894/894、0 fail**（新增 3 条辅助测试与 1 条同类用例）。CI run `43978450945`（`workflow_dispatch`，提交 `5938ecf`）：`portable` 1m14s 绿（894 tests / 881 pass / **0 fail** / 13 skipped，其中 12 条是本轮标记、1 条是既有条件跳过）、`verify` 3m15s 绿、`platform` 绿；`collaboration` 在 dispatch 下按设计跳过。
 - 边界检查：核心目录（`main/{agents,archive,chat,diagnostics,mcp,plugins,projects,providers,runtime,storage,tools}` + `src/shared`）的导入与 `process.platform` 规则由 `npm run source:check`（`scripts/source-structure.mjs`）承载；过渡测试 `test/main/core-boundary.test.mjs` 已删除（issue #156，2026-11-17）。
-- 验证：Windows 10 `npm run check` **890/890，0 fail，52,775ms**；`verify`/`platform`/`collaboration`/`package` 四项 CI 全绿；`figure:check` 通过（架构图重出提交 `e12d59b`）。
-- 未做：②打包按系统拆分 + CI 矩阵、④bridge 传输抽象。
+- 验证：Windows 10 `npm run check` **893/893，0 fail**（issue #156 后；894 减去删除的 2 条过渡测试、加上 1 条结构检查）；`verify`/`platform`/`collaboration` CI 全绿；`figure:check` 通过（架构图重出提交 `e12d59b`）。
+- 未做：④bridge 传输抽象（移动端/网页端的前提）。
 
 ## 未验证
 

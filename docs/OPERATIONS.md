@@ -211,7 +211,7 @@ node --test test/main/chat/conversation-continuity.test.mjs
 - 契约：`CONTRIBUTING.md`（协作者可改/不可改、PR 必备、CI 覆盖）。合并只由维护者执行。
 - 文档与规格：协作者可直接改 `docs/**` 与 `openspec/specs/**`，在 PR 的「文档改动」段说明原因；审核以代码与运行证据为准，维护者可改写措辞。`docs:check` 在 PR 上同样运行，未登记文档、缺头、决议结构错误都会被拦。
 - 分支保护：2026-11-16 仓库转为 public（Free 组织的 public 仓库可以启用保护，标准 runner 免费）。`main` 已开启保护：必须通过 `verify` 与 `collaboration` 检查、至少 1 位维护者审核、新提交 dismiss 旧审核、对话必须解决、禁止 force push 与删除；`enforce_admins: false`，维护者可紧急绕过。核对：`gh api repos/Noema-Harness/noema-agent/branches/main/protection`。
-- CI：`Desktop checks` 在 PR 与 main 推送上都跑 `npm run check`，并用 `range` 步骤把提交门套在 PR diff 上（`node scripts/maintenance.mjs range --base origin/<base>`：产品代码必须带计划/状态，未确认决议不能改产品代码）；另执行 `collaboration` 路径检查；`platform` 在 PR 上用 `--base origin/<base>` 只校验本 PR 新开的 change（base 上已有的未收口仍报错），main 推送要求全树 0 个未收口。`Desktop package` 只在触及 `apps/desktop/**`、`package.json` 或锁文件时（PR）与手动 `workflow_dispatch` 时跑 smoke / 打包 / 安装包验证；发布前用 `gh workflow run "Desktop package"` 跑全流程。
+- CI：`Desktop checks` 在 PR 与 main 推送上都跑 `npm run check`，并用 `range` 步骤把提交门套在 PR diff 上（`node scripts/maintenance.mjs range --base origin/<base>`：产品代码必须带计划/状态，未确认决议不能改产品代码）；另执行 `collaboration` 路径检查；`platform` 在 PR 上用 `--base origin/<base>` 只校验本 PR 新开的 change（base 上已有的未收口仍报错），main 推送要求全树 0 个未收口。`Desktop package` 只在触及 `apps/desktop/**`、`package.json` 或锁文件时（PR）与手动 `workflow_dispatch` 时跑：`windows-latest`/`ubuntu-latest`/`macos-latest` 三平台矩阵各自 `npm ci` → `package:desktop` → 产物冒烟 → `make`，Windows 额外跑 dev smoke 与 Squirrel 安装生命周期；发布前用 `gh workflow run "Desktop package"` 跑全流程。
 - 可移植性门：PR 上的 `portable` job 在 `ubuntu-latest` 跑 `npm test`，失败就拦 PR（`D-20261116-platform-layers` 第③刀，2026-11-17 起不再报告期）。main 推送不跑它（推送走 `verify` + `platform` 快速路径）；发布前要确认整棵树在 Ubuntu 的结果，用 `gh workflow run "Desktop checks" --ref main` 手动触发。
   - 只有 Windows 才能验证的用例在文件内显式标记：`test('…', windowsOnly('跳过原因'), () => …)`，辅助在 `apps/desktop/test/support/platform-cases.mjs`；非 Windows 上输出 `Windows-only: <原因>` 并跳过，Windows 上照常执行。
   - 新用例默认必须两平台可过；发现平台耦合时先判断是不是产品代码里的平台假设，是则按第①刀把判断移进宿主层，只有确实验证 Windows 语义（盘符、`\` 分隔符、`cmd.exe`/`taskkill.exe`、`path.win32` 校验）才标记跳过。
@@ -231,13 +231,14 @@ npm run package:desktop
 npm run make:desktop
 ```
 
-- `package:desktop` 产出 `apps/desktop/out/Noema-win32-x64`。
+- `package:desktop` 产出 `apps/desktop/out/Noema-<platform>-<arch>`：Windows 是 `Noema-win32-x64`，Linux 是 `Noema-linux-x64`，macOS 是 `Noema-darwin-<arch>`。
 - `make:desktop` 走 `apps/desktop/scripts/make.mjs`，由它处理三个环境陷阱后再调 `electron-forge make`：
   - `TEMP`/`TMP`/`TMPDIR` 固定到 `apps/desktop/.tmp`（受限令牌下写系统临时目录会被拒绝，NuGet 子进程会因此失败）；
   - `SQUIRREL_TEMP` 固定到 `.tmp/squirrel-temp`（Squirrel 默认在 `%LOCALAPPDATA%\SquirrelTemp` 建临时目录，同样可能不可写）；
   - 把 `apps/desktop/vendor/squirrel/nuget.exe`（NuGet 6.11.1）铺进 `.tmp/squirrel-vendor`，通过 `NOEMA_SQUIRREL_VENDOR` 交给 MakerSquirrel；electron-winstaller 自带的 NuGet 2.8 在打包 `app.asar` 这类高压缩率文件时会抛 `ObjectDisposedException`。
 - 如果 `out/Noema-win32-x64/resources/app.asar` 被其他进程锁住（无法改名），脚本会自动改在 `.tmp/forge-out` 重建并打印提示，命令仍然成功；产物路径以日志为准。2026-11-15 实测占用者是 DSH 的宿主进程（只读句柄、不带 `FILE_SHARE_DELETE`），关掉占用方即可回到默认 `out/`；不要用强制结束代替确认占用。
 - `make` 产出 Squirrel 安装包（`.tmp/forge-out/make/squirrel.windows/x64` 或 `out/make/...`）；发布产物按版本放到外部 release 目录，不提交。
+- 非 Windows：`make` 只验证该平台的 maker 能跑通——macOS 出 ZIP（`MakerZIP` darwin），Linux 出 DEB/RPM（需要 `rpmbuild`，CI 里 `apt-get install rpm`）；Squirrel 安装生命周期只有 Windows 有。产品仍只发布 Windows 包。
 - `apps/desktop/out*`、`apps/desktop/.tmp` 是构建产物，不提交。
 - 安装验证注意：Squirrel Setup 先在 `%LOCALAPPDATA%\SquirrelTemp` 解包。本机仓库目录带 `Low Mandatory Level:(OI)(CI)(NW)` 完整性标签，区内构建的 `Setup.exe` 以 Low IL 运行，写 `%LOCALAPPDATA%`/`C:\ProgramData` 会被内核 MIC 拒绝，此时 Setup 回退到 `C:\ProgramData\<用户>` 并弹 `Unable to write to … - IT policies may be restricting access to this folder`（`icacls <仓库根>` 可看到该标签；`%LOCALAPPDATA%\SquirrelTemp\Squirrel-Install.log` 会有 `Win32Exception (0x80004005): 拒绝访问`）。验证载荷时可把 `SQUIRREL_TEMP`/`TEMP` 指到可写目录（安装根变成该目录的父级）；验证真实安装先把 exe 复制到 `%TEMP%` 再运行（副本没有 Low 标签），或经批准删掉 `apps/desktop/out` 的 Low 标签。
 
@@ -248,6 +249,8 @@ npm run smoke:package --workspace noema-desktop
 ```
 
 需要指定已解包目录时使用 `NOEMA_PACKAGE_DIR`；具体开关以脚本当前入口为准。
+
+默认按宿主平台找产物：win32 `Noema.exe`、linux `Noema`、darwin `Noema.app/Contents/MacOS/Noema`，目录为 `out/Noema-<platform>-<arch>`。Windows runner 资源与托盘断言只在 Windows 执行；Linux CI 用 `xvfb-run -a npm run smoke:package` 启动，并在无特权用户命名空间时附加 `--no-sandbox`（只属于测试侧，不进产品）。
 
 ## 版本与安装
 
