@@ -15,6 +15,9 @@ concurrency:
 jobs:
   verify:
     runs-on: windows-latest
+    # PR 上把架构图漂移降为提示：图是维护者资产，协作者不该为了过门而等待重出图。
+    env:
+      NOEMA_FIGURE_SOFT: ${{ github.event_name == 'pull_request' && '1' || '0' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -28,6 +31,24 @@ jobs:
       - name: The PR carries its plan and no unconfirmed decisions
         if: github.event_name == 'pull_request'
         run: node scripts/maintenance.mjs range --base "origin/${{ github.base_ref }}"
+
+  # 可移植性报告：在 Linux 上跑同一套测试，先把“只有 Windows 能过”的用例暴露出来。
+  # 报告期不拦 PR；用例按平台显式标记后转为 required check（D-20261116-platform-layers 的第②③刀）。
+  portable:
+    if: github.event_name == 'pull_request'
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.21.0
+          cache: npm
+      - run: npm ci
+      - name: Portable tests (report only until Windows-only cases are tagged)
+        run: npm test
 
   platform:
     runs-on: ubuntu-latest

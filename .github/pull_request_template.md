@@ -20,7 +20,7 @@
 
 ## 验证
 
-- [ ] `npm run check`（Windows）
+- [ ] 本机跑过受影响单测与 `npm run typecheck`（全量 `npm run check` 由 CI 在 Windows 上执行）
 - [ ] macOS 上跑过的命令与失败用例（如有）：
 - [ ] `Desktop checks / verify` 通过
 - [ ] 触及桌面端时 `Desktop package` 通过

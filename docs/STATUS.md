@@ -4,7 +4,7 @@ Authority: 本文件只回答一个问题——按现有证据，今天这个版
 Update when: 每次交付、打包或验证结果变化。
 Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与代码实况（见 [ARCHITECTURE](ARCHITECTURE.md)）；决定与理由（见 [DECISIONS](DECISIONS.md)）；命令、安装与诊断（见 [OPERATIONS](OPERATIONS.md)）；治理与门槛（见 [AGENTS](../AGENTS.md)）；计划与进度（见 GitHub Project 看板与 `openspec/changes/`，D-026）。
 
-最后更新：2026-11-16
+最后更新：2026-11-17
 
 ## 版本与基线
 
@@ -13,6 +13,7 @@ Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与�
 
 ## 最后一次验证（2026-11-16）
 
+- 门归属（change `gate-ownership`，2026-11-17）：PR 的 `verify` 把架构图漂移降为提示（`NOEMA_FIGURE_SOFT=1`），`main` 与里程碑仍严格，图由维护者重出；新增报告期的 `portable` job（`ubuntu-latest` 跑同一套测试、不拦 PR），先暴露 Windows-only 用例，按 `D-20261116-platform-layers` 第③刀标记后转必过。本机 `npm run check` 890/890、0 fail、67,571ms。soft 只由 `figure:check` 的命令行读取，库调用默认严格，`figure.test.mjs` 因此在 `NOEMA_FIGURE_SOFT=1` 下也通过（PR #164 verify 修复）。
 - `npm run check`（= `governance milestone`）：**887/887，0 fail，52,458ms**；链为 `workspace:check` → `branches:check` → `docs:check` → `figure:check` → `plan:check` → `source:check` → `lint` → `typecheck` → `tools:test`（80 个维护脚本测试）→ `test`。
 - 安装包：`npm run make:desktop` 产出 `Noema-0.7.6 Setup.exe`（170,410,496 字节，sha256 `6E773C854FBF6E4B0A39720608737555114E5E95E9F5526F1E05D7A32964BCDC`）、`noema_desktop-0.7.6-full.nupkg`、`RELEASES`；把 `TEMP`/`SQUIRREL_TEMP` 指到可写目录后 `Setup.exe --silent` 能装出 `app-0.7.6`（载荷验证）。
 - CI：run `43699905215` success（9.9 分钟，commit `ed11513`），干净 Windows runner 上含 `make:desktop` 与安装/升级/卸载数据保留验证。

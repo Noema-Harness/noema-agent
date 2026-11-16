@@ -866,3 +866,31 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 - [ ] 同一 key 在 resurface 窗口内只注入一次 — 看 `.work/inbox-bridge/plugin.log` 的 `suppressed` 行
 - [ ] 照文档跑 `npm run inbox:ack -- --done -- <key>` 能停止提醒 — `npm run inbox` 里该 key 变 done
 - [ ] `docs/OPERATIONS.md` 的收件箱命令与 CI 说明与实现一致 — 读文件 + `npm run docs:check`
+
+## 🔍 D-20261117-gate-ownership 门的归属：能执行的人才能被要求
+
+- **阶段**：待验收
+- **状态**：决定
+- **用户确认**：2026-11-17
+- **来源**：用户 2026-11-17 对 PR #162 的两点质疑：`check` 不该含只有 Windows 能过的项；架构图是否更新属于维护者判断，不该由协作者提醒。
+- **阻塞**：无
+- **结构**：`scripts/figure.mjs` 的 `check` 支持 soft（PR 设 `NOEMA_FIGURE_SOFT=1` 降为提示）；CI 增报告期 `portable` job（ubuntu 跑同一套测试、不拦 PR）；PR 模板去掉 Windows 全量与出图声明。
+- **决定**：门必须能被被要求执行它的人执行。PR 合并门以 CI 为准，协作者不跑 Windows 全量、不声明架构图；图由维护者在合并前后重出。平台专属用例按 `D-20261116-platform-layers` 第③刀显式标记后，再把可移植测试转为必过。
+
+#### 1 决策
+
+- 决定：门必须能被被要求执行它的人执行；PR 合并门以 CI 为准，架构图由维护者重出。
+- 替代：加一个 `check:portable` 旁路（绕过根因，把一条门拆成两个版本）。
+- 理由：PR #162 的实际交接证明，只有维护者能执行的门会把协作者挡在门外，并把维护者的判断变成协作者负担。
+- 重新审视：若 `portable` 长期无法转绿，说明平台假设散落在产品代码里，应先做第②③刀而不是继续软放行。
+
+#### 2 执行
+
+- 批次：`changes/gate-ownership`（2026-11-17）
+- 发现：`verify` 与 `milestone` 同源（`PROFILES.ci = PROFILES.milestone`），平台耦合在测试层而不在 CI 配置；PR 上 figure 软放行后 `main` 仍严格，漂移会以红色通知落到维护者。
+
+#### 3 验收
+
+- [ ] PR 改 `docs/ARCHITECTURE.md` 不重出图时 `verify` 通过、日志有「PR 只提示」，`main` 推送时 `figure:check` 失败 — 看两次 CI 运行记录
+- [ ] PR 里出现 `portable` job 运行并列出 Ubuntu 失败用例 — 看 Desktop checks 运行页
+- [ ] PR 模板不再要求 Windows 全量或出图声明 — 打开 `.github/PULL_REQUEST_TEMPLATE.md`
