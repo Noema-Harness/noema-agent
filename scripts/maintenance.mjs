@@ -781,9 +781,19 @@ export function checkPrecommit(root, options = {}) {
       }
     }
     if (productCode.length && plan.change && skipSpecs(root, plan.change)) {
-      errors.push(
-        `活动变更 ${plan.change} 标记了 skip_specs，但这次提交含产品代码：行为变更必须在变更里写 specs 增量`,
-      );
+      const impact = factsRequired(root, plan.change)
+        ? factImpact(readText(path.join(root, "openspec", "changes", plan.change, "design.md")))
+        : null;
+      const structural = ["结构", "取舍", "仅执行"].includes(impact?.kind);
+      if (structural) {
+        plan.notices.push(
+          `活动变更 ${plan.change} 标记了 skip_specs：事实影响是「${impact.kind}」，这次代码改动不需要规格增量`,
+        );
+      } else {
+        errors.push(
+          `活动变更 ${plan.change} 标记了 skip_specs，但这次提交含产品代码，事实影响也不是「结构/取舍/仅执行」：行为变更必须在变更里写 specs 增量`,
+        );
+      }
     }
     if (!productCode.length && plan.pending.length) {
       plan.notices.push(`工具/治理改动不受未决产品决策阻塞：${plan.pending.join(", ")}`);
