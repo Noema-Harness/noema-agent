@@ -760,7 +760,7 @@ export function checkPrecommit(root, options = {}) {
         `活动变更 ${plan.change} 写的是 Plan: none（治理变更），但这次提交含产品代码：产品行为必须有对应卡片与规格增量`,
       );
     }
-    if (productCode.length && plan.change && factsRequired(root, plan.change)) {
+    if (processGate && productCode.length && plan.change && factsRequired(root, plan.change)) {
       const impact = factImpact(
         readText(path.join(root, "openspec", "changes", plan.change, "design.md")),
       );
@@ -787,6 +787,11 @@ export function checkPrecommit(root, options = {}) {
     }
     if (!productCode.length && plan.pending.length) {
       plan.notices.push(`工具/治理改动不受未决产品决策阻塞：${plan.pending.join(", ")}`);
+    }
+    if (!processGate && productCode.length) {
+      plan.notices.push(
+        "PR 检查不核对事实影响与 docs 配对：docs/ 是维护者路径，由维护者合入时补写并核对",
+      );
     }
   }
   const decisionsText = readText(path.join(root, "docs", "DECISIONS.md")) ?? "";
