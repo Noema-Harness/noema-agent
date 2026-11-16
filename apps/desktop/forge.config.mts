@@ -17,7 +17,7 @@ import {
   WINDOWS_RUNNER_BACKEND_VERSION,
   WINDOWS_RUNNER_POLICY_VERSION,
   WINDOWS_RUNNER_PROTOCOL_VERSION,
-} from './src/main/execution/windows-runner-package-contract.mjs';
+} from './src/main/execution/windows-runner-package-contract.ts';
 
 const appRoot = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);

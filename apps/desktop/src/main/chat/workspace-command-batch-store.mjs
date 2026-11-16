@@ -1,5 +1,5 @@
 ﻿import { createHash, randomUUID } from 'node:crypto';
-import { requireText, isoNow } from './records.mjs';
+import { requireText, isoNow } from './records.ts';
 import { isWorkspaceIdentity } from '../platform/workspace-identity.ts';
 import {
   MAX_COMMAND_TASK_RECOVERY_BYTES,

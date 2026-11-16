@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { RootStore } from '../../../src/main/storage/root-store.mjs';
 import { OfficialPluginHost } from '../../../src/main/plugins/official-plugin-host.mjs';
-import { OfficialPluginStateStore } from '../../../src/main/plugins/official-plugin-state-store.mjs';
+import { OfficialPluginStateStore } from '../../../src/main/plugins/official-plugin-state-store.ts';
 import { officialContractSample } from '../../../src/main/plugins/official-contract-sample.ts';
 
 function fixture(definitions = []) {

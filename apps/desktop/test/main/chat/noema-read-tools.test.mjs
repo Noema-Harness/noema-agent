@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import test from 'node:test';
-import { createNoemaReadTools } from '../../../src/main/chat/noema-read-tools.mjs';
+import { createNoemaReadTools } from '../../../src/main/chat/noema-read-tools.ts';
 
 test('read tools inspect files without exposing writes', async () => {
   const home = mkdtempSync(path.join(tmpdir(), 'noema-read-tools-home-'));

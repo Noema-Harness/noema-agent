@@ -1,8 +1,8 @@
 import path from 'node:path';
 import { realpath as defaultRealpath } from 'node:fs/promises';
-import { compileWindowsCommandPolicy } from './windows-command-policy.mjs';
+import { compileWindowsCommandPolicy } from './windows-command-policy.ts';
 import { captureWindowsPathIdentity } from './windows-path-identity.ts';
-import { createWindowsRunnerCapabilityGrants } from './windows-runner-capability-grants.mjs';
+import { createWindowsRunnerCapabilityGrants } from './windows-runner-capability-grants.ts';
 import {
   compareWorkspaceIdentities,
   isWorkspaceIdentity,

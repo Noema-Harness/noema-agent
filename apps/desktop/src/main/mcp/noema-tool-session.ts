@@ -1,4 +1,4 @@
-import { NoemaToolServer } from './noema-tool-server.mjs';
+import { NoemaToolServer } from './noema-tool-server.ts';
 
 /**
  * Owns one loopback MCP server for one agent run. DSH receives only the

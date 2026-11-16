@@ -8,12 +8,12 @@ import {
   WINDOWS_RUNNER_BACKEND_VERSION,
   WINDOWS_RUNNER_POLICY_VERSION,
   WINDOWS_RUNNER_PROTOCOL_VERSION,
-} from '../src/main/execution/windows-runner-package-contract.mjs';
+} from '../src/main/execution/windows-runner-package-contract.ts';
 
 export {
   WINDOWS_RUNNER_RESOURCE_NAME,
   WINDOWS_RUNNER_PACKAGE_MANIFEST,
-} from '../src/main/execution/windows-runner-package-contract.mjs';
+} from '../src/main/execution/windows-runner-package-contract.ts';
 
 export async function stageWindowsRunnerResource({
   sourceExecutable,

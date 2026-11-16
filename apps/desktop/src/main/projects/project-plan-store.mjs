@@ -3,7 +3,7 @@ import { isDeepStrictEqual } from 'node:util';
 import {
   ProjectPlanEvidence,
   evidenceRefsSchema,
-} from './project-plan-evidence.mjs';
+} from './project-plan-evidence.ts';
 
 const text = (max) => z.string().trim().min(1).max(max);
 const statusSchema = z.enum([

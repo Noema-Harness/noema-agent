@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 import { redactSensitiveText } from '../../shared/text/sensitive-text.ts';
-import { scanWorkspaceFileBoundary } from './workspace-file-boundary.mjs';
+import { scanWorkspaceFileBoundary } from './workspace-file-boundary.ts';
 import {
   captureWorkspaceIdentity,
   compareWorkspaceIdentities,

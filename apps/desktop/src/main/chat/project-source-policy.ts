@@ -1,5 +1,5 @@
 import type { ChatRun } from './chat-run.ts';
-import { needsWebSearch } from '../tools/web-search.mjs';
+import { needsWebSearch } from '../tools/web-search.ts';
 import {
   extractUserUrls,
   MAX_EXTERNAL_SOURCES_PER_MESSAGE,

@@ -6,7 +6,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { WindowsRunnerNativeHelper } from '../../../src/main/execution/windows-runner-native-helper.mjs';
 import { WindowsRunnerAclJournalStore } from '../../../src/main/execution/windows-runner-acl-journal.mjs';
-import { WindowsRunnerAclTransactionService } from '../../../src/main/execution/windows-runner-acl-transaction.mjs';
+import { WindowsRunnerAclTransactionService } from '../../../src/main/execution/windows-runner-acl-transaction.ts';
 
 const operationId = 'native-helper-operation-01';
 const traceIdentity = {

@@ -2,7 +2,7 @@ import {
   projectPlanParameters,
   projectPlanPhaseStatuses,
 } from '../projects/project-plan-store.mjs';
-import { evidenceSourcesParameters } from '../projects/project-plan-evidence.mjs';
+import { evidenceSourcesParameters } from '../projects/project-plan-evidence.ts';
 
 export const PROJECT_GROUP_SESSION_CONTEXT = Object.freeze({
   maxMessages: 12,

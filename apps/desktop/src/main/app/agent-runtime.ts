@@ -1,5 +1,5 @@
 import type { BrowserWindow } from 'electron';
-import { createAgentRuntimePair } from '../agents/agent-runtime-core.mjs';
+import { createAgentRuntimePair } from '../agents/agent-runtime-core.ts';
 import { RootAgent } from '../agents/root-agent.mjs';
 import {
   DshHeadlessAdapter,

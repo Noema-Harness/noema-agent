@@ -17,7 +17,7 @@ import { createWorkspaceFileDiff } from './workspace-file-diff.ts';
 import {
   scanWorkspaceFileBoundary,
   MAX_WORKSPACE_FILE_SCAN_DEPTH,
-} from './workspace-file-boundary.mjs';
+} from './workspace-file-boundary.ts';
 
 export const COMMAND_MIRROR_MANIFEST_VERSION = 2;
 const SUPPORTED_COMMAND_MIRROR_MANIFEST_VERSIONS = new Set([1, 2]);

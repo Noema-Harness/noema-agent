@@ -6,7 +6,7 @@ import test from 'node:test';
 import {
   LEGACY_HISTORY_CATEGORIES,
   LegacyHistoryArchiveService,
-} from '../../../src/main/archive/legacy-history-archive-service.mjs';
+} from '../../../src/main/archive/legacy-history-archive-service.ts';
 import { RootStore } from '../../../src/main/storage/root-store.mjs';
 
 function createService({ records = [], counts = null } = {}) {

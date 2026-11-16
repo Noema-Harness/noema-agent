@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { captureWorkspaceIdentity } from '../../../src/main/platform/workspace-identity.ts';
-import { reviewWorkspaceGitState } from '../../../src/main/execution/workspace-git-review.mjs';
+import { reviewWorkspaceGitState } from '../../../src/main/execution/workspace-git-review.ts';
 import { resolveGitExecutable } from '../../../../../scripts/git-exec.mjs';
 
 const gitExecutable = resolveGitExecutable();

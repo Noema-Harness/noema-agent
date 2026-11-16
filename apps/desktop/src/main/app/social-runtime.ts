@@ -1,3 +1,4 @@
+import type { NoemaProviderState } from '../../shared/contracts/noema-bridge.d.ts';
 import { dialog, type BrowserWindow } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -334,7 +335,7 @@ export function createSocialWorkDialogs(
 
 export interface SocialStateRuntimeOptions {
   app: { getPath(name: string): string };
-  getRootAgentState: () => Promise<Record<string, unknown>>;
+  getRootAgentState: () => Promise<NoemaProviderState>;
   socialAgentE2eValid: boolean;
   socialWorkEntryE2eValid: boolean;
   testSocialAgentLiveE2e: boolean;

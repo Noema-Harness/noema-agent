@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { ProjectGrowthBatchScheduler } from '../../../src/main/chat/project-growth-batch-scheduler.mjs';
+import { ProjectGrowthBatchScheduler } from '../../../src/main/chat/project-growth-batch-scheduler.ts';
 
 function makeHarness({
   sessionStatus = 'active',

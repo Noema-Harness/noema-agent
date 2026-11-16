@@ -12,7 +12,7 @@ import {
   markWindowsRunnerAclTransactionVerified,
   validateWindowsRunnerAclJournal,
 } from '../../../src/main/execution/windows-runner-acl-journal.mjs';
-import { WindowsRunnerAclTransactionService } from '../../../src/main/execution/windows-runner-acl-transaction.mjs';
+import { WindowsRunnerAclTransactionService } from '../../../src/main/execution/windows-runner-acl-transaction.ts';
 
 const operationId = 'acl-operation-0001';
 const grantA = {

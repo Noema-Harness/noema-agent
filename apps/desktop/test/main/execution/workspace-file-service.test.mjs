@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { WorkspaceFileService } from '../../../src/main/execution/workspace-file-service.mjs';
+import { WorkspaceFileService } from '../../../src/main/execution/workspace-file-service.ts';
 
 test('workspace file service lists and reads a known workspace', async () => {
   const root = realpathSync.native(

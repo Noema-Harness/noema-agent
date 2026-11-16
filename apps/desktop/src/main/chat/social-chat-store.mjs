@@ -24,19 +24,19 @@ import {
   specialistSystemPrompt,
   hydrateMessage,
   hydrateSocialWorkTask,
-} from './records.mjs';
+} from './records.ts';
 import { migrateSocialChatSchema } from './migrations.ts';
 
 export const CONVERSATION_BOUNDARY_MARKER = 'noema:conversation-boundary';
-import { WorkspaceChangeBlobStore } from './workspace-change-blob-store.mjs';
-import { PersonalMemoryStore } from './personal-memory-store.mjs';
-import { UserFollowupStore } from './user-followup-store.mjs';
-import { AgentAssetStore } from './agent-asset-store.mjs';
-import { MessageSearchStore } from './message-search-store.mjs';
+import { WorkspaceChangeBlobStore } from './workspace-change-blob-store.ts';
+import { PersonalMemoryStore } from './personal-memory-store.ts';
+import { UserFollowupStore } from './user-followup-store.ts';
+import { AgentAssetStore } from './agent-asset-store.ts';
+import { MessageSearchStore } from './message-search-store.ts';
 import { WorkspaceCommandBatchStore } from './workspace-command-batch-store.mjs';
 import { ContinuationThreadStore } from './continuation-thread-store.ts';
-import { ConversationBranchStore } from './conversation-branch-store.mjs';
-import { MessageForwardStore } from './message-forward-store.mjs';
+import { ConversationBranchStore } from './conversation-branch-store.ts';
+import { MessageForwardStore } from './message-forward-store.ts';
 import { workspaceFileChangeError } from './workspace-change-error.ts';
 import { isWorkspaceIdentity } from '../platform/workspace-identity.ts';
 import { normalizeSocialWorkPhase } from '../../shared/execution/social-work-phase.ts';
@@ -112,7 +112,7 @@ function workspaceFileHash(bytes) {
 /**
  * Stores stable agent identities separately from conversation rooms.
  * @param {import('better-sqlite3').Database} db
- * @param {{ workspaceChangeBlobDirectory?: string | null, workspaceChangeBlobStore?: import('./workspace-change-blob-store.mjs').WorkspaceChangeBlobStore | null }} [options]
+ * @param {{ workspaceChangeBlobDirectory?: string | null, workspaceChangeBlobStore?: import('./workspace-change-blob-store.ts').WorkspaceChangeBlobStore | null }} [options]
  */
 export class SocialChatStore {
   constructor(db, options = {}) {

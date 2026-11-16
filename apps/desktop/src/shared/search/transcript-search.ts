@@ -136,8 +136,13 @@ function historyExcerpt(content: string, matchAt: number) {
  * not transcript archival: callers decide when to invoke it and how to expose
  * the returned source IDs.
  */
+export type HistorySearchMessage = Pick<
+  NoemaRootMessage,
+  'id' | 'turnId' | 'role' | 'content' | 'status' | 'turnStatus' | 'createdAt'
+>;
+
 export function searchTranscriptHistory(
-  messages: NoemaRootMessage[],
+  messages: HistorySearchMessage[],
   query: string,
   {
     currentTurnId,

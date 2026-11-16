@@ -7,7 +7,7 @@ import {
   MAX_WORKSPACE_FILE_SCAN_ENTRIES,
   MAX_WORKSPACE_FILE_SCAN_DEPTH,
   scanWorkspaceFileBoundary,
-} from '../../../src/main/execution/workspace-file-boundary.mjs';
+} from '../../../src/main/execution/workspace-file-boundary.ts';
 import { captureWorkspaceIdentity } from '../../../src/main/platform/workspace-identity.ts';
 
 function temporaryDirectory() {

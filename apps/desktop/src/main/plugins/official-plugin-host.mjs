@@ -98,7 +98,7 @@ export class OfficialPluginHost {
   /**
    * @param {{
    *   definitions?: object[],
-   *   stateStore: import('./official-plugin-state-store.mjs').OfficialPluginStateStore,
+   *   stateStore: import('./official-plugin-state-store.ts').OfficialPluginStateStore,
    *   recordDiagnostic?: (event: Record<string, unknown>) => void,
    *   hostApiVersion?: number
    * }} options
