@@ -140,7 +140,7 @@ export function checkGovernanceFigure(root = process.cwd()) {
 }
 
 export function checkFigures(root = process.cwd(), options = {}) {
-  const soft = options.soft ?? process.env.NOEMA_FIGURE_SOFT === "1";
+  const soft = options.soft === true;
   const errors = [];
   const notices = [];
   for (const figure of Object.values(FIGURES)) {
@@ -421,7 +421,9 @@ if (invokedDirectly) {
   if (command === "check") {
     process.exitCode = report(
       "figure-check",
-      checkFigures(process.cwd(), { soft: process.argv.includes("--soft") }),
+      checkFigures(process.cwd(), {
+        soft: process.argv.includes("--soft") || process.env.NOEMA_FIGURE_SOFT === "1",
+      }),
     );
   } else if (command === "build") {
     const name = process.argv[3] ?? "architecture";
