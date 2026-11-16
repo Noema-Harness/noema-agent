@@ -138,7 +138,7 @@ npm run branches:prune -- --apply # 执行删除
 
 三态：`pending`（未送过）→ `delivered`（已注入对话，等处理）→ `done`（处理完）。状态在 `.work/inbox-bridge/state.json`；来源事实由收件箱工具抓取（gh 不可用时静默退出，不阻塞门槛）。
 
-工具不在本仓库：它单独维护在 [Noema-Harness/dsh-inbox-bridge](https://github.com/Noema-Harness/dsh-inbox-bridge)（DSH 插件 `dsh-inbox-bridge`，含 CLI 与 GitHub 抓取）。本仓库只有 `scripts/inbox.mjs` 这个转发器：先看 `INBOX_CLI`，再看同级目录 `..\dsh-inbox-bridge`。
+工具不在本仓库：它单独维护在 [c3115644151/dsh-inbox-bridge](https://github.com/c3115644151/dsh-inbox-bridge)（DSH 插件 `dsh-inbox-bridge`，含 CLI 与 GitHub 抓取）。本仓库只有 `scripts/inbox.mjs` 这个转发器：先看 `INBOX_CLI`，再看同级目录 `..\dsh-inbox-bridge`。
 
 - **只提醒一次不算完**：`delivered` 6 小时内不重复，超过 6 小时仍未 `done` 会再提醒一次（`resurfaceMs` 可配），直到处理完。
 - **自动收口**：同一 workflow+branch 的新 run 成功时，`recovered` 事件会把之前失败事件标 `done`；同一组只保留最新一次失败，不会每条失败都发一遍。
@@ -158,11 +158,11 @@ npm run inbox:ack -- --all-delivered --done    # 清空所有已送达未处理
 运行中注入靠 DSH 插件（同一项目）。安装/更新：
 
 ```powershell
-git clone https://github.com/Noema-Harness/dsh-inbox-bridge C:\Users\NUC\Desktop\dsh-inbox-bridge
+git clone https://github.com/c3115644151/dsh-inbox-bridge C:\Users\NUC\Desktop\dsh-inbox-bridge
 dsh plugin add C:\Users\NUC\Desktop\dsh-inbox-bridge   # 每次更新后重新 add，改完代码要重启 DSH
 ```
 
-配置在 `cordis.patch.yml`（`intervalMs` 默认 45000、`wake` 默认 `first`：用 `followup` 唤醒一个空闲会话，`all` 唤醒全部、`off` 只注入；`resurfaceMs` 默认 6 小时、`offlineReminderMs` 默认 12 小时、`ackHint` 决定通知里教的收口命令；`poll`/`ack` 命令可换成任意来源）。日志：`.work/inbox-bridge/plugin.log`。改插件代码或配置后要重启 DSH 才会生效。
+配置在 `cordis.patch.yml`（`intervalMs` 默认 45000；`delivery` 默认 `quiet`——通知只排队到本轮结束后的下一轮，`wakeup` 才另开一轮且受 `maxConsecutiveWakes` 限制（默认 3，人类发言会重置）；1.x 的 `wake` 键已移除，写了会让插件启动即报错；`resurfaceMs` 默认 6 小时、`offlineReminderMs` 默认 12 小时、`ackHint` 决定通知里教的收口命令；`poll`/`ack` 命令可换成任意来源）。日志：`.work/inbox-bridge/plugin.log`。改插件代码或配置后要重启 DSH 才会生效。
 
 **不要再用 Windows 计划任务**（旧方案每 10 分钟弹一次 node 窗口、且只能等下一轮才看到）；它只做提醒，不代替 `npm run check`，CI 的正式结论以 GitHub Actions 为准。GitHub 网页上的通知状态与本地 `done` 是两套记录：本地 `done` 只表示 agent 已处理，不会改动 GitHub 的未读标记。
 
