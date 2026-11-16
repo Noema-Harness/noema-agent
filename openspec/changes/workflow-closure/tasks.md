@@ -48,6 +48,7 @@
 - [x] 12.2 `stagedPaths` 在合并提交里只取与两个父提交都不同的路径，并补单测。
 - [x] 12.3 `package-lock.json` 补齐 oxlint 的 darwin/linux 原生包。
 - [x] 12.4 文档补 macOS 环境、钩子可执行位与合并提交的修法。
+
 ## 7. 归档
 
 - [x] 7.1 收口验证：`docs-check: OK`、`plan-check: OK`、`tools:test` 全过、`governance audit` 22/2/4（不跑全量 check：里程碑门要求恰好一个活动变更，归档后不存在活动变更）
@@ -91,3 +92,12 @@
 - [x] 11.2 `scripts/maintenance.mjs` 新增 `factImpact`/`factsRequired`/`checkFactSection`：新变更（`created >= 2026-11-16`）必须写「事实影响」，提交门按类别配对（仅执行却改产品代码、结构未更新 ARCHITECTURE、取舍未更新 DECISIONS 都拒绝）
 - [x] 11.3 `design.md` 补 `## 事实影响`、`## 真实切口对照`，并记录六角色删除与图不入库的取舍
 - [x] 11.4 `D-20261116-workflow-closure` 阶段改 `待验收`，三项验收写进条目
+
+## 13. 平台门：本地至多一个变更，main 的树不能有未收口变更（2026-11-16）
+
+- [x] 13.1 `checkPlan` 本地至多一个活动变更，报错写明“先收口再开下一刀，这是规则不是 bug”
+- [x] 13.2 新增 `checkPlatform` 与 `platform` 子命令：main 的树必须没有未收口变更
+- [x] 13.3 PR 门只校验本分支自己的变更；main 上还有别的未收口变更时显式报「main 上还有未收口 change」
+- [x] 13.4 `.github/workflows/desktop-checks.yml` 增加 push main 触发与 `platform` job
+- [x] 13.5 `scripts/maintenance.test.mjs` 覆盖本地超限、平台树非空、PR 侧 main 未收口三种情况（18/18）
+- [x] 13.6 AGENTS/OPERATIONS/CONTRIBUTING/STATUS 写清这是规则不是 bug，以及归档顺序

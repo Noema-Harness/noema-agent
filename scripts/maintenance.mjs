@@ -467,23 +467,25 @@ export function checkPlan(root, options = {}) {
   const errors = [];
   const notices = [];
   const active = activeChanges(root);
-  // PR 分支上会同时看到主分支的活动变更与它自己新增的变更。检查范围只应包含
-  // 本分支推进的那一个，否则任何并行 PR 都会被“至多 1 个活动变更”挡住。
-  const allowedOnBranch = (options.allowActive ?? []).filter((name) => active.includes(name));
-  const ownChanges = active.filter((name) => !allowedOnBranch.includes(name));
-  if (ownChanges.length > 1) {
+  // 本地同时只推进一个变更：手上这个没收口就再立项，等于两份计划并排指导开发。
+  // 平台另有一条更硬的规则（checkPlatform）：合并进 main 的树必须没有未收口 change。
+  // PR 检查会传入 ownChange（本 PR 自己那一刀）：别的活动变更说明 main 上还有
+  // 没归档的计划——不是作者的 bug，但要等维护者收口后才能合并。
+  const prMode = Object.hasOwn(options, "ownChange");
+  const others = prMode ? active.filter((name) => name !== options.ownChange) : [];
+  if (active.length > 1) {
     errors.push(
-      `活动 OpenSpec 变更必须至多 1 个，当前 ${ownChanges.length} 个：${ownChanges.join(", ")}；结束的变更先归档（openspec archive <name> --yes，归档目录不入库），同一时间只推进一个阶段`,
+      `本地同时只能推进 1 个活动 OpenSpec 变更，当前 ${active.length} 个：${active.join(", ")}；先把手上这个收口（npm run milestone:check → openspec archive <name> --yes，归档目录不入库）再开下一刀。这是规则，不是 bug`,
     );
-  } else if (allowedOnBranch.length && ownChanges.length) {
-    notices.push(
-      `本分支推进的变更 ${ownChanges.join(", ")}；base 分支的活动变更 ${allowedOnBranch.join(", ")} 不在本 PR 的检查范围`,
+  } else if (others.length) {
+    errors.push(
+      `main 上还有未收口 change：${others.join(", ")}；同一时间只推进一个变更，等维护者归档后才能合并这个 PR。这不是你的 bug，是上一刀没收口`,
     );
   }
   if (active.length === 0) {
     notices.push("当前没有活动变更：下一轮开始前先在 openspec/changes/ 立项");
   }
-  const change = ownChanges[0] ?? allowedOnBranch[0];
+  const change = options.ownChange && active.includes(options.ownChange) ? options.ownChange : active[0];
   let pending = [];
   let remaining = null;
   let planKind = null;
@@ -509,13 +511,9 @@ export function checkPlan(root, options = {}) {
     if (tasks !== null) {
       const open = countTasks(tasks, "open");
       remaining = open;
-      if (open === 0 && !options.skipCompletionGate) {
+      if (open === 0) {
         errors.push(
           `活动变更 ${change} 的全部任务已完成：先跑 npm run milestone:check，归档该变更后再开新变更，否则计划不再指导开发`,
-        );
-      } else if (open === 0) {
-        notices.push(
-          `活动变更 ${change} 的任务已全部完成：归档由维护者在合入后执行，PR 上不要求先归档`,
         );
       }
       notices.push(`活动变更 ${change}：${countTasks(tasks, "done")} 完成 / ${open} 未完成`);
@@ -681,9 +679,8 @@ export function checkPrecommit(root, options = {}) {
   const processGate = options.processGate ?? true;
   const plan = checkPlan(root, {
     skipSpecValidation: true,
-    allowActive: options.allowActive ?? [],
-    skipAcceptGate: options.skipAcceptGate ?? false,
-    skipCompletionGate: options.processGate === false,
+    skipAcceptGate: processGate === false,
+    ...(options.ownChange ? { ownChange: options.ownChange } : {}),
   });
   const errors = [...docs.errors, ...plan.errors];
   const staged = options.stagedPaths ?? stagedPaths(root, git);
@@ -815,9 +812,10 @@ export function checkRange(root, options = {}) {
   if (!files.length) {
     return { errors: [], notices: [`范围 ${base}...HEAD 没有改动文件`], files };
   }
-  // PR 只对自己的那一刀负责：base 分支的活动变更不算在本 PR 头上；待决/待验收
-  // 是维护者本地的推进节奏，由审核人判断相关性，不在平台门上机械拦截。
-  const added = [
+  // 平台门：main 的树不允许有未收口 change。PR 自身带的那一个变更可以留在 diff 里
+  // （计划与规格证据），但其它活动变更说明 main 上还有没归档的计划——显式报出来，
+  // 让作者知道这不是自己的 bug，而是上一刀没收口。
+  const own = [
     ...new Set(
       files
         .filter((name) => name.startsWith("openspec/changes/"))
@@ -825,17 +823,34 @@ export function checkRange(root, options = {}) {
         .filter((name) => name && name !== "archive"),
     ),
   ];
-  const allowActive = added.length
-    ? activeChanges(root).filter((name) => !added.includes(name))
-    : [];
   const checked = checkPrecommit(root, {
     git,
     stagedPaths: files,
     skipPlanCommitOrder: true,
-    allowActive,
     processGate: false,
+    ownChange: own[0] ?? null,
   });
   return { ...checked, files };
+}
+
+/**
+ * 平台树（main 的合并结果）不允许有未收口的 OpenSpec 变更。
+ *
+ * 本地开发需要 change 目录承载计划；但它一旦合进 main 就成了“没人负责收口的计划”，
+ * 下一轮再立项就会变成并行变更。CI 在 push 到 main 与每个 PR 上跑这条，谁留着未收口
+ * 的变更谁负责先归档。
+ */
+export function checkPlatform(root) {
+  const unclosed = activeChanges(root);
+  if (!unclosed.length) {
+    return { errors: [], notices: ["平台树没有未收口 change：下一轮在本地立项"] };
+  }
+  return {
+    errors: [
+      `平台不允许未收口 change：${unclosed.join(", ")}；先在本地收口（npm run milestone:check → openspec archive <name> --yes，合并 specs 后删除 openspec/changes/<name>/）再提交或合并。这是规则，不是 bug`,
+    ],
+    notices: [],
+  };
 }
 
 function runGit(root, args) {
@@ -885,23 +900,6 @@ function baseFlag(root) {
   return fromCi ? `origin/${fromCi}` : null;
 }
 
-// 本分支相对 base 新增的变更目录（用于 PR 只校验自己那一刀）。
-function changesAddedInRange(root, base) {
-  const result = runGit(root, ["diff", "--name-only", "-z", `${base}...HEAD`]);
-  if (!result.ok) return [];
-  return [
-    ...new Set(
-      result.text
-        .split("\u0000")
-        .filter(Boolean)
-        .map((name) => name.replaceAll("\\", "/"))
-        .filter((name) => name.startsWith("openspec/changes/"))
-        .map((name) => name.split("/")[2])
-        .filter((name) => name && name !== "archive"),
-    ),
-  ];
-}
-
 const entry = process.argv[1] ? path.resolve(process.argv[1]) : "";
 if (entry === fileURLToPath(import.meta.url)) {
   const root = path.resolve(fileURLToPath(new URL("../", import.meta.url)));
@@ -912,22 +910,8 @@ if (entry === fileURLToPath(import.meta.url)) {
         "docs-check",
         checkDocuments(root, (args) => runGit(root, args)),
       );
-    if (command === "plan") {
-      const base = baseFlag(root);
-      const added = base ? changesAddedInRange(root, base) : [];
-      const allowActive = added.length
-        ? activeChanges(root).filter((name) => !added.includes(name))
-        : [];
-      const prMode = Boolean(base);
-      return report(
-        "plan-check",
-        checkPlan(root, {
-          allowActive,
-          skipAcceptGate: prMode,
-          skipCompletionGate: prMode,
-        }),
-      );
-    }
+    if (command === "plan") return report("plan-check", checkPlan(root));
+    if (command === "platform") return report("platform-check", checkPlatform(root));
     if (command === "milestone") return report("milestone-check", checkMilestone(root));
     if (command === "precommit") return report("precommit-check", checkPrecommit(root));
     if (command === "range") {
@@ -935,7 +919,7 @@ if (entry === fileURLToPath(import.meta.url)) {
       return report("range-check", checkRange(root, { base }));
     }
     throw new Error(
-      "Usage: node scripts/maintenance.mjs docs|plan|milestone|precommit|range [--base <ref>]",
+      "Usage: node scripts/maintenance.mjs docs|plan|platform|milestone|precommit|range [--base <ref>]",
     );
   })();
   process.exit(output);

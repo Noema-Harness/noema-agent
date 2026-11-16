@@ -1,7 +1,10 @@
 name: Desktop checks
 
-# 只在 PR 与手动触发时跑：main 推送不再触发，节省 Actions 额度（2026-11-16 因额度用尽全部 job 4s 失败）。
+# PR 跑完整检查；main 推送只跑一条十几秒的平台门（平台树不允许未收口 change）。
+# 2026-11-16 曾因私有仓库额度用尽让所有 job 4s 失败；仓库已公开，标准 runner 免费。
 on:
+  push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -25,6 +28,16 @@ jobs:
       - name: The PR carries its plan and no unconfirmed decisions
         if: github.event_name == 'pull_request'
         run: node scripts/maintenance.mjs range --base "origin/${{ github.base_ref }}"
+
+  platform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.21.0
+      - name: The merged tree carries no unclosed change
+        run: node scripts/maintenance.mjs platform
 
   collaboration:
     if: github.event_name == 'pull_request'

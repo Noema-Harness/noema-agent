@@ -34,6 +34,8 @@ Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与�
 
 - 治理收口（change `workflow-closure`，2026-11-16）：AGENTS 收敛为九步 + 三类出口 + 事实所有权 + 门槛 + 工程边界；design 强制 `## 事实影响` 并由提交门/PR 门按类别配对；4 条原「预防」规则改观察期；六角色表删除、工作流图暂不入库（`.work/workflow/`，待结构稳定后再进 `docs/assets/`）。证据：`docs:check` OK、`plan:check` OK、`scripts/maintenance.test.mjs` 19/19、`tools:test` 55/55、`governance audit` 22 拦截 / 2 提醒 / 4 观察期。
 
+- **平台门（2026-11-16）**：`platform` job 在 main 推送与每个 PR 上检查“本地至多一个活动变更、main 的树没有未收口变更”；main 还留着未收口变更时 PR 会显式报「main 上还有未收口 change」。证据：`scripts/maintenance.test.mjs` 18/18、`npm run tools:test` 55/55、`node scripts/maintenance.mjs platform` 在当前 main 上按预期失败（待验收的 workflow-closure）。
+
 ## 未验证
 
 - 真实 provider 的完整对话链与长时运行。

@@ -10,6 +10,7 @@ import {
   decisionEntries,
   decisionMeta,
   checkMilestone,
+  checkPlatform,
   checkPlan,
   checkPrecommit,
   checkRange,
@@ -186,13 +187,12 @@ test("maintenance tooling enforces document, plan and commit gates", () =>
     write(root, "openspec/changes/stage-two/proposal.md", "# probe\n");
     for (const name of ["design.md", "tasks.md"])
       write(root, `openspec/changes/stage-two/${name}`, "# probe\n");
-    assert.match(checkPlan(root, { skipSpecValidation: true }).errors.join("\n"), /必须至多 1 个/u);
-    assert.equal(
-      checkPlan(root, { skipSpecValidation: true, allowActive: ["stage-probe"] })
-        .errors.join("\n")
-        .includes("必须至多 1 个"),
-      false,
+    assert.match(
+      checkPlan(root, { skipSpecValidation: true }).errors.join("\n"),
+      /本地同时只能推进 1 个/u,
     );
+    // The platform gate refuses a tree that still carries an unclosed change.
+    assert.match(checkPlatform(root).errors.join("\n"), /平台不允许未收口 change/u);
     fs.rmSync(path.join(root, "openspec/changes/stage-two"), { recursive: true });
 
     // A finished task list no longer guides development.
@@ -424,6 +424,15 @@ test("the platform range gate applies the commit rules to a PR diff", () =>
     const root = makeRoot(holder);
     const git = fakeGit();
 
+    // A PR whose base still carries an unclosed change is refused explicitly.
+    const blocked = checkRange(root, {
+      git,
+      files: ["apps/desktop/src/main/main.ts", "openspec/changes/stage-two/tasks.md"],
+    });
+    assert.match(blocked.errors.join("\n"), /main 上还有未收口 change/u);
+
+    // Once the base tree is clean, the same diff is judged on its own plan pairing.
+    fs.rmSync(path.join(root, "openspec/changes/stage-probe"), { recursive: true });
     const bare = checkRange(root, { git, files: ["apps/desktop/src/main/main.ts"] });
     assert.match(bare.errors.join("\n"), /产品代码改动必须同时更新/u);
 

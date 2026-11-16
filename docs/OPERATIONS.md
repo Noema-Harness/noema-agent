@@ -38,7 +38,7 @@ npm run check
 1. `workspace:check`：文档路由、根目录结构、已合入却残留的远端分支；
 2. `docs:check`：五份权威文档的三行头与路由、版本/基线、git 门槛安装状态、DECISIONS 每条阶段与三层、已收口条目的用户确认；
 3. `figure:check`：架构图产物与 `docs/ARCHITECTURE.md` 摘要、README 引用是否同步；
-4. `plan:check`：OpenSpec 活动变更、`Plan:` 卡片链接、任务清单与未决问题；PR 上只校验本分支新增的那个变更（base 分支的活动变更按 `GITHUB_BASE_REF` 排除），并且不套用维护者的待决/待验收流程门（由审核人判断相关性），也不核对「事实影响」与 docs 配对；事实影响是「结构/取舍/仅执行」的变更标 `skip_specs: true` 时，代码改动不需要规格增量（ARCHITECTURE/DECISIONS 由维护者核对）（`docs/` 是维护者路径，由维护者合入时补写），也不要求 PR 先归档自己的变更（归档由维护者合入后执行）；
+4. `plan:check`：本地活动变更至多 1 个；PR 上只校验本分支自己的那个变更（`openspec/changes/<name>/` 出现在 diff 里的）；合并进 main 的树必须没有未收口变更（`platform` 门）。PR 不套用维护者的待决/待验收流程门，也不核对「事实影响」与 docs 配对（由审核人判断相关性）；事实影响是「结构/取舍/仅执行」的变更标 `skip_specs: true` 时，代码改动不需要规格增量。main 上还留着未收口变更时，PR 会显式报「main 上还有未收口 change」——这是规则，不是协作者的 bug；
 5. `source:check`：源码依赖边界，以及 `src` 下 `.mjs` 数量不增加（D-039 TS 迁移棘轮）；
 6. `lint`、`typecheck`、`tools:test`（维护脚本测试）、`test`。
 
@@ -92,6 +92,8 @@ npm run branches:prune -- --apply # 执行删除
 | 文档里写进了不属于它的内容                            | 不是脚本能判的事：每份文档头的 `Does not own` 已写明边界，评审时按边界判断；规划放卡片、状态放 STATUS、架构放 ARCHITECTURE          |
 | proposal 缺少 `Plan:` 卡片链接                        | 产品变更先在看板选卡，再把卡片链接写进 proposal 顶部；纯机制/文档/展示的治理变更写 `Plan: none`，且 diff 不能含 `apps/desktop/src/` |
 | 活动变更超过 1 个                                     | 已完成的先 `openspec archive <name> --yes`（归档目录只留本机，不入库）；过期未做的也归档并写明关闭原因                              |
+| main 上还有未收口 change                              | 维护者先归档 main 上的变更；这不是协作者 PR 的问题，等归档后让检查重跑                                                              |
+| 平台不允许未收口 change                               | 归档并删掉 `openspec/changes/<name>/`、把规格增量合并进 `openspec/specs/` 之后再推送或合并                                          |
 | 活动变更 tasks 全部完成                               | 归档该变更后再开下一个阶段                                                                                                          |
 | `[用户]` 验收项勾选没有确认日期                       | 只有用户明确确认后才勾选，并写成 `（用户确认：YYYY-MM-DD）`                                                                         |
 | milestone 报任务未完成 / 有待决问题 / STATUS 不是当天 | 补完任务、拿到用户答案、更新 STATUS 后再归档                                                                                        |

@@ -29,6 +29,7 @@
     "plan:check": "node scripts/maintenance.mjs plan",
     "maintenance:test": "node --test scripts/maintenance.test.mjs",
     "milestone:check": "node scripts/maintenance.mjs milestone",
+    "platform:check": "node scripts/maintenance.mjs platform",
     "figure:build": "node scripts/figure.mjs build",
     "figure:test": "node --test scripts/figure.test.mjs",
     "inbox": "node scripts/github-inbox.mjs --poll",

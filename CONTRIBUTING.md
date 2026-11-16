@@ -80,6 +80,8 @@ main 推送不再触发 CI（Windows runner 分钟数昂贵）；发布前由维
 
 ## 合并与发布
 
+维护者在合并前会先归档这个 PR 的变更（删掉 `openspec/changes/<name>/`、把规格增量合并进 `openspec/specs/`）。平台门要求 main 的树里没有未收口变更：main 上还留着别的未收口变更时，PR 的 plan/range 检查会报「main 上还有未收口 change」，等维护者归档后再重跑，不是你的改动有问题。
+
 - 检查全绿 + 维护者审核通过 → 维护者 squash 合并，合并后删除分支（`npm run branches:check`）。
 - 归档：维护者在里程碑把变更归档、合并规格、更新 STATUS。协作者不要自己归档，也不要直接改 `openspec/specs/`。
 - 发布：版本号、安装包、哈希、升级验证由维护者统一处理；日常 PR 不带版本号。
