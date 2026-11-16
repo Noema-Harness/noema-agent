@@ -33,10 +33,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 24.21.0
+      - name: The pull request carries only its own change
+        if: github.event_name == 'pull_request'
+        run: node scripts/maintenance.mjs platform --base "origin/${{ github.base_ref }}"
       - name: The merged tree carries no unclosed change
+        if: github.event_name != 'pull_request'
         run: node scripts/maintenance.mjs platform
 
   collaboration:

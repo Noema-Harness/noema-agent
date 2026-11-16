@@ -900,8 +900,42 @@ export function checkRange(root, options = {}) {
  * 下一轮再立项就会变成并行变更。CI 在 push 到 main 与每个 PR 上跑这条，谁留着未收口
  * 的变更谁负责先归档。
  */
-export function checkPlatform(root) {
+export function checkPlatform(root, options = {}) {
   const unclosed = activeChanges(root);
+  const base = options.base ?? null;
+  if (base) {
+    // PR：只允许它自己新开的 change。base 上已存在的未收口 change 说明 main 坏了，
+    // 不能靠 PR 顺手带过去；归档仍由合并方在分支内完成。
+    const git = options.git ?? runGit;
+    const diff = git(root, ["diff", "--name-only", `${base}...HEAD`, "--", "openspec/changes"]);
+    if (!diff.ok) {
+      return {
+        errors: [`无法比较 ${base}：${diff.text.trim() || "git diff 失败"}`],
+        notices: [],
+      };
+    }
+    const own = new Set(
+      diff.text
+        .split("\n")
+        .map((line) => line.trim().replaceAll("\\", "/"))
+        .filter((line) => line.startsWith("openspec/changes/") && line.split("/").length > 2)
+        .map((line) => line.split("/")[2])
+        .filter((name) => name !== "archive"),
+    );
+    const foreign = unclosed.filter((name) => !own.has(name));
+    if (foreign.length > 0) {
+      return {
+        errors: [
+          `平台树在 ${base} 上已有未收口 change：${foreign.join(", ")}；先让 main 收口，PR 不能携带别人的变更`,
+        ],
+        notices: [],
+      };
+    }
+    return {
+      errors: [],
+      notices: [`PR 只带自己的 change（${[...own].join(", ") || "无"}）：合并前在分支内归档`],
+    };
+  }
   if (!unclosed.length) {
     return { errors: [], notices: ["平台树没有未收口 change：下一轮在本地立项"] };
   }
@@ -971,7 +1005,9 @@ if (entry === fileURLToPath(import.meta.url)) {
         checkDocuments(root, (args) => runGit(root, args)),
       );
     if (command === "plan") return report("plan-check", checkPlan(root));
-    if (command === "platform") return report("platform-check", checkPlatform(root));
+    if (command === "platform") {
+      return report("platform-check", checkPlatform(root, { base: baseFlag(root) }));
+    }
     if (command === "milestone") return report("milestone-check", checkMilestone(root));
     if (command === "precommit") return report("precommit-check", checkPrecommit(root));
     if (command === "range") {

@@ -195,7 +195,17 @@ test("maintenance tooling enforces document, plan and commit gates", () =>
     );
     // The platform gate refuses a tree that still carries an unclosed change.
     assert.match(checkPlatform(root).errors.join("\n"), /平台不允许未收口 change/u);
+
     fs.rmSync(path.join(root, "openspec/changes/stage-two"), { recursive: true });
+    // 平台门在 PR 上只允许本 PR 新开的 change：base 上已有的未收口要先收口，
+    // 不能靠 PR 顺手带过去。
+    const ownDiff = () => ({ ok: true, text: "openspec/changes/stage-probe/proposal.md\n" });
+    assert.deepEqual(checkPlatform(root, { base: "origin/main", git: ownDiff }).errors, []);
+    const foreignDiff = () => ({ ok: true, text: "openspec/changes/other/proposal.md\n" });
+    assert.match(
+      checkPlatform(root, { base: "origin/main", git: foreignDiff }).errors.join("\n"),
+      /PR 不能携带别人的变更/u,
+    );
 
     // A finished task list no longer guides development.
     const change = "openspec/changes/stage-probe";
