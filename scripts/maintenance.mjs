@@ -499,15 +499,23 @@ export function checkPlan(root, options = {}) {
   const errors = [];
   const notices = [];
   const active = activeChanges(root);
-  if (active.length > 1) {
+  // PR 分支上会同时看到主分支的活动变更与它自己新增的变更。检查范围只应包含
+  // 本分支推进的那一个，否则任何并行 PR 都会被“至多 1 个活动变更”挡住。
+  const allowedOnBranch = (options.allowActive ?? []).filter((name) => active.includes(name));
+  const ownChanges = active.filter((name) => !allowedOnBranch.includes(name));
+  if (ownChanges.length > 1) {
     errors.push(
-      `活动 OpenSpec 变更必须至多 1 个，当前 ${active.length} 个：${active.join(", ")}；结束的变更先归档（openspec archive <name> --yes，归档目录不入库），同一时间只推进一个阶段`,
+      `活动 OpenSpec 变更必须至多 1 个，当前 ${ownChanges.length} 个：${ownChanges.join(", ")}；结束的变更先归档（openspec archive <name> --yes，归档目录不入库），同一时间只推进一个阶段`,
+    );
+  } else if (allowedOnBranch.length && ownChanges.length) {
+    notices.push(
+      `PR 分支新增变更 ${allowedOnBranch.join(", ")}；主分支的活动变更 ${ownChanges.join(", ")} 不在本 PR 的检查范围`,
     );
   }
   if (active.length === 0) {
     notices.push("当前没有活动变更：下一轮开始前先在 openspec/changes/ 立项");
   }
-  const change = active[0];
+  const change = ownChanges[0] ?? allowedOnBranch[0];
   let pending = [];
   let remaining = null;
   let planKind = null;
@@ -847,6 +855,31 @@ function report(label, result) {
   return 0;
 }
 
+// CI 的 PR run 把 base 分支放在 GITHUB_BASE_REF；本地可用 --base 指定。
+function baseFlag(root) {
+  const explicit = process.argv.indexOf("--base");
+  if (explicit !== -1) return process.argv[explicit + 1];
+  const fromCi = process.env.GITHUB_BASE_REF;
+  return fromCi ? `origin/${fromCi}` : null;
+}
+
+// 本分支相对 base 新增的变更目录（用于 PR 只校验自己那一刀）。
+function changesAddedInRange(root, base) {
+  const result = runGit(root, ["diff", "--name-only", "-z", `${base}...HEAD`]);
+  if (!result.ok) return [];
+  return [
+    ...new Set(
+      result.text
+        .split("\u0000")
+        .filter(Boolean)
+        .map((name) => name.replaceAll("\\", "/"))
+        .filter((name) => name.startsWith("openspec/changes/"))
+        .map((name) => name.split("/")[2])
+        .filter((name) => name && name !== "archive"),
+    ),
+  ];
+}
+
 const entry = process.argv[1] ? path.resolve(process.argv[1]) : "";
 if (entry === fileURLToPath(import.meta.url)) {
   const root = path.resolve(fileURLToPath(new URL("../", import.meta.url)));
@@ -857,12 +890,18 @@ if (entry === fileURLToPath(import.meta.url)) {
         "docs-check",
         checkDocuments(root, (args) => runGit(root, args)),
       );
-    if (command === "plan") return report("plan-check", checkPlan(root));
+    if (command === "plan") {
+      const base = baseFlag(root);
+      const added = base ? changesAddedInRange(root, base) : [];
+      const allowActive = added.length
+        ? activeChanges(root).filter((name) => !added.includes(name))
+        : [];
+      return report("plan-check", checkPlan(root, { allowActive }));
+    }
     if (command === "milestone") return report("milestone-check", checkMilestone(root));
     if (command === "precommit") return report("precommit-check", checkPrecommit(root));
     if (command === "range") {
-      const baseFlag = process.argv.indexOf("--base");
-      const base = baseFlag === -1 ? "origin/main" : process.argv[baseFlag + 1];
+      const base = baseFlag(root) ?? "origin/main";
       return report("range-check", checkRange(root, { base }));
     }
     throw new Error(

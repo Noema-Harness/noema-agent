@@ -183,6 +183,12 @@ test("maintenance tooling enforces document, plan and commit gates", () =>
     for (const name of ["design.md", "tasks.md"])
       write(root, `openspec/changes/stage-two/${name}`, "# probe\n");
     assert.match(checkPlan(root, { skipSpecValidation: true }).errors.join("\n"), /必须至多 1 个/u);
+    assert.equal(
+      checkPlan(root, { skipSpecValidation: true, allowActive: ["stage-probe"] })
+        .errors.join("\n")
+        .includes("必须至多 1 个"),
+      false,
+    );
     fs.rmSync(path.join(root, "openspec/changes/stage-two"), { recursive: true });
 
     // A finished task list no longer guides development.
