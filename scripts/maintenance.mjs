@@ -509,7 +509,7 @@ export function checkPlan(root, options = {}) {
     );
   } else if (allowedOnBranch.length && ownChanges.length) {
     notices.push(
-      `PR 分支新增变更 ${allowedOnBranch.join(", ")}；主分支的活动变更 ${ownChanges.join(", ")} 不在本 PR 的检查范围`,
+      `本分支推进的变更 ${ownChanges.join(", ")}；base 分支的活动变更 ${allowedOnBranch.join(", ")} 不在本 PR 的检查范围`,
     );
   }
   if (active.length === 0) {
@@ -580,7 +580,7 @@ export function checkPlan(root, options = {}) {
       `待用户确认 ${queue.decide.length} 项：${queue.decide.map((item) => item.id).join(", ")}`,
     );
   }
-  if (queue.accept.length && active.length === 0) {
+  if (queue.accept.length && active.length === 0 && !options.skipAcceptGate) {
     errors.push(
       `有 ${queue.accept.length} 项待验收（${queue.accept.map((item) => item.id).join(", ")}）：先请用户确认验收结论，再开新的变更`,
     );
@@ -706,7 +706,12 @@ export function checkMilestone(root, options = {}) {
 export function checkPrecommit(root, options = {}) {
   const git = options.git ?? ((args) => runGit(root, args));
   const docs = checkDocuments(root, git);
-  const plan = checkPlan(root, { skipSpecValidation: true });
+  const processGate = options.processGate ?? true;
+  const plan = checkPlan(root, {
+    skipSpecValidation: true,
+    allowActive: options.allowActive ?? [],
+    skipAcceptGate: options.skipAcceptGate ?? false,
+  });
   const errors = [...docs.errors, ...plan.errors];
   const staged = options.stagedPaths ?? stagedPaths(root, git);
   const skipPlanCommitOrder = options.skipPlanCommitOrder ?? false;
@@ -725,7 +730,7 @@ export function checkPrecommit(root, options = {}) {
           : "工具代码改动必须同时更新 docs/、AGENTS.md 或 openspec/changes/ 里的计划与状态：先勾任务或记录证据，再提交",
       );
     }
-    if (plan.pending.length && productCode.length) {
+    if (processGate && plan.pending.length && productCode.length) {
       errors.push(
         `还有未获用户确认的决议，相关产品行为不能实现：${plan.pending.join(", ")}；工具与文档改动不受此限`,
       );
@@ -783,9 +788,13 @@ export function checkPrecommit(root, options = {}) {
   const queue = reviewQueue(decisionsText);
   if (staged.some((name) => name.startsWith(PRODUCT_CODE_PREFIX))) {
     const blocking = [...queue.decide, ...queue.accept].map((item) => item.id);
-    if (blocking.length) {
+    if (blocking.length && processGate) {
       errors.push(
         `决议条目还没有用户确认/验收（${blocking.join(", ")}）：先确认再改产品代码；本机门只是兜底，约束在流程`,
+      );
+    } else if (blocking.length) {
+      plan.notices.push(
+        `PR 检查不套用维护者的待决/待验收流程门（${blocking.join(", ")}）：由审核人确认是否相关`,
       );
     }
   }
@@ -818,7 +827,26 @@ export function checkRange(root, options = {}) {
   if (!files.length) {
     return { errors: [], notices: [`范围 ${base}...HEAD 没有改动文件`], files };
   }
-  const checked = checkPrecommit(root, { git, stagedPaths: files, skipPlanCommitOrder: true });
+  // PR 只对自己的那一刀负责：base 分支的活动变更不算在本 PR 头上；待决/待验收
+  // 是维护者本地的推进节奏，由审核人判断相关性，不在平台门上机械拦截。
+  const added = [
+    ...new Set(
+      files
+        .filter((name) => name.startsWith("openspec/changes/"))
+        .map((name) => name.split("/")[2])
+        .filter((name) => name && name !== "archive"),
+    ),
+  ];
+  const allowActive = added.length
+    ? activeChanges(root).filter((name) => !added.includes(name))
+    : [];
+  const checked = checkPrecommit(root, {
+    git,
+    stagedPaths: files,
+    skipPlanCommitOrder: true,
+    allowActive,
+    processGate: false,
+  });
   return { ...checked, files };
 }
 
