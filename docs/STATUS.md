@@ -57,6 +57,13 @@ Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与�
 - `platform` 门支持 PR 模式：`node scripts/maintenance.mjs platform --base origin/<base>` 只允许本 PR 新开的 change；main 树仍要求 0 个未收口。CI 的 `platform` job 在 PR 上带 `--base`。
 - 证据：`node --test scripts/collaboration.test.mjs scripts/maintenance.test.mjs` 25/25；`npm run check` 887/887（57,783ms）。
 
+## 平台解耦（2026-11-17）
+
+- 第①刀（PR #162，`c329d84`）：新增执行后端端口 `apps/desktop/src/main/runtime/work-runtime.ts`（`WorkRuntime.startTask` → `{ started, done, stop }` + 五类事件），DSH 与 native 后端各声明实现；`platform/workspace-identity.ts` 的 `workspacePathKey()` 收拢 Windows 路径折叠；`diagnostics/database-recovery.ts` 去掉 Electron 类型引用；`main/chat`、stores 等核心目录不再比较 `process.platform`。
+- 边界检查：过渡测试 `apps/desktop/test/main/core-boundary.test.mjs`（11 个核心目录 + `src/shared`，拦 `electron`/`child_process` 导入与 `process.platform`）；`#156` 决定把规则搬进 `npm run source:check`，落地后删除该测试。
+- 验证：Windows 10 `npm run check` **890/890，0 fail，52,775ms**；`verify`/`platform`/`collaboration`/`package` 四项 CI 全绿；`figure:check` 通过（架构图重出提交 `e12d59b`）。
+- 未做：②打包按系统拆分 + CI 矩阵、③Windows 专属测试跨平台、④bridge 传输抽象；`source:check` 边界规则提升待 #156。
+
 ## 未验证
 
 - 真实 provider 的完整对话链与长时运行。
