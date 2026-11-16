@@ -866,3 +866,35 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 - 项：新会话能按 AGENTS §1 九步推进，每一步都有产物 — 读 AGENTS §1、跑 `npm run review` 与 `npm run plan:check` — 结论：待验收
 - 项：文档结构、三道门与技能模板互相对得上 — `npm run docs:check`、`npm run tools:test` — 结论：待验收
 - 项：按流程跑一个真实产品切口（C6 成员经历）并记录系统差异 — tasks 6.1–6.2 — 结论：待验收
+
+## D-20261116-collaborator-governance 协作者契约与 PR 检查平台化
+
+**形态**：轮次
+**阶段**：待验收
+**看板**：无
+**来源**：用户 2026-11-16 要求把治理框架上传到 GitHub，让协作者按规范提交 PR；同轮要求审核已合入的 macOS PR #149
+**阻塞**：无
+**结构**：`CONTRIBUTING.md` 契约 + `scripts/collaboration.mjs` 路径守卫 + PR 模板治理字段 + CI 拆 checks/package + 合并只由维护者
+**状态**：决定
+**用户确认**：2026-11-16
+
+**决定**：把治理框架作为协作者的可见契约上传到 GitHub：契约写在 `CONTRIBUTING.md`，路径边界由 CI 的 `collaboration` job 检查，PR 模板要求看板卡与 change；私有 Free 组织仓库无法启用分支保护（GitHub 403），所以强制力 = CI 红灯 + 维护者审核 + 约定，合并只由维护者执行。
+
+### 1 决策（执行前）
+
+- 要定什么：外部协作者如何在不破坏治理的前提下提交改动。
+- 候选：A 仅文档约定；B 契约 + PR 模板 + CI 路径检查 + 维护者合并（建议）；C 把仓库转 public 或升 GitHub Pro 以启用 ruleset（外部成本，用户未选）。
+- 纪要：用户 2026-11-16 说“把治理框架也上传到 github，让平台上的 Noema 彻底形成整体，确保所有协作开发者都能按治理规范提交 pr，进行检查”；选择 B。
+- 结论：B。用户确认 2026-11-16。
+
+### 2 执行（执行中）
+
+- 批次：`changes/workflow-closure`（第 10 节，不另开变更，保持一个活动变更）。
+- 已完成：`scripts/collaboration.mjs` 与测试、`CONTRIBUTING.md` 重写、PR 模板、CODEOWNERS 说明、CI 拆 `Desktop checks` / `Desktop package`、`package.json` 加 `guard`、`docs/OPERATIONS.md` 与 STATUS 同步。
+- 审核 #149：结论写在 `changes/workflow-closure/design.md` 的「#149 审核结论」。
+
+### 3 验收（立项时写 v0，交付前复核更新）
+
+- 项：协作者能自己判断改动会不会被拦 — 读契约 + `npm run guard -- --actor <我> --base origin/main` — 结论：待验收
+- 项：触碰维护者路径的 PR 会被 CI 拦 — 推一个本地模拟 PR 或看 job 日志 — 结论：待验收
+- 项：#149 的违规点有结论与后续动作 — design.md「#149 审核结论」— 结论：待验收

@@ -192,6 +192,14 @@ node --test test/main/chat/social-chat-service.test.mjs
 node --test test/main/chat/conversation-continuity.test.mjs
 ```
 
+## 协作与 PR 检查
+
+- 契约：`CONTRIBUTING.md`（协作者可改/不可改、PR 必备、CI 覆盖）。合并只由维护者执行。
+- 平台限制：私有 Free 组织仓库无法启用分支保护或 ruleset（`GET /repos/Noema-Harness/noema-agent/branches/main/protection` 返回 403），强制力 = CI 红灯 + 维护者审核 + 约定。
+- CI：`Desktop checks` 跑 `npm run check` 并执行 `collaboration` 路径检查（PR 必跑）；`Desktop package` 在触达 `apps/desktop/**`、`package.json` 或锁文件时跑 smoke / 打包 / 安装包验证。
+- 本地预演路径检查：`npm run guard -- --actor <登录名> --base origin/main`；维护者返回放行，协作者触碰维护者路径时列出被拦文件并以退出码 1 结束。
+- 路径清单源码在 `scripts/collaboration.mjs` 的 `MAINTAINER_ONLY_PATHS`，改清单时同步 `CONTRIBUTING.md` 的表。
+
 ## 打包
 
 先关闭正在运行的 Noema，避免 `app.asar` 被占用。

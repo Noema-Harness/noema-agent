@@ -34,9 +34,10 @@
     "inbox:test": "node --test scripts/github-inbox.test.mjs",
     "review": "node scripts/review.mjs",
     "review:test": "node --test scripts/review.test.mjs",
-    "tools:test": "node --test scripts/governance.test.mjs scripts/maintenance.test.mjs scripts/figure.test.mjs scripts/branches.test.mjs scripts/github-inbox.test.mjs scripts/workspace.test.mjs scripts/skill-sync.test.mjs scripts/review.test.mjs",
+    "tools:test": "node --test scripts/governance.test.mjs scripts/maintenance.test.mjs scripts/figure.test.mjs scripts/branches.test.mjs scripts/github-inbox.test.mjs scripts/workspace.test.mjs scripts/skill-sync.test.mjs scripts/review.test.mjs scripts/collaboration.test.mjs",
     "governance:test": "node --test scripts/governance.test.mjs",
-    "skill:install": "node scripts/skill-sync.mjs install"
+    "skill:install": "node scripts/skill-sync.mjs install",
+    "guard": "node scripts/collaboration.mjs"
   },
   "engines": {
     "node": ">=24.21 <25"

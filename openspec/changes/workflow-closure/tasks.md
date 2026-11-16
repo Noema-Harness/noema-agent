@@ -60,6 +60,16 @@
 - [x] 9.4 `npm run review` 的分组与条目阶段一致；`docs:check` / `plan:check` 通过（`tools:test` 47/47，9 条旧格式条目 + 收口条目均可解析）
 - [x] 9.5 提交并推送（本提交）
 
+## 10. 协作者治理契约（2026-11-16，D-20261116-collaborator-governance）
+
+- [x] 10.1 `scripts/collaboration.mjs`：维护者列表、维护者路径、`guardContribution`；`scripts/collaboration.test.mjs` 5 个用例（`node --test scripts/collaboration.test.mjs` 通过）
+- [x] 10.2 `CONTRIBUTING.md` 重写成协作者契约（角色 / 可改 / 只能维护者改 / PR 必备 / 检查 / 合并与发布 / 数据）
+- [x] 10.3 PR 模板加治理字段；CODEOWNERS 注明合并只由维护者执行
+- [x] 10.4 CI 拆分：`Desktop checks`（verify + collaboration 路径检查）、`Desktop package`（触达桌面端才跑）
+- [x] 10.5 `package.json` 加 `guard`；`tools:test` 纳入 collaboration 测试
+- [x] 10.6 `docs/OPERATIONS.md` 加「协作与 PR 检查」；STATUS 记录本轮（`npm run check` 885/885，49,991ms）；`npm run guard` 可在本地预演
+- [x] 10.7 #149 审核结论写入 design；#148 去掉能力标签并关闭；STATUS 的 C15 引用改成 change 名
+
 ## 7. 归档
 
 - [ ] 7.1 `npm run check` 全绿
