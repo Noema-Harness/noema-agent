@@ -8,6 +8,7 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 - Windows 10 22H2 x64 或更新版本；当前正式支持 Windows。
 - Node.js **24.21.x**（`>=24.21 <25`）和 npm。
+- macOS（arm64 实测）也用于开发：同样 Node 24.21+；`npm ci` 后需要在仓库根跑一次 `node node_modules/electron/install.js` 下载 Electron 二进制。锁文件已带 oxlint 的 darwin/linux 原生包，`npm run lint` 可直接跑。
 - 当前 shell 为 Windows PowerShell 5.1；脚本不能依赖 `pwsh` 7 专有语法。
 - 用户数据库、凭据和下载的参考源码不进入仓库；`.work/` 只放本机过程材料。
 
@@ -101,6 +102,7 @@ npm run branches:prune -- --apply # 执行删除
 | 架构文档变了但图没重出（figure:check）                | 运行 `npm run figure:build`；不要手改 html/png；README 必须引用 png 与 html                                                         |
 | pre-commit 拒绝产品代码提交                           | 同一次提交带上计划/状态更新与 specs 增量；未决决策只能等用户回答                                                                    |
 | pre-commit 报“本轮变更的计划还没有提交”               | 先把 `openspec/changes/<change>/` 单独提交，再提交产品代码；计划先于实现，Git 历史才能证明开工依据                                  |
+| 合并 main 时 pre-commit 拦下从 main 带进来的代码      | 不会：合并提交只检查与两个父提交都不同的路径（冲突解决与手改），实现见 `scripts/maintenance.mjs` 的 `stagedPaths`                   |
 | pre-commit 只提示“工具/治理改动不受未决产品决策阻塞”  | 正常；工具与文档维护不被产品决策卡住                                                                                                |
 | 新决定一创建就是 `决定`                               | 新议题先写 `待定`（写清要定什么），下一轮再改 `决定`；用户已经拍板时写「**用户确认**：YYYY-MM-DD」                                  |
 
@@ -176,6 +178,8 @@ gh issue comment <n> --body "证据：commit <sha>，check 873/873，STATUS 链�
 ```powershell
 git config core.hooksPath .githooks
 ```
+
+钩子文件在 Git 里带可执行位（`100755`）；macOS/Linux 上若 git 提示 `hook was ignored because it's not set as executable`，说明是旧检出，`chmod +x .githooks/pre-commit` 即可。
 
 检查是否生效：
 

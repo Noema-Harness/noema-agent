@@ -884,12 +884,18 @@ function runGit(root, args) {
   }
 }
 
-function stagedPaths(root, git) {
-  const result = git(["diff", "--cached", "--name-only", "-z"]);
-  return result.text
-    .split("\u0000")
-    .filter(Boolean)
-    .map((name) => name.replaceAll("\\", "/"));
+// 合并提交只算它自己写的改动：与两个父提交都不同的路径（冲突解决与合并时的手改）。
+// 否则从另一侧带进来的、已经过它自己门槛的代码与活动变更会被当成本次新写的产品代码拦下。
+export function stagedPaths(root, git) {
+  const names = (args) =>
+    git(["diff", "--cached", "--name-only", "-z", ...args])
+      .text.split("\u0000")
+      .filter(Boolean)
+      .map((name) => name.replaceAll("\\", "/"));
+  const staged = names([]);
+  if (!git(["rev-parse", "-q", "--verify", "MERGE_HEAD"]).ok) return staged;
+  const theirs = new Set(names(["MERGE_HEAD"]));
+  return staged.filter((name) => theirs.has(name));
 }
 
 function report(label, result) {

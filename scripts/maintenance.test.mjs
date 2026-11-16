@@ -13,6 +13,7 @@ import {
   checkRange,
   localToday,
   reviewQueue,
+  stagedPaths,
 } from "./maintenance.mjs";
 
 const repositoryRoot = path.resolve(fileURLToPath(new URL("../", import.meta.url)));
@@ -672,3 +673,20 @@ test("the commit gate pairs the declared fact kind with the files it changes", (
     });
     assert.match(result.errors.join("\n"), /事实影响写的是「仅执行」/u);
   }));
+
+test("stagedPaths counts only a merge's own changes", () => {
+  const diff = (merging) => (args) => {
+    if (args[0] === "rev-parse") return { ok: merging, text: "" };
+    const againstTheirs = args.includes("MERGE_HEAD");
+    // 对 HEAD：从 main 带进来的产品代码 + 冲突解决的 STATUS；对 MERGE_HEAD：只有本分支的改动与 STATUS。
+    const names = againstTheirs
+      ? ["docs/STATUS.md", "apps/desktop/src/main/branch-only.ts"]
+      : ["docs/STATUS.md", "apps/desktop/src/main/from-main.ts"];
+    return { ok: true, text: names.join("\u0000") + "\u0000" };
+  };
+  assert.deepEqual(stagedPaths(repositoryRoot, diff(true)), ["docs/STATUS.md"]);
+  assert.deepEqual(stagedPaths(repositoryRoot, diff(false)), [
+    "docs/STATUS.md",
+    "apps/desktop/src/main/from-main.ts",
+  ]);
+});

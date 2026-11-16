@@ -42,6 +42,12 @@
 - [x] 6.2 对照差异写进 `design.md`「真实切口对照」：哪步没有文档可写、哪道门拦了但没有恢复路径、哪步被跳过
 - [x] 6.3 工作流图先不入库：流程仍在实跑修正，图留在 `.work/workflow/`；等下一轮真实切口不再改结构时再进 `docs/assets/` 并接 README/AGENTS
 
+## 12. macOS 开发环境（2026-11-16，来自 #154）
+
+- [x] 12.1 `.githooks/pre-commit` 带可执行位（`git update-index --chmod=+x`）。
+- [x] 12.2 `stagedPaths` 在合并提交里只取与两个父提交都不同的路径，并补单测。
+- [x] 12.3 `package-lock.json` 补齐 oxlint 的 darwin/linux 原生包。
+- [x] 12.4 文档补 macOS 环境、钩子可执行位与合并提交的修法。
 ## 7. 归档
 
 - [x] 7.1 收口验证：`docs-check: OK`、`plan-check: OK`、`tools:test` 全过、`governance audit` 22/2/4（不跑全量 check：里程碑门要求恰好一个活动变更，归档后不存在活动变更）
