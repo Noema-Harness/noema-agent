@@ -1,8 +1,7 @@
 name: Desktop checks
 
+# 只在 PR 与手动触发时跑：main 推送不再触发，节省 Actions 额度（2026-11-16 因额度用尽全部 job 4s 失败）。
 on:
-  push:
-    branches: [main]
   pull_request:
   workflow_dispatch:
 

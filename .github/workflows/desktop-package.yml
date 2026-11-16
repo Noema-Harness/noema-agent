@@ -1,8 +1,8 @@
 name: Desktop package
 
+# 打包与安装包验证昂贵（Windows runner 约 10 分钟）：只在触及桌面端的 PR 与手动触发时跑。
+# 发布前由维护者用 workflow_dispatch 手动跑一次全流程。
 on:
-  push:
-    branches: [main]
   pull_request:
     paths:
       - "apps/desktop/**"
