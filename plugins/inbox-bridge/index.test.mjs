@@ -1,11 +1,35 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { deliveryTargets, detectRepo, formatEvents, mergeConfig } from "./index.js";
 
 const idle = { status: "idle" };
 const running = { status: "running" };
 const unknown = {};
+
+function git(cwd, args) {
+  execFileSync("git", args, { cwd, stdio: "ignore", windowsHide: true });
+}
+
+// The repository is inferred from the workspace's git remote, so the test
+// builds its own checkout instead of depending on this machine's paths.
+function withRepos(run) {
+  const root = mkdtempSync(join(tmpdir(), "inbox-bridge-test-"));
+  const repo = join(root, "workspace");
+  const plain = join(root, "plain");
+  try {
+    git(root, ["init", "--quiet", repo]);
+    git(repo, ["remote", "add", "origin", "https://github.com/example-org/example-repo.git"]);
+    git(root, ["init", "--quiet", plain]);
+    return run({ repo, plain });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
 
 test("only idle agents take a notice now; running ones are deferred", () => {
   const { ready, deferred } = deliveryTargets(new Set([idle, running]), {});
@@ -27,8 +51,11 @@ test("an agent without a status field is treated as idle", () => {
 });
 
 test("the plugin watches the repository the workspace points at", () => {
-  assert.equal(detectRepo("C:/Users/NUC/Desktop/noema"), "Noema-Harness/noema-agent");
-  assert.equal(detectRepo("C:/Users/NUC/Desktop"), null);
+  withRepos(({ repo, plain }) => {
+    assert.equal(detectRepo(repo), "example-org/example-repo");
+    assert.equal(detectRepo(plain), null);
+    assert.equal(detectRepo(join(plain, "missing")), null);
+  });
 });
 
 test("the notice says when it was queued and how to stop the reminder", () => {
@@ -51,8 +78,13 @@ test("the notice says when it was queued and how to stop the reminder", () => {
 });
 
 test("config keeps the turn-boundary default and merges poll/ack commands", () => {
-  const options = mergeConfig({ cwd: "C:/Users/NUC/Desktop/noema" });
-  assert.equal(options.injectWhileRunning, false);
-  assert.equal(options.repo, "Noema-Harness/noema-agent");
-  assert.deepEqual(options.poll.args, ["scripts/inbox-bridge.mjs", "poll"]);
+  withRepos(({ repo, plain }) => {
+    const inRepo = mergeConfig({ cwd: repo });
+    assert.equal(inRepo.injectWhileRunning, false);
+    assert.equal(inRepo.repo, "example-org/example-repo");
+    assert.deepEqual(inRepo.poll.args, ["scripts/inbox-bridge.mjs", "poll"]);
+
+    const outside = mergeConfig({ cwd: plain });
+    assert.equal(outside.repo, null);
+  });
 });
