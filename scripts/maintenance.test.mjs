@@ -426,6 +426,23 @@ test("a product change updates the card body before it can be archived", () =>
     assert.deepEqual(checkMilestone(root, { git: fakeGit(), today: TODAY }).errors, []);
   }));
 
+test("a product change does not need a decision entry", () =>
+  withRoot((holder) => {
+    const root = makeRoot(holder, {
+      tasks: "# tasks\n\n- [x] 第一项\n- [x] 更新卡片正文：现在能做什么 + 手测步骤\n",
+    });
+    const change = "openspec/changes/stage-probe";
+    write(root, `${change}/design.md`, "# design\n\n## 用户决策\n\n- 无\n");
+    write(root, `${change}/specs/probe/spec.md`, "# spec\n");
+    write(root, "docs/DECISIONS.md", `# DECISIONS\n\n${HEADER}`);
+    write(
+      root,
+      "docs/STATUS.md",
+      `# STATUS\n\n${HEADER}\n源码版本：\`0.7.6\`\n\n当前源码基线：\`f592a9b\`\n\n最后更新：${TODAY}\n`,
+    );
+    assert.deepEqual(checkMilestone(root, { git: fakeGit(), today: TODAY }).errors, []);
+  }));
+
 test("a decision id carries its date so parallel branches never renumber", () => {
   const legacy = checkDecisionEntries("## D-20261115-probe\n\n- 状态：决定\n");
   assert.deepEqual(legacy.errors, []);

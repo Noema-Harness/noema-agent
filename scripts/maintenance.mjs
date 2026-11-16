@@ -696,15 +696,6 @@ export function checkMilestone(root, options = {}) {
         `产品变更 ${change} 归档前要在 tasks.md 记一条“更新卡片正文（现在能做什么 + 手测步骤 / 还没做）”：卡片正文是用户同步进度与测试的观察口`,
       );
     }
-    const decisionEntriesText = readText(path.join(root, "docs", "DECISIONS.md")) ?? "";
-    const related = decisionEntries(decisionEntriesText).find((entry) =>
-      entry.body.includes(`changes/${change}`),
-    );
-    if (!related) {
-      errors.push(
-        `产品变更 ${change} 没有对应的决议条目：在 docs/DECISIONS.md 建或复用一条日期编号条目，并在「#### 2 执行」记录 changes/${change}`,
-      );
-    }
   }
   const decidedText = readText(path.join(root, "docs", "DECISIONS.md")) ?? "";
   const queue = reviewQueue(decidedText);

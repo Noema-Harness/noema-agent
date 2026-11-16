@@ -364,7 +364,7 @@
   },
   "source": {
     "doc": "AGENTS.md",
-    "sha256": "0cc3fa2a9293014d8acb5907f5cf2945322d2d42c0f6945ef20af4df45bd9399"
+    "sha256": "79edeb35a9617638eb2431196437856a80042282b4dc56caac65caa898d9160b"
   },
   "assets": {
     "html": {
@@ -374,9 +374,9 @@
     },
     "png": {
       "path": "docs/assets/noema-governance.png",
-      "sha256": "8f1823b930a5004d28d361bead3d513ac29a6d67d749553c971ec0775f032bd3",
-      "bytes": 165170
+      "sha256": "0f3f9a217b7bc2a6b8a6773c2b0aaf209ee8d959b46cbcbe8762f2f600420e4e",
+      "bytes": 158941
     }
   },
-  "updatedAt": "2026-11-16T18:34:46.946Z"
+  "updatedAt": "2026-11-16T19:05:45.830Z"
 }

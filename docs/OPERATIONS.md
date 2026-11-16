@@ -136,50 +136,31 @@ npm run branches:prune -- --apply # 执行删除
 
 ### 外部收件箱（GitHub 通知 → 对话）
 
-三态：`pending`（未送过）→ `delivered`（已注入对话，等处理）→ `done`（处理完）。状态在 `.work/inbox-bridge/state.json`；来源事实由收件箱工具抓取（gh 不可用时静默退出，不阻塞门槛）。
-
-工具不在本仓库：它单独维护在 [c3115644151/dsh-inbox-bridge](https://github.com/c3115644151/dsh-inbox-bridge)（DSH 插件 `dsh-inbox-bridge`，含 CLI 与 GitHub 抓取）。本仓库只有 `scripts/inbox.mjs` 这个转发器：先看 `INBOX_CLI`，再看同级目录 `..\dsh-inbox-bridge`。
-
-- **只提醒一次不算完**：`delivered` 6 小时内不重复，超过 6 小时仍未 `done` 会再提醒一次（`resurfaceMs` 可配），直到处理完。
-- **自动收口**：同一 workflow+branch 的新 run 成功时，`recovered` 事件会把之前失败事件标 `done`；同一组只保留最新一次失败，不会每条失败都发一遍。
-- **只报一次的基础设施异常**：`conclusion: startup_failure`（额度、runner 配置等无法靠改代码解决）归为 `kind: infra`，只提醒一次并自动 `done`，不重复打扰。
-- **只收当前仓库**：插件从工作区的 `origin` 推断 `owner/name`（也可配 `repoPath`/`repo`），只拉这个仓库的通知；工作区没连仓库时，插件最多每 12 小时提示一次「收件箱不可用」，请 agent 转告用户。
-- **注入时机**：只在一轮开始前注入——插件每 2 分钟轮询，但只在 agent 空闲时把新事件经 `agent.inject()` 排队到下一轮开始；执行中到来的事件先挂起，等本次执行结束后的下一轮再进入，不打断工具循环（`injectWhileRunning: true` 可强制立即注入，默认关闭）。不会唤醒空闲 agent。
+三态：`pending`（未送过）→ `delivered`（已注入对话，等处理）→ `done`（处理完），状态在 `.work/inbox-bridge/state.json`。工具本身是外部项目 [c3115644151/dsh-inbox-bridge](https://github.com/c3115644151/dsh-inbox-bridge)（安装与配置见那里）；本仓库只有 `scripts/inbox.mjs` 转发器（先看 `INBOX_CLI`，再看同级目录 `..\dsh-inbox-bridge`），只保留下面这几条 Noema 侧命令：
 
 ```powershell
 npm run inbox                                  # 列出三态；--json 给脚本用
 npm run inbox:ack -- --done -- <key>           # 处理完标记 done（唯一会停止提醒的写法）
-npm run inbox:ack -- <key>                     # 只标 delivered（6 小时后会再提醒）
+npm run inbox:ack -- <key>                     # 只标 delivered（之后会再提醒）
 npm run inbox:ack -- --all-delivered --done    # 清空所有已送达未处理
 ```
 
-`--done` 必须写在 `--` 之后：npm 会把 `--` 之前的 `--done` 当成自己的参数吞掉，`npm run inbox:ack --done -- <key>` 实际只标 delivered，脚本会为此打印一行提示。
-
-运行中注入靠 DSH 插件（同一项目）。安装/更新：
-
-```powershell
-git clone https://github.com/c3115644151/dsh-inbox-bridge C:\Users\NUC\Desktop\dsh-inbox-bridge
-dsh plugin add C:\Users\NUC\Desktop\dsh-inbox-bridge   # 每次更新后重新 add，改完代码要重启 DSH
-```
-
-配置在 `cordis.patch.yml`（`intervalMs` 默认 45000；`delivery` 默认 `quiet`——通知只排队到本轮结束后的下一轮，`wakeup` 才另开一轮且受 `maxConsecutiveWakes` 限制（默认 3，人类发言会重置）；1.x 的 `wake` 键已移除，写了会让插件启动即报错；`resurfaceMs` 默认 6 小时、`offlineReminderMs` 默认 12 小时、`ackHint` 决定通知里教的收口命令；`poll`/`ack` 命令可换成任意来源）。日志：`.work/inbox-bridge/plugin.log`。改插件代码或配置后要重启 DSH 才会生效。
-
-**不要再用 Windows 计划任务**（旧方案每 10 分钟弹一次 node 窗口、且只能等下一轮才看到）；它只做提醒，不代替 `npm run check`，CI 的正式结论以 GitHub Actions 为准。GitHub 网页上的通知状态与本地 `done` 是两套记录：本地 `done` 只表示 agent 已处理，不会改动 GitHub 的未读标记。
+`--done` 必须写在 `--` 之后（npm 会吞掉前面的 `--done`，脚本会提示）。注入时机由插件决定：默认排队到下一轮开始，不打断工具循环；插件配置属于那个仓库，不在这里维护。CI 的正式结论以 GitHub Actions 为准，本地 `done` 不改 GitHub 的未读标记。
 
 ### 审核入口与决议条目
 
-`docs/DECISIONS.md` 是唯一需要用户审核的信息源（D-20261116-review-inbox）：
+`docs/DECISIONS.md` 只在需要用户定夺时才有条目（用户要求 / 多方案拍板 / 跨轮次不可逆取舍），普通工作不建条目。条目存在时它是用户审核的信息源（D-20261116-review-inbox）：
 
 - 标题：`## D-… 标题`；有看板 issue 时写 `## [#N](https://github.com/Noema-Harness/noema-agent/issues/N) D-… 标题`（链接就是用户在 GitHub 上的入口）。
 - 字段：第一条固定是 `- **阶段**：决策中 / 执行中 / 待验收 / 已收口`；其后按需写 `- **结构**`（机制类：入口 / 字段 / 校验 / 命令）、`- **来源**`、`- **阻塞**`。没有形态、状态、看板、用户确认字段——阶段就是状态。
 - 三层：`#### 1 决策`（确认后写 `- 决定：`）、`#### 2 执行`（批次 / 发现）、`#### 3 验收`（立项写 v0，交付前按实际更新；已收口在末尾写 `- 用户确认：YYYY-MM-DD`）。阶段可回退：追加「重开」行、旧结论标“已被重开”、受影响 tasks 重开。
 - 验收项写成 `- [ ] 怎么验 — 怎么跑`，在 GitHub 上直接勾选；勾完运行 `npm run decisions:sync`，全部勾选的待验收条目自动改 `已收口` 并补 `- 用户确认：当天日期`（`--dry-run` 预览）。
 - `npm run review` 只读汇总「需要你决定 / 待你验收 / 执行中」，待验收条目显示勾选进度，条目正文仍是唯一权威源；`--json` 给脚本用。
-- 门：`docs:check` 校验阶段在第一条且在四种里、三层齐全、已收口有用户确认；`plan:check` 只把 `待验收` 列为提示，不限制开新变更（决议是存思考的地方，只阻塞它自己引用的里程碑）；`milestone:check` 在产品变更没有对应条目、或仍有 `待验收` 时拒绝归档；`pre-commit` 在 决策中/待验收 时挡 `apps/desktop/src/` 改动（本机兜底，约束在流程）。
+- 门：`docs:check` 校验阶段在第一条且在四种里、三层齐全、已收口有用户确认；`plan:check` 只把 `待验收` 列为提示；`milestone:check` 不要求 change 对应条目，只在“本变更引用的条目”仍未确认或未验收时拒绝；`pre-commit` 在 决策中/待验收 时挡 `apps/desktop/src/` 改动（本机兜底，约束在流程）。
 
 ### 议题与积压放在哪（D-028/D-029）
 
-只有三处，不另建容器：`docs/DECISIONS.md` 放议题与决定（先追加带状态的条目，`待定` 写清「要定什么」，有产出后改成 `决定`，没产出就直接删掉；新条目编号 `D-YYYYMMDD-<短名>`，并行分支不抢号）；看板卡片放能力、排序、状态与**每轮交付的观察口**（正文三段：现在能做什么 + 手测步骤 / 还没做 / 证据留在仓库）；卡片评论只放讨论与触发条件，不放交付日志；当前活动变更的 `tasks.md` 放本轮执行。发散讨论时先把话题追进 DECISIONS 再继续。
+只有三处，不另建容器：看板卡片放能力、排序、状态与**每轮交付的观察口**（正文三段：现在能做什么 + 手测步骤 / 还没做 / 证据留在仓库）；`openspec/changes/<name>/tasks.md` 放本轮执行；`docs/DECISIONS.md` 只在出现需要用户拍板的真议题时追加条目（编号 `D-YYYYMMDD-<短名>`），普通讨论与实现不建条目。发散讨论不必先建条目，等它成熟到需要用户定夺再记录。
 
 ### 规划看板（GitHub Project）
 

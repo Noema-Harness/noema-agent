@@ -40,7 +40,7 @@ Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与�
 
 ## 外部收件箱桥（2026-11-16）
 
-- DSH 插件 `dsh-inbox-bridge`（v2.0.1，默认 45 秒轮询）：外部事件注入下一次对话步骤，三态 pending/delivered/done。**已移出本仓库**，单独维护在 [c3115644151/dsh-inbox-bridge](https://github.com/c3115644151/dsh-inbox-bridge)；本仓库只留 `scripts/inbox.mjs` 转发器（`INBOX_CLI` 或同级 `..\dsh-inbox-bridge`）。
+- 外部收件箱：工具已移出本仓库（[c3115644151/dsh-inbox-bridge](https://github.com/c3115644151/dsh-inbox-bridge)，版本与配置以那里为准）；本仓库只留 `scripts/inbox.mjs` 转发器（`INBOX_CLI` 或同级 `..\dsh-inbox-bridge`）。
 - 低干扰规则：`delivered` 6 小时未处理会再次提醒（`resurfaceMs`）；同组新 run 成功时 `recovered` 自动收口旧失败；`startup_failure` 等基础设施异常归 `infra`，只提醒一次并自动 `done`；同一 workflow+branch 只保留最新一次失败；只在 agent 空闲（回合边界）注入，执行中到达的事件挂起到下一轮（`injectWhileRunning` 默认关闭）。
 - 仓库范围：插件从工作区 `origin` 推断 `owner/name`（或显式 `repo`/`INBOX_REPO`），只拉该仓库；没连仓库时最多 12 小时提示一次，由 agent 转告用户。
 - 证据：插件自身 `npm test` 38/38（在本仓库已不再运行，随源码一起移走）。
