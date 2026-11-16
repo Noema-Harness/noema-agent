@@ -836,3 +836,32 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 - [ ] `AGENTS.md` 不超过 45 行，且没有重复的步骤清单或命令表 — 读文件 + `npm run docs:check`
 - [ ] 阶段枚举只来自 `scripts/lifecycle.mjs` — `node --test scripts/lifecycle.test.mjs`
 - [ ] 治理图与时间轴对得上 — 打开 `docs/assets/noema-governance.html`
+
+## 🔍 D-20261116-inbox-ack-loop 收件箱不再循环：投递抑制、时间戳与可用的收口命令
+
+- **阶段**：待验收
+- **结构**：插件按 key + `resurfaceMs` 抑制重复注入（ack 失败也不循环）；`transition()` 重复投递刷新 `at`；`ack` 只标 delivered 时向 stderr 提示正确命令；注入文案与 `docs/OPERATIONS.md` 命令块统一为 `npm run inbox:ack -- --done -- <key>`
+- **来源**：用户 2026-11-16 反馈同一批收件箱通知被重复注入多轮，并要求把收件箱与门禁一起修好
+- **阻塞**：无
+
+#### 1 决策
+
+- 决定：抑制放在投递侧（插件），不改 `ack` 的默认语义；`--done` 不做默认值，改成显式提示，避免三态退化成两态；文案与文档随代码同批改。
+- 要定：重复注入的根因在哪一层，修在哪一层。
+- 纪要：三条证据——注入文案与 OPERATIONS 教的 `npm run inbox:ack --done -- <key>` 只标 delivered（npm 吞掉 `--done`；正确写法 `npm run inbox:ack -- --done -- probe:dashdash` 实测返回 `{"marked":["probe:dashdash"],"status":"done"}`）；`transition()` 对重复投递不前进 `at`；插件 `ackEvents()` 失败时 `throw`，下一轮照旧重投。2026-11-16 用户选择「把收件箱与门禁修好做成一个 PR」。
+- 结论：三条一起修，变更 `changes/inbox-ack-loop`。
+
+#### 2 执行
+
+- 批次：changes/inbox-ack-loop
+- 已完成：插件抑制与过期清理、`transition` 刷新 `at` 与用例、`ack` 降级提示、三处命令文案、`docs/OPERATIONS.md` 收件箱与 CI 两节。
+- 已完成（2026-11-16 用户追加指令）：工具整体移出本仓库，独立成公开项目 `Noema-Harness/dsh-inbox-bridge`（MIT，v1.4.0，插件 + CLI + GitHub 抓取 + 38 个测试）；本仓库只留 `scripts/inbox.mjs` 转发器（`INBOX_CLI` → 同级目录 `..\dsh-inbox-bridge`），`npm run inbox` / `npm run inbox:ack` 语义不变；`tools:test` 去掉已移走的入口。
+- 发现：`docs/OPERATIONS.md` 说「main 推送不触发 CI」，但 `desktop-checks.yml` 有 `push: branches: [main]`，实测 main 上的推送确实产出 run；文档按两个 workflow 的 `on` 改写。
+- 移出理由：它是通用 DSH 插件（换任何来源都能用），留在 `scripts/` 会一直撞 `collaboration.mjs` 的维护者路径守卫，测试也只能跟着 Noema 的 `tools:test` 跑，两边都无法独立发布。转发器不复制逻辑——找不到就报错退出 2，宁可失败可见。
+- 提交：分支 `fix-inbox-reminder-loop` → PR #155，提交与推送都用 `noema-agent[bot]`（org 级 GitHub App，安装 182542614），与维护者账号可区分；用户侧验收见下节。
+
+#### 3 验收
+
+- [ ] 同一 key 在 resurface 窗口内只注入一次 — 看 `.work/inbox-bridge/plugin.log` 的 `suppressed` 行
+- [ ] 照文档跑 `npm run inbox:ack -- --done -- <key>` 能停止提醒 — `npm run inbox` 里该 key 变 done
+- [ ] `docs/OPERATIONS.md` 的收件箱命令与 CI 说明与实现一致 — 读文件 + `npm run docs:check`
