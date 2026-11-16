@@ -78,3 +78,43 @@ test('production modules cannot import a quarantined runtime', () => {
     removeDevelopmentDirectory(directory);
   }
 });
+
+test('core modules cannot reach the platform directly', () => {
+  const directory = createDevelopmentDirectory('source-core-boundary-');
+  const sourceRoot = path.join(directory, 'src');
+  function write(name, content) {
+    const file = path.join(sourceRoot, name);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, content);
+  }
+  try {
+    write('main/main.ts', "import { app } from 'electron';");
+    write('preload/preload.ts', "import { contextBridge } from 'electron';");
+    write('renderer/renderer.tsx', "import '../shared/value';");
+    write('shared/value.mjs', 'export const value = 1;');
+    assert.deepEqual(inspectSourceStructure(sourceRoot).errors, []);
+
+    write(
+      'main/chat/branches.ts',
+      "export const windows = process.platform === 'win32';",
+    );
+    write('main/chat/electron.ts', "import { app } from 'electron';");
+    write('main/chat/spawn.mjs', "import { spawn } from 'node:child_process';");
+    write('shared/types.ts', "type Window = import('electron').BrowserWindow;");
+    write(
+      'main/chat/comment.ts',
+      '/** never read process.platform here */\nexport const ok = 1;',
+    );
+    const errors = inspectSourceStructure(sourceRoot).errors.join('\n');
+    for (const message of [
+      'Core module branches on process.platform: main/chat/branches.ts',
+      'Core module imports platform dependency: main/chat/electron.ts -> electron',
+      'Core module imports platform dependency: main/chat/spawn.mjs -> node:child_process',
+      'Core module imports platform dependency: shared/types.ts -> electron',
+    ])
+      assert.ok(errors.includes(message), message);
+    assert.ok(!errors.includes('main/chat/comment.ts'));
+  } finally {
+    removeDevelopmentDirectory(directory);
+  }
+});

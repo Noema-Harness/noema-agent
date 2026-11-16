@@ -156,7 +156,7 @@ apps/desktop/src/renderer/
 apps/desktop/src/shared/     跨进程契约与 bridge 类型
 ```
 
-三层的依赖方向：宿主装配核心，并把平台事实以参数传入；核心目录（上表标「核心」的目录与 `src/shared`）不导入 `electron`、`child_process`，不比较 `process.platform`，由 `test/main/core-boundary.test.mjs` 检查。执行后端只通过端口 `runtime/work-runtime.ts`（`WorkRuntime.startTask` → `{ started, done, stop }` 与五类事件）与 `SocialWorkService` 对接，DSH（`integrations/dsh-headless-adapter.mjs`）与 native（`execution/noema-project-executor.mjs`）各自声明实现它，由 `main.ts` 交给 `createWorkRuntimeRegistry`。
+三层的依赖方向：宿主装配核心，并把平台事实以参数传入；核心目录（上表标「核心」的目录与 `src/shared`）不导入 `electron`、`child_process`，不比较 `process.platform`，由 `npm run source:check`（`scripts/source-structure.mjs`，issue #156）检查。执行后端只通过端口 `runtime/work-runtime.ts`（`WorkRuntime.startTask` → `{ started, done, stop }` 与五类事件）与 `SocialWorkService` 对接，DSH（`integrations/dsh-headless-adapter.mjs`）与 native（`execution/noema-project-executor.mjs`）各自声明实现它，由 `main.ts` 交给 `createWorkRuntimeRegistry`。
 
 `main.ts` 仍是启动与组合根；main 下 7 个 `app/`/`testing/` 模块，约 1,303 行。旧 `social-chat-app.tsx`/`workspaces.tsx` 已不再挂载；七个 renderer 模块列入 STATUS 的 dormant registry。不要因为“零引用”直接删除，恢复需要真实入口和验收。
 

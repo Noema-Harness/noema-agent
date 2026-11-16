@@ -10,6 +10,54 @@ const builtins = new Set(builtinModules.map((name) => name.replace(/^node:/u, ""
 const extensions = ["", ".ts", ".tsx", ".mjs", ".js", ".d.ts", ".css"];
 // TypeScript migration ratchet: src/**/*.mjs may only shrink. Lower this after each converted batch.
 const maxJavaScriptSources = 28;
+// Core / port / host boundary (D-20261116-platform-layers, issue #156): core modules carry
+// product logic and must not reach the platform directly. Platform facts arrive as parameters
+// from the host layer (`main.ts`, `platform/`, `app/`); `execution/` is not core yet.
+const coreDirectories = [
+  "main/agents",
+  "main/archive",
+  "main/chat",
+  "main/diagnostics",
+  "main/mcp",
+  "main/plugins",
+  "main/projects",
+  "main/providers",
+  "main/runtime",
+  "main/storage",
+  "main/tools",
+  "shared",
+];
+
+function isCoreModule(name) {
+  return coreDirectories.some(
+    (directory) => name === directory || name.startsWith(`${directory}/`),
+  );
+}
+
+function isPlatformDependency(name) {
+  return (
+    name === "electron" || name.startsWith("electron/") || /^(?:node:)?child_process$/u.test(name)
+  );
+}
+
+/** Comments and strings are not AST property accesses, so a header may name what it avoids. */
+function readsProcessPlatform(source) {
+  let found = false;
+  function visit(node) {
+    if (
+      ts.isPropertyAccessExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === "process" &&
+      node.name.text === "platform"
+    ) {
+      found = true;
+      return;
+    }
+    if (!found) ts.forEachChild(node, visit);
+  }
+  visit(source);
+  return found;
+}
 
 function walk(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
@@ -77,9 +125,14 @@ export function inspectSourceStructure(sourceRoot) {
     const name = relative(file);
     const layer = name.split("/")[0];
     const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
+    const core = isCoreModule(name);
+    if (core && readsProcessPlatform(source))
+      errors.push(`Core module branches on process.platform: ${name}`);
     sizes.push({ file: name, lines: text.split("\n").length });
     for (const dependency of imports(source)) {
       if (!dependency.name.startsWith(".")) {
+        if (core && isPlatformDependency(dependency.name))
+          errors.push(`Core module imports platform dependency: ${name} -> ${dependency.name}`);
         const platform =
           dependency.name.startsWith("node:") ||
           builtins.has(dependency.name) ||
