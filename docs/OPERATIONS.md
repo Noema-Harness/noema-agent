@@ -138,22 +138,28 @@ npm run branches:prune -- --apply # 执行删除
 
 三态：`pending`（未送过）→ `delivered`（已注入对话，等处理）→ `done`（处理完）。状态在 `.work/inbox-bridge/state.json`；来源事实由 `scripts/github-inbox.mjs` 抓取（gh 不可用时静默退出，不阻塞门槛）。
 
-```powershell
-npm run inbox                          # 列出三态；需要读全文时加 --all 走旧脚本
-npm run inbox:ack -- <key>             # 处理完标记 done
-node scripts/inbox-bridge.mjs list --json
-```
-
-运行中注入靠 DSH 插件 `plugins/inbox-bridge/`：默认每 2 分钟轮询一次，把尚未送过的事件经 `agent.inject()` 送进下一次对话步骤（不唤醒空闲 agent），注入后自动标记 `delivered`。
+- **只提醒一次不算完**：`delivered` 6 小时内不重复，超过 6 小时仍未 `done` 会再提醒一次（`resurfaceMs` 可配），直到处理完。
+- **自动收口**：同一 workflow+branch 的新 run 成功时，`recovered` 事件会把之前失败事件标 `done`；同一组只保留最新一次失败，不会每条失败都发一遍。
+- **只报一次的基础设施异常**：`conclusion: startup_failure`（额度、runner 配置等无法靠改代码解决）归为 `kind: infra`，只提醒一次并自动 `done`，不重复打扰。
+- **只收当前仓库**：插件从工作区的 `origin` 推断 `owner/name`（也可配 `repoPath`/`repo`），只拉这个仓库的通知；工作区没连仓库时，插件最多每 12 小时提示一次「收件箱不可用」，请 agent 转告用户。
+- **注入时机**：插件默认每 2 分钟轮询，把新事件经 `agent.inject()` 排队到下一次模型步骤（空闲时排队，等用户下次发言一起进入；执行中则在下一次步骤出现），不会唤醒空闲 agent。
 
 ```powershell
-# 安装/更新（本地 link，改完代码要重启 DSH 才会加载新代）
-dsh plugin add C:\Users\NUC\Desktop\noema\plugins\inbox-bridge
+npm run inbox                                  # 列出三态；--json 给脚本用
+npm run inbox:ack --done -- <key>              # 处理完标记 done（唯一会停止提醒的写法）
+npm run inbox:ack -- <key>                     # 只标 delivered（6 小时后会再提醒）
+npm run inbox:ack -- --all-delivered --done    # 清空所有已送达未处理
 ```
 
-配置在 `plugins/inbox-bridge/cordis.patch.yml`（`intervalMs` 默认 120000；`poll`/`ack` 命令可换成任意来源）。日志：`.work/inbox-bridge/plugin.log`。探针：`node .work/probe-inbox-plugin.mjs`。
+运行中注入靠 DSH 插件 `plugins/inbox-bridge/`。安装/更新：
 
-**不要再用 Windows 计划任务**（旧方案每 10 分钟弹一次 node 窗口、且只能等下一轮才看到）；它只做提醒，不代替 `npm run check`，CI 的正式结论以 GitHub Actions 为准。
+```powershell
+dsh plugin add C:\Users\NUC\Desktop\noema\plugins\inbox-bridge   # 本地 link，改完代码要重启 DSH 加载新代
+```
+
+配置在 `plugins/inbox-bridge/cordis.patch.yml`（`intervalMs` 默认 120000、`resurfaceMs` 默认 6 小时、`offlineReminderMs` 默认 12 小时；`poll`/`ack` 命令可换成任意来源）。日志：`.work/inbox-bridge/plugin.log`。探针：`node .work/probe-inbox-plugin.mjs`。
+
+**不要再用 Windows 计划任务**（旧方案每 10 分钟弹一次 node 窗口、且只能等下一轮才看到）；它只做提醒，不代替 `npm run check`，CI 的正式结论以 GitHub Actions 为准。GitHub 网页上的通知状态与本地 `done` 是两套记录：本地 `done` 只表示 agent 已处理，不会改动 GitHub 的未读标记。
 
 ### 审核入口与决议条目
 

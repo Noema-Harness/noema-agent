@@ -38,9 +38,11 @@ Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与�
 
 ## 外部收件箱桥（2026-11-16）
 
-- DSH 插件 `plugins/inbox-bridge/`（v1.1.0，默认 2 分钟轮询）+ 仓库侧 `scripts/inbox-bridge.mjs`：外部事件注入下一次对话步骤，三态 pending/delivered/done，`npm run inbox:ack` 标记完成。
-- 证据：`node --test scripts/inbox-bridge.test.mjs` 4/4；`node .work/probe-inbox-plugin.mjs` → injected 1 / delivered；插件已安装为 `dsh-inbox-bridge@1.1.0`（重启 DSH 后在真实会话生效）；旧 Windows 计划任务已删除。
-- `npm run inbox` 现在是带状态的列表；旧的 `github-inbox.mjs --poll` 仍是抓取后端；来源不可用（gh 掉线/离线）时只打印 `skipped` 并退出 0，不阻塞任何门槛。
+- DSH 插件 `plugins/inbox-bridge/`（v1.2.0，默认 2 分钟轮询）+ 仓库侧 `scripts/inbox-bridge.mjs`：外部事件注入下一次对话步骤，三态 pending/delivered/done。
+- 低干扰规则：`delivered` 6 小时未处理会再次提醒（`resurfaceMs`）；同组新 run 成功时 `recovered` 自动收口旧失败；`startup_failure` 等基础设施异常归 `infra`，只提醒一次并自动 `done`；同一 workflow+branch 只保留最新一次失败。
+- 仓库范围：插件从工作区 `origin` 推断 `owner/name`（或显式 `repo`），只拉该仓库；没连仓库时最多 12 小时提示一次，由 agent 转告用户。
+- 证据：`node --test scripts/github-inbox.test.mjs scripts/inbox-bridge.test.mjs` 30/30；`npm run tools:test` 69/69；`node .work/probe-inbox-plugin.mjs` → injected 1 / delivered；插件已安装为 `dsh-inbox-bridge@1.2.0`（重启 DSH 后在真实会话生效）；旧 Windows 计划任务已删除。
+- `npm run inbox` 现在是带状态的列表；`npm run inbox:ack --done -- <key>` 是唯一会停止重复提醒的写法；旧的 `github-inbox.mjs --poll` 仍是抓取后端；来源不可用（gh 掉线/离线）时只打印 `skipped` 并退出 0，不阻塞任何门槛。
 
 ## 治理分层（2026-11-16）
 

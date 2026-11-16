@@ -1,9 +1,9 @@
 {
   "name": "dsh-inbox-bridge",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
-  "description": "Poll one external source (CI, issues, mail, anything with a command) and inject its new events into the next agent step, with delivered/handled bookkeeping.",
+  "description": "Poll one external source (CI, issues, mail, any command) and inject new events into the next agent step with delivered/handled bookkeeping, resurfacing and auto-close.",
   "exports": {
     ".": "./index.js",
     "./locale/*.json": "./locale/*.json",

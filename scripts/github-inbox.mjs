@@ -18,6 +18,17 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 export const REPO = "Noema-Harness/noema-agent";
+
+/** The repository this process watches; `--repo` or NOEMA_INBOX_REPO overrides. */
+let activeRepo = REPO;
+
+export function setRepo(repo) {
+  if (typeof repo === "string" && /^[\w.-]+\/[\w.-]+$/u.test(repo)) activeRepo = repo;
+}
+
+export function watchedRepo() {
+  return activeRepo;
+}
 export const MAX_SEEN = 500;
 export const GH_TIMEOUT_MS = 20_000;
 
@@ -30,7 +41,8 @@ const FAILED_CHECK_STATES = new Set([
   "ACTION_REQUIRED",
   "STARTUP_FAILURE",
 ]);
-const RUN_FIELDS = "databaseId,name,displayTitle,conclusion,headSha,createdAt,url";
+const RUN_FIELDS =
+  "databaseId,name,displayTitle,conclusion,headSha,headBranch,workflowName,createdAt,url";
 const PR_FIELDS = "number,title,headRefName,url,statusCheckRollup,reviewDecision,updatedAt";
 const KIND_ORDER = { recovered: 0, ci: 1, pr: 2, comment: 3, issue: 4 };
 
@@ -44,6 +56,8 @@ Usage:
   --json      machine-readable output
   --quiet     suppress the "no new events" status line (new events still print)
   --no-toast  skip the Windows toast (also NOEMA_GITHUB_INBOX_NO_TOAST=1)
+  --repeat    list current events without the local seen filter (the bridge owns delivery state)
+  --repo <owner/name>  watch another repository (default: NOEMA_INBOX_REPO or Noema-Harness/noema-agent)
 
 State:   .work/github-inbox/state.json
 History: .work/github-inbox/pending.md`;
@@ -115,7 +129,11 @@ export function normalizeState(state) {
     }
   }
   const lastPrStatus = {};
-  if (source.lastPrStatus && typeof source.lastPrStatus === "object" && !Array.isArray(source.lastPrStatus)) {
+  if (
+    source.lastPrStatus &&
+    typeof source.lastPrStatus === "object" &&
+    !Array.isArray(source.lastPrStatus)
+  ) {
     for (const [number, digest] of Object.entries(source.lastPrStatus)) {
       if (typeof digest === "string") lastPrStatus[number] = digest;
     }
@@ -138,9 +156,13 @@ export function prStatusDigest(pr) {
   const checks = rollup
     .map((check) => {
       const name = check?.name ?? check?.context ?? check?.workflowName ?? "check";
-      const state = String(check?.conclusion || check?.state || check?.status || "unknown").toUpperCase();
+      const state = String(
+        check?.conclusion || check?.state || check?.status || "unknown",
+      ).toUpperCase();
       const finishedAt =
-        check?.completedAt && check.completedAt !== "0001-01-01T00:00:00Z" ? `@${check.completedAt}` : "";
+        check?.completedAt && check.completedAt !== "0001-01-01T00:00:00Z"
+          ? `@${check.completedAt}`
+          : "";
       return `${name}:${state}${finishedAt}`;
     })
     .sort();
@@ -161,14 +183,25 @@ export function failingCheckNames(pr) {
 export function extractRunEvents(runs = [], state = {}) {
   const list = Array.isArray(runs) ? runs.filter(Boolean) : [];
   const events = [];
+  const seenGroups = new Set();
   for (const run of list) {
     const id = run.databaseId ?? run.id;
     if (id == null || !FAILED_CONCLUSIONS.has(run.conclusion)) continue;
+    // A startup failure almost always means the runner could not start the
+    // job (billing, permissions): no code change fixes it, so it is grouped
+    // and reported once instead of once per retried run.
+    const infra = run.conclusion === "startup_failure";
+    const group = `${singleLine(run.workflowName ?? run.name ?? "ci")}|${singleLine(
+      run.headBranch ?? "",
+    )}`;
+    if (seenGroups.has(group)) continue;
+    seenGroups.add(group);
     events.push({
-      key: `run:${id}`,
-      kind: "ci",
+      key: infra ? `infra:${group}` : `run:${id}`,
+      kind: infra ? "infra" : "ci",
       label: "CI",
       runId: id,
+      group,
       conclusion: run.conclusion,
       title: singleLine(run.displayTitle ?? run.name ?? ""),
       name: singleLine(run.name ?? ""),
@@ -184,7 +217,12 @@ export function extractRunEvents(runs = [], state = {}) {
   const completed = list.filter((run) => run.conclusion);
   const latest = completed[0];
   const lastRun = normalizeState(state).lastRun;
-  if (latest && latest.conclusion === "success" && lastRun && FAILED_CONCLUSIONS.has(lastRun.conclusion)) {
+  if (
+    latest &&
+    latest.conclusion === "success" &&
+    lastRun &&
+    FAILED_CONCLUSIONS.has(lastRun.conclusion)
+  ) {
     const id = latest.databaseId ?? latest.id;
     events.push({
       key: `run:${id}:recovered`,
@@ -192,6 +230,9 @@ export function extractRunEvents(runs = [], state = {}) {
       label: "CI",
       runId: id,
       conclusion: "success",
+      group: `${singleLine(latest.workflowName ?? latest.name ?? "ci")}|${singleLine(
+        latest.headBranch ?? "",
+      )}`,
       title: singleLine(latest.displayTitle ?? latest.name ?? ""),
       name: singleLine(latest.name ?? ""),
       sha: String(latest.headSha ?? "").slice(0, 7),
@@ -331,7 +372,9 @@ export function extractEvents(
 }
 
 export function sortEvents(events = []) {
-  return [...events].sort((left, right) => (KIND_ORDER[left.kind] ?? 9) - (KIND_ORDER[right.kind] ?? 9));
+  return [...events].sort(
+    (left, right) => (KIND_ORDER[left.kind] ?? 9) - (KIND_ORDER[right.kind] ?? 9),
+  );
 }
 
 export function diffEvents(events = [], state = {}) {
@@ -353,12 +396,16 @@ export function updateState(state, { runs = [], prs = [], events = [], now = new
   const stamp = toIso(now);
   for (const event of Array.isArray(events) ? events : []) {
     // First-seen timestamp is kept: a repeated poll must not rewrite history.
-    if (event?.key && !Object.prototype.hasOwnProperty.call(seen, event.key)) seen[event.key] = stamp;
+    if (event?.key && !Object.prototype.hasOwnProperty.call(seen, event.key))
+      seen[event.key] = stamp;
   }
   const completed = (Array.isArray(runs) ? runs : []).filter((run) => run && run.conclusion);
   const newestCompleted = completed[0];
   const lastRun = newestCompleted
-    ? { id: newestCompleted.databaseId ?? newestCompleted.id, conclusion: newestCompleted.conclusion }
+    ? {
+        id: newestCompleted.databaseId ?? newestCompleted.id,
+        conclusion: newestCompleted.conclusion,
+      }
     : previous.lastRun;
   const lastPrStatus = {};
   for (const pr of Array.isArray(prs) ? prs : []) {
@@ -378,12 +425,14 @@ export function updateState(state, { runs = [], prs = [], events = [], now = new
 // the events are retried on the next poll); a failed comments feed is tolerated.
 export function pollOnce({
   state,
+  repeat = false,
   now = new Date(),
   fetchRuns,
   fetchPrs,
   fetchFeed = () => ({ ok: true, source: "none", notifications: [], comments: [], issues: [] }),
 } = {}) {
-  const runsResult = typeof fetchRuns === "function" ? fetchRuns() : { ok: false, reason: "no run source" };
+  const runsResult =
+    typeof fetchRuns === "function" ? fetchRuns() : { ok: false, reason: "no run source" };
   if (!runsResult || runsResult.ok !== true) {
     return { skipped: runsResult?.reason ?? "gh run list failed" };
   }
@@ -401,14 +450,15 @@ export function pollOnce({
     issues: Array.isArray(feed.issues) ? feed.issues : [],
   };
   const events = extractEvents(payload, state);
-  const fresh = sortEvents(diffEvents(events, state));
+  const fresh = sortEvents(repeat ? events : diffEvents(events, state));
   const nextState = updateState(state, { ...payload, events, now });
   return {
     events,
     fresh,
     nextState,
-    source: feed.ok === true ? feed.source ?? null : null,
-    feedSkipped: feedResult && feedResult.ok === false ? feedResult.reason ?? "feed failed" : null,
+    source: feed.ok === true ? (feed.source ?? null) : null,
+    feedSkipped:
+      feedResult && feedResult.ok === false ? (feedResult.reason ?? "feed failed") : null,
   };
 }
 
@@ -422,7 +472,7 @@ export function formatEvent(event) {
   const url = singleLine(event.url ?? "");
   switch (event.kind) {
     case "ci": {
-      const conclusion = event.conclusion === "failure" ? "failed" : event.conclusion ?? "failed";
+      const conclusion = event.conclusion === "failure" ? "failed" : (event.conclusion ?? "failed");
       return compact([`[CI] run ${event.runId}`, `${conclusion}:`, title, sha, url]);
     }
     case "recovered":
@@ -514,7 +564,8 @@ export function appendPendingEvents(file, events, now = new Date()) {
   const lines = events.map((event) => `- ${localClock(event.at ?? now)} ${formatEvent(event)}`);
   let text = existing;
   if (!text.trim()) {
-    text = "# GitHub inbox - new events\n\nAppended by `scripts/github-inbox.mjs`; newest at the bottom.\n";
+    text =
+      "# GitHub inbox - new events\n\nAppended by `scripts/github-inbox.mjs`; newest at the bottom.\n";
   }
   if (!new RegExp(`(^|\\n)## ${day}(\\n|$)`, "u").test(text)) {
     text = `${text.replace(/\s*$/u, "")}\n\n## ${day}\n`;
@@ -567,17 +618,14 @@ export function describeGhError(error) {
   }
   const stderr = error.stderr ? String(error.stderr) : "";
   const stdout = error.stdout ? String(error.stdout) : "";
-  const lastLine = (stderr || stdout)
-    .trim()
-    .split(/\r?\n/u)
-    .filter(Boolean)
-    .pop();
+  const lastLine = (stderr || stdout).trim().split(/\r?\n/u).filter(Boolean).pop();
   const status = typeof error.status === "number" ? `exit ${error.status}` : "";
   const message = String(error.message ?? "").split(/\r?\n/u)[0] ?? "";
-  return singleLine([lastLine, status || message, code === "ENOENT" ? "gh not found" : ""].filter(Boolean).join(" | ")).slice(
-    0,
-    200,
-  );
+  return singleLine(
+    [lastLine, status || message, code === "ENOENT" ? "gh not found" : ""]
+      .filter(Boolean)
+      .join(" | "),
+  ).slice(0, 200);
 }
 
 function ghJson(args, { cwd, timeout = GH_TIMEOUT_MS } = {}) {
@@ -603,7 +651,9 @@ function ghJson(args, { cwd, timeout = GH_TIMEOUT_MS } = {}) {
 }
 
 export function fetchRuns(cwd) {
-  return ghJson(["run", "list", "--branch", "main", "--limit", "20", "--json", RUN_FIELDS], { cwd });
+  return ghJson(["run", "list", "--branch", "main", "--limit", "20", "--json", RUN_FIELDS], {
+    cwd,
+  });
 }
 
 export function fetchOpenPullRequests(cwd) {
@@ -616,15 +666,23 @@ export function notificationsSince(state, cwd) {
       ? state.lastPollAt
       : new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const comments = ghJson(
-    ["api", `repos/${REPO}/issues/comments?since=${encodeURIComponent(since)}&per_page=100`],
+    ["api", `repos/${activeRepo}/issues/comments?since=${encodeURIComponent(since)}&per_page=100`],
     { cwd },
   );
-  const issues = ghJson(["api", `repos/${REPO}/issues?state=all&sort=created&direction=desc&per_page=30`], {
-    cwd,
-  });
+  const issues = ghJson(
+    ["api", `repos/${activeRepo}/issues?state=all&sort=created&direction=desc&per_page=30`],
+    {
+      cwd,
+    },
+  );
   if (!comments.ok) {
     if (issues.ok) {
-      return { ok: true, source: "issues", comments: [], issues: Array.isArray(issues.value) ? issues.value : [] };
+      return {
+        ok: true,
+        source: "issues",
+        comments: [],
+        issues: Array.isArray(issues.value) ? issues.value : [],
+      };
     }
     return {
       ok: false,
@@ -640,7 +698,7 @@ export function notificationsSince(state, cwd) {
 }
 
 export function fetchFeed(state, cwd) {
-  const notifications = ghJson(["api", `repos/${REPO}/notifications`], { cwd });
+  const notifications = ghJson(["api", `repos/${activeRepo}/notifications`], { cwd });
   if (notifications.ok) {
     return {
       ok: true,
@@ -695,6 +753,8 @@ function notifyWindows(events) {
 
 export function parseArgs(argv = []) {
   const options = {
+    repo: process.env.NOEMA_INBOX_REPO ?? null,
+    repeat: false,
     mode: "poll",
     json: false,
     quiet: false,
@@ -702,6 +762,19 @@ export function parseArgs(argv = []) {
     help: false,
   };
   for (const argument of argv) {
+    if (argument === "--repeat") {
+      options.repeat = true;
+      continue;
+    }
+    if (argument === "--repo") {
+      options.expectRepo = true;
+      continue;
+    }
+    if (options.expectRepo) {
+      options.repo = argument;
+      options.expectRepo = false;
+      continue;
+    }
     if (argument === "--poll") options.mode = "poll";
     else if (argument === "--all") options.mode = "all";
     else if (argument === "--json") options.json = true;
@@ -715,7 +788,7 @@ export function parseArgs(argv = []) {
 
 function printSkipped(options, reason) {
   if (options.json) {
-    console.log(JSON.stringify({ repo: REPO, skipped: reason }, null, 2));
+    console.log(JSON.stringify({ repo: activeRepo, skipped: reason }, null, 2));
   } else {
     console.log(`github-inbox: skipped (${reason})`);
   }
@@ -725,6 +798,7 @@ function printSkipped(options, reason) {
 function runPoll({ repoRoot, stateFile, pendingFile, state, options, now }) {
   const result = pollOnce({
     state,
+    repeat: options.repeat === true,
     now,
     fetchRuns: () => fetchRuns(repoRoot),
     fetchPrs: () => fetchOpenPullRequests(repoRoot),
@@ -739,7 +813,7 @@ function runPoll({ repoRoot, stateFile, pendingFile, state, options, now }) {
       JSON.stringify(
         {
           command: "poll",
-          repo: REPO,
+          repo: activeRepo,
           polledAt: toIso(now),
           source: result.source,
           feedSkipped: result.feedSkipped,
@@ -781,7 +855,7 @@ function runAll({ repoRoot, stateFile, pendingFile, state, options, now }) {
       JSON.stringify(
         {
           command: "all",
-          repo: REPO,
+          repo: activeRepo,
           polledAt: toIso(now),
           runs,
           prs,
@@ -797,7 +871,7 @@ function runAll({ repoRoot, stateFile, pendingFile, state, options, now }) {
   }
 
   console.log(
-    `github-inbox: all | repo ${REPO} | polled ${toIso(now)} | seen ${Object.keys(state.seen).length}/${MAX_SEEN}`,
+    `github-inbox: all | repo ${activeRepo} | polled ${toIso(now)} | seen ${Object.keys(state.seen).length}/${MAX_SEEN}`,
   );
   console.log(`github-inbox: main runs (newest first) — ${runs.length}`);
   for (const run of runs) console.log(formatRunLine(run));
@@ -814,6 +888,7 @@ function runAll({ repoRoot, stateFile, pendingFile, state, options, now }) {
 
 function runCli(argv) {
   const options = parseArgs(argv);
+  setRepo(options.repo);
   if (options.help) {
     console.log(USAGE);
     return 0;

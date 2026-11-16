@@ -14,6 +14,8 @@ import {
   extractPrEvents,
   extractRunEvents,
   formatEvent,
+  setRepo,
+  watchedRepo,
   normalizeState,
   parseArgs,
   pollOnce,
@@ -72,7 +74,8 @@ function notification(overrides = {}) {
       title: "refactor: migrate first 57 main-process modules to TypeScript (D-019)",
       type: "PullRequest",
       url: "https://api.github.com/repos/Noema-Harness/noema-agent/issues/131",
-      latest_comment_url: "https://api.github.com/repos/Noema-Harness/noema-agent/issues/comments/6885266487",
+      latest_comment_url:
+        "https://api.github.com/repos/Noema-Harness/noema-agent/issues/comments/6885266487",
     },
     repository: { full_name: "Noema-Harness/noema-agent" },
     ...overrides,
@@ -120,7 +123,10 @@ test("failed main-branch run becomes one CI event with url and title", () => {
 
 test("successful runs alone do not notify; the first poll after a failure does not invent a recovery", () => {
   const success = run({ databaseId: 2, conclusion: "success" });
-  assert.deepEqual(extractRunEvents([success], normalizeState({ lastRun: { id: 1, conclusion: "success" } })), []);
+  assert.deepEqual(
+    extractRunEvents([success], normalizeState({ lastRun: { id: 1, conclusion: "success" } })),
+    [],
+  );
   assert.deepEqual(extractRunEvents([success], normalizeState({})), []);
 });
 
@@ -136,8 +142,15 @@ test("in-progress runs do not trigger recovery before the fix finishes", () => {
 });
 
 test("failure -> success emits one recovered message for the new run", () => {
-  const success = run({ databaseId: 43673890000, conclusion: "success", headSha: "aaaaaaa1111111" });
-  const events = extractRunEvents([success], normalizeState({ lastRun: { id: 43673883619, conclusion: "failure" } }));
+  const success = run({
+    databaseId: 43673890000,
+    conclusion: "success",
+    headSha: "aaaaaaa1111111",
+  });
+  const events = extractRunEvents(
+    [success],
+    normalizeState({ lastRun: { id: 43673883619, conclusion: "failure" } }),
+  );
   assert.equal(events.length, 1);
   assert.equal(events[0].kind, "recovered");
   assert.equal(events[0].key, "run:43673890000:recovered");
@@ -146,7 +159,11 @@ test("failure -> success emits one recovered message for the new run", () => {
 
 test("repeated poll on the same failed run does not notify twice", () => {
   const state = normalizeState({});
-  const first = pollOnce({ state, ...sources({ runs: [run()] }), now: new Date("2026-11-15T04:00:00Z") });
+  const first = pollOnce({
+    state,
+    ...sources({ runs: [run()] }),
+    now: new Date("2026-11-15T04:00:00Z"),
+  });
   assert.equal(first.skipped, undefined);
   assert.equal(first.fresh.length, 1);
 
@@ -164,7 +181,10 @@ test("repeated poll on the same failed run does not notify twice", () => {
 test("diffEvents drops duplicates inside one batch and anything already seen", () => {
   const event = extractRunEvents([run()], {})[0];
   assert.deepEqual(diffEvents([event, { ...event }], normalizeState({})), [event]);
-  assert.deepEqual(diffEvents([event], normalizeState({ seen: { [event.key]: "2026-01-01T00:00:00.000Z" } })), []);
+  assert.deepEqual(
+    diffEvents([event], normalizeState({ seen: { [event.key]: "2026-01-01T00:00:00.000Z" } })),
+    [],
+  );
 });
 
 test("state keeps the newest completed run and prunes seen to MAX_SEEN keys", () => {
@@ -192,11 +212,15 @@ test("open PR with a failing check notifies with number, reason and url", () => 
   assert.equal(events.length, 1);
   assert.equal(events[0].kind, "pr");
   assert.match(formatEvent(events[0]), /^\[PR\] #131 checks failed: verify:/u);
-  assert.ok(formatEvent(events[0]).includes("https://github.com/Noema-Harness/noema-agent/pull/131"));
+  assert.ok(
+    formatEvent(events[0]).includes("https://github.com/Noema-Harness/noema-agent/pull/131"),
+  );
 });
 
 test("PR status transition notifies only when the new digest is unseen", () => {
-  const pending = pullRequest({ statusCheckRollup: [checkRun({ status: "IN_PROGRESS", conclusion: "" })] });
+  const pending = pullRequest({
+    statusCheckRollup: [checkRun({ status: "IN_PROGRESS", conclusion: "" })],
+  });
   const inProgress = pollOnce({
     state: normalizeState({}),
     ...sources({ prs: [pending] }),
@@ -211,10 +235,7 @@ test("PR status transition notifies only when the new digest is unseen", () => {
   });
   assert.equal(failed.fresh.length, 1);
   assert.equal(failed.fresh[0].number, 131);
-  assert.equal(
-    failed.fresh[0].key,
-    `pr:131:${prStatusDigest(pullRequest())}`,
-  );
+  assert.equal(failed.fresh[0].key, `pr:131:${prStatusDigest(pullRequest())}`);
 
   const repeated = pollOnce({
     state: failed.nextState,
@@ -225,7 +246,11 @@ test("PR status transition notifies only when the new digest is unseen", () => {
 });
 
 test("PR asking for a review notifies; green PR stays silent", () => {
-  assert.equal(extractPrEvents([pullRequest({ reviewDecision: "REVIEW_REQUIRED", statusCheckRollup: [] })]).length, 1);
+  assert.equal(
+    extractPrEvents([pullRequest({ reviewDecision: "REVIEW_REQUIRED", statusCheckRollup: [] })])
+      .length,
+    1,
+  );
   assert.equal(
     extractPrEvents([
       pullRequest({
@@ -299,12 +324,26 @@ test("comment fallback extracts comments; only issues created since the last pol
   assert.equal(comments[0].title, "安装器");
 
   const issues = [
-    { number: 150, title: "new", html_url: "u150", created_at: "2026-11-15T05:00:00Z", updated_at: "t150" },
-    { number: 140, title: "old", html_url: "u140", created_at: "2026-11-14T05:00:00Z", updated_at: "t140" },
+    {
+      number: 150,
+      title: "new",
+      html_url: "u150",
+      created_at: "2026-11-15T05:00:00Z",
+      updated_at: "t150",
+    },
+    {
+      number: 140,
+      title: "old",
+      html_url: "u140",
+      created_at: "2026-11-14T05:00:00Z",
+      updated_at: "t140",
+    },
     { number: 131, title: "is a PR", pull_request: {}, created_at: "2026-11-15T05:00:00Z" },
   ];
   assert.deepEqual(
-    extractIssueEvents(issues, normalizeState({ lastPollAt: "2026-11-15T04:30:00Z" })).map((event) => event.key),
+    extractIssueEvents(issues, normalizeState({ lastPollAt: "2026-11-15T04:30:00Z" })).map(
+      (event) => event.key,
+    ),
     ["issue:150:t150"],
   );
 });
@@ -380,4 +419,66 @@ test("parseArgs understands poll/all/json/quiet/toast flags", () => {
   assert.equal(parseArgs(["--poll", "--json", "--quiet"]).quiet, true);
   assert.equal(parseArgs(["--no-toast"]).toast, false);
   assert.throws(() => parseArgs(["--nope"]), /unknown option: --nope/u);
+});
+
+// ---------------------------------------------------------------------------
+// Repository scope, grouping and infrastructure failures
+// ---------------------------------------------------------------------------
+
+test("the watched repository can be overridden for another workspace", () => {
+  const original = watchedRepo();
+  try {
+    setRepo("someone/other-repo");
+    assert.equal(watchedRepo(), "someone/other-repo");
+    setRepo("not a repo");
+    assert.equal(watchedRepo(), "someone/other-repo");
+  } finally {
+    setRepo(original);
+  }
+});
+
+test("repeated failures of one workflow and branch collapse to one event", () => {
+  const runs = [
+    {
+      databaseId: 2,
+      conclusion: "failure",
+      workflowName: "Desktop checks",
+      headBranch: "main",
+      displayTitle: "newer",
+    },
+    {
+      databaseId: 1,
+      conclusion: "failure",
+      workflowName: "Desktop checks",
+      headBranch: "main",
+      displayTitle: "older",
+    },
+  ];
+  const events = extractRunEvents(runs, {});
+  assert.equal(events.length, 1);
+  assert.equal(events[0].runId, 2);
+  assert.equal(events[0].group, "Desktop checks|main");
+});
+
+test("a run that never started is an infrastructure event, not a failure to fix", () => {
+  const events = extractRunEvents(
+    [
+      {
+        databaseId: 3,
+        conclusion: "startup_failure",
+        workflowName: "Desktop checks",
+        headBranch: "main",
+      },
+    ],
+    {},
+  );
+  assert.equal(events.length, 1);
+  assert.equal(events[0].kind, "infra");
+  assert.equal(events[0].key, "infra:Desktop checks|main");
+});
+
+test("parseArgs accepts --repo and --repeat", () => {
+  const options = parseArgs(["--poll", "--repeat", "--repo", "someone/other"]);
+  assert.equal(options.repeat, true);
+  assert.equal(options.repo, "someone/other");
 });

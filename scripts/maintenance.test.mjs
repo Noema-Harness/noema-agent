@@ -683,3 +683,28 @@ test("stagedPaths counts only a merge's own changes", () => {
     "apps/desktop/src/main/from-main.ts",
   ]);
 });
+
+test("a pending acceptance stops opening a new change, not a plain check", () =>
+  withRoot((holder) => {
+    const root = makeRoot(holder, { change: false });
+    write(
+      root,
+      "docs/DECISIONS.md",
+      `# DECISIONS\n\n${HEADER}\n## D-20261116-awaiting 等待验收\n\n${LIFECYCLE("待验收", "changes/first-cut")}`,
+    );
+
+    const quiet = checkPlan(root, { skipSpecValidation: true });
+    assert.deepEqual(quiet.errors, []);
+    assert.match(quiet.notices.join("\n"), /待验收 1 项/u);
+
+    const change = "openspec/changes/second-cut";
+    write(root, `${change}/proposal.md`, `# proposal\n\nPlan: ${BOARD}\n\n## 本轮内容\n\n- 验证\n`);
+    write(
+      root,
+      `${change}/design.md`,
+      "# design\n\n## 用户可观察的改变\n\n- x\n\n## 手测步骤\n\n1. x\n\n## 用户决策\n\n- 无\n",
+    );
+    write(root, `${change}/tasks.md`, "# tasks\n\n- [ ] 第一项\n");
+    const blocked = checkPlan(root, { skipSpecValidation: true });
+    assert.match(blocked.errors.join("\n"), /先请用户确认验收结论/u);
+  }));

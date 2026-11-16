@@ -591,7 +591,7 @@ export function checkPlan(root, options = {}) {
       `待用户确认 ${queue.decide.length} 项：${queue.decide.map((item) => item.id).join(", ")}`,
     );
   }
-  if (queue.accept.length && active.length === 0 && !options.skipAcceptGate) {
+  if (queue.accept.length && active.length > 0 && !options.skipAcceptGate) {
     errors.push(
       `有 ${queue.accept.length} 项待验收（${queue.accept.map((item) => item.id).join(", ")}）：先请用户确认验收结论，再开新的变更`,
     );
