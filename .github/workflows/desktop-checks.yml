@@ -32,11 +32,11 @@ jobs:
         if: github.event_name == 'pull_request'
         run: node scripts/maintenance.mjs range --base "origin/${{ github.base_ref }}"
 
-  # 可移植性报告：在 Linux 上跑同一套测试，先把“只有 Windows 能过”的用例暴露出来。
-  # 报告期不拦 PR；用例按平台显式标记后转为 required check（D-20261116-platform-layers 的第②③刀）。
+  # 可移植性门：同一套测试在 Ubuntu 上也要过。只有 Windows 才能验证的用例在用例处显式标记
+  # （`apps/desktop/test/support/platform-cases.mjs` 的 `windowsOnly`），跳过原因会出现在日志里；
+  # 其余失败一律是真回归，和 `verify` 一起构成 PR 合并门（D-20261116-platform-layers 第③刀）。
   portable:
     if: github.event_name == 'pull_request'
-    continue-on-error: true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -47,7 +47,7 @@ jobs:
           node-version: 24.21.0
           cache: npm
       - run: npm ci
-      - name: Portable tests (report only until Windows-only cases are tagged)
+      - name: Portable tests (Windows-only cases tagged in place)
         run: npm test
 
   platform:

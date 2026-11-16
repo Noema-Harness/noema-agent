@@ -11,9 +11,9 @@ Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与�
 - 源码版本：`0.7.6`；当前源码基线：`f592a9b release: Noema 0.7.6`；功能基线 `b7c41fa`。
 - 便携构建在 `apps/desktop/out/Noema-win32-x64/Noema.exe`；安装包由 `npm run make:desktop` 产出（构建陷阱与回退见 [OPERATIONS](OPERATIONS.md)，决定见 D-024）。
 
-## 最后一次验证（2026-11-16）
+## 最后一次验证（2026-11-17）
 
-- 门归属（change `gate-ownership`，2026-11-17）：PR 的 `verify` 把架构图漂移降为提示（`NOEMA_FIGURE_SOFT=1`），`main` 与里程碑仍严格，图由维护者重出；新增报告期的 `portable` job（`ubuntu-latest` 跑同一套测试、不拦 PR），先暴露 Windows-only 用例，按 `D-20261116-platform-layers` 第③刀标记后转必过。本机 `npm run check` 890/890、0 fail、67,571ms。soft 只由 `figure:check` 的命令行读取，库调用默认严格，`figure.test.mjs` 因此在 `NOEMA_FIGURE_SOFT=1` 下也通过（PR #164 verify 修复）。
+- 门归属（change `gate-ownership`，2026-11-17）：PR 的 `verify` 把架构图漂移降为提示（`NOEMA_FIGURE_SOFT=1`），`main` 与里程碑仍严格，图由维护者重出；新增报告期的 `portable` job（`ubuntu-latest` 跑同一套测试、不拦 PR），先暴露 Windows-only 用例，按 `D-20261116-platform-layers` 第③刀标记后转必过（已于 2026-11-17 落地，见下节）。本机 `npm run check` 890/890、0 fail、67,571ms。soft 只由 `figure:check` 的命令行读取，库调用默认严格，`figure.test.mjs` 因此在 `NOEMA_FIGURE_SOFT=1` 下也通过（PR #164 verify 修复）。
 - `npm run check`（= `governance milestone`）：**887/887，0 fail，52,458ms**；链为 `workspace:check` → `branches:check` → `docs:check` → `figure:check` → `plan:check` → `source:check` → `lint` → `typecheck` → `tools:test`（80 个维护脚本测试）→ `test`。
 - 安装包：`npm run make:desktop` 产出 `Noema-0.7.6 Setup.exe`（170,410,496 字节，sha256 `6E773C854FBF6E4B0A39720608737555114E5E95E9F5526F1E05D7A32964BCDC`）、`noema_desktop-0.7.6-full.nupkg`、`RELEASES`；把 `TEMP`/`SQUIRREL_TEMP` 指到可写目录后 `Setup.exe --silent` 能装出 `app-0.7.6`（载荷验证）。
 - CI：run `43699905215` success（9.9 分钟，commit `ed11513`），干净 Windows runner 上含 `make:desktop` 与安装/升级/卸载数据保留验证。
@@ -61,9 +61,10 @@ Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与�
 ## 平台解耦（2026-11-17）
 
 - 第①刀（PR #162，`c329d84`）：新增执行后端端口 `apps/desktop/src/main/runtime/work-runtime.ts`（`WorkRuntime.startTask` → `{ started, done, stop }` + 五类事件），DSH 与 native 后端各声明实现；`platform/workspace-identity.ts` 的 `workspacePathKey()` 收拢 Windows 路径折叠；`diagnostics/database-recovery.ts` 去掉 Electron 类型引用；`main/chat`、stores 等核心目录不再比较 `process.platform`。
+- 第③刀（change `platform-windows-only-tests`，2026-11-17）：新增 `apps/desktop/test/support/platform-cases.mjs` 的 `windowsOnly(reason)`（非 Windows 输出 `Windows-only: <原因>` 并跳过，Windows 上照常执行）；12 条 Ubuntu 失败用例按 CI 日志逐条标记（盘符 `path.resolve`/`path.isAbsolute` 2 条、`C:\` 绝对路径 1 条、`\` 分隔符/`..\` 越界/`cmd.exe` 进程树 5 条、`cd /d` 命令 1 条、`path.win32` 校验 3 条）；`portable` job 去掉 `continue-on-error`，PR 上 Ubuntu 测试失败即拦。Windows 用例集合不变；本机 `npm run check` **894/894、0 fail**（新增 3 条辅助测试与 1 条同类用例）。
 - 边界检查：过渡测试 `apps/desktop/test/main/core-boundary.test.mjs`（11 个核心目录 + `src/shared`，拦 `electron`/`child_process` 导入与 `process.platform`）；`#156` 决定把规则搬进 `npm run source:check`，落地后删除该测试。
 - 验证：Windows 10 `npm run check` **890/890，0 fail，52,775ms**；`verify`/`platform`/`collaboration`/`package` 四项 CI 全绿；`figure:check` 通过（架构图重出提交 `e12d59b`）。
-- 未做：②打包按系统拆分 + CI 矩阵、③Windows 专属测试跨平台、④bridge 传输抽象；`source:check` 边界规则提升待 #156。
+- 未做：②打包按系统拆分 + CI 矩阵、④bridge 传输抽象；`source:check` 边界规则提升待 #156。
 
 ## 未验证
 

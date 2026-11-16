@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import Database from 'better-sqlite3';
+import { windowsOnly } from '../../support/platform-cases.mjs';
 import { fileURLToPath } from 'node:url';
 import { RootStore } from '../../../src/main/storage/root-store.mjs';
 import { SocialChatStore } from '../../../src/main/chat/social-chat-store.mjs';
@@ -3329,43 +3330,54 @@ test('execution step detail exposes arguments and result for one step', () => {
   }
 });
 
-test('touched files include write and edit paths only', () => {
-  const { db, social } = makeStores();
-  try {
-    social.createSocialWorkTask({
-      id: 'task-touched-files',
-      roomId: 'room-engineering-partner',
-      agentId: 'engineering-partner',
-      workspacePath: 'C:\\scratch\\touched-files',
-      workspaceKey: 'c:\\scratch\\touched-files',
-      taskPrompt: '列出改动文件。',
-      model: 'auto:noema-free',
-    });
-    const steps = [
-      ['step-write-a', 'write', '{"path":"src/a.js","content":"a"}'],
-      ['step-write-a-again', 'write', '{"path":"src/a.js","content":"b"}'],
-      ['step-edit-b', 'edit', '{"path":"src\\\\b.js","old":"a","new":"b"}'],
-      ['step-read-c', 'read', '{"path":"src/c.js"}'],
-      ['step-absolute', 'write', '{"path":"C:\\\\outside.txt","content":"x"}'],
-      ['step-traversal', 'write', '{"path":"../outside.txt","content":"x"}'],
-    ];
-    for (const [id, toolName, args] of steps) {
-      social.startSocialWorkExecutionStep('task-touched-files', {
-        id,
-        toolName,
-        category: toolName === 'read' ? 'read' : 'write',
-        hasSideEffect: toolName !== 'read',
-        arguments: args,
+test(
+  'touched files include write and edit paths only',
+  windowsOnly('path.isAbsolute treats a C:\\ path as relative on POSIX'),
+  () => {
+    const { db, social } = makeStores();
+    try {
+      social.createSocialWorkTask({
+        id: 'task-touched-files',
+        roomId: 'room-engineering-partner',
+        agentId: 'engineering-partner',
+        workspacePath: 'C:\\scratch\\touched-files',
+        workspaceKey: 'c:\\scratch\\touched-files',
+        taskPrompt: '列出改动文件。',
+        model: 'auto:noema-free',
       });
+      const steps = [
+        ['step-write-a', 'write', '{"path":"src/a.js","content":"a"}'],
+        ['step-write-a-again', 'write', '{"path":"src/a.js","content":"b"}'],
+        ['step-edit-b', 'edit', '{"path":"src\\\\b.js","old":"a","new":"b"}'],
+        ['step-read-c', 'read', '{"path":"src/c.js"}'],
+        [
+          'step-absolute',
+          'write',
+          '{"path":"C:\\\\outside.txt","content":"x"}',
+        ],
+        ['step-traversal', 'write', '{"path":"../outside.txt","content":"x"}'],
+      ];
+      for (const [id, toolName, args] of steps) {
+        social.startSocialWorkExecutionStep('task-touched-files', {
+          id,
+          toolName,
+          category: toolName === 'read' ? 'read' : 'write',
+          hasSideEffect: toolName !== 'read',
+          arguments: args,
+        });
+      }
+      assert.deepEqual(
+        social.listSocialWorkTouchedFiles('task-touched-files'),
+        [
+          { path: 'src/a.js', toolName: 'write', ordinal: 1 },
+          { path: 'src/b.js', toolName: 'edit', ordinal: 3 },
+        ],
+      );
+    } finally {
+      db.close();
     }
-    assert.deepEqual(social.listSocialWorkTouchedFiles('task-touched-files'), [
-      { path: 'src/a.js', toolName: 'write', ordinal: 1 },
-      { path: 'src/b.js', toolName: 'edit', ordinal: 3 },
-    ]);
-  } finally {
-    db.close();
-  }
-});
+  },
+);
 
 test('assistant messages can be edited in place without changing the timeline', () => {
   const { db, social } = makeStores();

@@ -13,6 +13,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { NoemaProjectExecutor } from '../../../src/main/execution/noema-project-executor.mjs';
+import { windowsOnly } from '../../support/platform-cases.mjs';
 
 function toolCall(id, name, args) {
   return {
@@ -596,60 +597,67 @@ test('Noema executor allows a final model response after a long single-tool sequ
   }
 });
 
-test('search_files uses bounded ripgrep results and respects workspace ignores', async () => {
-  const directory = mkdtempSync(
-    path.join(tmpdir(), 'noema-project-search-files-'),
-  );
-  const workspace = path.join(directory, 'workspace');
-  mkdirSync(path.join(workspace, 'src', '.hidden'), { recursive: true });
-  writeFileSync(path.join(workspace, '.gitignore'), 'ignored.txt\n');
-  writeFileSync(
-    path.join(workspace, 'src', 'matches.txt'),
-    'needle first\nneedle second\nneedle third\n',
-  );
-  writeFileSync(path.join(workspace, 'src', 'ignored.txt'), 'needle ignored\n');
-  writeFileSync(
-    path.join(workspace, 'src', '.hidden', 'secret.txt'),
-    'needle hidden\n',
-  );
-  const requests = [];
-  const provider = makeProvider(
-    [
-      {
-        calls: [
-          toolCall('search-bounded', 'search_files', {
-            path: 'src',
-            pattern: 'needle',
-            literal: true,
-            include: '*.txt',
-            limit: 2,
-          }),
-        ],
-      },
-      { text: '找到了目标代码。' },
-    ],
-    requests,
-  );
-  try {
-    const executor = makeExecutor({ provider });
-    const handle = await executor.startTask({
-      workspacePath: workspace,
-      task: '定位 needle',
-      model: 'auto:noema-free',
-      taskId: 'search-test',
-    });
-    assert.equal((await handle.done).status, 'completed');
-    const toolResult = JSON.parse(
-      requests[1].messages.find((message) => message.role === 'tool').content,
-    ).result;
-    assert.match(toolResult, /src\\matches\.txt:1: needle first/u);
-    assert.match(toolResult, /src\\matches\.txt:2: needle second/u);
-    assert.match(toolResult, /结果已截断/u);
-    assert.doesNotMatch(toolResult, /ignored|hidden|secret/u);
-  } finally {
-    rmSync(directory, { recursive: true, force: true });
-  }
-});
+test(
+  'search_files uses bounded ripgrep results and respects workspace ignores',
+  windowsOnly('ripgrep results use backslash separators on Windows'),
+  async () => {
+    const directory = mkdtempSync(
+      path.join(tmpdir(), 'noema-project-search-files-'),
+    );
+    const workspace = path.join(directory, 'workspace');
+    mkdirSync(path.join(workspace, 'src', '.hidden'), { recursive: true });
+    writeFileSync(path.join(workspace, '.gitignore'), 'ignored.txt\n');
+    writeFileSync(
+      path.join(workspace, 'src', 'matches.txt'),
+      'needle first\nneedle second\nneedle third\n',
+    );
+    writeFileSync(
+      path.join(workspace, 'src', 'ignored.txt'),
+      'needle ignored\n',
+    );
+    writeFileSync(
+      path.join(workspace, 'src', '.hidden', 'secret.txt'),
+      'needle hidden\n',
+    );
+    const requests = [];
+    const provider = makeProvider(
+      [
+        {
+          calls: [
+            toolCall('search-bounded', 'search_files', {
+              path: 'src',
+              pattern: 'needle',
+              literal: true,
+              include: '*.txt',
+              limit: 2,
+            }),
+          ],
+        },
+        { text: '找到了目标代码。' },
+      ],
+      requests,
+    );
+    try {
+      const executor = makeExecutor({ provider });
+      const handle = await executor.startTask({
+        workspacePath: workspace,
+        task: '定位 needle',
+        model: 'auto:noema-free',
+        taskId: 'search-test',
+      });
+      assert.equal((await handle.done).status, 'completed');
+      const toolResult = JSON.parse(
+        requests[1].messages.find((message) => message.role === 'tool').content,
+      ).result;
+      assert.match(toolResult, /src\\matches\.txt:1: needle first/u);
+      assert.match(toolResult, /src\\matches\.txt:2: needle second/u);
+      assert.match(toolResult, /结果已截断/u);
+      assert.doesNotMatch(toolResult, /ignored|hidden|secret/u);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  },
+);
 
 test('search_files returns invalid regex diagnostics through the tool loop', async () => {
   const directory = mkdtempSync(
@@ -1319,53 +1327,59 @@ function serializedContextCharacters(messages) {
   return JSON.stringify(messages).length;
 }
 
-test('Noema executor rejects workspace traversal and does not repeat side effects after a tool error', async () => {
-  const directory = mkdtempSync(path.join(tmpdir(), 'noema-project-executor-'));
-  const workspace = path.join(directory, 'workspace');
-  mkdirSync(workspace);
-  const provider = makeProvider([
-    {
-      calls: [
-        toolCall('call-escape', 'write_file', {
-          path: '..\\outside.txt',
-          content: 'must not write',
-        }),
-      ],
-    },
-    { text: '路径越界已拒绝，没有写入。' },
-  ]);
-  const events = [];
-  try {
-    const executor = makeExecutor({ provider });
-    const handle = await executor.startTask({
-      workspacePath: workspace,
-      task: '不要越出工作区',
-      model: 'auto:noema-free',
-      onEvent: (event) => events.push(event),
-    });
-    const outcome = await handle.done;
-    assert.equal(outcome.status, 'completed');
-    assert.equal(provider.callCount, 2);
-    assert.equal(
-      events.filter((event) => event.type === 'tool-call').length,
-      1,
+test(
+  'Noema executor rejects workspace traversal and does not repeat side effects after a tool error',
+  windowsOnly('a ..\\ path is a parent reference only on Windows'),
+  async () => {
+    const directory = mkdtempSync(
+      path.join(tmpdir(), 'noema-project-executor-'),
     );
-    assert.deepEqual(
-      events
-        .filter((event) => event.type === 'tool-result')
-        .map((event) => event.effectStatus),
-      ['not_applied'],
-    );
-    const resultEvent = events.find((event) => event.type === 'tool-result');
-    assert.equal(resultEvent.checkpoint.phase, 'ready_for_model');
-    assert.equal(
-      resultEvent.checkpoint.messages.at(-1).tool_call_id,
-      'call-escape',
-    );
-  } finally {
-    rmSync(directory, { recursive: true, force: true });
-  }
-});
+    const workspace = path.join(directory, 'workspace');
+    mkdirSync(workspace);
+    const provider = makeProvider([
+      {
+        calls: [
+          toolCall('call-escape', 'write_file', {
+            path: '..\\outside.txt',
+            content: 'must not write',
+          }),
+        ],
+      },
+      { text: '路径越界已拒绝，没有写入。' },
+    ]);
+    const events = [];
+    try {
+      const executor = makeExecutor({ provider });
+      const handle = await executor.startTask({
+        workspacePath: workspace,
+        task: '不要越出工作区',
+        model: 'auto:noema-free',
+        onEvent: (event) => events.push(event),
+      });
+      const outcome = await handle.done;
+      assert.equal(outcome.status, 'completed');
+      assert.equal(provider.callCount, 2);
+      assert.equal(
+        events.filter((event) => event.type === 'tool-call').length,
+        1,
+      );
+      assert.deepEqual(
+        events
+          .filter((event) => event.type === 'tool-result')
+          .map((event) => event.effectStatus),
+        ['not_applied'],
+      );
+      const resultEvent = events.find((event) => event.type === 'tool-result');
+      assert.equal(resultEvent.checkpoint.phase, 'ready_for_model');
+      assert.equal(
+        resultEvent.checkpoint.messages.at(-1).tool_call_id,
+        'call-escape',
+      );
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  },
+);
 
 test('Noema executor hides unavailable commands and fails closed if the model still requests one', async () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'noema-project-executor-'));
@@ -1588,188 +1602,201 @@ test('Noema executor stops without starting another model request', async () => 
   }
 });
 
-test('Noema executor does not repeat a side-effecting command with a new call ID', async () => {
-  const directory = realpathSync.native(
-    mkdtempSync(path.join(tmpdir(), 'noema-project-executor-')),
-  );
-  const workspace = path.join(directory, 'workspace');
-  mkdirSync(workspace);
-  const command = 'echo x>>count.txt';
-  const provider = makeProvider([
-    { calls: [toolCall('command-1', 'run_command', { command })] },
-    { calls: [toolCall('command-2', 'run_command', { command })] },
-    { text: '已执行一次；重复命令被拒绝。' },
-  ]);
-  const events = [];
-  let commandIdentity;
-  try {
-    const executor = makeExecutor({
-      provider,
-      commandSupport: { supported: true },
-      commandRunner: async (input) => {
-        commandIdentity = {
-          requestId: input.requestId,
-          executionId: input.executionId,
-          taskId: input.taskId,
-          toolCallId: input.toolCallId,
-          expectedWorkspaceIdentity: input.expectedWorkspaceIdentity,
-        };
-        return runRawCommandForTest(input);
-      },
-    });
-    const handle = await executor.startTask({
-      workspacePath: workspace,
-      task: '执行一次计数命令',
-      model: 'auto:noema-free',
-      executionId: 'resume-segment-42',
-      onEvent: (event) => events.push(event),
-    });
-    const outcome = await handle.done;
-    assert.equal(outcome.status, 'completed');
-    assert.equal(
-      readFileSync(path.join(workspace, 'count.txt'), 'utf8').trim(),
-      'x',
+test(
+  'Noema executor does not repeat a side-effecting command with a new call ID',
+  windowsOnly('the raw-command test runner starts cmd.exe and taskkill.exe'),
+  async () => {
+    const directory = realpathSync.native(
+      mkdtempSync(path.join(tmpdir(), 'noema-project-executor-')),
     );
-    assert.equal(
-      events.filter((event) => event.type === 'tool-call').length,
-      1,
-    );
-    assert.match(commandIdentity.requestId, /^[0-9a-f-]{36}$/u);
-    assert.match(commandIdentity.taskId, /^[0-9a-f-]{36}$/u);
-    assert.equal(commandIdentity.executionId, 'resume-segment-42');
-    assert.equal(commandIdentity.toolCallId, 'command-1');
-    assert.equal(
-      commandIdentity.expectedWorkspaceIdentity.canonicalPath,
-      workspace,
-    );
-    assert.ok(commandIdentity.expectedWorkspaceIdentity.device);
-    assert.ok(commandIdentity.expectedWorkspaceIdentity.fileIndex);
-  } finally {
-    rmSync(directory, { recursive: true, force: true });
-  }
-});
-
-test('stopping a running command waits for the child tree and marks its effects unknown', async () => {
-  const directory = mkdtempSync(
-    path.join(tmpdir(), 'noema-project-stop-command-'),
-  );
-  const workspace = path.join(directory, 'workspace');
-  mkdirSync(workspace);
-  const markerPath = path.join(workspace, 'marker.txt');
-  const commandScript = path.join(workspace, 'wait-command.js');
-  writeFileSync(
-    commandScript,
-    "const fs = require('node:fs'); fs.writeFileSync('marker.txt', 'started'); setTimeout(() => fs.appendFileSync('marker.txt', 'finished'), 30000);",
-  );
-  const command = `${process.execPath} ${commandScript}`;
-  const provider = makeProvider([
-    {
-      calls: [
-        toolCall('command-stop', 'run_command', {
-          command,
-        }),
-      ],
-    },
-    { text: '不应在被停止后发起第二轮。' },
-  ]);
-  let stepStartedResolve;
-  const stepStarted = new Promise((resolve) => {
-    stepStartedResolve = resolve;
-  });
-  let handle;
-  try {
+    const workspace = path.join(directory, 'workspace');
+    mkdirSync(workspace);
+    const command = 'echo x>>count.txt';
+    const provider = makeProvider([
+      { calls: [toolCall('command-1', 'run_command', { command })] },
+      { calls: [toolCall('command-2', 'run_command', { command })] },
+      { text: '已执行一次；重复命令被拒绝。' },
+    ]);
     const events = [];
-    const executor = makeExecutor({
-      provider,
-      commandSupport: { supported: true },
-      commandRunner: runRawCommandForTest,
-    });
-    handle = await executor.startTask({
-      workspacePath: workspace,
-      task: '运行后等待停止',
-      model: 'auto:noema-free',
-      onEvent: (event) => {
-        events.push(event);
-        if (event.type === 'tool-call') stepStartedResolve();
-      },
-    });
-    await stepStarted;
-    const deadline = Date.now() + 5_000;
-    while (!existsSync(markerPath) && Date.now() < deadline) {
-      await new Promise((resolve) => setTimeout(resolve, 25));
+    let commandIdentity;
+    try {
+      const executor = makeExecutor({
+        provider,
+        commandSupport: { supported: true },
+        commandRunner: async (input) => {
+          commandIdentity = {
+            requestId: input.requestId,
+            executionId: input.executionId,
+            taskId: input.taskId,
+            toolCallId: input.toolCallId,
+            expectedWorkspaceIdentity: input.expectedWorkspaceIdentity,
+          };
+          return runRawCommandForTest(input);
+        },
+      });
+      const handle = await executor.startTask({
+        workspacePath: workspace,
+        task: '执行一次计数命令',
+        model: 'auto:noema-free',
+        executionId: 'resume-segment-42',
+        onEvent: (event) => events.push(event),
+      });
+      const outcome = await handle.done;
+      assert.equal(outcome.status, 'completed');
+      assert.equal(
+        readFileSync(path.join(workspace, 'count.txt'), 'utf8').trim(),
+        'x',
+      );
+      assert.equal(
+        events.filter((event) => event.type === 'tool-call').length,
+        1,
+      );
+      assert.match(commandIdentity.requestId, /^[0-9a-f-]{36}$/u);
+      assert.match(commandIdentity.taskId, /^[0-9a-f-]{36}$/u);
+      assert.equal(commandIdentity.executionId, 'resume-segment-42');
+      assert.equal(commandIdentity.toolCallId, 'command-1');
+      assert.equal(
+        commandIdentity.expectedWorkspaceIdentity.canonicalPath,
+        workspace,
+      );
+      assert.ok(commandIdentity.expectedWorkspaceIdentity.device);
+      assert.ok(commandIdentity.expectedWorkspaceIdentity.fileIndex);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
     }
-    assert.equal(
-      existsSync(markerPath),
-      true,
-      `command started in the workspace: ${JSON.stringify(events.filter((event) => event.type === 'tool-result'))}`,
-    );
+  },
+);
 
-    handle.stop();
-    const outcome = await handle.done;
-    assert.equal(outcome.status, 'interrupted');
-    assert.equal(outcome.toolCallCount, 1);
-    assert.equal(provider.callCount, 1);
-    assert.match(
-      events.find((event) => event.type === 'tool-result')?.effectStatus ?? '',
-      /^unknown$/u,
+test(
+  'stopping a running command waits for the child tree and marks its effects unknown',
+  windowsOnly('stopping the child tree goes through cmd.exe and taskkill.exe'),
+  async () => {
+    const directory = mkdtempSync(
+      path.join(tmpdir(), 'noema-project-stop-command-'),
     );
-    assert.doesNotMatch(readFileSync(markerPath, 'utf8'), /finished/u);
-  } finally {
-    handle?.stop();
-    await handle?.done;
-    rmSync(directory, { recursive: true, force: true });
-  }
-});
+    const workspace = path.join(directory, 'workspace');
+    mkdirSync(workspace);
+    const markerPath = path.join(workspace, 'marker.txt');
+    const commandScript = path.join(workspace, 'wait-command.js');
+    writeFileSync(
+      commandScript,
+      "const fs = require('node:fs'); fs.writeFileSync('marker.txt', 'started'); setTimeout(() => fs.appendFileSync('marker.txt', 'finished'), 30000);",
+    );
+    const command = `${process.execPath} ${commandScript}`;
+    const provider = makeProvider([
+      {
+        calls: [
+          toolCall('command-stop', 'run_command', {
+            command,
+          }),
+        ],
+      },
+      { text: '不应在被停止后发起第二轮。' },
+    ]);
+    let stepStartedResolve;
+    const stepStarted = new Promise((resolve) => {
+      stepStartedResolve = resolve;
+    });
+    let handle;
+    try {
+      const events = [];
+      const executor = makeExecutor({
+        provider,
+        commandSupport: { supported: true },
+        commandRunner: runRawCommandForTest,
+      });
+      handle = await executor.startTask({
+        workspacePath: workspace,
+        task: '运行后等待停止',
+        model: 'auto:noema-free',
+        onEvent: (event) => {
+          events.push(event);
+          if (event.type === 'tool-call') stepStartedResolve();
+        },
+      });
+      await stepStarted;
+      const deadline = Date.now() + 5_000;
+      while (!existsSync(markerPath) && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      assert.equal(
+        existsSync(markerPath),
+        true,
+        `command started in the workspace: ${JSON.stringify(events.filter((event) => event.type === 'tool-result'))}`,
+      );
 
-test('a command timeout terminates its process tree and reports uncertain effects', async () => {
-  const directory = mkdtempSync(
-    path.join(tmpdir(), 'noema-project-command-timeout-'),
-  );
-  const workspace = path.join(directory, 'workspace');
-  mkdirSync(workspace);
-  const markerPath = path.join(workspace, 'timeout-marker.txt');
-  const commandScript = path.join(workspace, 'timeout-command.js');
-  writeFileSync(
-    commandScript,
-    "const fs = require('node:fs'); fs.writeFileSync('timeout-marker.txt', 'started'); setTimeout(() => fs.appendFileSync('timeout-marker.txt', 'finished'), 30000);",
-  );
-  const provider = makeProvider([
-    {
-      calls: [
-        toolCall('command-timeout', 'run_command', {
-          command: `${process.execPath} ${commandScript}`,
-        }),
-      ],
-    },
-    { text: '命令超时，副作用需要检查。' },
-  ]);
-  const events = [];
-  try {
-    const executor = makeExecutor({
-      provider,
-      commandTimeoutMs: 500,
-      commandSupport: { supported: true },
-      commandRunner: runRawCommandForTest,
-    });
-    const handle = await executor.startTask({
-      workspacePath: workspace,
-      task: '验证命令超时处理',
-      model: 'auto:noema-free',
-      onEvent: (event) => events.push(event),
-    });
-    const outcome = await handle.done;
-    const toolResult = events.find((event) => event.type === 'tool-result');
-    assert.equal(outcome.status, 'failed');
-    assert.equal(provider.callCount, 1);
-    assert.equal(toolResult.status, 'error');
-    assert.equal(toolResult.effectStatus, 'unknown');
-    assert.match(toolResult.resultContent, /执行超时/u);
-    assert.match(readFileSync(markerPath, 'utf8'), /^started/u);
-    assert.doesNotMatch(readFileSync(markerPath, 'utf8'), /finished/u);
-  } finally {
-    rmSync(directory, { recursive: true, force: true });
-  }
-});
+      handle.stop();
+      const outcome = await handle.done;
+      assert.equal(outcome.status, 'interrupted');
+      assert.equal(outcome.toolCallCount, 1);
+      assert.equal(provider.callCount, 1);
+      assert.match(
+        events.find((event) => event.type === 'tool-result')?.effectStatus ??
+          '',
+        /^unknown$/u,
+      );
+      assert.doesNotMatch(readFileSync(markerPath, 'utf8'), /finished/u);
+    } finally {
+      handle?.stop();
+      await handle?.done;
+      rmSync(directory, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
+  'a command timeout terminates its process tree and reports uncertain effects',
+  windowsOnly('process-tree termination goes through cmd.exe and taskkill.exe'),
+  async () => {
+    const directory = mkdtempSync(
+      path.join(tmpdir(), 'noema-project-command-timeout-'),
+    );
+    const workspace = path.join(directory, 'workspace');
+    mkdirSync(workspace);
+    const markerPath = path.join(workspace, 'timeout-marker.txt');
+    const commandScript = path.join(workspace, 'timeout-command.js');
+    writeFileSync(
+      commandScript,
+      "const fs = require('node:fs'); fs.writeFileSync('timeout-marker.txt', 'started'); setTimeout(() => fs.appendFileSync('timeout-marker.txt', 'finished'), 30000);",
+    );
+    const provider = makeProvider([
+      {
+        calls: [
+          toolCall('command-timeout', 'run_command', {
+            command: `${process.execPath} ${commandScript}`,
+          }),
+        ],
+      },
+      { text: '命令超时，副作用需要检查。' },
+    ]);
+    const events = [];
+    try {
+      const executor = makeExecutor({
+        provider,
+        commandTimeoutMs: 500,
+        commandSupport: { supported: true },
+        commandRunner: runRawCommandForTest,
+      });
+      const handle = await executor.startTask({
+        workspacePath: workspace,
+        task: '验证命令超时处理',
+        model: 'auto:noema-free',
+        onEvent: (event) => events.push(event),
+      });
+      const outcome = await handle.done;
+      const toolResult = events.find((event) => event.type === 'tool-result');
+      assert.equal(outcome.status, 'failed');
+      assert.equal(provider.callCount, 1);
+      assert.equal(toolResult.status, 'error');
+      assert.equal(toolResult.effectStatus, 'unknown');
+      assert.match(toolResult.resultContent, /执行超时/u);
+      assert.match(readFileSync(markerPath, 'utf8'), /^started/u);
+      assert.doesNotMatch(readFileSync(markerPath, 'utf8'), /finished/u);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  },
+);
 
 test('Noema executor resumes only after a completed tool result and blocks repeating its side effect', async () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'noema-project-resume-'));
