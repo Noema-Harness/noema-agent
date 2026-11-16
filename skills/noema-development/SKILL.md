@@ -23,7 +23,7 @@ git status --short
 `docs/DECISIONS.md` 一条对一轮（或一个专案）。阶段在第一条、三层并存、阶段可回退；完整规则见 AGENTS §1。
 
 ```markdown
-## [#<issue>](链接) D-YYYYMMDD-<slug> <标题（范围变了就改）>
+## [#<issue>](https://github.com/Noema-Harness/noema-agent/issues/<issue>) D-YYYYMMDD-<slug> <标题（范围变了就改）>
 
 - **阶段**：决策中 | 执行中 | 待验收 | 已收口
 - **结构**：入口 / 字段 / 校验 / 命令（仅机制类，≤10 行）
