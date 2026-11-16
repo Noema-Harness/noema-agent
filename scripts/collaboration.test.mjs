@@ -15,15 +15,31 @@ test("a collaborator can change product code and their own change", () => {
   assert.deepEqual(result.notices, []);
 });
 
-test("a collaborator cannot change maintainer paths", () => {
-  const result = guardContribution({
+test("a collaborator can correct docs and specs but not the governance mechanism", () => {
+  const allowed = guardContribution({
     actor: "ichika0130",
-    files: ["apps/desktop/src/main/main.ts", "scripts/workspace.config.json", "docs/STATUS.md"],
+    files: [
+      "docs/STATUS.md",
+      "docs/ARCHITECTURE.md",
+      "openspec/specs/social-conversations/spec.md",
+    ],
   });
-  assert.equal(result.errors.length, 1);
-  assert.match(result.errors[0], /scripts\/workspace\.config\.json/);
-  assert.match(result.errors[0], /docs\/STATUS\.md/);
-  assert.doesNotMatch(result.errors[0], /apps\/desktop\/src\/main\/main\.ts/);
+  assert.deepEqual(allowed.errors, []);
+
+  const blocked = guardContribution({
+    actor: "ichika0130",
+    files: [
+      "apps/desktop/src/main/main.ts",
+      "scripts/workspace.config.json",
+      "AGENTS.md",
+      "docs/STATUS.md",
+    ],
+  });
+  assert.equal(blocked.errors.length, 1);
+  assert.match(blocked.errors[0], /scripts\/workspace\.config\.json/);
+  assert.match(blocked.errors[0], /AGENTS\.md/);
+  assert.doesNotMatch(blocked.errors[0], /docs\/STATUS\.md/);
+  assert.doesNotMatch(blocked.errors[0], /apps\/desktop\/src\/main\/main\.ts/);
 });
 
 test("a maintainer is not blocked by path rules", () => {

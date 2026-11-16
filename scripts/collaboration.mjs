@@ -15,8 +15,7 @@ export const MAINTAINER_ONLY_PATHS = [
   ".github/",
   ".githooks/",
   "scripts/",
-  "docs/",
-  "openspec/specs/",
+
   "openspec/config.yaml",
   "package.json",
 ];

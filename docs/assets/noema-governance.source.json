@@ -364,7 +364,7 @@
   },
   "source": {
     "doc": "AGENTS.md",
-    "sha256": "ee11b3fa7891c411abcc2e445c1bf9350879787177fbadfc41dac998547cc9f3"
+    "sha256": "dabdd7ad51d58b824a7e8d82dea4ece19af528b23e6e05a09bfb7a4513e33ae8"
   },
   "assets": {
     "html": {
@@ -378,5 +378,5 @@
       "bytes": 158941
     }
   },
-  "updatedAt": "2026-11-16T05:03:38.540Z"
+  "updatedAt": "2026-11-16T14:22:17.181Z"
 }

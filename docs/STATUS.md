@@ -51,6 +51,12 @@ Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与�
 - `scripts/figure.mjs` 支持两张图；新增治理全景图 `docs/assets/noema-governance.*`（提示层 / 事实流 / 机器门），AGENTS 顶部链接，不进 README。
 - 条目验收项可勾选，勾完 `npm run decisions:sync` 自动收口；`npm run review` 显示勾选进度。
 
+## 协作文档门禁（2026-11-16）
+
+- 协作者可直接改 `docs/**` 与 `openspec/specs/**`；只有治理机制（`AGENTS.md`、`.github/`、`.githooks/`、`scripts/`、`openspec/config.yaml`、根 `package.json`）维护者独占。审核移到 PR：以代码与运行证据为准，`docs:check` 在 PR 上照跑。
+- `platform` 门支持 PR 模式：`node scripts/maintenance.mjs platform --base origin/<base>` 只允许本 PR 新开的 change；main 树仍要求 0 个未收口。CI 的 `platform` job 在 PR 上带 `--base`。
+- 证据：`node --test scripts/collaboration.test.mjs scripts/maintenance.test.mjs` 25/25；`npm run check` 887/887（57,783ms）。
+
 ## 未验证
 
 - 真实 provider 的完整对话链与长时运行。

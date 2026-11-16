@@ -228,11 +228,13 @@ node --test test/main/chat/conversation-continuity.test.mjs
 ## 协作与 PR 检查
 
 - 契约：`CONTRIBUTING.md`（协作者可改/不可改、PR 必备、CI 覆盖）。合并只由维护者执行。
+- 文档与规格：协作者可直接改 `docs/**` 与 `openspec/specs/**`，在 PR 的「文档改动」段说明原因；审核以代码与运行证据为准，维护者可改写措辞。`docs:check` 在 PR 上同样运行，未登记文档、缺头、决议结构错误都会被拦。
 - 分支保护：2026-11-16 仓库转为 public（Free 组织的 public 仓库可以启用保护，标准 runner 免费）。`main` 已开启保护：必须通过 `verify` 与 `collaboration` 检查、至少 1 位维护者审核、新提交 dismiss 旧审核、对话必须解决、禁止 force push 与删除；`enforce_admins: false`，维护者可紧急绕过。核对：`gh api repos/Noema-Harness/noema-agent/branches/main/protection`。
-- CI：`Desktop checks` 在 PR 与 main 推送上都跑 `npm run check`，并用 `range` 步骤把提交门套在 PR diff 上（`node scripts/maintenance.mjs range --base origin/<base>`：产品代码必须带计划/状态，未确认决议不能改产品代码）；另执行 `collaboration` 路径检查。`Desktop package` 只在触及 `apps/desktop/**`、`package.json` 或锁文件时（PR）与手动 `workflow_dispatch` 时跑 smoke / 打包 / 安装包验证；发布前用 `gh workflow run "Desktop package"` 跑全流程。
+- CI：`Desktop checks` 在 PR 与 main 推送上都跑 `npm run check`，并用 `range` 步骤把提交门套在 PR diff 上（`node scripts/maintenance.mjs range --base origin/<base>`：产品代码必须带计划/状态，未确认决议不能改产品代码）；另执行 `collaboration` 路径检查；`platform` 在 PR 上用 `--base origin/<base>` 只校验本 PR 新开的 change（base 上已有的未收口仍报错），main 推送要求全树 0 个未收口。`Desktop package` 只在触及 `apps/desktop/**`、`package.json` 或锁文件时（PR）与手动 `workflow_dispatch` 时跑 smoke / 打包 / 安装包验证；发布前用 `gh workflow run "Desktop package"` 跑全流程。
 - Actions 额度：2026-11-16 曾因组织 Free 额度用尽，所有 job 4 秒内失败、注释为「recent account payments have failed or your spending limit needs to be increased」；同日仓库转 public 后标准 runner 免费，故障消失。若再现同类空日志 4 秒失败，先查 `https://github.com/organizations/Noema-Harness/settings/billing/budgets`。
 - 本地预演路径检查：`npm run guard -- --actor <登录名> --base origin/main`；维护者返回放行，协作者触碰维护者路径时列出被拦文件并以退出码 1 结束。
-- 路径清单源码在 `scripts/collaboration.mjs` 的 `MAINTAINER_ONLY_PATHS`，改清单时同步 `CONTRIBUTING.md` 的表。
+- 路径清单源码在 `scripts/collaboration.mjs` 的 `MAINTAINER_ONLY_PATHS`（治理机制：`AGENTS.md`、`.github/`、`.githooks/`、`scripts/`、`openspec/config.yaml`、根 `package.json`），改清单时同步 `CONTRIBUTING.md` 的表。
+- 文档门禁不再禁止协作者改文档：路径守卫只管治理机制；文档准确性由审核与 `docs:check` 共同保证，这是 2026-11-16 的决定（用户要求“放开这块限制，重点放在文档改动的审核上”）。
 
 ## 打包
 
