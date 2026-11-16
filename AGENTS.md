@@ -14,7 +14,7 @@
 | 待验收 | 已收口 | 用户勾选验收项           | `npm run decisions:sync`  |
 | 任意   | 决策中 | 用户重开                 | 条目里写一行「重开」      |
 
-提交与推送恒有 `commit`→`verify`→`platform`→`collaboration` 四道门。只读调查不建条目；一件工作收口后再开下一件；门拒绝时先判断规则是否错了，不绕过。文字来源是 `scripts/lifecycle.mjs` 的转移表，图是 `docs/assets/noema-governance.png`（改表后重出图）。
+提交与推送恒有 `commit`→`verify`→`platform`→`collaboration` 四道门。`verify` 由 CI 在 Windows 上跑，协作者不需要本机全量；架构图是维护者资产，PR 上只提示，由维护者在合并前后重出。只读调查不建条目；一件工作收口后再开下一件；门拒绝时先判断规则是否错了，不绕过。文字来源是 `scripts/lifecycle.mjs` 的转移表，图是 `docs/assets/noema-governance.png`（改表后重出图）。
 
 ## 事实所有权
 

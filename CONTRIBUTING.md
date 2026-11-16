@@ -30,6 +30,11 @@
 
 文档不是“只能维护者写”的领地：写错会被审核退回，但不该让协作者因为不能改文档而提交与代码不一致的 PR。
 
+## 平台差异与架构图
+
+- **不需要本机跑全量 `npm run check`**：它包含只有 Windows 能通过的运行用例，由 CI 的 `verify`（`windows-latest`）承担。本机跑受影响的单测与 `npm run typecheck` 即可，PR 合并门以 CI 为准。
+- **不需要声明或重出架构图**：`docs/assets/` 的图由维护者在合并前后更新；PR 上 `figure:check` 只提示、不拦。你改了 `docs/ARCHITECTURE.md` 就照常改，图的事归维护者。
+
 ## 只能维护者改
 
 | 路径                         | 为什么                   |

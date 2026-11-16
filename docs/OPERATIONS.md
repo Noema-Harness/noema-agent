@@ -127,7 +127,7 @@ npm run branches:prune -- --apply # 执行删除
 
 - 图源是 `*.source.json`（Archify candidate + 生成时的源文档摘要 + 产物摘要）。
 - 改了 `docs/ARCHITECTURE.md` 或 `AGENTS.md` 后重出图：`npm run figure:build`（两张一起；需要本机 Archify 技能和 Edge，finalize 的四道 gate 必须全过）。只重建一张：`node scripts/figure.mjs build governance`。
-- `npm run figure:check` 挂在 `npm run check` 里：源文档变了而图没重出、产物被手改、入口文件（README / AGENTS）没引用图，都会直接失败。
+- `npm run figure:check` 挂在 `npm run check` 里：源文档变了而图没重出、产物被手改、入口文件（README / AGENTS）没引用图，都会直接失败。PR 的 `verify` 设 `NOEMA_FIGURE_SOFT=1`，这些差异降为提示（图是维护者资产，协作者不必声明或等待）；`main` 与里程碑仍严格，维护者在合并前后重出。
 - 不要手改 `*.html|png`；finalize 的侧车 json 由 build 自动移出 `docs/assets`，留在 `.work/archify-run/`。
 
 ### CI 是异步验证
@@ -230,7 +230,7 @@ node --test test/main/chat/conversation-continuity.test.mjs
 - 契约：`CONTRIBUTING.md`（协作者可改/不可改、PR 必备、CI 覆盖）。合并只由维护者执行。
 - 文档与规格：协作者可直接改 `docs/**` 与 `openspec/specs/**`，在 PR 的「文档改动」段说明原因；审核以代码与运行证据为准，维护者可改写措辞。`docs:check` 在 PR 上同样运行，未登记文档、缺头、决议结构错误都会被拦。
 - 分支保护：2026-11-16 仓库转为 public（Free 组织的 public 仓库可以启用保护，标准 runner 免费）。`main` 已开启保护：必须通过 `verify` 与 `collaboration` 检查、至少 1 位维护者审核、新提交 dismiss 旧审核、对话必须解决、禁止 force push 与删除；`enforce_admins: false`，维护者可紧急绕过。核对：`gh api repos/Noema-Harness/noema-agent/branches/main/protection`。
-- CI：`Desktop checks` 在 PR 与 main 推送上都跑 `npm run check`，并用 `range` 步骤把提交门套在 PR diff 上（`node scripts/maintenance.mjs range --base origin/<base>`：产品代码必须带计划/状态，未确认决议不能改产品代码）；另执行 `collaboration` 路径检查；`platform` 在 PR 上用 `--base origin/<base>` 只校验本 PR 新开的 change（base 上已有的未收口仍报错），main 推送要求全树 0 个未收口。`Desktop package` 只在触及 `apps/desktop/**`、`package.json` 或锁文件时（PR）与手动 `workflow_dispatch` 时跑 smoke / 打包 / 安装包验证；发布前用 `gh workflow run "Desktop package"` 跑全流程。
+- CI：`Desktop checks` 在 PR 与 main 推送上都跑 `npm run check`，并用 `range` 步骤把提交门套在 PR diff 上（`node scripts/maintenance.mjs range --base origin/<base>`：产品代码必须带计划/状态，未确认决议不能改产品代码）；另执行 `collaboration` 路径检查；`platform` 在 PR 上用 `--base origin/<base>` 只校验本 PR 新开的 change（base 上已有的未收口仍报错），main 推送要求全树 0 个未收口。PR 上还有一个**报告期**的 `portable` job：在 `ubuntu-latest` 上跑同一套测试，先把“只有 Windows 能过”的用例暴露出来；它不拦 PR，等这些用例按平台显式标记后转为必过项（`D-20261116-platform-layers` 第②③刀）。`Desktop package` 只在触及 `apps/desktop/**`、`package.json` 或锁文件时（PR）与手动 `workflow_dispatch` 时跑 smoke / 打包 / 安装包验证；发布前用 `gh workflow run "Desktop package"` 跑全流程。
 - Actions 额度：2026-11-16 曾因组织 Free 额度用尽，所有 job 4 秒内失败、注释为「recent account payments have failed or your spending limit needs to be increased」；同日仓库转 public 后标准 runner 免费，故障消失。若再现同类空日志 4 秒失败，先查 `https://github.com/organizations/Noema-Harness/settings/billing/budgets`。
 - 路径检查的身份：PR 上按 **PR 作者**（`github.event.pull_request.user.login`）判定，`main` 推送按推送者（`github.actor`）判定。不能用 `github.actor` 判 PR——它是最后一次推送的人，维护者在协作者分支上补一个 commit 就会把越权 PR 洗绿（回归样本：PR #155 的 run 43862079239 失败、维护者补 commit 后 run 43868086384 通过；修复后第二次也必须是 fail）。
 - 本地预演路径检查：`npm run guard -- --actor <登录名> --base origin/main`；维护者返回放行，协作者触碰维护者路径时列出被拦文件并以退出码 1 结束。
