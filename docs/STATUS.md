@@ -36,6 +36,12 @@ Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与�
 
 - **平台门（2026-11-16）**：`platform` job 在 main 推送与每个 PR 上检查“本地至多一个活动变更、main 的树没有未收口变更”；main 还留着未收口变更时 PR 会显式报「main 上还有未收口 change」。证据：`scripts/maintenance.test.mjs` 18/18、`npm run tools:test` 55/55、`node scripts/maintenance.mjs platform` 在当前 main 上按预期失败（待验收的 workflow-closure）。
 
+## 外部收件箱桥（2026-11-16）
+
+- DSH 插件 `plugins/inbox-bridge/`（v1.1.0，默认 2 分钟轮询）+ 仓库侧 `scripts/inbox-bridge.mjs`：外部事件注入下一次对话步骤，三态 pending/delivered/done，`npm run inbox:ack` 标记完成。
+- 证据：`node --test scripts/inbox-bridge.test.mjs` 4/4；`node .work/probe-inbox-plugin.mjs` → injected 1 / delivered；插件已安装为 `dsh-inbox-bridge@1.1.0`（重启 DSH 后在真实会话生效）；旧 Windows 计划任务已删除。
+- `npm run inbox` 现在是带状态的列表；旧的 `github-inbox.mjs --poll` 仍是抓取后端。
+
 ## 未验证
 
 - 真实 provider 的完整对话链与长时运行。

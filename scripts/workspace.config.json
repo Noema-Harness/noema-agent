@@ -23,10 +23,14 @@
     "docs",
     "node_modules",
     "openspec",
+    "plugins",
     "scripts",
     "skills"
   ],
-  "cleanableArtifacts": [".work/runs", ".work/scratch"],
+  "cleanableArtifacts": [
+    ".work/runs",
+    ".work/scratch"
+  ],
   "generatedDirectories": [
     ".archify",
     "apps/desktop/.vite",

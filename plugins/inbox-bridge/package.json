@@ -1,0 +1,24 @@
+{
+  "name": "dsh-inbox-bridge",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Poll one external source (CI, issues, mail, anything with a command) and inject its new events into the next agent step, with delivered/handled bookkeeping.",
+  "exports": {
+    ".": "./index.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "README.md",
+    "icon.svg"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

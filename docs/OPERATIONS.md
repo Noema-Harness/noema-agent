@@ -128,20 +128,26 @@ npm run branches:prune -- --apply # 执行删除
 
 全量 `npm run check`（约 40 秒、878 个测试）是**里程碑门槛**：一张看板卡的一个切口完成时跑一次。轮内只跑 `npm run typecheck` 与受影响的测试文件；推送后不等 GitHub Actions 跑完——计划任务和 `npm run inbox` 会在下一轮开场报告红/绿。只有三种情况需要主动看 CI：合并协作者的 PR 前、发布前、收到红色通知后定位。
 
-### GitHub 通知（本地收件箱）
+### 外部收件箱（GitHub 通知 → 对话）
 
-`npm run inbox` 用 `gh` 拉取 main 的 workflow 失败/恢复、open PR 检查状态、issue/PR 新评论与 issue 创建；新事件打印一行并追加到 `.work/github-inbox/pending.md`，状态在 `.work/github-inbox/state.json`（去重键保留最近 500 条）。每轮开始先跑一次；gh 不可用或离线时静默退出，不阻塞任何门槛。
-
-Windows 计划任务（每 10 分钟，用户身份运行以继承 gh 登录态与代理）：
+三态：`pending`（未送过）→ `delivered`（已注入对话，等处理）→ `done`（处理完）。状态在 `.work/inbox-bridge/state.json`；来源事实由 `scripts/github-inbox.mjs` 抓取（gh 不可用时静默退出，不阻塞门槛）。
 
 ```powershell
-schtasks /Create /SC MINUTE /MO 10 /TN NoemaGithubInbox ^
-  /TR "node C:\Users\NUC\Desktop\noema\scripts\github-inbox.mjs --poll --quiet" /F
-schtasks /Run /TN NoemaGithubInbox
-schtasks /Query /TN NoemaGithubInbox
+npm run inbox                          # 列出三态；需要读全文时加 --all 走旧脚本
+npm run inbox:ack -- <key>             # 处理完标记 done
+node scripts/inbox-bridge.mjs list --json
 ```
 
-它只做提醒，不代替 `npm run check`；CI 的正式结论以 GitHub Actions 为准。
+运行中注入靠 DSH 插件 `plugins/inbox-bridge/`：默认每 2 分钟轮询一次，把尚未送过的事件经 `agent.inject()` 送进下一次对话步骤（不唤醒空闲 agent），注入后自动标记 `delivered`。
+
+```powershell
+# 安装/更新（本地 link，改完代码要重启 DSH 才会加载新代）
+dsh plugin add C:\Users\NUC\Desktop\noema\plugins\inbox-bridge
+```
+
+配置在 `plugins/inbox-bridge/cordis.patch.yml`（`intervalMs` 默认 120000；`poll`/`ack` 命令可换成任意来源）。日志：`.work/inbox-bridge/plugin.log`。探针：`node .work/probe-inbox-plugin.mjs`。
+
+**不要再用 Windows 计划任务**（旧方案每 10 分钟弹一次 node 窗口、且只能等下一轮才看到）；它只做提醒，不代替 `npm run check`，CI 的正式结论以 GitHub Actions 为准。
 
 ### 审核入口与决议条目
 
