@@ -17,7 +17,7 @@ Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与�
 - 安装包：`npm run make:desktop` 产出 `Noema-0.7.6 Setup.exe`（170,410,496 字节，sha256 `6E773C854FBF6E4B0A39720608737555114E5E95E9F5526F1E05D7A32964BCDC`）、`noema_desktop-0.7.6-full.nupkg`、`RELEASES`；把 `TEMP`/`SQUIRREL_TEMP` 指到可写目录后 `Setup.exe --silent` 能装出 `app-0.7.6`（载荷验证）。
 - CI：run `43699905215` success（9.9 分钟，commit `ed11513`），干净 Windows runner 上含 `make:desktop` 与安装/升级/卸载数据保留验证。
 - 架构图：`figure:build` 端到端跑通（Archify 四 gate 全 pass → Edge 截图 → 摘要回写），`figure:check` 保证与 `docs/ARCHITECTURE.md` 同步。
-- TypeScript 迁移：PR #131 已合并（`d32257e`，57 个主进程模块只改类型、不改行为，决定见 D-039）；`source:check` 的 `.mjs` 上限保持 67。PR 的 Windows CI verify 13m41s 全绿，含打包、安装与安装/升级/卸载数据保留验证。
+- TypeScript 迁移：PR #131 合并了第一批 57 个主进程模块（`d32257e`），PR #146 合并了第二批 39 个 ≤330 行模块（只改类型、不改行为，决定见 D-039）；`apps/desktop/src` 剩余 `.mjs` 28 个，`source:check` 上限同步下调到 28。验证：`tsc --noEmit` 0 错误、全量测试 885/885、88 个改动文件 oxfmt 通过。
 - macOS 开发环境（2026-11-16）：`.githooks/pre-commit` 带可执行位（`100755`）；合并提交只检查与两个父提交都不同的路径（`stagedPaths`，新增单测）；锁文件补齐 oxlint 的 darwin-arm64/darwin-x64/linux-x64/linux-arm64 原生包，macOS 上 `npm run lint` 可跑。来自协作者的 #154（原 PR #150），本机验证 `maintenance.test.mjs` 20/20。
 - 计划先于代码（change `plan-before-code`）：`pre-commit` 在提交产品代码时要求本轮 change 已在 `HEAD`，否则报“本轮变更的计划还没有提交”；计划与实现因此分成两次提交。
 - 交付观察口（D-20261115-delivery-observability）：产品变更的 `design.md` 必须写「用户可观察的改变」与「手测步骤」（`plan:check` 强制），`milestone:check` 要求 tasks 记“更新卡片正文”；决定编号改为 `D-YYYYMMDD-<短名>`（D-20261115-decision-ids）。
