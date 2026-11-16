@@ -9,7 +9,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const CLI_REL = resolve("scripts", "inbox-bridge.mjs");
+const CLI_REL = "scripts/inbox-bridge.mjs";
 
 const candidates = [
   process.env.INBOX_CLI,

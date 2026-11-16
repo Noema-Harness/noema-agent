@@ -162,7 +162,7 @@ git clone https://github.com/Noema-Harness/dsh-inbox-bridge C:\Users\NUC\Desktop
 dsh plugin add C:\Users\NUC\Desktop\dsh-inbox-bridge   # 每次更新后重新 add，改完代码要重启 DSH
 ```
 
-配置在 `cordis.patch.yml`（`intervalMs` 默认 120000、`resurfaceMs` 默认 6 小时、`offlineReminderMs` 默认 12 小时、`ackHint` 决定通知里教的收口命令；`poll`/`ack` 命令可换成任意来源）。日志：`.work/inbox-bridge/plugin.log`。
+配置在 `cordis.patch.yml`（`intervalMs` 默认 45000、`wake` 默认 `first`：用 `followup` 唤醒一个空闲会话，`all` 唤醒全部、`off` 只注入；`resurfaceMs` 默认 6 小时、`offlineReminderMs` 默认 12 小时、`ackHint` 决定通知里教的收口命令；`poll`/`ack` 命令可换成任意来源）。日志：`.work/inbox-bridge/plugin.log`。改插件代码或配置后要重启 DSH 才会生效。
 
 **不要再用 Windows 计划任务**（旧方案每 10 分钟弹一次 node 窗口、且只能等下一轮才看到）；它只做提醒，不代替 `npm run check`，CI 的正式结论以 GitHub Actions 为准。GitHub 网页上的通知状态与本地 `done` 是两套记录：本地 `done` 只表示 agent 已处理，不会改动 GitHub 的未读标记。
 
