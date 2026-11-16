@@ -28,11 +28,11 @@ const LIFECYCLE = (stage = "执行中", batch = "changes/stage-probe") =>
     "**看板**：无",
     "**来源**：测试",
     "**阻塞**：无",
-    "##### 1 决策（执行前，可重开）",
+    "#### 1 决策（执行前，可重开）",
     "- 结论：x（用户确认：2026-11-16）",
-    "##### 2 执行（执行中）",
+    "#### 2 执行（执行中）",
     `- 批次：${batch}`,
-    "##### 3 验收（立项时写 v0，交付前复核更新）",
+    "#### 3 验收（立项时写 v0，交付前复核更新）",
     "- 项：x — 手测 — 待验收",
     "",
   ].join("\n");
@@ -206,7 +206,7 @@ test("maintenance tooling enforces document, plan and commit gates", () =>
     write(
       root,
       "docs/DECISIONS.md",
-      `# DECISIONS\n\n${HEADER}## D-20261116-awaiting 等待确认的探针\n\n**状态**：待定\n**形态**：轮次\n**阶段**：决策中\n**要定什么**：探针\n**看板**：无\n**来源**：探针\n**阻塞**：无\n**结构**：无\n\n##### 1 决策（执行前）\n\n- 要定：探针\n\n##### 2 执行（执行中）\n\n- 批次：无\n\n##### 3 验收（立项时写 v0，交付前复核更新）\n\n- 项：探针 — 验：无 — 结论：待验收\n`,
+      `# DECISIONS\n\n${HEADER}## D-20261116-awaiting 等待确认的探针\n\n**状态**：待定\n**形态**：轮次\n**阶段**：决策中\n**要定什么**：探针\n**看板**：无\n**来源**：探针\n**阻塞**：无\n**结构**：无\n\n#### 1 决策（执行前）\n\n- 要定：探针\n\n#### 2 执行（执行中）\n\n- 批次：无\n\n#### 3 验收（立项时写 v0，交付前复核更新）\n\n- 项：探针 — 验：无 — 结论：待验收\n`,
     );
     assert.equal(reviewQueue(fs.readFileSync(decisionsPath, "utf8")).decide.length, 1);
     const blocked = checkPrecommit(root, { git, stagedPaths: ["apps/desktop/src/main/main.ts"] });
@@ -315,7 +315,7 @@ test("a milestone is archivable only when tasks, decisions and evidence line up"
     write(
       root,
       "docs/DECISIONS.md",
-      `# DECISIONS\n\n${HEADER}## D-20261116-awaiting 等待确认的探针\n\n**状态**：待定\n**形态**：轮次\n**阶段**：决策中\n**要定什么**：探针\n**看板**：无\n**来源**：探针\n**阻塞**：无\n**结构**：无\n\n##### 1 决策（执行前）\n\n- 要定：探针\n\n##### 2 执行（执行中）\n\n- 批次：无\n\n##### 3 验收（立项时写 v0，交付前复核更新）\n\n- 项：探针 — 验：无 — 结论：待验收\n`,
+      `# DECISIONS\n\n${HEADER}## D-20261116-awaiting 等待确认的探针\n\n**状态**：待定\n**形态**：轮次\n**阶段**：决策中\n**要定什么**：探针\n**看板**：无\n**来源**：探针\n**阻塞**：无\n**结构**：无\n\n#### 1 决策（执行前）\n\n- 要定：探针\n\n#### 2 执行（执行中）\n\n- 批次：无\n\n#### 3 验收（立项时写 v0，交付前复核更新）\n\n- 项：探针 — 验：无 — 结论：待验收\n`,
     );
     const decided = checkMilestone(root, { git: fakeGit(), today: TODAY });
     assert.match(decided.errors.join("\n"), /还有 1 项决议未获用户确认/u);
@@ -464,7 +464,7 @@ test("unanswered decisions block product code but not tooling maintenance", () =
     write(
       root,
       "docs/DECISIONS.md",
-      `# DECISIONS\n\n${HEADER}## D-20261116-stage-probe 探针条目\n\n**状态**：决定\n**用户确认**：2026-11-16\n**决定**：探针\n\n${LIFECYCLE("执行中", "changes/stage-probe")}## D-20261116-awaiting 等待确认的探针\n\n**状态**：待定\n**形态**：轮次\n**阶段**：决策中\n**要定什么**：探针\n**看板**：无\n**来源**：探针\n**阻塞**：无\n**结构**：无\n\n##### 1 决策（执行前）\n\n- 要定：探针\n\n##### 2 执行（执行中）\n\n- 批次：无\n\n##### 3 验收（立项时写 v0，交付前复核更新）\n\n- 项：探针 — 验：无 — 结论：待验收\n`,
+      `# DECISIONS\n\n${HEADER}## D-20261116-stage-probe 探针条目\n\n**状态**：决定\n**用户确认**：2026-11-16\n**决定**：探针\n\n${LIFECYCLE("执行中", "changes/stage-probe")}## D-20261116-awaiting 等待确认的探针\n\n**状态**：待定\n**形态**：轮次\n**阶段**：决策中\n**要定什么**：探针\n**看板**：无\n**来源**：探针\n**阻塞**：无\n**结构**：无\n\n#### 1 决策（执行前）\n\n- 要定：探针\n\n#### 2 执行（执行中）\n\n- 批次：无\n\n#### 3 验收（立项时写 v0，交付前复核更新）\n\n- 项：探针 — 验：无 — 结论：待验收\n`,
     );
 
     const tooling = checkPrecommit(root, {
@@ -503,7 +503,7 @@ test("a decision states its outcome and a pending item states what is open", () 
 test("a dated entry carries its lifecycle fields and keeps stage and state aligned", () => {
   const missing = checkDecisionEntries("## D-20261116-probe\n\n**状态**：决定\n**决定**：x\n");
   assert.match(missing.errors.join("\n"), /缺少「\*\*阶段\*\*：…」/u);
-  assert.match(missing.errors.join("\n"), /缺少「##### 1 决策」小节/u);
+  assert.match(missing.errors.join("\n"), /缺少「#### 1 决策」小节/u);
 
   const misaligned = checkDecisionEntries(
     `## D-20261116-probe\n\n**状态**：决定\n**决定**：x\n\n${LIFECYCLE("决策中")}`,
