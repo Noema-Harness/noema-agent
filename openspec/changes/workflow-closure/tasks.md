@@ -69,6 +69,7 @@
 - [x] 10.5 `package.json` 加 `guard`；`tools:test` 纳入 collaboration 测试
 - [x] 10.6 `docs/OPERATIONS.md` 加「协作与 PR 检查」；STATUS 记录本轮（`npm run check` 885/885，49,991ms）；`npm run guard` 可在本地预演
 - [x] 10.7 #149 审核结论写入 design；#148 去掉能力标签并关闭；STATUS 的 C15 引用改成 change 名
+- [x] 10.8 平台侧提交门：`maintenance.mjs range`（PR diff 复用提交规则）+ `Desktop checks` 的 `range` 步骤；`scripts/maintenance.test.mjs` 17/17
 
 ## 7. 归档
 

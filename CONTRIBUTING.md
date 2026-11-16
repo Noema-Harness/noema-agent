@@ -68,11 +68,11 @@ UI 或交互改动附截图；数据、迁移、安装包改动写清回滚方�
 
 远端（每个 PR 自动跑）：
 
-| 检查                             | 覆盖                                                              |
-| -------------------------------- | ----------------------------------------------------------------- |
-| `Desktop checks / verify`        | `npm run check`                                                   |
-| `Desktop checks / collaboration` | 协作者是否改了维护者路径                                          |
-| `Desktop package`                | 触及 `apps/desktop/**` 时跑 smoke、打包、安装包安装/升级/卸载验证 |
+| 检查                             | 覆盖                                                                                          |
+| -------------------------------- | --------------------------------------------------------------------------------------------- |
+| `Desktop checks / verify`        | `npm run check`，以及 PR diff 上的提交门（产品代码必须带计划/状态，未确认决议不能改产品代码） |
+| `Desktop checks / collaboration` | 协作者是否改了维护者路径                                                                      |
+| `Desktop package`                | 触及 `apps/desktop/**` 时跑 smoke、打包、安装包安装/升级/卸载验证                             |
 
 main 推送不再触发 CI（Windows runner 分钟数昂贵）；发布前由维护者用 `workflow_dispatch` 手动跑全套。
 

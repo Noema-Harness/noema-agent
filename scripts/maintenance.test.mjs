@@ -10,6 +10,7 @@ import {
   checkMilestone,
   checkPlan,
   checkPrecommit,
+  checkRange,
   localToday,
   reviewQueue,
 } from "./maintenance.mjs";
@@ -403,6 +404,24 @@ test("product code waits until the round's plan is committed", () =>
     assert.match(blocked.errors.join("\n"), /计划还没有提交/u);
     const allowed = checkPrecommit(root, { git: fakeGit(), stagedPaths: staged });
     assert.doesNotMatch(allowed.errors.join("\n"), /计划还没有提交/u);
+  }));
+
+test("the platform range gate applies the commit rules to a PR diff", () =>
+  withRoot((holder) => {
+    const root = makeRoot(holder);
+    const git = fakeGit();
+
+    const bare = checkRange(root, { git, files: ["apps/desktop/src/main/main.ts"] });
+    assert.match(bare.errors.join("\n"), /产品代码改动必须同时更新/u);
+
+    const withPlan = checkRange(root, {
+      git,
+      files: ["apps/desktop/src/main/main.ts", "openspec/changes/stage-probe/tasks.md"],
+    });
+    assert.deepEqual(withPlan.errors, []);
+
+    const docsOnly = checkRange(root, { git, files: ["docs/OPERATIONS.md"] });
+    assert.deepEqual(docsOnly.errors, []);
   }));
 
 test("governance changes declare Plan: none and never ship product code", () =>

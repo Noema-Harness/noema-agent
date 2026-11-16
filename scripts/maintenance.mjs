@@ -659,6 +659,7 @@ export function checkPrecommit(root, options = {}) {
   const plan = checkPlan(root, { skipSpecValidation: true });
   const errors = [...docs.errors, ...plan.errors];
   const staged = options.stagedPaths ?? stagedPaths(root, git);
+  const skipPlanCommitOrder = options.skipPlanCommitOrder ?? false;
   const code = staged.filter((name) => CODE_PREFIXES.some((prefix) => name.startsWith(prefix)));
   if (code.length) {
     const productCode = code.filter((name) => name.startsWith(PRODUCT_CODE_PREFIX));
@@ -679,7 +680,7 @@ export function checkPrecommit(root, options = {}) {
         `还有未获用户确认的决议，相关产品行为不能实现：${plan.pending.join(", ")}；工具与文档改动不受此限`,
       );
     }
-    if (productCode.length && plan.change) {
+    if (productCode.length && plan.change && !skipPlanCommitOrder) {
       const committedPlan = git([
         "ls-tree",
         "-r",
@@ -719,6 +720,36 @@ export function checkPrecommit(root, options = {}) {
     }
   }
   return { errors, notices: plan.notices, staged };
+}
+
+/**
+ * 平台侧的提交门：把 pre-commit 的判定套在一段 PR diff 上。
+ *
+ * 本机的 .githooks/pre-commit 只能护住装了钩子的维护者；协作者在平台上提交 PR
+ * 时没有等价物，于是“代码不带计划”“未确认决议却改产品行为”能绕过。
+ * 这里用 git diff <base>...HEAD 的文件清单复用同一套判定（不检查提交顺序：
+ * PR 是一个整体，顺序由作者的历史决定，门只问这一批改动是否自带计划与状态）。
+ */
+export function checkRange(root, options = {}) {
+  const git = options.git ?? ((args) => runGit(root, args));
+  const base = options.base ?? "origin/main";
+  const result = git(["diff", "--name-only", "-z", `${base}...HEAD`]);
+  const baseExists = result.ok || result.text.trim().length > 0;
+  if (!baseExists && !options.files) {
+    return {
+      errors: [`无法比较 base「${base}」与 HEAD：确认已 fetch 该分支（git fetch origin ${base}）`],
+      notices: [],
+      files: [],
+    };
+  }
+  const files = (options.files ?? result.text.split("\u0000"))
+    .filter(Boolean)
+    .map((name) => name.replaceAll("\\", "/"));
+  if (!files.length) {
+    return { errors: [], notices: [`范围 ${base}...HEAD 没有改动文件`], files };
+  }
+  const checked = checkPrecommit(root, { git, stagedPaths: files, skipPlanCommitOrder: true });
+  return { ...checked, files };
 }
 
 function runGit(root, args) {
@@ -767,7 +798,14 @@ if (entry === fileURLToPath(import.meta.url)) {
     if (command === "plan") return report("plan-check", checkPlan(root));
     if (command === "milestone") return report("milestone-check", checkMilestone(root));
     if (command === "precommit") return report("precommit-check", checkPrecommit(root));
-    throw new Error("Usage: node scripts/maintenance.mjs docs|plan|milestone|precommit");
+    if (command === "range") {
+      const baseFlag = process.argv.indexOf("--base");
+      const base = baseFlag === -1 ? "origin/main" : process.argv[baseFlag + 1];
+      return report("range-check", checkRange(root, { base }));
+    }
+    throw new Error(
+      "Usage: node scripts/maintenance.mjs docs|plan|milestone|precommit|range [--base <ref>]",
+    );
   })();
   process.exit(output);
 }
