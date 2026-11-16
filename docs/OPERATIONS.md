@@ -100,7 +100,7 @@ npm run branches:prune -- --apply # 执行删除
 | `[用户]` 验收项勾选没有确认日期                       | 只有用户明确确认后才勾选，并写成 `（用户确认：YYYY-MM-DD）`                                                                         |
 | milestone 报任务未完成 / 有待决问题 / STATUS 不是当天 | 补完任务、拿到用户答案、更新 STATUS 后再归档                                                                                        |
 | milestone 报产品变更没更新卡片正文                    | 在 tasks 写一条“更新卡片正文（现在能做什么 + 手测步骤 / 还没做）”，并真的改卡片正文；治理变更（`Plan: none`）不需要                 |
-| 报「本变更引用的决议未获用户确认」                     | 让被引用的条目先走出 `决策中`（用户确认方案），再跑 `npm run milestone:check`                                                        |
+| 报「本变更引用的决议未获用户确认」                    | 让被引用的条目先走出 `决策中`（用户确认方案），再跑 `npm run milestone:check`                                                       |
 | 报「验收结论确认后才算交付」                          | 请用户验收（`npm run review` 的“待你验收”），通过后把条目阶段改 `已收口` 再归档                                                     |
 | 报「产品变更没有对应的决议条目」                      | 在 DECISIONS 写一条阶段为 `执行中` 的条目，第 2 层写 `批次：changes/<name>`                                                         |
 | 架构文档变了但图没重出（figure:check）                | 运行 `npm run figure:build`；不要手改 html/png；README 必须引用 png 与 html                                                         |
@@ -118,10 +118,10 @@ npm run branches:prune -- --apply # 执行删除
 
 两张图，读者不同：
 
-| 图 | 读者 | 图源文档 | 入口 | 产物 |
-| --- | --- | --- | --- | --- |
-| 产品架构图 | 用户 | `docs/ARCHITECTURE.md` | `README.md` | `docs/assets/noema-architecture.*` |
-| 治理全景图 | 维护者 | `AGENTS.md` | `AGENTS.md` | `docs/assets/noema-governance.*` |
+| 图         | 读者   | 图源文档               | 入口        | 产物                               |
+| ---------- | ------ | ---------------------- | ----------- | ---------------------------------- |
+| 产品架构图 | 用户   | `docs/ARCHITECTURE.md` | `README.md` | `docs/assets/noema-architecture.*` |
+| 治理全景图 | 维护者 | `AGENTS.md`            | `AGENTS.md` | `docs/assets/noema-governance.*`   |
 
 产品图是 README 的入口，也是规划的总锚点：图里区分“已实现”和“计划中（灰底 + 虚线区域）”；只画 Noema 产品范围，不画本机开发 harness。治理图画治理结构（提示层、事实流、机器门），不进 README。
 
