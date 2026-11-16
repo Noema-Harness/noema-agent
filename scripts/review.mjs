@@ -6,6 +6,13 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { decisionEntries, decisionMeta } from "./maintenance.mjs";
 
+const MARKS = {
+  决策中: "⏳",
+  执行中: "🔧",
+  待验收: "🔍",
+  已收口: "✅",
+};
+
 export function summarizeReview(text) {
   const groups = { decide: [], accept: [], running: [], closed: [] };
   for (const entry of decisionEntries(text)) {
@@ -16,7 +23,7 @@ export function summarizeReview(text) {
       title: entry.title,
       stage: meta.stage,
       blocker: meta.blocker,
-      card: meta.card,
+      issue: meta.issue,
     };
     if (meta.stage === "决策中") groups.decide.push(item);
     else if (meta.stage === "待验收") groups.accept.push(item);
@@ -26,25 +33,28 @@ export function summarizeReview(text) {
   return groups;
 }
 
+function issueLink(issue) {
+  return issue ? ` · https://github.com/Noema-Harness/noema-agent/issues/${issue}` : "";
+}
+
 export function formatReview(groups) {
   const lines = [];
-  const section = (label, items, note) => {
-    lines.push(`${label}（${items.length}）`);
+  const section = (label, mark, items, note) => {
+    lines.push(`${mark} ${label}（${items.length}）`);
     if (!items.length) lines.push("  无");
     for (const item of items) {
-      lines.push(`  ${item.id} ${item.title}`);
-      const details = [`阶段：${item.stage}`];
-      if (item.card && item.card !== "无") details.push(`看板：${item.card}`);
+      lines.push(`  ${item.id} ${item.title}${issueLink(item.issue)}`);
+      const details = [`${mark} ${item.stage}`];
       if (item.blocker && item.blocker !== "无") details.push(`阻塞：${item.blocker}`);
       lines.push(`    ${details.join(" · ")}`);
     }
     if (note) lines.push(`  ${note}`);
     lines.push("");
   };
-  section("需要你决定", groups.decide);
-  section("待你验收", groups.accept);
-  section("执行中", groups.running, "不打扰：只在需要决定或被阻塞时出现。");
-  lines.push(`已收口 ${groups.closed.length} 条`);
+  section("需要你决定", MARKS.决策中, groups.decide);
+  section("待你验收", MARKS.待验收, groups.accept);
+  section("执行中", MARKS.执行中, groups.running, "不打扰：只在需要决定或被阻塞时出现。");
+  lines.push(`✅ 已收口 ${groups.closed.length} 条`);
   return lines.join("\n");
 }
 

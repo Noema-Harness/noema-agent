@@ -156,6 +156,8 @@ export function activeChanges(root) {
 
 // 决定编号 = 日期 + 短名：并行分支各自产出，不抢全局序号（D-20261115-decision-ids）。
 // `D-0xx` 是旧编号，保留历史引用，不再新增。
+// A GitHub-linked entry carries a marker in its title: `## [#151](url) D-… 标题`.
+const DECISION_LINK = /^## \[#(\d+)\]\(([^)]+)\) /u;
 const GOVERNED_DECISION = /^## (D-(?:(\d{3})|(\d{8}-[a-z0-9-]+)))\b/u;
 
 // 产品变更必须写清用户能观察到什么、怎么手测；收口时抄进卡片正文。
@@ -170,31 +172,34 @@ function sectionHasItems(text, heading) {
 export function decisionEntries(text) {
   const entries = [];
   let current = null;
-  for (const line of String(text).split(/\r?\n/u)) {
+  for (const raw of String(text).split(/\r?\n/u)) {
+    const link = DECISION_LINK.exec(raw);
+    const line = link ? `## ${raw.slice(link[0].length)}` : raw;
     const head = GOVERNED_DECISION.exec(line);
     if (head) {
       if (current) entries.push(current);
       current = {
         id: head[1],
         number: head[2] ? Number(head[2]) : null,
+        issue: link ? Number(link[1]) : null,
         title: line.slice(head[0].length).trim(),
         body: [],
       };
       continue;
     }
-    if (current) current.body.push(line);
+    if (current) current.body.push(raw);
   }
   if (current) entries.push(current);
   return entries.map((entry) => ({
     id: entry.id,
     number: entry.number,
+    issue: entry.issue,
     title: entry.title,
     body: entry.body.join("\n"),
   }));
 }
 
-// 日期编号的条目带生命周期字段；D-0xx 旧条目按历史格式处理，不要求新字段。
-export const ENTRY_FORMS = ["轮次", "专案", "能力·遗留"];
+// 日期编号的条目带阶段；D-0xx 旧条目按历史格式处理，不要求新字段。
 export const ENTRY_STAGES = ["决策中", "执行中", "待验收", "已收口"];
 
 export function decisionMeta(entry) {
@@ -205,13 +210,11 @@ export function decisionMeta(entry) {
   const stage = read("阶段");
   if (!stage) return null;
   return {
-    form: read("形态"),
     stage,
-    card: read("看板"),
+    issue: entry.issue ?? null,
     source: read("来源"),
     blocker: read("阻塞"),
     structure: read("结构"),
-    state: /\*\*状态\*\*：\s*(待定|决定)/u.exec(entry.body)?.[1] ?? null,
   };
 }
 
@@ -222,97 +225,62 @@ export function reviewQueue(text) {
   for (const entry of decisionEntries(text)) {
     const meta = decisionMeta(entry);
     if (!meta) continue;
-    const item = { id: entry.id, title: entry.title, blocker: meta.blocker, card: meta.card };
+    const item = {
+      id: entry.id,
+      title: entry.title,
+      blocker: meta.blocker,
+      issue: meta.issue,
+    };
     if (meta.stage === "决策中") decide.push(item);
     else if (meta.stage === "待验收") accept.push(item);
   }
   return { decide, accept };
 }
 
-// Entries dated 2026-11-16 or later carry the lifecycle format (form / stage / board /
-// source / blocker plus 决策 / 执行 / 验收). Earlier entries keep the older stream format.
+// Decisions are one review inbox: the stage says where the entry stands, and a dated entry
+// newer than LIFECYCLE_FROM must also carry the three sections that show how it got there.
 const LIFECYCLE_FROM = "20261116";
 
-// Decisions are an issue stream: entries from D-029 on declare a state, and each
-// state needs the one field that makes it useful — what is being decided, or what was decided.
 export function checkDecisionEntries(text, options = {}) {
   const errors = [];
   const notices = [];
-  const previousIds = new Set(
-    (options.previous ? decisionEntries(options.previous) : []).map((entry) => entry.id),
-  );
   for (const entry of decisionEntries(text)) {
-    if (/\*\*状态\*\*：\s*作废/u.test(entry.body)) {
-      errors.push(`${entry.id} 标成了作废：没有产出的条目直接删除（Git 保留历史），不要留在流水里`);
-      continue;
-    }
-    const state = /\*\*状态\*\*：\s*(待定|决定)/u.exec(entry.body);
-    if (!state) {
-      errors.push(`${entry.id} 缺少「**状态**：待定|决定」`);
-      continue;
-    }
-    const field = state[1] === "待定" ? "**要定什么**" : "**决定**";
-    if (!entry.body.includes(field)) errors.push(`${entry.id} 是${state[1]}条目，缺少 ${field}`);
-    if (
-      state[1] === "决定" &&
-      options.previous !== undefined &&
-      !previousIds.has(entry.id) &&
-      !/\*\*用户确认\*\*：\d{4}-\d{2}-\d{2}/u.test(entry.body)
-    ) {
-      errors.push(
-        `${entry.id} 一创建就是决定：新决定先在待定里存一轮（让候选与否决过程可见），或写「**用户确认**：YYYY-MM-DD」表示用户已经拍板`,
-      );
-    }
     const dated = entry.id.replace(/^D-/u, "");
-    if (/^\d{8}-/u.test(dated) && dated.slice(0, 8) >= LIFECYCLE_FROM) {
-      checkDatedEntry(entry, state[1], errors);
-    }
+    if (!(/^\d{8}-/u.test(dated) && dated.slice(0, 8) >= LIFECYCLE_FROM)) continue;
+    checkDatedEntry(entry, errors);
   }
   return { errors, notices };
 }
 
-// 日期编号条目必须能回答“这一轮处在哪一步、卡在哪”：形态、阶段、来源、阻塞固定写，
-// 三层（决策 / 执行 / 验收）固定存在；阶段与状态必须一致，避免“决策中却写已确认”。
-function checkDatedEntry(entry, state, errors) {
-  const meta = decisionMeta(entry) ?? {};
-  const required = ["形态", "阶段", "来源", "阻塞", "看板"];
-  for (const label of required) {
-    if (
-      !meta[
-        label === "形态"
-          ? "form"
-          : label === "阶段"
-            ? "stage"
-            : label === "看板"
-              ? "card"
-              : label === "来源"
-                ? "source"
-                : "blocker"
-      ]
-    ) {
-      errors.push(`${entry.id} 缺少「**${label}**：…」`);
-    }
+// A dated entry must answer “where is this round, what blocks it”: stage first, then the
+// three sections. 决策中 is the only stage without a decision; every other stage implies the
+// user already confirmed, and 已收口 records the date of that confirmation.
+function checkDatedEntry(entry, errors) {
+  const meta = decisionMeta(entry);
+  if (!meta) {
+    errors.push(`${entry.id} 缺少「**阶段**：…」：阶段决定这一条在等你做什么`);
+    return;
   }
-  if (meta.form && !ENTRY_FORMS.includes(meta.form)) {
-    errors.push(`${entry.id} 的形态「${meta.form}」不在 ${ENTRY_FORMS.join(" / ")} 里`);
-  }
-  if (meta.stage && !ENTRY_STAGES.includes(meta.stage)) {
+  if (!ENTRY_STAGES.includes(meta.stage)) {
     errors.push(`${entry.id} 的阶段「${meta.stage}」不在 ${ENTRY_STAGES.join(" / ")} 里`);
   }
-  if (meta.stage === "决策中" && state !== "待定") {
-    errors.push(`${entry.id} 阶段是决策中，状态应为待定（用户还没确认）`);
-  }
-  if (meta.stage && meta.stage !== "决策中" && state !== "决定") {
-    errors.push(`${entry.id} 阶段是${meta.stage}，状态应为决定（已确认才进入执行）`);
-  }
-  if (meta.form === "专案" && !/^#\d+$/u.test(meta.card ?? "")) {
-    errors.push(`${entry.id} 是专案，看板应写「**看板**：#<issue>」`);
-  }
-  if (meta.form && meta.form !== "专案" && (meta.card ?? "") !== "无") {
-    errors.push(`${entry.id} 不是专案，看板应写「**看板**：无」`);
+  const stageLine = entry.body.split("\n").find((line) => line.startsWith("- **阶段**："));
+  const firstField = entry.body.split("\n").find((line) => line.startsWith("- **"));
+  if (stageLine && firstField && stageLine !== firstField) {
+    errors.push(`${entry.id} 的阶段必须是第一条字段：它决定用户要不要处理这一条`);
   }
   for (const heading of ["#### 1 决策", "#### 2 执行", "#### 3 验收"]) {
     if (!entry.body.includes(heading)) errors.push(`${entry.id} 缺少「${heading}」小节`);
+  }
+  const decision = /^\s*- 决定：/mu.test(entry.body);
+  if (meta.stage === "决策中" && decision) {
+    errors.push(`${entry.id} 还在决策中，却已经写了「- 决定：」：用户确认后再写结论`);
+  }
+  if (meta.stage !== "决策中" && !decision) {
+    errors.push(`${entry.id} 阶段是${meta.stage}，但「#### 1 决策」里缺少「- 决定：」`);
+  }
+  if (meta.stage === "已收口" && !/- 用户确认：\d{4}-\d{2}-\d{2}/u.test(entry.body)) {
+    errors.push(`${entry.id} 已收口，验收末尾应写「- 用户确认：YYYY-MM-DD」`);
   }
 }
 

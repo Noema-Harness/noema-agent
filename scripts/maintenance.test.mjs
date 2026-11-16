@@ -7,6 +7,8 @@ import {
   activeChanges,
   checkDocuments,
   checkDecisionEntries,
+  decisionEntries,
+  decisionMeta,
   checkMilestone,
   checkPlan,
   checkPrecommit,
@@ -22,21 +24,22 @@ const HEADER = "Authority: 测试\nUpdate when: 测试\nDoes not own: 测试\n";
 const TODAY = localToday();
 const BOARD = "https://github.com/orgs/Noema-Harness/projects/1";
 
-const LIFECYCLE = (stage = "执行中", batch = "changes/stage-probe") =>
-  [
-    "**形态**：轮次",
-    `**阶段**：${stage}`,
-    "**看板**：无",
-    "**来源**：测试",
-    "**阻塞**：无",
-    "#### 1 决策（执行前，可重开）",
-    "- 结论：x（用户确认：2026-11-16）",
-    "#### 2 执行（执行中）",
+const LIFECYCLE = (stage = "执行中", batch = "changes/stage-probe") => {
+  const decision = stage === "决策中" ? ["- 要定：x"] : ["- 决定：x（用户确认：2026-11-16）"];
+  return [
+    `- **阶段**：${stage}`,
+    "- **来源**：测试",
+    "- **阻塞**：无",
+    "- **结构**：无",
+    "#### 1 决策",
+    ...decision,
+    "#### 2 执行",
     `- 批次：${batch}`,
-    "#### 3 验收（立项时写 v0，交付前复核更新）",
-    "- 项：x — 手测 — 待验收",
+    "#### 3 验收",
+    "- x — 手测 — 待验收",
     "",
   ].join("\n");
+};
 
 function fakeGit({
   baseline = true,
@@ -76,7 +79,7 @@ function makeRoot(holder, overrides = {}) {
   write(
     root,
     "docs/DECISIONS.md",
-    `# DECISIONS\n\n${HEADER}\n## D-20261116-stage-probe 探针条目\n\n**状态**：决定\n**用户确认**：2026-11-16\n**决定**：探针\n\n${LIFECYCLE("执行中", `changes/${overrides.name ?? "stage-probe"}`)}`,
+    `# DECISIONS\n\n${HEADER}\n## D-20261116-stage-probe 探针条目\n\n${LIFECYCLE("执行中", `changes/${overrides.name ?? "stage-probe"}`)}`,
   );
   write(root, "package.json", JSON.stringify({ version: "0.7.6" }));
   write(root, "apps/desktop/package.json", JSON.stringify({ version: "0.7.6" }));
@@ -213,7 +216,7 @@ test("maintenance tooling enforces document, plan and commit gates", () =>
     write(
       root,
       "docs/DECISIONS.md",
-      `# DECISIONS\n\n${HEADER}## D-20261116-awaiting 等待确认的探针\n\n**状态**：待定\n**形态**：轮次\n**阶段**：决策中\n**要定什么**：探针\n**看板**：无\n**来源**：探针\n**阻塞**：无\n**结构**：无\n\n#### 1 决策（执行前）\n\n- 要定：探针\n\n#### 2 执行（执行中）\n\n- 批次：无\n\n#### 3 验收（立项时写 v0，交付前复核更新）\n\n- 项：探针 — 验：无 — 结论：待验收\n`,
+      `# DECISIONS\n\n${HEADER}## D-20261116-awaiting 等待确认的探针\n\n${LIFECYCLE("决策中", "无")}\n`,
     );
     assert.equal(reviewQueue(fs.readFileSync(decisionsPath, "utf8")).decide.length, 1);
     const blocked = checkPrecommit(root, { git, stagedPaths: ["apps/desktop/src/main/main.ts"] });
@@ -322,7 +325,7 @@ test("a milestone is archivable only when tasks, decisions and evidence line up"
     write(
       root,
       "docs/DECISIONS.md",
-      `# DECISIONS\n\n${HEADER}## D-20261116-awaiting 等待确认的探针\n\n**状态**：待定\n**形态**：轮次\n**阶段**：决策中\n**要定什么**：探针\n**看板**：无\n**来源**：探针\n**阻塞**：无\n**结构**：无\n\n#### 1 决策（执行前）\n\n- 要定：探针\n\n#### 2 执行（执行中）\n\n- 批次：无\n\n#### 3 验收（立项时写 v0，交付前复核更新）\n\n- 项：探针 — 验：无 — 结论：待验收\n`,
+      `# DECISIONS\n\n${HEADER}## D-20261116-awaiting 等待确认的探针\n\n${LIFECYCLE("决策中", "无")}\n`,
     );
     const decided = checkMilestone(root, { git: fakeGit(), today: TODAY });
     assert.match(decided.errors.join("\n"), /还有 1 项决议未获用户确认/u);
@@ -332,7 +335,7 @@ test("a milestone is archivable only when tasks, decisions and evidence line up"
     write(
       root,
       "docs/DECISIONS.md",
-      `# DECISIONS\n\n${HEADER}## D-20261116-stage-probe 探针条目\n\n**状态**：决定\n**用户确认**：2026-11-16\n**决定**：探针\n\n${LIFECYCLE("执行中", "changes/stage-probe")}`,
+      `# DECISIONS\n\n${HEADER}## D-20261116-stage-probe 探针条目\n\n${LIFECYCLE("执行中", "changes/stage-probe")}`,
     );
     write(root, `${change}/design.md`, "# design\n\n## 用户决策\n\n- 无\n");
     write(root, `${change}/specs/probe/spec.md`, "# spec\n");
@@ -378,16 +381,19 @@ test("a product change updates the card body before it can be archived", () =>
   }));
 
 test("a decision id carries its date so parallel branches never renumber", () => {
-  const ok = checkDecisionEntries(
-    `## D-20261115-probe\n\n**状态**：决定\n**决定**：x\n**理由**：y\n**重新审视**：z\n\n${LIFECYCLE()}`,
-    { today: TODAY },
+  const legacy = checkDecisionEntries("## D-20261115-probe\n\n- 状态：决定\n");
+  assert.deepEqual(legacy.errors, []);
+  const dated = checkDecisionEntries("## D-20261116-probe\n\n- 决定：x\n");
+  assert.match(dated.errors.join("\n"), /缺少「\*\*阶段\*\*：…」/u);
+});
+
+test("a linked entry keeps its issue number and its id", () => {
+  const [entry] = decisionEntries(
+    "## [#151](https://github.com/Noema-Harness/noema-agent/issues/151) D-20261116-probe 探针\n\n- **阶段**：执行中\n",
   );
-  assert.deepEqual(ok.errors, []);
-  const pending = checkDecisionEntries(
-    `## D-20261115-probe\n\n**状态**：待定\n**要定什么**：x\n\n${LIFECYCLE("决策中")}`,
-    { today: TODAY },
-  );
-  assert.deepEqual(pending.errors, []);
+  assert.equal(entry.id, "D-20261116-probe");
+  assert.equal(entry.issue, 151);
+  assert.equal(decisionMeta(entry).stage, "执行中");
 });
 
 test("a product change designs what the user can observe and how to test it", () =>
@@ -471,7 +477,7 @@ test("unanswered decisions block product code but not tooling maintenance", () =
     write(
       root,
       "docs/DECISIONS.md",
-      `# DECISIONS\n\n${HEADER}## D-20261116-stage-probe 探针条目\n\n**状态**：决定\n**用户确认**：2026-11-16\n**决定**：探针\n\n${LIFECYCLE("执行中", "changes/stage-probe")}## D-20261116-awaiting 等待确认的探针\n\n**状态**：待定\n**形态**：轮次\n**阶段**：决策中\n**要定什么**：探针\n**看板**：无\n**来源**：探针\n**阻塞**：无\n**结构**：无\n\n#### 1 决策（执行前）\n\n- 要定：探针\n\n#### 2 执行（执行中）\n\n- 批次：无\n\n#### 3 验收（立项时写 v0，交付前复核更新）\n\n- 项：探针 — 验：无 — 结论：待验收\n`,
+      `# DECISIONS\n\n${HEADER}## D-20261116-stage-probe 探针条目\n\n${LIFECYCLE("执行中", "changes/stage-probe")}## D-20261116-awaiting 等待确认的探针\n\n${LIFECYCLE("决策中", "无")}\n`,
     );
 
     const tooling = checkPrecommit(root, {
@@ -494,52 +500,30 @@ test("unanswered decisions block product code but not tooling maintenance", () =
     });
     assert.match(behaviour.errors.join("\n"), /标记了 skip_specs，但这次提交含产品代码/u);
   }));
-test("a decision states its outcome and a pending item states what is open", () => {
-  const done = checkDecisionEntries(
-    `## D-20261115-probe\n\n**状态**：决定\n**决定**：x\n\n${LIFECYCLE()}`,
-  );
-  assert.deepEqual(done.errors, []);
-  const noOutcome = checkDecisionEntries(`## D-20261115-probe\n\n**状态**：决定\n\n${LIFECYCLE()}`);
-  assert.match(noOutcome.errors.join("\n"), /决定条目，缺少 \*\*决定\*\*/u);
-  const pending = checkDecisionEntries(
-    `## D-20261115-probe\n\n**状态**：待定\n\n${LIFECYCLE("决策中")}`,
-  );
-  assert.match(pending.errors.join("\n"), /待定条目，缺少 \*\*要定什么\*\*/u);
-});
-
-test("a dated entry carries its lifecycle fields and keeps stage and state aligned", () => {
-  const missing = checkDecisionEntries("## D-20261116-probe\n\n**状态**：决定\n**决定**：x\n");
+test("a dated entry puts its stage first and keeps the three sections", () => {
+  const missing = checkDecisionEntries("## D-20261116-probe\n\n- 决定：x\n");
   assert.match(missing.errors.join("\n"), /缺少「\*\*阶段\*\*：…」/u);
-  assert.match(missing.errors.join("\n"), /缺少「#### 1 决策」小节/u);
 
-  const misaligned = checkDecisionEntries(
-    `## D-20261116-probe\n\n**状态**：决定\n**决定**：x\n\n${LIFECYCLE("决策中")}`,
+  const bare = checkDecisionEntries("## D-20261116-probe\n\n- **阶段**：执行中\n\n- 决定：x\n");
+  assert.match(bare.errors.join("\n"), /缺少「#### 1 决策」小节/u);
+
+  const unknown = checkDecisionEntries(
+    `## D-20261116-probe\n\n${LIFECYCLE("执行中").replace("执行中", "已完成")}`,
   );
-  assert.match(misaligned.errors.join("\n"), /阶段是决策中，状态应为待定/u);
+  assert.match(unknown.errors.join("\n"), /不在 决策中 \/ 执行中 \/ 待验收 \/ 已收口 里/u);
 
-  const projectWithoutCard = checkDecisionEntries(
-    `## D-20261116-probe\n\n**状态**：决定\n**决定**：x\n\n${LIFECYCLE().replace("**形态**：轮次", "**形态**：专案")}`,
+  const late = checkDecisionEntries(`## D-20261116-probe\n\n- **来源**：测试\n${LIFECYCLE()}`);
+  assert.match(late.errors.join("\n"), /阶段必须是第一条字段/u);
+
+  const decided = checkDecisionEntries(
+    `## D-20261116-probe\n\n${LIFECYCLE("决策中").replace("- 要定：x", "- 决定：x")}`,
   );
-  assert.match(projectWithoutCard.errors.join("\n"), /是专案，看板应写/u);
-});
-test("a decision marked as dropped is deleted, not kept in the stream", () => {
-  withRoot((holder) => {
-    const root = makeRoot(holder, { change: false });
-    write(
-      root,
-      "docs/DECISIONS.md",
-      `# DECISIONS
+  assert.match(decided.errors.join("\n"), /还在决策中，却已经写了「- 决定：」/u);
 
-${HEADER}
-
-## D-030 一个被放弃的议题
-
-**状态**：作废
-`,
-    );
-    const result = checkDocuments(root, fakeGit());
-    assert.match(result.errors.join("\n"), /标成了作废：没有产出的条目直接删除/u);
-  });
+  const closed = checkDecisionEntries(
+    `## D-20261116-probe\n\n${LIFECYCLE("已收口").replace("- 用户确认：2026-11-16", "")}`,
+  );
+  assert.match(closed.errors.join("\n"), /已收口，验收末尾应写「- 用户确认：YYYY-MM-DD」/u);
 });
 
 test("tooling code pairs with docs, a change or AGENTS.md", () =>
@@ -559,32 +543,6 @@ test("tooling code pairs with docs, a change or AGENTS.md", () =>
       allowed.errors.some((line) => /代码改动必须同时更新/u.test(line)),
       false,
     );
-  }));
-
-test("a new decision waits as pending or carries the user's approval", () =>
-  withRoot((holder) => {
-    const root = makeRoot(holder);
-    const decision = (fields, stage = "执行中") =>
-      `# DECISIONS\n\n${HEADER}\n## D-20261116-probe\n\n${fields}\n${LIFECYCLE(stage)}`;
-
-    write(root, "docs/DECISIONS.md", decision("**状态**：决定\n**决定**：先这样"));
-    assert.match(
-      checkDocuments(root, fakeGit()).errors.join("\n"),
-      /一创建就是决定：新决定先在待定里存一轮/u,
-    );
-
-    write(
-      root,
-      "docs/DECISIONS.md",
-      decision("**状态**：决定\n**用户确认**：2026-11-16\n**决定**：先这样"),
-    );
-    assert.deepEqual(checkDocuments(root, fakeGit()).errors, []);
-
-    write(root, "docs/DECISIONS.md", decision("**状态**：决定\n**决定**：先这样"));
-    const parked = fakeGit({
-      committedDecisions: decision("**状态**：待定\n**要定什么**：先看看再说"),
-    });
-    assert.deepEqual(checkDocuments(root, parked).errors, []);
   }));
 
 test("a dated change declares which kind of fact it changes", () =>
