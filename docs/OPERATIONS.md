@@ -195,9 +195,9 @@ node --test test/main/chat/conversation-continuity.test.mjs
 ## 协作与 PR 检查
 
 - 契约：`CONTRIBUTING.md`（协作者可改/不可改、PR 必备、CI 覆盖）。合并只由维护者执行。
-- 平台限制：私有 Free 组织仓库无法启用分支保护或 ruleset（`GET /repos/Noema-Harness/noema-agent/branches/main/protection` 返回 403），强制力 = CI 红灯 + 维护者审核 + 约定。
+- 分支保护：2026-11-16 仓库转为 public（Free 组织的 public 仓库可以启用保护，标准 runner 免费）。`main` 已开启保护：必须通过 `verify` 与 `collaboration` 检查、至少 1 位维护者审核、新提交 dismiss 旧审核、对话必须解决、禁止 force push 与删除；`enforce_admins: false`，维护者可紧急绕过。核对：`gh api repos/Noema-Harness/noema-agent/branches/main/protection`。
 - CI：`Desktop checks` 在 PR 上跑 `npm run check`，并用 `range` 步骤把提交门套在 PR diff 上（`node scripts/maintenance.mjs range --base origin/<base>`：产品代码必须带计划/状态，未确认决议不能改产品代码）；另执行 `collaboration` 路径检查；`Desktop package` 在触及 `apps/desktop/**`、`package.json` 或锁文件时跑 smoke / 打包 / 安装包验证。main 推送不触发 CI（节省 Windows runner 额度），发布前用 `gh workflow run "Desktop checks"` / `gh workflow run "Desktop package"` 手动跑。
-- 额度：2026-11-16 起所有 job 在 4 秒内失败，注释为「recent account payments have failed or your spending limit needs to be increased」——这是组织 Actions 额度/付款问题，不是代码失败；解决前以维护者本机 `npm run check` 与 PR 证据为准。
+- Actions 额度：2026-11-16 曾因组织 Free 额度用尽，所有 job 4 秒内失败、注释为「recent account payments have failed or your spending limit needs to be increased」；同日仓库转 public 后标准 runner 免费，故障消失。若再现同类空日志 4 秒失败，先查 `https://github.com/organizations/Noema-Harness/settings/billing/budgets`。
 - 本地预演路径检查：`npm run guard -- --actor <登录名> --base origin/main`；维护者返回放行，协作者触碰维护者路径时列出被拦文件并以退出码 1 结束。
 - 路径清单源码在 `scripts/collaboration.mjs` 的 `MAINTAINER_ONLY_PATHS`，改清单时同步 `CONTRIBUTING.md` 的表。
 

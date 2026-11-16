@@ -83,7 +83,7 @@
 
 - **提交时（秒级）**：`.githooks/pre-commit` → `scripts/governance.mjs commit`。拦：产品代码（`apps/desktop/src/`）没带计划/状态、本轮变更的计划还没进 HEAD（计划先于实现）、未答决策下做产品行为、治理变更夹带产品代码、行为变更标 `skip_specs`。只改 `scripts/` 或文档时放行。
 - **里程碑（约 40 秒）**：`npm run check` → `governance.mjs milestone`，一张卡的一个切口收口时跑一次。含 `docs:check`（五份文档三行头、未登记文档、版本与基线一致、钩子已装、配置引用有效、文档与 CI 引用的脚本真实存在、DECISIONS 每条状态与字段、新决定是否经过待定或用户确认）、`plan:check`（活动变更唯一、三件套齐全、tasks 未全完成、`Plan:` 链接或 `Plan: none`、用户验收已确认、`待定` ≤3）、`milestone:check`（任务与用户验收完成、无待决、规格增量或声明纯文档、卡片正文已更新、STATUS 当天）、`figure:check`、`source:check`、lint、typecheck、全部测试。
-- **平台（PR，约 1 分钟）**：`Desktop checks` 的 `range` 步骤用 `git diff origin/<base>...HEAD` 跑同一套提交规则（产品代码必须带计划/状态、未确认决议挡产品代码、治理变更不夹带产品代码）：协作者没装本机钩子也躲不过。
+- **平台（PR，约 1 分钟）**：`Desktop checks` 的 `range` 步骤用 `git diff origin/<base>...HEAD` 跑同一套提交规则（产品代码必须带计划/状态、未确认决议挡产品代码、治理变更不夹带产品代码）：协作者没装本机钩子也躲不过；`main` 分支保护要求这两个检查通过并至少一位维护者审核，合并不靠自律。
 - **远端（异步）**：CI 跑的就是里程碑，同一批步骤；推送后不等，收件箱在下一轮开场报告失败。
 
 规则从哪来、怎么退：每条规则登记在 `scripts/governance.mjs` 的 `RULE_TABLE`（`id|不变量|防的失败|触发证据|级别|位置`），写明它支撑五条不变量中的哪一条、防的是哪种已发生的失败、在哪个检查里执行。`node scripts/governance.mjs audit` 打印登记表，并分出「触发过真实失败」「观察期」「提醒」三类。

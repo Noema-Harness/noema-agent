@@ -13,13 +13,13 @@
 
 ## 平台能强制什么
 
-本仓库是私有 Free 组织仓库，GitHub 不允许启用分支保护或 ruleset（`GET /branches/main/protection` 与 `/rulesets` 均返回 403）。所以规则不靠平台拦，靠三件事：
+仓库自 2026-11-16 起是公开仓库，Free 组织因此可以启用 `main` 分支保护，规则由平台强制：
 
-1. CI 红灯：`Desktop checks / verify` 跑 `npm run check`；`Desktop checks / collaboration` 拦路径越界；`Desktop package` 跑打包与安装包。
-2. 维护者审核：只有维护者在检查通过后合并。
-3. 约定：下面这些边界，越过就会在审核里退回。
+1. **必须通过两个检查**：`verify`（`npm run check` + PR diff 提交门）与 `collaboration`（维护者路径守卫），且分支需与 `main` 同步（strict）。
+2. **至少一位维护者审核**：新提交会 dismiss 旧审核；对话必须解决后才能合并。
+3. **禁止 force push、禁止删除 `main`**：历史只能前进。
 
-`CODEOWNERS` 只提供审查提示，不阻止合并；不要把它当成强制。
+维护者账号在紧急情况可以绕过保护（`enforce_admins: false`），但不用于跳过协作者 PR 的审核。`CODEOWNERS` 仍只是审查提示，强制力来自上面的保护规则。
 
 ## 你可以改
 
@@ -76,7 +76,7 @@ UI 或交互改动附截图；数据、迁移、安装包改动写清回滚方�
 
 main 推送不再触发 CI（Windows runner 分钟数昂贵）；发布前由维护者用 `workflow_dispatch` 手动跑全套。
 
-如果 job 在 4 秒内失败、日志为空，那是组织 Actions 额度或付款问题，不是代码问题。此时以维护者本机 `npm run check` 与 PR 里的验证证据为准，并在 PR 说明里注明「CI 因额度未运行」。
+公共仓库的标准 runner 免费；如果仍看到 job 在 4 秒内失败、日志为空，先查 [budgets](https://github.com/organizations/Noema-Harness/settings/billing/budgets)，那是额度或付款问题，不是代码失败。
 
 ## 合并与发布
 

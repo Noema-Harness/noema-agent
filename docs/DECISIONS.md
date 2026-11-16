@@ -874,16 +874,16 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 **看板**：无
 **来源**：用户 2026-11-16 要求把治理框架上传到 GitHub，让协作者按规范提交 PR；同轮要求审核已合入的 macOS PR #149
 **阻塞**：无
-**结构**：`CONTRIBUTING.md` 契约 + `scripts/collaboration.mjs` 路径守卫 + PR 模板治理字段 + CI 拆 checks/package + 合并只由维护者
+**结构**：`CONTRIBUTING.md` 契约 + `scripts/collaboration.mjs` 路径守卫 + PR 模板治理字段 + CI 拆 checks/package + 公开仓库与 `main` 分支保护
 **状态**：决定
 **用户确认**：2026-11-16
 
-**决定**：把治理框架作为协作者的可见契约上传到 GitHub：契约写在 `CONTRIBUTING.md`，路径边界由 CI 的 `collaboration` job 检查，PR 模板要求看板卡与 change；私有 Free 组织仓库无法启用分支保护（GitHub 403），所以强制力 = CI 红灯 + 维护者审核 + 约定，合并只由维护者执行。
+**决定**：把治理框架作为协作者的可见契约上传到 GitHub：契约写在 `CONTRIBUTING.md`，路径边界由 CI 的 `collaboration` job 检查，PR 模板要求看板卡与 change；2026-11-16 用户选择把仓库转为 public：`main` 分支保护随之可用并已启用（`verify`、`collaboration` 必过 + 1 位维护者审核 + 禁止 force push/删除），强制力从约定升级为平台强制。
 
 ### 1 决策（执行前）
 
 - 要定什么：外部协作者如何在不破坏治理的前提下提交改动。
-- 候选：A 仅文档约定；B 契约 + PR 模板 + CI 路径检查 + 维护者合并（建议）；C 把仓库转 public 或升 GitHub Pro 以启用 ruleset（外部成本，用户未选）。
+- 候选：A 仅文档约定；B 契约 + PR 模板 + CI 路径检查 + 维护者合并；C 把仓库转 public 以启用分支保护（2026-11-16 用户选择，B + C 同时采用）。
 - 纪要：用户 2026-11-16 说“把治理框架也上传到 github，让平台上的 Noema 彻底形成整体，确保所有协作开发者都能按治理规范提交 pr，进行检查”；选择 B。
 - 结论：B。用户确认 2026-11-16。
 
@@ -891,6 +891,7 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 - 批次：`changes/workflow-closure`（第 10 节，不另开变更，保持一个活动变更）。
 - 已完成：`scripts/collaboration.mjs` 与测试、`CONTRIBUTING.md` 重写、PR 模板、CODEOWNERS 说明、CI 拆 `Desktop checks` / `Desktop package`、`package.json` 加 `guard`、`docs/OPERATIONS.md` 与 STATUS 同步。
+- 已完成（2026-11-16 用户确认转 public）：仓库 `visibility=public`；`main` 保护启用（strict `verify`+`collaboration`、1 review、dismiss stale、conversation resolution、禁 force push/删除、admin 可紧急绕过）；MIT 许可补齐。
 - 审核 #149：结论写在 `changes/workflow-closure/design.md` 的「#149 审核结论」。
 
 ### 3 验收（立项时写 v0，交付前复核更新）
@@ -898,3 +899,4 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 - 项：协作者能自己判断改动会不会被拦 — 读契约 + `npm run guard -- --actor <我> --base origin/main` — 结论：待验收
 - 项：触碰维护者路径的 PR 会被 CI 拦 — 推一个本地模拟 PR 或看 job 日志 — 结论：待验收
 - 项：#149 的违规点有结论与后续动作 — design.md「#149 审核结论」— 结论：待验收
+- 项：平台保护真的挡住越界 — 协作者视角推一个触碰维护者路径的 PR，应被 `collaboration` 拦且不能自行合并 — 结论：待验收

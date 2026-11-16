@@ -29,6 +29,7 @@ Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与�
 
 - 平台侧提交门（2026-11-16）：`Desktop checks` 的 `range` 步骤在 PR diff 上跑提交门（`node scripts/maintenance.mjs range --base origin/<base>`）：产品代码必须带计划/状态、未确认决议不能改产品代码、治理变更不夹带产品代码；协作者不装本机钩子也躲不过。`scripts/maintenance.test.mjs` 17/17，`tools:test` 53/53。
 - 协作契约（2026-11-16）：`CONTRIBUTING.md` 重写为协作者契约；`scripts/collaboration.mjs` 在 PR 上拦维护者路径（CI job `collaboration`）；CI 拆 `Desktop checks`（`npm run check`）与 `Desktop package`（触达桌面端才跑）；PR #149 审核结论见 `openspec/changes/workflow-closure/design.md`。
+- 公开仓库与分支保护（2026-11-16）：仓库 `visibility=public`（Free 组织 public 仓库的标准 runner 免费，此前的 Actions 额度故障解除）；`main` 启用保护——`verify`、`collaboration` 必过（strict）、至少 1 位维护者审核、新提交 dismiss 旧审核、对话必须解决、禁 force push 与删除，`enforce_admins: false`；MIT 许可已补齐（`LICENSE`、`package.json`、README）。保护设置核对：`gh api repos/Noema-Harness/noema-agent/branches/main/protection`。
 
 ## 未验证
 
