@@ -19,9 +19,7 @@ export class SocialAgentService {
     const room = this.store.createAgent(input);
     try {
       // A new contact's direct room has exactly one member: the new specialist.
-      const agent = room.members.find(
-        (member) => member.kind === 'specialist',
-      );
+      const agent = room.members.find((member) => member.kind === 'specialist');
       this.ensureAgentWorkspace?.({ agentId: agent.id, name: agent.name });
     } catch {
       // Default workspace creation is best-effort; task start retries it.
