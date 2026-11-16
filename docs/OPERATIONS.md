@@ -64,7 +64,8 @@ npm run typecheck
 npm run lint
 npm run tools:test
 npm run inbox
-npm run review             # 只读聚合：需要你决定 / 待你验收 / 执行中
+npm run review             # 只读聚合：需要你决定 / 待你验收 / 执行中（待验收显示勾选进度）
+npm run decisions:sync     # 验收项全部勾选后收口（改阶段与标题标记、补当天用户确认）
 npm test
 ```
 
@@ -149,7 +150,8 @@ schtasks /Query /TN NoemaGithubInbox
 - 标题：`## D-… 标题`；有看板 issue 时写 `## [#N](https://github.com/Noema-Harness/noema-agent/issues/N) D-… 标题`（链接就是用户在 GitHub 上的入口）。
 - 字段：第一条固定是 `- **阶段**：决策中 / 执行中 / 待验收 / 已收口`；其后按需写 `- **结构**`（机制类：入口 / 字段 / 校验 / 命令）、`- **来源**`、`- **阻塞**`。没有形态、状态、看板、用户确认字段——阶段就是状态。
 - 三层：`#### 1 决策`（确认后写 `- 决定：`）、`#### 2 执行`（批次 / 发现）、`#### 3 验收`（立项写 v0，交付前按实际更新；已收口在末尾写 `- 用户确认：YYYY-MM-DD`）。阶段可回退：追加「重开」行、旧结论标“已被重开”、受影响 tasks 重开。
-- `npm run review` 只读汇总「需要你决定 / 待你验收 / 执行中」，条目正文仍是唯一权威源；`--json` 给脚本用。
+- 验收项写成 `- [ ] 怎么验 — 怎么跑`，在 GitHub 上直接勾选；勾完运行 `npm run decisions:sync`，全部勾选的待验收条目自动改 `已收口` 并补 `- 用户确认：当天日期`（`--dry-run` 预览）。
+- `npm run review` 只读汇总「需要你决定 / 待你验收 / 执行中」，待验收条目显示勾选进度，条目正文仍是唯一权威源；`--json` 给脚本用。
 - 门：`docs:check` 校验阶段在第一条且在四种里、三层齐全、已收口有用户确认；`plan:check` 在存在 `待验收` 且没有活动变更时拒绝开新变更；`milestone:check` 在产品变更没有对应条目、或仍有 `待验收` 时拒绝归档；`pre-commit` 在 决策中/待验收 时挡 `apps/desktop/src/` 改动（本机兜底，约束在流程）。
 
 ### 议题与积压放在哪（D-028/D-029）

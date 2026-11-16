@@ -42,7 +42,7 @@ git status --short
 
 #### 3 验收
 
-- <可观察结果> — 怎么验 — 待验收 / 通过 / 不通过
+- [ ] <可观察结果> — 怎么验 — 怎么跑（在 GitHub 勾选；勾完 `npm run decisions:sync` 收口）
 - 用户确认：YYYY-MM-DD（收口时写）
 ```
 

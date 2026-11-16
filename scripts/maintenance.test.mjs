@@ -27,6 +27,8 @@ const BOARD = "https://github.com/orgs/Noema-Harness/projects/1";
 
 const LIFECYCLE = (stage = "执行中", batch = "changes/stage-probe") => {
   const decision = stage === "决策中" ? ["- 要定：x"] : ["- 决定：x（用户确认：2026-11-16）"];
+  const acceptance =
+    stage === "已收口" ? ["- [x] x — 手测", "- 用户确认：2026-11-16"] : ["- [ ] x — 手测"];
   return [
     `- **阶段**：${stage}`,
     "- **来源**：测试",
@@ -37,7 +39,7 @@ const LIFECYCLE = (stage = "执行中", batch = "changes/stage-probe") => {
     "#### 2 执行",
     `- 批次：${batch}`,
     "#### 3 验收",
-    "- x — 手测 — 待验收",
+    ...acceptance,
     "",
   ].join("\n");
 };

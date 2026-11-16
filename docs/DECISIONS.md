@@ -6,9 +6,9 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 ## 怎么用
 
-- **条目就是一轮工作的审核入口**：先写 `- **阶段**：决策中`，讨论清楚后改阶段并落地产出。四种阶段：`决策中`（等你拍板）/ `执行中` / `待验收`（只剩你确认）/ `已收口`。
+- **条目就是一轮工作的审核入口**：先写 `- **阶段**：决策中`，讨论清楚后改阶段并落地产出。四种阶段：`决策中` ⏳（等你拍板）/ `执行中` 🔧 / `待验收` 🔍（只剩你确认）/ `已收口` ✅；标题带同一个标记，扫一眼列表就知道哪条在等你。
 - **只写需要的字段**：`阶段` 必填（放最前）；`结构`（机制/流程类必填）、`来源`、`阻塞` 按需。和 GitHub 关联的条目在标题前放链接标记（如 `[#151](https://github.com/Noema-Harness/noema-agent/issues/151) `），正文不再重复写看板号。
-- **条目内三层固定**：`#### 1 决策`（结论与理由）、`#### 2 执行`（批次与发现）、`#### 3 验收`（用户能看到的结果；工程自测写进执行或提交）。已收口时在验收末尾写 `- 用户确认：YYYY-MM-DD`。
+- **条目内三层固定**：`#### 1 决策`（结论与理由）、`#### 2 执行`（批次与发现）、`#### 3 验收`（用户能看到的结果；工程自测写进执行或提交）。验收项写成可勾选清单（`- [ ] 怎么验 — 怎么跑`）：在 GitHub 上直接勾，勾完运行 `npm run decisions:sync`，全部勾选的待验收条目会自动改成已收口，并在验收末尾补 `- 用户确认：当天日期`。
 - **没有产出的条目直接删除**（Git 保留历史）；决定被替代时不删旧条目，加一行 `- 被替代：<新条目 id>`。
 - **标题只分两层**：条目用二级标题（`## D-…`），内部三层用四级标题，跳过三级；条目之间不加分隔线。
 - 编号：新条目用 `D-YYYYMMDD-<短名>`，作者本地产出，不抢全局序号；旧 `D-0xx` 保留作历史引用。
@@ -379,7 +379,7 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 - **替代**：整体改写为 Rust + React（Tauri）；只对 `.mjs` 开 `checkJs` + JSDoc；保持现状。
 - **重新审视**：产品对象与会话拓扑稳定后，若包体积/内存成为真实用户问题，评估 Tauri 外壳 + Node sidecar；若某模块被证明需要原生性能或系统级隔离，单独以 Rust 实现并通过适配层接入。
 
-## D-20261115-decision-ids 决定编号改为日期加短名
+## ✅ D-20261115-decision-ids 决定编号改为日期加短名
 
 - **阶段**：已收口
 - **结构**：编号 `D-YYYYMMDD-<短名>`，作者本地产出、不抢全局序号；`D-0xx` 保留为历史引用。
@@ -400,10 +400,10 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 #### 3 验收
 
-- 新条目不再抢全局序号，并行分支各自新增 — 读 DECISIONS 编号与 `scripts/maintenance.test.mjs` 的编号用例 — 通过（2026-11-15）
+- [x] 新条目不再抢全局序号，并行分支各自新增 — 读 DECISIONS 编号与 `scripts/maintenance.test.mjs` 的编号用例
 - 用户确认：2026-11-15
 
-## D-20261115-delivery-observability 交付必须有卡片大小的观察口
+## ✅ D-20261115-delivery-observability 交付必须有卡片大小的观察口
 
 - **阶段**：已收口
 - **结构**：design 必须写「用户可观察的改变」与「手测步骤」（`plan:check`）；`milestone:check` 要求 tasks 记“更新卡片正文”；卡片正文固定三段。
@@ -424,10 +424,10 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 #### 3 验收
 
-- 每个产品变更交付时都能在卡片正文看到现在能做什么与手测步骤 — `plan:check` + `milestone:check` — 通过（2026-11-15）
+- [x] 每个产品变更交付时都能在卡片正文看到现在能做什么与手测步骤 — `plan:check` + `milestone:check`
 - 用户确认：2026-11-15
 
-## D-20261115-ci-async-verification CI 是异步验证，不是每轮门槛
+## ✅ D-20261115-ci-async-verification CI 是异步验证，不是每轮门槛
 
 - **阶段**：已收口
 - **结构**：CI 由 `npm run inbox` 在下一轮开场报告；只有合并 PR、发布、收到红色通知时主动看。
@@ -448,10 +448,10 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 #### 3 验收
 
-- 轮内不等 CI，红绿由收件箱带出 — `npm run inbox` 与计划任务 — 通过（2026-11-15）
+- [x] 轮内不等 CI，红绿由收件箱带出 — `npm run inbox` 与计划任务
 - 用户确认：2026-11-15
 
-## D-20261115-governance-entry 治理入口收敛为三个 profile
+## ✅ D-20261115-governance-entry 治理入口收敛为三个 profile
 
 - **阶段**：已收口
 - **结构**：`scripts/governance.mjs` 唯一入口：`commit` / `milestone` / `ci`；`npm run check` = milestone；单独检查保留为调试入口。
@@ -472,10 +472,10 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 #### 3 验收
 
-- 本地与 CI 跑同一批步骤 — `npm run check` 与 CI workflow 同源 — 通过（2026-11-15）
+- [x] 本地与 CI 跑同一批步骤 — `npm run check` 与 CI workflow 同源
 - 用户确认：2026-11-15
 
-## D-20261115-governance-invariants 治理的五条不变量
+## ✅ D-20261115-governance-invariants 治理的五条不变量
 
 - **阶段**：已收口
 - **结构**：五条不变量：意图可追 / 变更可逆 / 结果可验 / 事实唯一 / 成本受控；新规则必须说明支撑哪一条。
@@ -505,10 +505,10 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 #### 3 验收
 
-- 规则登记表每条写明支撑的不变量 — `node scripts/governance.mjs audit` — 通过（2026-11-15）
+- [x] 规则登记表每条写明支撑的不变量 — `node scripts/governance.mjs audit`
 - 用户确认：2026-11-15
 
-## D-20261115-execution-boundaries 执行边界：接缝优先于胶水
+## ✅ D-20261115-execution-boundaries 执行边界：接缝优先于胶水
 
 - **阶段**：已收口
 - **结构**：三条边界：开工声明写 design（改动落点 / 共享逻辑是否移动 / 是否新增路径）；单一路径（新增即删旧，兼容层写「## 兼容层」并由 pre-commit 校验命名）；停止条件（为绕开重构写胶水时停手并记待定条目）。
@@ -529,10 +529,10 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 #### 3 验收
 
-- 兼容层声明与命名拦截生效 — `pre-commit` 对 compat/shim/bridge/legacy 文件名的产品代码校验 — 通过（2026-11-15）
+- [x] 兼容层声明与命名拦截生效 — `pre-commit` 对 compat/shim/bridge/legacy 文件名的产品代码校验
 - 用户确认：2026-11-15
 
-## D-20261115-governance-trim 没有触发证据的规则删掉
+## ✅ D-20261115-governance-trim 没有触发证据的规则删掉
 
 - **阶段**：已收口
 - **结构**：规则保留判据：至少一次真实触发，或对应一条已知会复发且代价高的失败；据此删除待决上限与五字段必填，收窄为每态一个字段。
@@ -553,10 +553,10 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 #### 3 验收
 
-- 没有触发证据的规则被删或降级 — `node scripts/governance.mjs audit` 与 `git log` 对照 — 通过（2026-11-15）
+- [x] 没有触发证据的规则被删或降级 — `node scripts/governance.mjs audit` 与 `git log` 对照
 - 用户确认：2026-11-15
 
-## D-20261115-governance-model 治理模型：三个频率 + 规则登记 + 证据制
+## ✅ D-20261115-governance-model 治理模型：三个频率 + 规则登记 + 证据制
 
 - **阶段**：已收口
 - **结构**：三档频率（提交 / 里程碑 / CI 同源）+ 规则登记表（id / 不变量 / 防的失败 / 触发证据 / 级别 / 位置）+ `audit` 命令；观察期规则连续两个里程碑无触发就降级。
@@ -577,10 +577,10 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 #### 3 验收
 
-- 治理增长可见、删除成为常规动作 — `node scripts/governance.mjs audit` — 通过（2026-11-15）
+- [x] 治理增长可见、删除成为常规动作 — `node scripts/governance.mjs audit`
 - 用户确认：2026-11-15
 
-## D-20261115-evidence-in-repo 交付证据留在仓库，卡片只做观察口（2026-11-15）
+## ✅ D-20261115-evidence-in-repo 交付证据留在仓库，卡片只做观察口（2026-11-15）
 
 - **阶段**：已收口
 - **结构**：卡片正文 = 现在能做什么（含手测步骤）/ 还没做 / 边界；评论只放讨论与触发条件；证据留提交信息、tasks、STATUS；`milestone:check` 只校验“更新卡片正文”。
@@ -601,10 +601,10 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 #### 3 验收
 
-- 14 张卡片正文统一三段、评论清空、证据只进仓库 — `gh issue view` / `gh project item-list` 与仓库提交 — 通过（2026-11-15）
+- [x] 14 张卡片正文统一三段、评论清空、证据只进仓库 — `gh issue view` / `gh project item-list` 与仓库提交
 - 用户确认：2026-11-15
 
-## D-20261116-decision-scope DECISIONS 只在议题需要用户定夺时出现
+## ✅ D-20261116-decision-scope DECISIONS 只在议题需要用户定夺时出现
 
 - **阶段**：已收口
 - **结构**：判据进 AGENTS §1；`plan:check` 只报待定数量，不接管功能验收。
@@ -624,10 +624,10 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 #### 3 验收
 
-- AGENTS §1 只让需要用户审核的轮次进 DECISIONS，并排除内部工程判断、任务清单与验收标准本身 — 读 AGENTS §1 与本条 — 通过（用户确认 2026-11-16）
+- [x] AGENTS §1 只让需要用户审核的轮次进 DECISIONS，并排除内部工程判断、任务清单与验收标准本身 — 读 AGENTS §1 与本条
 - 用户确认：2026-11-16
 
-## D-20261116-decision-lifecycle 议题如何成熟、如何重开、以及决议与规划的关系
+## ✅ D-20261116-decision-lifecycle 议题如何成熟、如何重开、以及决议与规划的关系
 
 - **阶段**：已收口
 - **结构**：六步成熟流程进 AGENTS §1；条目字段与三层见 `D-20261116-review-inbox`；三道门见 `scripts/maintenance.mjs` 的 `checkPlan` / `checkMilestone` / `checkPrecommit`；唯一审核视图 `npm run review`。
@@ -655,11 +655,11 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 #### 3 验收
 
-- AGENTS §1 体现六步与可回退阶段；`npm run review` 能看到决策中/待验收 — 读 AGENTS §1、跑 `npm run review` — 通过（用户确认 2026-11-16）
-- 三道门在 milestone/plan/pre-commit 上生效 — `node --test scripts/maintenance.test.mjs` — 通过
+- [x] AGENTS §1 体现六步与可回退阶段；`npm run review` 能看到决策中/待验收 — 读 AGENTS §1、跑 `npm run review`
+- [x] 三道门在 milestone/plan/pre-commit 上生效 — `node --test scripts/maintenance.test.mjs`
 - 用户确认：2026-11-16
 
-## D-20261116-governance-extraction 运行手册技能：从模板清单改成偏离盘查工具
+## ⏳ D-20261116-governance-extraction 运行手册技能：从模板清单改成偏离盘查工具
 
 - **阶段**：决策中
 - **结构**：待定；候选 A 为诊断六步（停手登记 → 还原预期路径 → 采样证据 → 偏差分类 → 归因分层 → 修法候选登记待定）。
@@ -679,9 +679,9 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 #### 3 验收
 
-- 技能只在对偏离做盘查时按需加载，正常轮次只引用模板与命令 — 读 `SKILL.md` 目录 — 待验收
+- [ ] 技能只在对偏离做盘查时按需加载，正常轮次只引用模板与命令 — 读 `SKILL.md` 目录
 
-## D-20261116-review-inbox 审核入口与决议条目：结构、描述跟进、发散共存
+## ✅ D-20261116-review-inbox 审核入口与决议条目：结构、描述跟进、发散共存
 
 - **阶段**：已收口
 - **结构**：条目字段 `形态/阶段/看板/来源/阻塞/结构` + 三层 `#### 1 决策`/`#### 2 执行`/`#### 3 验收`；`scripts/review.mjs` 只读聚合（`npm run review`、`--json`）；`maintenance.mjs` 的 `checkDatedEntry` 校验字段与阶段/状态一致，`checkPlan`/`checkMilestone`/`checkPrecommit` 分别兜待验收、里程碑与产品代码；`AGENTS.md` §1 写入唯一审核入口与讨论规则。
@@ -703,12 +703,12 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 #### 3 验收
 
-- `npm run review` 一次列出需要用户决定、待用户验收、执行中 — 跑命令看输出 — 待验收
-- 待验收条目会挡住新变更与里程碑 — 构造 `待验收` 条目后跑 `plan:check`/`milestone:check` — 待验收
-- 条目缺字段或阶段与状态不一致时 `docs:check` 拒绝 — 改坏一条跑 `docs:check` — 待验收
+- [x] `npm run review` 一次列出需要用户决定、待用户验收、执行中 — 跑命令看输出
+- [x] 待验收条目会挡住新变更与里程碑 — 构造 `待验收` 条目后跑 `plan:check`/`milestone:check`
+- [x] 条目缺字段或阶段与状态不一致时 `docs:check` 拒绝 — 改坏一条跑 `docs:check`
 - 用户确认：2026-11-16
 
-## [#151](https://github.com/Noema-Harness/noema-agent/issues/151) D-20261116-platform-layers 与 Windows 解耦：核心、端口、宿主三层
+## 🔧 [#151](https://github.com/Noema-Harness/noema-agent/issues/151) D-20261116-platform-layers 与 Windows 解耦：核心、端口、宿主三层
 
 - **阶段**：执行中
 - **结构**：核心（平台无关）/ 端口（接口）/ 宿主（桌面、远程、移动）三层；核心导入规则由 `source:check` 拦；移动端为伴侣客户端；四刀各一个 change。
@@ -732,11 +732,11 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 #### 3 验收
 
-- 核心不导入 `electron`、`node:child_process`，不比较 `process.platform` — `npm run source:check` — 待验收
-- 三平台 CI 全绿 — 远端 CI 矩阵 — 待验收
-- 安装包在 macOS 与 Linux 可安装并启动 — 对应平台真机/Actions 冒烟 — 待验收
+- [ ] 核心不导入 `electron`、`node:child_process`，不比较 `process.platform` — `npm run source:check`
+- [ ] 三平台 CI 全绿 — 远端 CI 矩阵
+- [ ] 安装包在 macOS 与 Linux 可安装并启动 — 对应平台真机/Actions 冒烟
 
-## D-20261116-workflow-closure 治理框架收口：九步、条目生命周期与审核入口
+## ✅ D-20261116-workflow-closure 治理框架收口：九步、条目生命周期与审核入口
 
 - **阶段**：已收口
 - **结构**：AGENTS §1 九步 + 条目生命周期；design 三行开工声明与「事实影响」；`npm run review` 唯一审核入口；`scripts/maintenance.mjs` 三道门；`skills/noema-development/SKILL.md` 模板与出口。
@@ -759,12 +759,12 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 #### 3 验收
 
-- 新会话能按 AGENTS §1 九步推进，每一步都有产物 — 读 AGENTS §1、跑 `npm run review` 与 `npm run plan:check` — 已验收 2026-11-16（用户）
-- 文档结构、三道门与技能模板互相对得上 — `npm run docs:check`、`npm run tools:test` — 已验收 2026-11-16（用户）
-- 用已发生的两个真实事件对照九步（C6 收口、PR #149 审核）并记录差异 — `design.md`「真实切口对照」 — 已验收 2026-11-16（用户）
+- [x] 新会话能按 AGENTS §1 九步推进，每一步都有产物 — 读 AGENTS §1、跑 `npm run review` 与 `npm run plan:check`
+- [x] 文档结构、三道门与技能模板互相对得上 — `npm run docs:check`、`npm run tools:test`
+- [x] 用已发生的两个真实事件对照九步（C6 收口、PR #149 审核）并记录差异 — `design.md`「真实切口对照」
 - 用户确认：2026-11-16
 
-## D-20261116-collaborator-governance 协作者契约与 PR 检查平台化
+## ✅ D-20261116-collaborator-governance 协作者契约与 PR 检查平台化
 
 - **阶段**：已收口
 - **结构**：`CONTRIBUTING.md` 契约 + `scripts/collaboration.mjs` 路径守卫 + PR 模板治理字段 + CI 拆 checks/package + 公开仓库与 `main` 分支保护
@@ -787,8 +787,8 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 #### 3 验收
 
-- 协作者能自己判断改动会不会被拦 — 读契约 + `npm run guard -- --actor <我> --base origin/main` — 待验收
-- 触碰维护者路径的 PR 会被 CI 拦 — 推一个本地模拟 PR 或看 job 日志 — 待验收
-- #149 的违规点有结论与后续动作 — design.md「#149 审核结论」— 结论：待验收
-- 平台保护真的挡住越界 — 协作者视角推一个触碰维护者路径的 PR，应被 `collaboration` 拦且不能自行合并 — 待验收
+- [x] 协作者能自己判断改动会不会被拦 — 读契约 + `npm run guard -- --actor <我> --base origin/main`
+- [x] 触碰维护者路径的 PR 会被 CI 拦 — 推一个本地模拟 PR 或看 job 日志
+- [x] #149 的违规点有结论与后续动作 — design.md「#149 审核结论」
+- [x] 平台保护真的挡住越界 — 协作者视角推一个触碰维护者路径的 PR，应被 `collaboration` 拦且不能自行合并
 - 用户确认：2026-11-16

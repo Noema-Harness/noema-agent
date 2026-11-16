@@ -4,26 +4,27 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { decisionEntries, decisionMeta } from "./maintenance.mjs";
-
-const MARKS = {
-  决策中: "⏳",
-  执行中: "🔧",
-  待验收: "🔍",
-  已收口: "✅",
-};
+import {
+  ENTRY_STAGE_MARKS,
+  acceptanceItems,
+  decisionEntries,
+  decisionMeta,
+} from "./maintenance.mjs";
 
 export function summarizeReview(text) {
   const groups = { decide: [], accept: [], running: [], closed: [] };
   for (const entry of decisionEntries(text)) {
     const meta = decisionMeta(entry);
     if (!meta) continue;
+    const items = acceptanceItems(entry.body);
     const item = {
       id: entry.id,
       title: entry.title,
       stage: meta.stage,
       blocker: meta.blocker,
       issue: meta.issue,
+      checked: items.filter((entry) => entry.checked).length,
+      total: items.length,
     };
     if (meta.stage === "决策中") groups.decide.push(item);
     else if (meta.stage === "待验收") groups.accept.push(item);
@@ -43,7 +44,8 @@ export function formatReview(groups) {
     lines.push(`${mark} ${label}（${items.length}）`);
     if (!items.length) lines.push("  无");
     for (const item of items) {
-      lines.push(`  ${item.id} ${item.title}${issueLink(item.issue)}`);
+      const progress = item.total ? `（${item.checked}/${item.total} 项已勾选）` : "";
+      lines.push(`  ${item.id} ${item.title}${progress}${issueLink(item.issue)}`);
       const details = [`${mark} ${item.stage}`];
       if (item.blocker && item.blocker !== "无") details.push(`阻塞：${item.blocker}`);
       lines.push(`    ${details.join(" · ")}`);
@@ -51,9 +53,19 @@ export function formatReview(groups) {
     if (note) lines.push(`  ${note}`);
     lines.push("");
   };
-  section("需要你决定", MARKS.决策中, groups.decide);
-  section("待你验收", MARKS.待验收, groups.accept);
-  section("执行中", MARKS.执行中, groups.running, "不打扰：只在需要决定或被阻塞时出现。");
+  section("需要你决定", ENTRY_STAGE_MARKS.决策中, groups.decide);
+  section(
+    "待你验收",
+    ENTRY_STAGE_MARKS.待验收,
+    groups.accept,
+    "勾选条目里的验收项，然后运行 npm run decisions:sync 收口。",
+  );
+  section(
+    "执行中",
+    ENTRY_STAGE_MARKS.执行中,
+    groups.running,
+    "不打扰：只在需要决定或被阻塞时出现。",
+  );
   lines.push(`✅ 已收口 ${groups.closed.length} 条`);
   return lines.join("\n");
 }

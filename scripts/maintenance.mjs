@@ -156,9 +156,10 @@ export function activeChanges(root) {
 
 // 决定编号 = 日期 + 短名：并行分支各自产出，不抢全局序号（D-20261115-decision-ids）。
 // `D-0xx` 是旧编号，保留历史引用，不再新增。
-// A GitHub-linked entry carries a marker in its title: `## [#151](url) D-… 标题`.
-const DECISION_LINK = /^## \[#(\d+)\]\(([^)]+)\) /u;
-const GOVERNED_DECISION = /^## (D-(?:(\d{3})|(\d{8}-[a-z0-9-]+)))\b/u;
+// 标题带阶段标记与可选 GitHub 入口：`## 🔍 [#151](url) D-… 标题`——扫一眼就知道这条在等谁。
+export const ENTRY_STAGE_MARKS = { 决策中: "⏳", 执行中: "🔧", 待验收: "🔍", 已收口: "✅" };
+const ENTRY_HEADING =
+  /^## (?:([⏳🔧🔍✅])\s+)?(?:\[#(\d+)\]\(([^)]+)\)\s+)?(D-(?:\d{3}|\d{8}-[a-z0-9-]+))(?:\s+(.+))?$/u;
 
 // 产品变更必须写清用户能观察到什么、怎么手测；收口时抄进卡片正文。
 const OBSERVABLE_SECTIONS = ["## 用户可观察的改变", "## 手测步骤"];
@@ -173,16 +174,16 @@ export function decisionEntries(text) {
   const entries = [];
   let current = null;
   for (const raw of String(text).split(/\r?\n/u)) {
-    const link = DECISION_LINK.exec(raw);
-    const line = link ? `## ${raw.slice(link[0].length)}` : raw;
-    const head = GOVERNED_DECISION.exec(line);
+    const head = ENTRY_HEADING.exec(raw);
     if (head) {
       if (current) entries.push(current);
+      const number = /^\d{3}$/u.test(head[4].slice(2)) ? Number(head[4].slice(2)) : null;
       current = {
-        id: head[1],
-        number: head[2] ? Number(head[2]) : null,
-        issue: link ? Number(link[1]) : null,
-        title: line.slice(head[0].length).trim(),
+        id: head[4],
+        number,
+        issue: head[2] ? Number(head[2]) : null,
+        emoji: head[1] ?? null,
+        title: (head[5] ?? "").trim(),
         body: [],
       };
       continue;
@@ -194,6 +195,7 @@ export function decisionEntries(text) {
     id: entry.id,
     number: entry.number,
     issue: entry.issue,
+    emoji: entry.emoji,
     title: entry.title,
     body: entry.body.join("\n"),
   }));
@@ -211,6 +213,7 @@ export function decisionMeta(entry) {
   if (!stage) return null;
   return {
     stage,
+    emoji: entry.emoji ?? null,
     issue: entry.issue ?? null,
     source: read("来源"),
     blocker: read("阻塞"),
@@ -218,18 +221,31 @@ export function decisionMeta(entry) {
   };
 }
 
-// 需要用户动作的条目：决策中（等确认）与待验收（等验收结论）。
+// 验收项是可勾选的清单：`- [ ] 怎么验 — 怎么跑`，用户勾完再运行 `npm run decisions:sync` 收口。
+export function acceptanceItems(body) {
+  const section = sectionBody(body, "#### 3 验收");
+  if (section === null) return [];
+  return section
+    .split(/\r?\n/u)
+    .filter((line) => /^- \[[ xX]\]/u.test(line))
+    .map((line) => ({ checked: /^- \[[xX]\]/u.test(line), text: line.slice(5).trim() }));
+}
+
+// 需要用户动作的条目：决策中（等确认）与待验收（等验收结论，带勾选进度）。
 export function reviewQueue(text) {
   const decide = [];
   const accept = [];
   for (const entry of decisionEntries(text)) {
     const meta = decisionMeta(entry);
     if (!meta) continue;
+    const items = acceptanceItems(entry.body);
     const item = {
       id: entry.id,
       title: entry.title,
       blocker: meta.blocker,
       issue: meta.issue,
+      checked: items.filter((entry) => entry.checked).length,
+      total: items.length,
     };
     if (meta.stage === "决策中") decide.push(item);
     else if (meta.stage === "待验收") accept.push(item);
@@ -247,15 +263,15 @@ export function checkDecisionEntries(text, options = {}) {
   for (const entry of decisionEntries(text)) {
     const dated = entry.id.replace(/^D-/u, "");
     if (!(/^\d{8}-/u.test(dated) && dated.slice(0, 8) >= LIFECYCLE_FROM)) continue;
-    checkDatedEntry(entry, errors);
+    checkDatedEntry(entry, errors, notices);
   }
   return { errors, notices };
 }
 
 // A dated entry must answer “where is this round, what blocks it”: stage first, then the
 // three sections. 决策中 is the only stage without a decision; every other stage implies the
-// user already confirmed, and 已收口 records the date of that confirmation.
-function checkDatedEntry(entry, errors) {
+// user already confirmed, and 已收口 records the date of that confirmation plus ticked items.
+function checkDatedEntry(entry, errors, notices = []) {
   const meta = decisionMeta(entry);
   if (!meta) {
     errors.push(`${entry.id} 缺少「**阶段**：…」：阶段决定这一条在等你做什么`);
@@ -263,6 +279,12 @@ function checkDatedEntry(entry, errors) {
   }
   if (!ENTRY_STAGES.includes(meta.stage)) {
     errors.push(`${entry.id} 的阶段「${meta.stage}」不在 ${ENTRY_STAGES.join(" / ")} 里`);
+  }
+  const expectedMark = ENTRY_STAGE_MARKS[meta.stage];
+  if (expectedMark && meta.emoji !== expectedMark) {
+    notices.push(
+      `${entry.id} 标题的阶段标记是「${meta.emoji ?? "无"}」，阶段字段是「${meta.stage}」：运行 npm run decisions:sync 对齐`,
+    );
   }
   const stageLine = entry.body.split("\n").find((line) => line.startsWith("- **阶段**："));
   const firstField = entry.body.split("\n").find((line) => line.startsWith("- **"));
@@ -279,8 +301,26 @@ function checkDatedEntry(entry, errors) {
   if (meta.stage !== "决策中" && !decision) {
     errors.push(`${entry.id} 阶段是${meta.stage}，但「#### 1 决策」里缺少「- 决定：」`);
   }
-  if (meta.stage === "已收口" && !/- 用户确认：\d{4}-\d{2}-\d{2}/u.test(entry.body)) {
-    errors.push(`${entry.id} 已收口，验收末尾应写「- 用户确认：YYYY-MM-DD」`);
+  const items = acceptanceItems(entry.body);
+  const unchecked = items.filter((item) => !item.checked).length;
+  if (meta.stage === "待验收") {
+    if (items.length === 0) {
+      errors.push(`${entry.id} 在等验收，但「#### 3 验收」里没有可勾选的「- [ ] 项」`);
+    } else if (unchecked === 0) {
+      errors.push(
+        `${entry.id} 的验收项已全部勾选，阶段还是待验收：运行 npm run decisions:sync 收口`,
+      );
+    }
+  }
+  if (meta.stage === "已收口") {
+    if (items.length === 0) {
+      errors.push(`${entry.id} 已收口，但「#### 3 验收」里没有「- [x] 项」记录验收依据`);
+    } else if (unchecked > 0) {
+      errors.push(`${entry.id} 已收口，但还有 ${unchecked} 个验收项没勾选`);
+    }
+    if (!/- 用户确认：\d{4}-\d{2}-\d{2}/u.test(entry.body)) {
+      errors.push(`${entry.id} 已收口，验收末尾应写「- 用户确认：YYYY-MM-DD」`);
+    }
   }
 }
 
