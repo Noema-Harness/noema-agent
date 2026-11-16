@@ -1,11 +1,4 @@
 type SocialChatStore = import('./social-chat-store.mjs').SocialChatStore;
-/**
- * The shape createAgent() is read as here. TS migration note: the store returns
- * getRoomSnapshot(), which has no `agent` field, so the read below throws and
- * the best-effort catch swallows it. Typed as the caller expects; behavior is
- * unchanged.
- */
-};
 
 export class SocialAgentService {
   declare store: SocialChatStore;
@@ -44,7 +37,10 @@ export class SocialAgentService {
     const room = this.store.createAgent(input);
     try {
       // A new contact's direct room has exactly one member: the new specialist.
-      const agent = room.members.find((member) => member.kind === 'specialist');
+      const agent = room.members.find(
+        (member: { kind: string; id: string; name: string }) =>
+          member.kind === 'specialist',
+      );
       if (agent)
         this.ensureAgentWorkspace?.({ agentId: agent.id, name: agent.name });
     } catch {
