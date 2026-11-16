@@ -100,7 +100,7 @@ npm run branches:prune -- --apply # 执行删除
 | `[用户]` 验收项勾选没有确认日期                       | 只有用户明确确认后才勾选，并写成 `（用户确认：YYYY-MM-DD）`                                                                         |
 | milestone 报任务未完成 / 有待决问题 / STATUS 不是当天 | 补完任务、拿到用户答案、更新 STATUS 后再归档                                                                                        |
 | milestone 报产品变更没更新卡片正文                    | 在 tasks 写一条“更新卡片正文（现在能做什么 + 手测步骤 / 还没做）”，并真的改卡片正文；治理变更（`Plan: none`）不需要                 |
-| 报「本变更引用的决议未获用户确认」                     | 让被引用的条目先走出 `决策中`（用户确认方案），再跑 `npm run milestone:check`                                                        |
+| 报「本变更引用的决议未获用户确认」                    | 让被引用的条目先走出 `决策中`（用户确认方案），再跑 `npm run milestone:check`                                                       |
 | 报「验收结论确认后才算交付」                          | 请用户验收（`npm run review` 的“待你验收”），通过后把条目阶段改 `已收口` 再归档                                                     |
 | 报「产品变更没有对应的决议条目」                      | 在 DECISIONS 写一条阶段为 `执行中` 的条目，第 2 层写 `批次：changes/<name>`                                                         |
 | 架构文档变了但图没重出（figure:check）                | 运行 `npm run figure:build`；不要手改 html/png；README 必须引用 png 与 html                                                         |
@@ -118,10 +118,10 @@ npm run branches:prune -- --apply # 执行删除
 
 两张图，读者不同：
 
-| 图 | 读者 | 图源文档 | 入口 | 产物 |
-| --- | --- | --- | --- | --- |
-| 产品架构图 | 用户 | `docs/ARCHITECTURE.md` | `README.md` | `docs/assets/noema-architecture.*` |
-| 治理全景图 | 维护者 | `AGENTS.md` | `AGENTS.md` | `docs/assets/noema-governance.*` |
+| 图         | 读者   | 图源文档               | 入口        | 产物                               |
+| ---------- | ------ | ---------------------- | ----------- | ---------------------------------- |
+| 产品架构图 | 用户   | `docs/ARCHITECTURE.md` | `README.md` | `docs/assets/noema-architecture.*` |
+| 治理全景图 | 维护者 | `AGENTS.md`            | `AGENTS.md` | `docs/assets/noema-governance.*`   |
 
 产品图是 README 的入口，也是规划的总锚点：图里区分“已实现”和“计划中（灰底 + 虚线区域）”；只画 Noema 产品范围，不画本机开发 harness。治理图画治理结构（提示层、事实流、机器门），不进 README。
 
@@ -136,7 +136,9 @@ npm run branches:prune -- --apply # 执行删除
 
 ### 外部收件箱（GitHub 通知 → 对话）
 
-三态：`pending`（未送过）→ `delivered`（已注入对话，等处理）→ `done`（处理完）。状态在 `.work/inbox-bridge/state.json`；来源事实由 `scripts/github-inbox.mjs` 抓取（gh 不可用时静默退出，不阻塞门槛）。
+三态：`pending`（未送过）→ `delivered`（已注入对话，等处理）→ `done`（处理完）。状态在 `.work/inbox-bridge/state.json`；来源事实由收件箱工具抓取（gh 不可用时静默退出，不阻塞门槛）。
+
+工具不在本仓库：它单独维护在 [Noema-Harness/dsh-inbox-bridge](https://github.com/Noema-Harness/dsh-inbox-bridge)（DSH 插件 `dsh-inbox-bridge`，含 CLI 与 GitHub 抓取）。本仓库只有 `scripts/inbox.mjs` 这个转发器：先看 `INBOX_CLI`，再看同级目录 `..\dsh-inbox-bridge`。
 
 - **只提醒一次不算完**：`delivered` 6 小时内不重复，超过 6 小时仍未 `done` 会再提醒一次（`resurfaceMs` 可配），直到处理完。
 - **自动收口**：同一 workflow+branch 的新 run 成功时，`recovered` 事件会把之前失败事件标 `done`；同一组只保留最新一次失败，不会每条失败都发一遍。
@@ -146,18 +148,21 @@ npm run branches:prune -- --apply # 执行删除
 
 ```powershell
 npm run inbox                                  # 列出三态；--json 给脚本用
-npm run inbox:ack --done -- <key>              # 处理完标记 done（唯一会停止提醒的写法）
+npm run inbox:ack -- --done -- <key>           # 处理完标记 done（唯一会停止提醒的写法）
 npm run inbox:ack -- <key>                     # 只标 delivered（6 小时后会再提醒）
 npm run inbox:ack -- --all-delivered --done    # 清空所有已送达未处理
 ```
 
-运行中注入靠 DSH 插件 `plugins/inbox-bridge/`。安装/更新：
+`--done` 必须写在 `--` 之后：npm 会把 `--` 之前的 `--done` 当成自己的参数吞掉，`npm run inbox:ack --done -- <key>` 实际只标 delivered，脚本会为此打印一行提示。
+
+运行中注入靠 DSH 插件（同一项目）。安装/更新：
 
 ```powershell
-dsh plugin add C:\Users\NUC\Desktop\noema\plugins\inbox-bridge   # 本地 link，改完代码要重启 DSH 加载新代
+git clone https://github.com/Noema-Harness/dsh-inbox-bridge C:\Users\NUC\Desktop\dsh-inbox-bridge
+dsh plugin add C:\Users\NUC\Desktop\dsh-inbox-bridge   # 每次更新后重新 add，改完代码要重启 DSH
 ```
 
-配置在 `plugins/inbox-bridge/cordis.patch.yml`（`intervalMs` 默认 120000、`resurfaceMs` 默认 6 小时、`offlineReminderMs` 默认 12 小时；`poll`/`ack` 命令可换成任意来源）。日志：`.work/inbox-bridge/plugin.log`。探针：`node .work/probe-inbox-plugin.mjs`。
+配置在 `cordis.patch.yml`（`intervalMs` 默认 45000、`wake` 默认 `first`：用 `followup` 唤醒一个空闲会话，`all` 唤醒全部、`off` 只注入；`resurfaceMs` 默认 6 小时、`offlineReminderMs` 默认 12 小时、`ackHint` 决定通知里教的收口命令；`poll`/`ack` 命令可换成任意来源）。日志：`.work/inbox-bridge/plugin.log`。改插件代码或配置后要重启 DSH 才会生效。
 
 **不要再用 Windows 计划任务**（旧方案每 10 分钟弹一次 node 窗口、且只能等下一轮才看到）；它只做提醒，不代替 `npm run check`，CI 的正式结论以 GitHub Actions 为准。GitHub 网页上的通知状态与本地 `done` 是两套记录：本地 `done` 只表示 agent 已处理，不会改动 GitHub 的未读标记。
 
@@ -224,7 +229,7 @@ node --test test/main/chat/conversation-continuity.test.mjs
 
 - 契约：`CONTRIBUTING.md`（协作者可改/不可改、PR 必备、CI 覆盖）。合并只由维护者执行。
 - 分支保护：2026-11-16 仓库转为 public（Free 组织的 public 仓库可以启用保护，标准 runner 免费）。`main` 已开启保护：必须通过 `verify` 与 `collaboration` 检查、至少 1 位维护者审核、新提交 dismiss 旧审核、对话必须解决、禁止 force push 与删除；`enforce_admins: false`，维护者可紧急绕过。核对：`gh api repos/Noema-Harness/noema-agent/branches/main/protection`。
-- CI：`Desktop checks` 在 PR 上跑 `npm run check`，并用 `range` 步骤把提交门套在 PR diff 上（`node scripts/maintenance.mjs range --base origin/<base>`：产品代码必须带计划/状态，未确认决议不能改产品代码）；另执行 `collaboration` 路径检查；`Desktop package` 在触及 `apps/desktop/**`、`package.json` 或锁文件时跑 smoke / 打包 / 安装包验证。main 推送不触发 CI（节省 Windows runner 额度），发布前用 `gh workflow run "Desktop checks"` / `gh workflow run "Desktop package"` 手动跑。
+- CI：`Desktop checks` 在 PR 与 main 推送上都跑 `npm run check`，并用 `range` 步骤把提交门套在 PR diff 上（`node scripts/maintenance.mjs range --base origin/<base>`：产品代码必须带计划/状态，未确认决议不能改产品代码）；另执行 `collaboration` 路径检查。`Desktop package` 只在触及 `apps/desktop/**`、`package.json` 或锁文件时（PR）与手动 `workflow_dispatch` 时跑 smoke / 打包 / 安装包验证；发布前用 `gh workflow run "Desktop package"` 跑全流程。
 - Actions 额度：2026-11-16 曾因组织 Free 额度用尽，所有 job 4 秒内失败、注释为「recent account payments have failed or your spending limit needs to be increased」；同日仓库转 public 后标准 runner 免费，故障消失。若再现同类空日志 4 秒失败，先查 `https://github.com/organizations/Noema-Harness/settings/billing/budgets`。
 - 本地预演路径检查：`npm run guard -- --actor <登录名> --base origin/main`；维护者返回放行，协作者触碰维护者路径时列出被拦文件并以退出码 1 结束。
 - 路径清单源码在 `scripts/collaboration.mjs` 的 `MAINTAINER_ONLY_PATHS`，改清单时同步 `CONTRIBUTING.md` 的表。
