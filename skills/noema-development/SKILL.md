@@ -11,26 +11,68 @@ description: 在 Noema 仓库推进开发时使用：开一轮、立项三件套
 
 ```powershell
 npm run inbox        # GitHub 收件箱：CI 红、PR、被 @
+npm run review       # 需要你决定 / 待你验收 / 执行中
 git log --oneline -3
 git status --short
 ```
 
 然后读：`docs/STATUS.md` 的「最后一次验证」、`docs/DECISIONS.md` 里状态为 `待定` 的条目、看板 `gh project item-list 1 --owner Noema-Harness --format json`。
 
+## 0.5 决议条目模板
+
+`docs/DECISIONS.md` 一条对一轮（或一个专案）。字段固定、三层并存，阶段可回退；完整规则见 AGENTS §1。
+
+```markdown
+## D-YYYYMMDD-<slug> <标题（范围变了就改）>
+
+**形态**：轮次 | 专案 | 能力·遗留
+**阶段**：决策中 | 执行中 | 待验收 | 已收口
+**看板**：#<issue>（专案必填；其余写“无”）
+**来源**：<由哪个议题引出，或复用哪条既有条目>
+**阻塞**：<哪条 task / 下一步> | 无
+**结构**：入口 / 字段 / 校验 / 命令（≤10 行，机制类必填）
+
+**状态**：待定 | 决定
+**用户确认**：YYYY-MM-DD（决定条目必填）
+
+### 1 决策（执行前，可重开）
+
+- 要定：…；候选：A / B；建议：…
+- 纪要：随讨论追加，含被否决的选项与我的判断
+- 结论：无 / <结论>（用户确认 YYYY-MM-DD）
+- 重开：<新想法>（用户确认 YYYY-MM-DD）；原结论标注“已被重开”
+
+### 2 执行（执行中）
+
+- 批次：changes/<name>；状态：进行中 / 已交付
+- 发现：问题 → 证据 → 处理 → 结论（用户确认 YYYY-MM-DD）
+- 待确认：会影响后续实现的细节；阻塞哪条 task
+
+### 3 验收（立项写 v0，交付前复核更新）
+
+- 项：<可观察结果> — 怎么验 — 结论：待验收 / 通过 / 不通过
+- 更新：<交付前按实际补充或改写的验收项>（用户确认 YYYY-MM-DD）
+```
+
+规则冲突以 AGENTS §1 为准；接口、命令与门的具体实现在 `scripts/review.mjs` 与 `scripts/maintenance.mjs`。
+
 ## 1. 立项三件套模板
 
 `openspec/changes/<name>/proposal.md`
 
 ```markdown
-Plan: <卡片链接>            # 治理变更写 Plan: none，并加 .openspec.yaml 的 skip_specs: true
+Plan: <卡片链接> # 治理变更写 Plan: none，并加 .openspec.yaml 的 skip_specs: true
 
 ## 为什么
+
 <一句话说清要解决的失败或能力缺口，带可核对的事实>
 
 ## 改什么
+
 - <改动点，含影响的文档与脚本>
 
 ## 影响
+
 - 代码：`apps/desktop/...`（无则写“无产品代码”）
 - 文档：<PRODUCT / ARCHITECTURE / DECISIONS / OPERATIONS / STATUS 中实际会动的>
 ```
@@ -39,19 +81,24 @@ Plan: <卡片链接>            # 治理变更写 Plan: none，并加 .openspec.
 
 ```markdown
 ## 开工声明
+
 - 计划先于代码：本变更的提交信息含变更名，tasks 记录证据
 - 事实影响：行为 / 结构 / 取舍 / 仅执行（四选一或多选，各一句依据）
 
-## 待用户决定
+## 用户决策
+
 - [ ] <问题>：候选 A / B；建议 A；确认前不执行
 
 ## 实现选择
+
 - <维护者判断，可被推翻>
 
 ## 用户可观察的改变
+
 - <用户能看到的差异>
 
 ## 手测步骤
+
 1. <命令或点击路径>
 ```
 
@@ -65,18 +112,18 @@ Plan: <卡片链接>            # 治理变更写 Plan: none，并加 .openspec.
 
 ## 2. 闸门失败对照
 
-| 报错 | 修法 |
-| --- | --- |
-| `docs:check` 三行头 / 版本基线 | 补 `Authority/Update when/Does not own`；同步版本号与基线提交 |
-| `plan:check` 缺 `Plan:` 链接 | 卡片变更写卡片链接；治理变更写 `Plan: none` |
-| `plan:check` 缺「用户可观察的改变」/「手测步骤」 | 产品变更两节都不能空，写可执行的手测 |
-| `plan:check` 待用户决定未答 | 先讨论、更新条目；未答前不实现相关产品行为 |
-| `precommit-check` 代码未配对计划 | 同一提交里勾 tasks 或写证据（`docs/`、`openspec/changes/`、`AGENTS.md`） |
-| `milestone:check` 任务未完成 / 缺卡片正文 | 勾完任务、更新卡片正文「现在能做什么 / 还没做」 |
-| `source:check` 依赖越界 | 生产代码不导入 `test-support`；新源码写 TypeScript（D-039） |
-| `figure:check` 图与架构文档不一致 | `npm run figure:build` 重出图，或更新 `docs/ARCHITECTURE.md` 后重建 |
-| CI 红 | 收件箱会在下一轮带回；不等 CI，先看失败步骤日志，按上表修 |
-| 分支已合并 / 陈旧 | `npm run branches:check` 看提示，`npm run branches:prune -- --apply` |
+| 报错                                             | 修法                                                                     |
+| ------------------------------------------------ | ------------------------------------------------------------------------ |
+| `docs:check` 三行头 / 版本基线                   | 补 `Authority/Update when/Does not own`；同步版本号与基线提交            |
+| `plan:check` 缺 `Plan:` 链接                     | 卡片变更写卡片链接；治理变更写 `Plan: none`                              |
+| `plan:check` 缺「用户可观察的改变」/「手测步骤」 | 产品变更两节都不能空，写可执行的手测                                     |
+| 决议条目 `阶段：决策中` 未获确认                 | 先讨论、更新条目；用户确认前不实现相关产品行为                           |
+| `precommit-check` 代码未配对计划                 | 同一提交里勾 tasks 或写证据（`docs/`、`openspec/changes/`、`AGENTS.md`） |
+| `milestone:check` 任务未完成 / 缺卡片正文        | 勾完任务、更新卡片正文「现在能做什么 / 还没做」                          |
+| `source:check` 依赖越界                          | 生产代码不导入 `test-support`；新源码写 TypeScript（D-039）              |
+| `figure:check` 图与架构文档不一致                | `npm run figure:build` 重出图，或更新 `docs/ARCHITECTURE.md` 后重建      |
+| CI 红                                            | 收件箱会在下一轮带回；不等 CI，先看失败步骤日志，按上表修                |
+| 分支已合并 / 陈旧                                | `npm run branches:check` 看提示，`npm run branches:prune -- --apply`     |
 
 ## 3. 收口与出口
 

@@ -14,7 +14,7 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 ## 开发
 
-九步循环与每一步写哪份文档见 [AGENTS](../AGENTS.md) §1；本文只写命令、环境与报错修法。开发运行手册在 `skills/noema-development/SKILL.md`，用 `npm run skill:install` 同步到 `~/.dsh/skills`（`docs:check` 校验副本一致）。
+九步循环与每一步写哪份文档见 [AGENTS](../AGENTS.md) §1；本文只写命令、环境与报错修法。开发运行手册在 `skills/noema-development/SKILL.md`，用 `npm run skill:install` 同步到 `~/.dsh/skills`（`docs:check` 校验副本一致）。需要用户决定或验收时看 `npm run review`；条目字段与三道门见「审核入口与决议条目」。
 
 ```powershell
 npm ci
@@ -64,6 +64,7 @@ npm run typecheck
 npm run lint
 npm run tools:test
 npm run inbox
+npm run review             # 只读聚合：需要你决定 / 待你验收 / 执行中
 npm test
 ```
 
@@ -95,6 +96,9 @@ npm run branches:prune -- --apply # 执行删除
 | `[用户]` 验收项勾选没有确认日期                       | 只有用户明确确认后才勾选，并写成 `（用户确认：YYYY-MM-DD）`                                                                         |
 | milestone 报任务未完成 / 有待决问题 / STATUS 不是当天 | 补完任务、拿到用户答案、更新 STATUS 后再归档                                                                                        |
 | milestone 报产品变更没更新卡片正文                    | 在 tasks 写一条“更新卡片正文（现在能做什么 + 手测步骤 / 还没做）”，并真的改卡片正文；治理变更（`Plan: none`）不需要                 |
+| 报「决议条目还没有用户确认/验收」                     | 先在 DECISIONS 条目的第 1 或第 3 层拿到用户确认，再改产品代码；pre-commit 只是兜底                                                  |
+| 报「验收结论确认后才算交付」                          | 请用户验收（`npm run review` 的“待你验收”），通过后把条目阶段改 `已收口` 再归档                                                     |
+| 报「产品变更没有对应的决议条目」                      | 在 DECISIONS 写一条 `形态：轮次` 或 `专案` 的条目，第 2 层写 `批次：changes/<name>`                                                 |
 | 架构文档变了但图没重出（figure:check）                | 运行 `npm run figure:build`；不要手改 html/png；README 必须引用 png 与 html                                                         |
 | pre-commit 拒绝产品代码提交                           | 同一次提交带上计划/状态更新与 specs 增量；未决决策只能等用户回答                                                                    |
 | pre-commit 报“本轮变更的计划还没有提交”               | 先把 `openspec/changes/<change>/` 单独提交，再提交产品代码；计划先于实现，Git 历史才能证明开工依据                                  |
@@ -134,6 +138,15 @@ schtasks /Query /TN NoemaGithubInbox
 ```
 
 它只做提醒，不代替 `npm run check`；CI 的正式结论以 GitHub Actions 为准。
+
+### 审核入口与决议条目
+
+`docs/DECISIONS.md` 是唯一需要用户审核的信息源（D-20261116-review-inbox）：
+
+- 字段：`形态`（轮次 / 专案 / 能力·遗留）、`阶段`（决策中 / 执行中 / 待验收 / 已收口）、`看板`（专案写 `#<issue>`，其余写“无”）、`来源`、`阻塞`；机制类再加 `结构`（入口 / 字段 / 校验 / 命令，≤10 行）。
+- 三层：`### 1 决策`（可重开）、`### 2 执行`（批次 / 发现 / 待确认）、`### 3 验收`（立项写 v0，交付前按实际更新）。阶段可回退：追加「重开」行、旧结论标“已被重开”、受影响 tasks 重开。状态词只表达用户是否确认（`待用户确认`/`已确认`、`待验收`/`已验收`）。
+- `npm run review` 只读汇总「需要你决定 / 待你验收 / 执行中」，条目正文仍是唯一权威源；`--json` 给脚本用。
+- 门：`docs:check` 校验字段与阶段/状态一致；`plan:check` 在存在 `待验收` 且没有活动变更时拒绝开新变更；`milestone:check` 在产品变更没有对应条目、或仍有 `待验收` 时拒绝归档；`pre-commit` 在 决策中/待验收 时挡 `apps/desktop/src/` 改动（本机兜底，约束在流程）。
 
 ### 议题与积压放在哪（D-028/D-029）
 
@@ -182,6 +195,14 @@ CI（GitHub Actions）不要求安装钩子：`docs:check` 在 `CI` 环境变量
 node --test test/main/chat/social-chat-service.test.mjs
 node --test test/main/chat/conversation-continuity.test.mjs
 ```
+
+## 协作与 PR 检查
+
+- 契约：`CONTRIBUTING.md`（协作者可改/不可改、PR 必备、CI 覆盖）。合并只由维护者执行。
+- 平台限制：私有 Free 组织仓库无法启用分支保护或 ruleset（`GET /repos/Noema-Harness/noema-agent/branches/main/protection` 返回 403），强制力 = CI 红灯 + 维护者审核 + 约定。
+- CI：`Desktop checks` 跑 `npm run check` 并执行 `collaboration` 路径检查（PR 必跑）；`Desktop package` 在触达 `apps/desktop/**`、`package.json` 或锁文件时跑 smoke / 打包 / 安装包验证。
+- 本地预演路径检查：`npm run guard -- --actor <登录名> --base origin/main`；维护者返回放行，协作者触碰维护者路径时列出被拦文件并以退出码 1 结束。
+- 路径清单源码在 `scripts/collaboration.mjs` 的 `MAINTAINER_ONLY_PATHS`，改清单时同步 `CONTRIBUTING.md` 的表。
 
 ## 打包
 

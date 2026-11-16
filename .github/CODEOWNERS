@@ -1,5 +1,7 @@
-# Noema 当前由两位维护者共同负责。
+# Noema 由一位维护者（c3115644151）与协作者（ichika0130）共同开发。
+# 合并只能由维护者执行；作者不合自己的 PR。
 # 未启用分支保护时，CODEOWNERS 只提供审查提示，不阻止合并。
+# 路径边界由 Desktop checks / collaboration（scripts/collaboration.mjs）检查。
 
 * @c3115644151 @ichika0130
 

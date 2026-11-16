@@ -1,0 +1,42 @@
+name: Desktop package
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - "apps/desktop/**"
+      - "package.json"
+      - "package-lock.json"
+  workflow_dispatch:
+
+concurrency:
+  group: desktop-package-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.21.0
+          cache: npm
+      - run: npm ci
+      - run: npm run smoke
+      - run: npm run package:desktop
+      - run: npm run smoke:package
+      - run: npm run make:desktop
+      - name: Verify Squirrel install, upgrade, and uninstall data retention
+        shell: pwsh
+        run: npm run smoke:installer --workspace noema-desktop
+      - uses: actions/upload-artifact@v4
+        if: success() && github.event_name == 'workflow_dispatch'
+        with:
+          name: noema-windows-portable-${{ github.sha }}
+          path: apps/desktop/out/Noema-win32-x64/
+          if-no-files-found: error
+          retention-days: 7

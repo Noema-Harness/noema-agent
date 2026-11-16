@@ -42,6 +42,34 @@
 - [ ] 6.2 对照流程图记录系统差异（哪步没有文档可写、哪个门拦了没恢复路径、哪步被跳过）写回 `design.md`
 - [ ] 6.3 决定工作流图是否入库（`docs/assets/` + README / AGENTS 链接）
 
+## 8. 审核入口与决议条目（2026-11-16，D-20261116-review-inbox）
+
+- [x] 8.1 新增 `scripts/review.mjs`（只读聚合，`npm run review`、`--json`）与 `scripts/review.test.mjs`（2/2）
+- [x] 8.2 `scripts/maintenance.mjs`：日期条目校验字段/阶段/状态（`checkDatedEntry`），`checkPlan`/`checkMilestone`/`checkPrecommit` 三道门（`node --test scripts/maintenance.test.mjs` 18/18）
+- [x] 8.3 `AGENTS.md` §1 改为条目生命周期（决策中 → 执行中 → 待验收 → 已收口）+ 讨论规则 + 唯一审核入口
+- [x] 8.4 DECISIONS 五条条目改写为新格式（decision-scope / decision-lifecycle / governance-extraction / review-inbox / platform-layers），platform-layers 建看板 #151
+- [x] 8.5 `package.json` 加 `review`/`review:test`，`tools:test` 覆盖 review
+- [x] 8.6 `docs/OPERATIONS.md` 写审核入口、条目字段、三道门与失败修法
+- [ ] 8.7 `node scripts/governance.mjs audit` 仍为 26 拦截/2 提醒/0 观察期（新增规则前先登记触发证据）
+
+## 9. 决议条目规范化（2026-11-16）
+
+- [x] 9.1 把 9 条 `D-20261115-*` 旧格式条目转成新结构（形态 / 阶段 / 看板 / 来源 / 阻塞 / 结构 + 三层），保留原决定与理由原文
+- [x] 9.2 新增 `D-20261116-workflow-closure` 收口条目（执行中；三层记录复盘、批次与验收项）
+- [x] 9.3 design.md 的「待用户决定」改为「用户决策」并指向 DECISIONS 条目
+- [x] 9.4 `npm run review` 的分组与条目阶段一致；`docs:check` / `plan:check` 通过（`tools:test` 47/47，9 条旧格式条目 + 收口条目均可解析）
+- [x] 9.5 提交并推送（本提交）
+
+## 10. 协作者治理契约（2026-11-16，D-20261116-collaborator-governance）
+
+- [x] 10.1 `scripts/collaboration.mjs`：维护者列表、维护者路径、`guardContribution`；`scripts/collaboration.test.mjs` 5 个用例（`node --test scripts/collaboration.test.mjs` 通过）
+- [x] 10.2 `CONTRIBUTING.md` 重写成协作者契约（角色 / 可改 / 只能维护者改 / PR 必备 / 检查 / 合并与发布 / 数据）
+- [x] 10.3 PR 模板加治理字段；CODEOWNERS 注明合并只由维护者执行
+- [x] 10.4 CI 拆分：`Desktop checks`（verify + collaboration 路径检查）、`Desktop package`（触达桌面端才跑）
+- [x] 10.5 `package.json` 加 `guard`；`tools:test` 纳入 collaboration 测试
+- [x] 10.6 `docs/OPERATIONS.md` 加「协作与 PR 检查」；STATUS 记录本轮（`npm run check` 885/885，49,991ms）；`npm run guard` 可在本地预演
+- [x] 10.7 #149 审核结论写入 design；#148 去掉能力标签并关闭；STATUS 的 C15 引用改成 change 名
+
 ## 7. 归档
 
 - [ ] 7.1 `npm run check` 全绿

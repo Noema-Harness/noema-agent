@@ -8,13 +8,13 @@
 
 用五条不变量对照 `node scripts/governance.mjs audit` 的 28 条登记规则（26 拦截 / 2 提醒 / 0 观察期）：
 
-| 不变量 | 覆盖情况 | 缺口 |
-| --- | --- | --- |
-| 意图可追 | 强：decision-shape、plan-link、one-active-change、plan-before-code、code-needs-plan、governance-no-product | 「把反馈直接当工单」没有检测点；「被否 / 撤销」没有约定 |
-| 变更可逆 | 弱：只有 source-boundary（依赖边界） | 撤销提交、卡片回退、迁移回滚、替代决定都无流程位置 |
-| 结果可验 | 强：user-acceptance-date、observable-sections、milestone-tasks、spec-delta、status-today | specs 与测试无绑定；卡片正文只校验「已更新」 |
-| 事实唯一 | 强：version-sync、doc-heads、docs-registered、status-facts、figure-sync 等 9 条 | DECISIONS / 卡片 / tasks 冲突无检测，只靠 AGENTS §2 的表靠人判 |
-| 成本受控 | 中：hooks-installed、branches-cleanup、inbox-per-round | 规则只增不减：4 条「预防」规则从未触发真实失败 |
+| 不变量   | 覆盖情况                                                                                                   | 缺口                                                           |
+| -------- | ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| 意图可追 | 强：decision-shape、plan-link、one-active-change、plan-before-code、code-needs-plan、governance-no-product | 「把反馈直接当工单」没有检测点；「被否 / 撤销」没有约定        |
+| 变更可逆 | 弱：只有 source-boundary（依赖边界）                                                                       | 撤销提交、卡片回退、迁移回滚、替代决定都无流程位置             |
+| 结果可验 | 强：user-acceptance-date、observable-sections、milestone-tasks、spec-delta、status-today                   | specs 与测试无绑定；卡片正文只校验「已更新」                   |
+| 事实唯一 | 强：version-sync、doc-heads、docs-registered、status-facts、figure-sync 等 9 条                            | DECISIONS / 卡片 / tasks 冲突无检测，只靠 AGENTS §2 的表靠人判 |
+| 成本受控 | 中：hooks-installed、branches-cleanup、inbox-per-round                                                     | 规则只增不减：4 条「预防」规则从未触发真实失败                 |
 
 ### B. 工作流编排
 
@@ -68,10 +68,10 @@
 - 决定被替代：新决定写 `**被替代**：D-xxx`，引用旧决定的文档同步。
 - 规则退役：拦截 → 提醒 → 删除；`audit` 输出观察期与提醒清单，里程碑人工确认一次。
 
-## 待用户决定
+## 用户决策
 
-- 先补哪几条缺口、按什么顺序（建议 A 反馈分类 + D 九步 + E 六角色与出口 作为第一个切口；B 逆向链随后；F/G 放到真实切口之后再定）。
-- 真实产品切口是否用 C6「成员经历可查看 / 删除」。
+- 本变更的决策与阶段见 `docs/DECISIONS.md` 的 `D-20261116-workflow-closure`（执行中），不再在本文件里列出待决项。
+- 技能结构见 `D-20261116-governance-extraction`（决策中）；审核入口的验收见 `D-20261116-review-inbox`（待验收）。
 
 ## 实现选择
 
@@ -79,11 +79,21 @@
 - 以 design.md 强制 `## 事实影响`（行为 / 结构 / 取舍 / 仅执行，各一行依据）替代角色表；milestone 按声明配对校验：声明行为变化→本变更提交必须动 `docs/PRODUCT.md` 或 `openspec/specs/`；声明结构变化→必须动 `docs/ARCHITECTURE.md`；只声明“仅执行”却改 `apps/desktop/src/`→拒绝。
 - 理由：分类必须前置在立项（否则收口才发现该改的文档没改），且这是门槛能机械校验的少数事实。
 
+## 协作者治理契约（2026-11-16）
+
+- 事实：私有 Free 组织仓库不能启用分支保护或 ruleset（`GET /branches/main/protection`、`/rulesets` 均 403），协作者的路径越界只能靠 CI 红灯与维护者审核发现。
+- 落点：`CONTRIBUTING.md`（角色、可改/只能维护者改、PR 必备、CI 覆盖、合并与发布）；`scripts/collaboration.mjs`（`MAINTAINER_ONLY_PATHS` + `guardContribution`，CI job `collaboration`）；PR 模板治理字段；CODEOWNERS 说明。
+- 审核 #149（2026-11-15 合入，macOS DSH 支持）：行为变更有 change 证据（`plan → feat → archive → 移除归档目录`），但三处不符合契约：①作者自行合并（用户已明确不要擅自 merge）；②在 PR 里直接改 `docs/DECISIONS.md`、`docs/STATUS.md`，且决定条目用旧格式；③自造能力编号 C15 与 issue #148，和看板 14 卡不一致。后续：`#148` 去掉 `capability` 标签并关闭；STATUS 里的 C15 引用改成 change 名；`D-20261116-platform-layers` 的用户确认日期待用户核实；specs 的约 230 行空行抖动保留但记录在案。
+- 打包检查拆出：`Desktop checks` 只跑 `npm run check`；`Desktop package` 在触达 `apps/desktop/**` 或锁文件时跑 smoke/打包/安装包，避免文档 PR 背 10 分钟 Windows 打包，同时保住打包回归。
+
 ## 用户可观察的改变
 
 - 打开 `AGENTS.md` 能看到与实际一致的九步、六种文档角色、三类出口，以及每一步写哪份文档。
 - `node scripts/governance.mjs audit` 输出里不再有「预防」级拦截规则（或每条都有触发证据）。
 - 工作流图入库后，README / AGENTS 可点开对照；在此之前图与复盘只在 `.work/`。
+
+- 协作者在 PR 被拦时，CI 的 `collaboration` job 会列出被拦的维护者路径，PR 模板要求填看板卡与 change。
+- `CONTRIBUTING.md` 能独立回答“我这个改动能不能提、提了会被什么检查”。
 
 ## 手测步骤
 
@@ -92,3 +102,5 @@
 3. `node scripts/governance.mjs audit` → 拦截 / 提醒 / 观察期三行数字，确认没有无证据的拦截规则
 4. 读 `AGENTS.md` §1，对照流程图逐步核对：每步都能指出写入的文档
 5. 真实产品切口跑一遍后，在 `tasks.md` 记录对照差异
+6. `npm run guard -- --actor ichika0130 --files scripts/workspace.mjs` → 退出码 1 并列出被拦路径；`--actor c3115644151` → 退出码 0
+7. 对照 `CONTRIBUTING.md` 的表与 `scripts/collaboration.mjs` 的 `MAINTAINER_ONLY_PATHS`，确认两处一致
