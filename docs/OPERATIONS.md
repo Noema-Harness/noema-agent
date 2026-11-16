@@ -14,7 +14,7 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 ## 开发
 
-九步循环与每一步写哪份文档见 [AGENTS](../AGENTS.md) §1；本文只写命令、环境与报错修法。开发运行手册在 `skills/noema-development/SKILL.md`，用 `npm run skill:install` 同步到 `~/.dsh/skills`（`docs:check` 校验副本一致）。需要用户决定或验收时看 `npm run review`；条目字段与三道门见「审核入口与决议条目」。
+时间轴（四态、每次转移绑哪道门）见 [AGENTS](../AGENTS.md) 的「一条时间轴」与 `scripts/lifecycle.mjs`；本文只写命令、环境与报错修法。开发运行手册在 `skills/noema-development/SKILL.md`，用 `npm run skill:install` 同步到 `~/.dsh/skills`（`docs:check` 校验副本一致）。需要用户决定或验收时看 `npm run review`；条目字段与三道门见「审核入口与决议条目」。
 
 ```powershell
 npm ci
@@ -100,7 +100,7 @@ npm run branches:prune -- --apply # 执行删除
 | `[用户]` 验收项勾选没有确认日期                       | 只有用户明确确认后才勾选，并写成 `（用户确认：YYYY-MM-DD）`                                                                         |
 | milestone 报任务未完成 / 有待决问题 / STATUS 不是当天 | 补完任务、拿到用户答案、更新 STATUS 后再归档                                                                                        |
 | milestone 报产品变更没更新卡片正文                    | 在 tasks 写一条“更新卡片正文（现在能做什么 + 手测步骤 / 还没做）”，并真的改卡片正文；治理变更（`Plan: none`）不需要                 |
-| 报「决议条目还没有用户确认/验收」                     | 先让条目的阶段走出 `决策中`/`待验收`，再改产品代码；pre-commit 只是兜底                                                             |
+| 报「本变更引用的决议未获用户确认」                     | 让被引用的条目先走出 `决策中`（用户确认方案），再跑 `npm run milestone:check`                                                        |
 | 报「验收结论确认后才算交付」                          | 请用户验收（`npm run review` 的“待你验收”），通过后把条目阶段改 `已收口` 再归档                                                     |
 | 报「产品变更没有对应的决议条目」                      | 在 DECISIONS 写一条阶段为 `执行中` 的条目，第 2 层写 `批次：changes/<name>`                                                         |
 | 架构文档变了但图没重出（figure:check）                | 运行 `npm run figure:build`；不要手改 html/png；README 必须引用 png 与 html                                                         |
@@ -170,7 +170,7 @@ dsh plugin add C:\Users\NUC\Desktop\noema\plugins\inbox-bridge   # 本地 link�
 - 三层：`#### 1 决策`（确认后写 `- 决定：`）、`#### 2 执行`（批次 / 发现）、`#### 3 验收`（立项写 v0，交付前按实际更新；已收口在末尾写 `- 用户确认：YYYY-MM-DD`）。阶段可回退：追加「重开」行、旧结论标“已被重开”、受影响 tasks 重开。
 - 验收项写成 `- [ ] 怎么验 — 怎么跑`，在 GitHub 上直接勾选；勾完运行 `npm run decisions:sync`，全部勾选的待验收条目自动改 `已收口` 并补 `- 用户确认：当天日期`（`--dry-run` 预览）。
 - `npm run review` 只读汇总「需要你决定 / 待你验收 / 执行中」，待验收条目显示勾选进度，条目正文仍是唯一权威源；`--json` 给脚本用。
-- 门：`docs:check` 校验阶段在第一条且在四种里、三层齐全、已收口有用户确认；`plan:check` 在存在 `待验收` 且没有活动变更时拒绝开新变更；`milestone:check` 在产品变更没有对应条目、或仍有 `待验收` 时拒绝归档；`pre-commit` 在 决策中/待验收 时挡 `apps/desktop/src/` 改动（本机兜底，约束在流程）。
+- 门：`docs:check` 校验阶段在第一条且在四种里、三层齐全、已收口有用户确认；`plan:check` 只把 `待验收` 列为提示，不限制开新变更（决议是存思考的地方，只阻塞它自己引用的里程碑）；`milestone:check` 在产品变更没有对应条目、或仍有 `待验收` 时拒绝归档；`pre-commit` 在 决策中/待验收 时挡 `apps/desktop/src/` 改动（本机兜底，约束在流程）。
 
 ### 议题与积压放在哪（D-028/D-029）
 

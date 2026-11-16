@@ -69,7 +69,7 @@ status-today|事实唯一|STATUS 不是当天更新，交付与事实脱节|STAT
 figure-sync|事实唯一|ARCHITECTURE 改了架构图没重出，入口图与结构不一致|figure:check 两次拦到哈希漂移|block|milestone:check
 plan-before-code|意图可追|先写代码后补计划，计划变成实现清单|2026-11-15 C6 与 delivery-observability 两次|block|pre-commit
 code-needs-plan|意图可追|代码提交不带计划或状态更新|提交门建立后拦到过|block|pre-commit
-pending-blocks-product|结果可验|未答决策下擅自实现产品行为|成长证据门槛长期未决期间限制产品实现|block|pre-commit
+referenced-decision-confirmed|结果可验|变更引用了未确认的决议，却当作已定实现|里程碑曾全局阻塞无关议题（2026-11-16 已收窄为只查本变更引用的决议）|block|milestone
 governance-no-product|意图可追|治理变更夹带产品代码，绕过卡片与规格|观察期：尚无真实触发；夹带一次就会绕过卡片与规格|block|pre-commit
 skip-specs-product|结果可验|行为变更标 skip_specs，跳过规格与回归合同|观察期：尚无真实触发；行为变更没有回归合同，下次改动就没有验收基线|block|pre-commit
 workspace-root-dirs|事实唯一|仓库根出现未分类目录，过程材料混进版本库|新增 .githooks/.archify 时拦到过|block|workspace:check

@@ -814,3 +814,25 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 - [ ] `npm run review` 只列三类待办 — `npm run review`
 - [ ] 治理图能看到提示层/事实流/机器门 — 打开 `docs/assets/noema-governance.html`
 - [ ] 技能只剩模板 — 读 `skills/noema-development/SKILL.md`
+
+## 🔍 D-20261116-lifecycle-table 治理时间轴：四态与门绑定
+
+- **阶段**：待验收
+- **结构**：`scripts/lifecycle.mjs` 是流程的唯一文字来源——`STATES`（决策中/执行中/待验收/已收口）、`TRANSITIONS`（每次转移绑一道门）、`REOPEN`、`ALWAYS_GATES`（commit/verify/platform/collaboration）；`scripts/maintenance.mjs` 的阶段枚举引用它；`AGENTS.md` 只渲染时间轴、事实所有权与判断规则；治理图以 AGENTS 哈希钉住，改结构必须重出图。
+- **来源**：用户 2026-11-16 指出 AGENTS 涨到 108 行、九步与条目四态是两套状态机、技能与 AGENTS 的工作流撞车，并批准方向 A（用门槛减少常驻文档信息）。
+- **阻塞**：无
+
+#### 1 决策
+
+- 决定：一个工作项 = 一条决议条目，四态推进，每次阶段变化绑一道门；只读调查不建条目；AGENTS 只写判断与所有权，命令进 OPERATIONS、模板进技能、失败修法进 OPERATIONS；新增门必须能引用一次真实失败，并先写“最省力过门方式”。
+
+#### 2 执行
+
+- 批次：changes/lifecycle-table
+- 已完成：转移表与其测试、门枚举接线、`AGENTS.md` 重写（108 → 45 行以内）、治理图源改为“一轮推进（四态）”。
+
+#### 3 验收
+
+- [ ] `AGENTS.md` 不超过 45 行，且没有重复的步骤清单或命令表 — 读文件 + `npm run docs:check`
+- [ ] 阶段枚举只来自 `scripts/lifecycle.mjs` — `node --test scripts/lifecycle.test.mjs`
+- [ ] 治理图与时间轴对得上 — 打开 `docs/assets/noema-governance.html`

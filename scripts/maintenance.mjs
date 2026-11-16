@@ -4,6 +4,7 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { resolveGitExecutable } from "./git-exec.mjs";
 import { checkSkill } from "./skill-sync.mjs";
+import { STATES } from "./lifecycle.mjs";
 
 // 文档与计划不是事后补写的报告，而是交付门槛的一部分：交付前、提交前都必须
 // 通过这里。`docs` 校验五份权威文档与代码事实同步，`plan` 校验 OpenSpec 只有
@@ -202,7 +203,9 @@ export function decisionEntries(text) {
 }
 
 // 日期编号的条目带阶段；D-0xx 旧条目按历史格式处理，不要求新字段。
-export const ENTRY_STAGES = ["决策中", "执行中", "待验收", "已收口"];
+// The stage list lives in scripts/lifecycle.mjs; re-exported for callers that
+// only need the enum.
+export const ENTRY_STAGES = STATES;
 
 export function decisionMeta(entry) {
   const read = (label) => {
@@ -591,13 +594,9 @@ export function checkPlan(root, options = {}) {
       `待用户确认 ${queue.decide.length} 项：${queue.decide.map((item) => item.id).join(", ")}`,
     );
   }
-  if (queue.accept.length && active.length > 0 && !options.skipAcceptGate) {
-    errors.push(
-      `有 ${queue.accept.length} 项待验收（${queue.accept.map((item) => item.id).join(", ")}）：先请用户确认验收结论，再开新的变更`,
-    );
-  } else if (queue.accept.length) {
+  if (queue.accept.length) {
     notices.push(
-      `待验收 ${queue.accept.length} 项：${queue.accept.map((item) => item.id).join(", ")}`,
+      `待验收 ${queue.accept.length} 项：${queue.accept.map((item) => item.id).join(", ")}；它们只阻塞各自的里程碑收口，不限制新的变更`,
     );
   }
 
@@ -752,7 +751,6 @@ export function checkPrecommit(root, options = {}) {
   const processGate = options.processGate ?? true;
   const plan = checkPlan(root, {
     skipSpecValidation: true,
-    skipAcceptGate: processGate === false,
     ...(options.ownChange ? { ownChange: options.ownChange } : {}),
   });
   const errors = [...docs.errors, ...plan.errors];
@@ -842,20 +840,9 @@ export function checkPrecommit(root, options = {}) {
       );
     }
   }
-  const decisionsText = readText(path.join(root, "docs", "DECISIONS.md")) ?? "";
-  const queue = reviewQueue(decisionsText);
-  if (staged.some((name) => name.startsWith(PRODUCT_CODE_PREFIX))) {
-    const blocking = [...queue.decide, ...queue.accept].map((item) => item.id);
-    if (blocking.length && processGate) {
-      errors.push(
-        `决议条目还没有用户确认/验收（${blocking.join(", ")}）：先确认再改产品代码；本机门只是兜底，约束在流程`,
-      );
-    } else if (blocking.length) {
-      plan.notices.push(
-        `PR 检查不套用维护者的待决/待验收流程门（${blocking.join(", ")}）：由审核人确认是否相关`,
-      );
-    }
-  }
+  // Decisions are a place to park thinking, not a lock on unrelated work:
+  // whether a decision is confirmed only matters for the change that cites it
+  // (checked by plan/milestone), never for every product file touched.
   return { errors, notices: plan.notices, staged };
 }
 

@@ -5,7 +5,7 @@
     "diagram_type": "architecture",
     "meta": {
       "title": "Noema 治理全景：谁规定、谁决定、谁验证",
-      "subtitle": "提示层只放规则与顺序，模板与命令按需加载；一轮的事实流在中间；机器门在下面，不靠自律。",
+      "subtitle": "提示层只放规则与顺序，模板与命令按需加载；一轮的四态（决策中/执行中/待验收/已收口）各绑一道门；机器门在下面，不靠自律。",
       "output": "docs/assets/noema-governance.html",
       "locale": "zh-CN",
       "quality_profile": "showcase",
@@ -105,7 +105,7 @@
         "id": "entry",
         "type": "security",
         "label": "DECISIONS",
-        "sublabel": "阶段 · 勾选 · 确认",
+        "sublabel": "条目 · 阶段 · 勾选",
         "icon": "security",
         "pos": [
           205,
@@ -120,7 +120,7 @@
         "id": "plan",
         "type": "backend",
         "label": "卡 + change",
-        "sublabel": "规划层 · 计划层",
+        "sublabel": "卡 · change",
         "icon": "backend",
         "pos": [
           419,
@@ -134,8 +134,8 @@
       {
         "id": "run",
         "type": "backend",
-        "label": "九步执行",
-        "sublabel": "一个切口",
+        "label": "一轮推进",
+        "sublabel": "四态与门",
         "icon": "backend",
         "pos": [
           643,
@@ -364,19 +364,19 @@
   },
   "source": {
     "doc": "AGENTS.md",
-    "sha256": "9d92cbbfb8ff85699f8ba5889cba8fbc1fba6533ba155089703ccf05328f438d"
+    "sha256": "ee11b3fa7891c411abcc2e445c1bf9350879787177fbadfc41dac998547cc9f3"
   },
   "assets": {
     "html": {
       "path": "docs/assets/noema-governance.html",
-      "sha256": "28111098753a6992d02335af760ff69a8ea26043b6260553c0b1b426a72f7d77",
-      "bytes": 852730
+      "sha256": "e6c4fc7662b50e8ae300fbc4eed8ec80af0c584266c888c34aad882673a3c3ca",
+      "bytes": 852790
     },
     "png": {
       "path": "docs/assets/noema-governance.png",
-      "sha256": "77ec04881286714e38ad7910b25e1efcfbcc46a633f8042ea1104c31dec62d9e",
-      "bytes": 166321
+      "sha256": "0f3f9a217b7bc2a6b8a6773c2b0aaf209ee8d959b46cbcbe8762f2f600420e4e",
+      "bytes": 158941
     }
   },
-  "updatedAt": "2026-11-16T03:37:46.295Z"
+  "updatedAt": "2026-11-16T05:03:38.540Z"
 }

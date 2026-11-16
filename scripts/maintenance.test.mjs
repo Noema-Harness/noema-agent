@@ -684,7 +684,7 @@ test("stagedPaths counts only a merge's own changes", () => {
   ]);
 });
 
-test("a pending acceptance stops opening a new change, not a plain check", () =>
+test("a pending acceptance is a notice, not a lock on new work", () =>
   withRoot((holder) => {
     const root = makeRoot(holder, { change: false });
     write(
@@ -697,6 +697,7 @@ test("a pending acceptance stops opening a new change, not a plain check", () =>
     assert.deepEqual(quiet.errors, []);
     assert.match(quiet.notices.join("\n"), /待验收 1 项/u);
 
+    // Decisions park thinking; they must not stop the next cut from opening.
     const change = "openspec/changes/second-cut";
     write(root, `${change}/proposal.md`, `# proposal\n\nPlan: ${BOARD}\n\n## 本轮内容\n\n- 验证\n`);
     write(
@@ -705,6 +706,7 @@ test("a pending acceptance stops opening a new change, not a plain check", () =>
       "# design\n\n## 用户可观察的改变\n\n- x\n\n## 手测步骤\n\n1. x\n\n## 用户决策\n\n- 无\n",
     );
     write(root, `${change}/tasks.md`, "# tasks\n\n- [ ] 第一项\n");
-    const blocked = checkPlan(root, { skipSpecValidation: true });
-    assert.match(blocked.errors.join("\n"), /先请用户确认验收结论/u);
+    const stillOpen = checkPlan(root, { skipSpecValidation: true });
+    assert.deepEqual(stillOpen.errors, []);
+    assert.match(stillOpen.notices.join("\n"), /不限制新的变更/u);
   }));
