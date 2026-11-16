@@ -311,7 +311,7 @@ function checkDatedEntry(entry, state, errors) {
   if (meta.form && meta.form !== "专案" && (meta.card ?? "") !== "无") {
     errors.push(`${entry.id} 不是专案，看板应写「**看板**：无」`);
   }
-  for (const heading of ["### 1 决策", "### 2 执行", "### 3 验收"]) {
+  for (const heading of ["##### 1 决策", "##### 2 执行", "##### 3 验收"]) {
     if (!entry.body.includes(heading)) errors.push(`${entry.id} 缺少「${heading}」小节`);
   }
 }
@@ -654,7 +654,7 @@ export function checkMilestone(root, options = {}) {
     );
     if (!related) {
       errors.push(
-        `产品变更 ${change} 没有对应的决议条目：在 docs/DECISIONS.md 建或复用一条日期编号条目，并在「### 2 执行」记录 changes/${change}`,
+        `产品变更 ${change} 没有对应的决议条目：在 docs/DECISIONS.md 建或复用一条日期编号条目，并在「##### 2 执行」记录 changes/${change}`,
       );
     }
   }
