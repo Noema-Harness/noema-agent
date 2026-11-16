@@ -74,6 +74,10 @@ UI 或交互改动附截图；数据、迁移、安装包改动写清回滚方�
 | `Desktop checks / collaboration` | 协作者是否改了维护者路径                                          |
 | `Desktop package`                | 触及 `apps/desktop/**` 时跑 smoke、打包、安装包安装/升级/卸载验证 |
 
+main 推送不再触发 CI（Windows runner 分钟数昂贵）；发布前由维护者用 `workflow_dispatch` 手动跑全套。
+
+如果 job 在 4 秒内失败、日志为空，那是组织 Actions 额度或付款问题，不是代码问题。此时以维护者本机 `npm run check` 与 PR 里的验证证据为准，并在 PR 说明里注明「CI 因额度未运行」。
+
 ## 合并与发布
 
 - 检查全绿 + 维护者审核通过 → 维护者 squash 合并，合并后删除分支（`npm run branches:check`）。
