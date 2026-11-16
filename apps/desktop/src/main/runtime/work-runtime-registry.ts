@@ -1,6 +1,6 @@
-export const WORK_RUNTIME_KINDS = ['dsh', 'native'];
+import type { WorkRuntime } from './work-runtime.ts';
 
-type WorkRuntime = { startTask: (input: any) => any };
+export const WORK_RUNTIME_KINDS = ['dsh', 'native'];
 
 function assertRuntime(kind: string, runtime: WorkRuntime | undefined) {
   if (!runtime || typeof runtime.startTask !== 'function') {

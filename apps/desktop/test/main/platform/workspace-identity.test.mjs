@@ -4,6 +4,7 @@ import {
   captureWorkspaceIdentity,
   compareWorkspaceIdentities,
   isWorkspaceIdentity,
+  workspacePathKey,
 } from '../../../src/main/platform/workspace-identity.ts';
 
 function directoryStat({ directory = true, dev = 7n, ino = 42n } = {}) {
@@ -91,5 +92,17 @@ test('identity comparison includes both canonical path and filesystem object', (
   assert.equal(
     compareWorkspaceIdentities(left, { ...left, version: 99 }, 'win32'),
     false,
+  );
+});
+
+test('workspace path key folds case only on Windows', () => {
+  const identity = { canonicalPath: 'C:\\Work\\Noema' };
+  assert.equal(workspacePathKey(identity, 'win32'), 'c:\\work\\noema');
+  const posix = { canonicalPath: '/Users/Me/Noema' };
+  assert.equal(workspacePathKey(posix, 'darwin'), '/Users/Me/Noema');
+  assert.equal(workspacePathKey(posix, 'linux'), '/Users/Me/Noema');
+  assert.notEqual(
+    workspacePathKey({ canonicalPath: '/users/me/noema' }, 'darwin'),
+    workspacePathKey(posix, 'darwin'),
   );
 });
