@@ -726,9 +726,10 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 #### 2 执行
 
-- 批次：看板 #151；状态：未开始（四刀各一个 change）。
+- 批次：看板 #151；状态：执行中（第①刀 `changes/platform-core-boundary` 已归档，2026-11-17；②③④待排期）。
 - 切法：①执行后端端口 + 核心层导入规则；②打包按系统拆分，CI 改为 Windows/macOS/Linux 矩阵；③约 20 个 Windows 专属测试改成跨平台或按平台跳过；④bridge 传输抽象（移动端/网页端的前提）。
 - 发现：核心模块今天已经不依赖 Electron，耦合集中在执行后端、打包、生命周期和测试，按端口切开的成本主要在这几处。
+- 第①刀（PR #162，`c329d84`）：`runtime/work-runtime.ts` 定义执行后端端口，DSH/native 各声明一行实现；`platform/workspace-identity.ts` 收拢路径大小写折叠；`diagnostics/database-recovery.ts` 不再引用 Electron 类型；新增 `test/main/core-boundary.test.mjs`（过渡，规则搬进 `source:check` 后删除，见 issue #156）。Windows 全量 890/890，架构图重出 `e12d59b`。
 
 #### 3 验收
 
