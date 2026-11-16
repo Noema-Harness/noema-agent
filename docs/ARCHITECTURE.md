@@ -65,7 +65,7 @@ renderer (React)
 
 ### 3.2 当前实现（阶段 1–4）
 
-- `apps/desktop/src/main/agents/agent-runtime-core.mjs` 提供最小不可变核心：`agentId`、角色、Agent Home、工作区、记忆/会话命名空间、工具授权、运行时适配器、追加式 JSONL 事件日志（`<Agent Home>/events.jsonl`）。事件只有 append/read，没有更新或删除。
+- `apps/desktop/src/main/agents/agent-runtime-core.ts` 提供最小不可变核心：`agentId`、角色、Agent Home、工作区、记忆/会话命名空间、工具授权、运行时适配器、追加式 JSONL 事件日志（`<Agent Home>/events.jsonl`）。事件只有 append/read，没有更新或删除。
 - `createAgentRuntimePair` 在 `userData/agents/noema` 和 `userData/agents/noema-executor/workspace` 创建两个独立个体环境；测试覆盖隔离、持久化、序号恢复、并发追加和非法输入。
 - 当前只有 Noema 主对话接入运行时事件：`SocialChatService` 在 `turn.started/completed/failed/interrupted` 写入 Noema 的日志；读取失败只记录诊断，不影响回复。Core Chat 不经过 `RootAgent`，`RootAgent` 上的旧事件桥不再作为当前路径。
 - Noema 自身工具调用通过 `chat-trace` 内联显示在回复正文上方；普通回答没有工具时不显示轨迹。工具调用和结果以 `stepId` 成对保存，渲染层不把结果覆盖掉调用。

@@ -373,8 +373,8 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 ## D-039 主进程逐步迁移到 TypeScript，不整体改写为 Rust
 
-- **状态**：决定（2026-11-13；2026-11-15 合并 main 时九次因编号冲突改号：D-019 → D-025 → D-027 → D-028 → D-029 → D-034 → D-035 → D-037 → D-038 → D-039）；阶段 0（基础设施）与阶段 1（小模块）已实现。
-- **决定**：`src` 下的 `.mjs` 逐批改为 `.ts`，只改类型、不改行为；新代码只写 TypeScript。迁移后的 `.ts` 只用可擦除语法（`erasableSyntaxOnly`、`verbatimModuleSyntax`），导入写显式 `.ts` 扩展名，使 Node 测试运行器可直接加载源码，Vite 照常打包。`src/package.json` 标记 `"type": "module"`；`source:check` 以 `.mjs` 数量棘轮防止回退。测试（`test/**/*.mjs`）暂不迁移。Rust 继续只用于需要直接调用系统接口的组件（Windows Runner）。 范围：主进程/shared/renderer 的源码语言与类型检查；不改变进程结构、外部运行时或测试框架；不开启 `strict`（迁移完成后另行评估）。
+- **状态**：决定（2026-11-13；2026-11-15 合并 main 时九次因编号冲突改号：D-019 → D-025 → D-027 → D-028 → D-029 → D-034 → D-035 → D-037 → D-038 → D-039）；阶段 0（基础设施）、阶段 1（小模块，57 个）与阶段 2（39 个 ≤330 行模块，#146）已实现；`src` 下剩 28 个大模块未迁移，`source:check` 上限同步降到 28。
+- **决定**：`src` 下的 `.mjs` 逐批改为 `.ts`，只改类型、不改行为；新代码只写 TypeScript。迁移后的 `.ts` 只用可擦除语法（`erasableSyntaxOnly`、`verbatimModuleSyntax`），导入写显式 `.ts` 扩展名，使 Node 测试运行器可直接加载源码，Vite 照常打包。`src/package.json` 标记 `"type": "module"`；`source:check` 以 `.mjs` 数量棘轮防止回退。测试（`test/**/*.mjs`）暂不迁移。Rust 继续只用于需要直接调用系统接口的组件（Windows Runner）。 范围：主进程/shared/renderer 的源码语言与类型检查；不改变进程结构、外部运行时或测试框架；`strict` 未在 tsconfig 显式开启（TypeScript 6.0.3，后续按本决定评估）。
 - **理由**：产品模型仍在快速变化，Rust 改写会冻结功能数月且性能瓶颈不在 CPU；关键依赖（sandbox-runtime、jsdom/readability、MCP、模型 SDK）以 JS 生态为主。TS 用最小迁移成本补上主进程缺失的类型保护；JSDoc 方案在大文件里可读性差，只作为过渡。
 - **替代**：整体改写为 Rust + React（Tauri）；只对 `.mjs` 开 `checkJs` + JSDoc；保持现状。
 - **重新审视**：产品对象与会话拓扑稳定后，若包体积/内存成为真实用户问题，评估 Tauri 外壳 + Node sidecar；若某模块被证明需要原生性能或系统级隔离，单独以 Rust 实现并通过适配层接入。
