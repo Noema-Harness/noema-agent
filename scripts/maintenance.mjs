@@ -755,6 +755,15 @@ export function checkPrecommit(root, options = {}) {
   });
   const errors = [...docs.errors, ...plan.errors];
   const staged = options.stagedPaths ?? stagedPaths(root, git);
+  // 未确认的决议只挡“引用它的变更”：别的议题是别的工作项，不该让一次产品提交
+  // 停下来。里程碑同样按引用判断（referencedDecisionIds），本机钩子与 PR 保持一致。
+  const referenced = (() => {
+    if (!plan.change) return new Set(plan.pending);
+    const design = readText(path.join(root, "openspec", "changes", plan.change, "design.md"));
+    const decisions = readText(path.join(root, "docs", "DECISIONS.md")) ?? "";
+    return referencedDecisionIds(design, decisions, plan.change);
+  })();
+  const pendingForChange = plan.pending.filter((id) => referenced.has(id));
   const skipPlanCommitOrder = options.skipPlanCommitOrder ?? false;
   const code = staged.filter((name) => CODE_PREFIXES.some((prefix) => name.startsWith(prefix)));
   if (code.length) {
@@ -771,9 +780,15 @@ export function checkPrecommit(root, options = {}) {
           : "工具代码改动必须同时更新 docs/、AGENTS.md 或 openspec/changes/ 里的计划与状态：先勾任务或记录证据，再提交",
       );
     }
-    if (processGate && plan.pending.length && productCode.length) {
+    if (processGate && pendingForChange.length && productCode.length) {
       errors.push(
-        `还有未获用户确认的决议，相关产品行为不能实现：${plan.pending.join(", ")}；工具与文档改动不受此限`,
+        `本变更引用的决议未获用户确认，相关产品行为不能实现：${pendingForChange.join(", ")}；工具与文档改动不受此限`,
+      );
+    }
+    if (plan.pending.length > pendingForChange.length) {
+      const unrelated = plan.pending.filter((id) => !referenced.has(id));
+      plan.notices.push(
+        `未确认的决议与本变更无关，不阻塞这次提交：${unrelated.join(", ")}；它们只阻塞各自引用的变更`,
       );
     }
     if (productCode.length && plan.change && !skipPlanCommitOrder) {
