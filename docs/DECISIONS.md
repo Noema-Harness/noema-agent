@@ -659,12 +659,12 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 - [x] 三道门在 milestone/plan/pre-commit 上生效 — `node --test scripts/maintenance.test.mjs`
 - 用户确认：2026-11-16
 
-## 🔧 D-20261116-governance-extraction 运行手册技能：从模板清单改成偏离盘查工具
+## ✅ D-20261116-governance-extraction 运行手册技能：从模板清单改成偏离盘查工具
 
-- **阶段**：执行中
+- **阶段**：已收口
 - **结构**：独立技能 `skills/noema-governance/SKILL.md`：三种分类（执行偏差 / 机制缺陷 / 规则缺失）+ 六步（停手登记 → 还原预期路径 → 采样证据 → 偏差分类 → 归因分层 → 修法候选登记待定），每步带产物；`scripts/skill-sync.mjs` 的 `SKILL_NAMES` 同时同步两份技能。
 - **来源**：用户 2026-11-16 重新打开（m74626）；2026-11-17 确认形态与六步（m102771 / m102774）
-- **阻塞**：等用户读技能目录后确认验收
+- **阻塞**：无
 
 #### 1 决策
 
@@ -674,12 +674,13 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 #### 2 执行
 
-- 批次：`changes/governance-extraction`；状态：待验收
+- 批次：`changes/governance-extraction`；状态：已交付，验收通过
 - 发现：技能越指标化，越容易诱导正常轮次照表打卡——这次偏离本身就是证据；因此六步只描述盘查时的动作，不写常规轮清单。
 
 #### 3 验收
 
-- [ ] 技能只在对偏离做盘查时按需加载，正常轮次只引用模板与命令 — 读 `SKILL.md` 目录
+- [x] 技能只在对偏离做盘查时按需加载，正常轮次只引用模板与命令 — 读 `SKILL.md` 目录
+- 用户确认：2026-11-17
 
 ## ✅ D-20261116-review-inbox 审核入口与决议条目：结构、描述跟进、发散共存
 
