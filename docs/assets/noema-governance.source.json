@@ -384,11 +384,11 @@
   },
   "source": {
     "doc": "AGENTS.md",
-    "sha256": "ce0edaa3309e895fa42f934be321fb6d3690adabc30a18163129d39ce38b3a44",
+    "sha256": "f9322331276409ec5c46e56f20b4db960c6f2ac27cbea935c8e1aa2cccc86f78",
     "sections": [
       {
         "title": "怎么推进一件工作",
-        "sha256": "c89b2c68f47fe9c557c40cbeba3d0c290a3759b9c600badbea5f398e3088d9bb"
+        "sha256": "6d5ae820390a2d9a36c20aa24c2bdcf79f3276af5bb0144375703c32705bb351"
       },
       {
         "title": "事实所有权",
@@ -397,8 +397,8 @@
     ],
     "candidateSha256": "20dc3e5d0a71a29c58c658c153bde2fd2021fa04bbc21b67217f72b9eb38f952",
     "rationale": {
-      "text": "AGENTS「怎么推进一件工作」新增的是一句话的条目归属（来源必填、agent 不自开条目），治理图的三层结构与 DECISIONS 节点不变；DECISIONS 仍标注为用户驱动的记录，图无需重画，只重出以更新摘要。",
-      "sectionsDigest": "080e34339c9a0fd03db9f3e5b047fd8de9f5cdc2693892b36b122595b7200652"
+      "text": "讨论转执行的仪式写进了 AGENTS 的规则节点（计划模式 → 开工清单 → 用户批准），治理结构不变：提示层/事实流/机器门三层与节点关系未变，图不需要改",
+      "sectionsDigest": "3f9ca46affc87fd942523acda045f6b7b043239265b56f516103500a274bed61"
     }
   },
   "assets": {
@@ -409,9 +409,9 @@
     },
     "png": {
       "path": "docs/assets/noema-governance.png",
-      "sha256": "c6ecd444e6ccb7a51ec84882b661074ae37472008caf9440f62f27bbb649f319",
-      "bytes": 171163
+      "sha256": "9fad3c16e007b6cf4b319c0ab065c186d01362e860a5e7c629002f7aaee49307",
+      "bytes": 171176
     }
   },
-  "updatedAt": "2026-11-17T09:20:02.560Z"
+  "updatedAt": "2026-11-17T15:33:55.479Z"
 }

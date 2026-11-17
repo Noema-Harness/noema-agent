@@ -82,6 +82,25 @@ npm run branches:prune -- --apply # 执行删除
 
 删除前默认先备份到一个 bundle；本机备份放 `.work/archive/`，不进仓库。会话中做过的批量清理：`.work/archive/branches-2026-11-15.bundle`（8 个过时分支，7,299,401 字节）与 `.work/archive/branch-inventory.txt`。
 
+### 过程材料（`.work/`）
+
+`.work/` 是**一次性工作区，不是存档**。判据只有一条：**这东西以后还会不会再被维护？**
+
+- 会（随项目进度更新、要给人长期读）→ 由权威文档承载，或向用户提出新增权威文档；不许放 `.work/`。
+- 不会（一次性文档、提交信息与 issue 正文载荷、探针脚本、日志、截图证据、构建与发布产物）→ 可以放 `.work/`，在对应交付收口后删掉；`releases/`、`archive/` 例外。
+
+不要往 `.work/` 写需要维护的东西（阶段总结、计划台账、决定记录）——它们已经有主人：`docs/STATUS.md`、`docs/DECISIONS.md`、看板与 `openspec/changes/`。
+
+```powershell
+npm run workspace:clean                            # 预演：.work/runs、.work/scratch 与超过保留期的条目
+npm run workspace:clean -- --apply                 # 执行
+npm run workspace:clean -- --days 30 --apply       # 改保留期
+```
+
+保留目录写在 `scripts/workspace.config.json` 的 `artifactRetention`（默认保留 `.work/releases/`、`.work/archive/`，其余超过 7 天未动即清）。
+
+讨论转执行用 DSH 的计划模式：`/plan` 进入计划，`exit_plan_mode` 提交开工清单并等用户批准，批准后才退出计划模式动手。
+
 ### 维护门槛
 
 门槛分三个频率，入口统一在 `scripts/governance.mjs`：`commit`（提交点，秒级）、`milestone`（一个切口收口时，全量）、`ci`（与 milestone 同源）。`npm run check` 即 `governance milestone`；`docs:check`/`figure:check`/`plan:check` 是同一批规则的单独入口（调试用），`milestone:check` 在归档前手动跑。规则清单登记在 `scripts/governance.mjs` 的 `RULES`：每条规则写明支撑的不变量、防的失败、触发证据与执行位置。`node scripts/governance.mjs audit` 打印登记表并列出观察期规则——连续两个里程碑没有触发就降级为提醒。失败的常见原因与修法：
@@ -104,6 +123,7 @@ npm run branches:prune -- --apply # 执行删除
 | 报「还在决策中，「#### 2 执行」却已经有内容」         | 讨论期只写决策层：执行与验收改成一行 `- 未开始：定案后进入执行`／`- 未开始：定案后进入验收`，定案后再填                              |
 | 报「「#### 2 执行」没有批次指针」                     | 先立项 openspec/changes/<name>，执行层写一行 - 批次：changes/<name>（commit <sha>），再改阶段；没有批次就停在决策中 |
 | 报「字段「状态」不在允许列表」                        | 删掉 `- **状态**：` 行：阶段已经表达状态；它想说的信息写进三层正文                                                                 |
+| 报「条目标题格式不合规…阶段标记只能是」               | 标题的阶段标记只能写 `⏳ 🔧 🔍 ✅` 或不写；写错（如 `## 💬 D-…`）时条目不会被解析，会从 review 里消失并把内容并进上一条             |
 | milestone 报任务未完成 / 有待决问题 / STATUS 不是当天 | 补完任务、拿到用户答案、更新 STATUS 后再归档                                                                                        |
 | milestone 报产品变更没更新卡片正文                    | 在 tasks 写一条“更新卡片正文（现在能做什么 + 手测步骤 / 还没做）”，并真的改卡片正文；治理变更（`Plan: none`）不需要                 |
 | 报「本变更引用的决议未获用户确认」                    | 让被引用的条目先走出 `决策中`（用户确认方案），再跑 `npm run milestone:check`                                                       |

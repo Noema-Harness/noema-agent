@@ -660,6 +660,14 @@ test("an entry only carries the four allowed fields", () => {
   assert.match(extra.errors.join("\n"), /字段「状态」不在允许列表/u);
 });
 
+test("a wrong stage mark hides the entry, so the gate rejects it", () => {
+  const text = `## D-20261116-probe\n\n${LIFECYCLE("决策中")}`;
+  const wrong = checkDecisionEntries(text.replace("## D-20261116-probe", "## 💬 D-20261116-probe"));
+  assert.match(wrong.errors.join("\n"), /阶段标记只能是/u);
+  const fine = checkDecisionEntries(`## ⏳ D-20261116-probe\n\n${LIFECYCLE("决策中")}`);
+  assert.deepEqual(fine.errors, []);
+});
+
 test("a decision entry must come from the user, not from the agent", () => {
   const agentSourced = checkDecisionEntries(
     `## D-20261116-probe\n\n${LIFECYCLE("执行中").replace(
@@ -677,7 +685,23 @@ test("a decision entry must come from the user, not from the agent", () => {
   const noConfirmation = checkDecisionEntries(
     `## D-20261116-probe\n\n${LIFECYCLE("执行中").replace("（用户确认：2026-11-16）", "")}`,
   );
-  assert.match(noConfirmation.errors.join("\n"), /没有写「用户确认：YYYY-MM-DD」/u);
+  assert.match(noConfirmation.errors.join("\n"), /没有写用户确认/u);
+
+  const quoted = checkDecisionEntries(
+    `## D-20261116-probe\n\n${LIFECYCLE("执行中").replace(
+      "（用户确认：2026-11-16）",
+      "（用户原话：「就按这个做，可以开始执行」，2026-11-16）",
+    )}`,
+  );
+  assert.equal(quoted.errors.join("\n"), "");
+
+  const shortQuote = checkDecisionEntries(
+    `## D-20261116-probe\n\n${LIFECYCLE("执行中").replace(
+      "（用户确认：2026-11-16）",
+      "（用户原话：「可以」，2026-11-16）",
+    )}`,
+  );
+  assert.match(shortQuote.errors.join("\n"), /没有写用户确认/u);
 });
 
 test("tooling code pairs with docs, a change or AGENTS.md", () =>

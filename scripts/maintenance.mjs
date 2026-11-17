@@ -277,6 +277,16 @@ const LIFECYCLE_FROM = "20261116";
 export function checkDecisionEntries(text, options = {}) {
   const errors = [];
   const notices = [];
+  // 阶段标记写错（例如 `## 💬 D-…`）会让整条不被解析，静默并进上一条的正文：
+  // 条目从 review 里消失、验收项被算到别人名下，docs:check 也不会报。
+  const looseEntryHeading = /^##\s+.*\bD-(?:\d{3}|\d{8}-[a-z0-9-]+)\b/u;
+  for (const line of String(text).split(/\r?\n/u)) {
+    if (looseEntryHeading.test(line) && !ENTRY_HEADING.test(line)) {
+      errors.push(
+        `条目标题格式不合规：${line.trim()}——阶段标记只能是 ${Object.values(ENTRY_STAGE_MARKS).join(" / ")}（或者不写标记），否则条目不会被解析，并从 review 里消失`,
+      );
+    }
+  }
   for (const entry of decisionEntries(text)) {
     const dated = entry.id.replace(/^D-/u, "");
     if (!(/^\d{8}-/u.test(dated) && dated.slice(0, 8) >= LIFECYCLE_FROM)) continue;
@@ -377,15 +387,17 @@ function checkDatedEntry(entry, errors, notices = []) {
     errors.push(`${entry.id} 阶段是${meta.stage}，但「#### 1 决策」里缺少「- 决定：」`);
   }
   // A stage past 决策中 means the user already agreed; the decision section has to show
-  // when. Without the date an agent could promote its own candidate to a decision.
+  // when, and preferably in the user's own words rather than a self-issued stamp.
   const decisionSection = sectionBody(entry.body, "#### 1 决策");
-  if (
-    meta.stage !== "决策中" &&
+  const confirmedByUser =
+    decisionSection !== null && /用户(?:确认)：?\s*\d{4}-\d{2}-\d{2}/u.test(decisionSection);
+  const quotedByUser =
     decisionSection !== null &&
-    !/用户确认：?\s*\d{4}-\d{2}-\d{2}/u.test(decisionSection)
-  ) {
+    /用户原话：「[^」]{10,}」/u.test(decisionSection) &&
+    /\d{4}-\d{2}-\d{2}/u.test(decisionSection);
+  if (meta.stage !== "决策中" && decisionSection !== null && !confirmedByUser && !quotedByUser) {
     errors.push(
-      `${entry.id} 的「#### 1 决策」没有写「用户确认：YYYY-MM-DD」：决定归用户，agent 不能把自己的候选写成已定`,
+      `${entry.id} 的「#### 1 决策」没有写用户确认：补「用户原话：「…」，YYYY-MM-DD」（原话≥10 字）或「用户确认：YYYY-MM-DD」；决定归用户，agent 不能把自己的候选写成已定`,
     );
   }
   const items = acceptanceItems(entry.body);

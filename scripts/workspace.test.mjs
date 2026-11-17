@@ -33,6 +33,7 @@ test("workspace tooling previews, confines cleanup and detects stale document en
       specificationRoot: "openspec/specs",
       rootDirectories: [".git", ".work", "scripts", "docs", "openspec"],
       cleanableArtifacts: [".work/runs", ".work/scratch"],
+      artifactRetention: { days: 7, keep: [".work/archive"] },
       generatedDirectories: [],
     };
     fs.writeFileSync(path.join(root, "scripts/workspace.config.json"), JSON.stringify(config));
@@ -40,6 +41,11 @@ test("workspace tooling previews, confines cleanup and detects stale document en
     fs.writeFileSync(path.join(root, "openspec/specs/example/spec.md"), "# example");
     fs.writeFileSync(path.join(root, ".work/runs", "remove"), "run");
     fs.writeFileSync(path.join(root, ".work/archive", "keep"), "history");
+    fs.writeFileSync(path.join(root, ".work/stale-probe.log"), "old");
+    fs.writeFileSync(path.join(root, ".work/fresh-probe.log"), "new");
+    const eightDaysAgo = new Date(Date.now() - 8 * 86_400_000);
+    fs.utimesSync(path.join(root, ".work/stale-probe.log"), eightDaysAgo, eightDaysAgo);
+    fs.utimesSync(path.join(root, ".work/archive/keep"), eightDaysAgo, eightDaysAgo);
     runGit(["init", "--quiet"], { cwd: root, windowsHide: true, timeout: 5000 });
     function run(...args) {
       return spawnSync(process.execPath, ["scripts/workspace.mjs", ...args], {
@@ -67,6 +73,8 @@ test("workspace tooling previews, confines cleanup and detects stale document en
     assert.equal(run("clean", "--apply").status, 0);
     assert(!fs.existsSync(path.join(root, ".work/runs")));
     assert(fs.existsSync(path.join(root, ".work/archive/keep")));
+    assert(!fs.existsSync(path.join(root, ".work/stale-probe.log")));
+    assert(fs.existsSync(path.join(root, ".work/fresh-probe.log")));
     fs.writeFileSync(path.join(root, "docs/stale.md"), "stale");
     fs.writeFileSync(path.join(root, "README.md"), "[broken](missing.md)");
     const invalid = run("check");
