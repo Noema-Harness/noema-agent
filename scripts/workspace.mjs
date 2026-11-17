@@ -88,8 +88,29 @@ if (command === "check") {
   );
   if (errors.length) process.exitCode = 1;
 } else if (command === "clean") {
-  const names = [...config.cleanableArtifacts, ...(generated ? config.generatedDirectories : [])];
-  const targets = names.map(resolve).filter((target) => fs.existsSync(target));
+  const retention = config.artifactRetention ?? { days: 0, keep: [] };
+  const days = Number(process.argv[process.argv.indexOf("--days") + 1]) || retention.days || 0;
+  const keep = [...(retention.keep ?? []), ...(generated ? config.generatedDirectories : [])];
+  const stale = days
+    ? fs
+        .readdirSync(resolve(config.artifactRoot), { withFileTypes: true })
+        .map((entry) => path.join(resolve(config.artifactRoot), entry.name))
+        .filter((target) => {
+          const relative = path.relative(root, target).replaceAll("\\", "/");
+          if (keep.some((name) => within(relative, name))) return false;
+          return Date.now() - fs.statSync(target).mtimeMs > days * 86_400_000;
+        })
+    : [];
+  const names = [
+    ...config.cleanableArtifacts.map(resolve),
+    ...(generated ? config.generatedDirectories.map(resolve) : []),
+    ...stale,
+  ];
+  const targets = [...new Set(names)].filter((target) => fs.existsSync(target));
+  const bytes = (target) =>
+    fs.statSync(target).isDirectory()
+      ? filesUnder(target).reduce((sum, file) => sum + fs.statSync(file).size, 0)
+      : fs.statSync(target).size;
   // Preflight every path before changing any target. Archives and dependencies
   // are not included; symlinked parents cannot redirect deletion elsewhere.
   for (const target of targets) {
@@ -102,12 +123,21 @@ if (command === "check") {
   }
   console.log(
     JSON.stringify(
-      { mode: apply ? "apply" : "preview", targets: targets.map((p) => path.relative(root, p)) },
+      {
+        mode: apply ? "apply" : "preview",
+        retentionDays: days,
+        targets: targets.map((target) => ({
+          path: path.relative(root, target).replaceAll("\\", "/"),
+          megabytes: Math.round(bytes(target) / 1e6),
+        })),
+      },
       null,
       2,
     ),
   );
   if (apply) for (const target of targets) fs.rmSync(target, { recursive: true, force: true });
 } else {
-  throw new Error("Usage: node scripts/workspace.mjs check|clean [--generated] [--apply]");
+  throw new Error(
+    "Usage: node scripts/workspace.mjs check|clean [--generated] [--days N] [--apply]",
+  );
 }

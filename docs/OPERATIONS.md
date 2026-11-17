@@ -82,6 +82,25 @@ npm run branches:prune -- --apply # 执行删除
 
 删除前默认先备份到一个 bundle；本机备份放 `.work/archive/`，不进仓库。会话中做过的批量清理：`.work/archive/branches-2026-11-15.bundle`（8 个过时分支，7,299,401 字节）与 `.work/archive/branch-inventory.txt`。
 
+### 过程材料（`.work/`）
+
+`.work/` 是**一次性工作区，不是存档**。判据只有一条：**这东西以后还会不会再被维护？**
+
+- 会（随项目进度更新、要给人长期读）→ 由权威文档承载，或向用户提出新增权威文档；不许放 `.work/`。
+- 不会（一次性文档、提交信息与 issue 正文载荷、探针脚本、日志、截图证据、构建与发布产物）→ 可以放 `.work/`，在对应交付收口后删掉；`releases/`、`archive/` 例外。
+
+不要往 `.work/` 写需要维护的东西（阶段总结、计划台账、决定记录）——它们已经有主人：`docs/STATUS.md`、`docs/DECISIONS.md`、看板与 `openspec/changes/`。
+
+```powershell
+npm run workspace:clean                            # 预演：.work/runs、.work/scratch 与超过保留期的条目
+npm run workspace:clean -- --apply                 # 执行
+npm run workspace:clean -- --days 30 --apply       # 改保留期
+```
+
+保留目录写在 `scripts/workspace.config.json` 的 `artifactRetention`（默认保留 `.work/releases/`、`.work/archive/`，其余超过 7 天未动即清）。
+
+讨论转执行用 DSH 的计划模式：`/plan` 进入计划，`exit_plan_mode` 提交开工清单并等用户批准，批准后才退出计划模式动手。
+
 ### 维护门槛
 
 门槛分三个频率，入口统一在 `scripts/governance.mjs`：`commit`（提交点，秒级）、`milestone`（一个切口收口时，全量）、`ci`（与 milestone 同源）。`npm run check` 即 `governance milestone`；`docs:check`/`figure:check`/`plan:check` 是同一批规则的单独入口（调试用），`milestone:check` 在归档前手动跑。规则清单登记在 `scripts/governance.mjs` 的 `RULES`：每条规则写明支撑的不变量、防的失败、触发证据与执行位置。`node scripts/governance.mjs audit` 打印登记表并列出观察期规则——连续两个里程碑没有触发就降级为提醒。失败的常见原因与修法：

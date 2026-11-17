@@ -31,6 +31,15 @@
     ".work/runs",
     ".work/scratch"
   ],
+  "artifactRetention": {
+    "days": 7,
+    "keep": [
+      ".work/releases",
+      ".work/archive",
+      ".work/inbox-bridge",
+      ".work/session-compact"
+    ]
+  },
   "generatedDirectories": [
     ".archify",
     "apps/desktop/.vite",

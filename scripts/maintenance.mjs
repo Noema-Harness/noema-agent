@@ -377,15 +377,17 @@ function checkDatedEntry(entry, errors, notices = []) {
     errors.push(`${entry.id} 阶段是${meta.stage}，但「#### 1 决策」里缺少「- 决定：」`);
   }
   // A stage past 决策中 means the user already agreed; the decision section has to show
-  // when. Without the date an agent could promote its own candidate to a decision.
+  // when, and preferably in the user's own words rather than a self-issued stamp.
   const decisionSection = sectionBody(entry.body, "#### 1 决策");
-  if (
-    meta.stage !== "决策中" &&
+  const confirmedByUser =
+    decisionSection !== null && /用户(?:确认)：?\s*\d{4}-\d{2}-\d{2}/u.test(decisionSection);
+  const quotedByUser =
     decisionSection !== null &&
-    !/用户确认：?\s*\d{4}-\d{2}-\d{2}/u.test(decisionSection)
-  ) {
+    /用户原话：「[^」]{10,}」/u.test(decisionSection) &&
+    /\d{4}-\d{2}-\d{2}/u.test(decisionSection);
+  if (meta.stage !== "决策中" && decisionSection !== null && !confirmedByUser && !quotedByUser) {
     errors.push(
-      `${entry.id} 的「#### 1 决策」没有写「用户确认：YYYY-MM-DD」：决定归用户，agent 不能把自己的候选写成已定`,
+      `${entry.id} 的「#### 1 决策」没有写用户确认：补「用户原话：「…」，YYYY-MM-DD」（原话≥10 字）或「用户确认：YYYY-MM-DD」；决定归用户，agent 不能把自己的候选写成已定`,
     );
   }
   const items = acceptanceItems(entry.body);
