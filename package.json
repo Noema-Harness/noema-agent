@@ -35,12 +35,15 @@
     "inbox": "node scripts/inbox.mjs list",
     "review": "node scripts/review.mjs",
     "review:test": "node --test scripts/review.test.mjs",
-    "tools:test": "node --test scripts/governance.test.mjs scripts/maintenance.test.mjs scripts/figure.test.mjs scripts/branches.test.mjs scripts/workspace.test.mjs scripts/skill-sync.test.mjs scripts/review.test.mjs scripts/decisions.test.mjs scripts/collaboration.test.mjs",
+    "tools:test": "node --test scripts/governance.test.mjs scripts/maintenance.test.mjs scripts/figure.test.mjs scripts/branches.test.mjs scripts/workspace.test.mjs scripts/skill-sync.test.mjs scripts/review.test.mjs scripts/decisions.test.mjs scripts/decision-entry.test.mjs scripts/collaboration.test.mjs",
     "governance:test": "node --test scripts/governance.test.mjs",
     "skill:install": "node scripts/skill-sync.mjs install",
     "guard": "node scripts/collaboration.mjs",
     "decisions:sync": "node scripts/decisions.mjs sync",
     "decisions:test": "node --test scripts/decisions.test.mjs",
+    "decision:draft": "node scripts/decision-entry.mjs draft",
+    "decision:accept": "node scripts/decision-entry.mjs accept",
+    "decision-entry:test": "node --test scripts/decision-entry.test.mjs",
     "inbox:ack": "node scripts/inbox.mjs ack"
   },
   "engines": {

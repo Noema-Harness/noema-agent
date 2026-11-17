@@ -66,6 +66,8 @@ npm run tools:test
 npm run inbox
 npm run review             # 只读聚合：需要你决定 / 待你验收 / 执行中（待验收显示勾选进度）
 npm run decisions:sync     # 验收项全部勾选后收口（改阶段与标题标记、补当天用户确认）
+npm run decision:draft     # 起草条目：只写 .work/decisions-draft/，然后问用户是否已批准创建
+npm run decision:accept    # 落库：decision:accept -- <D-…> --approval "<用户原话>"
 npm test
 ```
 
@@ -119,6 +121,8 @@ npm run workspace:clean -- --days 30 --apply       # 改保留期
 | 活动变更 tasks 全部完成                               | 归档该变更后再开下一个阶段                                                                                                          |
 | `[用户]` 验收项勾选没有确认日期                       | 只有用户明确确认后才勾选，并写成 `（用户确认：YYYY-MM-DD）`                                                                         |
 | 条目「来源」不是用户指令                              | 普通实现、修复、只补验证本来就该走提交信息或 change；真要用户拍板时，来源写成「用户 YYYY-MM-DD …」再开条目                          |
+| 报「缺少 --approval」或「批准原话太短」               | 条目不能先建后说：先用 `npm run decision:draft` 起草并停下问用户，拿到明确答复再用 `npm run decision:accept -- <D-…> --approval "<原话≥10 字>"` |
+| 草稿落库前校验失败（条目没有写进文件）                | 草稿结构不合规：按报错补「阶段/结构/来源/阻塞」与「- 要定：」，修好再 accept；草稿会保留在 `.work/decisions-draft/`                    |
 | 阶段过了决策中但「决定」没有用户确认日期              | 决定归用户：补上「（用户确认：YYYY-MM-DD）」，没有确认就退回决策中                                                                  |
 | 报「还在决策中，「#### 2 执行」却已经有内容」         | 讨论期只写决策层：执行与验收改成一行 `- 未开始：定案后进入执行`／`- 未开始：定案后进入验收`，定案后再填                              |
 | 报「「#### 2 执行」没有批次指针」                     | 先立项 openspec/changes/<name>，执行层写一行 - 批次：changes/<name>（commit <sha>），再改阶段；没有批次就停在决策中 |
@@ -189,6 +193,7 @@ npm run inbox:ack -- --all-delivered --done    # 清空所有已送达未处理
 - 三层：`#### 1 决策`（确认后写 `- 决定：`）、`#### 2 执行`（批次 / 发现）、`#### 3 验收`（立项写 v0，交付前按实际更新；已收口在末尾写 `- 用户确认：YYYY-MM-DD`）。阶段可回退：追加「重开」行、旧结论标“已被重开”、受影响 tasks 重开。
 - 验收项写成 `- [ ] 怎么验 — 怎么跑`，在 GitHub 上直接勾选；勾完运行 `npm run decisions:sync`，全部勾选的待验收条目自动改 `已收口` 并补 `- 用户确认：当天日期`（`--dry-run` 预览）。
 - `npm run review` 只读汇总「需要你决定 / 待你验收 / 执行中」，待验收条目显示勾选进度，条目正文仍是唯一权威源；`--json` 给脚本用。
+- 新建条目前先申请：`npm run decision:draft -- --title "…" --slug <短名> --body <正文文件>` 只写 `.work/decisions-draft/<D-…>.md`，命令会打印「本次条目创建是否已得到用户明确批准？」并停下；拿到明确答复后才 `npm run decision:accept -- <D-…> --approval "<用户原话>"` 落库（原话≥10 字会写成「来源」里的 `批准创建（用户原话：「…」，日期）`）。没有批准就删草稿，不落库。
 - 门：`docs:check` 校验阶段在第一条且在四种里、三层齐全、过决策中后执行层有批次指针、已收口有用户确认；`plan:check` 只把 `待验收` 列为提示；`milestone:check` 不要求 change 对应条目，只在“本变更引用的条目”仍未确认或未验收时拒绝；`pre-commit` 在 决策中/待验收 时挡 `apps/desktop/src/` 改动（本机兜底，约束在流程）。
 
 ### 议题与积压放在哪（D-028/D-029）

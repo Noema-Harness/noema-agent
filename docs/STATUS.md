@@ -13,6 +13,8 @@ Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与�
 
 ## 最后一次验证（2026-11-18）
 
+- 条目创建两步门（change `decision-entry-approval`，2026-11-18）：新建条目前先申请，不能先建后说。`npm run decision:draft` 只写 `.work/decisions-draft/<id>.md`（含“草稿，未落库”头）并打印「本次条目创建是否已得到用户明确批准？批准原话是哪一句？」，不碰 `docs/DECISIONS.md`；`npm run decision:accept -- <D-…> --approval "<用户原话>"` 要求原话 ≥10 字，把 `批准创建（用户原话：「…」，日期）` 追加进「来源」，先按 `checkDecisionEntries` 校验草稿全文、通过才写入并删草稿，失败抛「草稿落库前校验失败（条目没有写进文件）」并保留草稿。规则写进 `AGENTS.md`（新建条目前先申请）、`skills/noema-development`（draft/accept 用法）、`docs/OPERATIONS.md`（命令与失败修法）、`docs/DECISIONS.md` 头部。证据：`npm run decision-entry:test` **7/7**、`npm run check` **901/901，0 fail，76,418ms**（含 `tools:test` 55/55、`docs:check`、`figure:check`）、治理图按章节判断重出（source `b2e0fc3fe387`，理由：AGENTS 只多一条规则，三层与节点关系未变）。
+
 - macOS 临时目录软链（change `macos-tmpdir-realpath`，PR #167，2026-11-18，协作者 `ichika0130`）：macOS 的 `os.tmpdir()` 是 `/var/folders/…` 软链、真实路径在 `/private/var/folders/…`，两个测试的临时目录改为 `realpathSync(mkdtempSync(…))` 先取真实路径，`test-support/electron/isolated-worker-e2e.mjs` 的结果路径检查与 `writeResult()` 同口径（数据库与工作区仍按真实路径校验，防软链逃逸不削弱）。macOS + Node 24 全量 `npm test` 由 880 过 / 8 败转为 **888 过 / 0 败 / 13 跳过**（跳过的是既有 `windowsOnly` 等标记），`npm run typecheck`、`npm run lint` 通过。CI run `44166645986`（verify、portable、platform、collaboration）与 `44166646301`（windows / ubuntu / macos 三个 package job）全绿。产品可观察行为不变（仅测试与测试辅助）。
 
 - 成员经历（change `member-asset-review`，2026-11-17）：`npm run check` **901/901，0 fail，53,356ms**（链含 `workspace:check` → `branches:check` → `docs:check` → `figure:check` → `plan:check` → `source:check` → `lint` → `typecheck` → `tools:test` → `test`）。
