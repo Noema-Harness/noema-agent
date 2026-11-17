@@ -13,8 +13,6 @@ Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与�
 
 ## 最后一次验证（2026-11-17）
 
-- 记忆底座（change `memory-foundation`，2026-11-17）：`npm run check` **912/912，0 fail，55,866ms**（901 + 11 条：store 6、通道 1、服务 2、召回装配 2）；`npm run typecheck` 通过；`test/main/chat/agent-memory-store.test.mjs` 6/6、`test/main/ipc/bridge-transport.test.mjs` 8/8、`test/main/chat/social-chat-service.test.mjs` 52/52。
-
 - 成员经历（change `member-asset-review`，2026-11-17）：`npm run check` **901/901，0 fail，53,356ms**（链含 `workspace:check` → `branches:check` → `docs:check` → `figure:check` → `plan:check` → `source:check` → `lint` → `typecheck` → `tools:test` → `test`）。
 
 - 门归属（change `gate-ownership`，2026-11-17）：PR 的 `verify` 把架构图漂移降为提示（`NOEMA_FIGURE_SOFT=1`），`main` 与里程碑仍严格，图由维护者重出；新增报告期的 `portable` job（`ubuntu-latest` 跑同一套测试、不拦 PR），先暴露 Windows-only 用例，按 `D-20261116-platform-layers` 第③刀标记后转必过（已于 2026-11-17 落地，见下节）。本机 `npm run check` 890/890、0 fail、67,571ms。soft 只由 `figure:check` 的命令行读取，库调用默认严格，`figure.test.mjs` 因此在 `NOEMA_FIGURE_SOFT=1` 下也通过（PR #164 verify 修复）。
@@ -72,17 +70,6 @@ Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与�
 - 证据：`npm run typecheck`；`test/main/ipc/bridge-transport.test.mjs` 7/7；`test/main/chat/social-chat-service.test.mjs` 成员资产用例（写入 → 列表 → 删除 → 墓碑 → 历史恢复 → 归档只读）；`npm run check` **901/901、0 fail**。
 - 未做：界面真机手测（见「未验证」）；成长写入候选态与真实复盘重跑仍挂在卡片 #137 的「还没做」。
 
-## 记忆底座（2026-11-17）
-
-- Noema 主聊有了每轮可读写的个体记忆（change `memory-foundation`，卡片 #166，决定 `D-20261117-agent-memory`）；这一条实现的是“写入准入比检索算法重要”的落地：事实与约定先成候选，用户确认后才可能被想起。
-- 数据层：schema 44 新增 `agent_memories`（`scope='agent'`、`kind=fact|preference|episode|procedure`、`status=candidate|active|superseded|retracted`、`trust=agent|user`、`content`、`source_kind/source_ref/source_room_id/source_message_id`、`valid_from/valid_to/superseded_by/confirmed_at` 与时间戳，带 CHECK 约束）、`agent_memory_audit`（created/confirmed/retracted/superseded + actor + detail）、`agent_memory_fts`（FTS5 `tokenize='trigram'`，`memory_id UNINDEXED`）。
-- 写入分级：`trust='user'` 或 `kind` 为偏好/经历 → 直接 `active`；其余（事实、做法）→ `candidate`；确认时同时把 `trust` 升为 `user`；`replace_id` 走 `supersede`，旧条目置 `superseded` 并写 `valid_to`/`superseded_by`，不物理删除。
-- 检索：只取 `status='active' AND valid_to IS NULL`；查询用 `buildMemorySearchExpression`（中文按重叠 3-gram 展开、拉丁词保留短语，最多 40 段）——原来的“整句当一个引号短语”在 300 条中文样本上 Recall@5 只有 25%，展开后 76.7%；排序 `bm25(agent_memory_fts)`，最多 5 条 / 4000 字符预算。
-- 工具：`manage_agent_memory`（`search` / `propose`），只在 Noema 主聊开放（`agentId==='noema' && roomId==='room-noema' && !isProjectGrowthTurn`）；propose 的来源绑定当前用户消息、房间与项目，模型不能绕过来源写故事。
-- 界面：设置 → 记忆，分「等你确认 / 已生效 / 已失效」三组，显示类型、来源（项目「…」/对话「…」/手动添加）、时间；候选可确认，生效可撤销（二次确认），失效只读；另有七个 bridge 通道（`noema:agent-memories` / `-create` / `-confirm` / `-retract` / `-supersede` / `-audit`）。
-- 证据：`npm run typecheck`；`agent-memory-store.test.mjs` 6/6（中文句片段命中、候选不命中、确认后命中、替代后旧条目不命中、撤销后不命中、审计与非法输入）；`bridge-transport.test.mjs` 8/8；`social-chat-service.test.mjs` 52/52（含“主聊提议一条事实 → 候选 + 来源消息”的真实 provider 假回调路径）；`npm run check` **912/912、0 fail**。
-- 未做：成员（专业联系人）私有记忆、旧 `social_user_memories` 数据迁移（`manage_personal_memory` 与新工具暂时并存）、经历/做法的毕业门槛、30 条回归集与“记忆开关”对照评测、界面真机手测。
-
 ## 协作文档门禁（2026-11-16）
 
 - 协作者可直接改 `docs/**` 与 `openspec/specs/**`；只有治理机制（`AGENTS.md`、`.github/`、`.githooks/`、`scripts/`、`openspec/config.yaml`、根 `package.json`）维护者独占。审核移到 PR：以代码与运行证据为准，`docs:check` 在 PR 上照跑。
@@ -108,7 +95,6 @@ Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与�
 - macOS/Linux 真机安装与启动：CI 只验证打包产物能启动（`smoke:package`）；用户 2026-11-17 确认以此为验收口径，macOS 真机由协作者后续实机反馈，Linux 真机未安排。
 - macOS 上用真实模型从界面派发一个跑命令的项目任务（DSH 执行路径已由 `e2e:dsh-fake-model` 验证，界面与真实模型这一段未跑）；未签名 Mac 包在别的机器上能否打开；Linux 只走同一条 POSIX 分支，未实测。
 - 成员经历界面的真机手测：本机 harness 会话里 Electron 进程无法创建窗口（最小探针也立即退出，记事本能开窗），入口位置、信息量与删除/恢复手感没有人走过；自动证据只覆盖通道、service 与 store。
-- 记忆面板的真机手测与真实对话路径：确认/撤销的手感、候选出现时机、以及“确认后下一次回答真的引用到”这一段只在测试里走过；本机 Electron 建不了窗。旧 `social_user_memories` 的数据也尚未迁移到新表，升级用户会看到两套概念并存。
 
 ## 交付判断
 

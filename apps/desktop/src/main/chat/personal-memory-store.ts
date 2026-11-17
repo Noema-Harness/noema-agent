@@ -19,45 +19,10 @@ type PersonalMemoryInput = {
 const MAX_MEMORY_LENGTH = 2_000;
 const MAX_SEARCH_RESULTS = 5;
 const MAX_SEARCH_CHARACTERS = 4_000;
-const MAX_QUERY_GRAMS = 40;
-const ASCII_TOKEN = /^[\x00-\x7f]+$/u;
 
 function normalizeContent(value: unknown) {
   const content = requireText(value, '个人记忆', MAX_MEMORY_LENGTH);
   return content.trim();
-}
-
-/**
- * Builds an FTS5 MATCH expression for a user query.
- *
- * The trigram tokenizer cannot match a whole Chinese clause as one phrase:
- * a 20-character sentence only matches a memory that contains it verbatim,
- * which measured Recall@5 = 25% on a Chinese corpus. Expanding each CJK run
- * into its overlapping 3-grams and OR-joining them raises it to 76.7% because
- * bm25 still ranks memories that share more grams first. Latin tokens keep
- * phrase precision, since their words are already separated.
- */
-export function buildMemorySearchExpression(query: string) {
-  const tokens = query
-    .replace(/[\s\p{P}\p{S}]+/gu, ' ')
-    .trim()
-    .split(/\s+/u)
-    .filter(Boolean);
-  const terms: string[] = [];
-  for (const token of tokens) {
-    const characters = Array.from(token);
-    if (characters.length < 3) continue;
-    if (ASCII_TOKEN.test(token)) {
-      terms.push(`"${token.replace(/"/gu, '""')}"`);
-      continue;
-    }
-    for (let index = 0; index + 3 <= characters.length; index += 1) {
-      const gram = characters.slice(index, index + 3).join('');
-      if (terms.includes(`"${gram}"`)) continue;
-      terms.push(`"${gram}"`);
-    }
-  }
-  return terms.slice(0, MAX_QUERY_GRAMS).join(' OR ');
 }
 
 export class PersonalMemoryStore {
@@ -271,7 +236,11 @@ export class PersonalMemoryStore {
       100,
       Math.min(MAX_SEARCH_CHARACTERS, maxCharacters),
     );
-    const phrase = buildMemorySearchExpression(needle);
+    const phrase = needle
+      .split(/\s+/u)
+      .filter((term) => Array.from(term).length >= 3)
+      .map((term) => `"${term.replace(/"/gu, '""')}"`)
+      .join(' OR ');
     const rows = (
       phrase
         ? this.db

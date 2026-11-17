@@ -26,7 +26,6 @@ import {
   projectReviewTool,
   completeProjectTool,
   memberAssetsTool,
-  agentMemoryTool,
   requestsMemberAssetAction,
   projectToolChoicesContext,
   noemaActionGuidance,
@@ -1838,39 +1837,6 @@ export class SocialChatService {
     };
   }
 
-  listAgentMemories({ agentId, status = null } = {}) {
-    return {
-      items: this.store.agentMemories.list({ agentId, status }),
-    };
-  }
-
-  searchAgentMemories({ agentId, query }) {
-    return this.store.agentMemories.search(query, { agentId });
-  }
-
-  getAgentMemory(id) {
-    return this.store.agentMemories.get(id);
-  }
-
-  createAgentMemory(input) {
-    return this.store.agentMemories.create(input);
-  }
-
-  confirmAgentMemory(id) {
-    return this.store.agentMemories.confirm(id);
-  }
-
-  retractAgentMemory({ id, reason = null }) {
-    return this.store.agentMemories.retract({ id, reason });
-  }
-
-  supersedeAgentMemory(input) {
-    return this.store.agentMemories.supersede(input);
-  }
-
-  listAgentMemoryAudit(memoryId) {
-    return this.store.agentMemories.audit(memoryId);
-  }
   /**
    * @param {{roomId:string,agentId:string,text:string,replyToMessageId?:string|null,reviewRequestId?:string|null}} input
    */
@@ -2329,11 +2295,6 @@ export class SocialChatService {
           : []),
         ...(agentId === 'noema' && roomId === 'room-noema' && this.startTicket
           ? [workTicketTool()]
-          : []),
-        ...(agentId === 'noema' &&
-        roomId === 'room-noema' &&
-        !run.isProjectGrowthTurn
-          ? [agentMemoryTool()]
           : []),
         ...(projectWorkAction ? [projectWorkAction] : []),
         ...(specialistTool ? [specialistTool] : []),
@@ -4039,153 +4000,6 @@ export class SocialChatService {
             throw new ModelProviderError(
               'empty_reply',
               '个人记忆操作已处理，但 Noema 没有生成说明。可以重试这条消息。',
-            );
-          }
-        } else if (toolName === 'manage_agent_memory') {
-          const callId = toolCalls[0]?.id;
-          if (!callId || agent.archivedAt) {
-            throw new ModelProviderError(
-              'agent_memory_invalid',
-              '当前成员不能读写记忆；没有执行操作。',
-            );
-          }
-          let memoryResult;
-          try {
-            switch (input?.operation) {
-              case 'search': {
-                const query =
-                  typeof input.query === 'string' ? input.query.trim() : '';
-                if (!query || query.length > 120)
-                  throw new Error('回想主题无效。');
-                memoryResult = {
-                  operation: 'search',
-                  items: this.searchAgentMemories({
-                    agentId: agent.id,
-                    query,
-                  }).map(
-                    ({
-                      id,
-                      kind,
-                      content: memoryContent,
-                      updatedAt,
-                      sourceRoomTitle,
-                      sourceProjectTitle,
-                    }) => ({
-                      id,
-                      kind,
-                      content: memoryContent,
-                      updatedAt,
-                      sourceRoomTitle,
-                      sourceProjectTitle,
-                    }),
-                  ),
-                };
-                break;
-              }
-              case 'propose': {
-                const memoryContent =
-                  typeof input.content === 'string' ? input.content.trim() : '';
-                if (!memoryContent || memoryContent.length > 500)
-                  throw new Error('记忆内容无效。');
-                const kind = input.kind;
-                if (
-                  !['fact', 'preference', 'episode', 'procedure'].includes(kind)
-                )
-                  throw new Error('记忆类型无效。');
-                const replaceId =
-                  typeof input.replace_id === 'string'
-                    ? input.replace_id.trim()
-                    : '';
-                let item;
-                if (replaceId) {
-                  const target = this.getAgentMemory(replaceId);
-                  if (
-                    !target ||
-                    target.agentId !== agent.id ||
-                    target.status !== 'active'
-                  )
-                    throw new Error('要更新的记忆不存在或已失效。');
-                  item = this.supersedeAgentMemory({
-                    id: target.id,
-                    content: memoryContent,
-                    trust: 'agent',
-                    sourceKind: 'message',
-                  });
-                } else {
-                  item = this.createAgentMemory({
-                    agentId: agent.id,
-                    kind,
-                    content: memoryContent,
-                    trust: 'agent',
-                    sourceKind: 'message',
-                    sourceRoomId: roomId,
-                    sourceMessageId: run.userMessageId ?? null,
-                  });
-                }
-                memoryResult = {
-                  operation: 'propose',
-                  id: item.id,
-                  kind: item.kind,
-                  status: item.status,
-                  ...(replaceId ? { replaced: replaceId } : {}),
-                };
-                break;
-              }
-              default:
-                throw new Error('记忆操作无效。');
-            }
-          } catch (error) {
-            memoryResult = {
-              operation: input?.operation ?? 'unknown',
-              completed: false,
-              message: error?.message ?? '记忆操作没有完成。',
-            };
-          }
-          messages.push({
-            role: 'assistant',
-            content: content || null,
-            tool_calls: [toolCalls[0]],
-          });
-          messages.push({
-            role: 'tool',
-            tool_call_id: callId,
-            name: 'manage_agent_memory',
-            content: JSON.stringify(memoryResult),
-          });
-          this.finishSocialToolTrace(run, messages);
-          let memoryFollowUp = '';
-          for await (const delta of this.chatRuntimeFor(
-            run.agentId,
-            run.roomId,
-          ).streamChat({
-            model,
-            messages,
-            signal: controller.signal,
-            usageOperation: 'social_agent_memory_followup',
-            usageInteractionId: assistantMessageId,
-            usageExecutionId: run.turnId,
-            usageTurnId: run.turnId,
-          })) {
-            controller.signal.throwIfAborted();
-            memoryFollowUp += delta;
-            content += delta;
-            if (!this.appendRunAssistantDelta(run, delta)) {
-              throw new ModelProviderError(
-                'reply_not_streaming',
-                '记忆操作已处理，但本轮说明没有完成保存。',
-              );
-            }
-            this.emit({
-              type: 'chat-message-delta',
-              roomId,
-              messageId: assistantMessageId,
-              delta,
-            });
-          }
-          if (!memoryFollowUp.trim()) {
-            throw new ModelProviderError(
-              'empty_reply',
-              '记忆操作已处理，但没有生成说明。可以重试这条消息。',
             );
           }
         } else if (toolName === 'manage_member_assets') {

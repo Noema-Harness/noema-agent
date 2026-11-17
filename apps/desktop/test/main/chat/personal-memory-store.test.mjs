@@ -4,7 +4,6 @@ import Database from 'better-sqlite3';
 import { RootStore } from '../../../src/main/storage/root-store.mjs';
 import { SocialChatStore } from '../../../src/main/chat/social-chat-store.mjs';
 import { SOCIAL_SCHEMA_VERSION } from '../../../src/main/chat/social-chat-schema.ts';
-import { buildMemorySearchExpression } from '../../../src/main/chat/personal-memory-store.ts';
 
 function makeStore() {
   const db = new Database(':memory:');
@@ -171,41 +170,6 @@ test('schema v28 upgrades to personal memory without changing older data', () =>
     const item = memories.add({ content: '升级后可新增记忆。' });
     assert.equal(item.sourceMessageId, null);
     assert.deepEqual(db.pragma('foreign_key_check'), []);
-  } finally {
-    db.close();
-  }
-});
-
-test('search expressions expand Chinese clauses into 3-grams and keep latin words whole', () => {
-  const expression = buildMemorySearchExpression(
-    '我每周五下班后推进价格追踪项目',
-  );
-  assert.match(expression, /"每周五"/u);
-  assert.match(expression, /"价格追"/u);
-  assert.match(expression, / OR /u);
-  assert.equal(
-    buildMemorySearchExpression('better-sqlite3'),
-    '"better" OR "sqlite3"',
-  );
-  assert.equal(buildMemorySearchExpression('价格'), '');
-  assert.ok(
-    buildMemorySearchExpression('一'.repeat(200)).split(' OR ').length <= 40,
-  );
-});
-
-test('a sentence finds a memory that shares fragments but is not a verbatim substring', () => {
-  const { db, chat, memories } = makeStore();
-  try {
-    const item = memories.add({
-      content:
-        '上周把部署脚本从 bash 换成了 PowerShell 版本，运行日志放在项目目录。',
-    });
-    assert.equal(
-      memories.search('部署脚本换成 PowerShell 之后日志放哪')[0].id,
-      item.id,
-    );
-    assert.equal(memories.search('部署脚本').length, 1);
-    assert.equal(memories.search('备份与监控').length, 0);
   } finally {
     db.close();
   }

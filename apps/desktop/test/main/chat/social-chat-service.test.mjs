@@ -1419,82 +1419,6 @@ test('member asset calls keep user reasons and read-only archives', async () => 
   }
 });
 
-test('memory calls keep write authority and source trails', async () => {
-  const db = new Database(':memory:');
-  new RootStore(db);
-  const store = createSocialTestStore(db);
-  const service = new SocialChatService({
-    store,
-    provider: { async *streamChat() {} },
-    secretStore: { isConfigured: () => true },
-    getSelectedModel: () => 'test-model',
-    getRootState: async () => ({
-      connected: true,
-      selectedModel: 'test-model',
-      providerConfigured: true,
-    }),
-  });
-
-  try {
-    const fact = service.createAgentMemory({
-      agentId: 'noema',
-      kind: 'fact',
-      content: '用户的名字是林安。',
-      sourceKind: 'message',
-      sourceRef: 'message-1',
-    });
-    assert.equal(fact.status, 'candidate');
-    assert.equal(fact.trust, 'agent');
-
-    const pending = service.listAgentMemories({ agentId: 'noema' });
-    assert.deepEqual(
-      pending.items.map((item) => item.status),
-      ['candidate'],
-    );
-
-    const confirmed = service.confirmAgentMemory(fact.id);
-    assert.equal(confirmed.status, 'active');
-    assert.equal(confirmed.trust, 'user');
-    assert.ok(confirmed.confirmedAt);
-
-    const preference = service.createAgentMemory({
-      agentId: 'noema',
-      kind: 'preference',
-      content: '回答先给结论再给理由。',
-    });
-    assert.equal(preference.status, 'active');
-
-    const superseded = service.supersedeAgentMemory({
-      id: fact.id,
-      content: '用户的名字改成了林安之。',
-    });
-    assert.equal(superseded.status, 'active');
-    assert.equal(
-      service.listAgentMemories({ agentId: 'noema' }).items.length,
-      3,
-    );
-
-    const retired = service.retractAgentMemory({
-      id: preference.id,
-      reason: '用户要求不要默认这样回答。',
-    });
-    assert.equal(retired.status, 'retracted');
-
-    const audit = service.listAgentMemoryAudit(fact.id);
-    assert.deepEqual(
-      audit.map((entry) => entry.event),
-      ['created', 'confirmed', 'superseded'],
-    );
-    assert.equal(
-      service.listAgentMemoryAudit(superseded.id)[0].event,
-      'created',
-    );
-  } finally {
-    await service.shutdown();
-    db.close();
-  }
-});
-
 test('group recipients follow visible mentions rather than a hidden caller-selected agent', async () => {
   const db = new Database(':memory:');
   new RootStore(db);
@@ -2610,7 +2534,7 @@ test('Noema main chat never exposes project work without a project workspace', a
 
     assert.deepEqual(
       requests[0].tools?.map((tool) => tool.function.name),
-      ['manage_agent_memory', 'delegate_to_specialist'],
+      ['delegate_to_specialist'],
     );
     assert.deepEqual(started, []);
     assert.equal(
@@ -4579,74 +4503,6 @@ test('Noema starts a chat ticket in one executor session without project state',
           message.content.includes('create_project_team'),
         ),
     );
-  } finally {
-    await service.shutdown();
-    db.close();
-  }
-});
-
-test('Noema proposes a memory with a source and keeps facts as candidates', async () => {
-  const db = new Database(':memory:');
-  new RootStore(db);
-  const store = createSocialTestStore(db);
-  const requests = [];
-  const service = new SocialChatService({
-    store,
-    provider: {
-      async *streamChat(input) {
-        requests.push(input);
-        if (requests.length === 1) {
-          input.onToolCalls?.([
-            {
-              id: 'remember-name',
-              type: 'function',
-              function: {
-                name: 'manage_agent_memory',
-                arguments: JSON.stringify({
-                  operation: 'propose',
-                  kind: 'fact',
-                  content: '用户的名字是林安。',
-                }),
-              },
-            },
-          ]);
-          return;
-        }
-        yield '好，我记下了，等你确认后再把它当作长期事实。';
-      },
-    },
-    secretStore: { isConfigured: () => true },
-    getSelectedModel: () => 'test-model',
-    getRootState: async () => ({
-      connected: true,
-      selectedModel: 'test-model',
-    }),
-  });
-
-  try {
-    const sent = service.sendMessage({
-      roomId: 'room-noema',
-      agentId: 'noema',
-      text: '记一下，我的名字是林安。',
-    });
-    await new Promise((resolve) => setImmediate(resolve));
-    await service.active.get('room-noema')?.done;
-
-    assert.ok(
-      requests[0].tools.some(
-        (tool) => tool.function.name === 'manage_agent_memory',
-      ),
-    );
-    const items = service.listAgentMemories({ agentId: 'noema' }).items;
-    assert.equal(items.length, 1);
-    assert.equal(items[0].kind, 'fact');
-    assert.equal(items[0].status, 'candidate');
-    assert.equal(items[0].sourceKind, 'message');
-    const source = store.getSocialMessage(items[0].sourceMessageId);
-    assert.equal(source.role, 'user');
-    assert.match(source.content, /林安/u);
-    assert.equal(items[0].sourceRoomId, 'room-noema');
-    assert.equal(store.getSocialMessage(sent.messageId).status, 'complete');
   } finally {
     await service.shutdown();
     db.close();

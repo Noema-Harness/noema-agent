@@ -1,13 +1,6 @@
 import type {
   NoemaPersonalMemory,
   NoemaPersonalMemoryList,
-  NoemaAgentMemory,
-  NoemaAgentMemoryAuditEntry,
-  NoemaAgentMemoryList,
-  NoemaMemoryKind,
-  NoemaMemorySourceKind,
-  NoemaMemoryStatus,
-  NoemaMemoryTrust,
   NoemaUserFollowupList,
   NoemaUserFollowup,
   NoemaModelStateEvent,
@@ -255,39 +248,6 @@ export function createBridge(
         'noema:social-agent-asset-restore',
         input,
       ) as Promise<NoemaSocialAgentAssetRevision>,
-    listAgentMemories: (input?: {
-      agentId?: string;
-      status?: NoemaMemoryStatus | null;
-    }) =>
-      call(
-        'noema:agent-memories',
-        input ?? {},
-      ) as Promise<NoemaAgentMemoryList>,
-    createAgentMemory: (input: {
-      agentId: string;
-      kind: NoemaMemoryKind;
-      content: string;
-      sourceKind?: NoemaMemorySourceKind;
-      sourceRef?: string | null;
-      sourceRoomId?: string | null;
-      sourceMessageId?: string | null;
-      trust?: NoemaMemoryTrust;
-    }) => call('noema:agent-memory-create', input) as Promise<NoemaAgentMemory>,
-    confirmAgentMemory: (id: string) =>
-      call('noema:agent-memory-confirm', id) as Promise<NoemaAgentMemory>,
-    retractAgentMemory: (input: { id: string; reason?: string }) =>
-      call('noema:agent-memory-retract', input) as Promise<NoemaAgentMemory>,
-    supersedeAgentMemory: (input: {
-      id: string;
-      content: string;
-      sourceKind?: NoemaMemorySourceKind;
-      sourceRef?: string | null;
-    }) =>
-      call('noema:agent-memory-supersede', input) as Promise<NoemaAgentMemory>,
-    listAgentMemoryAudit: (memoryId: string) =>
-      call('noema:agent-memory-audit', memoryId) as Promise<
-        NoemaAgentMemoryAuditEntry[]
-      >,
     resetSocialChat: () => call('noema:social-reset-chat') as Promise<boolean>,
     listSocialConversationThreads: (roomId: string) =>
       call('noema:social-conversation-threads', roomId) as Promise<

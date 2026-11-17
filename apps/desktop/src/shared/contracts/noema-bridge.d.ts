@@ -396,55 +396,6 @@ export interface NoemaPersonalMemoryList {
   items: NoemaPersonalMemory[];
 }
 
-export type NoemaMemoryKind = 'fact' | 'preference' | 'episode' | 'procedure';
-export type NoemaMemoryStatus =
-  | 'candidate'
-  | 'active'
-  | 'superseded'
-  | 'retracted';
-export type NoemaMemoryTrust = 'agent' | 'user';
-export type NoemaMemorySourceKind =
-  | 'manual'
-  | 'message'
-  | 'project'
-  | 'tool'
-  | 'import';
-
-export interface NoemaAgentMemory {
-  id: string;
-  scope: 'agent';
-  agentId: string;
-  kind: NoemaMemoryKind;
-  status: NoemaMemoryStatus;
-  trust: NoemaMemoryTrust;
-  content: string;
-  sourceKind: NoemaMemorySourceKind;
-  sourceRef: string | null;
-  sourceRoomId: string | null;
-  sourceMessageId: string | null;
-  sourceRoomTitle: string | null;
-  sourceProjectTitle: string | null;
-  validFrom: string;
-  validTo: string | null;
-  supersededBy: string | null;
-  confirmedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface NoemaAgentMemoryList {
-  items: NoemaAgentMemory[];
-}
-
-export interface NoemaAgentMemoryAuditEntry {
-  id: string;
-  memoryId: string;
-  event: 'created' | 'confirmed' | 'retracted' | 'superseded';
-  actor: NoemaMemoryTrust;
-  detail: string | null;
-  createdAt: string;
-}
-
 export interface NoemaUserFollowup {
   id: string;
   title: string;
@@ -1404,32 +1355,6 @@ export interface NoemaBridge {
     content: string;
   }): Promise<NoemaPersonalMemory>;
   deletePersonalMemory(id: string): Promise<boolean>;
-  listAgentMemories(input?: {
-    agentId?: string;
-    status?: NoemaMemoryStatus | null;
-  }): Promise<NoemaAgentMemoryList>;
-  createAgentMemory(input: {
-    agentId: string;
-    kind: NoemaMemoryKind;
-    content: string;
-    sourceKind?: NoemaMemorySourceKind;
-    sourceRef?: string | null;
-    sourceRoomId?: string | null;
-    sourceMessageId?: string | null;
-    trust?: NoemaMemoryTrust;
-  }): Promise<NoemaAgentMemory>;
-  confirmAgentMemory(id: string): Promise<NoemaAgentMemory>;
-  retractAgentMemory(input: {
-    id: string;
-    reason?: string;
-  }): Promise<NoemaAgentMemory>;
-  supersedeAgentMemory(input: {
-    id: string;
-    content: string;
-    sourceKind?: NoemaMemorySourceKind;
-    sourceRef?: string | null;
-  }): Promise<NoemaAgentMemory>;
-  listAgentMemoryAudit(memoryId: string): Promise<NoemaAgentMemoryAuditEntry[]>;
   getUserFollowups(): Promise<NoemaUserFollowupList>;
   setUserFollowupsEnabled(enabled: boolean): Promise<boolean>;
   addUserFollowup(input: {
