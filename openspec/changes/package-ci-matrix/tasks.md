@@ -9,6 +9,7 @@
 - [ ] 2.1 `Desktop package` 工作流改为 `windows-latest`/`ubuntu-latest`/`macos-latest` 矩阵，三平台都跑 `npm ci`、`package:desktop`、`smoke:package`、`make`。
 - [ ] 2.2 Windows 专属步骤（dev smoke、Squirrel 安装生命周期）限定 `runner.os == 'Windows'`。
 - [ ] 2.3 Linux job 安装 `xvfb`/`rpm` 并用 `xvfb-run` 跑冒烟；artifact 按平台命名上传。
+- [ ] 2.4 `MakerDeb`/`MakerRpm` 的安装器 helper（`electron-installer-debian`、`electron-installer-redhat`）声明为 `apps/desktop/package.json` 的 `optionalDependencies`，让 `npm ci` 在 Linux/macOS 装上、Windows 跳过；`docs/OPERATIONS.md` 记录原因。
 
 ## 3. 文档与决议
 
@@ -19,4 +20,4 @@
 
 - [ ] 4.1 `node --check apps/desktop/scripts/smoke-package.mjs`、`npm run check` 全绿。
 - [ ] 4.2 dispatch 三平台矩阵，确认各平台 job 绿并上传 artifact；归档变更、提交推送。
-- [ ] 4.3 [用户] 确认 Windows 打包/安装行为未变，接受 macOS/Linux 产物为“可打包但未发布”。
+- [ ] 4.3 用户可见的门槛留在 `D-20261116-platform-layers` §3 验收（macOS/Linux 安装与启动），本刀只宣称“可打包、冒烟通过”，不宣称可安装发布。

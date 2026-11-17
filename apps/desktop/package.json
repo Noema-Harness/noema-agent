@@ -76,5 +76,9 @@
     "oxlint": "^1.87.0",
     "typescript": "^6.0.3",
     "vite": "^8.3.4"
+  },
+  "optionalDependencies": {
+    "electron-installer-debian": "^4.0.0",
+    "electron-installer-redhat": "^4.0.0"
   }
 }
