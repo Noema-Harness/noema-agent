@@ -31,7 +31,7 @@ const LIFECYCLE = (stage = "执行中", batch = "changes/stage-probe") => {
     stage === "已收口" ? ["- [x] x — 手测", "- 用户确认：2026-11-16"] : ["- [ ] x — 手测"];
   return [
     `- **阶段**：${stage}`,
-    "- **来源**：测试",
+    "- **来源**：用户 2026-11-16 要求做探针",
     "- **阻塞**：无",
     "- **结构**：无",
     "#### 1 决策",
@@ -610,6 +610,26 @@ test("a dated entry puts its stage first and keeps the three sections", () => {
     `## D-20261116-probe\n\n${LIFECYCLE("已收口").replace("- 用户确认：2026-11-16", "")}`,
   );
   assert.match(closed.errors.join("\n"), /已收口，验收末尾应写「- 用户确认：YYYY-MM-DD」/u);
+});
+
+test("a decision entry must come from the user, not from the agent", () => {
+  const agentSourced = checkDecisionEntries(
+    `## D-20261116-probe\n\n${LIFECYCLE("执行中").replace(
+      "- **来源**：用户 2026-11-16 要求做探针",
+      "- **来源**：维护者判断",
+    )}`,
+  );
+  assert.match(agentSourced.errors.join("\n"), /不是用户指令/u);
+
+  const noSource = checkDecisionEntries(
+    `## D-20261116-probe\n\n${LIFECYCLE("执行中").replace("- **来源**：用户 2026-11-16 要求做探针\n", "")}`,
+  );
+  assert.match(noSource.errors.join("\n"), /缺少「\*\*来源\*\*：…」/u);
+
+  const noConfirmation = checkDecisionEntries(
+    `## D-20261116-probe\n\n${LIFECYCLE("执行中").replace("（用户确认：2026-11-16）", "")}`,
+  );
+  assert.match(noConfirmation.errors.join("\n"), /没有写「用户确认：YYYY-MM-DD」/u);
 });
 
 test("tooling code pairs with docs, a change or AGENTS.md", () =>

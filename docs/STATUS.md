@@ -52,6 +52,7 @@ Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与�
 - `scripts/skill-sync.mjs` 用 `SKILL_NAMES` 同步两份技能到 `~/.dsh/skills`，`docs:check` 校验副本一致；`scripts/skill-sync.test.mjs` 5 条覆盖两份安装、单份安装、整份漂移与缺源文件。证据：两份技能 `skill-install: OK`（sha256 `51e27718272d` / `dfb48991bd5d`）、`npm run check` **899/899、0 fail**。
 - `scripts/figure.mjs` 支持两张图；新增治理全景图 `docs/assets/noema-governance.*`（提示层 / 事实流 / 机器门），AGENTS 顶部链接，不进 README。
 - 条目验收项可勾选，勾完 `npm run decisions:sync` 自动收口；`npm run review` 显示勾选进度。
+- 条目归属（2026-11-17，change `decision-entry-ownership`）：`docs/DECISIONS.md` 由用户驱动，只有需要用户拍板、多方案取舍或跨轮次不可逆的才建条目；agent 不自行开条目、不把候选写成决定。盘查技能改成三档出口（直接修 / 只补检查或验证 / 才登记条目），`scripts/maintenance.mjs` 的 `checkDatedEntry` 要求「来源」以「用户」开头、阶段过决策中后「#### 1 决策」必须有「用户确认：YYYY-MM-DD」。证据：`scripts/maintenance.test.mjs` 22/22、`npm run check` **899/899、0 fail**。
 
 ## 图的维护（2026-11-17）
 

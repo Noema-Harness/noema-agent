@@ -283,6 +283,16 @@ function checkDatedEntry(entry, errors, notices = []) {
   if (!ENTRY_STAGES.includes(meta.stage)) {
     errors.push(`${entry.id} 的阶段「${meta.stage}」不在 ${ENTRY_STAGES.join(" / ")} 里`);
   }
+  // Entries are user-driven: an agent may prepare candidates and evidence, but a new entry
+  // only exists because the user asked for a decision or a trade-off. The source names that
+  // round, so a plain implementation stays in the commit or in a change.
+  if (!meta.source) {
+    errors.push(`${entry.id} 缺少「**来源**：…」：条目必须写明用户在哪一轮提出`);
+  } else if (!/^用户/u.test(meta.source)) {
+    errors.push(
+      `${entry.id} 的来源「${meta.source}」不是用户指令：DECISIONS 由用户驱动，普通实现、修复与验证不建条目`,
+    );
+  }
   const expectedMark = ENTRY_STAGE_MARKS[meta.stage];
   if (expectedMark && meta.emoji !== expectedMark) {
     notices.push(
@@ -303,6 +313,18 @@ function checkDatedEntry(entry, errors, notices = []) {
   }
   if (meta.stage !== "决策中" && !decision) {
     errors.push(`${entry.id} 阶段是${meta.stage}，但「#### 1 决策」里缺少「- 决定：」`);
+  }
+  // A stage past 决策中 means the user already agreed; the decision section has to show
+  // when. Without the date an agent could promote its own candidate to a decision.
+  const decisionSection = sectionBody(entry.body, "#### 1 决策");
+  if (
+    meta.stage !== "决策中" &&
+    decisionSection !== null &&
+    !/用户确认：?\s*\d{4}-\d{2}-\d{2}/u.test(decisionSection)
+  ) {
+    errors.push(
+      `${entry.id} 的「#### 1 决策」没有写「用户确认：YYYY-MM-DD」：决定归用户，agent 不能把自己的候选写成已定`,
+    );
   }
   const items = acceptanceItems(entry.body);
   const unchecked = items.filter((item) => !item.checked).length;

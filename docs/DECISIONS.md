@@ -1,7 +1,7 @@
 # DECISIONS
 
-Authority: 本文件是 Noema 议题流水与长期决定的唯一权威来源：任何可能走向决策的讨论先追加一条带状态的条目；成为决定并产生产出后，才算长期决定。
-Update when: 出现议题时立即追加（先存档再继续讨论）；状态变化或决定产生时更新该条；没有产出就删掉该条。
+Authority: 本文件是 Noema 决定的唯一权威来源，由用户驱动：条目只在 ① 用户要求定一件事、② 需要用户在多个方案里拍板、③ 跨轮次/不可逆/代价差一个量级的取舍时才有；普通实现、修复、只补验证不写这里，证据在提交信息与 change。
+Update when: 用户提出一个待决议题时立即追加（先记录再讨论）；状态变化或用户确认决定时更新；没有产出就删掉。agent 不自行开条目，也不把候选写成决定。
 Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结构与数据边界（见 [ARCHITECTURE](ARCHITECTURE.md)）；当前版本与已验证证据（见 [STATUS](STATUS.md)）；命令与发布步骤（见 [OPERATIONS](OPERATIONS.md)）；维护规则（见 [AGENTS](../AGENTS.md)）。
 
 ## 怎么用
@@ -883,7 +883,7 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 - **阶段**：已收口
 - **来源**：用户 2026-11-17 指出「几乎所有行动都要单独建立决议条目，这是不必要的」「DECISIONS 更应该是用户驱动的文档」「和当前项目无关的内容也不应该出现在文档中」，并追问为何维护者给自己开 issue / PR
 - **阻塞**：无
-- **结构**：`AGENTS.md` 的「怎么推进一件工作」；`scripts/maintenance.mjs` 的 `checkMilestone` 不再要求 change 对应条目；外部项目内容从本仓库文档移除
+- **结构**：`AGENTS.md` 的「怎么推进一件工作」；`scripts/maintenance.mjs` 的 `checkMilestone` 不再要求 change 对应条目，`checkDatedEntry` 校验条目来源与用户确认；外部项目内容从本仓库文档移除
 - **状态**：决定（用户确认：2026-11-17）
 
 #### 1 决策
@@ -897,6 +897,7 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 - 批次：无（治理规则调整，直接提交）
 - 发现：`D-20261116-inbox-ack-loop` 记录的是已移出仓库的插件行为，属于跨项目内容，已删除；`D-20261116-governance-extraction` 等与 Noema 治理直接相关的条目保留。
+- 2026-11-17 补落地：规则只写进了 AGENTS，盘查技能仍把 `DECISIONS` 当默认产物、门也不校验来源与确认日期 → 技能改成“直接修 / 只补验证 / 才登记条目”三档出口，`docs/DECISIONS.md` 顶部说明与 `skills/noema-development` 模板同步，`scripts/maintenance.mjs` 的 `checkDatedEntry` 新门要求「来源」以「用户」开头、阶段过决策中后「#### 1 决策」必须有「用户确认：YYYY-MM-DD」（change `decision-entry-ownership`）。
 
 #### 3 验收
 
