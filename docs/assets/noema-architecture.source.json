@@ -3,21 +3,40 @@
   "purpose": "Noema 用户向架构图：已实现与计划分层。改 docs/ARCHITECTURE.md 后运行 npm run figure:build 重出图。",
   "source": {
     "doc": "docs/ARCHITECTURE.md",
-    "sha256": "bc963a1c6589469822d86500707707a33bf627b59071972056f94b73a5901337"
+    "sha256": "bc963a1c6589469822d86500707707a33bf627b59071972056f94b73a5901337",
+    "sections": [
+      {
+        "title": "2. 进程与依赖方向",
+        "sha256": "10a51eb8f0afd8b56fb4fab1a766af9f5474de2be16160cd6dba76138428fb75"
+      },
+      {
+        "title": "3.1 AgentRuntime 核心",
+        "sha256": "78cbd9a71b54b88c1fec692ac96dc30664ce9a1e675ade24d325faa38f19a730"
+      },
+      {
+        "title": "5. 一次执行的路径",
+        "sha256": "c5b5a8314ae736cff9825967f1bffca8c4cbcf4cfde97a8904dfdfa5cb1365b3"
+      },
+      {
+        "title": "6. 代码地图",
+        "sha256": "68b28f80034db5916b08f98d2ab20666f32271acb7fe1c05e65a3dfaf147f82e"
+      }
+    ],
+    "candidateSha256": "a013425ea95930cac89d44809777f5735d977a86f8968904314bfaa25a75fc93"
   },
   "assets": {
     "html": {
       "path": "docs/assets/noema-architecture.html",
-      "sha256": "08862f5645c207c1c4ac12a2866954e2f4e1fd50075fb6d3801362890e10f17f",
-      "bytes": 850941
+      "sha256": "e4550ee1a93619f922342fd61cc2645e51d7febfe3cd9bb8e2c8cd97783bbe49",
+      "bytes": 850965
     },
     "png": {
       "path": "docs/assets/noema-architecture.png",
-      "sha256": "c4fc2757642facb9786fee00796cdbeba58d9e744e9550ce2496272ee7c718b1",
-      "bytes": 166271
+      "sha256": "0235d76c33e6ba90197510e62631949e60939558a1e1a7533aa2258452197956",
+      "bytes": 167178
     }
   },
-  "updatedAt": "2026-11-17T00:57:10.399Z",
+  "updatedAt": "2026-11-17T02:36:18.258Z",
   "candidate": {
     "schema_version": 1,
     "diagram_type": "architecture",
@@ -74,8 +93,8 @@
       {
         "id": "ipc",
         "type": "security",
-        "label": "IPC 白名单",
-        "sublabel": "preload / contextBridge",
+        "label": "bridge 传输",
+        "sublabel": "可换传输",
         "icon": "security",
         "pos": [
           154,
@@ -105,7 +124,7 @@
         "id": "exec",
         "type": "backend",
         "label": "执行者",
-        "sublabel": "一次一个工单 · 授权工作区",
+        "sublabel": "一次一个任务 · 授权工作区",
         "icon": "person",
         "pos": [
           616,
@@ -119,8 +138,8 @@
       {
         "id": "adapt",
         "type": "backend",
-        "label": "执行内核适配器",
-        "sublabel": "DSH headless 首选 / native 回退",
+        "label": "执行后端（可换）",
+        "sublabel": "DSH headless / native · 同一任务契约",
         "icon": "backend",
         "pos": [
           814,
@@ -134,8 +153,8 @@
       {
         "id": "winfs",
         "type": "backend",
-        "label": "Windows 文件与命令",
-        "sublabel": "磁盘 · PowerShell",
+        "label": "本机文件与命令",
+        "sublabel": "Windows Runner · PowerShell",
         "icon": "neutral",
         "pos": [
           1040,
@@ -180,7 +199,7 @@
         "id": "db",
         "type": "database",
         "label": "本机 SQLite",
-        "sublabel": "对话快照/项目/工单/证据/记忆/成长",
+        "sublabel": "对话快照/项目/任务/证据/记忆/成长",
         "icon": "database",
         "pos": [
           274,
@@ -280,7 +299,7 @@
         "to": "exec",
         "fromSide": "right",
         "toSide": "left",
-        "label": "派工单",
+        "label": "派任务",
         "variant": "emphasis"
       },
       {
@@ -344,14 +363,14 @@
         "title": "对话不等于执行",
         "items": [
           "主聊只负责理解、编排与汇总",
-          "真正动手的是执行者：一次一个工单"
+          "真正动手的是执行者：一次一个任务"
         ]
       },
       {
         "dot": "emerald",
         "title": "只在你给的文件夹里动手",
         "items": [
-          "文件与命令写入走工单 + 授权工作区",
+          "文件与命令写入走任务 + 授权工作区",
           "工作区外要你逐次授权"
         ]
       },
@@ -367,7 +386,7 @@
         "dot": "amber",
         "title": "数据留在本机",
         "items": [
-          "对话/项目/工单/记忆在本地 SQLite",
+          "对话/项目/任务/记忆在本地 SQLite",
           "换模型不换你的数据与事件流"
         ]
       }

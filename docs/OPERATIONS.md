@@ -103,7 +103,10 @@ npm run branches:prune -- --apply # 执行删除
 | 报「本变更引用的决议未获用户确认」                    | 让被引用的条目先走出 `决策中`（用户确认方案），再跑 `npm run milestone:check`                                                       |
 | 报「验收结论确认后才算交付」                          | 请用户验收（`npm run review` 的“待你验收”），通过后把条目阶段改 `已收口` 再归档                                                     |
 | 报「产品变更没有对应的决议条目」                      | 在 DECISIONS 写一条阶段为 `执行中` 的条目，第 2 层写 `批次：changes/<name>`                                                         |
-| 架构文档变了但图没重出（figure:check）                | 运行 `npm run figure:build`；不要手改 html/png；README 必须引用 png 与 html                                                         |
+| 架构文档 / 治理规则变了但图没重出（figure:check）      | 运行 `npm run figure:build`；不要手改 html/png；README 必须引用 png 与 html                                                         |
+| figure:check 报图依赖章节变化（如 §2/§5）             | 先判断图要不要改：改图后重出；确认无需改，`npm run figure:build -- --sections-changed "理由"` 记录判断                                 |
+| figure:build 报「章节变了但 candidate 未变」          | 同上：只重跑渲染不会让图跟上文档；要么改 candidate，要么带 `--sections-changed` 说明理由                                               |
+| figure:check 报 candidate 与记录不一致                | 手改过 `*.source.json` 里的 candidate；运行 `npm run figure:build` 重出图，不要手改产物或摘要                                        |
 | pre-commit 拒绝产品代码提交                           | 同一次提交带上计划/状态更新与 specs 增量；未决决策只能等用户回答                                                                    |
 | pre-commit 报“本轮变更的计划还没有提交”               | 先把 `openspec/changes/<change>/` 单独提交，再提交产品代码；计划先于实现，Git 历史才能证明开工依据                                  |
 | 合并 main 时 pre-commit 拦下从 main 带进来的代码      | 不会：合并提交只检查与两个父提交都不同的路径（冲突解决与手改），实现见 `scripts/maintenance.mjs` 的 `stagedPaths`                   |
@@ -125,9 +128,11 @@ npm run branches:prune -- --apply # 执行删除
 
 产品图是 README 的入口，也是规划的总锚点：图里区分“已实现”和“计划中（灰底 + 虚线区域）”；只画 Noema 产品范围，不画本机开发 harness。治理图画治理结构（提示层、事实流、机器门），不进 README。
 
-- 图源是 `*.source.json`（Archify candidate + 生成时的源文档摘要 + 产物摘要）。
+- 图源是 `*.source.json`：`candidate`（手写 IR）、源文档摘要（`source.sha256`）、**图真正依赖的章节摘要**（`source.sections`；架构图固定 §2 依赖方向、§3.1 拓扑、§5 执行路径、§6 代码地图，治理图固定“怎么推进一件工作”“事实所有权”）、`candidate` 的内容摘要（`source.candidateSha256`）、产物摘要。
+- 章节变了要重新判断图，不是只重跑渲染：`figure:check` 会列出变了的章节；`figure:build` 在「章节变了、`candidate` 一个字没改」时直接拒绝，防止“摘要更新了、图还是旧的”。两条路：真去改图；或确认图不需要改，`npm run figure:build -- --sections-changed "理由"`，理由与该次章节状态绑定写进 `source.rationale`，下次章节再变要重新判断。
+- 手改 `candidate` 而不重出图，`figure:check` 报「candidate 与出图记录不一致」。
 - 改了 `docs/ARCHITECTURE.md` 或 `AGENTS.md` 后重出图：`npm run figure:build`（两张一起；需要本机 Archify 技能和 Edge，finalize 的四道 gate 必须全过）。只重建一张：`node scripts/figure.mjs build governance`。
-- `npm run figure:check` 挂在 `npm run check` 里：源文档变了而图没重出、产物被手改、入口文件（README / AGENTS）没引用图，都会直接失败。PR 的 `verify` 设 `NOEMA_FIGURE_SOFT=1`，这些差异降为提示（图是维护者资产，协作者不必声明或等待）；`main` 与里程碑仍严格，维护者在合并前后重出。
+- `npm run figure:check` 挂在 `npm run check` 里：源文档变了而图没重出、图依赖章节漂移、candidate 被手改、产物被手改、入口文件（README / AGENTS）没引用图，都会直接失败。PR 的 `verify` 设 `NOEMA_FIGURE_SOFT=1`，这些差异降为提示（图是维护者资产，协作者不必声明或等待）；`main` 与里程碑仍严格，维护者在合并前后重出。
 - 不要手改 `*.html|png`；finalize 的侧车 json 由 build 自动移出 `docs/assets`，留在 `.work/archify-run/`。
 
 ### CI 是异步验证

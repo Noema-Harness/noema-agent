@@ -5266,7 +5266,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         </g>
         <g data-graph-role="automatic-crossover" style="--step:2">
           <path data-graph-role="automatic-crossover-underlay" d="M 486 146.9 L 616 146.9" fill="none" stroke="var(--mask)" stroke-width="5.8" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="chat" data-edge-to="exec" data-edge-label="派工单" data-edge-key="2" data-edge-id="dispatch" data-composition-points="486,146.9;616,146.9" data-composition-crossover="halo" data-composition-independent="true" d="M 486 146.9 L 616 146.9" class="a-emphasis" data-animate="edge" style="--step:2" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+          <path data-edge-from="chat" data-edge-to="exec" data-edge-label="派任务" data-edge-key="2" data-edge-id="dispatch" data-composition-points="486,146.9;616,146.9" data-composition-crossover="halo" data-composition-independent="true" d="M 486 146.9 L 616 146.9" class="a-emphasis" data-animate="edge" style="--step:2" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:3">
           <path data-graph-role="automatic-crossover-underlay" d="M 616 163 L 486 163" fill="none" stroke="var(--mask)" stroke-width="5.8" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
@@ -5309,16 +5309,16 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <text data-detail="context" x="82" y="170" class="t-muted" font-size="9" text-anchor="middle">目标 · 验收</text>
         </g>
 
-        <g id="node-ipc" data-node-id="ipc" data-node-label="IPC 白名单" tabindex="0" role="button" aria-label="聚焦IPC 白名单，preload / contextBridge, 架构组件" aria-pressed="false" data-node-kind="security" data-node-sublabel="preload / contextBridge" data-node-context="架构组件">
-          <title>IPC 白名单 · preload / contextBridge · 架构组件</title>
+        <g id="node-ipc" data-node-id="ipc" data-node-label="bridge 传输" tabindex="0" role="button" aria-label="聚焦bridge 传输，可换传输, 架构组件" aria-pressed="false" data-node-kind="security" data-node-sublabel="可换传输" data-node-context="架构组件">
+          <title>bridge 传输 · 可换传输 · 架构组件</title>
           <rect x="154" y="116" width="122" height="80" rx="8" class="c-mask"/>
           <rect x="154" y="116" width="122" height="80" rx="8" class="c-security" data-animate="node" style="--step:1" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(160 122) scale(0.6875)">
             <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="215" y="154" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">IPC 白名单</text>
-        <text data-detail="context" x="215" y="170" class="t-muted" font-size="8.2" text-anchor="middle">preload / contextBridge</text>
+          <text data-node-label="" data-detail-anchor="" x="215" y="154" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">bridge 传输</text>
+        <text data-detail="context" x="215" y="170" class="t-muted" font-size="9" text-anchor="middle">可换传输</text>
         </g>
 
         <g id="node-chat" data-node-id="chat" data-node-label="主聊 Noema" tabindex="0" role="button" aria-label="聚焦主聊 Noema，渲染 + 主进程编排, 架构组件" aria-pressed="false" data-node-kind="backend" data-node-sublabel="渲染 + 主进程编排" data-node-context="架构组件">
@@ -5335,38 +5335,38 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <text data-detail="context" x="394" y="170" class="t-muted" font-size="9" text-anchor="middle">渲染 + 主进程编排</text>
         </g>
 
-        <g id="node-exec" data-node-id="exec" data-node-label="执行者" tabindex="0" role="button" aria-label="聚焦执行者，一次一个工单 · 授权工作区, 架构组件" aria-pressed="false" data-node-kind="backend" data-node-sublabel="一次一个工单 · 授权工作区" data-node-context="架构组件">
-          <title>执行者 · 一次一个工单 · 授权工作区 · 架构组件</title>
+        <g id="node-exec" data-node-id="exec" data-node-label="执行者" tabindex="0" role="button" aria-label="聚焦执行者，一次一个任务 · 授权工作区, 架构组件" aria-pressed="false" data-node-kind="backend" data-node-sublabel="一次一个任务 · 授权工作区" data-node-context="架构组件">
+          <title>执行者 · 一次一个任务 · 授权工作区 · 架构组件</title>
           <rect x="616" y="116" width="172" height="80" rx="8" class="c-mask"/>
           <rect x="616" y="116" width="172" height="80" rx="8" class="c-backend" data-animate="node" style="--step:3" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="person" class="semantic-sigil s-backend" transform="translate(622 122) scale(0.6875)">
             <circle cx="8" cy="4.5" r="2.5"/><path d="M3 14v-2a5 5 0 0 1 10 0v2"/>
           </g>
           <text data-node-label="" data-detail-anchor="" x="702" y="154" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">执行者</text>
-        <text data-detail="context" x="702" y="170" class="t-muted" font-size="9" text-anchor="middle">一次一个工单 · 授权工作区</text>
+        <text data-detail="context" x="702" y="170" class="t-muted" font-size="9" text-anchor="middle">一次一个任务 · 授权工作区</text>
         </g>
 
-        <g id="node-adapt" data-node-id="adapt" data-node-label="执行内核适配器" tabindex="0" role="button" aria-label="聚焦执行内核适配器，DSH headless 首选 / native 回退, 架构组件" aria-pressed="false" data-node-kind="backend" data-node-sublabel="DSH headless 首选 / native 回退" data-node-context="架构组件">
-          <title>执行内核适配器 · DSH headless 首选 / native 回退 · 架构组件</title>
+        <g id="node-adapt" data-node-id="adapt" data-node-label="执行后端（可换）" tabindex="0" role="button" aria-label="聚焦执行后端（可换），DSH headless / native · 同一任务契约, 架构组件" aria-pressed="false" data-node-kind="backend" data-node-sublabel="DSH headless / native · 同一任务契约" data-node-context="架构组件">
+          <title>执行后端（可换） · DSH headless / native · 同一任务契约 · 架构组件</title>
           <rect x="814" y="116" width="200" height="80" rx="8" class="c-mask"/>
           <rect x="814" y="116" width="200" height="80" rx="8" class="c-backend" data-animate="node" style="--step:6" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(820 122) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="914" y="154" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">执行内核适配器</text>
-        <text data-detail="context" x="914" y="170" class="t-muted" font-size="9" text-anchor="middle">DSH headless 首选 / native 回退</text>
+          <text data-node-label="" data-detail-anchor="" x="914" y="154" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">执行后端（可换）</text>
+        <text data-detail="context" x="914" y="170" class="t-muted" font-size="8.8" text-anchor="middle">DSH headless / native · 同一任务契约</text>
         </g>
 
-        <g id="node-winfs" data-node-id="winfs" data-node-label="Windows 文件与命令" tabindex="0" role="button" aria-label="聚焦Windows 文件与命令，磁盘 · PowerShell, 授权工作区：只在这里写入" aria-pressed="false" data-node-kind="backend" data-node-sublabel="磁盘 · PowerShell" data-node-context="授权工作区：只在这里写入">
-          <title>Windows 文件与命令 · 磁盘 · PowerShell · 授权工作区：只在这里写入</title>
+        <g id="node-winfs" data-node-id="winfs" data-node-label="本机文件与命令" tabindex="0" role="button" aria-label="聚焦本机文件与命令，Windows Runner · PowerShell, 授权工作区：只在这里写入" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Windows Runner · PowerShell" data-node-context="授权工作区：只在这里写入">
+          <title>本机文件与命令 · Windows Runner · PowerShell · 授权工作区：只在这里写入</title>
           <rect x="1040" y="116" width="166" height="80" rx="8" class="c-mask"/>
           <rect x="1040" y="116" width="166" height="80" rx="8" class="c-backend" data-animate="node" style="--step:7" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="neutral" class="semantic-sigil s-backend" transform="translate(1046 122) scale(0.6875)">
             <rect x="3" y="3" width="10" height="10" rx="2"/>
             <circle cx="8" cy="8" r="1.2" class="sigil-fill"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="1123" y="154" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Windows 文件与命令</text>
-        <text data-detail="context" x="1123" y="170" class="t-muted" font-size="9" text-anchor="middle">磁盘 · PowerShell</text>
+          <text data-node-label="" data-detail-anchor="" x="1123" y="154" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">本机文件与命令</text>
+        <text data-detail="context" x="1123" y="170" class="t-muted" font-size="9" text-anchor="middle">Windows Runner · PowerShell</text>
         </g>
 
         <g id="node-model" data-node-id="model" data-node-label="模型服务" tabindex="0" role="button" aria-label="聚焦模型服务，HTTPS · 可换 provider, 架构组件" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="HTTPS · 可换 provider" data-node-context="架构组件">
@@ -5392,8 +5392,8 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <text data-detail="context" x="148" y="332" class="t-muted" font-size="9" text-anchor="middle">events.jsonl · 追加式</text>
         </g>
 
-        <g id="node-db" data-node-id="db" data-node-label="本机 SQLite" tabindex="0" role="button" aria-label="聚焦本机 SQLite，对话快照/项目/工单/证据/记忆/成长, 架构组件" aria-pressed="false" data-node-kind="database" data-node-sublabel="对话快照/项目/工单/证据/记忆/成长" data-node-context="架构组件">
-          <title>本机 SQLite · 对话快照/项目/工单/证据/记忆/成长 · 架构组件</title>
+        <g id="node-db" data-node-id="db" data-node-label="本机 SQLite" tabindex="0" role="button" aria-label="聚焦本机 SQLite，对话快照/项目/任务/证据/记忆/成长, 架构组件" aria-pressed="false" data-node-kind="database" data-node-sublabel="对话快照/项目/任务/证据/记忆/成长" data-node-context="架构组件">
+          <title>本机 SQLite · 对话快照/项目/任务/证据/记忆/成长 · 架构组件</title>
           <rect x="274" y="280" width="240" height="76" rx="8" class="c-mask"/>
           <rect x="274" y="280" width="240" height="76" rx="8" class="c-database" data-animate="node" style="--step:8" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(280 286) scale(0.6875)">
@@ -5401,7 +5401,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
           <text data-node-label="" data-detail-anchor="" x="394" y="316" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">本机 SQLite</text>
-        <text data-detail="context" x="394" y="332" class="t-muted" font-size="9" text-anchor="middle">对话快照/项目/工单/证据/记忆/成长</text>
+        <text data-detail="context" x="394" y="332" class="t-muted" font-size="9" text-anchor="middle">对话快照/项目/任务/证据/记忆/成长</text>
         </g>
 
         <g id="node-modules" data-node-id="modules" data-node-label="六模块分层" tabindex="0" role="button" aria-label="聚焦六模块分层，Core·Policy·Competence·Tool Grants·Memory·Context, 计划中（尚未实现）" aria-pressed="false" data-node-kind="external" data-node-sublabel="Core·Policy·Competence·Tool Grants·Memory·Context" data-node-tag="计划" data-node-context="计划中（尚未实现）">
@@ -5448,9 +5448,9 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <!-- Connection labels -->
 
 
-        <g data-detail="context" data-edge-from="chat" data-edge-to="exec" data-edge-label="派工单" data-edge-key="2" data-edge-id="dispatch">
+        <g data-detail="context" data-edge-from="chat" data-edge-to="exec" data-edge-label="派任务" data-edge-key="2" data-edge-id="dispatch">
           <rect x="531.6" y="126.9" width="38.8" height="14" rx="3" class="c-mask"/>
-          <text x="551" y="136.9" class="t-edge-emphasis" font-size="8" text-anchor="middle">派工单</text>
+          <text x="551" y="136.9" class="t-edge-emphasis" font-size="8" text-anchor="middle">派任务</text>
         </g>
         <g data-detail="context" data-edge-from="exec" data-edge-to="chat" data-edge-label="结果回主聊" data-edge-key="3" data-edge-id="reply">
           <rect x="522" y="173" width="58" height="14" rx="3" class="c-mask"/>
@@ -5692,7 +5692,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         </div>
         <ul>
           <li>主聊只负责理解、编排与汇总</li>
-          <li>真正动手的是执行者：一次一个工单</li>
+          <li>真正动手的是执行者：一次一个任务</li>
         </ul>
       </div>
 
@@ -5702,7 +5702,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <h3>只在你给的文件夹里动手</h3>
         </div>
         <ul>
-          <li>文件与命令写入走工单 + 授权工作区</li>
+          <li>文件与命令写入走任务 + 授权工作区</li>
           <li>工作区外要你逐次授权</li>
         </ul>
       </div>
@@ -5724,7 +5724,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <h3>数据留在本机</h3>
         </div>
         <ul>
-          <li>对话/项目/工单/记忆在本地 SQLite</li>
+          <li>对话/项目/任务/记忆在本地 SQLite</li>
           <li>换模型不换你的数据与事件流</li>
         </ul>
       </div>

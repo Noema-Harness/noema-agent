@@ -3,22 +3,69 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
-import { checkFigure, checkFigures, checkGovernanceFigure } from "./figure.mjs";
+import {
+  FIGURES,
+  candidateHash,
+  checkFigure,
+  checkFigures,
+  checkGovernanceFigure,
+  collectSectionHashes,
+  evaluateFigureFreshness,
+  parseDocumentSections,
+  sectionDigest,
+} from "./figure.mjs";
 
 const sha256 = (buffer) => crypto.createHash("sha256").update(buffer).digest("hex");
 
-function makeRoot({ withReadmeLinks = true } = {}) {
+function architectureDoc({ topology = "拓扑。", execution = "路径。", map = "地图。" } = {}) {
+  return [
+    "# ARCHITECTURE",
+    "",
+    "## 2. 进程与依赖方向",
+    "",
+    "结构。",
+    "",
+    "## 3. 组织对象与会话拓扑",
+    "",
+    "### 3.1 AgentRuntime 核心",
+    "",
+    topology,
+    "",
+    "### 3.2 当前实现",
+    "",
+    "实现。",
+    "",
+    "## 5. 一次执行的路径",
+    "",
+    execution,
+    "",
+    "## 6. 代码地图",
+    "",
+    map,
+    "",
+  ].join("\n");
+}
+
+function makeRoot({ withReadmeLinks = true, archDoc = architectureDoc() } = {}) {
   const root = path.join(".work", "runs", `figure-${process.pid}-${Date.now()}-${Math.random()}`);
   fs.mkdirSync(path.join(root, "docs", "assets"), { recursive: true });
-  const arch = "# ARCHITECTURE\n\n结构。\n";
   const html = Buffer.from("<html>figure</html>");
   const png = Buffer.from("PNGDATA-0123456789");
-  fs.writeFileSync(path.join(root, "docs", "ARCHITECTURE.md"), arch);
+  fs.writeFileSync(path.join(root, "docs", "ARCHITECTURE.md"), archDoc);
   fs.writeFileSync(path.join(root, "docs", "assets", "noema-architecture.html"), html);
   fs.writeFileSync(path.join(root, "docs", "assets", "noema-architecture.png"), png);
+  const candidate = {
+    diagram_type: "architecture",
+    meta: { title: "fixture", output: "docs/assets/noema-architecture.html" },
+  };
   const record = {
     version: 1,
-    source: { doc: "docs/ARCHITECTURE.md", sha256: sha256(Buffer.from(arch)) },
+    source: {
+      doc: "docs/ARCHITECTURE.md",
+      sha256: sha256(Buffer.from(archDoc)),
+      sections: collectSectionHashes(archDoc, FIGURES.architecture.sections),
+      candidateSha256: candidateHash(candidate),
+    },
     assets: {
       html: {
         path: "docs/assets/noema-architecture.html",
@@ -32,7 +79,7 @@ function makeRoot({ withReadmeLinks = true } = {}) {
       },
     },
     updatedAt: "2026-11-15T00:00:00.000Z",
-    candidate: { diagram_type: "architecture", meta: { title: "fixture" } },
+    candidate,
   };
   fs.writeFileSync(
     path.join(root, "docs", "assets", "noema-architecture.source.json"),
@@ -45,6 +92,10 @@ function makeRoot({ withReadmeLinks = true } = {}) {
       : "# README\n",
   );
   return root;
+}
+
+function readRecord(root, file) {
+  return JSON.parse(fs.readFileSync(path.join(root, "docs", "assets", file), "utf8"));
 }
 
 test("figure gate passes on a consistent record and catches each drift", () => {
@@ -103,6 +154,115 @@ test("figure gate passes on a consistent record and catches each drift", () => {
   }
 });
 
+test("changing a section the figure depends on asks for a judgement, not a silent rebuild", () => {
+  const root = makeRoot();
+  try {
+    const docPath = path.join(root, "docs", "ARCHITECTURE.md");
+    fs.writeFileSync(docPath, architectureDoc({ execution: "路径变了。" }));
+
+    const errors = checkFigure(root).errors;
+    assert.ok(
+      errors.some((error) => /图依赖章节在出图后变化（5\. 一次执行的路径）/u.test(error)),
+      errors.join("\n"),
+    );
+
+    const record = readRecord(root, "noema-architecture.source.json");
+    const sectionsNow = collectSectionHashes(
+      fs.readFileSync(docPath, "utf8"),
+      FIGURES.architecture.sections,
+    );
+    const unchangedCandidate = candidateHash(record.candidate);
+
+    const blocked = evaluateFigureFreshness({
+      source: record.source,
+      sectionsNow,
+      candidateSha256Now: unchangedCandidate,
+    });
+    assert.equal(blocked.needsJudgement, true);
+    assert.deepEqual(blocked.driftedTitles, ["5. 一次执行的路径"]);
+
+    const redrawn = evaluateFigureFreshness({
+      source: record.source,
+      sectionsNow,
+      candidateSha256Now: "different-candidate",
+    });
+    assert.equal(redrawn.needsJudgement, false);
+
+    const judged = evaluateFigureFreshness({
+      source: {
+        ...record.source,
+        rationale: { text: "只改了措辞，图不需要改。", sectionsDigest: sectionDigest(sectionsNow) },
+      },
+      sectionsNow,
+      candidateSha256Now: unchangedCandidate,
+    });
+    assert.equal(judged.needsJudgement, false);
+    assert.equal(judged.rationaleCovers, true);
+
+    // 章节再次变化时，旧理由不再覆盖新的状态，必须重新判断。
+    const laterSections = collectSectionHashes(
+      architectureDoc({ execution: "路径又变了。" }),
+      FIGURES.architecture.sections,
+    );
+    const stale = evaluateFigureFreshness({
+      source: {
+        ...record.source,
+        rationale: { text: "只改了措辞，图不需要改。", sectionsDigest: sectionDigest(sectionsNow) },
+      },
+      sectionsNow: laterSections,
+      candidateSha256Now: unchangedCandidate,
+    });
+    assert.equal(stale.needsJudgement, true);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("hand-editing the candidate without rebuilding fails the gate", () => {
+  const root = makeRoot();
+  try {
+    const sourcePath = path.join(root, "docs", "assets", "noema-architecture.source.json");
+    const record = readRecord(root, "noema-architecture.source.json");
+    record.candidate.meta.title = "手改的标题";
+    fs.writeFileSync(sourcePath, `${JSON.stringify(record, null, 2)}\n`);
+
+    const errors = checkFigure(root).errors;
+    assert.ok(
+      errors.some((error) => /candidate 与出图记录不一致/u.test(error)),
+      errors.join("\n"),
+    );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("sections are cut by heading level and hashed by body", () => {
+  const doc = [
+    "# T",
+    "",
+    "## A",
+    "",
+    "父。",
+    "",
+    "### A1",
+    "",
+    "子。",
+    "",
+    "## B",
+    "",
+    "另一节。",
+    "",
+  ].join("\n");
+  const sections = parseDocumentSections(doc);
+  assert.ok(sections.get("A").includes("### A1"));
+  assert.equal(sections.get("A1"), "子。");
+  assert.equal(sections.get("B"), "另一节。");
+
+  const hashes = collectSectionHashes(doc, ["A", "missing"]);
+  assert.equal(hashes[0].sha256, sha256(Buffer.from(sections.get("A"))));
+  assert.equal(hashes[1].sha256, null);
+});
+
 test("the governance figure has its own source, anchors and check", () => {
   const root = makeRoot();
   try {
@@ -120,8 +280,26 @@ test("the governance figure has its own source, anchors and check", () => {
 
     const governanceHtml = Buffer.from("<html>governance</html>");
     const png = Buffer.from("GOVPNG-0123456789");
-    const agents =
-      "# AGENTS\n\n![治理](docs/assets/noema-governance.png)\n\n[交互版](docs/assets/noema-governance.html)\n";
+    const agents = [
+      "# AGENTS",
+      "",
+      "![治理](docs/assets/noema-governance.png)",
+      "",
+      "[交互版](docs/assets/noema-governance.html)",
+      "",
+      "## 怎么推进一件工作",
+      "",
+      "推进。",
+      "",
+      "## 事实所有权",
+      "",
+      "所有权。",
+      "",
+    ].join("\n");
+    const candidate = {
+      diagram_type: "architecture",
+      meta: { title: "governance", output: "docs/assets/noema-governance.html" },
+    };
     fs.writeFileSync(path.join(root, "AGENTS.md"), agents);
     fs.writeFileSync(path.join(root, "docs", "assets", "noema-governance.html"), governanceHtml);
     fs.writeFileSync(path.join(root, "docs", "assets", "noema-governance.png"), png);
@@ -130,7 +308,12 @@ test("the governance figure has its own source, anchors and check", () => {
       JSON.stringify(
         {
           version: 1,
-          source: { doc: "AGENTS.md", sha256: sha256(Buffer.from(agents)) },
+          source: {
+            doc: "AGENTS.md",
+            sha256: sha256(Buffer.from(agents)),
+            sections: collectSectionHashes(agents, FIGURES.governance.sections),
+            candidateSha256: candidateHash(candidate),
+          },
           assets: {
             html: {
               path: "docs/assets/noema-governance.html",
@@ -144,7 +327,7 @@ test("the governance figure has its own source, anchors and check", () => {
             },
           },
           updatedAt: "2026-11-16T00:00:00.000Z",
-          candidate: { diagram_type: "architecture", meta: { title: "fixture" } },
+          candidate,
         },
         null,
         2,

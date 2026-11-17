@@ -5,7 +5,7 @@
     "diagram_type": "architecture",
     "meta": {
       "title": "Noema 治理全景：谁规定、谁决定、谁验证",
-      "subtitle": "提示层只放规则与顺序，模板与命令按需加载；一轮的四态（决策中/执行中/待验收/已收口）各绑一道门；机器门在下面，不靠自律。",
+      "subtitle": "提示层只放规则与顺序，模板与命令按需加载；事实流是一轮决策与证据的走向；一轮的四态（决策中/执行中/待验收/已收口）各绑一道门；机器门在下面，不靠自律。",
       "output": "docs/assets/noema-governance.html",
       "locale": "zh-CN",
       "quality_profile": "showcase",
@@ -49,7 +49,7 @@
         "icon": "messagebus",
         "pos": [
           205,
-          24
+          32
         ],
         "size": [
           140,
@@ -64,7 +64,7 @@
         "icon": "messagebus",
         "pos": [
           419,
-          24
+          32
         ],
         "size": [
           140,
@@ -79,7 +79,7 @@
         "icon": "messagebus",
         "pos": [
           643,
-          24
+          32
         ],
         "size": [
           140,
@@ -168,7 +168,7 @@
         "sublabel": "只写事实",
         "icon": "database",
         "pos": [
-          1091,
+          1080,
           180
         ],
         "size": [
@@ -223,6 +223,26 @@
       }
     ],
     "boundaries": [
+      {
+        "kind": "region",
+        "label": "提示层：只放规则与顺序",
+        "wraps": [
+          "rules",
+          "skill",
+          "ops"
+        ]
+      },
+      {
+        "kind": "region",
+        "label": "事实流：说 → 定 → 计划 → 执行 → 证据 → STATUS",
+        "wraps": [
+          "entry",
+          "plan",
+          "run",
+          "prove",
+          "status"
+        ]
+      },
       {
         "kind": "region",
         "label": "不靠自律：机器门",
@@ -364,19 +384,30 @@
   },
   "source": {
     "doc": "AGENTS.md",
-    "sha256": "79edeb35a9617638eb2431196437856a80042282b4dc56caac65caa898d9160b"
+    "sha256": "79edeb35a9617638eb2431196437856a80042282b4dc56caac65caa898d9160b",
+    "sections": [
+      {
+        "title": "怎么推进一件工作",
+        "sha256": "d7304b1aa555772054273322ab61275c6dc46f9252e3f7f930f6d36c498cb79a"
+      },
+      {
+        "title": "事实所有权",
+        "sha256": "caf600d8bf94e73b80744596d76a8583972775180f396387c9351592b704a497"
+      }
+    ],
+    "candidateSha256": "20dc3e5d0a71a29c58c658c153bde2fd2021fa04bbc21b67217f72b9eb38f952"
   },
   "assets": {
     "html": {
       "path": "docs/assets/noema-governance.html",
-      "sha256": "e6c4fc7662b50e8ae300fbc4eed8ec80af0c584266c888c34aad882673a3c3ca",
-      "bytes": 852790
+      "sha256": "9471290d17b47324bc799ed9cb45df4f4220b5348f0dc6ed7bcb5da932ea5bd1",
+      "bytes": 855478
     },
     "png": {
       "path": "docs/assets/noema-governance.png",
-      "sha256": "862eb6a14194027603c112554013f0f415882ae00f9889177dcc08dc5bd070e1",
-      "bytes": 165352
+      "sha256": "c6ecd444e6ccb7a51ec84882b661074ae37472008caf9440f62f27bbb649f319",
+      "bytes": 171163
     }
   },
-  "updatedAt": "2026-11-17T00:57:23.638Z"
+  "updatedAt": "2026-11-17T02:36:28.455Z"
 }

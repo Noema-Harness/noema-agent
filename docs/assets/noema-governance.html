@@ -5196,7 +5196,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <div class="pulse-dot"></div>
         <h1>Noema 治理全景：谁规定、谁决定、谁验证</h1>
       </div>
-      <p class="subtitle">提示层只放规则与顺序，模板与命令按需加载；一轮的四态（决策中/执行中/待验收/已收口）各绑一道门；机器门在下面，不靠自律。</p>
+      <p class="subtitle">提示层只放规则与顺序，模板与命令按需加载；事实流是一轮决策与证据的走向；一轮的四态（决策中/执行中/待验收/已收口）各绑一道门；机器门在下面，不靠自律。</p>
     </div>
 
 
@@ -5206,7 +5206,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
          data-preset-badge-editorial-plate="ARCHIFY / 图版 04">
       <svg viewBox="0 0 1240 620" role="img" lang="zh-CN" aria-labelledby="archify-diagram-title archify-diagram-description" data-animation="trace" data-preset="classic" data-quality-profile="showcase" data-node-ui="" data-diagram-type="architecture" data-reader-fit="authored-height">
         <title id="archify-diagram-title">Noema 治理全景：谁规定、谁决定、谁验证</title>
-        <desc id="archify-diagram-description">提示层只放规则与顺序，模板与命令按需加载；一轮的四态（决策中/执行中/待验收/已收口）各绑一道门；机器门在下面，不靠自律。</desc>
+        <desc id="archify-diagram-description">提示层只放规则与顺序，模板与命令按需加载；事实流是一轮决策与证据的走向；一轮的四态（决策中/执行中/待验收/已收口）各绑一道门；机器门在下面，不靠自律。</desc>
         <!-- Definitions -->
         <defs>
           <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
@@ -5251,7 +5251,11 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <rect width="100%" height="100%" fill="url(#grid)" />
 
         <!-- Boundaries (behind everything) -->
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="0" data-composition-frame-label="不靠自律：机器门" x="613" y="290" width="210" height="240" rx="12" class="c-region" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="0" data-composition-frame-label="提示层：只放规则与顺序" x="175" y="2" width="638" height="120" rx="12" class="c-region" stroke-width="1"/>
+
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="1" data-composition-frame-label="事实流：说 → 定 → 计划 → 执行 → 证据 → STATUS" x="175" y="138" width="1055" height="146" rx="12" class="c-region" stroke-width="1"/>
+
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="2" data-composition-frame-label="不靠自律：机器门" x="613" y="290" width="210" height="240" rx="12" class="c-region" stroke-width="1"/>
 
         <!-- Connection paths (before components for correct z-order) -->
         <g data-graph-role="automatic-crossover" style="--step:0">
@@ -5271,20 +5275,20 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <path data-edge-from="run" data-edge-to="prove" data-edge-label="交付与证据" data-edge-key="3" data-edge-id="deliver" data-composition-points="793,216;877,216" data-composition-crossover="halo" data-composition-independent="true" d="M 793 216 L 877 216" class="a-default" data-animate="edge" style="--step:3" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:4">
-          <path data-graph-role="automatic-crossover-underlay" d="M 1007 216 L 1091 216" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="prove" data-edge-to="status" data-edge-label="记录事实" data-edge-key="4" data-edge-id="record" data-composition-points="1007,216;1091,216" data-composition-crossover="halo" data-composition-independent="true" d="M 1007 216 L 1091 216" class="a-default" data-animate="edge" style="--step:4" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 1007 216 L 1080 216" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="prove" data-edge-to="status" data-edge-label="记录事实" data-edge-key="4" data-edge-id="record" data-composition-points="1007,216;1080,216" data-composition-crossover="halo" data-composition-independent="true" d="M 1007 216 L 1080 216" class="a-default" data-animate="edge" style="--step:4" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:5">
-          <path data-graph-role="automatic-crossover-underlay" d="M 275 94 L 275 168" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="rules" data-edge-to="entry" data-edge-label="每轮先读" data-edge-key="5" data-edge-id="rule" data-composition-points="275,94;275,168" data-composition-crossover="halo" data-composition-independent="true" d="M 275 94 L 275 168" class="a-dashed" data-animate="edge" style="--step:5" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 275 102 L 275 168" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="rules" data-edge-to="entry" data-edge-label="每轮先读" data-edge-key="5" data-edge-id="rule" data-composition-points="275,102;275,168" data-composition-crossover="halo" data-composition-independent="true" d="M 275 102 L 275 168" class="a-dashed" data-animate="edge" style="--step:5" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:6">
-          <path data-graph-role="automatic-crossover-underlay" d="M 489 94 L 489 180" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="skill" data-edge-to="plan" data-edge-label="模板" data-edge-key="6" data-edge-id="template" data-composition-points="489,94;489,180" data-composition-crossover="halo" data-composition-independent="true" d="M 489 94 L 489 180" class="a-dashed" data-animate="edge" style="--step:6" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 489 102 L 489 180" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="skill" data-edge-to="plan" data-edge-label="模板" data-edge-key="6" data-edge-id="template" data-composition-points="489,102;489,180" data-composition-crossover="halo" data-composition-independent="true" d="M 489 102 L 489 180" class="a-dashed" data-animate="edge" style="--step:6" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:7">
-          <path data-graph-role="automatic-crossover-underlay" d="M 713 94 L 713 157 Q 713 165 705 165 L 648 165 Q 640 165 640 173 L 640 288 Q 640 296 648 296 L 703 296 Q 711 296 711 304 L 711 320" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="ops" data-edge-to="gates" data-edge-label="命令与修法" data-edge-key="7" data-edge-id="manual" data-composition-points="713,94;713,165;640,165;640,296;711,296;711,320" data-composition-crossover="halo" data-composition-independent="true" d="M 713 94 L 713 157 Q 713 165 705 165 L 648 165 Q 640 165 640 173 L 640 288 Q 640 296 648 296 L 703 296 Q 711 296 711 304 L 711 320" class="a-dashed" data-animate="edge" style="--step:7" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 713 102 L 713 157 Q 713 165 705 165 L 648 165 Q 640 165 640 173 L 640 288 Q 640 296 648 296 L 703 296 Q 711 296 711 304 L 711 320" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="ops" data-edge-to="gates" data-edge-label="命令与修法" data-edge-key="7" data-edge-id="manual" data-composition-points="713,102;713,165;640,165;640,296;711,296;711,320" data-composition-crossover="halo" data-composition-independent="true" d="M 713 102 L 713 157 Q 713 165 705 165 L 648 165 Q 640 165 640 173 L 640 288 Q 640 296 648 296 L 703 296 Q 711 296 711 304 L 711 320" class="a-dashed" data-animate="edge" style="--step:7" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:8">
           <path data-graph-role="automatic-crossover-underlay" d="M 725 264 L 725 320" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
@@ -5300,46 +5304,46 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         </g>
 
         <!-- Components -->
-        <g id="node-rules" data-node-id="rules" data-node-label="AGENTS 规则" tabindex="0" role="button" aria-label="聚焦AGENTS 规则，常驻 · 每轮必读, 架构组件" aria-pressed="false" data-node-kind="messagebus" data-node-sublabel="常驻 · 每轮必读" data-node-context="架构组件">
-          <title>AGENTS 规则 · 常驻 · 每轮必读 · 架构组件</title>
-          <rect x="205" y="24" width="140" height="70" rx="8" class="c-mask"/>
-          <rect x="205" y="24" width="140" height="70" rx="8" class="c-messagebus" data-animate="node" style="--step:5" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="messagebus" class="semantic-sigil s-messagebus" transform="translate(211 30) scale(0.6875)">
+        <g id="node-rules" data-node-id="rules" data-node-label="AGENTS 规则" tabindex="0" role="button" aria-label="聚焦AGENTS 规则，常驻 · 每轮必读, 提示层：只放规则与顺序" aria-pressed="false" data-node-kind="messagebus" data-node-sublabel="常驻 · 每轮必读" data-node-context="提示层：只放规则与顺序">
+          <title>AGENTS 规则 · 常驻 · 每轮必读 · 提示层：只放规则与顺序</title>
+          <rect x="205" y="32" width="140" height="70" rx="8" class="c-mask"/>
+          <rect x="205" y="32" width="140" height="70" rx="8" class="c-messagebus" data-animate="node" style="--step:5" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="messagebus" class="semantic-sigil s-messagebus" transform="translate(211 38) scale(0.6875)">
             <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/>
             <circle cx="5" cy="4.5" r="1" class="sigil-fill"/>
             <circle cx="10.5" cy="8" r="1" class="sigil-fill"/>
             <circle cx="7" cy="11.5" r="1" class="sigil-fill"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="275" y="57" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">AGENTS 规则</text>
-        <text data-detail="context" x="275" y="73" class="t-muted" font-size="9" text-anchor="middle">常驻 · 每轮必读</text>
+          <text data-node-label="" data-detail-anchor="" x="275" y="65" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">AGENTS 规则</text>
+        <text data-detail="context" x="275" y="81" class="t-muted" font-size="9" text-anchor="middle">常驻 · 每轮必读</text>
         </g>
 
-        <g id="node-skill" data-node-id="skill" data-node-label="技能模板" tabindex="0" role="button" aria-label="聚焦技能模板，按需加载, 架构组件" aria-pressed="false" data-node-kind="messagebus" data-node-sublabel="按需加载" data-node-context="架构组件">
-          <title>技能模板 · 按需加载 · 架构组件</title>
-          <rect x="419" y="24" width="140" height="70" rx="8" class="c-mask"/>
-          <rect x="419" y="24" width="140" height="70" rx="8" class="c-messagebus" data-animate="node" style="--step:6" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="messagebus" class="semantic-sigil s-messagebus" transform="translate(425 30) scale(0.6875)">
+        <g id="node-skill" data-node-id="skill" data-node-label="技能模板" tabindex="0" role="button" aria-label="聚焦技能模板，按需加载, 提示层：只放规则与顺序" aria-pressed="false" data-node-kind="messagebus" data-node-sublabel="按需加载" data-node-context="提示层：只放规则与顺序">
+          <title>技能模板 · 按需加载 · 提示层：只放规则与顺序</title>
+          <rect x="419" y="32" width="140" height="70" rx="8" class="c-mask"/>
+          <rect x="419" y="32" width="140" height="70" rx="8" class="c-messagebus" data-animate="node" style="--step:6" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="messagebus" class="semantic-sigil s-messagebus" transform="translate(425 38) scale(0.6875)">
             <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/>
             <circle cx="5" cy="4.5" r="1" class="sigil-fill"/>
             <circle cx="10.5" cy="8" r="1" class="sigil-fill"/>
             <circle cx="7" cy="11.5" r="1" class="sigil-fill"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="489" y="57" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">技能模板</text>
-        <text data-detail="context" x="489" y="73" class="t-muted" font-size="9" text-anchor="middle">按需加载</text>
+          <text data-node-label="" data-detail-anchor="" x="489" y="65" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">技能模板</text>
+        <text data-detail="context" x="489" y="81" class="t-muted" font-size="9" text-anchor="middle">按需加载</text>
         </g>
 
-        <g id="node-ops" data-node-id="ops" data-node-label="OPERATIONS" tabindex="0" role="button" aria-label="聚焦OPERATIONS，命令与修法, 架构组件" aria-pressed="false" data-node-kind="messagebus" data-node-sublabel="命令与修法" data-node-context="架构组件">
-          <title>OPERATIONS · 命令与修法 · 架构组件</title>
-          <rect x="643" y="24" width="140" height="70" rx="8" class="c-mask"/>
-          <rect x="643" y="24" width="140" height="70" rx="8" class="c-messagebus" data-animate="node" style="--step:7" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="messagebus" class="semantic-sigil s-messagebus" transform="translate(649 30) scale(0.6875)">
+        <g id="node-ops" data-node-id="ops" data-node-label="OPERATIONS" tabindex="0" role="button" aria-label="聚焦OPERATIONS，命令与修法, 提示层：只放规则与顺序" aria-pressed="false" data-node-kind="messagebus" data-node-sublabel="命令与修法" data-node-context="提示层：只放规则与顺序">
+          <title>OPERATIONS · 命令与修法 · 提示层：只放规则与顺序</title>
+          <rect x="643" y="32" width="140" height="70" rx="8" class="c-mask"/>
+          <rect x="643" y="32" width="140" height="70" rx="8" class="c-messagebus" data-animate="node" style="--step:7" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="messagebus" class="semantic-sigil s-messagebus" transform="translate(649 38) scale(0.6875)">
             <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/>
             <circle cx="5" cy="4.5" r="1" class="sigil-fill"/>
             <circle cx="10.5" cy="8" r="1" class="sigil-fill"/>
             <circle cx="7" cy="11.5" r="1" class="sigil-fill"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="713" y="57" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">OPERATIONS</text>
-        <text data-detail="context" x="713" y="73" class="t-muted" font-size="9" text-anchor="middle">命令与修法</text>
+          <text data-node-label="" data-detail-anchor="" x="713" y="65" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">OPERATIONS</text>
+        <text data-detail="context" x="713" y="81" class="t-muted" font-size="9" text-anchor="middle">命令与修法</text>
         </g>
 
         <g id="node-you" data-node-id="you" data-node-label="你" tabindex="0" role="button" aria-label="聚焦你，目标 · 反馈 · 验收, 架构组件" aria-pressed="false" data-node-kind="external" data-node-sublabel="目标 · 反馈 · 验收" data-node-context="架构组件">
@@ -5353,8 +5357,8 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <text data-detail="context" x="90" y="230" class="t-muted" font-size="8.5" text-anchor="middle">目标 · 反馈 · 验收</text>
         </g>
 
-        <g id="node-entry" data-node-id="entry" data-node-label="DECISIONS" tabindex="0" role="button" aria-label="聚焦DECISIONS，条目 · 阶段 · 勾选, 架构组件" aria-pressed="false" data-node-kind="security" data-node-sublabel="条目 · 阶段 · 勾选" data-node-context="架构组件">
-          <title>DECISIONS · 条目 · 阶段 · 勾选 · 架构组件</title>
+        <g id="node-entry" data-node-id="entry" data-node-label="DECISIONS" tabindex="0" role="button" aria-label="聚焦DECISIONS，条目 · 阶段 · 勾选, 事实流：说 → 定 → 计划 → 执行 → 证据 → STATUS" aria-pressed="false" data-node-kind="security" data-node-sublabel="条目 · 阶段 · 勾选" data-node-context="事实流：说 → 定 → 计划 → 执行 → 证据 → STATUS">
+          <title>DECISIONS · 条目 · 阶段 · 勾选 · 事实流：说 → 定 → 计划 → 执行 → 证据 → STATUS</title>
           <rect x="205" y="168" width="140" height="96" rx="8" class="c-mask"/>
           <rect x="205" y="168" width="140" height="96" rx="8" class="c-security" data-animate="node" style="--step:1" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(211 174) scale(0.6875)">
@@ -5365,8 +5369,8 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <text data-detail="context" x="275" y="230" class="t-muted" font-size="9" text-anchor="middle">条目 · 阶段 · 勾选</text>
         </g>
 
-        <g id="node-plan" data-node-id="plan" data-node-label="卡 + change" tabindex="0" role="button" aria-label="聚焦卡 + change，卡 · change, 架构组件" aria-pressed="false" data-node-kind="backend" data-node-sublabel="卡 · change" data-node-context="架构组件">
-          <title>卡 + change · 卡 · change · 架构组件</title>
+        <g id="node-plan" data-node-id="plan" data-node-label="卡 + change" tabindex="0" role="button" aria-label="聚焦卡 + change，卡 · change, 事实流：说 → 定 → 计划 → 执行 → 证据 → STATUS" aria-pressed="false" data-node-kind="backend" data-node-sublabel="卡 · change" data-node-context="事实流：说 → 定 → 计划 → 执行 → 证据 → STATUS">
+          <title>卡 + change · 卡 · change · 事实流：说 → 定 → 计划 → 执行 → 证据 → STATUS</title>
           <rect x="419" y="180" width="140" height="72" rx="8" class="c-mask"/>
           <rect x="419" y="180" width="140" height="72" rx="8" class="c-backend" data-animate="node" style="--step:2" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(425 186) scale(0.6875)">
@@ -5376,8 +5380,8 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <text data-detail="context" x="489" y="230" class="t-muted" font-size="9" text-anchor="middle">卡 · change</text>
         </g>
 
-        <g id="node-run" data-node-id="run" data-node-label="一轮推进" tabindex="0" role="button" aria-label="聚焦一轮推进，四态与门, 架构组件" aria-pressed="false" data-node-kind="backend" data-node-sublabel="四态与门" data-node-context="架构组件">
-          <title>一轮推进 · 四态与门 · 架构组件</title>
+        <g id="node-run" data-node-id="run" data-node-label="一轮推进" tabindex="0" role="button" aria-label="聚焦一轮推进，四态与门, 事实流：说 → 定 → 计划 → 执行 → 证据 → STATUS" aria-pressed="false" data-node-kind="backend" data-node-sublabel="四态与门" data-node-context="事实流：说 → 定 → 计划 → 执行 → 证据 → STATUS">
+          <title>一轮推进 · 四态与门 · 事实流：说 → 定 → 计划 → 执行 → 证据 → STATUS</title>
           <rect x="643" y="168" width="150" height="96" rx="8" class="c-mask"/>
           <rect x="643" y="168" width="150" height="96" rx="8" class="c-backend" data-animate="node" style="--step:3" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(649 174) scale(0.6875)">
@@ -5387,8 +5391,8 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <text data-detail="context" x="718" y="230" class="t-muted" font-size="9" text-anchor="middle">四态与门</text>
         </g>
 
-        <g id="node-prove" data-node-id="prove" data-node-label="交付与证据" tabindex="0" role="button" aria-label="聚焦交付与证据，specs · 测试, 架构组件" aria-pressed="false" data-node-kind="database" data-node-sublabel="specs · 测试" data-node-context="架构组件">
-          <title>交付与证据 · specs · 测试 · 架构组件</title>
+        <g id="node-prove" data-node-id="prove" data-node-label="交付与证据" tabindex="0" role="button" aria-label="聚焦交付与证据，specs · 测试, 事实流：说 → 定 → 计划 → 执行 → 证据 → STATUS" aria-pressed="false" data-node-kind="database" data-node-sublabel="specs · 测试" data-node-context="事实流：说 → 定 → 计划 → 执行 → 证据 → STATUS">
+          <title>交付与证据 · specs · 测试 · 事实流：说 → 定 → 计划 → 执行 → 证据 → STATUS</title>
           <rect x="877" y="180" width="130" height="72" rx="8" class="c-mask"/>
           <rect x="877" y="180" width="130" height="72" rx="8" class="c-database" data-animate="node" style="--step:4" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(883 186) scale(0.6875)">
@@ -5399,16 +5403,16 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <text data-detail="context" x="942" y="230" class="t-muted" font-size="9" text-anchor="middle">specs · 测试</text>
         </g>
 
-        <g id="node-status" data-node-id="status" data-node-label="STATUS" tabindex="0" role="button" aria-label="聚焦STATUS，只写事实, 架构组件" aria-pressed="false" data-node-kind="database" data-node-sublabel="只写事实" data-node-context="架构组件">
-          <title>STATUS · 只写事实 · 架构组件</title>
-          <rect x="1091" y="180" width="120" height="72" rx="8" class="c-mask"/>
-          <rect x="1091" y="180" width="120" height="72" rx="8" class="c-database" data-animate="node" style="--step:5" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(1097 186) scale(0.6875)">
+        <g id="node-status" data-node-id="status" data-node-label="STATUS" tabindex="0" role="button" aria-label="聚焦STATUS，只写事实, 事实流：说 → 定 → 计划 → 执行 → 证据 → STATUS" aria-pressed="false" data-node-kind="database" data-node-sublabel="只写事实" data-node-context="事实流：说 → 定 → 计划 → 执行 → 证据 → STATUS">
+          <title>STATUS · 只写事实 · 事实流：说 → 定 → 计划 → 执行 → 证据 → STATUS</title>
+          <rect x="1080" y="180" width="120" height="72" rx="8" class="c-mask"/>
+          <rect x="1080" y="180" width="120" height="72" rx="8" class="c-database" data-animate="node" style="--step:5" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(1086 186) scale(0.6875)">
             <ellipse cx="8" cy="4" rx="5" ry="2"/>
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="1151" y="214" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">STATUS</text>
-        <text data-detail="context" x="1151" y="230" class="t-muted" font-size="9" text-anchor="middle">只写事实</text>
+          <text data-node-label="" data-detail-anchor="" x="1140" y="214" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">STATUS</text>
+        <text data-detail="context" x="1140" y="230" class="t-muted" font-size="9" text-anchor="middle">只写事实</text>
         </g>
 
         <g id="node-review" data-node-id="review" data-node-label="npm run review" tabindex="0" role="button" aria-label="聚焦npm run review，唯一审核视图, 架构组件" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="唯一审核视图" data-node-context="架构组件">
@@ -5466,16 +5470,16 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <text x="835" y="206" class="t-edge-default" font-size="8" text-anchor="middle">交付与证据</text>
         </g>
         <g data-detail="context" data-edge-from="prove" data-edge-to="status" data-edge-label="记录事实" data-edge-key="4" data-edge-id="record">
-          <rect x="1024.8" y="196" width="48.4" height="14" rx="3" class="c-mask"/>
-          <text x="1049" y="206" class="t-edge-default" font-size="8" text-anchor="middle">记录事实</text>
+          <rect x="1019.3" y="196" width="48.4" height="14" rx="3" class="c-mask"/>
+          <text x="1043.5" y="206" class="t-edge-default" font-size="8" text-anchor="middle">记录事实</text>
         </g>
         <g data-detail="context" data-edge-from="rules" data-edge-to="entry" data-edge-label="每轮先读" data-edge-key="5" data-edge-id="rule">
-          <rect x="220.60000000000002" y="124" width="48.4" height="14" rx="3" class="c-mask"/>
-          <text x="244.8" y="134" class="t-edge-dashed" font-size="8" text-anchor="middle">每轮先读</text>
+          <rect x="220.60000000000002" y="128" width="48.4" height="14" rx="3" class="c-mask"/>
+          <text x="244.8" y="138" class="t-edge-dashed" font-size="8" text-anchor="middle">每轮先读</text>
         </g>
         <g data-detail="context" data-edge-from="skill" data-edge-to="plan" data-edge-label="模板" data-edge-key="6" data-edge-id="template">
-          <rect x="453" y="130" width="30" height="14" rx="3" class="c-mask"/>
-          <text x="468" y="140" class="t-edge-dashed" font-size="8" text-anchor="middle">模板</text>
+          <rect x="453" y="134" width="30" height="14" rx="3" class="c-mask"/>
+          <text x="468" y="144" class="t-edge-dashed" font-size="8" text-anchor="middle">模板</text>
         </g>
         <g data-detail="context" data-edge-from="ops" data-edge-to="gates" data-edge-label="命令与修法" data-edge-key="7" data-edge-id="manual">
           <rect x="647.5" y="145" width="58" height="14" rx="3" class="c-mask"/>
@@ -5495,7 +5499,17 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         </g>
 
         <!-- Boundary labels (foreground masks keep routes out of titles) -->
-        <g data-graph-role="structural-frame-label" data-composition-frame-id="0" data-composition-frame-kind="region" data-composition-frame-label="不靠自律：机器门">
+        <g data-graph-role="structural-frame-label" data-composition-frame-id="0" data-composition-frame-kind="region" data-composition-frame-label="提示层：只放规则与顺序">
+          <rect data-graph-role="structural-frame-label-mask" x="179" y="12" width="128.8" height="16" rx="3" class="c-mask"/>
+          <text data-boundary-label="" x="183" y="25" class="t-cloud" font-size="9" font-weight="600">提示层：只放规则与顺序</text>
+        </g>
+
+        <g data-graph-role="structural-frame-label" data-composition-frame-id="1" data-composition-frame-kind="region" data-composition-frame-label="事实流：说 → 定 → 计划 → 执行 → 证据 → STATUS">
+          <rect data-graph-role="structural-frame-label-mask" x="721" y="148" width="253" height="16" rx="3" class="c-mask"/>
+          <text data-boundary-label="" x="725" y="161" class="t-cloud" font-size="9" font-weight="600">事实流：说 → 定 → 计划 → 执行 → 证据 → STATUS</text>
+        </g>
+
+        <g data-graph-role="structural-frame-label" data-composition-frame-id="2" data-composition-frame-kind="region" data-composition-frame-label="不靠自律：机器门">
           <rect data-graph-role="structural-frame-label-mask" x="617" y="300" width="96.39999999999999" height="16" rx="3" class="c-mask"/>
           <text data-boundary-label="" x="621" y="313" class="t-cloud" font-size="9" font-weight="600">不靠自律：机器门</text>
         </g>

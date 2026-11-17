@@ -23,6 +23,9 @@ import { pathToFileURL } from "node:url";
  * - architecture：用户向，入口是 README，源是 docs/ARCHITECTURE.md（产品结构）。
  * - governance：维护者向，入口是 AGENTS.md，源是 AGENTS.md（治理结构）。
  * 每张图都必须有它的入口引用，否则图会被忘掉。
+ *
+ * `sections` 是图真正依赖的章节：这些章节的正文变了，说明图可能已经过时，
+ * 必须重新判断，而不是像过去那样只重跑渲染、内容原地不动。章节按标题字面匹配。
  */
 export const FIGURES = {
   architecture: {
@@ -33,6 +36,7 @@ export const FIGURES = {
     png: "docs/assets/noema-architecture.png",
     doc: "docs/ARCHITECTURE.md",
     anchors: ["README.md"],
+    sections: ["2. 进程与依赖方向", "3.1 AgentRuntime 核心", "5. 一次执行的路径", "6. 代码地图"],
   },
   governance: {
     key: "governance",
@@ -42,6 +46,7 @@ export const FIGURES = {
     png: "docs/assets/noema-governance.png",
     doc: "AGENTS.md",
     anchors: ["AGENTS.md"],
+    sections: ["怎么推进一件工作", "事实所有权"],
   },
 };
 
@@ -53,6 +58,87 @@ const sizeOf = (file) => fs.statSync(file).size;
 
 function readJson(file) {
   return JSON.parse(fs.readFileSync(file, "utf8"));
+}
+
+export const candidateHash = (candidate) =>
+  sha256(Buffer.from(`${JSON.stringify(candidate)}\n`, "utf8"));
+
+/**
+ * 按标题把 Markdown 切成章节，返回 `标题 → 正文`（不含标题行）。
+ * 子标题属于父章节的正文；只有同级或更高级的标题才结束当前章节。
+ */
+export function parseDocumentSections(text) {
+  const lines = text.replace(/\r\n?/gu, "\n").split("\n");
+  const headings = [];
+  for (const [index, line] of lines.entries()) {
+    const match = /^(#{1,6})\s+(.+?)\s*$/u.exec(line);
+    if (match) headings.push({ index, level: match[1].length, title: match[2].trim() });
+  }
+  const sections = new Map();
+  for (const [position, heading] of headings.entries()) {
+    const next = headings.slice(position + 1).find((candidate) => candidate.level <= heading.level);
+    const body = lines
+      .slice(heading.index + 1, next ? next.index : lines.length)
+      .join("\n")
+      .trim();
+    sections.set(heading.title, body);
+  }
+  return sections;
+}
+
+/** 取图依赖章节的摘要；章节标题或正文变了，摘要就变。 */
+export function collectSectionHashes(docText, titles = []) {
+  const sections = parseDocumentSections(docText);
+  return titles.map((title) => ({
+    title,
+    sha256: sections.has(title) ? sha256(Buffer.from(sections.get(title), "utf8")) : null,
+  }));
+}
+
+export const sectionDigest = (sections = []) =>
+  sha256(Buffer.from(JSON.stringify(sections), "utf8"));
+
+/** 比较出图时记录的章节摘要与现在的章节摘要。 */
+export function describeSectionDrift(stored = [], current = []) {
+  const storedByTitle = new Map(stored.map((section) => [section.title, section.sha256]));
+  const currentByTitle = new Map(current.map((section) => [section.title, section.sha256]));
+  const changed = [];
+  const removed = [];
+  const unbuilt = [];
+  for (const [title, hash] of storedByTitle) {
+    if (!currentByTitle.has(title)) removed.push(title);
+    else if (currentByTitle.get(title) !== hash) changed.push(title);
+  }
+  for (const title of currentByTitle.keys()) {
+    if (!storedByTitle.has(title)) unbuilt.push(title);
+  }
+  return { changed, removed, unbuilt };
+}
+
+/**
+ * 判断这一次能否直接重出图。
+ *
+ * 章节变了但 `candidate` 一个字没改，说明维护者只是重跑渲染，图的内容并不会跟上文档。
+ * 这种情况必须二选一：真去改图（candidate 变了），或者显式记录“图不需要改”的理由
+ * （`--sections-changed "<理由>"`，理由与该次章节状态绑定，下次章节再变要重新判断）。
+ */
+export function evaluateFigureFreshness({ source, sectionsNow = [], candidateSha256Now } = {}) {
+  const stored = source?.sections ?? [];
+  const drift = describeSectionDrift(stored, sectionsNow);
+  const driftedTitles = [...drift.changed, ...drift.removed, ...drift.unbuilt];
+  const candidateUnchanged =
+    Boolean(source?.candidateSha256) && source.candidateSha256 === candidateSha256Now;
+  const recordedRationale = source?.rationale;
+  const rationaleCovers =
+    Boolean(recordedRationale?.text?.trim()) &&
+    recordedRationale.sectionsDigest === sectionDigest(sectionsNow);
+  return {
+    drift,
+    driftedTitles,
+    candidateUnchanged,
+    rationaleCovers,
+    needsJudgement: driftedTitles.length > 0 && candidateUnchanged && !rationaleCovers,
+  };
 }
 
 export function checkOne(root, figure) {
@@ -88,6 +174,41 @@ export function checkOne(root, figure) {
         `${figure.doc} 在出图后已变化（${actual.slice(0, 12)} ≠ ${String(source.source.sha256).slice(0, 12)}）：先更新图，再改它的源文档；运行 npm run figure:build`,
       );
     }
+
+    // 图依赖的章节变了，图不一定还准确：先判断图要不要改，再谈重出。
+    const currentSections = collectSectionHashes(
+      fs.readFileSync(at(figure.doc), "utf8"),
+      figure.sections ?? [],
+    );
+    const storedSections = source?.source?.sections;
+    if ((figure.sections ?? []).length > 0) {
+      if (!Array.isArray(storedSections) || storedSections.length === 0) {
+        errors.push(
+          `${figure.source} 缺少 source.sections：图不知道依赖哪些章节；运行 npm run figure:build 重新出图一次`,
+        );
+      } else {
+        const drift = describeSectionDrift(storedSections, currentSections);
+        const drifted = [...drift.changed, ...drift.removed, ...drift.unbuilt];
+        if (drifted.length > 0) {
+          errors.push(
+            `${figure.doc} 的图依赖章节在出图后变化（${drifted.join("、")}）：先判断图是否需要改；改完再运行 npm run figure:build，确认图无需改图就用 npm run figure:build -- --sections-changed "理由" 记录判断`,
+          );
+        }
+      }
+    }
+  }
+
+  if (source?.source?.candidateSha256) {
+    const actualCandidate = candidateHash(source.candidate);
+    if (actualCandidate !== source.source.candidateSha256) {
+      errors.push(
+        `${figure.source} 的 candidate 与出图记录不一致：手改过图的内容，运行 npm run figure:build 重出图（不要手改 candidate 绕过校验）`,
+      );
+    }
+  } else {
+    errors.push(
+      `${figure.source} 缺少 source.candidateSha256：运行 npm run figure:build 重新出图一次`,
+    );
   }
 
   for (const key of ["html", "png"]) {
@@ -292,7 +413,7 @@ function archifyBin(root, source) {
   );
 }
 
-async function buildOne(root, figure, { log }) {
+async function buildOne(root, figure, { log, rationale = "" }) {
   const at = (relative) => path.join(root, relative);
   const sourcePath = at(figure.source);
   if (!fs.existsSync(sourcePath)) {
@@ -302,10 +423,43 @@ async function buildOne(root, figure, { log }) {
   const candidate = record?.candidate;
   if (!candidate) throw new Error(`${figure.source} 缺少 candidate`);
 
+  candidate.meta = { ...candidate.meta, output: figure.html };
+
+  // 章节变了、图却没变，就是“只重跑渲染、内容原地不动”。这里要求先做判断。
+  const currentSections =
+    (figure.sections ?? []).length > 0
+      ? collectSectionHashes(fs.readFileSync(at(figure.doc), "utf8"), figure.sections)
+      : [];
+  const candidateSha256Now = candidateHash(candidate);
+  const freshness = evaluateFigureFreshness({
+    source: record?.source,
+    sectionsNow: currentSections,
+    candidateSha256Now,
+  });
+  if (freshness.needsJudgement) {
+    const reason = String(rationale ?? "").trim();
+    if (!reason) {
+      throw new Error(
+        `图依赖的章节变化（${freshness.driftedTitles.join("、")}），但 candidate 未变：先判断图是否需要改。` +
+          `改图后再重出；确认图无需改，运行 npm run figure:build -- --sections-changed "理由"`,
+      );
+    }
+  }
+  let judgement = null;
+  if (freshness.driftedTitles.length > 0) {
+    if (freshness.needsJudgement) {
+      judgement = {
+        text: String(rationale).trim(),
+        sectionsDigest: sectionDigest(currentSections),
+      };
+    } else if (freshness.rationaleCovers && freshness.candidateUnchanged) {
+      judgement = record.source.rationale;
+    }
+  }
+
   const candidateDir = at(".archify/figure-build");
   fs.mkdirSync(candidateDir, { recursive: true });
   const candidatePath = path.join(candidateDir, "candidate.json");
-  candidate.meta = { ...candidate.meta, output: figure.html };
   fs.writeFileSync(candidatePath, `${JSON.stringify(candidate, null, 2)}\n`, "utf8");
 
   const assetsDir = at("docs/assets");
@@ -365,7 +519,13 @@ async function buildOne(root, figure, { log }) {
   log(`figure: capture ${figure.png}`);
   await capturePng(root, at(figure.html), at(figure.png));
 
-  record.source = { doc: figure.doc, sha256: sha256File(at(figure.doc)) };
+  record.source = {
+    doc: figure.doc,
+    sha256: sha256File(at(figure.doc)),
+    sections: currentSections,
+    candidateSha256: candidateSha256Now,
+    ...(judgement ? { rationale: judgement } : {}),
+  };
   record.assets = {
     html: {
       path: figure.html,
@@ -388,17 +548,20 @@ async function buildOne(root, figure, { log }) {
 
 export async function buildFigure(
   root = process.cwd(),
-  { log = console.log, figure = "architecture" } = {},
+  { log = console.log, figure = "architecture", rationale = "" } = {},
 ) {
   const target = FIGURES[figure];
   if (!target) throw new Error(`未知的图：${figure}`);
-  return buildOne(root, target, { log });
+  return buildOne(root, target, { log, rationale });
 }
 
-export async function buildFigures(root = process.cwd(), { log = console.log } = {}) {
+export async function buildFigures(
+  root = process.cwd(),
+  { log = console.log, rationale = "" } = {},
+) {
   const records = {};
   for (const figure of Object.values(FIGURES)) {
-    records[figure.key] = await buildOne(root, figure, { log });
+    records[figure.key] = await buildOne(root, figure, { log, rationale });
   }
   return records;
 }
@@ -427,16 +590,20 @@ if (invokedDirectly) {
     );
   } else if (command === "build") {
     const name = process.argv[3] ?? "architecture";
+    const rationaleFlag = process.argv.indexOf("--sections-changed");
+    const rationale = rationaleFlag > 0 ? (process.argv[rationaleFlag + 1] ?? "") : "";
     try {
       await (name === "all"
-        ? buildFigures(process.cwd())
-        : buildFigure(process.cwd(), { figure: name }));
+        ? buildFigures(process.cwd(), { rationale })
+        : buildFigure(process.cwd(), { figure: name, rationale }));
     } catch (error) {
       console.error(`figure-build: FAILED\n  - ${error.message}`);
       process.exitCode = 1;
     }
   } else {
-    console.error(`用法：node scripts/figure.mjs <check|build [architecture|governance|all]>`);
+    console.error(
+      `用法：node scripts/figure.mjs <check|build [architecture|governance|all] [--sections-changed "理由"]>`,
+    );
     process.exitCode = 2;
   }
 }
