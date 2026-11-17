@@ -29,6 +29,7 @@ renderer (React)
 - IPC handler 只解析参数、调用 service、返回结果；业务判断在 main service。窗口授权留在宿主 `root-ipc.mjs`，不属于分发。
 - store 只做持久化、事务和映射；service 只编排用例；adapter 只封装外部进程/API。
 - 外部运行时（DSH、Windows Runner、模型服务）通过适配层进入；产品对象、工单、工作区和证据不随运行时改变。
+- 图门测试标记：这行只用于验证 PR 软放行，验证后删除。
 
 ## 3. 组织对象与会话拓扑
 
