@@ -33,7 +33,7 @@ jobs:
       - run: npm ci
       - name: Install Linux display and packaging tools
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y xvfb rpm
+        run: sudo apt-get update && sudo apt-get install -y xvfb
       - name: Development startup smoke
         if: runner.os == 'Windows'
         run: npm run smoke

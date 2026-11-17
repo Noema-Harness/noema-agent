@@ -7,7 +7,6 @@ import { fileURLToPath } from 'node:url';
 import { MakerSquirrel } from '@electron-forge/maker-squirrel';
 import { MakerZIP } from '@electron-forge/maker-zip';
 import { MakerDeb } from '@electron-forge/maker-deb';
-import { MakerRpm } from '@electron-forge/maker-rpm';
 import { VitePlugin } from '@electron-forge/plugin-vite';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
@@ -223,8 +222,7 @@ const config: ForgeConfig = {
     }),
     new MakerZIP({}, ['darwin', 'win32']),
     // The packaged Linux executable is named after `productName` (Noema), while
-    // the installers default `bin` to `package.json` `name` (noema-desktop).
-    new MakerRpm({ options: { bin: 'Noema' } }),
+    // the installer defaults `bin` to `package.json` `name` (noema-desktop).
     new MakerDeb({ options: { bin: 'Noema' } }),
   ],
   plugins: [
