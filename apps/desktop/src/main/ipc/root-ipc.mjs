@@ -68,6 +68,12 @@ const CHANNELS = Object.freeze({
   socialAgentAssetHistory: 'noema:social-agent-asset-history',
   socialAgentAssetDelete: 'noema:social-agent-asset-delete',
   socialAgentAssetRestore: 'noema:social-agent-asset-restore',
+  agentMemories: 'noema:agent-memories',
+  agentMemoryCreate: 'noema:agent-memory-create',
+  agentMemoryConfirm: 'noema:agent-memory-confirm',
+  agentMemoryRetract: 'noema:agent-memory-retract',
+  agentMemorySupersede: 'noema:agent-memory-supersede',
+  agentMemoryAudit: 'noema:agent-memory-audit',
   socialResetChat: 'noema:social-reset-chat',
   socialSend: 'noema:social-send',
   socialForward: 'noema:social-forward',
@@ -587,6 +593,24 @@ export function registerRootIpc({
     );
     register(CHANNELS.socialAgentAssetRestore, (input) =>
       socialChatService.restoreAgentAsset(input),
+    );
+    register(CHANNELS.agentMemories, (input) =>
+      socialChatService.listAgentMemories(input ?? {}),
+    );
+    register(CHANNELS.agentMemoryCreate, (input) =>
+      socialChatService.createAgentMemory(input),
+    );
+    register(CHANNELS.agentMemoryConfirm, (id) =>
+      socialChatService.confirmAgentMemory(id),
+    );
+    register(CHANNELS.agentMemoryRetract, (input) =>
+      socialChatService.retractAgentMemory(input),
+    );
+    register(CHANNELS.agentMemorySupersede, (input) =>
+      socialChatService.supersedeAgentMemory(input),
+    );
+    register(CHANNELS.agentMemoryAudit, (memoryId) =>
+      socialChatService.listAgentMemoryAudit(memoryId),
     );
     register(CHANNELS.socialResetChat, async () => {
       if (!resetChatSession) throw new Error('会话重置尚未就绪。');

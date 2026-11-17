@@ -30,6 +30,7 @@ import { migrateSocialChatSchema } from './migrations.ts';
 export const CONVERSATION_BOUNDARY_MARKER = 'noema:conversation-boundary';
 import { WorkspaceChangeBlobStore } from './workspace-change-blob-store.ts';
 import { PersonalMemoryStore } from './personal-memory-store.ts';
+import { AgentMemoryStore } from './agent-memory-store.ts';
 import { UserFollowupStore } from './user-followup-store.ts';
 import { AgentAssetStore } from './agent-asset-store.ts';
 import { MessageSearchStore } from './message-search-store.ts';
@@ -145,6 +146,7 @@ export class SocialChatStore {
     this.db.pragma('foreign_keys = ON');
     this.migrate();
     this.personalMemories = new PersonalMemoryStore(this.db);
+    this.agentMemories = new AgentMemoryStore(this.db);
     this.userFollowups = new UserFollowupStore(this.db);
     this.seedInitialSocialModel();
     this.importLegacyRootMessages();

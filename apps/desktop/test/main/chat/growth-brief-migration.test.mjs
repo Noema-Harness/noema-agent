@@ -55,7 +55,7 @@ test('migration 43 clears the text of reviews that changed nothing', () => {
       .prepare('SELECT MAX(version) AS version FROM social_schema_migrations')
       .get().version;
     assert.equal(version, SOCIAL_SCHEMA_VERSION);
-    assert.equal(SOCIAL_SCHEMA_VERSION, 43);
+    assert.equal(SOCIAL_SCHEMA_VERSION, 44);
 
     const member = db
       .prepare(

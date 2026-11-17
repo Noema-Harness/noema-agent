@@ -935,12 +935,12 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 - 用户确认：2026-11-17
 
-## 🔧 D-20261117-agent-memory 个体记忆：对象模型、写入权与到技能/提示词的蒸馏
+## 🔍 D-20261117-agent-memory 个体记忆：对象模型、写入权与到技能/提示词的蒸馏
 
-- **阶段**：执行中
+- **阶段**：待验收
 - **来源**：用户 2026-11-17 把议题收窄为记忆（m104003）；此前同日指出成长回合只把项目记录整理成一条可追溯经历、属记忆层内容，要求先打好记忆基底（m103921 / m103965）。成长规格等本条定案后再单独成条。
 - **阻塞**：无。范围、写入权与经验毕业门槛已定；表结构与接口细节按实现推进，不再需要用户拍板。
-- **结构**：三层——证据层（gent_memories 的 source_kind/source_ref/source_room_id/source_message_id 记住每条断言从哪来，源删留墓碑）、主张层（一条断言：scope、gent_id、kind、status、	rust、alid_from/valid_to、superseded_by、confirmed_at）、装配层（检索只取 ctive 且未过期，bm25 + 字符预算，装几条留痕）。写入分级：act/procedure 由 agent 提议为 candidate，用户确认才转 ctive；episode/preference 写入即 ctive、可见可撤销；用户手写一律 ctive、	rust=user。检索走 FTS5 trigram + uildMemorySearchExpression（3-gram OR 展开），≤10⁴ 条不引向量。失效用 status=superseded + superseded_by，不物理删；gent_memory_audit 记确认/撤销/替代。第一版 scope 只有个体级。
+- **结构**：三层——证据层（agent_memories 的 source_kind/source_ref/source_room_id/source_message_id 记住每条断言从哪来，源删留墓碑）、主张层（一条断言：scope、agent_id、kind、status、trust、valid_from/valid_to、superseded_by、confirmed_at）、装配层（检索只取 active 且未过期，bm25 + 字符预算，装几条留痕）。写入分级：fact/procedure 由 agent 提议为 candidate，用户确认才转 active；episode/preference 写入即 active、可见可撤销；用户手写一律 active、trust=user。检索走 FTS5 trigram + buildMemorySearchExpression（3-gram OR 展开），≤10⁴ 条不引向量。失效用 status=superseded + superseded_by，不物理删；agent_memory_audit 记确认/撤销/替代。第一版 scope 只有个体级。
 
 #### 1 决策
 
@@ -986,8 +986,13 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 #### 2 执行
 
 - 批次：changes/memory-foundation
-- 已完成：召回查询装配（3-gram OR 展开，Recall@5 25%→76.7%，pps/desktop/src/main/chat/personal-memory-store.ts）。
+- 已完成：召回查询装配（3-gram OR 展开，Recall@5 25%→76.7%，apps/desktop/src/main/chat/personal-memory-store.ts）；记忆底座第一版（schema 44、apps/desktop/src/main/chat/agent-memory-store.ts、七个通道、manage_agent_memory 工具、设置里的记忆面板）。
 
 #### 3 验收
 
-- 未开始：交付后填写用户可验的结果（检索命中、候选拦截、失效不命中、连续性与任务轴各一条）。
+- [ ] 检索命中：同一段话里的中文片段能命中已生效条目，候选条目不返回。
+- [ ] 候选拦截：Noema 提议的事实与约定先进「等你确认」，确认后才可能被想起。
+- [ ] 失效不命中：撤销或替代后旧条目不再被检索，审计仍可查。
+- [ ] 连续性轴：确认一条事实后，后续对话能引用它且不再次询问。
+- [ ] 任务轴：30 条回归集在记忆开/关两档下不退化（记忆 token 与延迟在预算内）。
+- 用户确认：待用户手测后填写。

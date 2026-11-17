@@ -2,6 +2,7 @@ import { NoemaSelect, NoemaInput } from '../ui/noema-form-controls';
 import { NoemaButton } from '../ui/noema-button';
 import { NoemaOverlay } from '../ui/noema-overlay';
 import { Icon } from '../chat/presentation';
+import { AgentMemoryPanel } from './agent-memory-panel';
 import type { SocialChatController } from '../chat/use-social-chat-controller';
 
 type PartnerSettingsDialogModel = Pick<
@@ -149,6 +150,7 @@ export function PartnerSettingsDialog({
               新建项目
             </NoemaButton>
           </div>
+          <AgentMemoryPanel />
           {state?.providerConfigured && !editProviderConfig ? (
             <div className="connection-summary">
               <span role="status" aria-live="polite">

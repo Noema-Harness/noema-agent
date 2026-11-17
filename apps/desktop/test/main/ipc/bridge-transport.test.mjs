@@ -128,6 +128,56 @@ test('member asset methods use their own channels and positional arguments', asy
   ]);
 });
 
+test('memory methods use their own channels and defaults', async () => {
+  const transport = fakeTransport();
+  const bridge = createBridge(transport, { appVersion: '1.0.0' });
+
+  await bridge.listAgentMemories();
+  assert.deepEqual(transport.calls.at(-1), ['noema:agent-memories', [{}]]);
+
+  await bridge.listAgentMemories({ agentId: 'noema', status: 'candidate' });
+  assert.deepEqual(transport.calls.at(-1), [
+    'noema:agent-memories',
+    [{ agentId: 'noema', status: 'candidate' }],
+  ]);
+
+  const created = {
+    agentId: 'noema',
+    kind: 'fact',
+    content: '每周五下午做发布检查。',
+    trust: 'agent',
+  };
+  await bridge.createAgentMemory(created);
+  assert.deepEqual(transport.calls.at(-1), [
+    'noema:agent-memory-create',
+    [created],
+  ]);
+
+  await bridge.confirmAgentMemory('memory-1');
+  assert.deepEqual(transport.calls.at(-1), [
+    'noema:agent-memory-confirm',
+    ['memory-1'],
+  ]);
+
+  await bridge.retractAgentMemory({ id: 'memory-1', reason: '不再成立' });
+  assert.deepEqual(transport.calls.at(-1), [
+    'noema:agent-memory-retract',
+    [{ id: 'memory-1', reason: '不再成立' }],
+  ]);
+
+  await bridge.supersedeAgentMemory({ id: 'memory-1', content: '改成周四。' });
+  assert.deepEqual(transport.calls.at(-1), [
+    'noema:agent-memory-supersede',
+    [{ id: 'memory-1', content: '改成周四。' }],
+  ]);
+
+  await bridge.listAgentMemoryAudit('memory-1');
+  assert.deepEqual(transport.calls.at(-1), [
+    'noema:agent-memory-audit',
+    ['memory-1'],
+  ]);
+});
+
 test('the bridge subscribes and unsubscribes through the transport', () => {
   const transport = fakeTransport();
   const bridge = createBridge(transport, { appVersion: '1.2.3' });
