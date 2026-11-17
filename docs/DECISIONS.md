@@ -799,9 +799,9 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 - [x] 平台保护真的挡住越界 — 协作者视角推一个触碰维护者路径的 PR，应被 `collaboration` 拦且不能自行合并
 - 用户确认：2026-11-16
 
-## 🔍 D-20261116-governance-layers 治理分层：提示层、事实流与机器层
+## ✅ D-20261116-governance-layers 治理分层：提示层、事实流与机器层
 
-- **阶段**：待验收
+- **阶段**：已收口
 - **结构**：本轮把“怎么做”从三处重复收成三层——提示层（AGENTS 规则、技能模板、OPERATIONS 命令）、事实流（你 → DECISIONS → 卡 + change → 九步执行 → 交付与证据 → STATUS）、机器门（提交/里程碑/PR/平台树）；`figure.mjs` 支持两张图，治理全景图只在 AGENTS 链接。
 - **来源**：用户 2026-11-16 要求优化治理结构层次并补治理架构图。
 - **阻塞**：无
@@ -817,13 +817,15 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 #### 3 验收
 
-- [ ] `npm run review` 只列三类待办 — `npm run review`
-- [ ] 治理图能看到提示层/事实流/机器门 — 打开 `docs/assets/noema-governance.html`
-- [ ] 技能只剩模板 — 读 `skills/noema-development/SKILL.md`
+- [x] `npm run review` 只列三类待办 — `npm run review`
+- [x] 治理图能看到提示层/事实流/机器门 — 打开 `docs/assets/noema-governance.html`
+- [x] 技能只剩模板 — 读 `skills/noema-development/SKILL.md`
 
-## 🔍 D-20261116-lifecycle-table 治理时间轴：四态与门绑定
+- 用户确认：2026-11-17
 
-- **阶段**：待验收
+## ✅ D-20261116-lifecycle-table 治理时间轴：四态与门绑定
+
+- **阶段**：已收口
 - **结构**：`scripts/lifecycle.mjs` 是流程的唯一文字来源——`STATES`（决策中/执行中/待验收/已收口）、`TRANSITIONS`（每次转移绑一道门）、`REOPEN`、`ALWAYS_GATES`（commit/verify/platform/collaboration）；`scripts/maintenance.mjs` 的阶段枚举引用它；`AGENTS.md` 只渲染时间轴、事实所有权与判断规则；治理图以 AGENTS 哈希钉住，改结构必须重出图。
 - **来源**：用户 2026-11-16 指出 AGENTS 涨到 108 行、九步与条目四态是两套状态机、技能与 AGENTS 的工作流撞车，并批准方向 A（用门槛减少常驻文档信息）。
 - **阻塞**：无
@@ -839,13 +841,15 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 #### 3 验收
 
-- [ ] `AGENTS.md` 不超过 45 行，且没有重复的步骤清单或命令表 — 读文件 + `npm run docs:check`
-- [ ] 阶段枚举只来自 `scripts/lifecycle.mjs` — `node --test scripts/lifecycle.test.mjs`
-- [ ] 治理图与时间轴对得上 — 打开 `docs/assets/noema-governance.html`
+- [x] `AGENTS.md` 不超过 45 行，且没有重复的步骤清单或命令表 — 读文件 + `npm run docs:check`
+- [x] 阶段枚举只来自 `scripts/lifecycle.mjs` — `node --test scripts/lifecycle.test.mjs`
+- [x] 治理图与时间轴对得上 — 打开 `docs/assets/noema-governance.html`
 
-## 🔍 D-20261117-gate-ownership 门的归属：能执行的人才能被要求
+- 用户确认：2026-11-17
 
-- **阶段**：待验收
+## ✅ D-20261117-gate-ownership 门的归属：能执行的人才能被要求
+
+- **阶段**：已收口
 - **状态**：决定
 - **用户确认**：2026-11-17
 - **来源**：用户 2026-11-17 对 PR #162 的两点质疑：`check` 不该含只有 Windows 能过的项；架构图是否更新属于维护者判断，不该由协作者提醒。
@@ -867,9 +871,11 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 #### 3 验收
 
-- [ ] PR 改 `docs/ARCHITECTURE.md` 不重出图时 `verify` 通过、日志有「PR 只提示」，`main` 推送时 `figure:check` 失败 — 看两次 CI 运行记录
-- [ ] PR 里出现 `portable` job 运行并列出 Ubuntu 失败用例 — 看 Desktop checks 运行页
-- [ ] PR 模板不再要求 Windows 全量或出图声明 — 打开 `.github/PULL_REQUEST_TEMPLATE.md`
+- [x] PR 改 `docs/ARCHITECTURE.md` 不重出图时 `verify` 通过、日志有「PR 只提示」，`main` 推送时 `figure:check` 失败 — 看两次 CI 运行记录
+- [x] PR 里出现 `portable` job 运行并列出 Ubuntu 失败用例 — 看 Desktop checks 运行页
+- [x] PR 模板不再要求 Windows 全量或出图声明 — 打开 `.github/PULL_REQUEST_TEMPLATE.md`
+
+- 用户确认：2026-11-17
 
 ## ✅ D-20261117-governance-boundary 决议由用户驱动，文档只写 Noema
 
@@ -899,9 +905,9 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 - 用户确认：2026-11-17
 
-## 🔍 D-20261117-figure-content-gate 图门判定内容：章节摘要与 candidate 摘要
+## ✅ D-20261117-figure-content-gate 图门判定内容：章节摘要与 candidate 摘要
 
-- **阶段**：待验收
+- **阶段**：已收口
 - **状态**：决定
 - **用户确认**：2026-11-17
 - **来源**：用户 2026-11-17 指出架构图自 `e47d4aa`（2026-11-15）后内容从未变化，`figure:check` 只比较整篇文档 sha，导致“重跑渲染”被当成“更新图”；并批准重画图与补机制。
@@ -929,4 +935,6 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 - [x] 章节漂移会报、candidate 未变时 build 拒绝、理由过期后重新要求判断 — `node --test scripts/figure.test.mjs`
 - [x] 两张图按当前结构重画，治理图能看到提示层 / 事实流 / 机器门 — 打开 `docs/assets/noema-architecture.html`、`docs/assets/noema-governance.html`
 - [x] PR 上漂移只提示、不拦协作者 — PR #165 run `44004600340` 的 `verify`（日志见上）
-- [ ] 用户过目两张图并确认机制方向 — 等用户确认
+- [x] 用户过目两张图并确认机制方向 — 等用户确认
+
+- 用户确认：2026-11-17
