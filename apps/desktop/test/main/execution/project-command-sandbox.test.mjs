@@ -229,7 +229,9 @@ test('denying an external path stops before loading or initializing the sandbox'
 });
 
 test('approved paths and network requests are scoped to the current command', async () => {
-  const directory = mkdtempSync(path.join(tmpdir(), 'noema-command-allow-'));
+  const directory = realpathSync(
+    mkdtempSync(path.join(tmpdir(), 'noema-command-allow-')),
+  );
   const workspace = path.join(directory, 'workspace');
   const external = path.join(directory, 'external');
   mkdirSync(workspace);

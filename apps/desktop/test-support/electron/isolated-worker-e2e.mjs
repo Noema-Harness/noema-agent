@@ -143,7 +143,9 @@ export async function runIsolatedWorkerE2E({
     !workspaceRealPath ||
     !isWithinDirectory(e2eRealDirectory, workspaceRealPath) ||
     workspaceRealPath === e2eRealDirectory ||
-    !isWithinDirectory(e2eRealDirectory, resultPath)
+    // The result file may not exist yet, so it is checked against the same
+    // unresolved directory writeResult() uses.
+    !isWithinDirectory(e2eDirectory, path.resolve(resultPath))
   ) {
     throw new Error(
       'E2E workspace and result file must remain inside the isolated directory.',

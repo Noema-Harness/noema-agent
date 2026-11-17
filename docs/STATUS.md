@@ -4,14 +4,16 @@ Authority: 本文件只回答一个问题——按现有证据，今天这个版
 Update when: 每次交付、打包或验证结果变化。
 Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与代码实况（见 [ARCHITECTURE](ARCHITECTURE.md)）；决定与理由（见 [DECISIONS](DECISIONS.md)）；命令、安装与诊断（见 [OPERATIONS](OPERATIONS.md)）；治理与门槛（见 [AGENTS](../AGENTS.md)）；计划与进度（见 GitHub Project 看板与 `openspec/changes/`，D-026）。
 
-最后更新：2026-11-17
+最后更新：2026-11-18
 
 ## 版本与基线
 
 - 源码版本：`0.7.6`；当前源码基线：`f592a9b release: Noema 0.7.6`；功能基线 `b7c41fa`。
 - 便携构建在 `apps/desktop/out/Noema-win32-x64/Noema.exe`；安装包由 `npm run make:desktop` 产出（构建陷阱与回退见 [OPERATIONS](OPERATIONS.md)，决定见 D-024）。
 
-## 最后一次验证（2026-11-17）
+## 最后一次验证（2026-11-18）
+
+- macOS 临时目录软链（change `macos-tmpdir-realpath`，PR #167，2026-11-18，协作者 `ichika0130`）：macOS 的 `os.tmpdir()` 是 `/var/folders/…` 软链、真实路径在 `/private/var/folders/…`，两个测试的临时目录改为 `realpathSync(mkdtempSync(…))` 先取真实路径，`test-support/electron/isolated-worker-e2e.mjs` 的结果路径检查与 `writeResult()` 同口径（数据库与工作区仍按真实路径校验，防软链逃逸不削弱）。macOS + Node 24 全量 `npm test` 由 880 过 / 8 败转为 **888 过 / 0 败 / 13 跳过**（跳过的是既有 `windowsOnly` 等标记），`npm run typecheck`、`npm run lint` 通过。CI run `44166645986`（verify、portable、platform、collaboration）与 `44166646301`（windows / ubuntu / macos 三个 package job）全绿。产品可观察行为不变（仅测试与测试辅助）。
 
 - 成员经历（change `member-asset-review`，2026-11-17）：`npm run check` **901/901，0 fail，53,356ms**（链含 `workspace:check` → `branches:check` → `docs:check` → `figure:check` → `plan:check` → `source:check` → `lint` → `typecheck` → `tools:test` → `test`）。
 
@@ -96,6 +98,7 @@ Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与�
 - 类型检查覆盖（D-039）：`src` 下仍有 67 个 `.mjs` 不受类型检查（含 `social-chat-service`/`social-chat-store`/`social-work-service`/`root-store`/`root-ipc`），`strict` 未在 tsconfig 显式开启（TypeScript 6.0.3 的默认值生效，后续按 D-039 评估）；已转换的 `.ts` 由 `npm run typecheck` 覆盖，`source:check` 保证 `.mjs` 数量只减不增。
 - macOS/Linux 真机安装与启动：CI 只验证打包产物能启动（`smoke:package`）；用户 2026-11-17 确认以此为验收口径，macOS 真机由协作者后续实机反馈，Linux 真机未安排。
 - macOS 上用真实模型从界面派发一个跑命令的项目任务（DSH 执行路径已由 `e2e:dsh-fake-model` 验证，界面与真实模型这一段未跑）；未签名 Mac 包在别的机器上能否打开；Linux 只走同一条 POSIX 分支，未实测。
+- macOS 全量测试由协作者在 macOS 上执行（PR #167：888 过 / 0 败 / 13 跳过），维护者本机是 Windows，CI 的 macos-latest 只跑打包与产物启动冒烟、不跑全量 `npm test`；这条仍依赖协作者反馈。
 - 成员经历界面的真机手测：本机 harness 会话里 Electron 进程无法创建窗口（最小探针也立即退出，记事本能开窗），入口位置、信息量与删除/恢复手感没有人走过；自动证据只覆盖通道、service 与 store。
 
 ## 交付判断

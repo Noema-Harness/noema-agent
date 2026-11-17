@@ -1,12 +1,21 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdtempSync,
+  mkdirSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import test from 'node:test';
 import { createNoemaReadTools } from '../../../src/main/chat/noema-read-tools.ts';
 
 test('read tools inspect files without exposing writes', async () => {
-  const home = mkdtempSync(path.join(tmpdir(), 'noema-read-tools-home-'));
+  // Real path: macOS tmpdir() is a symlink and the tools report resolved paths.
+  const home = realpathSync(
+    mkdtempSync(path.join(tmpdir(), 'noema-read-tools-home-')),
+  );
   const outside = mkdtempSync(path.join(tmpdir(), 'noema-read-tools-outside-'));
   try {
     mkdirSync(path.join(home, 'src'));
