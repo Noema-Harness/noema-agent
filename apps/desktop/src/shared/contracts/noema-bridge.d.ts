@@ -283,6 +283,37 @@ export interface NoemaSocialAgent {
   archivedAt: string | null;
 }
 
+export interface NoemaSocialAgentAssetSummary {
+  path: string;
+  revision: number;
+  characters: number;
+  reason: string;
+  sourceTurnId: string | null;
+  sourceProjectId: string | null;
+  createdAt: string;
+  deleted: boolean;
+}
+
+export interface NoemaSocialAgentAsset extends Omit<
+  NoemaSocialAgentAssetSummary,
+  'deleted'
+> {
+  id: string;
+  content: string;
+}
+
+export interface NoemaSocialAgentAssetRevision {
+  id: string;
+  path: string;
+  revision: number;
+  content: string;
+  isDeleted: boolean;
+  reason: string;
+  sourceTurnId: string | null;
+  sourceProjectId: string | null;
+  createdAt: string;
+}
+
 export interface NoemaSocialRoom {
   id: string;
   kind: 'direct' | 'group';
@@ -1466,6 +1497,28 @@ export interface NoemaBridge {
     agentId: string,
     archived: boolean,
   ): Promise<NoemaSocialAgent>;
+  listSocialAgentAssets(
+    agentId: string,
+  ): Promise<NoemaSocialAgentAssetSummary[]>;
+  getSocialAgentAsset(
+    agentId: string,
+    path: string,
+  ): Promise<NoemaSocialAgentAsset | null>;
+  listSocialAgentAssetRevisions(
+    agentId: string,
+    path: string,
+  ): Promise<NoemaSocialAgentAssetRevision[]>;
+  deleteSocialAgentAsset(input: {
+    agentId: string;
+    path: string;
+    expectedRevision: number;
+  }): Promise<NoemaSocialAgentAssetRevision>;
+  restoreSocialAgentAsset(input: {
+    agentId: string;
+    path: string;
+    revision: number;
+    expectedRevision: number;
+  }): Promise<NoemaSocialAgentAssetRevision>;
   resetSocialChat(): Promise<boolean>;
   listSocialConversationThreads(
     roomId: string,

@@ -115,6 +115,8 @@ npm run branches:prune -- --apply # 执行删除
 | 合并 main 时 pre-commit 拦下从 main 带进来的代码      | 不会：合并提交只检查与两个父提交都不同的路径（冲突解决与手改），实现见 `scripts/maintenance.mjs` 的 `stagedPaths`                   |
 | pre-commit 只提示“工具/治理改动不受未决产品决策阻塞”  | 正常；工具与文档维护不被产品决策卡住                                                                                                |
 | 阶段不在四种里                                        | 只用 `决策中 / 执行中 / 待验收 / 已收口`；阶段写在正文第一条                                                                        |
+| `npm run dev` 报 `listen EACCES ::1:5173`              | 5173 落在 Windows 保留的动态端口段：启动前设 `NOEMA_DEV_RENDERER_PORT=0`（`apps/desktop/vite.renderer.config.mts` 读取）                |
+| Electron 启动后立即退出、没有报错                      | 先查 `cmd /c "set ELECTRON_RUN_AS_NODE"`：有值就清掉再启动；清掉后连最小 `electron` 探针都开不了窗，说明是宿主会话限制，换桌面终端或 CI 跑 |
 
 用户验收项写在 tasks.md 里，格式 `- [ ] [用户] <场景> → 证据`；确认后改成 `- [x] [用户] <场景> → 证据（用户确认：YYYY-MM-DD）`。
 

@@ -1331,6 +1331,94 @@ test('specialists can version only their own assets and reload them next turn', 
   }
 });
 
+test('member asset calls keep user reasons and read-only archives', async () => {
+  const db = new Database(':memory:');
+  new RootStore(db);
+  const store = createSocialTestStore(db);
+  const service = new SocialChatService({
+    store,
+    provider: { async *streamChat() {} },
+    secretStore: { isConfigured: () => true },
+    getSelectedModel: () => 'test-model',
+    getRootState: async () => ({
+      connected: true,
+      selectedModel: 'test-model',
+      providerConfigured: true,
+    }),
+  });
+
+  try {
+    store.writeAgentAsset({
+      agentId: 'engineering-partner',
+      path: 'experiences/search-review.md',
+      content: '先核对来源再下结论。',
+      reason: '一次研究复盘中确认。',
+    });
+
+    const listed = service.listAgentAssets('engineering-partner');
+    assert.equal(listed.length, 1);
+    assert.equal(listed[0].path, 'experiences/search-review.md');
+    assert.equal(listed[0].revision, 1);
+
+    const asset = service.getAgentAsset(
+      'engineering-partner',
+      'experiences/search-review.md',
+    );
+    assert.equal(asset.content, '先核对来源再下结论。');
+
+    const deleted = service.deleteAgentAsset({
+      agentId: 'engineering-partner',
+      path: 'experiences/search-review.md',
+      expectedRevision: asset.revision,
+    });
+    assert.equal(deleted.isDeleted, true);
+    assert.equal(deleted.reason, '用户在成员资料中手动删除');
+    assert.deepEqual(service.listAgentAssets('engineering-partner'), []);
+    const tombstones = service.listAgentAssets('engineering-partner', {
+      includeDeleted: true,
+    });
+    assert.equal(tombstones.length, 1);
+    assert.equal(tombstones[0].path, 'experiences/search-review.md');
+    assert.equal(tombstones[0].deleted, true);
+
+    const history = service.listAgentAssetRevisions(
+      'engineering-partner',
+      'experiences/search-review.md',
+    );
+    assert.equal(history.length, 2);
+    assert.equal(history[0].revision, 2);
+    assert.equal(history[0].isDeleted, true);
+
+    const restored = service.restoreAgentAsset({
+      agentId: 'engineering-partner',
+      path: 'experiences/search-review.md',
+      revision: 1,
+      expectedRevision: 0,
+    });
+    assert.equal(restored.revision, 3);
+    assert.equal(restored.reason, '用户在成员资料中手动恢复');
+    assert.equal(service.listAgentAssets('engineering-partner')[0].revision, 3);
+
+    service.setAgentArchived('engineering-partner', true);
+    assert.deepEqual(
+      service.listAgentAssets('engineering-partner').map((item) => item.path),
+      ['experiences/search-review.md'],
+    );
+    assert.throws(
+      () =>
+        service.deleteAgentAsset({
+          agentId: 'engineering-partner',
+          path: 'experiences/search-review.md',
+          expectedRevision: restored.revision,
+        }),
+      /已归档成员不能修改资产/u,
+    );
+  } finally {
+    await service.shutdown();
+    db.close();
+  }
+});
+
 test('group recipients follow visible mentions rather than a hidden caller-selected agent', async () => {
   const db = new Database(':memory:');
   new RootStore(db);

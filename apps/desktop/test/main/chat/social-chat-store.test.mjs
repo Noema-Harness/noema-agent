@@ -291,6 +291,7 @@ test('member-owned assets keep immutable revisions, provenance, and rollback', (
         sourceTurnId: 'experience-turn-1',
         sourceProjectId: 'project-alpha',
         createdAt: first.createdAt,
+        deleted: false,
       },
     ]);
     assert.match(

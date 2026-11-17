@@ -10,6 +10,9 @@ import type {
   NoemaSocialSearchResult,
   NoemaSocialRoomState,
   NoemaSocialState,
+  NoemaSocialAgentAsset,
+  NoemaSocialAgentAssetSummary,
+  NoemaSocialAgentAssetRevision,
   NoemaProjectPlan,
   NoemaProjectPlanWrite,
   NoemaProjectPlanItemUpdate,
@@ -212,6 +215,39 @@ export function createBridge(
       call('noema:social-agent-project-work', agentId, enabled),
     setSocialAgentArchived: (agentId: string, archived: boolean) =>
       call('noema:social-agent-archive', agentId, archived),
+    listSocialAgentAssets: (agentId: string) =>
+      call('noema:social-agent-assets', agentId) as Promise<
+        NoemaSocialAgentAssetSummary[]
+      >,
+    getSocialAgentAsset: (agentId: string, path: string) =>
+      call(
+        'noema:social-agent-asset',
+        agentId,
+        path,
+      ) as Promise<NoemaSocialAgentAsset | null>,
+    listSocialAgentAssetRevisions: (agentId: string, path: string) =>
+      call('noema:social-agent-asset-history', agentId, path) as Promise<
+        NoemaSocialAgentAssetRevision[]
+      >,
+    deleteSocialAgentAsset: (input: {
+      agentId: string;
+      path: string;
+      expectedRevision: number;
+    }) =>
+      call(
+        'noema:social-agent-asset-delete',
+        input,
+      ) as Promise<NoemaSocialAgentAssetRevision>,
+    restoreSocialAgentAsset: (input: {
+      agentId: string;
+      path: string;
+      revision: number;
+      expectedRevision: number;
+    }) =>
+      call(
+        'noema:social-agent-asset-restore',
+        input,
+      ) as Promise<NoemaSocialAgentAssetRevision>,
     resetSocialChat: () => call('noema:social-reset-chat') as Promise<boolean>,
     listSocialConversationThreads: (roomId: string) =>
       call('noema:social-conversation-threads', roomId) as Promise<

@@ -28,6 +28,11 @@ export default defineConfig(({ command }) => ({
   // Main/preload builds write runtime assets under .vite; they are not
   // renderer sources and must not trigger the renderer dev server's watcher.
   server: {
+    // Windows can reserve 5173 inside a dynamic port block, which makes the
+    // default dev server fail with EACCES. Set this to 0 to take another port.
+    ...(process.env.NOEMA_DEV_RENDERER_PORT
+      ? { port: Number(process.env.NOEMA_DEV_RENDERER_PORT), strictPort: true }
+      : {}),
     // Electron smoke/E2E runs validate the renderer's real bootstrap, not HMR.
     // Disabling HMR also avoids injecting React Refresh's deferred module
     // preamble into the cold-start path under test.

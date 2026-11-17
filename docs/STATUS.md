@@ -13,6 +13,8 @@ Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与�
 
 ## 最后一次验证（2026-11-17）
 
+- 成员经历（change `member-asset-review`，2026-11-17）：`npm run check` **901/901，0 fail，53,356ms**（链含 `workspace:check` → `branches:check` → `docs:check` → `figure:check` → `plan:check` → `source:check` → `lint` → `typecheck` → `tools:test` → `test`）。
+
 - 门归属（change `gate-ownership`，2026-11-17）：PR 的 `verify` 把架构图漂移降为提示（`NOEMA_FIGURE_SOFT=1`），`main` 与里程碑仍严格，图由维护者重出；新增报告期的 `portable` job（`ubuntu-latest` 跑同一套测试、不拦 PR），先暴露 Windows-only 用例，按 `D-20261116-platform-layers` 第③刀标记后转必过（已于 2026-11-17 落地，见下节）。本机 `npm run check` 890/890、0 fail、67,571ms。soft 只由 `figure:check` 的命令行读取，库调用默认严格，`figure.test.mjs` 因此在 `NOEMA_FIGURE_SOFT=1` 下也通过（PR #164 verify 修复）。
 - `npm run check`（= `governance milestone`）：**887/887，0 fail，52,458ms**；链为 `workspace:check` → `branches:check` → `docs:check` → `figure:check` → `plan:check` → `source:check` → `lint` → `typecheck` → `tools:test`（80 个维护脚本测试）→ `test`。
 - 安装包：`npm run make:desktop` 产出 `Noema-0.7.6 Setup.exe`（170,410,496 字节，sha256 `6E773C854FBF6E4B0A39720608737555114E5E95E9F5526F1E05D7A32964BCDC`）、`noema_desktop-0.7.6-full.nupkg`、`RELEASES`；把 `TEMP`/`SQUIRREL_TEMP` 指到可写目录后 `Setup.exe --silent` 能装出 `app-0.7.6`（载荷验证）。
@@ -60,6 +62,12 @@ Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与�
 - 两张图已按当前结构重画：架构图补 bridge 传输、执行后端可换、本机文件与命令、按平台打包状态，计划节点对齐开放卡片（#144 六模块 / #139 会话拓扑 / #140 @Noema 跨房间）；治理图补“提示层 / 事实流 / 机器门”三块区域。
 - 证据：测试 PR #165（只改 `docs/ARCHITECTURE.md`、不重出图）run `44004600340` 的 `verify` 在 `NOEMA_FIGURE_SOFT=1` 下 success，日志含两条“PR 只提示：图由维护者在合并前后重出”（整篇 sha 与“2. 进程与依赖方向”章节漂移各一条）。
 
+## 成员经历（2026-11-17）
+
+- 成员可以查看、删除、恢复自己的经历（change `member-asset-review`，卡片 #137）：成员列表每行新增「经历」按钮，对话框列出路径、修订号、写入依据、来源项目与时间，展开可读全文；删除保留墓碑（列表里标“已删除”）并从历史版本恢复；归档成员只读。bridge 新增五个通道（`noema:social-agent-assets` / `-asset` / `-asset-history` / `-asset-delete` / `-asset-restore`），service 固定用户操作理由（`用户在成员资料中手动删除` / `手动恢复`），store 的 `listAgentAssets` 支持 `includeDeleted`——用户视图必须看到已删除条目，否则没有恢复入口。
+- 证据：`npm run typecheck`；`test/main/ipc/bridge-transport.test.mjs` 7/7；`test/main/chat/social-chat-service.test.mjs` 成员资产用例（写入 → 列表 → 删除 → 墓碑 → 历史恢复 → 归档只读）；`npm run check` **901/901、0 fail**。
+- 未做：界面真机手测（见「未验证」）；成长写入候选态与真实复盘重跑仍挂在卡片 #137 的「还没做」。
+
 ## 协作文档门禁（2026-11-16）
 
 - 协作者可直接改 `docs/**` 与 `openspec/specs/**`；只有治理机制（`AGENTS.md`、`.github/`、`.githooks/`、`scripts/`、`openspec/config.yaml`、根 `package.json`）维护者独占。审核移到 PR：以代码与运行证据为准，`docs:check` 在 PR 上照跑。
@@ -84,6 +92,7 @@ Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与�
 - 类型检查覆盖（D-039）：`src` 下仍有 67 个 `.mjs` 不受类型检查（含 `social-chat-service`/`social-chat-store`/`social-work-service`/`root-store`/`root-ipc`），`strict` 未在 tsconfig 显式开启（TypeScript 6.0.3 的默认值生效，后续按 D-039 评估）；已转换的 `.ts` 由 `npm run typecheck` 覆盖，`source:check` 保证 `.mjs` 数量只减不增。
 - macOS/Linux 真机安装与启动：CI 只验证打包产物能启动（`smoke:package`）；用户 2026-11-17 确认以此为验收口径，macOS 真机由协作者后续实机反馈，Linux 真机未安排。
 - macOS 上用真实模型从界面派发一个跑命令的项目任务（DSH 执行路径已由 `e2e:dsh-fake-model` 验证，界面与真实模型这一段未跑）；未签名 Mac 包在别的机器上能否打开；Linux 只走同一条 POSIX 分支，未实测。
+- 成员经历界面的真机手测：本机 harness 会话里 Electron 进程无法创建窗口（最小探针也立即退出，记事本能开窗），入口位置、信息量与删除/恢复手感没有人走过；自动证据只覆盖通道、service 与 store。
 
 ## 交付判断
 

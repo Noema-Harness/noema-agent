@@ -77,6 +77,57 @@ test('the bridge maps each method to its channel and argument list', async () =>
   assert.deepEqual(transport.calls.at(-1), ['noema:window-control', ['state']]);
 });
 
+test('member asset methods use their own channels and positional arguments', async () => {
+  const transport = fakeTransport();
+  const bridge = createBridge(transport, { appVersion: '1.0.0' });
+
+  await bridge.listSocialAgentAssets('agent-1');
+  assert.deepEqual(transport.calls.at(-1), [
+    'noema:social-agent-assets',
+    ['agent-1'],
+  ]);
+
+  await bridge.getSocialAgentAsset('agent-1', 'experiences/a.md');
+  assert.deepEqual(transport.calls.at(-1), [
+    'noema:social-agent-asset',
+    ['agent-1', 'experiences/a.md'],
+  ]);
+
+  await bridge.listSocialAgentAssetRevisions('agent-1', 'experiences/a.md');
+  assert.deepEqual(transport.calls.at(-1), [
+    'noema:social-agent-asset-history',
+    ['agent-1', 'experiences/a.md'],
+  ]);
+
+  await bridge.deleteSocialAgentAsset({
+    agentId: 'agent-1',
+    path: 'experiences/a.md',
+    expectedRevision: 2,
+  });
+  assert.deepEqual(transport.calls.at(-1), [
+    'noema:social-agent-asset-delete',
+    [{ agentId: 'agent-1', path: 'experiences/a.md', expectedRevision: 2 }],
+  ]);
+
+  await bridge.restoreSocialAgentAsset({
+    agentId: 'agent-1',
+    path: 'experiences/a.md',
+    revision: 1,
+    expectedRevision: 0,
+  });
+  assert.deepEqual(transport.calls.at(-1), [
+    'noema:social-agent-asset-restore',
+    [
+      {
+        agentId: 'agent-1',
+        path: 'experiences/a.md',
+        revision: 1,
+        expectedRevision: 0,
+      },
+    ],
+  ]);
+});
+
 test('the bridge subscribes and unsubscribes through the transport', () => {
   const transport = fakeTransport();
   const bridge = createBridge(transport, { appVersion: '1.2.3' });

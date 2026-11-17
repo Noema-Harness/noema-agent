@@ -14,6 +14,7 @@ import { TurnTrace, type LiveTraceEvent } from './turn-trace';
 import { useSocialChatController } from './use-social-chat-controller';
 import { WorkspaceFilesDialog } from './dialogs/workspace-files-dialog';
 import { AgentEditorDialog, ProjectEditorDialog } from './dialogs/team-dialogs';
+import { MemberAssetsDialog } from './dialogs/member-assets-dialog';
 import { PartnerSettingsDialog } from '../settings/partner-settings-dialog';
 import { ProjectDetailView } from '../projects/project-detail-view';
 
@@ -382,6 +383,9 @@ export function CoreChatApp() {
   );
   const [taskHistoryOpen, setTaskHistoryOpen] = useState(false);
   const [taskHistoryAll, setTaskHistoryAll] = useState(false);
+  const [memberAssetsAgentId, setMemberAssetsAgentId] = useState<string | null>(
+    null,
+  );
   const [section, setSection] = useState<
     'chat' | 'teams' | 'projects' | 'members'
   >('chat');
@@ -455,6 +459,17 @@ export function CoreChatApp() {
   const visibleMembers = useMemo(
     () => agents.filter((agent) => agent.id !== 'noema' && !agent.archivedAt),
     [agents],
+  );
+  const listedMembers = useMemo(
+    () => agents.filter((agent) => agent.id !== 'noema'),
+    [agents],
+  );
+  const memberAssetsAgent = useMemo(
+    () =>
+      memberAssetsAgentId
+        ? (agents.find((agent) => agent.id === memberAssetsAgentId) ?? null)
+        : null,
+    [agents, memberAssetsAgentId],
   );
   const roomById = useMemo(
     () => new Map(rooms.map((room) => [room.id, room])),
@@ -1579,29 +1594,50 @@ export function CoreChatApp() {
                 )
               ) : null}
               {section === 'members' ? (
-                visibleMembers.length ? (
+                listedMembers.length ? (
                   <div className="core-member-list">
-                    {visibleMembers.map((agent) => {
+                    {listedMembers.map((agent) => {
                       const canOpen = directRoomByAgent.has(agent.id);
                       return (
-                        <button
-                          className="core-member-row"
-                          type="button"
-                          key={agent.id}
-                          disabled={!canOpen}
-                          onClick={() => openMemberChat(agent.id)}
-                        >
-                          <span className="core-member-avatar">
-                            {agent.name.slice(0, 1)}
-                          </span>
-                          <span className="core-member-copy">
-                            <strong>{agent.name}</strong>
-                            <small>{agent.headline}</small>
-                          </span>
-                          <span className="core-member-action">
-                            {canOpen ? '私聊' : '不可用'}
-                          </span>
-                        </button>
+                        <div className="core-member-row" key={agent.id}>
+                          <button
+                            className="core-member-main"
+                            type="button"
+                            disabled={!canOpen}
+                            onClick={() => openMemberChat(agent.id)}
+                            title={
+                              agent.archivedAt
+                                ? '成员已归档'
+                                : canOpen
+                                  ? `和 ${agent.name} 私聊`
+                                  : '这个成员还没有私聊'
+                            }
+                          >
+                            <span className="core-member-avatar">
+                              {agent.name.slice(0, 1)}
+                            </span>
+                            <span className="core-member-copy">
+                              <strong>{agent.name}</strong>
+                              <small>{agent.headline}</small>
+                            </span>
+                            <span className="core-member-action">
+                              {agent.archivedAt
+                                ? '已归档'
+                                : canOpen
+                                  ? '私聊'
+                                  : '不可用'}
+                            </span>
+                          </button>
+                          <button
+                            className="core-member-assets"
+                            type="button"
+                            onClick={() => setMemberAssetsAgentId(agent.id)}
+                            aria-label={`查看 ${agent.name} 的经历`}
+                            title="查看项目沉淀的经历"
+                          >
+                            经历
+                          </button>
+                        </div>
                       );
                     })}
                   </div>
@@ -1958,6 +1994,13 @@ export function CoreChatApp() {
         <PartnerSettingsDialog model={controller} />
         <AgentEditorDialog model={controller} />
         <ProjectEditorDialog model={controller} />
+        {memberAssetsAgent ? (
+          <MemberAssetsDialog
+            agent={memberAssetsAgent}
+            projects={projects}
+            onClose={() => setMemberAssetsAgentId(null)}
+          />
+        ) : null}
         {taskWorkspace ? (
           <WorkspaceFilesDialog
             workspacePath={taskWorkspace.path}

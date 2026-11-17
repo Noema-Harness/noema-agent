@@ -1290,8 +1290,8 @@ export class SocialChatStore {
       .all(requireText(roomId, '群聊 ID', 200), boundedLimit);
   }
 
-  listAgentAssets(agentId) {
-    return this.agentAssets.listAgentAssets(agentId);
+  listAgentAssets(agentId, options = {}) {
+    return this.agentAssets.listAgentAssets(agentId, options);
   }
 
   getAgentAsset(agentId, path) {

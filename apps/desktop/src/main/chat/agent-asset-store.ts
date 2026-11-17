@@ -22,6 +22,7 @@ type AgentAssetSummary = {
   sourceTurnId: string | null;
   sourceProjectId: string | null;
   createdAt: string;
+  deleted: boolean;
 };
 
 type AgentAsset = {
@@ -58,17 +59,24 @@ export class AgentAssetStore {
     this.getAgent = getAgent;
   }
 
-  listAgentAssets(agentId: string) {
+  listAgentAssets(
+    agentId: string,
+    { includeDeleted = false }: { includeDeleted?: boolean } = {},
+  ) {
     const agent = this.getAgent(agentId);
     const rows = this.db
       .prepare(`${currentAgentAssetQuery()}
         SELECT path, revision, length(content) AS characters, reason,
-               sourceTurnId, sourceProjectId, createdAt
-        FROM ranked WHERE rank = 1 AND isDeleted = 0
+               sourceTurnId, sourceProjectId, createdAt, isDeleted
+        FROM ranked
+        WHERE rank = 1 ${includeDeleted ? '' : 'AND isDeleted = 0'}
         ORDER BY path
       `)
-      .all(agent.id) as AgentAssetSummary[];
-    return rows;
+      .all(agent.id) as Array<AgentAssetSummary & { isDeleted: number }>;
+    return rows.map(({ isDeleted, ...row }) => ({
+      ...row,
+      deleted: Boolean(isDeleted),
+    }));
   }
 
   getAgentAsset(agentId: string, path: string) {

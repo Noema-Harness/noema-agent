@@ -1786,6 +1786,57 @@ export class SocialChatService {
     return this.agents.setAgentArchived(agentId, archived);
   }
 
+  listAgentAssets(agentId, options = {}) {
+    return this.store.listAgentAssets(agentId, options);
+  }
+
+  getAgentAsset(agentId, path) {
+    return this.store.getAgentAsset(agentId, path);
+  }
+
+  listAgentAssetRevisions(agentId, path) {
+    return this.store
+      .listAgentAssetRevisions(agentId, path)
+      .map((revision) => this.mapAgentAssetRevision(revision));
+  }
+
+  deleteAgentAsset({ agentId, path, expectedRevision }) {
+    return this.mapAgentAssetRevision(
+      this.store.deleteAgentAsset({
+        agentId,
+        path,
+        expectedRevision,
+        reason: '用户在成员资料中手动删除',
+      }),
+    );
+  }
+
+  restoreAgentAsset({ agentId, path, revision, expectedRevision }) {
+    return this.mapAgentAssetRevision(
+      this.store.restoreAgentAsset({
+        agentId,
+        path,
+        revision,
+        expectedRevision,
+        reason: '用户在成员资料中手动恢复',
+      }),
+    );
+  }
+
+  mapAgentAssetRevision(row) {
+    return {
+      id: row.id,
+      path: row.path,
+      revision: row.revision,
+      content: row.content,
+      isDeleted: Boolean(row.isDeleted),
+      reason: row.reason,
+      sourceTurnId: row.sourceTurnId,
+      sourceProjectId: row.sourceProjectId,
+      createdAt: row.createdAt,
+    };
+  }
+
   /**
    * @param {{roomId:string,agentId:string,text:string,replyToMessageId?:string|null,reviewRequestId?:string|null}} input
    */

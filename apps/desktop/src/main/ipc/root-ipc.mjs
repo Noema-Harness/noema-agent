@@ -63,6 +63,11 @@ const CHANNELS = Object.freeze({
   socialUpdateAgentProfile: 'noema:social-update-agent-profile',
   socialAgentProjectWork: 'noema:social-agent-project-work',
   socialAgentArchive: 'noema:social-agent-archive',
+  socialAgentAssets: 'noema:social-agent-assets',
+  socialAgentAsset: 'noema:social-agent-asset',
+  socialAgentAssetHistory: 'noema:social-agent-asset-history',
+  socialAgentAssetDelete: 'noema:social-agent-asset-delete',
+  socialAgentAssetRestore: 'noema:social-agent-asset-restore',
   socialResetChat: 'noema:social-reset-chat',
   socialSend: 'noema:social-send',
   socialForward: 'noema:social-forward',
@@ -567,6 +572,21 @@ export function registerRootIpc({
     );
     register(CHANNELS.socialAgentArchive, (agentId, archived) =>
       socialChatService.setAgentArchived(agentId, archived),
+    );
+    register(CHANNELS.socialAgentAssets, (agentId) =>
+      socialChatService.listAgentAssets(agentId, { includeDeleted: true }),
+    );
+    register(CHANNELS.socialAgentAsset, (agentId, path) =>
+      socialChatService.getAgentAsset(agentId, path),
+    );
+    register(CHANNELS.socialAgentAssetHistory, (agentId, path) =>
+      socialChatService.listAgentAssetRevisions(agentId, path),
+    );
+    register(CHANNELS.socialAgentAssetDelete, (input) =>
+      socialChatService.deleteAgentAsset(input),
+    );
+    register(CHANNELS.socialAgentAssetRestore, (input) =>
+      socialChatService.restoreAgentAsset(input),
     );
     register(CHANNELS.socialResetChat, async () => {
       if (!resetChatSession) throw new Error('会话重置尚未就绪。');
