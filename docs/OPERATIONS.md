@@ -96,6 +96,7 @@ npm run branches:prune -- --apply # 执行删除
 | 活动变更超过 1 个                                     | 已完成的先 `openspec archive <name> --yes`（归档目录只留本机，不入库）；过期未做的也归档并写明关闭原因                              |
 | main 上还有未收口 change                              | 维护者先归档 main 上的变更；这不是协作者 PR 的问题，等归档后让检查重跑                                                              |
 | 平台不允许未收口 change                               | 归档并删掉 `openspec/changes/<name>/`、把规格增量合并进 `openspec/specs/` 之后再推送或合并                                          |
+| 已经推送了带未收口 change 的提交                      | 别想着 force push：按上一条在本地收口后再推一次，`platform` 复查通过即可；这次红是提交时序问题，不是代码问题                        |
 | 活动变更 tasks 全部完成                               | 归档该变更后再开下一个阶段                                                                                                          |
 | `[用户]` 验收项勾选没有确认日期                       | 只有用户明确确认后才勾选，并写成 `（用户确认：YYYY-MM-DD）`                                                                         |
 | milestone 报任务未完成 / 有待决问题 / STATUS 不是当天 | 补完任务、拿到用户答案、更新 STATUS 后再归档                                                                                        |
