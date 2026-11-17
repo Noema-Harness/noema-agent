@@ -4,29 +4,33 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 
-export const SKILL_NAME = "noema-development";
+export const SKILL_NAMES = ["noema-development", "noema-governance"];
 
-export function repoSkillPath(root) {
-  return path.join(root, "skills", SKILL_NAME, "SKILL.md");
+export function repoSkillPath(root, name) {
+  return path.join(root, "skills", name, "SKILL.md");
 }
 
-export function profileSkillPath(home) {
-  return path.join(home, ".dsh", "skills", SKILL_NAME, "SKILL.md");
+export function profileSkillPath(home, name) {
+  return path.join(home, ".dsh", "skills", name, "SKILL.md");
 }
 
 function sha256(file) {
   return crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex");
 }
 
-export function installSkill(root, home = os.homedir()) {
-  const source = repoSkillPath(root);
+export function installSkill(root, home = os.homedir(), name = SKILL_NAMES[0]) {
+  const source = repoSkillPath(root, name);
   if (!fs.existsSync(source)) {
     throw new Error(`缺少仓库技能文件：${path.relative(root, source)}`);
   }
-  const target = profileSkillPath(home);
+  const target = profileSkillPath(home, name);
   fs.mkdirSync(path.dirname(target), { recursive: true });
   fs.copyFileSync(source, target);
-  return { source, target, hash: sha256(target) };
+  return { name, source, target, hash: sha256(target) };
+}
+
+export function installSkills(root, home = os.homedir()) {
+  return SKILL_NAMES.map((name) => installSkill(root, home, name));
 }
 
 export function checkSkill(root, options = {}) {
@@ -34,26 +38,27 @@ export function checkSkill(root, options = {}) {
   const inCi = options.ci ?? Boolean(process.env.CI);
   const errors = [];
   const notices = [];
-  const source = repoSkillPath(root);
-  if (!fs.existsSync(source)) {
-    if (!fs.existsSync(path.join(root, "skills"))) {
-      return { errors, notices };
+  if (!fs.existsSync(path.join(root, "skills"))) {
+    return { errors, notices };
+  }
+  for (const name of SKILL_NAMES) {
+    const source = repoSkillPath(root, name);
+    if (!fs.existsSync(source)) {
+      errors.push(`缺少 skills/${name}/SKILL.md：技能没有源文件`);
+      continue;
     }
-    errors.push("缺少 skills/noema-development/SKILL.md：开发运行手册没有源文件");
-    return { errors, notices };
-  }
-  const target = profileSkillPath(home);
-  if (!fs.existsSync(target)) {
-    notices.push("项目治理技能未安装：npm run skill:install（AGENTS 仍是完整约束，不影响检查）");
-    return { errors, notices };
-  }
-  if (sha256(source) !== sha256(target)) {
-    const message =
-      "已安装的项目治理技能与仓库不一致：npm run skill:install（仓库 skills/noema-development/SKILL.md 是源）";
-    if (inCi) {
-      notices.push(`CI 环境不比较本机技能副本：${message}`);
-    } else {
-      errors.push(message);
+    const target = profileSkillPath(home, name);
+    if (!fs.existsSync(target)) {
+      notices.push(`技能 ${name} 未安装：npm run skill:install（AGENTS 仍是完整约束，不影响检查）`);
+      continue;
+    }
+    if (sha256(source) !== sha256(target)) {
+      const message = `已安装的技能 ${name} 与仓库不一致：npm run skill:install（仓库 skills/${name}/SKILL.md 是源）`;
+      if (inCi) {
+        notices.push(`CI 环境不比较本机技能副本：${message}`);
+      } else {
+        errors.push(message);
+      }
     }
   }
   return { errors, notices };
@@ -63,8 +68,9 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const command = process.argv[2] ?? "check";
   const root = process.cwd();
   if (command === "install") {
-    const { target, hash } = installSkill(root);
-    console.log(`skill-install: OK ${target} (sha256 ${hash.slice(0, 12)})`);
+    for (const { name, target, hash } of installSkills(root)) {
+      console.log(`skill-install: OK ${name} -> ${target} (sha256 ${hash.slice(0, 12)})`);
+    }
   } else {
     const { errors, notices } = checkSkill(root);
     for (const notice of notices) console.log(`skill-check · ${notice}`);

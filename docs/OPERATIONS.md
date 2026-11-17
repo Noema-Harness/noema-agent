@@ -14,7 +14,7 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 ## 开发
 
-时间轴（四态、每次转移绑哪道门）见 [AGENTS](../AGENTS.md) 的「一条时间轴」与 `scripts/lifecycle.mjs`；本文只写命令、环境与报错修法。开发运行手册在 `skills/noema-development/SKILL.md`，用 `npm run skill:install` 同步到 `~/.dsh/skills`（`docs:check` 校验副本一致）。需要用户决定或验收时看 `npm run review`；条目字段与三道门见「审核入口与决议条目」。
+时间轴（四态、每次转移绑哪道门）见 [AGENTS](../AGENTS.md) 的「一条时间轴」与 `scripts/lifecycle.mjs`；本文只写命令、环境与报错修法。两个技能都在 `skills/` 下：`noema-development` 是立项与条目模板（常规轮按需），`noema-governance` 是偏离盘查（只在发现执行偏离治理预期时加载）；`npm run skill:install` 同步到 `~/.dsh/skills`（`docs:check` 校验副本一致）。需要用户决定或验收时看 `npm run review`；条目字段与三道门见「审核入口与决议条目」。
 
 ```powershell
 npm ci

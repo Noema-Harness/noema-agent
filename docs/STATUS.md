@@ -48,7 +48,8 @@ Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与�
 
 ## 治理分层（2026-11-16）
 
-- 技能只留模板（立项三件套 + 决议条目骨架），流程/门槛/出口/命令各归 AGENTS 与 OPERATIONS。
+- 技能分两份、各做一件事（change `governance-extraction`）：`noema-development` 留模板（立项三件套 + 决议条目骨架），`noema-governance` 做偏离盘查（三种偏差分类 + 六步，每步带产物；正常轮次不加载）。流程/门槛/出口/命令各归 AGENTS 与 OPERATIONS。
+- `scripts/skill-sync.mjs` 用 `SKILL_NAMES` 同步两份技能到 `~/.dsh/skills`，`docs:check` 校验副本一致；`scripts/skill-sync.test.mjs` 5 条覆盖两份安装、单份安装、整份漂移与缺源文件。证据：两份技能 `skill-install: OK`（sha256 `51e27718272d` / `dfb48991bd5d`）、`npm run check` **899/899、0 fail**。
 - `scripts/figure.mjs` 支持两张图；新增治理全景图 `docs/assets/noema-governance.*`（提示层 / 事实流 / 机器门），AGENTS 顶部链接，不进 README。
 - 条目验收项可勾选，勾完 `npm run decisions:sync` 自动收口；`npm run review` 显示勾选进度。
 
