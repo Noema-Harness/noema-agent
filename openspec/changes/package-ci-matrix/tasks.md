@@ -10,6 +10,8 @@
 - [ ] 2.2 Windows 专属步骤（dev smoke、Squirrel 安装生命周期）限定 `runner.os == 'Windows'`。
 - [ ] 2.3 Linux job 安装 `xvfb`/`rpm` 并用 `xvfb-run` 跑冒烟；artifact 按平台命名上传。
 - [ ] 2.4 `MakerDeb`/`MakerRpm` 的安装器 helper（`electron-installer-debian`、`electron-installer-redhat`）声明为 `apps/desktop/package.json` 的 `optionalDependencies`，让 `npm ci` 在 Linux/macOS 装上、Windows 跳过；`docs/OPERATIONS.md` 记录原因。
+- [ ] 2.5 `MakerDeb`/`MakerRpm` 传 `options.bin = 'Noema'`：Linux 包的可执行名来自 `productName`，安装器默认取 `package.json` 的 `name`（`noema-desktop`）。
+- [ ] 2.6 Squirrel 安装生命周期的目录搬移加有限重试（CI 上偶发文件占用）。
 
 ## 3. 文档与决议
 

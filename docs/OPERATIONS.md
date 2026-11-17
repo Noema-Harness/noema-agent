@@ -240,6 +240,7 @@ npm run make:desktop
 - `make` 产出 Squirrel 安装包（`.tmp/forge-out/make/squirrel.windows/x64` 或 `out/make/...`）；发布产物按版本放到外部 release 目录，不提交。
 - 非 Windows：`make` 只验证该平台的 maker 能跑通——macOS 出 ZIP（`MakerZIP` darwin），Linux 出 DEB/RPM（需要 `rpmbuild`，CI 里 `apt-get install rpm`）；Squirrel 安装生命周期只有 Windows 有。产品仍只发布 Windows 包。
 - `MakerDeb`/`MakerRpm` 的安装器 helper（`electron-installer-debian`、`electron-installer-redhat`，各自 `os: ["darwin","linux"]`）在 `apps/desktop/package.json` 里声明为 `optionalDependencies`：Windows 上 `npm ci` 跳过，Linux/macOS 上才会安装。不要改到 `devDependencies`——Windows 安装会因平台不匹配直接失败；也不要指望从 maker 的传递 optionalDependencies 自动解析，锁文件里记录不到。
+- 两个 Linux maker 都传 `options.bin: 'Noema'`（`forge.config.mts`）：安装器默认把 `bin` 取成 `package.json` 的 `name`（`noema-desktop`），而产出的可执行文件按 `productName` 叫 `Noema`；不传会报 `could not find the Electron app binary at ".../noema-desktop"`。
 - `apps/desktop/out*`、`apps/desktop/.tmp` 是构建产物，不提交。
 - 安装验证注意：Squirrel Setup 先在 `%LOCALAPPDATA%\SquirrelTemp` 解包。本机仓库目录带 `Low Mandatory Level:(OI)(CI)(NW)` 完整性标签，区内构建的 `Setup.exe` 以 Low IL 运行，写 `%LOCALAPPDATA%`/`C:\ProgramData` 会被内核 MIC 拒绝，此时 Setup 回退到 `C:\ProgramData\<用户>` 并弹 `Unable to write to … - IT policies may be restricting access to this folder`（`icacls <仓库根>` 可看到该标签；`%LOCALAPPDATA%\SquirrelTemp\Squirrel-Install.log` 会有 `Win32Exception (0x80004005): 拒绝访问`）。验证载荷时可把 `SQUIRREL_TEMP`/`TEMP` 指到可写目录（安装根变成该目录的父级）；验证真实安装先把 exe 复制到 `%TEMP%` 再运行（副本没有 Low 标签），或经批准删掉 `apps/desktop/out` 的 Low 标签。
 

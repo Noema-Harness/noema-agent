@@ -222,8 +222,10 @@ const config: ForgeConfig = {
       vendorDirectory: process.env.NOEMA_SQUIRREL_VENDOR,
     }),
     new MakerZIP({}, ['darwin', 'win32']),
-    new MakerRpm({}),
-    new MakerDeb({}),
+    // The packaged Linux executable is named after `productName` (Noema), while
+    // the installers default `bin` to `package.json` `name` (noema-desktop).
+    new MakerRpm({ options: { bin: 'Noema' } }),
+    new MakerDeb({ options: { bin: 'Noema' } }),
   ],
   plugins: [
     new VitePlugin({

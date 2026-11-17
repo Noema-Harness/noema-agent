@@ -75,6 +75,22 @@ function Invoke-CheckedProcess([string]$FilePath, [string[]]$ArgumentList, [int]
   }
 }
 
+function Move-DirectoryWithRetry([string]$Source, [string]$Destination, [int]$TimeoutSeconds = 30) {
+  $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+  while ($true) {
+    try {
+      Move-Item -LiteralPath $Source -Destination $Destination -ErrorAction Stop
+      return
+    }
+    catch {
+      if ([DateTime]::UtcNow -ge $deadline) {
+        throw "Could not move '$Source' to '$Destination' within $TimeoutSeconds seconds: $($_.Exception.Message)"
+      }
+      Start-Sleep -Milliseconds 500
+    }
+  }
+}
+
 function Wait-ForInstalledApp([string]$Version) {
   $executable = Join-Path $installRoot "app-$Version\Noema.exe"
   $deadline = [DateTime]::UtcNow.AddMinutes(3)
@@ -189,7 +205,7 @@ try {
 
   $installedUpgradeDirectory = Join-Path $installRoot "app-$upgradeVersion"
   $repairProbeDirectory = Join-Path $smokeRoot "repair-probe-$upgradeVersion"
-  Move-Item -LiteralPath $installedUpgradeDirectory -Destination $repairProbeDirectory
+  Move-DirectoryWithRetry -Source $installedUpgradeDirectory -Destination $repairProbeDirectory
   if (-not (Test-Path -LiteralPath $repairProbeDirectory -PathType Container)) {
     throw 'Could not preserve the moved application folder for installer recovery.'
   }
