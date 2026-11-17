@@ -708,12 +708,12 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 - [x] 条目缺字段或阶段与状态不一致时 `docs:check` 拒绝 — 改坏一条跑 `docs:check`
 - 用户确认：2026-11-16
 
-## 🔧 [#151](https://github.com/Noema-Harness/noema-agent/issues/151) D-20261116-platform-layers 与 Windows 解耦：核心、端口、宿主三层
+## ✅ [#151](https://github.com/Noema-Harness/noema-agent/issues/151) D-20261116-platform-layers 与 Windows 解耦：核心、端口、宿主三层
 
-- **阶段**：执行中
+- **阶段**：已收口
 - **结构**：核心（平台无关）/ 端口（接口）/ 宿主（桌面、远程、移动）三层；核心导入规则由 `source:check` 拦；移动端为伴侣客户端；四刀各一个 change。
 - **来源**：用户 2026-11-15 要求把与 Windows 强耦合的结构解耦，便于统一更新并扩展到 Mac、Linux 和移动端
-- **阻塞**：无（四刀已落地；验收见 §3）
+- **阻塞**：无（四刀已落地；2026-11-17 用户确认以 CI 打包与冒烟为验收口径，macOS 真机由协作者后续反馈）
 
 #### 1 决策
 
@@ -726,7 +726,7 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 #### 2 执行
 
-- 批次：看板 #151；状态：执行中（第①刀 `changes/platform-core-boundary` 已归档，2026-11-17；第③刀 `changes/platform-windows-only-tests` 已归档，2026-11-17；第②刀 `changes/package-ci-matrix` 已归档，2026-11-17；第④刀 `changes/bridge-transport` 已归档，2026-11-17）。
+- 批次：看板 #151；状态：已收口（第①刀 `changes/platform-core-boundary` 已归档，2026-11-17；第③刀 `changes/platform-windows-only-tests` 已归档，2026-11-17；第②刀 `changes/package-ci-matrix` 已归档，2026-11-17；第④刀 `changes/bridge-transport` 已归档，2026-11-17；用户 2026-11-17 验收）。
 - 切法：①执行后端端口 + 核心层导入规则；②打包按系统拆分，CI 改为 Windows/macOS/Linux 矩阵；③约 20 个 Windows 专属测试改成跨平台或按平台跳过；④bridge 传输抽象（移动端/网页端的前提）。
 - 发现：核心模块今天已经不依赖 Electron，耦合集中在执行后端、打包、生命周期和测试，按端口切开的成本主要在这几处。
 - 第①刀（PR #162，`c329d84`）：`runtime/work-runtime.ts` 定义执行后端端口，DSH/native 各声明一行实现；`platform/workspace-identity.ts` 收拢路径大小写折叠；`diagnostics/database-recovery.ts` 不再引用 Electron 类型。核心边界规则随后搬进 `npm run source:check`（`changes/source-check-core-boundaries`，2026-11-17，issue #156 收口），过渡测试 `test/main/core-boundary.test.mjs` 删除。Windows 全量 890/890，架构图重出 `e12d59b`。
@@ -736,9 +736,11 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 #### 3 验收
 
-- [ ] 核心不导入 `electron`、`node:child_process`，不比较 `process.platform` — `npm run source:check`
-- [ ] 三平台 CI 全绿 — 远端 CI 矩阵
-- [ ] 安装包在 macOS 与 Linux 可安装并启动 — 对应平台真机/Actions 冒烟
+- [x] 核心不导入 `electron`、`node:child_process`，不比较 `process.platform` — `npm run source:check`（0 错误；`test/tooling/source-structure.test.mjs` 覆盖拦截与放行）
+- [x] 三平台 CI 全绿 — `Desktop package` run `43987410699`（Windows/macOS/Linux success + 三个 artifact）；`Desktop checks` run `43993458814`（`verify` success、`portable` success 899 tests / 13 skipped、`platform` success）
+- [x] 安装包在三平台可打包并启动 — CI 产物冒烟（真实 `app.asar` 启动、渲染器加载、托盘生命周期在 win32）
+- [x] 真机安装启动验收口径 — 用户 2026-11-17 确认：以 CI 打包与冒烟为准，其它系统当前无法验证；macOS 真机由协作者后续反馈（计入 `docs/STATUS.md` 未验证）
+- 用户确认：2026-11-17
 
 ## ✅ D-20261116-workflow-closure 治理框架收口：九步、条目生命周期与审核入口
 
