@@ -360,6 +360,15 @@ function checkDatedEntry(entry, errors, notices = []) {
       errors.push(`${entry.id} 在决策中，「#### 1 决策」里没有「- 要定：」：写清要用户定什么`);
     }
   }
+  // 执行层只放批次指针：进度属于 change 与看板，抄进条目必然漂移。阶段要靠这个指针才
+  // 能前进——没有批次就写不出执行层，agent 不能凭“我觉得做完了”改阶段。
+  const executionSection = sectionBody(entry.body, "#### 2 执行");
+  const pointer = executionSection === null ? null : /^\s*- 批次：\s*\S+/mu.exec(executionSection);
+  if (meta.stage !== "决策中" && !pointer) {
+    errors.push(
+      `${entry.id} 的阶段是「${meta.stage}」，但「#### 2 执行」没有批次指针：先立项，写一行「- 批次：changes/<name>（commit …）」再推进阶段`,
+    );
+  }
   const decision = /^\s*- 决定：/mu.test(entry.body);
   if (meta.stage === "决策中" && decision) {
     errors.push(`${entry.id} 还在决策中，却已经写了「- 决定：」：用户确认后再写结论`);

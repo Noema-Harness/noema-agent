@@ -56,7 +56,7 @@ Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与�
 - 条目验收项可勾选，勾完 `npm run decisions:sync` 自动收口；`npm run review` 显示勾选进度。
 - 条目归属（2026-11-17，change `decision-entry-ownership`）：`docs/DECISIONS.md` 由用户驱动，只有需要用户拍板、多方案取舍或跨轮次不可逆的才建条目；agent 不自行开条目、不把候选写成决定。盘查技能改成三档出口（直接修 / 只补检查或验证 / 才登记条目），`scripts/maintenance.mjs` 的 `checkDatedEntry` 要求「来源」以「用户」开头、阶段过决策中后「#### 1 决策」必须有「用户确认：YYYY-MM-DD」。证据：`scripts/maintenance.test.mjs` 22/22、`npm run check` **899/899、0 fail**。
 
-- 条目分层（2026-11-17，change `decision-lifecycle-layers`）：条目是一个待定问题的审核入口，不是一轮工作的记录——决策中只写决策层，执行层与验收层各留 `- 未开始：…`，定案后才转入批次、发现与验收。头部只有 阶段/结构/来源/阻塞 四个字段（旧版 `**状态**` 由阶段表达）；一个专案只留一条，讨论收窄不另开占位条目。证据：`scripts/maintenance.test.mjs` **24/24**（新增决策中写满执行/验收与非法字段两条）；`npm run check` **901/901、0 fail**。
+- 条目分层（2026-11-17，change `decision-lifecycle-layers`）：条目是一个待定问题的审核入口，不是一轮工作的记录——决策中只写决策层，执行层与验收层各留 `- 未开始：…`，定案后才转入批次、发现与验收。头部只有 阶段/结构/来源/阻塞 四个字段（旧版 `**状态**` 由阶段表达）；一个专案只留一条，讨论收窄不另开占位条目。执行层只允许两样：批次指针（`- 批次：changes/<name>（commit …）`）与影响决定的发现；进度与任务状态看 change 与看板，不抄进条目。阶段过了决策中后没有批次指针，`docs:check` 直接报错，agent 不能凭自述推进阶段（change `decision-execution-pointer`）。证据：`scripts/maintenance.test.mjs` **25/25**；`npm run check` **901/901、0 fail**。
 
 ## 图的维护（2026-11-17）
 

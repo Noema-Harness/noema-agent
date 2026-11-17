@@ -643,6 +643,13 @@ test("a decision in progress writes only the decision layer", () => {
   assert.match(vague.errors.join("\n"), /没有「- 要定：」/u);
 });
 
+test("an entry past the decision stage points at its batch", () => {
+  const missing = checkDecisionEntries(
+    `## D-20261116-probe\n\n${LIFECYCLE("执行中").replace("- 批次：changes/stage-probe", "- 找到了：改了三处")}`,
+  );
+  assert.match(missing.errors.join("\n"), /没有批次指针/u);
+});
+
 test("an entry only carries the four allowed fields", () => {
   const extra = checkDecisionEntries(
     `## D-20261116-probe\n\n${LIFECYCLE("执行中").replace(
