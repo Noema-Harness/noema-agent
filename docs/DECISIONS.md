@@ -898,3 +898,35 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 - [x] 外部项目内容不再出现在 `docs/` — 搜索 `inbox-ack-loop` 只剩 OPERATIONS 的转发器说明
 
 - 用户确认：2026-11-17
+
+## 🔍 D-20261117-figure-content-gate 图门判定内容：章节摘要与 candidate 摘要
+
+- **阶段**：待验收
+- **状态**：决定
+- **用户确认**：2026-11-17
+- **来源**：用户 2026-11-17 指出架构图自 `e47d4aa`（2026-11-15）后内容从未变化，`figure:check` 只比较整篇文档 sha，导致“重跑渲染”被当成“更新图”；并批准重画图与补机制。
+- **阻塞**：无
+- **结构**：
+  - `docs/assets/*.source.json` 记录 `source.sections`（每张图依赖的文档章节与摘要）与 `source.candidateSha256`（candidate 内容摘要）；`source.rationale` 只在显式记录“图无需改”的判断时存在，并绑定当时的章节摘要。
+  - `scripts/figure.mjs`：`parseDocumentSections`/`collectSectionHashes`/`evaluateFigureFreshness` 判断漂移；`checkOne` 报章节漂移与 candidate 不符；`buildOne` 在“章节变了但 candidate 没变”时拒绝，`--sections-changed "<理由>"` 才放行。
+  - 架构图随结构重画：bridge 传输、执行后端可换、本机文件与命令、按平台打包状态；计划节点对齐开放卡片（#144 六模块、#139 会话拓扑、#140 @Noema 跨房间）。治理图补“提示层 / 事实流 / 机器门”三块区域。
+
+#### 1 决策
+
+- 决定：图门判定“内容是否跟着结构走”，不判定“有没有重跑渲染”。章节漂移必须过一次判断；判断要么改图，要么把理由写进 `source.rationale` 并绑定章节状态，下次章节再变要重新判断。
+- 理由：整篇 sha 只能发现文档变化，不能区分“无关小改”和“结构已变”；只回写摘要的 build 会把没更新过的图伪装成已核对。
+- 替代：从文档全自动生图（否决：图的表达是判断产物，机械重排会制造假更新）；只做整篇 sha 比对（否决：就是当前缺陷）。
+- 重新审视：如果维护者频繁用 `--sections-changed` 而不改图，说明章节名单或图粒度不对，应拆图或重新划章节。
+
+#### 2 执行
+
+- 批次：`changes/figure-content-gate`（2026-11-17，`Plan: none` 的治理工具改动，不含 `apps/desktop/src/`）。
+- 发现：`scripts/` 属提交门的工具代码前缀；治理变更可以改工具与文档，但不能带产品代码。这条边界本身正确，本次改动符合它。
+- 证据：`node --test scripts/figure.test.mjs` 6/6；`npm run figure:check` OK；`npm run check` 899/899、`governance: milestone OK`；测试 PR #165（只改 `docs/ARCHITECTURE.md`、不重出图）run `44004600340` 的 `verify` success，日志含两条“PR 只提示：图由维护者在合并前后重出”（整篇 sha 与“2. 进程与依赖方向”章节漂移各一条）。
+
+#### 3 验收
+
+- [x] 章节漂移会报、candidate 未变时 build 拒绝、理由过期后重新要求判断 — `node --test scripts/figure.test.mjs`
+- [x] 两张图按当前结构重画，治理图能看到提示层 / 事实流 / 机器门 — 打开 `docs/assets/noema-architecture.html`、`docs/assets/noema-governance.html`
+- [x] PR 上漂移只提示、不拦协作者 — PR #165 run `44004600340` 的 `verify`（日志见上）
+- [ ] 用户过目两张图并确认机制方向 — 等用户确认

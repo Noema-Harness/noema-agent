@@ -52,6 +52,12 @@ Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与�
 - `scripts/figure.mjs` 支持两张图；新增治理全景图 `docs/assets/noema-governance.*`（提示层 / 事实流 / 机器门），AGENTS 顶部链接，不进 README。
 - 条目验收项可勾选，勾完 `npm run decisions:sync` 自动收口；`npm run review` 显示勾选进度。
 
+## 图的维护（2026-11-17）
+
+- 图门判定内容（change `figure-content-gate`）：`docs/assets/*.source.json` 记录 `source.sections`（图依赖章节的摘要）与 `source.candidateSha256`；`figure:check` 报章节漂移与 candidate 不符，`figure:build` 在“章节变了但 candidate 没变”时拒绝，`--sections-changed "<理由>"` 记录判断且理由绑定当次章节状态（下次再变要重新判断）。`scripts/figure.test.mjs` 6/6；`npm run check` **899/899、0 fail**。
+- 两张图已按当前结构重画：架构图补 bridge 传输、执行后端可换、本机文件与命令、按平台打包状态，计划节点对齐开放卡片（#144 六模块 / #139 会话拓扑 / #140 @Noema 跨房间）；治理图补“提示层 / 事实流 / 机器门”三块区域。
+- 证据：测试 PR #165（只改 `docs/ARCHITECTURE.md`、不重出图）run `44004600340` 的 `verify` 在 `NOEMA_FIGURE_SOFT=1` 下 success，日志含两条“PR 只提示：图由维护者在合并前后重出”（整篇 sha 与“2. 进程与依赖方向”章节漂移各一条）。
+
 ## 协作文档门禁（2026-11-16）
 
 - 协作者可直接改 `docs/**` 与 `openspec/specs/**`；只有治理机制（`AGENTS.md`、`.github/`、`.githooks/`、`scripts/`、`openspec/config.yaml`、根 `package.json`）维护者独占。审核移到 PR：以代码与运行证据为准，`docs:check` 在 PR 上照跑。
