@@ -374,9 +374,9 @@
     },
     "png": {
       "path": "docs/assets/noema-governance.png",
-      "sha256": "8f1823b930a5004d28d361bead3d513ac29a6d67d749553c971ec0775f032bd3",
-      "bytes": 165170
+      "sha256": "862eb6a14194027603c112554013f0f415882ae00f9889177dcc08dc5bd070e1",
+      "bytes": 165352
     }
   },
-  "updatedAt": "2026-11-16T23:31:01.419Z"
+  "updatedAt": "2026-11-17T00:57:23.638Z"
 }

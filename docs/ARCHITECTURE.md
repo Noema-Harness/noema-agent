@@ -25,7 +25,8 @@ renderer (React)
 ```
 
 - `shared` 不反向导入 `main`/`preload`；`main` 不导入 `renderer`。
-- IPC handler 只解析参数、调用 service、返回结果；业务判断在 main service。
+- `window.noema` 由 `shared/bridge/create-bridge.ts` 组装，只依赖 `BridgeTransport`（`invoke` 一次请求、`on` 一次事件）；通道名、授权与业务判断不在传输里。桌面传输是 `preload/electron-transport.ts`，宿主分发是 `main/ipc/bridge-router.ts`（D-20261116-platform-layers 第④刀）。
+- IPC handler 只解析参数、调用 service、返回结果；业务判断在 main service。窗口授权留在宿主 `root-ipc.mjs`，不属于分发。
 - store 只做持久化、事务和映射；service 只编排用例；adapter 只封装外部进程/API。
 - 外部运行时（DSH、Windows Runner、模型服务）通过适配层进入；产品对象、工单、工作区和证据不随运行时改变。
 
@@ -134,7 +135,7 @@ apps/desktop/src/main/                     层：核心 / 端口 / 宿主（D-20
   main.ts                    宿主  启动、服务装配、窗口/托盘、IPC 组合
   app/                       宿主  窗口、social-runtime、agent、provider、runner、smoke/e2e 模块
   platform/                  宿主  workspace identity、host-platform、托盘与生命周期、通知、密钥存储
-  ipc/                       宿主  root IPC 参数解析与转发
+  ipc/                       宿主  root IPC 参数解析、bridge 通道分发与转发
   integrations/              宿主  执行后端适配器：DSH headless、Codex app-server
   testing/                   宿主  渲染冒烟与 e2e 辅助
   execution/                 暂例外  SocialWorkService（核心逻辑）与 native 执行器、Windows Runner、git 审查（子进程）同目录，待拆
@@ -146,14 +147,14 @@ apps/desktop/src/main/                     层：核心 / 端口 / 宿主（D-20
   storage/                   核心  SQLite/root/social/project stores
   tools/  mcp/  plugins/     核心  计算/搜索/工作区校验工具、MCP 工具服务、官方插件宿主
   diagnostics/  archive/     核心  诊断查询与数据库恢复、旧历史归档
-apps/desktop/src/preload/    contextBridge API
+apps/desktop/src/preload/    contextBridge 暴露与 Electron 传输
 apps/desktop/src/renderer/
   chat/core-chat-app.tsx     当前唯一挂载的对话界面
   chat/use-social-chat-controller.tsx  会话/发送/任务/编辑状态
   chat/turn-trace.tsx        回合工具轨迹
   chat/messages.tsx          消息与操作
   styles/index.css           当前核心界面样式
-apps/desktop/src/shared/     跨进程契约与 bridge 类型
+apps/desktop/src/shared/     跨进程契约、bridge 组装与传输接口
 ```
 
 三层的依赖方向：宿主装配核心，并把平台事实以参数传入；核心目录（上表标「核心」的目录与 `src/shared`）不导入 `electron`、`child_process`，不比较 `process.platform`，由 `npm run source:check`（`scripts/source-structure.mjs`，issue #156）检查。执行后端只通过端口 `runtime/work-runtime.ts`（`WorkRuntime.startTask` → `{ started, done, stop }` 与五类事件）与 `SocialWorkService` 对接，DSH（`integrations/dsh-headless-adapter.mjs`）与 native（`execution/noema-project-executor.mjs`）各自声明实现它，由 `main.ts` 交给 `createWorkRuntimeRegistry`。

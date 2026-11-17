@@ -18,7 +18,7 @@
 
 ## 4. 文档与收口
 
-- [ ] 4.1 `docs/ARCHITECTURE.md` 记录 `shared/bridge` → 宿主 transport 的边界
-- [ ] 4.2 `docs/STATUS.md` 与 `docs/DECISIONS.md` 记录第④刀结果（含用户范围选择）
+- [x] 4.1 `docs/ARCHITECTURE.md` 记录 `shared/bridge` → 宿主 transport 的边界
+- [x] 4.2 `docs/STATUS.md` 与 `docs/DECISIONS.md` 记录第④刀结果（含用户范围选择）
 - [ ] 4.3 `npm run check` 全绿后提交
-- [ ] 4.4 更新 issue #151 卡片正文与第④刀评论
+- [x] 4.4 更新卡片正文（现在能做什么 + 手测步骤 / 还没做）：issue #151 正文与第④刀评论

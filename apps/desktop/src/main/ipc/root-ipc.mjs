@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { isMainFrameIpcEvent } from '../platform/window-security.ts';
+import { createBridgeRouter } from './bridge-router.ts';
 
 const CHANNELS = Object.freeze({
   models: 'noema:refresh-models',
@@ -156,13 +157,8 @@ export function registerRootIpc({
   shouldInjectSocialWorkReverseSnapshot = () => false,
 }) {
   let socialWorkReverseSnapshotProbe = null;
-  const register = (channel, handler) => {
-    ipcMain.handle(channel, async (event, ...args) => {
-      if (!isTrustedSender(event.sender) || !isMainFrameIpcEvent(event))
-        throw new Error('未授权的应用窗口请求');
-      return handler(...args);
-    });
-  };
+  const router = createBridgeRouter();
+  const register = (channel, handler) => router.handle(channel, handler);
 
   const recordPersonalMemoryIpc = (operation, callback) => {
     const executionId = randomUUID();
@@ -680,11 +676,19 @@ export function registerRootIpc({
   register(CHANNELS.selectModel, (model) => rootAgent.setModel(model));
   register(CHANNELS.markSocialChatReady, () => markSocialChatReady());
 
+  // The Electron host binds exactly the registered channels; authorization
+  // stays here because it is a desktop-window concern, not a transport one.
+  for (const channel of router.channels) {
+    ipcMain.handle(channel, async (event, ...args) => {
+      if (!isTrustedSender(event.sender) || !isMainFrameIpcEvent(event))
+        throw new Error('未授权的应用窗口请求');
+      return router.dispatch(channel, args);
+    });
+  }
+
   return () => {
-    for (const channel of Object.values(CHANNELS)) {
-      if (channel !== CHANNELS.modelStateEvent) {
-        ipcMain.removeHandler(channel);
-      }
+    for (const channel of router.channels) {
+      ipcMain.removeHandler(channel);
     }
   };
 }

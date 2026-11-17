@@ -713,7 +713,7 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 - **阶段**：执行中
 - **结构**：核心（平台无关）/ 端口（接口）/ 宿主（桌面、远程、移动）三层；核心导入规则由 `source:check` 拦；移动端为伴侣客户端；四刀各一个 change。
 - **来源**：用户 2026-11-15 要求把与 Windows 强耦合的结构解耦，便于统一更新并扩展到 Mac、Linux 和移动端
-- **阻塞**：无（四刀待排期）
+- **阻塞**：无（四刀已落地；验收见 §3）
 
 #### 1 决策
 
@@ -726,12 +726,13 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 #### 2 执行
 
-- 批次：看板 #151；状态：执行中（第①刀 `changes/platform-core-boundary` 已归档，2026-11-17；第③刀 `changes/platform-windows-only-tests` 已归档，2026-11-17；第②刀 `changes/package-ci-matrix` 已归档，2026-11-17；④待排期）。
+- 批次：看板 #151；状态：执行中（第①刀 `changes/platform-core-boundary` 已归档，2026-11-17；第③刀 `changes/platform-windows-only-tests` 已归档，2026-11-17；第②刀 `changes/package-ci-matrix` 已归档，2026-11-17；第④刀 `changes/bridge-transport` 已归档，2026-11-17）。
 - 切法：①执行后端端口 + 核心层导入规则；②打包按系统拆分，CI 改为 Windows/macOS/Linux 矩阵；③约 20 个 Windows 专属测试改成跨平台或按平台跳过；④bridge 传输抽象（移动端/网页端的前提）。
 - 发现：核心模块今天已经不依赖 Electron，耦合集中在执行后端、打包、生命周期和测试，按端口切开的成本主要在这几处。
 - 第①刀（PR #162，`c329d84`）：`runtime/work-runtime.ts` 定义执行后端端口，DSH/native 各声明一行实现；`platform/workspace-identity.ts` 收拢路径大小写折叠；`diagnostics/database-recovery.ts` 不再引用 Electron 类型。核心边界规则随后搬进 `npm run source:check`（`changes/source-check-core-boundaries`，2026-11-17，issue #156 收口），过渡测试 `test/main/core-boundary.test.mjs` 删除。Windows 全量 890/890，架构图重出 `e12d59b`。
 - 第③刀（`changes/platform-windows-only-tests`，2026-11-17）：`apps/desktop/test/support/platform-cases.mjs` 提供 `windowsOnly(reason)`（非 Windows 返回 `{ skip: "Windows-only: …" }`，Windows 返回空选项），自带 3 条单测；run 43931274245 的 12 条 Ubuntu 失败逐条标记（2 盘符解析、1 `C:\` 绝对路径、5 `\` 分隔符/`..\` 越界/`cmd.exe` 进程树、1 `cd /d`、3 `path.win32` 校验）；`portable` 去掉 `continue-on-error`，PR 上 Ubuntu 失败即拦。Windows 用例集合不变。
 - 第②刀（`changes/package-ci-matrix`，2026-11-17）：`apps/desktop/scripts/smoke-package.mjs` 按宿主平台解析产物（win32 `Noema.exe`、linux `Noema`、darwin `Noema.app/Contents/MacOS/Noema`），Windows runner 与托盘生命周期断言只在 win32 执行，Linux 冒烟在测试侧附加 `--no-sandbox`；`Desktop package` 改为 `windows-latest`/`ubuntu-latest`/`macos-latest` 矩阵，三平台各自 `package:desktop` + 产物冒烟 + `make`，Windows 保留 dev smoke 与 Squirrel 安装生命周期；artifact 按平台命名。产品仍只发布 Windows 包。落地经过三次 CI 修正：helper 以 `optionalDependencies` 声明（`electron-installer-debian`，`os: ["darwin","linux"]`，Windows `npm ci` 跳过）；`MakerDeb` 传 `bin: 'Noema'`（安装器默认取 `package.json` 的 `name`）；移除 `MakerRpm`（`electron-installer-redhat@4.0.0` 的 spec 用相对 `cp -r usr/*`，rpmbuild ≥ 4.20 的 `%mkbuilddir` 改变 `%install` 工作目录，必然失败；产品不发布 RPM）。三平台矩阵 run `43987410699` 全绿并各上传 artifact；Squirrel 生命周期的目录搬移加了有限重试（CI 偶发文件占用）。
+- 第④刀（`changes/bridge-transport`，2026-11-17）：`shared/bridge/transport.ts` 只定义 `BridgeTransport`（`invoke` 一次请求、`on` 一次事件）；`shared/bridge/create-bridge.ts` 从 preload 抽出 `window.noema` 组装（`createBridge(transport, { appVersion, includeSocialWorkRaceProbe })`）；`preload/electron-transport.ts` 是 Electron 实现，`preload.ts` 只剩 `contextBridge.exposeInMainWorld`；`main/ipc/bridge-router.ts` 统一登记与分发通道（重复注册、未知通道报错），`root-ipc.mjs` 的 `register` 改为写 router、保留窗口授权与 dispose。用户选择本轮只做传输抽象，不做配对、鉴权或伴侣客户端；通道名、事件名与用户可观察行为不变。
 
 #### 3 验收
 
