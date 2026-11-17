@@ -26,9 +26,14 @@ const TODAY = localToday();
 const BOARD = "https://github.com/orgs/Noema-Harness/projects/1";
 
 const LIFECYCLE = (stage = "执行中", batch = "changes/stage-probe") => {
-  const decision = stage === "决策中" ? ["- 要定：x"] : ["- 决定：x（用户确认：2026-11-16）"];
-  const acceptance =
-    stage === "已收口" ? ["- [x] x — 手测", "- 用户确认：2026-11-16"] : ["- [ ] x — 手测"];
+  const waiting = stage === "决策中";
+  const decision = waiting ? ["- 要定：x"] : ["- 决定：x（用户确认：2026-11-16）"];
+  const execution = waiting ? ["- 未开始：定案后进入执行"] : [`- 批次：${batch}`];
+  const acceptance = waiting
+    ? ["- 未开始：定案后进入验收"]
+    : stage === "已收口"
+      ? ["- [x] x — 手测", "- 用户确认：2026-11-16"]
+      : ["- [ ] x — 手测"];
   return [
     `- **阶段**：${stage}`,
     "- **来源**：用户 2026-11-16 要求做探针",
@@ -37,7 +42,7 @@ const LIFECYCLE = (stage = "执行中", batch = "changes/stage-probe") => {
     "#### 1 决策",
     ...decision,
     "#### 2 执行",
-    `- 批次：${batch}`,
+    ...execution,
     "#### 3 验收",
     ...acceptance,
     "",
@@ -610,6 +615,42 @@ test("a dated entry puts its stage first and keeps the three sections", () => {
     `## D-20261116-probe\n\n${LIFECYCLE("已收口").replace("- 用户确认：2026-11-16", "")}`,
   );
   assert.match(closed.errors.join("\n"), /已收口，验收末尾应写「- 用户确认：YYYY-MM-DD」/u);
+});
+
+test("a decision in progress writes only the decision layer", () => {
+  const filled = checkDecisionEntries(
+    `## D-20261116-probe\n\n${LIFECYCLE("决策中").replace(
+      "- 未开始：定案后进入执行",
+      "- 批次：changes/probe",
+    )}`,
+  );
+  assert.match(filled.errors.join("\n"), /还在决策中，「#### 2 执行」却已经有内容/u);
+
+  const accepted = checkDecisionEntries(
+    `## D-20261116-probe\n\n${LIFECYCLE("决策中").replace(
+      "- 未开始：定案后进入验收",
+      "- [ ] x — 手测",
+    )}`,
+  );
+  assert.match(accepted.errors.join("\n"), /还在决策中，「#### 3 验收」却已经有内容/u);
+
+  const quiet = checkDecisionEntries(`## D-20261116-probe\n\n${LIFECYCLE("决策中")}`);
+  assert.equal(quiet.errors.join("\n"), "");
+
+  const vague = checkDecisionEntries(
+    `## D-20261116-probe\n\n${LIFECYCLE("决策中").replace("- 要定：x", "- 纪要：先讨论")}`,
+  );
+  assert.match(vague.errors.join("\n"), /没有「- 要定：」/u);
+});
+
+test("an entry only carries the four allowed fields", () => {
+  const extra = checkDecisionEntries(
+    `## D-20261116-probe\n\n${LIFECYCLE("执行中").replace(
+      "- **结构**：无",
+      "- **结构**：无\n- **状态**：待定",
+    )}`,
+  );
+  assert.match(extra.errors.join("\n"), /字段「状态」不在允许列表/u);
 });
 
 test("a decision entry must come from the user, not from the agent", () => {

@@ -136,6 +136,20 @@ function sectionBody(text, heading) {
   return body.join("\n");
 }
 
+// 取某个 `#### n` 小节自身的正文，到下一个一级到四级标题为止。
+function subsectionBody(text, heading) {
+  if (text === null) return null;
+  const lines = text.split(/\r?\n/u);
+  const start = lines.findIndex((line) => line.trim() === heading);
+  if (start === -1) return null;
+  const body = [];
+  for (const line of lines.slice(start + 1)) {
+    if (/^#{1,4} /u.test(line)) break;
+    body.push(line);
+  }
+  return body.join("\n");
+}
+
 // 变更指向哪里：卡片链接=推进某张能力卡；none=纯机制/文档治理；null=没写清楚。
 export function planTarget(proposalText) {
   if (GOVERNANCE_PLAN.test(proposalText ?? "")) return "governance";
@@ -306,6 +320,45 @@ function checkDatedEntry(entry, errors, notices = []) {
   }
   for (const heading of ["#### 1 决策", "#### 2 执行", "#### 3 验收"]) {
     if (!entry.body.includes(heading)) errors.push(`${entry.id} 缺少「${heading}」小节`);
+  }
+  // 字段是一张白名单：阶段/结构/来源/阻塞。旧版的「状态」由阶段表达，别处再写一遍会让
+  // 同一件事有两个说法；其余信息进三层正文。
+  const FIELDS = ["阶段", "结构", "来源", "阻塞"];
+  const headerLines = [];
+  for (const line of entry.body.split(/\r?\n/u)) {
+    if (/^#### /u.test(line)) break;
+    headerLines.push(line);
+  }
+  for (const line of headerLines) {
+    const field = /^- \*\*([^*]+)\*\*：/u.exec(line);
+    if (field && !FIELDS.includes(field[1])) {
+      errors.push(
+        `${entry.id} 的字段「${field[1]}」不在允许列表（${FIELDS.join(" / ")}）：阶段已经表达状态，其他内容写进三层正文`,
+      );
+    }
+  }
+  // 条目是一个待定问题，不是一轮工作。讨论期只写决策层；执行与验收等定案后再填，
+  // 否则“结论还没定”就会被写成“已经做过并验收”。
+  const placeholders = /^- 未开始[:：]/u;
+  const substanceOf = (heading) => {
+    const body = subsectionBody(entry.body, heading);
+    if (body === null) return 0;
+    return body
+      .split(/\r?\n/u)
+      .filter((line) => line.trim() !== "" && !placeholders.test(line.trim())).length;
+  };
+  if (meta.stage === "决策中") {
+    for (const heading of ["#### 2 执行", "#### 3 验收"]) {
+      if (substanceOf(heading) > 0) {
+        errors.push(
+          `${entry.id} 还在决策中，「${heading}」却已经有内容：讨论期只写决策层，定案后再填批次、发现与验收`,
+        );
+      }
+    }
+    const asked = subsectionBody(entry.body, "#### 1 决策");
+    if (asked === null || !/^\s*- 要定：/mu.test(asked)) {
+      errors.push(`${entry.id} 在决策中，「#### 1 决策」里没有「- 要定：」：写清要用户定什么`);
+    }
   }
   const decision = /^\s*- 决定：/mu.test(entry.body);
   if (meta.stage === "决策中" && decision) {
