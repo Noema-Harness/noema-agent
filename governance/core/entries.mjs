@@ -260,6 +260,8 @@ export function settleDecision(text, id, { number, title, detail, approval, date
 
 /** 在决策层「- 要定：」之后插入「- 决定：」——决定与阶段推进必须在同一次写盘里完成，
  *  否则决策中就不能有决定行，两步写会互相拒绝。 */
+export { editEntryFields, normaliseStageEvents, addUpdateNote } from "./edits.mjs";
+
 export function withDecisionLine(text, id, line) {
   const entry = readEntry(text, id);
   const lines = [...entry.lines];

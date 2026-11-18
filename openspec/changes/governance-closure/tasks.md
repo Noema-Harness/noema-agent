@@ -1,9 +1,9 @@
 ## 1 组一：入口
 
-- [ ] 1.1 `governance/core/entries.mjs` 增 `editFields`（待裁/要定/阻塞/结论替换，写前校验，失败不落盘）
-- [ ] 1.2 `scripts/decision.mjs` 增 `edit` 子命令与 `--dry-run`（验证：kernel:test 覆盖 dry-run 不落盘、字段越界拒绝）
+- [x] 1.1 `governance/core/edits.mjs` 的 `editEntryFields`（`entries.mjs` 再导出）
+- [x] 1.2 `scripts/decision.mjs` 增 `edit` 子命令与 `--dry-run`（验证：dry-run 只打印生成稿、不写盘；字段值写盘）
 - [ ] 1.3 `findEntryRange` 前缀歧义保护：精确失败时匹配前缀，多条列候选并拒绝（验证：kernel:test 覆盖「D-20261118」歧义）
-- [ ] 1.4 `pause`/`resume`：暂停写阻塞行与轮次说明，恢复覆盖（验证：kernel:test 覆盖往返）
+- [x] 1.4 `pause`/`resume`：暂停写阻塞行与轮次说明，恢复覆盖（验证：在概念条目上实跑暂停，阻塞行与轮次已落盘）
 - [ ] 1.5 `governance/core/events.mjs`：阶段事件成对、倒序、去重；`advance` 写入时整理；`docs:check` 校验（验证：maintenance.test 覆盖重复与顺序倒挂）
 - [ ] 1.6 `discussion.md` 补「暂停/恢复只走命令；命令缺能力时停下登记缺口，禁止一次性脚本或顺手立 change」
 

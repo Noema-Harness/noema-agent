@@ -5,7 +5,16 @@
 import fs from "node:fs";
 import path from "node:path";
 import { checkDecisionEntries, localToday } from "./maintenance.mjs";
-import { appendRound, readEntry, setStage, settleDecision, withDecisionLine } from "../governance/core/entries.mjs";
+import {
+  addUpdateNote,
+  appendRound,
+  editEntryFields,
+  normaliseStageEvents,
+  readEntry,
+  setStage,
+  settleDecision,
+  withDecisionLine,
+} from "../governance/core/entries.mjs";
 import { transitionKind } from "../governance/core/lifecycle.mjs";
 import { STATES } from "./lifecycle.mjs";
 
@@ -178,10 +187,101 @@ export function settleDecisionItem({
   return { id, number, entry };
 }
 
+
+function ensureValid(next) {
+  const problems = checkDecisionEntries(next);
+  if (problems.length) {
+    throw new Error(`写入前校验失败（条目没有改动）：\n- ${problems.join("\n- ")}`);
+  }
+}
+
+export function editEntry({ root = process.cwd(), id, values = {}, normalise = false, note, dryRun = false }) {
+  const file = path.join(root, DECISIONS);
+  const text = fs.readFileSync(file, "utf8");
+  requireEntry(text, id);
+  let next = text;
+  const report = [];
+  if (normalise) {
+    const result = normaliseStageEvents(next, id);
+    next = result.text;
+    report.push(`阶段事件整理：${result.order.length} 条（${result.order.join(" / ")}），去重 ${result.removed} 条`);
+  }
+  if (Object.keys(values).length > 0) {
+    const result = editEntryFields(next, id, values);
+    next = result.text;
+    report.push(`字段改动：${result.changed.join("、")}`);
+  }
+  if (note) {
+    next = addUpdateNote(next, id, note);
+    report.push("追加一行说明");
+  }
+  if (next === text) {
+    throw new Error("没有任何改动：给出 --blocker / --pending / --conclusion / --normalise-events / --note 之一");
+  }
+  ensureValid(next);
+  commit(root, next, { dryRun });
+  return { id, report };
+}
+
+export function pauseEntry({ root = process.cwd(), id, reason, date, dryRun = false }) {
+  const why = requireReason({ reason });
+  const today = date ?? localToday();
+  const result = editEntry({
+    root,
+    id,
+    values: { blocker: `暂停：${why}（${today}）` },
+    note: `- 暂停：${why}（${today}）`,
+    dryRun,
+  });
+  if (!dryRun) {
+    recordRound({ root, id, conclusion: `暂停（${today}）：${why}`, changes: "无（暂停；未产生新的待裁项）", date: today });
+  }
+  return { id, report: result.report };
+}
+
+export function resumeEntry({ root = process.cwd(), id, date, dryRun = false }) {
+  const today = date ?? localToday();
+  const result = editEntry({
+    root,
+    id,
+    values: { blocker: "无" },
+    note: `- 恢复：${today}（继续本议题）`,
+    dryRun,
+  });
+  if (!dryRun) {
+    recordRound({ root, id, conclusion: `恢复（${today}）：继续讨论`, changes: "无（恢复；待裁清单不变）", date: today });
+  }
+  return { id, report: result.report };
+}
+
 export function main(argv = process.argv.slice(2), root = process.cwd()) {
   const [command, ...rest] = argv;
   const flags = parseFlags(rest);
   try {
+    if (command === "edit") {
+      const values = {};
+      if (typeof flags.blocker === "string") values.blocker = flags.blocker;
+      if (typeof flags.pending === "string") values.pending = flags.pending;
+      if (typeof flags.conclusion === "string") values.conclusion = flags.conclusion;
+      const result = editEntry({
+        root,
+        id: flags.entry,
+        values,
+        normalise: flags["normalise-events"] === true,
+        note: typeof flags.note === "string" ? flags.note : null,
+        dryRun: flags["dry-run"] === true,
+      });
+      console.log(`${result.id}：${result.report.join("；")}`);
+      return 0;
+    }
+    if (command === "pause" || command === "resume") {
+      const result =
+        command === "pause"
+          ? pauseEntry({ root, id: flags.entry, reason: flags.reason, date: flags.date, dryRun: flags["dry-run"] === true })
+          : resumeEntry({ root, id: flags.entry, date: flags.date, dryRun: flags["dry-run"] === true });
+      console.log(`${result.id}：${result.report.join("；")}`);
+      return 0;
+    }
     if (command === "round") {
       const result = recordRound({
         root,
@@ -223,7 +323,7 @@ export function main(argv = process.argv.slice(2), root = process.cwd()) {
       console.log(`${result.id}：${result.from} → ${result.to}（${result.transition}）`);
       return 0;
     }
-    console.error("用法：npm run decision -- <round|settle|advance> --entry <D-…> …");
+    console.error("用法：npm run decision -- <round|settle|advance|edit|pause|resume> --entry <D-…> …");
     return 2;
   } catch (error) {
     console.error(`decision：${error.message}`);
