@@ -39,6 +39,14 @@ function makeRoot() {
   return { root, bodyPath, decisions: path.join(root, "docs", "DECISIONS.md") };
 }
 
+test("the accept command takes the entry id as a positional argument", () => {
+  const { root, bodyPath, decisions } = makeRoot();
+  draftEntry({ root, title: "示例议题", slug: SLUG, body: readFileSync(bodyPath, "utf8"), now: NOW });
+  const message = main(["accept", ID, "--approval", APPROVAL], root);
+  assert.match(message, /已落库/u);
+  assert.match(readFileSync(decisions, "utf8"), new RegExp(`## ⏳ ${ID}`, "u"));
+});
+
 test("draft writes a draft and leaves DECISIONS untouched", () => {
   const { root, bodyPath } = makeRoot();
   const before = readFileSync(path.join(root, "docs", "DECISIONS.md"), "utf8");

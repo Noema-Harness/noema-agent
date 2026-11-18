@@ -129,7 +129,7 @@ function parseFlags(argv) {
   const flags = {};
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
-    if (!token.startsWith("--")) throw new Error(`无法识别的参数：${token}`);
+    if (!token.startsWith("--")) continue;
     const key = token.slice(2);
     const value = argv[index + 1];
     if (value === undefined || value.startsWith("--")) throw new Error(`参数 ${token} 缺少值`);
@@ -167,9 +167,10 @@ export function main(argv = process.argv.slice(2), root = process.cwd()) {
     ].join("\n");
   }
   if (command === "accept") {
-    const flags = parseFlags(rest);
     const positional = rest.filter((token) => !token.startsWith("--"));
+    const flags = parseFlags(rest);
     const id = positional[0] ?? flags.id;
+    if (!id) throw new Error(`缺少条目 id\n${USAGE}`);
     const result = acceptEntry({ root, id, approval: flags.approval });
     return `已落库：${result.id}（批准原话：「${result.approval}」，${result.date}）`;
   }
