@@ -126,12 +126,12 @@ npm run workspace:clean -- --days 30 --apply       # 改保留期
 | 条目「来源」不是用户指令                              | 普通实现、修复、只补验证本来就该走提交信息或 change；真要用户拍板时，来源写成「用户 YYYY-MM-DD …」再开条目                          |
 | 报「缺少 --approval」或「批准原话太短」               | 条目不能先建后说：先用 `npm run decision:draft` 起草并停下问用户，拿到明确答复再用 `npm run decision:accept -- <D-…> --approval "<原话≥10 字>"` |
 | 草稿落库前校验失败（条目没有写进文件）                | 草稿结构不合规：按报错补「阶段/结构/来源/阻塞」与「- 要定：」，修好再 accept；草稿会保留在 `.work/decisions-draft/`                    |
-| 阶段过了决策中但「决定」没有用户确认日期              | 决定归用户：补上「（用户确认：YYYY-MM-DD）」，没有确认就退回决策中                                                                  |
+| 阶段过了决策中但「决定」没有用户确认日期              | 决定归用户：补上「（用户确认：YYYY-MM-DD）」，没有确认就重开回决策中                                                               |
 | 报「还在决策中，「#### 2 执行」却已经有内容」         | 讨论期只写决策层：执行与验收改成一行 `- 未开始：定案后进入执行`／`- 未开始：定案后进入验收`，定案后再填                              |
 | 报「「#### 2 执行」没有批次指针」                     | 先立项 openspec/changes/<name>，执行层写一行 - 批次：changes/<name>（commit <sha>），再改阶段；没有批次就停在决策中 |
 | 报「字段「状态」不在允许列表」                        | 删掉 `- **状态**：` 行：阶段已经表达状态；它想说的信息写进三层正文                                                                 |
 | `npm run stage` 报「规则包引用了不存在的门」          | 规则包的 `gate:<id>` 必须是 `scripts/governance.mjs` 的 RULES 里已登记的 id：先登记规则，或改规则包里的 id                        |
-| `npm run decision -- advance` 报「不能从X直接到Y」    | 阶段只能相邻推进（决策中→执行中→待验收→已收口）；退回时把 `--stage` 设成上一个阶段，并在决策层写一行「重开：<原因>」               |
+| `npm run decision -- advance` 报「不能从X直接到Y」    | 阶段只能相邻推进（决策中→执行中→待验收→已收口），唯一回溯边是重开回决策中；验收不过用 `--stage 决策中 --reason "…"`               |
 | `npm run transition --check` 报「还有没填的（待填）」 | 把每节的 `（待填）` 换成真实内容再校验；design 与 kickoff 的「待确认项」必须写 `- 无` 才能提交批准                                 |
 | `npm run decision` 报「写入前校验失败（条目没有改动）」 | 生成后的条目结构不合规：按报错修内容后重跑；每次写盘前都会整条校验，失败不会留下半截文件                                          |
 | 报「条目标题格式不合规…阶段标记只能是」               | 标题的阶段标记只能写 `⏳ 🔧 🔍 ✅` 或不写；写错（如 `## 💬 D-…`）时条目不会被解析，会从 review 里消失并把内容并进上一条             |
@@ -149,7 +149,7 @@ npm run workspace:clean -- --days 30 --apply       # 改保留期
 | 合并 main 时 pre-commit 拦下从 main 带进来的代码      | 不会：合并提交只检查与两个父提交都不同的路径（冲突解决与手改），实现见 `scripts/maintenance.mjs` 的 `stagedPaths`                   |
 | pre-commit 只提示“工具/治理改动不受未决产品决策阻塞”  | 正常；工具与文档维护不被产品决策卡住                                                                                                |
 | 阶段不在四种里                                        | 只用 `决策中 / 执行中 / 待验收 / 已收口`；阶段写在正文第一条                                                                        |
-| `decision advance` 报「缺少 --reason」                | 验收不过要退回 `执行中`：带 `--reason "<哪一处不过、要修什么>"`（≥10 字），工具会写一行「退回：…（日期）」                          |
+| `decision advance` 报「缺少 --reason」                | 重开回决策中必须写原因：带 `--reason "<哪一处不过、决策漏了什么>"`（≥10 字），工具写一行「重开：…（日期）」到发生它的阶段小节   |
 | `docs:check` 报 `governance/core/*.mjs` 出现项目专名   | 内核是通用层：把 Noema 专名与仓库路径挪到 `scripts/` 或 `governance/noema/`，core 只留纯逻辑                                        |
 | `npm run dev` 报 `listen EACCES ::1:5173`              | 5173 落在 Windows 保留的动态端口段：启动前设 `NOEMA_DEV_RENDERER_PORT=0`（`apps/desktop/vite.renderer.config.mts` 读取）                |
 | Electron 启动后立即退出、没有报错                      | 先查 `cmd /c "set ELECTRON_RUN_AS_NODE"`：有值就清掉再启动；清掉后连最小 `electron` 探针都开不了窗，说明是宿主会话限制，换桌面终端或 CI 跑 |

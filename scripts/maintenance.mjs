@@ -350,12 +350,16 @@ function checkDatedEntry(entry, errors, notices = []) {
   // 条目是一个待定问题，不是一轮工作。讨论期只写决策层；执行与验收等定案后再填，
   // 否则“结论还没定”就会被写成“已经做过并验收”。
   const placeholders = /^- 未开始[:：]/u;
+  // 阶段事件记在「发生它的那个阶段」小节里；重开后执行/验收层会留着这条记录，
+  // 它不算讨论期写执行内容。
+  const stageEvents = /^- (?:重开|中断|暂停|恢复)[:：]/u;
   const substanceOf = (heading) => {
     const body = subsectionBody(entry.body, heading);
     if (body === null) return 0;
     return body
       .split(/\r?\n/u)
-      .filter((line) => line.trim() !== "" && !placeholders.test(line.trim())).length;
+      .filter((line) => line.trim() !== "" && !placeholders.test(line.trim()) && !stageEvents.test(line.trim()))
+      .length;
   };
   if (meta.stage === "决策中") {
     for (const heading of ["#### 2 执行", "#### 3 验收"]) {

@@ -8,10 +8,12 @@ import { checkDecisionEntries, localToday } from "./maintenance.mjs";
 import {
   addUpdateNote,
   appendRound,
+  appendStageEvent,
+  distributeStageEvents,
   editEntryFields,
-  relocateStageEvents,
   normaliseStageEvents,
   readEntry,
+  resetEntryForDiscussion,
   setStage,
   settleDecision,
   withDecisionLine,
@@ -55,13 +57,13 @@ function requireApproval(flags, purpose) {
   return approval;
 }
 
-function requireReason(flags) {
+function requireReason(flags, purpose) {
   const reason = typeof flags.reason === "string" ? flags.reason.trim() : "";
   if (!reason) {
-    throw new Error(`缺少 --reason「退回原因」：退回修复要留下原因，写进条目\n先跑 npm run stage -- 验收 看验收不过的规则`);
+    throw new Error(`缺少 --reason「重开原因」：${purpose}要写清哪一处不过、要改什么\n先跑 npm run stage -- 验收 看验收不过怎么退`);
   }
   if ([...reason].length < MIN_REASON) {
-    throw new Error(`--reason 太短（${[...reason].length} 字，至少 ${MIN_REASON} 字）：写清哪一处不过、要修什么`);
+    throw new Error(`--reason 太短（${[...reason].length} 字，至少 ${MIN_REASON} 字）：写清哪一处不过、要改什么`);
   }
   return reason;
 }
@@ -86,20 +88,18 @@ export function advanceEntry({ root = process.cwd(), id, stage, decision, approv
   const kind = transitionKind(entry.stage, target);
   if (!kind) {
     throw new Error(
-      `${id} 不能从${entry.stage}直接到${target}；合法转移见 governance/core/lifecycle.mjs（向前一步、验收不过退回执行中、或重开）`,
+      `${id} 不能从${entry.stage}直接到${target}；合法转移只有向前一步，或重开回决策中（见 governance/core/lifecycle.mjs）`,
     );
   }
   const today = date ?? localToday();
   let next = text;
   let transition = kind;
   if (kind === "reopen") {
-    if (!/重开/u.test(entry.decisionText)) {
-      throw new Error("重开条目时在决策层写一行「重开：<原因>」，再运行本命令");
-    }
-    next = setStage(text, id, target, `- 重开：${today}`);
-  } else if (kind === "backward") {
-    const why = requireReason({ reason });
-    next = setStage(text, id, target, `- 退回：${why}（${today}）`);
+    const why = requireReason({ reason }, "回决策中（重开）");
+    const section = entry.stage === "待验收" ? "#### 3 验收" : "#### 2 执行";
+    const cleared = resetEntryForDiscussion(text, id);
+    next = appendStageEvent(cleared, id, { kind: "重开", rest: why, date: today, section }).text;
+    next = setStage(next, id, target);
   } else if (target === "执行中") {
     const quote = requireApproval({ approval }, "进入执行");
     if (!entry.batch) {
@@ -116,9 +116,10 @@ export function advanceEntry({ root = process.cwd(), id, stage, decision, approv
       id,
       `- 决定：${String(decision).trim()}（用户原话：「${quote}」，${today}）`,
     );
-    next = setStage(decided, id, target, `- 进入执行：${today}`);
+    next = setStage(decided, id, target);
   } else if (target === "待验收") {
-    next = setStage(text, id, target, `- 转待验收：${today}`);
+    next = appendStageEvent(text, id, { kind: "转待验收", date: today }).text;
+    next = setStage(next, id, target);
   } else {
     const quote = requireApproval({ approval }, "收口");
     if (entry.acceptanceItems.length === 0) {
@@ -127,7 +128,12 @@ export function advanceEntry({ root = process.cwd(), id, stage, decision, approv
     if (entry.acceptanceItems.some((line) => /^- \[ \]/u.test(line))) {
       throw new Error(`${id} 还有未勾选的验收项：用户确认后才收口`);
     }
-    next = setStage(text, id, target, `- 用户确认：${today}（用户原话「${quote}」）`);
+    next = appendStageEvent(text, id, {
+      kind: "用户确认",
+      rest: `${today}（用户原话「${quote}」）`,
+      date: "",
+    }).text;
+    next = setStage(next, id, target);
   }
   const report = checkDecisionEntries(next, { today });
   if (report.errors.length) {
@@ -137,13 +143,14 @@ export function advanceEntry({ root = process.cwd(), id, stage, decision, approv
   return { id, from: entry.stage, to: target, transition };
 }
 
-export function recordRound({ root = process.cwd(), id, conclusion, changes, date, lines = [], dryRun = false }) {
+export function recordRound({ root = process.cwd(), id, conclusion, changes, date, number, lines = [], dryRun = false }) {
   const file = path.join(root, DECISIONS);
   const text = fs.readFileSync(file, "utf8");
   requireEntry(text, id);
   if (!conclusion || !String(conclusion).trim()) throw new Error("缺少 --conclusion：这一轮的结论是什么");
   if (changes === undefined) throw new Error("缺少 --changes：「+新增 / 已解除 / 继续」的待裁变化");
   const next = appendRound(text, id, {
+    number: number === undefined || number === null ? undefined : Number(number),
     conclusion: String(conclusion).trim(),
     changes: String(changes).trim(),
     lines: { record: lines.map((line) => `- ${line}`), date: date ?? localToday() },
@@ -208,9 +215,9 @@ export function editEntry({ root = process.cwd(), id, values = {}, normalise = f
     report.push(`阶段事件整理：${result.order.length} 条（${result.order.join(" / ")}），去重 ${result.removed} 条`);
   }
   if (relocate) {
-    const result = relocateStageEvents(next, id);
+    const result = distributeStageEvents(next, id);
     next = result.text;
-    report.push(`阶段事件移入执行层：${result.line ?? "无"}`);
+    report.push(`阶段事件按阶段归位：${result.placed.length} 条`);
   }
   if (Object.keys(values).length > 0) {
     const result = editEntryFields(next, id, values);
@@ -222,7 +229,7 @@ export function editEntry({ root = process.cwd(), id, values = {}, normalise = f
     report.push("追加一行说明");
   }
   if (next === text) {
-    throw new Error("没有任何改动：给出 --blocker / --pending / --conclusion / --normalise-events / --relocate-events / --note 之一");
+    throw new Error("没有任何改动：给出 --blocker / --pending / --conclusion / --normalise-events / --distribute-events / --note 之一");
   }
   ensureValid(next);
   commit(root, next, { dryRun });
@@ -274,7 +281,7 @@ export function main(argv = process.argv.slice(2), root = process.cwd()) {
         id: flags.entry,
         values,
         normalise: flags["normalise-events"] === true,
-        relocate: flags["relocate-events"] === true,
+        relocate: flags["distribute-events"] === true || flags["relocate-events"] === true,
         note: typeof flags.note === "string" ? flags.note : null,
         dryRun: flags["dry-run"] === true,
       });
@@ -296,6 +303,7 @@ export function main(argv = process.argv.slice(2), root = process.cwd()) {
         conclusion: flags.conclusion,
         changes: flags.changes,
         date: flags.date,
+        number: flags.number,
         lines: flags.line ? (Array.isArray(flags.line) ? flags.line : [flags.line]) : [],
         dryRun: flags["dry-run"] === true,
       });

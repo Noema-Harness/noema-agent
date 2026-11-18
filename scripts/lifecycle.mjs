@@ -2,7 +2,7 @@
 // 这里只补每道转移对应的仓库命令（门）与全局门清单。
 //
 // 资产所有权：阶段枚举与合法转移由内核拥有；这里的 TRANSITIONS 是给人和文档看的
-// 「哪一步要过哪道门」，改动时必须与内核的 forward/backward 表同步。
+// 「哪一步要过哪道门」，改动时必须与内核的 forward/reopen 表同步。
 
 import { STAGES, isStage, nextStage, stageIndex, transitionKind } from "../governance/core/lifecycle.mjs";
 
@@ -38,20 +38,16 @@ export const TRANSITIONS = [
     gate: "npm run decisions:sync",
     writes: "- 用户确认：YYYY-MM-DD",
   },
-  {
-    from: "待验收",
-    to: "执行中",
-    event: "验收不过，退回修复",
-    gate: "npm run decision -- advance --reason",
-    writes: "- 退回：<原因>（YYYY-MM-DD）",
-  },
 ];
 
+// 唯一回溯边：回决策中。验收不过说明决策没做对（执行清单没覆盖决定），
+// 所以退回决策阶段而不是退回执行阶段。
 export const REOPEN = {
+  from: ["执行中", "待验收"],
   to: "决策中",
-  event: "用户重开",
-  gate: null,
-  writes: "条目里写一行「重开」和原因",
+  event: "用户重开，或验收不过需要改决定",
+  gate: "npm run decision -- advance --stage 决策中 --reason",
+  writes: "- 重开：<原因>（YYYY-MM-DD），记在发生它的阶段小节",
 };
 
 // Gates that run on every commit or push, whatever the stage.
@@ -64,6 +60,10 @@ export const ALWAYS_GATES = [
 
 export function nextTransition(stage) {
   return TRANSITIONS.find((transition) => transition.from === stage && transition.to === nextStage(stage)) ?? null;
+}
+
+export function reopenFrom(stage) {
+  return REOPEN.from.includes(stage) ? REOPEN : null;
 }
 
 // Uniform wording for gate failures: what is wrong, why the rule exists, and

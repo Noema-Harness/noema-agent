@@ -1,10 +1,20 @@
 // 条目正文的字段级编辑与阶段事件整理。
 // 只做文本操作，不认识项目路径、命令或门；适配层负责校验与写盘。
 const STAGE_EVENT = /^- ((?:转待验收|退回|转执行中|重开|暂停|恢复|中断))[:：]\s*(.*)$/u;
+const CURRENT_EVENT = /^- 当前：(转待验收|退回|重开)（(\d{4}-\d{2}-\d{2})）：(.*)$/u;
 const FIELD_LINES = {
   blocker: { match: /^- \*\*阻塞\*\*：/u, write: (value) => `- **阻塞**：${value}` },
   pending: { match: /^- 要定：/u, write: (value) => `- 要定：${value}` },
   conclusion: { match: /^- 结论：/u, write: (value) => `- 结论：${value}` },
+};
+// 阶段事件写在「发生它的那个阶段」小节里，不写决策层、不写目标阶段。
+const EVENT_SECTION = {
+  转待验收: "#### 2 执行",
+  重开: "#### 3 验收",
+  用户确认: "#### 3 验收",
+  暂停: "#### 1 决策",
+  恢复: "#### 1 决策",
+  中断: "#### 1 决策",
 };
 
 function entrySpan(lines, id) {
@@ -18,6 +28,19 @@ function entrySpan(lines, id) {
     }
   }
   return { head, end };
+}
+
+function sectionRange(lines, head, end, heading) {
+  const start = lines.findIndex((line, at) => at > head && at < end && line.trim() === heading);
+  if (start < 0) return null;
+  let stop = end;
+  for (let index = start + 1; index < end; index += 1) {
+    if (/^####\s/u.test(lines[index])) {
+      stop = index;
+      break;
+    }
+  }
+  return { start, stop };
 }
 
 function dateOf(line) {
@@ -59,42 +82,99 @@ export function normaliseStageEvents(text, id) {
     seen.add(key);
     unique.push(item);
   }
-  unique.sort((left, right) => (left.date < right.date ? 1 : left.date > right.date ? -1 : left.index - right.index));
-  const first = found[0].index;
-  const without = lines.filter((line, index) => !found.some((item) => item.index === index));
-  const insertAt = first - found.filter((item) => item.index < first).length;
-  without.splice(insertAt, 0, ...unique.map((item) => item.line));
-  return { text: without.join("\n"), removed: found.length - unique.length, order: unique.map((item) => item.kind) };
+  // 每个阶段都在自己的小节里留记录：这里只按类型留最新一条，位置交给 distributeStageEvents。
+  const newest = new Map();
+  for (const item of unique) {
+    const previous = newest.get(item.kind);
+    if (!previous || previous.date <= item.date) newest.set(item.kind, item);
+  }
+  const kept = new Set([...newest.values()].map((item) => item.line.trim()));
+  const without = lines.filter((line, index) => {
+    if (!found.some((item) => item.index === index)) return true;
+    return kept.has(line.trim());
+  });
+  return {
+    text: without.join("\n"),
+    removed: found.length - kept.size,
+    order: [...newest.values()].map((item) => item.kind),
+  };
 }
 
-export function relocateStageEvents(text, id) {
+export function distributeStageEvents(text, id) {
   const lines = text.split("\n");
-  const { head, end } = entrySpan(lines, id);
+  let span = entrySpan(lines, id);
   const events = [];
-  for (let index = head + 1; index < end; index += 1) {
+  for (let index = span.head + 1; index < span.end; index += 1) {
     const match = STAGE_EVENT.exec(lines[index]);
-    if (match) events.push({ index, kind: match[1], rest: match[2] });
+    if (match) {
+      events.push({ index, kind: match[1], rest: match[2], date: dateOf(lines[index]) });
+      continue;
+    }
+    const current = CURRENT_EVENT.exec(lines[index]);
+    if (current) events.push({ index, kind: current[1], rest: current[3], date: current[2] });
   }
-  if (events.length === 0) return { text, moved: 0, line: null };
-  const newestFirst = events.slice().sort((left, right) => {
-    const leftDate = dateOf(lines[left.index]);
-    const rightDate = dateOf(lines[right.index]);
-    if (leftDate < rightDate) return 1;
-    if (leftDate > rightDate) return -1;
-    return left.index - right.index;
-  });
-  const latest = newestFirst[0];
-  const latestDate = dateOf(lines[latest.index]);
-  const line = `- 当前：${latest.kind}（${latestDate}）：${latest.rest.trim()}`;
+  if (events.length === 0) return { text, moved: 0, placed: [] };
   for (let index = events.length - 1; index >= 0; index -= 1) lines.splice(events[index].index, 1);
+  span = entrySpan(lines, id);
+  const placed = [];
+  const insertions = [];
+  for (const event of events) {
+    const heading = EVENT_SECTION[event.kind];
+    if (!heading) continue;
+    const range = sectionRange(lines, span.head, span.end, heading);
+    if (!range) continue;
+    let at = range.stop;
+    while (at - 1 > range.start && lines[at - 1].trim() === "") at -= 1;
+    const suffix = event.rest.trim().endsWith(`（${event.date}）`) ? "" : `（${event.date}）`;
+    insertions.push({ at, line: `- ${event.kind}：${event.rest.trim()}${suffix}` });
+  }
+  insertions.sort((left, right) => right.at - left.at);
+  for (const insertion of insertions) {
+    lines.splice(insertion.at, 0, insertion.line);
+    placed.push(insertion.line);
+  }
+  return { text: lines.join("\n"), moved: events.length, placed };
+}
+
+
+/** 把一条阶段事件追加到「发生它的那个阶段」小节末尾（同类型只留最新）。 */
+export function appendStageEvent(text, id, { kind, rest = "", date = "", section }) {
+  const heading = section ?? EVENT_SECTION[kind];
+  if (!heading) throw new Error(`未知阶段事件：${kind}`);
+  const lines = text.split("\n");
+  const span = entrySpan(lines, id);
+  const range = sectionRange(lines, span.head, span.end, heading);
+  if (!range) throw new Error(`条目 ${id} 没有「${heading}」小节`);
+  for (let index = range.stop - 1; index > range.start; index -= 1) {
+    if (lines[index].startsWith(`- ${kind}：`)) lines.splice(index, 1);
+  }
   const again = entrySpan(lines, id);
-  const batchAt = lines.findIndex((item, at) => at > again.head && at < again.end && /^- 批次：/u.test(item));
-  const executiveAt = lines.findIndex(
-    (item, at) => at > again.head && at < again.end && /^#### 2 执行/u.test(item),
-  );
-  const insertAt = batchAt >= 0 ? batchAt + 1 : executiveAt >= 0 ? executiveAt + 1 : again.head + 1;
-  lines.splice(insertAt, 0, line);
-  return { text: lines.join("\n"), moved: events.length, line };
+  const target = sectionRange(lines, again.head, again.end, heading);
+  let at = target.stop;
+  while (at - 1 > target.start && lines[at - 1].trim() === "") at -= 1;
+  const suffix = date && !rest.trim().endsWith(`（${date}）`) ? `（${date}）` : "";
+  const line = rest.trim() ? `- ${kind}：${rest.trim()}${suffix}` : `- ${kind}${date ? `（${date}）` : ""}`;
+  lines.splice(at, 0, line);
+  return { text: lines.join("\n"), line };
+}
+
+
+/** 重开回决策中：撤掉决定行，把执行层与验收层还原成占位（历史在 git）。 */
+export function resetEntryForDiscussion(text, id) {
+  const lines = text.split("\n");
+  const reset = (heading, placeholder) => {
+    const span = entrySpan(lines, id);
+    const range = sectionRange(lines, span.head, span.end, heading);
+    if (!range) return;
+    lines.splice(range.start + 1, range.stop - range.start - 1, "", placeholder, "");
+  };
+  reset("#### 2 执行", "- 未开始：定案后进入执行");
+  reset("#### 3 验收", "- 未开始：定案后进入验收");
+  const span = entrySpan(lines, id);
+  for (let index = span.end - 1; index > span.head; index -= 1) {
+    if (/^- 决定：/u.test(lines[index])) lines.splice(index, 1);
+  }
+  return lines.join("\n");
 }
 
 export function addUpdateNote(text, id, note) {

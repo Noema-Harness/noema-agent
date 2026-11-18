@@ -283,29 +283,41 @@ test("transition documents must fill every template section and settle their ope
   );
   assert.match(checkTransition(filled.replace("- 已填写", "（待填）"), "design", root).errors.join("\n"), /待填/u);
 });
-test("the decision CLI lets acceptance fall back to execution only with a reason", () => {
+test("acceptance failure reopens the entry in the decision stage and records it where it happened", () => {
   const body = `# DECISIONS\n\n${HEADER}\n${entry({ stage: "待验收" }).replace("- 未开始：定案后进入验收", "- [ ] 验收项一")}`;
   const root = makeRoot(body);
   const result = advanceEntry({
     root,
     id: "D-20261118-probe",
-    stage: "执行中",
-    reason: "验收发现规则包与工具不一致，退回修复",
+    stage: "决策中",
+    reason: "验收发现 E12 与 E19 未落地，执行清单没有覆盖决定",
     date: "2026-11-18",
   });
-  assert.equal(result.transition, "backward");
+  assert.equal(result.transition, "reopen");
   const written = fs.readFileSync(path.join(root, "docs", "DECISIONS.md"), "utf8");
-  assert.match(written, /- \*\*阶段\*\*：执行中/u);
-  assert.match(written, /- 退回：验收发现规则包与工具不一致，退回修复（2026-11-18）/u);
+  assert.match(written, /- \*\*阶段\*\*：决策中/u);
+  assert.match(written, /- 重开：验收发现 E12 与 E19 未落地，执行清单没有覆盖决定（2026-11-18）/u);
 
   const fresh = makeRoot(body);
   assert.throws(
-    () => advanceEntry({ root: fresh, id: "D-20261118-probe", stage: "执行中", date: "2026-11-18" }),
+    () => advanceEntry({ root: fresh, id: "D-20261118-probe", stage: "决策中", date: "2026-11-18" }),
     /--reason/u,
   );
   const tooShort = makeRoot(body);
   assert.throws(
-    () => advanceEntry({ root: tooShort, id: "D-20261118-probe", stage: "执行中", reason: "不过", date: "2026-11-18" }),
+    () => advanceEntry({ root: tooShort, id: "D-20261118-probe", stage: "决策中", reason: "不过", date: "2026-11-18" }),
     /太短/u,
+  );
+  const backward = makeRoot(body);
+  assert.throws(
+    () =>
+      advanceEntry({
+        root: backward,
+        id: "D-20261118-probe",
+        stage: "执行中",
+        reason: "验收不过退回执行中",
+        date: "2026-11-18",
+      }),
+    /不能从待验收直接到执行中/u,
   );
 });

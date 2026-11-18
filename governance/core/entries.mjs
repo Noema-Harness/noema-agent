@@ -185,31 +185,24 @@ export function appendRound(text, id, { number, conclusion, changes, lines: body
     `  - 待裁变化：${changes}`,
     "",
   ];
-  let roundIndex = -1;
+  // 讨论记录小节在决策层；把新的一轮插在它末尾（跳过仍留在索引里的旧轮次摘要）。
+  let discussionIndex = -1;
   for (let at = entry.range.start; at < entry.range.end; at += 1) {
-    if (ROUND_HEADING.test(lines[at])) roundIndex = at;
+    if (/^###### 讨论记录/u.test(lines[at])) discussionIndex = at;
   }
-  let insertAt;
-  if (roundIndex === -1) {
-    insertAt = entry.range.end;
-    for (let at = entry.range.end - 1; at > entry.range.start; at -= 1) {
-      if (lines[at].trim() !== "") {
-        insertAt = at + 1;
-        break;
-      }
+  const bodyStart = discussionIndex === -1 ? entry.range.start : discussionIndex + 1;
+  let insertAt = entry.range.end;
+  for (let at = bodyStart; at < entry.range.end; at += 1) {
+    if (/^#{1,4} /u.test(lines[at])) {
+      insertAt = at;
+      break;
     }
+  }
+  while (insertAt > bodyStart && lines[insertAt - 1].trim() === "") insertAt -= 1;
+  if (discussionIndex === -1) {
     lines.splice(insertAt, 0, "", "###### 讨论记录（每轮追加；结论与待裁变化写在这里）", ...block.slice(1));
   } else {
-    let stop = entry.range.end;
-    for (let at = roundIndex + 1; at < entry.range.end; at += 1) {
-      if (/^#{1,6} /u.test(lines[at]) && !ROUND_HEADING.test(lines[at])) {
-        stop = at;
-        break;
-      }
-    }
-    insertAt = stop;
-    while (insertAt > roundIndex + 1 && lines[insertAt - 1].trim() === "") insertAt -= 1;
-    lines.splice(insertAt, 0, "", ...block.slice(1));
+    lines.splice(insertAt, 0, ...block.slice(1));
   }
   return lines.join("\n");
 }
@@ -260,7 +253,14 @@ export function settleDecision(text, id, { number, title, detail, approval, date
 
 /** 在决策层「- 要定：」之后插入「- 决定：」——决定与阶段推进必须在同一次写盘里完成，
  *  否则决策中就不能有决定行，两步写会互相拒绝。 */
-export { addUpdateNote, editEntryFields, normaliseStageEvents, relocateStageEvents } from "./edits.mjs";
+export {
+  addUpdateNote,
+  appendStageEvent,
+  distributeStageEvents,
+  editEntryFields,
+  normaliseStageEvents,
+  resetEntryForDiscussion,
+} from "./edits.mjs";
 
 export function withDecisionLine(text, id, line) {
   const entry = readEntry(text, id);

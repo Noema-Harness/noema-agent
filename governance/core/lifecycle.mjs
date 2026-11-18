@@ -16,15 +16,11 @@ export const STAGE_MARKS = {
 /** 阶段规则包的三个入口（与具体文件名解耦，适配层负责映射）。 */
 export const PHASES = ["discussion", "execution", "acceptance"];
 
-/** 允许的相位推进：相邻向前一步，或退回一步；重开单独判定。 */
+/** 唯一的向前推进链：相邻一步。 */
 const FORWARD = new Map([
   ["决策中", "执行中"],
   ["执行中", "待验收"],
   ["待验收", "已收口"],
-]);
-
-const BACKWARD = new Map([
-  ["待验收", "执行中"],
 ]);
 
 export function isStage(value) {
@@ -39,16 +35,20 @@ export function isForward(from, to) {
   return FORWARD.get(from) === to;
 }
 
-export function isBackward(from, to) {
-  return BACKWARD.get(from) === to;
+export function isReopen(from, to) {
+  return to === "决策中" && from !== "决策中";
 }
 
-/** 判定一次阶段移动的语义：forward / backward / reopen / null。 */
+/**
+ * 判定一次阶段移动的语义：forward / reopen / null。
+ *
+ * 只有一条回溯边：回决策中（重开）。验收不过说明决策没做对（执行清单没覆盖决定），
+ * 所以退回的是决策阶段；不存在「退回执行中」这类中间回退。
+ */
 export function transitionKind(from, to) {
   if (from === to) return null;
-  if (to === "决策中") return "reopen";
+  if (isReopen(from, to)) return "reopen";
   if (isForward(from, to)) return "forward";
-  if (isBackward(from, to)) return "backward";
   return null;
 }
 
