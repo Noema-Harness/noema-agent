@@ -4,7 +4,8 @@
 - [x] 1.2 `scripts/decision.mjs` 增 `edit` 子命令与 `--dry-run`（验证：dry-run 只打印生成稿、不写盘；字段值写盘）
 - [ ] 1.3 `findEntryRange` 前缀歧义保护：精确失败时匹配前缀，多条列候选并拒绝（验证：kernel:test 覆盖「D-20261118」歧义）
 - [x] 1.4 `pause`/`resume`：暂停写阻塞行与轮次说明，恢复覆盖（验证：在概念条目上实跑暂停，阻塞行与轮次已落盘）
-- [ ] 1.5 `governance/core/events.mjs`：阶段事件成对、倒序、去重；`advance` 写入时整理；`docs:check` 校验（验证：maintenance.test 覆盖重复与顺序倒挂）
+- [x] 1.5 `governance/core/edits.mjs`：阶段事件去重、按日期倒序；`decision -- edit --normalise-events` 与 `--relocate-events` 写入时整理（验证：`D-20261118` 上实跑，去重 1 条、事件移入执行层）
+- [x] 1.7 阶段事件不写决策层：迁到执行层「当前：…」一行，`execution.md` 补「回工」段（验证：条目 1068–1071 行、design §4 修正）
 - [ ] 1.6 `discussion.md` 补「暂停/恢复只走命令；命令缺能力时停下登记缺口，禁止一次性脚本或顺手立 change」
 
 ## 2 组二：验收闭合

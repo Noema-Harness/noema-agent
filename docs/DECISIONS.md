@@ -1008,9 +1008,6 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 - 要定：无（E1–E26 已定；本批复补 E12/E19/E21/E23 的归属与验收页）
 - 决定：治理体系按「内核 / 适配 / 索引」重构，治理行为为内核第一等对象，门槛分决策门槛 / 行为门 / 产物门·平台门，决策→执行走三步过渡；分四批落地（`governance-authority` → `governance-kernel` → 记忆试点 → 抽离评估）（用户确认：2026-11-18；原话「没问题，都可以。」「都可确定。」「批准1」「批准」）。
-- 退回：验收项只覆盖 E24-E26：E12 验收页生成、E19 交接/报告生成、E21 --design 校验、E23 proposal 引用校验均未落地；验收项与已定项没有映射；决议与执行计划未闭合（2026-11-19）
-- 转待验收：2026-11-18
-- 退回：验收发现三处偏差：阶段地图仍是文档驱动、内核没落进 governance/core、待验收没有退回路径（2026-11-18）
 
 ###### 待裁（滚动、唯一）
 
@@ -1071,6 +1068,7 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 #### 2 执行
 
 - 批次：`changes/governance-core`（commit 03ce6a6）
+- 当前：退回（2026-11-19）：验收项只覆盖 E24-E26：E12 验收页生成、E19 交接/报告生成、E21 --design 校验、E23 proposal 引用校验均未落地；验收项与已定项没有映射；决议与执行计划未闭合（2026-11-19）
 - 完成：批次一 `governance-authority` 已归档（S1 589274b → E23 946edd9 → S2 b4f5ed6 → S3–S5 1e0ba44；`npm run check` 901/901、CI verify/platform 绿）
 - 完成：批次二 `governance-kernel` 已归档（`decision-kernel`/`decision`/`stage`/`transition` + `kernel.test.mjs` 14/14；`npm run check` 901/901、`tools:test` 77/77；治理图按章节判断重出 `7ff1dbcff1a1`）
 - 完成：批次三 `governance-core` 已归档（内核落 `governance/core`、阶段地图改入口命令、退回路径；`kernel:test` 15/15、`tools:test` 78/78、`npm run check` 901/901、71,461ms）

@@ -9,6 +9,7 @@ import {
   addUpdateNote,
   appendRound,
   editEntryFields,
+  relocateStageEvents,
   normaliseStageEvents,
   readEntry,
   setStage,
@@ -195,7 +196,7 @@ function ensureValid(next) {
   }
 }
 
-export function editEntry({ root = process.cwd(), id, values = {}, normalise = false, note, dryRun = false }) {
+export function editEntry({ root = process.cwd(), id, values = {}, normalise = false, relocate = false, note, dryRun = false }) {
   const file = path.join(root, DECISIONS);
   const text = fs.readFileSync(file, "utf8");
   requireEntry(text, id);
@@ -205,6 +206,11 @@ export function editEntry({ root = process.cwd(), id, values = {}, normalise = f
     const result = normaliseStageEvents(next, id);
     next = result.text;
     report.push(`阶段事件整理：${result.order.length} 条（${result.order.join(" / ")}），去重 ${result.removed} 条`);
+  }
+  if (relocate) {
+    const result = relocateStageEvents(next, id);
+    next = result.text;
+    report.push(`阶段事件移入执行层：${result.line ?? "无"}`);
   }
   if (Object.keys(values).length > 0) {
     const result = editEntryFields(next, id, values);
@@ -216,7 +222,7 @@ export function editEntry({ root = process.cwd(), id, values = {}, normalise = f
     report.push("追加一行说明");
   }
   if (next === text) {
-    throw new Error("没有任何改动：给出 --blocker / --pending / --conclusion / --normalise-events / --note 之一");
+    throw new Error("没有任何改动：给出 --blocker / --pending / --conclusion / --normalise-events / --relocate-events / --note 之一");
   }
   ensureValid(next);
   commit(root, next, { dryRun });
@@ -268,6 +274,7 @@ export function main(argv = process.argv.slice(2), root = process.cwd()) {
         id: flags.entry,
         values,
         normalise: flags["normalise-events"] === true,
+        relocate: flags["relocate-events"] === true,
         note: typeof flags.note === "string" ? flags.note : null,
         dryRun: flags["dry-run"] === true,
       });

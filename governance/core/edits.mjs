@@ -67,6 +67,36 @@ export function normaliseStageEvents(text, id) {
   return { text: without.join("\n"), removed: found.length - unique.length, order: unique.map((item) => item.kind) };
 }
 
+export function relocateStageEvents(text, id) {
+  const lines = text.split("\n");
+  const { head, end } = entrySpan(lines, id);
+  const events = [];
+  for (let index = head + 1; index < end; index += 1) {
+    const match = STAGE_EVENT.exec(lines[index]);
+    if (match) events.push({ index, kind: match[1], rest: match[2] });
+  }
+  if (events.length === 0) return { text, moved: 0, line: null };
+  const newestFirst = events.slice().sort((left, right) => {
+    const leftDate = dateOf(lines[left.index]);
+    const rightDate = dateOf(lines[right.index]);
+    if (leftDate < rightDate) return 1;
+    if (leftDate > rightDate) return -1;
+    return left.index - right.index;
+  });
+  const latest = newestFirst[0];
+  const latestDate = dateOf(lines[latest.index]);
+  const line = `- 当前：${latest.kind}（${latestDate}）：${latest.rest.trim()}`;
+  for (let index = events.length - 1; index >= 0; index -= 1) lines.splice(events[index].index, 1);
+  const again = entrySpan(lines, id);
+  const batchAt = lines.findIndex((item, at) => at > again.head && at < again.end && /^- 批次：/u.test(item));
+  const executiveAt = lines.findIndex(
+    (item, at) => at > again.head && at < again.end && /^#### 2 执行/u.test(item),
+  );
+  const insertAt = batchAt >= 0 ? batchAt + 1 : executiveAt >= 0 ? executiveAt + 1 : again.head + 1;
+  lines.splice(insertAt, 0, line);
+  return { text: lines.join("\n"), moved: events.length, line };
+}
+
 export function addUpdateNote(text, id, note) {
   const lines = text.split("\n");
   let { head, end } = entrySpan(lines, id);

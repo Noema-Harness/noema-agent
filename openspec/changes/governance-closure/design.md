@@ -40,7 +40,8 @@
 - 内核 `governance/core/`：新增 `events.mjs`（阶段事件行的成对/去重/排序规则）与 `coverage.mjs`（已定项归属解析：从 change tasks 与条目切片行提取 `E<n>`）。`entries.mjs` 增 `editFields`、`pause/resume` 辅助；`lifecycle.mjs` 不变。
 - 适配 `scripts/`: `decision.mjs` 扩 `edit`、`pause`、`resume`、`coverage`，`advance` 补 `--design` 与 proposal 引用校验、待验收覆盖率门；新增 `scripts/acceptance.mjs`（E12）；`scripts/transition.mjs` 支持 `handoff|report` 生成。
 - 规则：`governance/noema/workflow/discussion.md` 补「暂停只走命令、缺能力先登记缺口」；`execution.md` 补「回工」段。
-- **开工清单的结论**：它是「范围批准对象」，不是阶段内的第一个文档。首次进执行前必须获批（E1）；获批后第一个动作是把清单转成 change 三件套（E23）。回工发生在执行阶段内，范围由退回原因与缺口表定义，清单直接落 change tasks，不单独成文档。因此不是两种文档类型，而是同一清单的两种深度——深度随范围大小，不按阶段类型分。
+- **阶段边界（修正）**：开工清单是决策阶段的产物（E1 的批准对象），只存在于进执行之前。退回后已经处在执行阶段，不再有「开工清单」；回工写的是**回工范围**——执行层的一行当前状态加 change tasks，不把决策阶段的东西搬回来。
+- **阶段事件的位置（修正）**：转待验收／退回／重开是执行层的状态记录，不写进决策层；条目只保留当前一条，更早的状态在 git 历史里，不堆在正文。
 
 ## 5 机制设计（逐机制）
 
