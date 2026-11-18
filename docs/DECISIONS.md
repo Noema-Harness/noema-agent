@@ -1002,7 +1002,7 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 - **阶段**：决策中
 - **结构**：机制/流程类；条目结构 E13（四块）。治理内容结构见批准版设计方案 v2 §4–§5：`governance/core`（内核）+ `governance/noema`（适配）+ `governance/README.md`（索引），机制 M1–M11。
 - **来源**：用户 2026-11-18 提出把「一个条目的生命周期就是 Noema 开发的一次工作流」固定成完整流程，并给出讨论模式、会议总结与三条交流规则（m105922）；同轮进一步提出流程说明不该常驻、应按阶段注入，因此整体治理结构需要重构（m105952）。
-- **阻塞**：等你批准开工清单（第二次确认）
+- **阻塞**：等你验收：E33–E36 已实现并归档 governance-interface
 
 #### 1 决策
 
@@ -1072,7 +1072,7 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 - 第 35–36 轮：过渡文档注入机制、门/技能/阶段注入三层分工 → E21、E22。
 - 第 37 轮（2026-11-18，收口）：用户批准设计方案 v2（「批准1」）；条目收口重构——压成决定 + 已定 + 轮次索引，会议总结与开工清单出稿；36 轮正文留在 git 历史。
 - 第 38 轮（2026-11-18）：用户批准开工清单（「批准」）；阶段转执行中，决定行写入；立项 `changes/governance-authority`（b11a788）。
-- 结论：待定（讨论期第 33 轮，T15-T19 已并入 E28-E32；下一步出 reopened 开工清单，批准后建档执行）
+- 结论：E1–E36 已定并实现（治理接口、写盘印记、批次续接、净零审计）；等你验收，验收页已生成
 ###### 第 32 轮（2026-11-19）
 
   - 用户原话：如果只能回退到决策阶段会怎么样呢？这样是不是逻辑就全通了；可以，你自行改吧（m109234/m109237）
@@ -1119,14 +1119,17 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 - 批次：changes/governance-acceptance-writeback（commit 71fee3c）
 - 转待验收（2026-11-19）
+- 批次：changes/governance-interface
 #### 3 验收
 
-- [ ] E1/E2/E3/E5/E7/E8/E9/E13 E1 执行段进入条件；E2 权威文档只写 Noema 本体；E3 未决改为待裁清单；E5 表态纪律替代强制主张；E7 讨论期允许最小演练作证据；E8 记忆议题作流程试点；E9 条目自足，change 只放工程细节；E13 条目结构四块。（[机制] E1：`governance/noema/workflow/execution.md` 的进入条件与 `npm run stage -- execution` 输出一致；kernel 用例覆盖缺门被拒。 E2：`AGENTS.md` 只留阶段地图/边界/指针，正文写「阶段规则不靠读文件进入」；`docs:check` 的治理词 notice 已迁出。 E3：待裁块滚动：`npm run decision -- wait add|drop`；kernel 用例覆盖增删后结构仍合规。 E5：`governance/core/README.md` 的决策层四块与表态纪律；缺「要定/结论」时 docs:check 报错（maintenance 用例）。 E7：讨论期证据只写 `.work/`；本轮 S1–S6 的探针与页面都在 `.work/review/`。 E8：记忆议题挂起：条目 `D-20261117-agent-memory` 仍在决策中，未阻塞机制改动（plan-check 只提示）。 E9：条目自足：`acceptance` 按 E 生成页面；change 只放工程细节（本轮 change 的 design/tasks）。 E13：条目四块（要定/待裁/已定/轮次）由 `governance/core/entries.mjs` 读写；kernel 用例覆盖 readEntry/appendRound/settle。）
-- [ ] E4/E6/E10 E4 规则包落 `governance/`；E6 新门先 notice、观察期两个里程碑；E10 规则包检查项必须绑 gate id。（[机制] E4：规则包在 `governance/noema/workflow/`，`docs/OPERATIONS.md` 只留命令；figure:check 通过。 E6：`scripts/governance.mjs` 的观察期规则（`decision-advance-approval`、`round-changes-line`、`entry-history-monotonic`）。 E10：规则包检查项全部 `gate:<id>` 且已在 RULES 登记：`npm run stage -- execution|acceptance` 的 checkPackGates 无缺失。）
-- [ ] E11/E12 E11 执行段低干扰；E12 验收段改为生成验收页。（[机制] E11：执行低干扰：插话不改决定时不写回条目；本轮 change 的执行记录只在 tasks 与提交信息里。 E12：`npm run acceptance -- --entry D-20261118-decision-dialog-flow --write` 生成按 E 分节的验收页与未覆盖清单。）
-- [ ] E14/E21/E22/E23/E24 E14 注入与中断恢复；E21 过渡文档的注入机制；E22 门 / 技能 / 阶段注入三层分工；E23 建档是执行的第一步；E24。（[机制] E14：`npm run stage` 打印规则包 + 恢复卡；中断说明 `- 中断：` 写讨论记录并在返回后覆盖（kernel/规则包）。 E21：进执行前 `--design` 校验结构、待确认项必须为「- 无」；kernel 用例覆盖失败与成功路径。 E22：门/技能/阶段注入三层分工写在 `governance/core/README.md` 与规则包检查项。 E23：建档四步：批准 → change 三件套单独提交 → 计划落地确认 → 转执行中；`advance` 校验 proposal 引用条目（kernel 用例）。 E24：阶段注入机制化：`AGENTS.md` 只写「`npm run stage -- <phase>`」进入方式；`decision`/`transition` 报错带「先跑 stage」。）
-- [ ] E15/E16/E17/E18/E19/E20/E25 E15 治理内容迁移五处；E16 实现包装；E17 治理内核三层定位；E18 批次与抽离时点；E19 决策→执行三步过渡；E20 交接与报告保留为结构与数据；E25。（[机制] E15：迁移五处已完成：`governance/noema/{maintenance,changelog}.md`、OPERATIONS/STATUS 只留指针、技能只留入口、治理图在 `governance/assets/`。 E16：六项实现清单：`stage`/`transition`/`decision`、notice 门、`decision:advance`、技能指针、`/plan` 清理、文档同步；见提交链。 E17：治理行为是内核一等对象：`governance/core/{entries,edits,lifecycle,acceptance,handoff,history}.mjs` 只做文本与状态，`scripts/` 只接线。 E18：三批落地：`governance-authority`、`governance-kernel`、`governance-core`/`transition` 已归档；抽离等记忆试点。 E19：三步过渡：`npm run transition -- design|closeout|kickoff` 结构与批准判据。 E20：交接与报告由条目生成：`npm run transition -- handoff|report --entry <id> --write`，`--check` 通过。 E25：内核落位 `governance/core/`，`docs:check` 的 core 边界检查（无 Noema 专名/仓库路径）通过。）
-- [ ] E26/E27/E28/E29/E30/E31/E32 E26；E27；E28 单一回溯边；E29 E26 作废；E30 reopened 范围归属；E31 E8 记忆试点挂起；E32 历史只增门。（[机制] E26：已作废（由 E27 取代），作废理由记在条目已定块。 E27：单一回溯边：状态机 `governance/core/lifecycle.mjs` 只保留向前与重开；`decision advance` 拒绝「待验收 → 执行中」。 E28：重开保留历史：`governance/core/history.mjs` + `docs:check` 历史只增门；kernel 用例覆盖重开后批次/验收项仍在。 E29：E26 作废已在条目已定块记录，无额外产物。 E30：reopened 范围（E12/E19/E20/E21/E23）已落 change `governance-transition` 并归档。 E31：E8 挂起：`D-20261117-agent-memory` 仍在决策中，未阻塞本条目。 E32：历史只增门：规则 `entry-history-monotonic`（block，`docs:check`）+ maintenance 用例「删行报错、同量改写放行」。）
+- [ ] E1–E10 进入条件、权威文档边界、待裁替代未决、规则包落 governance、表态纪律、观察期、演练、试点、条目自足、绑门（[机制] 规则包 `governance/noema/workflow/` 三份；`npm run governance -- check stage` 打印并校验 `gate:` id；E8 记忆试点挂起）
+- [ ] E11–E20 执行段低干扰、验收页生成、条目四块结构、注入与中断说明、迁移五处、规则包六项、治理行为与门、三批落地、三步过渡、交接/报告为生成物（[机制] `governance/core/{acceptance,handoff,history}.mjs`；`npm run governance -- check transition`）
+- [ ] E21–E25 进执行校验设计稿与 proposal 引用、命令缺口、单一回溯边、内核历史只增（[机制] `advance --design`/proposal 校验；`governance/core/lifecycle.mjs` 只留向前与重开；`history.mjs`）
+- [ ] E26–E32 E26 作废；E27 单一回溯边；E28 重开保留历史；E29 作废记录；E30 reopened 范围落 `governance-transition`；E31 E8 挂起；E32 历史只增门（[机制] 规则 `entry-history-monotonic` block，`docs:check` 报「历史只增不删」）
+- [ ] E33 单一写入口（[机制] 命令写盘后记 sha256 到 `.work/decision-writes/DECISIONS.json`，`precommit` 比对暂存区；`move --restore --from <commit>` 经命令恢复）
+- [ ] E34 批次续接（[机制] `move` 默认续接既有批次；`--new-batch changes/<name> --reason "<理由>"` 才另开并写「批次历史」）
+- [ ] E35 接口收敛（[机制] `npm run governance -- record|move|check` 三动词；旧命令保留别名；`governance/core/interface.mjs` 动词表）
+- [ ] E36 净零审计（[机制] `npm run governance -- audit` 输出规则/门/命令数并与 `governance/rules-baseline.json` 比对，净增未记录即失败）
 - 重开：验收不过：①交付过程中我用原生工具与一次性脚本直接改过条目（含用 git show 恢复历史），而 DECISIONS 应只由治理接口写入；②重开后再次进执行时另开批次 governance-acceptance-writeback，没有续接已有批次；两处都说明接口与批次模型有结构缺陷（2026-11-19）
 ## ⏳ D-20261118-agent-governance-concept 从 Noema 治理实践倒推 agent 领域的概念
 
