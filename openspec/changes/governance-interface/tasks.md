@@ -14,10 +14,10 @@
 
 ## 3 S1 check 三合一
 
-- [ ] 3.1 `check stage <phase>`
-- [ ] 3.2 `check acceptance --write`
-- [ ] 3.3 `check transition <kind> --write`
-- [ ] 3.4 旧命令转发与单测
+- [x] 3.1 `check stage <phase>`（验证：kernel:test「the interface routes check/record/move…」，`check stage discussion` 返回 0 并打印规则包）
+- [x] 3.2 `check acceptance --write`（验证：interface 委托 `scripts/acceptance.mjs` 的 main，同一实现；`npm run governance -- check acceptance --entry D-20261118-decision-dialog-flow` 可跑）
+- [x] 3.3 `check transition <kind> --write`（验证：委托 `scripts/transition.mjs`，含 S6 的就地更新）
+- [x] 3.4 旧命令转发与单测（验证：interface 内部转调旧入口，旧 npm 命令保留；kernel:test 23/23）
 
 ## 4 S2 record 五合一与写盘印记
 

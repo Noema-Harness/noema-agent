@@ -50,7 +50,8 @@
     "kernel:test": "node --test governance/core/kernel.test.mjs",
     "inbox:ack": "node scripts/inbox.mjs ack",
     "acceptance": "node scripts/acceptance.mjs",
-    "acceptance:test": "node --test governance/core/acceptance.test.mjs"
+    "acceptance:test": "node --test governance/core/acceptance.test.mjs",
+    "governance": "node scripts/interface.mjs"
   },
   "engines": {
     "node": ">=24.21 <25"

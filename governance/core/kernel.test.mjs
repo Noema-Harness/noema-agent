@@ -23,6 +23,7 @@ import { checkPackGates, loadPack, resumeCard, activeEntries } from "../../scrip
 import { advanceEntry, recordRound, settleDecisionItem } from "../../scripts/decision.mjs";
 import { checkTransition, scaffold } from "../../scripts/transition.mjs";
 import { checkDecisionEntries } from "../../scripts/maintenance.mjs";
+import { main as interfaceMain } from "../../scripts/interface.mjs";
 
 const HEADER = "Authority: 测试\nUpdate when: 测试\nDoes not own: 测试\n";
 
@@ -502,6 +503,19 @@ test("acceptance items are replaced by command while stage events stay", () => {
   assert.doesNotMatch(result.text, /验收项一/u);
   assert.match(result.text, /- 重开：验收发现漏项（2026-11-19）/u);
   assert.throws(() => replaceAcceptance(withEvent, "D-20261118-probe", []), /验收项为空/u);
+});
+
+test("the interface routes check/record/move and rejects unknown verbs", () => {
+  assert.equal(interfaceMain(["record", "bogus"]), 2);
+  assert.equal(interfaceMain(["check", "bogus"]), 2);
+  assert.equal(interfaceMain(["bogus"]), 2);
+  const quiet = console.log;
+  console.log = () => {};
+  try {
+    assert.equal(interfaceMain(["check", "stage", "discussion"]), 0);
+  } finally {
+    console.log = quiet;
+  }
 });
 
 test("transition --write updates in place and only --new creates a second file", () => {
