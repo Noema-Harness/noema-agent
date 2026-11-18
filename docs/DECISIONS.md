@@ -997,9 +997,9 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 - 未开始：执行后填写。
 
-## 🔍 D-20261118-decision-dialog-flow 决议条目生命周期与治理规则的按需注入
+## ⏳ D-20261118-decision-dialog-flow 决议条目生命周期与治理规则的按需注入
 
-- **阶段**：待验收
+- **阶段**：决策中
 - **结构**：机制/流程类；条目结构 E13（四块）。治理内容结构见批准版设计方案 v2 §4–§5：`governance/core`（内核）+ `governance/noema`（适配）+ `governance/README.md`（索引），机制 M1–M11。
 - **来源**：用户 2026-11-18 提出把「一个条目的生命周期就是 Noema 开发的一次工作流」固定成完整流程，并给出讨论模式、会议总结与三条交流规则（m105922）；同轮进一步提出流程说明不该常驻、应按阶段注入，因此整体治理结构需要重构（m105952）。
 - **阻塞**：无
@@ -1078,6 +1078,11 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
   - 结论：T15-T18 获批准并入 E28-E31；用户追加要求：修复之外必须有机制防止同类行为再犯 -> 新增 E32 历史只增门（条目历史行只增不删，docs:check 报错）
   - 待裁变化：+ E28 单一回溯边；+ E29 E26 作废；+ E30 reopened 范围；+ E31 E8 挂起；+ E32 历史只增门
+###### 第 34 轮（2026-11-19）
+
+  - 结论：验收不过：交付过程违反单一写入口，且重开后的新批次没有续接已有批次；根因是接口按文档小节切分、批次模型只增不续
+  - 待裁变化：+T20 DECISIONS 单一写入口（含恢复）；+T21 批次续接模型；+T22 接口收敛（一意图一调用）
+
 
 
 
@@ -1100,7 +1105,7 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 - [ ] E14/E21/E22/E23/E24 E14 注入与中断恢复；E21 过渡文档的注入机制；E22 门 / 技能 / 阶段注入三层分工；E23 建档是执行的第一步；E24。（[机制] E14：`npm run stage` 打印规则包 + 恢复卡；中断说明 `- 中断：` 写讨论记录并在返回后覆盖（kernel/规则包）。 E21：进执行前 `--design` 校验结构、待确认项必须为「- 无」；kernel 用例覆盖失败与成功路径。 E22：门/技能/阶段注入三层分工写在 `governance/core/README.md` 与规则包检查项。 E23：建档四步：批准 → change 三件套单独提交 → 计划落地确认 → 转执行中；`advance` 校验 proposal 引用条目（kernel 用例）。 E24：阶段注入机制化：`AGENTS.md` 只写「`npm run stage -- <phase>`」进入方式；`decision`/`transition` 报错带「先跑 stage」。）
 - [ ] E15/E16/E17/E18/E19/E20/E25 E15 治理内容迁移五处；E16 实现包装；E17 治理内核三层定位；E18 批次与抽离时点；E19 决策→执行三步过渡；E20 交接与报告保留为结构与数据；E25。（[机制] E15：迁移五处已完成：`governance/noema/{maintenance,changelog}.md`、OPERATIONS/STATUS 只留指针、技能只留入口、治理图在 `governance/assets/`。 E16：六项实现清单：`stage`/`transition`/`decision`、notice 门、`decision:advance`、技能指针、`/plan` 清理、文档同步；见提交链。 E17：治理行为是内核一等对象：`governance/core/{entries,edits,lifecycle,acceptance,handoff,history}.mjs` 只做文本与状态，`scripts/` 只接线。 E18：三批落地：`governance-authority`、`governance-kernel`、`governance-core`/`transition` 已归档；抽离等记忆试点。 E19：三步过渡：`npm run transition -- design|closeout|kickoff` 结构与批准判据。 E20：交接与报告由条目生成：`npm run transition -- handoff|report --entry <id> --write`，`--check` 通过。 E25：内核落位 `governance/core/`，`docs:check` 的 core 边界检查（无 Noema 专名/仓库路径）通过。）
 - [ ] E26/E27/E28/E29/E30/E31/E32 E26；E27；E28 单一回溯边；E29 E26 作废；E30 reopened 范围归属；E31 E8 记忆试点挂起；E32 历史只增门。（[机制] E26：已作废（由 E27 取代），作废理由记在条目已定块。 E27：单一回溯边：状态机 `governance/core/lifecycle.mjs` 只保留向前与重开；`decision advance` 拒绝「待验收 → 执行中」。 E28：重开保留历史：`governance/core/history.mjs` + `docs:check` 历史只增门；kernel 用例覆盖重开后批次/验收项仍在。 E29：E26 作废已在条目已定块记录，无额外产物。 E30：reopened 范围（E12/E19/E20/E21/E23）已落 change `governance-transition` 并归档。 E31：E8 挂起：`D-20261117-agent-memory` 仍在决策中，未阻塞本条目。 E32：历史只增门：规则 `entry-history-monotonic`（block，`docs:check`）+ maintenance 用例「删行报错、同量改写放行」。）
-- 重开：验收发现 E12/E19/E21/E23 未落地，说明执行清单没有覆盖决定；按单一回溯边回决策阶段补齐范围与归属映射（2026-11-19）
+- 重开：验收不过：①交付过程中我用原生工具与一次性脚本直接改过条目（含用 git show 恢复历史），而 DECISIONS 应只由治理接口写入；②重开后再次进执行时另开批次 governance-acceptance-writeback，没有续接已有批次；两处都说明接口与批次模型有结构缺陷（2026-11-19）
 ## ⏳ D-20261118-agent-governance-concept 从 Noema 治理实践倒推 agent 领域的概念
 
 - **阶段**：决策中
