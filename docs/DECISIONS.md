@@ -1070,7 +1070,7 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 #### 2 执行
 
-- 批次：`changes/governance-core`（commit b8077c0）
+- 批次：`changes/governance-core`（commit 03ce6a6）
 - 完成：批次一 `governance-authority` 已归档（S1 589274b → E23 946edd9 → S2 b4f5ed6 → S3–S5 1e0ba44；`npm run check` 901/901、CI verify/platform 绿）
 - 完成：批次二 `governance-kernel` 已归档（`decision-kernel`/`decision`/`stage`/`transition` + `kernel.test.mjs` 14/14；`npm run check` 901/901、`tools:test` 77/77；治理图按章节判断重出 `7ff1dbcff1a1`）
 - 完成：批次三 `governance-core` 已归档（内核落 `governance/core`、阶段地图改入口命令、退回路径；`kernel:test` 15/15、`tools:test` 78/78、`npm run check` 901/901、71,461ms）
