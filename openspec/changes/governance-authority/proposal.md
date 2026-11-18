@@ -14,6 +14,12 @@ Plan: none
 - S4 notice 门：`docs:check` 检测 `docs/` 新出现的治理词，只提示不阻断（E6 观察期）。
 - S5 验证与证据。
 
+## 不在本批
+
+- 内核代码与 pm run stage / 	ransition / decision round|settle|advance 命令（批次二 governance-kernel）。
+- 记忆议题试点与抽离评估（试点 P1、批次三）。
+- scripts/ 既有门的判定逻辑（本批只为 doc 新增 notice 检查与图路径同步）。
+
 ## 影响
 
 - 只改治理文档、`AGENTS.md`、技能指针、`scripts/figure.mjs` 图路径与 `scripts/maintenance.mjs` notice 检查；不含 `apps/desktop/src/` 产品代码，不动数据模型与既有门判定逻辑。

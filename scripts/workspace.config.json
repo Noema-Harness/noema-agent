@@ -21,6 +21,7 @@
     ".work",
     "apps",
     "docs",
+    "governance",
     "node_modules",
     "openspec",
     "plugins",
