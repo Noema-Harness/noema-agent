@@ -22,6 +22,9 @@ import {
 import { checkPackGates, loadPack, resumeCard, activeEntries } from "../../scripts/stage.mjs";
 import { advanceEntry, recordRound, settleDecisionItem } from "../../scripts/decision.mjs";
 import { checkTransition, scaffold } from "../../scripts/transition.mjs";
+import { restoreDecisions } from "../../scripts/decision.mjs";
+import { audit } from "../../scripts/interface.mjs";
+import { execFileSync } from "node:child_process";
 import { checkDecisionEntries } from "../../scripts/maintenance.mjs";
 import { main as interfaceMain } from "../../scripts/interface.mjs";
 
@@ -503,6 +506,107 @@ test("acceptance items are replaced by command while stage events stay", () => {
   assert.doesNotMatch(result.text, /验收项一/u);
   assert.match(result.text, /- 重开：验收发现漏项（2026-11-19）/u);
   assert.throws(() => replaceAcceptance(withEvent, "D-20261118-probe", []), /验收项为空/u);
+});
+
+test("moving to execution can continue the batch or open a new one with a reason", () => {
+  const root = executionRoot({ design: null });
+  advanceEntry({
+    root,
+    id: "D-20261118-probe",
+    stage: "执行中",
+    approval: "没问题，这项可以执行",
+    decision: "按探针方案推进",
+  });
+  const continued = readEntry(
+    fs.readFileSync(path.join(root, "docs", "DECISIONS.md"), "utf8"),
+    "D-20261118-probe",
+  );
+  assert.equal(continued.batch, "changes/probe");
+  assert.doesNotMatch(continued.executionText, /批次历史/u);
+
+  advanceEntry({
+    root,
+    id: "D-20261118-probe",
+    stage: "决策中",
+    reason: "验收发现范围没覆盖完整，回决策补齐",
+  });
+  fs.mkdirSync(path.join(root, "openspec", "changes", "probe2"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, "openspec", "changes", "probe2", "proposal.md"),
+    "Plan: none\n\n来源：D-20261118-probe\n",
+    "utf8",
+  );
+  assert.throws(
+    () =>
+      advanceEntry({
+        root,
+        id: "D-20261118-probe",
+        stage: "执行中",
+        approval: "没问题，这项可以执行",
+        decision: "换一个批次",
+        newBatch: "changes/probe2",
+      }),
+    /--reason/u,
+  );
+  advanceEntry({
+    root,
+    id: "D-20261118-probe",
+    stage: "执行中",
+    approval: "没问题，这项可以执行",
+    decision: "换一个批次继续",
+    newBatch: "changes/probe2",
+    reason: "原来的批次已归档，范围不同",
+  });
+  const moved = readEntry(
+    fs.readFileSync(path.join(root, "docs", "DECISIONS.md"), "utf8"),
+    "D-20261118-probe",
+  );
+  assert.equal(moved.batch, "changes/probe2");
+  assert.match(moved.executionText, /批次历史：changes\/probe2（原 changes\/probe）/u);
+});
+
+test("audit refuses a net rule increase until the baseline records it", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "noema-audit-"));
+  fs.mkdirSync(path.join(root, "governance"), { recursive: true });
+  const quietLog = console.log;
+  const quietErr = console.error;
+  console.log = () => {};
+  console.error = () => {};
+  try {
+    assert.equal(audit(root, ["--accept"]), 0);
+    fs.writeFileSync(
+      path.join(root, "governance", "rules-baseline.json"),
+      `${JSON.stringify({ rules: 0, gates: 0, commands: 0 })}\n`,
+      "utf8",
+    );
+    assert.equal(audit(root), 1);
+  } finally {
+    console.log = quietLog;
+    console.error = quietErr;
+  }
+});
+
+test("move --restore writes through the command and records the stamp", () => {
+  const repo = path.resolve(path.dirname(new URL(import.meta.url).pathname.slice(1)), "../..");
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "noema-restore-"));
+  fs.mkdirSync(path.join(root, "docs"), { recursive: true });
+  const git = (args) => execFileSync("git", args, { cwd: root, encoding: "utf8" });
+  git(["init", "-q"]);
+  git(["config", "user.email", "test@example.com"]);
+  git(["config", "user.name", "test"]);
+  const good = text();
+  fs.writeFileSync(path.join(root, "docs", "DECISIONS.md"), good, "utf8");
+  git(["add", "-A"]);
+  git(["commit", "-qm", "good"]);
+  fs.writeFileSync(
+    path.join(root, "docs", "DECISIONS.md"),
+    good.replace("- 未开始：定案后进入执行", ""),
+    "utf8",
+  );
+  const restored = restoreDecisions({ root, from: "HEAD" });
+  assert.equal(restored.from, "HEAD");
+  assert.equal(fs.readFileSync(path.join(root, "docs", "DECISIONS.md"), "utf8"), good);
+  assert.ok(fs.existsSync(path.join(root, ".work", "decision-writes", "DECISIONS.json")));
 });
 
 test("the interface routes check/record/move and rejects unknown verbs", () => {

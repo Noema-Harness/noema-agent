@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -1067,10 +1068,28 @@ export function checkPrecommit(root, options = {}) {
   if (stageNotice) plan.notices.unshift(stageNotice);
   const docNotice = transitionDocNotice(root);
   if (docNotice) plan.notices.unshift(docNotice);
+  const stampNotice = decisionWriteNotice(root);
+  if (stampNotice) plan.notices.unshift(stampNotice);
   return { errors, notices: plan.notices, staged };
 }
 
 /** 提交时自然注入一次当前条目与阶段，避免 agent 只凭记忆猜自己在哪个阶段。 */
+/** 写盘印记校验（M12）：暂存的条目是否还是命令写下的那一版。 */
+function decisionWriteNotice(root) {
+  const stampFile = path.join(root, ".work", "decision-writes", "DECISIONS.json");
+  let stamp;
+  try {
+    stamp = JSON.parse(fs.readFileSync(stampFile, "utf8"));
+  } catch {
+    return null;
+  }
+  const staged = runGit(root, ["cat-file", "blob", ":docs/DECISIONS.md"]);
+  if (!staged.ok) return "条目文件还没有暂存：先 git add docs/DECISIONS.md";
+  const sha256 = createHash("sha256").update(staged.text).digest("hex");
+  if (sha256 === stamp.sha256) return null;
+  return `docs/DECISIONS.md 在索引里与命令写下的版本不一致（命令时间 ${stamp.at}）：条目只走 npm run governance -- record|move，不要用编辑器或脚本改`;
+}
+
 function currentStageNotice(root) {
   const text = readText(path.join(root, "docs", "DECISIONS.md")) ?? "";
   const active = decisionEntries(text)

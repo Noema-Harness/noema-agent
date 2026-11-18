@@ -2,8 +2,11 @@
 // 行为门在这里：写盘前校验原话长度、合法转移、批次指针与条目结构；失败不落盘。
 // 条目文本模型在 governance/core/entries.mjs，阶段语义在 governance/core/lifecycle.mjs；
 // 本文件只做 Noema 的路径、门与 CLI 接线。
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import { createHash } from "node:crypto";
 import path from "node:path";
+import { resolveGitExecutable } from "./git-exec.mjs";
 import { checkDecisionEntries, localToday } from "./maintenance.mjs";
 import {
   addUpdateNote,
@@ -80,6 +83,20 @@ function requireReason(flags, purpose) {
   return reason;
 }
 
+const WRITE_STAMP = path.join(".work", "decision-writes", "DECISIONS.json");
+
+/** 写盘印记（M12）：记下命令写出的文件哈希，提交前据此发现「绕过命令改过」。 */
+function stampWrite(root, text) {
+  const sha256 = createHash("sha256").update(text).digest("hex");
+  const file = path.join(root, WRITE_STAMP);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(
+    file,
+    `${JSON.stringify({ path: DECISIONS.replaceAll("\\", "/"), sha256, at: new Date().toISOString() }, null, 2)}\n`,
+    "utf8",
+  );
+}
+
 function commit(root, next, { dryRun }) {
   if (dryRun) {
     console.log("dry-run：不写盘。生成后的条目如下：");
@@ -87,6 +104,7 @@ function commit(root, next, { dryRun }) {
     return;
   }
   fs.writeFileSync(path.join(root, DECISIONS), next, "utf8");
+  stampWrite(root, next);
   console.log(`已写入 ${DECISIONS}`);
 }
 
@@ -98,6 +116,7 @@ export function advanceEntry({
   approval,
   reason,
   design,
+  newBatch,
   date,
   dryRun = false,
 }) {
@@ -123,19 +142,29 @@ export function advanceEntry({
     next = setStage(next, id, target);
   } else if (target === "执行中") {
     const quote = requireApproval({ approval }, "进入执行");
-    if (!entry.batch) {
+    const batch = typeof newBatch === "string" ? newBatch : entry.batch;
+    if (!batch) {
       throw new Error(`${id} 的执行层没有「- 批次：changes/<name>」：先建档再进执行（E23）`);
     }
-    if (
-      !fs.existsSync(path.join(root, "openspec", "changes", entry.batch.replace(/^changes\//u, "")))
-    ) {
-      throw new Error(`${id} 的批次 ${entry.batch} 在 openspec/changes/ 里不存在：先建档`);
+    if (!fs.existsSync(path.join(root, "openspec", "changes", batch.replace(/^changes\//u, "")))) {
+      throw new Error(`${id} 的批次 ${batch} 在 openspec/changes/ 里不存在：先建档`);
     }
-    const changeName = entry.batch.replace(/^changes\//u, "");
+    if (typeof newBatch === "string") {
+      const why = requireReason({ reason }, "另开批次");
+      const old = entry.batch ? `（原 ${entry.batch}）` : "";
+      next = replaceBatch(next, id, batch);
+      next = appendExecutionLine(
+        next,
+        id,
+        `- 批次历史：${batch}${old}（${today}；新批次原因：${why}）`,
+      ).text;
+    }
+    entry.batch = batch;
+    const changeName = batch.replace(/^changes\//u, "");
     const proposalFile = path.join(root, "openspec", "changes", changeName, "proposal.md");
     const proposal = fs.existsSync(proposalFile) ? fs.readFileSync(proposalFile, "utf8") : "";
     if (!proposal.trim()) {
-      throw new Error(`${id} 的批次 ${entry.batch} 没有 proposal.md：先建档再进执行（E23）`);
+      throw new Error(`${id} 的批次 ${batch} 没有 proposal.md：先建档再进执行（E23）`);
     }
     if (!proposal.includes(id)) {
       throw new Error(
@@ -161,7 +190,7 @@ export function advanceEntry({
       designLine = `- 设计：${design.replaceAll("\\", "/")}（${today}）`;
     }
     const decided = withDecisionLine(
-      text,
+      next,
       id,
       `- 决定：${String(decision).trim()}（用户原话：「${quote}」，${today}）`,
     );
@@ -375,10 +404,41 @@ export function resumeEntry({ root = process.cwd(), id, date, dryRun = false }) 
   return { id, report: result.report };
 }
 
+export function restoreDecisions({ root = process.cwd(), from, dryRun = false }) {
+  if (!from || !String(from).trim())
+    throw new Error("缺少 --from <commit>：恢复要指明从哪个提交取条目");
+  let text;
+  try {
+    text = execFileSync(resolveGitExecutable(), ["show", `${from}:docs/DECISIONS.md`], {
+      cwd: root,
+      encoding: "utf8",
+      maxBuffer: 32 * 1024 * 1024,
+    });
+  } catch {
+    throw new Error(`读不到 ${from}:docs/DECISIONS.md：确认这个提交里有条目文件`);
+  }
+  const current = fs.readFileSync(path.join(root, DECISIONS), "utf8");
+  const report = checkDecisionEntries(text, { previous: current });
+  if (report.errors.length > 0) {
+    throw new Error(`恢复目标不合法（没有写盘）：${report.errors.join("；")}`);
+  }
+  commit(root, text, { dryRun });
+  return { from };
+}
+
 export function main(argv = process.argv.slice(2), root = process.cwd()) {
   const [command, ...rest] = argv;
   const flags = parseFlags(rest);
   try {
+    if (command === "restore") {
+      const result = restoreDecisions({
+        root,
+        from: flags.from,
+        dryRun: flags["dry-run"] === true,
+      });
+      console.log(`已从 ${result.from} 恢复 docs/DECISIONS.md（经命令写入并留印记）`);
+      return 0;
+    }
     if (command === "edit") {
       const values = {};
       if (typeof flags.blocker === "string") values.blocker = flags.blocker;
@@ -476,6 +536,7 @@ export function main(argv = process.argv.slice(2), root = process.cwd()) {
         throw new Error(`写入前校验失败（条目没有改动）：${report.errors.join("；")}`);
       }
       fs.writeFileSync(file, next, "utf8");
+      stampWrite(root, next);
       console.log(
         action === "add"
           ? `${target}：已加待裁项 ${result.line}`
@@ -492,6 +553,7 @@ export function main(argv = process.argv.slice(2), root = process.cwd()) {
         approval: flags.approval,
         reason: flags.reason,
         design: flags.design,
+        newBatch: flags["new-batch"],
         date: flags.date,
         dryRun: flags["dry-run"] === true,
       });

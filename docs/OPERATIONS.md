@@ -73,6 +73,7 @@ npm run transition -- <kind> # 过渡文档：模板 / --write 生成 / --check 
 npm run acceptance -- --entry <D-…> # 生成验收页：按 E 分节、列未覆盖 E、手测步骤与结论；--write 落 .work/review/
 npm run decision -- acceptance --entry <D-…> --from <file> # 把文件里的「- [ ] …」验收项整段写回条目（保留阶段事件行）
 npm run decision -- <round|settle|advance|wait>  # 条目操作，写盘前过行为门（wait add|drop 增删待裁项）
+npm run governance -- record|move|check|audit # 治理接口：record 五合一、move 进阶段/恢复、check 三类自检、audit 净零计数
 npm test
 ```
 
@@ -136,6 +137,9 @@ npm run workspace:clean -- --days 30 --apply       # 改保留期
 | `npm run decision -- advance` 报「不能从X直接到Y」    | 阶段只能相邻推进（决策中→执行中→待验收→已收口），唯一回溯边是重开回决策中；验收不过用 `--stage 决策中 --reason "…"`               |
 | `npm run transition --check` 报「还有没填的（待填）」 | 把每节的 `（待填）` 换成真实内容再校验；design 与 kickoff 的「待确认项」必须写 `- 无` 才能提交批准                                 |
 | `npm run decision` 报「写入前校验失败（条目没有改动）」 | 生成后的条目结构不合规：按报错修内容后重跑；每次写盘前都会整条校验，失败不会留下半截文件                                          |
+| precommit 报「docs/DECISIONS.md 在索引里与命令写下的版本不一致」 | 有人绕过命令改了条目：用 `npm run governance -- move --restore --from <commit>` 经命令恢复，或重新走 record/move 让印记对齐 |
+| `npm run governance -- audit` 报「净额检查」          | 规则/门/命令数变了：确认新要求必需并在提交信息写清净额，然后 `npm run governance -- audit --accept` 更新基线                         |
+| `npm run transition --write` 报「同类过渡文档有 N 份」 | 回工不要新建：先合并成一份（旧的移到 `.work/review/archive/`）；确实要另开一份用 `--new "<理由>"`                                     |
 | `npm run decision -- advance --stage 待验收` 报「还有 N 个已定 E 没有验收项」 | 先跑 `npm run acceptance -- --entry <D-…>` 看缺哪些，把验收项按 E 编号补齐再转待验收（E12） |
 | 报「设计方案不合规」                                  | 进执行前必须有结构完整的设计稿：`npm run transition -- design` 看模板，待确认项写「- 无」，再带 `--design <path>` 重跑（E21） |
 | 报「proposal.md 没有引用条目」                        | 在 `openspec/changes/<name>/proposal.md` 的 `Plan` 或来源里写上条目 id 再进执行（E23） |
