@@ -1078,10 +1078,10 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 #### 3 验收
 
-- [ ] [机制] 阶段入口只跑一条命令：`npm run stage -- discussion|execution|acceptance` 打印对应规则包、活动条目与恢复卡（含「上一轮结论」与「自上次记录以来 N 个新提交」）— 跑命令看输出；未知阶段退出码 2
-- [ ] [机制] 条目操作过行为门且失败不落盘：`npm run decision -- advance` 对阶段跳跃 / 原话 <10 字 / 缺批次指针 / 缺 change 目录分别拒绝；`round` 与 `settle` 写盘前过 `checkDecisionEntries` — `npm run kernel:test` 14/14
-- [ ] [机制] 过渡文档有结构与占位校验：`npm run transition -- design --entry <D-…> --write` 生成骨架；`--check` 报缺节、残留「（待填）」、design/kickoff 的「待确认项」不是「- 无」 — 手跑这两条命令
-- [ ] [机制] 全量门绿：`npm run check` 901/901、`npm run tools:test` 77/77、`npm run figure:check` OK、`npm run kernel:test` 14/14 — 提交 `b2ac3e7` 与 CI
+- [ ] [机制] 阶段注入走命令：`npm run stage -- discussion` 打印规则包、活动条目与恢复卡；`AGENTS.md` 的阶段地图是「进入方式 + 产物」，不再指「该读哪份文件」— 跑命令、看 AGENTS
+- [ ] [机制] 内核落位 `governance/core`：`entries.mjs` / `lifecycle.mjs` / `packs.mjs` / `transitions.mjs` 存在，`scripts/` 只剩路径、命令名与门；`docs:check` 对 core 出现 Noema 专名或仓库路径报错 — `npm run tools:test` 78/78（含边界用例）
+- [ ] [机制] 验收不过的退回路径可用：缺 `--reason` 拒绝、短原因拒绝、带原因退回写一行「退回：…（日期）」— `npm run kernel:test` 15/15
+- [ ] [机制] 全量门绿：`npm run check` 901/901、`npm run tools:test` 78/78、`npm run figure:check` OK — 提交 `03ce6a6`、`1eb711d` 与 CI
 - [ ] [用户] 跑 `npm run stage -- discussion`，看恢复卡是否一眼回答「现在在哪、下一步做什么」；跑 `npm run review` 看队列是否只剩待你决定/待验收/执行中三类（≤15 分钟）
-- [ ] [未验证] 规则包里的 `gate:` 检查项目前只是引用校验与提示输出，提交时还没有机器判定（E6 观察期）；批次三抽离前再用两个里程碑观察
+- [ ] [未验证] 规则包里的 `gate:` 检查项目前只是引用校验与提示输出，提交时还没有机器判定（E6 观察期）；治理框架的独立概念与通用化未开始
 
