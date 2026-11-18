@@ -2,16 +2,18 @@
 
 Authority: 本文件只回答一个问题——按现有证据，今天这个版本能说到什么程度。内容是当前版本、最后一次验证的证据、未验证项与交付判断。
 Update when: 每次交付、打包或验证结果变化。
-Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与代码实况（见 [ARCHITECTURE](ARCHITECTURE.md)）；决定与理由（见 [DECISIONS](DECISIONS.md)）；命令、安装与诊断（见 [OPERATIONS](OPERATIONS.md)）；治理与门槛（见 [AGENTS](../AGENTS.md)）；计划与进度（见 GitHub Project 看板与 `openspec/changes/`，D-026）。
+Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与代码实况（见 [ARCHITECTURE](ARCHITECTURE.md)）；决定与理由（见 [DECISIONS](DECISIONS.md)）；命令、安装与诊断（见 [OPERATIONS](OPERATIONS.md)）；治理与门槛（见 [governance/README.md](../governance/README.md)）；计划与进度（见 GitHub Project 看板与 `openspec/changes/`，D-026）。
 
 最后更新：2026-11-18
 
 ## 版本与基线
 
-- 源码版本：`0.7.6`；当前源码基线：`f592a9b release: Noema 0.7.6`；功能基线 `b7c41fa`。
+- 源码版本：`0.7.6`；当前源码基线：`b4f5ed6 refactor(governance): move the governance rules into governance/`；功能基线 `b7c41fa`。
 - 便携构建在 `apps/desktop/out/Noema-win32-x64/Noema.exe`；安装包由 `npm run make:desktop` 产出（构建陷阱与回退见 [OPERATIONS](OPERATIONS.md)，决定见 D-024）。
 
 ## 最后一次验证（2026-11-18）
+
+- 治理权威（change `governance-authority`，2026-11-18）：治理规则从 `AGENTS.md`、`docs/` 与技能迁到 `governance/`（内核契约 `core/README.md`、Noema 适配 `noema/`、阶段规则包 `noema/workflow/`、模板 `noema/workflow/transition/`、门槛与协作检查 `noema/maintenance.md`、历史记录 `noema/changelog.md`）。`AGENTS.md` 缩到 45 行（阶段地图、边界、指针）；`docs/OPERATIONS.md`、`docs/STATUS.md` 只留命令与指针；技能只留入口；治理图迁到 `governance/assets/`，图源改为 `governance/README.md`。`docs:check` 新增 notice：`docs/` 新增内容出现治理词时提示搬到 `governance/`。证据：`npm run check` **901/901，0 fail，45,429ms**、`governance: milestone OK`、`figure:check` OK、`node --test scripts/figure.test.mjs` 6/6、`node --test scripts/maintenance.test.mjs` 27/27。
 
 - 条目创建两步门（change `decision-entry-approval`，2026-11-18）：新建条目前先申请，不能先建后说。`npm run decision:draft` 只写 `.work/decisions-draft/<id>.md`（含“草稿，未落库”头）并打印「本次条目创建是否已得到用户明确批准？批准原话是哪一句？」，不碰 `docs/DECISIONS.md`；`npm run decision:accept -- <D-…> --approval "<用户原话>"` 要求原话 ≥10 字，把 `批准创建（用户原话：「…」，日期）` 追加进「来源」，先按 `checkDecisionEntries` 校验草稿全文、通过才写入并删草稿，失败抛「草稿落库前校验失败（条目没有写进文件）」并保留草稿。规则写进 `AGENTS.md`（新建条目前先申请）、`skills/noema-development`（draft/accept 用法）、`docs/OPERATIONS.md`（命令与失败修法）、`docs/DECISIONS.md` 头部。证据：`npm run decision-entry:test` **7/7**、`npm run tools:test` **62/62**、`npm run check` **901/901，0 fail，76,418ms**（链含 `docs:check`、`figure:check`、`tools:test`、`test`）、治理图按章节判断重出（source `b2e0fc3fe387`，理由：AGENTS 只多一条规则，三层与节点关系未变）。
 
