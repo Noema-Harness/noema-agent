@@ -13,10 +13,15 @@ import {
   setStage,
   settleDecision,
 } from "./entries.mjs";
-import { checkTransitionText, templateHeadings } from "./transitions.mjs";
+import {
+  checkTransitionText,
+  templateHeadings,
+  pickTransitionTarget,
+  transitionKindOf,
+} from "./transitions.mjs";
 import { checkPackGates, loadPack, resumeCard, activeEntries } from "../../scripts/stage.mjs";
 import { advanceEntry, recordRound, settleDecisionItem } from "../../scripts/decision.mjs";
-import { checkTransition } from "../../scripts/transition.mjs";
+import { checkTransition, scaffold } from "../../scripts/transition.mjs";
 import { checkDecisionEntries } from "../../scripts/maintenance.mjs";
 
 const HEADER = "Authority: 测试\nUpdate when: 测试\nDoes not own: 测试\n";
@@ -497,6 +502,51 @@ test("acceptance items are replaced by command while stage events stay", () => {
   assert.doesNotMatch(result.text, /验收项一/u);
   assert.match(result.text, /- 重开：验收发现漏项（2026-11-19）/u);
   assert.throws(() => replaceAcceptance(withEvent, "D-20261118-probe", []), /验收项为空/u);
+});
+
+test("transition --write updates in place and only --new creates a second file", () => {
+  const repo = path.resolve(path.dirname(new URL(import.meta.url).pathname.slice(1)), "../..");
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "noema-transition-"));
+  fs.mkdirSync(path.join(root, "docs"), { recursive: true });
+  fs.mkdirSync(path.join(root, "governance", "noema", "workflow", "transition"), {
+    recursive: true,
+  });
+  fs.writeFileSync(path.join(root, "docs", "DECISIONS.md"), "## D-20261118-probe 探针\n", "utf8");
+  fs.copyFileSync(
+    path.join(repo, "governance", "noema", "workflow", "transition", "design.md"),
+    path.join(root, "governance", "noema", "workflow", "transition", "design.md"),
+  );
+  const first = scaffold(root, "design", { entry: "D-20261118-probe", date: "2026-11-19" });
+  assert.equal(first.updated, false);
+  const second = scaffold(root, "design", { entry: "D-20261118-probe", date: "2026-11-20" });
+  assert.equal(second.updated, true);
+  assert.equal(second.written, first.written);
+  assert.match(fs.readFileSync(path.join(root, second.written), "utf8"), /修订/u);
+  const third = scaffold(root, "design", {
+    entry: "D-20261118-probe",
+    date: "2026-11-21",
+    createNew: true,
+    reason: "确实需要另开一份",
+  });
+  assert.equal(third.updated, false);
+  assert.notEqual(third.written, first.written);
+  assert.throws(
+    () =>
+      scaffold(root, "design", { entry: "D-20261118-probe", date: "2026-11-22", createNew: true }),
+    /--new 必须带理由/u,
+  );
+});
+
+test("transition documents stay unique: one per kind, duplicates refuse", () => {
+  assert.equal(transitionKindOf("2026-11-19-x-design.md"), "design");
+  assert.equal(transitionKindOf("notes.md"), null);
+  assert.equal(pickTransitionTarget([], "design").target, null);
+  const one = pickTransitionTarget(["2026-11-18-a-design.md"], "design");
+  assert.equal(one.target, "2026-11-18-a-design.md");
+  assert.equal(one.error, null);
+  const many = pickTransitionTarget(["2026-11-18-a-design.md", "2026-11-19-b-design.md"], "design");
+  assert.match(many.error, /同类过渡文档有 2 份/u);
+  assert.equal(many.duplicates.length, 2);
 });
 
 test("the batch pointer is replaced by command", () => {

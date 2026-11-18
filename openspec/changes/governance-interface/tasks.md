@@ -7,10 +7,10 @@
 
 ## 2 S6 过渡文档唯一性与就地更新
 
-- [ ] 2.1 内核 `pickTransitionTarget` / `duplicateTransitionDocs`
-- [ ] 2.2 `scripts/transition.mjs`：`--write` 默认就地更新，`--new` 才新建
-- [ ] 2.3 precommit notice（规则 `transition-doc-singleton`）
-- [ ] 2.4 单测：两份同类报错、就地更新、`--new` 通过
+- [x] 2.1 内核 `pickTransitionTarget` / `duplicateTransitionDocs`（验证：kernel:test「transition documents stay unique」，两份同类返回 error+duplicates）
+- [x] 2.2 `scripts/transition.mjs`：`--write` 默认就地更新，`--new` 才新建（验证：kernel:test「transition --write updates in place and only --new creates a second file」，就地更新加修订头、无理由 --new 拒绝）
+- [x] 2.3 precommit notice（规则 `transition-doc-singleton`）（验证：`node scripts/maintenance.mjs precommit` 在 .work/review 出现两份同类时打出提醒；归档旧稿后不再出现）
+- [x] 2.4 单测：两份同类报错、就地更新、`--new` 通过（验证：kernel:test 22/22）
 
 ## 3 S1 check 三合一
 

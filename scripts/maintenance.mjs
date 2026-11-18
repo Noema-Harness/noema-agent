@@ -6,6 +6,7 @@ import { resolveGitExecutable } from "./git-exec.mjs";
 import { checkSkill } from "./skill-sync.mjs";
 import { STATES } from "./lifecycle.mjs";
 import { compareEntryHistory } from "../governance/core/history.mjs";
+import { duplicateTransitionDocs } from "../governance/core/transitions.mjs";
 
 // 文档与计划不是事后补写的报告，而是交付门槛的一部分：交付前、提交前都必须
 // 通过这里。`docs` 校验五份权威文档与代码事实同步，`plan` 校验 OpenSpec 只有
@@ -507,12 +508,10 @@ function governanceCoreFiles(root) {
   } catch {
     return [];
   }
-  return names
-    .sort()
-    .map((name) => ({
-      name: `governance/core/${name}`,
-      text: readText(path.join(dir, name)) ?? "",
-    }));
+  return names.sort().map((name) => ({
+    name: `governance/core/${name}`,
+    text: readText(path.join(dir, name)) ?? "",
+  }));
 }
 
 export function checkDocuments(root, git, options = {}) {
@@ -1066,6 +1065,8 @@ export function checkPrecommit(root, options = {}) {
   // (checked by plan/milestone), never for every product file touched.
   const stageNotice = currentStageNotice(root);
   if (stageNotice) plan.notices.unshift(stageNotice);
+  const docNotice = transitionDocNotice(root);
+  if (docNotice) plan.notices.unshift(docNotice);
   return { errors, notices: plan.notices, staged };
 }
 
@@ -1078,6 +1079,22 @@ function currentStageNotice(root) {
     .map(({ entry, meta }) => `${entry.id}（${meta.stage}）`);
   if (!active.length) return null;
   return `当前活动条目：${active.join("、")}；进阶段先跑 npm run stage -- <discussion|execution|acceptance> 看本阶段规则`;
+}
+
+/** 过渡文档同类多份的提醒（M16）：回工只更新一份，不新建。 */
+function transitionDocNotice(root) {
+  const dir = path.join(root, ".work", "review");
+  let names = [];
+  try {
+    names = fs.readdirSync(dir);
+  } catch {
+    return null;
+  }
+  const many = duplicateTransitionDocs(names);
+  if (!many.length) return null;
+  return `过渡文档同类多份：${many
+    .map(({ kind, files }) => `${kind}×${files.length}（${files.join("、")}）`)
+    .join("；")}；回工只更新一份，别新建（规则 transition-doc-singleton）`;
 }
 
 /**

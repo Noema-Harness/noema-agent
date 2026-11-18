@@ -53,3 +53,43 @@ export function scaffoldText({ label, entry, template, placeholder = PLACEHOLDER
     "",
   ].join("\n");
 }
+
+/** 过渡文档的唯一性与就地更新（M16）：同一 kind 只允许一份，回工改那一份。 */
+export const DOC_SINGLETON_KINDS = ["design", "closeout", "kickoff", "handoff", "report"];
+
+/** 从文件名（日期-主题-<kind>.md）取 kind；不认识的返回 null。 */
+export function transitionKindOf(fileName) {
+  const match = /-([a-z]+)\.md$/u.exec(String(fileName));
+  return match && DOC_SINGLETON_KINDS.includes(match[1]) ? match[1] : null;
+}
+
+/** 同类过渡文档出现多份的分组（零份/一份不出现在结果里）。 */
+export function duplicateTransitionDocs(fileNames) {
+  const groups = new Map();
+  for (const name of fileNames) {
+    const kind = transitionKindOf(name);
+    if (!kind) continue;
+    groups.set(kind, [...(groups.get(kind) ?? []), name]);
+  }
+  return [...groups]
+    .filter(([, files]) => files.length > 1)
+    .map(([kind, files]) => ({ kind, files: [...files].sort((a, b) => a.localeCompare(b)) }));
+}
+
+/**
+ * 选本次 --write 的落点：同类只有一份时更新那一份；没有则新建；
+ * 出现多份时报错，先合并再写。
+ */
+export function pickTransitionTarget(fileNames, kind) {
+  const mine = fileNames
+    .filter((name) => transitionKindOf(name) === kind)
+    .sort((a, b) => a.localeCompare(b));
+  if (mine.length > 1) {
+    return {
+      target: mine[mine.length - 1],
+      duplicates: mine,
+      error: `同类过渡文档有 ${mine.length} 份（${mine.join("、")}）：先合并到一份再写；确认要另开一份时用 --new "<理由>"`,
+    };
+  }
+  return { target: mine[0] ?? null, duplicates: mine, error: null };
+}

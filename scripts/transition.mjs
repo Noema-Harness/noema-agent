@@ -4,7 +4,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import { localToday } from "./maintenance.mjs";
-import { checkTransitionText, scaffoldText, PLACEHOLDER } from "../governance/core/transitions.mjs";
+import {
+  checkTransitionText,
+  scaffoldText,
+  PLACEHOLDER,
+  pickTransitionTarget,
+} from "../governance/core/transitions.mjs";
 import { readEntry } from "../governance/core/entries.mjs";
 import { buildHandoffPage, buildReportPage } from "../governance/core/handoff.mjs";
 
@@ -42,7 +47,7 @@ export function checkTransition(text, kind, root = process.cwd()) {
   });
 }
 
-export function scaffold(root, kind, { slug, entry, date }) {
+export function scaffold(root, kind, { slug, entry, date, createNew = false, reason = null }) {
   const meta = KINDS[kind];
   const template = readText(path.join(root, meta.file));
   if (template === null) throw new Error(`缺少模板 ${meta.file}`);
@@ -52,8 +57,16 @@ export function scaffold(root, kind, { slug, entry, date }) {
       `--entry ${entry ?? "(空)"} 不在 docs/DECISIONS.md 里：过渡文档必须挂到一条条目`,
     );
   }
-  const name = `${date}-${slug ?? entry}-${kind}.md`;
-  const target = path.join(root, ".work", "review", name);
+  const reviewDir = path.join(root, ".work", "review");
+  fs.mkdirSync(reviewDir, { recursive: true });
+  const pick = pickTransitionTarget(fs.readdirSync(reviewDir), kind);
+  if (pick.error) {
+    if (!createNew) throw new Error(pick.error);
+    if (!reason) throw new Error(`${pick.error}；--new 必须带理由`);
+  }
+  const reuse = Boolean(pick.target && !createNew);
+  const name = reuse ? pick.target : `${date}-${slug ?? entry}-${kind}.md`;
+  const target = path.join(reviewDir, name);
   let body;
   if (kind === "handoff" || kind === "report") {
     // 交接与报告是生成物：内容取自条目，不让人手填（E19/E20）。
@@ -65,11 +78,15 @@ export function scaffold(root, kind, { slug, entry, date }) {
   } else {
     body = scaffoldText({ label: meta.label, entry, template });
   }
-  fs.mkdirSync(path.dirname(target), { recursive: true });
+  if (reuse) {
+    body = `<!-- 修订：${date} 就地更新，未新建文件${reason ? `；理由：${reason}` : ""} -->\n\n${body}`;
+  }
   fs.writeFileSync(target, body, "utf8");
   return {
     written: path.relative(root, target).replaceAll("\\", "/"),
     generated: kind === "handoff" || kind === "report",
+    updated: reuse,
+    duplicates: pick.duplicates,
   };
 }
 
@@ -113,8 +130,14 @@ export function main(argv = process.argv.slice(2), root = process.cwd()) {
         slug: typeof flags.slug === "string" ? flags.slug : undefined,
         entry: typeof flags.entry === "string" ? flags.entry : undefined,
         date: typeof flags.date === "string" ? flags.date : localToday(),
+        createNew: flags.new === true || typeof flags.new === "string",
+        reason: typeof flags.new === "string" ? flags.new : null,
       });
-      console.log(`transition：已生成 ${written.written}`);
+      console.log(
+        written.updated
+          ? `transition：已就地更新 ${written.written}（同类只保留一份，未新建文件）`
+          : `transition：已生成 ${written.written}`,
+      );
       if (written.generated) {
         console.log(
           `下一步：npm run transition -- ${kind} --check ${written.written}（内容由条目生成，不需要手填）`,
