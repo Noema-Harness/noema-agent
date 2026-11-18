@@ -57,14 +57,14 @@
 | `npm run decisions:sync` | 标题阶段标记与勾选收口同步 | 已有 |
 | `npm run docs:check`、`figure:check`、`plan:check`、`milestone:check` | 单独跑某道产物门 | 已有 |
 | `npm run check` | 里程碑全量门 | 已有 |
-| `npm run stage -- <阶段>` | 打印阶段规则包 + 当前条目 + 恢复卡 | 批次二 |
-| `npm run transition -- <kind>` | 打印过渡文档骨架并写入 `.work/review/` | 批次二 |
-| `npm run decision round/settle/advance` | 条目结构化操作（行为门） | 批次二 |
+| `npm run stage -- <阶段>` | 打印阶段规则包 + 当前条目 + 恢复卡 | 已有 |
+| `npm run transition -- <kind>` | 打印过渡文档骨架并写入 `.work/review/` | 已有 |
+| `npm run decision -- round\|settle\|advance` | 条目结构化操作（行为门） | 已有 |
 
 ## 当前落地状态
 
 - 批次一 `governance-authority`：目录、索引、规则包、迁移（本文件所在批次）。核验：`docs:check`、`figure:check`、`npm run check`。
-- 批次二 `governance-kernel`：条目 CLI、`stage`/`transition` 命令、notice 门接线。
+- 批次二 `governance-kernel`：条目内核、`decision` 行为门、`stage`/`transition` 命令、两个新门规则（观察期）。核验：`npm run kernel:test`、`npm run tools:test`、`npm run check`。
 - 试点 P1：`D-20261117-agent-memory` 按新流程走一轮，出试点报告。
 - 批次三 `governance-extraction`：内核可复用与抽离评估。
 

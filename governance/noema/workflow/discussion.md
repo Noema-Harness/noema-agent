@@ -18,8 +18,8 @@
 
 ## 怎么记
 
-- 每轮一行索引：结论 + 待裁变化；不复制正文。
-- 待裁清单滚动更新，是唯一入口：新问题进清单、解决后移除，草案是升格的待裁项。
+- 每轮一行索引：结论 + 待裁变化；不复制正文。用 `npm run decision -- round --entry <D-…> --conclusion "…" --changes "…"` 写入，缺变化行会被行为门拒绝。
+- 待裁清单滚动更新，是唯一入口：新问题进清单、解决后移除，草案是升格的待裁项；解决一项用 `npm run decision -- settle --entry <D-…> --number <n> --title "…" --detail "…" --item <T…> --approval "<用户原话>"` 并入已定。
 - 用户说法或判断被修正时，把新事实并进原条目，不另开一条「等另一条」的占位条目。
 - 用户确认的每一项升为 `E<编号>`（内容 + 原话 + 日期），草案确认后并入已定细则。
 - 漂移自检只在真有漂移时写一条；没有就不写。
@@ -62,7 +62,7 @@
 
 - 条目结构（阶段/字段/三层）由 `gate:decision-shape` 校验。
 - 讨论期出现产品代码改动由 `gate:code-needs-plan` 与 `gate:governance-no-product` 拦截。
-- 例外落地的格式与一致性由批次二的行为门实现（`advance` 与 `milestone:check`）。
+- 例外落地的格式与一致性由行为门校验（`npm run decision -- advance` 与 `milestone:check`）。
 
 ## 边界
 

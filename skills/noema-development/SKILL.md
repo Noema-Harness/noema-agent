@@ -11,6 +11,8 @@ description: 在 Noema 仓库推进开发、需要填立项三件套或决议条
 
 讨论、执行、验收三段的规则包在 governance/noema/workflow/{discussion,execution,acceptance}.md；条目结构与权限在 governance/core/README.md；门槛、审核入口、协作检查在 governance/noema/maintenance.md；规则入口是 AGENTS.md。本文件只给骨架。
 
+进入一个阶段先跑 `npm run stage -- <discussion|execution|acceptance>`（规则包 + 活动条目 + 恢复卡）；条目操作走 `npm run decision -- round|settle|advance`，过渡文档走 `npm run transition -- <kind>`；这些命令会过行为门，不要手改 `docs/DECISIONS.md`。
+
 ## 1. 立项三件套
 
 `openspec/changes/<name>/proposal.md`

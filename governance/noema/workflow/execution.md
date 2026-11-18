@@ -17,7 +17,7 @@
 3. 条目写批次指针、阶段转执行中。
 4. 然后才动其他文件。
 
-批次二之前由人工遵守；批次二起，`decision advance` 行为门在转执行中时校验 change 已存在且 proposal 引用了条目。
+`npm run decision -- advance --entry <D-…> --stage 执行中 --approval "<用户原话>" --decision "<一句决定>"` 会校验：原话 ≥10 字、change 目录已存在、proposal 引用条目、执行层已有批次指针；任何一项不满足就拒绝写入。
 
 ## 分工
 

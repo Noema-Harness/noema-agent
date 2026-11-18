@@ -19,9 +19,32 @@ function echoTool() {
   };
 }
 
+// The server binds an ephemeral port; a fetch client refuses the handful of
+// ports the WHATWG fetch spec blocks ("bad port"). Restarting with a fresh
+// ephemeral port is the only reliable way to keep this test from flaking.
+const BAD_PORT_ATTEMPTS = 5;
+
+async function withReachableSession(run) {
+  for (let attempt = 1; ; attempt += 1) {
+    const session = new NoemaToolSession({ tools: [echoTool()] });
+    try {
+      await session.start();
+      const value = await run(session);
+      await session.close();
+      return value;
+    } catch (error) {
+      await session.close().catch(() => {});
+      const message = String(error?.cause?.message ?? error?.message ?? '');
+      if (!message.includes('bad port') || attempt >= BAD_PORT_ATTEMPTS)
+        throw error;
+    }
+  }
+}
+
 test('tool session starts one authenticated MCP endpoint and reuses it', async () => {
-  const session = new NoemaToolSession({ tools: [echoTool()] });
-  try {
+  let session = null;
+  await withReachableSession(async (started) => {
+    session = started;
     const first = await session.start();
     const second = await session.start();
     assert.equal(first, second);
@@ -48,9 +71,7 @@ test('tool session starts one authenticated MCP endpoint and reuses it', async (
     } finally {
       await client.close();
     }
-  } finally {
-    await session.close();
-  }
+  });
   assert.equal(session.running, false);
   assert.equal(session.descriptor, null);
 });

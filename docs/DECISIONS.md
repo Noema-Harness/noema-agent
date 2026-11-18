@@ -1065,9 +1065,10 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 #### 2 执行
 
-- 批次：`changes/governance-authority`（commit b11a788；已归档 2026-11-18）
-- 完成：S1 建三层结构（589274b）→ E23 建档顺序 + 规则包（946edd9）→ S2 迁五处 / AGENTS 45 行 / 治理图迁 governance/assets（b4f5ed6）→ S3–S5 验证与归档（1e0ba44）；`npm run check` 901/901、CI verify/platform 绿
-- 下一步：批次二 `governance-kernel`——先建档再写 CLI（`stage`/`transition`/`decision round|settle|advance`）、行为门、notice 门、`/plan` 清理与技能指针
+- 批次：`changes/governance-kernel`（commit 2b52cd3）
+- 完成：批次一 `governance-authority` 已归档（S1 589274b → E23 946edd9 → S2 b4f5ed6 → S3–S5 1e0ba44；`npm run check` 901/901、CI verify/platform 绿）
+- 完成：批次二 `governance-kernel` 已归档（`decision-kernel`/`decision`/`stage`/`transition` + `kernel.test.mjs` 14/14；`npm run check` 901/901、`tools:test` 77/77；治理图按章节判断重出 `7ff1dbcff1a1`）
+- 下一步：批次三试点 P1 等 `D-20261117-agent-memory` 确认后再开；本条目执行阶段收尾验收
 
 #### 3 验收
 

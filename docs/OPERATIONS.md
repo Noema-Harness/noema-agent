@@ -68,6 +68,9 @@ npm run review             # 只读聚合：需要你决定 / 待你验收 / 执
 npm run decisions:sync     # 验收项全部勾选后收口（改阶段与标题标记、补当天用户确认）
 npm run decision:draft     # 起草条目：只写 .work/decisions-draft/，然后问用户是否已批准创建
 npm run decision:accept    # 落库：decision:accept -- <D-…> --approval "<用户原话>"
+npm run stage -- <阶段>     # 阶段入口：打印规则包 + 活动条目 + 恢复卡（discussion/execution/acceptance）
+npm run transition -- <kind> # 过渡文档：模板 / --write 生成骨架 / --check 校验（design/closeout/kickoff/handoff/report）
+npm run decision -- <round|settle|advance>  # 条目操作，写盘前过行为门
 npm test
 ```
 
@@ -101,7 +104,7 @@ npm run workspace:clean -- --days 30 --apply       # 改保留期
 
 保留目录写在 `scripts/workspace.config.json` 的 `artifactRetention`（默认保留 `.work/releases/`、`.work/archive/`，其余超过 7 天未动即清）。
 
-讨论转执行用 DSH 的计划模式：`/plan` 进入计划，`exit_plan_mode` 提交开工清单并等用户批准，批准后才退出计划模式动手。
+讨论转执行不再用 DSH 的计划模式：开工清单用 `npm run transition -- kickoff` 生成与自检，阶段推进用 `npm run decision -- advance --entry <D-…> --stage 执行中 --approval "<用户原话>" --decision "<一句决定>"`（行为门校验原话、批次指针与 change 是否存在）。
 
 ### 维护门槛
 
@@ -127,6 +130,10 @@ npm run workspace:clean -- --days 30 --apply       # 改保留期
 | 报「还在决策中，「#### 2 执行」却已经有内容」         | 讨论期只写决策层：执行与验收改成一行 `- 未开始：定案后进入执行`／`- 未开始：定案后进入验收`，定案后再填                              |
 | 报「「#### 2 执行」没有批次指针」                     | 先立项 openspec/changes/<name>，执行层写一行 - 批次：changes/<name>（commit <sha>），再改阶段；没有批次就停在决策中 |
 | 报「字段「状态」不在允许列表」                        | 删掉 `- **状态**：` 行：阶段已经表达状态；它想说的信息写进三层正文                                                                 |
+| `npm run stage` 报「规则包引用了不存在的门」          | 规则包的 `gate:<id>` 必须是 `scripts/governance.mjs` 的 RULES 里已登记的 id：先登记规则，或改规则包里的 id                        |
+| `npm run decision -- advance` 报「不能从X直接到Y」    | 阶段只能相邻推进（决策中→执行中→待验收→已收口）；退回时把 `--stage` 设成上一个阶段，并在决策层写一行「重开：<原因>」               |
+| `npm run transition --check` 报「还有没填的（待填）」 | 把每节的 `（待填）` 换成真实内容再校验；design 与 kickoff 的「待确认项」必须写 `- 无` 才能提交批准                                 |
+| `npm run decision` 报「写入前校验失败（条目没有改动）」 | 生成后的条目结构不合规：按报错修内容后重跑；每次写盘前都会整条校验，失败不会留下半截文件                                          |
 | 报「条目标题格式不合规…阶段标记只能是」               | 标题的阶段标记只能写 `⏳ 🔧 🔍 ✅` 或不写；写错（如 `## 💬 D-…`）时条目不会被解析，会从 review 里消失并把内容并进上一条             |
 | milestone 报任务未完成 / 有待决问题 / STATUS 不是当天 | 补完任务、拿到用户答案、更新 STATUS 后再归档                                                                                        |
 | milestone 报产品变更没更新卡片正文                    | 在 tasks 写一条“更新卡片正文（现在能做什么 + 手测步骤 / 还没做）”，并真的改卡片正文；治理变更（`Plan: none`）不需要                 |
