@@ -8,9 +8,10 @@
 
 ## 2 验收页生成（E12）
 
-- [ ] 2.1 `governance/core/acceptance.mjs`：从条目读已定 E 列表与验收层勾选行，装配「按 E 分节 + 未覆盖 E」的数据结构。
-- [ ] 2.2 `scripts/acceptance.mjs` + `npm run acceptance`：写 `.work/review/<date>-<id>-acceptance.md`，含决定摘要、分节验收项、未覆盖 E、手测步骤、结论。验证：单测覆盖按 E 出页与未覆盖标记。
-- [ ] 2.3 用 `D-20261118-decision-dialog-flow` 自证生成一次。
+- [x] 2.1 `governance/core/acceptance.mjs`：从条目读已定 E 列表与验收层勾选行，装配「按 E 分节 + 未覆盖 E」的数据结构。（验证：`governance/core/acceptance.test.mjs` 5/5。）
+- [x] 2.2 `scripts/acceptance.mjs` + `npm run acceptance`：写 `.work/review/<date>-<id>-acceptance.md`，含决定摘要、分节验收项、未覆盖 E、手测步骤、结论。验证：单测覆盖按 E 出页与未覆盖标记。（验证：`npm run acceptance -- --entry … --write` 生成页面；未覆盖 E 列出。）
+- [x] 2.3 用 `D-20261118-decision-dialog-flow` 自证生成一次。（验证：`.work/review/2026-11-19-D-20261118-decision-dialog-flow-acceptance.md`，决定 28 项、验收项 6 条、未覆盖 E 27 项——证明旧验收项没有按 E 映射。）
+- [x] 2.4 `decision advance --stage 待验收` 前置：未覆盖 E 必须为 0，否则拒绝并列缺项（E32 的同类防再犯）。（验证：`kernel.test.mjs`「a decision cannot move to acceptance while some decided E has no acceptance item」通过。）
 
 ## 3 交接与报告生成（E19/E20）
 

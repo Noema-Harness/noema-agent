@@ -325,3 +325,23 @@ test("acceptance failure reopens the entry in the decision stage and records it 
     /不能从待验收直接到执行中/u,
   );
 });
+
+test("a decision cannot move to acceptance while some decided E has no acceptance item", () => {
+  const uncovered = makeRoot(text({ stage: "执行中" }));
+  assert.throws(
+    () => advanceEntry({ root: uncovered, id: "D-20261118-probe", stage: "待验收", date: "2026-11-18" }),
+    /还有 1 个已定 E 没有验收项（E1）/u,
+  );
+
+  const covered = makeRoot(
+    text({ stage: "执行中" }).replace("- 未开始：定案后进入验收", "- [ ] E1 探针可以跑"),
+  );
+  const result = advanceEntry({
+    root: covered,
+    id: "D-20261118-probe",
+    stage: "待验收",
+    date: "2026-11-18",
+  });
+  assert.equal(result.transition, "forward");
+  assert.match(fs.readFileSync(path.join(covered, "docs", "DECISIONS.md"), "utf8"), /- \*\*阶段\*\*：待验收/u);
+});

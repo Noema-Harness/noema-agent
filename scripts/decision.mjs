@@ -18,6 +18,7 @@ import {
   withDecisionLine,
 } from "../governance/core/entries.mjs";
 import { transitionKind } from "../governance/core/lifecycle.mjs";
+import { assembleAcceptance } from "../governance/core/acceptance.mjs";
 import { STATES } from "./lifecycle.mjs";
 
 const DECISIONS = path.join("docs", "DECISIONS.md");
@@ -116,6 +117,15 @@ export function advanceEntry({ root = process.cwd(), id, stage, decision, approv
     );
     next = setStage(decided, id, target);
   } else if (target === "待验收") {
+    const coverage = assembleAcceptance(entry);
+    if (coverage.uncovered.length > 0) {
+      throw new Error(
+        `${id} 还有 ${coverage.uncovered.length} 个已定 E 没有验收项（${coverage.uncovered.join("、")}）：先跑 npm run acceptance -- --entry ${id} 看缺哪些，按 E 编号补齐再转待验收`,
+      );
+    }
+    if (entry.acceptanceItems.length === 0) {
+      throw new Error(`${id} 的验收层没有「- [ ] 项」：先写可勾选的验收项`);
+    }
     next = appendStageEvent(text, id, { kind: "转待验收", date: today }).text;
     next = setStage(next, id, target);
   } else {
