@@ -2,9 +2,9 @@
 
 ## 1 历史只增门（E32，先做）
 
-- [ ] 1.1 `governance/core/history.mjs`：从条目文本提取五类历史行（批次/完成/决定/验收项/阶段事件）并按类型计数；新增 `compareEntryHistory(previous, current)` 返回被删行与消失的有历史条目。
-- [ ] 1.2 `scripts/maintenance.mjs` 在 `docs` 档接入：读 `git show HEAD:docs/DECISIONS.md` 比对，减行即报错并列出行；带历史条目整条消失也报错。验证：单测覆盖「删一行完成记录报错」「同量改写不报错」「带历史条目被删报错」。
-- [ ] 1.3 `scripts/governance.mjs` 的 RULES 登记 `entry-history-monotonic`（block；证据「不可逆：历史删除」）。
+- [x] 1.1 `governance/core/history.mjs`：从条目文本提取五类历史行（批次/完成/决定/验收项/阶段事件）并按类型计数；新增 `compareEntryHistory(previous, current)` 返回被删行与消失的有历史条目。（验证：`governance/core/history.mjs` 导出 `entryIdOfHeading/historyCounts/historyOf/compareEntryHistory`。）
+- [x] 1.2 `scripts/maintenance.mjs` 在 `docs` 档接入：读 `git show HEAD:docs/DECISIONS.md` 比对，减行即报错并列出行；带历史条目整条消失也报错。验证：单测覆盖「删一行完成记录报错」「同量改写不报错」「带历史条目被删报错」。（验证：`scripts/maintenance.test.mjs`「entry history only grows: a removed completion line fails the check」通过；`docs:check` OK。）
+- [x] 1.3 `scripts/governance.mjs` 的 RULES 登记 `entry-history-monotonic`（block；证据「不可逆：历史删除」）。（验证：`RULE_TABLE` 已含该行。）
 
 ## 2 验收页生成（E12）
 

@@ -670,6 +670,21 @@ test("a reopened entry keeps its execution and acceptance history in the decisio
   assert.match(cleared.errors.join("\n"), /还在决策中，却已经写了「- 决定：」/u);
 });
 
+test("entry history only grows: a removed completion line fails the check", () => {
+  const previous = `## D-20261116-probe\n\n${LIFECYCLE("待验收")}\n- 完成：批次一已归档\n`;
+  const lost = checkDecisionEntries(`## D-20261116-probe\n\n${LIFECYCLE("待验收")}\n`, { previous });
+  assert.match(lost.errors.join("\n"), /的「完成」行从 1 条变成 0 条/u);
+
+  const rewritten = checkDecisionEntries(
+    `## D-20261116-probe\n\n${LIFECYCLE("待验收")}\n- 完成：批次一已归档并补齐证据\n`,
+    { previous },
+  );
+  assert.equal(rewritten.errors.join("\n"), "");
+
+  const dropped = checkDecisionEntries(`## D-20261116-other\n\n${LIFECYCLE("待验收")}\n`, { previous });
+  assert.match(dropped.errors.join("\n"), /带历史记录却被整条删除/u);
+});
+
 test("an entry past the decision stage points at its batch", () => {
   const missing = checkDecisionEntries(
     `## D-20261116-probe\n\n${LIFECYCLE("执行中").replace("- 批次：changes/stage-probe", "- 找到了：改了三处")}`,

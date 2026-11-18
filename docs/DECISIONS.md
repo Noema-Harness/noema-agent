@@ -997,9 +997,9 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 - 未开始：执行后填写。
 
-## ⏳ D-20261118-decision-dialog-flow 决议条目生命周期与治理规则的按需注入
+## 🔧 D-20261118-decision-dialog-flow 决议条目生命周期与治理规则的按需注入
 
-- **阶段**：决策中
+- **阶段**：执行中
 - **结构**：机制/流程类；条目结构 E13（四块）。治理内容结构见批准版设计方案 v2 §4–§5：`governance/core`（内核）+ `governance/noema`（适配）+ `governance/README.md`（索引），机制 M1–M11。
 - **来源**：用户 2026-11-18 提出把「一个条目的生命周期就是 Noema 开发的一次工作流」固定成完整流程，并给出讨论模式、会议总结与三条交流规则（m105922）；同轮进一步提出流程说明不该常驻、应按阶段注入，因此整体治理结构需要重构（m105952）。
 - **阻塞**：无
@@ -1007,7 +1007,7 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 #### 1 决策
 
 - 要定：无（E1-E32 已定；开工清单待出）
-- 决定：治理体系按「内核 / 适配 / 索引」重构，治理行为为内核第一等对象，门槛分决策门槛 / 行为门 / 产物门·平台门，决策→执行走三步过渡；分四批落地（`governance-authority` → `governance-kernel` → 记忆试点 → 抽离评估）（用户确认：2026-11-18；原话「没问题，都可以。」「都可确定。」「批准1」「批准」）。
+- 决定：按 reopened 六切片收口 E12/E19/E20/E21/E23，并补历史只增门与两处命令缺口（用户原话：「对于这些待裁项，我可以批准」，2026-11-19）
 
 ###### 待裁（滚动、唯一；轮次记录只引用编号）
 
@@ -1084,6 +1084,7 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 #### 2 执行
 
 - 批次：`changes/governance-core`（commit 03ce6a6）
+- 批次：`changes/governance-transition`（commit 06966e9；reopened 范围）
 - 完成：批次一 `governance-authority` 已归档（S1 589274b → E23 946edd9 → S2 b4f5ed6 → S3–S5 1e0ba44；`npm run check` 901/901、CI verify/platform 绿）
 - 完成：批次二 `governance-kernel` 已归档（`decision-kernel`/`decision`/`stage`/`transition` + `kernel.test.mjs` 14/14；`npm run check` 901/901、`tools:test` 77/77；治理图按章节判断重出 `7ff1dbcff1a1`）
 - 完成：批次三 `governance-core` 已归档（内核落 `governance/core`、阶段地图改入口命令、退回路径；`kernel:test` 15/15、`tools:test` 78/78、`npm run check` 901/901、71,461ms）

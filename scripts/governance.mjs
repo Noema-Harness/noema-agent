@@ -76,6 +76,7 @@ workspace-root-dirs|事实唯一|仓库根出现未分类目录，过程材料�
 source-boundary|变更可逆|生产代码导入 test-support，交付物带着测试依赖|观察期：尚无真实触发；一条测试依赖就会让交付物与测试环境绑死|block|source:check
 decision-advance-approval|意图可追|阶段推进没有用户原话，agent 自己给自己盖章|观察期：decision advance 刚落地，尚无真实触发；此门拦的是「把自己的候选写成已定」|notice|decision:advance
 round-changes-line|意图可追|轮次记录不写待裁变化，待裁清单醒来就过期|观察期：round 命令刚落地，尚无真实触发；缺了变化行，下一轮就不知道哪项已解除|notice|decision:round
+entry-history-monotonic|变更可逆|条目历史被删，已发生的批次、决定与验收消失，事后无法追溯|不可逆：删掉的历史行无法恢复，用户 m109573 要求机制防再犯|block|docs:check
 branches-cleanup|成本受控|已合并分支残留在远端，仓库越来越难读|PR #131 合并后 ts-migration 分支残留|notice|branches:check
 inbox-per-round|成本受控|每轮同步等 CI 或靠用户提醒才发现远端红|用户批评每轮等 CI 几十分钟|notice|流程
 `.trim();

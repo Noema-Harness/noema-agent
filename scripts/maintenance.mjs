@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { resolveGitExecutable } from "./git-exec.mjs";
 import { checkSkill } from "./skill-sync.mjs";
 import { STATES } from "./lifecycle.mjs";
+import { compareEntryHistory } from "../governance/core/history.mjs";
 
 // 文档与计划不是事后补写的报告，而是交付门槛的一部分：交付前、提交前都必须
 // 通过这里。`docs` 校验五份权威文档与代码事实同步，`plan` 校验 OpenSpec 只有
@@ -291,6 +292,19 @@ export function checkDecisionEntries(text, options = {}) {
     const dated = entry.id.replace(/^D-/u, "");
     if (!(/^\d{8}-/u.test(dated) && dated.slice(0, 8) >= LIFECYCLE_FROM)) continue;
     checkDatedEntry(entry, errors, notices);
+  }
+  // 历史只增（E32）：批次/完成/决定/验收项/阶段事件是已发生的事实，减行即报错。
+  const previous = String(options.previous ?? "");
+  if (previous.trim() !== "") {
+    const history = compareEntryHistory(previous, String(text));
+    for (const loss of history.removed) {
+      errors.push(
+        `${loss.id} 的「${loss.kind}」行从 ${loss.before} 条变成 ${loss.after} 条：历史只增不删，删除即视为丢失已发生的事实；要改内容就改同一行，不要删`,
+      );
+    }
+    for (const id of history.dropped) {
+      errors.push(`${id} 带历史记录却被整条删除：条目可以作废，但不能抹掉已发生的批次、决定与验收`);
+    }
   }
   return { errors, notices };
 }
