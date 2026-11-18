@@ -8,6 +8,17 @@
 2. 开工清单已获批（`workflow/transition/kickoff.md`），并落成 `openspec/changes/<name>/{proposal,design,tasks}.md`。
 3. 设计方案已获批；proposal 抬头引用了条目（`Decision: <id>`），`design.md` 写了「事实影响」类别。
 
+## 建档顺序（E23，批准后的第一步）
+
+获批后第一步是建档，顺序固定，不得把建档、转阶段、开写压进同一段：
+
+1. 清单转成 change 三件套：切片、覆盖矩阵、顺序、不在本批都要转写；单独提交这份计划。
+2. **计划落地确认**：把三件套与清单的对应关系摆给用户看，确认转写忠实，才继续。
+3. 条目写批次指针、阶段转执行中。
+4. 然后才动其他文件。
+
+批次二之前由人工遵守；批次二起，`decision advance` 行为门在转执行中时校验 change 已存在且 proposal 引用了条目。
+
 ## 分工
 
 - `proposal.md`：为什么、改什么、影响。

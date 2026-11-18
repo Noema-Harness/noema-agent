@@ -4,6 +4,7 @@
 - [x] 1.2 建 `governance/core/README.md`：内核契约（条目模型与状态机、待裁/已定/轮次操作、门契约、规则包契约、恢复卡）；不出现 Noema 专名
 - [x] 1.3 建 `governance/noema/README.md`：适配说明（docs 路径、卡片、命令、CI 接线）
 - [x] 1.4 建 `governance/noema/workflow/{discussion,execution,acceptance}.md` 与 `transition/{design,closeout,kickoff,handoff,report}.md` 模板（验证：内容对齐设计方案 M1/M7/M8/M6）
+- [x] 1.5 规则包补 E23：建档顺序（转写→单独提交→计划落地确认→转执行中→再动文件）与批次二行为门约定（验证：governance/noema/workflow/transition/kickoff.md、execution.md 已写；条目 E23 已记）
 - [ ] 2.1 迁 `AGENTS.md` 流程段到 `governance/noema/workflow/`（验证：`AGENTS.md:9-13` 只剩指针）
 - [ ] 2.2 迁 `docs/OPERATIONS.md` 的「维护门槛」「审核入口与决议条目」「协作与 PR 检查」到 `governance/`，命令与失败修法留在 OPERATIONS（验证：grep 无治理正文）
 - [ ] 2.3 迁 `docs/STATUS.md` 的「治理分层」「协作文档门禁」「图的维护」「外部收件箱桥」到 `governance/`（验证：STATUS 只剩今天能用到哪、未验证什么）
