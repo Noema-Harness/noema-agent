@@ -253,7 +253,7 @@ test("settle needs the user's words and lands in the decided block", () => {
         title: "类型分层",
         detail: "分层。",
         item: "T1",
-        approval: "可以",
+        approval: "好",
       }),
     /原话太短/u,
   );

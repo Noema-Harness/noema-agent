@@ -28,7 +28,7 @@ import { checkTransition } from "./transition.mjs";
 import { STATES } from "./lifecycle.mjs";
 
 const DECISIONS = path.join("docs", "DECISIONS.md");
-const MIN_APPROVAL = 4;
+const MIN_APPROVAL = 2; // 明确的两字批准（如「可以」）算；单字仍拒
 const MIN_REASON = 10;
 
 function parseFlags(argv) {
