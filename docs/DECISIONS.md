@@ -997,9 +997,9 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 - 未开始：执行后填写。
 
-## 🔧 D-20261118-decision-dialog-flow 决议条目生命周期与治理规则的按需注入
+## 🔍 D-20261118-decision-dialog-flow 决议条目生命周期与治理规则的按需注入
 
-- **阶段**：执行中
+- **阶段**：待验收
 - **结构**：机制/流程类；条目结构 E13（四块）。治理内容结构见批准版设计方案 v2 §4–§5：`governance/core`（内核）+ `governance/noema`（适配）+ `governance/README.md`（索引），机制 M1–M11。
 - **来源**：用户 2026-11-18 提出把「一个条目的生命周期就是 Noema 开发的一次工作流」固定成完整流程，并给出讨论模式、会议总结与三条交流规则（m105922）；同轮进一步提出流程说明不该常驻、应按阶段注入，因此整体治理结构需要重构（m105952）。
 - **阻塞**：无
@@ -1008,6 +1008,7 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 - 要定：无（E1–E22 已定，已进入执行）。
 - 决定：治理体系按「内核 / 适配 / 索引」重构，治理行为为内核第一等对象，门槛分决策门槛 / 行为门 / 产物门·平台门，决策→执行走三步过渡；分四批落地（`governance-authority` → `governance-kernel` → 记忆试点 → 抽离评估）（用户确认：2026-11-18；原话「没问题，都可以。」「都可确定。」「批准1」「批准」）。
+- 转待验收：2026-11-18
 
 ###### 待裁（滚动、唯一）
 
@@ -1072,5 +1073,10 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 #### 3 验收
 
-- 未开始：定案后立项。
+- [ ] [机制] 阶段入口只跑一条命令：`npm run stage -- discussion|execution|acceptance` 打印对应规则包、活动条目与恢复卡（含「上一轮结论」与「自上次记录以来 N 个新提交」）— 跑命令看输出；未知阶段退出码 2
+- [ ] [机制] 条目操作过行为门且失败不落盘：`npm run decision -- advance` 对阶段跳跃 / 原话 <10 字 / 缺批次指针 / 缺 change 目录分别拒绝；`round` 与 `settle` 写盘前过 `checkDecisionEntries` — `npm run kernel:test` 14/14
+- [ ] [机制] 过渡文档有结构与占位校验：`npm run transition -- design --entry <D-…> --write` 生成骨架；`--check` 报缺节、残留「（待填）」、design/kickoff 的「待确认项」不是「- 无」 — 手跑这两条命令
+- [ ] [机制] 全量门绿：`npm run check` 901/901、`npm run tools:test` 77/77、`npm run figure:check` OK、`npm run kernel:test` 14/14 — 提交 `b2ac3e7` 与 CI
+- [ ] [用户] 跑 `npm run stage -- discussion`，看恢复卡是否一眼回答「现在在哪、下一步做什么」；跑 `npm run review` 看队列是否只剩待你决定/待验收/执行中三类（≤15 分钟）
+- [ ] [未验证] 规则包里的 `gate:` 检查项目前只是引用校验与提示输出，提交时还没有机器判定（E6 观察期）；批次三抽离前再用两个里程碑观察
 
