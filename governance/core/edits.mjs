@@ -1,4 +1,9 @@
 // 条目正文的字段级编辑与阶段事件整理。
+
+/** 小节标题允许带说明后缀（如「###### 待裁（滚动、唯一…）」），按前缀匹配。 */
+function headingMatch(line, heading) {
+  return line === heading || line.startsWith(heading + "（");
+}
 // 只做文本操作，不认识项目路径、命令或门；适配层负责校验与写盘。
 const STAGE_EVENT = /^- ((?:转待验收|退回|转执行中|重开|暂停|恢复|中断))[:：]\s*(.*)$/u;
 const CURRENT_EVENT = /^- 当前：(转待验收|退回|重开)（(\d{4}-\d{2}-\d{2})）：(.*)$/u;
@@ -31,11 +36,13 @@ function entrySpan(lines, id) {
 }
 
 function sectionRange(lines, head, end, heading) {
-  const start = lines.findIndex((line, at) => at > head && at < end && line.trim() === heading);
+  const start = lines.findIndex((line, at) => at > head && at < end && headingMatch(line.trim(), heading));
   if (start < 0) return null;
   let stop = end;
+  const level = heading.trim().match(/^#+/u)[0].length;
   for (let index = start + 1; index < end; index += 1) {
-    if (/^####\s/u.test(lines[index])) {
+    const next = lines[index].trim().match(/^#+/u);
+    if (next && next[0].length <= level) {
       stop = index;
       break;
     }

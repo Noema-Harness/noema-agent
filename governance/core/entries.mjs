@@ -6,6 +6,11 @@
 
 import { STAGE_MARKS } from "./lifecycle.mjs";
 
+/** 小节标题允许带说明后缀（如「###### 待裁（滚动、唯一…）」），按前缀匹配。 */
+function headingMatch(line, heading) {
+  return line === heading || line.startsWith(heading + "（");
+}
+
 export { STAGE_MARKS };
 
 export const ENTRY_HEADING =
@@ -48,7 +53,7 @@ function blockRange(lines, start, end, matcher) {
 
 /** 取 `#### n` 小节（到下一个一级到四级标题为止），返回行区间。 */
 function sectionRange(lines, start, end, heading) {
-  const index = lines.findIndex((line, at) => at >= start && at < end && line.trim() === heading);
+  const index = lines.findIndex((line, at) => at >= start && at < end && headingMatch(line.trim(), heading));
   if (index === -1) return null;
   let stop = end;
   for (let at = index + 1; at < end; at += 1) {
@@ -258,8 +263,17 @@ export function settleDecision(text, id, { number, title, detail, approval, date
     }
     return entry.range.end;
   })();
+  // E 行按编号升序插入：先找第一条编号比它大的 E 行，没有就追加到已定块末尾。
+  let insertAt = -1;
+  for (let at = decidedStart + 1; at < decidedStop; at += 1) {
+    const match = /^- \*\*E(\d+)\s/u.exec(lines[at]);
+    if (match && Number(match[1]) > Number(number)) {
+      insertAt = at;
+      break;
+    }
+  }
   lines.splice(
-    decidedStop,
+    insertAt === -1 ? decidedStop : insertAt,
     0,
     `- **E${number} ${title}**：${detail}（${date}，原话「${approval}」）`,
   );

@@ -28,7 +28,7 @@ import { checkTransition } from "./transition.mjs";
 import { STATES } from "./lifecycle.mjs";
 
 const DECISIONS = path.join("docs", "DECISIONS.md");
-const MIN_APPROVAL = 10;
+const MIN_APPROVAL = 4;
 const MIN_REASON = 10;
 
 function parseFlags(argv) {
@@ -59,7 +59,7 @@ function requireApproval(flags, purpose) {
   }
   if ([...approval].length < MIN_APPROVAL) {
     throw new Error(
-      `--approval 原话太短（${[...approval].length} 字，至少 ${MIN_APPROVAL} 字）：引用能说明「批准了什么」的那句`,
+      `--approval 原话太短（${[...approval].length} 字，至少 ${MIN_APPROVAL} 字）：引用能说明「批准了什么」的那句，如「可以通过」「按这个做」`,
     );
   }
   return approval;
