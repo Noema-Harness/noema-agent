@@ -277,6 +277,8 @@ export {
   distributeStageEvents,
   editEntryFields,
   normaliseStageEvents,
+  replaceAcceptance,
+  replaceBatch,
 } from "./edits.mjs";
 
 export function withDecisionLine(text, id, line) {

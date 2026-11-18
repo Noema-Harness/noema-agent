@@ -71,6 +71,7 @@ npm run decision:accept    # 落库：decision:accept -- <D-…> --approval "<�
 npm run stage -- <阶段>     # 阶段入口：打印规则包 + 活动条目 + 恢复卡（discussion/execution/acceptance）
 npm run transition -- <kind> # 过渡文档：模板 / --write 生成 / --check 校验（design/closeout/kickoff/handoff/report；后两者按条目生成）
 npm run acceptance -- --entry <D-…> # 生成验收页：按 E 分节、列未覆盖 E、手测步骤与结论；--write 落 .work/review/
+npm run decision -- acceptance --entry <D-…> --from <file> # 把文件里的「- [ ] …」验收项整段写回条目（保留阶段事件行）
 npm run decision -- <round|settle|advance|wait>  # 条目操作，写盘前过行为门（wait add|drop 增删待裁项）
 npm test
 ```

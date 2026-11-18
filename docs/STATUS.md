@@ -13,6 +13,7 @@ Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与�
 
 ## 最后一次验证（2026-11-19）
 
+- 验收项写回（change `governance-acceptance-writeback`，2026-11-19）：验收页生成后由 `npm run decision -- acceptance --entry <D-…> --from <file>` 把勾选行整段写回条目（保留重开等阶段事件行，写前过结构与历史只增门），`decision -- edit --batch <name>` 切批次指针；`D-20261118-decision-dialog-flow` 的 6 条验收项已按 E 覆盖 E1–E32（`npm run acceptance` 报「未覆盖 E 0 项」），条目转待验收。证据：`npm run kernel:test` **20/20**、`npm run tools:test` **95/95**、`npm run check` **901/901，0 fail**。
 - 治理收口：验收不过改走单一回溯边，并给「决议定了什么→执行做了什么」补上闭合与防再犯的门（change `governance-transition`，2026-11-19）。①重开保留历史的机制化：`governance/core/history.mjs` 比对批次/完成/决定/验收项/阶段事件五类行，`docs:check` 发现历史被删即报「历史只增不删」（规则 `entry-history-monotonic`，block）。②验收页按 E 生成：`governance/core/acceptance.mjs` 把已定 E 与验收项对齐，`npm run acceptance -- --entry <D-…>` 输出「按 E 分节 / 未覆盖 E / 手测步骤」，未覆盖 E 不为 0 时 `advance --stage 待验收` 拒绝。③交接与报告由条目生成：`npm run transition -- handoff|report --entry <id> --write`。④进执行前校验设计稿结构（E21）与 proposal 是否引用条目（E23）；⑤待裁项增删走 `npm run decision -- wait add|drop`，`--ask` 成为 `--pending` 的正式名字。证据：`npm run kernel:test` **18/18**、`npm run tools:test` **93/93**（含`handoff.test.mjs` 3/3、`acceptance.test.mjs` 5/5、`maintenance.test.mjs` 30/30）、`node scripts/maintenance.mjs docs`、`npm run figure:check`、`npm run check` **901/901，0 fail**（含 `governance: milestone OK`）。手测：`npm run acceptance -- --entry D-20261118-decision-dialog-flow --write` 生成的页正确列出 28 条决定与未覆盖 E。
 
 ## 最后一次验证（2026-11-18）

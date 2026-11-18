@@ -221,6 +221,39 @@ export function dropWaitingItem(text, id, item) {
   return { text: lines.join("\n"), removed };
 }
 
+export function replaceAcceptance(text, id, items) {
+  const lines = text.split("\n");
+  const { head, end } = entrySpan(lines, id);
+  const section = sectionRange(lines, head, end, "#### 3 验收");
+  if (!section) throw new Error(`条目 ${id} 没有「#### 3 验收」小节`);
+  const kept = [];
+  const replaced = [];
+  for (let index = section.start + 1; index < section.stop; index += 1) {
+    const line = lines[index];
+    if (/^- \[[ xX]\]/u.test(line)) replaced.push(line);
+    else if (line.trim() !== "") kept.push(line);
+  }
+  if (items.length === 0) throw new Error(`验收项为空：至少写一条「- [ ] 验证什么，怎么验」`);
+  const next = [
+    ...lines.slice(0, section.start + 1),
+    "",
+    ...items,
+    ...kept,
+    ...lines.slice(section.stop),
+  ];
+  return { text: next.join("\n"), replaced: replaced.length, written: items.length };
+}
+
+export function replaceBatch(text, id, batch) {
+  const lines = text.split("\n");
+  const { head, end } = entrySpan(lines, id);
+  const section = sectionRange(lines, head, end, "#### 2 执行");
+  if (!section) throw new Error(`条目 ${id} 没有「#### 2 执行」小节`);
+  const at = section.stop;
+  lines.splice(at, 0, `- 批次：${batch}`);
+  return lines.join("\n");
+}
+
 export function addUpdateNote(text, id, note) {
   const lines = text.split("\n");
   let { head, end } = entrySpan(lines, id);

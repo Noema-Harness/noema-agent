@@ -8,6 +8,8 @@ import {
   appendRound,
   dropWaitingItem,
   readEntry,
+  replaceAcceptance,
+  replaceBatch,
   setStage,
   settleDecision,
 } from "./entries.mjs";
@@ -54,7 +56,9 @@ function entry({ stage = "决策中", waiting = true } = {}) {
     "",
     "#### 3 验收",
     "",
-    "- 未开始：定案后进入验收",
+    stage === "决策中" || stage === "执行中"
+      ? "- 未开始：定案后进入验收"
+      : "- [ ] 验收项一（[机制] probe）",
     "",
   ].join("\n");
 }
@@ -105,7 +109,10 @@ test("settleDecision moves one waiting item into decided with an E number", () =
   });
   assert.doesNotMatch(next, /- T1 第一个问题/u);
   assert.match(next, /- T2 第二个问题/u);
-  assert.match(next, /- \*\*E3 类型分层\*\*：T1 按事实与情境分层。（2026-11-18，原话「这个可以」）/u);
+  assert.match(
+    next,
+    /- \*\*E3 类型分层\*\*：T1 按事实与情境分层。（2026-11-18，原话「这个可以」）/u,
+  );
   assert.equal(readEntry(next, "D-20261118-probe").waits.length, 1);
 });
 
@@ -142,11 +149,25 @@ test("the decision CLI refuses a stage jump, a short approval and a missing batc
   const root = makeRoot(body);
   fs.mkdirSync(path.join(root, "openspec", "changes", "probe"), { recursive: true });
   assert.throws(
-    () => advanceEntry({ root, id: "D-20261118-probe", stage: "待验收", approval: "批准", decision: "方案" }),
+    () =>
+      advanceEntry({
+        root,
+        id: "D-20261118-probe",
+        stage: "待验收",
+        approval: "批准",
+        decision: "方案",
+      }),
     /不能从决策中直接到待验收/u,
   );
   assert.throws(
-    () => advanceEntry({ root, id: "D-20261118-probe", stage: "执行中", approval: "好", decision: "方案" }),
+    () =>
+      advanceEntry({
+        root,
+        id: "D-20261118-probe",
+        stage: "执行中",
+        approval: "好",
+        decision: "方案",
+      }),
     /原话太短/u,
   );
   const noBatch = body.replace("- 未开始：定案后进入执行", "- 批次：changes/absent");
@@ -198,7 +219,8 @@ test("a rejected write leaves the file untouched", () => {
   const root = makeRoot(text());
   const before = fs.readFileSync(path.join(root, "docs", "DECISIONS.md"), "utf8");
   assert.throws(
-    () => advanceEntry({ root, id: "D-20261118-probe", stage: "已收口", approval: "批准这个条目收口" }),
+    () =>
+      advanceEntry({ root, id: "D-20261118-probe", stage: "已收口", approval: "批准这个条目收口" }),
     /不能从决策中直接到已收口/u,
   );
   assert.equal(fs.readFileSync(path.join(root, "docs", "DECISIONS.md"), "utf8"), before);
@@ -214,7 +236,10 @@ test("recordRound writes the round and its waiting change", () => {
     date: "2026-11-18",
   });
   assert.equal(result.round, 2);
-  assert.match(fs.readFileSync(path.join(root, "docs", "DECISIONS.md"), "utf8"), /- 待裁变化：继续 T1\/T2/u);
+  assert.match(
+    fs.readFileSync(path.join(root, "docs", "DECISIONS.md"), "utf8"),
+    /- 待裁变化：继续 T1\/T2/u,
+  );
 });
 
 test("settle needs the user's words and lands in the decided block", () => {
@@ -242,11 +267,16 @@ test("settle needs the user's words and lands in the decided block", () => {
     approval: "这个可以确定，按这样办",
     date: "2026-11-18",
   });
-  assert.match(fs.readFileSync(path.join(root, "docs", "DECISIONS.md"), "utf8"), /- \*\*E3 类型分层\*\*/u);
+  assert.match(
+    fs.readFileSync(path.join(root, "docs", "DECISIONS.md"), "utf8"),
+    /- \*\*E3 类型分层\*\*/u,
+  );
 });
 
 test("stage packs load and every gate id they mention exists in the rule table", () => {
-  const root = path.resolve(new URL("../../", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/u, "$1"));
+  const root = path.resolve(
+    new URL("../../", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/u, "$1"),
+  );
   for (const stage of ["discussion", "execution", "acceptance"]) {
     const pack = loadPack(root, stage);
     assert.ok(pack, `missing pack ${stage}`);
@@ -278,22 +308,37 @@ test("active entries only list the three open stages", () => {
     )}`,
   );
   const listed = activeEntries(root);
-  assert.deepEqual(listed.map((item) => item.id), ["D-20261118-probe"]);
+  assert.deepEqual(
+    listed.map((item) => item.id),
+    ["D-20261118-probe"],
+  );
 });
 
 test("transition documents must fill every template section and settle their open items", () => {
-  const root = path.resolve(new URL("../../", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/u, "$1"));
-  const template = fs.readFileSync(path.join(root, "governance/noema/workflow/transition/design.md"), "utf8");
+  const root = path.resolve(
+    new URL("../../", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/u, "$1"),
+  );
+  const template = fs.readFileSync(
+    path.join(root, "governance/noema/workflow/transition/design.md"),
+    "utf8",
+  );
   const filled = `${templateHeadings(template)
     .map((heading) => `## ${heading}\n\n${heading.includes("待确认项") ? "- 无" : "- 已填写"}`)
     .join("\n")}\n`;
   assert.deepEqual(checkTransition(filled, "design", root).errors, []);
   assert.match(checkTransition("## 1 摘要\n\n（待填）", "design", root).errors.join("\n"), /缺少/u);
   assert.match(
-    checkTransition(filled.replace("## 9 待确认项\n\n- 无", "## 9 待确认项\n\n- 还有一件"), "design", root).errors.join("\n"),
+    checkTransition(
+      filled.replace("## 9 待确认项\n\n- 无", "## 9 待确认项\n\n- 还有一件"),
+      "design",
+      root,
+    ).errors.join("\n"),
     /待确认项/u,
   );
-  assert.match(checkTransition(filled.replace("- 已填写", "（待填）"), "design", root).errors.join("\n"), /待填/u);
+  assert.match(
+    checkTransition(filled.replace("- 已填写", "（待填）"), "design", root).errors.join("\n"),
+    /待填/u,
+  );
 });
 test("acceptance failure reopens the entry in the decision stage and records it where it happened", () => {
   const body = `# DECISIONS\n\n${HEADER}\n${entry({ stage: "待验收" }).replace("- 未开始：定案后进入验收", "- [ ] 验收项一")}`;
@@ -316,12 +361,20 @@ test("acceptance failure reopens the entry in the decision stage and records it 
 
   const fresh = makeRoot(body);
   assert.throws(
-    () => advanceEntry({ root: fresh, id: "D-20261118-probe", stage: "决策中", date: "2026-11-18" }),
+    () =>
+      advanceEntry({ root: fresh, id: "D-20261118-probe", stage: "决策中", date: "2026-11-18" }),
     /--reason/u,
   );
   const tooShort = makeRoot(body);
   assert.throws(
-    () => advanceEntry({ root: tooShort, id: "D-20261118-probe", stage: "决策中", reason: "不过", date: "2026-11-18" }),
+    () =>
+      advanceEntry({
+        root: tooShort,
+        id: "D-20261118-probe",
+        stage: "决策中",
+        reason: "不过",
+        date: "2026-11-18",
+      }),
     /太短/u,
   );
   const backward = makeRoot(body);
@@ -341,7 +394,13 @@ test("acceptance failure reopens the entry in the decision stage and records it 
 test("a decision cannot move to acceptance while some decided E has no acceptance item", () => {
   const uncovered = makeRoot(text({ stage: "执行中" }));
   assert.throws(
-    () => advanceEntry({ root: uncovered, id: "D-20261118-probe", stage: "待验收", date: "2026-11-18" }),
+    () =>
+      advanceEntry({
+        root: uncovered,
+        id: "D-20261118-probe",
+        stage: "待验收",
+        date: "2026-11-18",
+      }),
     /还有 1 个已定 E 没有验收项（E1）/u,
   );
 
@@ -355,7 +414,10 @@ test("a decision cannot move to acceptance while some decided E has no acceptanc
     date: "2026-11-18",
   });
   assert.equal(result.transition, "forward");
-  assert.match(fs.readFileSync(path.join(covered, "docs", "DECISIONS.md"), "utf8"), /- \*\*阶段\*\*：待验收/u);
+  assert.match(
+    fs.readFileSync(path.join(covered, "docs", "DECISIONS.md"), "utf8"),
+    /- \*\*阶段\*\*：待验收/u,
+  );
 });
 
 function designDoc() {
@@ -404,7 +466,10 @@ test("entering execution needs a proposal that cites the entry and a complete de
     date: "2026-11-18",
   });
   assert.equal(result.to, "执行中");
-  assert.match(fs.readFileSync(path.join(good, "docs", "DECISIONS.md"), "utf8"), /- 设计：design\.md（2026-11-18）/u);
+  assert.match(
+    fs.readFileSync(path.join(good, "docs", "DECISIONS.md"), "utf8"),
+    /- 设计：design\.md（2026-11-18）/u,
+  );
 });
 
 test("waiting items can be added and dropped by command", () => {
@@ -414,4 +479,29 @@ test("waiting items can be added and dropped by command", () => {
   const dropped = dropWaitingItem(added.text, "D-20261118-probe", "T3");
   assert.doesNotMatch(dropped.text, /T3 第三个问题/u);
   assert.equal(root.length > 0, true);
+});
+
+test("acceptance items are replaced by command while stage events stay", () => {
+  const base = text({ stage: "待验收" });
+  const withEvent = base.replace(
+    "- [ ] 验收项一",
+    "- [ ] 验收项一\n- 重开：验收发现漏项（2026-11-19）",
+  );
+  const result = replaceAcceptance(withEvent, "D-20261118-probe", [
+    "- [ ] E1/E2 规则与阶段入口（[机制] npm run stage -- discussion）",
+    "- [ ] E3 待裁清单滚动（[机制] kernel.test.mjs）",
+  ]);
+  assert.equal(result.replaced, 1);
+  assert.equal(result.written, 2);
+  assert.match(result.text, /- \[ \] E3 待裁清单滚动/u);
+  assert.doesNotMatch(result.text, /验收项一/u);
+  assert.match(result.text, /- 重开：验收发现漏项（2026-11-19）/u);
+  assert.throws(() => replaceAcceptance(withEvent, "D-20261118-probe", []), /验收项为空/u);
+});
+
+test("the batch pointer is replaced by command", () => {
+  const base = text({ stage: "执行中" }).replace("- 批次：changes/probe", "- 批次：changes/old");
+  const next = replaceBatch(base, "D-20261118-probe", "changes/new");
+  const entry = readEntry(next, "D-20261118-probe");
+  assert.equal(entry.batch, "changes/new");
 });

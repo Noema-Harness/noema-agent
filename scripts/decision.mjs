@@ -19,6 +19,8 @@ import {
   setStage,
   settleDecision,
   withDecisionLine,
+  replaceAcceptance,
+  replaceBatch,
 } from "../governance/core/entries.mjs";
 import { transitionKind } from "../governance/core/lifecycle.mjs";
 import { assembleAcceptance } from "../governance/core/acceptance.mjs";
@@ -275,6 +277,8 @@ export function editEntry({
   values = {},
   normalise = false,
   relocate = false,
+  batch = null,
+  acceptanceFile = null,
   note,
   dryRun = false,
 }) {
@@ -300,13 +304,27 @@ export function editEntry({
     next = result.text;
     report.push(`字段改动：${result.changed.join("、")}`);
   }
+  if (batch) {
+    next = replaceBatch(next, id, batch);
+    report.push(`批次指针：${batch}`);
+  }
+  if (acceptanceFile) {
+    const file = path.resolve(root, acceptanceFile);
+    const source = fs.readFileSync(file, "utf8").split("\n");
+    const items = source.map((line) => line.trim()).filter((line) => line.startsWith("- ["));
+    if (items.length === 0)
+      throw new Error(`${acceptanceFile} 里没有验收项：每行写成「- [ ] 验证什么，怎么验」`);
+    const result = replaceAcceptance(next, id, items);
+    next = result.text;
+    report.push(`验收项：${result.replaced} 条替换为 ${result.written} 条`);
+  }
   if (note) {
     next = addUpdateNote(next, id, note);
     report.push("追加一行说明");
   }
   if (next === text) {
     throw new Error(
-      "没有任何改动：给出 --blocker / --pending / --conclusion / --normalise-events / --distribute-events / --note 之一",
+      "没有任何改动：给出 --blocker / --ask / --conclusion / --batch / --acceptance-from / --normalise-events / --distribute-events / --note 之一",
     );
   }
   ensureValid(next);
@@ -371,9 +389,22 @@ export function main(argv = process.argv.slice(2), root = process.cwd()) {
         root,
         id: flags.entry,
         values,
+        batch: typeof flags.batch === "string" ? flags.batch : null,
+        acceptanceFile:
+          typeof flags["acceptance-from"] === "string" ? flags["acceptance-from"] : null,
         normalise: flags["normalise-events"] === true,
         relocate: flags["distribute-events"] === true || flags["relocate-events"] === true,
         note: typeof flags.note === "string" ? flags.note : null,
+        dryRun: flags["dry-run"] === true,
+      });
+      console.log(`${result.id}：${result.report.join("；")}`);
+      return 0;
+    }
+    if (command === "acceptance") {
+      const result = editEntry({
+        root,
+        id: flags.entry,
+        acceptanceFile: flags.from,
         dryRun: flags["dry-run"] === true,
       });
       console.log(`${result.id}：${result.report.join("；")}`);
