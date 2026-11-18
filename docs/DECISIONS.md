@@ -1065,9 +1065,9 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 #### 2 执行
 
-- 批次：`changes/governance-authority`（commit b11a788）
-- 当前：批次一 S1 建结构（`governance/README.md` + `core/` + `noema/`）
-- 下一步：S2 迁五处 → S3 AGENTS 缩 → S4 notice 门 → S5 验证
+- 批次：`changes/governance-authority`（commit b11a788；已归档 2026-11-18）
+- 完成：S1 建三层结构（589274b）→ E23 建档顺序 + 规则包（946edd9）→ S2 迁五处 / AGENTS 45 行 / 治理图迁 governance/assets（b4f5ed6）→ S3–S5 验证与归档（1e0ba44）；`npm run check` 901/901、CI verify/platform 绿
+- 下一步：批次二 `governance-kernel`——先建档再写 CLI（`stage`/`transition`/`decision round|settle|advance`）、行为门、notice 门、`/plan` 清理与技能指针
 
 #### 3 验收
 
