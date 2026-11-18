@@ -23,6 +23,19 @@
 
 新门一律先 notice（观察期），两个里程碑没有误伤才转 block。新增门前先写「最省力过门方式」——如果那是打卡或造假，就不加。
 
+## 边界：什么走治理，什么自由执行
+
+治理只覆盖「会改变别人预期」的事；其余自由做，过提交门即可。
+
+| 区域 | 判据 | 例子 | 需要的动作 |
+|---|---|---|---|
+| 自由执行 | 改完**决定、产品可观察行为、对外承诺、数据与发布物都没变** | 读代码与调查、`.work/` 里的实验、修 bug（行为与决定一致）、重构、补测试、文案错字、内部脚本优化（不加新门/命令）、性能调整 | 直接做；产品代码仍走提交门；规模大时开一个 fix change（Plan 引用原条目），**不回决策、不写设计稿、不写开工清单** |
+| 治理区 | 以下任一变了 | 已定决定（E 文本、目标、范围、期望行为）、产品定位或对外承诺、不可逆迁移、条目写入（只走命令）、阶段/批次/验收项/历史、新增或删除门/规则/命令、发布与签名 | 走对应阶段的规则包与门；决定变了回决策重开，实现偏差留在执行内修 |
+
+一句话判据：**问「改完之后，我的预期有没有变？」** 变了→治理区；没变→自由执行。
+
+边界模糊时按「最省力过门」判断：如果走治理只是填一张表，就不该走；如果它确实能拦住一次已经发生过的错误，就走。
+
 ## 三阶段规则包
 
 讨论、执行、验收各一份，进入该阶段时用 `npm run stage -- <阶段>` 打印（批次二实现；当前可直接打开文件）：
@@ -57,16 +70,18 @@
 | `npm run decisions:sync` | 标题阶段标记与勾选收口同步 | 已有 |
 | `npm run docs:check`、`figure:check`、`plan:check`、`milestone:check` | 单独跑某道产物门 | 已有 |
 | `npm run check` | 里程碑全量门 | 已有 |
-| `npm run stage -- <阶段>` | 打印阶段规则包 + 当前条目 + 恢复卡 | 已有 |
-| `npm run transition -- <kind>` | 打印过渡文档骨架并写入 `.work/review/` | 已有 |
-| `npm run decision -- round\|settle\|advance` | 条目结构化操作（行为门） | 已有 |
+| `npm run governance -- record\|move\|check\|audit` | 治理三动词：record 五合一、move 进阶段/退回修复/恢复、check 三类自检 + 净额、audit 计数 | 已有 |
+| `npm run stage -- <阶段>` | 打印阶段规则包 + 当前条目 + 恢复卡 | 已有（`governance -- check stage` 的别名） |
+| `npm run transition -- <kind>` | 打印过渡文档骨架并就地更新 `.work/review/` | 已有（`governance -- check transition` 的别名） |
+| `npm run decision -- round\|settle\|advance\|wait` | 条目结构化操作（行为门） | 已有（`record`/`move` 的别名） |
 
 ## 当前落地状态
 
 - 批次一 `governance-authority`：目录、索引、规则包、迁移（本文件所在批次）。核验：`docs:check`、`figure:check`、`npm run check`。
 - 批次二 `governance-kernel`：条目内核、`decision` 行为门、`stage`/`transition` 命令、两个新门规则（观察期）。核验：`npm run kernel:test`、`npm run tools:test`、`npm run check`。
-- 试点 P1：`D-20261117-agent-memory` 按新流程走一轮，出试点报告。
-- 批次三 `governance-extraction`：内核可复用与抽离评估。
+- 批次三 `governance-interface`：`record`/`move`/`check` 三动词、写盘印记与恢复、批次续接、净零审计、过渡文档唯一性。核验：`npm run governance -- check net`。
+- 批次四 `governance-conformance`：边界（治理区 vs 自由执行）、受控偏差修复边、开工清单门、批次两行、验收项按 E 覆盖。核验：`governance/core/kernel.test.mjs`、`npm run acceptance -- --entry <D-…>`。
+- 挂起：试点 P1（`D-20261117-agent-memory` 等记忆决议）与批次五 `governance-extraction`（内核可复用与抽离评估）。
 
 ## 维护
 

@@ -384,7 +384,7 @@
   },
   "source": {
     "doc": "governance/README.md",
-    "sha256": "7ff1dbcff1a127b159cf18c6fab63f84b1e65d76c175cbb645b9c0a7ffd887e0",
+    "sha256": "154639bfe0124cb0ad74f3b8d05d0947201472e95ec7e77b2f8cd5d91793eb4d",
     "sections": [
       {
         "title": "三层结构",
@@ -413,9 +413,9 @@
     },
     "png": {
       "path": "governance/assets/noema-governance.png",
-      "sha256": "9fad3c16e007b6cf4b319c0ab065c186d01362e860a5e7c629002f7aaee49307",
-      "bytes": 171176
+      "sha256": "c6ecd444e6ccb7a51ec84882b661074ae37472008caf9440f62f27bbb649f319",
+      "bytes": 171163
     }
   },
-  "updatedAt": "2026-11-18T13:56:55.182Z"
+  "updatedAt": "2026-11-18T22:26:56.770Z"
 }

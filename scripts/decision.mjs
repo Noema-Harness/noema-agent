@@ -53,6 +53,26 @@ function requireEntry(text, id) {
   return entry;
 }
 
+function resolveKickoff(root, kickoff, id) {
+  if (typeof kickoff === "string" && kickoff.trim()) {
+    const file = path.resolve(root, kickoff.trim());
+    if (!fs.existsSync(file)) throw new Error(`读不到 --kickoff ${kickoff}：进执行前必须有开工清单（E1）`);
+    return file;
+  }
+  const dir = path.join(root, ".work", "review");
+  const candidates = fs.existsSync(dir)
+    ? fs
+        .readdirSync(dir)
+        .filter((name) => /kickoff/iu.test(name) && name.endsWith(".md"))
+        .map((name) => ({ file: path.join(dir, name), at: fs.statSync(path.join(dir, name)).mtimeMs }))
+        .sort((a, b) => b.at - a.at)
+    : [];
+  if (candidates.length === 0) {
+    throw new Error(`${id} 进执行前没有开工清单：先跑 npm run transition -- kickoff --entry ${id}（E1）`);
+  }
+  return candidates[0].file;
+}
+
 function requireApproval(flags, purpose) {
   const approval = typeof flags.approval === "string" ? flags.approval.trim() : "";
   if (!approval) {
@@ -116,6 +136,7 @@ export function advanceEntry({
   approval,
   reason,
   design,
+  kickoff,
   newBatch,
   date,
   dryRun = false,
@@ -129,8 +150,20 @@ export function advanceEntry({
   const kind = transitionKind(entry.stage, target);
   if (!kind) {
     throw new Error(
-      `${id} 不能从${entry.stage}直接到${target}；合法转移只有向前一步，或重开回决策中（见 governance/core/lifecycle.mjs）`,
+      `${id} 不能从${entry.stage}直接到${target}；合法转移：向前一步、验收不过回执行中修偏差（决定不变）、或重开回决策中（见 governance/core/lifecycle.mjs）`,
     );
+  }
+  const today0 = date ?? localToday();
+  if (kind === "backward") {
+    const why = requireReason({ reason }, "偏差修复（回执行中）");
+    let next = appendStageEvent(text, id, { kind: "偏差", rest: why, date: today0, section: "#### 3 验收" }).text;
+    const repaired = readEntry(next, id);
+    if (JSON.stringify(repaired.decided) !== JSON.stringify(entry.decided)) {
+      throw new Error(`${id} 的已定决定在偏差修复里被改动：决定变了要回决策重开（governance/core/lifecycle.mjs）`);
+    }
+    next = setStage(next, id, target);
+    commit(root, next, { dryRun });
+    return { id, from: entry.stage, to: target, transition: kind };
   }
   const today = date ?? localToday();
   let next = text;
@@ -195,7 +228,17 @@ export function advanceEntry({
       `- 决定：${String(decision).trim()}（用户原话：「${quote}」，${today}）`,
     );
     const withDesign = designLine ? appendExecutionLine(decided, id, designLine).text : decided;
-    next = setStage(withDesign, id, target);
+    const kickoffFile = resolveKickoff(root, kickoff, id);
+    const kickoffText = fs.readFileSync(kickoffFile, "utf8");
+    const kickoffCheck = checkTransition(kickoffText, "kickoff");
+    if (kickoffCheck.errors.length > 0) {
+      throw new Error(
+        `开工清单不合规：${kickoffCheck.errors.join("；")}（先跑 npm run transition -- kickoff 看结构（E1））`,
+      );
+    }
+    const kickoffLine = `- 开工清单：${path.relative(root, kickoffFile).replaceAll("\\", "/")}（${today}）`;
+    const withKickoff = appendExecutionLine(withDesign, id, kickoffLine).text;
+    next = setStage(withKickoff, id, target);
   } else if (target === "待验收") {
     const coverage = assembleAcceptance(entry);
     if (coverage.uncovered.length > 0) {

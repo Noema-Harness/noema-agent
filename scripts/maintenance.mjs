@@ -396,10 +396,13 @@ function checkDatedEntry(entry, errors, notices = []) {
   // 执行层只放批次指针：进度属于 change 与看板，抄进条目必然漂移。阶段要靠这个指针才
   // 能前进——没有批次就写不出执行层，agent 不能凭“我觉得做完了”改阶段。
   const executionSection = sectionBody(entry.body, "#### 2 执行");
-  const pointer = executionSection === null ? null : /^\s*- 批次：\s*\S+/mu.exec(executionSection);
+  const pointer =
+    executionSection === null
+      ? null
+      : /^\s*- (?:当前批次|批次)：\s*\S+/mu.exec(executionSection);
   if (meta.stage !== "决策中" && !pointer) {
     errors.push(
-      `${entry.id} 的阶段是「${meta.stage}」，但「#### 2 执行」没有批次指针：先立项，写一行「- 批次：changes/<name>（commit …）」再推进阶段`,
+      `${entry.id} 的阶段是「${meta.stage}」，但「#### 2 执行」没有批次指针：先立项，写一行「- 当前批次：changes/<name>（commit …）」再推进阶段`,
     );
   }
   const decision = /^\s*- 决定：/mu.test(entry.body);
@@ -1069,7 +1072,7 @@ export function checkPrecommit(root, options = {}) {
   const docNotice = transitionDocNotice(root);
   if (docNotice) plan.notices.unshift(docNotice);
   const stampNotice = decisionWriteNotice(root);
-  if (stampNotice) plan.notices.unshift(stampNotice);
+  if (stampNotice) plan.errors.push(stampNotice);
   return { errors, notices: plan.notices, staged };
 }
 

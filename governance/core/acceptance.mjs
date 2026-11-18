@@ -28,10 +28,22 @@ export function acceptanceItemsOf(acceptanceText) {
     items.push({
       text,
       checked: match[1].toLowerCase() === "x",
-      es: [...new Set(text.match(/\bE\d+\b/gu) ?? [])],
+      es: eRefs(text),
     });
   }
   return items;
+}
+
+/** 验收项可以写单个 E，也可以写区间（E1–E10）；区间展开成逐个 E，覆盖才不靠人肉清点。 */
+function eRefs(text) {
+  const ids = new Set();
+  for (const match of String(text).matchAll(/\bE(\d+)\s*[–\-~—至到]\s*E?(\d+)\b/gu)) {
+    const from = Number(match[1]);
+    const to = Number(match[2]);
+    for (let n = Math.min(from, to); n <= Math.max(from, to); n += 1) ids.add(`E${n}`);
+  }
+  for (const match of String(text).matchAll(/\bE\d+\b/gu)) ids.add(match[0]);
+  return [...ids].sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)));
 }
 
 export function assembleAcceptance(entry) {

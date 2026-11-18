@@ -22,6 +22,7 @@ const CHECK_KINDS = {
   stage: (rest, root) => stageMain(rest, root),
   acceptance: (rest, root) => acceptanceMain(rest, root),
   transition: (rest, root) => transitionMain(rest, root),
+  net: (rest, root) => audit(root, rest),
 };
 
 export function usage() {
@@ -30,7 +31,7 @@ export function usage() {
     "  npm run governance -- record <round|pending|settle|acceptance|field> --entry <D-…> …",
     "  npm run governance -- move --entry <D-…> --stage <阶段> --approval <原话> …",
     "  npm run governance -- move --restore --from <commit>（经命令恢复条目文件）",
-    "  npm run governance -- check <stage|acceptance|transition> …",
+    "  npm run governance -- check <stage|acceptance|transition|net> …",
     "  npm run governance -- audit [--accept]（规则/门/命令计数；净零检查）",
     "",
     "旧别名仍可用：npm run stage / npm run acceptance / npm run transition / npm run decision。",

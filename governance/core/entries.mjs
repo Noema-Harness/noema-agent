@@ -122,11 +122,13 @@ export function readEntry(text, id) {
     .map((match) => Number(match[1]));
   const stage = /- \*\*阶段\*\*：\s*(\S+)/u.exec(entryText)?.[1] ?? null;
   const blocker = /- \*\*阻塞\*\*：\s*(.+)/u.exec(entryText)?.[1]?.trim() ?? null;
-  const batchLines = executionText.match(/^- 批次：.*$/gmu) ?? [];
+  const currentBatch = /^- 当前批次：\s*`?([^\s`]+)`?/mu.exec(executionText);
+  const batchLines = executionText.match(/^- (?:批次|批次历史)：.*$/gmu) ?? [];
   const batchMatch =
-    batchLines.length > 0
-      ? /^- 批次：\s*`?([^\s`]+)`?/u.exec(batchLines[batchLines.length - 1])
-      : null;
+    currentBatch ??
+    (batchLines.length > 0
+      ? /^- (?:批次|批次历史)：\s*`?([^\s`]+)`?/u.exec(batchLines[batchLines.length - 1])
+      : null);
   const batch = batchMatch ? batchMatch[1] : null;
   const acceptanceItems = acceptanceText
     .split("\n")

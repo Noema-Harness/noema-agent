@@ -27,6 +27,7 @@ export const PROFILES = {
     npmStep("lint"),
     npmStep("typecheck"),
     npmStep("tools:test"),
+    nodeStep("scripts/interface.mjs", ["audit"]),
     npmStep("test"),
   ],
 };

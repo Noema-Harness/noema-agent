@@ -26,6 +26,7 @@ import { restoreDecisions } from "../../scripts/decision.mjs";
 import { audit } from "../../scripts/interface.mjs";
 import { execFileSync } from "node:child_process";
 import { checkDecisionEntries } from "../../scripts/maintenance.mjs";
+import { compareEntryHistory } from "./history.mjs";
 import { main as interfaceMain } from "../../scripts/interface.mjs";
 
 const HEADER = "Authority: 测试\nUpdate when: 测试\nDoes not own: 测试\n";
@@ -206,6 +207,12 @@ test("the decision CLI writes the decision and the stage in one pass, then valid
   fs.writeFileSync(
     path.join(root, "docs", "DECISIONS.md"),
     text().replace("- 未开始：定案后进入执行", "- 批次：changes/probe"),
+    "utf8",
+  );
+  fs.mkdirSync(path.join(root, ".work", "review"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, ".work", "review", "2026-11-18-probe-kickoff.md"),
+    kickoffDoc(),
     "utf8",
   );
   const result = advanceEntry({
@@ -393,11 +400,22 @@ test("acceptance failure reopens the entry in the decision stage and records it 
         root: backward,
         id: "D-20261118-probe",
         stage: "执行中",
-        reason: "验收不过退回执行中",
         date: "2026-11-18",
       }),
-    /不能从待验收直接到执行中/u,
+    /--reason/u,
   );
+  const repaired = advanceEntry({
+    root: backward,
+    id: "D-20261118-probe",
+    stage: "执行中",
+    reason: "验收发现实现偏差，决定没变",
+    date: "2026-11-18",
+  });
+  assert.equal(repaired.transition, "backward");
+  const repairedText = fs.readFileSync(path.join(backward, "docs", "DECISIONS.md"), "utf8");
+  assert.match(repairedText, /- \*\*阶段\*\*：执行中/u);
+  assert.match(repairedText, /- 偏差：验收发现实现偏差，决定没变（2026-11-18）/u);
+  assert.match(repairedText, /- 决定：探针方案（用户确认：2026-11-18）/u);
 });
 
 test("a decision cannot move to acceptance while some decided E has no acceptance item", () => {
@@ -437,6 +455,14 @@ function designDoc() {
   return `${template}\n- 无\n`;
 }
 
+function kickoffDoc() {
+  const template = fs.readFileSync(
+    path.join(process.cwd(), "governance/noema/workflow/transition/kickoff.md"),
+    "utf8",
+  );
+  return `${template}\n- 无\n`;
+}
+
 function executionRoot({ proposal = true, design = "design.md" } = {}) {
   const root = makeRoot(text().replace("- 未开始：定案后进入执行", "- 批次：changes/probe"));
   fs.mkdirSync(path.join(root, "openspec", "changes", "probe"), { recursive: true });
@@ -446,6 +472,8 @@ function executionRoot({ proposal = true, design = "design.md" } = {}) {
     "utf8",
   );
   if (design) fs.writeFileSync(path.join(root, design), designDoc(), "utf8");
+  fs.mkdirSync(path.join(root, ".work", "review"), { recursive: true });
+  fs.writeFileSync(path.join(root, ".work", "review", "2026-11-18-probe-kickoff.md"), kickoffDoc(), "utf8");
   return root;
 }
 
@@ -479,6 +507,71 @@ test("entering execution needs a proposal that cites the entry and a complete de
     fs.readFileSync(path.join(good, "docs", "DECISIONS.md"), "utf8"),
     /- 设计：design\.md（2026-11-18）/u,
   );
+});
+
+test("entering execution needs an approved kickoff document", () => {
+  const noKickoff = executionRoot();
+  fs.rmSync(path.join(noKickoff, ".work"), { recursive: true, force: true });
+  assert.throws(
+    () =>
+      advanceEntry({
+        root: noKickoff,
+        id: "D-20261118-probe",
+        stage: "执行中",
+        approval: "没问题，这项可以执行",
+        decision: "按探针方案做",
+        design: "design.md",
+        date: "2026-11-18",
+      }),
+    /进执行前没有开工清单/u,
+  );
+
+  const broken = executionRoot();
+  fs.writeFileSync(
+    path.join(broken, ".work", "review", "2026-11-18-probe-kickoff.md"),
+    "# 开工清单\n\n## 切片\n\n乱写的\n",
+    "utf8",
+  );
+  assert.throws(
+    () =>
+      advanceEntry({
+        root: broken,
+        id: "D-20261118-probe",
+        stage: "执行中",
+        approval: "没问题，这项可以执行",
+        decision: "按探针方案做",
+        design: "design.md",
+        date: "2026-11-18",
+      }),
+    /开工清单不合规/u,
+  );
+
+  const good = executionRoot();
+  advanceEntry({
+    root: good,
+    id: "D-20261118-probe",
+    stage: "执行中",
+    approval: "没问题，这项可以执行",
+    decision: "按探针方案做",
+    design: "design.md",
+    date: "2026-11-18",
+  });
+  assert.match(
+    fs.readFileSync(path.join(good, "docs", "DECISIONS.md"), "utf8"),
+    /- 开工清单：\.work\/review\/2026-11-18-probe-kickoff\.md（2026-11-18）/u,
+  );
+});
+
+test("the batch pointer keeps one current line and a growing history", () => {
+  const first = replaceBatch(text({ stage: "执行中" }), "D-20261118-probe", "changes/probe2");
+  assert.equal(first.match(/^- 当前批次：/gmu).length, 1);
+  assert.match(first, /- 当前批次：changes\/probe2/u);
+  assert.match(first, /- 批次历史：changes\/probe/u);
+  const second = replaceBatch(first, "D-20261118-probe", "changes/probe3");
+  assert.equal(second.match(/^- 当前批次：/gmu).length, 1);
+  assert.match(second, /- 当前批次：changes\/probe3/u);
+  assert.match(second, /- 批次历史：changes\/probe2/u);
+  assert.equal(compareEntryHistory(second, second.replace("- 批次历史：changes/probe2\n", "")).removed.length, 1);
 });
 
 test("waiting items can be added and dropped by command", () => {

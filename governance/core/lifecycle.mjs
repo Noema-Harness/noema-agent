@@ -23,6 +23,9 @@ const FORWARD = new Map([
   ["待验收", "已收口"],
 ]);
 
+/** 偏差修复：验收发现实现不对、但已定决定没变时，回执行段修（不改决定）。 */
+const BACKWARD = new Map([["待验收", "执行中"]]);
+
 export function isStage(value) {
   return STAGES.includes(value);
 }
@@ -35,19 +38,24 @@ export function isForward(from, to) {
   return FORWARD.get(from) === to;
 }
 
+export function isBackward(from, to) {
+  return BACKWARD.get(from) === to;
+}
+
 export function isReopen(from, to) {
   return to === "决策中" && from !== "决策中";
 }
 
 /**
- * 判定一次阶段移动的语义：forward / reopen / null。
+ * 判定一次阶段移动的语义：forward / backward / reopen / null。
  *
- * 只有一条回溯边：回决策中（重开）。验收不过说明决策没做对（执行清单没覆盖决定），
- * 所以退回的是决策阶段；不存在「退回执行中」这类中间回退。
+ * - backward（偏差修复）：验收发现实现不对、决定没变；回执行段修，不得改已定决定。
+ * - reopen（重开）：决定本身错了；回决策阶段重新定。
  */
 export function transitionKind(from, to) {
   if (from === to) return null;
   if (isReopen(from, to)) return "reopen";
+  if (isBackward(from, to)) return "backward";
   if (isForward(from, to)) return "forward";
   return null;
 }

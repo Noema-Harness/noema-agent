@@ -107,7 +107,7 @@ npm run workspace:clean -- --days 30 --apply       # 改保留期
 
 保留目录写在 `scripts/workspace.config.json` 的 `artifactRetention`（默认保留 `.work/releases/`、`.work/archive/`，其余超过 7 天未动即清）。
 
-讨论转执行不再用 DSH 的计划模式：开工清单用 `npm run transition -- kickoff` 生成与自检，阶段推进用 `npm run decision -- advance --entry <D-…> --stage 执行中 --approval "<用户原话>" --decision "<一句决定>"`（行为门校验原话、批次指针与 change 是否存在）。
+讨论转执行不再用 DSH 的计划模式：开工清单用 `npm run transition -- kickoff` 生成与自检，阶段推进用 `npm run governance -- move --entry <D-…> --stage 执行中 --approval "<用户原话>" --decision "<一句决定>"`（行为门校验开工清单结构、原话、批次指针与 change 是否存在）。验收不过且决定没变时，用 `npm run governance -- move --stage 执行中 --reason "<哪一处不过>"` 回执行中修；决定变了才回决策中重开。
 
 ### 维护门槛
 
@@ -131,7 +131,8 @@ npm run workspace:clean -- --days 30 --apply       # 改保留期
 | 草稿落库前校验失败（条目没有写进文件）                | 草稿结构不合规：按报错补「阶段/结构/来源/阻塞」与「- 要定：」，修好再 accept；草稿会保留在 `.work/decisions-draft/`                    |
 | 阶段过了决策中但「决定」没有用户确认日期              | 决定归用户：补上「（用户确认：YYYY-MM-DD）」，没有确认就重开回决策中                                                               |
 | 报「还在决策中，「#### 2 执行」却已经有内容」         | 讨论期只写决策层：执行与验收改成一行 `- 未开始：定案后进入执行`／`- 未开始：定案后进入验收`，定案后再填                              |
-| 报「「#### 2 执行」没有批次指针」                     | 先立项 openspec/changes/<name>，执行层写一行 - 批次：changes/<name>（commit <sha>），再改阶段；没有批次就停在决策中 |
+| 报「「#### 2 执行」没有批次指针」                     | 先立项 openspec/changes/<name>，执行层写一行 - 当前批次：changes/<name>（commit <sha>），再改阶段；没有批次就停在决策中 |
+| 报「进执行前没有开工清单」                            | 先跑 `npm run transition -- kickoff --entry <D-…> --write` 生成并填完整，再推进阶段（E1） |
 | 报「字段「状态」不在允许列表」                        | 删掉 `- **状态**：` 行：阶段已经表达状态；它想说的信息写进三层正文                                                                 |
 | `npm run stage` 报「规则包引用了不存在的门」          | 规则包的 `gate:<id>` 必须是 `scripts/governance.mjs` 的 RULES 里已登记的 id：先登记规则，或改规则包里的 id                        |
 | `npm run decision -- advance` 报「不能从X直接到Y」    | 阶段只能相邻推进（决策中→执行中→待验收→已收口），唯一回溯边是重开回决策中；验收不过用 `--stage 决策中 --reason "…"`               |

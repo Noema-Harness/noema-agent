@@ -40,8 +40,16 @@ export const TRANSITIONS = [
   },
 ];
 
-// 唯一回溯边：回决策中。验收不过说明决策没做对（执行清单没覆盖决定），
-// 所以退回决策阶段而不是退回执行阶段。
+// 偏差修复：验收发现实现不对、但已定决定没变 → 回执行段修，不得改决定。
+export const REPAIR = {
+  from: ["待验收"],
+  to: "执行中",
+  event: "验收发现实现偏差（决定没变）",
+  gate: "npm run governance -- move --stage 执行中 --reason",
+  writes: "- 偏差：<原因>（YYYY-MM-DD），记在验收段；已定决定必须原样保留",
+};
+
+// 决定错了才回决策中，走重开。
 export const REOPEN = {
   from: ["执行中", "待验收"],
   to: "决策中",
@@ -49,6 +57,10 @@ export const REOPEN = {
   gate: "npm run decision -- advance --stage 决策中 --reason",
   writes: "- 重开：<原因>（YYYY-MM-DD），记在发生它的阶段小节",
 };
+
+export function repairFrom(stage) {
+  return REPAIR.from.includes(stage) ? REPAIR : null;
+}
 
 // Gates that run on every commit or push, whatever the stage.
 export const ALWAYS_GATES = [

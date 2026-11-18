@@ -997,17 +997,17 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 - 未开始：执行后填写。
 
-## ⏳ D-20261118-decision-dialog-flow 决议条目生命周期与治理规则的按需注入
+## 🔍 D-20261118-decision-dialog-flow 决议条目生命周期与治理规则的按需注入
 
-- **阶段**：决策中
+- **阶段**：待验收
 - **结构**：机制/流程类；条目结构 E13（四块）。治理内容结构见批准版设计方案 v2 §4–§5：`governance/core`（内核）+ `governance/noema`（适配）+ `governance/README.md`（索引），机制 M1–M11。
 - **来源**：用户 2026-11-18 提出把「一个条目的生命周期就是 Noema 开发的一次工作流」固定成完整流程，并给出讨论模式、会议总结与三条交流规则（m105922）；同轮进一步提出流程说明不该常驻、应按阶段注入，因此整体治理结构需要重构（m105952）。
-- **阻塞**：等你验收：E33–E36 已实现并归档 governance-interface
+- **阻塞**：无
 
 #### 1 决策
 
-- 要定：T24 验收段重新定位：机器可测的归机制，逻辑一致性由 agent/独立审查完成，人只看与决策预期的对照结论（用户 m110853）
-- 决定：按 reopened 六切片收口 E12/E19/E20/E21/E23，并补历史只增门与两处命令缺口（用户原话：「对于这些待裁项，我可以批准」，2026-11-19）
+- 要定：T24 验收段重新定位（agent 自证，不再让人跑命令）；T25 边界：什么走治理、什么自由执行；T26 偏差修复边（决定没变时回执行中修）
+- 决定：落地 E37–E39 与独立审查发现的实现偏差修复（用户原话：「你自行判断即可，这些事不必向我批示，我只关心的是预期行为是否符合我的目标」，2026-11-19）
 
 ###### 待裁（滚动、唯一；轮次记录只引用编号）
 
@@ -1038,9 +1038,9 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 - **E22 门 / 技能 / 阶段注入三层分工**：门不可绕过、失败阻断；技能按需加载、覆盖不保证；阶段注入出现在工具反馈但不阻断。（2026-11-18，原话「认可」）
 - **E23 建档是执行的第一步**：开工清单获批后，先把清单转成 openspec/changes/<name>/ 三件套并单独提交计划，再让条目写批次指针转执行中，然后才动其他文件；建档提交后停一次，让用户确认三件套忠实转写了清单（计划落地确认点）；批次二行为门 decision advance 进执行中时校验 change 已存在且 proposal 引用条目。（2026-11-18，原话「可以。这是决策层的细节补充，你需要补充相应内容，然后再回到正式的执行中继续推进」）
 
-- **EE24 阶段注入机制化**：阶段不靠读文件进入：`npm run stage -- <phase>` 把本阶段规则包与恢复卡打进工具反馈；`AGENTS.md` 只留入口命令与产物；`precommit` 打出当前活动条目与阶段。（2026-11-18，原话「你先把之前已知问题给修复了吧」）
-- **EE25 内核落位 governance/core**：条目模型、状态机、规则包校验与过渡文档检查迁进 `governance/core/*.mjs`；`scripts/` 只留路径、命令名与门；core 出现项目专名或仓库路径即 `docs:check` 报错。（2026-11-18，原话「你先把之前已知问题给修复了吧」）
-- **EE26 验收不过的退回路径**：`待验收 → 执行中` 必填 `--reason`（≥10 字），条目留「退回：原因（日期）」；规则包「不过怎么办」给出对应命令。（2026-11-18，原话「你先把之前已知问题给修复了吧」）
+- **E24 阶段注入机制化**：阶段不靠读文件进入：`npm run stage -- <phase>` 把本阶段规则包与恢复卡打进工具反馈；`AGENTS.md` 只留入口命令与产物；`precommit` 打出当前活动条目与阶段。（2026-11-18，原话「你先把之前已知问题给修复了吧」）
+- **E25 内核落位 governance/core**：条目模型、状态机、规则包校验与过渡文档检查迁进 `governance/core/*.mjs`；`scripts/` 只留路径、命令名与门；core 出现项目专名或仓库路径即 `docs:check` 报错。（2026-11-18，原话「你先把之前已知问题给修复了吧」）
+- **E26 验收不过的退回路径**：`待验收 → 执行中` 必填 `--reason`（≥10 字），条目留「退回：原因（日期）」；规则包「不过怎么办」给出对应命令。（2026-11-18，原话「你先把之前已知问题给修复了吧」）
 - **E28 单一回溯边**：验收不过＝决策没做对：唯一回溯边是重开回决策中；重开只追加「- 重开：」记录并改阶段，执行与验收历史保留、不清空；删除「待验收 → 执行中」。（2026-11-19，原话「对于这些待裁项，我可以批准」）
 - **E29 E26 作废**：E26「验收不过退回执行中」被 E28 取代，不再有退回执行中这条边。（2026-11-19，原话「对于这些待裁项，我可以批准」）
 - **E30 reopened 范围归属**：E12 验收页生成、E19/E20 交接与报告生成、E21 --design 门、E23 proposal 引用校验，落一个 change `governance-transition`；完成后重新验收再收口。（2026-11-19，原话「对于这些待裁项，我可以批准」）
@@ -1050,6 +1050,9 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 - **E34 批次续接**：执行层只允许一个当前批次：`- 当前批次：changes/<name>（commit <sha>）` + `- 批次历史：a、b、c`；重开后再进执行默认续接同一 change（从归档取回，切片追加进同一 tasks），只有 `--new-batch "<理由>"` 才另开并写进批次历史。（2026-11-19，原话「可以通过」）
 - **E35 接口收敛**：12 个命令收敛为三个动词：`record`（轮次/待裁/已定/验收项/字段）、`move`（阶段与批次一次校验）、`check`（规则包与恢复卡、验收页、过渡文档）；一意图一调用，每个动词参数 ≤5，长文本走文件；旧命令保留两个里程碑的别名并带删除日期。（2026-11-19，原话「可以通过」）
 - **E36 净零仪式**：硬上限：顶层命令 ≤3、每个动词参数 ≤5、门总数只减不增；新增门必须删除或合并一条旧门，提交信息写「净额：-<旧门>」；`governance audit` 输出门数，超出上个里程碑即拒绝合并；不做「每次论证净额」的软规则。（2026-11-19，原话「可以通过」）
+- **E39 边界：治理区与自由执行**：边界优先于边机制：治理只覆盖会改变用户预期的事（已定决定、定位与承诺、不可逆迁移、条目写入、阶段/批次/验收项/历史、增删门规则命令、发布签名）；修 bug、重构、补测试、文案、内部脚本优化直接做，过提交门即可，大规模用 fix change，不回决策、不写设计稿与开工清单。判据一句：改完之后用户的预期有没有变。（2026-11-19，原话「我觉得更应该明确边界，什么属于需要走治理逻辑的行为，什么则可以自由执行，我觉得这才是更重要的区分」）
+- **E39 偏差修复边**：恢复受控回溯边 待验收 → 执行中，只服务实现偏差：决定没变、实现不对/没做全；必填原因（≥10 字），验收层留「- 偏差：…（日期）」，工具拒绝改动已定决定（决定变了必须回决策重开）。E28/E29 的「单一回溯边」收窄为只约束决策变更类回退，日常修复不再回决策。（2026-11-19，原话「没必要事事都回决策阶段，随便修个bug都要回去跑完整流程，这太低效了」）
+- **E39 验收段重新定位**：验收不再由人执行命令：agent 自证（机器测试、独立审查、targeted 对照），用户只看「预期行为是否与决策一致、有无遗漏与理解偏差」；验收页按 E 编号出结论与证据指针，命令类检查不推给用户。（2026-11-19，原话「实际你说的这些验收都是机器测试，根本不需要我来确认，我其实只想看到的是逻辑和我决策时的预期一样」）
 ###### 已定细则（确认过的草案正文）
 
 - **执行段（E1 + E11）**：进入条件=决定行、开工清单批准、change 与 tasks 三者齐备；执行层只留批次指针、当前切片、偏差三行；三个更新时点；执行重心在 change。
@@ -1072,7 +1075,7 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 - 第 35–36 轮：过渡文档注入机制、门/技能/阶段注入三层分工 → E21、E22。
 - 第 37 轮（2026-11-18，收口）：用户批准设计方案 v2（「批准1」）；条目收口重构——压成决定 + 已定 + 轮次索引，会议总结与开工清单出稿；36 轮正文留在 git 历史。
 - 第 38 轮（2026-11-18）：用户批准开工清单（「批准」）；阶段转执行中，决定行写入；立项 `changes/governance-authority`（b11a788）。
-- 结论：E1–E36 已定并实现（治理接口、写盘印记、批次续接、净零审计）；等你验收，验收页已生成
+- 结论：一致性修复已归档（2026-11-19-governance-conformance）：边界、偏差边、开工清单门、批次单指针、验收自证、历史与净零门均已落地，等你判断是否符合目标
 ###### 第 32 轮（2026-11-19）
 
   - 用户原话：如果只能回退到决策阶段会怎么样呢？这样是不是逻辑就全通了；可以，你自行改吧（m109234/m109237）
@@ -1105,6 +1108,16 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
   - 结论：验收不该由人执行命令：人只看逻辑是否与决策预期一致、有无遗漏与偏差；机器可测项由机制负责
   - 待裁变化：+ T24 验收段重新定位；验收改由 agent + 独立审查出具 E1-E36 对照结论
+###### 第 39 轮（2026-11-19）
+
+  - 结论：用户指出边界比回溯边更重要、日常修复不该回决策；落成 E37 边界（治理区 vs 自由执行）、E38 受控偏差修复边（待验收→执行中，禁改决定）、E39 验收自证；代码与文档已改，进入执行做一致性修复收尾
+  - 待裁变化：+ E37 E38 E39；待裁清空
+###### 第 40 轮（2026-11-19）
+
+  - 结论：一致性修复进入执行：批次两行、开工清单门、偏差修复边、边界规则、验收自证均已落地；修已定块 E24-E26 的 EE 前缀并重写验收项覆盖 E1-E39
+  - 待裁变化：无（待裁：无；E1-E39 已定）
+
+
 
 
 
@@ -1114,27 +1127,29 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 
 #### 2 执行
+- 当前批次：changes/governance-conformance
+- 批次历史：changes/governance-conformance（commit 99c0e08；一致性修复）
+- 批次历史：`changes/governance-core`（commit 03ce6a6）
+- 批次历史：`changes/governance-transition`（commit 06966e9；reopened 范围）
+- 批次历史：changes/governance-acceptance-writeback（commit 71fee3c）
+- 批次历史：changes/governance-interface
 
-- 批次：`changes/governance-core`（commit 03ce6a6）
-- 批次：`changes/governance-transition`（commit 06966e9；reopened 范围）
 - 完成：批次一 `governance-authority` 已归档（S1 589274b → E23 946edd9 → S2 b4f5ed6 → S3–S5 1e0ba44；`npm run check` 901/901、CI verify/platform 绿）
 - 完成：批次二 `governance-kernel` 已归档（`decision-kernel`/`decision`/`stage`/`transition` + `kernel.test.mjs` 14/14；`npm run check` 901/901、`tools:test` 77/77；治理图按章节判断重出 `7ff1dbcff1a1`）
 - 完成：批次三 `governance-core` 已归档（内核落 `governance/core`、阶段地图改入口命令、退回路径；`kernel:test` 15/15、`tools:test` 78/78、`npm run check` 901/901、71,461ms）
 - 下一步：重新交付验收页，等你确认后收口；之后讨论治理框架的独立概念与通用化
 
-- 批次：changes/governance-acceptance-writeback（commit 71fee3c）
 - 转待验收（2026-11-19）
-- 批次：changes/governance-interface
+- 开工清单：.work/review/2026-11-19-D-20261118-decision-dialog-flow-kickoff.md（2026-11-19）
+- 转待验收（2026-11-19）
 #### 3 验收
 
-- [ ] E1–E10 进入条件、权威文档边界、待裁替代未决、规则包落 governance、表态纪律、观察期、演练、试点、条目自足、绑门（[机制] 规则包 `governance/noema/workflow/` 三份；`npm run governance -- check stage` 打印并校验 `gate:` id；E8 记忆试点挂起）
-- [ ] E11–E20 执行段低干扰、验收页生成、条目四块结构、注入与中断说明、迁移五处、规则包六项、治理行为与门、三批落地、三步过渡、交接/报告为生成物（[机制] `governance/core/{acceptance,handoff,history}.mjs`；`npm run governance -- check transition`）
-- [ ] E21–E25 进执行校验设计稿与 proposal 引用、命令缺口、单一回溯边、内核历史只增（[机制] `advance --design`/proposal 校验；`governance/core/lifecycle.mjs` 只留向前与重开；`history.mjs`）
-- [ ] E26–E32 E26 作废；E27 单一回溯边；E28 重开保留历史；E29 作废记录；E30 reopened 范围落 `governance-transition`；E31 E8 挂起；E32 历史只增门（[机制] 规则 `entry-history-monotonic` block，`docs:check` 报「历史只增不删」）
-- [ ] E33 单一写入口（[机制] 命令写盘后记 sha256 到 `.work/decision-writes/DECISIONS.json`，`precommit` 比对暂存区；`move --restore --from <commit>` 经命令恢复）
-- [ ] E34 批次续接（[机制] `move` 默认续接既有批次；`--new-batch changes/<name> --reason "<理由>"` 才另开并写「批次历史」）
-- [ ] E35 接口收敛（[机制] `npm run governance -- record|move|check` 三动词；旧命令保留别名；`governance/core/interface.mjs` 动词表）
-- [ ] E36 净零审计（[机制] `npm run governance -- audit` 输出规则/门/命令数并与 `governance/rules-baseline.json` 比对，净增未记录即失败）
+- [ ] E1–E10 进入条件与治理边界：执行三步门槛、权威文档只写本体、待裁替代未决、规则包落 governance、表态纪律、观察期、演练、试点挂起、条目自足、检查项绑门（[机制] `governance/noema/workflow/` 三份规则包；`npm run governance -- check stage` 校验 `gate:` id；E8 试点等记忆决议）
+- [ ] E11–E20 执行与验收段：低干扰执行、验收页生成、条目四块、阶段注入与中断说明、迁移五处、规则包六项、治理行为为内核对象、三批落地、三步过渡、交接与报告为生成物（[机制] `governance/core/{acceptance,handoff,history}.mjs`；`npm run governance -- check transition`）
+- [ ] E21–E25 进入执行与历史：`--design` 校验设计稿、proposal 引用条目、命令缺口收口、内核历史只增、条目分层（[机制] `scripts/decision.mjs` 的 `--design`/proposal 校验；`governance/core/history.mjs`）
+- [ ] E26–E32 回溯与历史门：E26 作废、E27 收窄、E28 单一回溯边（决策变更）、E29 作废记录、E30 reopened 范围、E31 试点挂起、E32 历史只增门（[机制] 规则 `entry-history-monotonic` block；`docs:check` 报「历史只增不删」）
+- [ ] E33–E36 治理接口：单一写入口（印记 + 恢复）、批次续接、`record|move|check` 收敛、净零审计（[机制] `.work/decision-writes/DECISIONS.json`；`npm run governance -- audit`）
+- [ ] E37–E39 边界与偏差边：治理区与自由执行的边界、受控偏差修复边（禁改决定）、验收自证（[机制] `governance/README.md` 边界表；`governance/core/lifecycle.mjs` 的 `BACKWARD`；`acceptance.mjs` 覆盖门）
 - 重开：验收不过：①交付过程中我用原生工具与一次性脚本直接改过条目（含用 git show 恢复历史），而 DECISIONS 应只由治理接口写入；②重开后再次进执行时另开批次 governance-acceptance-writeback，没有续接已有批次；两处都说明接口与批次模型有结构缺陷（2026-11-19）
 ## ⏳ D-20261118-agent-governance-concept 从 Noema 治理实践倒推 agent 领域的概念
 

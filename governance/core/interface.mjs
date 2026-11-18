@@ -25,7 +25,7 @@ export const VERBS = {
     gates: ["plan:check", "milestone:check", "docs:check"],
   },
   check: {
-    kinds: ["stage", "acceptance", "transition"],
+    kinds: ["stage", "acceptance", "transition", "net"],
     params: ["--entry", "--write", "--check"],
     landing: "只读（打印规则包 / 验收页 / 过渡文档状态）",
     gates: [],

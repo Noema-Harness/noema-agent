@@ -6,7 +6,7 @@ function headingMatch(line, heading) {
 }
 // 只做文本操作，不认识项目路径、命令或门；适配层负责校验与写盘。
 const STAGE_EVENT = /^- ((?:转待验收|退回|转执行中|重开|暂停|恢复|中断))[:：]\s*(.*)$/u;
-const CURRENT_EVENT = /^- 当前：(转待验收|退回|重开)（(\d{4}-\d{2}-\d{2})）：(.*)$/u;
+const CURRENT_EVENT = /^- 当前：(转待验收|偏差|退回|重开)（(\d{4}-\d{2}-\d{2})）：(.*)$/u;
 const FIELD_LINES = {
   blocker: { match: /^- \*\*阻塞\*\*：/u, write: (value) => `- **阻塞**：${value}` },
   pending: { match: /^- 要定：/u, write: (value) => `- 要定：${value}` },
@@ -15,6 +15,7 @@ const FIELD_LINES = {
 // 阶段事件写在「发生它的那个阶段」小节里，不写决策层、不写目标阶段。
 const EVENT_SECTION = {
   转待验收: "#### 2 执行",
+  偏差: "#### 3 验收",
   重开: "#### 3 验收",
   用户确认: "#### 3 验收",
   暂停: "#### 1 决策",
@@ -256,8 +257,22 @@ export function replaceBatch(text, id, batch) {
   const { head, end } = entrySpan(lines, id);
   const section = sectionRange(lines, head, end, "#### 2 执行");
   if (!section) throw new Error(`条目 ${id} 没有「#### 2 执行」小节`);
-  const at = section.stop;
-  lines.splice(at, 0, `- 批次：${batch}`);
+  const body = lines.slice(section.start + 1, section.stop);
+  const currentLine = body.findIndex((line) => line.startsWith("- 当前批次："));
+  const legacyLines = body.filter((line) => /^- (?:批次|批次历史)：/u.test(line));
+  const next = `- 当前批次：${batch}`;
+  if (currentLine === -1) {
+    const kept = legacyLines.map((line) => line.replace(/^- 批次：/u, "- 批次历史："));
+    const rest = body.filter((line) => !/^- (?:批次|批次历史)：/u.test(line));
+    lines.splice(section.start + 1, body.length, next, ...kept, ...rest);
+    return lines.join("\n");
+  }
+  const start = section.start + 1 + currentLine;
+  const previous = body[currentLine].replace(/^- 当前批次：\s*/u, "").trim();
+  if (previous === batch) return text;
+  lines[start] = next;
+  const historyLine = `- 批次历史：${previous}`;
+  if (!body.includes(historyLine)) lines.splice(start + 1, 0, historyLine);
   return lines.join("\n");
 }
 

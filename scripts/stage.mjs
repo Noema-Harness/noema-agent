@@ -84,7 +84,7 @@ function nextAction(stage, target, round) {
       : "给用户裁待裁项，或出下一份过渡文档（npm run transition）";
   }
   if (stage === "execution") return "按当前 change 的 tasks 继续切片；偏差与阶段总结写回条目";
-  return "生成验收页（npm run transition -- report），等用户确认后收口；不过就退回执行中并写原因";
+  return "生成验收页（npm run governance -- check acceptance），等用户确认后收口；实现偏差回执行中修（move --stage 执行中 --reason），决定错了才回决策重开";
 }
 
 export function commitsSinceBaseline(root) {
