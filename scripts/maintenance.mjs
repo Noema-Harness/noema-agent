@@ -361,7 +361,8 @@ function checkDatedEntry(entry, errors, notices = []) {
       .filter((line) => line.trim() !== "" && !placeholders.test(line.trim()) && !stageEvents.test(line.trim()))
       .length;
   };
-  if (meta.stage === "决策中") {
+  const hasReopen = /^\s*- 重开[:：]/mu.test(entry.body);
+  if (meta.stage === "决策中" && !hasReopen) {
     for (const heading of ["#### 2 执行", "#### 3 验收"]) {
       if (substanceOf(heading) > 0) {
         errors.push(
@@ -384,7 +385,7 @@ function checkDatedEntry(entry, errors, notices = []) {
     );
   }
   const decision = /^\s*- 决定：/mu.test(entry.body);
-  if (meta.stage === "决策中" && decision) {
+  if (meta.stage === "决策中" && decision && !hasReopen) {
     errors.push(`${entry.id} 还在决策中，却已经写了「- 决定：」：用户确认后再写结论`);
   }
   if (meta.stage !== "决策中" && !decision) {

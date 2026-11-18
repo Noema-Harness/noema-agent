@@ -1007,10 +1007,15 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 #### 1 决策
 
 - 要定：E27 单一回溯边：生命周期只有一条回溯边（回决策中），执行中/待验收都可重开；已落地的 decision edit/pause/resume 与阶段事件归属规则是否并入本决议范围。E12/E19/E21/E23 的批次归属与验收项映射。
+- 决定：治理体系按「内核 / 适配 / 索引」重构，治理行为为内核第一等对象，门槛分决策门槛 / 行为门 / 产物门·平台门，决策→执行走三步过渡；分四批落地（`governance-authority` → `governance-kernel` → 记忆试点 → 抽离评估）（用户确认：2026-11-18；原话「没问题，都可以。」「都可确定。」「批准1」「批准」）。
 
-###### 待裁（滚动、唯一）
+###### 待裁（滚动、唯一；轮次记录只引用编号）
 
-- 待裁：无
+- T15 E27 单一回溯边机制（回决策中；执行与验收历史保留、不清空）——待你确认。
+- T16 E26「验收不过退回执行中」作废，由 E27 取代——待你确认。
+- T17 reopened 范围归属：E12 验收页生成、E19/E20 交接与报告生成、E21 `--design` 门、E23 proposal 引用校验，落一个 change（`governance-transition`）——待你确认。
+- T18 E8 记忆试点继续挂起（等 `D-20261117-agent-memory`）。
+
 ###### 已定（用户确认过的；原话与日期在此）
 
 - **E1 执行段进入条件**：决定行已确认、开工清单已批准、change 与 tasks 已存在，缺一不进执行中。（2026-11-18，原话「1、确认。」）
@@ -1072,12 +1077,21 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
 #### 2 执行
 
-- 未开始：定案后进入执行
-- 重开：验收发现 E12/E19/E21/E23 未落地，说明执行清单没有覆盖决定；按新模型回决策阶段补齐范围与归属映射（2026-11-19）
+- 批次：`changes/governance-core`（commit 03ce6a6）
+- 完成：批次一 `governance-authority` 已归档（S1 589274b → E23 946edd9 → S2 b4f5ed6 → S3–S5 1e0ba44；`npm run check` 901/901、CI verify/platform 绿）
+- 完成：批次二 `governance-kernel` 已归档（`decision-kernel`/`decision`/`stage`/`transition` + `kernel.test.mjs` 14/14；`npm run check` 901/901、`tools:test` 77/77；治理图按章节判断重出 `7ff1dbcff1a1`）
+- 完成：批次三 `governance-core` 已归档（内核落 `governance/core`、阶段地图改入口命令、退回路径；`kernel:test` 15/15、`tools:test` 78/78、`npm run check` 901/901、71,461ms）
+- 下一步：重新交付验收页，等你确认后收口；之后讨论治理框架的独立概念与通用化
 
 #### 3 验收
 
-- 未开始：定案后进入验收
+- [ ] [机制] 阶段注入走命令：`npm run stage -- discussion` 打印规则包、活动条目与恢复卡；`AGENTS.md` 的阶段地图是「进入方式 + 产物」，不再指「该读哪份文件」— 跑命令、看 AGENTS
+- [ ] [机制] 内核落位 `governance/core`：`entries.mjs` / `lifecycle.mjs` / `packs.mjs` / `transitions.mjs` 存在，`scripts/` 只剩路径、命令名与门；`docs:check` 对 core 出现 Noema 专名或仓库路径报错 — `npm run tools:test` 78/78（含边界用例）
+- [ ] [机制] 验收不过的退回路径可用：缺 `--reason` 拒绝、短原因拒绝、带原因退回写一行「退回：…（日期）」— `npm run kernel:test` 15/15
+- [ ] [机制] 全量门绿：`npm run check` 901/901、`npm run tools:test` 78/78、`npm run figure:check` OK — 提交 `03ce6a6`、`1eb711d` 与 CI
+- [ ] [用户] 跑 `npm run stage -- discussion`，看恢复卡是否一眼回答「现在在哪、下一步做什么」；跑 `npm run review` 看队列是否只剩待你决定/待验收/执行中三类（≤15 分钟）
+- [ ] [未验证] 规则包里的 `gate:` 检查项目前只是引用校验与提示输出，提交时还没有机器判定（E6 观察期）；治理框架的独立概念与通用化未开始
+- 重开：验收发现 E12/E19/E21/E23 未落地，说明执行清单没有覆盖决定；按单一回溯边回决策阶段补齐范围与归属映射（2026-11-19）
 
 ## ⏳ D-20261118-agent-governance-concept 从 Noema 治理实践倒推 agent 领域的概念
 

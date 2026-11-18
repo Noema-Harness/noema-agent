@@ -297,6 +297,10 @@ test("acceptance failure reopens the entry in the decision stage and records it 
   const written = fs.readFileSync(path.join(root, "docs", "DECISIONS.md"), "utf8");
   assert.match(written, /- \*\*阶段\*\*：决策中/u);
   assert.match(written, /- 重开：验收发现 E12 与 E19 未落地，执行清单没有覆盖决定（2026-11-18）/u);
+  // 历史不可回溯：重开只加记录与改阶段，已完成的执行层与验收层保持原样。
+  assert.match(written, /- 批次：changes\/probe/u);
+  assert.match(written, /- \[ \] 验收项一/u);
+  assert.match(written, /- 决定：探针方案（用户确认：2026-11-18）/u);
 
   const fresh = makeRoot(body);
   assert.throws(

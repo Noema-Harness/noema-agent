@@ -645,6 +645,31 @@ test("a decision in progress writes only the decision layer", () => {
   assert.match(vague.errors.join("\n"), /没有「- 要定：」/u);
 });
 
+test("a reopened entry keeps its execution and acceptance history in the decision stage", () => {
+  const reopened = `## D-20261116-probe
+
+- **阶段**：决策中
+- **来源**：用户 2026-11-16 要求做探针
+- **阻塞**：无
+- **结构**：无
+#### 1 决策
+- 要定：补齐 E12/E19
+- 决定：先做验收页（用户确认：2026-11-16）
+#### 2 执行
+- 批次：changes/stage-probe
+- 完成：批次一已归档
+#### 3 验收
+- [ ] x — 手测
+- 重开：验收不过，回决策补齐范围（2026-11-16）
+`;
+  const kept = checkDecisionEntries(reopened);
+  assert.equal(kept.errors.join("\n"), "");
+
+  const cleared = checkDecisionEntries(reopened.replace(/^- 重开：.*\n/mu, ""));
+  assert.match(cleared.errors.join("\n"), /还在决策中，「#### 2 执行」却已经有内容/u);
+  assert.match(cleared.errors.join("\n"), /还在决策中，却已经写了「- 决定：」/u);
+});
+
 test("an entry past the decision stage points at its batch", () => {
   const missing = checkDecisionEntries(
     `## D-20261116-probe\n\n${LIFECYCLE("执行中").replace("- 批次：changes/stage-probe", "- 找到了：改了三处")}`,

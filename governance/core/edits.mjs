@@ -159,24 +159,6 @@ export function appendStageEvent(text, id, { kind, rest = "", date = "", section
 }
 
 
-/** 重开回决策中：撤掉决定行，把执行层与验收层还原成占位（历史在 git）。 */
-export function resetEntryForDiscussion(text, id) {
-  const lines = text.split("\n");
-  const reset = (heading, placeholder) => {
-    const span = entrySpan(lines, id);
-    const range = sectionRange(lines, span.head, span.end, heading);
-    if (!range) return;
-    lines.splice(range.start + 1, range.stop - range.start - 1, "", placeholder, "");
-  };
-  reset("#### 2 执行", "- 未开始：定案后进入执行");
-  reset("#### 3 验收", "- 未开始：定案后进入验收");
-  const span = entrySpan(lines, id);
-  for (let index = span.end - 1; index > span.head; index -= 1) {
-    if (/^- 决定：/u.test(lines[index])) lines.splice(index, 1);
-  }
-  return lines.join("\n");
-}
-
 export function addUpdateNote(text, id, note) {
   const lines = text.split("\n");
   let { head, end } = entrySpan(lines, id);

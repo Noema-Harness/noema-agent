@@ -13,7 +13,6 @@ import {
   editEntryFields,
   normaliseStageEvents,
   readEntry,
-  resetEntryForDiscussion,
   setStage,
   settleDecision,
   withDecisionLine,
@@ -97,8 +96,7 @@ export function advanceEntry({ root = process.cwd(), id, stage, decision, approv
   if (kind === "reopen") {
     const why = requireReason({ reason }, "回决策中（重开）");
     const section = entry.stage === "待验收" ? "#### 3 验收" : "#### 2 执行";
-    const cleared = resetEntryForDiscussion(text, id);
-    next = appendStageEvent(cleared, id, { kind: "重开", rest: why, date: today, section }).text;
+    next = appendStageEvent(text, id, { kind: "重开", rest: why, date: today, section }).text;
     next = setStage(next, id, target);
   } else if (target === "执行中") {
     const quote = requireApproval({ approval }, "进入执行");

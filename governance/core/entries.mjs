@@ -259,7 +259,6 @@ export {
   distributeStageEvents,
   editEntryFields,
   normaliseStageEvents,
-  resetEntryForDiscussion,
 } from "./edits.mjs";
 
 export function withDecisionLine(text, id, line) {
@@ -267,10 +266,11 @@ export function withDecisionLine(text, id, line) {
   const lines = [...entry.lines];
   let at = -1;
   for (let index = entry.range.start; index < entry.range.end; index += 1) {
-    if (/^- 要定：/u.test(lines[index])) {
-      at = index + 1;
-      break;
+    if (/^- 决定：/u.test(lines[index])) {
+      lines.splice(index, 1, line);
+      return lines.join("\n");
     }
+    if (/^- 要定：/u.test(lines[index])) at = index + 1;
   }
   if (at === -1) throw new Error(`${id} 的决策层没有「- 要定：」：先写清要用户定什么`);
   lines.splice(at, 0, line);
