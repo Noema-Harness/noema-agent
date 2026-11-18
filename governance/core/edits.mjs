@@ -71,7 +71,8 @@ export function normaliseStageEvents(text, id) {
   const found = [];
   for (let index = head + 1; index < end; index += 1) {
     const match = STAGE_EVENT.exec(lines[index]);
-    if (match) found.push({ index, kind: match[1], date: dateOf(lines[index]), line: lines[index] });
+    if (match)
+      found.push({ index, kind: match[1], date: dateOf(lines[index]), line: lines[index] });
   }
   if (found.length < 2) return { text, removed: 0, order: found.map((item) => item.kind) };
   const seen = new Set();
@@ -136,7 +137,6 @@ export function distributeStageEvents(text, id) {
   return { text: lines.join("\n"), moved: events.length, placed };
 }
 
-
 /** 把一条阶段事件追加到「发生它的那个阶段」小节末尾（同类型只留最新）。 */
 export function appendStageEvent(text, id, { kind, rest = "", date = "", section }) {
   const heading = section ?? EVENT_SECTION[kind];
@@ -153,11 +153,73 @@ export function appendStageEvent(text, id, { kind, rest = "", date = "", section
   let at = target.stop;
   while (at - 1 > target.start && lines[at - 1].trim() === "") at -= 1;
   const suffix = date && !rest.trim().endsWith(`（${date}）`) ? `（${date}）` : "";
-  const line = rest.trim() ? `- ${kind}：${rest.trim()}${suffix}` : `- ${kind}${date ? `（${date}）` : ""}`;
+  const line = rest.trim()
+    ? `- ${kind}：${rest.trim()}${suffix}`
+    : `- ${kind}${date ? `（${date}）` : ""}`;
   lines.splice(at, 0, line);
   return { text: lines.join("\n"), line };
 }
 
+export function appendExecutionLine(text, id, line) {
+  const lines = text.split("\n");
+  const span = entrySpan(lines, id);
+  const range = sectionRange(lines, span.head, span.end, "#### 2 执行");
+  if (!range) throw new Error(`条目 ${id} 没有「#### 2 执行」小节`);
+  const prefix = line.split("：")[0] + "：";
+  for (let index = range.stop - 1; index > range.start; index -= 1) {
+    if (lines[index].startsWith(prefix)) lines.splice(index, 1);
+  }
+  const again = entrySpan(lines, id);
+  const target = sectionRange(lines, again.head, again.end, "#### 2 执行");
+  let at = target.stop;
+  while (at - 1 > target.start && lines[at - 1].trim() === "") at -= 1;
+  lines.splice(at, 0, line);
+  return { text: lines.join("\n"), line };
+}
+
+export function addWaitingItem(text, id, item) {
+  const lines = text.split("\n");
+  const span = entrySpan(lines, id);
+  const range = sectionRange(lines, span.head, span.end, "###### 待裁");
+  if (!range) throw new Error(`条目 ${id} 没有「###### 待裁」小节`);
+  for (let index = range.stop - 1; index > range.start; index -= 1) {
+    if (/^- 待裁：无/u.test(lines[index])) lines.splice(index, 1);
+  }
+  const again = entrySpan(lines, id);
+  const target = sectionRange(lines, again.head, again.end, "###### 待裁");
+  let at = target.stop;
+  while (at - 1 > target.start && lines[at - 1].trim() === "") at -= 1;
+  const line = `- ${String(item).trim()}`;
+  lines.splice(at, 0, line);
+  return { text: lines.join("\n"), line };
+}
+
+export function dropWaitingItem(text, id, item) {
+  const key = String(item)
+    .trim()
+    .split(/[\s　：:]/u)[0];
+  if (!key) throw new Error("--item 为空：写成「- T1 …」里的编号或整行文字");
+  const lines = text.split("\n");
+  const span = entrySpan(lines, id);
+  const range = sectionRange(lines, span.head, span.end, "###### 待裁");
+  if (!range) throw new Error(`条目 ${id} 没有「###### 待裁」小节`);
+  let removed = null;
+  for (let index = range.stop - 1; index > range.start; index -= 1) {
+    if (lines[index].replace(/^- /u, "").startsWith(key)) {
+      removed = lines[index];
+      lines.splice(index, 1);
+      break;
+    }
+  }
+  if (!removed) throw new Error(`待裁块里没有以「${key}」开头的项`);
+  const again = entrySpan(lines, id);
+  const empty = sectionRange(lines, again.head, again.end, "###### 待裁");
+  const hasItem = empty
+    ? lines.slice(empty.start + 1, empty.stop).some((line) => /^- (?!待裁：无)/u.test(line))
+    : true;
+  if (!hasItem) lines.splice(empty.stop - 1, 0, "- 待裁：无");
+  return { text: lines.join("\n"), removed };
+}
 
 export function addUpdateNote(text, id, note) {
   const lines = text.split("\n");
@@ -171,7 +233,9 @@ export function addUpdateNote(text, id, note) {
     const again = entrySpan(lines, id);
     end = again.end;
   }
-  const decisionAt = lines.findIndex((line, at) => at > head && at < end && /^#### 1 决策/u.test(line));
+  const decisionAt = lines.findIndex(
+    (line, at) => at > head && at < end && /^#### 1 决策/u.test(line),
+  );
   const pendingAt = lines.findIndex((line, at) => at > head && at < end && /^- 要定：/u.test(line));
   const at = pendingAt >= 0 ? pendingAt + 1 : decisionAt >= 0 ? decisionAt + 1 : head + 1;
   lines.splice(at, 0, note);

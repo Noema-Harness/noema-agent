@@ -17,7 +17,7 @@
 3. 条目写批次指针、阶段转执行中。
 4. 然后才动其他文件。
 
-`npm run decision -- advance --entry <D-…> --stage 执行中 --approval "<用户原话>" --decision "<一句决定>"` 会校验：原话 ≥10 字、change 目录已存在、proposal 引用条目、执行层已有批次指针；任何一项不满足就拒绝写入。
+`npm run decision -- advance --entry <D-…> --stage 执行中 --approval "<用户原话>" --decision "<一句决定>" --design <设计稿>` 会校验：原话 ≥10 字、change 目录已存在、proposal 引用条目、执行层已有批次指针、设计稿结构完整（E21）；任何一项不满足就拒绝写入。待裁项增删走 `npm run decision -- wait add|drop`，不要手改条目。
 
 ## 分工
 
@@ -50,7 +50,7 @@
 
 ## 交接
 
-切片全绿或明确阻塞时，生成执行交接数据（模板 `workflow/transition/handoff.md`）：交付物（文件/命令/commit）、证据索引（测试输出、CI run、截图、演练）、未验证项、已知风险、验收步骤、回退方式。交接是验收页的输入，不写成新叙述。
+切片全绿或明确阻塞时，生成执行交接数据（模板 `workflow/transition/handoff.md`）：交付物（文件/命令/commit）、证据索引（测试输出、CI run、截图、演练）、未验证项、已知风险、验收步骤、回退方式。交接是验收页的输入，不写成新叙述；用 `npm run transition -- handoff --entry <id> --write` 生成（数据取自条目，不手抄）。
 
 ## 检查项
 
@@ -60,6 +60,7 @@
 - 治理变更不夹带产品代码：`gate:governance-no-product`。
 - 行为变更必须有规格增量：`gate:skip-specs-product`、`gate:spec-delta`。
 - 边界与导入：`gate:source-boundary`、`gate:workspace-root-dirs`。
+- 历史只增不删：`gate:entry-history-monotonic`。
 
 ## 边界
 

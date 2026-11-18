@@ -3,7 +3,14 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import assert from "node:assert/strict";
-import { appendRound, readEntry, setStage, settleDecision } from "./entries.mjs";
+import {
+  addWaitingItem,
+  appendRound,
+  dropWaitingItem,
+  readEntry,
+  setStage,
+  settleDecision,
+} from "./entries.mjs";
 import { checkTransitionText, templateHeadings } from "./transitions.mjs";
 import { checkPackGates, loadPack, resumeCard, activeEntries } from "../../scripts/stage.mjs";
 import { advanceEntry, recordRound, settleDecisionItem } from "../../scripts/decision.mjs";
@@ -161,6 +168,11 @@ test("the decision CLI refuses a stage jump, a short approval and a missing batc
 test("the decision CLI writes the decision and the stage in one pass, then validates the result", () => {
   const root = makeRoot(text());
   fs.mkdirSync(path.join(root, "openspec", "changes", "probe"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, "openspec", "changes", "probe", "proposal.md"),
+    "Plan: none\n\n来源：D-20261118-probe\n",
+    "utf8",
+  );
   fs.writeFileSync(
     path.join(root, "docs", "DECISIONS.md"),
     text().replace("- 未开始：定案后进入执行", "- 批次：changes/probe"),
@@ -344,4 +356,62 @@ test("a decision cannot move to acceptance while some decided E has no acceptanc
   });
   assert.equal(result.transition, "forward");
   assert.match(fs.readFileSync(path.join(covered, "docs", "DECISIONS.md"), "utf8"), /- \*\*阶段\*\*：待验收/u);
+});
+
+function designDoc() {
+  const template = fs.readFileSync(
+    path.join(process.cwd(), "governance/noema/workflow/transition/design.md"),
+    "utf8",
+  );
+  return `${template}\n- 无\n`;
+}
+
+function executionRoot({ proposal = true, design = "design.md" } = {}) {
+  const root = makeRoot(text().replace("- 未开始：定案后进入执行", "- 批次：changes/probe"));
+  fs.mkdirSync(path.join(root, "openspec", "changes", "probe"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, "openspec", "changes", "probe", "proposal.md"),
+    proposal ? "Plan: none\n\n来源：D-20261118-probe\n" : "Plan: none\n",
+    "utf8",
+  );
+  if (design) fs.writeFileSync(path.join(root, design), designDoc(), "utf8");
+  return root;
+}
+
+test("entering execution needs a proposal that cites the entry and a complete design", () => {
+  const missingCite = executionRoot({ proposal: false });
+  assert.throws(
+    () =>
+      advanceEntry({
+        root: missingCite,
+        id: "D-20261118-probe",
+        stage: "执行中",
+        approval: "没问题，这项可以执行",
+        decision: "按探针方案做",
+        date: "2026-11-18",
+      }),
+    /没有引用条目 D-20261118-probe/u,
+  );
+
+  const good = executionRoot();
+  const result = advanceEntry({
+    root: good,
+    id: "D-20261118-probe",
+    stage: "执行中",
+    approval: "没问题，这项可以执行",
+    decision: "按探针方案做",
+    design: "design.md",
+    date: "2026-11-18",
+  });
+  assert.equal(result.to, "执行中");
+  assert.match(fs.readFileSync(path.join(good, "docs", "DECISIONS.md"), "utf8"), /- 设计：design\.md（2026-11-18）/u);
+});
+
+test("waiting items can be added and dropped by command", () => {
+  const root = makeRoot(text());
+  const added = addWaitingItem(text(), "D-20261118-probe", "T3 第三个问题");
+  assert.match(added.text, /- T3 第三个问题/u);
+  const dropped = dropWaitingItem(added.text, "D-20261118-probe", "T3");
+  assert.doesNotMatch(dropped.text, /T3 第三个问题/u);
+  assert.equal(root.length > 0, true);
 });

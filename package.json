@@ -35,7 +35,7 @@
     "inbox": "node scripts/inbox.mjs list",
     "review": "node scripts/review.mjs",
     "review:test": "node --test scripts/review.test.mjs",
-    "tools:test": "node --test scripts/governance.test.mjs scripts/maintenance.test.mjs scripts/figure.test.mjs scripts/branches.test.mjs scripts/workspace.test.mjs scripts/skill-sync.test.mjs scripts/review.test.mjs scripts/decisions.test.mjs scripts/decision-entry.test.mjs governance/core/kernel.test.mjs governance/core/acceptance.test.mjs scripts/collaboration.test.mjs",
+    "tools:test": "node --test scripts/governance.test.mjs scripts/maintenance.test.mjs scripts/figure.test.mjs scripts/branches.test.mjs scripts/workspace.test.mjs scripts/skill-sync.test.mjs scripts/review.test.mjs scripts/decisions.test.mjs scripts/decision-entry.test.mjs governance/core/kernel.test.mjs governance/core/acceptance.test.mjs governance/core/handoff.test.mjs scripts/collaboration.test.mjs",
     "governance:test": "node --test scripts/governance.test.mjs",
     "skill:install": "node scripts/skill-sync.mjs install",
     "guard": "node scripts/collaboration.mjs",

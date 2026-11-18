@@ -87,9 +87,12 @@ export function buildAcceptancePage({ entry, today, source = null }) {
   const open = report.items.filter((item) => !item.checked);
   lines.push("## 手测步骤");
   lines.push("");
-  if (open.length === 0) lines.push("- 验收项已全部勾选；按条目「已定细则」里的手测步骤复跑一遍即可");
+  if (open.length === 0)
+    lines.push("- 验收项已全部勾选；按条目「已定细则」里的手测步骤复跑一遍即可");
   else {
-    lines.push("- 逐条执行下面未勾选的验收项；带 `[用户]` 的请用户本人操作，带 `[机制]` 的由维护者跑命令");
+    lines.push(
+      "- 逐条执行下面未勾选的验收项；带 `[用户]` 的请用户本人操作，带 `[机制]` 的由维护者跑命令",
+    );
     for (const item of open) lines.push(`  - ${item.text}`);
   }
   lines.push("");

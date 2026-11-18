@@ -672,7 +672,9 @@ test("a reopened entry keeps its execution and acceptance history in the decisio
 
 test("entry history only grows: a removed completion line fails the check", () => {
   const previous = `## D-20261116-probe\n\n${LIFECYCLE("待验收")}\n- 完成：批次一已归档\n`;
-  const lost = checkDecisionEntries(`## D-20261116-probe\n\n${LIFECYCLE("待验收")}\n`, { previous });
+  const lost = checkDecisionEntries(`## D-20261116-probe\n\n${LIFECYCLE("待验收")}\n`, {
+    previous,
+  });
   assert.match(lost.errors.join("\n"), /的「完成」行从 1 条变成 0 条/u);
 
   const rewritten = checkDecisionEntries(
@@ -681,7 +683,9 @@ test("entry history only grows: a removed completion line fails the check", () =
   );
   assert.equal(rewritten.errors.join("\n"), "");
 
-  const dropped = checkDecisionEntries(`## D-20261116-other\n\n${LIFECYCLE("待验收")}\n`, { previous });
+  const dropped = checkDecisionEntries(`## D-20261116-other\n\n${LIFECYCLE("待验收")}\n`, {
+    previous,
+  });
   assert.match(dropped.errors.join("\n"), /带历史记录却被整条删除/u);
 });
 
@@ -921,7 +925,10 @@ test("governance vocabulary in docs is a pointer notice, not a rule copy", () =>
 
 test("the governance core keeps project names and repo paths out", () => {
   const clean = findCoreBoundaryProblems([
-    { name: "governance/core/entries.mjs", text: "export function readEntry(text, id) {\n  return [text, id];\n}" },
+    {
+      name: "governance/core/entries.mjs",
+      text: "export function readEntry(text, id) {\n  return [text, id];\n}",
+    },
   ]);
   assert.deepEqual(clean, []);
   const dirty = findCoreBoundaryProblems([

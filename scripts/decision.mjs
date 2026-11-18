@@ -7,7 +7,10 @@ import path from "node:path";
 import { checkDecisionEntries, localToday } from "./maintenance.mjs";
 import {
   addUpdateNote,
+  addWaitingItem,
+  dropWaitingItem,
   appendRound,
+  appendExecutionLine,
   appendStageEvent,
   distributeStageEvents,
   editEntryFields,
@@ -19,6 +22,7 @@ import {
 } from "../governance/core/entries.mjs";
 import { transitionKind } from "../governance/core/lifecycle.mjs";
 import { assembleAcceptance } from "../governance/core/acceptance.mjs";
+import { checkTransition } from "./transition.mjs";
 import { STATES } from "./lifecycle.mjs";
 
 const DECISIONS = path.join("docs", "DECISIONS.md");
@@ -47,7 +51,9 @@ function requireEntry(text, id) {
 function requireApproval(flags, purpose) {
   const approval = typeof flags.approval === "string" ? flags.approval.trim() : "";
   if (!approval) {
-    throw new Error(`缺少 --approval「用户原话」：${purpose}必须有用户明确批准的原话\n先跑 npm run stage -- <当前阶段> 看这一阶段的规则`);
+    throw new Error(
+      `缺少 --approval「用户原话」：${purpose}必须有用户明确批准的原话\n先跑 npm run stage -- <当前阶段> 看这一阶段的规则`,
+    );
   }
   if ([...approval].length < MIN_APPROVAL) {
     throw new Error(
@@ -60,10 +66,14 @@ function requireApproval(flags, purpose) {
 function requireReason(flags, purpose) {
   const reason = typeof flags.reason === "string" ? flags.reason.trim() : "";
   if (!reason) {
-    throw new Error(`缺少 --reason「重开原因」：${purpose}要写清哪一处不过、要改什么\n先跑 npm run stage -- 验收 看验收不过怎么退`);
+    throw new Error(
+      `缺少 --reason「重开原因」：${purpose}要写清哪一处不过、要改什么\n先跑 npm run stage -- 验收 看验收不过怎么退`,
+    );
   }
   if ([...reason].length < MIN_REASON) {
-    throw new Error(`--reason 太短（${[...reason].length} 字，至少 ${MIN_REASON} 字）：写清哪一处不过、要改什么`);
+    throw new Error(
+      `--reason 太短（${[...reason].length} 字，至少 ${MIN_REASON} 字）：写清哪一处不过、要改什么`,
+    );
   }
   return reason;
 }
@@ -78,7 +88,17 @@ function commit(root, next, { dryRun }) {
   console.log(`已写入 ${DECISIONS}`);
 }
 
-export function advanceEntry({ root = process.cwd(), id, stage, decision, approval, reason, date, dryRun = false }) {
+export function advanceEntry({
+  root = process.cwd(),
+  id,
+  stage,
+  decision,
+  approval,
+  reason,
+  design,
+  date,
+  dryRun = false,
+}) {
   const file = path.join(root, DECISIONS);
   const text = fs.readFileSync(file, "utf8");
   const entry = requireEntry(text, id);
@@ -104,18 +124,47 @@ export function advanceEntry({ root = process.cwd(), id, stage, decision, approv
     if (!entry.batch) {
       throw new Error(`${id} 的执行层没有「- 批次：changes/<name>」：先建档再进执行（E23）`);
     }
-    if (!fs.existsSync(path.join(root, "openspec", "changes", entry.batch.replace(/^changes\//u, "")))) {
+    if (
+      !fs.existsSync(path.join(root, "openspec", "changes", entry.batch.replace(/^changes\//u, "")))
+    ) {
       throw new Error(`${id} 的批次 ${entry.batch} 在 openspec/changes/ 里不存在：先建档`);
+    }
+    const changeName = entry.batch.replace(/^changes\//u, "");
+    const proposalFile = path.join(root, "openspec", "changes", changeName, "proposal.md");
+    const proposal = fs.existsSync(proposalFile) ? fs.readFileSync(proposalFile, "utf8") : "";
+    if (!proposal.trim()) {
+      throw new Error(`${id} 的批次 ${entry.batch} 没有 proposal.md：先建档再进执行（E23）`);
+    }
+    if (!proposal.includes(id)) {
+      throw new Error(
+        `proposal.md 没有引用条目 ${id}：计划的来源必须能追到决议，改 proposal 的「Plan」或来源后再进执行（E23）`,
+      );
     }
     if (!decision || !String(decision).trim()) {
       throw new Error("缺少 --decision：写一句这次定下的方案（会写进「- 决定：」）");
+    }
+    let designLine = null;
+    if (typeof design === "string") {
+      const designFile = path.resolve(root, design);
+      if (!fs.existsSync(designFile)) {
+        throw new Error(`读不到 --design ${design}：进执行前必须有一份结构完整的设计方案（E21）`);
+      }
+      const designText = fs.readFileSync(designFile, "utf8");
+      const { errors } = checkTransition(designText, "design");
+      if (errors.length > 0) {
+        throw new Error(
+          `设计方案不合规：${errors.join("；")}（先跑 npm run transition -- design 看结构，待确认项必须是「- 无」）`,
+        );
+      }
+      designLine = `- 设计：${design.replaceAll("\\", "/")}（${today}）`;
     }
     const decided = withDecisionLine(
       text,
       id,
       `- 决定：${String(decision).trim()}（用户原话：「${quote}」，${today}）`,
     );
-    next = setStage(decided, id, target);
+    const withDesign = designLine ? appendExecutionLine(decided, id, designLine).text : decided;
+    next = setStage(withDesign, id, target);
   } else if (target === "待验收") {
     const coverage = assembleAcceptance(entry);
     if (coverage.uncovered.length > 0) {
@@ -151,11 +200,21 @@ export function advanceEntry({ root = process.cwd(), id, stage, decision, approv
   return { id, from: entry.stage, to: target, transition };
 }
 
-export function recordRound({ root = process.cwd(), id, conclusion, changes, date, number, lines = [], dryRun = false }) {
+export function recordRound({
+  root = process.cwd(),
+  id,
+  conclusion,
+  changes,
+  date,
+  number,
+  lines = [],
+  dryRun = false,
+}) {
   const file = path.join(root, DECISIONS);
   const text = fs.readFileSync(file, "utf8");
   requireEntry(text, id);
-  if (!conclusion || !String(conclusion).trim()) throw new Error("缺少 --conclusion：这一轮的结论是什么");
+  if (!conclusion || !String(conclusion).trim())
+    throw new Error("缺少 --conclusion：这一轮的结论是什么");
   if (changes === undefined) throw new Error("缺少 --changes：「+新增 / 已解除 / 继续」的待裁变化");
   const next = appendRound(text, id, {
     number: number === undefined || number === null ? undefined : Number(number),
@@ -203,7 +262,6 @@ export function settleDecisionItem({
   return { id, number, entry };
 }
 
-
 function ensureValid(next) {
   const problems = checkDecisionEntries(next);
   if (problems.length) {
@@ -211,7 +269,15 @@ function ensureValid(next) {
   }
 }
 
-export function editEntry({ root = process.cwd(), id, values = {}, normalise = false, relocate = false, note, dryRun = false }) {
+export function editEntry({
+  root = process.cwd(),
+  id,
+  values = {},
+  normalise = false,
+  relocate = false,
+  note,
+  dryRun = false,
+}) {
   const file = path.join(root, DECISIONS);
   const text = fs.readFileSync(file, "utf8");
   requireEntry(text, id);
@@ -220,7 +286,9 @@ export function editEntry({ root = process.cwd(), id, values = {}, normalise = f
   if (normalise) {
     const result = normaliseStageEvents(next, id);
     next = result.text;
-    report.push(`阶段事件整理：${result.order.length} 条（${result.order.join(" / ")}），去重 ${result.removed} 条`);
+    report.push(
+      `阶段事件整理：${result.order.length} 条（${result.order.join(" / ")}），去重 ${result.removed} 条`,
+    );
   }
   if (relocate) {
     const result = distributeStageEvents(next, id);
@@ -237,7 +305,9 @@ export function editEntry({ root = process.cwd(), id, values = {}, normalise = f
     report.push("追加一行说明");
   }
   if (next === text) {
-    throw new Error("没有任何改动：给出 --blocker / --pending / --conclusion / --normalise-events / --distribute-events / --note 之一");
+    throw new Error(
+      "没有任何改动：给出 --blocker / --pending / --conclusion / --normalise-events / --distribute-events / --note 之一",
+    );
   }
   ensureValid(next);
   commit(root, next, { dryRun });
@@ -255,7 +325,13 @@ export function pauseEntry({ root = process.cwd(), id, reason, date, dryRun = fa
     dryRun,
   });
   if (!dryRun) {
-    recordRound({ root, id, conclusion: `暂停（${today}）：${why}`, changes: "无（暂停；未产生新的待裁项）", date: today });
+    recordRound({
+      root,
+      id,
+      conclusion: `暂停（${today}）：${why}`,
+      changes: "无（暂停；未产生新的待裁项）",
+      date: today,
+    });
   }
   return { id, report: result.report };
 }
@@ -270,7 +346,13 @@ export function resumeEntry({ root = process.cwd(), id, date, dryRun = false }) 
     dryRun,
   });
   if (!dryRun) {
-    recordRound({ root, id, conclusion: `恢复（${today}）：继续讨论`, changes: "无（恢复；待裁清单不变）", date: today });
+    recordRound({
+      root,
+      id,
+      conclusion: `恢复（${today}）：继续讨论`,
+      changes: "无（恢复；待裁清单不变）",
+      date: today,
+    });
   }
   return { id, report: result.report };
 }
@@ -282,7 +364,8 @@ export function main(argv = process.argv.slice(2), root = process.cwd()) {
     if (command === "edit") {
       const values = {};
       if (typeof flags.blocker === "string") values.blocker = flags.blocker;
-      if (typeof flags.pending === "string") values.pending = flags.pending;
+      if (typeof flags.ask === "string") values.pending = flags.ask;
+      else if (typeof flags.pending === "string") values.pending = flags.pending;
       if (typeof flags.conclusion === "string") values.conclusion = flags.conclusion;
       const result = editEntry({
         root,
@@ -299,8 +382,19 @@ export function main(argv = process.argv.slice(2), root = process.cwd()) {
     if (command === "pause" || command === "resume") {
       const result =
         command === "pause"
-          ? pauseEntry({ root, id: flags.entry, reason: flags.reason, date: flags.date, dryRun: flags["dry-run"] === true })
-          : resumeEntry({ root, id: flags.entry, date: flags.date, dryRun: flags["dry-run"] === true });
+          ? pauseEntry({
+              root,
+              id: flags.entry,
+              reason: flags.reason,
+              date: flags.date,
+              dryRun: flags["dry-run"] === true,
+            })
+          : resumeEntry({
+              root,
+              id: flags.entry,
+              date: flags.date,
+              dryRun: flags["dry-run"] === true,
+            });
       console.log(`${result.id}：${result.report.join("；")}`);
       return 0;
     }
@@ -332,6 +426,32 @@ export function main(argv = process.argv.slice(2), root = process.cwd()) {
       });
       return 0;
     }
+    if (command === "wait") {
+      const action = rest[0] && !rest[0].startsWith("--") ? rest[0] : null;
+      const target = flags.entry;
+      if (!target) throw new Error("缺少 --entry：待裁项挂在一条条目上");
+      if (action !== "add" && action !== "drop")
+        throw new Error('用法：decision -- wait add|drop --entry <D-…> --item "T…"');
+      if (typeof flags.item !== "string") throw new Error("缺少 --item：写「T1 问题…」或编号 T1");
+      const file = path.join(root, DECISIONS);
+      const text = fs.readFileSync(file, "utf8");
+      const result =
+        action === "add"
+          ? addWaitingItem(text, target, flags.item)
+          : dropWaitingItem(text, target, flags.item);
+      const next = result.text;
+      const report = checkDecisionEntries(next);
+      if (report.errors.length > 0) {
+        throw new Error(`写入前校验失败（条目没有改动）：${report.errors.join("；")}`);
+      }
+      fs.writeFileSync(file, next, "utf8");
+      console.log(
+        action === "add"
+          ? `${target}：已加待裁项 ${result.line}`
+          : `${target}：已移除 ${result.removed}`,
+      );
+      return 0;
+    }
     if (command === "advance") {
       const result = advanceEntry({
         root,
@@ -340,13 +460,16 @@ export function main(argv = process.argv.slice(2), root = process.cwd()) {
         decision: flags.decision,
         approval: flags.approval,
         reason: flags.reason,
+        design: flags.design,
         date: flags.date,
         dryRun: flags["dry-run"] === true,
       });
       console.log(`${result.id}：${result.from} → ${result.to}（${result.transition}）`);
       return 0;
     }
-    console.error("用法：npm run decision -- <round|settle|advance|edit|pause|resume> --entry <D-…> …");
+    console.error(
+      "用法：npm run decision -- <round|settle|advance|edit|pause|resume> --entry <D-…> …",
+    );
     return 2;
   } catch (error) {
     console.error(`decision：${error.message}`);

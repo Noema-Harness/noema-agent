@@ -372,8 +372,10 @@ function checkDatedEntry(entry, errors, notices = []) {
     if (body === null) return 0;
     return body
       .split(/\r?\n/u)
-      .filter((line) => line.trim() !== "" && !placeholders.test(line.trim()) && !stageEvents.test(line.trim()))
-      .length;
+      .filter(
+        (line) =>
+          line.trim() !== "" && !placeholders.test(line.trim()) && !stageEvents.test(line.trim()),
+      ).length;
   };
   const hasReopen = /^\s*- 重开[:：]/mu.test(entry.body);
   if (meta.stage === "决策中" && !hasReopen) {
@@ -499,13 +501,18 @@ function governanceCoreFiles(root) {
   const dir = path.join(root, "governance", "core");
   let names = [];
   try {
-    names = fs.readdirSync(dir).filter((name) => name.endsWith(".mjs") && !name.endsWith(".test.mjs"));
+    names = fs
+      .readdirSync(dir)
+      .filter((name) => name.endsWith(".mjs") && !name.endsWith(".test.mjs"));
   } catch {
     return [];
   }
   return names
     .sort()
-    .map((name) => ({ name: `governance/core/${name}`, text: readText(path.join(dir, name)) ?? "" }));
+    .map((name) => ({
+      name: `governance/core/${name}`,
+      text: readText(path.join(dir, name)) ?? "",
+    }));
 }
 
 export function checkDocuments(root, git, options = {}) {
@@ -570,7 +577,9 @@ export function checkDocuments(root, git, options = {}) {
     );
   }
   if (coreProblems.length > 5) {
-    errors.push(`governance/core/ 还有 ${coreProblems.length - 5} 处项目专名或仓库路径，一并挪到适配层`);
+    errors.push(
+      `governance/core/ 还有 ${coreProblems.length - 5} 处项目专名或仓库路径，一并挪到适配层`,
+    );
   }
 
   const packageVersion = readJson(path.join(root, "package.json"))?.version;

@@ -79,7 +79,9 @@ export function readEntry(text, id) {
   const acceptance = sectionRange(lines, range.start, range.end, ACCEPTANCE_SECTION);
   const decisionText = decision ? lines.slice(decision.start + 1, decision.end).join("\n") : "";
   const executionText = execution ? lines.slice(execution.start + 1, execution.end).join("\n") : "";
-  const acceptanceText = acceptance ? lines.slice(acceptance.start + 1, acceptance.end).join("\n") : "";
+  const acceptanceText = acceptance
+    ? lines.slice(acceptance.start + 1, acceptance.end).join("\n")
+    : "";
   const waitHeading = blockRange(
     lines,
     decision?.start ?? range.start,
@@ -117,7 +119,9 @@ export function readEntry(text, id) {
   const blocker = /- \*\*阻塞\*\*：\s*(.+)/u.exec(entryText)?.[1]?.trim() ?? null;
   const batchLines = executionText.match(/^- 批次：.*$/gmu) ?? [];
   const batchMatch =
-    batchLines.length > 0 ? /^- 批次：\s*`?([^\s`]+)`?/u.exec(batchLines[batchLines.length - 1]) : null;
+    batchLines.length > 0
+      ? /^- 批次：\s*`?([^\s`]+)`?/u.exec(batchLines[batchLines.length - 1])
+      : null;
   const batch = batchMatch ? batchMatch[1] : null;
   const acceptanceItems = acceptanceText
     .split("\n")
@@ -148,7 +152,8 @@ export function setStage(text, id, stage, note) {
   if (!entry) throw new Error(`找不到条目 ${id}`);
   const lines = [...entry.lines];
   const stageIndex = lines.findIndex(
-    (line, at) => at >= entry.range.start && at < entry.range.end && /^- \*\*阶段\*\*：/u.test(line),
+    (line, at) =>
+      at >= entry.range.start && at < entry.range.end && /^- \*\*阶段\*\*：/u.test(line),
   );
   if (stageIndex === -1) throw new Error(`${id} 头部缺少「阶段」字段`);
   lines[stageIndex] = `- **阶段**：${stage}`;
@@ -156,7 +161,8 @@ export function setStage(text, id, stage, note) {
   const head = ENTRY_HEADING.exec(lines[headIndex]);
   const prefix = [];
   if (head[2]) prefix.push(`[#${head[2]}](${head[3]})`);
-  lines[headIndex] = `## ${STAGE_MARKS[stage]} ${prefix.length ? `${prefix.join(" ")} ` : ""}${id} ${entry.title}`.trim();
+  lines[headIndex] =
+    `## ${STAGE_MARKS[stage]} ${prefix.length ? `${prefix.join(" ")} ` : ""}${id} ${entry.title}`.trim();
   if (note) {
     const decision = entry.range;
     const insertAt = (() => {
@@ -203,7 +209,13 @@ export function appendRound(text, id, { number, conclusion, changes, lines: body
   }
   while (insertAt > bodyStart && lines[insertAt - 1].trim() === "") insertAt -= 1;
   if (discussionIndex === -1) {
-    lines.splice(insertAt, 0, "", "###### 讨论记录（每轮追加；结论与待裁变化写在这里）", ...block.slice(1));
+    lines.splice(
+      insertAt,
+      0,
+      "",
+      "###### 讨论记录（每轮追加；结论与待裁变化写在这里）",
+      ...block.slice(1),
+    );
   } else {
     lines.splice(insertAt, 0, ...block.slice(1));
   }
@@ -258,7 +270,10 @@ export function settleDecision(text, id, { number, title, detail, approval, date
  *  否则决策中就不能有决定行，两步写会互相拒绝。 */
 export {
   addUpdateNote,
+  addWaitingItem,
+  dropWaitingItem,
   appendStageEvent,
+  appendExecutionLine,
   distributeStageEvents,
   editEntryFields,
   normaliseStageEvents,

@@ -4,12 +4,16 @@ Authority: 本文件只回答一个问题——按现有证据，今天这个版
 Update when: 每次交付、打包或验证结果变化。
 Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与代码实况（见 [ARCHITECTURE](ARCHITECTURE.md)）；决定与理由（见 [DECISIONS](DECISIONS.md)）；命令、安装与诊断（见 [OPERATIONS](OPERATIONS.md)）；治理与门槛（见 [governance/README.md](../governance/README.md)）；计划与进度（见 GitHub Project 看板与 `openspec/changes/`，D-026）。
 
-最后更新：2026-11-18
+最后更新：2026-11-19
 
 ## 版本与基线
 
 - 源码版本：`0.7.6`；当前源码基线：`b4f5ed6 refactor(governance): move the governance rules into governance/`；功能基线 `b7c41fa`。
 - 便携构建在 `apps/desktop/out/Noema-win32-x64/Noema.exe`；安装包由 `npm run make:desktop` 产出（构建陷阱与回退见 [OPERATIONS](OPERATIONS.md)，决定见 D-024）。
+
+## 最后一次验证（2026-11-19）
+
+- 治理收口：验收不过改走单一回溯边，并给「决议定了什么→执行做了什么」补上闭合与防再犯的门（change `governance-transition`，2026-11-19）。①重开保留历史的机制化：`governance/core/history.mjs` 比对批次/完成/决定/验收项/阶段事件五类行，`docs:check` 发现历史被删即报「历史只增不删」（规则 `entry-history-monotonic`，block）。②验收页按 E 生成：`governance/core/acceptance.mjs` 把已定 E 与验收项对齐，`npm run acceptance -- --entry <D-…>` 输出「按 E 分节 / 未覆盖 E / 手测步骤」，未覆盖 E 不为 0 时 `advance --stage 待验收` 拒绝。③交接与报告由条目生成：`npm run transition -- handoff|report --entry <id> --write`。④进执行前校验设计稿结构（E21）与 proposal 是否引用条目（E23）；⑤待裁项增删走 `npm run decision -- wait add|drop`，`--ask` 成为 `--pending` 的正式名字。证据：`npm run kernel:test` **18/18**、`npm run tools:test` **93/93**（含`handoff.test.mjs` 3/3、`acceptance.test.mjs` 5/5、`maintenance.test.mjs` 30/30）、`node scripts/maintenance.mjs docs`、`npm run figure:check`、`npm run check` **901/901，0 fail**（含 `governance: milestone OK`）。手测：`npm run acceptance -- --entry D-20261118-decision-dialog-flow --write` 生成的页正确列出 28 条决定与未覆盖 E。
 
 ## 最后一次验证（2026-11-18）
 

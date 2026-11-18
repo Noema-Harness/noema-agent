@@ -38,8 +38,9 @@ npm run decision -- advance --entry <D-…> --stage 决策中 --reason "<哪一�
 
 ## 收口
 
+- 验收页用 `npm run acceptance -- --entry <D-…>` 生成：按 E 分节、列出未覆盖的 E 与手测步骤；未覆盖 E 不为 0 时 `advance --stage 待验收` 会被拒绝。
 - 只有用户能确认收口；确认时写 `用户确认：YYYY-MM-DD` 与确认原话。
-- 从验收页导出验收报告（模板 `workflow/transition/report.md`）：勾选表 + 证据指针 + 原话与日期 + 遗留项去向。
+- 从验收页导出验收报告：`npm run transition -- report --entry <D-…> --write`（勾选表 + 证据指针 + 原话与日期 + 遗留项去向）。
 - 遗留项进卡片「还没做」、下一条目或明确不做，不留空。
 
 ## 检查项
@@ -49,6 +50,7 @@ npm run decision -- advance --entry <D-…> --stage 决策中 --reason "<哪一�
 - 交付后卡片正文同步：`gate:milestone-card-body`。
 - STATUS 是当天事实：`gate:status-today`。
 - 引用的决议必须已确认：`gate:referenced-decision-confirmed`。
+- 验收项覆盖全部已定 E，历史只增不删：`gate:entry-history-monotonic`。
 
 ## 边界
 
