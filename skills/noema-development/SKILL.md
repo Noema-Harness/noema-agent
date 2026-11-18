@@ -1,21 +1,15 @@
 ---
 name: noema-development
-description: 在 Noema 仓库推进开发、需要填立项三件套或决议条目时使用：只给骨架模板与字段提示。流程、门槛、出口、命令都不在这里，见 AGENTS.md 与 docs/OPERATIONS.md；冲突以 AGENTS.md 为准。
+description: 在 Noema 仓库推进开发、需要填立项三件套或决议条目时使用：只给骨架模板与字段提示。流程、门槛、出口、命令都不在这里，见 governance/ 与 docs/OPERATIONS.md；冲突以 AGENTS.md 为准。
 ---
 
 # Noema 开发：填写模板
 
 本技能只做一件事：**给需要你手写的文件提供骨架**。九步流程、条目结构、讨论规则、三类出口在 `AGENTS.md` §1–§2；所有命令与报错修法在 `docs/OPERATIONS.md`；本文件不重复它们。
 
-## 0. 讨论、开工、执行
+## 0. 流程与规则不在这里
 
-三个阶段，边界不许含糊：
-
-- **讨论**：只写条目决策层、文档与调研，不动产品代码。每轮回复只以三种方式结束——「等你定 A/B」「我建议 X，等你点头」「已交结果，等你验收」。
-- **开工请求**：进入执行前先进计划模式（`/plan`），用 `exit_plan_mode` 交开工清单——① 改哪些文件或模块；② 建哪个 `openspec/changes/`；③ 怎么验证。交完就停。
-- **执行**：用户批准开工清单后才动代码。回答设计问题、选选项、含糊的「可以」都不算批准；拿不准就问「要我现在开工吗」。
-
-条目里的决定绑原话：`- 决定：…（用户原话：「…」，YYYY-MM-DD）`，不写自己盖的「用户确认」。
+讨论、执行、验收三段的规则包在 governance/noema/workflow/{discussion,execution,acceptance}.md；条目结构与权限在 governance/core/README.md；门槛、审核入口、协作检查在 governance/noema/maintenance.md；规则入口是 AGENTS.md。本文件只给骨架。
 
 ## 1. 立项三件套
 

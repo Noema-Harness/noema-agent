@@ -423,6 +423,38 @@ function checkDatedEntry(entry, errors, notices = []) {
   }
 }
 
+const GOVERNANCE_WORDS = [
+  "治理规则",
+  "治理机制",
+  "治理分层",
+  "治理流程",
+  "治理门槛",
+  "决议条目",
+  "开工清单",
+  "待裁",
+  "例外落地",
+];
+
+/**
+ * doc 是本体事实的唯一主人：治理规则、流程、门槛写进 governance/，docs/ 只留指针。
+ * 这里只提示新增内容里的治理词，不阻断（notice 观察期），确认是指针就继续。
+ */
+export function findGovernanceWordsInDocs(diffText) {
+  const hits = [];
+  let file = "";
+  for (const line of String(diffText ?? "").split("\n")) {
+    if (line.startsWith("+++ b/")) {
+      file = line.slice(6);
+      continue;
+    }
+    if (!line.startsWith("+") || line.startsWith("+++")) continue;
+    if (!file.startsWith("docs/") || file === "docs/DECISIONS.md") continue;
+    const word = GOVERNANCE_WORDS.find((candidate) => line.includes(candidate));
+    if (word) hits.push({ file, word });
+  }
+  return hits;
+}
+
 export function checkDocuments(root, git, options = {}) {
   const errors = [];
   const notices = [];
@@ -460,6 +492,21 @@ export function checkDocuments(root, git, options = {}) {
     const name = path.relative(root, file).replaceAll("\\", "/");
     if (!allowed.has(name)) {
       errors.push(`docs/ 出现未登记文档 ${name}；一个事实一个权威源，合并或删除后再提交`);
+    }
+  }
+
+  const docDiff = git(["diff", "--unified=0", "HEAD", "--", "docs"]);
+  if (docDiff.ok) {
+    const governanceHits = findGovernanceWordsInDocs(docDiff.text);
+    for (const hit of governanceHits.slice(0, 3)) {
+      notices.push(
+        `${hit.file} 新增内容出现治理词「${hit.word}」：确认它只是指针；治理规则、流程、门槛写进 governance/，否则下一轮迁移还得再搬一遍`,
+      );
+    }
+    if (governanceHits.length > 3) {
+      notices.push(
+        `另有 ${governanceHits.length - 3} 处 docs/ 新增治理内容，规则一并搬进 governance/`,
+      );
     }
   }
 

@@ -9,6 +9,7 @@ import {
   checkDecisionEntries,
   decisionEntries,
   decisionMeta,
+  findGovernanceWordsInDocs,
   checkMilestone,
   checkPlatform,
   checkPlan,
@@ -853,3 +854,26 @@ test("a pending acceptance is a notice, not a lock on new work", () =>
     assert.deepEqual(stillOpen.errors, []);
     assert.match(stillOpen.notices.join("\n"), /不限制新的变更/u);
   }));
+
+test("governance vocabulary in docs is a pointer notice, not a rule copy", () => {
+  const diff = [
+    "diff --git a/docs/STATUS.md b/docs/STATUS.md",
+    "+++ b/docs/STATUS.md",
+    "@@ -1 +1,2 @@",
+    "+## 治理机制记录",
+    "+规则见 governance/README.md",
+    "diff --git a/docs/DECISIONS.md b/docs/DECISIONS.md",
+    "+++ b/docs/DECISIONS.md",
+    "@@ -1 +1,2 @@",
+    "+治理规则条目：决策中只写决策层",
+    "diff --git a/apps/desktop/src/app.ts b/apps/desktop/src/app.ts",
+    "+++ b/apps/desktop/src/app.ts",
+    "@@ -1 +1,2 @@",
+    "+// 治理机制",
+  ].join("\n");
+
+  const hits = findGovernanceWordsInDocs(diff);
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0].file, "docs/STATUS.md");
+  assert.equal(hits[0].word, "治理机制");
+});

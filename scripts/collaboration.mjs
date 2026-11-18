@@ -12,6 +12,7 @@ export const MAINTAINERS = ["c3115644151"];
 // 结尾带 / 的按前缀匹配，否则精确匹配。
 export const MAINTAINER_ONLY_PATHS = [
   "AGENTS.md",
+  "governance/",
   ".github/",
   ".githooks/",
   "scripts/",

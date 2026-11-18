@@ -71,4 +71,4 @@
 ## 维护
 
 - 治理规则改了只改这里；模板改了只改 `noema/workflow/`；命令与失败修法写在 `docs/OPERATIONS.md` 并指回这里。
-- 改完跑 `npm run docs:check`；治理图见 `noema/assets/noema-governance.png`（交互版 `.html`）。
+- 改完跑 `npm run docs:check`；治理图见 [PNG](governance/assets/noema-governance.png) / [交互版](governance/assets/noema-governance.html)，图源与图门规则见 `governance/assets/noema-governance.source.json` 与 `docs/OPERATIONS.md`。

@@ -1,6 +1,6 @@
 ---
 name: noema-governance
-description: 当某次执行偏离 Noema 治理预期、用户指出治理异常、或同类失败反复出现时使用：盘查现象、对齐应有路径、采样证据、定位到机制层、决定直接修还是登记候选。常规开发轮不要加载；模板见 noema-development，规则在 AGENTS.md。
+description: 当某次执行偏离 Noema 治理预期、用户指出治理异常、或同类失败反复出现时使用：盘查现象、对齐应有路径、采样证据、定位到机制层、决定直接修还是登记候选。常规开发轮不要加载；模板见 noema-development，规则在 governance/ 与 AGENTS.md。
 ---
 
 # Noema 治理盘查
@@ -26,7 +26,7 @@ description: 当某次执行偏离 Noema 治理预期、用户指出治理异常
 
 ### 2 还原预期路径
 
-按现有治理体系写出“本应发生什么”，并且指到具体依据：AGENTS 哪一段、四道门里哪道、事实所有权的哪一行、四态的哪一次转移。写不出依据就是规则缺失（回到分类）。
+按现有治理体系写出“本应发生什么”，并且指到具体依据：governance/ 的哪一段、四道门里哪道、事实所有权的哪一行、四态的哪一次转移。写不出依据就是规则缺失（回到分类）。
 产物：预期路径 + 依据引用。
 
 ### 3 采样证据
@@ -43,7 +43,7 @@ description: 当某次执行偏离 Noema 治理预期、用户指出治理异常
 
 逐层问：只改提示层能防住下一次吗？不能就往下。
 
-- 提示层：AGENTS、技能、OPERATIONS 的写法
+- 提示层：AGENTS、governance/ 规则包、技能、OPERATIONS 的写法
 - 事实流：条目、计划、证据、STATUS 的回流
 - 机器门：commit / verify / platform / collaboration / 图门 / 技能同步
 
@@ -57,13 +57,7 @@ description: 当某次执行偏离 Noema 治理预期、用户指出治理异常
 
 ## 产物放哪
 
-先判断这次盘查要不要离开对话：
-
-- **直接修**：执行偏差或修法明确的机制缺口 → 改回来、补测试/门、跑验证；证据写进提交信息。不建条目。
-- **只补检查或验证**：机制缺口但修法明确 → 在对应脚本补门或补测试，跑 `npm run check` 与 CI；需要落地步骤时用 `openspec/changes/<name>/` 记计划。不建条目。
-- **登记条目**（只有这一种进 `docs/DECISIONS.md`）：修法涉及取舍、需要用户在多个方案里拍板、跨轮次不可逆、或代价差一个量级。条目由用户发起或确认：来源写清用户在哪一轮提出，agent 只准备候选与证据，不自行开条目，也不把候选写成决定。
-
-结论落地后：改的是哪份事实就改哪份（规则 → AGENTS，模板 → 技能，命令 → OPERATIONS，状态 → STATUS），不新建记录系统。
+三档出口（直接修 / 只补检查或验证 / 登记条目）与条目规则见 `governance/noema/maintenance.md`；条目骨架见 `skills/noema-development`。结论落地时改对应的事实主人：规则 → `governance/`，命令 → `docs/OPERATIONS.md`，状态 → `docs/STATUS.md`，不新建记录系统。
 
 ## 反模式
 

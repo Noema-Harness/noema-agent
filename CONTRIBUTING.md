@@ -1,6 +1,6 @@
 # 协作约定
 
-这是协作者与维护者之间的契约：谁决定什么、PR 里必须有什么、哪些文件只能维护者改、CI 会拦什么。规则本身在 `AGENTS.md` 与 `CONTRIBUTING.md`；两者冲突时以 `AGENTS.md` 为准。
+这是协作者与维护者之间的契约：谁决定什么、PR 里必须有什么、哪些文件只能维护者改、CI 会拦什么。规则本身在 `governance/` 与 `CONTRIBUTING.md`；入口是 `AGENTS.md`，两者冲突时以 `AGENTS.md` 为准。
 
 ## 角色
 
@@ -39,7 +39,8 @@
 
 | 路径                         | 为什么                   |
 | ---------------------------- | ------------------------ |
-| `AGENTS.md`                  | 开发循环与治理规则       |
+| `AGENTS.md`                  | 入口：阶段地图、边界、指针 |
+| `governance/`                | 治理规则、流程、门槛与迁移 |
 | `.github/`                   | 工作流、模板、CODEOWNERS |
 | `.githooks/`、`scripts/`     | 本地与远端门槛本身       |
 | `openspec/config.yaml`       | 规格工具配置             |

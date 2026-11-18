@@ -280,48 +280,73 @@ test("the governance figure has its own source, anchors and check", () => {
 
     const governanceHtml = Buffer.from("<html>governance</html>");
     const png = Buffer.from("GOVPNG-0123456789");
+    const readme = [
+      "# Governance",
+      "",
+      "![治理全景](governance/assets/noema-governance.png)",
+      "",
+      "[交互版](governance/assets/noema-governance.html)",
+      "",
+      "## 三层结构",
+      "",
+      "三层。",
+      "",
+      "## 四道门",
+      "",
+      "四道。",
+      "",
+      "## 三阶段规则包",
+      "",
+      "规则包。",
+      "",
+      "## 条目生命周期",
+      "",
+      "生命周期。",
+      "",
+    ].join("\n");
     const agents = [
       "# AGENTS",
       "",
-      "![治理](docs/assets/noema-governance.png)",
+      "![治理](governance/assets/noema-governance.png)",
       "",
-      "[交互版](docs/assets/noema-governance.html)",
+      "[交互版](governance/assets/noema-governance.html)",
       "",
-      "## 怎么推进一件工作",
+      "## 阶段地图",
       "",
-      "推进。",
-      "",
-      "## 事实所有权",
-      "",
-      "所有权。",
+      "地图。",
       "",
     ].join("\n");
     const candidate = {
       diagram_type: "architecture",
-      meta: { title: "governance", output: "docs/assets/noema-governance.html" },
+      meta: { title: "governance", output: "governance/assets/noema-governance.html" },
     };
+    fs.mkdirSync(path.join(root, "governance", "assets"), { recursive: true });
+    fs.writeFileSync(path.join(root, "governance", "README.md"), readme);
     fs.writeFileSync(path.join(root, "AGENTS.md"), agents);
-    fs.writeFileSync(path.join(root, "docs", "assets", "noema-governance.html"), governanceHtml);
-    fs.writeFileSync(path.join(root, "docs", "assets", "noema-governance.png"), png);
     fs.writeFileSync(
-      path.join(root, "docs", "assets", "noema-governance.source.json"),
+      path.join(root, "governance", "assets", "noema-governance.html"),
+      governanceHtml,
+    );
+    fs.writeFileSync(path.join(root, "governance", "assets", "noema-governance.png"), png);
+    fs.writeFileSync(
+      path.join(root, "governance", "assets", "noema-governance.source.json"),
       JSON.stringify(
         {
           version: 1,
           source: {
-            doc: "AGENTS.md",
-            sha256: sha256(Buffer.from(agents)),
-            sections: collectSectionHashes(agents, FIGURES.governance.sections),
+            doc: "governance/README.md",
+            sha256: sha256(Buffer.from(readme)),
+            sections: collectSectionHashes(readme, FIGURES.governance.sections),
             candidateSha256: candidateHash(candidate),
           },
           assets: {
             html: {
-              path: "docs/assets/noema-governance.html",
+              path: "governance/assets/noema-governance.html",
               sha256: sha256(governanceHtml),
               bytes: governanceHtml.length,
             },
             png: {
-              path: "docs/assets/noema-governance.png",
+              path: "governance/assets/noema-governance.png",
               sha256: sha256(png),
               bytes: png.length,
             },
@@ -337,13 +362,16 @@ test("the governance figure has its own source, anchors and check", () => {
     assert.deepEqual(checkGovernanceFigure(root).errors, []);
     assert.deepEqual(checkFigures(root).errors, []);
 
-    fs.writeFileSync(path.join(root, "AGENTS.md"), "# AGENTS\n\n治理结构变了。\n");
+    fs.writeFileSync(
+      path.join(root, "governance", "README.md"),
+      "# Governance\n\n治理结构变了。\n",
+    );
     const stale = checkGovernanceFigure(root).errors;
     assert.ok(
-      stale.some((error) => /AGENTS\.md 在出图后已变化/u.test(error)),
+      stale.some((error) => /governance\/README\.md 在出图后已变化/u.test(error)),
       stale.join("\n"),
     );
-    fs.writeFileSync(path.join(root, "AGENTS.md"), agents);
+    fs.writeFileSync(path.join(root, "governance", "README.md"), readme);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

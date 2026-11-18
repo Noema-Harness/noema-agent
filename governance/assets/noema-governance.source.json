@@ -6,7 +6,7 @@
     "meta": {
       "title": "Noema 治理全景：谁规定、谁决定、谁验证",
       "subtitle": "提示层只放规则与顺序，模板与命令按需加载；事实流是一轮决策与证据的走向；一轮的四态（决策中/执行中/待验收/已收口）各绑一道门；机器门在下面，不靠自律。",
-      "output": "docs/assets/noema-governance.html",
+      "output": "governance/assets/noema-governance.html",
       "locale": "zh-CN",
       "quality_profile": "showcase",
       "viewBox": [
@@ -383,35 +383,39 @@
     ]
   },
   "source": {
-    "doc": "AGENTS.md",
-    "sha256": "b2e0fc3fe38758231401891e027ce223e9cff499d1256473009d8da46755f9c2",
+    "doc": "governance/README.md",
+    "sha256": "95fd940c1ab2d0faebe871a04c9ccd1db4c10a51768af12661daa0296cb585ab",
     "sections": [
       {
-        "title": "怎么推进一件工作",
-        "sha256": "8e77da7b671cb91095f564526851663a42a783b943e343cd9093a77b51ca80df"
+        "title": "三层结构",
+        "sha256": "8a1a26cd380837505a8414b1dbdf99e013adbec1212c8bd5279c40082e2a6cc5"
       },
       {
-        "title": "事实所有权",
-        "sha256": "caf600d8bf94e73b80744596d76a8583972775180f396387c9351592b704a497"
+        "title": "四道门",
+        "sha256": "06fe1ad9732caa2d3b31f7bdf757cbf394468543a96d20828f9604d3bafecd29"
+      },
+      {
+        "title": "三阶段规则包",
+        "sha256": "2926e2ac2469b8a2cf28b6eb46f2f7056a8d7e97cde5679330c0e7e123aaecb8"
+      },
+      {
+        "title": "条目生命周期",
+        "sha256": "c8408ee484bdf3508ce7dbec926c5b03f7af45563d8fc425296401ff97ab2ff2"
       }
     ],
-    "candidateSha256": "20dc3e5d0a71a29c58c658c153bde2fd2021fa04bbc21b67217f72b9eb38f952",
-    "rationale": {
-      "text": "AGENTS 的「怎么推进一件工作」只多了『新建条目前先申请』这一条规则：入口仍是规则节点，提示层/事实流/机器门三层与节点关系未变，图不需要改。",
-      "sectionsDigest": "b3295b1fbba3874eb81fcad0250e7fbe52be0fd3c5f03b96d05bc9426d0a8759"
-    }
+    "candidateSha256": "870cae2dfc8144ae5d856d257038a81e4418e3880c8610874cb6551e12abf841"
   },
   "assets": {
     "html": {
-      "path": "docs/assets/noema-governance.html",
+      "path": "governance/assets/noema-governance.html",
       "sha256": "9471290d17b47324bc799ed9cb45df4f4220b5348f0dc6ed7bcb5da932ea5bd1",
       "bytes": 855478
     },
     "png": {
-      "path": "docs/assets/noema-governance.png",
+      "path": "governance/assets/noema-governance.png",
       "sha256": "c6ecd444e6ccb7a51ec84882b661074ae37472008caf9440f62f27bbb649f319",
       "bytes": 171163
     }
   },
-  "updatedAt": "2026-11-17T21:35:56.439Z"
+  "updatedAt": "2026-11-18T13:07:04.083Z"
 }

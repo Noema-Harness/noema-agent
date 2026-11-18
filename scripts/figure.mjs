@@ -41,12 +41,12 @@ export const FIGURES = {
   governance: {
     key: "governance",
     label: "治理全景图",
-    source: "docs/assets/noema-governance.source.json",
-    html: "docs/assets/noema-governance.html",
-    png: "docs/assets/noema-governance.png",
-    doc: "AGENTS.md",
-    anchors: ["AGENTS.md"],
-    sections: ["怎么推进一件工作", "事实所有权"],
+    source: "governance/assets/noema-governance.source.json",
+    html: "governance/assets/noema-governance.html",
+    png: "governance/assets/noema-governance.png",
+    doc: "governance/README.md",
+    anchors: ["governance/README.md", "AGENTS.md"],
+    sections: ["三层结构", "四道门", "三阶段规则包", "条目生命周期"],
   },
 };
 
@@ -462,7 +462,7 @@ async function buildOne(root, figure, { log, rationale = "" }) {
   const candidatePath = path.join(candidateDir, "candidate.json");
   fs.writeFileSync(candidatePath, `${JSON.stringify(candidate, null, 2)}\n`, "utf8");
 
-  const assetsDir = at("docs/assets");
+  const assetsDir = path.dirname(at(figure.html));
   const figureStem = path.basename(figure.html, ".html");
   const sidecarPattern = new RegExp(`^${figureStem}\\..*\\.json$`, "u");
   for (const name of fs.readdirSync(assetsDir)) {
