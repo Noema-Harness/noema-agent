@@ -4,15 +4,17 @@
 
 ## 阶段地图
 
-| 阶段   | 你该先读什么                                         | 产物                                   |
-| ------ | ---------------------------------------------------- | -------------------------------------- |
-| 讨论   | `governance/noema/workflow/discussion.md`             | 条目决策层、证据、设计方案、开工清单   |
-| 执行   | `governance/noema/workflow/execution.md`              | `openspec/changes/<name>/` 与实现       |
-| 验收   | `governance/noema/workflow/acceptance.md`             | 验收页；用户确认后收口                  |
+阶段规则不靠读文件进入：入口命令把本阶段规则包与恢复卡打进工具反馈。
 
-治理索引与门槛、审核、协作检查：`governance/README.md`、`governance/noema/maintenance.md`。内核契约：`governance/core/README.md`。条目结构、模板与命令在对应规则包与 `docs/OPERATIONS.md`；规则进治理库，模板进技能，命令与修法进 OPERATIONS，三处不重复。
+| 阶段 | 进入方式                    | 产物                                 |
+| ---- | --------------------------- | ------------------------------------ |
+| 讨论 | `npm run stage -- discussion` | 条目决策层、证据、设计方案、开工清单 |
+| 执行 | `npm run stage -- execution`  | `openspec/changes/<name>/` 与实现     |
+| 验收 | `npm run stage -- acceptance` | 验收页；用户确认后收口               |
 
-`docs/DECISIONS.md` 是用户驱动的记录，不是任务账本。条目与阶段推进由治理命令完成（见 `governance/README.md` 的命令表），不手改。
+条目与阶段只走命令：`npm run decision -- round`（记一轮）、`npm run decision -- settle`（并进已定）、`npm run decision -- advance`（推进/退回）。过渡文档走 `npm run transition -- <kind>`。不手改 `docs/DECISIONS.md`；提交时 `precommit` 会打出当前活动条目与阶段。
+
+治理索引与门槛、审核、协作检查：`governance/README.md`、`governance/noema/maintenance.md`。内核契约与模块：`governance/core/README.md`。规则进治理库，模板进技能，命令与修法进 OPERATIONS，三处不重复。
 
 ## 事实所有权
 

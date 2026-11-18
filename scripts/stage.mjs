@@ -1,12 +1,14 @@
-// 阶段入口：打印当前阶段的规则包、活动条目与恢复卡。
+// 阶段入口（Noema 适配层）：打印当前阶段的规则包、活动条目与恢复卡。
 // 规则包只保证“提示出现”，不阻断；检查项里的 gate:<id> 必须真实登记在 RULES。
+// 内核部分（gate 抽取、恢复卡装配）在 governance/core/packs.mjs；阶段语义在 core/lifecycle.mjs。
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { RULES } from "./governance.mjs";
 import { decisionEntries, decisionMeta } from "./maintenance.mjs";
+import { missingGates, resumeCardText } from "../governance/core/packs.mjs";
+import { PHASES } from "../governance/core/lifecycle.mjs";
 
-const STAGES = ["discussion", "execution", "acceptance"];
 const PACKS = {
   discussion: "governance/noema/workflow/discussion.md",
   execution: "governance/noema/workflow/execution.md",
@@ -32,12 +34,7 @@ export function loadPack(root, stage) {
 
 /** 规则包里的检查项必须绑定真实门，否则提示层会说出不存在的门。 */
 export function checkPackGates(packText) {
-  const known = new Set(RULES.map((rule) => rule.id));
-  const missing = [];
-  for (const match of String(packText).matchAll(/gate:([a-z0-9-]+)/gu)) {
-    if (!known.has(match[1])) missing.push(match[1]);
-  }
-  return [...new Set(missing)];
+  return missingGates(packText, RULES.map((rule) => rule.id));
 }
 
 function lastRound(entry) {
@@ -67,30 +64,16 @@ export function activeEntries(root) {
 }
 
 export function resumeCard(root, { stage, id, entries, lastRound: round, commitsSince }) {
-  const lines = [];
-  lines.push("## 恢复卡");
-  lines.push(`- 当前阶段：${STAGE_LABEL[stage] ?? stage}（由 --stage 指定；产物是否齐备见规则包进入条件）`);
-  const target = id
-    ? entries.find((item) => item.id === id)
-    : entries.length === 1
-      ? entries[0]
-      : null;
-  if (target) {
-    lines.push(`- 条目：${target.id}（${target.stage}${target.blocker ? `；阻塞：${target.blocker}` : ""}）`);
-  } else if (entries.length === 0) {
-    lines.push("- 条目：没有活动条目（决策/执行/验收中的条目为空）");
-  } else {
-    lines.push(`- 条目：${entries.length} 条活动条目，用 --entry <id> 指定`);
-    for (const item of entries) lines.push(`  - ${item.id}（${item.stage}）`);
-  }
-  lines.push(
-    `- 上一轮：${round ? `第 ${round.number} 轮${round.conclusion ? `——${round.conclusion}` : ""}` : "没有轮次记录"}`,
-  );
-  lines.push(`- 下一步：${nextAction(stage, target, round)}`);
-  if (commitsSince) {
-    lines.push(`- 自上次记录以来 ${commitsSince} 个新提交：先 git log 看是否涉及本条目`);
-  }
-  return lines.join("\n");
+  const target = id ? entries.find((item) => item.id === id) : entries.length === 1 ? entries[0] : null;
+  return resumeCardText({
+    phaseLabel: `${STAGE_LABEL[stage] ?? stage}`,
+    stageHint: "--stage 指定；产物是否齐备见规则包进入条件",
+    entries,
+    id,
+    round,
+    commitsSince,
+    nextAction: nextAction(stage, target, round),
+  });
 }
 
 function nextAction(stage, target, round) {
@@ -101,7 +84,7 @@ function nextAction(stage, target, round) {
       : "给用户裁待裁项，或出下一份过渡文档（npm run transition）";
   }
   if (stage === "execution") return "按当前 change 的 tasks 继续切片；偏差与阶段总结写回条目";
-  return "生成验收页（npm run transition -- report），等用户确认后收口";
+  return "生成验收页（npm run transition -- report），等用户确认后收口；不过就退回执行中并写原因";
 }
 
 export function commitsSinceBaseline(root) {
@@ -130,8 +113,8 @@ export function main(argv = process.argv.slice(2), root = process.cwd()) {
     const value = argv[index + 1] && !argv[index + 1].startsWith("--") ? argv[++index] : true;
     flags[token.slice(2)] = value;
   }
-  if (!STAGES.includes(stage)) {
-    console.error(`stage：未知阶段 ${stage ?? "(空)"}；可用 ${STAGES.join(" | ")}`);
+  if (!PHASES.includes(stage)) {
+    console.error(`stage：未知阶段 ${stage ?? "(空)"}；可用 ${PHASES.join(" | ")}`);
     return 2;
   }
   const pack = loadPack(root, stage);

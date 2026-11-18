@@ -1,13 +1,17 @@
 // 条目阶段与记录的写盘入口：round / settle / advance。
 // 行为门在这里：写盘前校验原话长度、合法转移、批次指针与条目结构；失败不落盘。
+// 条目文本模型在 governance/core/entries.mjs，阶段语义在 governance/core/lifecycle.mjs；
+// 本文件只做 Noema 的路径、门与 CLI 接线。
 import fs from "node:fs";
 import path from "node:path";
 import { checkDecisionEntries, localToday } from "./maintenance.mjs";
-import { appendRound, readEntry, setStage, settleDecision } from "./decision-kernel.mjs";
-import { STATES, nextStage, stageIndex } from "./lifecycle.mjs";
+import { appendRound, readEntry, setStage, settleDecision, withDecisionLine } from "../governance/core/entries.mjs";
+import { transitionKind } from "../governance/core/lifecycle.mjs";
+import { STATES } from "./lifecycle.mjs";
 
 const DECISIONS = path.join("docs", "DECISIONS.md");
 const MIN_APPROVAL = 10;
+const MIN_REASON = 10;
 
 function parseFlags(argv) {
   const flags = {};
@@ -28,27 +32,10 @@ function requireEntry(text, id) {
   return entry;
 }
 
-/** 在决策层「- 要定：」之后插入「- 决定：」——决策与阶段推进必须在同一次写盘里完成，
- *  否则决策中就不能有决定行，两步写会互相拒绝。 */
-function withDecisionLine(text, id, line) {
-  const entry = readEntry(text, id);
-  const lines = [...entry.lines];
-  let at = -1;
-  for (let index = entry.range.start; index < entry.range.end; index += 1) {
-    if (/^- 要定：/u.test(lines[index])) {
-      at = index + 1;
-      break;
-    }
-  }
-  if (at === -1) throw new Error(`${id} 的决策层没有「- 要定：」：先写清要用户定什么`);
-  lines.splice(at, 0, line);
-  return lines.join("\n");
-}
-
 function requireApproval(flags, purpose) {
   const approval = typeof flags.approval === "string" ? flags.approval.trim() : "";
   if (!approval) {
-    throw new Error(`缺少 --approval「用户原话」：${purpose}必须有用户明确批准的原话`);
+    throw new Error(`缺少 --approval「用户原话」：${purpose}必须有用户明确批准的原话\n先跑 npm run stage -- <当前阶段> 看这一阶段的规则`);
   }
   if ([...approval].length < MIN_APPROVAL) {
     throw new Error(
@@ -56,6 +43,17 @@ function requireApproval(flags, purpose) {
     );
   }
   return approval;
+}
+
+function requireReason(flags) {
+  const reason = typeof flags.reason === "string" ? flags.reason.trim() : "";
+  if (!reason) {
+    throw new Error(`缺少 --reason「退回原因」：退回修复要留下原因，写进条目\n先跑 npm run stage -- 验收 看验收不过的规则`);
+  }
+  if ([...reason].length < MIN_REASON) {
+    throw new Error(`--reason 太短（${[...reason].length} 字，至少 ${MIN_REASON} 字）：写清哪一处不过、要修什么`);
+  }
+  return reason;
 }
 
 function commit(root, next, { dryRun }) {
@@ -68,30 +66,30 @@ function commit(root, next, { dryRun }) {
   console.log(`已写入 ${DECISIONS}`);
 }
 
-export function advanceEntry({ root = process.cwd(), id, stage, decision, approval, date, dryRun = false }) {
+export function advanceEntry({ root = process.cwd(), id, stage, decision, approval, reason, date, dryRun = false }) {
   const file = path.join(root, DECISIONS);
   const text = fs.readFileSync(file, "utf8");
   const entry = requireEntry(text, id);
   const target = stage;
   if (!STATES.includes(target)) throw new Error(`未知阶段：${target}；可用 ${STATES.join(" / ")}`);
   if (entry.stage === target) throw new Error(`${id} 已经在${target}`);
-  let transition = null;
-  if (target === "决策中") {
-    transition = "重开";
-  } else if (stageIndex(target) === stageIndex(entry.stage) + 1) {
-    transition = `${entry.stage} → ${target}`;
-  } else {
+  const kind = transitionKind(entry.stage, target);
+  if (!kind) {
     throw new Error(
-      `${id} 不能从${entry.stage}直接到${target}；合法转移见 scripts/lifecycle.mjs，退回用 --stage 上一个阶段并写原因`,
+      `${id} 不能从${entry.stage}直接到${target}；合法转移见 governance/core/lifecycle.mjs（向前一步、验收不过退回执行中、或重开）`,
     );
   }
   const today = date ?? localToday();
   let next = text;
-  if (target === "决策中") {
+  let transition = kind;
+  if (kind === "reopen") {
     if (!/重开/u.test(entry.decisionText)) {
       throw new Error("重开条目时在决策层写一行「重开：<原因>」，再运行本命令");
     }
     next = setStage(text, id, target, `- 重开：${today}`);
+  } else if (kind === "backward") {
+    const why = requireReason({ reason });
+    next = setStage(text, id, target, `- 退回：${why}（${today}）`);
   } else if (target === "执行中") {
     const quote = requireApproval({ approval }, "进入执行");
     if (!entry.batch) {
@@ -132,7 +130,7 @@ export function advanceEntry({ root = process.cwd(), id, stage, decision, approv
 export function recordRound({ root = process.cwd(), id, conclusion, changes, date, lines = [], dryRun = false }) {
   const file = path.join(root, DECISIONS);
   const text = fs.readFileSync(file, "utf8");
-  const entry = requireEntry(text, id);
+  requireEntry(text, id);
   if (!conclusion || !String(conclusion).trim()) throw new Error("缺少 --conclusion：这一轮的结论是什么");
   if (changes === undefined) throw new Error("缺少 --changes：「+新增 / 已解除 / 继续」的待裁变化");
   const next = appendRound(text, id, {
@@ -177,7 +175,7 @@ export function settleDecisionItem({
     throw new Error(`写入前校验失败（条目没有改动）：\n${report.errors.join("\n")}`);
   }
   commit(root, next, { dryRun });
-  return { id, number };
+  return { id, number, entry };
 }
 
 export function main(argv = process.argv.slice(2), root = process.cwd()) {
@@ -185,7 +183,7 @@ export function main(argv = process.argv.slice(2), root = process.cwd()) {
   const flags = parseFlags(rest);
   try {
     if (command === "round") {
-      recordRound({
+      const result = recordRound({
         root,
         id: flags.entry,
         conclusion: flags.conclusion,
@@ -194,6 +192,7 @@ export function main(argv = process.argv.slice(2), root = process.cwd()) {
         lines: flags.line ? (Array.isArray(flags.line) ? flags.line : [flags.line]) : [],
         dryRun: flags["dry-run"] === true,
       });
+      console.log(`${result.id}：第 ${result.round} 轮已记录`);
       return 0;
     }
     if (command === "settle") {
@@ -217,10 +216,11 @@ export function main(argv = process.argv.slice(2), root = process.cwd()) {
         stage: flags.stage,
         decision: flags.decision,
         approval: flags.approval,
+        reason: flags.reason,
         date: flags.date,
         dryRun: flags["dry-run"] === true,
       });
-      console.log(`${result.id}：${result.from} → ${result.to}`);
+      console.log(`${result.id}：${result.from} → ${result.to}（${result.transition}）`);
       return 0;
     }
     console.error("用法：npm run decision -- <round|settle|advance> --entry <D-…> …");

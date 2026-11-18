@@ -1,11 +1,12 @@
-// One work item = one review entry in docs/DECISIONS.md.
+// 阶段模型的 Noema 适配层：阶段本身在 governance/core/lifecycle.mjs，
+// 这里只补每道转移对应的仓库命令（门）与全局门清单。
 //
-// Ownership: the four stages below are the only states a work item can be in,
-// and every stage change is bound to a gate command. This module is the
-// single source for that table; AGENTS.md renders it as a short timeline, the
-// review view and the entry checks read the same states.
+// 资产所有权：阶段枚举与合法转移由内核拥有；这里的 TRANSITIONS 是给人和文档看的
+// 「哪一步要过哪道门」，改动时必须与内核的 forward/backward 表同步。
 
-export const STATES = ["决策中", "执行中", "待验收", "已收口"];
+import { STAGES, isStage, nextStage, stageIndex, transitionKind } from "../governance/core/lifecycle.mjs";
+
+export { STAGES as STATES, isStage, nextStage, stageIndex, transitionKind };
 
 // Transitions are ordered; `from: null` is how a work item is born.
 export const TRANSITIONS = [
@@ -20,8 +21,8 @@ export const TRANSITIONS = [
     from: "决策中",
     to: "执行中",
     event: "用户确认方案",
-    gate: "npm run plan:check",
-    writes: "openspec/changes/<name>/",
+    gate: "npm run decision -- advance",
+    writes: "openspec/changes/<name>/ 与条目决定行",
   },
   {
     from: "执行中",
@@ -36,6 +37,13 @@ export const TRANSITIONS = [
     event: "用户勾选验收项",
     gate: "npm run decisions:sync",
     writes: "- 用户确认：YYYY-MM-DD",
+  },
+  {
+    from: "待验收",
+    to: "执行中",
+    event: "验收不过，退回修复",
+    gate: "npm run decision -- advance --reason",
+    writes: "- 退回：<原因>（YYYY-MM-DD）",
   },
 ];
 
@@ -54,20 +62,8 @@ export const ALWAYS_GATES = [
   { name: "collaboration", command: "npm run guard", where: "PR" },
 ];
 
-export function isStage(value) {
-  return STATES.includes(value);
-}
-
-export function stageIndex(stage) {
-  return STATES.indexOf(stage);
-}
-
 export function nextTransition(stage) {
-  return TRANSITIONS.find((transition) => transition.from === stage) ?? null;
-}
-
-export function nextStage(stage) {
-  return nextTransition(stage)?.to ?? null;
+  return TRANSITIONS.find((transition) => transition.from === stage && transition.to === nextStage(stage)) ?? null;
 }
 
 // Uniform wording for gate failures: what is wrong, why the rule exists, and
@@ -75,3 +71,5 @@ export function nextStage(stage) {
 export function gateFailure(problem, reason, next) {
   return `${problem}。${reason}。下一步：${next}`;
 }
+
+export { STAGES };

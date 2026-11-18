@@ -1,8 +1,10 @@
-// 过渡文档入口：打印模板、生成骨架、校验结构。
+// 过渡文档入口（Noema 适配层）：打印模板、生成骨架、校验结构。
 // 模板只放骨架与判据；文档本身落在 .work/review/（待审不入库）。
+// 结构规则在 governance/core/transitions.mjs；这里只做模板路径、落盘与 CLI。
 import fs from "node:fs";
 import path from "node:path";
 import { localToday } from "./maintenance.mjs";
+import { checkTransitionText, scaffoldText, PLACEHOLDER } from "../governance/core/transitions.mjs";
 
 const KINDS = {
   design: { file: "governance/noema/workflow/transition/design.md", label: "设计方案", needsNoPending: true },
@@ -11,7 +13,6 @@ const KINDS = {
   handoff: { file: "governance/noema/workflow/transition/handoff.md", label: "执行交接" },
   report: { file: "governance/noema/workflow/transition/report.md", label: "验收报告" },
 };
-const PLACEHOLDER = "（待填）";
 
 function readText(file) {
   try {
@@ -21,32 +22,11 @@ function readText(file) {
   }
 }
 
-export function templateHeadings(text) {
-  return [...String(text).matchAll(/^## (.+)$/gmu)].map((match) => match[1].trim());
-}
-
 export function checkTransition(text, kind, root = process.cwd()) {
   const meta = KINDS[kind];
-  const errors = [];
   const template = readText(path.join(root, meta.file));
   if (template === null) return { errors: [`缺少模板 ${meta.file}`] };
-  for (const heading of templateHeadings(template)) {
-    if (!new RegExp(`^## ${heading.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}$`, "mu").test(text)) {
-      errors.push(`缺少「## ${heading}」一节`);
-    }
-  }
-  if (String(text).includes(PLACEHOLDER)) {
-    errors.push(`还有没填的「${PLACEHOLDER}」：填完再提交审核`);
-  }
-  if (meta.needsNoPending) {
-    const section = /## [^\n]*待确认项[^\n]*\n([\s\S]*?)(?=\n## |$)/u.exec(text)?.[1] ?? "";
-    if (!/待确认项/u.test(text) && kind === "design") {
-      errors.push("设计方案缺少「## 9 待确认项」一节");
-    } else if (/待确认项/u.test(text) && !/^\s*-\s*无\s*$/mu.test(section)) {
-      errors.push("「待确认项」必须写「- 无」才能提交批准：有未定项先回讨论");
-    }
-  }
-  return { errors };
+  return checkTransitionText(text, template, { needsNoPending: Boolean(meta.needsNoPending), label: meta.label });
 }
 
 export function scaffold(root, kind, { slug, entry, date }) {
@@ -58,17 +38,7 @@ export function scaffold(root, kind, { slug, entry, date }) {
   }
   const name = `${date}-${slug ?? entry}-${kind}.md`;
   const target = path.join(root, ".work", "review", name);
-  const body = [
-    `# ${meta.label}：${entry}`,
-    "",
-    `> 待审稿，不进仓库。来源条目：${entry}。填完后按判据自检，再请用户确认。`,
-    "",
-    template
-      .replace(/^#\s+.*$/mu, "")
-      .replace(/^## (.+)$/gmu, (_, heading) => `## ${heading}\n\n${PLACEHOLDER}`)
-      .trim(),
-    "",
-  ].join("\n");
+  const body = scaffoldText({ label: meta.label, entry, template });
   fs.mkdirSync(path.dirname(target), { recursive: true });
   fs.writeFileSync(target, body, "utf8");
   return path.relative(root, target).replaceAll("\\", "/");

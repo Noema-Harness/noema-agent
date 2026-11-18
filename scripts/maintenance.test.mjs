@@ -10,6 +10,7 @@ import {
   decisionEntries,
   decisionMeta,
   findGovernanceWordsInDocs,
+  findCoreBoundaryProblems,
   checkMilestone,
   checkPlatform,
   checkPlan,
@@ -876,4 +877,20 @@ test("governance vocabulary in docs is a pointer notice, not a rule copy", () =>
   assert.equal(hits.length, 1);
   assert.equal(hits[0].file, "docs/STATUS.md");
   assert.equal(hits[0].word, "治理机制");
+});
+
+test("the governance core keeps project names and repo paths out", () => {
+  const clean = findCoreBoundaryProblems([
+    { name: "governance/core/entries.mjs", text: "export function readEntry(text, id) {\n  return [text, id];\n}" },
+  ]);
+  assert.deepEqual(clean, []);
+  const dirty = findCoreBoundaryProblems([
+    {
+      name: "governance/core/packs.mjs",
+      text: "const file = 'docs/STATUS.md';\n// Noema 专用\n",
+    },
+  ]);
+  assert.equal(dirty.length, 2);
+  assert.match(dirty.map((item) => item.why).join("\n"), /仓库文档路径/u);
+  assert.match(dirty.map((item) => item.why).join("\n"), /Noema 专名/u);
 });

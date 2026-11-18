@@ -1,8 +1,12 @@
-// 条目文本操作的内核：只按行切分与拼接，不读环境、不写盘。
-// 上层（scripts/decision.mjs、stage.mjs、transition.mjs）负责参数、门与落盘。
-// 格式契约见 governance/core/README.md：四字段 + 决策层四块（要定/待裁/已定/轮次）。
+// 治理内核：条目文本模型。
+//
+// 只按行切分与拼接，不读环境、不写盘；格式契约见 governance/core/README.md
+// （四字段 + 决策层四块：要定 / 待裁 / 已定 / 轮次记录）。
+// 适配层（scripts/decision.mjs 等）负责参数、门、文件路径与落盘。
 
-export const STAGE_MARKS = { 决策中: "⏳", 执行中: "🔧", 待验收: "🔍", 已收口: "✅" };
+import { STAGE_MARKS } from "./lifecycle.mjs";
+
+export { STAGE_MARKS };
 
 export const ENTRY_HEADING =
   /^## (?:([⏳🔧🔍✅])\s+)?(?:\[#(\d+)\]\(([^)]+)\)\s+)?(D-(?:\d{3}|\d{8}-[a-z0-9-]+))(?:\s+(.+))?$/u;
@@ -73,15 +77,9 @@ export function readEntry(text, id) {
   const decision = sectionRange(lines, range.start, range.end, DECISION_SECTION);
   const execution = sectionRange(lines, range.start, range.end, EXECUTION_SECTION);
   const acceptance = sectionRange(lines, range.start, range.end, ACCEPTANCE_SECTION);
-  const decisionText = decision
-    ? lines.slice(decision.start + 1, decision.end).join("\n")
-    : "";
-  const executionText = execution
-    ? lines.slice(execution.start + 1, execution.end).join("\n")
-    : "";
-  const acceptanceText = acceptance
-    ? lines.slice(acceptance.start + 1, acceptance.end).join("\n")
-    : "";
+  const decisionText = decision ? lines.slice(decision.start + 1, decision.end).join("\n") : "";
+  const executionText = execution ? lines.slice(execution.start + 1, execution.end).join("\n") : "";
+  const acceptanceText = acceptance ? lines.slice(acceptance.start + 1, acceptance.end).join("\n") : "";
   const waitHeading = blockRange(
     lines,
     decision?.start ?? range.start,
@@ -221,9 +219,7 @@ export function settleDecision(text, id, { number, title, detail, approval, date
   const entry = readEntry(text, id);
   if (!entry) throw new Error(`找不到条目 ${id}`);
   if (!entry.waits.length) throw new Error(`${id} 没有待裁项，无法并入已定`);
-  const waiting = item
-    ? entry.waits.find((line) => line.includes(item))
-    : entry.waits[0];
+  const waiting = item ? entry.waits.find((line) => line.includes(item)) : entry.waits[0];
   if (!waiting) throw new Error(`待裁块里找不到「${item}」`);
   const lines = [...entry.lines];
   const waitHeading = lines.findIndex(
@@ -259,5 +255,22 @@ export function settleDecision(text, id, { number, title, detail, approval, date
     0,
     `- **E${number} ${title}**：${detail}（${date}，原话「${approval}」）`,
   );
+  return lines.join("\n");
+}
+
+/** 在决策层「- 要定：」之后插入「- 决定：」——决定与阶段推进必须在同一次写盘里完成，
+ *  否则决策中就不能有决定行，两步写会互相拒绝。 */
+export function withDecisionLine(text, id, line) {
+  const entry = readEntry(text, id);
+  const lines = [...entry.lines];
+  let at = -1;
+  for (let index = entry.range.start; index < entry.range.end; index += 1) {
+    if (/^- 要定：/u.test(lines[index])) {
+      at = index + 1;
+      break;
+    }
+  }
+  if (at === -1) throw new Error(`${id} 的决策层没有「- 要定：」：先写清要用户定什么`);
+  lines.splice(at, 0, line);
   return lines.join("\n");
 }

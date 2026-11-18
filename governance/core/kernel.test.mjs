@@ -3,16 +3,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import assert from "node:assert/strict";
-import {
-  appendRound,
-  readEntry,
-  setStage,
-  settleDecision,
-} from "./decision-kernel.mjs";
-import { advanceEntry, recordRound, settleDecisionItem } from "./decision.mjs";
-import { checkTransition, templateHeadings } from "./transition.mjs";
-import { activeEntries, checkPackGates, loadPack, resumeCard } from "./stage.mjs";
-import { checkDecisionEntries } from "./maintenance.mjs";
+import { appendRound, readEntry, setStage, settleDecision } from "./entries.mjs";
+import { checkTransitionText, templateHeadings } from "./transitions.mjs";
+import { checkPackGates, loadPack, resumeCard, activeEntries } from "../../scripts/stage.mjs";
+import { advanceEntry, recordRound, settleDecisionItem } from "../../scripts/decision.mjs";
+import { checkTransition } from "../../scripts/transition.mjs";
+import { checkDecisionEntries } from "../../scripts/maintenance.mjs";
 
 const HEADER = "Authority: 测试\nUpdate when: 测试\nDoes not own: 测试\n";
 
@@ -238,7 +234,7 @@ test("settle needs the user's words and lands in the decided block", () => {
 });
 
 test("stage packs load and every gate id they mention exists in the rule table", () => {
-  const root = path.resolve(new URL("../", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/u, "$1"));
+  const root = path.resolve(new URL("../../", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/u, "$1"));
   for (const stage of ["discussion", "execution", "acceptance"]) {
     const pack = loadPack(root, stage);
     assert.ok(pack, `missing pack ${stage}`);
@@ -274,7 +270,7 @@ test("active entries only list the three open stages", () => {
 });
 
 test("transition documents must fill every template section and settle their open items", () => {
-  const root = path.resolve(new URL("../", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/u, "$1"));
+  const root = path.resolve(new URL("../../", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/u, "$1"));
   const template = fs.readFileSync(path.join(root, "governance/noema/workflow/transition/design.md"), "utf8");
   const filled = `${templateHeadings(template)
     .map((heading) => `## ${heading}\n\n${heading.includes("待确认项") ? "- 无" : "- 已填写"}`)
@@ -286,4 +282,30 @@ test("transition documents must fill every template section and settle their ope
     /待确认项/u,
   );
   assert.match(checkTransition(filled.replace("- 已填写", "（待填）"), "design", root).errors.join("\n"), /待填/u);
+});
+test("the decision CLI lets acceptance fall back to execution only with a reason", () => {
+  const body = `# DECISIONS\n\n${HEADER}\n${entry({ stage: "待验收" }).replace("- 未开始：定案后进入验收", "- [ ] 验收项一")}`;
+  const root = makeRoot(body);
+  const result = advanceEntry({
+    root,
+    id: "D-20261118-probe",
+    stage: "执行中",
+    reason: "验收发现规则包与工具不一致，退回修复",
+    date: "2026-11-18",
+  });
+  assert.equal(result.transition, "backward");
+  const written = fs.readFileSync(path.join(root, "docs", "DECISIONS.md"), "utf8");
+  assert.match(written, /- \*\*阶段\*\*：执行中/u);
+  assert.match(written, /- 退回：验收发现规则包与工具不一致，退回修复（2026-11-18）/u);
+
+  const fresh = makeRoot(body);
+  assert.throws(
+    () => advanceEntry({ root: fresh, id: "D-20261118-probe", stage: "执行中", date: "2026-11-18" }),
+    /--reason/u,
+  );
+  const tooShort = makeRoot(body);
+  assert.throws(
+    () => advanceEntry({ root: tooShort, id: "D-20261118-probe", stage: "执行中", reason: "不过", date: "2026-11-18" }),
+    /太短/u,
+  );
 });

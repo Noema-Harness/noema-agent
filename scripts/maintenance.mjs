@@ -455,6 +455,40 @@ export function findGovernanceWordsInDocs(diffText) {
   return hits;
 }
 
+// 内核是通用层：出现项目专名或仓库路径，说明适配没做完（E17/E25）。
+const CORE_FORBIDDEN = [
+  { pattern: /\bnoema\b/iu, why: "Noema 专名" },
+  { pattern: /apps[/\\]desktop/u, why: "桌面端路径" },
+  { pattern: /(^|[^\w])docs[/\\]/u, why: "仓库文档路径" },
+  { pattern: /\.work[/\\]/u, why: "临时工作目录" },
+];
+
+/** 内核文件（governance/core/*.mjs）不得出现项目专名与仓库路径。 */
+export function findCoreBoundaryProblems(files) {
+  const problems = [];
+  for (const { name, text } of files) {
+    const lines = String(text ?? "").split("\n");
+    for (const [index, line] of lines.entries()) {
+      const hit = CORE_FORBIDDEN.find((rule) => rule.pattern.test(line));
+      if (hit) problems.push({ name, line: index + 1, why: hit.why });
+    }
+  }
+  return problems;
+}
+
+function governanceCoreFiles(root) {
+  const dir = path.join(root, "governance", "core");
+  let names = [];
+  try {
+    names = fs.readdirSync(dir).filter((name) => name.endsWith(".mjs") && !name.endsWith(".test.mjs"));
+  } catch {
+    return [];
+  }
+  return names
+    .sort()
+    .map((name) => ({ name: `governance/core/${name}`, text: readText(path.join(dir, name)) ?? "" }));
+}
+
 export function checkDocuments(root, git, options = {}) {
   const errors = [];
   const notices = [];
@@ -508,6 +542,16 @@ export function checkDocuments(root, git, options = {}) {
         `另有 ${governanceHits.length - 3} 处 docs/ 新增治理内容，规则一并搬进 governance/`,
       );
     }
+  }
+
+  const coreProblems = findCoreBoundaryProblems(governanceCoreFiles(root));
+  for (const problem of coreProblems.slice(0, 5)) {
+    errors.push(
+      `${problem.name}:${problem.line} 出现${problem.why}：内核是通用层，项目路径与专名放治理适配层（governance/noema/ 或 scripts/）`,
+    );
+  }
+  if (coreProblems.length > 5) {
+    errors.push(`governance/core/ 还有 ${coreProblems.length - 5} 处项目专名或仓库路径，一并挪到适配层`);
   }
 
   const packageVersion = readJson(path.join(root, "package.json"))?.version;
@@ -992,7 +1036,20 @@ export function checkPrecommit(root, options = {}) {
   // Decisions are a place to park thinking, not a lock on unrelated work:
   // whether a decision is confirmed only matters for the change that cites it
   // (checked by plan/milestone), never for every product file touched.
+  const stageNotice = currentStageNotice(root);
+  if (stageNotice) plan.notices.unshift(stageNotice);
   return { errors, notices: plan.notices, staged };
+}
+
+/** 提交时自然注入一次当前条目与阶段，避免 agent 只凭记忆猜自己在哪个阶段。 */
+function currentStageNotice(root) {
+  const text = readText(path.join(root, "docs", "DECISIONS.md")) ?? "";
+  const active = decisionEntries(text)
+    .map((entry) => ({ entry, meta: decisionMeta(entry) }))
+    .filter(({ meta }) => meta && ["决策中", "执行中", "待验收"].includes(meta.stage))
+    .map(({ entry, meta }) => `${entry.id}（${meta.stage}）`);
+  if (!active.length) return null;
+  return `当前活动条目：${active.join("、")}；进阶段先跑 npm run stage -- <discussion|execution|acceptance> 看本阶段规则`;
 }
 
 /**
