@@ -59,10 +59,13 @@ npm run work:view                                        # 随时重建工作台
 - 唯一数据源：`governance/data/state.json`（`{version:3, current, work, threads, log}`），只经 `npm run state` 写；
   手改会被 `docs:check` 与 `work:view` 的数据校验拦住；写入有文件锁、原子替换与 `.work/state-history/` 备份。
 - `work`：`scope`（范围）+ `phases`（2–5 个验收单元，含任务与 D/C/R/H 验收项）。
-- 工作台：`npm run work:view` → `.work/review/work-view.html`，只读、可重建、按状态收束版面：
-  顶部给「现在该做」（可直接复制命令），中间是阶段时间线（点一下跳转并展开该阶段），
-  只展开当前阶段、其余折叠，验收层 D/C/R/H 用一行图例说明；支持明暗切换（快捷键 T）、
-  点击阶段/悬停行有反馈、`prefers-reduced-motion` 下关闭动画。不进库、不进事实流。
+- 工作台：`npm run work:view` → `.work/review/work-view.html`，只读、可重建、只讲一件事：
+  - 一个焦点：当前验收单元的编号与名字，下方一条按完成度推进的细线；再往下是唯一亮元素——
+    「下一步」命令，点一下复制。
+  - 一条骨架：验收单元是纵向时间线，当前单元菱点脉冲，已完成为绿点；点节点展开/收起，
+    地址栏 `#P3` 可深链；`J`/`K` 或方向键在节点间移动。
+  - 验收层只靠形状区分（▢ D · ○ C · ◇ R · △ H），颜色表示状态，不写图例；证据在行内悬浮出现。
+  - 明暗切换（`T`），`prefers-reduced-motion` 下关闭动画。不进库、不进事实流。
 - 验收四层：**D** 确定性检查（命令/测试）、**C** 判据对照、**R** 审查发现（必须逐条处置）、**H** 人签收。
   通过 = D+C+H 全绿 + R 全部处置。H 只由用户原话判定：阶段的 H 项用 `state -- accept human --id … --text "用户原话"`，
   agent 用自己的判断填会被拒绝；整条范围的签收用 `state -- sign "…"`，签收只认原话。

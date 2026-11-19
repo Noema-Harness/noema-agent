@@ -30,8 +30,9 @@ Does not own: 产品定位（PRODUCT）、结构与数据地图（ARCHITECTURE�
   审查发现处置 `accept resolve --id P1-A3 --decision 已修|延期|接受 [--note "…"]`。
 - 人签收：`npm run state -- sign "<用户原话>"`（必须所有单元完成、D/C/H 全绿、R 全处置）。
 - 归档：`npm run state -- clean`（只归档已签收的工作，写入 `governance/data/history.json`）。
-- 工作台：`npm run work:view` 生成 `.work/review/work-view.html`（只读，按状态收束；只展开当前阶段，
-  可直接复制下一步命令，点时间线跳转，支持明暗切换与键盘 T）。
+- 工作台：`npm run work:view` 生成 `.work/review/work-view.html`（只读；一个焦点＝当前单元与下一步命令，
+  一条骨架＝验收单元时间线，点节点展开、`#P3` 深链、`J`/`K` 移动，验收层用形状区分、证据悬停出现，
+  明暗切换 `T`）。
 
 ## 检查
 

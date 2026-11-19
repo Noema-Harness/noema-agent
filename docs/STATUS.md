@@ -23,9 +23,11 @@ Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与�
   `clean`（归档已签收的工作）、`phase start`、`scope --kind`；未知命令按提示退出。
 - 行为门绑定状态：提交门对 `apps/desktop/src/` 的改动要求先有 `work.scope`（小修可用 `--kind 修复`），
   没有范围就拒绝提交。
-- 工作台重做（`npm run work:view`）：暗色工业视觉 + 明暗切换；只展开当前阶段，其余折叠显示进度；
-  「现在该做」显示下一步命令并可一键复制；进度环入场、阶段时间线可跳转、当前阶段脉冲；
-  近期动态、审查发现、D/C/R/H 图例、签收状态同屏；窄屏（520px）不横向溢出；减少约三成重复信息。
+- 工作台重做（`npm run work:view`，按「一个焦点、一条骨架」重写）：
+  - 一个焦点＝当前验收单元的编号、名字与按完成度推进的细线；唯一亮元素是「下一步」命令（点一下复制）。
+  - 一条骨架＝验收单元纵向时间线；当前单元菱点脉冲、已完成绿点；点节点展开，`#P3` 深链，`J`/`K` 移动。
+  - 验收层用形状区分（▢ D · ○ C · ◇ R · △ H）、颜色表示状态，不写图例；证据在行内悬停出现。
+  - 删掉进度环、统计面板、D/C/R/H 文本图例、横向时间线与近期动态；明暗切换 `T`；`prefers-reduced-motion` 关动画。
 - 演练数据整理：上一轮 v2 演练归档进 `history.json`（`legacy-demo`），删掉过期模板
   `governance/noema/workflow/transition/`；当前 `state.json` 是一条真实里程碑（范围、5 个验收单元、7 任务、12 验收项）。
 - 可直接上手（`b11bca3`）：`governance/README.md` 的「第一次使用（五分钟）」16 步由 `scripts/quickstart.test.mjs`
@@ -36,10 +38,10 @@ Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与�
 - `npm run check`：**901/901 通过、0 fail**（33,038ms），`governance: milestone OK`（workspace/branches/docs/figure/source/lint/typecheck/tools/test 全绿）。
 - `node --test governance/core/state.test.mjs` **22/22**（v2→v3 升级、证据规则、R 处置、H 只能由用户原话判、签收、归档、`next` 全链路）。
 - `node --test scripts/maintenance.test.mjs` **6/6**（治理词提示、内核边界、产品代码必须有范围、文档登记与文档头、precommit 播报）。
-- `node --test scripts/work-view.test.mjs` **3/3**（下一步命令、只展开当前阶段、HTML 转义）。
+- `node --test scripts/work-view.test.mjs` **6/6**（焦点编号与单元名、唯一 action、只展开当前单元、HTML 转义、证据悬停、层用形状且无旧图例）。
 - `node --test scripts/quickstart.test.mjs` **2/2**（README 16 步跑通、空状态 `next`/`verify` 可用）。
 - `npm run docs:check` OK；`npm run figure:check` OK（治理图 source `88b91a268b38`）。
-- 截图核验：`.work/review/deliver-dark.png`、`deliver-light.png`（1280px）、`shot-narrow5.png`（520px）。
+- 截图核验（`--force-prefers-reduced-motion` 下抓取，避免动画首帧）：`.work/review/next-dark.png`、`next-light.png`（1280px）、`next-narrow.png`（520px）。
 - CI：`44611231148`、`44613973625`、`44614559086`、`44616782475` 均 `verify` success。
 
 **未验证**：
