@@ -668,7 +668,7 @@ export function setAcceptance(doc, { id, status, evidence = null, now = new Date
   if ((item.layer ?? "D") === "R") {
     throw new Error(`${item.id} 是审查发现：用 accept resolve --decision 已修|延期|接受`);
   }
-  if ((item.layer ?? "D") === "H") {
+  if ((item.layer ?? "D") === "H" && status !== "未验") {
     throw new Error(
       `${item.id} 是人签收项（H）：agent 不能自己判，用 accept human --id ${item.id} --text「用户原话」`,
     );
@@ -678,7 +678,11 @@ export function setAcceptance(doc, { id, status, evidence = null, now = new Date
   }
   item.status = status;
   item.checkedAt = now.toISOString();
-  if (note) item.evidence.push(note);
+  if (status === "未验") {
+    item.evidence = [];
+  } else if (note) {
+    item.evidence.push(note);
+  }
   return { doc, phase, item };
 }
 

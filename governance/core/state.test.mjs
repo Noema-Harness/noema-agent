@@ -353,6 +353,10 @@ test("acceptance layers keep findings out of the verdict and review notes stay o
     /用户原话/u,
   );
   passHumanAcceptance(doc, { id: human.id, text: "用户看过并认可这一版", now: NOW });
+  // 回到未验会清掉旧判断的证据，避免上一次的口径留在记录里。
+  setAcceptance(doc, { id: human.id, status: "未验", now: NOW });
+  assert.deepEqual(human.evidence, []);
+  passHumanAcceptance(doc, { id: human.id, text: "用户看过并认可这一版", now: NOW });
   // R 层是审查发现：不判「通过」，但必须先处置（改掉 / 延期 / 接受）才能完成阶段。
   assert.equal(finding.status, "未验");
   assert.throws(() => completePhase(doc, { id: phase.id, now: NOW }), /审查发现没处置/u);
