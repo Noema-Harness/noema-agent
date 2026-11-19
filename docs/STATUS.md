@@ -28,15 +28,19 @@ Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与�
   近期动态、审查发现、D/C/R/H 图例、签收状态同屏；窄屏（520px）不横向溢出；减少约三成重复信息。
 - 演练数据整理：上一轮 v2 演练归档进 `history.json`（`legacy-demo`），删掉过期模板
   `governance/noema/workflow/transition/`；当前 `state.json` 是一条真实里程碑（范围、5 个验收单元、7 任务、12 验收项）。
+- 可直接上手（`b11bca3`）：`governance/README.md` 的「第一次使用（五分钟）」16 步由 `scripts/quickstart.test.mjs`
+  在空白状态上逐步跑通并挂进 `tools:test`；`clean` 归档后把状态带回讨论，不留「验收态空工作区」。
 
 **证据**：
 
-- `npm run check`：**901/901 通过、0 fail**（55,456ms），`governance: milestone OK`（workspace/branches/docs/figure/source/lint/typecheck/tools/test 全绿）。
+- `npm run check`：**901/901 通过、0 fail**（33,038ms），`governance: milestone OK`（workspace/branches/docs/figure/source/lint/typecheck/tools/test 全绿）。
 - `node --test governance/core/state.test.mjs` **22/22**（v2→v3 升级、证据规则、R 处置、H 只能由用户原话判、签收、归档、`next` 全链路）。
 - `node --test scripts/maintenance.test.mjs` **6/6**（治理词提示、内核边界、产品代码必须有范围、文档登记与文档头、precommit 播报）。
 - `node --test scripts/work-view.test.mjs` **3/3**（下一步命令、只展开当前阶段、HTML 转义）。
-- `npm run docs:check` OK；`npm run figure:check` OK（治理图 source `d4e68d9210a7`）。
-- 截图核验：`.work/review/shot-dark4.png`（1280px）、`shot-narrow5.png`（520px）。
+- `node --test scripts/quickstart.test.mjs` **2/2**（README 16 步跑通、空状态 `next`/`verify` 可用）。
+- `npm run docs:check` OK；`npm run figure:check` OK（治理图 source `88b91a268b38`）。
+- 截图核验：`.work/review/deliver-dark.png`、`deliver-light.png`（1280px）、`shot-narrow5.png`（520px）。
+- CI：`44611231148`、`44613973625`、`44614559086`、`44616782475` 均 `verify` success。
 
 **未验证**：
 
