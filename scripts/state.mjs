@@ -429,9 +429,14 @@ function dispatch(argv, root = process.cwd()) {
   if (command === "clean") {
     const result = archiveWork(doc);
     appendHistory(root, result.entry);
-    doc = commit(root, result.doc, { dryRun });
+    const back = setState(result.doc, {
+      to: "讨论",
+      reason: "签收并归档，下一轮从讨论开始",
+      obligation: "挂起",
+    });
+    doc = commit(root, back.doc, { dryRun });
     console.log(`已归档：${result.entry.scope}（${result.entry.signed.date} 签收）`);
-    console.log("工作区已重置为空白；历史写入 governance/data/history.json");
+    console.log("工作区已重置为空白，状态回到讨论；历史写入 governance/data/history.json");
     return;
   }
 

@@ -316,7 +316,7 @@
   },
   "source": {
     "doc": "governance/README.md",
-    "sha256": "de3242dfe8538bdd26de5f0ff7274818cd0f43812dddcd93654210c4370fdc36",
+    "sha256": "88b91a268b384825d43b2652dbba5b24a09416b384f56e6324e9e06a4ec349bf",
     "sections": [
       {
         "title": "状态与门",
@@ -331,11 +331,7 @@
         "sha256": "f375c8460df06b2e3177133710a140d07a17066ea531e6c4fec99d1073d7eb66"
       }
     ],
-    "candidateSha256": "370f48be324c0f5c8ba59c42134693713353b9b22605f769e3e9a90b43bf7154",
-    "rationale": {
-      "text": "README 只把 H 层判法写清（用户原话 + accept human）；节点仍是状态/规则包/范围/单元/数据/门/工作台，连线未变，图不需要重画。",
-      "sectionsDigest": "5e358a5a21dd37ba741fd62aa2821442c4d05ca2a273599cc04dfaad32eac6a7"
-    }
+    "candidateSha256": "370f48be324c0f5c8ba59c42134693713353b9b22605f769e3e9a90b43bf7154"
   },
   "assets": {
     "html": {
@@ -345,9 +341,9 @@
     },
     "png": {
       "path": "governance/assets/noema-governance.png",
-      "sha256": "7dfeb0785fff8610598daaa7c327b49aa04f553cbd1f568f11a42edbbe7a7a22",
-      "bytes": 156685
+      "sha256": "a2cc9bcc57a78a40472a4042b997a7104a455d781fa073b14720f8a2e9d29c50",
+      "bytes": 156604
     }
   },
-  "updatedAt": "2026-11-19T20:55:41.409Z"
+  "updatedAt": "2026-11-19T21:12:49.422Z"
 }

@@ -7,6 +7,34 @@ Does not own: 命令与失败修法（docs/OPERATIONS.md）、产品定义（doc
 治理不是一个文档，而是 agent 的三个状态和挂在状态上的门。规则随状态注入工具反馈；
 `npm run state` 是唯一入口，工作台只是它的只读视图。
 
+## 第一次使用（五分钟）
+
+```text
+npm run state                                            # 现在在哪、下一步该敲什么
+npm run state -- round --conclusion "这一轮的结论"        # 讨论态：记一轮，要停就问用户
+npm run state -- wait add --item "T1 要定什么"            # 需要用户拍板的事，先登记
+npm run state -- scope "这次做什么"                       # 定案：写范围（小修加 --kind 修复）
+npm run state -- set 执行 --reason "范围已定"             # 进入执行
+npm run state -- phase add --name "验收单元名"
+npm run state -- phase start --id P1
+npm run state -- task add --phase P1 --text "任务"
+npm run state -- task done --id P1-T1 --evidence "怎么证明做完"
+npm run state -- accept add --phase P1 --layer D --text "确定性验收项"
+npm run state -- accept add --phase P1 --layer H --text "人签收项"
+npm run state -- accept set --id P1-A1 --status 通过 --evidence "证据"
+npm run state -- accept human --id P1-A2 --text "用户原话"  # H 层只能这样判
+npm run state -- phase done --id P1
+npm run state -- set 验收 --reason "验收项全绿"             # 全部单元完成后再进
+npm run state -- sign "用户签收原话"
+npm run state -- clean                                   # 归档并回到讨论，工作区清空
+npm run work:view                                        # 随时重建工作台
+```
+
+这段 16 步在空白状态上由 `scripts/quickstart.test.mjs` 逐步跑通（`npm run tools:test` 会验证），
+所以文档里的命令可以直接照着敲。
+
+每步都会打印「现在该做：…」；不确定就 `npm run state -- next`。
+
 ## 状态与门
 
 状态只描述「现在在做什么」，不携带授权；授权来自用户的请求与范围。
