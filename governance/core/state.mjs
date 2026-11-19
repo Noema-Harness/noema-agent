@@ -12,7 +12,7 @@ export const PACK_BY_STATE = {
 
 export const ENDINGS = ["定案", "归档"];
 
-export const PHASE_STATUSES = ["进行中", "已完成"];
+export const PHASE_STATUSES = ["未开始", "进行中", "已完成"];
 export const TASK_STATUSES = ["未完成", "已完成"];
 export const ACCEPTANCE_STATUSES = ["未验", "通过", "不通过"];
 // R 层的发现也必须被处置：改掉、延期（写理由）、或接受（写理由），不能挂着不管。
@@ -21,6 +21,8 @@ export const FINDING_DECISIONS = ["已修", "延期", "接受"];
 export const ACCEPTANCE_LAYERS = ["D", "C", "R", "H"];
 export const BLOCKING_LAYERS = ["D", "C", "H"];
 export const MAX_PHASES = 5;
+export const STATE_VERSION = 3;
+export const SCOPE_KINDS = ["里程碑", "修复"];
 
 const THREAD_FIELDS = {
   id: "string",
@@ -69,8 +71,8 @@ export function emptyWork() {
 
 export function emptyState(now = new Date()) {
   return {
-    version: 2,
-    current: { state: "讨论", since: now.toISOString(), threadId: null },
+    version: STATE_VERSION,
+    current: { state: "讨论", since: now.toISOString(), threadId: null, by: null },
     log: [],
     threads: [],
     work: emptyWork(),
@@ -81,17 +83,41 @@ export function emptyState(now = new Date()) {
 // 2. Reading an old file upgrades it in place so callers never see two shapes.
 export function upgradeState(raw) {
   if (!raw || typeof raw !== "object") throw new Error("状态数据不是对象");
-  if (raw.version === 2) return raw;
-  if (raw.version === 1) {
-    return { ...raw, version: 2, work: raw.work ?? emptyWork() };
+  if (raw.version === STATE_VERSION) return raw;
+  let doc = raw;
+  if (doc.version === 1) doc = { ...doc, version: 2, work: doc.work ?? emptyWork() };
+  if (doc.version === 2) {
+    const work = doc.work ?? emptyWork();
+    const scope = work.scope
+      ? {
+          text: work.scope.text,
+          since: work.scope.since,
+          kind: work.scope.kind ?? "里程碑",
+          signed: work.scope.signed ?? null,
+        }
+      : null;
+    return {
+      ...doc,
+      version: STATE_VERSION,
+      current: { ...doc.current, by: doc.current?.by ?? null },
+      work: {
+        ...work,
+        scope,
+        phases: (work.phases ?? []).map((phase) => ({
+          ...phase,
+          startedAt: phase.startedAt ?? phase.createdAt ?? null,
+        })),
+      },
+    };
   }
-  throw new Error(`状态数据版本 ${String(raw.version)} 无法升级：只支持 1 → 2`);
+  throw new Error(`状态数据版本 ${String(raw.version)} 无法升级：支持 1 → 2 → ${STATE_VERSION}`);
 }
 
 export function validateState(doc) {
   const errors = [];
   if (!doc || typeof doc !== "object") return ["状态数据不是对象"];
-  if (doc.version !== 2) errors.push(`状态数据版本应为 2，实际为 ${String(doc.version)}`);
+  if (doc.version !== STATE_VERSION)
+    errors.push(`状态数据版本应为 ${STATE_VERSION}，实际为 ${String(doc.version)}`);
   if (!Array.isArray(doc.log)) errors.push("状态数据缺少 log 数组");
   if (!Array.isArray(doc.threads)) errors.push("状态数据缺少 threads 数组");
   if (!doc.current || typeof doc.current !== "object") {
@@ -124,6 +150,9 @@ export function validateState(doc) {
       errors.push(`会话 ${String(thread.id)} 的 ending 只能是 ${ENDINGS.join(" / ")} 或 null`);
     }
   }
+  const by = doc.current?.by;
+  if (by !== undefined && by !== null && typeof by !== "string")
+    errors.push("current.by 只能是字符串或 null");
   const work = doc.work;
   if (!work || typeof work !== "object") {
     errors.push("状态数据缺少 work（范围与阶段）");
@@ -222,6 +251,55 @@ export function validateState(doc) {
           }
         }
       }
+    }
+  }
+  if (doc.work && Array.isArray(doc.work.phases)) {
+    const phases = doc.work.phases;
+    const running = phases.filter((phase) => phase.status === "进行中");
+    if (running.length > 1) errors.push(`同时只能有一个阶段进行中，实际 ${running.length} 个`);
+    for (const phase of phases) {
+      if (phase.status === "已完成" && !isDateLike(phase.doneAt))
+        errors.push(`阶段 ${phase.id} 已完成但缺少 doneAt`);
+      for (const task of phase.tasks ?? []) {
+        if (!Array.isArray(task.evidence)) continue;
+        if (task.evidence.some((one) => typeof one !== "string" || one.trim().length === 0))
+          errors.push(`任务 ${task.id} 的证据必须是非空字符串`);
+        if (task.status === "已完成" && task.evidence.length === 0)
+          errors.push(`任务 ${task.id} 标为已完成但没有证据`);
+      }
+      for (const item of phase.acceptance ?? []) {
+        const layer = item.layer ?? "D";
+        if (
+          ["通过", "不通过"].includes(item.status) &&
+          (!Array.isArray(item.evidence) || item.evidence.length === 0)
+        ) {
+          errors.push(`验收项 ${item.id} 判了「${item.status}」但没有证据`);
+        }
+        if (layer === "R" && item.status !== "未验")
+          errors.push(`审查发现 ${item.id} 只记录，不用判「${item.status}」`);
+        if (item.resolution && !FINDING_DECISIONS.includes(item.resolution.decision))
+          errors.push(`发现 ${item.id} 的处置不合规`);
+      }
+    }
+    const scope = doc.work.scope;
+    if (scope && !SCOPE_KINDS.includes(scope.kind ?? "里程碑"))
+      errors.push(`范围类型只能是 ${SCOPE_KINDS.join(" / ")}`);
+    if (scope?.signed) {
+      const blocking = phases.flatMap((phase) =>
+        (phase.acceptance ?? []).filter((item) => BLOCKING_LAYERS.includes(item.layer ?? "D")),
+      );
+      const bad = blocking.filter((item) => item.status !== "通过");
+      if (bad.length > 0)
+        errors.push(`已签收但仍有未通过的验收项：${bad.map((one) => one.id).join("、")}`);
+      const open = phases.flatMap((phase) =>
+        (phase.acceptance ?? []).filter(
+          (item) =>
+            (item.layer ?? "D") === "R" &&
+            (!item.resolution || !FINDING_DECISIONS.includes(item.resolution.decision)),
+        ),
+      );
+      if (open.length > 0)
+        errors.push(`已签收但仍有未处置的审查发现：${open.map((one) => one.id).join("、")}`);
     }
   }
   return errors;
@@ -402,12 +480,15 @@ function findAcceptance(doc, id) {
   throw new Error(`没有验收项 ${String(id)}（先跑 npm run state -- work 看清单）`);
 }
 
-export function setScope(doc, { text, now = new Date() } = {}) {
+export function setScope(doc, { text, kind = "里程碑", now = new Date() } = {}) {
   if (!text || text.trim().length < 2) {
     throw new Error("范围要写清楚「这次做什么」（至少 2 个字）");
   }
+  if (!SCOPE_KINDS.includes(kind)) {
+    throw new Error(`范围类型只能是 ${SCOPE_KINDS.join(" / ")}`);
+  }
   doc.work = doc.work ?? emptyWork();
-  doc.work.scope = { text: text.trim(), since: now.toISOString(), signed: null };
+  doc.work.scope = { text: text.trim(), kind, since: now.toISOString(), signed: null };
   return { doc, scope: doc.work.scope };
 }
 
@@ -465,8 +546,9 @@ export function addPhase(doc, { name, goal = null, now = new Date() } = {}) {
     id,
     name: name.trim(),
     goal: goal ? goal.trim() : null,
-    status: "进行中",
+    status: "未开始",
     createdAt: now.toISOString(),
+    startedAt: null,
     doneAt: null,
     tasks: [],
     acceptance: [],
@@ -478,6 +560,9 @@ export function addPhase(doc, { name, goal = null, now = new Date() } = {}) {
 export function completePhase(doc, { id, now = new Date() } = {}) {
   const phase = findPhase(doc, id);
   if (phase.status === "已完成") throw new Error(`阶段 ${phase.id} 已经完成`);
+  if (phase.status !== "进行中") {
+    throw new Error(`阶段 ${phase.id} 还没开始：npm run state -- phase start --id ${phase.id}`);
+  }
   const openTasks = phase.tasks.filter((task) => task.status !== "已完成");
   if (openTasks.length > 0) {
     throw new Error(
@@ -522,10 +607,26 @@ export function addTask(doc, { phase: phaseId, text, now = new Date() } = {}) {
 
 export function completeTask(doc, { id, evidence = null, now = new Date() } = {}) {
   const { phase, task } = findTask(doc, id);
+  const note = evidence ? String(evidence).trim() : "";
+  if (note.length < 4) {
+    throw new Error(`完成任务要写 --evidence「怎么验的 + 结果」（至少 4 字）：${task.id}`);
+  }
   task.status = "已完成";
   task.doneAt = now.toISOString();
-  if (evidence && String(evidence).trim().length > 0) task.evidence.push(String(evidence).trim());
+  task.evidence.push(note);
   return { doc, phase, task };
+}
+
+// 阶段从「未开始」显式开始，避免加进来就等于在推进。
+export function startPhase(doc, { id, now = new Date() } = {}) {
+  const phase = findPhase(doc, id);
+  if (phase.status === "进行中") throw new Error(`阶段 ${phase.id} 已经开始`);
+  if (phase.status === "已完成") throw new Error(`阶段 ${phase.id} 已经完成`);
+  const running = (doc.work?.phases ?? []).find((one) => one.status === "进行中");
+  if (running) throw new Error(`阶段 ${running.id} 还在进行中：先收尾再开始下一个`);
+  phase.status = "进行中";
+  phase.startedAt = now.toISOString();
+  return { doc, phase };
 }
 
 export function addAcceptance(doc, { phase: phaseId, text, layer = "D", now = new Date() } = {}) {
@@ -563,9 +664,16 @@ export function setAcceptance(doc, { id, status, evidence = null, now = new Date
     throw new Error(`验收结论只能是 ${ACCEPTANCE_STATUSES.join(" / ")}`);
   }
   const { phase, item } = findAcceptance(doc, id);
+  const note = evidence ? String(evidence).trim() : "";
+  if ((item.layer ?? "D") === "R") {
+    throw new Error(`${item.id} 是审查发现：用 accept resolve --decision 已修|延期|接受`);
+  }
+  if (status !== "未验" && note.length < 4) {
+    throw new Error(`判「${status}」要写 --evidence「怎么验的 + 结果」（至少 4 字）：${item.id}`);
+  }
   item.status = status;
   item.checkedAt = now.toISOString();
-  if (evidence && String(evidence).trim().length > 0) item.evidence.push(String(evidence).trim());
+  if (note) item.evidence.push(note);
   return { doc, phase, item };
 }
 
@@ -646,4 +754,214 @@ export function summaryLines(doc) {
     lines.push("会话：无（进入讨论时自动开始，或在讨论中记录）");
   }
   return lines;
+}
+
+export function openFindings(doc) {
+  const phases = doc.work?.phases ?? [];
+  return phases.flatMap((phase) =>
+    (phase.acceptance ?? []).filter(
+      (item) =>
+        (item.layer ?? "D") === "R" &&
+        (!item.resolution || !FINDING_DECISIONS.includes(item.resolution.decision)),
+    ),
+  );
+}
+
+// 下一步只给一条：当前状态下最该做的那件事，以及可直接执行的命令。
+export function nextAction(doc) {
+  const state = doc.current?.state ?? "讨论";
+  const thread = doc.current?.threadId ? threadById(doc, doc.current.threadId) : null;
+  const work = doc.work ?? emptyWork();
+  const progress = workProgress(doc);
+
+  if (state === "讨论") {
+    if (!thread) {
+      return {
+        label: "开始一次讨论会话",
+        command: 'npm run state -- title "这次要定什么"',
+        detail: "进入讨论会自动建会话，也可以先命名。",
+      };
+    }
+    if (thread.waits.length > 0) {
+      return {
+        label: `先清待裁：${thread.waits[0]}`,
+        command: `npm run state -- wait drop --item "${thread.waits[0]}"`,
+        detail: "待裁没清空，不要推进状态。",
+      };
+    }
+    const last = thread.rounds[thread.rounds.length - 1];
+    return {
+      label: "记录这一轮的结论（只产结论与待裁，不改产品行为）",
+      command: last
+        ? 'npm run state -- round --conclusion "这一轮定了什么" --change "+新增 / 已解除"'
+        : 'npm run state -- round --conclusion "这一轮的结论"',
+      detail: "有新的未决就同时 wait add，已经清楚的用 wait drop 解除。",
+    };
+  }
+
+  if (state === "执行") {
+    if (!work.scope) {
+      return {
+        label: "先写清这次的范围",
+        command: 'npm run state -- scope "这次要交付什么、不做什么"',
+        detail: "没有范围不允许改产品行为。",
+      };
+    }
+    if (progress.phases.total < 2) {
+      return {
+        label: "拆出 2–5 个验收单元",
+        command: 'npm run state -- phase add --name "这一阶段交付什么" --goal "目标"',
+        detail: "一个阶段就是一次能独立验收的交付。",
+      };
+    }
+    const running = work.phases.find((phase) => phase.status === "进行中");
+    if (!running) {
+      const next = work.phases.find((phase) => phase.status === "未开始");
+      if (!next) {
+        return {
+          label: "所有阶段都已完成，进入验收",
+          command: 'npm run state -- set 验收 --reason "交付完成，进入验收"',
+          detail: "验收态逐条核对 D/C/H，并处置 R 发现。",
+        };
+      }
+      return {
+        label: `开始阶段 ${next.id} ${next.name}`,
+        command: `npm run state -- phase start --id ${next.id}`,
+        detail: '开始时先做一次重审：phase check --what "验什么" --gap "可能漏什么"。',
+      };
+    }
+    const openTask = running.tasks.find((task) => task.status !== "已完成");
+    if (openTask) {
+      return {
+        label: `完成 ${openTask.id}：${openTask.text}`,
+        command: `npm run state -- task done --id ${openTask.id} --evidence "命令/观察 + 结果"`,
+        detail: "没有证据不算完成。",
+      };
+    }
+    const blocking = running.acceptance.filter((item) =>
+      BLOCKING_LAYERS.includes(item.layer ?? "D"),
+    );
+    const unchecked = blocking.filter((item) => item.status === "未验");
+    if (unchecked.length > 0) {
+      return {
+        label: `核对 ${running.id} 的验收项（还有 ${unchecked.length} 项）`,
+        command: `npm run state -- accept set --id ${unchecked[0].id} --status 通过 --evidence "怎么验的、结果"`,
+        detail: "判为不通过就回执行修，修完重判。",
+      };
+    }
+    const phaseFindings = (running.acceptance ?? []).filter(
+      (item) =>
+        (item.layer ?? "D") === "R" &&
+        (!item.resolution || !FINDING_DECISIONS.includes(item.resolution.decision)),
+    );
+    if (phaseFindings.length > 0) {
+      return {
+        label: `处置 ${phaseFindings.length} 条审查发现`,
+        command: `npm run state -- accept resolve --id ${phaseFindings[0].id} --decision 已修|延期|接受 [--note "理由"]`,
+        detail: "未处置的发现不能收尾。",
+      };
+    }
+    return {
+      label: `收尾阶段 ${running.id} ${running.name}`,
+      command: `npm run state -- phase check --id ${running.id} --what "验了什么" --gap "可能漏什么" --split "要不要拆并" && npm run state -- phase done --id ${running.id}`,
+      detail: "重审三行先记录，再完成阶段。",
+    };
+  }
+
+  const findings = openFindings(doc);
+  if (findings.length > 0) {
+    return {
+      label: `处置 ${findings.length} 条审查发现`,
+      command: `npm run state -- accept resolve --id ${findings[0].id} --decision 已修|延期|接受 [--note "理由"]`,
+      detail: "未处置的发现不能签收。",
+    };
+  }
+  const blocking = work.phases.flatMap((phase) =>
+    (phase.acceptance ?? []).filter((item) => BLOCKING_LAYERS.includes(item.layer ?? "D")),
+  );
+  const unchecked = blocking.filter((item) => item.status === "未验");
+  if (unchecked.length > 0) {
+    return {
+      label: `逐条验收（还有 ${unchecked.length} 项）`,
+      command: `npm run state -- accept set --id ${unchecked[0].id} --status 通过 --evidence "证据"`,
+      detail: "D 确定性检查 / C 判据对照 / H 人签收。",
+    };
+  }
+  const failed = blocking.filter((item) => item.status === "不通过");
+  if (failed.length > 0) {
+    return {
+      label: `回到执行修复 ${failed.length} 项不通过`,
+      command: 'npm run state -- set 执行 --reason "验收不通过，回到修复"',
+      detail: "修完重新进入验收。",
+    };
+  }
+  if (!work.scope?.signed) {
+    return {
+      label: "请用户签收",
+      command: 'npm run state -- sign "用户确认的原话"',
+      detail: "只有用户能签收，签收后这条范围才算结束。",
+    };
+  }
+  return {
+    label: "归档这次范围",
+    command: "npm run state -- clean",
+    detail: "归档会重置工作区为空白，并保留历史。",
+  };
+}
+
+// 交接卡：给下一个 agent 会话的最小上下文，十行以内。
+export function briefLines(doc) {
+  const next = nextAction(doc);
+  const work = doc.work ?? emptyWork();
+  const lines = [
+    `治理：${doc.current.state} · 范围：${work.scope?.text ?? "未写"}${work.scope?.kind ? `（${work.scope.kind}）` : ""}`,
+    `现在：${next.label}`,
+    `命令：${next.command}`,
+  ];
+  const thread = doc.current.threadId ? threadById(doc, doc.current.threadId) : null;
+  if (thread?.waits.length) lines.push(`待裁：${thread.waits.join("；")}`);
+  const findings = openFindings(doc);
+  if (findings.length > 0) lines.push(`未处置发现：${findings.map((one) => one.id).join("、")}`);
+  const progress = progressLines(doc);
+  if (progress.length > 0) lines.push(progress.join("\n"));
+  const last = thread?.rounds[thread.rounds.length - 1];
+  if (last) lines.push(`上轮结论：${last.conclusion}`);
+  if (work.scope?.signed)
+    lines.push(`已签收：${work.scope.signed.text}（${work.scope.signed.date}）`);
+  return lines;
+}
+
+// 归档一个已签收的范围：返回历史条目与重置后的状态。
+export function archiveWork(doc, { now = new Date() } = {}) {
+  const scope = doc.work?.scope;
+  if (!scope?.signed) throw new Error('先签收再归档：npm run state -- sign "用户原话"');
+  const phases = doc.work?.phases ?? [];
+  const entry = {
+    scope: scope.text,
+    kind: scope.kind ?? "里程碑",
+    signed: scope.signed,
+    archivedAt: now.toISOString(),
+    phases: phases.map((phase) => ({
+      id: phase.id,
+      name: phase.name,
+      tasks: phase.tasks.length,
+      acceptance: phase.acceptance.length,
+      findings: phase.acceptance.filter((item) => (item.layer ?? "D") === "R").length,
+    })),
+  };
+  const threadId = doc.current?.threadId ?? null;
+  const threads = (doc.threads ?? []).map((thread) =>
+    thread.id === threadId && thread.status === "active"
+      ? { ...thread, status: "archived", endedAt: now.toISOString(), ending: "定案" }
+      : thread,
+  );
+  return {
+    entry,
+    doc: {
+      ...doc,
+      current: { ...doc.current, threadId: null },
+      threads,
+      work: emptyWork(),
+    },
+  };
 }

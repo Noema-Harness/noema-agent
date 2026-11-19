@@ -30,7 +30,7 @@
     "figure:build": "node scripts/figure.mjs build all",
     "figure:test": "node --test scripts/figure.test.mjs",
     "inbox": "node scripts/inbox.mjs list",
-    "tools:test": "node --test scripts/governance.test.mjs && node --test scripts/maintenance.test.mjs && node --test scripts/figure.test.mjs && node --test scripts/branches.test.mjs && node --test scripts/workspace.test.mjs && node --test scripts/skill-sync.test.mjs && node --test scripts/collaboration.test.mjs && node --test governance/core/state.test.mjs",
+    "tools:test": "node --test scripts/governance.test.mjs && node --test scripts/maintenance.test.mjs && node --test scripts/figure.test.mjs && node --test scripts/branches.test.mjs && node --test scripts/workspace.test.mjs && node --test scripts/skill-sync.test.mjs && node --test scripts/collaboration.test.mjs && node --test governance/core/state.test.mjs && node --test scripts/work-view.test.mjs",
     "governance:test": "node --test scripts/governance.test.mjs",
     "skill:install": "node scripts/skill-sync.mjs install",
     "guard": "node scripts/collaboration.mjs",

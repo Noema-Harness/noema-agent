@@ -6,6 +6,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
+import { openFindings, upgradeState, validateState } from "../governance/core/state.mjs";
 import { resolveGitExecutable } from "./git-exec.mjs";
 import { checkSkill } from "./skill-sync.mjs";
 
@@ -132,18 +133,25 @@ function governanceCoreFiles(root) {
   const dir = path.join(root, "governance", "core");
   let names = [];
   try {
-    names = fs.readdirSync(dir).filter((name) => name.endsWith(".mjs") && !name.endsWith(".test.mjs"));
+    names = fs
+      .readdirSync(dir)
+      .filter((name) => name.endsWith(".mjs") && !name.endsWith(".test.mjs"));
   } catch {
     return [];
   }
-  return names.map((name) => ({ name: path.posix.join("governance", "core", name), text: readText(path.join(dir, name)) ?? "" }));
+  return names.map((name) => ({
+    name: path.posix.join("governance", "core", name),
+    text: readText(path.join(dir, name)) ?? "",
+  }));
 }
 
 /** 「用户预期会不会变」判不了机器，但「改的是产品行为、还是测试/文档」判得了。 */
 export function changeScope(staged) {
   if (!staged.length) return null;
   const behavior = staged.filter((name) => name.startsWith(PRODUCT_CODE_PREFIX));
-  const tooling = staged.filter((name) => name.startsWith("scripts/") || name.startsWith("governance/"));
+  const tooling = staged.filter(
+    (name) => name.startsWith("scripts/") || name.startsWith("governance/"),
+  );
   const rest = staged.filter((name) => !behavior.includes(name) && !tooling.includes(name));
   const parts = [];
   if (behavior.length) parts.push(`产品行为 ${behavior.length} 个文件`);
@@ -154,6 +162,25 @@ export function changeScope(staged) {
     ? "先在会话里把范围写定（state -- scope），再改；改完回验收态对照范围"
     : "不需要范围与验收，过提交门即可";
   return { scope, notice: `本次改动（${parts.join("、")}）→ ${scope}：${rule}` };
+}
+
+// 状态数据是治理的唯一真相：机器每次过门都真的读一遍，不只信任文件存在。
+export function checkState(root) {
+  const errors = [];
+  const raw = readJson(path.join(root, "governance", "data", "state.json"));
+  if (raw === null) {
+    errors.push("缺少 governance/data/state.json：先用 npm run state 记录当前状态");
+    return { errors, state: null };
+  }
+  let doc;
+  try {
+    doc = upgradeState(raw);
+  } catch (error) {
+    errors.push(`governance/data/state.json 无法升级：${error.message}`);
+    return { errors, state: null };
+  }
+  for (const problem of validateState(doc)) errors.push(`状态数据：${problem}`);
+  return { errors, state: doc };
 }
 
 export function checkDocuments(root, git) {
@@ -192,6 +219,9 @@ export function checkDocuments(root, git) {
     }
   }
 
+  const stateCheck = checkState(root);
+  errors.push(...stateCheck.errors);
+
   const coreProblems = findCoreBoundaryProblems(governanceCoreFiles(root));
   for (const problem of coreProblems.slice(0, 5)) {
     errors.push(
@@ -202,13 +232,17 @@ export function checkDocuments(root, git) {
   const packageVersion = readJson(path.join(root, "package.json"))?.version;
   const desktopVersion = readJson(path.join(root, "apps", "desktop", "package.json"))?.version;
   if (packageVersion !== desktopVersion) {
-    errors.push(`版本不一致：package.json ${packageVersion}，apps/desktop/package.json ${desktopVersion}`);
+    errors.push(
+      `版本不一致：package.json ${packageVersion}，apps/desktop/package.json ${desktopVersion}`,
+    );
   }
   const status = readText(path.join(root, "docs", "STATUS.md")) ?? "";
   const recordedVersion = /源码版本：`([^`]+)`/u.exec(status)?.[1];
   if (!recordedVersion) errors.push("docs/STATUS.md 缺少「源码版本：`x.y.z`」");
   else if (recordedVersion !== packageVersion) {
-    errors.push(`docs/STATUS.md 源码版本 ${recordedVersion} 与 package.json ${packageVersion} 不一致`);
+    errors.push(
+      `docs/STATUS.md 源码版本 ${recordedVersion} 与 package.json ${packageVersion} 不一致`,
+    );
   }
   const baseline = /当前源码基线：`([0-9a-f]{7,40})/u.exec(status)?.[1];
   if (!baseline) errors.push("docs/STATUS.md 缺少「当前源码基线：`<sha>`」");
@@ -236,7 +270,9 @@ export function checkDocuments(root, git) {
   errors.push(...skill.errors);
   notices.push(...skill.notices);
 
-  const documentedScripts = new Set(Object.keys(readJson(path.join(root, "package.json"))?.scripts ?? {}));
+  const documentedScripts = new Set(
+    Object.keys(readJson(path.join(root, "package.json"))?.scripts ?? {}),
+  );
   const documented = ["AGENTS.md", "README.md", "CONTRIBUTING.md", "docs/OPERATIONS.md"];
   const workflowDir = path.join(root, ".github", "workflows");
   if (fs.existsSync(workflowDir)) {
@@ -270,9 +306,18 @@ export function checkPrecommit(root, options = {}) {
   const staged = options.stagedPaths ?? stagedPaths(root, git);
   const code = staged.filter((name) => name.startsWith(PRODUCT_CODE_PREFIX));
   if (code.length) {
-    notices.push(
-      `产品行为 ${code.length} 个文件：确认已在会话里写定范围（state -- scope），改完回验收态`,
-    );
+    const state = checkState(root).state;
+    if (!state) {
+      errors.push("产品代码改动需要一个可读的状态文件：npm run state");
+    } else if (!state.work?.scope) {
+      errors.push(
+        `产品行为 ${code.length} 个文件没有范围：先写 npm run state -- scope "这次做什么"（小修用 --kind 修复），再提交`,
+      );
+    } else {
+      notices.push(
+        `产品行为 ${code.length} 个文件，落在范围「${state.work.scope.text}」内（${state.work.scope.kind}）`,
+      );
+    }
   }
   const scope = changeScope(staged);
   if (scope) notices.unshift(scope.notice);

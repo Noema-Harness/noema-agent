@@ -8,35 +8,41 @@ Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与�
 
 ## 版本与基线
 
-- 源码版本：`0.7.6`；当前源码基线：`7d18cafd0f56`。
+- 源码版本：`0.7.6`；当前源码基线：`10f2b2f`。
 - 便携构建在 `apps/desktop/out/Noema-win32-x64/Noema.exe`；安装包由 `npm run make:desktop` 产出（构建陷阱与回退见 [OPERATIONS](OPERATIONS.md)）。
 - 未签名；Windows 安装，macOS/Linux 未做真机验收。
 
-## 最后一次验证（2026-11-20，治理重构：状态驱动）
+## 最后一次验证（2026-11-20，治理 v3 与可交付工作台）
 
-**改了什么**：治理从「条目/文档驱动」重做为「agent 状态驱动」——
+**改了什么**：状态数据与工作台从「能跑」推进到「可直接用」——
 
-- 状态只有三个：讨论 / 执行 / 验收；状态只描述「现在在做什么」，不携带授权；切换写日志，离开讨论自动归档会话，回讨论自动恢复并续编号。
-- 唯一数据源 `governance/data/state.json`（v2）：范围（`work.scope`）、验收单元（2–5 个 `P1`）、任务（`P1-T1`）、验收项（`P1-A1`，层 D/C/R/H）与讨论会话（轮次、待裁）；只经 `npm run state` 写。
-- 规则随状态注入：`npm run state` 打印当前状态的规则包（`governance/noema/workflow/*.md`）；检查项写 `gate:<id>`，必须对应 `scripts/governance.mjs` 登记的门。
-- 门分三层：提交门（`.githooks/pre-commit`：文档自洽 + 改动路径播报 + 内核边界）、里程碑（`npm run check`，与 CI `verify` 同源）、人判断（范围理解、签收、优先级）。
-- 验收四层：D 确定性检查、C 判据对照、R 审查发现（每条必须处置：已修/延期/接受+理由）、H 人签收；通过 = D+C+H 全绿 + R 全处置；只有用户能签收。
-- 删除：`docs/DECISIONS.md`、`governance/data/decisions.json`、整个 `openspec/`、条目/计划/过渡/接口等旧机制（`governance/core/*` 与 `scripts/*` 中约 20 个文件）。
-- 重写：`AGENTS.md`、`governance/README.md`、`governance/core/README.md`、`governance/noema/maintenance.md`、`CONTRIBUTING.md`、`docs/OPERATIONS.md`、两份技能；治理图按新架构重画。
+- 状态数据 v3（`governance/data/state.json`，版本 3）：范围分「里程碑/修复」；阶段三态（未开始/进行中/已完成）；
+  任务完成与验收判定都必须带证据；R 层不判通过、只处置发现；签收要求 D/C/H 全绿且 R 全处置；
+  写盘有锁（`.work/locks/`）、备份（`.work/state-history/` 最近 20 份）与原子替换；归档写 `governance/data/history.json`。
+- CLI 补齐：`state -- next`（下一步与命令）、`brief`（交接卡）、`json`（机器读）、`verify`（自检）、
+  `clean`（归档已签收的工作）、`phase start`、`scope --kind`；未知命令按提示退出。
+- 行为门绑定状态：提交门对 `apps/desktop/src/` 的改动要求先有 `work.scope`（小修可用 `--kind 修复`），
+  没有范围就拒绝提交。
+- 工作台重做（`npm run work:view`）：暗色工业视觉 + 明暗切换；只展开当前阶段，其余折叠显示进度；
+  「现在该做」显示下一步命令并可一键复制；进度环入场、阶段时间线可跳转、当前阶段脉冲；
+  近期动态、审查发现、D/C/R/H 图例、签收状态同屏；窄屏（520px）不横向溢出；减少约三成重复信息。
+- 演练数据整理：上一轮 v2 演练归档进 `history.json`（`legacy-demo`），删掉过期模板
+  `governance/noema/workflow/transition/`；当前 `state.json` 是一条真实里程碑（范围、5 个验收单元、7 任务、12 验收项）。
 
 **证据**：
 
-- `npm run state:test` **18/18**（状态机、范围、验收单元、任务、D/C/R/H、R 未处置拒绝完成阶段与签收、延期/接受需理由、会话归档与续编号、v1→v2 升级）。
-- `node --test scripts/maintenance.test.mjs` **5/5**（治理词提示、内核边界、改动路径、文档登记与文档头、precommit 播报）。
-- `npm run docs:check` OK；`npm run skill:install` 两条 OK（`0296264ec27a` / `b674f74badda`）。
-- 治理图：`node scripts/figure.mjs build governance --sections-changed …`，source `9409b09a5e91`（html 849,513 / png 156,685）。
-- `npm run check`：**901/901 通过、0 fail**（39,186ms），`governance: milestone OK`。
+- `npm run check`：**901/901 通过、0 fail**（55,456ms），`governance: milestone OK`（workspace/branches/docs/figure/source/lint/typecheck/tools/test 全绿）。
+- `node --test governance/core/state.test.mjs` **21/21**（v2→v3 升级、证据规则、R 处置、签收、归档、`next` 全链路）。
+- `node --test scripts/maintenance.test.mjs` **6/6**（治理词提示、内核边界、产品代码必须有范围、文档登记与文档头、precommit 播报）。
+- `node --test scripts/work-view.test.mjs` **3/3**（下一步命令、只展开当前阶段、HTML 转义）。
+- `npm run docs:check` OK；`npm run figure:check` OK（治理图 source `d4e68d9210a7`）。
+- 截图核验：`.work/review/shot-dark4.png`（1280px）、`shot-narrow5.png`（520px）。
 
 **未验证**：
 
-- 真实走完一轮「讨论 → 执行 → 验收」：目前只有合成状态与测试数据演练；产品行为还没有在一个真实任务上跑过。
-- 工作台是静态页（`npm run work:view` → `.work/review/work-view.html`），未接 DSH 面板。
-- 记忆底座：状态化后原 `D-20261117-agent-memory` 决议被删除，记忆系统未启动；成员经历（0.7.x 已交付）暂不回流。
+- 真实走完一轮「讨论 → 执行 → 验收 → 签收 → 归档」：只有合成状态与本次里程碑自身在用；尚未在一个真实产品任务上跑完并由用户签收。
+- 工作台是静态页（`.work/review/work-view.html`），未接 DSH 面板；不自动刷新。
+- 记忆底座：状态化后原记忆决议被删除，记忆系统未启动；成员经历（0.7.x 已交付）暂不回流。
 - 协作者 macOS 真机安装/启动：等协作者反馈；Linux 未安排。
 
 ## 更早验证（摘要）

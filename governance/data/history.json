@@ -1,0 +1,155 @@
+[
+  {
+    "archivedAt": "2026-11-19T19:50:17.671Z",
+    "kind": "legacy-demo",
+    "note": "v2 时期的演练数据（P1/P2）：用于验证状态命令与只读工作台，不是一次正式签收的交付。",
+    "scope": {
+      "text": "把治理体系跑在状态模型上：范围/阶段/任务/阶段验收 + 只读工作台",
+      "since": "2026-11-19T18:00:23.822Z",
+      "kind": "里程碑",
+      "signed": null
+    },
+    "phases": [
+      {
+        "id": "P1",
+        "name": "状态数据与命令",
+        "goal": "范围/阶段/任务/阶段验收能写能读",
+        "status": "已完成",
+        "createdAt": "2026-11-19T18:00:47.081Z",
+        "doneAt": "2026-11-19T18:01:08.317Z",
+        "tasks": [
+          {
+            "id": "P1-T1",
+            "text": "扩展 state 数据为 v2（范围、阶段、任务、验收项）",
+            "status": "已完成",
+            "evidence": [
+              "governance/core/state.mjs v2"
+            ],
+            "doneAt": "2026-11-19T18:01:04.106Z"
+          },
+          {
+            "id": "P1-T2",
+            "text": "补齐 scope/phase/task/accept 命令",
+            "status": "已完成",
+            "evidence": [
+              "scripts/state.mjs 命令"
+            ],
+            "doneAt": "2026-11-19T18:01:04.779Z"
+          },
+          {
+            "id": "P1-T3",
+            "text": "补单元测试与 CLI 端到端用例",
+            "status": "已完成",
+            "evidence": [
+              "npm run state:test 15/15"
+            ],
+            "doneAt": "2026-11-19T18:01:05.389Z"
+          }
+        ],
+        "acceptance": [
+          {
+            "id": "P1-A1",
+            "text": "任务能勾选并留下证据",
+            "status": "通过",
+            "evidence": [
+              "state.test.mjs work 全流程用例"
+            ],
+            "checkedAt": "2026-11-19T18:01:07.122Z"
+          },
+          {
+            "id": "P1-A2",
+            "text": "阶段未完成或有未判/不通过验收项时拒绝完成",
+            "status": "通过",
+            "evidence": [
+              "state.test.mjs 拒绝用例"
+            ],
+            "checkedAt": "2026-11-19T18:01:07.756Z"
+          },
+          {
+            "id": "P1-A3",
+            "layer": "R",
+            "text": "工作台还没显示签收日期",
+            "status": "未验",
+            "evidence": [],
+            "checkedAt": null
+          }
+        ],
+        "review": {
+          "what": "状态数据能写能读、命令闭环",
+          "gap": "还没覆盖断网与并发写",
+          "split": "不拆，P2 已是独立交付",
+          "at": "2026-11-19T18:39:05.270Z"
+        },
+        "startedAt": "2026-11-19T18:00:47.081Z"
+      },
+      {
+        "id": "P2",
+        "name": "只读工作台",
+        "goal": "一眼看清状态、范围、阶段、任务与验收",
+        "status": "已完成",
+        "createdAt": "2026-11-19T18:01:17.640Z",
+        "doneAt": "2026-11-19T18:06:42.170Z",
+        "tasks": [
+          {
+            "id": "P2-T1",
+            "text": "写渲染器 scripts/work-view.mjs",
+            "status": "已完成",
+            "evidence": [
+              "scripts/work-view.mjs"
+            ],
+            "doneAt": "2026-11-19T18:01:20.099Z"
+          },
+          {
+            "id": "P2-T2",
+            "text": "接入 npm run work:view",
+            "status": "已完成",
+            "evidence": [
+              "package.json work:view"
+            ],
+            "doneAt": "2026-11-19T18:01:20.730Z"
+          },
+          {
+            "id": "P2-T3",
+            "text": "视图覆盖状态/范围/阶段/任务/验收/会话",
+            "status": "已完成",
+            "evidence": [
+              ".work/review/work-view.html"
+            ],
+            "doneAt": "2026-11-19T18:01:21.281Z"
+          }
+        ],
+        "acceptance": [
+          {
+            "id": "P2-A1",
+            "text": "页面读出当前状态、范围与阶段进度",
+            "status": "通过",
+            "evidence": [
+              "npm run work:view 输出阶段 1/2 · 任务 6/6"
+            ],
+            "checkedAt": "2026-11-19T18:06:40.579Z"
+          },
+          {
+            "id": "P2-A2",
+            "text": "页面只读并标注重新生成命令",
+            "status": "通过",
+            "evidence": [
+              "页脚标注只读与重新生成命令"
+            ],
+            "checkedAt": "2026-11-19T18:06:41.413Z"
+          },
+          {
+            "id": "P2-A3",
+            "layer": "H",
+            "text": "面板打开 15 秒内能判断当前在做什么",
+            "status": "通过",
+            "evidence": [
+              "手测：node scripts/work-view.mjs 生成后打开，3 秒内看到状态与当前阶段"
+            ],
+            "checkedAt": "2026-11-19T18:39:22.544Z"
+          }
+        ],
+        "startedAt": "2026-11-19T18:01:17.640Z"
+      }
+    ]
+  }
+]

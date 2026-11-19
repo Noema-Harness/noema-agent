@@ -19,15 +19,18 @@ Does not own: 产品定位（PRODUCT）、结构与数据地图（ARCHITECTURE�
 
 ## 当前状态与工作台
 
-- 查看当前在做什么：`npm run state`（打印状态、会话、待裁、最近切换与当前状态规则包）。
+- 查看当前在做什么：`npm run state`（状态、会话、待裁、最近切换、当前规则包与下一步命令）；
+  下一步单问：`npm run state -- next`；交接卡：`npm run state -- brief`；机器读：`-- json`；自检：`-- verify`。
 - 切状态：`npm run state -- set <讨论|执行|验收> --reason "…"`。
-- 声明范围：`npm run state -- scope "<一句话/设计稿/里程碑>"`（进执行前必须有范围）。
-- 验收单元：`npm run state -- phase add --name "…" [--goal "…"]`；任务：`task add --phase P1 --text "…"`；
-  完成：`task done --id P1-T1 --evidence "…"`；单元完成：`phase done --id P1`。
+- 声明范围：`npm run state -- scope "<一句话/设计稿/里程碑>" [--kind 里程碑|修复]`（进执行前必须有范围）。
+- 验收单元：`npm run state -- phase add --name "…" [--goal "…"]`；开始单元：`phase start --id P1`；
+  任务：`task add --phase P1 --text "…"`；完成：`task done --id P1-T1 --evidence "…"`；单元完成：`phase done --id P1`。
 - 阶段验收四层：`accept add --phase P1 --text "…" --layer D|C|R|H`；判定 `accept set --id P1-A1 --status 通过|不通过`；
   审查发现处置 `accept resolve --id P1-A3 --decision 已修|延期|接受 [--note "…"]`。
 - 人签收：`npm run state -- sign "<用户原话>"`（必须所有单元完成、D/C/H 全绿、R 全处置）。
-- 工作台：`npm run work:view` 生成 `.work/review/work-view.html`（只读，按状态收束版面）。
+- 归档：`npm run state -- clean`（只归档已签收的工作，写入 `governance/data/history.json`）。
+- 工作台：`npm run work:view` 生成 `.work/review/work-view.html`（只读，按状态收束；只展开当前阶段，
+  可直接复制下一步命令，点时间线跳转，支持明暗切换与键盘 T）。
 
 ## 检查
 
@@ -65,14 +68,14 @@ Does not own: 产品定位（PRODUCT）、结构与数据地图（ARCHITECTURE�
 
 ## 常见问题
 
-| 现象 | 修法 |
-| --- | --- |
-| `npm run state` 报「未知状态」 | 状态只有 讨论 / 执行 / 验收；按报错改用三个之一 |
-| 报「进执行前先声明范围」 | 先 `npm run state -- scope "<范围一句话>"` |
-| 报「进验收前没有完成的验收单元」 | 先用 `phase done` 完成单元（任务全勾、验收项全判） |
-| 报「还有审查发现没处置」 | `accept resolve --id … --decision 已修|延期|接受 [--note "理由"]` |
-| `docs:check` 报文档引用了不存在的脚本 | 改 `package.json` 时同步 AGENTS/README/CONTRIBUTING/OPERATIONS/CI |
-| `docs:check` 报内核出现项目专名 | 挪到 `scripts/` 适配层；`governance/core/` 不许出现项目路径 |
-| `npm run dev` 报 `listen EACCES ::1:5173` | 设 `NOEMA_DEV_RENDERER_PORT=0` |
-| 磁盘空间不足导致测试预留失败 | 清理 `.work/` 与 `%TEMP%`；C 盘至少留 2 GB |
-| PowerShell 写文件后源码出现乱码 | 用编辑工具或 `.work/*.mjs` 重写，不要用管道 `Set-Content` |
+| 现象                                      | 修法                                                              |
+| ----------------------------------------- | ----------------------------------------------------------------- |
+| `npm run state` 报「未知状态」            | 状态只有 讨论 / 执行 / 验收；按报错改用三个之一                   |
+| 报「进执行前先声明范围」                  | 先 `npm run state -- scope "<范围一句话>"`                        |
+| 报「进验收前没有完成的验收单元」          | 先用 `phase done` 完成单元（任务全勾、验收项全判）                |
+| 报「还有审查发现没处置」                  | `accept resolve --id … --decision 已修                            | 延期 | 接受 [--note "理由"]` |
+| `docs:check` 报文档引用了不存在的脚本     | 改 `package.json` 时同步 AGENTS/README/CONTRIBUTING/OPERATIONS/CI |
+| `docs:check` 报内核出现项目专名           | 挪到 `scripts/` 适配层；`governance/core/` 不许出现项目路径       |
+| `npm run dev` 报 `listen EACCES ::1:5173` | 设 `NOEMA_DEV_RENDERER_PORT=0`                                    |
+| 磁盘空间不足导致测试预留失败              | 清理 `.work/` 与 `%TEMP%`；C 盘至少留 2 GB                        |
+| PowerShell 写文件后源码出现乱码           | 用编辑工具或 `.work/*.mjs` 重写，不要用管道 `Set-Content`         |

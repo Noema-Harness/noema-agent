@@ -12,6 +12,7 @@ import {
   findGovernanceWordsInDocs,
   localToday,
 } from "./maintenance.mjs";
+import { emptyState, setScope } from "../governance/core/state.mjs";
 
 const gitOk = (args) => {
   if (args.join(" ").includes("core.hooksPath")) return { ok: true, text: ".githooks\n" };
@@ -26,6 +27,13 @@ function write(root, name, text) {
   const file = path.join(root, name);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, text, "utf8");
+}
+
+function writeState(root, text = "把状态面板做出来") {
+  const now = new Date("2026-11-20T10:00:00+08:00");
+  const doc = emptyState(now);
+  if (text) setScope(doc, { text, kind: "里程碑", now });
+  write(root, "governance/data/state.json", JSON.stringify(doc, null, 2));
 }
 
 function gitFixture() {
@@ -91,6 +99,7 @@ test("check documents reads the registered set and their headers", () => {
     "# PRODUCT\n\nAuthority: 产品事实。\nUpdate when: 定位变化。\nDoes not own: 结构。\n",
   );
   write(root, ".githooks/pre-commit", "#!/bin/sh\nexit 0\n");
+  writeState(root);
   write(
     root,
     "docs/STATUS.md",
@@ -124,6 +133,7 @@ test("precommit reports the change path and the docs result", () => {
     "# PRODUCT\n\nAuthority: 产品事实。\nUpdate when: 定位变化。\nDoes not own: 结构。\n",
   );
   write(root, ".githooks/pre-commit", "#!/bin/sh\nexit 0\n");
+  writeState(root);
   write(
     root,
     "docs/STATUS.md",
@@ -138,4 +148,48 @@ test("precommit reports the change path and the docs result", () => {
   assert.deepEqual(result.errors, []);
   assert.ok(result.notices.some((notice) => notice.includes("行为路径")));
   assert.equal(localToday(new Date("2026-11-20T10:00:00+08:00")), "2026-11-20");
+});
+
+test("product code without a scope is refused and state must be readable", () => {
+  const root = tempRoot();
+  write(
+    root,
+    "scripts/workspace.config.json",
+    JSON.stringify({ currentDocuments: ["docs/PRODUCT.md", "docs/STATUS.md"] }),
+  );
+  write(root, "package.json", JSON.stringify({ version: "0.1.0" }));
+  write(root, "apps/desktop/package.json", JSON.stringify({ version: "0.1.0" }));
+  write(
+    root,
+    "docs/PRODUCT.md",
+    "# PRODUCT\n\nAuthority: 产品事实。\nUpdate when: 定位变化。\nDoes not own: 结构。\n",
+  );
+  write(root, ".githooks/pre-commit", "#!/bin/sh\nexit 0\n");
+  write(
+    root,
+    "docs/STATUS.md",
+    "# STATUS\n\nAuthority: 现状。\nUpdate when: 每次交付。\nDoes not own: 命令。\n\n源码版本：`0.1.0`\n当前源码基线：`abcdef1`\n最后更新：2026-11-20\n",
+  );
+
+  const git = gitFixture();
+  const noState = checkPrecommit(root, {
+    git,
+    stagedPaths: ["apps/desktop/src/renderer/x.tsx"],
+  });
+  assert.ok(noState.errors.some((error) => error.includes("缺少 governance/data/state.json")));
+
+  writeState(root, "");
+  const noScope = checkPrecommit(root, {
+    git,
+    stagedPaths: ["apps/desktop/src/renderer/x.tsx"],
+  });
+  assert.ok(noScope.errors.some((error) => error.includes("产品行为 1 个文件没有范围")));
+
+  writeState(root);
+  const withScope = checkPrecommit(root, {
+    git,
+    stagedPaths: ["apps/desktop/src/renderer/x.tsx"],
+  });
+  assert.deepEqual(withScope.errors, []);
+  assert.ok(withScope.notices.some((notice) => notice.includes("把状态面板做出来")));
 });

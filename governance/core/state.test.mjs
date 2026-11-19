@@ -25,10 +25,14 @@ import {
   reviewPhase,
   setAcceptance,
   signScope,
+  startPhase,
   setScope,
   setState,
   summaryLines,
   validateState,
+  upgradeState,
+  nextAction,
+  archiveWork,
   workProgress,
 } from "./state.mjs";
 import { loadState, main, saveState } from "../../scripts/state.mjs";
@@ -185,6 +189,7 @@ test("the work list carries scope, phases, tasks and stage acceptance", () => {
   const task = addTask(doc, { phase: first.id, text: "扩展 state 数据结构", now: NOW }).task;
   addTask(doc, { phase: first.id, text: "补齐命令行", now: NOW });
   const item = addAcceptance(doc, { phase: first.id, text: "任务能勾选并留证据", now: NOW }).item;
+  startPhase(doc, { id: first.id, now: NOW });
   assert.deepEqual(workProgress(doc), {
     phases: { done: 0, total: 2 },
     tasks: { done: 0, total: 2 },
@@ -192,13 +197,17 @@ test("the work list carries scope, phases, tasks and stage acceptance", () => {
   });
   assert.throws(() => completePhase(doc, { id: first.id, now: NOW }), /还有 2 个任务没完成/u);
   completeTask(doc, { id: task.id, evidence: "node --test state.test.mjs", now: NOW });
-  completeTask(doc, { id: `${first.id}-T2`, now: NOW });
+  completeTask(doc, {
+    id: `${first.id}-T2`,
+    evidence: "work:view 里能看到这条任务",
+    now: NOW,
+  });
   assert.throws(() => completePhase(doc, { id: first.id, now: NOW }), /没判/u);
   setAcceptance(doc, { id: item.id, status: "不通过", evidence: "面板没渲染", now: NOW });
   assert.throws(() => completePhase(doc, { id: first.id, now: NOW }), /不通过/u);
   setAcceptance(doc, { id: item.id, status: "通过", evidence: "重跑通过", now: NOW });
   completePhase(doc, { id: first.id, now: NOW });
-  assert.equal(second.status, "进行中");
+  assert.equal(second.status, "未开始");
   assert.equal(workProgress(doc).phases.done, 1);
   assert.match(summaryLines(doc).join("\n"), /阶段 1\/2 · 任务 2\/2/u);
   assert.deepEqual(validateState(doc), []);
@@ -221,14 +230,15 @@ test("entering execution needs a scope and acceptance needs finished phases", ()
   setScope(doc, { text: "把探针修好", now: NOW });
   setState(doc, { to: "执行", reason: "范围清楚", now: NOW });
   const phase = addPhase(doc, { name: "第一段", now: NOW }).phase;
+  startPhase(doc, { id: phase.id, now: NOW });
   assert.throws(
     () => setState(doc, { to: "验收", reason: "先验一下", now: NOW }),
     /阶段要全部完成/u,
   );
   const task = addTask(doc, { phase: phase.id, text: "写实现", now: NOW }).task;
   const item = addAcceptance(doc, { phase: phase.id, text: "能跑", now: NOW }).item;
-  completeTask(doc, { id: task.id, now: NOW });
-  setAcceptance(doc, { id: item.id, status: "通过", now: NOW });
+  completeTask(doc, { id: task.id, evidence: "重跑通过", now: NOW });
+  setAcceptance(doc, { id: item.id, status: "通过", evidence: "重跑通过", now: NOW });
   completePhase(doc, { id: phase.id, now: NOW });
   const { doc: accepted } = setState(doc, { to: "验收", reason: "阶段都完成了", now: NOW });
   assert.equal(accepted.current.state, "验收");
@@ -258,7 +268,7 @@ test("state data from version 1 upgrades to the work model on load", () => {
       "utf8",
     );
     const doc = loadState(root);
-    assert.equal(doc.version, 2);
+    assert.equal(doc.version, 3);
     assert.deepEqual(doc.work, { scope: null, phases: [] });
     saveState(root, doc);
   } finally {
@@ -274,7 +284,11 @@ test("the CLI drives the work list end to end", () => {
     main(["task", "add", "--phase", "P1", "--text", "扩展数据结构"], root);
     main(["task", "done", "--id", "P1-T1", "--evidence", "node --test"], root);
     main(["accept", "add", "--phase", "P1", "--text", "勾选留证据"], root);
-    main(["accept", "set", "--id", "P1-A1", "--status", "通过"], root);
+    main(["phase", "start", "--id", "P1"], root);
+    main(
+      ["accept", "set", "--id", "P1-A1", "--status", "通过", "--evidence", "命令输出正确"],
+      root,
+    );
     main(["phase", "done", "--id", "P1"], root);
     const doc = loadState(root);
     assert.equal(doc.work.scope.text, "把状态面板做出来");
@@ -295,6 +309,7 @@ test("acceptance layers keep findings out of the verdict and review notes stay o
   setScope(doc, { text: "探针范围", now: NOW });
   setState(doc, { to: "执行", reason: "范围清楚", now: NOW });
   const phase = addPhase(doc, { name: "第一段", now: NOW }).phase;
+  startPhase(doc, { id: phase.id, now: NOW });
   reviewPhase(doc, {
     id: phase.id,
     what: "命令能跑通",
@@ -325,9 +340,9 @@ test("acceptance layers keep findings out of the verdict and review notes stay o
     /验收层只能是/u,
   );
   const task = addTask(doc, { phase: phase.id, text: "写实现", now: NOW }).task;
-  completeTask(doc, { id: task.id, now: NOW });
-  setAcceptance(doc, { id: deterministic.id, status: "通过", now: NOW });
-  setAcceptance(doc, { id: human.id, status: "通过", now: NOW });
+  completeTask(doc, { id: task.id, evidence: "五条路径都能读到", now: NOW });
+  setAcceptance(doc, { id: deterministic.id, status: "通过", evidence: "重跑通过", now: NOW });
+  setAcceptance(doc, { id: human.id, status: "通过", evidence: "用户看过并认可", now: NOW });
   // R 层是审查发现：不判「通过」，但必须先处置（改掉 / 延期 / 接受）才能完成阶段。
   assert.equal(finding.status, "未验");
   assert.throws(() => completePhase(doc, { id: phase.id, now: NOW }), /审查发现没处置/u);
@@ -354,14 +369,112 @@ test("a failed blocking layer keeps the scope unsigned", () => {
   setScope(doc, { text: "探针范围", now: NOW });
   setState(doc, { to: "执行", reason: "范围清楚", now: NOW });
   const phase = addPhase(doc, { name: "第一段", now: NOW }).phase;
+  startPhase(doc, { id: phase.id, now: NOW });
   const task = addTask(doc, { phase: phase.id, text: "写实现", now: NOW }).task;
   const item = addAcceptance(doc, { phase: phase.id, text: "能跑", layer: "C", now: NOW }).item;
-  completeTask(doc, { id: task.id, now: NOW });
+  completeTask(doc, { id: task.id, evidence: "名单读到了", now: NOW });
   assert.throws(() => completePhase(doc, { id: phase.id, now: NOW }), /没判/u);
-  setAcceptance(doc, { id: item.id, status: "不通过", now: NOW });
+  setAcceptance(doc, { id: item.id, status: "不通过", evidence: "漏了一个成员", now: NOW });
   assert.throws(() => completePhase(doc, { id: phase.id, now: NOW }), /不通过/u);
-  setAcceptance(doc, { id: item.id, status: "通过", now: NOW });
+  setAcceptance(doc, { id: item.id, status: "通过", evidence: "补齐后重跑通过", now: NOW });
   completePhase(doc, { id: phase.id, now: NOW });
   const { doc: accepted } = setState(doc, { to: "验收", reason: "阶段完成", now: NOW });
   assert.deepEqual(validateState(accepted), []);
+});
+
+test("version 2 data upgrades in place with scope kind and phase start", () => {
+  const upgraded = upgradeState({
+    version: 2,
+    current: { state: "执行", since: NOW.toISOString(), threadId: null },
+    log: [],
+    threads: [],
+    work: {
+      scope: { text: "旧范围", since: NOW.toISOString() },
+      phases: [
+        {
+          id: "P1",
+          name: "第一段",
+          goal: null,
+          status: "已完成",
+          createdAt: NOW.toISOString(),
+          doneAt: NOW.toISOString(),
+          tasks: [],
+          acceptance: [],
+        },
+      ],
+    },
+  });
+  assert.equal(upgraded.version, 3);
+  assert.equal(upgraded.current.by, null);
+  assert.equal(upgraded.work.scope.kind, "里程碑");
+  assert.equal(upgraded.work.phases[0].startedAt, NOW.toISOString());
+  assert.deepEqual(validateState(upgraded), []);
+});
+
+test("next action walks discussion, execution and acceptance", () => {
+  const doc = emptyState(NOW);
+  doc.current.threadId = ensureThread(doc, { now: NOW }).thread.id;
+  assert.match(nextAction(doc).command, /round|title/u);
+
+  setScope(doc, { text: "把治理交付出去", now: NOW });
+  setState(doc, { to: "执行", reason: "讨论定了", now: NOW });
+  assert.match(nextAction(doc).label, /验收单元/u);
+  const first = addPhase(doc, { name: "状态与命令", now: NOW }).phase;
+  addPhase(doc, { name: "工作台", now: NOW });
+  const second = doc.work.phases[1];
+  startPhase(doc, { id: first.id, now: NOW });
+  addTask(doc, { phase: first.id, text: "下一步命令", now: NOW });
+  addAcceptance(doc, { phase: first.id, text: "next 给出命令", layer: "D", now: NOW });
+  assert.match(nextAction(doc).label, /完成 P1-T1/u);
+  completeTask(doc, { id: "P1-T1", evidence: "npm run state -- next", now: NOW });
+  assert.match(nextAction(doc).label, /核对/u);
+  setAcceptance(doc, { id: "P1-A1", status: "通过", evidence: "命令输出正确", now: NOW });
+  assert.match(nextAction(doc).label, /收尾阶段/u);
+
+  completePhase(doc, { id: first.id, now: NOW });
+  startPhase(doc, { id: second.id, now: NOW });
+  const taskB = addTask(doc, { phase: second.id, text: "工作台按状态收束", now: NOW }).task;
+  const itemB = addAcceptance(doc, {
+    phase: second.id,
+    text: "讨论态只展开会话",
+    layer: "D",
+    now: NOW,
+  }).item;
+  completeTask(doc, { id: taskB.id, evidence: "work:view 渲染通过", now: NOW });
+  setAcceptance(doc, { id: itemB.id, status: "通过", evidence: "截图核对", now: NOW });
+  completePhase(doc, { id: second.id, now: NOW });
+  setState(doc, { to: "验收", reason: "两个阶段都完成", now: NOW });
+  assert.match(nextAction(doc).label, /签收/u);
+  signScope(doc, { text: "用户看过并确认", now: NOW });
+  assert.match(nextAction(doc).label, /归档/u);
+  const archived = archiveWork(doc, { now: NOW });
+  assert.equal(archived.entry.scope, "把治理交付出去");
+  assert.equal(archived.doc.work.phases.length, 0);
+  assert.equal(archived.doc.current.threadId, null);
+  assert.equal(archived.doc.threads[0].status, "archived");
+});
+
+test("tasks and verdicts cannot skip evidence", () => {
+  const doc = emptyState(NOW);
+  const phase = addPhase(doc, { name: "证据", now: NOW }).phase;
+  startPhase(doc, { id: phase.id, now: NOW });
+  const task = addTask(doc, { phase: phase.id, text: "有证据的完成", now: NOW }).task;
+  assert.throws(() => completeTask(doc, { id: task.id, now: NOW }), /要写 --evidence/u);
+  assert.throws(() => completeTask(doc, { id: task.id, evidence: "ok", now: NOW }), /至少 4 字/u);
+  completeTask(doc, { id: task.id, evidence: "重跑通过 3/3", now: NOW });
+  const item = addAcceptance(doc, { phase: phase.id, text: "通过要有证据", now: NOW }).item;
+  assert.throws(
+    () => setAcceptance(doc, { id: item.id, status: "通过", now: NOW }),
+    /要写 --evidence/u,
+  );
+  const finding = addAcceptance(doc, {
+    phase: phase.id,
+    text: "审查发现一条",
+    layer: "R",
+    now: NOW,
+  }).item;
+  assert.throws(
+    () => setAcceptance(doc, { id: finding.id, status: "通过", evidence: "无所谓", now: NOW }),
+    /审查发现/u,
+  );
 });
