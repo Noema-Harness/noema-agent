@@ -12,7 +12,7 @@ import {
   findGovernanceWordsInDocs,
   localToday,
 } from "./maintenance.mjs";
-import { emptyState, setScope } from "../governance/core/state.mjs";
+import { emptyState, setScope, startSession } from "../governance/core/state.mjs";
 
 const gitOk = (args) => {
   if (args.join(" ").includes("core.hooksPath")) return { ok: true, text: ".githooks\n" };
@@ -31,8 +31,11 @@ function write(root, name, text) {
 
 function writeState(root, text = "把状态面板做出来") {
   const now = new Date("2026-11-20T10:00:00+08:00");
-  const doc = emptyState(now);
-  if (text) setScope(doc, { text, kind: "里程碑", now });
+  let doc = emptyState(now);
+  if (text) {
+    doc = startSession(doc, { title: "把状态面板做出来", now }).doc;
+    setScope(doc, { text, kind: "里程碑", now });
+  }
   write(root, "governance/data/state.json", JSON.stringify(doc, null, 2));
 }
 

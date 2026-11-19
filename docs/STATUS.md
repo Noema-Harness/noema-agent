@@ -8,55 +8,50 @@ Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与�
 
 ## 版本与基线
 
-- 源码版本：`0.7.6`；当前源码基线：`10f2b2f`。
+- 源码版本：`0.7.6`；当前源码基线：`5982b56`。
 - 便携构建在 `apps/desktop/out/Noema-win32-x64/Noema.exe`；安装包由 `npm run make:desktop` 产出（构建陷阱与回退见 [OPERATIONS](OPERATIONS.md)）。
 - 未签名；Windows 安装，macOS/Linux 未做真机验收。
 
-## 最后一次验证（2026-11-20，治理 v3 与可交付工作台）
+## 最后一次验证（2026-11-20，治理 v4：会话、状态与段）
 
-**改了什么**：状态数据与工作台从「能跑」推进到「可直接用」——
+**改了什么**：治理从「一条全局工作线 + 阶段」改成「多个会话 + 焦点 + 段」——
 
-- 状态数据 v3（`governance/data/state.json`，版本 3）：范围分「里程碑/修复」；阶段三态（未开始/进行中/已完成）；
-  任务完成与验收判定都必须带证据；R 层不判通过、只处置发现；签收要求 D/C/H 全绿且 R 全处置；
-  写盘有锁（`.work/locks/`）、备份（`.work/state-history/` 最近 20 份）与原子替换；归档写 `governance/data/history.json`。
-- CLI 补齐：`state -- next`（下一步与命令）、`brief`（交接卡）、`json`（机器读）、`verify`（自检）、
-  `clean`（归档已签收的工作）、`phase start`、`scope --kind`；未知命令按提示退出。
-- 行为门绑定状态：提交门对 `apps/desktop/src/` 的改动要求先有 `work.scope`（小修可用 `--kind 修复`），
-  没有范围就拒绝提交。
-- 工作台重做（`npm run work:view`）：先修掉「看不到状态」这个主次错误——顶部恢复三态状态条与会话语；
-  再把页面从「一个大标题＋文本列表」改成一台仪器：
-  - 顶部状态条（讨论/执行/验收，当前态高亮）＋会话（轮次/待裁/单元进度）。
-  - 一行范围，决定这一轮按什么验收。
-  - 验收单元是同构行：任务用格子填充、四层判据用形状（▢ D · ○ C · ◇ R · △ H）着色；
-    当前单元加高并带左侧琥珀线，未开始单元降噪。点行展开细节、数字键跳单元、悬停看证据。
-  - 底部只有一条「下一步」命令（点击复制）与状态切换刻度线；删掉进度环、统计面板、图例与近期动态。
-- 验收判据去掉了时间指标：H 项从「15 秒内判断当前在做什么」改为「打开就能说出当前状态与下一步，不用读说明」；
-  `state -- accept text` 只改判据措辞，不动判定与证据。
-- 演练数据整理：上一轮 v2 演练归档进 `history.json`（`legacy-demo`），删掉过期模板
-  `governance/noema/workflow/transition/`；当前 `state.json` 是一条真实里程碑（范围、5 个验收单元、7 任务、12 验收项）。
-- 可直接上手（`b11bca3`）：`governance/README.md` 的「第一次使用」16 步由 `scripts/quickstart.test.mjs`
-  在空白状态上逐步跑通并挂进 `tools:test`；`clean` 归档后把状态带回讨论，不留「验收态空工作区」。
+- 会话是容器：一个会话是一个要交付的东西，可同时开多个、互不阻塞；`focus` 只是指针，没有在推进的交付物时为空。
+  命令：`state -- start "…" [--discuss]`、`switch S2`、`sessions`、`close`（归档进 `governance/data/history.json`）。
+- 状态只是会话的段落（讨论/执行/验收），默认执行；任意方向可切，只要求写理由。最小路径 `start → 执行 → close`。
+- 段是会话内部的时间分片：日常琐事在当前段平铺加任务；大事才 `segment add --name "…"` 开命名段。
+  只有命名段走 2–5 个验收单元与 D/C/R/H；日常段只要任务完成就能收尾，不再被流程绑死。
+- 数据 v4（`governance/data/state.json`）：`{version:4, focus, sessions:[{id,title,status,state,scope,segments,threads,log}], log}`；
+  写盘有锁、备份与原子替换；旧 v3 数据读入时自动升级（真实数据已升级为 S1 会话、5 段）。
+- 提交门跟随焦点：`apps/desktop/src/` 的改动必须落在当前会话的范围里，否则拒绝提交。
+- 工作台改成一张**会话桌面**（`npm run work:view`）：顶部状态大字与会话名/范围；左侧段轨（点一段切换）；
+  中间当前段的任务（未完成在前、已完成折叠、悬停看证据）与命名段的 D/C/R/H 滑片（形状表示层，H 未判标「等你」、
+  R 未处置标「未处置」）；底部签收线（还差几项、第一处缺口）与唯一「下一步」命令（点击复制）；明暗切换 `T`。
+- 规则包按 v4 重写（`governance/noema/workflow/{discussion,execution,acceptance}.md`）；
+  `governance/README.md`、`AGENTS.md`、`OPERATIONS.md` 同步；治理图重出（会话/段替换原「讨论会话/验收单元」）。
 
 **证据**：
 
-- `npm run check`：**902/902 通过、0 fail**（43,666ms），`governance: milestone OK`（workspace/branches/docs/figure/source/lint/typecheck/tools/test 全绿）。
-- `node --test governance/core/state.test.mjs` **23/23**（v2→v3 升级、证据规则、R 处置、H 只能由用户原话判、签收、归档、`next` 全链路）。
+- `npm run check`：**901/901 通过、0 fail**（47,481ms），`governance: milestone OK`。
+- `node --test governance/core/state.test.mjs` **14/14**（会话并存与切换、状态任意切换要理由、日常段平铺收尾、
+  命名段四层验收、任务/判定证据、H 只能用户原话、R 必须处置、签收、`next`、v3→v4 升级）。
+- `node --test scripts/quickstart.test.mjs` **2/2**（README 的 16 步在空白状态上跑通、空状态给第一条命令）。
+- `node --test scripts/work-view.test.mjs` **6/6**（状态与范围、段轨与当前段、唯一命令可复制、证据在悬浮卡且转义、
+  形状代替文字图例且 H 标「等你」、空白态引导）。
 - `node --test scripts/maintenance.test.mjs` **6/6**（治理词提示、内核边界、产品代码必须有范围、文档登记与文档头、precommit 播报）。
-- `node --test scripts/work-view.test.mjs` **6/6**（状态条在当前态、单元行与当前行、唯一 action、默认折叠、层用形状、空白状态引导）。
-- `node --test scripts/quickstart.test.mjs` **2/2**（README 16 步跑通、空状态 `next`/`verify` 可用）。
-- `npm run docs:check` OK；`npm run figure:check` OK（治理图 source `88b91a268b38`）。
-- 截图核验（`--force-prefers-reduced-motion` 下抓取，避免动画首帧）：`.work/review/board-dark.png`、`board-light.png`（1280px）、`board-narrow.png`（520px）。
-- CI：`44611231148`、`44613973625`、`44614559086`、`44616782475` 均 `verify` success。
+- `npm run docs:check` OK（2 条治理词指针提示）；`npm run figure:check` OK（治理图 source `bb19ccda34c7`）。
+- 截图核验：`.work/review/v4b-dark.png`（1280×1100，状态大字、段轨、P4 展开、H「等你」、右栏计数）。
 
 **未验证**：
 
-- 真实走完一轮「讨论 → 执行 → 验收 → 签收 → 归档」：只有合成状态与本次里程碑自身在用；尚未在一个真实产品任务上跑完并由用户签收。
+- 真实走完一轮：本次里程碑自身在用；还没有在一个真实产品任务上从 `start` 走到 `close` 并由用户签收。
 - 工作台是静态页（`.work/review/work-view.html`），未接 DSH 面板；不自动刷新。
 - 记忆底座：状态化后原记忆决议被删除，记忆系统未启动；成员经历（0.7.x 已交付）暂不回流。
 - 协作者 macOS 真机安装/启动：等协作者反馈；Linux 未安排。
 
 ## 更早验证（摘要）
 
+- 2026-11-20（v3）：状态数据加固、CLI `next/brief/json/verify/clean`、审阅台工作台；902/902、CI 四次 success。
 - 2026-11-17：成员经历可查看/删除/恢复交付（`2dfa313`）；901/901、CI `44064152624` success；界面真机手测未做（本机 Electron 无法建窗）。
 - 2026-11-17：0.1.5 安装版交付（状态化前），Windows 安装/升级/回滚验证通过；未签名。
 - 2026-11-18～19：治理条目、存储分离、状态生命周期三批重构（`governance-*` changes，均已归档）；条目机制已在 2026-11-20 的激进重构中删除。

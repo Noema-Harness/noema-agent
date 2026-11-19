@@ -1,499 +1,631 @@
-// Renders the governance state into a single static console page.
-// Adapter only: reads governance/data/state.json and writes
-// .work/review/work-view.html. The model lives in governance/core/state.mjs.
-//
-// What the page must answer at a glance, in this order:
-//   1. which state the work is in, and how the session stands (rounds, waits)
-//   2. the scope this round is judged against
-//   3. where we are among the acceptance units, and how each one is doing
-//   4. the single next command
-// Detail is not shown by default; a unit opens on demand. Shapes carry the
-// four acceptance layers, fill carries progress, colour carries verdict.
+// Read-only view of governance/data/state.json. One session at a time: the
+// focused one, its current segment in the middle, the rest folded into rails.
 import fs from "node:fs";
 import path from "node:path";
-
+import { fileURLToPath } from "node:url";
 import {
+  ACCEPTANCE_LAYERS,
+  briefLines,
+  currentSegment,
+  focusSession,
+  listSessions,
+  logOf,
   nextAction,
-  upgradeState,
-  validateState,
-  workProgress,
+  openFindings,
+  sessionProgress,
 } from "../governance/core/state.mjs";
+import { loadState } from "./state.mjs";
 
-const STATE_PATH = "governance/data/state.json";
-const OUTPUT_PATH = ".work/review/work-view.html";
-
-const STATES = ["讨论", "执行", "验收"];
-const STATE_CODE = { 讨论: "DISCUSS", 执行: "EXECUTE", 验收: "ACCEPT" };
-
-// A layer is a shape, not a word: square, circle, diamond, triangle.
+const STATE_LABEL = { 讨论: "DISCUSS", 执行: "EXECUTE", 验收: "ACCEPT" };
+const STATE_NAME = { 讨论: "讨论", 执行: "执行", 验收: "验收" };
 const LAYER_SHAPE = { D: "▢", C: "○", R: "◇", H: "△" };
-const LAYER_NAME = { D: "确定性检查", C: "判据对照", R: "审查发现", H: "人签收" };
+const LAYER_NAME = { D: "确定性", C: "可复核", R: "审查发现", H: "人签收" };
+const SEGMENT_TONE = { 未开始: "idle", 进行中: "live", 已完成: "done" };
 
-function escape(text) {
-  return String(text ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/gu, "&amp;")
+    .replace(/</gu, "&lt;")
+    .replace(/>/gu, "&gt;")
+    .replace(/"/gu, "&quot;");
 }
 
-function verdict(status) {
+function shortId(id) {
+  return escapeHtml(id);
+}
+
+function fmtDate(value) {
+  if (!value) return "";
+  const text = String(value);
+  const match = /^(\d{4})-(\d{2})-(\d{2})/u.exec(text);
+  return match ? `${match[2]}-${match[3]}` : text;
+}
+
+function segmentName(segment) {
+  return segment.name ?? "日常段";
+}
+
+function segmentCounts(segment) {
+  const done = segment.tasks.filter((task) => task.status === "已完成").length;
+  const passed = segment.acceptance.filter((item) => item.status === "通过").length;
+  return { tasks: segment.tasks.length, tasksDone: done, passed };
+}
+
+function statusTone(status) {
   if (status === "通过" || status === "已完成") return "ok";
   if (status === "不通过") return "bad";
   return "idle";
 }
 
-function taskBar(tasks) {
-  if (!tasks.length) return `<span class="bar empty" aria-hidden="true"></span>`;
-  const cells = tasks
-    .map(
-      (task) =>
-        `<span class="cell${task.status === "已完成" ? " done" : ""}" title="${escape(
-          `${task.status === "已完成" ? "✓" : "·"} ${task.text}${task.evidence?.length ? `\n${task.evidence.join("\n")}` : ""}`,
-        )}"></span>`,
-    )
+function renderSessions(doc, focused) {
+  const rows = listSessions(doc);
+  if (rows.length <= 1) return "";
+  const chips = rows
+    .map((row) => {
+      const live = row.focused ? " live" : row.status === "archived" ? " gone" : "";
+      return `<span class="chip${live}" title="${escapeHtml(row.title)}"><i>${escapeHtml(row.id)}</i>${escapeHtml(
+        row.status === "archived" ? "已归档" : row.state,
+      )}</span>`;
+    })
     .join("");
-  return `<span class="bar" aria-label="任务 ${tasks.filter((task) => task.status === "已完成").length}/${tasks.length}">${cells}</span>`;
+  return `<div class="sessions" aria-label="会话">${chips}</div>`;
 }
 
-function layerRow(acceptance) {
-  const byLayer = new Map();
-  for (const item of acceptance) {
+function renderRail(session, selectedId, currentId) {
+  return session.segments
+    .map((segment) => {
+      const counts = segmentCounts(segment);
+      const tone = SEGMENT_TONE[segment.status] ?? "idle";
+      const live = segment.id === selectedId ? " selected" : "";
+      const meter =
+        counts.tasks > 0
+          ? `<span class="meter"><i style="--fill:${Math.round((counts.tasksDone / counts.tasks) * 100)}%"></i></span>`
+          : "";
+      const countsText =
+        counts.tasks > 0 || counts.passed > 0
+          ? `${counts.tasksDone}/${counts.tasks} · ${counts.passed}`
+          : segment.status;
+      return `<button type="button" class="seg${live} ${tone}" data-seg="${shortId(segment.id)}" data-current="${
+        segment.id === currentId
+      }" aria-pressed="${segment.id === selectedId}"><span class="seg-id">${shortId(
+        segment.id,
+      )}</span><span class="seg-name">${escapeHtml(segmentName(segment))}</span><span class="seg-status">${escapeHtml(
+        countsText,
+      )}</span>${meter}</button>`;
+    })
+    .join("");
+}
+
+function renderEvidence(values) {
+  if (!values || values.length === 0) return "";
+  const items = values.map((one) => `<li>${escapeHtml(one)}</li>`).join("");
+  return `<div class="ev" role="tooltip"><ul>${items}</ul></div>`;
+}
+
+function renderTasks(segment) {
+  if (segment.tasks.length === 0) {
+    return `<p class="quiet">这一段还没有任务。</p>`;
+  }
+  const done = segment.tasks.filter((task) => task.status === "已完成");
+  const open = segment.tasks.filter((task) => task.status !== "已完成");
+  const row = (task) => {
+    const ok = task.status === "已完成";
+    const evidence = renderEvidence(task.evidence);
+    return `<li class="task${ok ? " ok" : ""}${evidence ? " has-ev" : ""}" tabindex="0"><span class="mark">${
+      ok ? "✓" : "·"
+    }</span><span class="task-text">${escapeHtml(task.text)}</span>${evidence}</li>`;
+  };
+  const openRows = open.map(row).join("");
+  const doneRows = done.map(row).join("");
+  const doneBlock = done.length
+    ? `<details class="done-fold"><summary>已完成 ${done.length} 项</summary><ul>${doneRows}</ul></details>`
+    : "";
+  return `<ul class="tasks">${openRows}</ul>${doneBlock}`;
+}
+
+function renderLayers(segment) {
+  if (segment.acceptance.length === 0) {
+    return segment.labeled ? `<p class="quiet">这一段还没有验收判据。</p>` : "";
+  }
+  const byLayer = new Map(ACCEPTANCE_LAYERS.map((layer) => [layer, []]));
+  for (const item of segment.acceptance) {
     const layer = item.layer ?? "D";
     if (!byLayer.has(layer)) byLayer.set(layer, []);
     byLayer.get(layer).push(item);
   }
-  return `<span class="layers">${["D", "C", "R", "H"]
+  const columns = ACCEPTANCE_LAYERS.filter((layer) => (byLayer.get(layer) ?? []).length > 0)
     .map((layer) => {
-      const items = byLayer.get(layer) ?? [];
-      if (!items.length)
-        return `<span class="layer idle" title="${LAYER_NAME[layer]}：无">${LAYER_SHAPE[layer]}</span>`;
-      const state = items.some((item) => item.status === "不通过")
-        ? "bad"
-        : items.every((item) => item.status === "通过" || Boolean(item.resolution))
-          ? "ok"
-          : "idle";
-      const detail = items
+      const items = byLayer.get(layer);
+      const slips = items
         .map((item) => {
-          const resolved = item.resolution
-            ? ` → ${item.resolution.decision}${item.resolution.note ? `（${item.resolution.note}）` : ""}`
-            : "";
-          const evidence = item.evidence?.length ? `\n${item.evidence.join("\n")}` : "";
-          return `${item.status}${resolved}\n${item.text}${evidence}`;
+          const tone =
+            layer === "R" && !item.resolution
+              ? "bad"
+              : layer === "H" && item.status !== "通过"
+                ? "wait"
+                : statusTone(item.status);
+          const note =
+            layer === "R"
+              ? item.resolution
+                ? escapeHtml(item.resolution.decision)
+                : "未处置"
+              : item.status === "未验" && layer === "H"
+                ? "等你"
+                : escapeHtml(item.status);
+          const evidence = renderEvidence(item.evidence);
+          return `<li class="slip ${tone}${evidence ? " has-ev" : ""}" tabindex="0" title="${escapeHtml(
+            `${item.id} · ${item.text}`,
+          )}"><span class="slip-shape">${LAYER_SHAPE[layer]}</span><span class="slip-text">${escapeHtml(
+            item.text,
+          )}</span><span class="slip-note">${note}</span>${evidence}</li>`;
         })
-        .join("\n\n");
-      return `<span class="layer ${state}" title="${LAYER_NAME[layer]}：${escape(detail)}">${LAYER_SHAPE[layer]}</span>`;
-    })
-    .join("")}</span>`;
-}
-
-function drawer(phase) {
-  const tasks = phase.tasks ?? [];
-  const acceptance = phase.acceptance ?? [];
-  const taskRows = tasks
-    .map(
-      (task) => `<li class="detail${task.status === "已完成" ? " done" : ""}">
-        <span class="glyph">${task.status === "已完成" ? "✓" : "·"}</span>
-        <span class="text">${escape(task.text)}</span>
-        ${task.evidence?.length ? `<span class="evidence">${task.evidence.map(escape).join("<br>")}</span>` : ""}
-      </li>`,
-    )
-    .join("");
-  const acceptanceRows = acceptance
-    .map((item) => {
-      const layer = item.layer ?? "D";
-      const tone = verdict(item.status);
-      const resolution = item.resolution
-        ? `<span class="note">${escape(item.resolution.decision)}${
-            item.resolution.note ? ` · ${escape(item.resolution.note)}` : ""
-          }</span>`
-        : "";
-      return `<li class="detail ${tone}" data-layer="${LAYER_NAME[layer]}">
-        <span class="glyph">${LAYER_SHAPE[layer]}</span>
-        <span class="text">${escape(item.text)}${resolution}</span>
-        <span class="evidence">${
-          item.evidence?.length ? item.evidence.map(escape).join("<br>") : "还没有证据"
-        }</span>
-      </li>`;
+        .join("");
+      return `<div class="layer"><h3><span class="shape">${LAYER_SHAPE[layer]}</span>${LAYER_NAME[layer]}<em>${
+        items.filter((item) => item.status === "通过" || (layer === "R" && item.resolution)).length
+      }/${items.length}</em></h3><ul>${slips}</ul></div>`;
     })
     .join("");
-  const review = phase.review
-    ? `<li class="detail muted">
-        <span class="glyph">↻</span>
-        <span class="text">${escape(phase.review.what)} · ${escape(phase.review.gap)} · ${escape(phase.review.split)}</span>
-      </li>`
+  return `<div class="layers">${columns}</div>`;
+}
+
+function renderSign(session, segment) {
+  if (!segment.labeled) return "";
+  const blocking = segment.acceptance.filter((item) => (item.layer ?? "D") !== "R");
+  const open = blocking.filter((item) => item.status !== "通过");
+  const findings = segment.acceptance.filter(
+    (item) => (item.layer ?? "D") === "R" && !item.resolution,
+  );
+  const gaps = [...open, ...findings];
+  if (segment.status === "已完成") {
+    const signed = session.scope?.signed;
+    return `<p class="sign done">这一段已经放行。${signed ? `<span>${fmtDate(signed.date)} 签收</span>` : ""}</p>`;
+  }
+  if (gaps.length === 0) return `<p class="sign ready">还差一步：收尾这一段。</p>`;
+  return `<p class="sign gap">还差 ${gaps.length} 项 · 第一处：${escapeHtml(
+    gaps[0].text,
+  )}<span class="pulse" aria-hidden="true"></span></p>`;
+}
+
+function renderSegment(session, segment) {
+  const review = segment.review
+    ? `<dl class="review">${
+        segment.review.what ? `<dt>验什么</dt><dd>${escapeHtml(segment.review.what)}</dd>` : ""
+      }${segment.review.gap ? `<dt>可能漏</dt><dd>${escapeHtml(segment.review.gap)}</dd>` : ""}${
+        segment.review.split ? `<dt>划分</dt><dd>${escapeHtml(segment.review.split)}</dd>` : ""
+      }</dl>`
     : "";
-  if (!taskRows && !acceptanceRows && !review) return "";
-  return `<div class="drawer"><ul class="details">${taskRows}${acceptanceRows}${review}</ul></div>`;
+  return `<section class="sheet" aria-label="当前段">
+    <header class="sheet-head">
+      <span class="sheet-id">${shortId(segment.id)}</span>
+      <h2>${escapeHtml(segmentName(segment))}</h2>
+      <span class="badge ${SEGMENT_TONE[segment.status] ?? "idle"}">${escapeHtml(segment.status)}</span>
+      <span class="sheet-counts">${segment.tasks.filter((task) => task.status === "已完成").length}/${
+        segment.tasks.length
+      } 任务 · ${segment.acceptance.filter((item) => item.status === "通过").length}/${
+        segment.acceptance.length
+      } 验收</span>
+    </header>
+    ${review}
+    ${renderTasks(segment)}
+    ${renderLayers(segment)}
+    ${renderSign(session, segment)}
+  </section>`;
 }
 
-function unitRow(phase, currentId, index) {
-  const tasks = phase.tasks ?? [];
-  const acceptance = phase.acceptance ?? [];
-  const blocking = acceptance.filter((item) => (item.layer ?? "D") !== "R");
-  const passed = blocking.filter((item) => item.status === "通过").length;
-  const isCurrent = phase.id === currentId;
-  const done = phase.status === "已完成";
-  const stateName = done ? "done" : isCurrent ? "live" : "idle";
-  const milestone = done
-    ? `<span class="badge ok">✓</span>`
-    : isCurrent && blocking.length
-      ? `<span class="badge live">${passed}/${blocking.length}</span>`
-      : `<span class="badge"></span>`;
-  return `<li class="unit ${stateName}" data-phase="${escape(phase.id)}">
-    <button class="unit-row" type="button" aria-expanded="false" aria-controls="drawer-${escape(phase.id)}">
-      <span class="index">${String(index + 1).padStart(2, "0")}</span>
-      <span class="name">${escape(phase.name)}</span>
-      ${taskBar(tasks)}
-      ${layerRow(acceptance)}
-      ${milestone}
-      <span class="chevron" aria-hidden="true">▾</span>
-    </button>
-    <div class="drawer-wrap" id="drawer-${escape(phase.id)}">${drawer(phase)}</div>
-  </li>`;
+function renderFacts(session) {
+  const progress = sessionProgress(session);
+  const byLayer = ACCEPTANCE_LAYERS.map((layer) => {
+    const items = session.segments.flatMap((segment) =>
+      segment.acceptance.filter((item) => (item.layer ?? "D") === layer),
+    );
+    const passed = items.filter(
+      (item) => item.status === "通过" || (layer === "R" && item.resolution),
+    ).length;
+    return `<li><span class="shape">${LAYER_SHAPE[layer]}</span><span>${LAYER_NAME[layer]}</span><em>${passed}/${items.length}</em></li>`;
+  }).join("");
+  return `<aside class="facts" aria-label="进度">
+    <div class="fact"><em>${progress.segmentsDone}/${progress.segments}</em><span>段</span></div>
+    <div class="fact"><em>${progress.tasksDone}/${progress.tasks}</em><span>任务</span></div>
+    <div class="fact"><em>${progress.acceptanceDone}/${progress.acceptance}</em><span>验收</span></div>
+    <ul class="layers-legend">${byLayer}</ul>
+  </aside>`;
 }
 
-function stateStrip(current) {
-  return `<nav class="states" aria-label="治理状态">${STATES.map((state) => {
-    const active = state === current;
-    return `<span class="state${active ? " on" : ""}"${active ? ` aria-current="true"` : ""}>
-      <span class="dot" aria-hidden="true"></span>
-      <span class="word">${escape(state)}</span>
-      <span class="code">${STATE_CODE[state]}</span>
-    </span>`;
-  }).join('<span class="state-link" aria-hidden="true"></span>')}</nav>`;
-}
-
-function logTicks(log, now) {
-  const recent = [...log].slice(-8).reverse();
-  if (!recent.length) return `<span class="tick-line" aria-hidden="true"></span>`;
-  return `<span class="tick-line">${recent
+function renderLog(doc) {
+  const rows = logOf(doc).slice(-3).reverse();
+  if (rows.length === 0) return "";
+  const items = rows
     .map(
-      (entry, index) =>
-        `<span class="tick${index === 0 ? " latest" : ""}" title="${escape(entry.reason ?? "")} · ${escape(
-          entry.at ?? "",
-        )}"></span>`,
+      (entry) =>
+        `<li><span>${escapeHtml(fmtDate(entry.date))}</span>${escapeHtml(
+          `${entry.from ?? "起始"} → ${entry.to}`,
+        )}</li>`,
     )
-    .join("")}</span>`;
+    .join("");
+  return `<section class="log"><h3>最近切换</h3><ul>${items}</ul></section>`;
 }
 
-/**
- * @param {object} doc state document
- * @param {Date} now render time
- * @returns {string} complete HTML page
- */
-export function renderView(doc, now = new Date()) {
-  validateState(doc);
-  const progress = workProgress(doc);
-  const state = doc.current.state;
-  const action = nextAction(doc);
-  const scope = doc.work?.scope ?? null;
-  const phases = doc.work?.phases ?? [];
-  const current = phases.find((phase) => phase.status === "进行中");
-  const thread = doc.current.threadId
-    ? doc.threads.find((entry) => entry.id === doc.current.threadId)
-    : null;
-  const meta = [
-    thread ? `${thread.rounds?.length ?? 0} 轮` : "没有会话",
-    thread?.waits?.length ? `${thread.waits.length} 待裁` : "",
-    `${progress.phases.done}/${progress.phases.total} 单元`,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-  const scopeLine = scope
-    ? `<span class="scope-kind">${escape(scope.kind)}</span><span class="scope-text">${escape(scope.text)}</span>`
-    : `<span class="scope-kind">范围</span><span class="scope-text empty">npm run state -- scope "…"</span>`;
-  const actionBlock = action
-    ? `<button class="action" type="button" data-copy="${escape(action.command)}" title="${escape(
-        `${action.label} · ${action.detail}`,
-      )}">
-        <span class="action-tag">下一步</span>
-        <code class="action-cmd">${escape(action.command)}</code>
-        <span class="action-mark" aria-hidden="true">⧉</span>
-      </button>`
-    : "";
-  const stamp = `${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(
-    now.getHours(),
-  ).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-  const units = phases.length
-    ? `<ol class="units" aria-label="验收单元">${phases
-        .map((phase, index) => unitRow(phase, current?.id ?? null, index))
-        .join("")}</ol>`
-    : `<p class="blank">还没有验收单元。范围定了以后用 <code>npm run state -- phase add --name "…"</code> 拆单元。</p>`;
-
+function page({ doc, session, selected, fileUrl }) {
+  const samples = doc.sessions.length;
+  const next = nextAction(doc);
+  const focused = focusSession(doc);
+  const currentSegmentId = focused ? (currentSegment(doc)?.id ?? null) : null;
+  const selectedSegment =
+    session.segments.find((segment) => segment.id === selected) ??
+    session.segments.find((segment) => segment.id === currentSegmentId) ??
+    session.segments[session.segments.length - 1];
+  const generated = new Date().toLocaleString("zh-CN", { hour12: false });
+  const state = session.state;
+  const sessions = renderSessions(doc, session);
+  const hero = `<header class="hero">
+    <div class="hero-state"><span class="state-code">${STATE_LABEL[state] ?? state}</span><span class="state-word">${
+      STATE_NAME[state] ?? state
+    }</span></div>
+    <h1 class="session-title" title="${escapeHtml(session.title)}">${escapeHtml(session.title)}</h1>
+    <p class="scope-line">${
+      session.status === "archived" ? `<span class="archived-chip">已归档</span>` : ""
+    }${
+      session.scope
+        ? `<span class="kind">${escapeHtml(session.scope.kind)}</span>${escapeHtml(session.scope.text)}`
+        : `<code>npm run state -- scope "这次交付什么"</code>`
+    }</p>
+    ${sessions}
+  </header>`;
+  const empty =
+    session.segments.length === 1 && session.segments[0].tasks.length === 0 && !session.scope
+      ? `<p class="empty-hint">下一步：<code>${escapeHtml(next.command)}</code></p>`
+      : "";
   return `<!doctype html>
 <html lang="zh-CN" data-theme="dark">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Noema · 治理</title>
-<style>
-:root {
-  --bg: #08090b;
-  --ink: #e9edf2;
-  --ink-2: #aeb7c2;
-  --muted: #5d6673;
-  --line: #171b21;
-  --line-2: #232a33;
-  --accent: #f0b429;
-  --ok: #58c08a;
-  --bad: #ef6a5c;
-  --panel: #0e1216;
-  --mono: "JetBrains Mono", "Cascadia Mono", "Consolas", ui-monospace, monospace;
-  --sans: "Segoe UI Variable", "Segoe UI", "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
-}
-html[data-theme="light"] {
-  --bg: #f3f0e9; --ink: #12161a; --ink-2: #39424b; --muted: #7d858f;
-  --line: #e2ddd1; --line-2: #d5cfc1; --accent: #8f5d00; --ok: #1c744f; --bad: #a33529; --panel: #fbf9f4;
-}
-* { box-sizing: border-box; }
-html, body { margin: 0; }
-body { background: var(--bg); color: var(--ink); font: 14px/1.55 var(--sans); -webkit-font-smoothing: antialiased; }
-button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
-button:focus-visible { outline: 1px solid var(--accent); outline-offset: 3px; }
-code, .mono { font-family: var(--mono); }
-
-.shell {
-  max-width: 940px; margin: 0 auto; padding: 26px 30px 22px;
-  min-height: 100vh; display: grid; grid-template-rows: auto auto 1fr auto auto; gap: 0;
-}
-
-/* top: identity, state, session */
-.bar { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-.brand { display: flex; align-items: center; gap: 10px; font: 11px var(--mono); letter-spacing: .34em; color: var(--ink-2); }
-.brand::before { content: ""; width: 7px; height: 18px; background: var(--accent); clip-path: polygon(0 0, 100% 22%, 100% 100%, 0 78%); }
-.states { display: flex; align-items: center; gap: 0; margin-left: 6px; }
-.state { display: flex; align-items: baseline; gap: 7px; padding: 5px 13px 5px 11px; border: 1px solid var(--line-2); color: var(--muted); position: relative; }
-.state + .state { border-left: 0; }
-.state .dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; opacity: .35; align-self: center; }
-.state .word { font-size: 12px; letter-spacing: .08em; }
-.state .code { font: 8px var(--mono); letter-spacing: .2em; opacity: .55; }
-.state.on { color: var(--bg); background: var(--accent); border-color: var(--accent); }
-.state.on .dot { opacity: 1; background: var(--bg); box-shadow: 0 0 0 3px color-mix(in srgb, var(--bg) 35%, transparent); animation: beat 2.6s ease-in-out infinite; }
-.state.on .code { opacity: .7; }
-.state-link { width: 10px; height: 1px; background: var(--line-2); }
-.meta { font: 10px var(--mono); color: var(--muted); letter-spacing: .08em; margin-left: auto; }
-.theme { width: 28px; height: 28px; display: grid; place-items: center; color: var(--muted); border: 1px solid transparent; transition: color .25s, transform .6s, border-color .25s; }
-.theme:hover { color: var(--accent); transform: rotate(180deg); border-color: var(--line-2); }
-
-/* scope: the sentence this round is judged against */
-.scope { display: flex; gap: 10px; align-items: baseline; margin: 22px 0 0; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
-.scope-kind { font: 9px var(--mono); letter-spacing: .22em; color: var(--muted); border: 1px solid var(--line-2); padding: 2px 6px; flex: none; }
-.scope-text { font-size: 13px; color: var(--ink-2); }
-.scope-text.empty { font-family: var(--mono); font-size: 12px; color: var(--muted); }
-
-/* the units: one row each, shape and fill tell the story */
-.units { list-style: none; margin: 8px 0 0; padding: 0; flex: 1; display: flex; flex-direction: column; justify-content: space-evenly; }\nmain { display: flex; flex-direction: column; min-height: 0; }
-.unit { position: relative; border-bottom: 1px solid var(--line); animation: rise .5s cubic-bezier(.2,.8,.2,1) both; animation-delay: calc(var(--i, 0) * 45ms); }
-.unit-row {
-  display: grid; grid-template-columns: 34px minmax(0, 1fr) auto auto 42px 14px;
-  align-items: center; column-gap: 16px; width: 100%; text-align: left; padding: 15px 8px 15px 4px;
-  transition: background .25s, padding-left .25s;
-}
-.unit-row:hover { background: color-mix(in srgb, var(--accent) 4%, transparent); padding-left: 8px; }
-.unit.live .unit-row { background: color-mix(in srgb, var(--accent) 7%, transparent); padding-top: 26px; padding-bottom: 26px; }\n.unit.live::before { content: ""; position: absolute; left: 0; top: 8px; bottom: 8px; width: 2px; background: var(--accent); }\n.unit.idle .unit-row { opacity: .62; }\n.unit.idle .unit-row:hover { opacity: 1; }\n.unit.live .name { font-size: 16px; letter-spacing: .01em; }\n.unit.live .layers { font-size: 16px; gap: 14px; }\n.unit.live .bar { min-width: 72px; }\n.unit.live .index { color: var(--accent); }
-.index { font: 11px var(--mono); letter-spacing: .12em; color: var(--muted); }
-.name { font-size: 14px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: color .25s; }
-.unit.done .name { color: var(--muted); }
-.unit.live .name { color: var(--ink); }
-.unit-row:hover .name { color: var(--ink); }
-
-.bar { display: flex; gap: 3px; align-items: center; min-width: 64px; }
-.bar.empty { min-width: 0; }
-.cell { width: 14px; height: 5px; border: 1px solid var(--line-2); background: transparent; transition: background .3s, border-color .3s; }
-.cell.done { background: var(--ink-2); border-color: transparent; }\n.bar.empty { font: 11px var(--mono); color: var(--muted); opacity: .5; }
-.unit.live .cell.done { background: var(--accent); }
-
-.layers { display: flex; gap: 11px; font: 13px var(--mono); color: var(--line-2); }
-.layer.ok { color: var(--ok); }
-.layer.bad { color: var(--bad); }
-.layer.idle { color: var(--muted); }
-.layer { transition: color .25s, transform .25s; }
-.unit-row:hover .layer { transform: translateY(-1px); }
-
-.badge { font: 10px var(--mono); color: var(--muted); text-align: right; letter-spacing: .06em; }\n.chevron { font-size: 9px; color: var(--muted); opacity: 0; transition: opacity .25s, transform .35s; }\n.unit-row:hover .chevron, .unit.open .chevron { opacity: .8; }\n.unit.open .chevron { transform: rotate(180deg); }
-.badge.ok { color: var(--ok); font-size: 12px; }
-.badge.live { color: var(--accent); }
-
-/* the unit opens only when asked for */
-.drawer-wrap { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .5s cubic-bezier(.2,.8,.2,1); }
-.unit.open .drawer-wrap { grid-template-rows: 1fr; }
-.drawer { overflow: hidden; }
-.details { list-style: none; margin: 0 0 14px 50px; padding: 0; }
-.drawer-wrap:has(.drawer:empty) { display: none; }
-.detail { position: relative; display: flex; gap: 12px; align-items: baseline; padding: 7px 10px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
-.detail.done { color: var(--ink-2); }
-.detail.ok { color: var(--ink); }
-.detail.ok .glyph { color: var(--ok); }
-.detail.bad { color: var(--bad); }
-.detail.bad .glyph { color: var(--bad); }
-.detail .glyph { width: 14px; flex: none; font: 11px var(--mono); color: var(--muted); }
-.detail .text { flex: 1; min-width: 0; }
-.detail .note { color: var(--muted); font-size: 11px; margin-left: 8px; }
-.evidence {
-  position: absolute; left: 40px; top: calc(100% - 2px); z-index: 6;
-  max-width: min(560px, 74vw); padding: 9px 12px;
-  background: var(--panel); border: 1px solid var(--line-2); border-left: 2px solid var(--accent);
-  color: var(--ink-2); font: 11px/1.7 var(--mono);
-  opacity: 0; transform: translateY(-5px); pointer-events: none;
-  transition: opacity .2s, transform .2s;
-  box-shadow: 0 22px 48px -26px rgba(0,0,0,.65);
-}
-.detail:hover .evidence, .detail:focus-within .evidence { opacity: 1; transform: translateY(0); pointer-events: auto; }
-
-/* the next command sits at the seam between the units and the log */
-.action {
-  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; column-gap: 12px; align-items: baseline;
-  margin: 18px 0 0; padding: 12px 15px; text-align: left;
-  border-left: 2px solid var(--accent);
-  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 12%, transparent), transparent 72%);
-  transition: background .3s, transform .3s;
-}
-.action:hover { transform: translateX(3px); background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 18%, transparent), transparent 78%); }
-.action-tag { font: 9px var(--mono); letter-spacing: .26em; color: var(--muted); align-self: center; }
-.action-cmd { font-size: 12px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.action-mark { font-size: 12px; color: var(--accent); opacity: .5; transition: opacity .25s; }
-.action:hover .action-mark { opacity: 1; }
-.action.copied { border-left-color: var(--ok); background: color-mix(in srgb, var(--ok) 14%, transparent); }
-.action.copied .action-mark { color: var(--ok); opacity: 1; }
-
-/* bottom: how we got here, as ticks instead of a paragraph */
-.foot { display: flex; align-items: center; gap: 14px; padding-top: 20px; margin-top: auto; font: 10px var(--mono); color: var(--muted); letter-spacing: .06em; }
-.tick-line { display: flex; gap: 5px; align-items: center; flex: 1; }
-.tick-line::before, .tick-line::after { content: ""; height: 1px; background: var(--line-2); flex: 1; }
-.tick { width: 2px; height: 9px; background: var(--line-2); transition: background .2s, height .2s; }
-.tick:hover { background: var(--accent); height: 14px; }
-.tick.latest { background: var(--accent); height: 14px; }
-.blank { color: var(--muted); font-size: 13px; padding: 26px 4px; }
-.blank code { color: var(--ink-2); }
-
-@keyframes rise { from { transform: translateY(8px); } to { transform: none; } }
-@keyframes beat { 50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--bg) 22%, transparent); } }
-
-@media (max-width: 680px) {
-  .shell { padding: 20px 16px 18px; }
-  .bar { gap: 8px; }
-  .state { padding: 4px 9px; }
-  .state .code { display: none; }
-  .state .word { font-size: 11px; }
-  .meta { order: 3; margin-left: 0; flex-basis: 100%; }
-  .theme { margin-left: auto; }
-  .units { margin-top: 6px; }
-  .unit-row { grid-template-columns: 26px minmax(0, 1fr) auto; row-gap: 6px; column-gap: 10px; }
-  .bar { grid-column: 2 / -1; }
-  .layers { grid-column: 2 / -1; }
-  .badge { position: absolute; right: 4px; top: 13px; }
-  .details { margin-left: 0; }
-  .action { align-items: start; }
-  .action-cmd { white-space: normal; overflow-wrap: anywhere; }
-  .evidence { left: 0; max-width: calc(100vw - 52px); }
-}
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation: none !important; transition: none !important; }
-}
-</style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Noema · 治理工作台</title>
+<style>${STYLE}</style>
 </head>
 <body>
-<div class="shell">
-  <header class="bar">
-    <span class="brand">NOEMA</span>
-    ${stateStrip(state)}
-    <span class="meta">${escape(meta)}</span>
-    <button class="theme" type="button" title="明暗（T）" aria-label="切换明暗">◐</button>
+<div class="frame">
+  <header class="topbar">
+    <span class="brand"><i></i>NOEMA<span class="thin">//</span>GOVERNANCE<span class="sub">状态驱动 · 只读</span></span>
+    <button type="button" class="theme" aria-label="切换明暗" title="切换明暗">◐</button>
   </header>
-
-  <p class="scope">${scopeLine}</p>
-
-  <main>${units}</main>
-
-  ${actionBlock}
-
-  <footer class="foot">
-    <span>${escape(stamp)}</span>
-    ${logTicks(doc.log ?? [], now)}
-    <span>state v${escape(doc.version)}</span>
+  ${hero}
+  <main class="board">
+    <nav class="rail" aria-label="段">${renderRail(session, selectedSegment?.id, currentSegmentId)}</nav>
+    <div class="stage">
+      ${
+        session.segments.length
+          ? session.segments
+              .map(
+                (one) =>
+                  `<div class="sheet-block" data-sheet="${one.id}">${renderSegment(session, one)}</div>`,
+              )
+              .join("")
+          : `<p class="quiet">这个会话还没有段。</p>`
+      }
+      ${empty}
+      ${renderLog(doc)}
+    </div>
+    ${renderFacts(session)}
+  </main>
+  <footer class="command">
+    <span class="command-label">下一步</span>
+    <code class="command-text" title="${escapeHtml(`${next.label} — ${next.detail}`)}">${escapeHtml(
+      next.command,
+    )}</code>
+    <button type="button" class="copy" aria-label="复制下一步命令" title="复制">⧉</button>
+    <span class="stamp">${samples} 个会话 · ${escapeHtml(generated)}</span>
   </footer>
 </div>
 <script>
-(() => {
-  const root = document.documentElement;
-  const saved = localStorage.getItem("noema-work-theme");
-  if (saved) root.dataset.theme = saved;
-  const theme = document.querySelector(".theme");
-  const flip = () => {
-    const next = root.dataset.theme === "dark" ? "light" : "dark";
-    root.dataset.theme = next;
-    localStorage.setItem("noema-work-theme", next);
-  };
-  theme.addEventListener("click", flip);
-  document.addEventListener("keydown", (event) => {
-    if (event.key === "t" || event.key === "T") flip();
+(function () {
+  var root = document.documentElement;
+  var saved = null;
+  try { saved = localStorage.getItem("noema-work-view-theme"); } catch (error) { saved = null; }
+  if (saved === "light") root.dataset.theme = "light";
+  function toggle() {
+    root.dataset.theme = root.dataset.theme === "light" ? "dark" : "light";
+    try { localStorage.setItem("noema-work-view-theme", root.dataset.theme); } catch (error) {}
+  }
+  document.querySelector(".theme").addEventListener("click", toggle);
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "t" || event.key === "T") toggle();
   });
-
-  const rows = [...document.querySelectorAll(".unit-row")];
-  for (const row of rows) {
-    const unit = row.closest(".unit");
-    row.addEventListener("click", () => {
-      const open = unit.classList.toggle("open");
-      row.setAttribute("aria-expanded", open ? "true" : "false");
+  var blocks = Array.prototype.slice.call(document.querySelectorAll(".sheet-block"));
+  var buttons = Array.prototype.slice.call(document.querySelectorAll(".seg"));
+  function show(id) {
+    blocks.forEach(function (block) { block.classList.toggle("on", block.dataset.sheet === id); });
+    buttons.forEach(function (button) {
+      button.classList.toggle("selected", button.dataset.seg === id);
+      button.setAttribute("aria-pressed", String(button.dataset.seg === id));
     });
   }
-
-  // number keys jump to a unit and open it
-  document.addEventListener("keydown", (event) => {
-    const n = Number(event.key);
-    if (!Number.isInteger(n) || n < 1 || n > rows.length) return;
-    if (document.activeElement?.tagName === "INPUT") return;
-    const row = rows[n - 1];
-    const unit = row.closest(".unit");
-    unit.classList.add("open");
-    row.setAttribute("aria-expanded", "true");
-    row.focus();
-    history.replaceState(null, "", "#" + unit.dataset.phase);
-  });
-
-  const action = document.querySelector(".action");
-  if (action) {
-    action.addEventListener("click", async () => {
-      try {
-        await navigator.clipboard.writeText(action.dataset.copy);
-        action.classList.add("copied");
-        setTimeout(() => action.classList.remove("copied"), 1400);
-      } catch {
-        const range = document.createRange();
-        range.selectNodeContents(action.querySelector(".action-cmd"));
-        const selection = getSelection();
-        selection.removeAllRanges();
-        selection.addRange(range);
-      }
-    });
+  function fromHash() {
+    var match = /^#seg-(\S+)$/.exec(location.hash);
+    return match ? match[1] : null;
   }
+  var initial = document.querySelector('.seg[data-current="true"]');
+  show(fromHash() || (initial && initial.dataset.seg) || (buttons[0] && buttons[0].dataset.seg));
+  buttons.forEach(function (button) {
+    button.addEventListener("click", function () {
+      show(button.dataset.seg);
+      history.replaceState(null, "", "#seg-" + button.dataset.seg);
+    });
+  });
+  window.addEventListener("hashchange", function () {
+    var id = fromHash();
+    if (id) show(id);
+  });
+  document.querySelector(".copy").addEventListener("click", function () {
+    var text = document.querySelector(".command-text").textContent;
+    var done = function () { var button = document.querySelector(".copy"); button.textContent = "✓"; setTimeout(function () { button.textContent = "⧉"; }, 1200); };
+    if (navigator.clipboard) navigator.clipboard.writeText(text).then(done, done);
+    else done();
+  });
 })();
 </script>
 </body>
-</html>`;
+</html>
+`;
 }
 
-function loadState(root) {
-  const file = path.join(root, STATE_PATH);
-  if (!fs.existsSync(file)) {
-    throw new Error(`缺少 ${STATE_PATH}：先用 npm run state 记录当前状态`);
-  }
-  return upgradeState(JSON.parse(fs.readFileSync(file, "utf8")));
+const STYLE = `
+:root {
+  --bg: #141412;
+  --panel: #1b1a17;
+  --line: #2e2c27;
+  --ink: #ece7dc;
+  --dim: #928c7d;
+  --amber: #ffc45c;
+  --ok: #6fd39a;
+  --bad: #e2705c;
 }
+html[data-theme="light"] {
+  --bg: #f5f2ea;
+  --panel: #fffdf7;
+  --line: #d9d3c4;
+  --ink: #221f1a;
+  --dim: #7c7466;
+  --amber: #b07a1d;
+  --ok: #2f7a4f;
+  --bad: #a8402f;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.55 "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+}
+code, .state-code, .brand, .seg-id, .stamp { font-family: "Consolas", "Cascadia Mono", monospace; }
+.frame { min-height: 100vh; display: grid; grid-template-rows: auto auto 1fr auto; }
+.topbar {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 14px 24px; border-bottom: 1px solid var(--line);
+}
+.brand { font-size: 11px; letter-spacing: .18em; display: flex; gap: 8px; align-items: center; }
+.brand i { width: 8px; height: 8px; background: var(--amber); display: inline-block; }
+.brand .thin { color: var(--dim); }
+.brand .sub { color: var(--dim); letter-spacing: .08em; }
+.theme {
+  background: none; border: 1px solid var(--line); color: var(--dim);
+  width: 30px; height: 30px; border-radius: 50%; cursor: pointer; font-size: 13px;
+  transition: color .2s, border-color .2s, transform .3s;
+}
+.theme:hover { color: var(--amber); border-color: var(--amber); transform: rotate(180deg); }
+.hero { padding: 30px 24px 18px; border-bottom: 1px solid var(--line); }
+.hero-state { display: flex; align-items: baseline; gap: 12px; }
+.state-code { font-size: 11px; letter-spacing: .28em; color: var(--amber); }
+.state-word { font-size: 40px; font-weight: 700; letter-spacing: .02em; }
+.session-title {
+  margin: 10px 0 0; font-size: 15px; font-weight: 600; color: var(--ink);
+  max-width: 78ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.scope-line { margin: 10px 0 0; color: var(--dim); font-size: 13px; }
+.archived-chip {
+  margin-left: 10px; font-size: 10px; letter-spacing: .08em; color: var(--dim);
+  border: 1px solid var(--line); padding: 1px 6px; font-weight: 400; vertical-align: middle;
+}
+.scope-line .kind {
+  border: 1px solid var(--line); border-radius: 3px; padding: 1px 5px; margin-right: 8px;
+  font-size: 10px; letter-spacing: .08em; color: var(--amber);
+}
+.scope-line code { color: var(--ink); }
+.sessions { margin-top: 14px; display: flex; gap: 6px; flex-wrap: wrap; }
+.chip {
+  border: 1px solid var(--line); color: var(--dim); padding: 2px 8px; font-size: 11px;
+  display: inline-flex; gap: 6px; align-items: center;
+}
+.chip i { font-style: normal; color: var(--dim); }
+.chip.live { color: var(--ink); border-color: var(--amber); }
+.chip.live i { color: var(--amber); }
+.chip.gone { opacity: .5; }
+.board {
+  display: grid; grid-template-columns: 216px minmax(0, 1fr) 200px;
+  gap: 0; min-height: 0;
+}
+.rail {
+  border-right: 1px solid var(--line); padding: 18px 12px; display: flex;
+  flex-direction: column; gap: 4px; align-content: start;
+}
+.seg {
+  display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; align-items: center;
+  text-align: left; background: none; border: 1px solid transparent; color: var(--dim);
+  padding: 8px 6px; cursor: pointer; font: inherit; position: relative;
+}
+.seg:hover { border-color: var(--line); color: var(--ink); }
+.seg.selected { border-color: var(--amber); color: var(--ink); }
+.seg-id { font-size: 10px; letter-spacing: .1em; color: var(--dim); }
+.seg.selected .seg-id { color: var(--amber); }
+.seg-name { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.seg-status { grid-column: 2; font-size: 10px; color: var(--dim); }
+.seg.done .seg-id::after, .seg.live .seg-id::after {
+  content: "●"; font-size: 7px; margin-left: 5px;
+}
+.seg.done .seg-id::after { color: var(--ok); }
+.seg.live .seg-id::after { color: var(--amber); }
+.meter { grid-column: 2; height: 2px; background: var(--line); display: block; }
+.meter i { display: block; height: 2px; width: var(--fill); background: var(--amber); }
+.stage { padding: 18px 22px; min-width: 0; }
+.sheet-block { display: none; }
+.sheet-block.on { display: block; }
+.sheet-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.sheet-id { font-size: 11px; letter-spacing: .18em; color: var(--amber); }
+.sheet-head h2 { margin: 0; font-size: 19px; font-weight: 600; }
+.badge { font-size: 10px; padding: 1px 6px; border: 1px solid var(--line); color: var(--dim); }
+.badge.live { color: var(--amber); border-color: var(--amber); }
+.badge.done { color: var(--ok); border-color: var(--ok); }
+.sheet-counts { margin-left: auto; font-size: 11px; color: var(--dim); }
+.review { margin: 12px 0 0; display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; font-size: 12px; color: var(--dim); }
+.review dt { color: var(--dim); }
+.review dd { margin: 0; color: var(--ink); }
+.tasks { list-style: none; margin: 16px 0 0; padding: 0; }
+.task {
+  display: flex; gap: 10px; align-items: baseline; padding: 7px 8px; position: relative;
+  border-left: 2px solid transparent; cursor: default;
+}
+.task:hover, .task:focus-within { background: var(--panel); border-left-color: var(--amber); }
+.task .mark { width: 12px; color: var(--dim); font-size: 12px; }
+.task.ok .mark { color: var(--ok); }
+.task-text { font-size: 13px; }
+.done-fold { margin: 8px 0 0; }
+.done-fold summary { cursor: pointer; color: var(--dim); font-size: 12px; padding: 4px 8px; }
+.done-fold summary:hover { color: var(--ink); }
+.layers { margin: 18px 0 0; display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+.layer h3 { margin: 0 0 6px; font-size: 11px; letter-spacing: .06em; color: var(--dim); display: flex; gap: 6px; align-items: baseline; }
+.layer h3 .shape, .layers-legend .shape { color: var(--amber); }
+.layer h3 em { margin-left: auto; font-style: normal; color: var(--dim); }
+.layer ul { list-style: none; margin: 0; padding: 0; }
+.slip {
+  display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: baseline;
+  padding: 6px 8px; border-left: 2px solid var(--line); margin-bottom: 4px; position: relative; cursor: default;
+}
+.slip:hover, .slip:focus-within { background: var(--panel); border-left-color: var(--amber); }
+.slip.ok { border-left-color: var(--ok); }
+.slip.bad { border-left-color: var(--bad); }
+.slip.wait { border-left-color: var(--amber); }
+.slip-shape { color: var(--dim); }
+.slip.ok .slip-shape { color: var(--ok); }
+.slip.bad .slip-shape { color: var(--bad); }
+.slip-text { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.slip-note { font-size: 10px; color: var(--dim); }
+.slip.ok .slip-note { color: var(--ok); }
+.slip.bad .slip-note { color: var(--bad); }
+.slip.wait .slip-note { color: var(--amber); }
+.ev {
+  position: absolute; z-index: 4; left: 8px; right: 8px; top: calc(100% + 2px);
+  background: var(--panel); border: 1px solid var(--line); padding: 8px 10px;
+  font-size: 11px; color: var(--dim); opacity: 0; transform: translateY(-4px);
+  pointer-events: none; transition: opacity .18s ease, transform .18s ease;
+}
+.task:hover .ev, .task:focus-within .ev, .slip:hover .ev, .slip:focus-within .ev {
+  opacity: 1; transform: translateY(0);
+}
+.ev ul { margin: 0; padding-left: 14px; }
+.sign {
+  margin: 20px 0 0; padding: 10px 12px; border: 1px dashed var(--line);
+  font-size: 12px; color: var(--dim); display: flex; gap: 10px; align-items: center;
+}
+.sign.gap { color: var(--bad); border-color: var(--bad); }
+.sign.ready { color: var(--amber); border-color: var(--amber); }
+.sign.done { color: var(--ok); border-color: var(--ok); }
+.sign span { color: var(--dim); font-size: 11px; }
+.pulse {
+  width: 7px; height: 7px; background: var(--bad); display: inline-block;
+  animation: pulse 1.8s ease-in-out infinite;
+}
+@keyframes pulse { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
+.facts {
+  border-left: 1px solid var(--line); padding: 18px 16px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.fact { display: flex; align-items: baseline; gap: 8px; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+.fact em { font-style: normal; font-size: 20px; font-weight: 600; }
+.fact span { color: var(--dim); font-size: 11px; }
+.layers-legend { list-style: none; margin: 0; padding: 0; font-size: 11px; color: var(--dim); }
+.layers-legend li { display: flex; gap: 6px; align-items: baseline; padding: 2px 0; }
+.layers-legend em { margin-left: auto; font-style: normal; }
+.log { margin-top: 22px; border-top: 1px solid var(--line); padding-top: 12px; }
+.log h3 { margin: 0 0 6px; font-size: 11px; letter-spacing: .08em; color: var(--dim); font-weight: 500; }
+.log ul { list-style: none; margin: 0; padding: 0; font-size: 11px; color: var(--dim); }
+.log li { display: flex; gap: 10px; padding: 2px 0; }
+.quiet { color: var(--dim); font-size: 12px; }
+.empty-hint { color: var(--dim); font-size: 12px; margin-top: 14px; }
+.empty-hint code { color: var(--amber); }
+.command {
+  border-top: 1px solid var(--line); padding: 12px 24px; display: flex; gap: 12px;
+  align-items: center; background: var(--panel);
+}
+.command-label { font-size: 10px; letter-spacing: .16em; color: var(--amber); }
+.command-text { color: var(--ink); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.copy {
+  background: none; border: 1px solid var(--line); color: var(--dim); cursor: pointer;
+  width: 24px; height: 24px; font-size: 12px; transition: color .2s, border-color .2s;
+}
+.copy:hover { color: var(--amber); border-color: var(--amber); }
+.stamp { margin-left: auto; font-size: 10px; color: var(--dim); letter-spacing: .06em; }
+@media (max-width: 900px) {
+  .board { grid-template-columns: 1fr; }
+  .rail { border-right: 0; border-bottom: 1px solid var(--line); flex-direction: row; overflow-x: auto; gap: 6px; }
+  .seg { min-width: 150px; }
+  .facts { border-left: 0; border-top: 1px solid var(--line); flex-direction: row; flex-wrap: wrap; }
+  .fact { border-bottom: 0; }
+  .session-title { white-space: normal; }
+  .stamp { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+`;
 
-export function writeView(root = process.cwd(), now = new Date()) {
+export function renderView(root = process.cwd()) {
   const doc = loadState(root);
-  const output = path.join(root, OUTPUT_PATH);
-  fs.mkdirSync(path.dirname(output), { recursive: true });
-  fs.writeFileSync(output, renderView(doc, now));
-  return { output, state: doc.current.state, progress: workProgress(doc) };
+  const focused = focusSession(doc);
+  const session =
+    focused ??
+    [...(doc.sessions ?? [])]
+      .sort((a, b) => String(b.since).localeCompare(String(a.since)))
+      .find((one) => one.segments.length > 0);
+  if (!session) {
+    return page({
+      doc,
+      session: {
+        id: null,
+        title: "还没有在推进的会话",
+        state: "讨论",
+        scope: null,
+        segments: [],
+      },
+      selected: null,
+    });
+  }
+  const selected =
+    process.env.NOEMA_VIEW_SEGMENT ??
+    (focused
+      ? (currentSegment(doc)?.id ?? null)
+      : session.segments[session.segments.length - 1]?.id);
+  return page({ doc, session, selected });
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(import.meta.filename)) {
-  const result = writeView();
-  const { progress } = result;
+export function writeView(
+  root = process.cwd(),
+  file = path.join(root, ".work", "review", "work-view.html"),
+) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, renderView(root), "utf8");
+  return file;
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const root = process.env.NOEMA_STATE_ROOT ?? process.cwd();
+  const file = writeView(root);
+  const doc = loadState(root);
+  const session = focusSession(doc);
+  console.log(file);
   console.log(
-    `工作台：${path.relative(process.cwd(), result.output)} · 状态 ${result.state} · 单元 ${progress.phases.done}/${progress.phases.total} · 任务 ${progress.tasks.done}/${progress.tasks.total} · 验收 ${progress.acceptance.passed}/${progress.acceptance.total}`,
+    session
+      ? `会话 ${session.id}「${session.title}」· ${session.state} · 段 ${session.segments.length}`
+      : "没有打开的会话",
   );
+  if (session) console.log(briefLines(doc)[0] ?? "");
 }

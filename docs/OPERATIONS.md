@@ -19,20 +19,20 @@ Does not own: 产品定位（PRODUCT）、结构与数据地图（ARCHITECTURE�
 
 ## 当前状态与工作台
 
-- 查看当前在做什么：`npm run state`（状态、会话、待裁、最近切换、当前规则包与下一步命令）；
+- 查看当前在推进什么：`npm run state`（当前会话、下一步、最近切换、当前规则包）；
   下一步单问：`npm run state -- next`；交接卡：`npm run state -- brief`；机器读：`-- json`；自检：`-- verify`。
-- 切状态：`npm run state -- set <讨论|执行|验收> --reason "…"`。
-- 声明范围：`npm run state -- scope "<一句话/设计稿/里程碑>" [--kind 里程碑|修复]`（进执行前必须有范围）。
-- 验收单元：`npm run state -- phase add --name "…" [--goal "…"]`；开始单元：`phase start --id P1`；
-  任务：`task add --phase P1 --text "…"`；完成：`task done --id P1-T1 --evidence "…"`；单元完成：`phase done --id P1`。
-- 阶段验收四层：`accept add --phase P1 --text "…" --layer D|C|R|H`；判定 D/C `accept set --id P1-A1 --status 通过|不通过`；
-  H 项只能由用户原话判：`accept human --id P1-A4 --text "用户原话"`；
-  审查发现处置 `accept resolve --id P1-A3 --decision 已修|延期|接受 [--note "…"]`。
-- 人签收：`npm run state -- sign "<用户原话>"`（必须所有单元完成、D/C/H 全绿、R 全处置）。
-- 归档：`npm run state -- clean`（只归档已签收的工作，写入 `governance/data/history.json`）。
-- 工作台：`npm run work:view` 生成 `.work/review/work-view.html`（只读；一个焦点＝当前单元与下一步命令，
-  一条骨架＝验收单元时间线，点节点展开、`#P3` 深链、`J`/`K` 移动，验收层用形状区分、证据悬停出现，
-  明暗切换 `T`）。
+- 会话：`npm run state -- start "要交付什么"`（默认执行态；`--discuss` 进讨论）；
+  切换 `switch S2`；列出 `sessions`；收口 `close`（归档进 `governance/data/history.json`，焦点清空）。
+- 切状态：`npm run state -- set <讨论|执行|验收> --reason "…"`（任意方向，写理由）。
+- 声明范围：`npm run state -- scope "<一句话/设计稿/里程碑>" [--kind 里程碑|修复]`。
+- 段：日常琐事直接 `task add --text "…"`；大事 `segment add --name "…"`、`segment start --id P2`、
+  `segment done --id P2`（`phase` 是别名）。命名段才要四层验收：
+  `accept add --segment P2 --text "…" --layer D|C|R|H`；D/C 判定 `accept set --id P2-A1 --status 通过 --evidence "…"`；
+  H 项只能由用户原话判：`accept human --id P2-A4 --text "用户原话"`；
+  审查发现处置 `accept resolve --id P2-A3 --decision 已修|延期|接受 [--note "…"]`。
+- 人签收：`npm run state -- sign "<用户原话>"`（必须命名段全完成、D/C/H 全绿、R 全处置）。
+- 工作台：`npm run work:view` 生成 `.work/review/work-view.html`（只读会话桌面——顶部状态与范围、
+  左侧段轨、当前段任务与 D/C/R/H 滑片（悬停看证据）、底部签收线与下一步命令，明暗切换 `T`）。
 
 ## 检查
 
@@ -72,11 +72,13 @@ Does not own: 产品定位（PRODUCT）、结构与数据地图（ARCHITECTURE�
 
 | 现象                                      | 修法                                                              |
 | ----------------------------------------- | ----------------------------------------------------------------- |
-| `npm run state` 报「未知状态」            | 状态只有 讨论 / 执行 / 验收；按报错改用三个之一                   |
-| 报「进执行前先声明范围」                  | 先 `npm run state -- scope "<范围一句话>"`                        |
-| 报「进验收前没有完成的验收单元」          | 先用 `phase done` 完成单元（任务全勾、验收项全判）                |
+| `npm run state` 报「当前没有打开的会话」  | `npm run state -- start "要交付什么"` 开会话；闲聊不需要会话     |
+| 报「未知状态」                            | 状态只有 讨论 / 执行 / 验收；按报错改用三个之一                   |
+| 报「切换状态要写 --reason」               | 补一句为什么切：`--reason "范围已定"`                            |
+| 报「段还有 N 个任务没完成」               | 先 `task done --id … --evidence "…"`，或把任务带到新段          |
+| 报「还有 N 个验收项没判」                 | `accept set` / `accept human` 逐项判；R 用 `accept resolve`     |
 | 报「还有审查发现没处置」                  | `accept resolve --id … --decision 已修/延期/接受 [--note "理由"]` |
-| 报「是人签收项（H）：agent 不能自己判」   | 拿到用户原话后 `accept human --id P1-A4 --text "用户原话"`        |
+| 报「是人签收项（H）：agent 不能自己判」   | 拿到用户原话后 `accept human --id P2-A4 --text "用户原话"`       |
 | `docs:check` 报文档引用了不存在的脚本     | 改 `package.json` 时同步 AGENTS/README/CONTRIBUTING/OPERATIONS/CI |
 | `docs:check` 报内核出现项目专名           | 挪到 `scripts/` 适配层；`governance/core/` 不许出现项目路径       |
 | `npm run dev` 报 `listen EACCES ::1:5173` | 设 `NOEMA_DEV_RENDERER_PORT=0`                                    |

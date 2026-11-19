@@ -5,7 +5,7 @@
     "diagram_type": "architecture",
     "meta": {
       "title": "Noema 治理全景：状态驱动，门在边界",
-      "subtitle": "三个状态（讨论/执行/验收）决定此刻允许的产出；会话与范围数据只经命令写入；提交门与里程碑不靠自律；工作台只是只读视图。",
+      "subtitle": "多个会话互不阻塞，焦点只是指针；状态是会话的段落（默认执行）；日常任务在当前段平铺，大事才开命名段走 D/C/R/H；数据只经命令写入，门在边界，工作台只读。",
       "output": "governance/assets/noema-governance.html",
       "locale": "zh-CN",
       "quality_profile": "showcase",
@@ -53,7 +53,7 @@
         "id": "state",
         "type": "backend",
         "label": "状态",
-        "sublabel": "讨论 / 执行 / 验收",
+        "sublabel": "会话状态 · 默认执行",
         "pos": [
           210,
           40
@@ -80,8 +80,8 @@
       {
         "id": "thread",
         "type": "database",
-        "label": "讨论会话",
-        "sublabel": "轮次 · 待裁",
+        "label": "会话",
+        "sublabel": "一个交付物 · 焦点指针",
         "pos": [
           40,
           200
@@ -108,8 +108,8 @@
       {
         "id": "units",
         "type": "backend",
-        "label": "验收单元",
-        "sublabel": "2–5 个 · D/C/R/H",
+        "label": "段",
+        "sublabel": "日常平铺 · 命名段 D/C/R/H",
         "pos": [
           530,
           200
@@ -244,7 +244,7 @@
         "to": "units",
         "fromSide": "right",
         "toSide": "left",
-        "label": "拆单元"
+        "label": "拆段"
       },
       {
         "id": "store",
@@ -316,38 +316,34 @@
   },
   "source": {
     "doc": "governance/README.md",
-    "sha256": "f0e61f6c2022517343b35bdf2abf538186a748b1bfd93af08fdbc74fc3937fa4",
+    "sha256": "bb19ccda34c7cfc5c01eee5cd5e18a5f2e8c68201fdb2a33e4b559c7ca7d652f",
     "sections": [
       {
         "title": "状态与门",
-        "sha256": "ba6bd47ae52068a845048a84cea55b19d4780beca69763bd956d8f9db53c3253"
+        "sha256": null
       },
       {
         "title": "数据与工作台",
-        "sha256": "4ddec11ccd5c77f24ba34d888b916d1d9ec0a2959eb49b43f7c19a50d550ec3e"
+        "sha256": "c122513365d9c1ce9cdb23a848cdfc9760964cb31d4e2804b063d3aabd1a96a0"
       },
       {
         "title": "事实所有权",
-        "sha256": "f375c8460df06b2e3177133710a140d07a17066ea531e6c4fec99d1073d7eb66"
+        "sha256": "a6f37fd4b0af5e6748a6fe808274c567f31dfd8bc86666d0b0e97d3dd89e263f"
       }
     ],
-    "candidateSha256": "370f48be324c0f5c8ba59c42134693713353b9b22605f769e3e9a90b43bf7154",
-    "rationale": {
-      "text": "README 的「数据与工作台」只重写了工作台的呈现方式（状态条、单元行、形状判据、下一步命令）；治理节点、边界、连线与门的关系未变，图内容不需要改。",
-      "sectionsDigest": "b57e5d361c5dd33edd7a78a60a4796c4994d7ec1808d5c997e7a412e0220f770"
-    }
+    "candidateSha256": "b8f5819a9efb3950a43cf6ffa4ffa6930f4029d2c665bded08d4ab219e2b4ddf"
   },
   "assets": {
     "html": {
       "path": "governance/assets/noema-governance.html",
-      "sha256": "2ebd2355ed1fcffaf038d19f43378a4d303aa39b83a3d2f70cc4e8ed27a010a0",
-      "bytes": 849513
+      "sha256": "301aca5c729fe91d2e04d4c33ee3258067e436213591b3eda2c1a5c4943daa03",
+      "bytes": 849658
     },
     "png": {
       "path": "governance/assets/noema-governance.png",
-      "sha256": "7dfeb0785fff8610598daaa7c327b49aa04f553cbd1f568f11a42edbbe7a7a22",
-      "bytes": 156685
+      "sha256": "bc1216a9c85940231bf426bd789c47c143d4ca758068cf3fa318e8b5719035c5",
+      "bytes": 154346
     }
   },
-  "updatedAt": "2026-11-19T21:54:59.484Z"
+  "updatedAt": "2026-11-19T23:52:52.590Z"
 }

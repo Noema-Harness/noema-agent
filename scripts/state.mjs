@@ -1,5 +1,5 @@
-// Agent state CLI: what the agent is doing right now, and the discussion
-// session that belongs to it. Adapter layer: owns paths, JSON IO and the npm
+// Agent state CLI: the sessions the agent is running, what each one delivers
+// and what the next move is. Adapter layer: owns paths, JSON IO and the npm
 // printout; the rules live in governance/core/state.mjs.
 import fs from "node:fs";
 import path from "node:path";
@@ -8,26 +8,27 @@ import {
   PACK_BY_STATE,
   STATE_VERSION,
   activeThread,
-  archiveWork,
+  addAcceptance,
+  addRound,
+  addSegment,
+  addTask,
+  addWait,
+  archiveSession,
+  archiveThread,
   briefLines,
+  completeSegment,
+  completeTask,
+  currentSegment,
+  dropWait,
+  emptyState,
+  ensureThread,
+  findSegment,
+  focusSession,
+  listSessions,
+  logOf,
   nextAction,
   openFindings,
   passHumanAcceptance,
-  startPhase,
-  addAcceptance,
-  addPhase,
-  addRound,
-  addTask,
-  addWait,
-  archiveThread,
-  completePhase,
-  completeTask,
-  dropWait,
-  emptyState,
-  emptyWork,
-  ensureThread,
-  findPhase,
-  logOf,
   progressLines,
   resolveFinding,
   reviewPhase,
@@ -37,7 +38,10 @@ import {
   setScope,
   setState,
   signScope,
+  startSession,
+  startSegment,
   summaryLines,
+  switchSession,
   threadById,
   upgradeState,
   validateState,
@@ -135,34 +139,35 @@ function appendHistory(root, entry) {
 
 const USAGE = [
   "用法：",
-  "  npm run state                              # 当前状态、会话、待裁、最近切换与规则包",
-  '  npm run state -- set <讨论|执行|验收> --reason "为什么切换" [--scope changes/<name>] [--obligation 关闭|挂起]',
-  '  npm run state -- round --conclusion "这一轮的结论" [--change "+新增 / 已解除"]',
-  '  npm run state -- title "会话主题"',
-  '  npm run state -- wait add --item "T1 要定什么"',
-  "  npm run state -- wait drop --item T1",
-  "  npm run state -- archive [--ending 定案|归档]",
-  "  npm run state -- resume [--id thread-…]",
-  "  npm run state -- log [--limit N]",
-  '  npm run state -- scope "这次做什么（范围）"',
-  '  npm run state -- phase add --name "阶段交付什么" [--goal "目标"]',
-  '  npm run state -- phase check --id P1 [--what "这一阶段验什么"] [--gap "可能漏什么"] [--split "要不要拆/并"]',
-  "  npm run state -- phase done --id P1",
-  "  npm run state -- phase list",
-  '  npm run state -- task add --phase P1 --text "一句话交付物"',
-  '  npm run state -- task done --id P1-T1 [--evidence "命令+结果"]',
-  '  npm run state -- accept add --phase P1 --text "这一条怎么算过" [--layer D|C|R|H]',
-  '  npm run state -- accept set --id P1-A1 --status 通过|不通过 [--evidence "证据"]',
+  "  npm run state                                  # 当前会话、下一步、最近切换与该状态的规则包",
+  '  npm run state -- start "要交付什么" [--discuss]  # 开一个会话；直接执行，或先讨论',
+  "  npm run state -- sessions                      # 所有会话（含已归档）",
+  "  npm run state -- switch S2                     # 切到另一个会话，数据不动",
+  "  npm run state -- close                         # 归档当前会话（签收与否都行）",
+  '  npm run state -- set <讨论|执行|验收> --reason "为什么换段"',
+  '  npm run state -- scope "这次交付什么" [--kind 里程碑|修复]',
+  '  npm run state -- segment add --name "这一段交付什么"',
+  "  npm run state -- segment start --id P2",
+  "  npm run state -- segment done [--id P2]",
+  "  npm run state -- segment list                  # 当前会话的所有段与任务",
+  '  npm run state -- task add --text "做什么" [--segment P2]',
+  '  npm run state -- task done --id P1-T1 --evidence "跑过什么/看到什么"',
+  '  npm run state -- accept add --text "怎么算过" [--layer D|C|R|H] [--segment P2]',
+  '  npm run state -- accept set --id P1-A1 --status 通过|不通过 --evidence "…"',
   '  npm run state -- accept text --id P1-A1 --text "把判据写准"',
-  '  npm run state -- accept human --id P1-A4 --text "用户原话"（H 层只能这样判）',
-  "  npm run state -- work                      # 范围 / 阶段 / 任务 / 阶段验收的进度",
-  "  npm run state -- next                      # 只打印下一步该做什么",
-  "  npm run state -- brief                     # 交接卡：给下一个会话的最小上下文",
-  "  npm run state -- json                      # 原始状态数据",
-  "  npm run state -- verify                    # 机器校验状态数据，出错退 1",
-  "  npm run state -- phase start --id P1       # 显式开始一个阶段",
-  '  npm run state -- scope "范围" --kind 修复 # 范围类型：里程碑 / 修复',
-  "  npm run state -- clean                     # 签收后归档并重置工作区",
+  '  npm run state -- accept human --id P1-A3 --text "用户原话"   # H 层只能这样判',
+  '  npm run state -- accept resolve --id P1-A2 --decision 已修|延期|接受 [--note "为什么"]',
+  '  npm run state -- round --conclusion "这一轮的结论" [--change "+新增 / 已解除"]',
+  '  npm run state -- wait add --item "要定什么"',
+  "  npm run state -- wait drop --item T1",
+  '  npm run state -- title "会话名"                # 改当前会话的名字',
+  '  npm run state -- sign "用户原话"               # 只有验收态能签收',
+  "  npm run state -- work                          # 进度：段 / 任务 / 验收",
+  "  npm run state -- next                          # 只打印下一步该做什么",
+  "  npm run state -- brief                         # 交接卡",
+  "  npm run state -- json                          # 原始状态数据",
+  "  npm run state -- verify                        # 机器校验状态数据，出错退 1",
+  "  npm run state -- log [--limit N]",
 ];
 
 function parseFlags(argv) {
@@ -234,60 +239,69 @@ function packFor(state, root) {
 
 function printSummary(doc, root) {
   console.log(summaryLines(doc).join("\n"));
+  const others = listSessions(doc).filter(
+    (session) => !session.focused && session.status === "open",
+  );
+  if (others.length > 0) {
+    console.log(
+      `\n其它打开的会话：${others.map((one) => `${one.id}「${one.title}」（${one.state}）`).join("、")}`,
+    );
+  }
   const next = nextAction(doc);
-  console.log(`\n现在该做：${next.label}\n  ${next.command}`);
-  const recent = logOf(doc, { limit: 3 });
+  console.log(`\n现在该做：${next.label}\n  ${next.command}\n  ${next.detail}`);
+  const recent = logOf(doc).slice(-3);
   if (recent.length > 0) {
-    console.log("\n最近切换：");
+    console.log("\n最近变化：");
     for (const entry of recent) {
       const from = entry.from ?? "起始";
       console.log(
-        `- ${entry.date} ${from} → ${entry.to}（${entry.obligation}）：${entry.reason}${entry.threadId ? ` · ${entry.threadId}` : ""}`,
+        `- ${entry.date} ${entry.from ? `${entry.sessionId} ` : ""}${from} → ${entry.to}：${entry.reason}`,
       );
     }
   }
-  const { text, missing } = packFor(doc.current.state, root);
+  const session = focusSession(doc);
+  if (!session) return;
+  const { text, missing } = packFor(session.state, root);
   if (missing.length > 0) {
     console.error(`\n规则包引用了没登记的门：${missing.join("、")}`);
     process.exitCode = 1;
   }
-  console.log(`\n===== ${doc.current.state} 规则包 =====\n${text.trim()}`);
+  console.log(`\n===== ${session.state} 规则包 =====\n${text.trim()}`);
 }
 
 function printWork(doc) {
-  const progress = workProgress(doc);
-  console.log(progressLines(doc).join("\n"));
-  const phases = doc.work?.phases ?? [];
-  if (phases.length === 0) {
-    console.log('\n还没有阶段：npm run state -- phase add --name "…"');
+  const session = focusSession(doc);
+  if (!session) {
+    console.log("没有打开的会话。");
     return;
   }
-  for (const phase of phases) {
-    console.log(
-      `\n${phase.id} ${phase.name}（${phase.status}）${phase.goal ? ` — ${phase.goal}` : ""}`,
-    );
-    for (const task of phase.tasks) {
+  console.log(progressLines(doc).join("\n"));
+  const segment = currentSegment(doc);
+  console.log("");
+  for (const one of session.segments) {
+    const live = segment?.id === one.id;
+    const label = one.name ?? "日常段";
+    console.log(`${one.id} ${label}（${one.status}）${live ? " ← 当前" : ""}`);
+    for (const task of one.tasks) {
       console.log(`  ${task.status === "已完成" ? "[x]" : "[ ]"} ${task.id} ${task.text}`);
+      if (task.status === "已完成" && task.evidence.length > 0)
+        console.log(`      证据：${task.evidence.join("；")}`);
     }
-    if (phase.tasks.length === 0) console.log("  （还没有任务）");
-    if (phase.review) {
-      const review = phase.review;
-      if (review.what) console.log(`  重审·验什么：${review.what}`);
-      if (review.gap) console.log(`  重审·可能漏：${review.gap}`);
-      if (review.split) console.log(`  重审·划分：${review.split}`);
+    if (one.tasks.length === 0) console.log("  （还没有任务）");
+    if (one.review) {
+      if (one.review.what) console.log(`  重审·验什么：${one.review.what}`);
+      if (one.review.gap) console.log(`  重审·可能漏：${one.review.gap}`);
+      if (one.review.split) console.log(`  重审·划分：${one.review.split}`);
     }
-    if (phase.acceptance.length > 0) {
-      const layers = ["D", "C", "H", "R"];
-      for (const layer of layers) {
-        const items = phase.acceptance.filter((item) => (item.layer ?? "D") === layer);
-        if (items.length === 0) continue;
-        const label = layer === "R" ? "审查发现（不判通过）" : `${layer} 层`;
-        console.log(`  ${label}：${items.map((item) => `${item.id}=${item.status}`).join("、")}`);
+    if (one.acceptance.length > 0) {
+      for (const item of one.acceptance) {
+        const resolution = item.resolution ? ` → ${item.resolution.decision}` : "";
+        console.log(`  ${item.id} [${item.layer ?? "D"}] ${item.status}${resolution} ${item.text}`);
       }
     }
   }
-  const failed = progress.acceptance.failed;
-  if (failed > 0) console.log(`\n不通过 ${failed} 项：回执行修，修完重判`);
+  const open = openFindings(doc);
+  if (open.length > 0) console.log(`\n未处置的审查发现：${open.map((item) => item.id).join("、")}`);
 }
 
 function requireState(argv) {
@@ -298,11 +312,25 @@ function requireState(argv) {
   return value;
 }
 
-const READ_ONLY = new Set(["show", "work", "log", "thread", "json", "brief", "next", "verify"]);
+const READ_ONLY = new Set([
+  "show",
+  "work",
+  "log",
+  "thread",
+  "json",
+  "brief",
+  "next",
+  "verify",
+  "sessions",
+  "segment",
+]);
 
 export function main(argv, root = process.cwd()) {
   const [command = "show"] = argv;
-  if (READ_ONLY.has(command)) return dispatch(argv, root);
+  if (READ_ONLY.has(command) && command !== "segment") return dispatch(argv, root);
+  if (command === "segment" && argv[1] !== "add" && argv[1] !== "start" && argv[1] !== "done") {
+    return dispatch(argv, root);
+  }
   return withLock(root, () => dispatch(argv, root));
 }
 
@@ -311,19 +339,84 @@ function dispatch(argv, root = process.cwd()) {
   const flags = parseFlags(rest);
   const dryRun = Boolean(flags["dry-run"]);
   let doc = loadState(root);
+  const positional = rest.find((token) => !token.startsWith("--"));
 
   if (command === "show") {
-    if (!doc.threads.length && doc.current.state === "讨论") {
-      const seed = ensureThread(doc, { title: flags.title ?? null });
-      doc = seed.doc;
-      commit(root, doc, { dryRun });
-    }
     printSummary(doc, root);
     return;
   }
 
+  if (command === "start") {
+    const result = startSession(doc, {
+      title: typeof flags.title === "string" ? flags.title : positional,
+      discuss: Boolean(flags.discuss),
+    });
+    doc = commit(root, result.doc, { dryRun });
+    console.log(
+      `已开会话 ${result.session.id}「${result.session.title}」（${result.session.state}）`,
+    );
+    console.log(summaryLines(doc).join("\n"));
+    return;
+  }
+
+  if (command === "switch" || command === "open") {
+    const result = switchSession(doc, { id: typeof flags.id === "string" ? flags.id : positional });
+    doc = commit(root, result.doc, { dryRun });
+    const left = result.previous ? `；${result.previous.id} 原样留在后台` : "";
+    console.log(
+      `已切到 ${result.session.id}「${result.session.title}」（${result.session.state}）${left}`,
+    );
+    console.log(summaryLines(doc).join("\n"));
+    return;
+  }
+
+  if (command === "sessions") {
+    const rows = listSessions(doc);
+    if (rows.length === 0) {
+      console.log('还没有会话：npm run state -- start "要交付什么"');
+      return;
+    }
+    for (const row of rows) {
+      const mark = row.focused ? "← 当前" : "";
+      const state = row.status === "archived" ? "已归档" : row.state;
+      console.log(`${row.id}「${row.title}」· ${state} · ${row.done}/${row.total} 段完成 ${mark}`);
+      if (row.scope) console.log(`   ${row.scope}`);
+    }
+    return;
+  }
+
+  if (command === "close" || command === "clean") {
+    const session = focusSession(doc);
+    if (!session) throw new Error("没有打开的会话可归档");
+    const before = {
+      sessionId: session.id,
+      title: session.title,
+      state: session.state,
+      scope: session.scope?.text ?? null,
+      signed: session.scope?.signed ?? null,
+      segments: session.segments.map((segment) => ({
+        id: segment.id,
+        name: segment.name,
+        status: segment.status,
+        tasks: segment.tasks.length,
+        done: segment.tasks.filter((task) => task.status === "已完成").length,
+      })),
+      closedAt: new Date().toISOString(),
+    };
+    const result = archiveSession(doc, {
+      reason: typeof flags.reason === "string" ? flags.reason : "这个会话的交付已经结束",
+    });
+    appendHistory(root, before);
+    doc = commit(root, result.doc, { dryRun });
+    console.log(
+      `已归档 ${before.sessionId}「${before.title}」${before.signed ? "（已签收）" : "（未签收）"}，写入 governance/data/history.json`,
+    );
+    console.log("焦点已清空；下件事用 npm run state -- start「要交付什么」，或 switch 回其它会话");
+    return;
+  }
+
   if (command === "sign") {
-    const text = flags.text ?? rest.find((token) => !token.startsWith("--"));
+    const text = typeof flags.text === "string" ? flags.text : positional;
     const result = signScope(doc, { text });
     doc = commit(root, result.doc, { dryRun });
     console.log(`已签收（${result.scope.signed.date}）：${result.scope.signed.text}`);
@@ -384,21 +477,20 @@ function dispatch(argv, root = process.cwd()) {
       ending,
     });
     doc = commit(root, result.doc, { dryRun });
-    console.log(`会话 ${result.thread.id} 已归档（${ending}）`);
+    console.log(`讨论线 ${result.thread.id} 已归档（${ending}）`);
     return;
   }
 
   if (command === "resume") {
     const result = resumeThread(doc, { id: typeof flags.id === "string" ? flags.id : null });
     doc = commit(root, result.doc, { dryRun });
-    console.log(`会话 ${result.thread.id} 已恢复（第 ${result.thread.rounds.length} 轮）`);
+    console.log(`讨论线 ${result.thread.id} 已恢复（第 ${result.thread.rounds.length} 轮）`);
     return;
   }
 
   if (command === "scope") {
-    const text = rest.find((token) => !token.startsWith("--"));
     const kind = typeof flags.kind === "string" ? flags.kind : "里程碑";
-    const result = setScope(doc, { text, kind });
+    const result = setScope(doc, { text: positional, kind });
     doc = commit(root, result.doc, { dryRun });
     console.log(`范围（${result.scope.kind}）：${result.scope.text}`);
     return;
@@ -421,36 +513,24 @@ function dispatch(argv, root = process.cwd()) {
   }
 
   if (command === "verify") {
+    const session = focusSession(doc);
     const findings = openFindings(doc);
+    const where = session ? `${session.id}「${session.title}」· ${session.state}` : "无活动会话";
     console.log(
-      `状态数据合规（版本 ${STATE_VERSION}）：${doc.current.state}，阶段 ${doc.work.phases.length} 个，未处置发现 ${findings.length} 条`,
+      `状态数据合规（版本 ${STATE_VERSION}）：${where}，段 ${session?.segments.length ?? 0} 个，未处置发现 ${findings.length} 条`,
     );
     return;
   }
 
-  if (command === "clean") {
-    const result = archiveWork(doc);
-    appendHistory(root, result.entry);
-    const back = setState(result.doc, {
-      to: "讨论",
-      reason: "签收并归档，下一轮从讨论开始",
-      obligation: "挂起",
-    });
-    doc = commit(root, back.doc, { dryRun });
-    console.log(`已归档：${result.entry.scope}（${result.entry.signed.date} 签收）`);
-    console.log("工作区已重置为空白，状态回到讨论；历史写入 governance/data/history.json");
-    return;
-  }
-
-  if (command === "phase") {
+  if (command === "segment" || command === "phase") {
     const action = rest[0];
     if (action === "add") {
-      const result = addPhase(doc, {
+      const result = addSegment(doc, {
         name: flags.name,
         goal: typeof flags.goal === "string" ? flags.goal : null,
       });
       doc = commit(root, result.doc, { dryRun });
-      console.log(`阶段 ${result.phase.id} 已建立：${result.phase.name}`);
+      console.log(`段 ${result.segment.id} 已建立：${result.segment.name}`);
       return;
     }
     if (action === "check") {
@@ -461,32 +541,35 @@ function dispatch(argv, root = process.cwd()) {
         split: typeof flags.split === "string" ? flags.split : null,
       });
       doc = commit(root, result.doc, { dryRun });
-      console.log(`阶段 ${result.phase.id} 已记重审（验什么 / 可能漏什么 / 要不要拆并）`);
+      console.log(`段 ${result.segment.id} 已记重审（验什么 / 可能漏什么 / 要不要拆并）`);
       return;
     }
     if (action === "start") {
-      const result = startPhase(doc, { id: flags.id });
+      const result = startSegment(doc, { id: flags.id });
       doc = commit(root, result.doc, { dryRun });
-      console.log(`阶段 ${result.phase.id} 已开始`);
+      console.log(`段 ${result.segment.id} 已开始`);
       return;
     }
     if (action === "done") {
-      const result = completePhase(doc, { id: flags.id });
+      const result = completeSegment(doc, { id: flags.id });
       doc = commit(root, result.doc, { dryRun });
-      console.log(`阶段 ${result.phase.id} 已完成`);
+      console.log(`段 ${result.segment.id} 已完成`);
       return;
     }
-    if (action === "list" || action === undefined) {
+    if (action === "list" || action === undefined || action === "work") {
       printWork(doc);
       return;
     }
-    throw new Error("phase 后面要写 add / done / list");
+    throw new Error("segment 后面要写 add / start / done / list");
   }
 
   if (command === "task") {
     const action = rest[0];
     if (action === "add") {
-      const result = addTask(doc, { phase: flags.phase, text: flags.text });
+      const result = addTask(doc, {
+        text: flags.text,
+        segmentId: typeof flags.segment === "string" ? flags.segment : null,
+      });
       doc = commit(root, result.doc, { dryRun });
       console.log(`任务 ${result.task.id} 已追加：${result.task.text}`);
       return;
@@ -508,7 +591,7 @@ function dispatch(argv, root = process.cwd()) {
     const action = rest[0];
     if (action === "add") {
       const result = addAcceptance(doc, {
-        phase: flags.phase,
+        segmentId: typeof flags.segment === "string" ? flags.segment : null,
         text: flags.text,
         layer: typeof flags.layer === "string" ? flags.layer : "D",
       });
@@ -564,32 +647,33 @@ function dispatch(argv, root = process.cwd()) {
 
   if (command === "log") {
     const limit = Number(flags.limit ?? 10);
-    const entries = logOf(doc, { limit: Number.isFinite(limit) && limit > 0 ? limit : 10 });
+    const entries = logOf(doc).slice(-(Number.isFinite(limit) && limit > 0 ? limit : 10));
     if (entries.length === 0) {
-      console.log("还没有切换记录");
+      console.log("还没有变化记录");
       return;
     }
     for (const entry of entries) {
       const from = entry.from ?? "起始";
-      console.log(`${entry.date} ${from} → ${entry.to}（${entry.obligation}）：${entry.reason}`);
+      console.log(`${entry.date} ${entry.sessionId} ${from} → ${entry.to}：${entry.reason}`);
     }
     return;
   }
 
   if (command === "title") {
-    const text = rest.find((token) => !token.startsWith("--"));
-    if (!text) throw new Error("要写会话标题");
-    const { thread } = ensureThread(doc);
-    thread.title = text;
+    const text = positional;
+    if (!text) throw new Error("要写会话名");
+    const session = focusSession(doc);
+    if (!session) throw new Error("没有打开的会话");
+    session.title = text;
     doc = commit(root, doc, { dryRun });
-    console.log(`会话 ${thread.id} 标题：${text}`);
+    console.log(`会话 ${session.id}：${text}`);
     return;
   }
 
   if (command === "thread") {
     const id = flags.id;
     const thread = id ? threadById(doc, String(id)) : activeThread(doc);
-    if (!thread) throw new Error("没有活动会话");
+    if (!thread) throw new Error("没有活动讨论线");
     console.log(`${thread.id}｜${thread.title}｜${thread.status}｜第 ${thread.rounds.length} 轮`);
     console.log(`待裁：${thread.waits.length === 0 ? "无" : thread.waits.join("；")}`);
     return;

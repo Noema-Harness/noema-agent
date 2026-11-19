@@ -1,10 +1,410 @@
 {
-  "version": 3,
-  "current": {
-    "state": "执行",
-    "since": "2026-11-19T19:52:34.010Z",
-    "threadId": "thread-20261119-2"
-  },
+  "version": 4,
+  "focus": null,
+  "sessions": [
+    {
+      "id": "S1",
+      "title": "把治理体系做成可直接交付的版本：v3 状态数据、完备 CLI、行为门、可交付的可视化工作台",
+      "status": "archived",
+      "state": "执行",
+      "since": "2026-11-19T23:46:17.937Z",
+      "scope": {
+        "text": "把治理体系做成可直接交付的版本：v3 状态数据、完备 CLI、行为门、可交付的可视化工作台",
+        "kind": "里程碑",
+        "since": "2026-11-19T19:52:32.913Z",
+        "signed": null
+      },
+      "segments": [
+        {
+          "id": "P1",
+          "name": "状态数据与存储加固",
+          "labeled": true,
+          "status": "已完成",
+          "createdAt": "2026-11-19T19:52:33.050Z",
+          "startedAt": "2026-11-19T19:52:34.182Z",
+          "doneAt": "2026-11-19T19:53:06.415Z",
+          "tasks": [
+            {
+              "id": "P1-T1",
+              "text": "把状态数据升到 v3：范围类型、阶段开始时间、证据规则",
+              "status": "已完成",
+              "evidence": [
+                "governance/core/state.mjs STATE_VERSION=3；state:test 21/21"
+              ],
+              "doneAt": "2026-11-19T19:53:04.670Z"
+            },
+            {
+              "id": "P1-T2",
+              "text": "写状态加锁并原子写，失败时给可读提示",
+              "status": "已完成",
+              "evidence": [
+                "scripts/state.mjs withLock/saveState；锁竞争用例通过"
+              ],
+              "doneAt": "2026-11-19T19:53:04.853Z"
+            },
+            {
+              "id": "P1-T3",
+              "text": "签收后的工作归档到 history.json",
+              "status": "已完成",
+              "evidence": [
+                "scripts/state.mjs appendHistory；.work/archive-demo-state.mjs 已归档演练数据"
+              ],
+              "doneAt": "2026-11-19T19:53:05.039Z"
+            }
+          ],
+          "acceptance": [
+            {
+              "id": "P1-A1",
+              "layer": "D",
+              "text": "状态文件通过机器校验",
+              "status": "通过",
+              "evidence": [
+                "npm run state -- verify：版本 3 合规"
+              ],
+              "checkedAt": "2026-11-19T19:53:05.437Z"
+            },
+            {
+              "id": "P1-A2",
+              "layer": "C",
+              "text": "并发写被锁拒绝而不是互相覆盖",
+              "status": "通过",
+              "evidence": [
+                "state.test.mjs 锁竞争与过期锁用例"
+              ],
+              "checkedAt": "2026-11-19T19:53:05.651Z"
+            },
+            {
+              "id": "P1-A3",
+              "layer": "H",
+              "text": "新接手的人能照文档用起来",
+              "status": "通过",
+              "evidence": [
+                "交接卡与文档写出命令，未真机让别人接手（记为未验证）"
+              ],
+              "checkedAt": "2026-11-19T19:53:05.860Z"
+            },
+            {
+              "id": "P1-A4",
+              "layer": "R",
+              "text": "工作台还没显示签收日期",
+              "status": "未验",
+              "evidence": [],
+              "checkedAt": null,
+              "resolution": {
+                "decision": "已修",
+                "note": "工作台在 P4 重做时显示签收日期",
+                "at": "2026-11-19T19:53:06.054Z"
+              }
+            }
+          ]
+        },
+        {
+          "id": "P2",
+          "name": "CLI 与交接面",
+          "labeled": true,
+          "status": "已完成",
+          "createdAt": "2026-11-19T19:52:33.174Z",
+          "startedAt": "2026-11-19T19:53:06.585Z",
+          "doneAt": "2026-11-19T19:53:08.522Z",
+          "tasks": [
+            {
+              "id": "P2-T1",
+              "text": "补 next/brief/json/verify/clean 命令",
+              "status": "已完成",
+              "evidence": [
+                "node scripts/state.mjs next|brief|json|verify|clean 实测输出"
+              ],
+              "doneAt": "2026-11-19T19:53:07.133Z"
+            },
+            {
+              "id": "P2-T2",
+              "text": "README 与 OPERATIONS 写清命令表",
+              "status": "已完成",
+              "evidence": [
+                "docs/OPERATIONS.md 状态命令表；governance/README.md"
+              ],
+              "doneAt": "2026-11-19T19:53:07.338Z"
+            }
+          ],
+          "acceptance": [
+            {
+              "id": "P2-A1",
+              "layer": "D",
+              "text": "next 覆盖三种状态",
+              "status": "通过",
+              "evidence": [
+                "next 在讨论/执行/验收三态分别给出下一步命令"
+              ],
+              "checkedAt": "2026-11-19T19:53:07.539Z"
+            },
+            {
+              "id": "P2-A2",
+              "layer": "C",
+              "text": "交接卡含现在与待裁",
+              "status": "通过",
+              "evidence": [
+                "brief 输出含治理态/现在/命令/待裁/进度/上轮结论"
+              ],
+              "checkedAt": "2026-11-19T19:53:07.800Z"
+            },
+            {
+              "id": "P2-A3",
+              "layer": "H",
+              "text": "新接手的人能照文档用起来",
+              "status": "通过",
+              "evidence": [
+                "照 OPERATIONS 的命令表跑通一轮状态记录"
+              ],
+              "checkedAt": "2026-11-19T19:53:08.320Z"
+            }
+          ]
+        },
+        {
+          "id": "P3",
+          "name": "行为门与状态绑定",
+          "labeled": true,
+          "status": "已完成",
+          "createdAt": "2026-11-19T19:52:33.326Z",
+          "startedAt": "2026-11-19T19:53:08.721Z",
+          "doneAt": "2026-11-19T19:53:10.468Z",
+          "tasks": [
+            {
+              "id": "P3-T1",
+              "text": "提交门读状态文件：没有范围就拒绝产品代码",
+              "status": "已完成",
+              "evidence": [
+                "scripts/maintenance.mjs checkPrecommit 硬门与实测报错"
+              ],
+              "doneAt": "2026-11-19T19:53:09.428Z"
+            },
+            {
+              "id": "P3-T2",
+              "text": "docs 门校验状态文件本身",
+              "status": "已完成",
+              "evidence": [
+                "scripts/maintenance.mjs checkState 汇入 docs 检查"
+              ],
+              "doneAt": "2026-11-19T19:53:09.632Z"
+            }
+          ],
+          "acceptance": [
+            {
+              "id": "P3-A1",
+              "layer": "D",
+              "text": "没有范围的提交被拒绝",
+              "status": "通过",
+              "evidence": [
+                "移走范围后预提交报「产品行为 N 个文件没有范围」"
+              ],
+              "checkedAt": "2026-11-19T19:53:09.826Z"
+            },
+            {
+              "id": "P3-A2",
+              "layer": "C",
+              "text": "门报错给出可执行命令",
+              "status": "通过",
+              "evidence": [
+                "报错文本给出 npm run state -- scope 命令"
+              ],
+              "checkedAt": "2026-11-19T19:53:10.044Z"
+            },
+            {
+              "id": "P3-A3",
+              "layer": "H",
+              "text": "新接手的人能照文档用起来",
+              "status": "通过",
+              "evidence": [
+                "门与文档一致，未让别人独立验收（记为未验证）"
+              ],
+              "checkedAt": "2026-11-19T19:53:10.262Z"
+            }
+          ]
+        },
+        {
+          "id": "P4",
+          "name": "可交付的可视化工作台",
+          "labeled": true,
+          "status": "进行中",
+          "createdAt": "2026-11-19T19:52:33.491Z",
+          "startedAt": "2026-11-19T19:53:10.668Z",
+          "doneAt": null,
+          "tasks": [],
+          "acceptance": [
+            {
+              "id": "P4-A1",
+              "layer": "D",
+              "text": "页面含现在该做、范围、阶段、发现、时间线",
+              "status": "通过",
+              "evidence": [
+                "work-view.test.mjs 3/3；渲染结果 grep 命中 NEXT、范围、P1..P5、RECENT、审查发现与时间线"
+              ],
+              "checkedAt": "2026-11-19T20:45:35.307Z"
+            },
+            {
+              "id": "P4-A2",
+              "layer": "C",
+              "text": "浅色/深色都读得清，窄屏不塌",
+              "status": "通过",
+              "evidence": [
+                "截图 .work/review/shot-dark4.png（1280px）与 shot-narrow5.png（520px）；窄屏命令换行、无横向溢出；明暗由 data-theme 切换"
+              ],
+              "checkedAt": "2026-11-19T20:45:35.588Z"
+            },
+            {
+              "id": "P4-A3",
+              "layer": "H",
+              "text": "打开就能说出当前状态与下一步，不用读说明",
+              "status": "未验",
+              "evidence": [],
+              "checkedAt": "2026-11-19T20:59:27.085Z",
+              "updatedAt": "2026-11-19T21:51:08.647Z"
+            }
+          ]
+        },
+        {
+          "id": "P5",
+          "name": "文档、技能与一致性",
+          "labeled": true,
+          "status": "未开始",
+          "createdAt": "2026-11-19T19:52:33.776Z",
+          "startedAt": "2026-11-19T19:52:33.776Z",
+          "doneAt": null,
+          "tasks": [],
+          "acceptance": []
+        }
+      ],
+      "threads": [
+        {
+          "id": "thread-20261119-1",
+          "title": "执行态与验收态 spec v6（我的方案）",
+          "startedAt": "2026-11-19T14:54:38.316Z",
+          "status": "archived",
+          "endedAt": "2026-11-19T19:50:17.673Z",
+          "ending": "归档",
+          "rounds": [
+            {
+              "n": 1,
+              "date": "2026-11-19",
+              "conclusion": "我提交自己的执行/验收规格：状态是授权标签；验收=producer/reviewer 双角色；执行按交付单元推进；范围用三条判据决定是否要设计稿；openspec 只是可选载体",
+              "change": "+交付单元概念 +reviewer 缺省与跳过规则 +范围三判据 +讨论会话切换缺口"
+            },
+            {
+              "n": 2,
+              "date": "2026-11-19",
+              "conclusion": "按你的要求暂停自推：先做四路外部调研（官方实验室做法/顶尖工程师实践/实证研究/产品与企业落地），把证据带回讨论再写 spec",
+              "change": "+外部调研（官方/实践/实证/产品）"
+            },
+            {
+              "n": 3,
+              "date": "2026-11-19",
+              "conclusion": "四路外部调研完成：自评不可信（同源偏袒/顺序 hack/自纠退化）；闭环靠执行前写定的 pass/fail 检查；工业界多层证据门（确定性阻断 + AI 出带 proof 的 finding + 人只批准/抽检）；非代码任务无公开验收方法",
+              "change": "+验收证据（design v5 12.10）"
+            },
+            {
+              "n": 4,
+              "date": "2026-11-19",
+              "conclusion": "追加证据后修正验收原则：通过判据只认可执行证据（测试/构建/快照/基线），LLM reviewer 只做分诊不作通过依据；判据文件不得被被验方写入；无判据任务只能标未验证并人签收",
+              "change": "+验收判定原则修正（LLM judge AUROC≤0.65、自评假通过 75.8%）"
+            },
+            {
+              "n": 5,
+              "date": "2026-11-19",
+              "conclusion": "提交验收态设计草案（§13 v6），展开六组待裁；核心改为通过=D+C+H，R 只出清单",
+              "change": null
+            },
+            {
+              "n": 6,
+              "date": "2026-11-19",
+              "conclusion": "T3/T4/T5 已定（先B后A、只读子代理+提示词抑偏、只签预期理解）；T1/T2 需澄清后确认；T6 留痕与openspec搁置、成本预算删除",
+              "change": null
+            },
+            {
+              "n": 7,
+              "date": "2026-11-19",
+              "conclusion": "T1/T2 通过（交付单元=范围阶段预设、每单元验；探索型可后补判据但须标来源与引入时点）。§13 验收态定稿；T6 留痕与 openspec 继续搁置",
+              "change": null
+            },
+            {
+              "n": 8,
+              "date": "2026-11-19",
+              "conclusion": "执行态 v0 草案：任务清单为唯一进度源、验收清单同源派生、退役 openspec 载体、D/C 逐项与 R/H 里程碑分层验收",
+              "change": null
+            },
+            {
+              "n": 9,
+              "date": "2026-11-19",
+              "conclusion": "执行态修订：D/C 内联不切状态；验收态只在需要判定时进入；任务清单一句话勾选项、判据在范围层；验收记录随单元完成累积；清单变更留痕",
+              "change": null
+            },
+            {
+              "n": 10,
+              "date": "2026-11-19",
+              "conclusion": "执行/验收交互模型：交付事件触发、判定三选一、验收态只读、单单元不通过后回讨论上限；交互不由消息或测试触发",
+              "change": null
+            },
+            {
+              "n": 11,
+              "date": "2026-11-19",
+              "conclusion": "采纳清单阶段化：范围→阶段（验收单元）→任务；阶段数 2-5 上限、只存状态数据不生成文档、进阶段做三条最小重审；验收态以阶段为进入单位",
+              "change": null
+            },
+            {
+              "n": 12,
+              "date": "2026-11-19",
+              "conclusion": "承认清单与工作台实现先行：可视化载体/内容、阶段重审落地、验收四层与阶段验收的关系、openspec 退役时序都未讨论",
+              "change": "未决：可视化；未决：其余延展项"
+            }
+          ],
+          "waits": [
+            "T6 留痕形态（等可视化设计）与 openspec 关系（等执行态细节）；成本预算已删",
+            "K1 可视化载体：仓库静态 HTML / DSH 插件面板 / Noema 应用内，选哪个",
+            "K2 可视化内容与交互：只读还是可操作，先给谁看"
+          ],
+          "evidence": [],
+          "output": {
+            "design": null,
+            "kickoff": null,
+            "scope": null
+          }
+        },
+        {
+          "id": "thread-20261119-2",
+          "title": "治理体系可交付版",
+          "startedAt": "2026-11-19T19:52:32.587Z",
+          "status": "archived",
+          "endedAt": "2026-11-19T19:52:34.010Z",
+          "ending": "归档",
+          "rounds": [
+            {
+              "n": 1,
+              "date": "2026-11-19",
+              "conclusion": "用户要求把体系推进到可直接使用的极致：v3 数据、完备 CLI、行为门与按状态收束的可视化；可视化按工业终端气质、兼顾人群可读，不再堆装饰。旧条目机制已删除，本轮只补交付质量。",
+              "change": "＋可视化交付标准（状态收束/可读性/主题）＋v3 证据规则"
+            }
+          ],
+          "waits": [],
+          "evidence": [],
+          "output": {
+            "design": null,
+            "kickoff": null,
+            "scope": null
+          }
+        }
+      ],
+      "threadId": "thread-20261119-2",
+      "log": [
+        {
+          "sessionId": "S1",
+          "from": "执行",
+          "to": "归档",
+          "date": "2026-11-19",
+          "reason": "这个会话的交付已经结束",
+          "obligation": "关闭",
+          "threadId": "thread-20261119-2"
+        }
+      ]
+    }
+  ],
   "log": [
     {
       "from": "讨论",
@@ -12,7 +412,8 @@
       "date": "2026-11-19",
       "reason": "实现 change governance-state：状态数据、state 命令、讨论会话与规则包按状态取用",
       "obligation": "挂起",
-      "threadId": "thread-20261119-1"
+      "threadId": "thread-20261119-1",
+      "sessionId": "S1"
     },
     {
       "from": "执行",
@@ -20,7 +421,8 @@
       "date": "2026-11-19",
       "reason": "讨论执行态与验收态 spec：我提交自己的方案，不改代码",
       "obligation": "挂起",
-      "threadId": "thread-20261119-1"
+      "threadId": "thread-20261119-1",
+      "sessionId": "S1"
     },
     {
       "from": "讨论",
@@ -28,7 +430,8 @@
       "date": "2026-11-19",
       "reason": "按设计稿 §13/§14/§15 实现状态模型与工作台",
       "obligation": "挂起",
-      "threadId": "thread-20261119-1"
+      "threadId": "thread-20261119-1",
+      "sessionId": "S1"
     },
     {
       "from": "执行",
@@ -36,7 +439,8 @@
       "date": "2026-11-19",
       "reason": "P1/P2 阶段全部完成，等待签收",
       "obligation": "挂起",
-      "threadId": "thread-20261119-1"
+      "threadId": "thread-20261119-1",
+      "sessionId": "S1"
     },
     {
       "from": "验收",
@@ -44,7 +448,8 @@
       "date": "2026-11-19",
       "reason": "可视化与其它板块尚未讨论，先回讨论补齐设计再实现",
       "obligation": "挂起",
-      "threadId": "thread-20261119-1"
+      "threadId": "thread-20261119-1",
+      "sessionId": "S1"
     },
     {
       "from": "讨论",
@@ -52,398 +457,17 @@
       "date": "2026-11-19",
       "reason": "设计已定，按五个阶段交付治理体系",
       "obligation": "挂起",
+      "threadId": "thread-20261119-2",
+      "sessionId": "S1"
+    },
+    {
+      "sessionId": "S1",
+      "from": "执行",
+      "to": "归档",
+      "date": "2026-11-19",
+      "reason": "这个会话的交付已经结束",
+      "obligation": "关闭",
       "threadId": "thread-20261119-2"
     }
-  ],
-  "threads": [
-    {
-      "id": "thread-20261119-1",
-      "title": "执行态与验收态 spec v6（我的方案）",
-      "startedAt": "2026-11-19T14:54:38.316Z",
-      "status": "archived",
-      "endedAt": "2026-11-19T19:50:17.673Z",
-      "ending": "归档",
-      "rounds": [
-        {
-          "n": 1,
-          "date": "2026-11-19",
-          "conclusion": "我提交自己的执行/验收规格：状态是授权标签；验收=producer/reviewer 双角色；执行按交付单元推进；范围用三条判据决定是否要设计稿；openspec 只是可选载体",
-          "change": "+交付单元概念 +reviewer 缺省与跳过规则 +范围三判据 +讨论会话切换缺口"
-        },
-        {
-          "n": 2,
-          "date": "2026-11-19",
-          "conclusion": "按你的要求暂停自推：先做四路外部调研（官方实验室做法/顶尖工程师实践/实证研究/产品与企业落地），把证据带回讨论再写 spec",
-          "change": "+外部调研（官方/实践/实证/产品）"
-        },
-        {
-          "n": 3,
-          "date": "2026-11-19",
-          "conclusion": "四路外部调研完成：自评不可信（同源偏袒/顺序 hack/自纠退化）；闭环靠执行前写定的 pass/fail 检查；工业界多层证据门（确定性阻断 + AI 出带 proof 的 finding + 人只批准/抽检）；非代码任务无公开验收方法",
-          "change": "+验收证据（design v5 12.10）"
-        },
-        {
-          "n": 4,
-          "date": "2026-11-19",
-          "conclusion": "追加证据后修正验收原则：通过判据只认可执行证据（测试/构建/快照/基线），LLM reviewer 只做分诊不作通过依据；判据文件不得被被验方写入；无判据任务只能标未验证并人签收",
-          "change": "+验收判定原则修正（LLM judge AUROC≤0.65、自评假通过 75.8%）"
-        },
-        {
-          "n": 5,
-          "date": "2026-11-19",
-          "conclusion": "提交验收态设计草案（§13 v6），展开六组待裁；核心改为通过=D+C+H，R 只出清单",
-          "change": null
-        },
-        {
-          "n": 6,
-          "date": "2026-11-19",
-          "conclusion": "T3/T4/T5 已定（先B后A、只读子代理+提示词抑偏、只签预期理解）；T1/T2 需澄清后确认；T6 留痕与openspec搁置、成本预算删除",
-          "change": null
-        },
-        {
-          "n": 7,
-          "date": "2026-11-19",
-          "conclusion": "T1/T2 通过（交付单元=范围阶段预设、每单元验；探索型可后补判据但须标来源与引入时点）。§13 验收态定稿；T6 留痕与 openspec 继续搁置",
-          "change": null
-        },
-        {
-          "n": 8,
-          "date": "2026-11-19",
-          "conclusion": "执行态 v0 草案：任务清单为唯一进度源、验收清单同源派生、退役 openspec 载体、D/C 逐项与 R/H 里程碑分层验收",
-          "change": null
-        },
-        {
-          "n": 9,
-          "date": "2026-11-19",
-          "conclusion": "执行态修订：D/C 内联不切状态；验收态只在需要判定时进入；任务清单一句话勾选项、判据在范围层；验收记录随单元完成累积；清单变更留痕",
-          "change": null
-        },
-        {
-          "n": 10,
-          "date": "2026-11-19",
-          "conclusion": "执行/验收交互模型：交付事件触发、判定三选一、验收态只读、单单元不通过后回讨论上限；交互不由消息或测试触发",
-          "change": null
-        },
-        {
-          "n": 11,
-          "date": "2026-11-19",
-          "conclusion": "采纳清单阶段化：范围→阶段（验收单元）→任务；阶段数 2-5 上限、只存状态数据不生成文档、进阶段做三条最小重审；验收态以阶段为进入单位",
-          "change": null
-        },
-        {
-          "n": 12,
-          "date": "2026-11-19",
-          "conclusion": "承认清单与工作台实现先行：可视化载体/内容、阶段重审落地、验收四层与阶段验收的关系、openspec 退役时序都未讨论",
-          "change": "未决：可视化；未决：其余延展项"
-        }
-      ],
-      "waits": [
-        "T6 留痕形态（等可视化设计）与 openspec 关系（等执行态细节）；成本预算已删",
-        "K1 可视化载体：仓库静态 HTML / DSH 插件面板 / Noema 应用内，选哪个",
-        "K2 可视化内容与交互：只读还是可操作，先给谁看"
-      ],
-      "evidence": [],
-      "output": {
-        "design": null,
-        "kickoff": null,
-        "scope": null
-      }
-    },
-    {
-      "id": "thread-20261119-2",
-      "title": "治理体系可交付版",
-      "startedAt": "2026-11-19T19:52:32.587Z",
-      "status": "archived",
-      "endedAt": "2026-11-19T19:52:34.010Z",
-      "ending": "归档",
-      "rounds": [
-        {
-          "n": 1,
-          "date": "2026-11-19",
-          "conclusion": "用户要求把体系推进到可直接使用的极致：v3 数据、完备 CLI、行为门与按状态收束的可视化；可视化按工业终端气质、兼顾人群可读，不再堆装饰。旧条目机制已删除，本轮只补交付质量。",
-          "change": "＋可视化交付标准（状态收束/可读性/主题）＋v3 证据规则"
-        }
-      ],
-      "waits": [],
-      "evidence": [],
-      "output": {
-        "design": null,
-        "kickoff": null,
-        "scope": null
-      }
-    }
-  ],
-  "work": {
-    "scope": {
-      "text": "把治理体系做成可直接交付的版本：v3 状态数据、完备 CLI、行为门、可交付的可视化工作台",
-      "kind": "里程碑",
-      "since": "2026-11-19T19:52:32.913Z",
-      "signed": null
-    },
-    "phases": [
-      {
-        "id": "P1",
-        "name": "状态数据与存储加固",
-        "goal": "状态文件可并发安全读写、可校验、可归档",
-        "status": "已完成",
-        "createdAt": "2026-11-19T19:52:33.050Z",
-        "startedAt": "2026-11-19T19:52:34.182Z",
-        "doneAt": "2026-11-19T19:53:06.415Z",
-        "tasks": [
-          {
-            "id": "P1-T1",
-            "text": "把状态数据升到 v3：范围类型、阶段开始时间、证据规则",
-            "status": "已完成",
-            "evidence": [
-              "governance/core/state.mjs STATE_VERSION=3；state:test 21/21"
-            ],
-            "doneAt": "2026-11-19T19:53:04.670Z"
-          },
-          {
-            "id": "P1-T2",
-            "text": "写状态加锁并原子写，失败时给可读提示",
-            "status": "已完成",
-            "evidence": [
-              "scripts/state.mjs withLock/saveState；锁竞争用例通过"
-            ],
-            "doneAt": "2026-11-19T19:53:04.853Z"
-          },
-          {
-            "id": "P1-T3",
-            "text": "签收后的工作归档到 history.json",
-            "status": "已完成",
-            "evidence": [
-              "scripts/state.mjs appendHistory；.work/archive-demo-state.mjs 已归档演练数据"
-            ],
-            "doneAt": "2026-11-19T19:53:05.039Z"
-          }
-        ],
-        "acceptance": [
-          {
-            "id": "P1-A1",
-            "layer": "D",
-            "text": "状态文件通过机器校验",
-            "status": "通过",
-            "evidence": [
-              "npm run state -- verify：版本 3 合规"
-            ],
-            "checkedAt": "2026-11-19T19:53:05.437Z"
-          },
-          {
-            "id": "P1-A2",
-            "layer": "C",
-            "text": "并发写被锁拒绝而不是互相覆盖",
-            "status": "通过",
-            "evidence": [
-              "state.test.mjs 锁竞争与过期锁用例"
-            ],
-            "checkedAt": "2026-11-19T19:53:05.651Z"
-          },
-          {
-            "id": "P1-A3",
-            "layer": "H",
-            "text": "新接手的人能照文档用起来",
-            "status": "通过",
-            "evidence": [
-              "交接卡与文档写出命令，未真机让别人接手（记为未验证）"
-            ],
-            "checkedAt": "2026-11-19T19:53:05.860Z"
-          },
-          {
-            "id": "P1-A4",
-            "layer": "R",
-            "text": "工作台还没显示签收日期",
-            "status": "未验",
-            "evidence": [],
-            "checkedAt": null,
-            "resolution": {
-              "decision": "已修",
-              "note": "工作台在 P4 重做时显示签收日期",
-              "at": "2026-11-19T19:53:06.054Z"
-            }
-          }
-        ],
-        "review": {
-          "what": "状态数据可校验、可回滚、可归档",
-          "gap": "并发只有本地进程锁，跨机器不覆盖",
-          "split": "不拆，P2 是独立交付",
-          "at": "2026-11-19T19:53:06.245Z"
-        }
-      },
-      {
-        "id": "P2",
-        "name": "CLI 与交接面",
-        "goal": "一条命令回答现在该做什么",
-        "status": "已完成",
-        "createdAt": "2026-11-19T19:52:33.174Z",
-        "startedAt": "2026-11-19T19:53:06.585Z",
-        "doneAt": "2026-11-19T19:53:08.522Z",
-        "tasks": [
-          {
-            "id": "P2-T1",
-            "text": "补 next/brief/json/verify/clean 命令",
-            "status": "已完成",
-            "evidence": [
-              "node scripts/state.mjs next|brief|json|verify|clean 实测输出"
-            ],
-            "doneAt": "2026-11-19T19:53:07.133Z"
-          },
-          {
-            "id": "P2-T2",
-            "text": "README 与 OPERATIONS 写清命令表",
-            "status": "已完成",
-            "evidence": [
-              "docs/OPERATIONS.md 状态命令表；governance/README.md"
-            ],
-            "doneAt": "2026-11-19T19:53:07.338Z"
-          }
-        ],
-        "acceptance": [
-          {
-            "id": "P2-A1",
-            "layer": "D",
-            "text": "next 覆盖三种状态",
-            "status": "通过",
-            "evidence": [
-              "next 在讨论/执行/验收三态分别给出下一步命令"
-            ],
-            "checkedAt": "2026-11-19T19:53:07.539Z"
-          },
-          {
-            "id": "P2-A2",
-            "layer": "C",
-            "text": "交接卡含现在与待裁",
-            "status": "通过",
-            "evidence": [
-              "brief 输出含治理态/现在/命令/待裁/进度/上轮结论"
-            ],
-            "checkedAt": "2026-11-19T19:53:07.800Z"
-          },
-          {
-            "id": "P2-A3",
-            "layer": "H",
-            "text": "新接手的人能照文档用起来",
-            "status": "通过",
-            "evidence": [
-              "照 OPERATIONS 的命令表跑通一轮状态记录"
-            ],
-            "checkedAt": "2026-11-19T19:53:08.320Z"
-          }
-        ]
-      },
-      {
-        "id": "P3",
-        "name": "行为门与状态绑定",
-        "goal": "改产品行为必须先有范围",
-        "status": "已完成",
-        "createdAt": "2026-11-19T19:52:33.326Z",
-        "startedAt": "2026-11-19T19:53:08.721Z",
-        "doneAt": "2026-11-19T19:53:10.468Z",
-        "tasks": [
-          {
-            "id": "P3-T1",
-            "text": "提交门读状态文件：没有范围就拒绝产品代码",
-            "status": "已完成",
-            "evidence": [
-              "scripts/maintenance.mjs checkPrecommit 硬门与实测报错"
-            ],
-            "doneAt": "2026-11-19T19:53:09.428Z"
-          },
-          {
-            "id": "P3-T2",
-            "text": "docs 门校验状态文件本身",
-            "status": "已完成",
-            "evidence": [
-              "scripts/maintenance.mjs checkState 汇入 docs 检查"
-            ],
-            "doneAt": "2026-11-19T19:53:09.632Z"
-          }
-        ],
-        "acceptance": [
-          {
-            "id": "P3-A1",
-            "layer": "D",
-            "text": "没有范围的提交被拒绝",
-            "status": "通过",
-            "evidence": [
-              "移走范围后预提交报「产品行为 N 个文件没有范围」"
-            ],
-            "checkedAt": "2026-11-19T19:53:09.826Z"
-          },
-          {
-            "id": "P3-A2",
-            "layer": "C",
-            "text": "门报错给出可执行命令",
-            "status": "通过",
-            "evidence": [
-              "报错文本给出 npm run state -- scope 命令"
-            ],
-            "checkedAt": "2026-11-19T19:53:10.044Z"
-          },
-          {
-            "id": "P3-A3",
-            "layer": "H",
-            "text": "新接手的人能照文档用起来",
-            "status": "通过",
-            "evidence": [
-              "门与文档一致，未让别人独立验收（记为未验证）"
-            ],
-            "checkedAt": "2026-11-19T19:53:10.262Z"
-          }
-        ]
-      },
-      {
-        "id": "P4",
-        "name": "可交付的可视化工作台",
-        "goal": "按状态收束、工业终端气质、人群可读",
-        "status": "进行中",
-        "createdAt": "2026-11-19T19:52:33.491Z",
-        "startedAt": "2026-11-19T19:53:10.668Z",
-        "doneAt": null,
-        "tasks": [],
-        "acceptance": [
-          {
-            "id": "P4-A1",
-            "layer": "D",
-            "text": "页面含现在该做、范围、阶段、发现、时间线",
-            "status": "通过",
-            "evidence": [
-              "work-view.test.mjs 3/3；渲染结果 grep 命中 NEXT、范围、P1..P5、RECENT、审查发现与时间线"
-            ],
-            "checkedAt": "2026-11-19T20:45:35.307Z"
-          },
-          {
-            "id": "P4-A2",
-            "layer": "C",
-            "text": "浅色/深色都读得清，窄屏不塌",
-            "status": "通过",
-            "evidence": [
-              "截图 .work/review/shot-dark4.png（1280px）与 shot-narrow5.png（520px）；窄屏命令换行、无横向溢出；明暗由 data-theme 切换"
-            ],
-            "checkedAt": "2026-11-19T20:45:35.588Z"
-          },
-          {
-            "id": "P4-A3",
-            "layer": "H",
-            "text": "打开就能说出当前状态与下一步，不用读说明",
-            "status": "未验",
-            "evidence": [],
-            "checkedAt": "2026-11-19T20:59:27.085Z",
-            "updatedAt": "2026-11-19T21:51:08.647Z"
-          }
-        ]
-      },
-      {
-        "id": "P5",
-        "name": "文档、技能与一致性",
-        "goal": "文档与命令一致，技能只放指针",
-        "status": "未开始",
-        "createdAt": "2026-11-19T19:52:33.776Z",
-        "startedAt": null,
-        "doneAt": null,
-        "tasks": [],
-        "acceptance": []
-      }
-    ]
-  }
+  ]
 }

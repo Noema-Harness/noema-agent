@@ -6,7 +6,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { openFindings, upgradeState, validateState } from "../governance/core/state.mjs";
+import {
+  focusSession,
+  openFindings,
+  upgradeState,
+  validateState,
+} from "../governance/core/state.mjs";
 import { resolveGitExecutable } from "./git-exec.mjs";
 import { checkSkill } from "./skill-sync.mjs";
 
@@ -307,20 +312,17 @@ export function checkPrecommit(root, options = {}) {
   const code = staged.filter((name) => name.startsWith(PRODUCT_CODE_PREFIX));
   if (code.length) {
     const state = checkState(root).state;
-    if (!state) {
-      errors.push("产品代码改动需要一个可读的状态文件：npm run state");
-    } else if (!state.work?.scope) {
+    const scope = state ? focusSession(state)?.scope : null;
+    if (!state || !scope) {
       errors.push(
         `产品行为 ${code.length} 个文件没有范围：先写 npm run state -- scope "这次做什么"（小修用 --kind 修复），再提交`,
       );
     } else {
-      notices.push(
-        `产品行为 ${code.length} 个文件，落在范围「${state.work.scope.text}」内（${state.work.scope.kind}）`,
-      );
+      notices.push(`产品行为 ${code.length} 个文件，落在范围「${scope.text}」内（${scope.kind}）`);
     }
   }
-  const scope = changeScope(staged);
-  if (scope) notices.unshift(scope.notice);
+  const change = changeScope(staged);
+  if (change) notices.unshift(change.notice);
   return { errors, notices, staged };
 }
 
