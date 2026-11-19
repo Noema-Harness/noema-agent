@@ -15,6 +15,9 @@ export const ENDINGS = ["定案", "归档"];
 export const PHASE_STATUSES = ["进行中", "已完成"];
 export const TASK_STATUSES = ["未完成", "已完成"];
 export const ACCEPTANCE_STATUSES = ["未验", "通过", "不通过"];
+// D=确定性检查 C=判据对照 R=审查发现（只出清单，不判通过）H=人签收
+export const ACCEPTANCE_LAYERS = ["D", "C", "R", "H"];
+export const BLOCKING_LAYERS = ["D", "C", "H"];
 export const MAX_PHASES = 5;
 
 const THREAD_FIELDS = {
@@ -33,7 +36,8 @@ const THREAD_FIELDS = {
 function matchesKind(value, kind) {
   if (kind === "null") return value === null;
   if (kind === "array") return Array.isArray(value);
-  if (kind === "object") return value !== null && typeof value === "object" && !Array.isArray(value);
+  if (kind === "object")
+    return value !== null && typeof value === "object" && !Array.isArray(value);
   return typeof value === kind;
 }
 
@@ -122,7 +126,10 @@ export function validateState(doc) {
   if (!work || typeof work !== "object") {
     errors.push("状态数据缺少 work（范围与阶段）");
   } else {
-    if (work.scope !== null && (typeof work.scope !== "object" || typeof work.scope.text !== "string")) {
+    if (
+      work.scope !== null &&
+      (typeof work.scope !== "object" || typeof work.scope.text !== "string")
+    ) {
       errors.push("work.scope 只能是 null 或 {text, since}");
     }
     if (!Array.isArray(work.phases)) {
@@ -133,10 +140,14 @@ export function validateState(doc) {
       }
       const phaseIds = new Set();
       for (const phase of work.phases) {
-        if (typeof phase.id !== "string" || !/^P\d+$/u.test(phase.id)) errors.push(`阶段 id 不合规：${String(phase.id)}`);
-        if (typeof phase.name !== "string" || phase.name.trim().length < 2) errors.push(`阶段 ${String(phase.id)} 缺少名字`);
-        if (phase.goal !== null && typeof phase.goal !== "string") errors.push(`阶段 ${String(phase.id)} 的 goal 只能是字符串或 null`);
-        if (!PHASE_STATUSES.includes(phase.status)) errors.push(`阶段 ${String(phase.id)} 的 status 不合规`);
+        if (typeof phase.id !== "string" || !/^P\d+$/u.test(phase.id))
+          errors.push(`阶段 id 不合规：${String(phase.id)}`);
+        if (typeof phase.name !== "string" || phase.name.trim().length < 2)
+          errors.push(`阶段 ${String(phase.id)} 缺少名字`);
+        if (phase.goal !== null && typeof phase.goal !== "string")
+          errors.push(`阶段 ${String(phase.id)} 的 goal 只能是字符串或 null`);
+        if (!PHASE_STATUSES.includes(phase.status))
+          errors.push(`阶段 ${String(phase.id)} 的 status 不合规`);
         if (phaseIds.has(phase.id)) errors.push(`阶段 id 重复：${phase.id}`);
         phaseIds.add(phase.id);
         const taskIds = new Set();
@@ -144,12 +155,18 @@ export function validateState(doc) {
           errors.push(`阶段 ${phase.id} 缺少 tasks 数组`);
         } else {
           for (const task of phase.tasks) {
-            if (typeof task.id !== "string" || !new RegExp(`^${phase.id}-T\\d+$`, "u").test(task.id)) {
+            if (
+              typeof task.id !== "string" ||
+              !new RegExp(`^${phase.id}-T\\d+$`, "u").test(task.id)
+            ) {
               errors.push(`任务 id 不合规：${String(task.id)}`);
             }
-            if (typeof task.text !== "string" || task.text.trim().length < 2) errors.push(`任务 ${String(task.id)} 缺少说明`);
-            if (!TASK_STATUSES.includes(task.status)) errors.push(`任务 ${String(task.id)} 的 status 不合规`);
-            if (!Array.isArray(task.evidence)) errors.push(`任务 ${String(task.id)} 的 evidence 不是数组`);
+            if (typeof task.text !== "string" || task.text.trim().length < 2)
+              errors.push(`任务 ${String(task.id)} 缺少说明`);
+            if (!TASK_STATUSES.includes(task.status))
+              errors.push(`任务 ${String(task.id)} 的 status 不合规`);
+            if (!Array.isArray(task.evidence))
+              errors.push(`任务 ${String(task.id)} 的 evidence 不是数组`);
             if (taskIds.has(task.id)) errors.push(`任务 id 重复：${task.id}`);
             taskIds.add(task.id);
           }
@@ -158,12 +175,36 @@ export function validateState(doc) {
           errors.push(`阶段 ${phase.id} 缺少 acceptance 数组`);
         } else {
           for (const item of phase.acceptance) {
-            if (typeof item.id !== "string" || !new RegExp(`^${phase.id}-A\\d+$`, "u").test(item.id)) {
+            if (
+              typeof item.id !== "string" ||
+              !new RegExp(`^${phase.id}-A\\d+$`, "u").test(item.id)
+            ) {
               errors.push(`验收项 id 不合规：${String(item.id)}`);
             }
-            if (typeof item.text !== "string" || item.text.trim().length < 2) errors.push(`验收项 ${String(item.id)} 缺少说明`);
-            if (!ACCEPTANCE_STATUSES.includes(item.status)) errors.push(`验收项 ${String(item.id)} 的 status 不合规`);
-            if (!Array.isArray(item.evidence)) errors.push(`验收项 ${String(item.id)} 的 evidence 不是数组`);
+            if (typeof item.text !== "string" || item.text.trim().length < 2)
+              errors.push(`验收项 ${String(item.id)} 缺少说明`);
+            if (!ACCEPTANCE_STATUSES.includes(item.status))
+              errors.push(`验收项 ${String(item.id)} 的 status 不合规`);
+            if (!Array.isArray(item.evidence))
+              errors.push(`验收项 ${String(item.id)} 的 evidence 不是数组`);
+            const layer = item.layer ?? "D";
+            if (!ACCEPTANCE_LAYERS.includes(layer)) {
+              errors.push(
+                `验收项 ${String(item.id)} 的 layer 只能是 ${ACCEPTANCE_LAYERS.join(" / ")}`,
+              );
+            }
+          }
+        }
+        if (phase.review !== undefined && phase.review !== null) {
+          if (typeof phase.review !== "object" || Array.isArray(phase.review)) {
+            errors.push(`阶段 ${phase.id} 的 review 不是对象`);
+          } else {
+            for (const key of ["what", "gap", "split", "at"]) {
+              const value = phase.review[key];
+              if (value !== null && typeof value !== "string") {
+                errors.push(`阶段 ${phase.id} 的 review.${key} 只能是字符串或 null`);
+              }
+            }
           }
         }
       }
@@ -232,7 +273,7 @@ export function resumeThread(doc, { id = null, now = new Date() } = {}) {
   return { doc, thread: target, resumed: true };
 }
 
-export function setState(doc, { to, reason = null, scope = null, obligation = null, now = new Date() }) {
+export function setState(doc, { to, reason = null, obligation = null, now = new Date() }) {
   if (!STATES.includes(to)) {
     throw new Error(`未知状态「${String(to)}」：只能是 ${STATES.join(" / ")}`);
   }
@@ -241,13 +282,30 @@ export function setState(doc, { to, reason = null, scope = null, obligation = nu
   if (!reason || reason.trim().length < 2) {
     throw new Error("切换状态要写 --reason「为什么切换」（至少 2 个字）");
   }
+  const work = doc.work ?? emptyWork();
+  if (to === "执行" && !work.scope) {
+    throw new Error('进执行前先声明范围：npm run state -- scope "这次做什么"（一句话也算）');
+  }
+  if (to === "验收") {
+    if (!work.scope) throw new Error("还没有范围：先 state -- scope 声明这次做了什么");
+    if (work.phases.length === 0) {
+      throw new Error('进验收前至少要有阶段清单：state -- phase add --name "…"');
+    }
+    const open = work.phases.filter((phase) => phase.status !== "已完成");
+    if (open.length > 0) {
+      throw new Error(
+        `还有 ${open.length} 个阶段没完成（${open.map((phase) => phase.id).join("、")}）：进验收前阶段要全部完成`,
+      );
+    }
+  }
   const day = today(now);
   let threadId = doc.current.threadId;
   let closed = false;
   if (from === "讨论") {
     const active = activeThread(doc);
     if (active) {
-      const ending = to === "执行" && active.output?.design && active.output?.kickoff ? "定案" : "归档";
+      const ending =
+        to === "执行" && active.output?.design && active.output?.kickoff ? "定案" : "归档";
       archiveThread(doc, { id: active.id, ending, now });
       threadId = active.id;
       closed = ending === "定案";
@@ -261,7 +319,6 @@ export function setState(doc, { to, reason = null, scope = null, obligation = nu
   }
   const resolved = obligation ?? (closed ? "关闭" : "挂起");
   doc.current = { state: to, since: now.toISOString(), threadId };
-  if (scope) doc.current.scope = scope;
   doc.log.push({
     from,
     to,
@@ -336,7 +393,38 @@ export function setScope(doc, { text, now = new Date() } = {}) {
     throw new Error("范围要写清楚「这次做什么」（至少 2 个字）");
   }
   doc.work = doc.work ?? emptyWork();
-  doc.work.scope = { text: text.trim(), since: now.toISOString() };
+  doc.work.scope = { text: text.trim(), since: now.toISOString(), signed: null };
+  return { doc, scope: doc.work.scope };
+}
+
+// The only human hand-off in the state model: in the acceptance state the user
+// signs that the delivered scope matches what they expected. The signature is
+// kept as words plus a date; it does not touch the code or the work list.
+export function signScope(doc, { text, now = new Date() } = {}) {
+  if (doc.current.state !== "验收") {
+    throw new Error(`只有验收态能签收范围（当前是「${doc.current.state}」）`);
+  }
+  if (!doc.work?.scope) throw new Error("还没有范围可签收：先 state -- scope");
+  if (!text || text.trim().length < 2) {
+    throw new Error('签收要带用户原话：npm run state -- sign "符合预期"');
+  }
+  const openPhases = (doc.work.phases ?? []).filter((phase) => phase.status !== "已完成");
+  if (openPhases.length > 0) {
+    throw new Error(
+      `还有 ${openPhases.length} 个阶段没完成（${openPhases.map((phase) => phase.id).join("、")}）：阶段验收要先过，再签收范围`,
+    );
+  }
+  const blockingFailures = (doc.work.phases ?? []).flatMap((phase) =>
+    (phase.acceptance ?? []).filter(
+      (item) => BLOCKING_LAYERS.includes(item.layer ?? "D") && item.status !== "通过",
+    ),
+  );
+  if (blockingFailures.length > 0) {
+    throw new Error(
+      `还有 ${blockingFailures.length} 个 D/C/H 验收项没通过（${blockingFailures.map((item) => item.id).join("、")}）：先过阶段验收再签收`,
+    );
+  }
+  doc.work.scope.signed = { text: text.trim(), date: today(now) };
   return { doc, scope: doc.work.scope };
 }
 
@@ -366,12 +454,22 @@ export function completePhase(doc, { id, now = new Date() } = {}) {
   if (phase.status === "已完成") throw new Error(`阶段 ${phase.id} 已经完成`);
   const openTasks = phase.tasks.filter((task) => task.status !== "已完成");
   if (openTasks.length > 0) {
-    throw new Error(`阶段 ${phase.id} 还有 ${openTasks.length} 个任务没完成：${openTasks.map((task) => task.id).join("、")}`);
+    throw new Error(
+      `阶段 ${phase.id} 还有 ${openTasks.length} 个任务没完成：${openTasks.map((task) => task.id).join("、")}`,
+    );
   }
-  const unchecked = phase.acceptance.filter((item) => item.status === "未验");
-  const failed = phase.acceptance.filter((item) => item.status === "不通过");
-  if (unchecked.length > 0) throw new Error(`阶段 ${phase.id} 还有 ${unchecked.length} 个验收项没判：${unchecked.map((one) => one.id).join("、")}`);
-  if (failed.length > 0) throw new Error(`阶段 ${phase.id} 还有不通过的验收项：${failed.map((one) => one.id).join("、")}`);
+  // R 层是审查发现清单，只记录不判通过；D/C/H 必须全部通过。
+  const blocking = phase.acceptance.filter((item) => BLOCKING_LAYERS.includes(item.layer ?? "D"));
+  const unchecked = blocking.filter((item) => item.status === "未验");
+  const failed = blocking.filter((item) => item.status === "不通过");
+  if (unchecked.length > 0)
+    throw new Error(
+      `阶段 ${phase.id} 还有 ${unchecked.length} 个验收项没判：${unchecked.map((one) => one.id).join("、")}`,
+    );
+  if (failed.length > 0)
+    throw new Error(
+      `阶段 ${phase.id} 还有不通过的验收项：${failed.map((one) => one.id).join("、")}`,
+    );
   phase.status = "已完成";
   phase.doneAt = now.toISOString();
   return { doc, phase };
@@ -394,13 +492,34 @@ export function completeTask(doc, { id, evidence = null, now = new Date() } = {}
   return { doc, phase, task };
 }
 
-export function addAcceptance(doc, { phase: phaseId, text, now = new Date() } = {}) {
+export function addAcceptance(doc, { phase: phaseId, text, layer = "D", now = new Date() } = {}) {
   const phase = findPhase(doc, phaseId);
   if (!text || text.trim().length < 2) throw new Error("验收项要写 --text「这一条怎么算过」");
+  if (!ACCEPTANCE_LAYERS.includes(layer)) {
+    throw new Error(
+      `验收层只能是 ${ACCEPTANCE_LAYERS.join(" / ")}（D 确定性检查 / C 判据对照 / R 审查发现 / H 人签收）`,
+    );
+  }
   const id = `${phase.id}-A${phase.acceptance.length + 1}`;
-  const item = { id, text: text.trim(), status: "未验", evidence: [], checkedAt: null };
+  const item = { id, layer, text: text.trim(), status: "未验", evidence: [], checkedAt: null };
   phase.acceptance.push(item);
   return { doc, phase, item };
+}
+
+// 进入阶段时的三条最小重审：本阶段验什么、可能漏什么、要不要拆/并阶段。
+export function reviewPhase(
+  doc,
+  { id, what = null, gap = null, split = null, now = new Date() } = {},
+) {
+  const phase = findPhase(doc, id);
+  if (!what && !gap && !split) throw new Error("阶段重审至少写一条：--what / --gap / --split");
+  phase.review = {
+    what: what ? String(what).trim() : null,
+    gap: gap ? String(gap).trim() : null,
+    split: split ? String(split).trim() : null,
+    at: now.toISOString(),
+  };
+  return { doc, phase };
 }
 
 export function setAcceptance(doc, { id, status, evidence = null, now = new Date() } = {}) {
@@ -418,14 +537,19 @@ export function workProgress(doc) {
   const phases = doc.work?.phases ?? [];
   const tasks = phases.flatMap((phase) => phase.tasks);
   const items = phases.flatMap((phase) => phase.acceptance);
+  const blocking = items.filter((item) => BLOCKING_LAYERS.includes(item.layer ?? "D"));
   return {
-    phases: { done: phases.filter((phase) => phase.status === "已完成").length, total: phases.length },
+    phases: {
+      done: phases.filter((phase) => phase.status === "已完成").length,
+      total: phases.length,
+    },
     tasks: { done: tasks.filter((task) => task.status === "已完成").length, total: tasks.length },
     acceptance: {
-      passed: items.filter((item) => item.status === "通过").length,
-      failed: items.filter((item) => item.status === "不通过").length,
-      unchecked: items.filter((item) => item.status === "未验").length,
-      total: items.length,
+      passed: blocking.filter((item) => item.status === "通过").length,
+      failed: blocking.filter((item) => item.status === "不通过").length,
+      unchecked: blocking.filter((item) => item.status === "未验").length,
+      total: blocking.length,
+      findings: items.filter((item) => item.layer === "R").length,
     },
   };
 }
@@ -436,7 +560,7 @@ export function progressLines(doc) {
   const scope = doc.work?.scope;
   if (scope) lines.push(`范围：${scope.text}`);
   lines.push(
-    `阶段 ${progress.phases.done}/${progress.phases.total} · 任务 ${progress.tasks.done}/${progress.tasks.total} · 验收 ${progress.acceptance.passed}/${progress.acceptance.total}${progress.acceptance.failed > 0 ? `（不通过 ${progress.acceptance.failed}）` : ""}`,
+    `阶段 ${progress.phases.done}/${progress.phases.total} · 任务 ${progress.tasks.done}/${progress.tasks.total} · 验收 ${progress.acceptance.passed}/${progress.acceptance.total}${progress.acceptance.failed > 0 ? `（不通过 ${progress.acceptance.failed}）` : ""}${progress.acceptance.findings > 0 ? ` · 审查发现 ${progress.acceptance.findings} 条` : ""}`,
   );
   const currentPhase = (doc.work?.phases ?? []).find((phase) => phase.status === "进行中");
   if (currentPhase) lines.push(`当前阶段：${currentPhase.id} ${currentPhase.name}`);
@@ -452,7 +576,7 @@ export function summaryLines(doc) {
   const thread = current.threadId ? threadById(doc, current.threadId) : null;
   const lines = [`状态：${current.state}（${current.since}）`];
   lines.push(...progressLines(doc));
-  if (current.scope && !doc.work?.scope) lines.push(`范围：${current.scope}`);
+
   if (thread) {
     const last = thread.rounds[thread.rounds.length - 1];
     lines.push(`会话：${thread.title}（第 ${thread.rounds.length} 轮）`);

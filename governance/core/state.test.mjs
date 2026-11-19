@@ -21,7 +21,9 @@ import {
   ensureThread,
   logOf,
   resumeThread,
+  reviewPhase,
   setAcceptance,
+  signScope,
   setScope,
   setState,
   summaryLines,
@@ -47,14 +49,14 @@ test("a fresh state document is valid and starts in discussion", () => {
 
 test("switching state archives the session and writes a log line", () => {
   const doc = started();
+  setScope(doc, { text: "changes/probe", now: NOW });
   const { doc: next, log } = setState(doc, {
     to: "执行",
     reason: "设计已批准",
-    scope: "changes/probe",
     now: NOW,
   });
   assert.equal(next.current.state, "执行");
-  assert.equal(next.current.scope, "changes/probe");
+  assert.equal(next.work.scope.text, "changes/probe");
   assert.deepEqual(validateState(next), []);
   assert.equal(log.from, "讨论");
   assert.equal(log.to, "执行");
@@ -62,12 +64,16 @@ test("switching state archives the session and writes a log line", () => {
   const thread = next.threads[0];
   assert.equal(thread.status, "archived");
   assert.equal(thread.ending, "归档");
-  assert.deepEqual(logOf(next, { limit: 5 }).map((entry) => entry.to), ["执行"]);
+  assert.deepEqual(
+    logOf(next, { limit: 5 }).map((entry) => entry.to),
+    ["执行"],
+  );
 });
 
 test("entering execution marks a session with design and kickoff as decided", () => {
   const doc = started();
   doc.threads[0].output = { design: "design.md", kickoff: "kickoff.md", scope: null };
+  setScope(doc, { text: "把探针修好", now: NOW });
   const { doc: next, log } = setState(doc, { to: "执行", reason: "范围已批", now: NOW });
   assert.equal(next.threads[0].ending, "定案");
   assert.equal(log.obligation, "关闭");
@@ -75,6 +81,7 @@ test("entering execution marks a session with design and kickoff as decided", ()
 
 test("switching back to discussion resumes the last archived session", () => {
   const doc = started();
+  setScope(doc, { text: "回到讨论补范围", now: NOW });
   setState(doc, { to: "执行", reason: "开工", now: NOW });
   const { doc: back } = setState(doc, { to: "讨论", reason: "回来补范围", now: NOW });
   const thread = activeThread(back);
@@ -150,15 +157,18 @@ test("the CLI writes state data and reads it back", () => {
   try {
     main(["round", "--conclusion", "第一轮结论"], root);
     main(["wait", "add", "--item", "T1 执行态"], root);
-    main(["set", "执行", "--reason", "范围已批准", "--scope", "changes/probe"], root);
+    main(["scope", "changes/probe"], root);
+    main(["set", "执行", "--reason", "范围已批准"], root);
     const doc = loadState(root);
     assert.equal(doc.current.state, "执行");
-    assert.equal(doc.current.scope, "changes/probe");
+    assert.equal(doc.work.scope.text, "changes/probe");
     assert.equal(doc.threads.length, 1);
     assert.equal(doc.threads[0].rounds.length, 1);
     assert.deepEqual(doc.threads[0].waits, ["T1 执行态"]);
     assert.equal(doc.log.at(-1).to, "执行");
-    const reloaded = JSON.parse(fs.readFileSync(path.join(root, "governance/data/state.json"), "utf8"));
+    const reloaded = JSON.parse(
+      fs.readFileSync(path.join(root, "governance/data/state.json"), "utf8"),
+    );
     saveState(root, reloaded);
     assert.deepEqual(loadState(root), reloaded);
   } finally {
@@ -177,7 +187,7 @@ test("the work list carries scope, phases, tasks and stage acceptance", () => {
   assert.deepEqual(workProgress(doc), {
     phases: { done: 0, total: 2 },
     tasks: { done: 0, total: 2 },
-    acceptance: { passed: 0, failed: 0, unchecked: 1, total: 1 },
+    acceptance: { passed: 0, failed: 0, unchecked: 1, total: 1, findings: 0 },
   });
   assert.throws(() => completePhase(doc, { id: first.id, now: NOW }), /还有 2 个任务没完成/u);
   completeTask(doc, { id: task.id, evidence: "node --test state.test.mjs", now: NOW });
@@ -202,6 +212,30 @@ test("a work list refuses more than five phases and unknown ids", () => {
   assert.throws(() => addTask(doc, { phase: "P9", text: "不存在", now: NOW }), /没有阶段 P9/u);
   assert.throws(() => setAcceptance(doc, { id: "P1-A9", status: "通过", now: NOW }), /没有验收项/u);
   assert.deepEqual(validateState(doc), []);
+});
+
+test("entering execution needs a scope and acceptance needs finished phases", () => {
+  const doc = started();
+  assert.throws(() => setState(doc, { to: "执行", reason: "直接开工", now: NOW }), /先声明范围/u);
+  setScope(doc, { text: "把探针修好", now: NOW });
+  setState(doc, { to: "执行", reason: "范围清楚", now: NOW });
+  const phase = addPhase(doc, { name: "第一段", now: NOW }).phase;
+  assert.throws(
+    () => setState(doc, { to: "验收", reason: "先验一下", now: NOW }),
+    /阶段要全部完成/u,
+  );
+  const task = addTask(doc, { phase: phase.id, text: "写实现", now: NOW }).task;
+  const item = addAcceptance(doc, { phase: phase.id, text: "能跑", now: NOW }).item;
+  completeTask(doc, { id: task.id, now: NOW });
+  setAcceptance(doc, { id: item.id, status: "通过", now: NOW });
+  completePhase(doc, { id: phase.id, now: NOW });
+  const { doc: accepted } = setState(doc, { to: "验收", reason: "阶段都完成了", now: NOW });
+  assert.equal(accepted.current.state, "验收");
+  assert.throws(() => signScope(accepted, { text: "好", now: NOW }), /签名|原话|签收/u);
+  const { scope } = signScope(accepted, { text: "符合预期", now: NOW });
+  assert.equal(scope.signed.text, "符合预期");
+  assert.equal(scope.signed.date, "2026-11-19");
+  assert.deepEqual(validateState(accepted), []);
 });
 
 test("state data from version 1 upgrades to the work model on load", () => {
@@ -248,9 +282,78 @@ test("the CLI drives the work list end to end", () => {
     assert.deepEqual(workProgress(doc), {
       phases: { done: 1, total: 1 },
       tasks: { done: 1, total: 1 },
-      acceptance: { passed: 1, failed: 0, unchecked: 0, total: 1 },
+      acceptance: { passed: 1, failed: 0, unchecked: 0, total: 1, findings: 0 },
     });
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("acceptance layers keep findings out of the verdict and review notes stay on the phase", () => {
+  const doc = started();
+  setScope(doc, { text: "探针范围", now: NOW });
+  setState(doc, { to: "执行", reason: "范围清楚", now: NOW });
+  const phase = addPhase(doc, { name: "第一段", now: NOW }).phase;
+  reviewPhase(doc, {
+    id: phase.id,
+    what: "命令能跑通",
+    gap: "面板没覆盖签收",
+    split: "不拆",
+    now: NOW,
+  });
+  const deterministic = addAcceptance(doc, {
+    phase: phase.id,
+    text: "npm run state:test 全绿",
+    now: NOW,
+  }).item;
+  const finding = addAcceptance(doc, {
+    phase: phase.id,
+    text: "面板缺签收日期",
+    layer: "R",
+    now: NOW,
+  }).item;
+  const human = addAcceptance(doc, {
+    phase: phase.id,
+    text: "用户确认范围",
+    layer: "H",
+    now: NOW,
+  }).item;
+  assert.equal(deterministic.layer, "D");
+  assert.throws(
+    () => addAcceptance(doc, { phase: phase.id, text: "无效层", layer: "Z", now: NOW }),
+    /验收层只能是/u,
+  );
+  const task = addTask(doc, { phase: phase.id, text: "写实现", now: NOW }).task;
+  completeTask(doc, { id: task.id, now: NOW });
+  setAcceptance(doc, { id: deterministic.id, status: "通过", now: NOW });
+  setAcceptance(doc, { id: human.id, status: "通过", now: NOW });
+  // R 层是发现清单：未判也不阻塞阶段完成。
+  assert.equal(finding.status, "未验");
+  completePhase(doc, { id: phase.id, now: NOW });
+  assert.equal(phase.status, "已完成");
+  const progress = workProgress(doc);
+  assert.equal(progress.acceptance.total, 2);
+  assert.equal(progress.acceptance.findings, 1);
+  const { doc: accepted } = setState(doc, { to: "验收", reason: "阶段完成", now: NOW });
+  const { scope } = signScope(accepted, { text: "符合预期", now: NOW });
+  assert.equal(scope.signed.text, "符合预期");
+  assert.equal(accepted.work.phases[0].review.what, "命令能跑通");
+  assert.deepEqual(validateState(accepted), []);
+});
+
+test("a failed blocking layer keeps the scope unsigned", () => {
+  const doc = started();
+  setScope(doc, { text: "探针范围", now: NOW });
+  setState(doc, { to: "执行", reason: "范围清楚", now: NOW });
+  const phase = addPhase(doc, { name: "第一段", now: NOW }).phase;
+  const task = addTask(doc, { phase: phase.id, text: "写实现", now: NOW }).task;
+  const item = addAcceptance(doc, { phase: phase.id, text: "能跑", layer: "C", now: NOW }).item;
+  completeTask(doc, { id: task.id, now: NOW });
+  assert.throws(() => completePhase(doc, { id: phase.id, now: NOW }), /没判/u);
+  setAcceptance(doc, { id: item.id, status: "不通过", now: NOW });
+  assert.throws(() => completePhase(doc, { id: phase.id, now: NOW }), /不通过/u);
+  setAcceptance(doc, { id: item.id, status: "通过", now: NOW });
+  completePhase(doc, { id: phase.id, now: NOW });
+  const { doc: accepted } = setState(doc, { to: "验收", reason: "阶段完成", now: NOW });
+  assert.deepEqual(validateState(accepted), []);
 });

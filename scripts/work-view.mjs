@@ -27,19 +27,47 @@ function escape(text) {
 
 function badge(status) {
   const tone =
-    status === "已完成" || status === "通过" ? "ok" : status === "不通过" ? "bad" : status === "未验" ? "wait" : "todo";
+    status === "已完成" || status === "通过"
+      ? "ok"
+      : status === "不通过"
+        ? "bad"
+        : status === "未验"
+          ? "wait"
+          : "todo";
   return `<span class="badge ${tone}">${escape(status)}</span>`;
 }
 
 function taskRow(task) {
   const box = task.status === "已完成" ? "☑" : "☐";
-  const evidence = task.evidence.length > 0 ? `<div class="evidence">${task.evidence.map((one) => `<code>${escape(one)}</code>`).join(" ")}</div>` : "";
+  const evidence =
+    task.evidence.length > 0
+      ? `<div class="evidence">${task.evidence.map((one) => `<code>${escape(one)}</code>`).join(" ")}</div>`
+      : "";
   return `<li class="${task.status === "已完成" ? "done" : ""}"><span class="box">${box}</span><span class="text">${escape(task.text)}</span><span class="id">${escape(task.id)}</span>${evidence}</li>`;
 }
 
+const LAYER_LABEL = { D: "确定性", C: "判据", R: "审查发现", H: "签收" };
+
 function acceptanceRow(item) {
-  const evidence = item.evidence.length > 0 ? `<div class="evidence">${item.evidence.map((one) => `<code>${escape(one)}</code>`).join(" ")}</div>` : "";
-  return `<li>${badge(item.status)}<span class="text">${escape(item.text)}</span><span class="id">${escape(item.id)}</span>${evidence}</li>`;
+  const evidence =
+    item.evidence.length > 0
+      ? `<div class="evidence">${item.evidence.map((one) => `<code>${escape(one)}</code>`).join(" ")}</div>`
+      : "";
+  const layer = item.layer ?? "D";
+  return `<li>${badge(item.status)}<span class="layer layer-${layer}">${layer} ${LAYER_LABEL[layer] ?? ""}</span><span class="text">${escape(item.text)}</span><span class="id">${escape(item.id)}</span>${evidence}</li>`;
+}
+
+function reviewBlock(review) {
+  if (!review) return "";
+  const rows = [
+    ["验什么", review.what],
+    ["可能漏", review.gap],
+    ["拆/并", review.split],
+  ]
+    .filter(([, value]) => value)
+    .map(([label, value]) => `<li><b>${label}</b> ${escape(value)}</li>`)
+    .join("");
+  return rows ? `<div class="review"><h3>进入时重审</h3><ul>${rows}</ul></div>` : "";
 }
 
 function phaseCard(phase) {
@@ -47,9 +75,10 @@ function phaseCard(phase) {
   return `<section class="phase${open}">
   <header><h2>${escape(phase.id)} ${escape(phase.name)}</h2>${badge(phase.status)}</header>
   ${phase.goal ? `<p class="goal">${escape(phase.goal)}</p>` : ""}
+  ${reviewBlock(phase.review)}
   <h3>任务 ${phase.tasks.length}</h3>
   <ul class="tasks">${phase.tasks.map(taskRow).join("") || "<li class='empty'>还没有任务</li>"}</ul>
-  <h3>阶段验收 ${phase.acceptance.length}</h3>
+  <h3>阶段验收 ${phase.acceptance.length}（通过 = D + C + H；R 只列发现）</h3>
   <ul class="accept">${phase.acceptance.map(acceptanceRow).join("") || "<li class='empty'>还没写验收项</li>"}</ul>
 </section>`;
 }
@@ -58,7 +87,10 @@ function threadBlock(thread) {
   if (!thread) return "";
   const rounds = thread.rounds
     .slice(-8)
-    .map((round) => `<li><span class="n">第 ${round.n} 轮 · ${escape(round.date)}</span>${escape(round.conclusion)}${round.change ? `<span class="diff">${escape(round.change)}</span>` : ""}</li>`)
+    .map(
+      (round) =>
+        `<li><span class="n">第 ${round.n} 轮 · ${escape(round.date)}</span>${escape(round.conclusion)}${round.change ? `<span class="diff">${escape(round.change)}</span>` : ""}</li>`,
+    )
     .join("");
   return `<section class="thread">
   <h2>讨论：${escape(thread.title)}<span class="id">${escape(thread.id)}</span></h2>
@@ -72,12 +104,18 @@ function threadBlock(thread) {
 
 export function renderView(doc, now = new Date()) {
   const progress = workProgress(doc);
-  const percent = progress.tasks.total === 0 ? 0 : Math.round((progress.tasks.done / progress.tasks.total) * 100);
-  const thread = doc.current.threadId ? doc.threads.find((one) => one.id === doc.current.threadId) : activeThread(doc);
+  const percent =
+    progress.tasks.total === 0 ? 0 : Math.round((progress.tasks.done / progress.tasks.total) * 100);
+  const thread = doc.current.threadId
+    ? doc.threads.find((one) => one.id === doc.current.threadId)
+    : activeThread(doc);
   const scope = doc.work?.scope;
   const phases = doc.work?.phases ?? [];
   const recent = logOf(doc, { limit: 5 })
-    .map((entry) => `<li><span class="n">${escape(entry.date)}</span>${escape(entry.from ?? "起始")} → <b>${escape(entry.to)}</b>（${escape(entry.obligation)}）：${escape(entry.reason)}</li>`)
+    .map(
+      (entry) =>
+        `<li><span class="n">${escape(entry.date)}</span>${escape(entry.from ?? "起始")} → <b>${escape(entry.to)}</b>（${escape(entry.obligation)}）：${escape(entry.reason)}</li>`,
+    )
     .join("");
   return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>Noema 工作台</title>
 <style>
@@ -105,6 +143,13 @@ ul { margin: 0; padding: 0; list-style: none; }
 .tasks li.done .text { color: #8f8a84; text-decoration: line-through; }
 .id { font-size: 11px; color: #a49f98; }
 .evidence code { font-size: 11px; background: #fface6; background: #f3efe7; padding: 0 4px; border-radius: 3px; color: #6f6a65; }
+.layer { display: inline-block; min-width: 3.6em; margin-right: 6px; padding: 1px 5px; border-radius: 4px; font-size: 10px; letter-spacing: .04em; }
+.layer-D { background: #e8eef7; color: #34506f; }
+.layer-C { background: #e9f2e9; color: #335533; }
+.layer-R { background: #f7f0e2; color: #6b5426; }
+.layer-H { background: #f3e8f2; color: #5c3560; }
+.review ul { margin: 4px 0 8px; padding-left: 18px; }
+.review li { font-size: 12px; color: #5c5750; }
 .thread { margin-top: 26px; padding: 16px 18px; background: #fff; border: 1px solid #e6e1d8; border-radius: 10px; }
 .rounds li, .waits li, .log li { padding: 3px 0; }
 .rounds .n, .log .n { font-size: 11px; color: #a49f98; margin-right: 8px; }
@@ -114,9 +159,9 @@ footer { margin-top: 30px; font-size: 11px; color: #a49f98; }
 .empty { color: #a49f98; }
 </style></head><body>
 <div class="head"><span class="state">${escape(doc.current.state)}</span><span class="meta">自 ${escape(doc.current.since)} · 生成于 ${escape(now.toISOString())}</span></div>
-${scope ? `<div class="scope"><b>范围</b> ${escape(scope.text)}<div class="meta">立于 ${escape(scope.since)}</div></div>` : `<div class="scope meta">还没有声明范围</div>`}
+${scope ? `<div class="scope"><b>范围</b> ${escape(scope.text)}<div class="meta">立于 ${escape(scope.since)}${scope.signed ? ` · 已签收（${escape(scope.signed.date)}）：${escape(scope.signed.text)}` : ""}</div></div>` : `<div class="scope meta">还没有声明范围</div>`}
 <div class="bar"><i style="width:${percent}%"></i></div>
-<p class="meta">任务 ${progress.tasks.done}/${progress.tasks.total}（${percent}%）· 阶段 ${progress.phases.done}/${progress.phases.total} · 验收通过 ${progress.acceptance.passed}/${progress.acceptance.total}${progress.acceptance.failed > 0 ? ` · <b>不通过 ${progress.acceptance.failed}</b>` : ""}</p>
+<p class="meta">任务 ${progress.tasks.done}/${progress.tasks.total}（${percent}%）· 阶段 ${progress.phases.done}/${progress.phases.total} · 验收通过 ${progress.acceptance.passed}/${progress.acceptance.total}${progress.acceptance.findings > 0 ? ` · 审查发现 ${progress.acceptance.findings}` : ""}${progress.acceptance.failed > 0 ? ` · <b>不通过 ${progress.acceptance.failed}</b>` : ""}</p>
 ${phases.map(phaseCard).join("") || `<p class="empty">还没有阶段：npm run state -- phase add --name "…"</p>`}
 ${threadBlock(thread)}
 <div class="log"><h3>最近切换</h3><ul>${recent || "<li class='empty'>还没有切换记录</li>"}</ul></div>

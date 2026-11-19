@@ -75,10 +75,12 @@ npm run state -- set <讨论|执行|验收> --reason "…" [--scope changes/<nam
 npm run state -- round --conclusion "…" --change "+…"   # 会话记一轮（续编号）
 npm run state -- wait add --item "T1 …"                 # 待裁项增删（drop 可写编号前缀）
 npm run state -- archive|resume|log                     # 归档 / 恢复会话、查看切换记录
+npm run state -- sign "<用户原话>"                          # 验收态签收：范围符合预期（记日期）
 npm run state -- scope "…"                                # 执行态声明范围（一句话也行）
 npm run state -- phase add --name "…" [--goal "…"] / phase done --id P1 / phase list # 清单阶段（2–5 个）
+npm run state -- phase check --id P1 [--what "验什么"] [--gap "可能漏什么"] [--split "要不要拆并"] # 进阶段的三条重审
 npm run state -- task add --phase P1 --text "…" / task done --id P1-T1 [--evidence "…"] # 任务勾选
-npm run state -- accept add --phase P1 --text "…" / accept set --id P1-A1 --status 通过|不通过 [--evidence "…"] # 阶段验收
+npm run state -- accept add --phase P1 --text "…" [--layer D|C|R|H] / accept set --id P1-A1 --status 通过|不通过 [--evidence "…"] # 阶段验收；通过 = D+C+H，R 只列发现
 npm run state -- work                                     # 打印范围、阶段、任务与验收进度
 npm run work:view                                         # 只读工作台 .work/review/work-view.html（状态/范围/阶段/任务/验收/会话）
 npm run stage -- <阶段>     # 旧入口：按条目阶段打印规则包（已由 npm run state 取代）
@@ -154,8 +156,13 @@ npm run workspace:clean -- --days 30 --apply       # 改保留期
 | `npm run state -- set` 报「已经在 X 状态」            | 同一状态重复切换无意义；要改范围用 `--scope`，要记录变化用 `state -- round`                                                        |
 | `npm run state` 报「状态数据不合规」                  | 有人手改了 `governance/data/state.json`：按报错修回结构，或删掉该文件让命令重建（会话历史也会丢，先确认）                          |
 | `npm run state -- set` 报「要写 --reason」            | 切换状态必须写一句为什么；日志靠它解释脉络                                                                                          |
+| `npm run state -- set 执行` 报「先声明范围」            | 先 `npm run state -- scope `"这次做什么`"`；范围可以是一句话                                                                         |
+| `npm run state -- set 验收` 报「阶段要全部完成」        | 还有阶段没完成：补齐任务与验收项，或把不通过项写成任务继续修；两次不通过回讨论重看范围                                                 |
+| `npm run state -- sign` 报「只有验收态能签收」          | 签收只发生在验收态：先 `state -- set 验收`，阶段全完成后才能签                                                                        |
 | `npm run state -- phase done` 报「还有 N 个任务没完成」／「没判」／「不通过」 | 阶段完成=任务全勾+验收项全判且无「不通过」；两条路：补齐后完成，或把不通过项写成任务继续修（两次不通过就回讨论重看范围或判据）       |
 | `npm run state -- phase add` 报「阶段最多 5 个」      | 范围太大：拆批次或回讨论缩小范围；阶段不是越多越好，2–5 个是给「一次能判断完」留的边界                                                |
+| `npm run state -- accept add` 报「验收层只能是」      | 层只有四种：D 确定性检查（命令/测试）、C 判据对照（与预先写定的判据对）、R 审查发现（只列，不判通过）、H 人签收                       |
+| `npm run state -- sign` 报「还有 N 个 D/C/H 验收项没通过」 | R 层不阻塞；被卡的 D/C/H 项要么去补齐，要么把问题写成任务回执行修，改判后再签                                                        |
 | `npm run work:view` 报「状态数据不合规」              | 手改过 `governance/data/state.json`：按报错修回，或删掉重建（会话历史会丢，先确认）                                                  |
 | `npm run decision -- advance` 报「不能从X直接到Y」    | 阶段只能相邻推进（决策中→执行中→待验收→已收口），唯一回溯边是重开回决策中；验收不过用 `--stage 决策中 --reason "…"`               |
 | `npm run transition --check` 报「还有没填的（待填）」 | 把每节的 `（待填）` 换成真实内容再校验；design 与 kickoff 的「待确认项」必须写 `- 无` 才能提交批准                                 |

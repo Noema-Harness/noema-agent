@@ -22,10 +22,12 @@ import {
   findPhase,
   logOf,
   progressLines,
+  reviewPhase,
   resumeThread,
   setAcceptance,
   setScope,
   setState,
+  signScope,
   summaryLines,
   threadById,
   upgradeState,
@@ -39,22 +41,23 @@ const STATE_PATH = "governance/data/state.json";
 const USAGE = [
   "用法：",
   "  npm run state                              # 当前状态、会话、待裁、最近切换与规则包",
-  "  npm run state -- set <讨论|执行|验收> --reason \"为什么切换\" [--scope changes/<name>] [--obligation 关闭|挂起]",
-  "  npm run state -- round --conclusion \"这一轮的结论\" [--change \"+新增 / 已解除\"]",
-  "  npm run state -- title \"会话主题\"",
-  "  npm run state -- wait add --item \"T1 要定什么\"",
+  '  npm run state -- set <讨论|执行|验收> --reason "为什么切换" [--scope changes/<name>] [--obligation 关闭|挂起]',
+  '  npm run state -- round --conclusion "这一轮的结论" [--change "+新增 / 已解除"]',
+  '  npm run state -- title "会话主题"',
+  '  npm run state -- wait add --item "T1 要定什么"',
   "  npm run state -- wait drop --item T1",
   "  npm run state -- archive [--ending 定案|归档]",
   "  npm run state -- resume [--id thread-…]",
   "  npm run state -- log [--limit N]",
-  "  npm run state -- scope \"这次做什么（范围）\"",
-  "  npm run state -- phase add --name \"阶段交付什么\" [--goal \"目标\"]",
+  '  npm run state -- scope "这次做什么（范围）"',
+  '  npm run state -- phase add --name "阶段交付什么" [--goal "目标"]',
+  '  npm run state -- phase check --id P1 [--what "这一阶段验什么"] [--gap "可能漏什么"] [--split "要不要拆/并"]',
   "  npm run state -- phase done --id P1",
   "  npm run state -- phase list",
-  "  npm run state -- task add --phase P1 --text \"一句话交付物\"",
-  "  npm run state -- task done --id P1-T1 [--evidence \"命令+结果\"]",
-  "  npm run state -- accept add --phase P1 --text \"这一条怎么算过\"",
-  "  npm run state -- accept set --id P1-A1 --status 通过|不通过 [--evidence \"证据\"]",
+  '  npm run state -- task add --phase P1 --text "一句话交付物"',
+  '  npm run state -- task done --id P1-T1 [--evidence "命令+结果"]',
+  '  npm run state -- accept add --phase P1 --text "这一条怎么算过" [--layer D|C|R|H]',
+  '  npm run state -- accept set --id P1-A1 --status 通过|不通过 [--evidence "证据"]',
   "  npm run state -- work                      # 范围 / 阶段 / 任务 / 阶段验收的进度",
 ];
 
@@ -137,17 +140,31 @@ function printWork(doc) {
   console.log(progressLines(doc).join("\n"));
   const phases = doc.work?.phases ?? [];
   if (phases.length === 0) {
-    console.log("\n还没有阶段：npm run state -- phase add --name \"…\"");
+    console.log('\n还没有阶段：npm run state -- phase add --name "…"');
     return;
   }
   for (const phase of phases) {
-    console.log(`\n${phase.id} ${phase.name}（${phase.status}）${phase.goal ? ` — ${phase.goal}` : ""}`);
+    console.log(
+      `\n${phase.id} ${phase.name}（${phase.status}）${phase.goal ? ` — ${phase.goal}` : ""}`,
+    );
     for (const task of phase.tasks) {
       console.log(`  ${task.status === "已完成" ? "[x]" : "[ ]"} ${task.id} ${task.text}`);
     }
     if (phase.tasks.length === 0) console.log("  （还没有任务）");
+    if (phase.review) {
+      const review = phase.review;
+      if (review.what) console.log(`  重审·验什么：${review.what}`);
+      if (review.gap) console.log(`  重审·可能漏：${review.gap}`);
+      if (review.split) console.log(`  重审·划分：${review.split}`);
+    }
     if (phase.acceptance.length > 0) {
-      console.log(`  验收：${phase.acceptance.map((item) => `${item.id}=${item.status}`).join("、")}`);
+      const layers = ["D", "C", "H", "R"];
+      for (const layer of layers) {
+        const items = phase.acceptance.filter((item) => (item.layer ?? "D") === layer);
+        if (items.length === 0) continue;
+        const label = layer === "R" ? "审查发现（不判通过）" : `${layer} 层`;
+        console.log(`  ${label}：${items.map((item) => `${item.id}=${item.status}`).join("、")}`);
+      }
     }
   }
   const failed = progress.acceptance.failed;
@@ -178,16 +195,25 @@ export function main(argv, root = process.cwd()) {
     return;
   }
 
+  if (command === "sign") {
+    const text = flags.text ?? rest.find((token) => !token.startsWith("--"));
+    const result = signScope(doc, { text });
+    doc = commit(root, result.doc, { dryRun });
+    console.log(`已签收（${result.scope.signed.date}）：${result.scope.signed.text}`);
+    return;
+  }
+
   if (command === "set") {
     const to = requireState([command, ...rest]);
     const result = setState(doc, {
       to,
       reason: flags.reason,
-      scope: typeof flags.scope === "string" ? flags.scope : null,
       obligation: typeof flags.obligation === "string" ? flags.obligation : null,
     });
     doc = commit(root, result.doc, { dryRun });
-    console.log(`状态：${result.log.from} → ${result.log.to}（${result.log.obligation}，${result.log.date}）`);
+    console.log(
+      `状态：${result.log.from} → ${result.log.to}（${result.log.obligation}，${result.log.date}）`,
+    );
     console.log(summaryLines(doc).join("\n"));
     return;
   }
@@ -198,7 +224,9 @@ export function main(argv, root = process.cwd()) {
       change: typeof flags.change === "string" ? flags.change : null,
     });
     doc = commit(root, result.doc, { dryRun });
-    console.log(`第 ${result.round.n} 轮已记录（${result.round.date}）：${result.round.conclusion}`);
+    console.log(
+      `第 ${result.round.n} 轮已记录（${result.round.date}）：${result.round.conclusion}`,
+    );
     return;
   }
 
@@ -259,6 +287,17 @@ export function main(argv, root = process.cwd()) {
       console.log(`阶段 ${result.phase.id} 已建立：${result.phase.name}`);
       return;
     }
+    if (action === "check") {
+      const result = reviewPhase(doc, {
+        id: flags.id,
+        what: typeof flags.what === "string" ? flags.what : null,
+        gap: typeof flags.gap === "string" ? flags.gap : null,
+        split: typeof flags.split === "string" ? flags.split : null,
+      });
+      doc = commit(root, result.doc, { dryRun });
+      console.log(`阶段 ${result.phase.id} 已记重审（验什么 / 可能漏什么 / 要不要拆并）`);
+      return;
+    }
     if (action === "done") {
       const result = completePhase(doc, { id: flags.id });
       doc = commit(root, result.doc, { dryRun });
@@ -296,9 +335,13 @@ export function main(argv, root = process.cwd()) {
   if (command === "accept") {
     const action = rest[0];
     if (action === "add") {
-      const result = addAcceptance(doc, { phase: flags.phase, text: flags.text });
+      const result = addAcceptance(doc, {
+        phase: flags.phase,
+        text: flags.text,
+        layer: typeof flags.layer === "string" ? flags.layer : "D",
+      });
       doc = commit(root, result.doc, { dryRun });
-      console.log(`验收项 ${result.item.id} 已追加：${result.item.text}`);
+      console.log(`验收项 ${result.item.id}（${result.item.layer} 层）已追加：${result.item.text}`);
       return;
     }
     if (action === "set") {
