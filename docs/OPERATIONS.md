@@ -65,7 +65,9 @@ npm run lint
 npm run tools:test
 npm run inbox
 npm run review             # 只读聚合：需要你决定 / 待你验收 / 执行中（待验收显示勾选进度）
-npm run decisions:sync     # 验收项全部勾选后收口（改阶段与标题标记、补当天用户确认）
+npm run decisions:sync     # 验收项全部勾选后收口（改数据文件的阶段与标题标记、补当天用户确认）
+npm run decisions:render   # 从 governance/data/decisions.json 重渲染 docs/DECISIONS.md（markdown 是产物，勿手改）
+npm run decisions:view     # 生成只读视图 .work/review/decisions-view.html（待裁决 + 讨论经过）
 npm run decision:draft     # 起草条目：只写 .work/decisions-draft/，然后问用户是否已批准创建
 npm run decision:accept    # 落库：decision:accept -- <D-…> --approval "<用户原话>"
 npm run stage -- <阶段>     # 阶段入口：打印规则包 + 活动条目 + 恢复卡（discussion/execution/acceptance）
@@ -126,6 +128,8 @@ npm run workspace:clean -- --days 30 --apply       # 改保留期
 | 已经推送了带未收口 change 的提交                      | 别想着 force push：按上一条在本地收口后再推一次，`platform` 复查通过即可；这次红是提交时序问题，不是代码问题                        |
 | 活动变更 tasks 全部完成                               | 归档该变更后再开下一个阶段                                                                                                          |
 | `[用户]` 验收项勾选没有确认日期                       | 只有用户明确确认后才勾选，并写成 `（用户确认：YYYY-MM-DD）`                                                                         |
+| docs:check 报「docs/DECISIONS.md 是渲染产物，与 governance/data/decisions.json 不一致」 | 有人直接改了 markdown。改条目走 `npm run governance -- record|move`；只想恢复文件就 `npm run decisions:render`；数据文件本身有问题时从 `governance/data/decisions.json` 修 |
+| 命令报「条目数据文件不存在」 | 仓库还没迁移：`node scripts/migrate-decisions.mjs`（会解析现有 markdown 并规范化空白，判据是幂等 + 内容深相等） |
 | 条目「来源」不是用户指令                              | 普通实现、修复、只补验证本来就该走提交信息或 change；真要用户拍板时，来源写成「用户 YYYY-MM-DD …」再开条目                          |
 | 报「缺少 --approval」或「批准原话太短」               | 条目不能先建后说：先用 `npm run decision:draft` 起草并停下问用户，拿到明确答复再用 `npm run decision:accept -- <D-…> --approval "<原话≥10 字>"` |
 | 草稿落库前校验失败（条目没有写进文件）                | 草稿结构不合规：按报错补「阶段/结构/来源/阻塞」与「- 要定：」，修好再 accept；草稿会保留在 `.work/decisions-draft/`                    |

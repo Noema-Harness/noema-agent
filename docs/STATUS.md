@@ -13,6 +13,8 @@ Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与�
 
 ## 最后一次验证（2026-11-19）
 
+- 条目存储与视图分离（change `governance-store`，2026-11-19）：条目不再以 markdown 为存储。`governance/data/decisions.json` 是唯一真相（`{version:1, preamble, entries[]}`，结构化条目保存字段与三段正文，旧 `D-0xx` 条目原样保存正文），`docs/DECISIONS.md` 每次由数据渲染（顶部注明「勿手改」，手改会被 `docs:check` 的渲染比对与写盘印记发现）。①所有条目命令（`record`/`move`/accept/draft/sync）只读写数据文件，写盘后重渲染 markdown；②`npm run decisions:render` 手动重渲染，`npm run decisions:view` 生成只读视图 `.work/review/decisions-view.html`（左栏待裁决、右栏讨论经过）；③迁移一次性：`node scripts/migrate-decisions.mjs --check` 报条目 58（结构化 24）、幂等通过、迁移前后逐条深相等（markdown 差异只允许空行）。证据：`npm run kernel:test` **28/28**、`npm run tools:test` **103/103**、`npm run docs:check`、`npm run figure:check`（图按章节判断重出 `6c95a303cadc`）、`npm run check` **901/901，0 fail，85,273ms**（含 `governance: milestone OK`）。
+
 - 治理一致性修复（change `governance-conformance`，2026-11-19）：独立对照审查（36 条 E vs 代码/规则包/归档批次）报一致 24、偏差 11、未落地 1、无法判定 1，本轮按审查结论修。
   ①边界优先：`governance/README.md` 新增「边界：什么走治理，什么自由执行」表（修 bug、重构、补测试、内部脚本优化属自由执行；已定决定、定位承诺、不可逆迁移、条目写入、阶段/批次/验收项历史、增删门规则命令、发布签名走治理），判据是「改完之后，我的预期有没有变」。
   ②受控偏差修复边：`待验收 → 执行中` 只能修实现（`npm run governance -- move --stage 执行中 --reason "<哪一处不过>"`），条目留「偏差：原因（日期）」；命令比对已定块，决定被改动即拒绝并要求回决策重开。

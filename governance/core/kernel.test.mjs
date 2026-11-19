@@ -21,12 +21,19 @@ import {
 } from "./transitions.mjs";
 import { checkPackGates, loadPack, resumeCard, activeEntries } from "../../scripts/stage.mjs";
 import { advanceEntry, recordRound, settleDecisionItem } from "../../scripts/decision.mjs";
+
+// 条目数据文件是唯一真相：测试里改条目前先写 markdown 再同步数据，避免只改一半。
+function writeDecisions(root, body) {
+  fs.writeFileSync(path.join(root, "docs", "DECISIONS.md"), body, "utf8");
+  saveStore(root, parseDecisions(body));
+}
 import { checkTransition, scaffold } from "../../scripts/transition.mjs";
 import { restoreDecisions } from "../../scripts/decision.mjs";
 import { audit } from "../../scripts/interface.mjs";
 import { execFileSync } from "node:child_process";
 import { checkDecisionEntries } from "../../scripts/maintenance.mjs";
 import { compareEntryHistory } from "./history.mjs";
+import { parseDecisions, renderDecisions, saveStore } from "./persist.mjs";
 import { main as interfaceMain } from "../../scripts/interface.mjs";
 
 const HEADER = "Authority: 测试\nUpdate when: 测试\nDoes not own: 测试\n";
@@ -181,7 +188,7 @@ test("the decision CLI refuses a stage jump, a short approval and a missing batc
     /原话太短/u,
   );
   const noBatch = body.replace("- 未开始：定案后进入执行", "- 批次：changes/absent");
-  fs.writeFileSync(path.join(root, "docs", "DECISIONS.md"), noBatch, "utf8");
+  writeDecisions(root, noBatch);
   assert.throws(
     () =>
       advanceEntry({
@@ -193,7 +200,7 @@ test("the decision CLI refuses a stage jump, a short approval and a missing batc
       }),
     /在 openspec\/changes\/ 里不存在/u,
   );
-  fs.writeFileSync(path.join(root, "docs", "DECISIONS.md"), body, "utf8");
+  writeDecisions(root, body);
 });
 
 test("the decision CLI writes the decision and the stage in one pass, then validates the result", () => {
@@ -689,8 +696,10 @@ test("move --restore writes through the command and records the stamp", () => {
   git(["config", "user.name", "test"]);
   const good = text();
   fs.writeFileSync(path.join(root, "docs", "DECISIONS.md"), good, "utf8");
+  saveStore(root, parseDecisions(good));
   git(["add", "-A"]);
   git(["commit", "-qm", "good"]);
+  const canonical = renderDecisions(parseDecisions(good));
   fs.writeFileSync(
     path.join(root, "docs", "DECISIONS.md"),
     good.replace("- 未开始：定案后进入执行", ""),
@@ -698,7 +707,7 @@ test("move --restore writes through the command and records the stamp", () => {
   );
   const restored = restoreDecisions({ root, from: "HEAD" });
   assert.equal(restored.from, "HEAD");
-  assert.equal(fs.readFileSync(path.join(root, "docs", "DECISIONS.md"), "utf8"), good);
+  assert.equal(fs.readFileSync(path.join(root, "docs", "DECISIONS.md"), "utf8"), canonical);
   assert.ok(fs.existsSync(path.join(root, ".work", "decision-writes", "DECISIONS.json")));
 });
 

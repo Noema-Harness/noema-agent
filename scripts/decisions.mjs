@@ -1,5 +1,12 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import fs from "node:fs";
 import path from "node:path";
+import {
+  loadStore,
+  parseDecisions,
+  renderDecisions,
+  saveStore,
+  validateStore,
+} from "../governance/core/persist.mjs";
 import {
   ENTRY_STAGE_MARKS,
   acceptanceItems,
@@ -57,11 +64,12 @@ export function syncDecisions(text, today = localToday()) {
   return { text: synced.join("\n"), changes };
 }
 
-function main() {
+async function main() {
   const root = process.cwd();
+  const storePath = path.join("governance", "data", "decisions.json");
   const target = path.join(root, "docs", "DECISIONS.md");
   const dryRun = process.argv.includes("--dry-run");
-  const { text, changes } = syncDecisions(readFileSync(target, "utf8"));
+  const { text, changes } = syncDecisions(renderDecisions(loadStore(root, storePath)));
   if (changes.length === 0) {
     console.log("decisions-sync: 没有需要收口的条目");
     return;
@@ -69,7 +77,23 @@ function main() {
   for (const change of changes) {
     console.log(`decisions-sync · ${change.id}：${change.from} → ${change.to}`);
   }
-  if (!dryRun) writeFileSync(target, text, "utf8");
+  if (!dryRun) {
+    const next = parseDecisions(text);
+    const errors = validateStore(next).errors;
+    if (errors.length > 0) throw new Error(`数据校验失败：${errors.join("；")}`);
+    saveStore(root, next, storePath);
+    fs.writeFileSync(target, renderDecisions(next), "utf8");
+    const stamp = path.join(root, ".work", "decision-writes", "DECISIONS.json");
+    fs.mkdirSync(path.dirname(stamp), { recursive: true });
+    const sha256 = (await import("node:crypto")).createHash("sha256")
+      .update(`${JSON.stringify(next, null, 2)}\n`)
+      .digest("hex");
+    fs.writeFileSync(
+      stamp,
+      `${JSON.stringify({ path: "governance/data/decisions.json", sha256, at: new Date().toISOString() }, null, 2)}\n`,
+      "utf8",
+    );
+  }
   console.log(`decisions-sync: ${changes.length} 条${dryRun ? "（未写入）" : "已更新"}`);
 }
 

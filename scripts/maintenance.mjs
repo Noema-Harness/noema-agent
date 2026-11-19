@@ -7,6 +7,7 @@ import { resolveGitExecutable } from "./git-exec.mjs";
 import { checkSkill } from "./skill-sync.mjs";
 import { STATES } from "./lifecycle.mjs";
 import { compareEntryHistory } from "../governance/core/history.mjs";
+import { loadStore, renderDecisions, validateStore } from "../governance/core/persist.mjs";
 import { duplicateTransitionDocs } from "../governance/core/transitions.mjs";
 
 // 文档与计划不是事后补写的报告，而是交付门槛的一部分：交付前、提交前都必须
@@ -542,11 +543,37 @@ export function checkDocuments(root, git, options = {}) {
       }
     }
   }
-  const decisions = readText(path.join(root, "docs", "DECISIONS.md")) ?? "";
-  const committedDecisions = git(["show", "HEAD:docs/DECISIONS.md"]);
+  const storePath = path.join(root, "governance", "data", "decisions.json");
+  const storePresent = fs.existsSync(storePath);
+  const decisionsFile = readText(path.join(root, "docs", "DECISIONS.md")) ?? "";
+  let decisions = decisionsFile;
+  let previousDecisions = "";
+  if (storePresent) {
+    const decisionStore = loadStore(root, path.join("governance", "data", "decisions.json"));
+    for (const error of validateStore(decisionStore).errors) {
+      errors.push(`条目数据 governance/data/decisions.json：${error}`);
+    }
+    decisions = renderDecisions(decisionStore);
+    if (decisionsFile.replaceAll("\r\n", "\n") !== decisions && decisionsFile.trim() !== "") {
+      errors.push(
+        "docs/DECISIONS.md 是渲染产物，与 governance/data/decisions.json 不一致：改数据或走命令，然后运行 npm run decisions:render 重渲染",
+      );
+    }
+    const committedDecisions = git(["show", "HEAD:governance/data/decisions.json"]);
+    if (committedDecisions.ok) {
+      try {
+        previousDecisions = renderDecisions(JSON.parse(committedDecisions.text));
+      } catch {
+        previousDecisions = "";
+      }
+    }
+  } else {
+    const committedDecisions = git(["show", "HEAD:docs/DECISIONS.md"]);
+    previousDecisions = committedDecisions.ok ? committedDecisions.text : "";
+  }
   const decisionReport = checkDecisionEntries(decisions, {
     today: options.today,
-    previous: committedDecisions.ok ? committedDecisions.text : "",
+    previous: previousDecisions,
   });
   errors.push(...decisionReport.errors);
   notices.push(...decisionReport.notices);
@@ -1086,15 +1113,18 @@ function decisionWriteNotice(root) {
   } catch {
     return null;
   }
-  const staged = runGit(root, ["cat-file", "blob", ":docs/DECISIONS.md"]);
-  if (!staged.ok) return "条目文件还没有暂存：先 git add docs/DECISIONS.md";
+  const staged = runGit(root, ["cat-file", "blob", ":governance/data/decisions.json"]);
+  if (!staged.ok) return "条目数据文件还没有暂存：先 git add governance/data/decisions.json";
   const sha256 = createHash("sha256").update(staged.text).digest("hex");
   if (sha256 === stamp.sha256) return null;
-  return `docs/DECISIONS.md 在索引里与命令写下的版本不一致（命令时间 ${stamp.at}）：条目只走 npm run governance -- record|move，不要用编辑器或脚本改`;
+  return `governance/data/decisions.json 在索引里与命令写下的版本不一致（命令时间 ${stamp.at}）：条目只走 npm run governance -- record|move，不要用编辑器或脚本改`;
 }
 
 function currentStageNotice(root) {
-  const text = readText(path.join(root, "docs", "DECISIONS.md")) ?? "";
+  const storeFile = path.join(root, "governance", "data", "decisions.json");
+  const text = fs.existsSync(storeFile)
+    ? renderDecisions(loadStore(root, path.join("governance", "data", "decisions.json")))
+    : readText(path.join(root, "docs", "DECISIONS.md")) ?? "";
   const active = decisionEntries(text)
     .map((entry) => ({ entry, meta: decisionMeta(entry) }))
     .filter(({ meta }) => meta && ["决策中", "执行中", "待验收"].includes(meta.stage))

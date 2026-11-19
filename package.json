@@ -40,6 +40,7 @@
     "skill:install": "node scripts/skill-sync.mjs install",
     "guard": "node scripts/collaboration.mjs",
     "decisions:sync": "node scripts/decisions.mjs sync",
+    "decisions:view": "node scripts/decisions-view.mjs",
     "decisions:test": "node --test scripts/decisions.test.mjs",
     "decision:draft": "node scripts/decision-entry.mjs draft",
     "decision:accept": "node scripts/decision-entry.mjs accept",
@@ -51,7 +52,8 @@
     "inbox:ack": "node scripts/inbox.mjs ack",
     "acceptance": "node scripts/acceptance.mjs",
     "acceptance:test": "node --test governance/core/acceptance.test.mjs",
-    "governance": "node scripts/interface.mjs"
+    "governance": "node scripts/interface.mjs",
+    "decisions:render": "node scripts/render-decisions.mjs"
   },
   "engines": {
     "node": ">=24.21 <25"

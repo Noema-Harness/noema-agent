@@ -12,6 +12,13 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import path from "node:path";
 
 import { checkDecisionEntries, localToday } from "./maintenance.mjs";
+import {
+  ensureStore,
+  parseEntry,
+  renderDecisions,
+  saveStore,
+  validateStore,
+} from "../governance/core/persist.mjs";
 
 export const DRAFTS_DIR = path.join(".work", "decisions-draft");
 export const APPROVAL_MIN_LENGTH = 10;
@@ -111,7 +118,8 @@ export function acceptEntry({ root = process.cwd(), id, approval, now = new Date
   const date = localToday(now);
   const entryText = withApproval(stripDraftHeader(readFileSync(draft.draftPath, "utf8")), quote, date);
 
-  const before = readFileSync(decisionsPath(root), "utf8");
+  const store = ensureStore(root);
+  const before = renderDecisions(store);
   const next = `${before.trimEnd()}\n\n${entryText}\n`;
   const check = checkDecisionEntries(next);
   if (check.errors.length) {
@@ -119,8 +127,13 @@ export function acceptEntry({ root = process.cwd(), id, approval, now = new Date
       `草稿落库前校验失败（条目没有写进文件）：\n${check.errors.map((error) => `- ${error}`).join("\n")}`,
     );
   }
-
-  writeFileSync(decisionsPath(root), next, "utf8");
+  store.entries.push(parseEntry(entryText));
+  const storeErrors = validateStore(store).errors;
+  if (storeErrors.length) {
+    throw new Error(`草稿落库前数据校验失败：\n${storeErrors.map((error) => `- ${error}`).join("\n")}`);
+  }
+  saveStore(root, store);
+  writeFileSync(decisionsPath(root), renderDecisions(store), "utf8");
   rmSync(draft.draftPath);
   return { id: draft.id, approval: quote, date };
 }

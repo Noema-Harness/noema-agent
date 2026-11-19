@@ -1,3 +1,5 @@
+> 本文件由 `governance/data/decisions.json` 渲染，勿手改：改条目用 `npm run governance -- record|move`，重渲染用 `npm run decisions:render`。
+
 # DECISIONS
 
 Authority: 本文件是 Noema 决定的唯一权威来源，由用户驱动：条目只在 ① 用户要求定一件事、② 需要用户在多个方案里拍板、③ 跨轮次/不可逆/代价差一个量级的取舍时才有；普通实现、修复、只补验证不写这里，证据在提交信息与 change。
@@ -852,9 +854,9 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 ## ✅ D-20261117-gate-ownership 门的归属：能执行的人才能被要求
 
 - **阶段**：已收口
+- **结构**：`scripts/figure.mjs` 的 `check` 支持 soft（PR 设 `NOEMA_FIGURE_SOFT=1` 降为提示）；CI 增报告期 `portable` job（ubuntu 跑同一套测试、不拦 PR）；PR 模板去掉 Windows 全量与出图声明。
 - **来源**：用户 2026-11-17 对 PR #162 的两点质疑：`check` 不该含只有 Windows 能过的项；架构图是否更新属于维护者判断，不该由协作者提醒。
 - **阻塞**：无
-- **结构**：`scripts/figure.mjs` 的 `check` 支持 soft（PR 设 `NOEMA_FIGURE_SOFT=1` 降为提示）；CI 增报告期 `portable` job（ubuntu 跑同一套测试、不拦 PR）；PR 模板去掉 Windows 全量与出图声明。
 
 #### 1 决策
 
@@ -879,9 +881,9 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 ## ✅ D-20261117-governance-boundary 决议由用户驱动，文档只写 Noema
 
 - **阶段**：已收口
+- **结构**：`AGENTS.md` 的「怎么推进一件工作」；`scripts/maintenance.mjs` 的 `checkMilestone` 不再要求 change 对应条目，`checkDatedEntry` 校验条目来源与用户确认；外部项目内容从本仓库文档移除
 - **来源**：用户 2026-11-17 指出「几乎所有行动都要单独建立决议条目，这是不必要的」「DECISIONS 更应该是用户驱动的文档」「和当前项目无关的内容也不应该出现在文档中」，并追问为何维护者给自己开 issue / PR
 - **阻塞**：无
-- **结构**：`AGENTS.md` 的「怎么推进一件工作」；`scripts/maintenance.mjs` 的 `checkMilestone` 不再要求 change 对应条目，`checkDatedEntry` 校验条目来源与用户确认；外部项目内容从本仓库文档移除
 
 #### 1 决策
 
@@ -909,10 +911,6 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 - **阶段**：已收口
 - **来源**：用户 2026-11-17 指出架构图自 `e47d4aa`（2026-11-15）后内容从未变化，`figure:check` 只比较整篇文档 sha，导致“重跑渲染”被当成“更新图”；并批准重画图与补机制。
 - **阻塞**：无
-- **结构**：
-  - `docs/assets/*.source.json` 记录 `source.sections`（每张图依赖的文档章节与摘要）与 `source.candidateSha256`（candidate 内容摘要）；`source.rationale` 只在显式记录“图无需改”的判断时存在，并绑定当时的章节摘要。
-  - `scripts/figure.mjs`：`parseDocumentSections`/`collectSectionHashes`/`evaluateFigureFreshness` 判断漂移；`checkOne` 报章节漂移与 candidate 不符；`buildOne` 在“章节变了但 candidate 没变”时拒绝，`--sections-changed "<理由>"` 才放行。
-  - 架构图随结构重画：bridge 传输、执行后端可换、本机文件与命令、按平台打包状态；计划节点对齐开放卡片（#144 六模块、#139 会话拓扑、#140 @Noema 跨房间）。治理图补“提示层 / 事实流 / 机器门”三块区域。
 
 #### 1 决策
 
@@ -939,9 +937,9 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 ## ⏳ D-20261117-agent-memory 个体记忆：对象模型、写入权与到技能/提示词的蒸馏
 
 - **阶段**：决策中
+- **结构**：待定（以下为调研得出的候选，未定案）：三层——证据层（每条断言记住来源 kind/ref/room/message，源删留墓碑）、主张层（一条断言：scope、kind、status、trust、valid_from/valid_to、superseded_by、confirmed_at）、装配层（检索只取 active 且未过期，bm25 + 字符预算）；写入分级候选（fact/procedure 先成候选，preference/episode 立即生效、可见可撤销）；检索候选（FTS5 trigram + 3-gram OR 展开）；失效候选（superseded + 墓碑，不物理删）。
 - **来源**：用户 2026-11-17 把议题收窄为记忆（m104003）；此前同日指出成长回合只把项目记录整理成一条可追溯经历、属记忆层内容，要求先打好记忆基底（m103921 / m103965）。成长规格等本条定案后再单独成条。
 - **阻塞**：讨论尚未收束，执行未获批准。2026-11-17 我在你回答三个子问题后擅自把阶段推进到执行中并开工，该执行已回滚（回滚提交 cc608ef，原提交 701befc 留在历史里）；此条回到讨论期，下一步等你说定案或继续讨论。
-- **结构**：待定（以下为调研得出的候选，未定案）：三层——证据层（每条断言记住来源 kind/ref/room/message，源删留墓碑）、主张层（一条断言：scope、kind、status、trust、valid_from/valid_to、superseded_by、confirmed_at）、装配层（检索只取 active 且未过期，bm25 + 字符预算）；写入分级候选（fact/procedure 先成候选，preference/episode 立即生效、可见可撤销）；检索候选（FTS5 trigram + 3-gram OR 展开）；失效候选（superseded + 墓碑，不物理删）。
 
 #### 1 决策
 
@@ -987,7 +985,6 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
   - 建成框架还缺三件（没有它们就只是约束清单）：写入质量的可测指针、失效判据（依什么信号判定一条主张不再是当前版）、装配预算的分配规则。
 - 纪要（用户，2026-11-17 三问答复；**只是子问题的回答，不等于讨论结束，也不等于允许执行**）：**B 起点只做个体级**；**C 经验毕业 = 任务级评测 + 用户确认**；**A 写入权选分级**——事实/承诺/约束需确认，情境/偏好自动生效但可见、可撤销；并明确纠正一处理解——记忆系统不是只在项目归档时才产生交互，**每一轮对话都可能读写记忆**，不能把现有实现（主聊手动记忆 + 项目复盘批次）当成产品全景。
 - 结论：待定（讨论期）。上一轮擅自按候选开工的代码已回滚；等你定案后再立项。
-
 
 #### 2 执行
 
@@ -1117,16 +1114,8 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
   - 结论：一致性修复进入执行：批次两行、开工清单门、偏差修复边、边界规则、验收自证均已落地；修已定块 E24-E26 的 EE 前缀并重写验收项覆盖 E1-E39
   - 待裁变化：无（待裁：无；E1-E39 已定）
 
-
-
-
-
-
-
-
-
-
 #### 2 执行
+
 - 当前批次：changes/governance-conformance
 - 批次历史：changes/governance-conformance（commit 99c0e08；一致性修复）
 - 批次历史：`changes/governance-core`（commit 03ce6a6）
@@ -1142,6 +1131,7 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 - 转待验收（2026-11-19）
 - 开工清单：.work/review/2026-11-19-D-20261118-decision-dialog-flow-kickoff.md（2026-11-19）
 - 转待验收（2026-11-19）
+
 #### 3 验收
 
 - [ ] E1–E10 进入条件与治理边界：执行三步门槛、权威文档只写本体、待裁替代未决、规则包落 governance、表态纪律、观察期、演练、试点挂起、条目自足、检查项绑门（[机制] `governance/noema/workflow/` 三份规则包；`npm run governance -- check stage` 校验 `gate:` id；E8 试点等记忆决议）
@@ -1151,6 +1141,7 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 - [ ] E33–E36 治理接口：单一写入口（印记 + 恢复）、批次续接、`record|move|check` 收敛、净零审计（[机制] `.work/decision-writes/DECISIONS.json`；`npm run governance -- audit`）
 - [ ] E37–E39 边界与偏差边：治理区与自由执行的边界、受控偏差修复边（禁改决定）、验收自证（[机制] `governance/README.md` 边界表；`governance/core/lifecycle.mjs` 的 `BACKWARD`；`acceptance.mjs` 覆盖门）
 - 重开：验收不过：①交付过程中我用原生工具与一次性脚本直接改过条目（含用 git show 恢复历史），而 DECISIONS 应只由治理接口写入；②重开后再次进执行时另开批次 governance-acceptance-writeback，没有续接已有批次；两处都说明接口与批次模型有结构缺陷（2026-11-19）
+
 ## ⏳ D-20261118-agent-governance-concept 从 Noema 治理实践倒推 agent 领域的概念
 
 - **阶段**：决策中
@@ -1206,9 +1197,6 @@ Does not own: 产品定义与验收（见 [PRODUCT](PRODUCT.md)）；系统结�
 
   - 结论：暂停（2026-11-19）：等 Noema 实践更多后再讨论通用性与概念；中断离开去处理治理条目的退回
   - 待裁变化：无（暂停；未产生新的待裁项）
-
-
-
 
 #### 2 执行
 

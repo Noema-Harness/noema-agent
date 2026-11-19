@@ -48,6 +48,13 @@
 
 过渡文档模板在 `noema/workflow/transition/`：设计方案、条目收口、开工清单、执行交接、验收报告。
 
+## 存储与视图
+
+- **数据是唯一真相**：`governance/data/decisions.json`（`{version, preamble, entries[]}`；每条含 id/标题/阶段/字段/三段正文）。命令只读写数据文件，markdown 不接收写入。
+- **markdown 是渲染产物**：`docs/DECISIONS.md` 每次由数据重渲染；`docs:check` 会比对「文件 vs 渲染」，不一致即报错（提示 `npm run decisions:render`）。
+- **视图是只读视图**：`npm run decisions:view` 生成 `.work/review/decisions-view.html`（两块：待裁决、讨论经过），两侧都不进库。
+- **迁移是一次性的**：`node scripts/migrate-decisions.mjs` 把旧 markdown 解析成数据并规范化空白；判据是幂等 + 逐条内容深相等。
+
 ## 条目生命周期
 
 四态：`决策中 → 执行中 → 待验收 → 已收口`；任一阶段可退回决策中并写原因。
@@ -67,7 +74,9 @@
 |---|---|---|
 | `npm run review` | 只读汇总：待你决定 / 待你验收 / 执行中 | 已有 |
 | `npm run decision:draft` / `decision:accept` | 条目起草与落库（原话准入） | 已有 |
-| `npm run decisions:sync` | 标题阶段标记与勾选收口同步 | 已有 |
+| `npm run decisions:sync` | 标题阶段标记与勾选收口同步（读写数据文件） | 已有 |
+| `npm run decisions:render` | 从数据重渲染 `docs/DECISIONS.md` | 已有 |
+| `npm run decisions:view` | 生成只读视图 `.work/review/decisions-view.html` | 已有 |
 | `npm run docs:check`、`figure:check`、`plan:check`、`milestone:check` | 单独跑某道产物门 | 已有 |
 | `npm run check` | 里程碑全量门 | 已有 |
 | `npm run governance -- record\|move\|check\|audit` | 治理三动词：record 五合一、move 进阶段/退回修复/恢复、check 三类自检 + 净额、audit 计数 | 已有 |
@@ -81,7 +90,8 @@
 - 批次二 `governance-kernel`：条目内核、`decision` 行为门、`stage`/`transition` 命令、两个新门规则（观察期）。核验：`npm run kernel:test`、`npm run tools:test`、`npm run check`。
 - 批次三 `governance-interface`：`record`/`move`/`check` 三动词、写盘印记与恢复、批次续接、净零审计、过渡文档唯一性。核验：`npm run governance -- check net`。
 - 批次四 `governance-conformance`：边界（治理区 vs 自由执行）、受控偏差修复边、开工清单门、批次两行、验收项按 E 覆盖。核验：`governance/core/kernel.test.mjs`、`npm run acceptance -- --entry <D-…>`。
-- 挂起：试点 P1（`D-20261117-agent-memory` 等记忆决议）与批次五 `governance-extraction`（内核可复用与抽离评估）。
+- 批次五 `governance-store`：条目数据文件 `governance/data/decisions.json` + 渲染产物 + 只读视图；命令只写数据。核验：`node scripts/migrate-decisions.mjs --check`、`npm run docs:check`、`npm run kernel:test`。
+- 挂起：试点 P1（`D-20261117-agent-memory` 等记忆决议）与批次六 `governance-extraction`（内核可复用与抽离评估）。
 
 ## 维护
 

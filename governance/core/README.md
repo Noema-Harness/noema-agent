@@ -4,6 +4,17 @@
 
 ## 模块
 
+| 模块 | 职责 |
+|---|---|
+| `persist.mjs` | 条目持久层：`parseDecisions`/`renderDecisions`（幂等）、`loadStore`/`saveStore`、`validateStore`、`ensureStore`（命令入口引导） |
+| `entries.mjs` | 条目正文操作（读/写字段、轮次、待裁、阶段事件） |
+| `lifecycle.mjs` | 阶段、合法转移、重开与偏差修复边 |
+| `packs.mjs` | 规则包 gate 校验与恢复卡文本 |
+| `transitions.mjs` | 过渡文档模板结构校验与就地更新判定 |
+| `edits.mjs`/`history.mjs`/`acceptance.mjs`/`handoff.mjs`/`interface.mjs` | 编辑、历史只增、验收覆盖、交接/报告、命令路由 |
+
+数据格式与视图约定：`governance/data/decisions.json` 是唯一真相；`docs/DECISIONS.md` 是它的渲染产物，任何直接改文件的做法都应被 `docs:check` 拒绝。
+
 | 模块 | 职责 | 不做什么 |
 | --- | --- | --- |
 | `entries.mjs` | 条目文本模型：定位、读取四块、写阶段/轮次/已定 | 不读盘、不认识仓库路径、不跑门 |

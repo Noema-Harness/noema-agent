@@ -27,10 +27,21 @@ import {
 } from "../governance/core/entries.mjs";
 import { transitionKind } from "../governance/core/lifecycle.mjs";
 import { assembleAcceptance } from "../governance/core/acceptance.mjs";
+import {
+  ensureStore,
+  entryById,
+  loadStore,
+  parseEntry,
+  renderDecisions,
+  renderEntry,
+  saveStore,
+  validateStore,
+} from "../governance/core/persist.mjs";
 import { checkTransition } from "./transition.mjs";
 import { STATES } from "./lifecycle.mjs";
 
 const DECISIONS = path.join("docs", "DECISIONS.md");
+const STORE = path.join("governance", "data", "decisions.json");
 const MIN_APPROVAL = 2; // 明确的两字批准（如「可以」）算；单字仍拒
 const MIN_REASON = 10;
 
@@ -105,27 +116,45 @@ function requireReason(flags, purpose) {
 
 const WRITE_STAMP = path.join(".work", "decision-writes", "DECISIONS.json");
 
-/** 写盘印记（M12）：记下命令写出的文件哈希，提交前据此发现「绕过命令改过」。 */
-function stampWrite(root, text) {
-  const sha256 = createHash("sha256").update(text).digest("hex");
+/** 写盘印记（M12）：记下命令写出的数据文件哈希，提交前据此发现「绕过命令改过」。 */
+function stampWrite(root, storeText) {
+  const sha256 = createHash("sha256").update(storeText).digest("hex");
   const file = path.join(root, WRITE_STAMP);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(
     file,
-    `${JSON.stringify({ path: DECISIONS.replaceAll("\\", "/"), sha256, at: new Date().toISOString() }, null, 2)}\n`,
+    `${JSON.stringify({ path: STORE.replaceAll("\\", "/"), sha256, at: new Date().toISOString() }, null, 2)}\n`,
     "utf8",
   );
 }
 
+/** 读出单个条目的 markdown 块（数据文件是真相）。 */
+function entryText(root, id) {
+  if (!id) throw new Error("缺少 --entry <D-…>：先指明要改的条目");
+  const store = ensureStore(root, STORE);
+  const entry = entryById(store, id);
+  if (!entry) throw new Error(`找不到条目 ${id}`);
+  return renderEntry(entry);
+}
+
 function commit(root, next, { dryRun }) {
+  const nextEntry = parseEntry(next);
+  const store = ensureStore(root, STORE);
+  const trial = {
+    ...store,
+    entries: store.entries.map((entry) => (entry.id === nextEntry.id ? nextEntry : entry)),
+  };
+  const errors = validateStore(trial).errors;
+  if (errors.length > 0) throw new Error(`数据校验失败：${errors.join("；")}`);
   if (dryRun) {
     console.log("dry-run：不写盘。生成后的条目如下：");
     console.log(next);
     return;
   }
-  fs.writeFileSync(path.join(root, DECISIONS), next, "utf8");
-  stampWrite(root, next);
-  console.log(`已写入 ${DECISIONS}`);
+  saveStore(root, trial, STORE);
+  fs.writeFileSync(path.join(root, DECISIONS), renderDecisions(trial), "utf8");
+  stampWrite(root, `${JSON.stringify(trial, null, 2)}\n`);
+  console.log(`已写入 ${STORE}（并重渲染 ${DECISIONS}）`);
 }
 
 export function advanceEntry({
@@ -141,8 +170,7 @@ export function advanceEntry({
   date,
   dryRun = false,
 }) {
-  const file = path.join(root, DECISIONS);
-  const text = fs.readFileSync(file, "utf8");
+  const text = entryText(root, id);
   const entry = requireEntry(text, id);
   const target = stage;
   if (!STATES.includes(target)) throw new Error(`未知阶段：${target}；可用 ${STATES.join(" / ")}`);
@@ -284,8 +312,7 @@ export function recordRound({
   lines = [],
   dryRun = false,
 }) {
-  const file = path.join(root, DECISIONS);
-  const text = fs.readFileSync(file, "utf8");
+  const text = entryText(root, id);
   requireEntry(text, id);
   if (!conclusion || !String(conclusion).trim())
     throw new Error("缺少 --conclusion：这一轮的结论是什么");
@@ -315,8 +342,7 @@ export function settleDecisionItem({
   date,
   dryRun = false,
 }) {
-  const file = path.join(root, DECISIONS);
-  const text = fs.readFileSync(file, "utf8");
+  const text = entryText(root, id);
   const entry = requireEntry(text, id);
   const quote = requireApproval({ approval }, "把待裁并入已定");
   if (!number || !title || !detail) throw new Error("缺少 --number / --title / --detail");
@@ -354,8 +380,7 @@ export function editEntry({
   note,
   dryRun = false,
 }) {
-  const file = path.join(root, DECISIONS);
-  const text = fs.readFileSync(file, "utf8");
+  const text = entryText(root, id);
   requireEntry(text, id);
   let next = text;
   const report = [];
@@ -450,22 +475,37 @@ export function resumeEntry({ root = process.cwd(), id, date, dryRun = false }) 
 export function restoreDecisions({ root = process.cwd(), from, dryRun = false }) {
   if (!from || !String(from).trim())
     throw new Error("缺少 --from <commit>：恢复要指明从哪个提交取条目");
-  let text;
+  const storePath = STORE.replaceAll("\\", "/");
+  let restored;
   try {
-    text = execFileSync(resolveGitExecutable(), ["show", `${from}:docs/DECISIONS.md`], {
+    const raw = execFileSync(resolveGitExecutable(), ["show", `${from}:${storePath}`], {
       cwd: root,
       encoding: "utf8",
-      maxBuffer: 32 * 1024 * 1024,
+      maxBuffer: 64 * 1024 * 1024,
     });
+    restored = JSON.parse(raw);
   } catch {
-    throw new Error(`读不到 ${from}:docs/DECISIONS.md：确认这个提交里有条目文件`);
+    throw new Error(`读不到 ${from}:${storePath}：确认这个提交里有条目数据文件`);
   }
-  const current = fs.readFileSync(path.join(root, DECISIONS), "utf8");
-  const report = checkDecisionEntries(text, { previous: current });
+  const errors = validateStore(restored).errors;
+  if (errors.length > 0) throw new Error(`恢复目标不合法（没有写盘）：${errors.join("；")}`);
+  const current = fs.readFileSync(path.join(root, STORE), "utf8");
+  const currentStore = ensureStore(root, STORE);
+  const currentMarkdown = renderDecisions(currentStore);
+  const restoredMarkdown = renderDecisions(restored);
+  const report = checkDecisionEntries(restoredMarkdown, { previous: currentMarkdown });
   if (report.errors.length > 0) {
-    throw new Error(`恢复目标不合法（没有写盘）：${report.errors.join("；")}`);
+    throw new Error(`历史只增不满足（没有写盘）：${report.errors.join("；")}`);
   }
-  commit(root, text, { dryRun });
+  if (dryRun) {
+    console.log("dry-run：不写盘。", `当前 ${current.length} 字节`);
+    return { from };
+  }
+  saveStore(root, restored, STORE);
+  const markdown = renderDecisions(restored);
+  fs.writeFileSync(path.join(root, DECISIONS), markdown, "utf8");
+  stampWrite(root, `${JSON.stringify(restored, null, 2)}\n`);
+  console.log(`已从 ${from} 恢复 ${STORE} 并重渲染 ${DECISIONS}`);
   return { from };
 }
 
@@ -567,19 +607,17 @@ export function main(argv = process.argv.slice(2), root = process.cwd()) {
       if (action !== "add" && action !== "drop")
         throw new Error('用法：decision -- wait add|drop --entry <D-…> --item "T…"');
       if (typeof flags.item !== "string") throw new Error("缺少 --item：写「T1 问题…」或编号 T1");
-      const file = path.join(root, DECISIONS);
-      const text = fs.readFileSync(file, "utf8");
+      const text = entryText(root, target);
       const result =
         action === "add"
           ? addWaitingItem(text, target, flags.item)
           : dropWaitingItem(text, target, flags.item);
       const next = result.text;
-      const report = checkDecisionEntries(next);
+      const report = checkDecisionEntries(next, { previous: text });
       if (report.errors.length > 0) {
         throw new Error(`写入前校验失败（条目没有改动）：${report.errors.join("；")}`);
       }
-      fs.writeFileSync(file, next, "utf8");
-      stampWrite(root, next);
+      commit(root, next, { dryRun: false });
       console.log(
         action === "add"
           ? `${target}：已加待裁项 ${result.line}`
