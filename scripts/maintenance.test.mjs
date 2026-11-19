@@ -18,6 +18,7 @@ import {
   checkRange,
   localToday,
   reviewQueue,
+  changeScope,
   stagedPaths,
 } from "./maintenance.mjs";
 
@@ -940,4 +941,22 @@ test("the governance core keeps project names and repo paths out", () => {
   assert.equal(dirty.length, 2);
   assert.match(dirty.map((item) => item.why).join("\n"), /仓库文档路径/u);
   assert.match(dirty.map((item) => item.why).join("\n"), /Noema 专名/u);
+});
+
+
+test("change scope tells behavior work from free execution", () => {
+  const free = changeScope(["docs/PRODUCT.md", "apps/desktop/test/main/chat/a.test.mjs"]);
+  assert.equal(free.scope, "自由执行路径");
+  assert.match(free.notice, /不需要条目与阶段/u);
+
+  const behavior = changeScope(["apps/desktop/src/main/main.ts"]);
+  assert.equal(behavior.scope, "行为路径");
+  assert.match(behavior.notice, /产品行为 1 个文件/u);
+  assert.match(behavior.notice, /活动变更与规格增量/u);
+
+  const records = changeScope(["docs/DECISIONS.md", "governance/data/decisions.json"]);
+  assert.equal(records.scope, "自由执行路径");
+  assert.match(records.notice, /只经 npm run governance -- record\|move 写入/u);
+
+  assert.equal(changeScope([]), null);
 });

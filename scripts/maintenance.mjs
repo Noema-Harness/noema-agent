@@ -981,6 +981,33 @@ export function checkMilestone(root, options = {}) {
   return { errors, notices };
 }
 
+// 边界在提交时自动说清楚：这次改动走治理还是自由执行。只作提示，不新增门——
+// 「用户预期会不会变」判不了机器，但「改的是产品行为、还是测试/文档」判得了。
+export function changeScope(staged) {
+  const has = (test) => staged.filter(test);
+  const behavior = has((name) => name.startsWith(PRODUCT_CODE_PREFIX));
+  const records = has(
+    (name) => name === "docs/DECISIONS.md" || name.startsWith("governance/data/"),
+  );
+  const tooling = has((name) => name.startsWith("scripts/") || name.startsWith("governance/"));
+  const free = has((name) => !name.startsWith(PRODUCT_CODE_PREFIX) && !records.includes(name));
+  const parts = [];
+  if (behavior.length) parts.push(`产品行为 ${behavior.length} 个文件`);
+  if (records.length) parts.push(`条目数据 ${records.length} 个文件`);
+  if (tooling.length) parts.push(`治理工具 ${tooling.length} 个文件`);
+  if (free.length) parts.push(`文档/测试/其他 ${free.length} 个文件`);
+  if (!parts.length) return null;
+  const scope = behavior.length ? "行为路径" : "自由执行路径";
+  const rule = behavior.length
+    ? "必须有活动变更与规格增量；用户预期会变就先在条目里定，只是修实现偏差走 fix 变更"
+    : "不需要条目与阶段，过四道门即可";
+  const recordsHint = records.length ? "；条目数据只经 npm run governance -- record|move 写入" : "";
+  return {
+    scope,
+    notice: `本次改动（${parts.join("、")}）→ ${scope}：${rule}${recordsHint}`,
+  };
+}
+
 export function checkPrecommit(root, options = {}) {
   const git = options.git ?? ((args) => runGit(root, args));
   const docs = checkDocuments(root, git);
@@ -1096,6 +1123,8 @@ export function checkPrecommit(root, options = {}) {
   // (checked by plan/milestone), never for every product file touched.
   const stageNotice = currentStageNotice(root);
   if (stageNotice) plan.notices.unshift(stageNotice);
+  const scope = changeScope(staged);
+  if (scope) plan.notices.unshift(scope.notice);
   const docNotice = transitionDocNotice(root);
   if (docNotice) plan.notices.unshift(docNotice);
   const stampNotice = decisionWriteNotice(root);

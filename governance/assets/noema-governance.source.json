@@ -384,7 +384,7 @@
   },
   "source": {
     "doc": "governance/README.md",
-    "sha256": "6c95a303cadc1d573cb8b8f294fbb4d13d8d0b6c8532d201e23a0ff9db3daddc",
+    "sha256": "2fb1f8f6ee10796fff313e7283034fcb4db3d10ce81fd75cf913320010b6e215",
     "sections": [
       {
         "title": "三层结构",
@@ -417,5 +417,5 @@
       "bytes": 171163
     }
   },
-  "updatedAt": "2026-11-19T08:21:21.725Z"
+  "updatedAt": "2026-11-19T10:18:51.393Z"
 }

@@ -32,7 +32,7 @@ function permissionItems(entry) {
     if (inWaiting && /^- (?:T\d+|\[)/u.test(line)) items.push(line.replace(/^- /u, "").trim());
     if (/^- 要定：/u.test(line)) {
       const rest = line.replace(/^- 要定：/u, "").trim();
-      if (rest && rest !== "无（E1-E39 已定，已进入执行）" && !items.includes(rest)) items.push(rest);
+      if (rest && !rest.startsWith("无") && !items.includes(rest)) items.push(rest);
     }
     if (/^- 待裁：/u.test(line)) {
       const rest = line.replace(/^- 待裁：/u, "").trim();
@@ -93,7 +93,8 @@ function renderEntry(entry) {
 }
 
 function build(store) {
-  const open = store.entries.filter((entry) => entry.stage !== "已收口");
+  const legacy = store.entries.filter((entry) => !entry.stage);
+  const open = store.entries.filter((entry) => entry.stage && entry.stage !== "已收口");
   const closed = store.entries.filter((entry) => entry.stage === "已收口");
   return `<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><title>决策视图</title>
@@ -119,11 +120,15 @@ function build(store) {
   .closed { margin-top: 28px; }
 </style></head><body>
 <h1>决策视图</h1>
-<div class="meta">${open.length} 个开放条目 · ${closed.length} 个已收口 · 数据源 governance/data/decisions.json</div>
+<div class="meta">${open.length} 个开放条目 · ${closed.length} 个已收口${legacy.length ? ` · ${legacy.length} 个旧格式条目` : ""} · 数据源 governance/data/decisions.json</div>
 ${open.map(renderEntry).join("\n")}
 <section class="closed"><h2>已收口（${closed.length}）</h2>${closed
     .map((entry) => `<div class="meta">${escapeHtml(entry.title)} · ${escapeHtml(entry.id)}</div>`)
     .join("")}</section>
+${legacy.length ? `<section class="closed"><h2>旧格式条目（无阶段，${legacy.length}）</h2>${legacy
+    .map((entry) => `<div class="meta">${escapeHtml(entry.title)} · ${escapeHtml(entry.id)}</div>`)
+    .join("")}</section>` : ""}
+<p class="meta" style="margin-top:28px">只读视图：运行 npm run decisions:view 重新生成；改条目请走 npm run governance -- record|move。</p>
 </body></html>
 `;
 }
