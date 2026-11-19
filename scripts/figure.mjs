@@ -46,7 +46,7 @@ export const FIGURES = {
     png: "governance/assets/noema-governance.png",
     doc: "governance/README.md",
     anchors: ["governance/README.md", "AGENTS.md"],
-    sections: ["三层结构", "四道门", "三阶段规则包", "条目生命周期"],
+    sections: ["三层结构", "四道门", "状态与规则包", "条目生命周期"],
   },
 };
 

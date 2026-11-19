@@ -21,6 +21,7 @@
 | `lifecycle.mjs` | 阶段、阶段标记、前进/退回/重开的合法转移 | 不写门的命令，不写项目语汇 |
 | `packs.mjs` | 规则包 gate 提取与校验、恢复卡文本装配 | 不知道规则包文件在哪 |
 | `transitions.mjs` | 过渡文档的节、占位符、待确认项检查与骨架 | 不知道模板路径与文档落点 |
+| `state.mjs` | agent 状态（讨论/执行/验收）、切换日志、讨论会话（轮次、待裁、归档与恢复） | 不读盘、不认识仓库路径与命令名 |
 
 适配层（`scripts/decision.mjs`、`stage.mjs`、`transition.mjs`、`scripts/lifecycle.mjs`）只做路径、IO、门命令与 CLI 接线。内核文件里出现项目专名或仓库路径时，`npm run docs:check` 报错。
 

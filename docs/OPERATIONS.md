@@ -70,7 +70,12 @@ npm run decisions:render   # 从 governance/data/decisions.json 重渲染 docs/D
 npm run decisions:view     # 生成只读视图 .work/review/decisions-view.html（待裁决 + 讨论经过）
 npm run decision:draft     # 起草条目：只写 .work/decisions-draft/，然后问用户是否已批准创建
 npm run decision:accept    # 落库：decision:accept -- <D-…> --approval "<用户原话>"
-npm run stage -- <阶段>     # 阶段入口：打印规则包 + 活动条目 + 恢复卡（discussion/execution/acceptance）
+npm run state                # 当前状态、讨论会话、待裁与对应规则包（规则包按状态取用）
+npm run state -- set <讨论|执行|验收> --reason "…" [--scope changes/<name>] # 切状态：写日志、归档/恢复会话
+npm run state -- round --conclusion "…" --change "+…"   # 会话记一轮（续编号）
+npm run state -- wait add --item "T1 …"                 # 待裁项增删（drop 可写编号前缀）
+npm run state -- archive|resume|log                     # 归档 / 恢复会话、查看切换记录
+npm run stage -- <阶段>     # 旧入口：按条目阶段打印规则包（已由 npm run state 取代）
 npm run transition -- <kind> # 过渡文档：模板 / --write 生成 / --check 校验（design/closeout/kickoff/handoff/report；后两者按条目生成）
 npm run acceptance -- --entry <D-…> # 生成验收页：按 E 分节、列未覆盖 E、手测步骤与结论；--write 落 .work/review/
 npm run decision -- acceptance --entry <D-…> --from <file> # 把文件里的「- [ ] …」验收项整段写回条目（保留阶段事件行）
@@ -139,6 +144,10 @@ npm run workspace:clean -- --days 30 --apply       # 改保留期
 | 报「进执行前没有开工清单」                            | 先跑 `npm run transition -- kickoff --entry <D-…> --write` 生成并填完整，再推进阶段（E1） |
 | 报「字段「状态」不在允许列表」                        | 删掉 `- **状态**：` 行：阶段已经表达状态；它想说的信息写进三层正文                                                                 |
 | `npm run stage` 报「规则包引用了不存在的门」          | 规则包的 `gate:<id>` 必须是 `scripts/governance.mjs` 的 RULES 里已登记的 id：先登记规则，或改规则包里的 id                        |
+| `npm run state` 报「未知状态」                        | 只有 讨论 / 执行 / 验收 三态；空闲已删除，无事可做时留在当前状态或切回讨论                                                            |
+| `npm run state -- set` 报「已经在 X 状态」            | 同一状态重复切换无意义；要改范围用 `--scope`，要记录变化用 `state -- round`                                                        |
+| `npm run state` 报「状态数据不合规」                  | 有人手改了 `governance/data/state.json`：按报错修回结构，或删掉该文件让命令重建（会话历史也会丢，先确认）                          |
+| `npm run state -- set` 报「要写 --reason」            | 切换状态必须写一句为什么；日志靠它解释脉络                                                                                          |
 | `npm run decision -- advance` 报「不能从X直接到Y」    | 阶段只能相邻推进（决策中→执行中→待验收→已收口），唯一回溯边是重开回决策中；验收不过用 `--stage 决策中 --reason "…"`               |
 | `npm run transition --check` 报「还有没填的（待填）」 | 把每节的 `（待填）` 换成真实内容再校验；design 与 kickoff 的「待确认项」必须写 `- 无` 才能提交批准                                 |
 | `npm run decision` 报「写入前校验失败（条目没有改动）」 | 生成后的条目结构不合规：按报错修内容后重跑；每次写盘前都会整条校验，失败不会留下半截文件                                          |

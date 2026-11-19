@@ -384,7 +384,7 @@
   },
   "source": {
     "doc": "governance/README.md",
-    "sha256": "2fb1f8f6ee10796fff313e7283034fcb4db3d10ce81fd75cf913320010b6e215",
+    "sha256": "152d3484aa49688c83138c3c0adf5d05fc4a5366a3a0c7e40089694b6b5dcf50",
     "sections": [
       {
         "title": "三层结构",
@@ -395,15 +395,19 @@
         "sha256": "06fe1ad9732caa2d3b31f7bdf757cbf394468543a96d20828f9604d3bafecd29"
       },
       {
-        "title": "三阶段规则包",
-        "sha256": "2926e2ac2469b8a2cf28b6eb46f2f7056a8d7e97cde5679330c0e7e123aaecb8"
+        "title": "状态与规则包",
+        "sha256": "542668ec82c8c85b0bafb6a2e7368b0eb54547d31c5eb161ddddd3f9802da20f"
       },
       {
         "title": "条目生命周期",
         "sha256": "c8408ee484bdf3508ce7dbec926c5b03f7af45563d8fc425296401ff97ab2ff2"
       }
     ],
-    "candidateSha256": "870cae2dfc8144ae5d856d257038a81e4418e3880c8610874cb6551e12abf841"
+    "candidateSha256": "870cae2dfc8144ae5d856d257038a81e4418e3880c8610874cb6551e12abf841",
+    "rationale": {
+      "text": "批次六把「三阶段规则包」节改名为「状态与规则包」，并补了状态说明：三层结构、四道门、条目生命周期三节未变；规则包仍是三份、门仍是四道，图不需要改。",
+      "sectionsDigest": "5cea32cd042ea2721b4ff4bf82c1719980c2c6093bb1fe887281289d62f032d3"
+    }
   },
   "assets": {
     "html": {
@@ -413,9 +417,9 @@
     },
     "png": {
       "path": "governance/assets/noema-governance.png",
-      "sha256": "c6ecd444e6ccb7a51ec84882b661074ae37472008caf9440f62f27bbb649f319",
-      "bytes": 171163
+      "sha256": "9fad3c16e007b6cf4b319c0ab065c186d01362e860a5e7c629002f7aaee49307",
+      "bytes": 171176
     }
   },
-  "updatedAt": "2026-11-19T10:18:51.393Z"
+  "updatedAt": "2026-11-19T14:25:33.181Z"
 }

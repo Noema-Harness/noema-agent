@@ -2,17 +2,17 @@
 
 维护 Noema 的入口。权威顺序：用户指令 > 本文件 > `governance/` > `docs/` > 旧提交与外部资料；代码、测试、运行结果是事实。
 
-## 阶段地图
+## 状态地图
 
-阶段规则不靠读文件进入：入口命令把本阶段规则包与恢复卡打进工具反馈。
+状态描述 agent 正在做什么，不携带授权：规则包按状态取用，入口命令把它打进工具反馈。同一时刻只有一个状态；可并行的是会话、批次与条目。
 
-| 阶段 | 进入方式                    | 产物                                 |
-| ---- | --------------------------- | ------------------------------------ |
-| 讨论 | `npm run stage -- discussion` | 条目决策层、证据、设计方案、开工清单 |
-| 执行 | `npm run stage -- execution`  | `openspec/changes/<name>/` 与实现     |
-| 验收 | `npm run stage -- acceptance` | 验收页；用户确认后收口               |
+| 状态 | 进入方式                                                | 收口目标 | 产物                                         |
+| ---- | ------------------------------------------------------- | -------- | -------------------------------------------- |
+| 讨论 | `npm run state -- set 讨论 --reason "…"`                 | 执行     | 会话轮次与待裁、证据、设计文档、开工清单     |
+| 执行 | `npm run state -- set 执行 --reason "…" --scope changes/<name>` | 验收 | `openspec/changes/<name>/` 与实现            |
+| 验收 | `npm run state -- set 验收 --reason "…"`                 | 收口     | 验收页；用户确认后收口                       |
 
-条目与阶段只走命令：`npm run decision -- round`（记一轮）、`npm run decision -- settle`（并进已定）、`npm run decision -- advance`（推进/退回）。过渡文档走 `npm run transition -- <kind>`。不手改 `docs/DECISIONS.md`；提交时 `precommit` 会打出当前活动条目与阶段。
+会话与状态只走命令：`npm run state`（读：当前状态、会话、待裁、规则包）、`state -- round --conclusion "…"`、`state -- wait add|drop --item "…"`、`state -- set`、`state -- archive|resume|log`。讨论会话不挂条目，切走自动归档、回来自动恢复并续轮次。条目退为账本：定了的内容用 `npm run governance -- record settle …` 落账，不手改 `docs/DECISIONS.md`。过渡文档走 `npm run transition -- <kind>`；`precommit` 会打出当前状态与活动条目。旧入口 `npm run stage` 仍可用但已由 `npm run state` 取代。
 
 治理索引与门槛、审核、协作检查：`governance/README.md`、`governance/noema/maintenance.md`。内核契约与模块：`governance/core/README.md`。规则进治理库，模板进技能，命令与修法进 OPERATIONS，三处不重复。
 

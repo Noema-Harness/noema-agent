@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "current": {
+    "state": "执行",
+    "since": "2026-11-19T14:54:39.210Z",
+    "threadId": "thread-20261119-1",
+    "scope": "changes/governance-state"
+  },
+  "log": [
+    {
+      "from": "讨论",
+      "to": "执行",
+      "date": "2026-11-19",
+      "reason": "实现 change governance-state：状态数据、state 命令、讨论会话与规则包按状态取用",
+      "obligation": "挂起",
+      "threadId": "thread-20261119-1"
+    }
+  ],
+  "threads": [
+    {
+      "id": "thread-20261119-1",
+      "title": "状态化生命周期（讨论态 v0）",
+      "startedAt": "2026-11-19T14:54:38.316Z",
+      "status": "archived",
+      "endedAt": "2026-11-19T14:54:39.210Z",
+      "ending": "归档",
+      "rounds": [],
+      "waits": [],
+      "evidence": [],
+      "output": {
+        "design": null,
+        "kickoff": null,
+        "scope": null
+      }
+    }
+  ]
+}

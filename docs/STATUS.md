@@ -13,6 +13,8 @@ Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与�
 
 ## 最后一次验证（2026-11-19）
 
+- 状态生命周期（change `governance-state`，2026-11-19）：规则不再从条目阶段推导，改由 agent 状态取用。三态：讨论 / 执行 / 验收（删除空闲）。①`governance/data/state.json` 存当前状态、切换日志与讨论会话（主题、轮次、待裁项、证据指针、产出）；②`npm run state` 读状态并打印对应规则包与 gate 校验，`state -- set|round|wait add|drop|title|archive|resume|log` 管理切换与会话；③切换写一条标记 `状态：<from> → <to>（日期，原因，义务：关闭|挂起）`，离开讨论自动归档（有设计稿与清单记「定案」，否则「归档」）、回来自动恢复并续轮次；④讨论会话成为一等对象，不挂条目；`discussion.md` 按会话重写，`AGENTS.md` 改为状态地图，条目退为账本。证据：`npm run state:test` **11/11**、`npm run kernel:test` **28/28**、`npm run tools:test` **115/115**、`npm run docs:check`、`npm run figure:check`（图按章节判断重出 `152d3484aa49`：只改名「三阶段规则包」为「状态与规则包」，三层/四门/条目生命周期未变）、`npm run check` **901/901，0 fail，81,163ms**（含 `governance: milestone OK`，净额审计无新增要求）。未验证：执行态与验收态的细化规则、可视工作台、多主体状态（设计稿 §12.9 待后续讨论）。
+
 - 条目存储与视图分离（change `governance-store`，2026-11-19）：条目不再以 markdown 为存储。`governance/data/decisions.json` 是唯一真相（`{version:1, preamble, entries[]}`，结构化条目保存字段与三段正文，旧 `D-0xx` 条目原样保存正文），`docs/DECISIONS.md` 每次由数据渲染（顶部注明「勿手改」，手改会被 `docs:check` 的渲染比对与写盘印记发现）。①所有条目命令（`record`/`move`/accept/draft/sync）只读写数据文件，写盘后重渲染 markdown；②`npm run decisions:render` 手动重渲染，`npm run decisions:view` 生成只读视图 `.work/review/decisions-view.html`（左栏待裁决、右栏讨论经过）；③迁移一次性：`node scripts/migrate-decisions.mjs --check` 报条目 58（结构化 24）、幂等通过、迁移前后逐条深相等（markdown 差异只允许空行）。证据：`npm run kernel:test` **28/28**、`npm run tools:test` **103/103**、`npm run docs:check`、`npm run figure:check`（图按章节判断重出 `6c95a303cadc`）、`npm run check` **901/901，0 fail，85,273ms**（含 `governance: milestone OK`）。
 
 - 治理一致性修复（change `governance-conformance`，2026-11-19）：独立对照审查（36 条 E vs 代码/规则包/归档批次）报一致 24、偏差 11、未落地 1、无法判定 1，本轮按审查结论修。

@@ -49,15 +49,17 @@
 
 边界模糊时按「最省力过门」判断：如果走治理只是填一张表，就不该走；如果它确实能拦住一次已经发生过的错误，就走。
 
-## 三阶段规则包
+## 状态与规则包
 
-讨论、执行、验收各一份，进入该阶段时用 `npm run stage -- <阶段>` 打印（批次二实现；当前可直接打开文件）：
+agent 的状态描述「正在做什么」，共三态：讨论 / 执行 / 验收（删除空闲）。状态不携带授权；授权来自用户请求与范围门。进入某个状态时用 `npm run state -- set <状态> --reason "…"` 切换，切换会写日志并自动归档 / 恢复讨论会话；`npm run state` 打印当前状态、会话、待裁与对应规则包。
 
-| 阶段 | 规则包 | 进入时最先做什么 |
-|---|---|---|
-| 讨论 | `noema/workflow/discussion.md` | 只产出证据与条目，不落地 |
-| 执行 | `noema/workflow/execution.md` | 三道门槛过了才动手；主体是 `openspec/changes/` |
-| 验收 | `noema/workflow/acceptance.md` | 生成验收页；只有用户能收口 |
+| 状态 | 规则包 | 收口目标 | 进入时最先做什么 |
+|---|---|---|---|
+| 讨论 | `noema/workflow/discussion.md` | 执行 | 先建/恢复会话，只产出证据与结论 |
+| 执行 | `noema/workflow/execution.md` | 验收 | 三道门槛过了才动手；主体是 `openspec/changes/` |
+| 验收 | `noema/workflow/acceptance.md` | 收口 | 生成验收页；只有用户能收口 |
+
+任意方向可切换；离开时写一条标记 `状态：<from> → <to>（日期，原因，义务：关闭|挂起）`，状态日志是唯一脉络。讨论会话是一等对象：`npm run state -- round` 记一轮、`state -- wait add|drop` 滚动待裁、切走自动归档、回来自动恢复并续轮次。条目退为账本，只收已定内容。
 
 过渡文档模板在 `noema/workflow/transition/`：设计方案、条目收口、开工清单、执行交接、验收报告。
 
@@ -93,7 +95,8 @@
 | `npm run docs:check`、`figure:check`、`plan:check`、`milestone:check` | 单独跑某道产物门 | 已有 |
 | `npm run check` | 里程碑全量门 | 已有 |
 | `npm run governance -- record\|move\|check\|audit` | 治理三动词：record 五合一、move 进阶段/退回修复/恢复、check 三类自检 + 净额、audit 计数 | 已有 |
-| `npm run stage -- <阶段>` | 打印阶段规则包 + 当前条目 + 恢复卡 | 已有（`governance -- check stage` 的别名） |
+| `npm run state` | 当前状态、会话、待裁与规则包；`set` / `round` / `wait` / `archive` / `resume` / `log` 子命令 | 已有 |
+| `npm run stage -- <阶段>` | 旧入口：按条目阶段打印规则包（已由 `npm run state` 取代） | 保留兼容 |
 | `npm run transition -- <kind>` | 打印过渡文档骨架并就地更新 `.work/review/` | 已有（`governance -- check transition` 的别名） |
 | `npm run decision -- round\|settle\|advance\|wait` | 条目结构化操作（行为门） | 已有（`record`/`move` 的别名） |
 
