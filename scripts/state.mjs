@@ -7,18 +7,30 @@ import {
   STATES,
   PACK_BY_STATE,
   activeThread,
+  addAcceptance,
+  addPhase,
   addRound,
+  addTask,
   addWait,
   archiveThread,
+  completePhase,
+  completeTask,
   dropWait,
   emptyState,
+  emptyWork,
   ensureThread,
+  findPhase,
   logOf,
+  progressLines,
   resumeThread,
+  setAcceptance,
+  setScope,
   setState,
   summaryLines,
   threadById,
+  upgradeState,
   validateState,
+  workProgress,
 } from "../governance/core/state.mjs";
 import { checkPackGates, loadPack } from "./stage.mjs";
 
@@ -35,6 +47,15 @@ const USAGE = [
   "  npm run state -- archive [--ending 定案|归档]",
   "  npm run state -- resume [--id thread-…]",
   "  npm run state -- log [--limit N]",
+  "  npm run state -- scope \"这次做什么（范围）\"",
+  "  npm run state -- phase add --name \"阶段交付什么\" [--goal \"目标\"]",
+  "  npm run state -- phase done --id P1",
+  "  npm run state -- phase list",
+  "  npm run state -- task add --phase P1 --text \"一句话交付物\"",
+  "  npm run state -- task done --id P1-T1 [--evidence \"命令+结果\"]",
+  "  npm run state -- accept add --phase P1 --text \"这一条怎么算过\"",
+  "  npm run state -- accept set --id P1-A1 --status 通过|不通过 [--evidence \"证据\"]",
+  "  npm run state -- work                      # 范围 / 阶段 / 任务 / 阶段验收的进度",
 ];
 
 function parseFlags(argv) {
@@ -61,9 +82,11 @@ function stateFile(root) {
 export function loadState(root) {
   const file = stateFile(root);
   if (!fs.existsSync(file)) return emptyState();
-  const doc = JSON.parse(fs.readFileSync(file, "utf8"));
+  const raw = JSON.parse(fs.readFileSync(file, "utf8"));
+  const doc = upgradeState(raw);
   const errors = validateState(doc);
   if (errors.length > 0) throw new Error(`状态数据不合规：${errors.join("；")}`);
+  if (doc.version !== raw.version) saveState(root, doc);
   return doc;
 }
 
@@ -107,6 +130,28 @@ function printSummary(doc, root) {
     process.exitCode = 1;
   }
   console.log(`\n===== ${doc.current.state} 规则包 =====\n${text.trim()}`);
+}
+
+function printWork(doc) {
+  const progress = workProgress(doc);
+  console.log(progressLines(doc).join("\n"));
+  const phases = doc.work?.phases ?? [];
+  if (phases.length === 0) {
+    console.log("\n还没有阶段：npm run state -- phase add --name \"…\"");
+    return;
+  }
+  for (const phase of phases) {
+    console.log(`\n${phase.id} ${phase.name}（${phase.status}）${phase.goal ? ` — ${phase.goal}` : ""}`);
+    for (const task of phase.tasks) {
+      console.log(`  ${task.status === "已完成" ? "[x]" : "[ ]"} ${task.id} ${task.text}`);
+    }
+    if (phase.tasks.length === 0) console.log("  （还没有任务）");
+    if (phase.acceptance.length > 0) {
+      console.log(`  验收：${phase.acceptance.map((item) => `${item.id}=${item.status}`).join("、")}`);
+    }
+  }
+  const failed = progress.acceptance.failed;
+  if (failed > 0) console.log(`\n不通过 ${failed} 项：回执行修，修完重判`);
 }
 
 function requireState(argv) {
@@ -192,6 +237,85 @@ export function main(argv, root = process.cwd()) {
     const result = resumeThread(doc, { id: typeof flags.id === "string" ? flags.id : null });
     doc = commit(root, result.doc, { dryRun });
     console.log(`会话 ${result.thread.id} 已恢复（第 ${result.thread.rounds.length} 轮）`);
+    return;
+  }
+
+  if (command === "scope") {
+    const text = rest.find((token) => !token.startsWith("--"));
+    const result = setScope(doc, { text });
+    doc = commit(root, result.doc, { dryRun });
+    console.log(`范围：${result.scope.text}`);
+    return;
+  }
+
+  if (command === "phase") {
+    const action = rest[0];
+    if (action === "add") {
+      const result = addPhase(doc, {
+        name: flags.name,
+        goal: typeof flags.goal === "string" ? flags.goal : null,
+      });
+      doc = commit(root, result.doc, { dryRun });
+      console.log(`阶段 ${result.phase.id} 已建立：${result.phase.name}`);
+      return;
+    }
+    if (action === "done") {
+      const result = completePhase(doc, { id: flags.id });
+      doc = commit(root, result.doc, { dryRun });
+      console.log(`阶段 ${result.phase.id} 已完成`);
+      return;
+    }
+    if (action === "list" || action === undefined) {
+      printWork(doc);
+      return;
+    }
+    throw new Error("phase 后面要写 add / done / list");
+  }
+
+  if (command === "task") {
+    const action = rest[0];
+    if (action === "add") {
+      const result = addTask(doc, { phase: flags.phase, text: flags.text });
+      doc = commit(root, result.doc, { dryRun });
+      console.log(`任务 ${result.task.id} 已追加：${result.task.text}`);
+      return;
+    }
+    if (action === "done") {
+      const result = completeTask(doc, {
+        id: flags.id,
+        evidence: typeof flags.evidence === "string" ? flags.evidence : null,
+      });
+      doc = commit(root, result.doc, { dryRun });
+      console.log(`任务 ${result.task.id} 已完成`);
+      printWork(doc);
+      return;
+    }
+    throw new Error("task 后面要写 add 或 done");
+  }
+
+  if (command === "accept") {
+    const action = rest[0];
+    if (action === "add") {
+      const result = addAcceptance(doc, { phase: flags.phase, text: flags.text });
+      doc = commit(root, result.doc, { dryRun });
+      console.log(`验收项 ${result.item.id} 已追加：${result.item.text}`);
+      return;
+    }
+    if (action === "set") {
+      const result = setAcceptance(doc, {
+        id: flags.id,
+        status: flags.status,
+        evidence: typeof flags.evidence === "string" ? flags.evidence : null,
+      });
+      doc = commit(root, result.doc, { dryRun });
+      console.log(`验收项 ${result.item.id}：${result.item.status}`);
+      return;
+    }
+    throw new Error("accept 后面要写 add 或 set");
+  }
+
+  if (command === "work") {
+    printWork(doc);
     return;
   }
 

@@ -384,7 +384,7 @@
   },
   "source": {
     "doc": "governance/README.md",
-    "sha256": "152d3484aa49688c83138c3c0adf5d05fc4a5366a3a0c7e40089694b6b5dcf50",
+    "sha256": "6c3b9e4078e12e9eabdbd94078d686fd2da1b61c9a519b35fe194bbfb5084fa2",
     "sections": [
       {
         "title": "三层结构",
@@ -396,7 +396,7 @@
       },
       {
         "title": "状态与规则包",
-        "sha256": "542668ec82c8c85b0bafb6a2e7368b0eb54547d31c5eb161ddddd3f9802da20f"
+        "sha256": "5cbf2ba897745971949d69499d51f7edff87814163e29867554e91868d40d3c6"
       },
       {
         "title": "条目生命周期",
@@ -405,8 +405,8 @@
     ],
     "candidateSha256": "870cae2dfc8144ae5d856d257038a81e4418e3880c8610874cb6551e12abf841",
     "rationale": {
-      "text": "批次六把「三阶段规则包」节改名为「状态与规则包」，并补了状态说明：三层结构、四道门、条目生命周期三节未变；规则包仍是三份、门仍是四道，图不需要改。",
-      "sectionsDigest": "5cea32cd042ea2721b4ff4bf82c1719980c2c6093bb1fe887281289d62f032d3"
+      "text": "只改了「状态与规则包」一节的正文：加入执行态范围/阶段/任务/验收的命令与阶段完成判据；三层节点、四道门与状态表没有变化，图不需要改。",
+      "sectionsDigest": "cfcaca27e15415a74ffbe7d1e44b0153d6cf10e0e2443e8cf05d792971cd9d32"
     }
   },
   "assets": {
@@ -417,9 +417,9 @@
     },
     "png": {
       "path": "governance/assets/noema-governance.png",
-      "sha256": "9fad3c16e007b6cf4b319c0ab065c186d01362e860a5e7c629002f7aaee49307",
-      "bytes": 171176
+      "sha256": "c6ecd444e6ccb7a51ec84882b661074ae37472008caf9440f62f27bbb649f319",
+      "bytes": 171163
     }
   },
-  "updatedAt": "2026-11-19T14:25:33.181Z"
+  "updatedAt": "2026-11-19T18:04:37.325Z"
 }

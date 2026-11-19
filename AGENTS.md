@@ -6,13 +6,13 @@
 
 状态描述 agent 正在做什么，不携带授权：规则包按状态取用，入口命令把它打进工具反馈。同一时刻只有一个状态；可并行的是会话、批次与条目。
 
-| 状态 | 进入方式                                                | 收口目标 | 产物                                         |
-| ---- | ------------------------------------------------------- | -------- | -------------------------------------------- |
-| 讨论 | `npm run state -- set 讨论 --reason "…"`                 | 执行     | 会话轮次与待裁、证据、设计文档、开工清单     |
-| 执行 | `npm run state -- set 执行 --reason "…" --scope changes/<name>` | 验收 | `openspec/changes/<name>/` 与实现            |
-| 验收 | `npm run state -- set 验收 --reason "…"`                 | 收口     | 验收页；用户确认后收口                       |
+| 状态 | 进入方式                                                        | 收口目标 | 产物                                     |
+| ---- | --------------------------------------------------------------- | -------- | ---------------------------------------- |
+| 讨论 | `npm run state -- set 讨论 --reason "…"`                         | 执行     | 会话轮次与待裁、证据、设计文档、开工清单 |
+| 执行 | `npm run state -- set 执行 --reason "…"` + `state -- scope "…"`  | 验收     | 范围、阶段、任务清单与实现               |
+| 验收 | `npm run state -- set 验收 --reason "…"`                         | 收口     | 阶段验收判定；用户确认后收口             |
 
-会话与状态只走命令：`npm run state`（读：当前状态、会话、待裁、规则包）、`state -- round --conclusion "…"`、`state -- wait add|drop --item "…"`、`state -- set`、`state -- archive|resume|log`。讨论会话不挂条目，切走自动归档、回来自动恢复并续轮次。条目退为账本：定了的内容用 `npm run governance -- record settle …` 落账，不手改 `docs/DECISIONS.md`。过渡文档走 `npm run transition -- <kind>`；`precommit` 会打出当前状态与活动条目。旧入口 `npm run stage` 仍可用但已由 `npm run state` 取代。
+执行态的范围与清单只走命令：`state -- scope "…"`、`state -- phase add|done`、`state -- task add|done`、`state -- accept add|set`、`state -- work`；只读工作台用 `npm run work:view`（`.work/review/work-view.html`）。会话与状态只走命令：`npm run state`（读：当前状态、会话、待裁、规则包）、`state -- round --conclusion "…"`、`state -- wait add|drop --item "…"`、`state -- set`、`state -- archive|resume|log`。讨论会话不挂条目，切走自动归档、回来自动恢复并续轮次。条目退为账本：定了的内容用 `npm run governance -- record settle …` 落账，不手改 `docs/DECISIONS.md`。过渡文档走 `npm run transition -- <kind>`；`precommit` 会打出当前状态与活动条目。旧入口 `npm run stage` 仍可用但已由 `npm run state` 取代。
 
 治理索引与门槛、审核、协作检查：`governance/README.md`、`governance/noema/maintenance.md`。内核契约与模块：`governance/core/README.md`。规则进治理库，模板进技能，命令与修法进 OPERATIONS，三处不重复。
 

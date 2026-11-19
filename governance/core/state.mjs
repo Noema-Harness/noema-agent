@@ -12,6 +12,11 @@ export const PACK_BY_STATE = {
 
 export const ENDINGS = ["定案", "归档"];
 
+export const PHASE_STATUSES = ["进行中", "已完成"];
+export const TASK_STATUSES = ["未完成", "已完成"];
+export const ACCEPTANCE_STATUSES = ["未验", "通过", "不通过"];
+export const MAX_PHASES = 5;
+
 const THREAD_FIELDS = {
   id: "string",
   title: "string",
@@ -52,19 +57,35 @@ function nextThreadId(doc, now) {
   return candidate;
 }
 
+export function emptyWork() {
+  return { scope: null, phases: [] };
+}
+
 export function emptyState(now = new Date()) {
   return {
-    version: 1,
+    version: 2,
     current: { state: "讨论", since: now.toISOString(), threadId: null },
     log: [],
     threads: [],
+    work: emptyWork(),
   };
+}
+
+// Version 1 stored only the state machine; the work list arrived with version
+// 2. Reading an old file upgrades it in place so callers never see two shapes.
+export function upgradeState(raw) {
+  if (!raw || typeof raw !== "object") throw new Error("状态数据不是对象");
+  if (raw.version === 2) return raw;
+  if (raw.version === 1) {
+    return { ...raw, version: 2, work: raw.work ?? emptyWork() };
+  }
+  throw new Error(`状态数据版本 ${String(raw.version)} 无法升级：只支持 1 → 2`);
 }
 
 export function validateState(doc) {
   const errors = [];
   if (!doc || typeof doc !== "object") return ["状态数据不是对象"];
-  if (doc.version !== 1) errors.push(`状态数据版本应为 1，实际为 ${String(doc.version)}`);
+  if (doc.version !== 2) errors.push(`状态数据版本应为 2，实际为 ${String(doc.version)}`);
   if (!Array.isArray(doc.log)) errors.push("状态数据缺少 log 数组");
   if (!Array.isArray(doc.threads)) errors.push("状态数据缺少 threads 数组");
   if (!doc.current || typeof doc.current !== "object") {
@@ -95,6 +116,57 @@ export function validateState(doc) {
     }
     if (thread.ending !== null && !ENDINGS.includes(thread.ending)) {
       errors.push(`会话 ${String(thread.id)} 的 ending 只能是 ${ENDINGS.join(" / ")} 或 null`);
+    }
+  }
+  const work = doc.work;
+  if (!work || typeof work !== "object") {
+    errors.push("状态数据缺少 work（范围与阶段）");
+  } else {
+    if (work.scope !== null && (typeof work.scope !== "object" || typeof work.scope.text !== "string")) {
+      errors.push("work.scope 只能是 null 或 {text, since}");
+    }
+    if (!Array.isArray(work.phases)) {
+      errors.push("work.phases 不是数组");
+    } else {
+      if (work.phases.length > MAX_PHASES) {
+        errors.push(`阶段最多 ${MAX_PHASES} 个，实际 ${work.phases.length} 个`);
+      }
+      const phaseIds = new Set();
+      for (const phase of work.phases) {
+        if (typeof phase.id !== "string" || !/^P\d+$/u.test(phase.id)) errors.push(`阶段 id 不合规：${String(phase.id)}`);
+        if (typeof phase.name !== "string" || phase.name.trim().length < 2) errors.push(`阶段 ${String(phase.id)} 缺少名字`);
+        if (phase.goal !== null && typeof phase.goal !== "string") errors.push(`阶段 ${String(phase.id)} 的 goal 只能是字符串或 null`);
+        if (!PHASE_STATUSES.includes(phase.status)) errors.push(`阶段 ${String(phase.id)} 的 status 不合规`);
+        if (phaseIds.has(phase.id)) errors.push(`阶段 id 重复：${phase.id}`);
+        phaseIds.add(phase.id);
+        const taskIds = new Set();
+        if (!Array.isArray(phase.tasks)) {
+          errors.push(`阶段 ${phase.id} 缺少 tasks 数组`);
+        } else {
+          for (const task of phase.tasks) {
+            if (typeof task.id !== "string" || !new RegExp(`^${phase.id}-T\\d+$`, "u").test(task.id)) {
+              errors.push(`任务 id 不合规：${String(task.id)}`);
+            }
+            if (typeof task.text !== "string" || task.text.trim().length < 2) errors.push(`任务 ${String(task.id)} 缺少说明`);
+            if (!TASK_STATUSES.includes(task.status)) errors.push(`任务 ${String(task.id)} 的 status 不合规`);
+            if (!Array.isArray(task.evidence)) errors.push(`任务 ${String(task.id)} 的 evidence 不是数组`);
+            if (taskIds.has(task.id)) errors.push(`任务 id 重复：${task.id}`);
+            taskIds.add(task.id);
+          }
+        }
+        if (!Array.isArray(phase.acceptance)) {
+          errors.push(`阶段 ${phase.id} 缺少 acceptance 数组`);
+        } else {
+          for (const item of phase.acceptance) {
+            if (typeof item.id !== "string" || !new RegExp(`^${phase.id}-A\\d+$`, "u").test(item.id)) {
+              errors.push(`验收项 id 不合规：${String(item.id)}`);
+            }
+            if (typeof item.text !== "string" || item.text.trim().length < 2) errors.push(`验收项 ${String(item.id)} 缺少说明`);
+            if (!ACCEPTANCE_STATUSES.includes(item.status)) errors.push(`验收项 ${String(item.id)} 的 status 不合规`);
+            if (!Array.isArray(item.evidence)) errors.push(`验收项 ${String(item.id)} 的 evidence 不是数组`);
+          }
+        }
+      }
     }
   }
   return errors;
@@ -237,6 +309,140 @@ export function dropWait(doc, { item, now = new Date() } = {}) {
   return { doc, thread, removed };
 }
 
+export function findPhase(doc, id) {
+  const phase = doc.work?.phases?.find((one) => one.id === id);
+  if (!phase) throw new Error(`没有阶段 ${String(id)}（先跑 npm run state -- work 看清单）`);
+  return phase;
+}
+
+function findTask(doc, id) {
+  for (const phase of doc.work?.phases ?? []) {
+    const task = phase.tasks.find((one) => one.id === id);
+    if (task) return { phase, task };
+  }
+  throw new Error(`没有任务 ${String(id)}（先跑 npm run state -- work 看清单）`);
+}
+
+function findAcceptance(doc, id) {
+  for (const phase of doc.work?.phases ?? []) {
+    const item = phase.acceptance.find((one) => one.id === id);
+    if (item) return { phase, item };
+  }
+  throw new Error(`没有验收项 ${String(id)}（先跑 npm run state -- work 看清单）`);
+}
+
+export function setScope(doc, { text, now = new Date() } = {}) {
+  if (!text || text.trim().length < 2) {
+    throw new Error("范围要写清楚「这次做什么」（至少 2 个字）");
+  }
+  doc.work = doc.work ?? emptyWork();
+  doc.work.scope = { text: text.trim(), since: now.toISOString() };
+  return { doc, scope: doc.work.scope };
+}
+
+export function addPhase(doc, { name, goal = null, now = new Date() } = {}) {
+  doc.work = doc.work ?? emptyWork();
+  if (doc.work.phases.length >= MAX_PHASES) {
+    throw new Error(`阶段最多 ${MAX_PHASES} 个：先把范围拆小，或合并阶段`);
+  }
+  if (!name || name.trim().length < 2) throw new Error("阶段要写 --name「这个阶段交付什么」");
+  const id = `P${doc.work.phases.length + 1}`;
+  const phase = {
+    id,
+    name: name.trim(),
+    goal: goal ? goal.trim() : null,
+    status: "进行中",
+    createdAt: now.toISOString(),
+    doneAt: null,
+    tasks: [],
+    acceptance: [],
+  };
+  doc.work.phases.push(phase);
+  return { doc, phase };
+}
+
+export function completePhase(doc, { id, now = new Date() } = {}) {
+  const phase = findPhase(doc, id);
+  if (phase.status === "已完成") throw new Error(`阶段 ${phase.id} 已经完成`);
+  const openTasks = phase.tasks.filter((task) => task.status !== "已完成");
+  if (openTasks.length > 0) {
+    throw new Error(`阶段 ${phase.id} 还有 ${openTasks.length} 个任务没完成：${openTasks.map((task) => task.id).join("、")}`);
+  }
+  const unchecked = phase.acceptance.filter((item) => item.status === "未验");
+  const failed = phase.acceptance.filter((item) => item.status === "不通过");
+  if (unchecked.length > 0) throw new Error(`阶段 ${phase.id} 还有 ${unchecked.length} 个验收项没判：${unchecked.map((one) => one.id).join("、")}`);
+  if (failed.length > 0) throw new Error(`阶段 ${phase.id} 还有不通过的验收项：${failed.map((one) => one.id).join("、")}`);
+  phase.status = "已完成";
+  phase.doneAt = now.toISOString();
+  return { doc, phase };
+}
+
+export function addTask(doc, { phase: phaseId, text, now = new Date() } = {}) {
+  const phase = findPhase(doc, phaseId);
+  if (!text || text.trim().length < 2) throw new Error("任务要写 --text「一句话交付物」");
+  const id = `${phase.id}-T${phase.tasks.length + 1}`;
+  const task = { id, text: text.trim(), status: "未完成", evidence: [], doneAt: null };
+  phase.tasks.push(task);
+  return { doc, phase, task };
+}
+
+export function completeTask(doc, { id, evidence = null, now = new Date() } = {}) {
+  const { phase, task } = findTask(doc, id);
+  task.status = "已完成";
+  task.doneAt = now.toISOString();
+  if (evidence && String(evidence).trim().length > 0) task.evidence.push(String(evidence).trim());
+  return { doc, phase, task };
+}
+
+export function addAcceptance(doc, { phase: phaseId, text, now = new Date() } = {}) {
+  const phase = findPhase(doc, phaseId);
+  if (!text || text.trim().length < 2) throw new Error("验收项要写 --text「这一条怎么算过」");
+  const id = `${phase.id}-A${phase.acceptance.length + 1}`;
+  const item = { id, text: text.trim(), status: "未验", evidence: [], checkedAt: null };
+  phase.acceptance.push(item);
+  return { doc, phase, item };
+}
+
+export function setAcceptance(doc, { id, status, evidence = null, now = new Date() } = {}) {
+  if (!ACCEPTANCE_STATUSES.includes(status)) {
+    throw new Error(`验收结论只能是 ${ACCEPTANCE_STATUSES.join(" / ")}`);
+  }
+  const { phase, item } = findAcceptance(doc, id);
+  item.status = status;
+  item.checkedAt = now.toISOString();
+  if (evidence && String(evidence).trim().length > 0) item.evidence.push(String(evidence).trim());
+  return { doc, phase, item };
+}
+
+export function workProgress(doc) {
+  const phases = doc.work?.phases ?? [];
+  const tasks = phases.flatMap((phase) => phase.tasks);
+  const items = phases.flatMap((phase) => phase.acceptance);
+  return {
+    phases: { done: phases.filter((phase) => phase.status === "已完成").length, total: phases.length },
+    tasks: { done: tasks.filter((task) => task.status === "已完成").length, total: tasks.length },
+    acceptance: {
+      passed: items.filter((item) => item.status === "通过").length,
+      failed: items.filter((item) => item.status === "不通过").length,
+      unchecked: items.filter((item) => item.status === "未验").length,
+      total: items.length,
+    },
+  };
+}
+
+export function progressLines(doc) {
+  const progress = workProgress(doc);
+  const lines = [];
+  const scope = doc.work?.scope;
+  if (scope) lines.push(`范围：${scope.text}`);
+  lines.push(
+    `阶段 ${progress.phases.done}/${progress.phases.total} · 任务 ${progress.tasks.done}/${progress.tasks.total} · 验收 ${progress.acceptance.passed}/${progress.acceptance.total}${progress.acceptance.failed > 0 ? `（不通过 ${progress.acceptance.failed}）` : ""}`,
+  );
+  const currentPhase = (doc.work?.phases ?? []).find((phase) => phase.status === "进行中");
+  if (currentPhase) lines.push(`当前阶段：${currentPhase.id} ${currentPhase.name}`);
+  return lines;
+}
+
 export function logOf(doc, { limit = 10 } = {}) {
   return doc.log.slice(-limit);
 }
@@ -245,7 +451,8 @@ export function summaryLines(doc) {
   const current = doc.current;
   const thread = current.threadId ? threadById(doc, current.threadId) : null;
   const lines = [`状态：${current.state}（${current.since}）`];
-  if (current.scope) lines.push(`范围：${current.scope}`);
+  lines.push(...progressLines(doc));
+  if (current.scope && !doc.work?.scope) lines.push(`范围：${current.scope}`);
   if (thread) {
     const last = thread.rounds[thread.rounds.length - 1];
     lines.push(`会话：${thread.title}（第 ${thread.rounds.length} 轮）`);

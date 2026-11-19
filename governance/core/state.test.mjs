@@ -6,18 +6,27 @@ import assert from "node:assert/strict";
 
 import {
   STATES,
+  MAX_PHASES,
   activeThread,
+  addAcceptance,
+  addPhase,
   addRound,
+  addTask,
   addWait,
   archiveThread,
+  completePhase,
+  completeTask,
   dropWait,
   emptyState,
   ensureThread,
   logOf,
   resumeThread,
+  setAcceptance,
+  setScope,
   setState,
   summaryLines,
   validateState,
+  workProgress,
 } from "./state.mjs";
 import { loadState, main, saveState } from "../../scripts/state.mjs";
 
@@ -152,6 +161,95 @@ test("the CLI writes state data and reads it back", () => {
     const reloaded = JSON.parse(fs.readFileSync(path.join(root, "governance/data/state.json"), "utf8"));
     saveState(root, reloaded);
     assert.deepEqual(loadState(root), reloaded);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("the work list carries scope, phases, tasks and stage acceptance", () => {
+  const doc = started();
+  setScope(doc, { text: "把状态面板做出来", now: NOW });
+  const first = addPhase(doc, { name: "清单与命令", goal: "能写能勾", now: NOW }).phase;
+  const second = addPhase(doc, { name: "面板渲染", now: NOW }).phase;
+  const task = addTask(doc, { phase: first.id, text: "扩展 state 数据结构", now: NOW }).task;
+  addTask(doc, { phase: first.id, text: "补齐命令行", now: NOW });
+  const item = addAcceptance(doc, { phase: first.id, text: "任务能勾选并留证据", now: NOW }).item;
+  assert.deepEqual(workProgress(doc), {
+    phases: { done: 0, total: 2 },
+    tasks: { done: 0, total: 2 },
+    acceptance: { passed: 0, failed: 0, unchecked: 1, total: 1 },
+  });
+  assert.throws(() => completePhase(doc, { id: first.id, now: NOW }), /还有 2 个任务没完成/u);
+  completeTask(doc, { id: task.id, evidence: "node --test state.test.mjs", now: NOW });
+  completeTask(doc, { id: `${first.id}-T2`, now: NOW });
+  assert.throws(() => completePhase(doc, { id: first.id, now: NOW }), /没判/u);
+  setAcceptance(doc, { id: item.id, status: "不通过", evidence: "面板没渲染", now: NOW });
+  assert.throws(() => completePhase(doc, { id: first.id, now: NOW }), /不通过/u);
+  setAcceptance(doc, { id: item.id, status: "通过", evidence: "重跑通过", now: NOW });
+  completePhase(doc, { id: first.id, now: NOW });
+  assert.equal(second.status, "进行中");
+  assert.equal(workProgress(doc).phases.done, 1);
+  assert.match(summaryLines(doc).join("\n"), /阶段 1\/2 · 任务 2\/2/u);
+  assert.deepEqual(validateState(doc), []);
+});
+
+test("a work list refuses more than five phases and unknown ids", () => {
+  const doc = started();
+  for (let index = 0; index < MAX_PHASES; index += 1) {
+    addPhase(doc, { name: `阶段 ${index + 1}`, now: NOW });
+  }
+  assert.throws(() => addPhase(doc, { name: "第六个阶段", now: NOW }), /最多 5 个/u);
+  assert.throws(() => addTask(doc, { phase: "P9", text: "不存在", now: NOW }), /没有阶段 P9/u);
+  assert.throws(() => setAcceptance(doc, { id: "P1-A9", status: "通过", now: NOW }), /没有验收项/u);
+  assert.deepEqual(validateState(doc), []);
+});
+
+test("state data from version 1 upgrades to the work model on load", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "noema-state-v1-"));
+  try {
+    fs.mkdirSync(path.join(root, "governance/data"), { recursive: true });
+    fs.writeFileSync(
+      path.join(root, "governance/data/state.json"),
+      `${JSON.stringify(
+        {
+          version: 1,
+          current: { state: "讨论", since: NOW.toISOString(), threadId: null },
+          log: [],
+          threads: [],
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    const doc = loadState(root);
+    assert.equal(doc.version, 2);
+    assert.deepEqual(doc.work, { scope: null, phases: [] });
+    saveState(root, doc);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("the CLI drives the work list end to end", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "noema-state-work-"));
+  try {
+    main(["scope", "把状态面板做出来"], root);
+    main(["phase", "add", "--name", "清单与命令"], root);
+    main(["task", "add", "--phase", "P1", "--text", "扩展数据结构"], root);
+    main(["task", "done", "--id", "P1-T1", "--evidence", "node --test"], root);
+    main(["accept", "add", "--phase", "P1", "--text", "勾选留证据"], root);
+    main(["accept", "set", "--id", "P1-A1", "--status", "通过"], root);
+    main(["phase", "done", "--id", "P1"], root);
+    const doc = loadState(root);
+    assert.equal(doc.work.scope.text, "把状态面板做出来");
+    assert.equal(doc.work.phases[0].status, "已完成");
+    assert.equal(doc.work.phases[0].tasks[0].evidence[0], "node --test");
+    assert.deepEqual(workProgress(doc), {
+      phases: { done: 1, total: 1 },
+      tasks: { done: 1, total: 1 },
+      acceptance: { passed: 1, failed: 0, unchecked: 0, total: 1 },
+    });
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

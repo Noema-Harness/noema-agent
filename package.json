@@ -55,7 +55,8 @@
     "acceptance": "node scripts/acceptance.mjs",
     "acceptance:test": "node --test governance/core/acceptance.test.mjs",
     "governance": "node scripts/interface.mjs",
-    "decisions:render": "node scripts/render-decisions.mjs"
+    "decisions:render": "node scripts/render-decisions.mjs",
+    "work:view": "node scripts/work-view.mjs"
   },
   "engines": {
     "node": ">=24.21 <25"

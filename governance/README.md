@@ -61,13 +61,15 @@ agent 的状态描述「正在做什么」，共三态：讨论 / 执行 / 验�
 
 任意方向可切换；离开时写一条标记 `状态：<from> → <to>（日期，原因，义务：关闭|挂起）`，状态日志是唯一脉络。讨论会话是一等对象：`npm run state -- round` 记一轮、`state -- wait add|drop` 滚动待裁、切走自动归档、回来自动恢复并续轮次。条目退为账本，只收已定内容。
 
+执行态的范围与清单一律走命令、存 `state.json`，不生成独立清单文档：`state -- scope "…"` 声明范围（一句话/设计稿/里程碑声明三档）；`state -- phase add|done` 维护 2–5 个阶段（阶段=一次能判断完的最小交付边界）；`state -- task add|done` 记录任务与证据；`state -- accept add|set` 写阶段验收项与判定。阶段完成=任务全勾 + 验收项全判且无「不通过」；两次不通过回讨论重看范围或判据。
+
 过渡文档模板在 `noema/workflow/transition/`：设计方案、条目收口、开工清单、执行交接、验收报告。
 
 ## 存储与视图
 
-- **数据是唯一真相**：`governance/data/decisions.json`（`{version, preamble, entries[]}`；每条含 id/标题/阶段/字段/三段正文）。命令只读写数据文件，markdown 不接收写入。
+- **数据是唯一真相**：`governance/data/decisions.json`（`{version, preamble, entries[]}`；每条含 id/标题/阶段/字段/三段正文）；`governance/data/state.json`（当前状态、切换日志、讨论会话、范围与阶段清单）。
 - **markdown 是渲染产物**：`docs/DECISIONS.md` 每次由数据重渲染；`docs:check` 会比对「文件 vs 渲染」，不一致即报错（提示 `npm run decisions:render`）。
-- **视图是只读视图**：`npm run decisions:view` 生成 `.work/review/decisions-view.html`（两块：待裁决、讨论经过），两侧都不进库。
+- **视图是只读视图**：`npm run decisions:view` 生成 `.work/review/decisions-view.html`（账本：待裁决、讨论经过）；`npm run work:view` 生成 `.work/review/work-view.html`（当下：状态、范围、阶段、任务、验收、会话）。两者都不进库，不进账本。
 - **迁移是一次性的**：`node scripts/migrate-decisions.mjs` 把旧 markdown 解析成数据并规范化空白；判据是幂等 + 逐条内容深相等。
 
 ## 条目生命周期
@@ -95,7 +97,8 @@ agent 的状态描述「正在做什么」，共三态：讨论 / 执行 / 验�
 | `npm run docs:check`、`figure:check`、`plan:check`、`milestone:check` | 单独跑某道产物门 | 已有 |
 | `npm run check` | 里程碑全量门 | 已有 |
 | `npm run governance -- record\|move\|check\|audit` | 治理三动词：record 五合一、move 进阶段/退回修复/恢复、check 三类自检 + 净额、audit 计数 | 已有 |
-| `npm run state` | 当前状态、会话、待裁与规则包；`set` / `round` / `wait` / `archive` / `resume` / `log` 子命令 | 已有 |
+| `npm run state` | 当前状态、会话、待裁与规则包；`set` / `scope` / `phase` / `task` / `accept` / `work` / `round` / `wait` / `archive` / `resume` / `log` 子命令 | 已有 |
+| `npm run work:view` | 生成只读工作台 `.work/review/work-view.html`（状态、范围、阶段、任务、验收、会话） | 已有 |
 | `npm run stage -- <阶段>` | 旧入口：按条目阶段打印规则包（已由 `npm run state` 取代） | 保留兼容 |
 | `npm run transition -- <kind>` | 打印过渡文档骨架并就地更新 `.work/review/` | 已有（`governance -- check transition` 的别名） |
 | `npm run decision -- round\|settle\|advance\|wait` | 条目结构化操作（行为门） | 已有（`record`/`move` 的别名） |

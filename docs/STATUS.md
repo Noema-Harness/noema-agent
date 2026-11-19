@@ -4,12 +4,23 @@ Authority: 本文件只回答一个问题——按现有证据，今天这个版
 Update when: 每次交付、打包或验证结果变化。
 Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与代码实况（见 [ARCHITECTURE](ARCHITECTURE.md)）；决定与理由（见 [DECISIONS](DECISIONS.md)）；命令、安装与诊断（见 [OPERATIONS](OPERATIONS.md)）；治理与门槛（见 [governance/README.md](../governance/README.md)）；计划与进度（见 GitHub Project 看板与 `openspec/changes/`，D-026）。
 
-最后更新：2026-11-19
+最后更新：2026-11-20
 
 ## 版本与基线
 
 - 源码版本：`0.7.6`；当前源码基线：`b4f5ed6 refactor(governance): move the governance rules into governance/`；功能基线 `b7c41fa`。
 - 便携构建在 `apps/desktop/out/Noema-win32-x64/Noema.exe`；安装包由 `npm run make:desktop` 产出（构建陷阱与回退见 [OPERATIONS](OPERATIONS.md)，决定见 D-024）。
+
+## 最后一次验证（2026-11-20）
+
+- 执行态任务清单与只读工作台（2026-11-20）：状态模型从「一个状态」扩到「状态 + 范围 + 阶段 + 任务 + 阶段验收」。
+  ①`governance/core/state.mjs` 升到 v2：`work.scope`（一句话/设计稿/里程碑三档）、`work.phases`（2–5 个，`P1` 编号，含 `name/goal/status/tasks/acceptance`）、任务 `P1-T1`（勾选 + 证据）、阶段验收 `P1-A1`（未验/通过/不通过 + 证据）；阶段完成要求任务全勾、验收项全判且无「不通过」；版本 1 数据在读取时自动升级并落盘。
+  ②`scripts/state.mjs` 新增 `scope`、`phase add|done|list`、`task add|done`、`accept add|set`、`work` 子命令，全部写盘前过 `validateState`。
+  ③只读工作台：`scripts/work-view.mjs` 读 `state.json` 渲染 `.work/review/work-view.html`（状态、范围、任务进度条、阶段卡片与证据、讨论会话、最近切换、只读页脚），命令 `npm run work:view`；视图不进库、不进账本。
+  ④文档同步：`AGENTS.md` 状态地图写入执行态命令与判据，`governance/README.md` 补「执行态范围与清单只走命令」与工作台命令，`docs/OPERATIONS.md` 补六条命令与三条失败修法；设计稿 §15 记录工作台结构（只读、可重建、与账本视图分开）。
+  证据：`npm run state:test` **15/15**（含 work 全流程、阶段上限、版本升级、CLI 端到端）、`node scripts/maintenance.mjs docs` OK、`npm run figure:check`（图按章节判断重出 `6c3b9e4078e1`：只改「状态与规则包」正文，三层/四门/状态表未变）、`npm run check` **901/901，0 fail，39,110ms**（含 `governance: milestone OK`）。
+  手测：`npm run state -- scope|phase|task|accept` 建出 P1（已完成）与 P2（进行中），`npm run work:view` 输出「阶段 1/2 · 任务 6/6 · 验收 2/4」。
+  未验证：验收态的四层判定（D/C/R/H）尚未实现；阶段重审三条尚无命令；工作台未接入 DSH 面板；真实产品任务尚未首次运行（下一步）。
 
 ## 最后一次验证（2026-11-19）
 
