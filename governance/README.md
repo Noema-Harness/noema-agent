@@ -1,120 +1,62 @@
 # 治理
 
-治理内容的唯一权威入口。产品事实不在这里：定位、架构、命令、状态仍在 `docs/` 与 `AGENTS.md`。
+Authority: 治理规则、状态机、门与流程的唯一出处；不写产品事实与命令细节。
+Update when: 状态机、门、规则包或数据模型变化。
+Does not own: 命令与失败修法（docs/OPERATIONS.md）、产品定义（docs/PRODUCT.md）、正在做什么（governance/data/state.json）。
 
-## 三层结构
+治理不是一个文档，而是 agent 的三个状态和挂在状态上的门。规则随状态注入工具反馈；
+`npm run state` 是唯一入口，工作台只是它的只读视图。
 
-| 位置 | 拥有什么 | 不拥有什么 |
-|---|---|---|
-| `governance/core/` | 领域内核契约：条目模型与状态机、待裁/已定/轮次操作、门契约、规则包契约、恢复卡、审计 | 任何具体项目的路径、命令、文档名 |
-| `governance/noema/` | 适配层：本仓库的文档路径、看板、命令、CI 接线、阶段规则包与过渡模板 | 内核语义（它只消费契约） |
-| `governance/README.md` | 单一索引：三层、门、规则包、生命周期、命令、文件职责 | 规则正文（正文在各文件里） |
+## 状态与门
 
-治理只在这里写。`AGENTS.md` 是系统层，只能挂载治理指针；`docs/DECISIONS.md` 是治理核心基础（条目格式与记录），生命周期与门的实现归 `governance/core`。
+状态只描述「现在在做什么」，不携带授权；授权来自用户的请求与范围。
 
-## 四道门
+| 状态 | 进入条件 | 允许的产出 | 离开时的义务 | 收口目标 |
+| --- | --- | --- | --- | --- |
+| 讨论 | 无 | 证据（调研、复现、设计稿）与会话记录 | 定案（写范围）或搁置（写原因） | 范围 |
+| 执行 | 已有范围 | 范围内的产品代码、测试、证据 | 交接（改了什么、证据、未验证、风险） | 验收 |
+| 验收 | 所有验收单元已声明 | 判定、发现处置、签收 | 通过 → 回讨论/收口；不通过 → 回执行；预期有问题 → 回讨论 | 用户签收 |
 
-| 门 | 谁执行 | 查什么 | 规则登记 |
-|---|---|---|---|
-| 决策门槛 | 人 | 只有五类问题进待用户决定；未答决策只阻塞产品代码与 specs；用户验收必须带日期 | 规则，无脚本 |
-| 行为门 | 治理命令写盘前 | accept 原话≥10 字+日期、advance 合法转移+原话、round 带待裁变化行、例外格式完整 | 批次二实现在 `scripts/` |
-| 产物门 | 本地提交 / CI / 里程碑 | 计划先于代码、`docs:check`、`figure:check`、`milestone:check` | `scripts/governance.mjs` 的 `RULES`（详见 `noema/reference/gates.md`） |
-| 平台状态门 | 远端 | `platform`：至多一个活动变更、main 无未收口 change；`collaboration`：PR 治理字段 | `.github/workflows/` |
+- 切换写日志：`状态：<from> → <to>（日期，原因，义务）`；任意方向可切，约束只有各状态的产出边界。
+- 讨论会话是一等对象：不挂条目；定案或搁置即归档，回讨论自动恢复并续编号。
+- 规则包：`governance/noema/workflow/{discussion,execution,acceptance}.md`，由 `state` 按状态打印；
+  检查项写 `gate:<id>`，必须对应 `scripts/governance.mjs` 里登记的门。
+- 门分三层：
+  - **提交门**（`.githooks/pre-commit`，`npm run check` 里的第一步）：文档自洽、改动路径播报、内核边界。
+  - **里程碑门**（`npm run check`，CI 同源）：workspace / branches / docs / figure / source / lint / typecheck / 测试。
+  - **人判断**：用户预期是否变、签收、优先级——机器不判。
 
-新门一律先 notice（观察期），两个里程碑没有误伤才转 block。新增门前先写「最省力过门方式」——如果那是打卡或造假，就不加。
+## 数据与工作台
 
-## 边界：什么走治理，什么自由执行
+- 唯一数据源：`governance/data/state.json`（`{version:2, current, work, threads, log}`），只经 `npm run state` 写；
+  手改会被 `docs:check` 与 `work:view` 的数据校验拦住。
+- `work`：`scope`（范围）+ `phases`（2–5 个验收单元，含任务与 D/C/R/H 验收项）。
+- 工作台：`npm run work:view` → `.work/review/work-view.html`，只读、可重建、按状态收束版面
+  （讨论态打开会话、执行态打开单元、验收态打开验收）；不进库、不进事实流。
+- 验收四层：**D** 确定性检查（命令/测试）、**C** 判据对照、**R** 审查发现（必须逐条处置）、**H** 人签收。
+  通过 = D+C+H 全绿 + R 全部处置；只有用户能签收，签收只认原话。
 
-治理只覆盖「会改变别人预期」的事；其余自由做，过提交门即可。
+## 事实所有权
 
-| 区域 | 判据 | 例子 | 需要的动作 |
-|---|---|---|---|
-| 自由执行 | 改完**决定、产品可观察行为、对外承诺、数据与发布物都没变** | 读代码与调查、`.work/` 里的实验、修 bug（行为与决定一致）、重构、补测试、文案错字、内部脚本优化（不加新门/命令）、性能调整 | 直接做；产品代码仍走提交门；规模大时开一个 fix change（Plan 引用原条目），**不回决策、不写设计稿、不写开工清单** |
-| 治理区 | 以下任一变了 | 已定决定（E 文本、目标、范围、期望行为）、产品定位或对外承诺、不可逆迁移、条目写入（只走命令）、阶段/批次/验收项/历史、新增或删除门/规则/命令、发布与签名 | 走对应阶段的规则包与门；决定变了回决策重开，实现偏差留在执行内修 |
+| 事实 | 主人 |
+| --- | --- |
+| 产品定位、可观察行为、验收口径 | `docs/PRODUCT.md` |
+| 结构与数据地图 | `docs/ARCHITECTURE.md` |
+| 命令、环境、失败修法、发布 | `docs/OPERATIONS.md` |
+| 今天能用到哪、未验证什么 | `docs/STATUS.md` |
+| 治理规则、状态机、门与流程 | `governance/` |
+| 正在做什么、范围、单元、任务、会话 | `governance/data/state.json` |
 
-一句话判据：**问「改完之后，我的预期有没有变？」** 变了→治理区；没变→自由执行。
-
-### 机器管到哪、人管到哪
-
-边界不靠自觉：能机检的部分在提交时自动说清楚，判不了的部分只留给人。
-
-| 改动 | 机器怎么判（`precommit` 提示） | 机器要求 |
-|---|---|---|
-| 只有测试、文档、`.work`、非产品文件 | 「自由执行路径」 | 无额外要求，过四道提交门即可 |
-| 产品行为（`apps/desktop/src/`） | 「行为路径」 | 必须有活动变更与规格增量；计划先于代码 |
-| 条目数据（`governance/data/`、`docs/DECISIONS.md`） | 写盘印记 + 渲染比对 | 只能经 `npm run governance -- record\|move` 写入 |
-| 用户预期/承诺/定位/不可逆 | **机器判不了** | 只能由人判断：这正是条目决议存在的意义 |
-
-所以「什么时候走治理」的落地答案一直是三句话：机器能检查的产品行为必须有变更与规格；条目只能经命令改；其余改动自由，但改完要自己回答「用户的预期变了没有」，变了就先进条目不写代码。
-
-边界模糊时按「最省力过门」判断：如果走治理只是填一张表，就不该走；如果它确实能拦住一次已经发生过的错误，就走。
-
-## 状态与规则包
-
-agent 的状态描述「正在做什么」，共三态：讨论 / 执行 / 验收（删除空闲）。状态不携带授权；授权来自用户请求与范围门。进入某个状态时用 `npm run state -- set <状态> --reason "…"` 切换，切换会写日志并自动归档 / 恢复讨论会话；`npm run state` 打印当前状态、会话、待裁与对应规则包。
-
-| 状态 | 规则包 | 收口目标 | 进入时最先做什么 |
-|---|---|---|---|
-| 讨论 | `noema/workflow/discussion.md` | 执行 | 先建/恢复会话，只产出证据与结论 |
-| 执行 | `noema/workflow/execution.md` | 验收 | 三道门槛过了才动手；主体是 `openspec/changes/` |
-| 验收 | `noema/workflow/acceptance.md` | 收口 | 生成验收页；只有用户能收口 |
-
-任意方向可切换；离开时写一条标记 `状态：<from> → <to>（日期，原因，义务：关闭|挂起）`，状态日志是唯一脉络。讨论会话是一等对象：`npm run state -- round` 记一轮、`state -- wait add|drop` 滚动待裁、切走自动归档、回来自动恢复并续轮次。条目退为账本，只收已定内容。
-
-执行态的范围与清单一律走命令、存 `state.json`，不生成独立清单文档：`state -- scope "…"` 声明范围（一句话/设计稿/里程碑声明三档）；`state -- phase add|done` 维护 2–5 个阶段（阶段=一次能判断完的最小交付边界），进阶段用 `state -- phase check` 记三条重审（验什么/可能漏什么/要不要拆并）；`state -- task add|done` 记录任务与证据；`state -- accept add|set --layer D|C|R|H` 写阶段验收项与判定。阶段完成=任务全勾 + D/C/H 全判且无「不通过」+ R 的每条发现都已处置。**通过 = D（确定性检查）+ C（判据对照）+ H（人签收）全绿**；R（审查发现）不判「通过」，但必须逐条处置（state -- accept resolve --decision 已修|延期|接受，延期/接受要写理由），没处置不能完成阶段，也不能签收。两次不通过回讨论重看范围或判据。
-
-状态切换有机器前置：进执行必须先有范围（`state -- scope`），进验收必须所有阶段已完成；验收态只有一件人工动作 `state -- sign "<用户原话>"`，把「范围符合预期」连同日期记在范围上，签收后人判断的环节就结束，切回讨论收口。
-
-过渡文档模板在 `noema/workflow/transition/`：设计方案、条目收口、开工清单、执行交接、验收报告。
-
-## 存储与视图
-
-- **数据是唯一真相**：`governance/data/decisions.json`（`{version, preamble, entries[]}`；每条含 id/标题/阶段/字段/三段正文）；`governance/data/state.json`（当前状态、切换日志、讨论会话、范围与阶段清单）。
-- **markdown 是渲染产物**：`docs/DECISIONS.md` 每次由数据重渲染；`docs:check` 会比对「文件 vs 渲染」，不一致即报错（提示 `npm run decisions:render`）。
-- **视图是只读视图**：`npm run decisions:view` 生成 `.work/review/decisions-view.html`（账本：待裁决、讨论经过）；`npm run work:view` 生成 `.work/review/work-view.html`（当下：状态、范围、阶段、任务、验收、会话）。两者都不进库，不进账本。
-- **迁移是一次性的**：`node scripts/migrate-decisions.mjs` 把旧 markdown 解析成数据并规范化空白；判据是幂等 + 逐条内容深相等。
-
-## 条目生命周期
-
-四态：`决策中 → 执行中 → 待验收 → 已收口`；任一阶段可退回决策中并写原因。
-
-| 阶段 | 允许写什么 | 出口 |
-|---|---|---|
-| 决策中 | 只写决策层（要定/待裁/已定/轮次） | 设计方案获批 + 条目收口重构 + 开工清单获批 |
-| 执行中 | 执行层只写批次指针与影响决定的发现 | 切片全绿或明确阻塞 + 执行交接 |
-| 待验收 | 验收层可勾选清单 | 用户验收确认（原话与日期） |
-| 已收口 | 只追加遗留项去向 | 归档 change |
-
-条目结构细节见 `core/README.md`；本仓库的路径与门接线见 `noema/README.md`。
+一个事实一个主人：别处只放指针。内核（`governance/core/`）是通用层，出现 Noema 专名或仓库路径即 `docs:check` 报错；
+项目相关的东西放 `governance/noema/` 与 `scripts/`。
 
 ## 命令
 
-| 命令 | 用途 | 落地 |
-|---|---|---|
-| `npm run review` | 只读汇总：待你决定 / 待你验收 / 执行中 | 已有 |
-| `npm run decision:draft` / `decision:accept` | 条目起草与落库（原话准入） | 已有 |
-| `npm run decisions:sync` | 标题阶段标记与勾选收口同步（读写数据文件） | 已有 |
-| `npm run decisions:render` | 从数据重渲染 `docs/DECISIONS.md` | 已有 |
-| `npm run decisions:view` | 生成只读视图 `.work/review/decisions-view.html` | 已有 |
-| `npm run docs:check`、`figure:check`、`plan:check`、`milestone:check` | 单独跑某道产物门 | 已有 |
-| `npm run check` | 里程碑全量门 | 已有 |
-| `npm run governance -- record\|move\|check\|audit` | 治理三动词：record 五合一、move 进阶段/退回修复/恢复、check 三类自检 + 净额、audit 计数 | 已有 |
-| `npm run state` | 当前状态、会话、待裁与规则包；`set` / `scope` / `phase` / `task` / `accept` / `work` / `round` / `wait` / `archive` / `resume` / `log` 子命令 | 已有 |
-| `npm run work:view` | 生成只读工作台 `.work/review/work-view.html`（状态、范围、阶段、任务、验收、会话） | 已有 |
-| `npm run stage -- <阶段>` | 旧入口：按条目阶段打印规则包（已由 `npm run state` 取代） | 保留兼容 |
-| `npm run transition -- <kind>` | 打印过渡文档骨架并就地更新 `.work/review/` | 已有（`governance -- check transition` 的别名） |
-| `npm run decision -- round\|settle\|advance\|wait` | 条目结构化操作（行为门） | 已有（`record`/`move` 的别名） |
+- `npm run state`：状态、会话、待裁、当前状态规则包。
+- `npm run state -- set|scope|phase|task|accept|sign|round|wait|archive|resume|log|work`。
+- `npm run work:view`：重建工作台。
+- `npm run check`：里程碑全量（提交门 + 全部检查与测试）。
 
-## 当前落地状态
+## 查看当下
 
-- 批次一 `governance-authority`：目录、索引、规则包、迁移（本文件所在批次）。核验：`docs:check`、`figure:check`、`npm run check`。
-- 批次二 `governance-kernel`：条目内核、`decision` 行为门、`stage`/`transition` 命令、两个新门规则（观察期）。核验：`npm run kernel:test`、`npm run tools:test`、`npm run check`。
-- 批次三 `governance-interface`：`record`/`move`/`check` 三动词、写盘印记与恢复、批次续接、净零审计、过渡文档唯一性。核验：`npm run governance -- check net`。
-- 批次四 `governance-conformance`：边界（治理区 vs 自由执行）、受控偏差修复边、开工清单门、批次两行、验收项按 E 覆盖。核验：`governance/core/kernel.test.mjs`、`npm run acceptance -- --entry <D-…>`。
-- 批次五 `governance-store`：条目数据文件 `governance/data/decisions.json` + 渲染产物 + 只读视图；命令只写数据。核验：`node scripts/migrate-decisions.mjs --check`、`npm run docs:check`、`npm run kernel:test`。
-- 挂起：试点 P1（`D-20261117-agent-memory` 等记忆决议）与批次六 `governance-extraction`（内核可复用与抽离评估）。
-
-## 维护
-
-- 治理规则改了只改这里；模板改了只改 `noema/workflow/`；命令与失败修法写在 `docs/OPERATIONS.md` 并指回这里。
-- 改完跑 `npm run docs:check`；治理图见 [PNG](governance/assets/noema-governance.png) / [交互版](governance/assets/noema-governance.html)，图源与图门规则见 `governance/assets/noema-governance.source.json` 与 `docs/OPERATIONS.md`。
+治理图：[PNG](governance/assets/noema-governance.png) / [交互版](governance/assets/noema-governance.html)（由本文件与 AGENTS.md 作为源文档重出）。

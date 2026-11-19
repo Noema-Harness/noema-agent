@@ -1,7 +1,6 @@
 {
   "schemaVersion": 3,
   "artifactRoot": ".work",
-  "specificationRoot": "openspec/specs",
   "branchBase": "origin/main",
   "currentDocuments": [
     "AGENTS.md",
@@ -9,7 +8,6 @@
     "CONTRIBUTING.md",
     "docs/PRODUCT.md",
     "docs/ARCHITECTURE.md",
-    "docs/DECISIONS.md",
     "docs/OPERATIONS.md",
     "docs/STATUS.md"
   ],
@@ -23,7 +21,6 @@
     "docs",
     "governance",
     "node_modules",
-    "openspec",
     "plugins",
     "scripts",
     "skills"

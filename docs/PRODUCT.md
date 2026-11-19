@@ -2,7 +2,7 @@
 
 Authority: 本文件是 Noema 产品定义、范围、角色模型与用户可观察行为的唯一权威来源。
 Update when: 目标用户、要解决的问题、产品原则、范围与非目标、角色/会话/工单模型、用户可见行为或验收标准变化。
-Does not own: 当前版本、测试、安装与交付状态（见 [STATUS](STATUS.md)）；系统结构、数据表、执行边界与代码地图（见 [ARCHITECTURE](ARCHITECTURE.md)）；长期决定的理由与替代方案（见 [DECISIONS](DECISIONS.md)）；开发、发布与诊断命令（见 [OPERATIONS](OPERATIONS.md)）；Agent 维护与文档路由规则（见 [AGENTS](../AGENTS.md)）。
+Does not own: 当前版本、测试、安装与交付状态（见 [STATUS](STATUS.md)）；系统结构、数据表、执行边界与代码地图（见 [ARCHITECTURE](ARCHITECTURE.md)）；长期决定与理由（已并入 `governance/` 与提交信息）；开发、发布与诊断命令（见 [OPERATIONS](OPERATIONS.md)）；Agent 维护与文档路由规则（见 [AGENTS](../AGENTS.md)）。
 
 ## 一句话
 
@@ -44,7 +44,7 @@ Noema 把这些收拢到一个可问责的关系里：一个对结果负责的 N
 | 项目负责人（Project lead） | 项目内与 Noema 对接的协调头衔，不是岗位库条目；只做计划、依赖、风险、验收和汇报 | 随项目可见                       |
 | 工单（Ticket）             | 最小执行单元；包含目标、承接人、工作区、执行步骤、文件变更和结果                | 随执行轨迹可见                   |
 
-没有独立的团队对象：项目本身就是协作边界，由负责人、成员和共享上下文组成。长期部门只在同一批成员连续完成第二个共同项目、确实需要跨项目继承时才重新审视（见 [DECISIONS](DECISIONS.md) D-019）。
+没有独立的团队对象：项目本身就是协作边界，由负责人、成员和共享上下文组成。长期部门只在同一批成员连续完成第二个共同项目、确实需要跨项目继承时才重新审视（理由见提交信息）。
 
 所有 Agent 都是同一个 AgentRuntime 的实例：Noema、执行者、专业联系人、管理 Agent 只在岗位模板、权限、记忆范围、工作区、运行时和问责关系上不同，不是不同类的人。每个 Agent 有独立完整的个体环境（私有会话/上下文、记忆命名空间、Agent Home、工作区绑定、工具授权、事件日志和生命周期），跨 Agent 只通过消息、任务和证据协作。
 

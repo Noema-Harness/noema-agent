@@ -3,7 +3,7 @@
   "purpose": "Noema 用户向架构图：已实现与计划分层。改 docs/ARCHITECTURE.md 后运行 npm run figure:build 重出图。",
   "source": {
     "doc": "docs/ARCHITECTURE.md",
-    "sha256": "bc963a1c6589469822d86500707707a33bf627b59071972056f94b73a5901337",
+    "sha256": "7e2c719e1d5ac78efbf244a5fa4f059e462769cd3009c8fe3103e999f0de4b8f",
     "sections": [
       {
         "title": "2. 进程与依赖方向",
@@ -36,7 +36,7 @@
       "bytes": 167178
     }
   },
-  "updatedAt": "2026-11-17T09:19:51.345Z",
+  "updatedAt": "2026-11-19T19:23:50.445Z",
   "candidate": {
     "schema_version": 1,
     "diagram_type": "architecture",

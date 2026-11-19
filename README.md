@@ -35,16 +35,16 @@ npm run check
 
 ## 文档
 
-仓库只保留五份权威文档，加一个入口和一个治理文件。每份文档只回答一类问题；更新触发条件写在文件头和 [AGENTS](AGENTS.md)。
+仓库只保留四份产品权威文档，加一个入口和一套治理机制（`governance/`）。每份文档只回答一类问题；更新触发条件写在文件头和 [AGENTS](AGENTS.md)。
 
 | 文件                                 | 回答的问题                                            |
 | ------------------------------------ | ----------------------------------------------------- |
 | [PRODUCT](docs/PRODUCT.md)           | 产品是什么、给谁用、用户能观察到什么、怎样算通过      |
 | [ARCHITECTURE](docs/ARCHITECTURE.md) | 系统怎样分层、对象和会话怎样组织、数据/代码边界是什么 |
-| [DECISIONS](docs/DECISIONS.md)       | 哪些长期选择已经做出、为什么、何时重新审视            |
 | [OPERATIONS](docs/OPERATIONS.md)     | 怎样开发、检查、打包、安装、回滚和诊断                |
 | [STATUS](docs/STATUS.md)             | 当前版本、已验证/未验证、缺口和已知限制（计划在看板） |
 | [AGENTS](AGENTS.md)                  | 一轮开发怎样走、各文档拥有什么、门槛与工程边界        |
+| [治理](governance/README.md)         | 状态、门、数据与工作台怎样组织                        |
 
 README 只做入口，不拥有产品定义、架构、状态或操作细节。
 
@@ -52,10 +52,10 @@ README 只做入口，不拥有产品定义、架构、状态或操作细节。
 
 ```text
 apps/desktop/       Electron 主进程、preload、renderer、共享契约
-docs/               五份权威文档
-openspec/specs/     可观察行为的回归规格
-openspec/changes/   本轮执行计划（归档只留本机，历史由 Git 保存）
+docs/               产品权威文档
+governance/         治理机制：状态机、规则包、门、数据与图
 scripts/            仓库级检查、门槛与维护脚本
+skills/             开发与治理的技能模板（安装到 agent 环境）
 ```
 
 本机过程材料放 `.work/`（整体忽略，不入库）；用户数据、凭据、下载的参考源码和构建产物同样不进入仓库。

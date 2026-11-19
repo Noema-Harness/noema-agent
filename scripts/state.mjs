@@ -35,7 +35,24 @@ import {
   validateState,
   workProgress,
 } from "../governance/core/state.mjs";
-import { checkPackGates, loadPack } from "./stage.mjs";
+import { missingGates } from "../governance/core/packs.mjs";
+import { RULES } from "./governance.mjs";
+
+function loadPack(root, file) {
+  const full = path.join(root, "governance", "noema", "workflow", file);
+  try {
+    return { text: fs.readFileSync(full, "utf8") };
+  } catch {
+    return null;
+  }
+}
+
+function checkPackGates(text) {
+  return missingGates(
+    text,
+    RULES.map((rule) => rule.id),
+  );
+}
 
 const STATE_PATH = "governance/data/state.json";
 

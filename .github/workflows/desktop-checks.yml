@@ -1,6 +1,6 @@
 name: Desktop checks
 
-# PR 跑完整检查；main 推送只跑一条十几秒的平台门（平台树不允许未收口 change）。
+# PR 跑完整检查；main 推送与手动派发跑同一套（里程碑与 CI 同源）。
 # 2026-11-16 曾因私有仓库额度用尽让所有 job 4s 失败；仓库已公开，标准 runner 免费。
 on:
   push:
@@ -15,7 +15,7 @@ concurrency:
 jobs:
   verify:
     runs-on: windows-latest
-    # PR 上把架构图漂移降为提示：图是维护者资产，协作者不该为了过门而等待重出图。
+    # PR 上把图漂移降为提示：图是维护者资产，协作者不该为了过门而等待重出图。
     env:
       NOEMA_FIGURE_SOFT: ${{ github.event_name == 'pull_request' && '1' || '0' }}
     steps:
@@ -28,16 +28,11 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
-      - name: The PR carries its plan and no unconfirmed decisions
-        if: github.event_name == 'pull_request'
-        run: node scripts/maintenance.mjs range --base "origin/${{ github.base_ref }}"
 
-  # 可移植性门：同一套测试在 Ubuntu 上也要过。只有 Windows 才能验证的用例在用例处显式标记
+  # 可移植性门：同一套测试在 Ubuntu 上也要过。只在 Windows 才能验证的用例在用例外处显式标注
   # （`apps/desktop/test/support/platform-cases.mjs` 的 `windowsOnly`），跳过原因会出现在日志里；
-  # 其余失败一律是真回归，和 `verify` 一起构成 PR 合并门（D-20261116-platform-layers 第③刀）。
+  # 其余失败一律是真回归，和 `verify` 一起构成 PR 合并门。
   portable:
-    # 只在 main 推送时跳过（推送走 verify + platform 的快速路径）；
-    # PR 与手动 workflow_dispatch 都跑，发布前可用它确认整棵树的 Ubuntu 结果。
     if: github.event_name != 'push'
     runs-on: ubuntu-latest
     steps:
@@ -51,22 +46,6 @@ jobs:
       - run: npm ci
       - name: Portable tests (Windows-only cases tagged in place)
         run: npm test
-
-  platform:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24.21.0
-      - name: The pull request carries only its own change
-        if: github.event_name == 'pull_request'
-        run: node scripts/maintenance.mjs platform --base "origin/${{ github.base_ref }}"
-      - name: The merged tree carries no unclosed change
-        if: github.event_name != 'pull_request'
-        run: node scripts/maintenance.mjs platform
 
   collaboration:
     if: github.event_name == 'pull_request'

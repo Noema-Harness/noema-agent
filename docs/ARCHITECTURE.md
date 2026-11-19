@@ -2,7 +2,7 @@
 
 Authority: 本文件是 Noema 当前系统结构、模块职责、数据边界和代码地图的唯一权威来源。
 Update when: 模块边界、进程/依赖方向、数据库 schema、执行路径、外部运行时或代码地图变化。
-Does not own: 产品定义与用户可观察行为（见 [PRODUCT](PRODUCT.md)）；长期决定的理由（见 [DECISIONS](DECISIONS.md)）；当前版本、测试和交付状态（见 [STATUS](STATUS.md)）；开发/发布命令（见 [OPERATIONS](OPERATIONS.md)）；维护规则（见 [AGENTS](../AGENTS.md)）。
+Does not own: 产品定义与用户可观察行为（见 [PRODUCT](PRODUCT.md)）；长期决定与理由（已并入 `governance/` 与提交信息）；当前版本、测试和交付状态（见 [STATUS](STATUS.md)）；开发/发布命令（见 [OPERATIONS](OPERATIONS.md)）；维护规则（见 [AGENTS](../AGENTS.md)）。
 
 ## 1. 结构原则
 

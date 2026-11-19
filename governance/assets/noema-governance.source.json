@@ -4,220 +4,174 @@
     "schema_version": 1,
     "diagram_type": "architecture",
     "meta": {
-      "title": "Noema 治理全景：谁规定、谁决定、谁验证",
-      "subtitle": "提示层只放规则与顺序，模板与命令按需加载；事实流是一轮决策与证据的走向；一轮的四态（决策中/执行中/待验收/已收口）各绑一道门；机器门在下面，不靠自律。",
+      "title": "Noema 治理全景：状态驱动，门在边界",
+      "subtitle": "三个状态（讨论/执行/验收）决定此刻允许的产出；会话与范围数据只经命令写入；提交门与里程碑不靠自律；工作台只是只读视图。",
       "output": "governance/assets/noema-governance.html",
       "locale": "zh-CN",
       "quality_profile": "showcase",
       "viewBox": [
         1240,
-        620
+        600
       ],
       "legend": {
         "mode": "auto",
         "entries": {
-          "external": {
-            "label": "外部输入"
-          },
-          "security": {
-            "label": "决定与门"
+          "frontend": {
+            "label": "入口"
           },
           "backend": {
-            "label": "计划与执行"
-          },
-          "database": {
-            "label": "事实与证据"
-          },
-          "frontend": {
-            "label": "入口视图"
+            "label": "状态与范围"
           },
           "messagebus": {
-            "label": "提示与命令"
+            "label": "规则与提示"
           },
-          "cloud": {
-            "label": "平台"
+          "database": {
+            "label": "事实与数据"
+          },
+          "security": {
+            "label": "门"
           }
         }
       }
     },
     "components": [
       {
-        "id": "rules",
-        "type": "messagebus",
-        "label": "AGENTS 规则",
-        "sublabel": "常驻 · 每轮必读",
-        "icon": "messagebus",
-        "pos": [
-          205,
-          32
-        ],
-        "size": [
-          140,
-          70
-        ]
-      },
-      {
-        "id": "skill",
-        "type": "messagebus",
-        "label": "技能模板",
-        "sublabel": "按需加载",
-        "icon": "messagebus",
-        "pos": [
-          419,
-          32
-        ],
-        "size": [
-          140,
-          70
-        ]
-      },
-      {
-        "id": "ops",
-        "type": "messagebus",
-        "label": "OPERATIONS",
-        "sublabel": "命令与修法",
-        "icon": "messagebus",
-        "pos": [
-          643,
-          32
-        ],
-        "size": [
-          140,
-          70
-        ]
-      },
-      {
         "id": "you",
-        "type": "external",
+        "type": "frontend",
         "label": "你",
-        "sublabel": "目标 · 反馈 · 验收",
-        "icon": "person",
+        "sublabel": "目标 · 签收",
         "pos": [
           40,
-          180
+          40
         ],
         "size": [
-          100,
-          72
-        ]
-      },
-      {
-        "id": "entry",
-        "type": "security",
-        "label": "DECISIONS",
-        "sublabel": "条目 · 阶段 · 勾选",
-        "icon": "security",
-        "pos": [
-          205,
-          168
-        ],
-        "size": [
-          140,
-          96
-        ]
-      },
-      {
-        "id": "plan",
-        "type": "backend",
-        "label": "卡 + change",
-        "sublabel": "卡 · change",
-        "icon": "backend",
-        "pos": [
-          419,
-          180
-        ],
-        "size": [
-          140,
-          72
-        ]
-      },
-      {
-        "id": "run",
-        "type": "backend",
-        "label": "一轮推进",
-        "sublabel": "四态与门",
-        "icon": "backend",
-        "pos": [
-          643,
-          168
-        ],
-        "size": [
-          150,
-          96
-        ]
-      },
-      {
-        "id": "prove",
-        "type": "database",
-        "label": "交付与证据",
-        "sublabel": "specs · 测试",
-        "icon": "database",
-        "pos": [
-          877,
-          180
-        ],
-        "size": [
-          130,
-          72
-        ]
-      },
-      {
-        "id": "status",
-        "type": "database",
-        "label": "STATUS",
-        "sublabel": "只写事实",
-        "icon": "database",
-        "pos": [
-          1080,
-          180
-        ],
-        "size": [
-          120,
-          72
-        ]
-      },
-      {
-        "id": "review",
-        "type": "frontend",
-        "label": "npm run review",
-        "sublabel": "唯一审核视图",
-        "icon": "frontend",
-        "pos": [
-          205,
-          320
-        ],
-        "size": [
-          140,
+          110,
           70
         ]
       },
       {
-        "id": "gates",
-        "type": "security",
-        "label": "机器门",
-        "sublabel": "提交 · 里程碑 · PR",
-        "icon": "security",
+        "id": "state",
+        "type": "backend",
+        "label": "状态",
+        "sublabel": "讨论 / 执行 / 验收",
         "pos": [
-          643,
-          320
+          210,
+          40
         ],
         "size": [
-          150,
-          86
+          210,
+          70
         ]
       },
       {
-        "id": "platform",
-        "type": "cloud",
-        "label": "平台 CI",
-        "sublabel": "必过 · 分支保护",
-        "icon": "cloud",
+        "id": "pack",
+        "type": "messagebus",
+        "label": "规则包",
+        "sublabel": "随状态注入工具反馈",
         "pos": [
-          643,
-          440
+          480,
+          40
         ],
         "size": [
-          150,
+          230,
+          70
+        ]
+      },
+      {
+        "id": "thread",
+        "type": "database",
+        "label": "讨论会话",
+        "sublabel": "轮次 · 待裁",
+        "pos": [
+          40,
+          200
+        ],
+        "size": [
+          180,
+          76
+        ]
+      },
+      {
+        "id": "scope",
+        "type": "backend",
+        "label": "范围",
+        "sublabel": "一句话 / 设计稿 / 里程碑",
+        "pos": [
+          260,
+          200
+        ],
+        "size": [
+          230,
+          76
+        ]
+      },
+      {
+        "id": "units",
+        "type": "backend",
+        "label": "验收单元",
+        "sublabel": "2–5 个 · D/C/R/H",
+        "pos": [
+          530,
+          200
+        ],
+        "size": [
+          220,
+          76
+        ]
+      },
+      {
+        "id": "data",
+        "type": "database",
+        "label": "state.json",
+        "sublabel": "唯一数据源 · 只经命令写",
+        "pos": [
+          800,
+          200
+        ],
+        "size": [
+          230,
+          76
+        ]
+      },
+      {
+        "id": "commit",
+        "type": "security",
+        "label": "提交门",
+        "sublabel": "文档自洽 · 路径播报",
+        "pos": [
+          260,
+          360
+        ],
+        "size": [
+          220,
+          70
+        ]
+      },
+      {
+        "id": "check",
+        "type": "security",
+        "label": "里程碑",
+        "sublabel": "check 与 CI 同源",
+        "pos": [
+          530,
+          360
+        ],
+        "size": [
+          200,
+          70
+        ]
+      },
+      {
+        "id": "view",
+        "type": "frontend",
+        "label": "工作台",
+        "sublabel": "只读 · 按状态收束",
+        "pos": [
+          800,
+          362
+        ],
+        "size": [
+          220,
           70
         ]
       }
@@ -225,201 +179,171 @@
     "boundaries": [
       {
         "kind": "region",
-        "label": "提示层：只放规则与顺序",
+        "label": "状态驱动：规则随行为出现",
         "wraps": [
-          "rules",
-          "skill",
-          "ops"
+          "state",
+          "pack"
         ]
       },
       {
         "kind": "region",
-        "label": "事实流：说 → 定 → 计划 → 执行 → 证据 → STATUS",
+        "label": "证据与数据：只经命令写入",
         "wraps": [
-          "entry",
-          "plan",
-          "run",
-          "prove",
-          "status"
+          "thread",
+          "scope",
+          "units",
+          "data"
         ]
       },
       {
         "kind": "region",
-        "label": "不靠自律：机器门",
+        "label": "不靠自律：提交门与里程碑",
         "wraps": [
-          "gates",
-          "platform"
+          "commit",
+          "check"
         ]
       }
     ],
     "connections": [
       {
-        "id": "ask",
+        "id": "switch",
         "from": "you",
-        "to": "entry",
+        "to": "state",
         "fromSide": "right",
         "toSide": "left",
-        "label": "说一句话",
+        "label": "切状态",
         "variant": "emphasis"
       },
       {
-        "id": "decide",
-        "from": "entry",
-        "to": "plan",
+        "id": "inject",
+        "from": "state",
+        "to": "pack",
         "fromSide": "right",
         "toSide": "left",
-        "label": "确认后立项"
+        "label": "取规则包"
       },
       {
-        "id": "planrun",
-        "from": "plan",
-        "to": "run",
-        "fromSide": "right",
-        "toSide": "left",
-        "label": "计划先于代码",
-        "variant": "emphasis"
-      },
-      {
-        "id": "deliver",
-        "from": "run",
-        "to": "prove",
-        "fromSide": "right",
-        "toSide": "left",
-        "label": "交付与证据"
-      },
-      {
-        "id": "record",
-        "from": "prove",
-        "to": "status",
-        "fromSide": "right",
-        "toSide": "left",
-        "label": "记录事实"
-      },
-      {
-        "id": "rule",
-        "from": "rules",
-        "to": "entry",
+        "id": "rounds",
+        "from": "state",
+        "to": "thread",
         "fromSide": "bottom",
         "toSide": "top",
-        "label": "每轮先读",
-        "variant": "dashed"
+        "label": "记轮次"
       },
       {
-        "id": "template",
-        "from": "skill",
-        "to": "plan",
+        "id": "declare",
+        "from": "state",
+        "to": "scope",
         "fromSide": "bottom",
         "toSide": "top",
-        "label": "模板",
-        "variant": "dashed"
+        "label": "写范围"
       },
       {
-        "id": "manual",
-        "from": "ops",
-        "to": "gates",
+        "id": "split",
+        "from": "scope",
+        "to": "units",
+        "fromSide": "right",
+        "toSide": "left",
+        "label": "拆单元"
+      },
+      {
+        "id": "store",
+        "from": "units",
+        "to": "data",
+        "fromSide": "right",
+        "toSide": "left",
+        "label": "写判定"
+      },
+      {
+        "id": "render",
+        "from": "data",
+        "to": "view",
         "fromSide": "bottom",
         "toSide": "top",
-        "label": "命令与修法",
-        "variant": "dashed"
+        "label": "渲染"
       },
       {
         "id": "gate",
-        "from": "run",
-        "to": "gates",
+        "from": "state",
+        "to": "commit",
         "fromSide": "bottom",
         "toSide": "top",
-        "label": "提交 / 里程碑"
+        "label": "提交时播报"
       },
       {
-        "id": "ci",
-        "from": "gates",
-        "to": "platform",
-        "fromSide": "bottom",
-        "toSide": "top",
-        "label": "推送后必过"
-      },
-      {
-        "id": "view",
-        "from": "entry",
-        "to": "review",
-        "fromSide": "bottom",
-        "toSide": "top",
-        "label": "视图"
+        "id": "full",
+        "from": "commit",
+        "to": "check",
+        "fromSide": "right",
+        "toSide": "left",
+        "label": "全量"
       }
     ],
     "cards": [
       {
         "dot": "cyan",
-        "title": "提示层只放判断",
+        "title": "状态只描述在做什么",
         "items": [
-          "常驻只留规则与顺序，不写步骤细节",
-          "模板与命令按需加载，别处不重复规定“做”"
+          "不携带授权：授权来自你的请求与范围",
+          "任意方向可切，约束是各状态的产出边界"
         ]
       },
       {
         "dot": "emerald",
-        "title": "一个事实只有一个主人",
+        "title": "数据只经命令写",
         "items": [
-          "规则 → AGENTS；模板 → 技能；命令 → OPERATIONS",
-          "状态 → 条目、看板、STATUS，其它位置只链接"
+          "state.json 是唯一数据源，工作台只读",
+          "手改会被数据校验拦住"
+        ]
+      },
+      {
+        "dot": "amber",
+        "title": "验收要证据",
+        "items": [
+          "D 能跑、C 对照判据、R 找风险、H 只签预期",
+          "R 的每条发现必须处置，未处置不能签收"
         ]
       },
       {
         "dot": "rose",
-        "title": "机器门不靠自律",
+        "title": "门不靠自律",
         "items": [
-          "提交门、里程碑门、平台门",
-          "每条门失败都给修法，读得到下一步"
-        ]
-      },
-      {
-        "dot": "violet",
-        "title": "审核入口只有一个",
-        "items": [
-          "npm run review 列出待决定与待验收",
-          "条目正文是权威源，勾选后 decisions:sync 收口"
+          "提交门查文档自洽与改动路径",
+          "里程碑与 CI 同源，本地过即 CI 过"
         ]
       }
     ]
   },
   "source": {
     "doc": "governance/README.md",
-    "sha256": "808b1accac702cca8fd4096ea28bb418df35e77832d5345ee145897b9f6a8bc5",
+    "sha256": "bfc3b8d864c21c903928aa835ba6a1c0007678f101521ceed303585e52c01d57",
     "sections": [
       {
-        "title": "三层结构",
-        "sha256": "8a1a26cd380837505a8414b1dbdf99e013adbec1212c8bd5279c40082e2a6cc5"
+        "title": "状态与门",
+        "sha256": "4b52f4040e955ee7bf8d931565af41505f2285a080396346394aeb8f377c4e1d"
       },
       {
-        "title": "四道门",
-        "sha256": "06fe1ad9732caa2d3b31f7bdf757cbf394468543a96d20828f9604d3bafecd29"
+        "title": "数据与工作台",
+        "sha256": "25afb004dd9b37b4fd976f0d4b77e68e9a4549c103b3dc454159f66788cc657a"
       },
       {
-        "title": "状态与规则包",
-        "sha256": "90976ba0530f3c2c2fe5d8f7abc6f0ecdddd7b73fc4e474769315f476e84c9a2"
-      },
-      {
-        "title": "条目生命周期",
-        "sha256": "c8408ee484bdf3508ce7dbec926c5b03f7af45563d8fc425296401ff97ab2ff2"
+        "title": "事实所有权",
+        "sha256": "e9337bd848f58b14763b9326adeb82e506acd681c9c8d736feaeff002b061752"
       }
     ],
-    "candidateSha256": "870cae2dfc8144ae5d856d257038a81e4418e3880c8610874cb6551e12abf841",
-    "rationale": {
-      "text": "本轮只改状态与规则包正文：R 层发现必须逐条处置后才能完成阶段/签收；三层节点、四道门与三态映射未变，图不需要改。",
-      "sectionsDigest": "ba4bb9ac34faca96be1a0810acc07f5c4d929606b883e5591e060279b343a6c7"
-    }
+    "candidateSha256": "370f48be324c0f5c8ba59c42134693713353b9b22605f769e3e9a90b43bf7154"
   },
   "assets": {
     "html": {
       "path": "governance/assets/noema-governance.html",
-      "sha256": "9471290d17b47324bc799ed9cb45df4f4220b5348f0dc6ed7bcb5da932ea5bd1",
-      "bytes": 855478
+      "sha256": "2ebd2355ed1fcffaf038d19f43378a4d303aa39b83a3d2f70cc4e8ed27a010a0",
+      "bytes": 849513
     },
     "png": {
       "path": "governance/assets/noema-governance.png",
-      "sha256": "9fad3c16e007b6cf4b319c0ab065c186d01362e860a5e7c629002f7aaee49307",
-      "bytes": 171176
+      "sha256": "7dfeb0785fff8610598daaa7c327b49aa04f553cbd1f568f11a42edbbe7a7a22",
+      "bytes": 156685
     }
   },
-  "updatedAt": "2026-11-19T18:55:24.980Z"
+  "updatedAt": "2026-11-19T19:25:09.690Z"
 }

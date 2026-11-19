@@ -179,7 +179,7 @@ ul { margin: 0; padding: 0; list-style: none; }
 .log { margin-top: 18px; color: #6f6a65; }
 footer { margin-top: 30px; font-size: 11px; color: #a49f98; }
 .empty { color: #a49f98; }
-.empty { color: #a49f98; }
+</style></head><body>
 .now { margin: 0 0 16px; padding: 9px 14px; background: #f2f5ee; border-left: 3px solid #7d9a7a; border-radius: 6px; }
 .fold { margin-top: 18px; }
 .fold > summary { cursor: pointer; font-size: 12px; color: #6f6a65; letter-spacing: .04em; padding: 4px 0; }

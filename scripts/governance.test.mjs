@@ -4,14 +4,7 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import {
-  INVARIANTS,
-  PROFILES,
-  RULES,
-  auditRules,
-  profileNames,
-  profileScripts,
-} from "./governance.mjs";
+import { INVARIANTS, PROFILES, RULES, profileNames, profileScripts } from "./governance.mjs";
 
 const root = path.resolve(fileURLToPath(new URL("../", import.meta.url)));
 
@@ -34,6 +27,7 @@ test("every script a profile runs exists, so the entry cannot point at a deleted
 
 test("every rule serves an invariant, names the failure it prevents and where it runs", () => {
   assert.equal(new Set(RULES.map((rule) => rule.id)).size, RULES.length);
+  assert.ok(RULES.length > 0);
   for (const rule of RULES) {
     assert.ok(rule.id, "rule id");
     assert.ok(INVARIANTS.includes(rule.invariant), `${rule.id} invariant ${rule.invariant}`);
@@ -44,16 +38,13 @@ test("every rule serves an invariant, names the failure it prevents and where it
   }
 });
 
-test("the audit separates proven rules from the ones still on probation", () => {
-  const audit = auditRules();
-  assert.deepEqual(audit.unsupported, []);
-  assert.ok(audit.blocks.length > 0);
-  assert.ok(audit.notices.length > 0);
-  assert.ok(
-    audit.provisional.length < audit.blocks.length,
-    "some blocking rules must have a real failure behind them",
-  );
-  for (const rule of audit.provisional) {
-    assert.ok(rule.evidence.startsWith("观察期"), rule.id);
+test("the registered rules and the workflow packs agree on gate ids", () => {
+  const ids = new Set(RULES.map((rule) => rule.id));
+  const packDir = path.join(root, "governance/noema/workflow");
+  for (const name of fs.readdirSync(packDir).filter((file) => file.endsWith(".md"))) {
+    const text = fs.readFileSync(path.join(packDir, name), "utf8");
+    for (const hit of text.matchAll(/gate:([a-z0-9-]+)/gu)) {
+      assert.ok(ids.has(hit[1]), `${name} references unregistered gate ${hit[1]}`);
+    }
   }
 });
