@@ -80,7 +80,8 @@ npm run state -- scope "…"                                # 执行态声明范
 npm run state -- phase add --name "…" [--goal "…"] / phase done --id P1 / phase list # 清单阶段（2–5 个）
 npm run state -- phase check --id P1 [--what "验什么"] [--gap "可能漏什么"] [--split "要不要拆并"] # 进阶段的三条重审
 npm run state -- task add --phase P1 --text "…" / task done --id P1-T1 [--evidence "…"] # 任务勾选
-npm run state -- accept add --phase P1 --text "…" [--layer D|C|R|H] / accept set --id P1-A1 --status 通过|不通过 [--evidence "…"] # 阶段验收；通过 = D+C+H，R 只列发现
+npm run state -- accept add --phase P1 --text "…" [--layer D|C|R|H] / accept set --id P1-A1 --status 通过|不通过 [--evidence "…"] # 阶段验收；通过 = D+C+H
+npm run state -- accept resolve --id P1-A3 --decision 已修|延期|接受 [--note "…"] # R 的发现必须处置；延期/接受要理由，未处置不能完成阶段或签收
 npm run state -- work                                     # 打印范围、阶段、任务与验收进度
 npm run work:view                                         # 只读工作台 .work/review/work-view.html（状态/范围/阶段/任务/验收/会话）
 npm run stage -- <阶段>     # 旧入口：按条目阶段打印规则包（已由 npm run state 取代）

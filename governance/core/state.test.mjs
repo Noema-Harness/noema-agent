@@ -21,6 +21,7 @@ import {
   ensureThread,
   logOf,
   resumeThread,
+  resolveFinding,
   reviewPhase,
   setAcceptance,
   signScope,
@@ -187,7 +188,7 @@ test("the work list carries scope, phases, tasks and stage acceptance", () => {
   assert.deepEqual(workProgress(doc), {
     phases: { done: 0, total: 2 },
     tasks: { done: 0, total: 2 },
-    acceptance: { passed: 0, failed: 0, unchecked: 1, total: 1, findings: 0 },
+    acceptance: { passed: 0, failed: 0, unchecked: 1, total: 1, findings: 0, openFindings: 0 },
   });
   assert.throws(() => completePhase(doc, { id: first.id, now: NOW }), /还有 2 个任务没完成/u);
   completeTask(doc, { id: task.id, evidence: "node --test state.test.mjs", now: NOW });
@@ -282,7 +283,7 @@ test("the CLI drives the work list end to end", () => {
     assert.deepEqual(workProgress(doc), {
       phases: { done: 1, total: 1 },
       tasks: { done: 1, total: 1 },
-      acceptance: { passed: 1, failed: 0, unchecked: 0, total: 1, findings: 0 },
+      acceptance: { passed: 1, failed: 0, unchecked: 0, total: 1, findings: 0, openFindings: 0 },
     });
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
@@ -327,13 +328,20 @@ test("acceptance layers keep findings out of the verdict and review notes stay o
   completeTask(doc, { id: task.id, now: NOW });
   setAcceptance(doc, { id: deterministic.id, status: "通过", now: NOW });
   setAcceptance(doc, { id: human.id, status: "通过", now: NOW });
-  // R 层是发现清单：未判也不阻塞阶段完成。
+  // R 层是审查发现：不判「通过」，但必须先处置（改掉 / 延期 / 接受）才能完成阶段。
   assert.equal(finding.status, "未验");
+  assert.throws(() => completePhase(doc, { id: phase.id, now: NOW }), /审查发现没处置/u);
+  assert.throws(
+    () => resolveFinding(doc, { id: finding.id, decision: "延期", now: NOW }),
+    /要写理由/u,
+  );
+  resolveFinding(doc, { id: finding.id, decision: "延期", note: "下个阶段一并补签收列", now: NOW });
   completePhase(doc, { id: phase.id, now: NOW });
   assert.equal(phase.status, "已完成");
   const progress = workProgress(doc);
   assert.equal(progress.acceptance.total, 2);
   assert.equal(progress.acceptance.findings, 1);
+  assert.equal(progress.acceptance.openFindings, 0);
   const { doc: accepted } = setState(doc, { to: "验收", reason: "阶段完成", now: NOW });
   const { scope } = signScope(accepted, { text: "符合预期", now: NOW });
   assert.equal(scope.signed.text, "符合预期");

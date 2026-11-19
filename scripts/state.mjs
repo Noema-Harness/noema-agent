@@ -22,6 +22,7 @@ import {
   findPhase,
   logOf,
   progressLines,
+  resolveFinding,
   reviewPhase,
   resumeThread,
   setAcceptance,
@@ -354,7 +355,17 @@ export function main(argv, root = process.cwd()) {
       console.log(`验收项 ${result.item.id}：${result.item.status}`);
       return;
     }
-    throw new Error("accept 后面要写 add 或 set");
+    if (action === "resolve") {
+      const result = resolveFinding(doc, {
+        id: flags.id,
+        decision: flags.decision,
+        note: typeof flags.note === "string" ? flags.note : null,
+      });
+      doc = commit(root, result.doc, { dryRun });
+      console.log(`发现 ${result.item.id} 已处置：${result.item.resolution.decision}`);
+      return;
+    }
+    throw new Error("accept 后面要写 add / set / resolve");
   }
 
   if (command === "work") {

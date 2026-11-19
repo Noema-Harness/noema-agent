@@ -15,6 +15,8 @@ export const ENDINGS = ["定案", "归档"];
 export const PHASE_STATUSES = ["进行中", "已完成"];
 export const TASK_STATUSES = ["未完成", "已完成"];
 export const ACCEPTANCE_STATUSES = ["未验", "通过", "不通过"];
+// R 层的发现也必须被处置：改掉、延期（写理由）、或接受（写理由），不能挂着不管。
+export const FINDING_DECISIONS = ["已修", "延期", "接受"];
 // D=确定性检查 C=判据对照 R=审查发现（只出清单，不判通过）H=人签收
 export const ACCEPTANCE_LAYERS = ["D", "C", "R", "H"];
 export const BLOCKING_LAYERS = ["D", "C", "H"];
@@ -192,6 +194,18 @@ export function validateState(doc) {
               errors.push(
                 `验收项 ${String(item.id)} 的 layer 只能是 ${ACCEPTANCE_LAYERS.join(" / ")}`,
               );
+            }
+            if (item.resolution !== undefined && item.resolution !== null) {
+              const resolution = item.resolution;
+              if (typeof resolution !== "object" || Array.isArray(resolution)) {
+                errors.push(`验收项 ${String(item.id)} 的 resolution 不是对象`);
+              } else if (!FINDING_DECISIONS.includes(resolution.decision)) {
+                errors.push(
+                  `验收项 ${String(item.id)} 的 resolution.decision 只能是 ${FINDING_DECISIONS.join(" / ")}`,
+                );
+              } else if (typeof resolution.note !== "string" && resolution.note !== null) {
+                errors.push(`验收项 ${String(item.id)} 的 resolution.note 只能是字符串或 null`);
+              }
             }
           }
         }
@@ -419,6 +433,18 @@ export function signScope(doc, { text, now = new Date() } = {}) {
       (item) => BLOCKING_LAYERS.includes(item.layer ?? "D") && item.status !== "通过",
     ),
   );
+  const openFindings = (doc.work.phases ?? []).flatMap((phase) =>
+    (phase.acceptance ?? []).filter(
+      (item) =>
+        (item.layer ?? "D") === "R" &&
+        (!item.resolution || !FINDING_DECISIONS.includes(item.resolution.decision)),
+    ),
+  );
+  if (openFindings.length > 0) {
+    throw new Error(
+      `还有 ${openFindings.length} 条审查发现没处置（${openFindings.map((item) => item.id).join("、")}）：先处置再签收`,
+    );
+  }
   if (blockingFailures.length > 0) {
     throw new Error(
       `还有 ${blockingFailures.length} 个 D/C/H 验收项没通过（${blockingFailures.map((item) => item.id).join("、")}）：先过阶段验收再签收`,
@@ -470,6 +496,16 @@ export function completePhase(doc, { id, now = new Date() } = {}) {
     throw new Error(
       `阶段 ${phase.id} 还有不通过的验收项：${failed.map((one) => one.id).join("、")}`,
     );
+  const openFindings = phase.acceptance.filter(
+    (item) =>
+      (item.layer ?? "D") === "R" &&
+      (!item.resolution || !FINDING_DECISIONS.includes(item.resolution.decision)),
+  );
+  if (openFindings.length > 0) {
+    throw new Error(
+      `阶段 ${phase.id} 还有 ${openFindings.length} 条审查发现没处置（${openFindings.map((one) => one.id).join("、")}）：accept resolve --id <id> --decision 已修|延期|接受 [--note "…"]`,
+    );
+  }
   phase.status = "已完成";
   phase.doneAt = now.toISOString();
   return { doc, phase };
@@ -533,6 +569,22 @@ export function setAcceptance(doc, { id, status, evidence = null, now = new Date
   return { doc, phase, item };
 }
 
+// R 层发现的处置：已修 / 延期 / 接受，后两者必须写理由。
+export function resolveFinding(doc, { id, decision, note = null, now = new Date() } = {}) {
+  if (!FINDING_DECISIONS.includes(decision)) {
+    throw new Error(`发现处置只能是 ${FINDING_DECISIONS.join(" / ")}`);
+  }
+  const { phase, item } = findAcceptance(doc, id);
+  if ((item.layer ?? "D") !== "R")
+    throw new Error(`验收项 ${item.id} 不是审查发现（R 层），用 accept set 判 D/C/H`);
+  const reason = note ? String(note).trim() : null;
+  if (decision !== "已修" && (!reason || reason.length < 4)) {
+    throw new Error(`处置为「${decision}」要写理由（--note「为什么现在不修 / 为什么可以接受」）`);
+  }
+  item.resolution = { decision, note: reason, at: now.toISOString() };
+  return { doc, phase, item };
+}
+
 export function workProgress(doc) {
   const phases = doc.work?.phases ?? [];
   const tasks = phases.flatMap((phase) => phase.tasks);
@@ -550,6 +602,11 @@ export function workProgress(doc) {
       unchecked: blocking.filter((item) => item.status === "未验").length,
       total: blocking.length,
       findings: items.filter((item) => item.layer === "R").length,
+      openFindings: items.filter(
+        (item) =>
+          item.layer === "R" &&
+          (!item.resolution || !FINDING_DECISIONS.includes(item.resolution.decision)),
+      ).length,
     },
   };
 }
@@ -560,7 +617,7 @@ export function progressLines(doc) {
   const scope = doc.work?.scope;
   if (scope) lines.push(`范围：${scope.text}`);
   lines.push(
-    `阶段 ${progress.phases.done}/${progress.phases.total} · 任务 ${progress.tasks.done}/${progress.tasks.total} · 验收 ${progress.acceptance.passed}/${progress.acceptance.total}${progress.acceptance.failed > 0 ? `（不通过 ${progress.acceptance.failed}）` : ""}${progress.acceptance.findings > 0 ? ` · 审查发现 ${progress.acceptance.findings} 条` : ""}`,
+    `阶段 ${progress.phases.done}/${progress.phases.total} · 任务 ${progress.tasks.done}/${progress.tasks.total} · 验收 ${progress.acceptance.passed}/${progress.acceptance.total}${progress.acceptance.failed > 0 ? `（不通过 ${progress.acceptance.failed}）` : ""}${progress.acceptance.findings > 0 ? ` · 审查发现 ${progress.acceptance.findings} 条（未处置 ${progress.acceptance.openFindings}）` : ""}`,
   );
   const currentPhase = (doc.work?.phases ?? []).find((phase) => phase.status === "进行中");
   if (currentPhase) lines.push(`当前阶段：${currentPhase.id} ${currentPhase.name}`);

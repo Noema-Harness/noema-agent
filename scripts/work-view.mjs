@@ -117,6 +117,28 @@ export function renderView(doc, now = new Date()) {
         `<li><span class="n">${escape(entry.date)}</span>${escape(entry.from ?? "起始")} → <b>${escape(entry.to)}</b>（${escape(entry.obligation)}）：${escape(entry.reason)}</li>`,
     )
     .join("");
+  const state = doc.current.state;
+  const hint =
+    state === "讨论"
+      ? "把这次讨论记下来（state -- round）；有结论就定案（设计稿 + 范围/清单）。执行期的账本折叠在下面。"
+      : state === "执行"
+        ? "推进当前阶段的未完成任务；阶段收尾时处置审查发现（accept resolve），再进验收。"
+        : "把 D/C/H 判完、R 发现处置完，再用 state -- sign 记录你的原话。";
+  const fold = (label, inner, open) =>
+    `<details class="fold"${open ? " open" : ""}><summary>${escape(label)}</summary>${inner}</details>`;
+  const progressHtml = `<div class="bar"><i style="width:${percent}%"></i></div>
+  <p class="meta">任务 ${progress.tasks.done}/${progress.tasks.total}（${percent}%）· 阶段 ${progress.phases.done}/${progress.phases.total} · 验收通过 ${progress.acceptance.passed}/${progress.acceptance.total}${progress.acceptance.findings > 0 ? ` · 审查发现 ${progress.acceptance.findings}（未处置 ${progress.acceptance.openFindings}）` : ""}${progress.acceptance.failed > 0 ? ` · <b>不通过 ${progress.acceptance.failed}</b>` : ""}</p>`;
+  const phasesHtml =
+    phases.map(phaseCard).join("") ||
+    `<p class="empty">还没有阶段：npm run state -- phase add --name "…"</p>`;
+  const threadHtml = thread
+    ? threadBlock(thread)
+    : `<section class="thread"><h2>讨论</h2><p class="empty">当前没有活动会话；进入讨论会自动恢复最近一次归档会话。</p></section>`;
+  const logHtml = `<h3>最近切换</h3><ul>${recent || "<li class='empty'>还没有切换记录</li>"}</ul>`;
+  const scopeHtml = scope
+    ? `<div class="scope"><b>范围</b> ${escape(scope.text)}<div class="meta">立于 ${escape(scope.since)}${scope.signed ? ` · 已签收（${escape(scope.signed.date)}）：${escape(scope.signed.text)}` : ""}</div></div>`
+    : `<div class="scope meta">还没有声明范围</div>`;
+
   return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>Noema 工作台</title>
 <style>
 :root { color-scheme: light; }
@@ -157,14 +179,18 @@ ul { margin: 0; padding: 0; list-style: none; }
 .log { margin-top: 18px; color: #6f6a65; }
 footer { margin-top: 30px; font-size: 11px; color: #a49f98; }
 .empty { color: #a49f98; }
-</style></head><body>
-<div class="head"><span class="state">${escape(doc.current.state)}</span><span class="meta">自 ${escape(doc.current.since)} · 生成于 ${escape(now.toISOString())}</span></div>
-${scope ? `<div class="scope"><b>范围</b> ${escape(scope.text)}<div class="meta">立于 ${escape(scope.since)}${scope.signed ? ` · 已签收（${escape(scope.signed.date)}）：${escape(scope.signed.text)}` : ""}</div></div>` : `<div class="scope meta">还没有声明范围</div>`}
-<div class="bar"><i style="width:${percent}%"></i></div>
-<p class="meta">任务 ${progress.tasks.done}/${progress.tasks.total}（${percent}%）· 阶段 ${progress.phases.done}/${progress.phases.total} · 验收通过 ${progress.acceptance.passed}/${progress.acceptance.total}${progress.acceptance.findings > 0 ? ` · 审查发现 ${progress.acceptance.findings}` : ""}${progress.acceptance.failed > 0 ? ` · <b>不通过 ${progress.acceptance.failed}</b>` : ""}</p>
-${phases.map(phaseCard).join("") || `<p class="empty">还没有阶段：npm run state -- phase add --name "…"</p>`}
-${threadBlock(thread)}
-<div class="log"><h3>最近切换</h3><ul>${recent || "<li class='empty'>还没有切换记录</li>"}</ul></div>
+.empty { color: #a49f98; }
+.now { margin: 0 0 16px; padding: 9px 14px; background: #f2f5ee; border-left: 3px solid #7d9a7a; border-radius: 6px; }
+.fold { margin-top: 18px; }
+.fold > summary { cursor: pointer; font-size: 12px; color: #6f6a65; letter-spacing: .04em; padding: 4px 0; }
+.fold > summary:hover { color: #24211d; }
+<div class="head"><span class="state">${escape(state)}</span><span class="meta">自 ${escape(doc.current.since)} · 生成于 ${escape(now.toISOString())}</span></div>
+<p class="now"><b>现在该做</b> ${escape(hint)}</p>
+${scopeHtml}
+${state === "讨论" ? fold("讨论会话", threadHtml, true) + fold("执行期账本：阶段 · 任务 · 验收", progressHtml + phasesHtml, false) : ""}
+${state === "执行" ? fold("阶段 · 任务", progressHtml + phasesHtml, true) + fold("讨论会话（已归档/未活动）", threadHtml, false) : ""}
+${state === "验收" ? fold("阶段验收：D 可跑 · C 可复核 · R 待处置 · H 签收", progressHtml + phasesHtml, true) + fold("讨论会话（已归档/未活动）", threadHtml, false) : ""}
+${fold("最近切换", logHtml, false)}
 <footer>只读视图：运行 npm run work:view 重新生成。状态与清单只走 npm run state，不计入账本。</footer>
 </body></html>`;
 }
