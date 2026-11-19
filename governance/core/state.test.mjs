@@ -25,6 +25,7 @@ import {
   reviewPhase,
   passHumanAcceptance,
   setAcceptance,
+  setAcceptanceText,
   signScope,
   startPhase,
   setScope,
@@ -493,6 +494,23 @@ test("tasks and verdicts cannot skip evidence", () => {
   );
 });
 
+test("wording of a criterion can be fixed without touching the verdict", () => {
+  const doc = started();
+  setScope(doc, { text: "措辞范围", now: NOW });
+  setState(doc, { to: "执行", reason: "范围清楚", now: NOW });
+  const phase = addPhase(doc, { name: "第一段", now: NOW }).phase;
+  const item = addAcceptance(doc, {
+    phase: phase.id,
+    text: "页面上能看见",
+    layer: "D",
+    now: NOW,
+  }).item;
+  assert.throws(() => setAcceptanceText(doc, { id: item.id, text: "短", now: NOW }), /至少 4 字/u);
+  const result = setAcceptanceText(doc, { id: item.id, text: "打开即读出状态与下一步", now: NOW });
+  assert.equal(result.item.text, "打开即读出状态与下一步");
+  assert.equal(result.item.status, "未验");
+  assert.deepEqual(result.item.evidence, []);
+});
 test("the next action asks the user for H items instead of judging them", () => {
   const doc = started();
   setScope(doc, { text: "探针范围", now: NOW });

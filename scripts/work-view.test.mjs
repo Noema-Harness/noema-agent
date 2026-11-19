@@ -37,44 +37,43 @@ function fixture() {
   return doc;
 }
 
-test("the focus names the current phase and carries the single next action", () => {
+test("the header shows the state the work is in", () => {
   const view = renderView(fixture(), new Date("2026-11-20T10:00:00+08:00"));
-  assert.match(view, /<span class="focus-index mono">02<\/span>/u);
-  assert.match(view, /<h1 class="focus-name">再做细<\/h1>/u);
+  assert.match(view, /<span class="state on" aria-current="true">[\s\S]*?执行/u);
+  assert.match(view, /<span class="state">[\s\S]*?讨论/u);
+  assert.match(view, /<span class="state">[\s\S]*?验收/u);
+});
+
+test("every unit gets one row, and the current one is marked", () => {
+  const view = renderView(fixture());
+  assert.match(view, /<li class="unit live" data-phase="P2">/u);
+  assert.match(view, /<li class="unit done" data-phase="P1">/u);
+  assert.equal(view.match(/class="unit-row"/gu)?.length, 2);
+});
+
+test("the row carries the next command and the scope", () => {
+  const view = renderView(fixture());
   assert.match(view, /npm run state -- task done --id P2-T1/u);
   assert.match(view, /class="action"/u);
+  assert.match(view, /把工作台做出来/u);
 });
 
-test("only the current phase is open, the finished one is closed", () => {
+test("detail stays folded until the unit is opened", () => {
   const view = renderView(fixture());
-  assert.match(
-    view,
-    /<li class="node live open" data-phase="P2"[^>]*>[\s\S]*?aria-expanded="true"/u,
-  );
-  assert.match(view, /<li class="node done" data-phase="P1"[^>]*>[\s\S]*?aria-expanded="false"/u);
-});
-
-test("the view escapes state text instead of trusting it", () => {
-  const view = renderView(fixture());
-  assert.ok(view.includes("画出 &lt;骨架&gt;"));
+  assert.match(view, /aria-expanded="false"/u);
+  assert.match(view, /画出 &lt;骨架&gt;/u);
   assert.ok(!view.includes("画出 <骨架>"));
 });
 
-test("evidence stays hidden until the row is hovered", () => {
+test("layers are shapes with a verdict colour, and evidence sits in the drawer", () => {
   const view = renderView(fixture());
-  assert.match(view, /<span class="ev" role="note">截图生成成功<\/span>/u);
-  assert.match(view, /<span class="ev" role="note">手动打开过<\/span>/u);
-});
-
-test("layers are carried by shapes, not by a legend", () => {
-  const view = renderView(fixture());
-  assert.match(view, /shape shape-D/u);
-  assert.match(view, /shape shape-H/u);
-  assert.match(view, /shape shape-C/u);
+  assert.match(view, /class="layer ok"/u);
+  assert.match(view, /class="layer idle"/u);
+  assert.match(view, /class="evidence"/u);
   assert.doesNotMatch(view, /RECENT|近期动态|阶段 · 任务 · 验收/u);
 });
 
-test("a blank state still renders the command that starts the work", () => {
+test("a blank state still tells the user how to start", () => {
   const view = renderView(emptyState(new Date("2026-11-20T10:00:00+08:00")));
   assert.match(view, /还没有验收单元/u);
   assert.match(view, /npm run state -- title/u);

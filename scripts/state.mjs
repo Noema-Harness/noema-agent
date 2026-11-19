@@ -33,6 +33,7 @@ import {
   reviewPhase,
   resumeThread,
   setAcceptance,
+  setAcceptanceText,
   setScope,
   setState,
   signScope,
@@ -152,6 +153,7 @@ const USAGE = [
   '  npm run state -- task done --id P1-T1 [--evidence "命令+结果"]',
   '  npm run state -- accept add --phase P1 --text "这一条怎么算过" [--layer D|C|R|H]',
   '  npm run state -- accept set --id P1-A1 --status 通过|不通过 [--evidence "证据"]',
+  '  npm run state -- accept text --id P1-A1 --text "把判据写准"',
   '  npm run state -- accept human --id P1-A4 --text "用户原话"（H 层只能这样判）',
   "  npm run state -- work                      # 范围 / 阶段 / 任务 / 阶段验收的进度",
   "  npm run state -- next                      # 只打印下一步该做什么",
@@ -524,6 +526,15 @@ function dispatch(argv, root = process.cwd()) {
       console.log(`验收项 ${result.item.id}：${result.item.status}`);
       return;
     }
+    if (action === "text") {
+      const result = setAcceptanceText(doc, {
+        id: flags.id,
+        text: typeof flags.text === "string" ? flags.text : null,
+      });
+      doc = commit(root, result.doc, { dryRun });
+      console.log(`验收项 ${result.item.id} 的判据已改：${result.item.text}`);
+      return;
+    }
     if (action === "human") {
       const result = passHumanAcceptance(doc, {
         id: flags.id,
@@ -543,7 +554,7 @@ function dispatch(argv, root = process.cwd()) {
       console.log(`发现 ${result.item.id} 已处置：${result.item.resolution.decision}`);
       return;
     }
-    throw new Error("accept 后面要写 add / set / resolve");
+    throw new Error("accept 后面要写 add / set / text / human / resolve");
   }
 
   if (command === "work") {

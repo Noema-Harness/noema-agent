@@ -316,7 +316,7 @@
   },
   "source": {
     "doc": "governance/README.md",
-    "sha256": "9ae5bded36ce16d1b60aa7cb689e404c8577afba56ce2310273f482448d1c784",
+    "sha256": "f0e61f6c2022517343b35bdf2abf538186a748b1bfd93af08fdbc74fc3937fa4",
     "sections": [
       {
         "title": "状态与门",
@@ -324,7 +324,7 @@
       },
       {
         "title": "数据与工作台",
-        "sha256": "0f8410ff176d5472162efc3f69f1063b9be3fcbabc111d92743132142608ffe7"
+        "sha256": "4ddec11ccd5c77f24ba34d888b916d1d9ec0a2959eb49b43f7c19a50d550ec3e"
       },
       {
         "title": "事实所有权",
@@ -333,8 +333,8 @@
     ],
     "candidateSha256": "370f48be324c0f5c8ba59c42134693713353b9b22605f769e3e9a90b43bf7154",
     "rationale": {
-      "text": "README 的「数据与工作台」只把工作台描述改成新的交互形态（一个焦点/一条骨架/形状表示层），治理节点、边界、连线与门的关系未变，图不需要改。",
-      "sectionsDigest": "8bd924a911543e52fe2059494fa278a5875af98d1829df82c92b1267f0d82fc4"
+      "text": "README 的「数据与工作台」只重写了工作台的呈现方式（状态条、单元行、形状判据、下一步命令）；治理节点、边界、连线与门的关系未变，图内容不需要改。",
+      "sectionsDigest": "b57e5d361c5dd33edd7a78a60a4796c4994d7ec1808d5c997e7a412e0220f770"
     }
   },
   "assets": {
@@ -349,5 +349,5 @@
       "bytes": 156685
     }
   },
-  "updatedAt": "2026-11-19T21:42:52.972Z"
+  "updatedAt": "2026-11-19T21:54:59.484Z"
 }

@@ -686,6 +686,18 @@ export function setAcceptance(doc, { id, status, evidence = null, now = new Date
   return { doc, phase, item };
 }
 
+// 改判据的措辞不是改判断：判定与证据都保留，只把"怎么算过"写准。
+export function setAcceptanceText(doc, { id, text, now = new Date() } = {}) {
+  const { phase, item } = findAcceptance(doc, id);
+  const trimmed = String(text ?? "").trim();
+  if ([...trimmed].length < 4) {
+    throw new Error(`判据要写清楚（至少 4 字）：${item.id}`);
+  }
+  item.text = trimmed;
+  item.updatedAt = now.toISOString();
+  return { doc, phase, item };
+}
+
 // H 层是人签收项：只有用户原话能把它判为通过，agent 不能自己写。
 export function passHumanAcceptance(doc, { id, text, now = new Date() } = {}) {
   const { phase, item } = findAcceptance(doc, id);
