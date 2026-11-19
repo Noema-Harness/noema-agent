@@ -399,19 +399,20 @@ export function openSessions(doc) {
 }
 
 export function listSessions(doc) {
-  return (doc.sessions ?? []).map((session) => ({
-    done: (session.segments ?? []).filter((segment) => segment.status === "已完成").length,
-    total: (session.segments ?? []).length,
-    id: session.id,
-    title: session.title,
-    status: session.status,
-    state: session.state,
-    since: session.since,
-    focused: session.id === doc.focus,
-    scope: session.scope?.text ?? null,
-    done: sessionProgress(session).done,
-    total: sessionProgress(session).total,
-  }));
+  return (doc.sessions ?? []).map((session) => {
+    const progress = sessionProgress(session);
+    return {
+      id: session.id,
+      title: session.title,
+      status: session.status,
+      state: session.state,
+      since: session.since,
+      focused: session.id === doc.focus,
+      scope: session.scope?.text ?? null,
+      done: progress.segmentsDone,
+      total: progress.segments,
+    };
+  });
 }
 
 export function startSession(doc, { title, discuss = false, now = new Date() } = {}) {
