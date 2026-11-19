@@ -316,7 +316,7 @@
   },
   "source": {
     "doc": "governance/README.md",
-    "sha256": "d4e68d9210a784f290b82e29cabd21acf13f2ba4c135303c90c3a4eed0ecfc4a",
+    "sha256": "de3242dfe8538bdd26de5f0ff7274818cd0f43812dddcd93654210c4370fdc36",
     "sections": [
       {
         "title": "状态与门",
@@ -324,7 +324,7 @@
       },
       {
         "title": "数据与工作台",
-        "sha256": "4c4997614f016527769ad54f2db14d1c78a1de0c2a32ebe0f26757a7e5167092"
+        "sha256": "4780f59dbdbe628bb31fde8074434f392b89b93f0e6025e372b983a5651b1b42"
       },
       {
         "title": "事实所有权",
@@ -333,8 +333,8 @@
     ],
     "candidateSha256": "370f48be324c0f5c8ba59c42134693713353b9b22605f769e3e9a90b43bf7154",
     "rationale": {
-      "text": "README 只补充了状态数据 v3、state next/brief/json/verify/clean 命令与工作台交互说明；图里的节点（状态、规则包、会话、范围、验收单元、数据、提交门、check、工作台）与连线没有增减，结构未变，图不需要重画。",
-      "sectionsDigest": "1e7f98f316cac2a3e2945d3bc59120a20024076c559e3b8b13fec98f5cd67877"
+      "text": "README 只把 H 层判法写清（用户原话 + accept human）；节点仍是状态/规则包/范围/单元/数据/门/工作台，连线未变，图不需要重画。",
+      "sectionsDigest": "5e358a5a21dd37ba741fd62aa2821442c4d05ca2a273599cc04dfaad32eac6a7"
     }
   },
   "assets": {
@@ -349,5 +349,5 @@
       "bytes": 156685
     }
   },
-  "updatedAt": "2026-11-19T20:21:11.885Z"
+  "updatedAt": "2026-11-19T20:55:41.409Z"
 }

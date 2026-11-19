@@ -668,12 +668,33 @@ export function setAcceptance(doc, { id, status, evidence = null, now = new Date
   if ((item.layer ?? "D") === "R") {
     throw new Error(`${item.id} 是审查发现：用 accept resolve --decision 已修|延期|接受`);
   }
+  if ((item.layer ?? "D") === "H") {
+    throw new Error(
+      `${item.id} 是人签收项（H）：agent 不能自己判，用 accept human --id ${item.id} --text「用户原话」`,
+    );
+  }
   if (status !== "未验" && note.length < 4) {
     throw new Error(`判「${status}」要写 --evidence「怎么验的 + 结果」（至少 4 字）：${item.id}`);
   }
   item.status = status;
   item.checkedAt = now.toISOString();
   if (note) item.evidence.push(note);
+  return { doc, phase, item };
+}
+
+// H 层是人签收项：只有用户原话能把它判为通过，agent 不能自己写。
+export function passHumanAcceptance(doc, { id, text, now = new Date() } = {}) {
+  const { phase, item } = findAcceptance(doc, id);
+  if ((item.layer ?? "D") !== "H") {
+    throw new Error(`验收项 ${item.id} 不是人签收项（H）：用 accept set 判 D/C`);
+  }
+  const quote = text ? String(text).trim() : "";
+  if (quote.length < 4) {
+    throw new Error(`人签收项要带用户原话（--text「用户怎么说的」，至少 4 字）：${item.id}`);
+  }
+  item.status = "通过";
+  item.checkedAt = now.toISOString();
+  item.evidence.push(`用户签收：${quote}`);
   return { doc, phase, item };
 }
 
@@ -841,12 +862,24 @@ export function nextAction(doc) {
     const blocking = running.acceptance.filter((item) =>
       BLOCKING_LAYERS.includes(item.layer ?? "D"),
     );
-    const unchecked = blocking.filter((item) => item.status === "未验");
+    const unchecked = blocking.filter(
+      (item) => item.status === "未验" && (item.layer ?? "D") !== "H",
+    );
     if (unchecked.length > 0) {
       return {
         label: `核对 ${running.id} 的验收项（还有 ${unchecked.length} 项）`,
         command: `npm run state -- accept set --id ${unchecked[0].id} --status 通过 --evidence "怎么验的、结果"`,
         detail: "判为不通过就回执行修，修完重判。",
+      };
+    }
+    const humanOpen = blocking.find(
+      (item) => item.status === "未验" && (item.layer ?? "D") === "H",
+    );
+    if (humanOpen) {
+      return {
+        label: `请用户判断：${humanOpen.text}`,
+        command: `npm run state -- accept human --id ${humanOpen.id} --text "用户原话"`,
+        detail: "H 是人签收项：不要自己判，拿到用户原话再记。",
       };
     }
     const phaseFindings = (running.acceptance ?? []).filter(
@@ -879,12 +912,22 @@ export function nextAction(doc) {
   const blocking = work.phases.flatMap((phase) =>
     (phase.acceptance ?? []).filter((item) => BLOCKING_LAYERS.includes(item.layer ?? "D")),
   );
-  const unchecked = blocking.filter((item) => item.status === "未验");
+  const unchecked = blocking.filter(
+    (item) => item.status === "未验" && (item.layer ?? "D") !== "H",
+  );
   if (unchecked.length > 0) {
     return {
       label: `逐条验收（还有 ${unchecked.length} 项）`,
       command: `npm run state -- accept set --id ${unchecked[0].id} --status 通过 --evidence "证据"`,
-      detail: "D 确定性检查 / C 判据对照 / H 人签收。",
+      detail: "D 确定性检查 / C 判据对照；H 层要用户原话。",
+    };
+  }
+  const humanOpen = blocking.find((item) => item.status === "未验" && (item.layer ?? "D") === "H");
+  if (humanOpen) {
+    return {
+      label: `请用户判断：${humanOpen.text}`,
+      command: `npm run state -- accept human --id ${humanOpen.id} --text "用户原话"`,
+      detail: "H 是人签收项：不要自己判，拿到用户原话再记。",
     };
   }
   const failed = blocking.filter((item) => item.status === "不通过");

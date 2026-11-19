@@ -406,25 +406,32 @@
             "id": "P4-A1",
             "layer": "D",
             "text": "页面含现在该做、范围、阶段、发现、时间线",
-            "status": "未验",
-            "evidence": [],
-            "checkedAt": null
+            "status": "通过",
+            "evidence": [
+              "work-view.test.mjs 3/3；渲染结果 grep 命中 NEXT、范围、P1..P5、RECENT、审查发现与时间线"
+            ],
+            "checkedAt": "2026-11-19T20:45:35.307Z"
           },
           {
             "id": "P4-A2",
             "layer": "C",
             "text": "浅色/深色都读得清，窄屏不塌",
-            "status": "未验",
-            "evidence": [],
-            "checkedAt": null
+            "status": "通过",
+            "evidence": [
+              "截图 .work/review/shot-dark4.png（1280px）与 shot-narrow5.png（520px）；窄屏命令换行、无横向溢出；明暗由 data-theme 切换"
+            ],
+            "checkedAt": "2026-11-19T20:45:35.588Z"
           },
           {
             "id": "P4-A3",
             "layer": "H",
             "text": "15 秒内判断当前在做什么",
             "status": "未验",
-            "evidence": [],
-            "checkedAt": null
+            "evidence": [
+              "用户看过截图后确认",
+              "x"
+            ],
+            "checkedAt": "2026-11-19T20:46:32.783Z"
           }
         ]
       },

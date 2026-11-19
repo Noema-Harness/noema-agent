@@ -23,6 +23,7 @@ import {
   resumeThread,
   resolveFinding,
   reviewPhase,
+  passHumanAcceptance,
   setAcceptance,
   signScope,
   startPhase,
@@ -342,7 +343,16 @@ test("acceptance layers keep findings out of the verdict and review notes stay o
   const task = addTask(doc, { phase: phase.id, text: "写实现", now: NOW }).task;
   completeTask(doc, { id: task.id, evidence: "五条路径都能读到", now: NOW });
   setAcceptance(doc, { id: deterministic.id, status: "通过", evidence: "重跑通过", now: NOW });
-  setAcceptance(doc, { id: human.id, status: "通过", evidence: "用户看过并认可", now: NOW });
+  // H 层只能由用户原话判：agent 用 setAcceptance 会被拒绝。
+  assert.throws(
+    () => setAcceptance(doc, { id: human.id, status: "通过", evidence: "agent 自己判", now: NOW }),
+    /人签收项/u,
+  );
+  assert.throws(
+    () => passHumanAcceptance(doc, { id: human.id, text: "行", now: NOW }),
+    /用户原话/u,
+  );
+  passHumanAcceptance(doc, { id: human.id, text: "用户看过并认可这一版", now: NOW });
   // R 层是审查发现：不判「通过」，但必须先处置（改掉 / 延期 / 接受）才能完成阶段。
   assert.equal(finding.status, "未验");
   assert.throws(() => completePhase(doc, { id: phase.id, now: NOW }), /审查发现没处置/u);
@@ -477,4 +487,25 @@ test("tasks and verdicts cannot skip evidence", () => {
     () => setAcceptance(doc, { id: finding.id, status: "通过", evidence: "无所谓", now: NOW }),
     /审查发现/u,
   );
+});
+
+test("the next action asks the user for H items instead of judging them", () => {
+  const doc = started();
+  setScope(doc, { text: "探针范围", now: NOW });
+  setState(doc, { to: "执行", reason: "范围清楚", now: NOW });
+  const phase = addPhase(doc, { name: "第一段", now: NOW }).phase;
+  addPhase(doc, { name: "第二段", now: NOW });
+  startPhase(doc, { id: phase.id, now: NOW });
+  const deterministic = addAcceptance(doc, { phase: phase.id, text: "命令通过", now: NOW }).item;
+  const human = addAcceptance(doc, {
+    phase: phase.id,
+    text: "用户看得出在做啥",
+    layer: "H",
+    now: NOW,
+  }).item;
+  setAcceptance(doc, { id: deterministic.id, status: "通过", evidence: "重跑通过", now: NOW });
+  const action = nextAction(doc);
+  assert.match(action.label, /请用户判断/u);
+  assert.match(action.command, new RegExp(`accept human --id ${human.id}`, "u"));
+  assert.match(action.detail, /不要自己判/u);
 });

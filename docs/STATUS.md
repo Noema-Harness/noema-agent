@@ -32,7 +32,7 @@ Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与�
 **证据**：
 
 - `npm run check`：**901/901 通过、0 fail**（55,456ms），`governance: milestone OK`（workspace/branches/docs/figure/source/lint/typecheck/tools/test 全绿）。
-- `node --test governance/core/state.test.mjs` **21/21**（v2→v3 升级、证据规则、R 处置、签收、归档、`next` 全链路）。
+- `node --test governance/core/state.test.mjs` **22/22**（v2→v3 升级、证据规则、R 处置、H 只能由用户原话判、签收、归档、`next` 全链路）。
 - `node --test scripts/maintenance.test.mjs` **6/6**（治理词提示、内核边界、产品代码必须有范围、文档登记与文档头、precommit 播报）。
 - `node --test scripts/work-view.test.mjs` **3/3**（下一步命令、只展开当前阶段、HTML 转义）。
 - `npm run docs:check` OK；`npm run figure:check` OK（治理图 source `d4e68d9210a7`）。

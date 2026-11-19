@@ -25,7 +25,8 @@ Does not own: 产品定位（PRODUCT）、结构与数据地图（ARCHITECTURE�
 - 声明范围：`npm run state -- scope "<一句话/设计稿/里程碑>" [--kind 里程碑|修复]`（进执行前必须有范围）。
 - 验收单元：`npm run state -- phase add --name "…" [--goal "…"]`；开始单元：`phase start --id P1`；
   任务：`task add --phase P1 --text "…"`；完成：`task done --id P1-T1 --evidence "…"`；单元完成：`phase done --id P1`。
-- 阶段验收四层：`accept add --phase P1 --text "…" --layer D|C|R|H`；判定 `accept set --id P1-A1 --status 通过|不通过`；
+- 阶段验收四层：`accept add --phase P1 --text "…" --layer D|C|R|H`；判定 D/C `accept set --id P1-A1 --status 通过|不通过`；
+  H 项只能由用户原话判：`accept human --id P1-A4 --text "用户原话"`；
   审查发现处置 `accept resolve --id P1-A3 --decision 已修|延期|接受 [--note "…"]`。
 - 人签收：`npm run state -- sign "<用户原话>"`（必须所有单元完成、D/C/H 全绿、R 全处置）。
 - 归档：`npm run state -- clean`（只归档已签收的工作，写入 `governance/data/history.json`）。
@@ -73,7 +74,8 @@ Does not own: 产品定位（PRODUCT）、结构与数据地图（ARCHITECTURE�
 | `npm run state` 报「未知状态」            | 状态只有 讨论 / 执行 / 验收；按报错改用三个之一                   |
 | 报「进执行前先声明范围」                  | 先 `npm run state -- scope "<范围一句话>"`                        |
 | 报「进验收前没有完成的验收单元」          | 先用 `phase done` 完成单元（任务全勾、验收项全判）                |
-| 报「还有审查发现没处置」                  | `accept resolve --id … --decision 已修                            | 延期 | 接受 [--note "理由"]` |
+| 报「还有审查发现没处置」                  | `accept resolve --id … --decision 已修/延期/接受 [--note "理由"]` |
+| 报「是人签收项（H）：agent 不能自己判」   | 拿到用户原话后 `accept human --id P1-A4 --text "用户原话"`        |
 | `docs:check` 报文档引用了不存在的脚本     | 改 `package.json` 时同步 AGENTS/README/CONTRIBUTING/OPERATIONS/CI |
 | `docs:check` 报内核出现项目专名           | 挪到 `scripts/` 适配层；`governance/core/` 不许出现项目路径       |
 | `npm run dev` 报 `listen EACCES ::1:5173` | 设 `NOEMA_DEV_RENDERER_PORT=0`                                    |
