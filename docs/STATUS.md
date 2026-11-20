@@ -8,45 +8,56 @@ Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与�
 
 ## 版本与基线
 
-- 源码版本：`0.7.6`；当前源码基线：`5e8993f`。
+- 源码版本：`0.7.6`；当前源码基线：`388565c`。
 - 便携构建在 `apps/desktop/out/Noema-win32-x64/Noema.exe`；安装包由 `npm run make:desktop` 产出（构建陷阱与回退见 [OPERATIONS](OPERATIONS.md)）。
-- 未签名；Windows 安装，macOS/Linux 未做真机验收。
 
-## 最后一次验证（2026-11-20，治理台：判定优先 + 占位符不许过门）
+## 今天能用到哪
 
-**改了什么**：治理台从「状态的仪表盘」改成「一屏一个决定」，并堵住页面替人签字的漏洞——
+- 治理系统按 v4 状态模型运行：会话容器 + 焦点 + 段；`governance/data/state.json` 只经 `npm run state` 写
+  （文件锁、原子写、`.work/state-history/` 备份、`history.json` 归档）。
+- 治理台为版本②「一个焦点 + 一条骨架」，已移植到 v4：大编号当前段、完成度细线、范围一行、
+  唯一「下一步」命令（`nextAction`，点击复制）、纵向骨架（当前段摊开任务与 D/C/R/H 四行，证据悬停出现）、
+  `J`/`K` 移动、`T` 切明暗。
+- 占位符一律过不了门：`passHumanAcceptance`、`signScope`、`completeTask`、`setAcceptance`、`resolveFinding`
+  都拒绝「你的原话」「可以收口」「…」这类文本；`nextAction` 的模板命令本身就是显式占位（`'‹用户的签收原话›'`）。
+- Noema 桌面端 0.7.6 可安装、可运行；Windows 安装包未签名；macOS/Linux 未做真机验收。
 
-- 判定只有一个来源：`verdictOf` 直接消费 `nextAction(doc)`（label 作判定句、detail 作说明、command 作唯一命令），
-  页面不再自己排序缺口；顺序与 `signScope` 一致（任务 → D/C → 发现 → H → 收段 → 进验收 → 签收）。
-- 占位符一律被机制拒绝：`PLACEHOLDER_WORDS` 命中「你的原话」「可以收口」「…」「‹…›」等即报错，
-  `passHumanAcceptance`、`signScope`、`completeTask`、`setAcceptance`、`resolveFinding` 全部设防；
-  `nextAction` 的模板命令改成显式占位（`'‹用户的签收原话›'`、`'‹跑过的命令或看到的输出›'`），照抄就过不了校验。
-- `sessionProgress` 增加 `openFindings`，「发现」计数不再恒为 0。
-- 版面：默认浅色纸、暗色可选；`body` flex 收口、页脚贴底；门行改为流式（无固定列、正文 72ch、状态 13px）；
-  首屏加「这一轮交付」；段头是按钮（`aria-expanded` / `aria-controls`，Space/Enter 可展开）；
-  页脚「N 分钟前生成」每 30 秒重算，数据仍是快照。
-- 五套示例数据（`.work/review/ds-{busy,ready,discuss,daily,empty}/`）覆盖执行/待签收/讨论/日常平铺/空焦点，
-  三路复审（范式、视觉、交互）在其上重新巡览并给出 P0/P1。
+## 最后一次验证（2026-11-20，治理台冻结为版本②并移植到 v4）
+
+**改了什么**：按用户选择把治理台固定为「一个焦点 + 一条骨架」这一版，并把它的数据口径从 v3 换成 v4；
+其余几版（仪器台、审阅台、判定优先）不再维护。
+
+- `scripts/work-view.mjs` 以 `d67996e` 的版本为底，改读 `focusSession` / `sessionProgress` / `session.segments`，
+  页脚、命令摘要同步 v4；空焦点与无段时不崩（大编号显示 `01`、引导 `npm run state -- start`）。
+- `scripts/work-view.test.mjs` 重写 7 条：焦点编号与段名、唯一 `nextAction` 命令、骨架列出全部段（当前展开、
+  已完成打勾、`2/3` 计数）、层用形状且证据在 `.ev`、范围转义、空状态给 `start`、讨论态保留待裁。
+- `governance/README.md`、`AGENTS.md` 的治理台描述改为这版结构。
 
 **证据**：
 
-- `node --test governance/core/state.test.mjs` **15/15**（含占位符拒绝：H 原话、`‹…›`、验收证据、任务证据）。
+- `node --test scripts/work-view.test.mjs` **7/7**。
+- `node --test governance/core/state.test.mjs` **15/15**。
 - `node --test scripts/quickstart.test.mjs` **2/2**。
-- `node --test scripts/work-view.test.mjs` **11/11**（判定来自 `nextAction`；任务缺口优先；settled 后请用户签收→收段→进验收；
-  范围上屏；`openFindings` 计数；唯一命令可复制；只有焦点会话 alive；空自动段不显示；无会话给 `start`；转义；H 原话）。
 - `npm run check`：见下方「最后一次全量」。
-- 截图：`.work/review/ds-busy/wide.png`、`ds-ready`、`ds-discuss`、`ds-daily`、`ds-empty`，各有 1440×1000 与 520×1400。
+- 截图：`.work/review/spine-original.png`（原页复原，v3 快照）、`.work/review/spine-v4.png`（移植后，当前数据）。
 
 **未验证**：
 
 - 真实走完一轮：本次里程碑自身在用；还没有在一个真实产品任务上从 `start` 走到 `close` 并由用户签收。
-- 工作台是静态页（`.work/review/work-view.html`），未接 DSH 面板；不自动刷新。
+- 治理台是静态页（`.work/review/work-view.html`），未接 DSH 面板；不自动刷新。
+- 会话 `/` 焦点为空时的页面文案只在样例数据上验过，未在真实空状态使用中观察。
 - 记忆底座：状态化后原记忆决议被删除，记忆系统未启动；成员经历（0.7.x 已交付）暂不回流。
 - 协作者 macOS 真机安装/启动：等协作者反馈；Linux 未安排。
 
-## 更早验证（摘要）
+## 最后一次全量
 
+- `npm run check`：见 git log 最后一次提交的 CI `verify`。
+
+## 更早的验证
+
+- 2026-11-20（判定优先版）：`state` 15/15、`quickstart` 2/2、`work-view` 11/11、`npm run check` 901/901；
+  提交 `388565c`，CI `44662119464` success。
+- 2026-11-20（v4）：会话/焦点/段重构，`state` 14/14、`quickstart` 2/2、`work-view` 6/6；提交 `5e8993f`。
 - 2026-11-20（v3）：状态数据加固、CLI `next/brief/json/verify/clean`、审阅台工作台；902/902、CI 四次 success。
-- 2026-11-17：成员经历可查看/删除/恢复交付（`2dfa313`）；901/901、CI `44064152624` success；界面真机手测未做（本机 Electron 无法建窗）。
-- 2026-11-17：0.1.5 安装版交付（状态化前），Windows 安装/升级/回滚验证通过；未签名。
-- 2026-11-18～19：治理条目、存储分离、状态生命周期三批重构（`governance-*` changes，均已归档）；条目机制已在 2026-11-20 的激进重构中删除。
+- 2026-11-19（状态化治理）：删除条目与 OpenSpec，换成讨论/执行/验收三态；901/901，提交 `10f2b2f`。
+- 2026-11-18（成员经历纵切）：成员删除/墓碑/恢复与归档只读；901/901，提交 `2dfa313`。

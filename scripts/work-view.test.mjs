@@ -7,15 +7,15 @@ import {
   addAcceptance,
   addSegment,
   addTask,
-  archiveSession,
+  addWait,
   completeTask,
+  completeSegment,
   emptyState,
   passHumanAcceptance,
   resolveFinding,
   setAcceptance,
   setScope,
   setState,
-  completeSegment,
   startSegment,
   startSession,
 } from "../governance/core/state.mjs";
@@ -30,18 +30,14 @@ function withState(build) {
     `${JSON.stringify(doc, null, 2)}\n`,
   );
   const file = writeView(root);
-  const html = fs.readFileSync(file, "utf8");
+  const html = fs.readFileSync(file.output, "utf8");
   return { doc, html, root };
 }
 
-function simple() {
+// One session with a daily segment and one named segment carrying every layer.
+function layered() {
   let doc = startSession(emptyState(), { title: "把入口补上" }).doc;
   doc = setScope(doc, { text: "补一个能点开的入口", kind: "里程碑" }).doc;
-  return doc;
-}
-
-function layered() {
-  let doc = simple();
   const added = addSegment(doc, { name: "入口这一段" });
   doc = added.doc;
   const segmentId = added.segment.id;
@@ -56,8 +52,7 @@ function layered() {
 
 function settled() {
   let doc = layered();
-  const session = doc.sessions[0];
-  const segment = session.segments.at(-1);
+  const segment = doc.sessions[0].segments.at(-1);
   for (const task of segment.tasks) {
     doc = completeTask(doc, {
       id: task.id,
@@ -80,103 +75,61 @@ function settled() {
   return doc;
 }
 
-test("the lead sentence is the mechanism's next action, not a page invention", () => {
+test("the page opens on the segment in progress, numbered against the total", () => {
+  const { html } = withState(settled);
+  assert.match(html, /class="focus-index mono">02</u);
+  assert.match(html, /\/ 02/u);
+  assert.match(html, /class="focus-name">入口这一段</u);
+  assert.match(html, /class="scope"><span class="scope-kind">里程碑<\/span>补一个能点开的入口/u);
+});
+
+test("exactly one next action, and it is the mechanism's own command", () => {
+  const { html } = withState(settled);
+  const actions = html.match(/class="action"/gu) ?? [];
+  assert.equal(actions.length, 1);
+  assert.match(html, /npm run state -- accept human --id P\d-A\d/u);
+  assert.doesNotMatch(html, /npm run state -- task done/u);
+});
+
+test("the spine lists every segment, with the current one open and done ones ticked", () => {
+  const { html } = withState(settled);
+  assert.equal((html.match(/class="node /gu) ?? []).length, 2);
+  assert.match(html, /class="node done"/u);
+  assert.match(html, /class="node live open"/u);
+  assert.match(html, /2\/3/u);
+  assert.match(html, /aria-expanded="true"/u);
+});
+
+test("layers are shapes with evidence on demand, never a text legend", () => {
   const { html } = withState(layered);
-  assert.match(html, /class="lead">完成手上的任务/u);
-  assert.match(html, /npm run state -- task done --id P\d-T\d/u);
-  assert.doesNotMatch(html, /class="lead">还差一项人签收/u);
+  assert.match(html, /<span class="shape shape-D" aria-hidden="true">▢<\/span>/u);
+  assert.match(html, /<span class="shape shape-R" aria-hidden="true">◇<\/span>/u);
+  assert.match(html, /class="ev" role="note">还没有证据/u);
+  assert.match(html, /<span class="shape shape-H" aria-hidden="true">△<\/span>/u);
+  assert.doesNotMatch(html, /没有这一层的判据/u);
 });
 
-test("a task gap beats the human signature gap, exactly like signScope does", () => {
-  const { html } = withState(layered);
-  assert.match(html, /未处置/u);
-  assert.match(html, /等你签收/u);
-  assert.match(html, /class="lead">完成手上的任务/u);
-});
-
-test("settled gates hand the decision to the human, then to acceptance", () => {
-  const waiting = withState(settled).html;
-  assert.match(waiting, /class="lead">请用户签收/u);
-  assert.match(waiting, /accept human --id P\d-A\d/u);
-  assert.doesNotMatch(waiting, /accept set --id P\d-A\d --status 通过/u);
-
-  const closing = withState((doc) => {
-    const once = settled();
-    const human = once.sessions[0].segments.at(-1).acceptance.find((item) => item.layer === "H");
-    return passHumanAcceptance(once, { id: human.id, text: "位置我顺手，可以" }).doc;
-  }).html;
-  assert.match(closing, /class="lead">收尾这一段/u);
-
-  const entering = withState((doc) => {
-    const once = settled();
-    const segment = once.sessions[0].segments.at(-1);
-    const human = segment.acceptance.find((item) => item.layer === "H");
-    return completeSegment(
-      passHumanAcceptance(once, { id: human.id, text: "位置我顺手，可以" }).doc,
-      {
-        id: segment.id,
-      },
-    ).doc;
-  }).html;
-  assert.match(entering, /class="lead">进入验收/u);
-  assert.match(entering, /npm run state -- set 验收/u);
-});
-
-test("the scope is on screen next to the decision", () => {
-  const { html } = withState(layered);
-  assert.match(html, /这一轮交付：<b>补一个能点开的入口<\/b> · 里程碑/u);
-});
-
-test("open findings are counted, not hardcoded to zero", () => {
-  const { html } = withState(layered);
-  assert.match(html, /<b>1\/1<\/b> 发现/u);
-});
-
-test("the page has one command, one copy button and a live status region", () => {
-  const { html } = withState(layered);
-  assert.equal((html.match(/class="cmd"/gu) ?? []).length, 1);
-  assert.equal((html.match(/class="copy"/gu) ?? []).length, 1);
-  assert.match(html, /role="status" id="status"/u);
-});
-
-test("only a focused open session is allowed to look alive", () => {
-  const alive = withState(layered).html;
-  assert.match(alive, /class="stage"/u);
-  assert.match(alive, /class="seg live on"/u);
-  const archived = withState((doc) => archiveSession(simple(), { reason: "先放一放" }).doc).html;
-  assert.match(archived, /已归档/u);
-  assert.doesNotMatch(archived, /data-current="true"/u);
-});
-
-test("an empty automatic segment is not drawn as history", () => {
-  let doc = simple();
-  doc = addSegment(doc, { name: "第一段" }).doc;
+test("evidence is escaped, so a scope text cannot inject markup", () => {
+  let doc = startSession(emptyState(), { title: "转义" }).doc;
+  doc = setScope(doc, { text: '带引号 "的" 范围 <b>粗</b>', kind: "修复" }).doc;
   const { html } = withState(() => doc);
-  assert.equal((html.match(/class="seg /gu) ?? []).length, 1);
-  assert.match(html, /class="seg-count">0\/0/u);
+  assert.match(html, /&lt;b&gt;粗&lt;\/b&gt;/u);
+  assert.match(html, /&quot;的&quot;/u);
 });
 
-test("no session at all still gives a command", () => {
+test("an empty state still tells you the one command that starts everything", () => {
   const { html } = withState(() => emptyState());
-  assert.match(html, /class="lead">没有在推进的会话/u);
-  assert.match(html, /npm run state -- start &quot;要交付什么&quot;/u);
+  assert.match(html, /npm run state -- start/u);
+  assert.match(html, /还没有验收单元/u);
+  assert.match(html, /state\.json · v4/u);
 });
 
-test("text from state is escaped", () => {
-  const { html } = withState((doc) => {
-    const opened = startSession(doc, { title: "转义" }).doc;
-    const scoped = setScope(opened, { text: "写一段 <b>粗体</b>" }).doc;
-    const segment = addSegment(scoped, { name: "<script>alert(1)</script>" }).doc;
-    return addTask(segment, { text: "<img src=x onerror=1>" }).doc;
-  });
-  assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/u);
-  assert.doesNotMatch(html, /<script>alert\(1\)<\/script>/u);
-});
-
-test("human acceptance still needs a real sentence", () => {
-  const { doc } = withState(settled);
-  const human = doc.sessions[0].segments.at(-1).acceptance.find((item) => item.layer === "H");
-  assert.throws(() => passHumanAcceptance(doc, { id: human.id, text: "你的原话" }), /占位/u);
-  const ok = passHumanAcceptance(doc, { id: human.id, text: "可以，位置我顺手" });
-  assert.equal(ok.item.status, "通过");
+test("discussion keeps the waits line, working sessions do not", () => {
+  const discussing = withState(() => {
+    let doc = startSession(emptyState(), { title: "还在想", discuss: true }).doc;
+    doc = addWait(doc, { item: "要不要换载体" }).doc;
+    return doc;
+  }).html;
+  assert.match(discussing, /class="waits"/u);
+  assert.doesNotMatch(withState(settled).html, /class="waits"/u);
 });
