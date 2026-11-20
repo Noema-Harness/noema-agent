@@ -41,9 +41,9 @@ export const FIGURES = {
   governance: {
     key: "governance",
     label: "治理全景图",
-    source: "governance/assets/noema-governance.source.json",
-    html: "governance/assets/noema-governance.html",
-    png: "governance/assets/noema-governance.png",
+    source: "governance/assets/governance-map.source.json",
+    html: "governance/assets/governance-map.html",
+    png: "governance/assets/governance-map.png",
     doc: "governance/README.md",
     anchors: ["governance/README.md", "AGENTS.md"],
     sections: ["状态与门", "数据与工作台", "事实所有权"],

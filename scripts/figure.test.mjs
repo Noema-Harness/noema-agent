@@ -283,9 +283,9 @@ test("the governance figure has its own source, anchors and check", () => {
     const readme = [
       "# Governance",
       "",
-      "![治理全景](governance/assets/noema-governance.png)",
+      "![治理全景](governance/assets/governance-map.png)",
       "",
-      "[交互版](governance/assets/noema-governance.html)",
+      "[交互版](governance/assets/governance-map.html)",
       "",
       "## 三层结构",
       "",
@@ -307,9 +307,9 @@ test("the governance figure has its own source, anchors and check", () => {
     const agents = [
       "# AGENTS",
       "",
-      "![治理](governance/assets/noema-governance.png)",
+      "![治理](governance/assets/governance-map.png)",
       "",
-      "[交互版](governance/assets/noema-governance.html)",
+      "[交互版](governance/assets/governance-map.html)",
       "",
       "## 阶段地图",
       "",
@@ -318,18 +318,18 @@ test("the governance figure has its own source, anchors and check", () => {
     ].join("\n");
     const candidate = {
       diagram_type: "architecture",
-      meta: { title: "governance", output: "governance/assets/noema-governance.html" },
+      meta: { title: "governance", output: "governance/assets/governance-map.html" },
     };
     fs.mkdirSync(path.join(root, "governance", "assets"), { recursive: true });
     fs.writeFileSync(path.join(root, "governance", "README.md"), readme);
     fs.writeFileSync(path.join(root, "AGENTS.md"), agents);
     fs.writeFileSync(
-      path.join(root, "governance", "assets", "noema-governance.html"),
+      path.join(root, "governance", "assets", "governance-map.html"),
       governanceHtml,
     );
-    fs.writeFileSync(path.join(root, "governance", "assets", "noema-governance.png"), png);
+    fs.writeFileSync(path.join(root, "governance", "assets", "governance-map.png"), png);
     fs.writeFileSync(
-      path.join(root, "governance", "assets", "noema-governance.source.json"),
+      path.join(root, "governance", "assets", "governance-map.source.json"),
       JSON.stringify(
         {
           version: 1,
@@ -341,12 +341,12 @@ test("the governance figure has its own source, anchors and check", () => {
           },
           assets: {
             html: {
-              path: "governance/assets/noema-governance.html",
+              path: "governance/assets/governance-map.html",
               sha256: sha256(governanceHtml),
               bytes: governanceHtml.length,
             },
             png: {
-              path: "governance/assets/noema-governance.png",
+              path: "governance/assets/governance-map.png",
               sha256: sha256(png),
               bytes: png.length,
             },

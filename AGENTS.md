@@ -14,8 +14,9 @@
   只有命名段才拆 2–5 个验收单元、才走 D/C/R/H。日常段只要任务完成就能收尾。
 - 验收：D（命令/测试）/C（判据对照）/R（审查发现，必须逐条处置）/H（用户原话，agent 判会被拒绝）。
   整条范围用 `state -- sign "<原话>"` 收口；没签收也能 `close`，历史里记未签收。
-- 工作台：`npm run work:view` → `.work/review/work-view.html`（只读会话桌面：顶部状态与范围、
-  左侧段轨、当前段的任务与 D/C/R/H 滑片、底部签收线与下一步命令；悬停看证据）。
+- 治理台：`npm run work:view` → `.work/review/work-view.html`（离线单文件、只读：左半是此刻的状态、
+  会话名与范围、四个数与一条随状态变化的脉搏；右半是段账本，当前段摊开、其余折叠；底条只有一条
+  「下一步」命令（点击复制）与最近的切换。验收层只用形状，悬停看证据）。
 
 ## 怎么推进
 
@@ -54,4 +55,4 @@
 ## 查看当下
 
 `npm run state` 看会话与规则包；`npm run check` 是里程碑全量门；治理图见
-[PNG](governance/assets/noema-governance.png) / [交互版](governance/assets/noema-governance.html)，不进 README。
+[PNG](governance/assets/governance-map.png) / [交互版](governance/assets/governance-map.html)，不进 README。

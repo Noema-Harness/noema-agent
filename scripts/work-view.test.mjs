@@ -47,26 +47,24 @@ function layered() {
 
 test("the view shows the focused session, its state and scope", () => {
   const { html } = withState(layered);
-  assert.match(html, /EXECUTE/u);
+  assert.match(html, /EXECUTING/u);
   assert.match(html, /把入口补上/u);
   assert.match(html, /补一个能点开的入口/u);
   assert.match(html, /data-theme="dark"/u);
 });
 
-test("segments are a rail and only the current one is selected by default", () => {
+test("segments form the ledger and only the current one is open by default", () => {
   const { doc, html } = withState(layered);
-  assert.match(html, /class="seg[^"]*selected/u);
+  assert.match(html, /class="seg live on"/u);
   assert.match(html, /data-current="true"/u);
   const segmentCount = doc.sessions[0].segments.length;
-  assert.equal((html.match(/class="sheet-block"/gu) ?? []).length, segmentCount);
-  assert.match(html, /data-sheet="P2"/u);
+  assert.equal((html.match(/class="seg [^"]*" data-seg=/gu) ?? []).length, segmentCount);
 });
 
 test("the next action is the only command and can be copied", () => {
   const { html } = withState(layered);
-  assert.match(html, /class="command-text"[^>]*>npm run state/u);
+  assert.match(html, /class="cmd">npm run state/u);
   assert.match(html, /class="copy"/u);
-  assert.match(html, /aria-label="复制下一步命令"/u);
 });
 
 test("evidence lives in hover cards and is escaped", () => {
@@ -85,6 +83,14 @@ test("acceptance uses shapes instead of a text legend, and H waits for the user"
   assert.match(html, /△/u);
   assert.match(html, /等你/u);
   assert.doesNotMatch(html, /确定性｜可复核｜审查发现｜人签收/u);
+});
+
+test("the console is alive: caret, pulse and breathing dots are not decorative text", () => {
+  const { html } = withState(layered);
+  assert.match(html, /class="caret"/u);
+  assert.match(html, /class="pulse"/u);
+  assert.match(html, /@keyframes blink/u);
+  assert.match(html, /prefers-reduced-motion/u);
 });
 
 test("a blank state invites the first command instead of rendering a session", () => {

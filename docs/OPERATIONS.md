@@ -54,7 +54,7 @@ Does not own: 产品定位（PRODUCT）、结构与数据地图（ARCHITECTURE�
 ## 架构图
 
 - 产品图源：`docs/ARCHITECTURE.md` → `docs/assets/noema-architecture.source.json`（产物 html/png 同目录）。
-- 治理图源：`governance/README.md` → `governance/assets/noema-governance.source.json`。
+- 治理图源：`governance/README.md` → `governance/assets/governance-map.source.json`。
 - `figure:check` 比对源文档 sha、依赖章节摘要与 candidate 摘要；章节变了要先判断图是否要改，
   确认不改用 `node scripts/figure.mjs build <name> --sections-changed "理由"` 记录判断，再提交。
 

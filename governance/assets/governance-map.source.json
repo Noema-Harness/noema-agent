@@ -4,9 +4,9 @@
     "schema_version": 1,
     "diagram_type": "architecture",
     "meta": {
-      "title": "Noema 治理全景：状态驱动，门在边界",
-      "subtitle": "多个会话互不阻塞，焦点只是指针；状态是会话的段落（默认执行）；日常任务在当前段平铺，大事才开命名段走 D/C/R/H；数据只经命令写入，门在边界，工作台只读。",
-      "output": "governance/assets/noema-governance.html",
+      "title": "治理全景：会话、段与门",
+      "subtitle": "多个会话互不阻塞，焦点只是指针；状态是会话的段落（默认执行）；日常任务在当前段平铺，大事才开命名段走 D/C/R/H；数据只经命令写入，门在边界，治理台只读。",
+      "output": "governance/assets/governance-map.html",
       "locale": "zh-CN",
       "quality_profile": "showcase",
       "viewBox": [
@@ -164,7 +164,7 @@
       {
         "id": "view",
         "type": "frontend",
-        "label": "工作台",
+        "label": "治理台",
         "sublabel": "只读 · 按状态收束",
         "pos": [
           800,
@@ -316,7 +316,7 @@
   },
   "source": {
     "doc": "governance/README.md",
-    "sha256": "bb19ccda34c7cfc5c01eee5cd5e18a5f2e8c68201fdb2a33e4b559c7ca7d652f",
+    "sha256": "9ee10fb3066025a8852ee3dda5d05a9a6c09d5ceac077aeb938f15442b552b77",
     "sections": [
       {
         "title": "状态与门",
@@ -324,26 +324,26 @@
       },
       {
         "title": "数据与工作台",
-        "sha256": "c122513365d9c1ce9cdb23a848cdfc9760964cb31d4e2804b063d3aabd1a96a0"
+        "sha256": null
       },
       {
         "title": "事实所有权",
-        "sha256": "a6f37fd4b0af5e6748a6fe808274c567f31dfd8bc86666d0b0e97d3dd89e263f"
+        "sha256": null
       }
     ],
-    "candidateSha256": "b8f5819a9efb3950a43cf6ffa4ffa6930f4029d2c665bded08d4ab219e2b4ddf"
+    "candidateSha256": "678c2b4555529b2ab9d013893edf1b64bff8959872149f4925ec5de5f3652db3"
   },
   "assets": {
     "html": {
-      "path": "governance/assets/noema-governance.html",
-      "sha256": "301aca5c729fe91d2e04d4c33ee3258067e436213591b3eda2c1a5c4943daa03",
-      "bytes": 849658
+      "path": "governance/assets/governance-map.html",
+      "sha256": "5fd9fafe542e02649ede809ef345e29ad24ede35406cf24dd1e64d059ad4cdde",
+      "bytes": 849613
     },
     "png": {
-      "path": "governance/assets/noema-governance.png",
-      "sha256": "bc1216a9c85940231bf426bd789c47c143d4ca758068cf3fa318e8b5719035c5",
-      "bytes": 154346
+      "path": "governance/assets/governance-map.png",
+      "sha256": "b17880f65c9f0703cbba8a50d89d41b7f3cb85e487015761159d03f320102bb8",
+      "bytes": 154631
     }
   },
-  "updatedAt": "2026-11-19T23:52:52.590Z"
+  "updatedAt": "2026-11-20T00:35:53.368Z"
 }

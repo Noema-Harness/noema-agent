@@ -32,7 +32,7 @@ Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与�
 
 **证据**：
 
-- `npm run check`：**901/901 通过、0 fail**（43,496ms），`governance: milestone OK`。
+- `npm run check`：**901/901 通过、0 fail**（45,222ms），`governance: milestone OK`。
 - `node --test governance/core/state.test.mjs` **14/14**（会话并存与切换、状态任意切换要理由、日常段平铺收尾、
   命名段四层验收、任务/判定证据、H 只能用户原话、R 必须处置、签收、`next`、v3→v4 升级）。
 - `node --test scripts/quickstart.test.mjs` **2/2**（README 的 16 步在空白状态上跑通、空状态给第一条命令）。
