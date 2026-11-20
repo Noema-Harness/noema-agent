@@ -1,11 +1,14 @@
-// Renders the current agent state and staged work into a single static HTML
-// console. Adapter only: reads governance/data/state.json, writes
-// .work/review/work-view.html. The state model lives in
-// governance/core/state.mjs.
+// Renders the agent state as one static HTML console: sessions on the left, the focused
+// delivery in the middle, the numbers and recent switches on the right. Adapter only:
+// reads governance/data/state.json, writes .work/review/work-view.html. The model lives
+// in governance/core/state.mjs.
 //
-// Design intent: one focus (the current phase and the single next action),
-// no explanatory copy in the interface, interaction reveals evidence on
-// demand. Everything else is cut on purpose.
+// Design rules the page obeys:
+// - one focus: the segment in progress, its name and how far it is
+// - every fact is reachable: sessions, segments, tasks, gates, discussion, switches
+// - evidence opens in place, never as a floating tip
+// - motion follows real activity (live / idle / standby), and the clock is the page's
+//   only claim to being current
 import fs from "node:fs";
 import path from "node:path";
 
@@ -42,86 +45,12 @@ function tone(status) {
   return "idle";
 }
 
-function taskRow(task) {
-  const done = task.status === "已完成";
-  return `<li class="task${done ? " done" : ""}">
-    <span class="mark" aria-hidden="true">${done ? "✓" : ""}</span>
-    <span class="task-text">${escape(task.text)}</span>
-    ${task.evidence?.length ? `<span class="ev" role="note">${task.evidence.map(escape).join("<br>")}</span>` : ""}
-  </li>`;
+function minutesSince(iso, now) {
+  if (!iso) return null;
+  return Math.max(0, Math.floor((now - new Date(iso)) / 60000));
 }
 
-function acceptanceRow(item, phaseId) {
-  const layer = item.layer ?? "D";
-  const state = tone(item.status);
-  const resolution = item.resolution
-    ? `<em class="resolution">${escape(item.resolution.decision)}${
-        item.resolution.note ? ` · ${escape(item.resolution.note)}` : ""
-      }</em>`
-    : "";
-  const evidence = item.evidence?.length ? item.evidence.map(escape).join("<br>") : "";
-  return `<li class="accept ${state}" data-layer="${escape(LAYER_NAME[layer])}">
-    <span class="shape shape-${layer}" aria-hidden="true">${LAYER_SHAPE[layer]}</span>
-    <span class="accept-text">${escape(item.text)}${resolution}</span>
-    <span class="ev" role="note">${evidence || "还没有证据"}</span>
-  </li>`;
-}
-
-function phaseNode(phase, currentPhase, index) {
-  const tasks = phase.tasks ?? [];
-  const name = phase.name ?? "日常";
-  const acceptance = phase.acceptance ?? [];
-  const blocking = acceptance.filter((item) => (item.layer ?? "D") !== "R");
-  const passed = blocking.filter((item) => item.status === "通过").length;
-  const isCurrent = phase.id === currentPhase;
-  const open = isCurrent;
-  const stateName = phase.status === "已完成" ? "done" : isCurrent ? "live" : "idle";
-  const summary =
-    phase.status === "已完成"
-      ? "✓"
-      : isCurrent && blocking.length
-        ? `${passed}/${blocking.length}`
-        : "";
-  const review = phase.review
-    ? `<li class="review-line">
-        <span>${escape(phase.review.what)}</span>
-        <span class="muted">${escape(phase.review.gap)}</span>
-        <span class="muted">${escape(phase.review.split)}</span>
-      </li>`
-    : "";
-  return `<li class="node ${stateName}${open ? " open" : ""}" data-phase="${escape(phase.id)}" style="--i:${index}">
-    <button class="node-head" type="button" aria-expanded="${open ? "true" : "false"}" aria-controls="body-${escape(phase.id)}">
-      <span class="node-dot" aria-hidden="true"></span>
-      <span class="node-name">${escape(name)}</span>
-      <span class="node-summary">${summary}</span>
-    </button>
-    <div class="node-body" id="body-${escape(phase.id)}">
-      <div class="node-inner">
-        ${phase.goal ? `<p class="node-goal">${escape(phase.goal)}</p>` : ""}
-        ${tasks.length ? `<ul class="tasks">${tasks.map(taskRow).join("")}</ul>` : ""}
-        <ul class="accepts">${acceptance.map((item) => acceptanceRow(item, phase.id)).join("")}</ul>
-        ${review ? `<ul class="extras">${review}</ul>` : ""}
-      </div>
-    </div>
-  </li>`;
-}
-
-function waitsLine(thread) {
-  const waits = thread?.waits ?? [];
-  if (!waits.length) return "";
-  return `<span class="waits" tabindex="0">
-    <span class="waits-mark" aria-hidden="true">◇</span>
-    <span class="waits-count">${waits.length}</span>
-    <span class="ev waits-ev" role="note">${waits.map(escape).join("<br>")}</span>
-  </span>`;
-}
-
-/**
- * The newest moment this session really moved: a state change, a segment start/close,
- * a finished task or a judged gate. Used only to decide how alive the page should look.
- * @param {object} session session document
- * @returns {string|null} ISO timestamp
- */
+// The newest moment a session really moved. Used only to pick the motion register.
 function lastTouch(session) {
   const stamps = [session.since];
   for (const segment of session.segments ?? []) {
@@ -132,6 +61,224 @@ function lastTouch(session) {
   return stamps.filter(Boolean).sort().at(-1) ?? null;
 }
 
+function relative(iso, now) {
+  const minutes = minutesSince(iso, now);
+  if (minutes === null) return "还没有动作";
+  if (minutes < 1) return "刚刚有动作";
+  if (minutes < 60) return `${minutes} 分钟前有动作`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} 小时前有动作`;
+  return `${Math.floor(hours / 24)} 天前有动作`;
+}
+
+function taskRow(task, segment) {
+  const done = task.status === "已完成";
+  const evidence = task.evidence?.length
+    ? task.evidence.map((line) => `<p>${escape(line)}</p>`).join("")
+    : "还没有证据";
+  return `<li class="item ${done ? "done" : ""}">
+    <button class="row" type="button" aria-expanded="false" data-toggle>
+      <span class="mark" aria-hidden="true">${done ? "✓" : "·"}</span>
+      <span class="row-text">${escape(task.text)}</span>
+      <span class="row-tag">${done ? "完成" : "未完成"}</span>
+    </button>
+    <div class="fold"><div class="fold-in"><div class="ev">${evidence}</div></div></div>
+  </li>`;
+}
+
+function acceptanceRow(item) {
+  const layer = item.layer ?? "D";
+  const state = tone(item.status);
+  const resolution = item.resolution
+    ? `<em class="res">${escape(item.resolution.decision)}${item.resolution.note ? ` · ${escape(item.resolution.note)}` : ""}</em>`
+    : "";
+  const tag = item.resolution
+    ? "已处置"
+    : layer === "H" && item.status !== "通过"
+      ? "等你"
+      : layer === "R"
+        ? "未处置"
+        : state === "ok"
+          ? "通过"
+          : state === "bad"
+            ? "不通过"
+            : "未判";
+  const evidence = item.evidence?.length
+    ? item.evidence.map((line) => `<p>${escape(line)}</p>`).join("")
+    : "还没有证据";
+  return `<li class="item gate ${state}">
+    <button class="row" type="button" aria-expanded="false" data-toggle>
+      <span class="shape shape-${layer}" aria-hidden="true">${LAYER_SHAPE[layer]}</span>
+      <span class="row-text">${escape(item.text)}${resolution}</span>
+      <span class="row-tag">${tag}</span>
+    </button>
+    <div class="fold"><div class="fold-in"><div class="ev">${evidence}</div></div></div>
+  </li>`;
+}
+
+function segmentBlock(segment, currentId, index) {
+  const tasks = segment.tasks ?? [];
+  const gates = segment.acceptance ?? [];
+  const blocking = gates.filter((item) => (item.layer ?? "D") !== "R");
+  const passed = blocking.filter((item) => item.status === "通过").length;
+  const current = segment.id === currentId;
+  const done = segment.status === "已完成";
+  const name = segment.name ?? `日常 ${segment.id.replace("P", "")}`;
+  const summary = done ? "✓" : current && blocking.length ? `${passed}/${blocking.length}` : "";
+  return `<li class="seg ${done ? "done" : current ? "live" : "idle"}${current ? " open" : ""}" data-seg="${escape(segment.id)}" style="--i:${index}">
+    <button class="seg-head" type="button" aria-expanded="${current ? "true" : "false"}" aria-controls="body-${escape(segment.id)}">
+      <span class="dot" aria-hidden="true"></span>
+      <span class="seg-name">${escape(name)}</span>
+      <span class="seg-meta">${escape(summary)}</span>
+    </button>
+    <div class="seg-body" id="body-${escape(segment.id)}">
+      <div class="seg-inner">
+        ${tasks.length ? `<ul class="items">${tasks.map((task) => taskRow(task, segment)).join("")}</ul>` : ""}
+        ${gates.length ? `<ul class="items gates">${gates.map(acceptanceRow).join("")}</ul>` : ""}
+        ${!tasks.length && !gates.length ? `<p class="quiet">这一段还没有条目。</p>` : ""}
+      </div>
+    </div>
+  </li>`;
+}
+
+function shortDate(iso) {
+  return iso ? String(iso).slice(0, 16).replace("T", " ") : "—";
+}
+
+function threadBlock(session) {
+  const thread = session.threadId
+    ? (session.threads ?? []).find((one) => one.id === session.threadId)
+    : null;
+  const rounds = (thread?.rounds ?? []).slice(-6).reverse();
+  const waits = thread?.waits ?? [];
+  const switches = session.log ?? [];
+  return `<section class="thread">
+    <h2 class="thread-title">讨论记录 <span>${rounds.length ? `${thread.rounds.length} 轮` : "没有轮次"}</span></h2>
+    ${waits.length ? `<ul class="waits">${waits.map((item) => `<li><span aria-hidden="true">◇</span>${escape(item)}</li>`).join("")}</ul>` : ""}
+    ${rounds.length ? `<ol class="rounds">${rounds.map((round) => `<li><time>${escape(round.date)}</time><p>${escape(round.summary ?? round.conclusion ?? "")}</p></li>`).join("")}</ol>` : `<p class="quiet">这一轮还没有记下轮次结论。</p>`}
+    <p class="thread-foot">始于 ${shortDate(session.since)} · ${switches.length ? `切换 ${switches.length} 次` : "还没有切过状态"}</p>
+  </section>`;
+}
+
+function sessionSection(session, focused, now) {
+  const progress = sessionProgress(session);
+  const all = (session.segments ?? []).map((segment, index) => ({
+    ...segment,
+    index: index + 1,
+    name: segment.name ?? `日常 ${segment.id.replace("P", "")}`,
+  }));
+  // Empty segments with nothing in them are noise: only keep what carries a name,
+  // work, or the work in progress.
+  const segments = all.filter(
+    (segment) =>
+      segment.name.startsWith("日常") === false ||
+      segment.tasks.length ||
+      segment.acceptance.length ||
+      segment.status === "进行中",
+  );
+  const current = all.find((segment) => segment.status === "进行中");
+  const index = String(current ? current.index : Math.max(all.length, 1)).padStart(2, "0");
+  const total = String(Math.max(all.length, 1)).padStart(2, "0");
+  const focus = current ?? all.at(-1) ?? null;
+  const doneRatio = segments.length
+    ? Math.round((progress.segmentsDone / segments.length) * 100)
+    : 0;
+  const scope = session.scope;
+  const code = STATE_CODE[session.state] ?? session.state;
+  return `<section class="sess" data-session="${escape(session.id)}"${focused ? "" : " hidden"}>
+    <header class="sess-head">
+      <span class="code" data-code="${escape(code)}">${escape(code)}</span>
+      <h1 class="title">${escape(session.title)}</h1>
+      <span class="chip">${escape(session.status === "archived" ? "已归档" : `${progress.segmentsDone}/${progress.segments || 0} 段`)}</span>
+    </header>
+
+    <div class="focus" style="--done:${doneRatio}%">
+      <div class="focus-line">
+        <span class="number">${index}</span><span class="of">/ ${total}</span>
+        <h2 class="focus-name">${escape(focus?.name ?? "还没有段落")}</h2>
+      </div>
+      <div class="rule" aria-hidden="true"></div>
+      ${
+        scope
+          ? `<p class="scope"><span class="kind">${escape(scope.kind)}</span>${escape(scope.text)}${
+              session.scope?.signed
+                ? `<span class="signed">已签收 ${escape(scope.signed.date)}</span>`
+                : ""
+            }</p>`
+          : `<p class="scope quiet">这一轮还没有写范围；先说要交付什么。</p>`
+      }
+      <ol class="spine">${segments.map((segment, i) => segmentBlock(segment, current?.id ?? null, i)).join("")}</ol>
+      ${threadBlock(session)}
+    </div>
+  </section>`;
+}
+
+function aside(doc, sessions, now) {
+  const focused = focusSession(doc);
+  const progress = focused ? sessionProgress(focused) : null;
+  const trail = (doc.log ?? []).slice(-5).reverse();
+  const action = nextAction(doc);
+  const owner = /accept human|--text/.test(action.command ?? "")
+    ? "你"
+    : /sign/.test(action.command ?? "")
+      ? "你"
+      : /--decision/.test(action.command ?? "")
+        ? "你或 agent"
+        : "agent";
+  return `<aside class="meta">
+    <div class="counts">
+      <div><b>${progress ? progress.segmentsDone : 0}</b><span>段完成</span></div>
+      <div><b>${progress ? progress.tasksDone : 0}/${progress ? progress.tasks : 0}</b><span>任务</span></div>
+      <div><b>${progress ? progress.acceptanceDone : 0}/${progress ? progress.acceptance : 0}</b><span>判据</span></div>
+      <div class="${progress && progress.openFindings ? "warn" : ""}"><b>${progress ? progress.openFindings : 0}</b><span>未处置发现</span></div>
+    </div>
+    <div class="next">
+      <p class="next-label">下一步 · ${escape(owner)}</p>
+      <p class="next-text">${escape(action.label)}</p>
+      ${action.detail ? `<p class="next-note">${escape(action.detail)}</p>` : ""}
+      ${
+        action.command
+          ? `<details class="next-cmd"><summary>agent 会执行什么</summary><code>${escape(action.command)}</code></details>`
+          : ""
+      }
+    </div>
+    <div class="trail">
+      <p class="trail-label">最近切换</p>
+      ${trail.length ? `<ol>${trail.map((entry) => `<li><time>${escape(entry.date)}</time><span>${escape(entry.from ?? "新")} → ${escape(entry.to)}</span><em>${escape(entry.sessionId ?? "")}</em></li>`).join("")}</ol>` : `<p class="quiet">还没有切换过状态。</p>`}
+      ${
+        (doc.log ?? []).length > trail.length
+          ? `<details class="trail-all"><summary>全部 ${doc.log.length} 次</summary><ol>${(
+              doc.log ?? []
+            )
+              .slice()
+              .reverse()
+              .map(
+                (entry) =>
+                  `<li><time>${escape(entry.date)}</time><span>${escape(entry.from ?? "新")} → ${escape(entry.to)}</span><em>${escape(entry.sessionId ?? "")}</em></li>`,
+              )
+              .join("")}</ol></details>`
+          : ""
+      }
+    </div>
+    <div class="foot">
+      <span class="activity"><i aria-hidden="true"></i><span id="activity">${escape(activityText(focused, now))}</span></span>
+      <span>state.json · v${escape(doc.version)}</span>
+    </div>
+  </aside>`;
+}
+
+function activityText(session, now) {
+  if (!session) return "没有在推进的会话";
+  if (session.status === "archived") return "已归档";
+  return relative(lastTouch(session), now);
+}
+
+function activityOf(session, now) {
+  if (!session || session.status === "archived") return "standby";
+  const minutes = minutesSince(lastTouch(session), now);
+  return minutes !== null && minutes <= 10 ? "live" : "idle";
+}
+
 /**
  * @param {object} doc state document
  * @param {Date} now render time
@@ -139,55 +286,9 @@ function lastTouch(session) {
  */
 export function renderView(doc, now = new Date()) {
   validateState(doc);
-  const session = focusSession(doc);
-  const state = session?.state ?? null;
-  const action = nextAction(doc);
-  const scope = session?.scope ?? null;
-  const phases = (session?.segments ?? []).map((segment) => ({
-    ...segment,
-    name: segment.name ?? `日常 ${segment.id.replace("P", "")}`,
-  }));
-  const progress = session
-    ? sessionProgress(session)
-    : {
-        segments: 0,
-        segmentsDone: 0,
-        tasks: 0,
-        tasksDone: 0,
-        acceptance: 0,
-        acceptanceDone: 0,
-        acceptanceBlocking: 0,
-        findings: 0,
-        openFindings: 0,
-      };
-  const currentPhase = phases.find((phase) => phase.status === "进行中");
-  const focusIndex = String(
-    currentPhase ? phases.indexOf(currentPhase) + 1 : Math.max(phases.length, 1),
-  ).padStart(2, "0");
-  const focusTotal = String(Math.max(phases.length, 1)).padStart(2, "0");
-  const focus = currentPhase ?? phases[phases.length - 1] ?? null;
-  const doneRatio = phases.length ? Math.round((progress.segmentsDone / phases.length) * 100) : 0;
-  const thread = session?.threadId
-    ? session.threads.find((one) => one.id === session.threadId)
-    : activeThread(doc);
-
-  const state_ = session ? (STATES_LABEL[state] ?? state) : "STANDBY";
-  const scopeLine = !session
-    ? ""
-    : scope
-      ? `<p class="scope"><span class="scope-kind">${escape(scope.kind)}</span>${escape(scope.text)}</p>`
-      : `<p class="scope empty"><code>npm run state -- scope "…"</code></p>`;
-
-  const actionBlock = action
-    ? `<button class="action" type="button" data-copy="${escape(action.command)}" title="${escape(
-        `${action.label} · ${action.detail}`,
-      )}">
-        <span class="action-tag">下一步</span>
-        <code class="action-cmd">${escape(action.command)}</code>
-        <span class="action-state" aria-hidden="true">⧉</span>
-      </button>`
-    : "";
-
+  const focused = focusSession(doc);
+  const sessions = doc.sessions ?? [];
+  const activity = activityOf(focused, now);
   const nowStamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
     now.getDate(),
   ).padStart(
@@ -195,219 +296,198 @@ export function renderView(doc, now = new Date()) {
     "0",
   )} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
 
-  const lastAt = session ? lastTouch(session) : null;
-  const minutes = lastAt ? Math.max(0, Math.floor((now - new Date(lastAt)) / 60000)) : null;
-  const activity = !session ? "standby" : minutes === null || minutes <= 10 ? "live" : "idle";
-  const activityText = !session
-    ? "没有在推进的会话"
-    : session.status === "archived"
-      ? "已归档"
-      : minutes === null
-        ? "刚切换状态"
-        : minutes < 1
-          ? "刚刚有动作"
-          : `${minutes} 分钟前有动作`;
-
   return `<!doctype html>
 <html lang="zh-CN" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>治理台 · 工作台</title>
+<title>治理台</title>
 <style>
 :root {
-  --bg: #0a0c0f;
-  --ink: #eef2f6;
-  --ink-2: #b9c2cc;
-  --muted: #8b96a3;
-  --line: #1a2027;
-  --line-2: #2b3743;
-  --accent: #f0b429;
-  --ok: #5cc08d;
-  --bad: #ef6a5c;
-  --panel: #0f141a;
+  --bg: #0a0c0f; --panel: #0f1318; --ink: #eef2f6; --ink-2: #b9c2cc; --muted: #8b96a3;
+  --line: #1a2027; --line-2: #2b3743;
+  --accent: #f0b429; --ok: #5cc08d; --bad: #ef6a5c;
   --mono: "JetBrains Mono", "Cascadia Mono", "Consolas", ui-monospace, monospace;
   --sans: "Segoe UI Variable", "Segoe UI", "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
 }
 html[data-theme="light"] {
-  --bg: #f2efe8; --ink: #14181c; --ink-2: #3b444d; --muted: #5f666e;
-  --line: #d8d2c4; --line-2: #cfc7b6; --accent: #9a6400; --ok: #1f7a52; --bad: #a8382c; --panel: #faf8f3;
+  --bg: #f1ece1; --panel: #faf7f0; --ink: #14181c; --ink-2: #3b444d; --muted: #5f666e;
+  --line: #d8d2c4; --line-2: #cec6b4; --accent: #9a6400; --ok: #1f7a52; --bad: #a8382c;
 }
 * { box-sizing: border-box; }
-html, body { margin: 0; }
-body {
-  background: var(--bg); color: var(--ink);
-  font: 15px/1.6 var(--sans); -webkit-font-smoothing: antialiased;
-}
+html, body { margin: 0; height: 100%; }
+body { background: var(--bg); color: var(--ink); font: 14px/1.55 var(--sans); }
 button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
-button:focus-visible { outline: 1px solid var(--accent); outline-offset: 3px; }
-code { font-family: var(--mono); }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+code, .mono { font-family: var(--mono); }
+[hidden] { display: none !important; }
 
-.shell {
-  max-width: 920px; margin: 0 auto; padding: 30px 30px 30px;
-  min-height: 100vh; display: grid; grid-template-rows: auto 1fr auto;
+.app {
+  min-height: 100%; display: grid; grid-template-columns: 232px minmax(0, 1fr) 292px;
 }
-.top { display: flex; align-items: center; gap: 12px; }
-.top-mark { width: 8px; height: 20px; background: var(--accent); clip-path: polygon(0 0, 100% 22%, 100% 100%, 0 78%); }
-body[data-activity="live"] .top-mark { animation: markBreath 2.2s ease-in-out infinite; }
-body[data-activity="idle"] .top-mark,
-body[data-activity="standby"] .top-mark { animation: markBreath 7s ease-in-out infinite; }
-.top-brand { font: 11px var(--mono); letter-spacing: .34em; color: var(--ink-2); }
-.top-state { font: 10px var(--mono); letter-spacing: .3em; color: var(--muted); }
-.top-dots { display: inline-flex; gap: 4px; margin-left: 2px; vertical-align: middle; }
-.top-dots i { width: 4px; height: 4px; border-radius: 50%; background: var(--accent); opacity: .35; }
-body[data-activity="live"] .top-dots i { animation: dotBeat 1.2s ease-in-out infinite; }
-body[data-activity="live"] .top-dots i:nth-child(2) { animation-delay: .18s; }
-body[data-activity="live"] .top-dots i:nth-child(3) { animation-delay: .36s; }
-.top-grow { flex: 1; }
-.top-clock { font: 10px var(--mono); letter-spacing: .12em; color: var(--muted); }
-.theme { width: 30px; height: 30px; display: grid; place-items: center; color: var(--muted); transition: color .25s, transform .6s; }
-.theme:hover { color: var(--accent); transform: rotate(180deg); }
+/* left: every session is reachable */
+.nav { border-right: 1px solid var(--line); padding: 22px 14px; display: flex; flex-direction: column; gap: 18px; }
+.brand { display: flex; align-items: center; gap: 9px; font: 11px var(--mono); letter-spacing: .3em; color: var(--ink-2); }
+.mark { width: 7px; height: 18px; background: var(--accent); clip-path: polygon(0 0, 100% 22%, 100% 100%, 0 78%); }
+body[data-activity="live"] .mark { animation: mark 2.2s ease-in-out infinite; }
+body[data-activity="idle"] .mark, body[data-activity="standby"] .mark { animation: mark 8s ease-in-out infinite; }
+.nav-hint { font: 10px var(--mono); letter-spacing: .2em; color: var(--muted); margin: 0; }
+.nav-list { display: flex; flex-direction: column; gap: 6px; }
+.sess-pick { text-align: left; padding: 9px 10px; border-left: 2px solid transparent; transition: border-color .3s, background .3s, transform .3s; }
+.sess-pick:hover { background: color-mix(in srgb, var(--accent) 7%, transparent); transform: translateX(2px); }
+.sess-pick[aria-current="true"] { border-left-color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, transparent); }
+.sess-pick .id { font: 10px var(--mono); color: var(--muted); letter-spacing: .16em; }
+.sess-pick .name { display: block; margin: 2px 0 4px; font-size: 13px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sess-pick .meta { font: 10px var(--mono); color: var(--muted); }
+.sess-pick[aria-current="true"] .name { color: var(--ink); }
+.nav-foot { margin-top: auto; font: 10px var(--mono); color: var(--muted); display: flex; flex-direction: column; gap: 4px; }
+.clock { font-size: 13px; letter-spacing: .1em; color: var(--ink-2); }
 
-.main { display: flex; flex-direction: column; justify-content: center; padding: 5vh 0 3vh; }
+/* middle: the focused delivery, one segment open */
+.stage { padding: 34px 40px 28px; min-width: 0; }
+.sess-head { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+.code { font: 10px var(--mono); letter-spacing: .28em; color: var(--accent); }
+body[data-activity="live"] .code::after { content: " ·"; animation: blink 1.1s steps(1, end) infinite; }
+.title { margin: 0; font-size: 15px; font-weight: 500; color: var(--ink-2); }
+.chip { font: 10px var(--mono); color: var(--muted); border: 1px solid var(--line-2); padding: 1px 7px; }
 
-/* the one focus */
-.focus { animation: rise .7s cubic-bezier(.2,.8,.2,1) both; }
-.focus-line { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
-.focus-index { font-family: var(--mono); font-size: 64px; line-height: .9; font-weight: 600; letter-spacing: -.03em; }
-.focus-of { font: 12px var(--mono); letter-spacing: .16em; color: var(--muted); }
-.focus-name { margin: 0; font-size: clamp(23px, 3vw, 31px); font-weight: 600; letter-spacing: .01em; }
-.focus-rule { position: relative; height: 3px; margin: 24px 0 0; background: var(--line); overflow: hidden; }
-.focus-rule::after {
+.focus { margin-top: 26px; animation: rise .6s cubic-bezier(.2,.8,.2,1) both; }
+.focus-line { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+.number { font-family: var(--mono); font-size: 68px; line-height: .85; font-weight: 600; letter-spacing: -.03em; }
+.of { font: 12px var(--mono); color: var(--muted); letter-spacing: .16em; }
+.focus-name { margin: 0; font-size: clamp(22px, 2.6vw, 30px); font-weight: 600; }
+body[data-activity="live"] .number { animation: numberPulse 4s ease-in-out infinite; }
+.rule { position: relative; height: 2px; background: var(--line); margin: 20px 0 0; }
+.rule::after {
   content: ""; position: absolute; inset: 0 auto 0 0; width: var(--done, 0%);
-  background: var(--accent);
-  box-shadow: 0 0 12px -2px var(--accent);
-  animation: draw 1.2s .2s cubic-bezier(.2,.8,.2,1) both;
+  background: var(--accent); animation: draw 1.1s .15s cubic-bezier(.2,.8,.2,1) both;
 }
-.scope { margin: 16px 0 0; color: var(--ink-2); font-size: 14px; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
-.scope.empty { color: var(--muted); }
-.scope-kind { font: 9px var(--mono); letter-spacing: .22em; color: var(--muted); border: 1px solid var(--line-2); padding: 2px 6px; flex: none; }
-
-/* the only bright control */
-.action {
-  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; column-gap: 12px;
-  align-items: baseline; width: 100%; text-align: left;
-  margin: 30px 0 0; padding: 13px 16px;
-  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 13%, transparent), transparent 80%);
-  border-left: 2px solid var(--accent);
-  transition: background .3s, transform .3s;
-  animation: rise .7s .06s cubic-bezier(.2,.8,.2,1) both;
+.rule::before {
+  content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: .18; animation: sweep 9s linear infinite;
 }
-.action:hover { transform: translateX(3px); background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 20%, transparent), transparent 84%); }
-.action-tag { font: 9px var(--mono); letter-spacing: .26em; color: var(--muted); flex: none; align-self: center; }
-.action-cmd { font-size: 12px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.action-state { font-size: 12px; color: var(--accent); flex: none; opacity: .5; transition: opacity .25s; }
-.action:hover .action-state { opacity: 1; }
-.action.copied { background: color-mix(in srgb, var(--ok) 16%, transparent); border-left-color: var(--ok); }
-.action.copied .action-state { color: var(--ok); opacity: 1; }
+body[data-activity="live"] .rule::before { animation-duration: 3.2s; opacity: .34; }
+.scope { margin: 14px 0 0; font-size: 13px; color: var(--ink-2); display: flex; gap: 9px; align-items: baseline; flex-wrap: wrap; }
+.kind { font: 9px var(--mono); letter-spacing: .2em; color: var(--muted); border: 1px solid var(--line-2); padding: 1px 6px; }
+.signed { font: 10px var(--mono); color: var(--ok); }
+.quiet { color: var(--muted); }
 
-.waits { display: inline-flex; align-items: baseline; gap: 8px; margin-top: 18px; position: relative; cursor: default; }
-.waits-mark { color: var(--accent); font: 11px var(--mono); }
-.waits-count { font: 11px var(--mono); color: var(--muted); }
-
-/* the spine: one navigation */
-.spine { list-style: none; margin: 4.5vh 0 0; padding: 0; position: relative; }
-.spine::before { content: ""; position: absolute; left: 4px; top: 10px; bottom: 10px; width: 1px; background: var(--line-2); }
+.spine { list-style: none; margin: 26px 0 0; padding: 0; position: relative; }
+.spine::before { content: ""; position: absolute; left: 4px; top: 8px; bottom: 8px; width: 1px; background: var(--line-2); }
 body[data-activity="live"] .spine::before {
-  background: linear-gradient(180deg, transparent, var(--accent) 14%, transparent 34%);
-  background-size: 100% 240%;
-  background-repeat: no-repeat;
-  animation: flow 3.6s linear infinite;
-  opacity: .55;
+  background: linear-gradient(180deg, transparent, var(--accent) 16%, transparent 36%);
+  background-size: 100% 260%; background-repeat: no-repeat; animation: flow 3.4s linear infinite; opacity: .6;
 }
-body[data-activity="standby"] .main { opacity: .84; }
-body[data-activity="idle"] .top-dots i { opacity: .16; }
-body[data-activity="standby"] .top-dots { display: none; }
-@keyframes flow { from { background-position: 0 -140%; } to { background-position: 0 140%; } }
-.node { position: relative; padding-left: 30px; animation: rise .5s cubic-bezier(.2,.8,.2,1) both; animation-delay: calc(var(--i) * 55ms + .1s); }
-.node + .node { margin-top: 1px; }
-.node-head { display: flex; align-items: baseline; gap: 12px; width: 100%; text-align: left; padding: 11px 6px 11px 0; }
-.node-dot {
-  position: absolute; left: 0; top: 19px; width: 9px; height: 9px; transform: rotate(45deg);
-  border: 1px solid var(--line-2); background: var(--bg);
-  transition: transform .35s, border-color .35s, background .35s, box-shadow .35s;
-}
-.node.done .node-dot { background: var(--ok); border-color: var(--ok); }
-.node.live .node-dot { background: var(--accent); border-color: var(--accent); animation: pulse 2.4s ease-in-out infinite; }
-.node-head:hover .node-dot { transform: rotate(45deg) scale(1.5); box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 12%, transparent); }
-.node-name { font-size: 15px; color: var(--ink-2); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: color .25s, transform .25s; }
-.node-head:hover .node-name, .node.open .node-name { color: var(--ink); }
-.node.done .node-name { color: var(--muted); }
-.node-summary { font: 11px var(--mono); color: var(--accent); letter-spacing: .06em; flex: none; }
-.node.done .node-summary { color: var(--ok); }
+.seg { position: relative; padding-left: 26px; animation: rise .45s cubic-bezier(.2,.8,.2,1) both; animation-delay: calc(var(--i) * 50ms + .08s); }
+.seg + .seg { margin-top: 1px; }
+.seg-head { display: flex; align-items: baseline; gap: 11px; width: 100%; text-align: left; padding: 10px 0; }
+.dot { position: absolute; left: 0; top: 17px; width: 9px; height: 9px; transform: rotate(45deg); border: 1px solid var(--line-2); background: var(--bg); transition: transform .3s, box-shadow .3s, background .3s; }
+.seg.done .dot { background: var(--ok); border-color: var(--ok); }
+.seg.live .dot { background: var(--accent); border-color: var(--accent); animation: pulse 1.9s ease-in-out infinite; }
+body[data-activity="idle"] .seg.live .dot { animation-duration: 6s; }
+body[data-activity="standby"] .seg.live .dot { animation-duration: 9s; }
+.seg-head:hover .dot { transform: rotate(45deg) scale(1.5); }
+.seg-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); transition: color .25s; }
+.seg.open .seg-name, .seg-head:hover .seg-name { color: var(--ink); }
+.seg.done .seg-name { color: var(--muted); }
+.seg-meta { font: 11px var(--mono); color: var(--accent); letter-spacing: .06em; }
+.seg.done .seg-meta { color: var(--ok); }
+.seg-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .45s cubic-bezier(.2,.8,.2,1); }
+.seg.open .seg-body { grid-template-rows: 1fr; }
+.seg-inner { overflow: hidden; }
 
-.node-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .5s cubic-bezier(.2,.8,.2,1); }
-.node.open .node-body { grid-template-rows: 1fr; }
-.node-inner { overflow: hidden; }
-.node-goal { margin: 0 0 12px; color: var(--muted); font-size: 12px; }
-.tasks, .accepts, .extras { list-style: none; margin: 0 0 14px; padding: 0; }
-.task, .accept { position: relative; display: flex; align-items: baseline; gap: 10px; padding: 8px 8px; border-top: 1px solid var(--line); }
-.task:last-child, .accept:last-child { border-bottom: 1px solid var(--line); }
-.task { color: var(--muted); font-size: 13px; }
-.task.done { color: var(--ink-2); }
-.mark { width: 12px; font: 11px var(--mono); color: var(--ok); flex: none; }
-.task-text, .accept-text { flex: 1; min-width: 0; }
-.accept { font-size: 13.5px; color: var(--ink-2); cursor: default; transition: background .25s; }
-.accept:hover { background: color-mix(in srgb, var(--accent) 5%, transparent); }
-.shape { font: 12px var(--mono); flex: none; width: 14px; color: var(--muted); }
-.accept.ok .shape { color: var(--ok); }
-.accept.bad .shape { color: var(--bad); }
-.accept.ok .accept-text { color: var(--ink); }
-.accept.bad .accept-text { color: var(--bad); }
-.resolution { font-style: normal; color: var(--muted); font-size: 11px; margin-left: 8px; }
-.review-line { display: flex; gap: 14px; font-size: 11px; color: var(--muted); padding: 6px 8px; border-top: 1px solid var(--line); }
-.review-line .muted { opacity: .7; }
+.items { list-style: none; margin: 2px 0 14px; padding: 0; }
+.item { border-top: 1px solid var(--line); }
+.item:last-child { border-bottom: 1px solid var(--line); }
+.row { display: flex; align-items: baseline; gap: 9px; width: 100%; text-align: left; padding: 8px 4px; color: var(--ink-2); font-size: 13px; transition: background .2s; }
+.row:hover { background: color-mix(in srgb, var(--accent) 5%, transparent); }
+.row-text { flex: 1; min-width: 0; }
+.mark { width: 12px; flex: none; font: 11px var(--mono); color: var(--ok); }
+.row-tag { font: 10px var(--mono); color: var(--muted); flex: none; }
+.item.done .row-text { color: var(--ink); }
+.item.gate.bad .row-text { color: var(--bad); }
+.item.gate.ok .row-text { color: var(--ink); }
+.shape { width: 14px; flex: none; font: 12px var(--mono); color: var(--muted); }
+.gate.ok .shape { color: var(--ok); }
+.gate.bad .shape { color: var(--bad); }
+.res { font-style: normal; color: var(--muted); font-size: 11px; margin-left: 6px; }
+.fold { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .3s cubic-bezier(.2,.8,.2,1); }
+.item.open .fold { grid-template-rows: 1fr; }
+.fold-in { overflow: hidden; }
+.ev { margin: 0 4px 8px 25px; padding: 8px 11px; border-left: 2px solid var(--line-2); color: var(--ink-2); font: 11px/1.7 var(--mono); }
+.ev p { margin: 0; overflow-wrap: anywhere; }
+.quiet { font-size: 12px; color: var(--muted); }
 
-/* evidence only when asked for */
-.ev {
-  position: absolute; left: 32px; top: calc(100% - 3px); z-index: 5;
-  max-width: min(580px, 76vw); padding: 9px 12px;
-  background: var(--panel); border: 1px solid var(--line-2); border-left: 2px solid var(--accent);
-  color: var(--ink-2); font: 11px/1.7 var(--mono);
-  opacity: 0; transform: translateY(-5px); pointer-events: none;
-  transition: opacity .22s, transform .22s;
-  box-shadow: 0 20px 44px -24px rgba(0,0,0,.6);
-}
-.accept:hover .ev, .accept:focus-within .ev, .task:hover .ev { opacity: 1; transform: translateY(0); pointer-events: auto; }
-.waits-ev { left: 0; top: calc(100% + 6px); }
-.waits:hover .ev, .waits:focus .ev { opacity: 1; transform: translateY(0); }
+.thread { margin-top: 30px; border-top: 1px solid var(--line); padding-top: 14px; }
+.thread-title { margin: 0 0 8px; font: 11px var(--mono); letter-spacing: .22em; color: var(--muted); }
+.thread-title span { letter-spacing: .06em; color: var(--ink-2); margin-left: 8px; }
+.waits { list-style: none; margin: 0 0 10px; padding: 0; font-size: 12px; color: var(--ink-2); }
+.waits li { display: flex; gap: 8px; padding: 3px 0; }
+.rounds { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.rounds li { display: grid; grid-template-columns: 82px minmax(0, 1fr); gap: 10px; font-size: 12px; }
+.rounds time { font: 11px var(--mono); color: var(--muted); }
+.rounds p { margin: 0; color: var(--ink-2); }
+.thread-foot { margin: 12px 0 0; font: 10px var(--mono); color: var(--muted); letter-spacing: .08em; }
 
-.foot { display: flex; justify-content: space-between; font: 10px var(--mono); color: var(--muted); letter-spacing: .08em; }
-.foot-live { display: inline-flex; align-items: center; gap: 7px; }
-.foot-live i { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
-body[data-activity="live"] .foot-live i { animation: dotBeat 1.6s ease-in-out infinite; }
-body[data-activity="idle"] .foot-live i,
-body[data-activity="standby"] .foot-live i { animation: breathe 7s ease-in-out infinite; opacity: .55; }
+/* right: the numbers, the next move, the switches */
+.meta { border-left: 1px solid var(--line); padding: 22px 18px; display: flex; flex-direction: column; gap: 20px; }
+.counts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 6px; }
+.counts div { display: flex; flex-direction: column; gap: 2px; }
+.counts b { font: 20px var(--mono); font-weight: 500; color: var(--ink); }
+.counts span { font: 10px var(--mono); color: var(--muted); letter-spacing: .08em; }
+.counts .warn b { color: var(--bad); }
+.next { border-left: 2px solid var(--accent); padding-left: 12px; }
+.next-label { margin: 0; font: 10px var(--mono); letter-spacing: .2em; color: var(--muted); }
+.next-text { margin: 5px 0 0; font-size: 15px; color: var(--ink); }
+.next-note { margin: 4px 0 0; font-size: 12px; color: var(--ink-2); }
+.next-cmd { margin-top: 8px; font-size: 11px; color: var(--muted); }
+.next-cmd summary { cursor: pointer; font-family: var(--mono); letter-spacing: .06em; }
+.next-cmd code { display: block; margin-top: 6px; padding: 7px 9px; background: var(--panel); border: 1px solid var(--line); font: 10.5px/1.6 var(--mono); color: var(--ink-2); overflow-wrap: anywhere; }
+.trail-label { margin: 0 0 6px; font: 10px var(--mono); letter-spacing: .2em; color: var(--muted); }
+.trail ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 11px; }
+.trail li { display: grid; grid-template-columns: 74px minmax(0, 1fr) auto; gap: 6px; color: var(--ink-2); }
+.trail time { font-family: var(--mono); color: var(--muted); }
+.trail em { font-style: normal; font-family: var(--mono); color: var(--muted); }
+.trail-all { margin-top: 8px; font: 11px var(--mono); color: var(--muted); }
+.trail-all summary { cursor: pointer; letter-spacing: .08em; }
+.trail-all ol { margin-top: 6px; max-height: 220px; overflow: auto; }
+.theme { text-align: left; font: 10px var(--mono); letter-spacing: .16em; color: var(--muted); padding: 2px 0; }
+.theme:hover { color: var(--accent); }
+.foot { margin-top: auto; display: flex; flex-direction: column; gap: 4px; font: 10px var(--mono); color: var(--muted); letter-spacing: .06em; }
+.activity { display: inline-flex; align-items: center; gap: 7px; }
+.activity i { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+body[data-activity="live"] .activity i { animation: beat 1.5s ease-in-out infinite; }
+body[data-activity="idle"] .activity i, body[data-activity="standby"] .activity i { animation: breathe 7s ease-in-out infinite; opacity: .6; }
+body[data-activity="standby"] .stage { opacity: .82; }
+body[data-activity="standby"] .code::after { content: ""; }
 
-/* activity sets the whole register of motion: running avatar breathes fast, idle barely */
-.focus-rule::after { animation: draw 1.2s .2s cubic-bezier(.2,.8,.2,1) both, sheen 3.6s .9s ease-in-out infinite; }
-body[data-activity="idle"] .focus-rule::after,
-body[data-activity="standby"] .focus-rule::after { animation: draw 1.2s .2s cubic-bezier(.2,.8,.2,1) both; }
-.node.live .node-dot { animation: pulse 1.8s ease-in-out infinite; }
-body[data-activity="idle"] .node.live .node-dot { animation: pulse 5.5s ease-in-out infinite; }
-body[data-activity="standby"] .node.live .node-dot { animation: pulse 8s ease-in-out infinite; }
-.action.copied .action-state { animation: pop .32s cubic-bezier(.2,1.4,.4,1); }
-.node-head:active .node-dot { transform: rotate(45deg) scale(1.9); }
-
-@keyframes rise { from { transform: translateY(10px); } to { transform: none; } }
+@keyframes rise { from { transform: translateY(9px); } to { transform: none; } }
 @keyframes draw { from { width: 0; } }
 @keyframes pulse { 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 18%, transparent); } }
-@keyframes sheen { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.35); } }
-@keyframes markBreath { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(.86); } }
-@keyframes dotBeat { 0%, 100% { transform: scale(.85); opacity: .4; } 45% { transform: scale(1.15); opacity: 1; } }
-@keyframes breathe { 0%, 100% { transform: scale(.9); opacity: .5; } 50% { transform: scale(1.05); opacity: .8; } }
-@keyframes pop { from { transform: scale(.6); } to { transform: none; } }
+@keyframes flow { from { background-position: 0 -140%; } to { background-position: 0 140%; } }
+@keyframes sweep { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+@keyframes mark { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(.84); } }
+@keyframes beat { 0%, 100% { transform: scale(.8); opacity: .45; } 45% { transform: scale(1.2); opacity: 1; } }
+@keyframes breathe { 0%, 100% { transform: scale(.9); opacity: .5; } 50% { transform: scale(1.1); opacity: .85; } }
+@keyframes blink { 50% { opacity: 0; } }
+@keyframes numberPulse { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
 
-@media (max-width: 620px) {
-  .shell { padding: 22px 18px 24px; }
-  .main { padding: 4vh 0 3vh; }
-  .focus-index { font-size: 44px; }
-  .focus-name { font-size: 22px; }
-  .action { align-items: start; padding: 11px 13px; }
-  .action-cmd { white-space: normal; overflow-wrap: anywhere; }
-  .node-name { font-size: 14px; }
-  .spine { margin-top: 5vh; }
-  .ev { left: 0; max-width: calc(100vw - 56px); }
+@media (max-width: 1080px) {
+  .app { grid-template-columns: 200px minmax(0, 1fr); }
+  .meta { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+  .foot { flex-direction: row; justify-content: space-between; grid-column: 1 / -1; }
+}
+@media (max-width: 760px) {
+  .app { grid-template-columns: minmax(0, 1fr); }
+  .nav { border-right: 0; border-bottom: 1px solid var(--line); padding: 16px; }
+  .nav-list { flex-direction: row; overflow-x: auto; gap: 8px; }
+  .sess-pick { border-left: 0; border-bottom: 2px solid transparent; white-space: nowrap; }
+  .sess-pick[aria-current="true"] { border-bottom-color: var(--accent); border-left-color: transparent; }
+  .stage { padding: 22px 18px; }
+  .number { font-size: 50px; }
+  .meta { display: flex; flex-direction: column; padding: 18px; }
+  .counts { grid-template-columns: repeat(2, 1fr); }
+  .next-cmd code { font-size: 10px; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
@@ -415,130 +495,100 @@ body[data-activity="standby"] .node.live .node-dot { animation: pulse 8s ease-in
 </style>
 </head>
 <body data-activity="${activity}">
-<div class="shell">
-  <header class="top">
-    <span class="top-mark" aria-hidden="true"></span>
-    <span class="top-brand">治理台</span>
-    <span class="top-state">${escape(state_)}<span class="top-dots" aria-hidden="true"><i></i><i></i><i></i></span></span>
-    <span class="top-grow"></span>
-    <span class="top-clock" id="clock" aria-hidden="true">${nowStamp.slice(11)}</span>
-    <button class="theme" type="button" title="明暗（T）" aria-label="切换明暗">◐</button>
-  </header>
+<div class="app">
+  <aside class="nav">
+    <div class="brand"><span class="mark" aria-hidden="true"></span>治理台</div>
+    <p class="nav-hint">会话</p>
+    <div class="nav-list">
+      ${sessions
+        .map((session) => {
+          const progress = sessionProgress(session);
+          return `<button class="sess-pick" type="button" data-pick="${escape(session.id)}" aria-current="${focused?.id === session.id ? "true" : "false"}">
+            <span class="id">${escape(session.id)}</span>
+            <span class="name">${escape(session.title)}</span>
+            <span class="meta">${escape(session.status === "archived" ? "已归档" : session.state)} · ${progress.segmentsDone}/${progress.segments || 0} 段</span>
+          </button>`;
+        })
+        .join("")}
+      ${sessions.length ? "" : `<p class="quiet">还没有会话。</p>`}
+    </div>
+    <div class="nav-foot">
+      <button class="theme" type="button" id="theme" aria-label="切换明暗主题">明 / 暗</button>
+      <span class="clock" id="clock">${nowStamp.slice(11)}</span>
+      <span>${escape(nowStamp.slice(0, 10))}</span>
+    </div>
+  </aside>
 
-  <main class="main">
-    <section class="focus" style="--done:${doneRatio}%" ${focus?.goal ? `title="${escape(focus.goal)}"` : ""}>
-      <div class="focus-line">
-        <span class="focus-index mono">${focusIndex}</span><span class="focus-of">/ ${focusTotal}</span>
-        <h1 class="focus-name">${escape(focus?.name ?? "还没有验收单元")}</h1>
-      </div>
-      <div class="focus-rule" aria-hidden="true"></div>
-      ${scopeLine}
-      ${actionBlock}
-      ${state === "讨论" ? waitsLine(thread) : ""}
-    </section>
-
-    <ol class="spine" aria-label="验收单元">${phases
-      .map((phase, index) => phaseNode(phase, currentPhase?.id ?? null, index))
-      .join("")}</ol>
+  <main class="stage">
+    ${sessions.map((session) => sessionSection(session, focused?.id === session.id, now)).join("")}
+    ${sessions.length ? "" : `<section class="sess"><header class="sess-head"><span class="code">STANDBY</span><h1 class="title">还没有在推进的交付物</h1></header><div class="focus"><p class="scope quiet">任何工作都从一个会话开始。</p></div></section>`}
   </main>
 
-  <footer class="foot">
-    <span class="foot-live"><i aria-hidden="true"></i><span id="activity">${escape(activityText)}</span></span>
-    <span>state.json · v${escape(doc.version)} · <span id="stamp">${escape(nowStamp)}</span></span>
-  </footer>
+  ${aside(doc, sessions, now)}
 </div>
 <script>
 (() => {
   const root = document.documentElement;
-  const saved = localStorage.getItem("noema-work-theme");
+  const saved = localStorage.getItem("governance-theme");
   if (saved) root.dataset.theme = saved;
-  const theme = document.querySelector(".theme");
-  const flip = () => {
-    const next = root.dataset.theme === "dark" ? "light" : "dark";
-    root.dataset.theme = next;
-    localStorage.setItem("noema-work-theme", next);
-  };
-  theme.addEventListener("click", flip);
-  document.addEventListener("keydown", (event) => {
-    if (event.key === "t" || event.key === "T") flip();
-  });
 
-  for (const node of document.querySelectorAll(".node")) {
-    const head = node.querySelector(".node-head");
+  const picks = [...document.querySelectorAll("[data-pick]")];
+  const sections = [...document.querySelectorAll(".sess")];
+  const show = (id) => {
+    for (const section of sections) section.hidden = section.dataset.session !== id;
+    for (const pick of picks) pick.setAttribute("aria-current", String(pick.dataset.pick === id));
+    history.replaceState(null, "", location.pathname + "#" + id);
+  };
+  for (const pick of picks) pick.addEventListener("click", () => show(pick.dataset.pick));
+  const fromHash = () => {
+    const id = location.hash.slice(1);
+    if (id && picks.some((pick) => pick.dataset.pick === id)) show(id);
+  };
+  fromHash();
+  window.addEventListener("hashchange", fromHash);
+
+  for (const head of document.querySelectorAll(".seg-head")) {
     head.addEventListener("click", () => {
-      const open = node.classList.toggle("open");
-      head.setAttribute("aria-expanded", open ? "true" : "false");
-      if (open) {
-        for (const other of document.querySelectorAll(".node.open")) {
-          if (other === node) continue;
-          other.classList.remove("open");
-          other.querySelector(".node-head").setAttribute("aria-expanded", "false");
-        }
-        history.replaceState(null, "", "#" + node.dataset.phase);
-      }
+      const seg = head.closest(".seg");
+      const open = seg.classList.toggle("open");
+      head.setAttribute("aria-expanded", String(open));
     });
   }
 
-  // Real clock: the page visibly keeps time while it is open, so a stale snapshot
-  // reads as stale instead of pretending to be live.
+  for (const row of document.querySelectorAll("[data-toggle]")) {
+    row.addEventListener("click", () => {
+      const item = row.closest(".item");
+      const open = item.classList.toggle("open");
+      row.setAttribute("aria-expanded", String(open));
+    });
+  }
+
   const clock = document.getElementById("clock");
-  const stamp = document.getElementById("stamp");
   const tick = () => {
+    if (!clock) return;
     const now = new Date();
-    const hh = String(now.getHours()).padStart(2, "0");
-    const mm = String(now.getMinutes()).padStart(2, "0");
-    const ss = String(now.getSeconds()).padStart(2, "0");
-    if (clock) clock.textContent = hh + ":" + mm + ":" + ss;
-    if (stamp) stamp.title = "页面生成于 " + stamp.textContent + "，" + hh + ":" + mm + " 仍在看";
+    clock.textContent = [now.getHours(), now.getMinutes(), now.getSeconds()]
+      .map((part) => String(part).padStart(2, "0"))
+      .join(":");
   };
   tick();
   setInterval(tick, 1000);
 
-  const heads = [...document.querySelectorAll(".node-head")];
-  document.addEventListener("keydown", (event) => {
-    if (event.key !== "j" && event.key !== "k" && event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
-    if (document.activeElement?.tagName === "INPUT") return;
-    const index = heads.indexOf(document.activeElement);
-    const next = event.key === "j" || event.key === "ArrowDown" ? index + 1 : index - 1;
-    const target = heads[Math.max(0, Math.min(heads.length - 1, index < 0 ? 0 : next))];
-    if (target) { event.preventDefault(); target.focus(); }
-  });
-
-  const openFromHash = () => {
-    const id = location.hash.slice(1);
-    if (!id) return;
-    const node = document.querySelector('.node[data-phase="' + CSS.escape(id) + '"]');
-    if (!node) return;
-    node.classList.add("open");
-    node.querySelector(".node-head").setAttribute("aria-expanded", "true");
-    node.scrollIntoView({ block: "center", behavior: "smooth" });
+  const theme = document.getElementById("theme");
+  const flip = () => {
+    const next = root.dataset.theme === "dark" ? "light" : "dark";
+    root.dataset.theme = next;
+    localStorage.setItem("governance-theme", next);
   };
-  openFromHash();
-  window.addEventListener("hashchange", openFromHash);
-
-  const action = document.querySelector(".action");
-  if (action) {
-    action.addEventListener("click", async () => {
-      try {
-        await navigator.clipboard.writeText(action.dataset.copy);
-        action.classList.add("copied");
-        setTimeout(() => action.classList.remove("copied"), 1400);
-      } catch {
-        const range = document.createRange();
-        range.selectNodeContents(action.querySelector(".action-cmd"));
-        const selection = getSelection();
-        selection.removeAllRanges();
-        selection.addRange(range);
-      }
-    });
-  }
+  theme?.addEventListener("click", flip);
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "t" || event.key === "T") flip();
+  });
 })();
 </script>
 </body>
 </html>`;
 }
-
-const STATES_LABEL = { 讨论: "DISCUSS", 执行: "EXECUTE", 验收: "ACCEPT" };
 
 function loadState(root) {
   const file = path.join(root, STATE_PATH);
@@ -565,7 +615,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(import.met
   const result = writeView();
   const progress = result.progress;
   const counts = progress
-    ? `段 ${progress.segmentsDone}/${progress.segments} · 任务 ${progress.tasksDone}/${progress.tasks} · 验收 ${progress.acceptanceDone}/${progress.acceptance}`
+    ? `段 ${progress.segmentsDone}/${progress.segments} · 任务 ${progress.tasksDone}/${progress.tasks} · 判据 ${progress.acceptanceDone}/${progress.acceptance}`
     : "没有在推进的会话";
   console.log(
     `工作台：${path.relative(process.cwd(), result.output)} · 状态 ${result.state ?? "无会话"} · ${counts}`,

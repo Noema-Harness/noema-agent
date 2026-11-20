@@ -15,33 +15,35 @@ Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与�
 
 - 治理系统按 v4 状态模型运行：会话容器 + 焦点 + 段；`governance/data/state.json` 只经 `npm run state` 写
   （文件锁、原子写、`.work/state-history/` 备份、`history.json` 归档）。
-- 治理台为版本②「一个焦点 + 一条骨架」，已移植到 v4：大编号当前段、完成度细线、范围一行、
-  唯一「下一步」命令（`nextAction`，点击复制）、纵向骨架（当前段摊开任务与 D/C/R/H 四行，证据悬停出现）、
-  `J`/`K` 移动、`T` 切明暗；动态按会话真实活动分 `live`/`idle`/`standby` 三档呼吸。
+- 治理台是三栏只读页：左边全部会话（点一行切换），中间焦点会话（大编号当前段、完成度细线、范围、
+  段骨架、讨论记录与待裁），右边计数、「下一步 · 你/agent」一句人话（命令收进「agent 会执行什么」）、
+  全部切换记录与时钟；证据点条目行内展开，没有悬浮提示；`J`/`K` 切段，`T` 或左下角按钮切明暗；
+  动态按会话真实活动分 `live`/`idle`/`standby` 三档。
 - 占位符一律过不了门：`passHumanAcceptance`、`signScope`、`completeTask`、`setAcceptance`、`resolveFinding`
   都拒绝「你的原话」「可以收口」「…」这类文本；`nextAction` 的模板命令本身就是显式占位（`'‹用户的签收原话›'`）。
 - Noema 桌面端 0.7.6 可安装、可运行；Windows 安装包未签名；macOS/Linux 未做真机验收。
 
-## 最后一次验证（2026-11-20，治理台：动态跟随活动 + 细节打磨）
+## 最后一次验证（2026-11-20，治理台：三栏控制台）
 
-**改了什么**：在版本②骨架上做细节优化，重点让界面跟着 agent 的真实活动呼吸，而不是循环播放动画。
+**改了什么**：按用户反馈（悬浮提示被遮、命令不该给人敲、内容太少、动效感觉不到）重做页面结构。
 
-- 活动分三档，全部由数据算出来：会话最近一次真实动作（切状态、开/收段、完成任务、判定判据）在 10 分钟内
-  → `live`：页眉心跳点、骨架线流光、当前节点脉冲约 1.8 秒、完成度细线带高光；超过 10 分钟 → `idle`：
-  只剩慢呼吸（7 秒级）；没有焦点 → `standby`：页眉显示 `STANDBY`、主体压暗、只剩标与底条呼吸。
-- 真实时间上屏：页眉时钟每秒走；页脚写「N 分钟前有动作」（由 `lastTouch` 取会话内最新时间戳）。
-- 交互细节：点击段头展开时其它段自动收起（`aria-expanded` 同步）；复制反馈带弹性缩放；悬停证据浮层；
-  `prefers-reduced-motion` 下所有动画关闭。
-- 内容清理：品牌改为「治理台」（不再出现 NOEMA）；无焦点时不再显示空的 `scope` 占位命令，只留 `start` 一条。
+- 三栏：左「会话」全部可点切换；中「焦点」= 大编号当前段 + 完成度细线 + 范围 + 段骨架 + 讨论记录；
+  右「数据」= 段/任务/判据/未处置发现四个计数 + 「下一步 · 你/agent」+ 全部切换记录 + 时钟。
+- 证据不再悬浮：点任务或判据行，证据在行内展开（`grid-template-rows` 动画），不遮挡任何条目。
+- 命令不摆给人敲：页面显示「下一步 · 谁」和一句人话（`nextAction` 的 label/detail），
+  命令本身收进「agent 会执行什么」折叠区。
+- 空会话列表、讨论轮次、待裁、切换记录、明暗按钮都在页面上有位置；空日常段不再占一行。
+- 动效按 `lastTouch` 分档：10 分钟内 `live`（心跳点、骨架流光、段点脉冲、时钟走动），
+  否则 `idle`（慢呼吸），无焦点 `standby`；`prefers-reduced-motion` 全关。
 
 **证据**：
 
-- `node --test scripts/work-view.test.mjs` **8/8**（新增活动档与 `STANDBY` 断言）。
-- `node --test governance/core/state.test.mjs` **15/15**。
-- `node --test scripts/quickstart.test.mjs` **2/2**。
+- `node --test scripts/work-view.test.mjs` **10/10**（导航切换、`aria-current`、下一步人话与折叠命令、
+  行内证据、`等你`/`未处置`、活动档、待机、讨论记录、主题按钮）。
+- `node --test governance/core/state.test.mjs` **15/15**；`node --test scripts/quickstart.test.mjs` **2/2**。
 - `npm run check`：见下方「最后一次全量」。
-- 截图：`.work/review/polish-dark.png`（1280 宽，执行中）、`.work/review/polish-light.png`（浅色纸面）、
-  `.work/review/polish-standby.png`（无焦点待机）、`.work/review/polish-narrow.png`（520 宽）。
+- 截图：`.work/review/v6-live.png`（执行中，1440）、`.work/review/v6-light.png`（浅色）、
+  `.work/review/v6-narrow.png`（520）。
 
 **未验证**：
 

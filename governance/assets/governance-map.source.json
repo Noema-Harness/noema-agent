@@ -316,7 +316,7 @@
   },
   "source": {
     "doc": "governance/README.md",
-    "sha256": "1d9eaab2fbd107b19a7fae5e94ace45f8f53a6134d216b737794614d0d187642",
+    "sha256": "f65ee866b79ab632977c85e2684d2ba1b1b7449c68755fd4b3251cb7f67e22f0",
     "sections": [
       {
         "title": "状态与门",
@@ -345,5 +345,5 @@
       "bytes": 154927
     }
   },
-  "updatedAt": "2026-11-20T09:29:05.955Z"
+  "updatedAt": "2026-11-20T09:58:02.410Z"
 }

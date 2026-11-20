@@ -9,13 +9,10 @@ import {
   addTask,
   addWait,
   completeTask,
-  completeSegment,
   emptyState,
-  passHumanAcceptance,
   resolveFinding,
   setAcceptance,
   setScope,
-  setState,
   startSegment,
   startSession,
 } from "../governance/core/state.mjs";
@@ -77,35 +74,37 @@ function settled() {
 
 test("the page opens on the segment in progress, numbered against the total", () => {
   const { html } = withState(settled);
-  assert.match(html, /class="focus-index mono">02</u);
-  assert.match(html, /\/ 02/u);
+  assert.match(html, /<span class="number">02<\/span><span class="of">\/ 02<\/span>/u);
   assert.match(html, /class="focus-name">入口这一段</u);
-  assert.match(html, /class="scope"><span class="scope-kind">里程碑<\/span>补一个能点开的入口/u);
+  assert.match(html, /<span class="kind">里程碑<\/span>补一个能点开的入口/u);
 });
 
-test("exactly one next action, and it is the mechanism's own command", () => {
+test("one next move, said in words, with the command folded away", () => {
   const { html } = withState(settled);
-  const actions = html.match(/class="action"/gu) ?? [];
-  assert.equal(actions.length, 1);
+  assert.equal((html.match(/class="next"/gu) ?? []).length, 1);
+  assert.match(html, /下一步 · 你/u);
+  assert.match(html, /请用户签收/u);
+  assert.match(html, /<details class="next-cmd"><summary>agent 会执行什么<\/summary>/u);
   assert.match(html, /npm run state -- accept human --id P\d-A\d/u);
-  assert.doesNotMatch(html, /npm run state -- task done/u);
 });
 
-test("the spine lists every segment, with the current one open and done ones ticked", () => {
+test("the spine lists every segment, the current one open and counted", () => {
   const { html } = withState(settled);
-  assert.equal((html.match(/class="node /gu) ?? []).length, 2);
-  assert.match(html, /class="node done"/u);
-  assert.match(html, /class="node live open"/u);
-  assert.match(html, /2\/3/u);
+  assert.match(html, /class="seg live open"/u);
+  assert.match(html, /class="seg-meta">2\/3</u);
   assert.match(html, /aria-expanded="true"/u);
+  // the daily segment produced nothing, so it does not get a row of its own
+  assert.doesNotMatch(html, /日常 1/u);
 });
 
-test("layers are shapes with evidence on demand, never a text legend", () => {
+test("layers are shapes, evidence waits inside a fold instead of a floating tip", () => {
   const { html } = withState(layered);
   assert.match(html, /<span class="shape shape-D" aria-hidden="true">▢<\/span>/u);
   assert.match(html, /<span class="shape shape-R" aria-hidden="true">◇<\/span>/u);
-  assert.match(html, /class="ev" role="note">还没有证据/u);
   assert.match(html, /<span class="shape shape-H" aria-hidden="true">△<\/span>/u);
+  assert.match(html, /<div class="fold"><div class="fold-in"><div class="ev">/u);
+  assert.match(html, /class="ev">还没有证据/u);
+  assert.match(html, /row-tag">等你</u);
   assert.doesNotMatch(html, /没有这一层的判据/u);
 });
 
@@ -117,10 +116,21 @@ test("evidence is escaped, so a scope text cannot inject markup", () => {
   assert.match(html, /&quot;的&quot;/u);
 });
 
+test("every session is listed and the focused one is marked", () => {
+  let doc = startSession(emptyState(), { title: "第一件" }).doc;
+  const second = startSession(doc, { title: "第二件" });
+  doc = second.doc;
+  const { html } = withState(() => doc);
+  assert.equal((html.match(/class="sess-pick"/gu) ?? []).length, 2);
+  assert.match(html, /data-pick="S2" aria-current="true"/u);
+  assert.match(html, /data-pick="S1" aria-current="false"/u);
+  assert.equal((html.match(/class="sess"/gu) ?? []).length, 2);
+});
+
 test("an empty state still tells you the one command that starts everything", () => {
   const { html } = withState(() => emptyState());
   assert.match(html, /npm run state -- start/u);
-  assert.match(html, /还没有验收单元/u);
+  assert.match(html, /还没有在推进的交付物/u);
   assert.match(html, /state\.json · v4/u);
 });
 
@@ -128,19 +138,25 @@ test("motion follows real activity: running sessions breathe, an empty state sta
   const running = withState(settled).html;
   assert.match(running, /<body data-activity="live">/u);
   assert.match(running, /刚刚有动作|分钟前有动作/u);
-  assert.match(running, /class="top-dots"/u);
+  assert.match(running, /class="code"/u);
   const standby = withState(() => emptyState()).html;
   assert.match(standby, /<body data-activity="standby">/u);
   assert.match(standby, /没有在推进的会话/u);
   assert.match(standby, /STANDBY/u);
 });
 
-test("discussion keeps the waits line, working sessions do not", () => {
+test("discussion keeps its waits and rounds, and every session shows the record block", () => {
   const discussing = withState(() => {
     let doc = startSession(emptyState(), { title: "还在想", discuss: true }).doc;
     doc = addWait(doc, { item: "要不要换载体" }).doc;
     return doc;
   }).html;
   assert.match(discussing, /class="waits"/u);
+  assert.match(discussing, /讨论记录/u);
   assert.doesNotMatch(withState(settled).html, /class="waits"/u);
+});
+
+test("the console offers a theme switch that does not depend on a mnemonic", () => {
+  const { html } = withState(settled);
+  assert.match(html, /<button class="theme" type="button" id="theme"/u);
 });
