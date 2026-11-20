@@ -13,7 +13,6 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import Database from 'better-sqlite3';
-import { windowsOnly } from '../../support/platform-cases.mjs';
 import {
   createCommandMirror,
   readCommandMirrorManifest,
@@ -237,65 +236,61 @@ test('Git metadata is read-only, excluded from the mirror, and bound by environm
   }
 });
 
-test(
-  'a linked Git worktree exposes its git dir and common dir read-only',
-  windowsOnly('the mirrored command is a Windows cd /d && set GIT_DIR line'),
-  async () => {
-    const harness = createHarness();
-    const gitDir = path.join(harness.root, 'git', 'worktrees', 'linked');
-    const commonDir = path.join(harness.root, 'git');
-    mkdirSync(gitDir, { recursive: true });
-    writeFileSync(path.join(gitDir, 'commondir'), '..\\..\n');
-    writeFileSync(path.join(harness.sourcePath, '.git'), `gitdir: ${gitDir}\n`);
-    let observed = null;
-    const runner = {
-      async run(input) {
-        observed = input;
-        assert.equal(existsSync(path.join(input.workspacePath, '.git')), false);
-        assert.equal(input.additionalAccess.length, 2);
-        const roots = input.additionalAccess.map((entry) =>
-          path.resolve(entry.path),
-        );
-        assert.deepEqual(
-          roots.sort(),
-          [path.resolve(gitDir), path.resolve(commonDir)].sort(),
-        );
-        assert.match(input.command, /^cd \/d "/u);
-        assert.match(input.command, /&& set "GIT_DIR=/u);
-        return {
-          output: 'ok',
-          exitCode: 0,
-          timedOut: false,
-          effectStatus: 'applied',
-        };
-      },
-    };
-    const commandRunner = new SocialWorkCommandMirrorRunner({
-      store: harness.store,
-      runner,
-      mirrorRoot: harness.mirrorRoot,
-      freeSpace: () => 64 * 1024 * 1024 * 1024,
-    });
-    try {
-      await commandRunner.run({
-        taskId: 'task-command-mirror',
-        requestId: 'step-command-mirror',
-        workspacePath: harness.sourcePath,
-        expectedWorkspaceIdentity: harness.identity,
-        command: 'git status --short',
-        signal: undefined,
-      });
-      assert.ok(observed);
-      assert.equal(
-        readFileSync(path.join(harness.sourcePath, 'src', 'a.js'), 'utf8'),
-        'before',
+test('a linked Git worktree exposes its git dir and common dir read-only', async () => {
+  const harness = createHarness();
+  const gitDir = path.join(harness.root, 'git', 'worktrees', 'linked');
+  const commonDir = path.join(harness.root, 'git');
+  mkdirSync(gitDir, { recursive: true });
+  writeFileSync(path.join(gitDir, 'commondir'), `${path.join('..', '..')}\n`);
+  writeFileSync(path.join(harness.sourcePath, '.git'), `gitdir: ${gitDir}\n`);
+  let observed = null;
+  const runner = {
+    async run(input) {
+      observed = input;
+      assert.equal(existsSync(path.join(input.workspacePath, '.git')), false);
+      assert.equal(input.additionalAccess.length, 2);
+      const roots = input.additionalAccess.map((entry) =>
+        path.resolve(entry.path),
       );
-    } finally {
-      harness.db.close();
-      rmSync(harness.root, { recursive: true, force: true });
-    }
-  },
-);
+      assert.deepEqual(
+        roots.sort(),
+        [path.resolve(gitDir), path.resolve(commonDir)].sort(),
+      );
+      assert.match(input.command, /^cd \/d "/u);
+      assert.match(input.command, /&& set "GIT_DIR=/u);
+      return {
+        output: 'ok',
+        exitCode: 0,
+        timedOut: false,
+        effectStatus: 'applied',
+      };
+    },
+  };
+  const commandRunner = new SocialWorkCommandMirrorRunner({
+    store: harness.store,
+    runner,
+    mirrorRoot: harness.mirrorRoot,
+    freeSpace: () => 64 * 1024 * 1024 * 1024,
+  });
+  try {
+    await commandRunner.run({
+      taskId: 'task-command-mirror',
+      requestId: 'step-command-mirror',
+      workspacePath: harness.sourcePath,
+      expectedWorkspaceIdentity: harness.identity,
+      command: 'git status --short',
+      signal: undefined,
+    });
+    assert.ok(observed);
+    assert.equal(
+      readFileSync(path.join(harness.sourcePath, 'src', 'a.js'), 'utf8'),
+      'before',
+    );
+  } finally {
+    harness.db.close();
+    rmSync(harness.root, { recursive: true, force: true });
+  }
+});
 
 test('a mirror preflight refusal never starts the command', async () => {
   const harness = createHarness();
