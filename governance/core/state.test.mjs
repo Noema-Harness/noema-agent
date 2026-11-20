@@ -207,12 +207,21 @@ test("placeholder words never get through the gates", () => {
   assert.throws(() => signScope(doc, { text: "xxx" }), /签收|占位/u);
 });
 
-test("discussion rounds and waits hang off the thread of the session", () => {
+test("discussion rounds carry the round summary, its open questions and the draft", () => {
   const doc = startSession(emptyState(), { title: "先聊聊再动手", discuss: true }).doc;
-  addRound(doc, { conclusion: "先做只读版本" });
-  addWait(doc, { item: "要不要做成可操作" });
-  assert.equal(doc.sessions[0].threads[0].rounds.length, 1);
+  addRound(doc, {
+    summary: "用户想先只读，我判断可操作会拖慢交付，先按只读走。",
+    waits: ["要不要做成可操作"],
+    draft: "只读版本：会话、任务、发现三块，先给 Noema 用。",
+  });
+  const thread = doc.sessions[0].threads[0];
+  assert.equal(thread.rounds.length, 1);
+  assert.match(thread.rounds[0].summary, /只读/u);
+  assert.deepEqual(thread.rounds[0].waits, ["要不要做成可操作"]);
+  assert.deepEqual(thread.waits, ["要不要做成可操作"]);
+  assert.match(thread.rounds[0].draft, /只读版本/u);
   assert.match(briefLines(doc).join("\n"), /待裁/u);
+  assert.throws(() => addRound(doc, { summary: "" }), /摘要/u);
   assert.throws(() => setState(doc, { to: "执行", reason: "想清楚了" }), /范围/u);
   setScope(doc, { text: "只读版本先落地", kind: "里程碑" });
   setState(doc, { to: "执行", reason: "范围与结论已定" });

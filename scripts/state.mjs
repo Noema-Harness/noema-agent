@@ -149,7 +149,7 @@ const USAGE = [
   "  npm run state -- close                         # 归档当前会话，写入 history.json",
   '  npm run state -- set <讨论|执行|验收> --reason "为什么换"',
   '  npm run state -- scope "这次交付什么" [--kind 里程碑|修复]',
-  '  npm run state -- round --conclusion "这轮定了什么" [--change "+新增 / 已解除"]',
+  '  npm run state -- round --summary "这一轮谈了什么、怎么推到的" [--wait "悬着的问题"] [--draft "这一轮的方案"]',
   '  npm run state -- wait add --item "要定什么"    # 或 wait drop --item …',
   "  npm run state -- tasks plan tasks.txt          # 按文本规范导入任务（阶段可选）",
   '  npm run state -- task add --text "做什么" --standard "做完的标准" [--phase 阶段名]',
@@ -172,12 +172,13 @@ function parseFlags(argv) {
     if (!token.startsWith("--")) continue;
     const key = token.slice(2);
     const value = argv[index + 1];
-    if (value === undefined || value.startsWith("--")) {
-      flags[key] = true;
-      continue;
+    let parsed = true;
+    if (value !== undefined && !value.startsWith("--")) {
+      parsed = value;
+      index += 1;
     }
-    flags[key] = value;
-    index += 1;
+    if (flags[key] === undefined) flags[key] = parsed;
+    else flags[key] = [...(Array.isArray(flags[key]) ? flags[key] : [flags[key]]), parsed];
   }
   return flags;
 }
@@ -463,14 +464,21 @@ function dispatch(argv, root = process.cwd()) {
   }
 
   if (command === "round") {
+    const waits =
+      flags.wait === undefined
+        ? []
+        : (Array.isArray(flags.wait) ? flags.wait : [flags.wait]).filter(
+            (one) => typeof one === "string",
+          );
     const result = addRound(doc, {
-      conclusion: flags.conclusion,
-      change: typeof flags.change === "string" ? flags.change : null,
+      summary: flags.summary ?? flags.conclusion,
+      waits,
+      draft: typeof flags.draft === "string" ? flags.draft : null,
     });
     doc = commit(root, result.doc, { dryRun });
-    console.log(
-      `第 ${result.round.n} 轮已记录（${result.round.date}）：${result.round.conclusion}`,
-    );
+    const round = result.round;
+    console.log(`第 ${round.n} 轮已记录（${round.date}）：${round.summary}`);
+    if (round.waits.length > 0) console.log(`这一轮悬着：${round.waits.join("；")}`);
     return;
   }
 
@@ -720,7 +728,11 @@ function dispatch(argv, root = process.cwd()) {
     const thread = id ? threadById(doc, String(id)) : activeThread(doc);
     if (!thread) throw new Error("没有活动讨论线");
     console.log(`${thread.id}｜${thread.title}｜${thread.status}｜第 ${thread.rounds.length} 轮`);
-    for (const round of thread.rounds.slice(-5)) console.log(`- ${round.n}. ${round.conclusion}`);
+    for (const round of thread.rounds.slice(-5)) {
+      console.log(`- ${round.n}. ${round.date}｜${round.summary}`);
+      if (round.waits?.length > 0) console.log(`  悬着：${round.waits.join("；")}`);
+      if (round.draft) console.log(`  方案：${round.draft}`);
+    }
     console.log(`待裁：${thread.waits.length === 0 ? "无" : thread.waits.join("；")}`);
     return;
   }

@@ -114,7 +114,13 @@ function sessionBlock(doc, session, focused) {
     ? `<section class="rounds"><h3>讨论轮次</h3><ol>${rounds
         .map(
           (round) =>
-            `<li><span class="date">${esc(round.date.slice(0, 10))}</span>${esc(round.conclusion)}</li>`,
+            `<li><span class="date">${esc(round.date.slice(0, 10))}</span>${esc(round.summary)}${
+              round.draft ? `<p class="draft">方案：${esc(round.draft)}</p>` : ""
+            }${
+              round.waits?.length
+                ? `<p class="waits">悬着：${round.waits.map(esc).join("；")}</p>`
+                : ""
+            }</li>`,
         )
         .join(
           "",

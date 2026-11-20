@@ -174,6 +174,19 @@ export function validateState(doc) {
         errors.push(`${where} 讨论线 ${String(thread.id)} 的 status 只能是 active 或 archived`);
       if (thread.status === "archived" && !ENDINGS.includes(thread.ending))
         errors.push(`${where} 讨论线 ${String(thread.id)} 归档时必须写定案或归档`);
+      const seenRounds = new Set();
+      for (const round of thread.rounds ?? []) {
+        const label = `${where} 讨论线 ${String(thread.id)} 的轮次 ${String(round?.n)}`;
+        if (!Number.isInteger(round?.n) || round.n < 1) errors.push(`${label} 的编号不合规`);
+        if (seenRounds.has(round?.n)) errors.push(`${label} 的编号重复`);
+        seenRounds.add(round?.n);
+        if (textOf(round?.summary ?? "").length === 0) errors.push(`${label} 缺少摘要`);
+        if (!isDateLike(round?.date)) errors.push(`${label} 的日期不合规`);
+        if (round?.waits !== undefined && !Array.isArray(round.waits))
+          errors.push(`${label} 的 waits 必须是数组`);
+        if (round?.draft !== undefined && round.draft !== null && typeof round.draft !== "string")
+          errors.push(`${label} 的 draft 必须是字符串`);
+      }
     }
 
     const taskIds = new Set();
@@ -425,17 +438,21 @@ export function setState(doc, { to, reason = null, obligation = null, now = new 
   return { doc, session };
 }
 
-export function addRound(doc, { conclusion, change = null, now = new Date() } = {}) {
+export function addRound(doc, { summary, waits = [], draft = null, now = new Date() } = {}) {
   const session = requireSession(doc);
   const thread = activeThread(doc);
   if (!thread) throw new Error("没有在进行的讨论线：先 set 讨论");
-  if (textOf(conclusion).length === 0) throw new Error('轮次要写结论：--conclusion "…"');
+  if (textOf(summary ?? "").length === 0)
+    throw new Error('轮次要写这一轮的摘要：--summary "这一轮谈了什么、怎么推到的"');
   const round = {
     n: thread.rounds.length + 1,
     date: today(now),
-    conclusion: textOf(conclusion),
-    change: change ? textOf(change) : null,
+    at: now.toISOString(),
+    summary: textOf(summary),
+    waits: (Array.isArray(waits) ? waits : [waits]).map(textOf).filter((one) => one.length > 0),
+    draft: draft ? textOf(draft) : null,
   };
+  for (const item of round.waits) if (!thread.waits.includes(item)) thread.waits.push(item);
   thread.rounds.push(round);
   session.since = now.toISOString();
   return { doc, round };
@@ -856,7 +873,7 @@ export function nextAction(doc) {
       return {
         label: "记下这轮结论",
         detail: "讨论要有结论，否则下一次接不上",
-        command: 'npm run state -- round --conclusion "这轮定了什么"',
+        command: 'npm run state -- round --summary "这一轮谈了什么、怎么推到的"',
         owner: "我",
       };
     return {
@@ -959,7 +976,7 @@ export function briefLines(doc) {
     `进度：任务 ${progress.tasksDone}/${progress.tasks} · 阶段 ${progress.phasesReviewed}/${progress.phases} · 发现 ${progress.findings - progress.openFindings}/${progress.findings}`,
   );
   if (thread && thread.rounds.length > 0)
-    lines.push(`上轮结论：${thread.rounds[thread.rounds.length - 1].conclusion}`);
+    lines.push(`上轮摘要：${thread.rounds[thread.rounds.length - 1].summary}`);
   if (session.sign) lines.push(`已签收：${session.sign.date}「${session.sign.text}」`);
   return lines;
 }
