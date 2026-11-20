@@ -17,29 +17,31 @@ Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与�
   （文件锁、原子写、`.work/state-history/` 备份、`history.json` 归档）。
 - 治理台为版本②「一个焦点 + 一条骨架」，已移植到 v4：大编号当前段、完成度细线、范围一行、
   唯一「下一步」命令（`nextAction`，点击复制）、纵向骨架（当前段摊开任务与 D/C/R/H 四行，证据悬停出现）、
-  `J`/`K` 移动、`T` 切明暗。
+  `J`/`K` 移动、`T` 切明暗；动态按会话真实活动分 `live`/`idle`/`standby` 三档呼吸。
 - 占位符一律过不了门：`passHumanAcceptance`、`signScope`、`completeTask`、`setAcceptance`、`resolveFinding`
   都拒绝「你的原话」「可以收口」「…」这类文本；`nextAction` 的模板命令本身就是显式占位（`'‹用户的签收原话›'`）。
 - Noema 桌面端 0.7.6 可安装、可运行；Windows 安装包未签名；macOS/Linux 未做真机验收。
 
-## 最后一次验证（2026-11-20，治理台冻结为版本②并移植到 v4）
+## 最后一次验证（2026-11-20，治理台：动态跟随活动 + 细节打磨）
 
-**改了什么**：按用户选择把治理台固定为「一个焦点 + 一条骨架」这一版，并把它的数据口径从 v3 换成 v4；
-其余几版（仪器台、审阅台、判定优先）不再维护。
+**改了什么**：在版本②骨架上做细节优化，重点让界面跟着 agent 的真实活动呼吸，而不是循环播放动画。
 
-- `scripts/work-view.mjs` 以 `d67996e` 的版本为底，改读 `focusSession` / `sessionProgress` / `session.segments`，
-  页脚、命令摘要同步 v4；空焦点与无段时不崩（大编号显示 `01`、引导 `npm run state -- start`）。
-- `scripts/work-view.test.mjs` 重写 7 条：焦点编号与段名、唯一 `nextAction` 命令、骨架列出全部段（当前展开、
-  已完成打勾、`2/3` 计数）、层用形状且证据在 `.ev`、范围转义、空状态给 `start`、讨论态保留待裁。
-- `governance/README.md`、`AGENTS.md` 的治理台描述改为这版结构。
+- 活动分三档，全部由数据算出来：会话最近一次真实动作（切状态、开/收段、完成任务、判定判据）在 10 分钟内
+  → `live`：页眉心跳点、骨架线流光、当前节点脉冲约 1.8 秒、完成度细线带高光；超过 10 分钟 → `idle`：
+  只剩慢呼吸（7 秒级）；没有焦点 → `standby`：页眉显示 `STANDBY`、主体压暗、只剩标与底条呼吸。
+- 真实时间上屏：页眉时钟每秒走；页脚写「N 分钟前有动作」（由 `lastTouch` 取会话内最新时间戳）。
+- 交互细节：点击段头展开时其它段自动收起（`aria-expanded` 同步）；复制反馈带弹性缩放；悬停证据浮层；
+  `prefers-reduced-motion` 下所有动画关闭。
+- 内容清理：品牌改为「治理台」（不再出现 NOEMA）；无焦点时不再显示空的 `scope` 占位命令，只留 `start` 一条。
 
 **证据**：
 
-- `node --test scripts/work-view.test.mjs` **7/7**。
+- `node --test scripts/work-view.test.mjs` **8/8**（新增活动档与 `STANDBY` 断言）。
 - `node --test governance/core/state.test.mjs` **15/15**。
 - `node --test scripts/quickstart.test.mjs` **2/2**。
 - `npm run check`：见下方「最后一次全量」。
-- 截图：`.work/review/spine-original.png`（原页复原，v3 快照）、`.work/review/spine-v4.png`（移植后，当前数据）。
+- 截图：`.work/review/polish-dark.png`（1280 宽，执行中）、`.work/review/polish-light.png`（浅色纸面）、
+  `.work/review/polish-standby.png`（无焦点待机）、`.work/review/polish-narrow.png`（520 宽）。
 
 **未验证**：
 

@@ -117,6 +117,22 @@ function waitsLine(thread) {
 }
 
 /**
+ * The newest moment this session really moved: a state change, a segment start/close,
+ * a finished task or a judged gate. Used only to decide how alive the page should look.
+ * @param {object} session session document
+ * @returns {string|null} ISO timestamp
+ */
+function lastTouch(session) {
+  const stamps = [session.since];
+  for (const segment of session.segments ?? []) {
+    stamps.push(segment.createdAt, segment.startedAt, segment.doneAt);
+    for (const task of segment.tasks ?? []) stamps.push(task.createdAt, task.doneAt);
+    for (const item of segment.acceptance ?? []) stamps.push(item.createdAt, item.doneAt);
+  }
+  return stamps.filter(Boolean).sort().at(-1) ?? null;
+}
+
+/**
  * @param {object} doc state document
  * @param {Date} now render time
  * @returns {string} complete HTML page
@@ -155,10 +171,12 @@ export function renderView(doc, now = new Date()) {
     ? session.threads.find((one) => one.id === session.threadId)
     : activeThread(doc);
 
-  const state_ = STATES_LABEL[state] ?? state;
-  const scopeLine = scope
-    ? `<p class="scope"><span class="scope-kind">${escape(scope.kind)}</span>${escape(scope.text)}</p>`
-    : `<p class="scope empty"><code>npm run state -- scope "…"</code></p>`;
+  const state_ = session ? (STATES_LABEL[state] ?? state) : "STANDBY";
+  const scopeLine = !session
+    ? ""
+    : scope
+      ? `<p class="scope"><span class="scope-kind">${escape(scope.kind)}</span>${escape(scope.text)}</p>`
+      : `<p class="scope empty"><code>npm run state -- scope "…"</code></p>`;
 
   const actionBlock = action
     ? `<button class="action" type="button" data-copy="${escape(action.command)}" title="${escape(
@@ -177,6 +195,19 @@ export function renderView(doc, now = new Date()) {
     "0",
   )} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
 
+  const lastAt = session ? lastTouch(session) : null;
+  const minutes = lastAt ? Math.max(0, Math.floor((now - new Date(lastAt)) / 60000)) : null;
+  const activity = !session ? "standby" : minutes === null || minutes <= 10 ? "live" : "idle";
+  const activityText = !session
+    ? "没有在推进的会话"
+    : session.status === "archived"
+      ? "已归档"
+      : minutes === null
+        ? "刚切换状态"
+        : minutes < 1
+          ? "刚刚有动作"
+          : `${minutes} 分钟前有动作`;
+
   return `<!doctype html>
 <html lang="zh-CN" data-theme="dark">
 <head>
@@ -188,9 +219,9 @@ export function renderView(doc, now = new Date()) {
   --bg: #0a0c0f;
   --ink: #eef2f6;
   --ink-2: #b9c2cc;
-  --muted: #66707c;
+  --muted: #8b96a3;
   --line: #1a2027;
-  --line-2: #232b34;
+  --line-2: #2b3743;
   --accent: #f0b429;
   --ok: #5cc08d;
   --bad: #ef6a5c;
@@ -199,8 +230,8 @@ export function renderView(doc, now = new Date()) {
   --sans: "Segoe UI Variable", "Segoe UI", "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
 }
 html[data-theme="light"] {
-  --bg: #f2efe8; --ink: #14181c; --ink-2: #3b444d; --muted: #7a828c;
-  --line: #ddd7ca; --line-2: #e7e2d7; --accent: #9a6400; --ok: #1f7a52; --bad: #a8382c; --panel: #faf8f3;
+  --bg: #f2efe8; --ink: #14181c; --ink-2: #3b444d; --muted: #5f666e;
+  --line: #d8d2c4; --line-2: #cfc7b6; --accent: #9a6400; --ok: #1f7a52; --bad: #a8382c; --panel: #faf8f3;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; }
@@ -218,9 +249,18 @@ code { font-family: var(--mono); }
 }
 .top { display: flex; align-items: center; gap: 12px; }
 .top-mark { width: 8px; height: 20px; background: var(--accent); clip-path: polygon(0 0, 100% 22%, 100% 100%, 0 78%); }
+body[data-activity="live"] .top-mark { animation: markBreath 2.2s ease-in-out infinite; }
+body[data-activity="idle"] .top-mark,
+body[data-activity="standby"] .top-mark { animation: markBreath 7s ease-in-out infinite; }
 .top-brand { font: 11px var(--mono); letter-spacing: .34em; color: var(--ink-2); }
 .top-state { font: 10px var(--mono); letter-spacing: .3em; color: var(--muted); }
+.top-dots { display: inline-flex; gap: 4px; margin-left: 2px; vertical-align: middle; }
+.top-dots i { width: 4px; height: 4px; border-radius: 50%; background: var(--accent); opacity: .35; }
+body[data-activity="live"] .top-dots i { animation: dotBeat 1.2s ease-in-out infinite; }
+body[data-activity="live"] .top-dots i:nth-child(2) { animation-delay: .18s; }
+body[data-activity="live"] .top-dots i:nth-child(3) { animation-delay: .36s; }
 .top-grow { flex: 1; }
+.top-clock { font: 10px var(--mono); letter-spacing: .12em; color: var(--muted); }
 .theme { width: 30px; height: 30px; display: grid; place-items: center; color: var(--muted); transition: color .25s, transform .6s; }
 .theme:hover { color: var(--accent); transform: rotate(180deg); }
 
@@ -268,6 +308,17 @@ code { font-family: var(--mono); }
 /* the spine: one navigation */
 .spine { list-style: none; margin: 4.5vh 0 0; padding: 0; position: relative; }
 .spine::before { content: ""; position: absolute; left: 4px; top: 10px; bottom: 10px; width: 1px; background: var(--line-2); }
+body[data-activity="live"] .spine::before {
+  background: linear-gradient(180deg, transparent, var(--accent) 14%, transparent 34%);
+  background-size: 100% 240%;
+  background-repeat: no-repeat;
+  animation: flow 3.6s linear infinite;
+  opacity: .55;
+}
+body[data-activity="standby"] .main { opacity: .84; }
+body[data-activity="idle"] .top-dots i { opacity: .16; }
+body[data-activity="standby"] .top-dots { display: none; }
+@keyframes flow { from { background-position: 0 -140%; } to { background-position: 0 140%; } }
 .node { position: relative; padding-left: 30px; animation: rise .5s cubic-bezier(.2,.8,.2,1) both; animation-delay: calc(var(--i) * 55ms + .1s); }
 .node + .node { margin-top: 1px; }
 .node-head { display: flex; align-items: baseline; gap: 12px; width: 100%; text-align: left; padding: 11px 6px 11px 0; }
@@ -322,10 +373,30 @@ code { font-family: var(--mono); }
 .waits:hover .ev, .waits:focus .ev { opacity: 1; transform: translateY(0); }
 
 .foot { display: flex; justify-content: space-between; font: 10px var(--mono); color: var(--muted); letter-spacing: .08em; }
+.foot-live { display: inline-flex; align-items: center; gap: 7px; }
+.foot-live i { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+body[data-activity="live"] .foot-live i { animation: dotBeat 1.6s ease-in-out infinite; }
+body[data-activity="idle"] .foot-live i,
+body[data-activity="standby"] .foot-live i { animation: breathe 7s ease-in-out infinite; opacity: .55; }
+
+/* activity sets the whole register of motion: running avatar breathes fast, idle barely */
+.focus-rule::after { animation: draw 1.2s .2s cubic-bezier(.2,.8,.2,1) both, sheen 3.6s .9s ease-in-out infinite; }
+body[data-activity="idle"] .focus-rule::after,
+body[data-activity="standby"] .focus-rule::after { animation: draw 1.2s .2s cubic-bezier(.2,.8,.2,1) both; }
+.node.live .node-dot { animation: pulse 1.8s ease-in-out infinite; }
+body[data-activity="idle"] .node.live .node-dot { animation: pulse 5.5s ease-in-out infinite; }
+body[data-activity="standby"] .node.live .node-dot { animation: pulse 8s ease-in-out infinite; }
+.action.copied .action-state { animation: pop .32s cubic-bezier(.2,1.4,.4,1); }
+.node-head:active .node-dot { transform: rotate(45deg) scale(1.9); }
 
 @keyframes rise { from { transform: translateY(10px); } to { transform: none; } }
 @keyframes draw { from { width: 0; } }
 @keyframes pulse { 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 18%, transparent); } }
+@keyframes sheen { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.35); } }
+@keyframes markBreath { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(.86); } }
+@keyframes dotBeat { 0%, 100% { transform: scale(.85); opacity: .4; } 45% { transform: scale(1.15); opacity: 1; } }
+@keyframes breathe { 0%, 100% { transform: scale(.9); opacity: .5; } 50% { transform: scale(1.05); opacity: .8; } }
+@keyframes pop { from { transform: scale(.6); } to { transform: none; } }
 
 @media (max-width: 620px) {
   .shell { padding: 22px 18px 24px; }
@@ -343,13 +414,14 @@ code { font-family: var(--mono); }
 }
 </style>
 </head>
-<body>
+<body data-activity="${activity}">
 <div class="shell">
   <header class="top">
     <span class="top-mark" aria-hidden="true"></span>
-    <span class="top-brand">NOEMA</span>
-    <span class="top-state">${escape(state_)}</span>
+    <span class="top-brand">治理台</span>
+    <span class="top-state">${escape(state_)}<span class="top-dots" aria-hidden="true"><i></i><i></i><i></i></span></span>
     <span class="top-grow"></span>
+    <span class="top-clock" id="clock" aria-hidden="true">${nowStamp.slice(11)}</span>
     <button class="theme" type="button" title="明暗（T）" aria-label="切换明暗">◐</button>
   </header>
 
@@ -370,7 +442,10 @@ code { font-family: var(--mono); }
       .join("")}</ol>
   </main>
 
-  <footer class="foot"><span>${escape(nowStamp)}</span><span>state.json · v${escape(doc.version)}</span></footer>
+  <footer class="foot">
+    <span class="foot-live"><i aria-hidden="true"></i><span id="activity">${escape(activityText)}</span></span>
+    <span>state.json · v${escape(doc.version)} · <span id="stamp">${escape(nowStamp)}</span></span>
+  </footer>
 </div>
 <script>
 (() => {
@@ -393,9 +468,31 @@ code { font-family: var(--mono); }
     head.addEventListener("click", () => {
       const open = node.classList.toggle("open");
       head.setAttribute("aria-expanded", open ? "true" : "false");
-      if (open) history.replaceState(null, "", "#" + node.dataset.phase);
+      if (open) {
+        for (const other of document.querySelectorAll(".node.open")) {
+          if (other === node) continue;
+          other.classList.remove("open");
+          other.querySelector(".node-head").setAttribute("aria-expanded", "false");
+        }
+        history.replaceState(null, "", "#" + node.dataset.phase);
+      }
     });
   }
+
+  // Real clock: the page visibly keeps time while it is open, so a stale snapshot
+  // reads as stale instead of pretending to be live.
+  const clock = document.getElementById("clock");
+  const stamp = document.getElementById("stamp");
+  const tick = () => {
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2, "0");
+    const mm = String(now.getMinutes()).padStart(2, "0");
+    const ss = String(now.getSeconds()).padStart(2, "0");
+    if (clock) clock.textContent = hh + ":" + mm + ":" + ss;
+    if (stamp) stamp.title = "页面生成于 " + stamp.textContent + "，" + hh + ":" + mm + " 仍在看";
+  };
+  tick();
+  setInterval(tick, 1000);
 
   const heads = [...document.querySelectorAll(".node-head")];
   document.addEventListener("keydown", (event) => {
@@ -451,7 +548,7 @@ function loadState(root) {
   return upgradeState(JSON.parse(fs.readFileSync(file, "utf8")));
 }
 
-export function writeView(root = process.cwd(), now = new Date()) {
+export function writeView(root = process.env.NOEMA_STATE_ROOT || process.cwd(), now = new Date()) {
   const doc = loadState(root);
   const output = path.join(root, OUTPUT_PATH);
   fs.mkdirSync(path.dirname(output), { recursive: true });

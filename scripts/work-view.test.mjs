@@ -124,6 +124,17 @@ test("an empty state still tells you the one command that starts everything", ()
   assert.match(html, /state\.json · v4/u);
 });
 
+test("motion follows real activity: running sessions breathe, an empty state stands by", () => {
+  const running = withState(settled).html;
+  assert.match(running, /<body data-activity="live">/u);
+  assert.match(running, /刚刚有动作|分钟前有动作/u);
+  assert.match(running, /class="top-dots"/u);
+  const standby = withState(() => emptyState()).html;
+  assert.match(standby, /<body data-activity="standby">/u);
+  assert.match(standby, /没有在推进的会话/u);
+  assert.match(standby, /STANDBY/u);
+});
+
 test("discussion keeps the waits line, working sessions do not", () => {
   const discussing = withState(() => {
     let doc = startSession(emptyState(), { title: "还在想", discuss: true }).doc;
