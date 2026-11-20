@@ -319,6 +319,11 @@ function requireState(argv) {
 function readInput(value) {
   if (typeof value !== "string") return "";
   if (fs.existsSync(value)) return fs.readFileSync(value, "utf8");
+  if (/\.(md|txt)$/iu.test(value)) {
+    throw new Error(
+      `找不到文件「${value}」：空清单也要先建一个空文件，否则这串路径会被当成一条发现`,
+    );
+  }
   return value;
 }
 
@@ -615,6 +620,17 @@ function dispatch(argv, root = process.cwd()) {
       console.log(
         `审查 ${review.review.id}（${scope}${phase ? ` ${phase}` : ""}）已记录${added.length > 0 ? `，发现 ${added.map((one) => one.id).join("、")}` : "，没有发现"}`,
       );
+      if (review.review.brief) {
+        const lines = review.review.brief
+          .split("\n")
+          .filter((row) => row.startsWith("##") || row.startsWith("- "));
+        console.log(`\n审的是（任务书摘要）：\n${lines.slice(0, 8).join("\n")}`);
+      }
+      if (added.length > 0) {
+        console.log(
+          `\n发现要逐条处置：npm run state -- finding fix|defer|accept ${added[0].id} --note "为什么"`,
+        );
+      }
       return;
     }
     throw new Error("review 后面要写 brief / log / list");

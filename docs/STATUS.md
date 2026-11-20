@@ -33,11 +33,14 @@ Does not own: 产品定位（PRODUCT）、结构与边界（ARCHITECTURE）、�
 
 - `node --test governance/core/state.test.mjs` **16/16**（会话开关、任务标准与文本导入、证据与占位、
   段审查与总体审查、进验收门槛、发现处置与派生、签收门槛、nextAction 全链、讨论线程、退役版本）。
-- `node --test scripts/quickstart.test.mjs` **2/2**（空白状态逐步跑通 README 的数十秒路径）。
+- `node --test scripts/quickstart.test.mjs` **3/3**（空白状态逐步跑通 README 的数十秒路径；新增两条否定用例：
+  占位证据被拒、有未处置发现时不能进验收、占位签收被拒）。
 - `node --test scripts/work-view.test.mjs` **9/9**（会话/状态/范围、任务标准与证据、发现 scope 与处置、
   下一步折叠命令、计数随数据变、空态引导、归档态、转义、默认浅色与主题按钮）。
-- `npm run check`：901/901 通过、0 fail（50,724ms），`governance: milestone OK`。
-- 截图：`.work/review/v10-light.png`（1280×900，执行中，任务按阶段分组）。
+- 审查流程实跑：三段审查 + 一次总体审查，7 条发现全部处置（已修，各带证据）；
+  `npm run state -- set 验收` 通过，当前等用户签收。
+- `npm run check`：901/901 通过、0 fail（34,911ms），`governance: milestone OK`。
+- 截图：`.work/review/v10-findings.png`（1280×1100，执行中，任务分组 + 6 条发现处置）。
 
 **未验证**：
 

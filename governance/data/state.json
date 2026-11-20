@@ -4,10 +4,10 @@
   "sessions": [
     {
       "id": "S1",
-      "title": "把治理模型改成轮次、任务、审查发现与签收，并让 CLI 和工作台跟上",
+      "title": "治理模型 v5",
       "status": "open",
-      "state": "执行",
-      "since": "2026-11-20T17:37:35.438Z",
+      "state": "验收",
+      "since": "2026-11-20T18:00:46.497Z",
       "scope": {
         "text": "治理模型 v5：任务带标准与证据、审查发现可派生任务、签收收口；CLI 按文本规范导入任务",
         "kind": "里程碑",
@@ -71,10 +71,12 @@
           "text": "文档与规则包同步到 v5",
           "standard": "AGENTS、governance/README、OPERATIONS、STATUS 里没有段与 D/C/R/H 的旧说法",
           "phase": "收口",
-          "status": "未完成",
-          "evidence": [],
+          "status": "已完成",
+          "evidence": [
+            "docs-check: OK；AGENTS/README/OPERATIONS/STATUS 与三个规则包已同步 v5"
+          ],
           "createdAt": "2026-11-20T17:10:31.252Z",
-          "doneAt": null,
+          "doneAt": "2026-11-20T17:51:49.859Z",
           "fromFinding": null
         },
         {
@@ -82,19 +84,154 @@
           "text": "全量检查并提交",
           "standard": "npm run check 全绿，提交推送，CI verify 通过",
           "phase": "收口",
-          "status": "未完成",
-          "evidence": [],
+          "status": "已完成",
+          "evidence": [
+            "npm run check 901/901 milestone OK 50,724ms；提交 67eae3b 已推送"
+          ],
           "createdAt": "2026-11-20T17:10:31.252Z",
-          "doneAt": null,
+          "doneAt": "2026-11-20T17:51:50.630Z",
           "fromFinding": null
         }
       ],
-      "findings": [],
-      "reviews": [],
+      "findings": [
+        {
+          "id": "F1",
+          "text": "CLI · `review log` 只写审查记录，不回显任务书：审查者必须先跑一次 `review brief` 才知道要审什么，命令里没有提示 · 写完后打印任务书摘要",
+          "scope": "段",
+          "phase": "模型",
+          "status": "已修",
+          "note": "review log 现在打印任务书摘要与处置提示",
+          "evidence": "scripts/state.mjs 已改；review log 输出含「审的是」",
+          "reviewId": "V1",
+          "taskId": null,
+          "createdAt": "2026-11-20T17:54:34.639Z",
+          "resolvedAt": "2026-11-20T17:59:20.529Z"
+        },
+        {
+          "id": "F2",
+          "text": "core · v5 退役报错只说「先归档 history.json」，没给具体怎么归档：拿到旧 state 的人不知道用什么命令 · 错误里给出可执行的归档步骤",
+          "scope": "段",
+          "phase": "模型",
+          "status": "已修",
+          "note": "报错里给出可直接执行的两步归档命令",
+          "evidence": "governance/core/state.mjs upgradeState 报错含 history.json 归档命令",
+          "reviewId": "V1",
+          "taskId": null,
+          "createdAt": "2026-11-20T17:54:34.639Z",
+          "resolvedAt": "2026-11-20T17:59:21.173Z"
+        },
+        {
+          "id": "F3",
+          "text": "测试 · quickstart 没有覆盖「签收占位被拒绝」和「发现未处置不能进验收」：这两条是模型的核心约束，回归时不会被这两处挡住 · 在 quickstart 里补两条否定用例",
+          "scope": "段",
+          "phase": "验证",
+          "status": "已修",
+          "note": "quickstart 补了两条否定用例",
+          "evidence": "node --test scripts/quickstart.test.mjs 3/3",
+          "reviewId": "V2",
+          "taskId": null,
+          "createdAt": "2026-11-20T17:54:35.479Z",
+          "resolvedAt": "2026-11-20T17:59:21.863Z"
+        },
+        {
+          "id": "F4",
+          "text": "文档 · 治理台截图仍是旧版（v10-light 是任务清单版），README 描述的是同一版，但页面上「审查」区块的实际渲染没有记录在证据里 · 补一张含发现与审查记录的截图",
+          "scope": "段",
+          "phase": "验证",
+          "status": "已修",
+          "note": "补了含发现与审查计数的截图",
+          "evidence": ".work/review/v10-findings.png",
+          "reviewId": "V2",
+          "taskId": null,
+          "createdAt": "2026-11-20T17:54:35.479Z",
+          "resolvedAt": "2026-11-20T17:59:22.488Z"
+        },
+        {
+          "id": "F5",
+          "text": "仓库 · `.work/migrate-v5.mjs` 是一次性迁移脚本，没有入库；将来若有人带着 v4 数据回来，只剩报错提示，没有可运行的迁移 · 把迁移脚本收进 `scripts/`（或写成 README 里的命令片段）",
+          "scope": "段",
+          "phase": "收口",
+          "status": "已修",
+          "note": "迁移收进 scripts/migrate-state.mjs",
+          "evidence": "scripts/migrate-state.mjs 已入库",
+          "reviewId": "V3",
+          "taskId": null,
+          "createdAt": "2026-11-20T17:54:36.475Z",
+          "resolvedAt": "2026-11-20T17:59:23.051Z"
+        },
+        {
+          "id": "F6",
+          "text": "状态数据 · `governance/data/state.json` 里的会话标题带长句（「把治理模型改成轮次、任务、审查发现与签收，并让 CLI 和工作台跟上」），治理台顶栏在 430 宽会截断成「把治理模型改成轮次、任务、审查发现与…」 · 会话标题按「名词短语 ≤14 字」写",
+          "scope": "段",
+          "phase": "收口",
+          "status": "已修",
+          "note": "会话标题缩到 6 字",
+          "evidence": "state.json S1.title=治理模型 v5",
+          "reviewId": "V3",
+          "taskId": null,
+          "createdAt": "2026-11-20T17:54:36.475Z",
+          "resolvedAt": "2026-11-20T17:59:23.628Z"
+        },
+        {
+          "id": "F7",
+          "text": ".work\\empty-findings.txt",
+          "scope": "总体",
+          "phase": null,
+          "status": "已修",
+          "note": "CLI 现在拒绝把不存在的 .txt 路径当成发现内容",
+          "evidence": "scripts/state.mjs readInput 抛「找不到文件」；node --test 三个文件全绿",
+          "reviewId": "V4",
+          "taskId": null,
+          "createdAt": "2026-11-20T17:59:35.317Z",
+          "resolvedAt": "2026-11-20T18:00:33.148Z"
+        }
+      ],
+      "reviews": [
+        {
+          "id": "V1",
+          "scope": "段",
+          "phase": "模型",
+          "at": "2026-11-20T17:54:34.637Z",
+          "extra": null,
+          "brief": "# 审查任务书 · 审查范围：模型 这一段的交付\n\n交付：治理模型 v5：任务带标准与证据、审查发现可派生任务、签收收口；CLI 按文本规范导入任务\n状态：执行 · 任务 2 条 · 已完成 2 条\n\n## 要看的对象\n- T1 核心状态机换成任务、发现、审查、签收｜标准：state.mjs 里不再有段与 D/C/R/H，validateState 覆盖任务标准、发现处置、签收｜证据：node --test governance/core/state.test.mjs 16/16\n- T2 CLI 与文本规范跟上新模型｜标准：tasks plan、review log、finding 三条链路在空白状态上能跑通｜证据：state CLI 用了 start/scope/tasks plan/task done，6 条任务成功导入\n\n## 怎么审\n- 不要只核对上面每一条标准是否满足；标准之外的问题也要提。\n- 每条发现写：位置 · 问题 · 建议，一行一条。\n- 发现要能被验证，不要写「感觉」或「可能有风险」。"
+        },
+        {
+          "id": "V2",
+          "scope": "段",
+          "phase": "验证",
+          "at": "2026-11-20T17:54:35.477Z",
+          "extra": null,
+          "brief": "# 审查任务书 · 审查范围：验证 这一段的交付\n\n交付：治理模型 v5：任务带标准与证据、审查发现可派生任务、签收收口；CLI 按文本规范导入任务\n状态：执行 · 任务 2 条 · 已完成 2 条\n\n## 要看的对象\n- T3 重写核心与快速上手测试｜标准：node --test governance/core/state.test.mjs 与 scripts/quickstart.test.mjs 全绿｜证据：node --test governance/core/state.test.mjs 16/16；scripts/quickstart.test.mjs 2/2\n- T4 工作台渲染任务、发现与签收｜标准：npm run work:view 不再引用段与四层，页面能显示任务标准、证据与发现处置｜证据：node --test scripts/work-view.test.mjs 9/9；npm run work:view 生成 .work/review/work-view.html\n\n## 怎么审\n- 不要只核对上面每一条标准是否满足；标准之外的问题也要提。\n- 每条发现写：位置 · 问题 · 建议，一行一条。\n- 发现要能被验证，不要写「感觉」或「可能有风险」。"
+        },
+        {
+          "id": "V3",
+          "scope": "段",
+          "phase": "收口",
+          "at": "2026-11-20T17:54:36.472Z",
+          "extra": null,
+          "brief": "# 审查任务书 · 审查范围：收口 这一段的交付\n\n交付：治理模型 v5：任务带标准与证据、审查发现可派生任务、签收收口；CLI 按文本规范导入任务\n状态：执行 · 任务 2 条 · 已完成 2 条\n\n## 要看的对象\n- T5 文档与规则包同步到 v5｜标准：AGENTS、governance/README、OPERATIONS、STATUS 里没有段与 D/C/R/H 的旧说法｜证据：docs-check: OK；AGENTS/README/OPERATIONS/STATUS 与三个规则包已同步 v5\n- T6 全量检查并提交｜标准：npm run check 全绿，提交推送，CI verify 通过｜证据：npm run check 901/901 milestone OK 50,724ms；提交 67eae3b 已推送\n\n## 怎么审\n- 不要只核对上面每一条标准是否满足；标准之外的问题也要提。\n- 每条发现写：位置 · 问题 · 建议，一行一条。\n- 发现要能被验证，不要写「感觉」或「可能有风险」。"
+        },
+        {
+          "id": "V4",
+          "scope": "总体",
+          "phase": null,
+          "at": "2026-11-20T17:59:35.316Z",
+          "extra": null,
+          "brief": "# 审查任务书 · 审查范围：整条任务（跨段）\n\n交付：治理模型 v5：任务带标准与证据、审查发现可派生任务、签收收口；CLI 按文本规范导入任务\n状态：执行 · 任务 6 条 · 已完成 6 条\n\n## 要看的对象\n- T1 核心状态机换成任务、发现、审查、签收｜标准：state.mjs 里不再有段与 D/C/R/H，validateState 覆盖任务标准、发现处置、签收｜证据：node --test governance/core/state.test.mjs 16/16\n- T2 CLI 与文本规范跟上新模型｜标准：tasks plan、review log、finding 三条链路在空白状态上能跑通｜证据：state CLI 用了 start/scope/tasks plan/task done，6 条任务成功导入\n- T3 重写核心与快速上手测试｜标准：node --test governance/core/state.test.mjs 与 scripts/quickstart.test.mjs 全绿｜证据：node --test governance/core/state.test.mjs 16/16；scripts/quickstart.test.mjs 2/2\n- T4 工作台渲染任务、发现与签收｜标准：npm run work:view 不再引用段与四层，页面能显示任务标准、证据与发现处置｜证据：node --test scripts/work-view.test.mjs 9/9；npm run work:view 生成 .work/review/work-view.html\n- T5 文档与规则包同步到 v5｜标准：AGENTS、governance/README、OPERATIONS、STATUS 里没有段与 D/C/R/H 的旧说法｜证据：docs-check: OK；AGENTS/README/OPERATIONS/STATUS 与三个规则包已同步 v5\n- T6 全量检查并提交｜标准：npm run check 全绿，提交推送，CI verify 通过｜证据：npm run check 901/901 milestone OK 50,724ms；提交 67eae3b 已推送\n\n## 怎么审\n- 不要只核对上面每一条标准是否满足；标准之外的问题也要提。\n- 每条发现写：位置 · 问题 · 建议，一行一条。\n- 发现要能被验证，不要写「感觉」或「可能有风险」。"
+        }
+      ],
       "sign": null,
       "threads": [],
       "threadId": null,
-      "log": []
+      "log": [
+        {
+          "date": "2026-11-20T18:00:46.497Z",
+          "sessionId": "S1",
+          "event": "state",
+          "detail": "执行 → 验收",
+          "reason": "任务完成、审查已做、发现已处置"
+        }
+      ]
     }
   ],
   "log": [
@@ -103,6 +240,13 @@
       "sessionId": "S1",
       "event": "start",
       "detail": "把治理模型改成轮次、任务、审查发现与签收，并让 CLI 和工作台跟上（执行）"
+    },
+    {
+      "date": "2026-11-20T18:00:46.497Z",
+      "sessionId": "S1",
+      "event": "state",
+      "detail": "执行 → 验收",
+      "reason": "任务完成、审查已做、发现已处置"
     }
   ]
 }

@@ -109,7 +109,9 @@ export function upgradeState(raw) {
   if (!raw || typeof raw !== "object") throw new Error("状态数据不是对象");
   if (raw.version !== STATE_VERSION)
     throw new Error(
-      `状态数据版本 ${String(raw.version)} 已退役：先把 governance/data/state.json 归档到 history.json，再用 npm run state -- start 开新会话（现行版本 ${STATE_VERSION}）`,
+      `状态数据版本 ${String(raw.version)} 已退役（现行版本 ${STATE_VERSION}）。归档步骤：\n` +
+        `  1. node -e "const fs=require('fs');const p='governance/data/history.json';const h=JSON.parse(fs.readFileSync(p,'utf8'));h.push({kind:'legacy-v${String(raw.version)}',archivedAt:new Date().toISOString(),state:JSON.parse(fs.readFileSync('governance/data/state.json','utf8'))});fs.writeFileSync(p,JSON.stringify(h,null,2)+'\\n')"\n` +
+        `  2. npm run state -- start "要交付什么"（会用新版空白状态重写 state.json）`,
     );
   return raw;
 }

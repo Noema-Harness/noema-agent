@@ -84,6 +84,74 @@ test("the readme quickstart runs end to end on a blank state", async () => {
   }
 });
 
+test("the gates refuse placeholders and undisposed findings", async () => {
+  const { emptyState } = await import("../governance/core/state.mjs");
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "noema-quickstart-"));
+  fs.mkdirSync(path.join(root, "governance", "data"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, "governance", "data", "state.json"),
+    `${JSON.stringify(emptyState(), null, 2)}\n`,
+  );
+  const findings = path.join(root, "findings.txt");
+  fs.writeFileSync(findings, "错误提示太笼统 | 建议带上具体字段名\n");
+  const empty = path.join(root, "empty.txt");
+  fs.writeFileSync(empty, "\n");
+  try {
+    run(root, ["start", "把提示写清楚"]);
+    run(root, ["scope", "把报错提示写清楚", "--kind", "修复"]);
+    run(root, [
+      "task",
+      "add",
+      "--text",
+      "改掉笼统的报错提示",
+      "--standard",
+      "报错里出现具体字段名",
+    ]);
+    run(root, ["task", "done", "T1", "--evidence", "手动触发了一次报错"]);
+
+    let failure = null;
+    try {
+      run(root, ["task", "done", "T1", "--evidence", "…"]);
+    } catch (error) {
+      failure = error;
+    }
+    assert.ok(failure, "占位证据应当被拒");
+    assert.match(String(failure.stderr), /占位/u);
+
+    run(root, ["review", "log", "--scope", "段", "--from", findings]);
+    failure = null;
+    try {
+      run(root, ["set", "验收", "--reason", "做完了"]);
+    } catch (error) {
+      failure = error;
+    }
+    assert.ok(failure, "有未处置发现时不能进验收");
+    assert.match(String(failure.stderr), /发现/u);
+
+    run(root, [
+      "finding",
+      "fix",
+      "F1",
+      "--note",
+      "提示里带上了字段名",
+      "--evidence",
+      "手动触发报错，输出里有 items[3].name",
+    ]);
+    run(root, ["review", "log", "--scope", "总体", "--from", empty]);
+    run(root, ["set", "验收", "--reason", "发现已处置"]);
+    failure = null;
+    try {
+      run(root, ["sign", "可以收口"]);
+    } catch (error) {
+      failure = error;
+    }
+    assert.ok(failure, "占位签收应当被拒");
+    assert.match(String(failure.stderr), /占位|不是原话/u);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("the CLI refuses a commit when a task has no standard", async () => {
   const { emptyState } = await import("../governance/core/state.mjs");
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "noema-quickstart-"));
