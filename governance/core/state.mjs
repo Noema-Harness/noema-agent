@@ -798,6 +798,8 @@ export function completeTask(doc, { id, evidence = [], now = new Date() } = {}) 
     throw new Error(
       `完成任务要写 --evidence「跑过什么/看到什么」（至少 4 个字，能指向具体命令或文件）`,
     );
+  if (proofs.some((one) => isPlaceholderWords(one)))
+    throw new Error(`证据不能是占位：「${proofs.join("｜")}」。写跑过的命令、文件名或看到的输出`);
   task.status = "已完成";
   task.evidence = proofs.map((one) => one.trim());
   task.doneAt = now.toISOString();
@@ -862,6 +864,8 @@ export function setAcceptance(doc, { id, status, evidence = [], now = new Date()
   );
   if (proofs.join("").trim().length < 4)
     throw new Error(`判「${status}」要写 --evidence「看到了什么」（至少 4 个字）`);
+  if (proofs.some((one) => isPlaceholderWords(one)))
+    throw new Error(`证据不能是占位：「${proofs.join("｜")}」。写跑过的命令、文件名或看到的输出`);
   item.status = status;
   item.evidence = proofs.map((one) => one.trim());
   item.doneAt = now.toISOString();
@@ -876,6 +880,11 @@ export function passHumanAcceptance(doc, { id, text, now = new Date() } = {}) {
   if (words.length < 4) {
     throw new Error(
       `人签收要带用户原话：accept human --id ${item.id} --text「用户说了什么」（至少 4 个字）`,
+    );
+  }
+  if (isPlaceholderWords(words)) {
+    throw new Error(
+      `这句不是原话，是占位：「${words}」。请把用户实际说的那句话填进去，agent 不能替人签字`,
     );
   }
   item.status = "通过";
@@ -900,6 +909,8 @@ export function resolveFinding(doc, { id, decision, note = null, now = new Date(
   const reason = typeof note === "string" ? note.trim() : "";
   if (decision !== "已修" && reason.length < 4)
     throw new Error(`「${decision}」要写 --note「为什么」（至少 4 个字）`);
+  if (reason && isPlaceholderWords(reason))
+    throw new Error(`处置理由不能是占位：「${reason}」。写实际原因`);
   item.resolution = { decision, note: reason || null, at: now.toISOString() };
   return { doc, item };
 }
@@ -928,6 +939,9 @@ export function signScope(doc, { text, now = new Date() } = {}) {
   if (!session.scope) throw new Error("还没有范围可签收：先 state -- scope「这次交付了什么」");
   if (!text || text.trim().length < 2) {
     throw new Error('签收要带用户原话：npm run state -- sign "符合预期"');
+  }
+  if (isPlaceholderWords(text)) {
+    throw new Error(`这句不是原话，是占位：「${text.trim()}」。签收要写下用户实际说的那句话`);
   }
   const openSegments = session.segments.filter(
     (segment) => segment.labeled && segment.status !== "已完成",
@@ -973,7 +987,30 @@ export function sessionProgress(session) {
     acceptanceDone: blocking.filter((item) => item.status === "通过").length,
     acceptanceBlocking: blocking.length,
     findings: acceptance.filter((item) => (item.layer ?? "D") === "R").length,
+    openFindings: acceptance.filter((item) => (item.layer ?? "D") === "R" && !item.resolution)
+      .length,
   };
+}
+
+const PLACEHOLDER_WORDS = new Set([
+  "你的原话",
+  "用户原话",
+  "用户说了什么",
+  "可以收口",
+  "符合预期",
+  "做完的依据",
+  "怎么验证的",
+  "…",
+  "...",
+  "xxx",
+]);
+
+function isPlaceholderWords(text) {
+  const words = typeof text === "string" ? text.trim() : "";
+  if (PLACEHOLDER_WORDS.has(words)) return true;
+  if (/^[…\.。xX\-—_]+$/u.test(words)) return true;
+  if (/[‹›]/.test(words)) return true;
+  return words.includes("你的原话") || words.includes("用户原话");
 }
 
 export function workProgress(doc) {
@@ -1020,17 +1057,20 @@ export function nextAction(doc) {
   if (task) {
     return {
       label: "完成手上的任务",
-      command: `npm run state -- task done --id ${task.id} --evidence "…"`,
+      command: `npm run state -- task done --id ${task.id} --evidence '‹跑过的命令或看到的输出›'`,
       detail: task.text,
     };
   }
   const acceptance = segment?.acceptance.find(
-    (item) => BLOCKING_LAYERS.includes(item.layer ?? "D") && item.status === "未验",
+    (item) =>
+      (item.layer ?? "D") !== "H" &&
+      BLOCKING_LAYERS.includes(item.layer ?? "D") &&
+      item.status === "未验",
   );
   if (segment?.labeled && acceptance) {
     return {
       label: "核对验收项",
-      command: `npm run state -- accept set --id ${acceptance.id} --status 通过 --evidence "…"`,
+      command: `npm run state -- accept set --id ${acceptance.id} --status 通过 --evidence '‹跑过的命令或看到的输出›'`,
       detail: acceptance.text,
     };
   }
@@ -1040,6 +1080,14 @@ export function nextAction(doc) {
       label: "处置审查发现",
       command: `npm run state -- accept resolve --id ${finding.id} --decision 已修`,
       detail: finding.text,
+    };
+  }
+  const human = segment?.acceptance.find((item) => item.layer === "H" && item.status === "未验");
+  if (segment?.labeled && human) {
+    return {
+      label: "请用户签收",
+      command: `npm run state -- accept human --id ${human.id} --text '‹用户的签收原话›'`,
+      detail: human.text,
     };
   }
   if (segment && segment.status !== "已完成") {
@@ -1066,7 +1114,7 @@ export function nextAction(doc) {
     }
     return {
       label: "请用户签收",
-      command: `npm run state -- sign "用户原话"`,
+      command: "npm run state -- sign '‹用户的签收原话›'",
       detail: "只有用户能签收；agent 不要代替。",
     };
   }

@@ -252,3 +252,28 @@ test("waits belong to the discussion thread of the focused session", () => {
   doc = dropWait(doc, { item: "接口要不要缓存" }).doc;
   assert.deepEqual(focusSession(doc).threads[0].waits, []);
 });
+
+test("placeholder words never pass the gates", () => {
+  let doc = session();
+  const { session: opened } = { session: focusSession(doc) };
+  doc = startSegment(doc, { name: "判定台" }).doc;
+  const segment = doc.sessions[0].segments.at(-1);
+  doc = addAcceptance(doc, { segmentId: segment.id, text: "人看过一眼", layer: "H" }).doc;
+  const human = doc.sessions[0].segments.at(-1).acceptance.at(-1);
+  assert.throws(() => passHumanAcceptance(doc, { id: human.id, text: "你的原话" }), /占位/u);
+  assert.throws(
+    () => passHumanAcceptance(doc, { id: human.id, text: "‹用户的签收原话›" }),
+    /占位/u,
+  );
+  doc = addAcceptance(doc, { segmentId: segment.id, text: "测试通过", layer: "D" }).doc;
+  const gate = doc.sessions[0].segments.at(-1).acceptance.at(-1);
+  assert.throws(
+    () => setAcceptance(doc, { id: gate.id, status: "通过", evidence: ["做完的依据"] }),
+    /占位/u,
+  );
+  doc = addTask(doc, { text: "改一处文案" }).doc;
+  const task = doc.sessions[0].segments.at(-1).tasks.at(-1);
+  assert.throws(() => completeTask(doc, { id: task.id, evidence: "做完的依据" }), /占位/u);
+  assert.throws(() => signScope(doc, { text: "可以收口" }), /占位|验收态|段/u);
+  assert.ok(opened);
+});

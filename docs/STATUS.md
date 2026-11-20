@@ -12,35 +12,30 @@ Does not own: 产品行为与边界（见 [PRODUCT](PRODUCT.md)）；结构与�
 - 便携构建在 `apps/desktop/out/Noema-win32-x64/Noema.exe`；安装包由 `npm run make:desktop` 产出（构建陷阱与回退见 [OPERATIONS](OPERATIONS.md)）。
 - 未签名；Windows 安装，macOS/Linux 未做真机验收。
 
-## 最后一次验证（2026-11-20，治理 v4：会话、状态与段）
+## 最后一次验证（2026-11-20，治理台：判定优先 + 占位符不许过门）
 
-**改了什么**：治理从「一条全局工作线 + 阶段」改成「多个会话 + 焦点 + 段」——
+**改了什么**：治理台从「状态的仪表盘」改成「一屏一个决定」，并堵住页面替人签字的漏洞——
 
-- 会话是容器：一个会话是一个要交付的东西，可同时开多个、互不阻塞；`focus` 只是指针，没有在推进的交付物时为空。
-  命令：`state -- start "…" [--discuss]`、`switch S2`、`sessions`、`close`（归档进 `governance/data/history.json`）。
-- 状态只是会话的段落（讨论/执行/验收），默认执行；任意方向可切，只要求写理由。最小路径 `start → 执行 → close`。
-- 段是会话内部的时间分片：日常琐事在当前段平铺加任务；大事才 `segment add --name "…"` 开命名段。
-  只有命名段走 2–5 个验收单元与 D/C/R/H；日常段只要任务完成就能收尾，不再被流程绑死。
-- 数据 v4（`governance/data/state.json`）：`{version:4, focus, sessions:[{id,title,status,state,scope,segments,threads,log}], log}`；
-  写盘有锁、备份与原子替换；旧 v3 数据读入时自动升级（真实数据已升级为 S1 会话、5 段）。
-- 提交门跟随焦点：`apps/desktop/src/` 的改动必须落在当前会话的范围里，否则拒绝提交。
-- 工作台改成一张**会话桌面**（`npm run work:view`）：顶部状态大字与会话名/范围；左侧段轨（点一段切换）；
-  中间当前段的任务（未完成在前、已完成折叠、悬停看证据）与命名段的 D/C/R/H 滑片（形状表示层，H 未判标「等你」、
-  R 未处置标「未处置」）；底部签收线（还差几项、第一处缺口）与唯一「下一步」命令（点击复制）；明暗切换 `T`。
-- 规则包按 v4 重写（`governance/noema/workflow/{discussion,execution,acceptance}.md`）；
-  `governance/README.md`、`AGENTS.md`、`OPERATIONS.md` 同步；治理图重出（会话/段替换原「讨论会话/验收单元」）。
+- 判定只有一个来源：`verdictOf` 直接消费 `nextAction(doc)`（label 作判定句、detail 作说明、command 作唯一命令），
+  页面不再自己排序缺口；顺序与 `signScope` 一致（任务 → D/C → 发现 → H → 收段 → 进验收 → 签收）。
+- 占位符一律被机制拒绝：`PLACEHOLDER_WORDS` 命中「你的原话」「可以收口」「…」「‹…›」等即报错，
+  `passHumanAcceptance`、`signScope`、`completeTask`、`setAcceptance`、`resolveFinding` 全部设防；
+  `nextAction` 的模板命令改成显式占位（`'‹用户的签收原话›'`、`'‹跑过的命令或看到的输出›'`），照抄就过不了校验。
+- `sessionProgress` 增加 `openFindings`，「发现」计数不再恒为 0。
+- 版面：默认浅色纸、暗色可选；`body` flex 收口、页脚贴底；门行改为流式（无固定列、正文 72ch、状态 13px）；
+  首屏加「这一轮交付」；段头是按钮（`aria-expanded` / `aria-controls`，Space/Enter 可展开）；
+  页脚「N 分钟前生成」每 30 秒重算，数据仍是快照。
+- 五套示例数据（`.work/review/ds-{busy,ready,discuss,daily,empty}/`）覆盖执行/待签收/讨论/日常平铺/空焦点，
+  三路复审（范式、视觉、交互）在其上重新巡览并给出 P0/P1。
 
 **证据**：
 
-- `npm run check`：**901/901 通过、0 fail**（45,222ms），`governance: milestone OK`。
-- `node --test governance/core/state.test.mjs` **14/14**（会话并存与切换、状态任意切换要理由、日常段平铺收尾、
-  命名段四层验收、任务/判定证据、H 只能用户原话、R 必须处置、签收、`next`、v3→v4 升级）。
-- `node --test scripts/quickstart.test.mjs` **2/2**（README 的 16 步在空白状态上跑通、空状态给第一条命令）。
-- `node --test scripts/work-view.test.mjs` **6/6**（状态与范围、段轨与当前段、唯一命令可复制、证据在悬浮卡且转义、
-  形状代替文字图例且 H 标「等你」、空白态引导）。
-- `node --test scripts/maintenance.test.mjs` **6/6**（治理词提示、内核边界、产品代码必须有范围、文档登记与文档头、precommit 播报）。
-- `npm run docs:check` OK（2 条治理词指针提示）；`npm run figure:check` OK（治理图 source `bb19ccda34c7`）。
-- 截图核验：`.work/review/v4b-dark.png`（1280×1100，状态大字、段轨、P4 展开、H「等你」、右栏计数）。
+- `node --test governance/core/state.test.mjs` **15/15**（含占位符拒绝：H 原话、`‹…›`、验收证据、任务证据）。
+- `node --test scripts/quickstart.test.mjs` **2/2**。
+- `node --test scripts/work-view.test.mjs` **11/11**（判定来自 `nextAction`；任务缺口优先；settled 后请用户签收→收段→进验收；
+  范围上屏；`openFindings` 计数；唯一命令可复制；只有焦点会话 alive；空自动段不显示；无会话给 `start`；转义；H 原话）。
+- `npm run check`：见下方「最后一次全量」。
+- 截图：`.work/review/ds-busy/wide.png`、`ds-ready`、`ds-discuss`、`ds-daily`、`ds-empty`，各有 1440×1000 与 520×1400。
 
 **未验证**：
 

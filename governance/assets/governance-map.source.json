@@ -316,7 +316,7 @@
   },
   "source": {
     "doc": "governance/README.md",
-    "sha256": "9ee10fb3066025a8852ee3dda5d05a9a6c09d5ceac077aeb938f15442b552b77",
+    "sha256": "8880f9fad349c0dfa3b8e99c8b35287b51538cb04429480293d225062f6c3087",
     "sections": [
       {
         "title": "状态与门",
@@ -341,9 +341,9 @@
     },
     "png": {
       "path": "governance/assets/governance-map.png",
-      "sha256": "b17880f65c9f0703cbba8a50d89d41b7f3cb85e487015761159d03f320102bb8",
-      "bytes": 154631
+      "sha256": "8deec8b55d0e31d7b023d14787ade7614655e41de6feaa34fae06359ccc2d376",
+      "bytes": 154927
     }
   },
-  "updatedAt": "2026-11-20T00:35:53.368Z"
+  "updatedAt": "2026-11-20T02:34:13.622Z"
 }

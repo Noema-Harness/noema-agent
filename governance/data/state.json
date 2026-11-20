@@ -1,6 +1,6 @@
 {
   "version": 4,
-  "focus": null,
+  "focus": "S2",
   "sessions": [
     {
       "id": "S1",
@@ -403,6 +403,124 @@
           "threadId": "thread-20261119-2"
         }
       ]
+    },
+    {
+      "id": "S2",
+      "title": "把治理台做成能直接判断放行的入口",
+      "status": "open",
+      "state": "执行",
+      "since": "2026-11-20T01:40:02.799Z",
+      "scope": {
+        "text": "治理台第三版：判定单一来源（nextAction）、占位符不许过门、五套示例数据与三路复审判据",
+        "kind": "里程碑",
+        "since": "2026-11-20T02:36:13.498Z",
+        "signed": null
+      },
+      "segments": [
+        {
+          "id": "P1",
+          "name": null,
+          "labeled": false,
+          "status": "已完成",
+          "createdAt": "2026-11-20T01:40:02.800Z",
+          "startedAt": "2026-11-20T01:40:02.800Z",
+          "doneAt": "2026-11-20T01:40:17.270Z",
+          "tasks": [],
+          "acceptance": []
+        },
+        {
+          "id": "P2",
+          "name": "判定优先与右栏",
+          "labeled": true,
+          "status": "进行中",
+          "createdAt": "2026-11-20T01:40:17.270Z",
+          "startedAt": "2026-11-20T01:40:17.270Z",
+          "doneAt": null,
+          "tasks": [
+            {
+              "id": "P2-T1",
+              "text": "重写工作台为判定优先",
+              "status": "已完成",
+              "evidence": [
+                "scripts/work-view.mjs 判定改由 verdictOf 消费 nextAction；work-view.test 11/11"
+              ],
+              "createdAt": "2026-11-20T01:40:33.877Z",
+              "doneAt": "2026-11-20T02:36:14.253Z"
+            },
+            {
+              "id": "P2-T2",
+              "text": "补全右栏并修窄屏",
+              "status": "已完成",
+              "evidence": [
+                "右栏会话/最近切换/悬着的问题；520px 单列无横向溢出，ds-* narrow.png"
+              ],
+              "createdAt": "2026-11-20T01:40:34.604Z",
+              "doneAt": "2026-11-20T02:36:14.834Z"
+            }
+          ],
+          "acceptance": [
+            {
+              "id": "P2-A1",
+              "text": "打开先看到判定，不是状态词",
+              "layer": "D",
+              "status": "通过",
+              "evidence": [
+                "node --test scripts/work-view.test.mjs 11/11：判定来自 nextAction，任务缺口优先"
+              ],
+              "resolution": null,
+              "createdAt": "2026-11-20T01:40:35.520Z",
+              "doneAt": "2026-11-20T02:36:25.811Z"
+            },
+            {
+              "id": "P2-A2",
+              "text": "深浅两色都能读，520px 不裁切",
+              "layer": "C",
+              "status": "通过",
+              "evidence": [
+                "ds-{busy,ready,discuss,daily,empty}/wide.png 1440x1000 与 narrow.png 520x1400 目视无裁切"
+              ],
+              "resolution": null,
+              "createdAt": "2026-11-20T01:40:36.199Z",
+              "doneAt": "2026-11-20T02:36:26.414Z"
+            },
+            {
+              "id": "P2-A3",
+              "text": "右栏墨量与左栏失衡",
+              "layer": "R",
+              "status": "未验",
+              "evidence": [],
+              "resolution": {
+                "decision": "已修",
+                "note": "右栏改成会话清单+最近切换+悬着的问题，通高排布",
+                "at": "2026-11-20T02:36:27.212Z"
+              },
+              "createdAt": "2026-11-20T01:40:36.893Z"
+            },
+            {
+              "id": "P2-A4",
+              "text": "这一版可以当作入口",
+              "layer": "H",
+              "status": "未验",
+              "evidence": [],
+              "resolution": null,
+              "createdAt": "2026-11-20T01:40:37.661Z"
+            }
+          ]
+        }
+      ],
+      "threads": [],
+      "threadId": null,
+      "log": [
+        {
+          "sessionId": "S2",
+          "from": null,
+          "to": "执行",
+          "date": "2026-11-20",
+          "reason": "有事要做，直接进入执行",
+          "obligation": "挂起",
+          "threadId": null
+        }
+      ]
     }
   ],
   "log": [
@@ -468,6 +586,15 @@
       "reason": "这个会话的交付已经结束",
       "obligation": "关闭",
       "threadId": "thread-20261119-2"
+    },
+    {
+      "sessionId": "S2",
+      "from": null,
+      "to": "执行",
+      "date": "2026-11-20",
+      "reason": "有事要做，直接进入执行",
+      "obligation": "挂起",
+      "threadId": null
     }
   ]
 }
