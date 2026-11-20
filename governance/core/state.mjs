@@ -45,7 +45,8 @@ function isDateLike(value) {
 }
 
 function today(now) {
-  return now.toISOString().slice(0, 10);
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
 function nextId(prefix, used) {
@@ -137,7 +138,7 @@ export function validateState(doc) {
       errors.push(`会话 id 不合规：${String(session.id)}`);
     if (sessionIds.has(session.id)) errors.push(`会话 id 重复：${session.id}`);
     sessionIds.add(session.id);
-    if (typeof session.title !== "string" || session.title.trim().length < 2)
+    if (typeof session.title !== "string" || session.title.trim().length === 0)
       errors.push(`${where} 缺少名字`);
     if (session.status !== "open" && session.status !== "archived")
       errors.push(`${where} 的 status 只能是 open 或 archived`);
@@ -151,7 +152,7 @@ export function validateState(doc) {
     if (session.scope !== null) {
       if (typeof session.scope !== "object") errors.push(`${where} 的 scope 不合规`);
       else {
-        if (textOf(session.scope.text).length < 4) errors.push(`${where} 的范围太短`);
+        if (textOf(session.scope.text).length === 0) errors.push(`${where} 缺少范围`);
         if (!SCOPE_KINDS.includes(session.scope.kind ?? "里程碑"))
           errors.push(`${where} 的范围类型只能是 ${SCOPE_KINDS.join(" / ")}`);
       }
@@ -183,8 +184,8 @@ export function validateState(doc) {
         errors.push(`任务 id 不合规：${String(task.id)}`);
       if (taskIds.has(task.id)) errors.push(`${where} 任务 id 重复：${task.id}`);
       taskIds.add(task.id);
-      if (textOf(task.text).length < 4) errors.push(`${label} 太短`);
-      if (textOf(task.standard).length < 4) errors.push(`${label} 缺少做完的标准`);
+      if (textOf(task.text).length === 0) errors.push(`${label} 没有写任务`);
+      if (textOf(task.standard).length === 0) errors.push(`${label} 缺少做完的标准`);
       if (task.phase !== null && typeof task.phase !== "string")
         errors.push(`${label} 的 phase 只能是字符串或 null`);
       if (typeof task.phase === "string") phases.add(task.phase);
@@ -203,12 +204,12 @@ export function validateState(doc) {
         errors.push(`发现 id 不合规：${String(finding.id)}`);
       if (findingIds.has(finding.id)) errors.push(`${where} 发现 id 重复：${finding.id}`);
       findingIds.add(finding.id);
-      if (textOf(finding.text).length < 4) errors.push(`${label} 太短`);
+      if (textOf(finding.text).length === 0) errors.push(`${label} 没有写内容`);
       if (!FINDING_SCOPES.includes(finding.scope)) errors.push(`${label} 的 scope 不合规`);
       if (!FINDING_STATUSES.includes(finding.status)) errors.push(`${label} 状态不合规`);
       if (finding.phase !== null && typeof finding.phase !== "string")
         errors.push(`${label} 的 phase 只能是字符串或 null`);
-      if (finding.status !== "未处置" && textOf(finding.note ?? "").length < 4)
+      if (finding.status !== "未处置" && textOf(finding.note ?? "").length === 0)
         errors.push(`${label} 处置了但没有写理由`);
       if (finding.status === "已修" && finding.taskId === null && !textOf(finding.evidence ?? ""))
         errors.push(`${label} 标为已修，却没有修复任务或证据`);
@@ -223,7 +224,7 @@ export function validateState(doc) {
 
     if (session.sign !== null) {
       if (!isDateLike(session.sign.date)) errors.push(`${where} 的签收日期不合规`);
-      if (textOf(session.sign.text).length < 4) errors.push(`${where} 的签收原话太短`);
+      if (textOf(session.sign.text).length === 0) errors.push(`${where} 缺少签收原话`);
     }
   }
   return errors;
@@ -263,7 +264,7 @@ export function startSession(doc, { title, discuss = false, now = new Date() } =
     throw new Error(`已经有在推进的会话 ${doc.focus}：先 close 收口，或用 switch 切到别的会话`);
   const id = nextId("S", new Set((doc.sessions ?? []).map((session) => session.id)));
   const session = emptySession({ id, title: textOf(title), discuss, now });
-  if (session.title.length < 4) throw new Error("会话名太短：一句话说清这次要交付什么");
+  if (session.title.trim().length === 0) throw new Error("会话要有名字：这一轮要交付什么");
   doc.sessions.push(session);
   doc.focus = id;
   doc.log.push({
@@ -391,7 +392,7 @@ export function setState(doc, { to, reason = null, obligation = null, now = new 
   if (!STATES.includes(to)) throw new Error(`状态只能是 ${STATES.join(" / ")}`);
   const from = session.state;
   if (from === to) throw new Error(`已经在「${to}」状态`);
-  if (textOf(reason ?? "").length < 2) throw new Error('切换状态要写一句原因：--reason "…"');
+  if (textOf(reason ?? "").length === 0) throw new Error('切换状态要写一句原因：--reason "…"');
 
   if (to === "验收") {
     const open = session.tasks.filter((task) => task.status !== "已完成");
@@ -428,7 +429,7 @@ export function addRound(doc, { conclusion, change = null, now = new Date() } = 
   const session = requireSession(doc);
   const thread = activeThread(doc);
   if (!thread) throw new Error("没有在进行的讨论线：先 set 讨论");
-  if (textOf(conclusion).length < 4) throw new Error('轮次要写结论：--conclusion "…"');
+  if (textOf(conclusion).length === 0) throw new Error('轮次要写结论：--conclusion "…"');
   const round = {
     n: thread.rounds.length + 1,
     date: today(now),
@@ -443,7 +444,7 @@ export function addRound(doc, { conclusion, change = null, now = new Date() } = 
 export function addWait(doc, { item, now = new Date() } = {}) {
   const session = requireSession(doc);
   const thread = activeThread(doc) ?? ensureThread(doc, { now }).thread;
-  if (textOf(item).length < 4) throw new Error("待裁要写清楚是什么问题");
+  if (textOf(item).length === 0) throw new Error("待裁要写清楚是什么问题");
   if (thread.waits.includes(textOf(item))) throw new Error("这条已经悬着了");
   thread.waits.push(textOf(item));
   return { doc, thread };
@@ -462,7 +463,7 @@ export function dropWait(doc, { item, now = new Date() } = {}) {
 export function setScope(doc, { text, kind = "里程碑", now = new Date() } = {}) {
   const session = requireSession(doc);
   if (!SCOPE_KINDS.includes(kind)) throw new Error(`范围类型只能是 ${SCOPE_KINDS.join(" / ")}`);
-  if (textOf(text).length < 4) throw new Error("范围太短：一句话说清这次交付什么");
+  if (textOf(text).length === 0) throw new Error("要给一句话的范围：这次交付什么");
   session.scope = { text: textOf(text), kind, since: now.toISOString() };
   session.since = now.toISOString();
   return { doc, scope: session.scope };
@@ -484,8 +485,8 @@ export function tasksInPhase(session, phase) {
 
 export function addTask(doc, { text, standard, phase = null, now = new Date() } = {}) {
   const session = requireSession(doc);
-  if (textOf(text).length < 4) throw new Error("任务太短：写清楚要做什么");
-  if (textOf(standard).length < 4) throw new Error('任务要写做完的标准：--standard "…"');
+  if (textOf(text).length === 0) throw new Error("任务要写清楚做什么");
+  if (textOf(standard).length === 0) throw new Error('任务要写做完的标准：--standard "…"');
   const task = {
     id: nextId("T", new Set(session.tasks.map((one) => one.id))),
     text: textOf(text),
@@ -536,7 +537,7 @@ export function completeTask(doc, { id, evidence = [], now = new Date() } = {}) 
       throw new Error(`证据不能是占位：「${proof}」。写跑过的命令、文件名或看到的输出`);
   }
   const proofs = given.filter((one) => one.length >= 2);
-  if (proofs.length === 0) throw new Error("证据太短：写跑过的命令、文件名或看到的输出");
+  if (proofs.length === 0) throw new Error("证据不能空：写跑过的命令、文件名或看到的输出");
   task.status = "已完成";
   task.evidence = [...task.evidence, ...proofs];
   task.doneAt = now.toISOString();
@@ -683,7 +684,7 @@ export function addFindings(
       createdAt: now.toISOString(),
       resolvedAt: null,
     };
-    if (finding.text.length < 4) throw new Error(`发现太短：${finding.text}`);
+    if (finding.text.length === 0) throw new Error("发现要写内容");
     session.findings.push(finding);
     added.push(finding);
   }
@@ -726,7 +727,7 @@ export function disposeFinding(
   const allowed = ["已修", "延期", "接受"];
   if (!allowed.includes(decision)) throw new Error(`处置只能是 ${allowed.join(" / ")}`);
   const reason = textOf(note ?? "");
-  if (reason.length < 4) throw new Error('处置要写理由：--note "为什么"');
+  if (reason.length === 0) throw new Error('处置要写理由：--note "为什么"');
   if (isPlaceholderWords(reason)) throw new Error(`理由不能是占位：「${reason}」。写实际原因`);
   if (decision === "已修") {
     const proof = textOf(evidence ?? "");
@@ -754,7 +755,7 @@ export function signScope(doc, { text, now = new Date() } = {}) {
   const session = requireSession(doc);
   if (session.state !== "验收") throw new Error("签收只能在验收状态：先 set 验收");
   const words = textOf(text);
-  if (words.length < 4) throw new Error("签收要写下用户实际说的那句话");
+  if (words.length === 0) throw new Error("签收要写下用户实际说的那句话");
   if (isPlaceholderWords(words))
     throw new Error(`这句不是原话，是占位：「${words}」。签收要写下用户实际说的那句话`);
   const open = session.tasks.filter((task) => task.status !== "已完成");

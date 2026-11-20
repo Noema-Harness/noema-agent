@@ -529,7 +529,7 @@ function dispatch(argv, root = process.cwd()) {
           "没有解析出任务：每条形如 - [ ] 任务名，缩进写 标准： 与 证据：，可选 阶段：",
         );
       for (const item of parsed) {
-        if (item.standard.length < 4)
+        if (item.standard.trim().length === 0)
           throw new Error(`任务「${item.text}」缺少标准：标准：这一条要写清楚`);
       }
       const result = planTasks(doc, { tasks: parsed });

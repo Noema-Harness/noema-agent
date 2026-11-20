@@ -198,7 +198,7 @@ test("placeholder words never get through the gates", () => {
   completeTask(doc, { id: "T1", evidence: ["真跑了 node --test"] });
   recordReview(doc, { scope: "总体" });
   addFindings(doc, { findings: ["有个问题"] });
-  assert.throws(() => disposeFinding(doc, { id: "F1", decision: "延期", note: "再议" }), /理由/u);
+  assert.throws(() => disposeFinding(doc, { id: "F1", decision: "延期", note: "" }), /理由/u);
   assert.throws(
     () => disposeFinding(doc, { id: "F1", decision: "延期", note: "‹用户的说法›" }),
     /占位/u,

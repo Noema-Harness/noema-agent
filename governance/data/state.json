@@ -1,13 +1,13 @@
 {
   "version": 5,
-  "focus": "S1",
+  "focus": null,
   "sessions": [
     {
       "id": "S1",
       "title": "治理模型 v5",
-      "status": "open",
+      "status": "archived",
       "state": "验收",
-      "since": "2026-11-20T18:00:46.497Z",
+      "since": "2026-11-20T18:14:50.689Z",
       "scope": {
         "text": "治理模型 v5：任务带标准与证据、审查发现可派生任务、签收收口；CLI 按文本规范导入任务",
         "kind": "里程碑",
@@ -220,7 +220,10 @@
           "brief": "# 审查任务书 · 审查范围：整条任务（跨段）\n\n交付：治理模型 v5：任务带标准与证据、审查发现可派生任务、签收收口；CLI 按文本规范导入任务\n状态：执行 · 任务 6 条 · 已完成 6 条\n\n## 要看的对象\n- T1 核心状态机换成任务、发现、审查、签收｜标准：state.mjs 里不再有段与 D/C/R/H，validateState 覆盖任务标准、发现处置、签收｜证据：node --test governance/core/state.test.mjs 16/16\n- T2 CLI 与文本规范跟上新模型｜标准：tasks plan、review log、finding 三条链路在空白状态上能跑通｜证据：state CLI 用了 start/scope/tasks plan/task done，6 条任务成功导入\n- T3 重写核心与快速上手测试｜标准：node --test governance/core/state.test.mjs 与 scripts/quickstart.test.mjs 全绿｜证据：node --test governance/core/state.test.mjs 16/16；scripts/quickstart.test.mjs 2/2\n- T4 工作台渲染任务、发现与签收｜标准：npm run work:view 不再引用段与四层，页面能显示任务标准、证据与发现处置｜证据：node --test scripts/work-view.test.mjs 9/9；npm run work:view 生成 .work/review/work-view.html\n- T5 文档与规则包同步到 v5｜标准：AGENTS、governance/README、OPERATIONS、STATUS 里没有段与 D/C/R/H 的旧说法｜证据：docs-check: OK；AGENTS/README/OPERATIONS/STATUS 与三个规则包已同步 v5\n- T6 全量检查并提交｜标准：npm run check 全绿，提交推送，CI verify 通过｜证据：npm run check 901/901 milestone OK 50,724ms；提交 67eae3b 已推送\n\n## 怎么审\n- 不要只核对上面每一条标准是否满足；标准之外的问题也要提。\n- 每条发现写：位置 · 问题 · 建议，一行一条。\n- 发现要能被验证，不要写「感觉」或「可能有风险」。"
         }
       ],
-      "sign": null,
+      "sign": {
+        "text": "可以",
+        "date": "2026-11-20"
+      },
       "threads": [],
       "threadId": null,
       "log": [
@@ -230,8 +233,16 @@
           "event": "state",
           "detail": "执行 → 验收",
           "reason": "任务完成、审查已做、发现已处置"
+        },
+        {
+          "date": "2026-11-20T18:14:50.689Z",
+          "sessionId": "S1",
+          "event": "sign",
+          "detail": "可以"
         }
-      ]
+      ],
+      "archivedAt": "2026-11-20T18:14:51.503Z",
+      "archiveReason": "这个会话的交付已经结束"
     }
   ],
   "log": [
@@ -247,6 +258,12 @@
       "event": "state",
       "detail": "执行 → 验收",
       "reason": "任务完成、审查已做、发现已处置"
+    },
+    {
+      "date": "2026-11-20T18:14:51.503Z",
+      "sessionId": "S1",
+      "event": "close",
+      "detail": "这个会话的交付已经结束"
     }
   ]
 }
