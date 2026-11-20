@@ -1,34 +1,30 @@
-# 执行态规则包
+# 执行
 
-进入方式：`npm run state -- start "要交付什么"`（默认执行态），
-或在已有会话里 `npm run state -- set 执行 --reason "…"`（已有范围时）。
+有范围就是在执行。一次把这一轮的任务做完，再谈验收。
 
-## 这个状态做什么
+## 做什么
 
-- 会话由若干**段**组成。日常琐事在当前段里平铺加任务；大事来了就收掉当前段、开一个命名段。
-- 命名段把范围拆成 2–5 个后面能逐个验收的单元（`state -- segment add --name "这一段交付什么"`），
-  再拆成任务（`state -- task add`）。没命名过的日常段没有验收要求。
-- 单元是「一次能判断完的最小交付」，不是流程阶段；命名段完成要任务全勾、验收项全判。
-- 只做范围内的改动。发现范围本身有问题：停下回讨论态改范围，不在执行里悄悄扩。
-- 无范围时只允许不改用户可观察行为的实现级工作；那类工作不需要进执行态。
+- 清单只有一层任务，每条都要有「做完的标准」：
+  `npm run state -- tasks plan tasks.txt`（格式见 `governance/README.md`），或单条
+  `task add --text "…" --standard "做完的标准" [--phase 名]`。
+- 做完就交证据：`npm run state -- task done T1 --evidence "跑过的命令 / 文件名 / 看到的输出"`；
+  「…」「你的原话」这类占位会被拒绝。
+- 阶段是任务上的可选字段。用阶段的时候，一个阶段的任务全做完就审这一段：
+  `npm run state -- review log --scope 段 --phase 名 --from findings.txt`。
+- 全部任务做完、进验收前审整体：`npm run state -- review log --scope 总体 --from findings.txt`
+  （没有发现就传空文件）。任务书由系统生成，改不掉；确有局部风险，用 `--extra "请特别检查…"` 附加。
+- 发现要逐条处置：`finding fix F1 --note "改在哪"`（或先 `finding task F1` 派生修复任务并做完）、
+  `finding defer F1 --note "为什么下一轮"`、`finding accept F1 --note "为什么可以接受"`。
+- 收口的顺序：任务全完成 → 段审查（有阶段时）→ 总体审查 → `set 验收 --reason "…"` → 用户签收 → `close`。
 
-## 怎么记
+## 检查
 
-- 任务完成：`state -- task done --id P1-T1 --evidence "跑过的命令/测试/证据路径"`。
-- 一段开始：`state -- segment start --id P2`；一段收尾：`state -- segment done --id P2`。
-- 有新发现、要改判据、要拆单元：记 `state -- round`，别只放在脑子里。
-- 长任务放后台作业，主进程只负责启动与收结果。
+- [ ] gate:source-boundary 产品代码改动落在 `apps/desktop/src/` 的既有边界内。
+- [ ] gate:workspace-root-dirs 新目录先在 `scripts/workspace.config.json` 登记。
+- [ ] gate:status-today 能用到哪变了就更新 `docs/STATUS.md`。
 
-## 怎么结束
+## 不要做
 
-- 命名段收尾：写 D（确定性检查）/ C（判据对照）/ R（审查发现）/ H（人签收）四层验收项，
-  审查发现必须逐条处置（`accept resolve --decision 已修|延期|接受`）。
-- 段全完成 → `state -- set 验收`，带上：改了什么、证据在哪、哪些没验证、风险。
-- 回讨论不算失败：范围错了就回讨论改范围，改完再进执行。
-- 这个交付做完了：`state -- close` 归档会话（不必等签收，签收与否都记进历史）。
-
-## 边界
-
-- 不碰验收结论（那属于验收态）。
-- 修实现偏差（范围没变）：继续在本状态里做，不重新走讨论。
-- 检查项：`gate:source-boundary`（产品代码目录约定）、`gate:workspace-root-dirs`（新增根目录登记）。
+- 不在没有范围时改产品行为（提交门会拦）。
+- 不用自评代替证据；「做完了」不是证据，命令输出、文件、截图才是。
+- 不跳过审查直接进验收。

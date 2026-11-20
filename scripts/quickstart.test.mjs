@@ -30,42 +30,61 @@ test("the readme quickstart runs end to end on a blank state", async () => {
     `${JSON.stringify(emptyState(), null, 2)}\n`,
   );
 
+  const tasks = path.join(root, "tasks.txt");
+  fs.writeFileSync(
+    tasks,
+    [
+      "- [ ] 补上入口按钮",
+      "      标准：点一下能打开对应界面",
+      "      阶段：入口",
+      "- [ ] 补上入口的说明",
+      "      标准：第一次打开的人能照着做完",
+      "      阶段：入口",
+      "",
+    ].join("\n"),
+  );
+  const findings = path.join(root, "findings.txt");
+  fs.writeFileSync(findings, "入口按钮没有键盘焦点样式 | 建议补 focus-visible\n");
+  const empty = path.join(root, "empty.txt");
+  fs.writeFileSync(empty, "\n");
+
   try {
     const steps = [
-      ["start", "给工作台补上缺的入口"],
-      ["scope", "把工作台补上缺的入口", "--kind", "修复"],
-      ["segment", "add", "--name", "入口补齐"],
-      ["segment", "start", "--id", "P2"],
-      ["task", "add", "--text", "补入口"],
-      ["task", "done", "--id", "P2-T1", "--evidence", "点开入口能看到页面"],
-      ["accept", "add", "--layer", "D", "--text", "入口可点击"],
-      ["accept", "add", "--layer", "H", "--text", "用户认可入口位置"],
-      ["accept", "set", "--id", "P2-A1", "--status", "通过", "--evidence", "手动点了一次"],
-      ["accept", "human", "--id", "P2-A2", "--text", "入口位置可以"],
-      ["segment", "done", "--id", "P2"],
-      ["set", "验收", "--reason", "验收项全绿"],
-      ["sign", "这一版可以交付"],
+      ["start", "把工作台的入口补齐"],
+      ["scope", "把工作台的入口补齐并交付", "--kind", "修复"],
+      ["tasks", "plan", tasks],
+      ["task", "done", "T1", "--evidence", "手动点了一次按钮"],
+      ["task", "done", "T2", "--evidence", "照着说明走了一遍"],
+      ["review", "log", "--scope", "段", "--phase", "入口", "--from", findings],
+      ["finding", "task", "F1"],
+      ["task", "done", "T3", "--evidence", "补了 focus-visible 并重拍截图"],
+      ["finding", "fix", "F1", "--note", "补了键盘焦点样式"],
+      ["review", "log", "--scope", "总体", "--from", empty],
+      ["set", "验收", "--reason", "任务与审查都齐了"],
+      ["sign", "行，这一版可以交"],
       ["close"],
     ];
     for (const step of steps) run(root, step);
 
     const state = readState(root);
-    assert.equal(state.version, 4);
+    assert.equal(state.version, 5);
     assert.equal(state.focus, null);
     assert.equal(state.sessions.length, 1);
     assert.equal(state.sessions[0].status, "archived");
-    assert.equal(state.sessions[0].scope.signed.text, "这一版可以交付");
+    assert.equal(state.sessions[0].sign.text, "行，这一版可以交");
+    assert.equal(state.sessions[0].findings[0].status, "已修");
     const history = JSON.parse(
       fs.readFileSync(path.join(root, "governance", "data", "history.json"), "utf8"),
     );
-    assert.equal(history.length, 1);
-    assert.equal(history[0].signed.text, "这一版可以交付");
+    assert.equal(history.at(-1).sessionId, "S1");
+    assert.ok(history.at(-1).signed, "归档记录应带签收时间");
+    assert.equal(history.at(-1).open, 0);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
 
-test("a blank state reports the first command instead of failing", async () => {
+test("the CLI refuses a commit when a task has no standard", async () => {
   const { emptyState } = await import("../governance/core/state.mjs");
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "noema-quickstart-"));
   fs.mkdirSync(path.join(root, "governance", "data"), { recursive: true });
@@ -74,10 +93,15 @@ test("a blank state reports the first command instead of failing", async () => {
     `${JSON.stringify(emptyState(), null, 2)}\n`,
   );
   try {
-    const output = run(root, ["next"]);
-    assert.match(output, /开一个会话/u);
-    const verify = run(root, ["verify"]);
-    assert.match(verify, /合规/u);
+    run(root, ["start", "把一件小事做完"]);
+    let failure = null;
+    try {
+      run(root, ["task", "add", "--text", "做点事情"]);
+    } catch (error) {
+      failure = error;
+    }
+    assert.ok(failure, "缺标准的任务应当被拒");
+    assert.match(String(failure.stderr), /做完的标准/u);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

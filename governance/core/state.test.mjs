@@ -2,278 +2,245 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   STATE_VERSION,
-  addAcceptance,
+  addFindings,
   addRound,
-  addSegment,
   addTask,
   addWait,
   archiveSession,
   briefLines,
-  completeSegment,
   completeTask,
-  currentSegment,
-  dropWait,
+  disposeFinding,
   emptyState,
   focusSession,
   listSessions,
-  logOf,
   nextAction,
   openFindings,
-  passHumanAcceptance,
-  progressLines,
-  resolveFinding,
-  setAcceptance,
-  setAcceptanceText,
+  overallReady,
+  parseFindingSpec,
+  parseTaskSpec,
+  planTasks,
+  recordReview,
+  segmentReady,
   setScope,
   setState,
   signScope,
-  startSegment,
   startSession,
-  summaryLines,
   switchSession,
+  taskFromFinding,
   upgradeState,
   validateState,
-  workProgress,
 } from "./state.mjs";
 
-function session(doc = emptyState()) {
-  return startSession(doc, { title: "一条小任务" }).doc;
+function opened(title = "把一件事做完并交出来") {
+  return startSession(emptyState(), { title }).doc;
 }
 
-function scoped(doc) {
-  return setScope(doc, { text: "发一条能直接检查的变更" }).doc;
+function withTasks(doc, items) {
+  const parsed = items.map((item) =>
+    typeof item === "string" ? { text: item, standard: `${item}的标准` } : item,
+  );
+  return planTasks(doc, { tasks: parsed }).doc;
 }
 
-test("a fresh state opens no session and the focus is empty", () => {
-  const doc = emptyState();
+test("a session starts empty and focused, executing by default", () => {
+  const doc = opened();
   assert.equal(doc.version, STATE_VERSION);
+  assert.equal(doc.focus, "S1");
+  const session = focusSession(doc);
+  assert.equal(session.state, "执行");
+  assert.deepEqual(session.tasks, []);
+  assert.deepEqual(session.findings, []);
+  assert.deepEqual(session.reviews, []);
+  assert.equal(session.sign, null);
+  assert.deepEqual(validateState(doc), []);
+});
+
+test("a second session needs the first one closed", () => {
+  const doc = opened();
+  assert.throws(() => startSession(doc, { title: "另一件事" }), /先 close 收口/u);
+  archiveSession(doc, { reason: "做完了" });
   assert.equal(doc.focus, null);
-  assert.deepEqual(doc.sessions, []);
-  assert.equal(focusSession(doc), null);
-  assert.match(nextAction(doc).command, /state -- start/u);
+  const next = startSession(doc, { title: "另一件事也要做完" }).doc;
+  assert.equal(next.focus, "S2");
 });
 
-test("a session starts in execution unless asked to discuss", () => {
-  const direct = session();
-  assert.equal(direct.sessions[0].state, "执行");
-  assert.equal(direct.sessions[0].status, "open");
-  assert.equal(direct.sessions[0].segments.length, 1);
-  assert.equal(direct.sessions[0].segments[0].labeled, false);
-
-  const talking = startSession(emptyState(), { title: "先聊聊", discuss: true }).doc;
-  assert.equal(talking.sessions[0].state, "讨论");
-  assert.equal(addRound(talking, { conclusion: "方向基本明确" }).doc.sessions[0].threads.length, 1);
-});
-
-test("sessions do not block each other and live side by side", () => {
-  const first = session();
-  const { doc, session: second } = startSession(first, { title: "另一件交付" });
-  assert.equal(doc.focus, second.id);
-  assert.equal(doc.sessions.length, 2);
-  assert.equal(doc.sessions[0].state, "执行");
-
-  const back = switchSession(doc, { id: "S1" }).doc;
-  assert.equal(focusSession(back).title, "一条小任务");
-  assert.equal(back.sessions[1].state, "执行");
-
-  const closed = archiveSession(back, { reason: "这件事做完了" }).doc;
-  assert.equal(closed.focus, null);
-  assert.equal(closed.sessions[0].status, "archived");
-  assert.equal(closed.sessions[1].status, "open");
-
-  const again = switchSession(closed, { id: "S2" }).doc;
-  assert.equal(focusSession(again).state, "执行");
-});
-
-test("a session can move between states at any time, with a reason", () => {
-  let doc = scoped(session());
-  doc = setState(doc, { to: "验收", reason: "想直接看看能不能签" }).doc;
-  assert.equal(focusSession(doc).state, "验收");
-  doc = setState(doc, { to: "讨论", reason: "发现方向要重定" }).doc;
-  assert.equal(focusSession(doc).state, "讨论");
-  assert.throws(() => setState(doc, { to: "执行", reason: " " }), /--reason/u);
-});
-
-test("a daily segment keeps a flat list and closes without acceptance", () => {
-  let doc = scoped(session());
-  const daily = currentSegment(doc);
-  assert.equal(daily.labeled, false);
-  doc = addTask(doc, { text: "装一下插件" }).doc;
-  doc = addTask(doc, { text: "再装一个" }).doc;
-  assert.throws(() => completeSegment(doc), /任务没完成/u);
-  doc = completeTask(doc, { id: daily.tasks[0].id, evidence: "版本号对上了" }).doc;
-  doc = completeTask(doc, { id: daily.tasks[1].id, evidence: "启动能看到菜单" }).doc;
-  doc = completeSegment(doc).doc;
-  assert.equal(currentSegment(doc).status, "已完成");
-});
-
-test("a labeled segment needs done tasks and a passed D/C/H acceptance", () => {
-  let doc = scoped(session());
-  doc = addSegment(doc, { name: "这一大段：把入口做出来" }).doc;
-  const labeled = currentSegment(doc);
-  assert.equal(labeled.labeled, true);
-  assert.equal(labeled.status, "进行中");
-
-  doc = startSegment(doc).doc;
-  doc = addAcceptance(doc, { text: "入口打开后能看到下一步", layer: "D" }).doc;
-  doc = addAcceptance(doc, { text: "点两下就能到目标页", layer: "C" }).doc;
-  doc = addAcceptance(doc, { text: "第一次用的人不会卡住", layer: "H" }).doc;
-  doc = addTask(doc, { text: "做一个入口" }).doc;
-  const task = currentSegment(doc).tasks[0];
-  doc = completeTask(doc, { id: task.id, evidence: "本地跑通了" }).doc;
-  assert.throws(() => completeSegment(doc), /没判/u);
-
-  const [d, c, h] = currentSegment(doc).acceptance;
-  doc = setAcceptance(doc, { id: d.id, status: "通过", evidence: "work-view.test.mjs 覆盖" }).doc;
-  doc = setAcceptance(doc, { id: c.id, status: "通过", evidence: "点两下确实到" }).doc;
-  assert.throws(() => completeSegment(doc), /用户|没判/u);
-  doc = passHumanAcceptance(doc, { id: h.id, text: "打开就知道干什么" }).doc;
-  doc = completeSegment(doc).doc;
-  assert.equal(currentSegment(doc).status, "已完成");
-});
-
-test("evidence is required to finish a task or judge an acceptance", () => {
-  let doc = scoped(session());
-  doc = addTask(doc, { text: "改一行" }).doc;
-  const task = currentSegment(doc).tasks[0];
-  assert.throws(() => completeTask(doc, { id: task.id }), /evidence/u);
-  assert.throws(() => completeTask(doc, { id: task.id, evidence: "看" }), /evidence/u);
-  doc = completeTask(doc, { id: task.id, evidence: "改动只影响文案" }).doc;
-
-  doc = addAcceptance(doc, { text: "页面读得清", layer: "C" }).doc;
-  const item = currentSegment(doc).acceptance[0];
-  assert.throws(() => setAcceptance(doc, { id: item.id, status: "通过" }), /evidence/u);
-  assert.throws(() => setAcceptanceText(doc, { id: item.id, text: "" }), /--text/u);
-});
-
-test("the agent cannot judge H, and review findings must be resolved", () => {
-  let doc = scoped(session());
-  doc = addAcceptance(doc, { text: "用户看着顺眼", layer: "H" }).doc;
-  doc = addAcceptance(doc, { text: "顺手发现的问题", layer: "R" }).doc;
-  const [human, review] = currentSegment(doc).acceptance;
-  assert.throws(
-    () => setAcceptance(doc, { id: human.id, status: "通过", evidence: "我觉得可以" }),
-    /用户/u,
-  );
-  assert.throws(
-    () => setAcceptance(doc, { id: review.id, status: "通过", evidence: "没问题" }),
-    /审查发现/u,
-  );
-  assert.throws(() => resolveFinding(doc, { id: review.id, decision: "延期" }), /--note/u);
-  doc = resolveFinding(doc, { id: review.id, decision: "延期", note: "等下一轮一起改" }).doc;
-  assert.equal(openFindings(doc).length, 0);
-  assert.equal(workProgress(doc).openFindings, 0);
-});
-
-test("signing needs labeled segments done and everything passing", () => {
-  let doc = scoped(session());
-  assert.throws(() => signScope(doc, { text: "可以了" }), /验收态/u);
-
-  doc = addSegment(doc, { name: "这一段：把入口做出来" }).doc;
-  doc = startSegment(doc).doc;
-  doc = addAcceptance(doc, { text: "入口能看到下一步", layer: "D" }).doc;
-  doc = setState(doc, { to: "验收", reason: "做完了" }).doc;
-  assert.throws(() => signScope(doc, { text: "可以了" }), /没通过|段没完成/u);
-  const item = currentSegment(doc).acceptance[0];
-  doc = setAcceptance(doc, { id: item.id, status: "通过", evidence: "打开就能看到" }).doc;
-  doc = completeSegment(doc).doc;
-  doc = signScope(doc, { text: "可以了，下一件事吧" }).doc;
-  assert.equal(focusSession(doc).scope.signed.text, "可以了，下一件事吧");
+test("a task needs a standard, not just a sentence", () => {
+  const doc = opened();
+  assert.throws(() => addTask(doc, { text: "做点事情" }), /做完的标准/u);
+  const result = addTask(doc, { text: "做点事情", standard: "能跑起来并且看到输出" });
+  assert.equal(result.task.id, "T1");
+  assert.equal(result.task.phase, null);
   assert.deepEqual(validateState(doc), []);
 });
 
-test("the next action follows the session instead of a fixed pipeline", () => {
-  let doc = session();
-  assert.equal(nextAction(doc).label, "写清这次交付");
-  doc = scoped(doc);
-  assert.match(nextAction(doc).command, /task add|segment/u);
+test("tasks can be imported from text with an optional phase", () => {
+  const doc = opened();
+  const parsed = parseTaskSpec(
+    [
+      "- [ ] 写主界面",
+      "      标准：1280 与 430 都不溢出",
+      "      阶段：界面",
+      "- [ ] 写一份说明",
+      "      标准：文档里写清怎么跑",
+    ].join("\n"),
+  );
+  assert.equal(parsed.length, 2);
+  assert.equal(parsed[0].phase, "界面");
+  assert.equal(parsed[1].phase, null);
+  const result = planTasks(doc, { tasks: parsed });
+  assert.equal(result.tasks.length, 2);
+  assert.deepEqual(validateState(doc), []);
 });
 
-test("summaries expose the focused session and the other open ones", () => {
-  const doc = startSession(scoped(session()), { title: "另一件交付" }).doc;
-  const text = summaryLines(doc).join("\n");
-  assert.match(text, /另一件交付/u);
-  assert.match(text, /执行/u);
-  assert.match(progressLines(doc).join("\n"), /S2/u);
-  assert.match(briefLines(doc).join("\n"), /现在该做|下一步/u);
+test("completion needs evidence that is not a placeholder", () => {
+  const doc = withTasks(opened(), ["写完第一件事"]);
+  assert.throws(() => completeTask(doc, { id: "T1" }), /--evidence/u);
+  assert.throws(() => completeTask(doc, { id: "T1", evidence: ["…"] }), /占位/u);
+  const result = completeTask(doc, { id: "T1", evidence: ["node --test 15/15"] });
+  assert.equal(result.task.status, "已完成");
+  assert.deepEqual(result.task.evidence, ["node --test 15/15"]);
 });
 
-test("state validation rejects a session that lies about its progress", () => {
-  const doc = JSON.parse(JSON.stringify(session()));
-  const segment = doc.sessions[0].segments[0];
-  segment.tasks.push({
-    id: "P1-T1",
-    text: "做完的事",
-    status: "已完成",
-    evidence: [],
-    doneAt: "2026-11-20",
+test("a phase can only be reviewed once every task in it is done", () => {
+  const doc = withTasks(opened(), [
+    { text: "A 任务", standard: "A 的标准", phase: "一段" },
+    { text: "B 任务", standard: "B 的标准", phase: "一段" },
+  ]);
+  completeTask(doc, { id: "T1", evidence: ["跑了 A"] });
+  const notReady = segmentReady(focusSession(doc), "一段");
+  assert.equal(notReady.ready, false);
+  assert.match(notReady.why, /还有 1 个任务/u);
+  completeTask(doc, { id: "T2", evidence: ["跑了 B"] });
+  assert.equal(segmentReady(focusSession(doc), "一段").ready, true);
+  const review = recordReview(doc, { scope: "段", phase: "一段" });
+  assert.equal(review.review.scope, "段");
+  assert.match(review.review.brief, /审查任务书/u);
+  assert.equal(segmentReady(focusSession(doc), "一段").ready, false);
+});
+
+test("the overall review waits for every task and only runs once", () => {
+  const doc = withTasks(opened(), ["第一件事", "第二件事"]);
+  completeTask(doc, { id: "T1", evidence: ["做完一"] });
+  assert.equal(overallReady(focusSession(doc)).ready, false);
+  completeTask(doc, { id: "T2", evidence: ["做完二"] });
+  assert.equal(overallReady(focusSession(doc)).ready, true);
+  recordReview(doc, { scope: "总体" });
+  assert.equal(overallReady(focusSession(doc)).ready, false);
+});
+
+test("entering acceptance needs finished tasks and an overall review", () => {
+  const doc = withTasks(opened(), ["只有一件事"]);
+  assert.throws(() => setState(doc, { to: "验收", reason: "差不多了" }), /没做完/u);
+  completeTask(doc, { id: "T1", evidence: ["跑通了"] });
+  assert.throws(() => setState(doc, { to: "验收", reason: "差不多了" }), /总体审查/u);
+  recordReview(doc, { scope: "总体" });
+  const result = setState(doc, { to: "验收", reason: "任务完成，审查已做" });
+  assert.equal(result.session.state, "验收");
+});
+
+test("a finding needs a reason to be closed, and 已修 needs proof", () => {
+  const doc = withTasks(opened(), ["有件事要做"]);
+  completeTask(doc, { id: "T1", evidence: ["做完"] });
+  recordReview(doc, { scope: "总体" });
+  const added = addFindings(doc, {
+    findings: parseFindingSpec("- 入口未做可达性检查 | 建议补 aria"),
   });
-  assert.match(validateState(doc).join("；"), /证据/u);
-});
-
-test("a v3 state upgrades into a single session with its work intact", () => {
-  const legacy = {
-    version: 3,
-    current: { threadId: "thread-1", by: null, state: "执行", since: "2026-11-19" },
-    threads: [{ id: "thread-1", title: "旧讨论", status: "active", rounds: [], waits: [] }],
-    work: {
-      scope: { text: "旧范围", kind: "里程碑", signed: null },
-      phases: [
-        {
-          id: "P1",
-          name: "旧阶段",
-          goal: null,
-          status: "已完成",
-          createdAt: "2026-11-19",
-          doneAt: "2026-11-19",
-          tasks: [],
-          acceptance: [],
-        },
-      ],
-    },
-    log: [{ date: "2026-11-19", from: "讨论", to: "执行", reason: "开始做" }],
-  };
-  const doc = upgradeState(legacy);
-  assert.equal(doc.version, 4);
-  assert.equal(doc.sessions.length, 1);
-  assert.equal(doc.focus, doc.sessions[0].id);
-  assert.equal(doc.sessions[0].scope.text, "旧范围");
-  assert.equal(doc.sessions[0].segments[0].name, "旧阶段");
-  assert.equal(doc.log[0].sessionId, doc.sessions[0].id);
+  const finding = added.findings[0];
+  assert.equal(finding.scope, "总体");
+  assert.equal(finding.status, "未处置");
+  assert.throws(
+    () => disposeFinding(doc, { id: finding.id, decision: "已修", note: "改好入口文案" }),
+    /要有证据/u,
+  );
+  const task = taskFromFinding(doc, { id: finding.id }).task;
+  assert.equal(task.fromFinding, finding.id);
+  assert.equal(task.phase, null);
+  completeTask(doc, { id: task.id, evidence: ["补了 aria-label 并重跑"] });
+  const disposed = disposeFinding(doc, { id: finding.id, decision: "已修", note: "补了可达性" });
+  assert.equal(disposed.finding.status, "已修");
   assert.deepEqual(validateState(doc), []);
-  assert.equal(listSessions(doc).length, 1);
-  assert.equal(logOf(doc).length, 1);
 });
 
-test("waits belong to the discussion thread of the focused session", () => {
-  let doc = startSession(emptyState(), { title: "先定方向", discuss: true }).doc;
-  doc = addWait(doc, { item: "接口要不要缓存" }).doc;
-  assert.match(focusSession(doc).threads[0].waits.join(), /缓存/u);
-  doc = dropWait(doc, { item: "接口要不要缓存" }).doc;
-  assert.deepEqual(focusSession(doc).threads[0].waits, []);
+test("signing needs acceptance, no open findings, and the user's own words", () => {
+  const doc = withTasks(opened(), ["要做的事"]);
+  completeTask(doc, { id: "T1", evidence: ["跑过"] });
+  recordReview(doc, { scope: "总体" });
+  assert.throws(() => signScope(doc, { text: "可以" }), /验收状态/u);
+  setState(doc, { to: "验收", reason: "做完了" });
+  addFindings(doc, { findings: ["入口不清楚"] });
+  assert.throws(() => signScope(doc, { text: "就按这个来" }), /没处置/u);
+  disposeFinding(doc, { id: "F1", decision: "延期", note: "下一轮再改入口" });
+  assert.throws(() => signScope(doc, { text: "‹用户的签收原话›" }), /占位/u);
+  const result = signScope(doc, { text: "行，就按这个收" });
+  assert.equal(result.session.sign.text, "行，就按这个收");
+  assert.deepEqual(validateState(doc), []);
 });
 
-test("placeholder words never pass the gates", () => {
-  let doc = session();
-  const { session: opened } = { session: focusSession(doc) };
-  doc = startSegment(doc, { name: "判定台" }).doc;
-  const segment = doc.sessions[0].segments.at(-1);
-  doc = addAcceptance(doc, { segmentId: segment.id, text: "人看过一眼", layer: "H" }).doc;
-  const human = doc.sessions[0].segments.at(-1).acceptance.at(-1);
-  assert.throws(() => passHumanAcceptance(doc, { id: human.id, text: "你的原话" }), /占位/u);
+test("next action walks task → phase review → overall review → acceptance → findings → sign → close", () => {
+  const doc = withTasks(opened(), [{ text: "一段里的活", standard: "段的标准", phase: "一段" }]);
+  setScope(doc, { text: "把这件事做完并交付", kind: "里程碑" });
+  assert.match(nextAction(doc).command, /task done T1/u);
+  completeTask(doc, { id: "T1", evidence: ["跑了"] });
+  assert.match(nextAction(doc).command, /review log --scope 段/u);
+  recordReview(doc, { scope: "段", phase: "一段" });
+  assert.match(nextAction(doc).command, /review log --scope 总体/u);
+  recordReview(doc, { scope: "总体" });
+  assert.match(nextAction(doc).command, /set 验收/u);
+  setState(doc, { to: "验收", reason: "任务与审查齐了" });
+  assert.match(nextAction(doc).command, /npm run state -- sign/u);
+  signScope(doc, { text: "可以收口了" });
+  assert.match(nextAction(doc).command, /close/u);
+});
+
+test("placeholder words never get through the gates", () => {
+  const doc = withTasks(opened(), ["随便一件"]);
+  assert.throws(() => completeTask(doc, { id: "T1", evidence: ["‹跑过的命令›"] }), /占位/u);
+  completeTask(doc, { id: "T1", evidence: ["真跑了 node --test"] });
+  recordReview(doc, { scope: "总体" });
+  addFindings(doc, { findings: ["有个问题"] });
+  assert.throws(() => disposeFinding(doc, { id: "F1", decision: "延期", note: "再议" }), /理由/u);
   assert.throws(
-    () => passHumanAcceptance(doc, { id: human.id, text: "‹用户的签收原话›" }),
+    () => disposeFinding(doc, { id: "F1", decision: "延期", note: "‹用户的说法›" }),
     /占位/u,
   );
-  doc = addAcceptance(doc, { segmentId: segment.id, text: "测试通过", layer: "D" }).doc;
-  const gate = doc.sessions[0].segments.at(-1).acceptance.at(-1);
-  assert.throws(
-    () => setAcceptance(doc, { id: gate.id, status: "通过", evidence: ["做完的依据"] }),
-    /占位/u,
-  );
-  doc = addTask(doc, { text: "改一处文案" }).doc;
-  const task = doc.sessions[0].segments.at(-1).tasks.at(-1);
-  assert.throws(() => completeTask(doc, { id: task.id, evidence: "做完的依据" }), /占位/u);
-  assert.throws(() => signScope(doc, { text: "可以收口" }), /占位|验收态|段/u);
-  assert.ok(opened);
+  setState(doc, { to: "验收", reason: "任务完成" });
+  assert.throws(() => signScope(doc, { text: "xxx" }), /签收|占位/u);
+});
+
+test("discussion rounds and waits hang off the thread of the session", () => {
+  const doc = startSession(emptyState(), { title: "先聊聊再动手", discuss: true }).doc;
+  addRound(doc, { conclusion: "先做只读版本" });
+  addWait(doc, { item: "要不要做成可操作" });
+  assert.equal(doc.sessions[0].threads[0].rounds.length, 1);
+  assert.match(briefLines(doc).join("\n"), /待裁/u);
+  assert.throws(() => setState(doc, { to: "执行", reason: "想清楚了" }), /范围/u);
+  setScope(doc, { text: "只读版本先落地", kind: "里程碑" });
+  setState(doc, { to: "执行", reason: "范围与结论已定" });
+  assert.equal(focusSession(doc).threads[0].status, "archived");
+});
+
+test("switching sessions keeps both alive and lists them by task count", () => {
+  const doc = withTasks(opened(), ["第一件事", "第二件事"]);
+  completeTask(doc, { id: "T1", evidence: ["做了"] });
+  archiveSession(doc, { reason: "先放着" });
+  startSession(doc, { title: "第二件事也要做" });
+  const rows = listSessions(doc);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].tasksDone, 1);
+  assert.equal(rows[0].status, "archived");
+  assert.equal(rows[1].status, "open");
+  assert.throws(() => switchSession(doc, { id: "S1" }), /已归档/u);
+});
+
+test("a retired version is refused instead of being silently reshaped", () => {
+  assert.throws(() => upgradeState({ version: 4, sessions: [] }), /已退役/u);
+});
+
+test("validation catches the broken shapes", () => {
+  const doc = withTasks(opened(), [{ text: "有点事情", standard: "标准写清楚" }]);
+  doc.sessions[0].tasks[0].standard = "";
+  const errors = validateState(doc);
+  assert.ok(errors.some((one) => /缺少做完的标准/u.test(one)));
+  const clean = withTasks(opened(), ["另一件事"]);
+  assert.equal(openFindings(clean).length, 0);
 });
