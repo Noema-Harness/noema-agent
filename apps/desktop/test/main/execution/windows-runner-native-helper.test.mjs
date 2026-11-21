@@ -6,7 +6,6 @@ import path from 'node:path';
 import test from 'node:test';
 import { WindowsRunnerNativeHelper } from '../../../src/main/execution/windows-runner-native-helper.mjs';
 import { WindowsRunnerAclJournalStore } from '../../../src/main/execution/windows-runner-acl-journal.mjs';
-import { windowsOnly } from '../../support/platform-cases.mjs';
 import { WindowsRunnerAclTransactionService } from '../../../src/main/execution/windows-runner-acl-transaction.ts';
 
 const operationId = 'native-helper-operation-01';
@@ -18,7 +17,8 @@ const traceIdentity = {
 const setupUserDataPath = 'C:\\Users\\fixture\\AppData\\Roaming\\Noema';
 const packageSid = 'S-1-15-2-101-102-103-104-105-106-107';
 const grant = {
-  path: path.join(os.tmpdir(), 'noema-acl-workspace'),
+  // Journal validation accepts Windows local paths only; the helper is faked.
+  path: 'C:\\Users\\fixture\\noema-acl-workspace',
   fileIdentity: { volumeSerialNumber: '42', fileIndex: '4200' },
   capabilityName:
     'Noema.Write.1111111111111111111111111111111111111111111111111111111111111111',
@@ -36,140 +36,128 @@ const evidence = {
   inheritanceVerified: true,
 };
 
-test(
-  'native helper transport drives the durable journal before reconcile and verifies before clearing',
-  windowsOnly('grant and userData paths are validated with path.win32'),
-  async (t) => {
-    const userDataPath = fs.mkdtempSync(
-      path.join(os.tmpdir(), 'noema-acl-helper-'),
-    );
-    t.after(() => fs.rmSync(userDataPath, { recursive: true, force: true }));
-    const journal = new WindowsRunnerAclJournalStore({ userDataPath });
-    const operations = [];
-    const helper = makeHelper(({ request, options }) => {
-      assert.deepEqual(options.stdio, ['pipe', 'pipe', 'ignore']);
-      assert.equal(options.shell, false);
-      assert.equal(options.windowsHide, true);
-      assert.equal('OPENAI_API_KEY' in options.env, false);
-      assert.deepEqual(Object.keys(options.env).sort(), [
-        'LOCALAPPDATA',
-        'PATH',
-        'SystemRoot',
-      ]);
-      assert.equal(request.requestId, operationId);
-      assert.deepEqual(request.operation.grants, [
-        {
-          path: grant.path,
-          fileIdentity: grant.fileIdentity,
-          capabilityName: grant.capabilityName,
-          access: grant.access,
-          isDirectory: grant.isDirectory,
-        },
-      ]);
-      const phase = journal.load().phase;
-      if (request.operation.type === 'reconcile_filesystem_root_acls') {
-        assert.equal(phase, 'applying');
-        operations.push('reconcile');
-      } else {
-        assert.equal(request.operation.type, 'verify_filesystem_root_acls');
-        assert.equal(phase, 'verified');
-        operations.push('verify');
-      }
-      return {
-        protocolVersion: 8,
-        requestId: request.requestId,
-        result: {
-          type: 'acl_evidence',
-          backendId: 'noema-codex-windows',
-          backendVersion: '0.1.0',
-          evidence: [evidence],
-        },
-      };
-    });
-    const service = new WindowsRunnerAclTransactionService({
-      journalStore: journal,
-      helper,
-      makeOperationId: () => operationId,
-    });
-
-    assert.deepEqual(await service.ensureFilesystemRoots([grant]), {
-      ready: true,
-      recovered: false,
-    });
-    assert.deepEqual(operations, ['reconcile', 'verify']);
-    assert.equal(journal.load().status, 'clean');
-  },
-);
-
-test(
-  'native helper rejects mismatched response identity and leaves the journal pending',
-  windowsOnly('grant and userData paths are validated with path.win32'),
-  async (t) => {
-    const userDataPath = fs.mkdtempSync(
-      path.join(os.tmpdir(), 'noema-acl-helper-'),
-    );
-    t.after(() => fs.rmSync(userDataPath, { recursive: true, force: true }));
-    const journal = new WindowsRunnerAclJournalStore({ userDataPath });
-    const helper = makeHelper(() => ({
+test('native helper transport drives the durable journal before reconcile and verifies before clearing', async (t) => {
+  const userDataPath = fs.mkdtempSync(
+    path.join(os.tmpdir(), 'noema-acl-helper-'),
+  );
+  t.after(() => fs.rmSync(userDataPath, { recursive: true, force: true }));
+  const journal = new WindowsRunnerAclJournalStore({ userDataPath });
+  const operations = [];
+  const helper = makeHelper(({ request, options }) => {
+    assert.deepEqual(options.stdio, ['pipe', 'pipe', 'ignore']);
+    assert.equal(options.shell, false);
+    assert.equal(options.windowsHide, true);
+    assert.equal('OPENAI_API_KEY' in options.env, false);
+    assert.deepEqual(Object.keys(options.env).sort(), [
+      'LOCALAPPDATA',
+      'PATH',
+      'SystemRoot',
+    ]);
+    assert.equal(request.requestId, operationId);
+    assert.deepEqual(request.operation.grants, [
+      {
+        path: grant.path,
+        fileIdentity: grant.fileIdentity,
+        capabilityName: grant.capabilityName,
+        access: grant.access,
+        isDirectory: grant.isDirectory,
+      },
+    ]);
+    const phase = journal.load().phase;
+    if (request.operation.type === 'reconcile_filesystem_root_acls') {
+      assert.equal(phase, 'applying');
+      operations.push('reconcile');
+    } else {
+      assert.equal(request.operation.type, 'verify_filesystem_root_acls');
+      assert.equal(phase, 'verified');
+      operations.push('verify');
+    }
+    return {
       protocolVersion: 8,
-      requestId: 'different-request-id',
+      requestId: request.requestId,
       result: {
         type: 'acl_evidence',
         backendId: 'noema-codex-windows',
         backendVersion: '0.1.0',
         evidence: [evidence],
       },
-    }));
-    const service = new WindowsRunnerAclTransactionService({
-      journalStore: journal,
-      helper,
-      makeOperationId: () => operationId,
-    });
+    };
+  });
+  const service = new WindowsRunnerAclTransactionService({
+    journalStore: journal,
+    helper,
+    makeOperationId: () => operationId,
+  });
 
-    assert.deepEqual(await service.ensureFilesystemRoots([grant]), {
-      ready: false,
-      recovered: false,
-      reason: 'runner_helper_response_invalid',
-    });
-    assert.equal(journal.load().status, 'repair_required');
-    assert.equal(journal.load().phase, 'applying');
-  },
-);
+  assert.deepEqual(await service.ensureFilesystemRoots([grant]), {
+    ready: true,
+    recovered: false,
+  });
+  assert.deepEqual(operations, ['reconcile', 'verify']);
+  assert.equal(journal.load().status, 'clean');
+});
 
-test(
-  'native helper rejects a mismatched backend version and leaves the journal pending',
-  windowsOnly('grant and userData paths are validated with path.win32'),
-  async (t) => {
-    const userDataPath = fs.mkdtempSync(
-      path.join(os.tmpdir(), 'noema-acl-helper-'),
-    );
-    t.after(() => fs.rmSync(userDataPath, { recursive: true, force: true }));
-    const journal = new WindowsRunnerAclJournalStore({ userDataPath });
-    const helper = makeHelper(({ request }) => ({
-      protocolVersion: 8,
-      requestId: request.requestId,
-      result: {
-        type: 'acl_evidence',
-        backendId: 'noema-codex-windows',
-        backendVersion: '0.9.0',
-        evidence: [evidence],
-      },
-    }));
-    const service = new WindowsRunnerAclTransactionService({
-      journalStore: journal,
-      helper,
-      makeOperationId: () => operationId,
-    });
+test('native helper rejects mismatched response identity and leaves the journal pending', async (t) => {
+  const userDataPath = fs.mkdtempSync(
+    path.join(os.tmpdir(), 'noema-acl-helper-'),
+  );
+  t.after(() => fs.rmSync(userDataPath, { recursive: true, force: true }));
+  const journal = new WindowsRunnerAclJournalStore({ userDataPath });
+  const helper = makeHelper(() => ({
+    protocolVersion: 8,
+    requestId: 'different-request-id',
+    result: {
+      type: 'acl_evidence',
+      backendId: 'noema-codex-windows',
+      backendVersion: '0.1.0',
+      evidence: [evidence],
+    },
+  }));
+  const service = new WindowsRunnerAclTransactionService({
+    journalStore: journal,
+    helper,
+    makeOperationId: () => operationId,
+  });
 
-    assert.deepEqual(await service.ensureFilesystemRoots([grant]), {
-      ready: false,
-      recovered: false,
-      reason: 'runner_helper_response_invalid',
-    });
-    assert.equal(journal.load().status, 'repair_required');
-    assert.equal(journal.load().phase, 'applying');
-  },
-);
+  assert.deepEqual(await service.ensureFilesystemRoots([grant]), {
+    ready: false,
+    recovered: false,
+    reason: 'runner_helper_response_invalid',
+  });
+  assert.equal(journal.load().status, 'repair_required');
+  assert.equal(journal.load().phase, 'applying');
+});
+
+test('native helper rejects a mismatched backend version and leaves the journal pending', async (t) => {
+  const userDataPath = fs.mkdtempSync(
+    path.join(os.tmpdir(), 'noema-acl-helper-'),
+  );
+  t.after(() => fs.rmSync(userDataPath, { recursive: true, force: true }));
+  const journal = new WindowsRunnerAclJournalStore({ userDataPath });
+  const helper = makeHelper(({ request }) => ({
+    protocolVersion: 8,
+    requestId: request.requestId,
+    result: {
+      type: 'acl_evidence',
+      backendId: 'noema-codex-windows',
+      backendVersion: '0.9.0',
+      evidence: [evidence],
+    },
+  }));
+  const service = new WindowsRunnerAclTransactionService({
+    journalStore: journal,
+    helper,
+    makeOperationId: () => operationId,
+  });
+
+  assert.deepEqual(await service.ensureFilesystemRoots([grant]), {
+    ready: false,
+    recovered: false,
+    reason: 'runner_helper_response_invalid',
+  });
+  assert.equal(journal.load().status, 'repair_required');
+  assert.equal(journal.load().phase, 'applying');
+});
 
 test('native helper terminates and reports a timed out bounded request', async () => {
   let terminated = false;
